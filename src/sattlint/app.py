@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import os
 import sys
 from collections.abc import Callable, Iterator, Sequence
@@ -44,7 +45,6 @@ from .analyzers.variables import (
 )
 from .cache import ASTCache
 from .core.semantic import load_workspace_snapshot
-from .devtools import source_diff_report as source_diff_report_module
 from .models.project_graph import ProjectGraph
 
 ConfigDict = dict[str, Any]
@@ -68,6 +68,7 @@ app_telemetry = cast(Any, app_telemetry_module)
 cache = cast(Any, cache_module)
 engine_module: Any = engine_module_impl
 telemetry_summary = cast(Any, telemetry_summary_module)
+source_diff_report_module: Any = importlib.import_module("sattlint.devtools.source_diff_report")
 
 _APP_MODULE: Any = cast(Any, sys.modules[__name__])
 _interactive_ui_mode = "classic"
@@ -77,7 +78,6 @@ VARIABLE_ANALYSES: VariableAnalysisMap = app_analysis.VARIABLE_ANALYSES
 HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = app_analysis.HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS
 LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = app_analysis.LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS
 emit_output: Callable[..., None] = console_module.print_output  # type: ignore[assignment]
-
 
 EXIT_SUCCESS: int = app_base.EXIT_SUCCESS
 EXIT_FAILURE: int = app_base.EXIT_FAILURE

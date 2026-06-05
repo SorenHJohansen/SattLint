@@ -520,6 +520,7 @@ def test_textual_analyze_run_selected_executes_planned_steps_in_catalog_order(
             action_fn(),
         ),
     )
+    monkeypatch.setattr(app_instance, "_emit_output_from_thread", lambda _text: None)
 
     app_instance._run_selected_analysis_plan()
 
@@ -633,6 +634,39 @@ def test_textual_analyze_run_selected_reports_missing_handlers(monkeypatch: pyte
 
     assert any("Missing handlers" in line for line in lines)
     assert any("run_debug_variable_usage" in line for line in lines)
+
+
+def test_textual_execute_analyze_plan_emits_progress_lines(monkeypatch: pytest.MonkeyPatch) -> None:
+    emitted: list[str] = []
+    executed: list[str] = []
+
+    app_instance = _make_textual_app(app_module=SimpleNamespace())
+    plan = SimpleNamespace(
+        executable_steps=[
+            SimpleNamespace(label="Run full suite", source_labels=("Full suite", "Toolbar")),
+            SimpleNamespace(label="Commented out code", source_labels=("Code quality",)),
+        ]
+    )
+
+    monkeypatch.setattr(app_textual.analysis_planner, "render_analysis_plan_summary", lambda _plan: "Plan summary")
+    monkeypatch.setattr(app_instance, "_emit_output_from_thread", lambda text: emitted.append(text))
+    monkeypatch.setattr(
+        app_instance,
+        "_execute_planned_analysis_step",
+        lambda step: executed.append(str(step.label)),
+    )
+
+    app_instance._execute_analyze_plan(plan)
+
+    assert emitted == [
+        "Analyze planner queue",
+        "Plan summary",
+        "[1/2] Run full suite",
+        "Merged selections: Full suite, Toolbar",
+        "[2/2] Commented out code",
+        "Selected analyses completed.",
+    ]
+    assert executed == ["Run full suite", "Commented out code"]
 
 
 def test_textual_analyze_clear_selection_resets_planner_state() -> None:

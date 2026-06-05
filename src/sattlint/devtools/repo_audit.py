@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import ast
+import json
 import os
 import re
 import shutil
@@ -25,6 +26,7 @@ from sattlint.devtools import ai_work_map as _ai_work_map_module
 from sattlint.devtools import audit_core as _audit_core_module
 from sattlint.devtools import audit_orchestration as _audit_orchestration_module
 from sattlint.devtools import doc_gardener as _doc_gardener_module
+from sattlint.devtools import layer_linter as _layer_linter_module
 from sattlint.devtools import ledger as _ledger_module
 from sattlint.devtools import pipeline as pipeline_module
 from sattlint.devtools import repo_audit_compat as _repo_audit_compat_module
@@ -339,7 +341,7 @@ def _find_architecture_findings(
     content_by_file: dict[Path, str] | None = None,
     ast_by_file: dict[Path, ast.AST] | None = None,
 ) -> list[Finding]:
-    return _audit_core_module.find_architecture_findings(
+    findings = _audit_core_module.find_architecture_findings(
         source_root,
         read_text_fn=_read_text,
         relative_path=lambda path: _relative_path(path),
@@ -350,6 +352,62 @@ def _find_architecture_findings(
         content_by_file=content_by_file,
         ast_by_file=ast_by_file,
     )
+    try:
+        policy = _layer_linter_module.load_policy()
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        findings.append(
+            Finding(
+                id="layer-lint-policy-load-error",
+                category="architecture",
+                severity="high",
+                confidence="high",
+                message=f"Failed to load layer-lint policy: {type(exc).__name__}: {exc}",
+                path="metrics/layer_lint_policy.json",
+                source="layer-linter",
+            )
+        )
+        return findings
+
+    file_iterable = list((content_by_file or {}).items()) or [
+        (path, _read_text(path)) for path in source_root.rglob("*.py")
+    ]
+    repo_root = source_root.parent
+    for path, text in file_iterable:
+        violations = _layer_linter_module.check_file_for_arch_violations(
+            path,
+            repo_root=repo_root,
+            content=text,
+            tree=None if ast_by_file is None else ast_by_file.get(path),
+            policy=policy,
+        )
+        for violation in violations:
+            finding_id = "forbidden-import-policy" if violation.violation_kind == "policy" else "layer-import-violation"
+            detail = None
+            if violation.current_module and violation.imported_module:
+                detail = f"{violation.current_module} -> {violation.imported_module}"
+            try:
+                finding_path = path.relative_to(repo_root).as_posix()
+            except ValueError:
+                finding_path = _relative_path(path)
+            findings.append(
+                Finding(
+                    id=finding_id,
+                    category="architecture",
+                    severity="high",
+                    confidence="high",
+                    message=violation.message,
+                    path=finding_path,
+                    line=violation.line,
+                    detail=detail,
+                    suggestion=(
+                        "Remove the dependency or move the shared seam behind a lower-level API."
+                        if violation.violation_kind in {"layer", "policy"}
+                        else None
+                    ),
+                    source="layer-linter",
+                )
+            )
+    return findings
 
 
 _find_cli_findings = _repo_audit_compat_module._find_cli_findings

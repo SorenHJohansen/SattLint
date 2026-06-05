@@ -35,6 +35,7 @@ def test_run_release_smoke_writes_success_reports(tmp_path: Path) -> None:
         text: bool,
         capture_output: bool,
         check: bool,
+        timeout: float | None,
     ) -> subprocess.CompletedProcess[str]:
         assert cwd == tmp_path.resolve()
         assert env["PIP_DISABLE_PIP_VERSION_CHECK"] == "1"
@@ -42,6 +43,8 @@ def test_run_release_smoke_writes_success_reports(tmp_path: Path) -> None:
         assert capture_output is True
         assert check is False
         commands.append(tuple(command))
+        if command[0].endswith("sattlint-lsp"):
+            raise subprocess.TimeoutExpired(command, timeout if timeout is not None else 1.0)
         return subprocess.CompletedProcess(list(command), 0, stdout="ok", stderr="")
 
     exit_code = release_smoke.run_release_smoke(
@@ -55,9 +58,12 @@ def test_run_release_smoke_writes_success_reports(tmp_path: Path) -> None:
 
     assert exit_code == 0
     assert [command[1:4] for command in commands[:1]] == [("-m", "pip", "install")]
-    assert commands[1][-1] == "--version"
-    assert commands[2][-2:] == ("syntax-check", str(sample_path.resolve()))
-    assert commands[3][-3:] == ("--profile", "full", "--list-checks")
+    assert commands[1][-1] == release_smoke.LSP_RUNTIME_DEPENDENCIES[0]
+    assert commands[2][-1] == "--version"
+    assert commands[3][-2:] == ("syntax-check", str(sample_path.resolve()))
+    assert commands[4][-3:] == ("--profile", "full", "--list-checks")
+    assert commands[4][1] == "repo-audit"
+    assert commands[5][0].endswith("sattlint-lsp")
 
     status_report = _read_json(output_dir / "status.json")
     summary_report = _read_json(output_dir / "summary.json")
@@ -65,6 +71,9 @@ def test_run_release_smoke_writes_success_reports(tmp_path: Path) -> None:
     assert status_report["overall_status"] == "pass"
     assert status_report["failing_steps"] == []
     assert status_report["pending_steps"] == []
+    step_statuses = cast(dict[str, object], status_report["step_statuses"])
+    lsp_status = cast(dict[str, object], step_statuses["lsp_boot"])
+    assert lsp_status["timed_out"] is True
     assert summary_report["status"] == {
         "overall_status": "pass",
         "failing_steps": [],
@@ -72,7 +81,7 @@ def test_run_release_smoke_writes_success_reports(tmp_path: Path) -> None:
     }
     steps = cast(list[object], summary_report["steps"])
     assert isinstance(steps, list)
-    assert len(steps) == 4
+    assert len(steps) == 6
 
 
 def test_run_release_smoke_stops_after_first_failure(tmp_path: Path) -> None:
@@ -97,6 +106,7 @@ def test_run_release_smoke_stops_after_first_failure(tmp_path: Path) -> None:
         text: bool,
         capture_output: bool,
         check: bool,
+        timeout: float | None,
     ) -> subprocess.CompletedProcess[str]:
         nonlocal step_index
         step_index += 1
@@ -118,8 +128,8 @@ def test_run_release_smoke_stops_after_first_failure(tmp_path: Path) -> None:
     summary_report = _read_json(output_dir / "summary.json")
 
     assert status_report["overall_status"] == "fail"
-    assert status_report["failing_steps"] == ["syntax_check"]
-    assert status_report["pending_steps"] == ["repo_audit_boot"]
+    assert status_report["failing_steps"] == ["cli_version"]
+    assert status_report["pending_steps"] == ["syntax_check", "repo_audit_boot", "lsp_boot"]
     steps = cast(list[object], summary_report["steps"])
     assert isinstance(steps, list)
     assert len(steps) == 3

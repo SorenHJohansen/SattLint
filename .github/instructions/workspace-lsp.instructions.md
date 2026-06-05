@@ -8,5 +8,5 @@ applyTo: ["src/sattlint_lsp/**", "src/sattlint/core/**", "src/sattlint/editor_ap
 - Preserve the distinction between strict `syntax-check` and dependency-aware workspace analysis.
 - Live LSP analysis is for `.s` and `.x`; `.l` and `.z` remain dependency-name lists.
 - `ControlLib` stays an expected unavailable dependency in workspace flows.
-- Choose the first focused validation route from [validation map](../skills/validation-routing/references/validation-map.md) before broader checks.
+- Choose the first focused validation route from [validation map](../../docs/maintainers/validation-map.md) before broader checks.
 - After changes under `src/sattlint_lsp/`, `src/sattlint/core/`, `src/sattlint/editor_api.py`, or `vscode/sattline-vscode/`, restart with `sattlineLsp.restartServer`.

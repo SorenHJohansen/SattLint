@@ -1,19 +1,20 @@
 """Architecture linter: enforces layered domain architecture and dependency rules."""
 
 import ast
+import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
-# Define the layers based on SattLint architecture from AGENTS.md and docs/architecture.md
+# Define the layers based on SattLint architecture from AGENTS.md and docs/public/architecture.md
 # Dependencies must only flow from higher layer number to lower (or same).
 # Layer 0: sattline_parser  - grammar, AST, transformer
-# Layer 1: sattlint.models  - pure data containers and enums
-# Layer 2: sattlint.core    - semantic snapshots, diagnostics, semantic indexes
-# Layer 3: sattlint.resolution - scope building, symbol tables, context builders
-# Layer 4: sattlint.analyzers  - the 34+ analysis checks
-# Layer 5: sattlint (app root) - project loading, engine, config, orchestration
-# Layer 6: sattlint.reporting  - report rendering and formatting
+# Layer 1: sattlint.models / types - pure data containers, enums, semantic aliases
+# Layer 4: sattlint runtime        - semantic core, resolution, analyzers, app orchestration,
+#                                    reporting, and shared helpers
+# Layer 5: reserved
+# Layer 6: reserved
 # Layer 7: sattlint_lsp        - language server
 # Layer 8: vscode              - VS Code extension client
 # Layer 9: sattlint.devtools   - tooling-only; must not be imported by layers 0-7
@@ -21,15 +22,21 @@ from pathlib import Path
 LAYER_MAP = {
     "sattline_parser": 0,
     "sattlint.models": 1,
-    "sattlint.core": 2,
-    "sattlint.resolution": 3,
+    "sattlint.types": 1,
+    "sattlint.core": 4,
+    "sattlint.resolution": 4,
     "sattlint.analyzers": 4,
-    "sattlint": 5,
-    "sattlint.reporting": 6,
+    "sattlint.reporting": 4,
+    "sattlint": 4,
     "sattlint_lsp": 7,
     "vscode": 8,
     "sattlint.devtools": 9,
 }
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+POLICY_PATH = REPO_ROOT / "metrics" / "layer_lint_policy.json"
+POLICY_KIND = "sattlint.layer_lint_policy"
+POLICY_SCHEMA_VERSION = 1
 
 # Allowed dependencies: a layer can depend on same layer or lower layers (lower number)
 # We'll compute allowed dependencies dynamically from LAYER_MAP
@@ -43,11 +50,65 @@ class ArchViolation:
     file: str
     line: int
     message: str
+    current_module: str = ""
+    imported_module: str = ""
+    violation_kind: str = ""
+    policy_owner: str | None = None
+    forbidden_import: str | None = None
 
 
-def _resolve_current_module(file_path: Path) -> tuple[str, int]:
+@dataclass(frozen=True)
+class LayerLintPolicy:
+    forbidden_imports: dict[str, tuple[str, ...]]
+    path: str
+
+
+def _matches_module_prefix(module_name: str, prefix: str) -> bool:
+    return module_name == prefix or module_name.startswith(prefix + ".")
+
+
+def load_policy(policy_path: Path = POLICY_PATH) -> LayerLintPolicy:
+    if not policy_path.exists():
+        return LayerLintPolicy(forbidden_imports={}, path=str(policy_path))
+
+    payload_obj = json.loads(policy_path.read_text(encoding="utf-8"))
+    if not isinstance(payload_obj, dict):
+        raise ValueError(f"{policy_path} must contain a JSON object.")
+    payload = cast(dict[str, object], payload_obj)
+    if payload.get("kind") != POLICY_KIND:
+        raise ValueError(f"{policy_path} kind must be {POLICY_KIND!r}.")
+    if payload.get("schema_version") != POLICY_SCHEMA_VERSION:
+        raise ValueError(f"{policy_path} schema_version must be {POLICY_SCHEMA_VERSION}.")
+
+    raw_rules_obj = payload.get("forbidden_imports")
+    if not isinstance(raw_rules_obj, dict):
+        raise ValueError(f"{policy_path} forbidden_imports must be a JSON object.")
+    raw_rules = cast(dict[object, object], raw_rules_obj)
+
+    normalized_rules: dict[str, tuple[str, ...]] = {}
+    for raw_owner, raw_rule_obj in raw_rules.items():
+        if not isinstance(raw_owner, str) or not raw_owner.strip():
+            raise ValueError(f"{policy_path} forbidden_imports keys must be non-empty strings.")
+        if not isinstance(raw_rule_obj, dict):
+            raise ValueError(f"{policy_path} rule for {raw_owner!r} must be a JSON object.")
+        raw_rule = cast(dict[str, object], raw_rule_obj)
+        cannot_import_obj = raw_rule.get("cannot_import")
+        if not isinstance(cannot_import_obj, list):
+            raise ValueError(f"{policy_path} rule for {raw_owner!r} must include a cannot_import list.")
+        normalized_forbidden: list[str] = []
+        cannot_import = cast(list[object], cannot_import_obj)
+        for entry in cannot_import:
+            if not isinstance(entry, str) or not entry.strip():
+                raise ValueError(f"{policy_path} cannot_import entries for {raw_owner!r} must be non-empty strings.")
+            normalized_forbidden.append(entry.strip())
+        normalized_rules[raw_owner.strip()] = tuple(normalized_forbidden)
+
+    return LayerLintPolicy(forbidden_imports=normalized_rules, path=str(policy_path))
+
+
+def _resolve_current_module(file_path: Path, *, repo_root: Path | None = None) -> tuple[str, int]:
     """Resolve the current module name and owning layer from a repo-relative file path."""
-    rel_path = file_path.relative_to(Path.cwd())
+    rel_path = file_path.relative_to(Path.cwd() if repo_root is None else repo_root)
     parts = list(rel_path.parts)
     if not parts:
         return ".", -1
@@ -86,69 +147,207 @@ def get_layer_for_module(module_name: str) -> int:
     return -1
 
 
-def check_file_for_arch_violations(file_path: Path) -> list[ArchViolation]:
+def _resolve_import_from_base(
+    current_module: str,
+    *,
+    module_name: str | None,
+    level: int,
+    current_is_package: bool,
+) -> str | None:
+    if level == 0:
+        return module_name
+
+    if current_module in {"", "."}:
+        return None
+
+    package_parts = current_module.split(".") if current_is_package else current_module.split(".")[:-1]
+    parent_hops = level - 1
+    if parent_hops > len(package_parts):
+        return None
+
+    base_parts = package_parts[: len(package_parts) - parent_hops]
+    if module_name:
+        base_parts.extend(module_name.split("."))
+    return ".".join(base_parts)
+
+
+def _import_target_candidates(
+    current_module: str,
+    node: ast.ImportFrom,
+    imported_name: str,
+    *,
+    current_is_package: bool,
+) -> tuple[str, ...]:
+    base_module = _resolve_import_from_base(
+        current_module,
+        module_name=node.module,
+        level=node.level,
+        current_is_package=current_is_package,
+    )
+    if not base_module:
+        return ()
+
+    candidates: list[str] = []
+    if imported_name != "*":
+        candidates.append(f"{base_module}.{imported_name}")
+    candidates.append(base_module)
+
+    deduped: list[str] = []
+    for candidate in candidates:
+        if candidate not in deduped:
+            deduped.append(candidate)
+    return tuple(deduped)
+
+
+def _policy_violation(
+    *,
+    file_path: Path,
+    line: int,
+    current_module: str,
+    imported_module: str,
+    owner_prefix: str,
+    forbidden_prefix: str,
+) -> ArchViolation:
+    return ArchViolation(
+        file=str(file_path),
+        line=line,
+        message=(
+            "Forbidden import policy violation: "
+            f"{current_module} imports {imported_module} "
+            f"(matched rule {owner_prefix} cannot import {forbidden_prefix})."
+        ),
+        current_module=current_module,
+        imported_module=imported_module,
+        violation_kind="policy",
+        policy_owner=owner_prefix,
+        forbidden_import=forbidden_prefix,
+    )
+
+
+def _layer_violation(
+    *,
+    file_path: Path,
+    line: int,
+    current_module: str,
+    current_layer: int,
+    imported_module: str,
+    imported_layer: int,
+) -> ArchViolation:
+    return ArchViolation(
+        file=str(file_path),
+        line=line,
+        message=(
+            "Layer violation: "
+            f"{current_module} (layer {current_layer}) imports {imported_module} (layer {imported_layer})."
+        ),
+        current_module=current_module,
+        imported_module=imported_module,
+        violation_kind="layer",
+    )
+
+
+def _check_import_target(
+    *,
+    file_path: Path,
+    line: int,
+    current_module: str,
+    current_layer: int,
+    imported_module: str,
+    policy: LayerLintPolicy,
+) -> ArchViolation | None:
+    for owner_prefix, forbidden_prefixes in policy.forbidden_imports.items():
+        if not _matches_module_prefix(current_module, owner_prefix):
+            continue
+        for forbidden_prefix in forbidden_prefixes:
+            if _matches_module_prefix(imported_module, forbidden_prefix):
+                return _policy_violation(
+                    file_path=file_path,
+                    line=line,
+                    current_module=current_module,
+                    imported_module=imported_module,
+                    owner_prefix=owner_prefix,
+                    forbidden_prefix=forbidden_prefix,
+                )
+
+    imported_layer = get_layer_for_module(imported_module)
+    if imported_layer != -1 and current_layer != -1 and imported_layer > current_layer:
+        return _layer_violation(
+            file_path=file_path,
+            line=line,
+            current_module=current_module,
+            current_layer=current_layer,
+            imported_module=imported_module,
+            imported_layer=imported_layer,
+        )
+
+    return None
+
+
+def check_file_for_arch_violations(
+    file_path: Path,
+    *,
+    repo_root: Path | None = None,
+    content: str | None = None,
+    tree: ast.AST | None = None,
+    policy: LayerLintPolicy | None = None,
+) -> list[ArchViolation]:
     """Check a single Python file for architecture violations."""
     violations: list[ArchViolation] = []
     try:
-        with open(file_path, encoding="utf-8") as f:
-            content = f.read()
+        resolved_policy = load_policy() if policy is None else policy
+        source_text = content
+        if source_text is None:
+            with open(file_path, encoding="utf-8") as f:
+                source_text = f.read()
 
-        tree = ast.parse(content)
+        parsed_tree = ast.parse(source_text) if tree is None else tree
 
         # Get the module name of the current file
         # We'll compute relative to src/ or vscode/ root
         try:
-            current_module, current_layer = _resolve_current_module(file_path)
+            if repo_root is None:
+                current_module, current_layer = _resolve_current_module(file_path)
+            else:
+                current_module, current_layer = _resolve_current_module(file_path, repo_root=repo_root)
         except ValueError:
             # File is not under current working directory, skip
             return violations
 
+        current_is_package = file_path.name == "__init__.py"
+
         # Visit all imports
-        for node in ast.walk(tree):
+        for node in ast.walk(parsed_tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    module_name = alias.name
-                    # Skip external modules (not starting with our packages)
-                    if not any(module_name.startswith(pkg) for pkg in LAYER_MAP):
-                        continue
-                    imported_layer = get_layer_for_module(
-                        module_name.split(".")[0] if "." in module_name else module_name
+                    violation = _check_import_target(
+                        file_path=file_path,
+                        line=node.lineno,
+                        current_module=current_module,
+                        current_layer=current_layer,
+                        imported_module=alias.name,
+                        policy=resolved_policy,
                     )
-                    if imported_layer != -1 and current_layer != -1 and imported_layer > current_layer:
-                        message = (
-                            f"Invalid dependency: {current_module} (layer {current_layer}) imports "
-                            f"{module_name} (layer {imported_layer}). Fix: move code to same or lower "
-                            "layer, or introduce interface in Providers layer."
-                        )
-                        violations.append(
-                            ArchViolation(
-                                file=str(file_path),
-                                line=node.lineno,
-                                message=message,
-                            )
-                        )
+                    if violation is not None:
+                        violations.append(violation)
             elif isinstance(node, ast.ImportFrom):
-                if node.module is None:
-                    # Relative import, we'll assume it's okay for now (same layer or parent)
-                    continue
-                module_name = node.module
-                # Skip external modules
-                if not any(module_name.startswith(pkg) for pkg in LAYER_MAP):
-                    continue
-                imported_layer = get_layer_for_module(module_name.split(".")[0] if "." in module_name else module_name)
-                if imported_layer != -1 and current_layer != -1 and imported_layer > current_layer:
-                    message = (
-                        f"Invalid dependency: {current_module} (layer {current_layer}) imports from "
-                        f"{module_name} (layer {imported_layer}). Fix: move code to same or lower "
-                        "layer, or introduce interface in Providers layer."
-                    )
-                    violations.append(
-                        ArchViolation(
-                            file=str(file_path),
+                for alias in node.names:
+                    for imported_module in _import_target_candidates(
+                        current_module,
+                        node,
+                        alias.name,
+                        current_is_package=current_is_package,
+                    ):
+                        violation = _check_import_target(
+                            file_path=file_path,
                             line=node.lineno,
-                            message=message,
+                            current_module=current_module,
+                            current_layer=current_layer,
+                            imported_module=imported_module,
+                            policy=resolved_policy,
                         )
-                    )
+                        if violation is not None:
+                            violations.append(violation)
+                            break
     except Exception as exc:
         violations.append(
             ArchViolation(
@@ -171,6 +370,37 @@ def find_python_files(root_dirs: list[Path]) -> list[Path]:
     return python_files
 
 
+def collect_architecture_violations(
+    root_dirs: list[Path],
+    *,
+    repo_root: Path | None = None,
+    policy_path: Path | None = None,
+) -> list[ArchViolation]:
+    try:
+        policy = load_policy(POLICY_PATH if policy_path is None else policy_path)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        failed_policy_path = POLICY_PATH if policy_path is None else policy_path
+        return [
+            ArchViolation(
+                file=str(failed_policy_path),
+                line=0,
+                message=f"Failed to load layer-lint policy: {type(exc).__name__}: {exc}",
+                violation_kind="policy-load-error",
+            )
+        ]
+
+    all_violations: list[ArchViolation] = []
+    for file_path in find_python_files(root_dirs):
+        all_violations.extend(
+            check_file_for_arch_violations(
+                file_path,
+                repo_root=repo_root,
+                policy=policy,
+            )
+        )
+    return all_violations
+
+
 def main() -> None:
     """Run architecture linting on the codebase."""
     # Define the roots of our source code
@@ -179,12 +409,7 @@ def main() -> None:
         Path("vscode"),
     ]
 
-    python_files = find_python_files(roots)
-
-    all_violations: list[ArchViolation] = []
-    for file_path in python_files:
-        violations = check_file_for_arch_violations(file_path)
-        all_violations.extend(violations)
+    all_violations = collect_architecture_violations(roots, repo_root=REPO_ROOT)
 
     if all_violations:
         print(f"Found {len(all_violations)} architecture violations:")

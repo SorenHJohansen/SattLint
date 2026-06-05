@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
@@ -56,8 +57,8 @@ def available_handler_names(app_module: Any | None) -> frozenset[str]:
     names: set[str] = set()
     for name in dir(app_module):
         try:
-            value = getattr(app_module, name)
-        except Exception:
+            value = inspect.getattr_static(app_module, name)
+        except AttributeError:
             continue
         if callable(value):
             names.add(name)

@@ -20,6 +20,39 @@ _COVERAGE_XML_TEMPLATE = """
 """
 
 
+def _write_pre_push_task(root: Path, *, args: list[str] | None = None) -> None:
+    tasks_path = root / ".vscode" / "tasks.json"
+    tasks_path.parent.mkdir(parents=True, exist_ok=True)
+    task_args = args or [
+        "scripts/run_repo_python.py",
+        "-m",
+        "sattlint.devtools.repo_audit",
+        "--profile",
+        "full",
+        "--check-my-changes",
+        "--output-dir",
+        "artifacts/audit",
+    ]
+    tasks_path.write_text(
+        json.dumps(
+            {
+                "version": "2.0.0",
+                "tasks": [
+                    {
+                        "label": "Quality: Pre-push Gate",
+                        "type": "process",
+                        "command": "python",
+                        "args": task_args,
+                    }
+                ],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
 def _write_coverage_xml(root: Path, classes_xml: str) -> None:
     (root / "coverage.xml").write_text(
         _COVERAGE_XML_TEMPLATE.format(classes=classes_xml).strip(),
@@ -137,13 +170,21 @@ def test_build_cli_consistency_report_gap_counts_match_gap_lists():
     assert summary["undeclared_script_count"] == len(gaps["undeclared_scripts"])
     assert summary["undocumented_subcommand_count"] == len(gaps["undocumented_subcommands"])
     assert summary["undocumented_script_count"] == len(gaps["undocumented_scripts"])
-    expected_gap_count = summary["undeclared_subcommand_count"] + summary["undeclared_script_count"]
+    assert summary["missing_task_count"] == len(gaps["missing_tasks"])
+    assert summary["mismatched_task_count"] == len(gaps["mismatched_tasks"])
+    expected_gap_count = (
+        summary["undeclared_subcommand_count"]
+        + summary["undeclared_script_count"]
+        + summary["missing_task_count"]
+        + summary["mismatched_task_count"]
+    )
     assert summary["gap_count"] == expected_gap_count
 
 
 def test_build_cli_consistency_report_detects_undeclared_subcommand(tmp_path, monkeypatch):
     readme = tmp_path / "README.md"
     readme.write_text("Run `sattlint ghost-command` to do something.\n", encoding="utf-8")
+    _write_pre_push_task(tmp_path)
 
     monkeypatch.setattr(
         repo_audit,
@@ -162,6 +203,7 @@ def test_build_cli_consistency_report_detects_undeclared_subcommand(tmp_path, mo
 def test_build_cli_consistency_report_pass_when_all_documented_subcommands_are_declared(tmp_path, monkeypatch):
     readme = tmp_path / "README.md"
     readme.write_text("Run `sattlint syntax-check` to check syntax.\n", encoding="utf-8")
+    _write_pre_push_task(tmp_path)
 
     monkeypatch.setattr(
         repo_audit,
@@ -179,6 +221,7 @@ def test_build_cli_consistency_report_ignores_exec_plan_markdown_noise(tmp_path,
     cli_docs = tmp_path / "docs" / "references"
     cli_docs.mkdir(parents=True)
     (cli_docs / "cli-commands.md").write_text("Run `sattlint syntax-check` to validate syntax.\n", encoding="utf-8")
+    _write_pre_push_task(tmp_path)
 
     exec_plan = tmp_path / "docs" / "exec-plans" / "active"
     exec_plan.mkdir(parents=True)
@@ -201,6 +244,36 @@ def test_build_cli_consistency_report_ignores_exec_plan_markdown_noise(tmp_path,
     assert report["gaps"]["undeclared_subcommands"] == []
 
 
+def test_build_cli_consistency_report_detects_pre_push_task_mismatch(tmp_path, monkeypatch):
+    readme = tmp_path / "README.md"
+    readme.write_text("Run `sattlint syntax-check` to validate syntax.\n", encoding="utf-8")
+    _write_pre_push_task(
+        tmp_path,
+        args=[
+            "scripts/run_repo_python.py",
+            "-m",
+            "sattlint.devtools.repo_audit",
+            "--profile",
+            "quick",
+            "--output-dir",
+            "artifacts/audit",
+        ],
+    )
+
+    monkeypatch.setattr(
+        repo_audit,
+        "_collect_cli_metadata",
+        lambda: ({"sattlint", "sattlint-repo-audit"}, {"syntax-check"}),
+    )
+
+    report = repo_audit.build_cli_consistency_report(root=tmp_path)
+
+    assert report["status"] == "fail"
+    assert report["summary"]["mismatched_task_count"] == 1
+    assert report["gaps"]["mismatched_tasks"][0]["label"] == "Quality: Pre-push Gate"
+    assert report["gaps"]["mismatched_tasks"][0]["referenced_in"] == ".vscode/tasks.json"
+
+
 def test_cli_consistency_findings_preserve_report_script_and_path_fields():
     report = {
         "gaps": {
@@ -218,6 +291,20 @@ def test_cli_consistency_findings_preserve_report_script_and_path_fields():
                     "line": 24,
                 }
             ],
+            "missing_tasks": [
+                {
+                    "label": "Quality: Pre-push Gate",
+                    "referenced_in": ".vscode/tasks.json",
+                    "line": 8,
+                }
+            ],
+            "mismatched_tasks": [
+                {
+                    "label": "Quality: Pre-push Gate",
+                    "referenced_in": ".vscode/tasks.json",
+                    "line": 8,
+                }
+            ],
         }
     }
 
@@ -226,12 +313,18 @@ def test_cli_consistency_findings_preserve_report_script_and_path_fields():
     assert [finding.id for finding in findings] == [
         "cli-consistency-undeclared-subcommand",
         "cli-consistency-undeclared-script",
+        "cli-consistency-missing-task",
+        "cli-consistency-task-mismatch",
     ]
     assert findings[0].path == "docs/references/cli-commands.md"
     assert findings[0].line == 12
     assert findings[1].path == "docs/references/cli-commands.md"
     assert findings[1].line == 24
     assert findings[1].message == "Documented CLI script 'sattlint-ghost' is not declared."
+    assert findings[2].path == ".vscode/tasks.json"
+    assert findings[2].line == 8
+    assert findings[3].path == ".vscode/tasks.json"
+    assert findings[3].line == 8
 
 
 def test_doc_gardener_relative_path_returns_repo_relative():

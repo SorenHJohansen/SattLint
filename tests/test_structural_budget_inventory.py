@@ -162,6 +162,10 @@ def test_summarize_structural_budget_metrics_reads_report_fields() -> None:
         "summary": {
             "source_file_max_lines": 10,
             "test_file_max_lines": 0,
+            "import_max_count": 4,
+            "dependency_max_count": 2,
+            "public_symbol_max_count": 5,
+            "nesting_max_depth": 3,
         },
     }
 
@@ -176,5 +180,9 @@ def test_summarize_structural_budget_metrics_reads_report_fields() -> None:
         "class_max_methods": 4,
         "repeated_private_name_count": 1,
         "repeated_private_name_max_files": 3,
+        "import_max_count": 4,
+        "dependency_max_count": 2,
+        "public_symbol_max_count": 5,
+        "nesting_max_depth": 3,
         "facade_private_entrypoint_count": 1,
     }

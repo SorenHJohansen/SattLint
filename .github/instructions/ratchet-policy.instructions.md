@@ -1,7 +1,7 @@
 ---
 description: "Use when changing ratchet baselines, debt ledgers, approval records, coverage floors, or ratchet-policy tests in SattLint. Covers approval, monotonicity, per-file debt, and focused validation rules."
 name: "Ratchet Policy Instructions"
-applyTo: ["scripts/check_ratchet_policy.py", "tests/test_ratchet_policy.py", ".github/approvals/*.md", ".github/workflows/typing.yml", "docs/quality-gates.md", "pyproject.toml"]
+applyTo: ["scripts/check_ratchet_policy.py", "tests/test_ratchet_policy.py", ".github/approvals/*.md", ".github/workflows/typing.yml", "docs/maintainers/quality-gates.md", "pyproject.toml"]
 ---
 # Ratchet Policy
 

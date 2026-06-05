@@ -2,14 +2,12 @@
 
 ## Summary
 
-- Task ID:
+- Scope:
 - Branch:
-- Worktree:
-- Handoff: `.ai/handoffs/<task-id>.json`
+- Notes:
 
 ## Validation
 
-- [ ] `python scripts/run_ai_edit_gate.py` ran for touched Python files, or Ruff-on-save handled the same fixes
 - [ ] Focused owner validation ran
 - [ ] `python -m pre_commit run --all-files` ran
 - [ ] `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit` ran

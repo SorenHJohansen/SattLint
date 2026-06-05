@@ -2,94 +2,23 @@
 
 from __future__ import annotations
 
-import ast
 import json
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, cast
 
+from ._structural_report_budget_support import (
+    _collect_facade_private_entrypoints,
+    _evaluate_structural_budget_ratchet,
+    _normalize_file_line_exceptions,
+    build_known_structural_modules,
+    collect_python_structural_surface_metrics,
+)
 from .json_helpers import json_mapping as _json_mapping
 
 
 def _is_structural_budget_python_path(rel_path: str) -> bool:
     return rel_path.endswith(".py") and rel_path.startswith(("src/", "tests/"))
-
-
-def _collect_facade_private_entrypoints(tree: ast.AST, *, relative_path: str) -> list[dict[str, Any]]:
-    module_aliases: dict[str, str] = {}
-    imported_private_names: dict[str, str] = {}
-
-    for node in getattr(tree, "body", []):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                local_name = alias.asname or alias.name.rsplit(".", 1)[-1]
-                if local_name.endswith("_module"):
-                    module_aliases[local_name] = alias.name
-        elif isinstance(node, ast.ImportFrom):
-            module_prefix = "." * node.level + (node.module or "")
-            for alias in node.names:
-                local_name = alias.asname or alias.name
-                if local_name.endswith("_module"):
-                    full_module_name = f"{module_prefix}.{alias.name}" if module_prefix else alias.name
-                    module_aliases[local_name] = full_module_name.lstrip(".")
-                if alias.name.startswith("_"):
-                    full_symbol_name = f"{module_prefix}.{alias.name}" if module_prefix else alias.name
-                    imported_private_names[local_name] = full_symbol_name.lstrip(".")
-
-    violations: list[dict[str, Any]] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
-            target_module = module_aliases.get(node.func.value.id)
-            if target_module and node.func.attr.startswith("_"):
-                violations.append(
-                    {
-                        "path": relative_path,
-                        "line": node.lineno,
-                        "target": f"{target_module}.{node.func.attr}",
-                    }
-                )
-        elif isinstance(node.func, ast.Name):
-            target = imported_private_names.get(node.func.id)
-            if target is not None:
-                violations.append(
-                    {
-                        "path": relative_path,
-                        "line": node.lineno,
-                        "target": target,
-                    }
-                )
-    return sorted(violations, key=lambda item: (item["path"], item["line"], item["target"]))
-
-
-def _normalize_file_line_exceptions(raw: Any, *, label: str) -> dict[str, dict[str, Any]]:
-    if raw is None:
-        return {}
-    if not isinstance(raw, dict):
-        raise ValueError(f"{label} file_line_exceptions must be a JSON object keyed by repo-relative path.")
-
-    normalized: dict[str, dict[str, Any]] = {}
-    for raw_path, payload in cast(dict[object, object], raw).items():
-        if not isinstance(raw_path, str) or not raw_path.strip():
-            raise ValueError(f"{label} file_line_exceptions keys must be non-empty strings.")
-        if not isinstance(payload, dict):
-            raise ValueError(f"{label} file_line_exceptions[{raw_path!r}] must be a JSON object.")
-
-        payload_dict = cast(dict[str, Any], payload)
-        max_lines = payload_dict.get("max_lines")
-        reason = payload_dict.get("reason")
-        if not isinstance(max_lines, int) or max_lines <= 0:
-            raise ValueError(f"{label} file_line_exceptions[{raw_path!r}].max_lines must be a positive integer.")
-        if not isinstance(reason, str) or not reason.strip():
-            raise ValueError(f"{label} file_line_exceptions[{raw_path!r}].reason must be a non-empty string.")
-
-        normalized[raw_path.replace("\\", "/").strip("/")] = {
-            "max_lines": int(max_lines),
-            "reason": reason.strip(),
-        }
-
-    return dict(sorted(normalized.items()))
 
 
 def _load_structural_budget_ratchet(
@@ -284,56 +213,6 @@ def _load_structural_budget_ratchet(
     }
 
 
-def _evaluate_structural_budget_ratchet(
-    current_metrics: dict[str, int],
-    ratchet_state: dict[str, Any],
-    current_file_line_counts: dict[str, int],
-) -> dict[str, Any]:
-    from sattlint.devtools import structural_reports as structural_reports_module
-
-    status = ratchet_state["status"]
-    if status != "loaded":
-        return {
-            "status": status,
-            "path": ratchet_state["path"],
-            "expected_metrics": ratchet_state.get("metrics", {}),
-            "expected_file_line_exceptions": ratchet_state.get("file_line_exceptions", {}),
-            "current_metrics": current_metrics,
-            "regressions": [],
-            "error": ratchet_state.get("error"),
-            "error_type": ratchet_state.get("error_type"),
-        }
-
-    regressions = [
-        {
-            "metric": metric,
-            "expected_max": expected_value,
-            "actual": current_metrics.get(metric, 0),
-        }
-        for metric, expected_value in sorted(ratchet_state["metrics"].items())
-        if current_metrics.get(metric, 0) > expected_value
-    ]
-    regressions.extend(
-        {
-            "path": path,
-            "expected_max": entry["max_lines"],
-            "actual": current_file_line_counts[path],
-            "reason": entry["reason"],
-        }
-        for path, entry in sorted(ratchet_state["file_line_exceptions"].items())
-        if path in current_file_line_counts and current_file_line_counts[path] > entry["max_lines"]
-    )
-    return {
-        "status": "fail" if regressions else "pass",
-        "path": ratchet_state["path"],
-        "expected_metrics": ratchet_state["metrics"],
-        "expected_file_line_exceptions": ratchet_state["file_line_exceptions"],
-        "setpoint_metrics": dict(structural_reports_module.STRUCTURAL_BUDGET_SETPOINTS),
-        "current_metrics": current_metrics,
-        "regressions": regressions,
-    }
-
-
 def collect_structural_budget_report(
     repo_root: Path,
     *,
@@ -362,6 +241,11 @@ def collect_structural_budget_report(
     test_file_line_counts: list[int] = []
     current_file_line_counts: dict[str, int] = {}
     source_lines_by_path: dict[str, list[str]] = {}
+    module_import_counts: list[dict[str, Any]] = []
+    module_dependency_counts: list[dict[str, Any]] = []
+    module_public_symbol_counts: list[dict[str, Any]] = []
+    function_nesting_depths: list[dict[str, Any]] = []
+    known_modules = build_known_structural_modules(repo_root)
 
     for scope, path in structural_reports_module.iter_structural_python_files(repo_root):
         relative_path = structural_reports_module.sanitize_path_for_report(path, repo_root=repo_root) or path.as_posix()
@@ -406,6 +290,32 @@ def collect_structural_budget_report(
 
         if relative_path in structural_reports_module.FACADE_PRIVATE_BOUNDARY_FILES:
             facade_private_entrypoints.extend(_collect_facade_private_entrypoints(tree, relative_path=relative_path))
+
+        surface_metrics = collect_python_structural_surface_metrics(
+            tree,
+            relative_path=relative_path,
+            repo_root=repo_root,
+            known_modules=known_modules,
+        )
+        module_import_counts.append(
+            {
+                "path": relative_path,
+                "import_count": surface_metrics["import_count"],
+            }
+        )
+        module_dependency_counts.append(
+            {
+                "path": relative_path,
+                "dependency_count": surface_metrics["dependency_count"],
+            }
+        )
+        module_public_symbol_counts.append(
+            {
+                "path": relative_path,
+                "public_symbol_count": surface_metrics["public_symbol_count"],
+            }
+        )
+        function_nesting_depths.extend(surface_metrics["function_nesting_depths"])
 
         module_level_private_names = {
             node.name
@@ -505,12 +415,34 @@ def collect_structural_budget_report(
             classes_over_budget,
             key=lambda item: (-item["method_count"], item["path"], item["qualname"]),
         ),
+        "module_import_counts": sorted(
+            module_import_counts,
+            key=lambda item: (-item["import_count"], item["path"]),
+        ),
+        "module_dependency_counts": sorted(
+            module_dependency_counts,
+            key=lambda item: (-item["dependency_count"], item["path"]),
+        ),
+        "module_public_symbol_counts": sorted(
+            module_public_symbol_counts,
+            key=lambda item: (-item["public_symbol_count"], item["path"]),
+        ),
+        "function_nesting_depths": sorted(
+            function_nesting_depths,
+            key=lambda item: (-item["nesting_depth"], item["path"], item["qualname"]),
+        ),
         "repeated_private_names": repeated_private_names,
         "facade_private_entrypoints": facade_private_entrypoints,
         "scan_failures": scan_failures,
         "summary": {
             "source_file_max_lines": max(source_file_line_counts, default=0),
             "test_file_max_lines": max(test_file_line_counts, default=0),
+            "import_max_count": max((item["import_count"] for item in module_import_counts), default=0),
+            "dependency_max_count": max((item["dependency_count"] for item in module_dependency_counts), default=0),
+            "public_symbol_max_count": max(
+                (item["public_symbol_count"] for item in module_public_symbol_counts), default=0
+            ),
+            "nesting_max_depth": max((item["nesting_depth"] for item in function_nesting_depths), default=0),
         },
     }
     current_metrics = structural_reports_module.summarize_structural_budget_metrics(report)

@@ -10,5 +10,5 @@ applyTo: ["src/sattline_parser/**", "src/sattlint/grammar/**", "src/sattlint/mod
 - Minimal fixtures still need three header `STRING` lines before `BasePicture`.
 - Compare identifiers case-insensitively with `.casefold()`.
 - `:OLD` and `:NEW` stay valid only on `STATE` variables.
-- Choose the first focused validation route from [validation map](../skills/validation-routing/references/validation-map.md); parser work normally stays on strict `syntax-check` before broader pytest.
+- Choose the first focused validation route from [validation map](../../docs/maintainers/validation-map.md); parser work normally stays on strict `syntax-check` before broader pytest.
 - If behavior changes, update focused parser or validation tests before wider runs.

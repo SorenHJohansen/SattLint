@@ -28,10 +28,8 @@ def test_build_ai_work_map_contains_validation_routes_and_catalogs():
     assert any(route["surface"].startswith("Parser, grammar") for route in manifest["validation_routes"])
     assert any(rule["id"] == "focused-validation-first" for rule in manifest["blocking_invariant_rules"])
     assert any(entry["name"] == "CLI App Instructions" for entry in manifest["instructions"])
-    assert any(entry["name"] == "CLI App Menu" for entry in manifest["agents"])
-    assert any(entry["name"] == "Planner" and entry["user_invocable"] is False for entry in manifest["agents"])
-    assert any(entry["name"] == "Test Agent" and entry["user_invocable"] is False for entry in manifest["agents"])
-    assert any(entry["name"] == "Reviewer Agent" and entry["user_invocable"] is False for entry in manifest["agents"])
+    assert manifest["agents"] == []
+    assert manifest["agent_routing"] == []
     assert any(check["id"] == "ruff" for check in manifest["pipeline_checks"])
     assert any(check["id"] == "documented-commands" for check in manifest["repo_audit_checks"])
     assert any(check["id"] == "harness-freshness" for check in manifest["repo_audit_checks"])
@@ -54,7 +52,8 @@ def test_build_session_context_map_keeps_only_session_start_routing_fields():
     assert "pipeline_checks" not in manifest
     assert "repo_audit_checks" not in manifest
     assert "validation_routes" not in manifest
-    assert any(entry["name"] == "CLI App Menu" for entry in manifest["agents"])
+    assert manifest["agents"] == []
+    assert manifest["agent_routing"] == []
 
 
 def test_checked_in_ai_work_map_matches_live_build():
@@ -86,7 +85,7 @@ def test_build_planning_context_returns_agent_instruction_and_owner_suite_matche
         work_map=build_ai_work_map(),
     )
 
-    assert planning["primary_agent"] == "CLI App Menu"
+    assert planning["primary_agent"] is None
     assert planning["owner_surfaces"] == ["cli"]
     assert planning["relevant_checks"][0]["id"] == "cli"
     assert planning["relevant_checks"][0]["ai_instruction_files"] == [".github/instructions/cli-app.instructions.md"]
@@ -109,7 +108,7 @@ def test_build_planning_context_session_map_supports_session_start_without_full_
         work_map=build_session_context_map(build_ai_work_map()),
     )
 
-    assert planning["primary_agent"] == "CLI App Menu"
+    assert planning["primary_agent"] is None
     assert planning["nearest_owner_suites"] == []
     assert planning["first_validation_commands"] == []
     assert planning["finish_gate_template"] is None
@@ -158,10 +157,9 @@ def test_build_planning_context_includes_semantic_owner_suggestions(monkeypatch)
                 "start_line": 10,
                 "end_line": 20,
                 "score": 0.91,
-                "matched_agent_names": ["CLI App Menu", "Documentation Generation", "Repo Audit"],
+                "matched_agent_names": [],
                 "matched_instruction_names": [
                     "CLI App Instructions",
-                    "Repo Map Instructions",
                     "SattLine Invariants",
                 ],
                 "matched_owner_surfaces": ["cli"],
@@ -493,7 +491,7 @@ def test_build_planning_context_ignores_invalid_entries_and_matches_owner_surfac
             3,
             {
                 "name": "CLI App Menu",
-                "file_path": ".github/agents/cli-app-menu.agent.md",
+                "file_path": "docs/maintainers/agents/cli-app-menu.agent.md",
                 "description": "cli",
             },
         ],

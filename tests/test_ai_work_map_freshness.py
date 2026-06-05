@@ -6,13 +6,9 @@ from sattlint.devtools.ai_work_map import render_ai_check_catalog, verify_ai_har
 def test_verify_ai_harness_freshness_reports_generated_map_and_metadata_drift(tmp_path):
     (tmp_path / "src" / "sattlint").mkdir(parents=True)
     (tmp_path / "src" / "sattlint" / "app.py").write_text("print('ok')\n", encoding="utf-8")
-    output_path = tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-work-map.json"
-    session_output_path = (
-        tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-session-context-map.json"
-    )
-    check_catalog_output_path = (
-        tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-check-catalog.md"
-    )
+    output_path = tmp_path / "docs" / "maintainers" / "ai" / "ai-work-map.json"
+    session_output_path = tmp_path / "docs" / "maintainers" / "ai" / "ai-session-context-map.json"
+    check_catalog_output_path = tmp_path / "docs" / "maintainers" / "ai" / "ai-check-catalog.md"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     session_output_path.parent.mkdir(parents=True, exist_ok=True)
     check_catalog_output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -36,17 +32,17 @@ def test_verify_ai_harness_freshness_reports_generated_map_and_metadata_drift(tm
         "agents": [
             {
                 "name": "Live Agent",
-                "file_path": ".github/agents/live.agent.md",
+                "file_path": "docs/maintainers/agents/live.agent.md",
                 "user_invocable": True,
             },
             {
                 "name": "Orphan Agent",
-                "file_path": ".github/agents/orphan.agent.md",
+                "file_path": "docs/maintainers/agents/orphan.agent.md",
                 "user_invocable": True,
             },
             {
                 "name": "Internal Agent",
-                "file_path": ".github/agents/internal.agent.md",
+                "file_path": "docs/maintainers/agents/internal.agent.md",
                 "user_invocable": False,
             },
         ],
@@ -116,13 +112,9 @@ def test_verify_ai_harness_freshness_passes_for_live_metadata(tmp_path):
     instruction_path.write_text(
         '---\nname: "CLI App Instructions"\napplyTo: ["src/sattlint/app.py"]\n---\n', encoding="utf-8"
     )
-    output_path = tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-work-map.json"
-    session_output_path = (
-        tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-session-context-map.json"
-    )
-    check_catalog_output_path = (
-        tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-check-catalog.md"
-    )
+    output_path = tmp_path / "docs" / "maintainers" / "ai" / "ai-work-map.json"
+    session_output_path = tmp_path / "docs" / "maintainers" / "ai" / "ai-session-context-map.json"
+    check_catalog_output_path = tmp_path / "docs" / "maintainers" / "ai" / "ai-check-catalog.md"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     session_output_path.parent.mkdir(parents=True, exist_ok=True)
     check_catalog_output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -138,7 +130,7 @@ def test_verify_ai_harness_freshness_passes_for_live_metadata(tmp_path):
         "agents": [
             {
                 "name": "CLI App Menu",
-                "file_path": ".github/agents/cli-app-menu.agent.md",
+                "file_path": "docs/maintainers/agents/cli-app-menu.agent.md",
                 "user_invocable": True,
             }
         ],
@@ -184,14 +176,10 @@ def test_verify_ai_harness_freshness_passes_for_live_metadata(tmp_path):
 
 
 def test_verify_ai_harness_freshness_allows_virtual_git_lock_glob(tmp_path):
-    agent_path = tmp_path / ".github" / "agents" / "sattlint-orchestrator.agent.md"
-    output_path = tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-work-map.json"
-    session_output_path = (
-        tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-session-context-map.json"
-    )
-    check_catalog_output_path = (
-        tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-check-catalog.md"
-    )
+    agent_path = tmp_path / "docs" / "maintainers" / "agents" / "sattlint-orchestrator.agent.md"
+    output_path = tmp_path / "docs" / "maintainers" / "ai" / "ai-work-map.json"
+    session_output_path = tmp_path / "docs" / "maintainers" / "ai" / "ai-session-context-map.json"
+    check_catalog_output_path = tmp_path / "docs" / "maintainers" / "ai" / "ai-check-catalog.md"
     agent_path.parent.mkdir(parents=True, exist_ok=True)
     agent_path.write_text("# Orchestrator\n", encoding="utf-8")
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -203,7 +191,7 @@ def test_verify_ai_harness_freshness_allows_virtual_git_lock_glob(tmp_path):
         "agents": [
             {
                 "name": "SattLint Orchestrator",
-                "file_path": ".github/agents/sattlint-orchestrator.agent.md",
+                "file_path": "docs/maintainers/agents/sattlint-orchestrator.agent.md",
                 "user_invocable": True,
             }
         ],
@@ -239,13 +227,9 @@ def test_verify_ai_harness_freshness_allows_virtual_git_lock_glob(tmp_path):
 def test_verify_ai_harness_freshness_covers_missing_outputs_and_backslash_metadata(tmp_path):
     (tmp_path / "src" / "sattlint").mkdir(parents=True)
     (tmp_path / "src" / "sattlint" / "app.py").write_text("print('ok')\n", encoding="utf-8")
-    output_path = tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-work-map.json"
-    session_output_path = (
-        tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-session-context-map.json"
-    )
-    check_catalog_output_path = (
-        tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-check-catalog.md"
-    )
+    output_path = tmp_path / "docs" / "maintainers" / "ai" / "ai-work-map.json"
+    session_output_path = tmp_path / "docs" / "maintainers" / "ai" / "ai-session-context-map.json"
+    check_catalog_output_path = tmp_path / "docs" / "maintainers" / "ai" / "ai-check-catalog.md"
 
     work_map = {
         "instructions": [
@@ -258,7 +242,7 @@ def test_verify_ai_harness_freshness_covers_missing_outputs_and_backslash_metada
         "agents": [
             {
                 "name": "Live Agent",
-                "file_path": ".github/agents/live.agent.md",
+                "file_path": "docs/maintainers/agents/live.agent.md",
                 "user_invocable": True,
             }
         ],

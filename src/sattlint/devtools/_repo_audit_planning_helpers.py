@@ -7,6 +7,10 @@ from typing import Any, cast
 
 from sattlint.path_sanitizer import sanitize_path_for_report
 
+PRIMARY_AGENT_BY_INSTRUCTION = {
+    "CLI App Instructions": "CLI App Menu",
+}
+
 
 def mapping_of(value: object) -> dict[str, Any]:
     return cast(dict[str, Any], value) if isinstance(value, dict) else {}
@@ -16,6 +20,28 @@ def string_list(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
     return [item_text for item in cast(list[object], value) if (item_text := str(item)).strip()]
+
+
+def _instruction_names(planning_context: dict[str, Any]) -> list[str]:
+    names: list[str] = []
+    instruction_files = planning_context.get("instruction_files")
+    for item in cast(list[object], instruction_files) if isinstance(instruction_files, list) else []:
+        item_dict = mapping_of(item)
+        name = item_dict.get("name")
+        if isinstance(name, str) and name.strip() and name not in names:
+            names.append(name)
+    return names
+
+
+def resolve_primary_agent(planning_context: dict[str, Any]) -> str | None:
+    primary_agent = planning_context.get("primary_agent")
+    if isinstance(primary_agent, str) and primary_agent.strip():
+        return primary_agent
+    for instruction_name in _instruction_names(planning_context):
+        fallback_agent = PRIMARY_AGENT_BY_INSTRUCTION.get(instruction_name)
+        if fallback_agent is not None:
+            return fallback_agent
+    return None
 
 
 def selected_surface_and_reason(recommendation: dict[str, Any]) -> tuple[str, str]:
@@ -109,6 +135,7 @@ def build_check_my_changes_planning_report(
         recommended_check_ids=recommendation["recommended_check_ids"],
         selected_surface=selected_surface,
     )
+    planning_context["primary_agent"] = resolve_primary_agent(planning_context)
     finish_gate = build_selected_finish_gate_plan_fn(
         profile=profile,
         output_dir=resolved_output_dir,
@@ -174,13 +201,7 @@ def build_ai_feedback_report(
     recommendation: dict[str, Any],
     selected_result: dict[str, Any],
 ) -> dict[str, Any]:
-    instruction_names: list[str] = []
-    instruction_files = planning_context.get("instruction_files")
-    for item in cast(list[object], instruction_files) if isinstance(instruction_files, list) else []:
-        item_dict = mapping_of(item)
-        name = item_dict.get("name")
-        if name:
-            instruction_names.append(str(name))
+    instruction_names = _instruction_names(planning_context)
     first_validation_commands = string_list(planning_context.get("first_validation_commands"))
     first_failed_step = first_failed_finish_gate_step(mapping_of(selected_result.get("finish_gate")))
     suggested_next_command = (
@@ -198,7 +219,7 @@ def build_ai_feedback_report(
         "selected_command": selected_command,
         "overall_status": overall_status,
         "finish_gate_status": finish_gate_status,
-        "primary_agent": planning_context.get("primary_agent"),
+        "primary_agent": resolve_primary_agent(planning_context),
         "instruction_names": instruction_names[:3],
         "owner_test_targets": string_list(planning_context.get("owner_test_targets"))[:3],
         "first_validation_commands": first_validation_commands[:3],

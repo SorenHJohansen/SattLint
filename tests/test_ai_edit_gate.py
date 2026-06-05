@@ -31,7 +31,6 @@ def _write_ratchet(tmp_path: Path) -> Path:
                 "required_paths": {
                     "docs": ["docs/repo-map.md"],
                     "vscode": [".vscode/settings.json"],
-                    "ai": [".ai/tasks/task-contract.schema.json"],
                 },
                 "context_files": {
                     "auto_loaded": ["AGENTS.md"],
@@ -53,6 +52,12 @@ def test_main_runs_ruff_fix_and_format_for_explicit_python_files(monkeypatch, tm
     monkeypatch.setattr(ai_edit_gate, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(ai_edit_gate, "RATCHET_PATH", ratchet_path)
     monkeypatch.setattr(ai_edit_gate, "_resolve_python", lambda _repo_root: Path("python"))
+    ratchet_calls: list[list[str]] = []
+    monkeypatch.setattr(
+        ai_edit_gate,
+        "_ratchet_errors",
+        lambda rel_paths: ratchet_calls.append(list(rel_paths)) or [],
+    )
 
     commands: list[list[str]] = []
 
@@ -72,6 +77,7 @@ def test_main_runs_ruff_fix_and_format_for_explicit_python_files(monkeypatch, tm
         ["python", "-m", "sattlint.devtools.doc_gardener", "--check-only"],
         ["python", "-m", "sattlint.devtools.layer_linter"],
     ]
+    assert ratchet_calls == [["src/demo.py"]]
 
 
 def test_main_runs_context_health_for_touched_ai_control_file(monkeypatch, tmp_path):
@@ -83,6 +89,12 @@ def test_main_runs_context_health_for_touched_ai_control_file(monkeypatch, tmp_p
     monkeypatch.setattr(ai_edit_gate, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(ai_edit_gate, "RATCHET_PATH", ratchet_path)
     monkeypatch.setattr(ai_edit_gate, "_resolve_python", lambda _repo_root: Path("python"))
+    ratchet_calls: list[list[str]] = []
+    monkeypatch.setattr(
+        ai_edit_gate,
+        "_ratchet_errors",
+        lambda rel_paths: ratchet_calls.append(list(rel_paths)) or [],
+    )
 
     commands: list[list[str]] = []
 
@@ -96,6 +108,7 @@ def test_main_runs_context_health_for_touched_ai_control_file(monkeypatch, tmp_p
 
     assert exit_code == 0
     assert commands == [["python", "scripts/context_health.py", "--check"]]
+    assert ratchet_calls == [["docs/repo-map.md"]]
 
 
 def test_main_syncs_exec_plans_for_touched_active_exec_plan(monkeypatch, tmp_path):
@@ -107,6 +120,12 @@ def test_main_syncs_exec_plans_for_touched_active_exec_plan(monkeypatch, tmp_pat
     monkeypatch.setattr(ai_edit_gate, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(ai_edit_gate, "RATCHET_PATH", ratchet_path)
     monkeypatch.setattr(ai_edit_gate, "_resolve_python", lambda _repo_root: Path("python"))
+    ratchet_calls: list[list[str]] = []
+    monkeypatch.setattr(
+        ai_edit_gate,
+        "_ratchet_errors",
+        lambda rel_paths: ratchet_calls.append(list(rel_paths)) or [],
+    )
 
     commands: list[list[str]] = []
 
@@ -120,6 +139,7 @@ def test_main_syncs_exec_plans_for_touched_active_exec_plan(monkeypatch, tmp_pat
 
     assert exit_code == 0
     assert commands == [["python", "-m", "sattlint.devtools.ai_work_map", "--write"]]
+    assert ratchet_calls == [["docs/exec-plans/active/done.md"]]
 
 
 def test_main_uses_git_diff_when_no_explicit_paths(monkeypatch, tmp_path):
@@ -131,6 +151,12 @@ def test_main_uses_git_diff_when_no_explicit_paths(monkeypatch, tmp_path):
     monkeypatch.setattr(ai_edit_gate, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(ai_edit_gate, "RATCHET_PATH", ratchet_path)
     monkeypatch.setattr(ai_edit_gate, "_resolve_python", lambda _repo_root: Path("python"))
+    ratchet_calls: list[list[str]] = []
+    monkeypatch.setattr(
+        ai_edit_gate,
+        "_ratchet_errors",
+        lambda rel_paths: ratchet_calls.append(list(rel_paths)) or [],
+    )
 
     commands: list[list[str]] = []
 
@@ -156,3 +182,26 @@ def test_main_uses_git_diff_when_no_explicit_paths(monkeypatch, tmp_path):
         ["python", "-m", "sattlint.devtools.doc_gardener", "--check-only"],
         ["python", "-m", "sattlint.devtools.layer_linter"],
     ]
+    assert ratchet_calls == [["src/demo.py"]]
+
+
+def test_main_blocks_when_ratchet_check_fails(monkeypatch, tmp_path, capsys):
+    python_file = tmp_path / "src" / "demo.py"
+    python_file.parent.mkdir(parents=True, exist_ok=True)
+    python_file.write_text("value = 1\n", encoding="utf-8")
+    ratchet_path = _write_ratchet(tmp_path)
+
+    monkeypatch.setattr(ai_edit_gate, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(ai_edit_gate, "RATCHET_PATH", ratchet_path)
+    monkeypatch.setattr(ai_edit_gate, "_resolve_python", lambda _repo_root: Path("python"))
+    monkeypatch.setattr(
+        ai_edit_gate, "_ratchet_errors", lambda _rel_paths: ["Touched Python file src/demo.py is 501 lines."]
+    )
+    monkeypatch.setattr(
+        ai_edit_gate.subprocess,
+        "run",
+        lambda command, cwd, check, **kwargs: subprocess.CompletedProcess(command, 0),
+    )
+
+    assert ai_edit_gate.main(["src/demo.py"]) == 1
+    assert "ratchet-policy: blocked" in capsys.readouterr().err

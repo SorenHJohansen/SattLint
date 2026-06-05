@@ -10,6 +10,8 @@ SattLint is a Python toolkit for SattLine projects. It can syntax-check individu
 
 For the full contract, see the [public support matrix](docs/references/public-support-matrix.md). For help and issue routing, see [SUPPORT.md](SUPPORT.md). For vulnerabilities, see [SECURITY.md](SECURITY.md). For contributor expectations, see [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). For development setup, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+Public docs now start at [docs/public/README.md](docs/public/README.md). Maintainer docs now start at [docs/maintainers/README.md](docs/maintainers/README.md).
+
 ---
 
 ## Quick start from a source checkout
@@ -26,32 +28,32 @@ The current public branch is still installed from source. To evaluate it today:
 
 ## AI-First Repository Docs
 
-For AI contributors and multi-agent work, start here:
+For AI contributors and maintainers, start here:
 
 - `AGENTS.md`
-- `docs/context-loading-order.md`
-- `docs/repo-map.md`
-- `docs/architecture.md`
-- `docs/quality-gates.md`
-- `docs/ai-workflows.md`
-- `docs/exec-plans/completed/ai-first-repo-hardening.md`
-- `docs/exec-plans/tech-debt-tracker.md`
+- `.ai/README.md`
+- `docs/maintainers/README.md`
+- `docs/maintainers/repo-map.md`
+- `docs/public/architecture.md`
+- `docs/maintainers/quality-gates.md`
 
 ---
 
 ## AI-First Quick Start
 
-For repository operations, use these in order:
+For repository operations, keep to the smallest stable set:
 
-- `python scripts/run_ai_edit_gate.py`
+- `python scripts/context_health.py --check`
 - `python -m pre_commit run --all-files`
 - `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit`
-- `python scripts/repo_health.py --check --audit-dir artifacts/audit`
 
-`python scripts/run_ai_edit_gate.py` auto-fixes touched Python files with Ruff and runs `context_health.py --check` when the touched files are part of the AI-control plane.
+Use `sattlint-repo-audit --profile full --output-dir artifacts/audit` for the full CI or nightly pass.
+Use `python scripts/repo_health.py --check --audit-dir artifacts/audit` when you need a dashboard from current audit artifacts.
+
+`.github/hooks/ai-edit-gate.json` still enforces extra post-edit checks for AI-touched files.
 
 In VS Code, the workspace also recommends `wanderleyferreiradealbuquerque.context-optimizer`.
-Use `@context-optimizer /audit` before expanding AI control files such as `AGENTS.md` or scoped instruction sets.
+Use `@context-optimizer /audit` before widening into large AI control files.
 
 ---
 
@@ -167,7 +169,7 @@ sattlint --quiet repo-audit --profile quick
 
 For the full command surface and script entry points, see [docs/references/cli-commands.md](docs/references/cli-commands.md).
 
-For contributor-only dashboards and AI workflow contracts, see [docs/quality-gates.md](docs/quality-gates.md), [docs/ai-workflows.md](docs/ai-workflows.md), [.ai/tasks/task-contract.schema.json](.ai/tasks/task-contract.schema.json), and [.ai/handoffs/handoff.schema.json](.ai/handoffs/handoff.schema.json).
+For contributor-only dashboards and maintainer workflow notes, see [docs/maintainers/quality-gates.md](docs/maintainers/quality-gates.md) and [AGENTS.md](AGENTS.md).
 
 ---
 

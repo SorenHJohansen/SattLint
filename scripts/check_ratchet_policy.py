@@ -851,6 +851,8 @@ def _file_debt_runtime_errors(
     file_debt_state: dict[str, dict[str, dict[str, Any]]],
     structural_exceptions: Mapping[str, dict[str, Any]],
     typing_state: TypingRatchetState,
+    enforce_unlisted_source_coverage: bool = True,
+    enforce_unlisted_structural_exception_size: bool = True,
 ) -> list[str]:
     touched_paths = tuple(path for path in context.changed_files if path in file_debt_state)
     unlisted_touched_paths = tuple(path for path in context.changed_files if path not in file_debt_state)
@@ -936,7 +938,7 @@ def _file_debt_runtime_errors(
                 )
 
     for rel_path in unlisted_touched_paths:
-        if rel_path.startswith("src/") and rel_path.endswith(".py"):
+        if enforce_unlisted_source_coverage and rel_path.startswith("src/") and rel_path.endswith(".py"):
             basis_points = coverage_by_path.get(rel_path)
             if basis_points is None:
                 errors.append(
@@ -949,7 +951,7 @@ def _file_debt_runtime_errors(
                     f"{rel_path} is {basis_points / 100:.2f}%."
                 )
 
-        if rel_path in structural_exceptions:
+        if enforce_unlisted_structural_exception_size and rel_path in structural_exceptions:
             current_text = current_text_by_path.get(rel_path)
             if current_text is None:
                 continue
@@ -1015,6 +1017,66 @@ def _new_markdown_file_paths(added_files: Sequence[str]) -> tuple[str, ...]:
     return tuple(path for path in added_files if path.endswith(".md"))
 
 
+def _touched_python_file_paths(changed_files: Sequence[str]) -> tuple[str, ...]:
+    return tuple(
+        path for path in changed_files if path.endswith(".py") and path.startswith(("src/", "tests/", "scripts/"))
+    )
+
+
+def _touched_markdown_file_paths(changed_files: Sequence[str]) -> tuple[str, ...]:
+    return tuple(path for path in changed_files if path.endswith(".md"))
+
+
+def _touched_file_size_errors(
+    repo_root: Path,
+    changed_files: Sequence[str],
+    *,
+    file_debt_state: Mapping[str, dict[str, dict[str, Any]]],
+    structural_exceptions: Mapping[str, dict[str, Any]],
+) -> list[str]:
+    errors: list[str] = []
+
+    for rel_path in _touched_python_file_paths(changed_files):
+        path = repo_root / rel_path
+        if not path.exists():
+            continue
+        line_count = len(path.read_text(encoding="utf-8").splitlines())
+        if line_count <= NEW_PYTHON_FILE_LINE_LIMIT:
+            continue
+        if "structural" in file_debt_state.get(rel_path, {}):
+            continue
+        if rel_path in structural_exceptions:
+            errors.append(
+                "Touched structural exception file missing per-file debt entry does not meet the "
+                f"{NEW_PYTHON_FILE_LINE_LIMIT}-line target: {rel_path} is {line_count} lines."
+            )
+            continue
+        errors.append(
+            f"Touched Python file {rel_path} is {line_count} lines; AI-touched Python files must stay at or under {NEW_PYTHON_FILE_LINE_LIMIT} lines."
+        )
+
+    for rel_path in _touched_markdown_file_paths(changed_files):
+        path = repo_root / rel_path
+        if not path.exists():
+            continue
+        line_count = len(path.read_text(encoding="utf-8").splitlines())
+        if line_count <= NEW_MARKDOWN_FILE_LINE_LIMIT:
+            continue
+        if "structural" in file_debt_state.get(rel_path, {}):
+            continue
+        if rel_path in structural_exceptions:
+            errors.append(
+                "Touched structural exception file missing per-file debt entry does not meet the "
+                f"{NEW_MARKDOWN_FILE_LINE_LIMIT}-line target: {rel_path} is {line_count} lines."
+            )
+            continue
+        errors.append(
+            f"Touched Markdown file {rel_path} is {line_count} lines; AI-touched Markdown files must stay at or under {NEW_MARKDOWN_FILE_LINE_LIMIT} lines."
+        )
+
+    return errors
+
+
 def _new_file_size_errors(repo_root: Path, added_files: Sequence[str]) -> list[str]:
     errors: list[str] = []
     for rel_path in _new_python_file_paths(added_files):
@@ -1069,6 +1131,26 @@ def _new_file_coverage_errors(repo_root: Path, added_files: Sequence[str]) -> li
                 f"New source file {rel_path} is covered at {basis_points / 100:.2f}%; new source files must start at 100.00% coverage."
             )
     return errors
+
+
+def _explicit_base_ref(repo_root: Path, env: Mapping[str, str] | None = None) -> str | None:
+    effective_env = os.environ if env is None else env
+    base_ref_name = effective_env.get("SATTLINT_RATCHET_BASE_REF")
+    if not base_ref_name and effective_env.get("GITHUB_BASE_REF"):
+        base_ref_name = f"origin/{effective_env['GITHUB_BASE_REF']}"
+    if base_ref_name:
+        return base_ref_name
+
+    head = _git(repo_root, "rev-parse", "--verify", "HEAD")
+    if head.returncode == 0:
+        return "HEAD"
+    return None
+
+
+def _visible_approval_record_paths(repo_root: Path) -> tuple[str, ...]:
+    tracked = _git(repo_root, "diff", "--name-only", "--diff-filter=ACMR", "HEAD", "--", ".github/approvals")
+    tracked_paths = _normalize_changed_files(tracked.stdout) if tracked.returncode == 0 else ()
+    return _merge_unique_paths(tracked_paths, _detect_untracked_approval_records(repo_root))
 
 
 def evaluate_policy_change(
@@ -1340,6 +1422,104 @@ def run_policy_check(repo_root: Path = REPO_ROOT, env: Mapping[str, str] | None 
             repo_root=repo_root,
             changed_files=context.changed_files,
             current_text_by_path=current_text_by_path,
+            base_text_by_path=base_text_by_path,
+        )
+    )
+    return errors
+
+
+def run_policy_check_for_paths(
+    changed_files: Sequence[str],
+    *,
+    repo_root: Path = REPO_ROOT,
+    env: Mapping[str, str] | None = None,
+) -> list[str]:
+    explicit_paths = tuple(
+        dict.fromkeys(_normalize_rel_path(path) for path in changed_files if _normalize_rel_path(path))
+    )
+    if not explicit_paths:
+        return []
+
+    approval_paths: tuple[str, ...] = ()
+    if any(path in PROTECTED_PATHS for path in explicit_paths):
+        approval_paths = _visible_approval_record_paths(repo_root)
+
+    current_text_by_path = _load_current_texts(
+        repo_root,
+        (PYPROJECT_PATH, FILE_DEBT_RATCHET_PATH, STRUCTURAL_RATCHET_PATH, COVERAGE_RATCHET_PATH),
+    )
+    file_debt_text = current_text_by_path.get(FILE_DEBT_RATCHET_PATH)
+    file_debt_state = _file_debt_ratchet_state(file_debt_text, FILE_DEBT_RATCHET_PATH) if file_debt_text else {}
+    structural_text = current_text_by_path.get(STRUCTURAL_RATCHET_PATH)
+    structural_exceptions = (
+        _structural_file_line_exception_mapping(
+            _parse_json_payload(structural_text, STRUCTURAL_RATCHET_PATH),
+            STRUCTURAL_RATCHET_PATH,
+        )
+        if structural_text is not None
+        else {}
+    )
+
+    errors = _touched_file_size_errors(
+        repo_root,
+        explicit_paths,
+        file_debt_state=file_debt_state,
+        structural_exceptions=structural_exceptions,
+    )
+
+    touched_runtime_paths = tuple(
+        path for path in explicit_paths if path in file_debt_state or path in structural_exceptions
+    )
+    if touched_runtime_paths:
+        pyproject_text = current_text_by_path.get(PYPROJECT_PATH)
+        if pyproject_text is None:
+            raise ValueError(f"{PYPROJECT_PATH} is missing.")
+        typing_state = _typing_ratchet_state(pyproject_text, PYPROJECT_PATH)
+        if typing_state is None:
+            raise ValueError(f"{PYPROJECT_PATH} is missing typing ratchet configuration.")
+        errors.extend(
+            _file_debt_runtime_errors(
+                repo_root=repo_root,
+                context=ChangeContext(
+                    changed_files=_merge_unique_paths(explicit_paths, approval_paths),
+                    added_files=(),
+                    base_ref=_explicit_base_ref(repo_root, env),
+                    source="explicit-paths",
+                ),
+                file_debt_state=file_debt_state,
+                structural_exceptions=structural_exceptions,
+                typing_state=typing_state,
+                enforce_unlisted_source_coverage=False,
+                enforce_unlisted_structural_exception_size=False,
+            )
+        )
+        errors.extend(
+            _file_debt_stale_entry_errors(
+                repo_root=repo_root,
+                file_debt_state={path: file_debt_state[path] for path in explicit_paths if path in file_debt_state},
+            )
+        )
+
+    protected_paths = tuple(
+        path
+        for path in _merge_unique_paths(explicit_paths, approval_paths)
+        if path in PROTECTED_PATHS or _is_approval_record_path(path)
+    )
+    if not protected_paths:
+        return errors
+
+    current_policy_paths = tuple(
+        dict.fromkeys(
+            (*protected_paths, PYPROJECT_PATH, COVERAGE_RATCHET_PATH, FILE_DEBT_RATCHET_PATH, STRUCTURAL_RATCHET_PATH)
+        )
+    )
+    current_policy_text_by_path = _load_current_texts(repo_root, current_policy_paths)
+    base_text_by_path = _load_base_texts(repo_root, _explicit_base_ref(repo_root, env), protected_paths)
+    errors.extend(
+        evaluate_policy_change(
+            repo_root=repo_root,
+            changed_files=_merge_unique_paths(explicit_paths, approval_paths),
+            current_text_by_path=current_policy_text_by_path,
             base_text_by_path=base_text_by_path,
         )
     )

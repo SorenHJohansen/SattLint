@@ -8,13 +8,6 @@ repos:
 
   - repo: local
     hooks:
-      - id: ai-routing-artifacts
-        name: AI routing artifacts (auto-regenerate)
-        language: system
-        entry: python scripts/run_repo_python.py
-        args: [-m, sattlint.devtools.ai_work_map, --write]
-        files: ^(src/sattlint/devtools/(ai_work_map|pipeline_checks|repo_audit_entrypoints)\.py|\.github/agents/.*\.agent\.md|\.github/instructions/.*\.md|\.github/skills/validation-routing/references/validation-map\.md|docs/exec-plans/active/.*\.md)$
-        pass_filenames: false
       - id: actionlint
         name: actionlint (GitHub workflows)
         language: system
@@ -33,7 +26,7 @@ repos:
         language: system
         entry: python scripts/run_repo_python.py
         args: [scripts/context_health.py, --check]
-        files: ^(AGENTS\.md|docs/(context-loading-order|repo-map|architecture|quality-gates|ai-workflows)\.md|\.vscode/(settings|extensions|tasks)\.json|metrics/ratchet\.json|\.ai/(tasks|handoffs)/.*\.json|\.github/agents/.*\.agent\.md|\.github/instructions/.*\.md|\.github/prompts/.*\.prompt\.md|\.github/skills/.*/SKILL\.md)$
+        files: ^(AGENTS\.md|README\.md|CONTRIBUTING\.md|ARCHITECTURE\.md|\.ai/.*|docs/maintainers/.*\.md|docs/public/architecture\.md|docs/references/ai-agent-reference\.md|\.vscode/(settings|extensions|tasks|mcp)\.json|metrics/ratchet\.json|\.github/instructions/.*\.md|\.github/hooks/.*\.json|\.github/workflows/.*\.(yml|yaml))$
         pass_filenames: false
       - id: sattlint-syntax-check
         name: SattLint syntax-check (staged SattLine files)

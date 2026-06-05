@@ -55,6 +55,7 @@ test = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",       # Coverage reporting
     "pytest-mock>=3.10.0",     # Mocking capabilities
+    "pytest-timeout>=2.3.1",   # Fail fast on stalled tests
     "pytest-xdist>=3.0.0",     # Parallel testing
     "interegular>=0.3.3",      # Lark strict-mode regex collision checks
 ]
@@ -80,6 +81,8 @@ testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+timeout = 60
+timeout_method = "thread"
 addopts = [
     "--strict-markers",
     "--strict-config",

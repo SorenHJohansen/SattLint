@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import json
 import logging
 from collections.abc import Callable, Iterator, Sequence
@@ -364,7 +365,7 @@ def collect_graphics_layout_entries_for_target(
         [list[dict[str, Any]], BasePicture, ProjectGraph], list[dict[str, Any]]
     ],
 ) -> list[dict[str, Any]]:
-    from .devtools import structural_reports as structural_reports_module
+    structural_reports_module = importlib.import_module("sattlint.devtools.structural_reports")
 
     synthetic_entry_file = Path.cwd() / f"{target_name}.s"
     snapshot = SimpleNamespace(

@@ -10,19 +10,32 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
+from sattlint.devtools._pipeline_change_proof import (
+    build_change_proof_requirements,
+    evaluate_change_scoped_coverage_proof,
+)
+from sattlint.devtools._pipeline_change_proof import (
+    evaluate_change_scoped_structural_surface_proof as _evaluate_change_scoped_structural_surface_proof,
+)
 from sattlint.devtools._pipeline_finish_gate import (
     _build_finish_gate_commands,
     _build_owner_pytest_step,
     _changed_file_flag_args,
-    _finish_gate_pipeline_check_ids,
     _focused_python_files,
     _owner_test_targets_for_checks,
     _shell_command,
-    build_change_proof_requirements,
-    evaluate_change_scoped_coverage_proof,
-    execute_finish_gate_steps,
-    summarize_finish_gate_timing,
 )
+from sattlint.devtools._pipeline_finish_gate_runs import (
+    run_recommended_pipeline_finish_gate as _run_recommended_pipeline_finish_gate,
+)
+
+evaluate_change_scoped_structural_surface_proof = _evaluate_change_scoped_structural_surface_proof
+run_recommended_pipeline_finish_gate = _run_recommended_pipeline_finish_gate
+
+__all__ = [
+    "evaluate_change_scoped_structural_surface_proof",
+    "run_recommended_pipeline_finish_gate",
+]
 
 
 def build_pipeline_check_catalog(*, profile: str, output_dir: Path | None) -> dict[str, Any]:
@@ -101,6 +114,7 @@ def build_pipeline_check_recommendations(
     profile: str,
     output_dir: Path | None,
     changed_files: Iterable[str] | None,
+    pytest_workers: str | None = None,
 ) -> dict[str, Any]:
     from sattlint.devtools import _pipeline_recommendations as helper
 
@@ -108,136 +122,8 @@ def build_pipeline_check_recommendations(
         profile=profile,
         output_dir=output_dir,
         changed_files=changed_files,
-    )
-
-
-def run_recommended_pipeline_finish_gate(
-    output_dir: Path,
-    *,
-    trace_target: Path | None,
-    profile: str,
-    include_vulture: bool | None,
-    include_bandit: bool | None,
-    baseline_findings: Path | None,
-    corpus_manifest_dir: Path | None,
-    changed_files: Iterable[str] | None,
-    slow_phase_threshold_ms: float,
-    phase_budget_ms: float,
-    total_budget_ms: float,
-    fail_on_drift: bool,
-    fail_on_budget: bool,
-    pytest_workers: str | None = None,
-) -> dict[str, Any]:
-    from sattlint.devtools import pipeline as pipeline_module
-
-    recommendation = pipeline_module.build_pipeline_check_recommendations(
-        profile=profile,
-        output_dir=output_dir,
-        changed_files=changed_files,
-    )
-    proof_requirements = recommendation.get("proof_requirements") or pipeline_module.build_change_proof_requirements(
-        changed_files=recommendation.get("changed_files", []),
-        recommended_checks=recommendation.get("recommended_checks", []),
-    )
-    selected_pipeline_checks = _finish_gate_pipeline_check_ids(
-        recommended_check_ids=recommendation["recommended_check_ids"],
-        changed_files=recommendation["changed_files"],
-        recommended_checks=recommendation["recommended_checks"],
         pytest_workers=pytest_workers,
     )
-    summary = pipeline_module.run_pipeline(
-        output_dir,
-        trace_target=trace_target,
-        profile=profile,
-        include_vulture=include_vulture,
-        include_bandit=include_bandit,
-        baseline_findings=baseline_findings,
-        corpus_manifest_dir=corpus_manifest_dir,
-        changed_files=pipeline_module.normalize_changed_files(changed_files),
-        slow_phase_threshold_ms=slow_phase_threshold_ms,
-        phase_budget_ms=phase_budget_ms,
-        total_budget_ms=total_budget_ms,
-        fail_on_drift=fail_on_drift,
-        fail_on_budget=fail_on_budget,
-        selected_checks=selected_pipeline_checks,
-        pytest_workers=pytest_workers,
-    )
-    finish_gate_steps = _build_finish_gate_commands(
-        profile=profile,
-        output_dir=output_dir,
-        changed_files=recommendation["changed_files"],
-        recommended_checks=recommendation["recommended_checks"],
-        ruff_command=[pipeline_module.resolve_venv_tool("ruff") or "ruff"],
-        pyright_command=[pipeline_module.resolve_venv_tool("pyright") or "pyright"],
-        python_command=[pipeline_module.resolve_python_executable()],
-        pytest_workers=pytest_workers,
-    )[1:]
-    step_reports = execute_finish_gate_steps(
-        steps=finish_gate_steps,
-        run_command=pipeline_module.run_command,
-        pipeline_summary=summary,
-    )
-    finish_gate_status = "pass"
-    coverage_proof: dict[str, Any] = {
-        "status": "not-required",
-        "mode": "skipped",
-        "coverage_path": None,
-    }
-    for step_report in step_reports:
-        step_status = str(step_report.get("status", "pass"))
-        if step_status == "fail":
-            finish_gate_status = "fail"
-    if proof_requirements["focused_behavior_test"]["status"] == "missing":
-        finish_gate_status = "fail"
-        step_reports.append(
-            {
-                "id": "focused-behavior-test",
-                "label": "Require focused owner pytest for changed code",
-                "command": "",
-                "exit_code": None,
-                "duration_seconds": 0.0,
-                "status": "fail",
-                "detail": proof_requirements["focused_behavior_test"]["reason"],
-            }
-        )
-    coverage_step = next((step for step in finish_gate_steps if step["id"] == "owner-pytest-coverage"), None)
-    if coverage_step is not None:
-        coverage_proof = pipeline_module.evaluate_change_scoped_coverage_proof(
-            repo_root=pipeline_module.REPO_ROOT,
-            coverage_output_path=Path(coverage_step["coverage_output_path"]),
-            changed_files=recommendation["changed_files"],
-        )
-        if coverage_proof["status"] == "fail":
-            finish_gate_status = "fail"
-    elif proof_requirements["coverage"]["required"]:
-        coverage_proof = {
-            "status": "fail",
-            "mode": "skipped",
-            "coverage_path": None,
-            "reason": "Focused coverage proof is required for changed source files but no owner pytest coverage step was available.",
-        }
-        finish_gate_status = "fail"
-    finish_gate_report = {
-        "kind": "sattlint.pipeline.finish_gate",
-        "schema_version": 1,
-        "status": finish_gate_status,
-        "commands": step_reports,
-        "changed_files": recommendation["changed_files"],
-        "selected_pipeline_checks": selected_pipeline_checks,
-        "owner_test_targets": _owner_test_targets_for_checks(recommendation["recommended_checks"]),
-        "proof_requirements": proof_requirements,
-        "coverage_proof": coverage_proof,
-        "timing": summarize_finish_gate_timing(step_reports),
-    }
-    pipeline_module.write_json_artifact(output_dir / "finish_gate.json", finish_gate_report)
-    return {
-        "recommendation": recommendation,
-        "pipeline_summary": summary,
-        "finish_gate": finish_gate_report,
-        "overall_status": "fail"
-        if summary["status"]["overall_status"] == "fail" or finish_gate_status == "fail"
-        else "pass",
-    }
 
 
 def build_pipeline_parser(

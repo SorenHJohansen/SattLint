@@ -20,6 +20,7 @@ def build_pipeline_check_recommendations(
     profile: str,
     output_dir: Path | None,
     changed_files: Iterable[str] | None,
+    pytest_workers: str | None = None,
 ) -> dict[str, Any]:
     from sattlint.devtools import pipeline as pipeline_module
     from sattlint.devtools import pipeline_checks
@@ -93,6 +94,7 @@ def build_pipeline_check_recommendations(
         ruff_command=["ruff"],
         pyright_command=["pyright"],
         python_command=["python"],
+        pytest_workers=pytest_workers,
     )
 
     return {

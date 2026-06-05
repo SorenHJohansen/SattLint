@@ -22,6 +22,10 @@ def test_collect_structural_budget_report_detects_markdown_budget_offenders(tmp_
     assert report["summary"] == {
         "source_file_max_lines": 0,
         "test_file_max_lines": 0,
+        "import_max_count": 0,
+        "dependency_max_count": 0,
+        "public_symbol_max_count": 0,
+        "nesting_max_depth": 0,
     }
 
 
@@ -69,6 +73,10 @@ def test_collect_structural_budget_report_tracks_markdown_max_lines_under_thresh
     assert report["summary"] == {
         "source_file_max_lines": 0,
         "test_file_max_lines": 0,
+        "import_max_count": 0,
+        "dependency_max_count": 0,
+        "public_symbol_max_count": 0,
+        "nesting_max_depth": 0,
     }
 
 

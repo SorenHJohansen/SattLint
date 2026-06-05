@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Mapping, Sequence
 from functools import partial
 from pathlib import Path
 from typing import Any, cast
@@ -32,6 +33,13 @@ from sattlint.devtools.json_helpers import nonempty_string_entries
 from sattlint.devtools.pipeline_checks import normalize_changed_files, path_matches_globs
 
 type JsonDict = dict[str, object]
+
+
+_FALLBACK_PLANNING_INSTRUCTION_PATHS = frozenset(
+    {
+        ".github/instructions/repo-map.instructions.md",
+    }
+)
 
 
 def _dict_entries(value: object) -> list[JsonDict]:
@@ -117,12 +125,27 @@ def _merge_instruction_files_for_planning(
     changed_files: list[str],
     relevant_checks: list[planning_helpers.JsonDict],
 ) -> list[planning_helpers.PlanningInstructionEntry]:
-    return planning_helpers.merge_instruction_files_for_planning(
+    merged = planning_helpers.merge_instruction_files_for_planning(
         work_map,
         changed_files,
         relevant_checks,
         match_instruction_files=_match_instruction_files,
     )
+    return _filter_fallback_planning_instructions(merged)
+
+
+def _instruction_file_path(entry: object) -> str:
+    if not isinstance(entry, Mapping):
+        return ""
+    entry_mapping = cast(Mapping[str, object], entry)
+    return str(entry_mapping.get("file_path", "")).strip()
+
+
+def _filter_fallback_planning_instructions[EntryT](entries: Sequence[EntryT]) -> list[EntryT]:
+    specific_entries = [
+        entry for entry in entries if _instruction_file_path(entry) not in _FALLBACK_PLANNING_INSTRUCTION_PATHS
+    ]
+    return specific_entries if specific_entries else list(entries)
 
 
 def _build_semantic_owner_suggestions(
@@ -161,7 +184,9 @@ def _build_semantic_owner_suggestions(
     suggestions: list[dict[str, Any]] = []
     for match in search_report.results:
         matched_agents = _match_agents(work_map, [match.file_path], owner_surfaces, selected_surface)
-        matched_instructions = _match_instruction_files(work_map, [match.file_path])
+        matched_instructions = _filter_fallback_planning_instructions(
+            _match_instruction_files(work_map, [match.file_path])
+        )
         matched_owner_surfaces: list[str] = []
         for check in relevant_checks:
             path_globs = _string_entries(check.get("path_globs"))

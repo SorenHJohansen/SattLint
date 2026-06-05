@@ -2,34 +2,35 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
+import sys
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
-from sattlint.devtools._ai_chat_findings import known_failure_pattern_updates
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SRC_PATH = REPO_ROOT / "src"
+if str(SRC_PATH) not in sys.path:
+    sys.path.insert(0, str(SRC_PATH))
 
-JsonObject = dict[str, Any]
-AUTO_SECTION_START = "<!-- BEGIN AUTO-UPDATED AI CHAT REVIEW -->"
-AUTO_SECTION_END = "<!-- END AUTO-UPDATED AI CHAT REVIEW -->"
-INTRO_LINE = "Agents should learn from prior mistakes. Update after each root-cause analysis.\n"
-
-
-def _load_json(path: Path) -> JsonObject:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError(f"Expected JSON object in {path}")
-    return cast(JsonObject, payload)
+AUTOMATED_SECTION_HEADING = "## Automated AI Chat Review"
+_AUTOMATED_SECTION_RE = re.compile(rf"(?ms)^({re.escape(AUTOMATED_SECTION_HEADING)}\n.*?)(?=^## |\Z)")
 
 
-def _render_auto_section(*, review_date: str, findings: list[JsonObject]) -> str:
-    updates = known_failure_pattern_updates(findings)
+def _known_failure_pattern_updates(findings: list[dict[str, Any]]) -> tuple[Any, ...]:
+    from sattlint.devtools._ai_chat_findings import known_failure_pattern_updates
+
+    return known_failure_pattern_updates(findings)
+
+
+def _render_automated_section(*, review_date: str, findings: list[dict[str, Any]]) -> str | None:
+    updates = _known_failure_pattern_updates(findings)
     if not updates:
-        return ""
+        return None
 
     lines = [
-        AUTO_SECTION_START,
-        "## Automated AI Chat Review",
+        AUTOMATED_SECTION_HEADING,
         "",
-        "This section is updated by the AI session review workflow when behavioral thresholds are met.",
+        f"Generated from AI chat observability findings on {review_date}.",
         "",
     ]
     for update in updates:
@@ -37,65 +38,59 @@ def _render_auto_section(*, review_date: str, findings: list[JsonObject]) -> str
             [
                 f"### {update.title}",
                 "",
-                f"- **Observed**: {review_date}",
+                f"- **Finding ID**: {update.finding_id}",
+                f"- **Review Date**: {review_date}",
                 f"- **Pattern**: {update.pattern}",
-                f"- **Root cause**: {update.root_cause}",
+                f"- **Root Cause**: {update.root_cause}",
                 f"- **Fix**: {update.fix}",
                 f"- **Prevention**: {update.prevention}",
                 "",
             ]
         )
-    lines.append(AUTO_SECTION_END)
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines).rstrip() + "\n"
 
 
-def update_known_failure_patterns_doc(*, doc_path: Path, findings: list[JsonObject], review_date: str) -> bool:
-    auto_section = _render_auto_section(review_date=review_date, findings=findings)
-    if not auto_section:
+def _strip_automated_sections(document_text: str) -> str:
+    stripped = _AUTOMATED_SECTION_RE.sub("", document_text)
+    return stripped.rstrip()
+
+
+def update_known_failure_patterns_doc(
+    doc_path: Path,
+    findings: list[dict[str, Any]],
+    review_date: str,
+) -> bool:
+    rendered_section = _render_automated_section(review_date=review_date, findings=findings)
+    if rendered_section is None:
         return False
 
-    original = doc_path.read_text(encoding="utf-8")
-    if AUTO_SECTION_START in original and AUTO_SECTION_END in original:
-        start = original.index(AUTO_SECTION_START)
-        end = original.index(AUTO_SECTION_END) + len(AUTO_SECTION_END)
-        updated = original[:start] + auto_section + original[end:]
-    else:
-        insertion = f"{INTRO_LINE}\n{auto_section}\n"
-        if INTRO_LINE not in original:
-            raise ValueError(f"Could not locate intro line in {doc_path}")
-        updated = original.replace(INTRO_LINE, insertion, 1)
-
-    if updated == original:
+    existing_text = doc_path.read_text(encoding="utf-8") if doc_path.exists() else ""
+    base_text = _strip_automated_sections(existing_text)
+    updated_text = rendered_section if not base_text else f"{base_text}\n\n{rendered_section}"
+    if updated_text == existing_text:
         return False
 
-    doc_path.write_text(updated, encoding="utf-8")
+    doc_path.parent.mkdir(parents=True, exist_ok=True)
+    doc_path.write_text(updated_text, encoding="utf-8", newline="\n")
     return True
 
 
-def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Update known-failure-patterns.md from AI chat observability findings when thresholds are met."
-    )
-    parser.add_argument("--findings-json", type=Path, required=True)
-    parser.add_argument("--known-failure-patterns-path", type=Path, required=True)
-    parser.add_argument("--review-date", required=True)
-    return parser.parse_args()
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Update the generated AI known-failure section in a markdown doc.")
+    parser.add_argument("doc_path", type=Path)
+    parser.add_argument("findings_path", type=Path, help="JSON file containing observability findings.")
+    parser.add_argument("review_date", help="Review date to stamp into the generated section.")
+    args = parser.parse_args(argv)
 
+    findings_payload = json.loads(args.findings_path.read_text(encoding="utf-8"))
+    if not isinstance(findings_payload, list):
+        raise ValueError("findings JSON must be a list of finding objects")
 
-def main() -> int:
-    args = _parse_args()
-    findings_payload = _load_json(args.findings_json)
-    findings_value = findings_payload.get("findings")
-    if not isinstance(findings_value, list):
-        raise ValueError("findings.json must contain a findings list")
-    findings_list = cast(list[Any], findings_value)
-    findings = [cast(JsonObject, entry) for entry in findings_list if isinstance(entry, dict)]
-    updated = update_known_failure_patterns_doc(
-        doc_path=args.known_failure_patterns_path,
-        findings=findings,
+    update_known_failure_patterns_doc(
+        doc_path=args.doc_path,
+        findings=[item for item in findings_payload if isinstance(item, dict)],
         review_date=args.review_date,
     )
-    print(json.dumps({"updated": updated, "path": str(args.known_failure_patterns_path)}, sort_keys=True))
     return 0
 
 

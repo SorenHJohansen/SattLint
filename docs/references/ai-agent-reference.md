@@ -1,231 +1,38 @@
-# AI Agent Reference For SattLint
+# AI Assistant Reference For SattLint
 
-This file supplements `AGENTS.md` with deeper background, examples, and file references. It is reference material, not the primary control file.
+This file supplements `AGENTS.md`. It is a compact reference, not a second workflow authority.
 
 - Follow direct user instructions first.
 - Follow code and tests over stale documentation.
 - Use `AGENTS.md` for stable workflow rules, safety guidance, and critical invariants.
 
----
+## Canonical Files
 
-## Repo Architecture Summary
+- `AGENTS.md` for workflow rules and guardrails.
+- `docs/maintainers/repo-map.md` for owner routing.
+- `docs/maintainers/quality-gates.md` for validation order.
+- `docs/maintainers/validation-map.md` for first focused checks.
+- `.ai/README.md` for machine-authored AI artifacts.
 
-- `src/sattline_parser/` is the parser-core package.
-- `src/sattlint/` is the application package that consumes the parser core.
-- `src/sattlint/core/semantic.py` contains shared workspace discovery, symbol lookup, references, completions, and snapshot construction.
-- `src/sattlint/core/document.py` contains shared line-index and UTF-16 offset helpers.
-- `src/sattlint/editor_api.py` is a public compatibility facade over the shared semantic core.
-- Internal `src/sattlint/**` and `src/sattlint_lsp/**` code should import from `src/sattlint/core/semantic.py` directly and only keep `editor_api` for external compatibility.
-- `src/sattlint_lsp/` contains the external language-server layer.
-- `vscode/sattline-vscode/` contains the no-build VS Code client.
-- `src/sattlint/devtools/pipeline.py` runs the repo-local lint, type, test, dead-code, security, and architecture checks into JSON artifacts.
-- `python scripts/run_ai_edit_gate.py` is the first post-edit command for touched Python or AI-control files. It auto-fixes Python files with Ruff and reruns context health when the AI-control plane changed.
-- `python -m pre_commit run --all-files` is the fast local hygiene gate.
-- `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit` is the local pre-push gate.
-- `sattlint-repo-audit --profile full --output-dir artifacts/audit` is the canonical repository audit command for CI and audit workflows.
-- Read `artifacts/audit/status.json` first for the compact status summary, then inspect `artifacts/audit/summary.json` and `artifacts/audit/pipeline/status.json` as needed.
-- For narrow audit validation, prefer `sattlint-repo-audit --profile full --recommend-checks` or `sattlint-repo-audit --profile full --run-recommended-slice`.
-- Prefer `sattlint-repo-audit --profile full --run-recommended-finish-gate` when you want one command that both runs the recommended audit slice and performs the focused Ruff, Pyright, and owner-pytest finish gate. When touched source files exist, that owner pytest step now emits focused coverage output and the finish gate evaluates changed-line coverage first, with touched-file coverage as the fallback proof mode.
-- Prefer `sattlint-repo-audit --profile full --check-my-changes` when you want one machine-readable command that auto-selects the right finish gate for the current change set.
-- Use `sattlint-repo-audit --profile full --planning-context` as the default machine entrypoint for agents. It returns changed files, owning surface, required instruction files, first focused validation, finish-gate plan, blocking invariants, and proof requirements in one response.
-- Pass repeated `--changed-file <repo/path>` flags when the relevant edit set differs from current git status.
-- Shared pipeline checks from the combined audit catalog still run through `sattlint-analysis-pipeline --check <id>`, while repo-audit-specific checks run through `sattlint-repo-audit --check <id> --skip-pipeline`.
-- Use `sattlint-analysis-pipeline --profile full --recommend-checks` or `--run-recommended-slice` when only the shared pipeline surface is needed.
-- Use `sattlint-repo-audit --profile full --check verify-recommendations --skip-pipeline` to enforce that recommendation metadata stays complete and that catalog globs still map to real repo files.
-- Full pipeline runs now record `recommendation_drift.json` when changed files are known; this flags non-passing checks that were omitted by the current recommendation rules.
-- `--planning-context` and `--check-my-changes` share the same routing seam. `--planning-context` plans; `--check-my-changes` executes the selected finish gate and writes `check_my_changes.json`. Both now expose whether a focused behavior test is required, whether changed-line or touched-file coverage proof applies, and whether parser, validation, or routing changes should prefer mutation or property-style follow-up.
-- The machine-readable AI work map lives at `.github/skills/validation-routing/references/ai-work-map.json`; regenerate it with `python -m sattlint.devtools.ai_work_map --write` when routing inputs change. `verify-recommendations` now fails when the checked-in AI maps drift from the live build.
-- `src/sattlint/tracing.py` traces parser-to-analyzer execution for a concrete SattLine file.
+## Default Commands
 
-## AI Role Set
+- `python scripts/context_health.py --check` after AI-control edits.
+- `python -m pre_commit run --all-files` for the fast repo-wide hygiene gate.
+- `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit` for local pre-push proof.
+- `sattlint-repo-audit --profile full --output-dir artifacts/audit` for the full CI or nightly pass.
 
-- `Planner` is the thin planning alias over `SattLint Orchestrator`. Use it to scope broad requests, choose the owning surface, and prepare claims or handoffs before implementation starts.
-- Executor work stays surface-owned. Use `CLI App Menu`, `Documentation Generation`, `Parser Analysis`, `Repo Audit`, or `Workspace LSP` instead of a generic executor.
-- `Test Agent` consumes executor handoffs, adds focused regression coverage, reruns owner proof, and updates validation state.
-- `Reviewer Agent` reads the diff plus handoff, checks architecture and risk, and reports findings or approval status.
-- `Repo Verify` runs repo-wide hygiene and pre-push gates after slice-level work. It is not the slice-level test role.
+## Working Rules
 
-## Debt ID Workflow
+- Start from the owning file, symbol, failing command, or failing behavior.
+- Read only the `.github/instructions/*.md` files that match the touched surface.
+- Make the smallest local edit that tests the current hypothesis.
+- Run the first focused validation immediately before widening.
 
-- Use the `debt-id-routing` skill when the user starts from one item in `docs/exec-plans/tech-debt-tracker.md` instead of a file, test, or failing command.
-- `Plan Debt Slice` is the user-facing wrapper around `Planner` for debt ID to slice selection.
-- `Implement Debt Slice` is the user-facing wrapper around `SattLint Orchestrator`; it should keep one slice when one owner surface is enough and route to the nearest specialist executor when ownership is clear.
-- `Validate Slice` and `Review Slice` are the user-facing wrappers around `Test Agent` and `Reviewer Agent` for the same slice once task or handoff artifacts exist.
-- Debt IDs stay scoped to one slice unless mixed owner surfaces or a listed blocker force a planner decision first.
+## Routing Notes
 
----
-
-## SattLine Quick Reference
-
-### Execution Model
-
-SattLine is scan-based PLC code. Programs continuously read inputs, execute logic, write outputs, and repeat. Variables retain values between scans, and `:OLD` or `:NEW` state access is used for transition detection.
-
-### Minimal File Skeleton
-
-```sattline
-"SyntaxVersion"
-"OriginalFileDate"
-"ProgramDate"
-BasePicture Invocation (0,0,0,1,1) : MODULEDEFINITION DateCode_ 123
-LOCALVARIABLES
-    Counter: integer := 0;
-ModuleCode
-    EQUATIONBLOCK Main :
-        Counter = Counter + 1;
-    ENDDEF (*Main*);
-ENDDEF (*BasePicture*);
-```
-
-### Module Hierarchy
-
-```text
-BasePicture
-|- datatype_defs
-|- moduletype_defs
-|- localvariables
-|- submodules
-|  |- SingleModule
-|  |- FrameModule
-|  \- ModuleTypeInstance
-|- moduledef
-\- modulecode
-```
-
-### Variables
-
-- `CONST` variables are read-only after initialization.
-- `STATE` variables allow `:OLD` and `:NEW` access.
-- `GLOBAL` variables can cross module boundaries.
-- `OPSAVE` variables preserve operator-station values.
-- Record fields are accessed with dot notation such as `MyVar.Field1`.
-
-### Equation And Sequence Notes
-
-- Equation blocks run continuously each scan.
-- Sequences use steps, transitions, alternatives, parallel branches, forks, and breaks.
-- Sequence auto-vars include `StepName.X` and `StepName.T` when the surrounding sequence supports them.
-
-### Parameter Mappings
-
-Parameter mappings use `=>` and matter for both type resolution and variable-usage analysis.
-
-```sattline
-SUBMODULES
-    MyInstance Invocation (0,0,0,1,1) : ModuleType (
-        Param1 => SourceVar,
-        Param2 => GLOBAL GlobalVar,
-        Param3 => 42
-    );
-```
-
-### Graphics And Interact Notes
-
-The parser retains graphics and interact structures, but most static analysis is code-focused. An important exception is `InVar_` tracking in supported graphics and interact tails, which can represent real variable reads.
-
----
-
-## AST And Analysis Reference
-
-### Core AST Types
-
-- `BasePicture` is the root aggregate for datatype definitions, moduletype definitions, variables, submodules, module graphics, and module code.
-- `Variable` stores declaration metadata and optional source spans.
-- `ModuleTypeDef`, `SingleModule`, `FrameModule`, and `ModuleTypeInstance` represent module structure.
-- `ModuleCode` contains `sequences` and `equations`.
-- Expressions are stored as nested tuples plus variable-reference dictionaries and literal wrapper objects.
-
-### Expression Shapes
-
-```python
-('assign', {'var_name': 'Output'}, value_expr)
-('IF', [(cond1, [stmts1]), (cond2, [stmts2])], else_stmts)
-('compare', left_expr, [('>', right_expr)])
-('FunctionCall', 'FunctionName', [arg1, arg2])
-{'var_name': 'VarName.Field', 'state': 'old', 'span': SourceSpan(...)}
-```
-
-### Grammar Pipeline
-
-1. `src/sattline_parser/grammar/sattline.lark` defines syntax.
-2. `src/sattline_parser/transformer/sl_transformer.py` maps parse trees to AST objects.
-3. `src/sattlint/engine.py` handles parsing, project loading, merging, and syntax-check behavior.
-
-### Variable-Usage Model
-
-- Usage tracking is detached from the AST in `src/sattlint/models/usage.py`.
-- `VariableUsage` tracks whole-variable reads and writes plus field-level reads and writes.
-- Record usage can propagate through parameter mappings and nested alias chains.
-- Whole-record access suppresses partial unused-field findings.
-- Partial record-leaf findings are emitted as `UNUSED_DATATYPE_FIELD`, aggregated by datatype across the analyzed target.
-
-### Common Analyzer Issue Kinds
-
-- `UNUSED`
-- `READ_ONLY_NON_CONST`
-- `NEVER_READ`
-- `STRING_MAPPING_MISMATCH`
-- `DATATYPE_DUPLICATION`
-- `MAGIC_NUMBER`
-- `SHADOWING`
-- `RESET_CONTAMINATION`
-
-### SattLine Semantic Aggregate
-
-- `sattline-semantics` is the top-level analyzer for domain-aware checks.
-- It aggregates variable-lifecycle findings, interface-contract mismatches, module-structure invariants, control-flow hazards, and engineering-spec compliance into one report.
-- The aggregate includes alarm-integrity findings for duplicate alarm tags, reused alarm conditions, conflicting severities or priorities, and boolean alarm variables that are never explicitly cleared.
-- The aggregate includes dataflow-backed read-before-write detection for variables that may be consumed before any definite assignment on the current path.
-- The same dataflow layer also reports dead overwrites when a write is replaced before any later read can observe it.
-- The dataflow evaluator also folds simple contradictory and tautological boolean conditions, such as `Flag AND NOT Flag` or `Flag OR NOT Flag`, into the existing always-true or always-false findings.
-- The aggregate also includes machine-readable sequence unreachable-logic and duplicate-sibling-name findings from `src/sattlint/tracing.py` so those heuristics are visible through the normal analyzer registry.
-
-### Alarm Integrity Analyzer
-
-- `alarm-integrity` is a focused analyzer for alarm-style module patterns across the analyzed target.
-- It currently detects duplicate alarm tags, duplicate alarm trigger conditions, conflicting severity or priority settings for the same logical alarm, and likely latched boolean alarm variables that are only written true.
-
-### Analysis Artifacts
-
-- `artifacts/analysis/analyzer_registry.json` records standardized analyzer metadata, semantic rule metadata, analyzer-to-rule mappings, and the summary outputs that surface each rule.
-
-## Analyzer Author Checklist
-
-- Define finding metadata through shared seams. Reuse `Issue`, `rule_profiles`, and semantic-rule metadata instead of inventing analyzer-local severity, confidence, explanation, or suggestion formats.
-- Add one narrow acceptance fixture first. Prefer a single-purpose file under `tests/fixtures/sample_sattline_files/phase0_guardrails/` or an analyzer-local fixture path instead of editing broad samples such as `BatchDemo.s`.
-- Wire findings export in same change when needed. If an analyzer is meant to show up in CLI, pipeline, or LSP output, update registry metadata and the relevant serialization or projection path alongside the analyzer logic.
-- Expose in order: analyzer logic, focused tests, finding shape, then CLI or LSP exposure. Do not make a new analyzer default-on before its finding contract and acceptance tests are stable.
-
----
-
-## Workspace, Editor, And LSP Details
-
-- Workspace snapshots use shared semantic-core logic and a proximity-based dependency heuristic for bare `.l` or `.z` dependency stems.
-- The heuristic is editor or LSP only: same library directory first, then sibling library roots in the nearest cluster, then the rest of the discovered workspace.
-- CLI resolution remains config-driven.
-- Workspace loading may keep going with unavailable proprietary dependencies such as `ControlLib`.
-- Interactive editor requests may use cached bundles or local source snapshots instead of blocking on a full workspace reload.
-- Dirty unsaved buffers can get syntax-only diagnostics without rebuilding the full semantic snapshot.
-- Definition, completion, hover, references, and rename may upgrade local analysis to a source snapshot on demand.
-
----
-
-## Common Tasks
-
-### Parse A SattLine File
-
-```python
-from pathlib import Path
-from sattlint.engine import parse_source_file
-
-bp = parse_source_file(Path("path/to/Program.s"))
-```
-
-### Run Strict Single-File Validation
-
-```bash
-sattlint syntax-check path/to/Program.s
-```
+- Generated routing registries are not the default maintainer entrypoint.
+- Prefer the maintainer docs first and use checked-in generated routing files only when a tool explicitly depends on them.
+- Keep new machine-authored AI artifacts out of `docs/` when a non-docs home is available.
 
 ### Run Variable Analysis
 

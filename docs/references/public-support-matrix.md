@@ -11,7 +11,7 @@ This matrix defines the current public support contract for SattLint. `Stable` m
 | `sattlint analyze`, `sattlint validate-config`, `sattlint format-icf`, and `sattlint docgen` | Preview | Windows, Linux | Richer config-driven analysis, formatting, and documentation workflows | Useful today, but not yet part of the smallest stable release contract |
 | Interactive `sattlint` menu | Preview | Windows, Linux | Guided setup and menu-driven workflows | Menu layout and wording may still evolve |
 | `vscode/sattline-vscode/` | Preview | Local preview use | Repository-local VS Code client for the Python LSP | Not yet published under a public marketplace publisher |
-| `.ai/`, `artifacts/`, `metrics/`, repo helper scripts, and GitHub automation internals | Internal-only | Maintainer-only | AI coordination, generated artifacts, release plumbing, and internal tooling | May change without compatibility notice |
+| `artifacts/`, `metrics/`, repo helper scripts, and GitHub automation internals | Internal-only | Maintainer-only | Generated artifacts, release plumbing, optional chat customizations, and internal tooling | May change without compatibility notice |
 
 ## Notes
 

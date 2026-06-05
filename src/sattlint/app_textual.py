@@ -20,6 +20,8 @@ try:
     from textual.app import ComposeResult as _ImportedComposeResult  # type: ignore[import-untyped]
     from textual.containers import Horizontal as _ImportedHorizontal  # type: ignore[import-untyped]
     from textual.containers import Vertical as _ImportedVertical  # type: ignore[import-untyped]
+    from textual.css.query import NoMatches as _ImportedNoMatches  # type: ignore[import-untyped]
+    from textual.css.query import WrongType as _ImportedWrongType  # type: ignore[import-untyped]
     from textual.screen import ModalScreen as _ImportedModalScreen  # type: ignore[import-untyped]
     from textual.widgets import (  # type: ignore[import-untyped]
         Button as _ImportedButton,
@@ -51,6 +53,7 @@ try:
 except ImportError:  # pragma: no cover - optional dependency path
     _TEXTUAL_APP: Any = None
     _TEXTUAL_COMPOSE_RESULT: Any = Any
+    _TEXTUAL_QUERY_ERRORS: tuple[type[BaseException], ...] = (Exception,)
     _TEXTUAL_HORIZONTAL: Any = None
     _TEXTUAL_VERTICAL: Any = None
     _TEXTUAL_MODAL_SCREEN: Any = object
@@ -66,6 +69,7 @@ except ImportError:  # pragma: no cover - optional dependency path
 else:
     _TEXTUAL_APP = _ImportedTextualApp
     _TEXTUAL_COMPOSE_RESULT = _ImportedComposeResult
+    _TEXTUAL_QUERY_ERRORS = (_ImportedNoMatches, _ImportedWrongType)
     _TEXTUAL_HORIZONTAL = _ImportedHorizontal
     _TEXTUAL_VERTICAL = _ImportedVertical
     _TEXTUAL_MODAL_SCREEN = _ImportedModalScreen
@@ -2523,17 +2527,15 @@ if _TEXTUAL_APP is not None:
             action_fn(self._cfg)
 
         def _execute_analyze_plan(self, plan: analysis_planner.AnalysisPlan) -> None:
-            print("Analyze planner queue")
-            print(analysis_planner.render_analysis_plan_summary(plan))
+            self._emit_output_from_thread("Analyze planner queue")
+            self._emit_output_from_thread(analysis_planner.render_analysis_plan_summary(plan))
             total_steps = len(plan.executable_steps)
             for index, step in enumerate(plan.executable_steps, start=1):
-                print("")
-                print(f"[{index}/{total_steps}] {step.label}")
+                self._emit_output_from_thread(f"[{index}/{total_steps}] {step.label}")
                 if len(step.source_labels) > 1:
-                    print("Merged selections: " + ", ".join(step.source_labels))
+                    self._emit_output_from_thread("Merged selections: " + ", ".join(step.source_labels))
                 self._execute_planned_analysis_step(step)
-            print("")
-            print("Selected analyses completed.")
+            self._emit_output_from_thread("Selected analyses completed.")
 
         def _run_selected_analysis_plan(self) -> None:
             if not self._targets_action_allowed("analysis planning"):
@@ -2719,10 +2721,8 @@ if _TEXTUAL_APP is not None:
             tools_source_diff_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
             tools_refresh_ast_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
             for button_id in self._ACTION_IDS:
-                try:
+                with suppress(*_TEXTUAL_QUERY_ERRORS):
                     self.query_one(f"#{button_id}", _TEXTUAL_BUTTON).disabled = toolbar_disabled
-                except Exception:
-                    continue
 
         def on_button_pressed(self, event: Any) -> None:
             button_id = event.button.id or ""

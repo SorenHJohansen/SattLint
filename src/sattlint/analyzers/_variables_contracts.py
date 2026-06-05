@@ -9,6 +9,7 @@ from sattline_parser.models.ast_model import (
     ModuleTypeDef,
     ModuleTypeInstance,
     ParameterMapping,
+    Simple_DataType,
     SingleModule,
     Variable,
 )
@@ -362,8 +363,16 @@ def _check_param_mapping(
     ):
         self.append_param_mapping_issue(pm, issue)
 
-    target_name = varname_full(cast(Any, pm).target) or tgt_var.name
-    target_datatype, target_field_path = self.contract_validator.resolve_target_datatype(target_name, tgt_var)
+    target_name = varname_full(getattr(pm, "target", None)) or tgt_var.name
+    target_datatype: Simple_DataType | str | None = None
+    target_field_path: str | None = None
+    resolve_target_datatype = getattr(self.contract_validator, "resolve_target_datatype", None)
+    if callable(resolve_target_datatype):
+        resolved_target = cast(
+            tuple[Simple_DataType | str | None, str | None],
+            resolve_target_datatype(target_name, tgt_var),
+        )
+        target_datatype, target_field_path = resolved_target
     target_issue_var = (
         Variable(name=target_name, datatype=target_datatype)
         if target_field_path and target_datatype is not None
@@ -384,7 +393,15 @@ def _check_param_mapping(
                 self.append_param_mapping_issue(pm, issue)
         return
 
-    current_source_datatype, current_source_name = self.contract_validator.resolve_source_datatype(pm, src_var)
+    current_source_datatype: Simple_DataType | str | None = None
+    current_source_name: str | None = src_var.name
+    resolve_source_datatype = getattr(self.contract_validator, "resolve_source_datatype", None)
+    if callable(resolve_source_datatype):
+        resolved_source = cast(
+            tuple[Simple_DataType | str | None, str | None],
+            resolve_source_datatype(pm, src_var),
+        )
+        current_source_datatype, current_source_name = resolved_source
     current_source_var = (
         Variable(
             name=current_source_name,

@@ -4,11 +4,12 @@
 		{
 			"label": "AI: Planning Context",
 			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
+			"command": "python",
 			"windows": {
 				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
 			},
 			"args": [
+				"scripts/run_repo_python.py",
 				"-m",
 				"sattlint.devtools.repo_audit",
 				"--profile",
@@ -20,154 +21,28 @@
 			"problemMatcher": []
 		},
 		{
-			"label": "AI: Bootstrap Slice",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
-				"scripts/bootstrap_ai_slice.py"
-			],
-			"problemMatcher": []
-		},
-		{
-			"label": "AI: Edit Autofix",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
-				"scripts/run_ai_edit_gate.py"
-			],
-			"problemMatcher": []
-		},
-		{
 			"label": "AI: Context Health Check",
 			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
+			"command": "python",
 			"windows": {
 				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
 			},
 			"args": [
+				"scripts/run_repo_python.py",
 				"scripts/context_health.py",
 				"--check"
 			],
 			"problemMatcher": []
 		},
 		{
-			"label": "AI: Refresh Chat Observability",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
-				"-m",
-				"sattlint.devtools.ai_chat_observability",
-				"--workspace-storage",
-				"${input:copilotChatWorkspaceStorage}",
-				"--output-dir",
-				"artifacts/ai-chat-current"
-			],
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "test"
-		},
-		{
-			"label": "Quality: Recommend Pipeline Checks",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\.venv\Scripts\python.exe"
-			},
-			"args": [
-				"-m",
-				"sattlint.devtools.pipeline",
-				"--profile",
-				"full",
-				"--recommend-checks",
-				"--output-dir",
-				"artifacts/analysis"
-			],
-			"problemMatcher": [],
-			"group": "test"
-		},
-		{
-			"label": "Quality: Shared Pipeline Finish Gate",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\.venv\Scripts\python.exe"
-			},
-			"args": [
-				"-m",
-				"sattlint.devtools.pipeline",
-				"--profile",
-				"full",
-				"--run-recommended-finish-gate",
-				"--output-dir",
-				"artifacts/analysis"
-			],
-			"problemMatcher": [],
-			"group": "test"
-		},
-		{
-			"label": "Quality: Structural Ratchet",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\.venv\Scripts\python.exe"
-			},
-			"args": [
-				"-m",
-				"sattlint.devtools.structural_reports",
-				"--json"
-			],
-			"problemMatcher": [],
-			"group": "test"
-		},
-		{
-			"label": "Analysis: Fixture Corpus Runner",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\.venv\Scripts\python.exe"
-			},
-			"args": [
-				"-m",
-				"sattlint.devtools.corpus",
-				"--manifest-dir",
-				"tests/fixtures/corpus/manifests",
-				"--output-dir",
-				"artifacts/analysis/corpus"
-			],
-			"problemMatcher": [],
-			"group": "test"
-		},
-		{
-			"label": "Metrics: Observability Snapshot",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\.venv\Scripts\python.exe"
-			},
-			"args": [
-				"-m",
-				"sattlint.devtools.observability"
-			],
-			"problemMatcher": [],
-			"group": "test"
-		},
-		{
 			"label": "Quality: Fast Pre-commit Gate",
 			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
+			"command": "python",
 			"windows": {
 				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
 			},
 			"args": [
+				"scripts/run_repo_python.py",
 				"-m",
 				"pre_commit",
 				"run",
@@ -177,13 +52,89 @@
 			"problemMatcher": []
 		},
 		{
-			"label": "Quality: Pre-push Gate",
+			"label": "Quality: Recommend Pipeline Checks",
 			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
+			"command": "python",
 			"windows": {
 				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
 			},
 			"args": [
+				"scripts/run_repo_python.py",
+				"-m",
+				"sattlint.devtools.pipeline",
+				"--profile",
+				"full",
+				"--recommend-checks",
+				"--output-dir",
+				"artifacts/analysis"
+			],
+			"group": "test",
+			"problemMatcher": []
+		},
+		{
+			"label": "Quality: Shared Pipeline Finish Gate",
+			"type": "process",
+			"command": "python",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"scripts/run_repo_python.py",
+				"-m",
+				"sattlint.devtools.pipeline",
+				"--profile",
+				"full",
+				"--run-recommended-finish-gate",
+				"--output-dir",
+				"artifacts/analysis"
+			],
+			"group": "test",
+			"problemMatcher": []
+		},
+		{
+			"label": "Quality: Structural Ratchet",
+			"type": "process",
+			"command": "python",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"scripts/run_repo_python.py",
+				"-m",
+				"sattlint.devtools.structural_reports",
+				"--json"
+			],
+			"group": "test",
+			"problemMatcher": []
+		},
+		{
+			"label": "Analysis: Fixture Corpus Runner",
+			"type": "process",
+			"command": "python",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"scripts/run_repo_python.py",
+				"-m",
+				"sattlint.devtools.corpus",
+				"--manifest-dir",
+				"tests/fixtures/corpus/manifests",
+				"--output-dir",
+				"artifacts/analysis/corpus"
+			],
+			"group": "test",
+			"problemMatcher": []
+		},
+		{
+			"label": "Quality: Pre-push Gate",
+			"type": "process",
+			"command": "python",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"scripts/run_repo_python.py",
 				"-m",
 				"sattlint.devtools.repo_audit",
 				"--profile",
@@ -196,501 +147,51 @@
 			"problemMatcher": []
 		},
 		{
-			"label": "Audit: Quick Repo Audit",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
-				"-m",
-				"sattlint.devtools.repo_audit_runs",
-				"--final-output-dir",
-				"artifacts/audit-quick-current",
-				"--keep-history",
-				"artifacts/audit-history",
-				"--profile",
-				"quick"
-			],
-			"problemMatcher": []
-		},
-		{
 			"label": "Audit: Full Repo Audit",
 			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
+			"command": "python",
 			"windows": {
 				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
 			},
 			"args": [
-				"-m",
-				"sattlint.devtools.repo_audit_runs",
-				"--final-output-dir",
-				"artifacts/audit-full-current",
-				"--keep-history",
-				"artifacts/audit-history",
-				"--profile",
-				"full"
-			],
-			"problemMatcher": []
-		},
-		{
-			"label": "Audit: Check Quick Audit Readiness",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
-				"-m",
-				"sattlint.devtools.artifact_readiness",
-				"--artifact-dir",
-				"artifacts/audit-quick-current"
-			],
-			"problemMatcher": []
-		},
-		{
-			"label": "Audit: Check Full Audit Readiness",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
-				"-m",
-				"sattlint.devtools.artifact_readiness",
-				"--artifact-dir",
-				"artifacts/audit-full-current"
-			],
-			"problemMatcher": []
-		},
-		{
-			"label": "AI: Validate repo audit CLI",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
-				"-m",
-				"pytest",
-				"--no-cov",
-				"tests/test_repo_audit_cli.py",
-				"-x",
-				"-q",
-				"--tb=short"
-			],
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "test"
-		},
-		{
-			"label": "AI: Ruff fix audit findings",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
-				"-m",
-				"ruff",
-				"check",
-				"--fix",
-				"src/sattlint/analyzers/_dataflow_scope_support.py",
-				"src/sattlint/analyzers/_dataflow_traversal.py",
-				"src/sattlint/analyzers/_dependency_usage_facts.py",
-				"src/sattlint/analyzers/_dependency_usage_scope_support.py",
-				"src/sattlint/analyzers/_reset_path_collection_sequence.py",
-				"src/sattlint/analyzers/_sattline_semantic_contracts.py",
-				"src/sattlint/analyzers/_variables_analyzer_facade.py",
-				"src/sattlint/analyzers/sattline_semantics.py",
-				"src/sattlint/analyzers/variables.py",
-				"src/sattlint/core/_semantic_index.py",
-				"src/sattlint/core/_semantic_index_reference_support.py",
-				"src/sattlint/devtools/audit_core.py",
-				"src/sattlint/devtools/audit_core_discovery.py",
-				"src/sattlint/devtools/leak_detection.py",
-				"src/sattlint/devtools/leak_detection_scan_paths.py",
-				"src/sattlint/devtools/repo_audit_cli.py",
-				"src/sattlint/devtools/repo_audit_cli_reporting.py",
-				"tests/analyzers/test_sattline_semantics.py",
-				"tests/analyzers/test_sattline_semantics_regressions.py",
-				"tests/analyzers/test_sattline_semantics_tail.py",
-				"tests/devtools/test_repo_health_html.py",
-				"tests/parser/test_engine_loader_helpers.py",
-				"tests/test_icf_helpers_grouping.py",
-				"tests/test_pipeline_owner_coverage.py",
-				"tests/test_pipeline_owner_coverage_runtime.py",
-				"tests/test_reset_contamination_ratchet.py",
-				"tests/test_reset_contamination_ratchet_helpers.py",
-				"tests/test_variables_effect_flow_mappings.py"
-			],
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "test"
-		},
-		{
-			"label": "Audit: Apply AI GC",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
+				"scripts/run_repo_python.py",
 				"-m",
 				"sattlint.devtools.repo_audit",
-				"--apply-ai-gc",
+				"--profile",
+				"full",
 				"--output-dir",
-				"artifacts/audit-ai-gc-current"
+				"artifacts/audit"
 			],
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "test"
+			"problemMatcher": []
 		},
 		{
 			"label": "Metrics: Repo Health Snapshot",
 			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
+			"command": "python",
 			"windows": {
 				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
 			},
 			"args": [
+				"scripts/run_repo_python.py",
 				"scripts/repo_health.py",
+				"--check",
 				"--audit-dir",
 				"artifacts/audit",
 				"--json-output",
 				"artifacts/health/repo-health.json",
 				"--markdown-output",
-				"docs/generated/repo-health.md",
+				"artifacts/health/repo-health.md",
 				"--html-output",
 				"artifacts/health/repo-health.html"
 			],
 			"problemMatcher": []
 		},
 		{
-			"label": "Metrics: Refresh Repo Health Dashboard",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
-				"scripts/refresh_repo_health_dashboard.py"
-			],
-			"problemMatcher": []
-		},
-		{
-			"label": "AI: Validate nested unused parameter tests",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
-				"-m",
-				"pytest",
-				"--no-cov",
-				"tests/test_analyzers_variables.py",
-				"-k",
-				"library_target_report_shows_typedef_for_same_lib_different_file_moduletype or unused_summary_splits_moduletype_and_singlemodule_groups",
-				"-x",
-				"-q",
-				"--tb=short"
-			],
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "test"
-		},
-		{
-			"label": "AI: Validate app_textual",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
-				"-m",
-				"pytest",
-				"--no-cov",
-				"tests/test_app_textual.py",
-				"-q",
-				"--tb=short"
-			],
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "test"
-		},
-		{
-			"label": "AI: Pyright app_textual",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
-				"-m",
-				"pyright",
-				"src/sattlint/app_textual.py"
-			],
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "test"
-		},
-		{
-			"label": "AI: Validate unused report dedupe",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
-				"-m",
-				"pytest",
-				"--no-cov",
-				"tests/test_analyzers_variables.py",
-				"-k",
-				"library_typedef_moduleparameter_unused_fields_are_suppressed or library_target_report_shows_typedef_for_same_lib_different_file_moduletype or unused_summary_splits_moduletype_and_singlemodule_groups",
-				"-x",
-				"-q",
-				"--tb=short"
-			],
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "test"
-		},
-		{
-			"label": "AI: Revalidate unused report dedupe",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
-				"-m",
-				"pytest",
-				"--no-cov",
-				"tests/test_analyzers_variables.py",
-				"-k",
-				"library_typedef_moduleparameter_unused_fields_are_suppressed or library_target_report_shows_typedef_for_same_lib_different_file_moduletype or unused_summary_splits_moduletype_and_singlemodule_groups",
-				"-x",
-				"-q",
-				"--tb=short"
-			],
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "test"
-		},
-		{
-			"label": "AI: Validate library typedef variable reporting",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
-				"-m",
-				"pytest",
-				"--no-cov",
-				"tests/test_analyzers_variables.py",
-				"-k",
-				"library_target_report_shows_typedef_for_same_lib_different_file_moduletype or datatype_duplication_is_scoped_per_module_and_excludes_anytype or variables_execution_collect_typedef_issues_covers_branchy_typedef_roles",
-				"-x",
-				"-q",
-				"--tb=short"
-			],
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "test"
-		},
-		{
-			"label": "AI: Revalidate library typedef variable reporting",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
-				"-m",
-				"pytest",
-				"--no-cov",
-				"tests/test_analyzers_variables.py",
-				"-k",
-				"library_target_report_shows_typedef_for_same_lib_different_file_moduletype or datatype_duplication_is_scoped_per_module_and_excludes_anytype or variables_execution_collect_typedef_issues_covers_branchy_typedef_roles",
-				"-x",
-				"-q",
-				"--tb=short"
-			],
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "test"
-		},
-		{
-			"label": "AI: Final revalidate library typedef reporting",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
-				"-m",
-				"pytest",
-				"--no-cov",
-				"tests/test_analyzers_variables.py",
-				"-k",
-				"library_target_report_shows_typedef_for_same_lib_different_file_moduletype or datatype_duplication_is_scoped_per_module_and_excludes_anytype or variables_execution_collect_typedef_issues_covers_branchy_typedef_roles",
-				"-x",
-				"-q",
-				"--tb=short"
-			],
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "test"
-		},
-		{
-			"label": "AI: Pyright variable analyzer slice",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
-				"-m",
-				"pyright",
-				"src/sattlint/analyzers/_variables_access.py",
-				"src/sattlint/analyzers/dataflow.py",
-				"src/sattlint/analyzers/_variable_issue_collection.py",
-				"src/sattlint/analyzers/_variables_execution.py",
-				"src/sattlint/analyzers/_variables_submodules.py",
-				"tests/test_analyzers_variables.py"
-			],
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "test"
-		},
-		{
-			"label": "AI: Final pyright variable analyzer slice",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
-				"-m",
-				"pyright",
-				"src/sattlint/analyzers/_variables_access.py",
-				"src/sattlint/analyzers/dataflow.py",
-				"src/sattlint/analyzers/_variable_issue_collection.py",
-				"src/sattlint/analyzers/_variables_execution.py",
-				"src/sattlint/analyzers/_variables_submodules.py",
-				"tests/test_analyzers_variables.py"
-			],
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "test"
-		},
-		{
-			"label": "AI: Final pytest library typedef reporting",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
-				"-m",
-				"pytest",
-				"--no-cov",
-				"tests/test_analyzers_variables.py",
-				"-k",
-				"library_target_report_shows_typedef_for_same_lib_different_file_moduletype or datatype_duplication_is_scoped_per_module_and_excludes_anytype or variables_execution_collect_typedef_issues_covers_branchy_typedef_roles",
-				"-x",
-				"-q",
-				"--tb=short"
-			],
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "test"
-		},
-		{
-			"label": "AI: Validate unused summary grouping",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
-				"-m",
-				"pytest",
-				"--no-cov",
-				"tests/test_analyzers_variables.py",
-				"-k",
-				"unused_summary_splits_moduletype_and_singlemodule_groups or library_target_report_shows_typedef_for_same_lib_different_file_moduletype",
-				"-x",
-				"-q",
-				"--tb=short"
-			],
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "test"
-		},
-		{
-			"label": "AI: Pyright unused summary grouping",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
-				"-m",
-				"pyright",
-				"src/sattlint/reporting/_variables_report_rendering.py",
-				"src/sattlint/reporting/variables_report.py",
-				"tests/test_analyzers_variables.py"
-			],
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "test"
-		},
-		{
-			"label": "AI: Measure KaHAMPCSøjleLib profile",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
-				"artifacts/tmp/profile_kahampcsoejlelib_measure.py"
-			],
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "test"
-		},
-		{
-			"label": "AI: Measure plan67 standalone subsystems",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
-				"artifacts/tmp/measure_plan67_standalone_subsystems.py"
-			],
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "test"
-		},
-		{
-			"label": "AI: Profile real config AST regen",
+			"label": "VS Code: Lint Preview Client",
 			"type": "shell",
-			"command": "profile_xdg=\"$(mktemp -d)\" && mkdir -p \"$profile_xdg/sattlint\" && cp ${env:HOME}/.config/sattlint/config.toml \"$profile_xdg/sattlint/config.toml\" && set +e && XDG_CONFIG_HOME=\"$profile_xdg\" SATTLINT_REAL_CONFIG_PATH=${env:HOME}/.config/sattlint/config.toml SATTLINT_PROFILE_OUTPUT=${workspaceFolder}/artifacts/tmp/profile_real_config_ast_regen_summary_20260529.json ${workspaceFolder}/scripts/run_repo_python.sh ${workspaceFolder}/artifacts/tmp/profile_real_config_ast_regen.py > ${workspaceFolder}/artifacts/tmp/profile_real_config_ast_regen_summary_20260529.stdout 2> ${workspaceFolder}/artifacts/tmp/profile_real_config_ast_regen_summary_20260529.stderr; task_exit=$?; printf '%s\\n' \"$task_exit\" > ${workspaceFolder}/artifacts/tmp/profile_real_config_ast_regen_summary_20260529.exit; exit \"$task_exit\"",
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "test"
-		}
-	],
-	"inputs": [
-		{
-			"id": "copilotChatWorkspaceStorage",
-			"type": "promptString",
-			"description": "Path to the GitHub.copilot-chat workspace storage root that contains the transcripts/ child directory"
+			"command": "cd vscode/sattline-vscode && npm ci && npm run lint",
+			"group": "test",
+			"problemMatcher": []
 		}
 	]
 }

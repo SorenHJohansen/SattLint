@@ -321,19 +321,25 @@ def test_doc_gardener_run_scan_aggregates_findings(monkeypatch):
 
 
 def test_run_harness_freshness_check_translates_ai_and_doc_findings(monkeypatch, tmp_path):
-    monkeypatch.setattr(
-        repo_audit._ai_work_map_module,
-        "verify_ai_harness_freshness",
-        lambda **kwargs: {
+    captured_kwargs: dict[str, Any] = {}
+
+    def _verify_ai_harness_freshness(**kwargs):
+        captured_kwargs.update(kwargs)
+        return {
             "issues": [
                 {
                     "issue_id": "generated-ai-work-map-drift",
                     "severity": "high",
                     "message": "ai map drift",
-                    "path": ".github/skills/validation-routing/references/ai-work-map.json",
+                    "path": "docs/maintainers/ai/ai-work-map.json",
                 }
             ]
-        },
+        }
+
+    monkeypatch.setattr(
+        repo_audit._ai_work_map_module,
+        "verify_ai_harness_freshness",
+        _verify_ai_harness_freshness,
     )
     monkeypatch.setattr(repo_audit, "_patch_doc_gardener_paths", lambda root: nullcontext())
     monkeypatch.setattr(
@@ -363,13 +369,34 @@ def test_run_harness_freshness_check_translates_ai_and_doc_findings(monkeypatch,
 
     findings = repo_audit._run_harness_freshness_check(cast(Any, SimpleNamespace(root=tmp_path)))
 
+    assert captured_kwargs["output_path"] == repo_audit._ai_work_map_module.DEFAULT_OUTPUT_PATH
+    assert captured_kwargs["session_output_path"] == repo_audit._ai_work_map_module.DEFAULT_SESSION_CONTEXT_OUTPUT_PATH
+    assert (
+        captured_kwargs["check_catalog_output_path"] == repo_audit._ai_work_map_module.DEFAULT_CHECK_CATALOG_OUTPUT_PATH
+    )
     assert {(finding.id, finding.path) for finding in findings} == {
         (
             "harness-generated-ai-work-map-drift",
-            ".github/skills/validation-routing/references/ai-work-map.json",
+            "docs/maintainers/ai/ai-work-map.json",
         ),
         ("harness-too-long", "AGENTS.md"),
         ("harness-dead-link", "docs/index.md"),
         ("harness-stale", "docs/exec-plans/active/done.md"),
     }
     assert {finding.category for finding in findings} == {"harness-freshness"}
+
+
+def test_progress_active_stage_key_returns_none_for_non_mapping_payload() -> None:
+    progress = SimpleNamespace(to_dict=lambda: [])
+
+    result = repo_audit._audit_orchestration_module._progress_active_stage_key(progress)
+
+    assert result is None
+
+
+def test_progress_active_stage_key_returns_none_for_missing_active_stage_mapping() -> None:
+    progress = SimpleNamespace(to_dict=lambda: {"active_stage": []})
+
+    result = repo_audit._audit_orchestration_module._progress_active_stage_key(progress)
+
+    assert result is None
