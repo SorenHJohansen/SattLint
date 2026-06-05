@@ -90,7 +90,7 @@ def test_build_planning_context_returns_agent_instruction_and_owner_suite_matche
     assert planning["owner_surfaces"] == ["cli"]
     assert planning["relevant_checks"][0]["id"] == "cli"
     assert planning["relevant_checks"][0]["ai_instruction_files"] == [".github/instructions/cli-app.instructions.md"]
-    assert planning["owner_test_targets"] == ["tests/test_repo_audit.py"]
+    assert planning["owner_test_targets"] == ["tests/test_repo_audit_part1.py"]
     assert any(item["name"] == "CLI App Instructions" for item in planning["instruction_files"])
     assert any("recommended-check:cli" in item["selection_reasons"] for item in planning["instruction_files"])
     assert planning["nearest_owner_suites"] == []

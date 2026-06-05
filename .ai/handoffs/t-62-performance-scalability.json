@@ -9,29 +9,33 @@
     "docs/exec-plans/active/62-t-wave-8-performance-and-scalability-hardening.md"
   ],
   "summary": "Fixed fast-cache-validation inversion: ensure_ast_cache now calls cache.validate(cached, fast=True) when fast_cache_validation=True and the payload has a manifest. Corrected the existing test FakeCache.validate fixture and added two explicit regression tests that record the fast arg passed to validate().",
-  "known_risks": [],
+  "known_risks": [
+    "Focused coverage for src/sattlint/_app_analysis_loading.py under tests/test_app_analysis_project_cache.py is 87.89%, so this slice does not yet meet a 100% file-coverage goal."
+  ],
   "required_tests": [
     ".venv\\Scripts\\python.exe -m pytest --no-cov tests/test_app_analysis_project_cache.py -x -q --tb=short"
   ],
   "validation_status": {
-    "state": "passed",
+    "state": "failed",
     "commands": [
-      ".venv\\Scripts\\python.exe -m pytest --no-cov tests/test_app_analysis_project_cache.py -x -q --tb=short",
-      ".venv\\Scripts\\ruff check src/sattlint/_app_analysis_loading.py tests/test_app_analysis_project_cache.py",
-      ".venv\\Scripts\\python.exe -m pyright src/sattlint/_app_analysis_loading.py",
-      ".venv\\Scripts\\python.exe -m pre_commit run --files src/sattlint/_app_analysis_loading.py tests/test_app_analysis_project_cache.py"
+      "scripts/run_repo_python.sh -m pytest --no-cov tests/test_app_analysis_project_cache.py -x -q --tb=short",
+      "COVERAGE_FILE=artifacts/tmp/.coverage.app-analysis-loading-slice scripts/run_repo_python.sh -m coverage run -m pytest --no-cov tests/test_app_analysis_project_cache.py -x -q --tb=short && COVERAGE_FILE=artifacts/tmp/.coverage.app-analysis-loading-slice scripts/run_repo_python.sh -m coverage report -m src/sattlint/_app_analysis_loading.py",
+      "scripts/run_repo_python.sh -m ruff check tests/test_app_analysis_project_cache.py",
+      "scripts/run_repo_python.sh -m pyright tests/test_app_analysis_project_cache.py"
     ],
     "notes": [
-      "7 tests passed.",
-      "Ruff: all checks passed.",
-      "Pyright: 0 errors, 0 warnings, 0 informations.",
-      "Pre-commit: passed."
+      "Focused pytest: 24 passed in 0.49s.",
+      "Focused coverage rerun: 24 passed in 0.69s; src/sattlint/_app_analysis_loading.py = 87.89% (322 statements, 39 missed), so the file did not reach 100%.",
+      "Ruff on tests/test_app_analysis_project_cache.py: all checks passed.",
+      "Pyright on tests/test_app_analysis_project_cache.py: 0 errors, 0 warnings, 0 informations.",
+      "The new test covers the _safe_count TypeError fallback, but this module-scoped test file still leaves unrelated lines in src/sattlint/_app_analysis_loading.py uncovered."
     ]
   },
   "reviewer_notes": [
     "Only _app_analysis_loading.py was changed in production code (one character: fast=False -> fast=True on line 237).",
     "cache.py was not modified; its validate() semantics are correct.",
-    "Two new tests prove the fast contract at the boundary."
+    "Two new tests prove the fast contract at the boundary.",
+    "Post-slice validation after the new _safe_count fallback test leaves the focused coverage gate short of 100% for src/sattlint/_app_analysis_loading.py."
   ],
-  "status": "validated"
+  "status": "draft"
 }

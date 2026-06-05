@@ -5,8 +5,9 @@ from __future__ import annotations
 import logging
 import time
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from collections.abc import Set as AbstractSet
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef, ParameterMapping, Variable
@@ -47,6 +48,7 @@ from ._variable_traversal import (
     _walk_interact_object,
     _walk_module_code,
     _walk_moduledef,
+    _walk_output_tail,
     _walk_seq_nodes,
     _walk_sequence,
     _walk_stmt_or_expr,
@@ -240,6 +242,7 @@ def analyze_variables(
     return VariablesReport(
         basepicture_name=base_picture.header.name,
         issues=issues,
+        selected_issue_kinds=normalized_selected_issue_kinds,
         visible_kinds=(
             normalized_selected_issue_kinds
             if normalized_selected_issue_kinds is not None
@@ -265,6 +268,7 @@ def filter_variable_report(
     return VariablesReport(
         basepicture_name=report.basepicture_name,
         issues=filtered,
+        selected_issue_kinds=frozenset(kinds),
         visible_kinds=frozenset(kinds),
         include_empty_sections=True,
         phase_timings=list(report.phase_timings),
@@ -273,6 +277,12 @@ def filter_variable_report(
 
 def _issue_uses_typedef_path(issue: VariableIssue) -> bool:
     return any(segment.startswith("TypeDef:") for segment in issue.module_path)
+
+
+def _string_mapping_issue_preference(issue: VariableIssue) -> tuple[int, int]:
+    source_decl_module_path = issue.source_decl_module_path or issue.module_path
+    declaration_distance = max(0, len(issue.module_path) - len(source_decl_module_path))
+    return declaration_distance, 1 if _issue_uses_typedef_path(issue) else 0
 
 
 class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
@@ -316,8 +326,12 @@ class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
         self._status_update_fn = status_update_fn
         self._shared_artifacts = shared_artifacts
         self._last_status_message: str | None = None
+        self._suppress_param_mapping_validation_depth = 0
         self._limit_to_module_path: list[str] | None = None
         self._phase_timings: list[dict[str, str | float]] = []
+        self._unresolved_variable_lookup_total = 0
+        self._unresolved_variable_lookup_counts: dict[str, int] = defaultdict(int)
+        self._unresolved_variable_lookup_examples: dict[str, tuple[int, str]] = {}
         self._naming_role_patterns = configured_naming_role_patterns(config)
         self._root_variable_access_summary_cache_token: tuple[int, int] | None = None
         self._root_variable_access_summary_cache: dict[str, Any] = {}
@@ -401,6 +415,7 @@ class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
     _walk_graph_object = _walk_graph_object
     _walk_interact_object = _walk_interact_object
     _scan_for_varrefs = _scan_for_varrefs
+    _walk_output_tail = _walk_output_tail
     _walk_tail = _walk_tail
     _extract_var_basenames_from_tree = _extract_var_basenames_from_tree
     _mark_var_by_basename = _mark_var_by_basename
@@ -527,6 +542,24 @@ class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
         self._last_status_message = text
         self._status_update_fn(text)
 
+    @contextmanager
+    def divert_issue_collection(self) -> Generator[None]:
+        diverted_issues = self._issues
+        diverted_indexes = self._param_mapping_issue_indexes
+        diverted_context_issues = self.context_builder.issues
+        temp_issues: list[VariableIssue] = []
+        self._issues = temp_issues
+        self._param_mapping_issue_indexes = {}
+        self.context_builder.issues = temp_issues
+        self._suppress_param_mapping_validation_depth += 1
+        try:
+            yield
+        finally:
+            self._suppress_param_mapping_validation_depth -= 1
+            self._issues = diverted_issues
+            self._param_mapping_issue_indexes = diverted_indexes
+            self.context_builder.issues = diverted_context_issues
+
     def _append_issue(self, issue: VariableIssue) -> None:
         self._issues.append(issue)
         self._trace(
@@ -548,6 +581,17 @@ class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
             return
 
         existing_issue = self._issues[existing_index]
+        if issue.kind is IssueKind.STRING_MAPPING_MISMATCH:
+            if _string_mapping_issue_preference(issue) > _string_mapping_issue_preference(existing_issue):
+                self._issues[existing_index] = issue
+                self._trace(
+                    "issue-deduped",
+                    kind=issue.kind.value,
+                    module_path=issue.module_path,
+                    replaced_module_path=existing_issue.module_path,
+                    variable=(issue.variable.name if issue.variable is not None else None),
+                )
+            return
         if _issue_uses_typedef_path(issue) and not _issue_uses_typedef_path(existing_issue):
             self._issues[existing_index] = issue
             self._trace(

@@ -14,6 +14,7 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
+from ..casefolding import casefold_equal, casefold_key
 from ..grammar import constants as const
 from ..resolution.common import (
     format_moduletype_label,
@@ -22,7 +23,9 @@ from ..resolution.common import (
     varname_full,
 )
 from . import _alarm_path_traversal as _alarm_path_traversal_module
+from ._walk_utils import walk_nested_modules_with_state
 from .framework import Issue, format_report_header
+from .variable_utils import matches_root_origin, merge_variable_env
 
 _TAG_PARAMETER_NAMES: tuple[str, ...] = (
     "tag",
@@ -158,22 +161,14 @@ class AlarmIntegrityAnalyzer:
         return self._issues
 
     def _is_from_root_origin(self, origin_file: str | None) -> bool:
-        if not origin_file:
-            return True
-        root_origin = getattr(self.bp, "origin_file", None)
-        if not root_origin:
-            return False
-        return origin_file.rsplit(".", 1)[0].casefold() == root_origin.rsplit(".", 1)[0].casefold()
+        return matches_root_origin(origin_file, getattr(self.bp, "origin_file", None))
 
     def _merge_env(
         self,
         parent_env: dict[str, Variable],
         variables: list[Variable] | None,
     ) -> dict[str, Variable]:
-        merged = dict(parent_env)
-        for variable in variables or []:
-            merged[variable.name.casefold()] = variable
-        return merged
+        return merge_variable_env(parent_env, variables)
 
     def _walk_moduletype_def(
         self,
@@ -199,38 +194,52 @@ class AlarmIntegrityAnalyzer:
         env: dict[str, Variable],
         current_library: str | None,
     ) -> None:
-        for child in children:
-            child_path = [*parent_path, child.header.name]
-            if isinstance(child, SingleModule):
-                child_env = self._merge_env(env, child.moduleparameters)
-                child_env = self._merge_env(child_env, child.localvariables)
-                self._check_module_code(child.modulecode, child_path, child_env)
-                self._walk_modules(
-                    child.submodules or [],
-                    parent_path=child_path,
-                    env=child_env,
-                    current_library=current_library,
-                )
-                continue
+        def _build_single_state(
+            child: SingleModule,
+            _child_path: list[str],
+            state: tuple[dict[str, Variable], str | None],
+        ) -> tuple[dict[str, Variable], str | None]:
+            child_env = self._merge_env(state[0], child.moduleparameters)
+            child_env = self._merge_env(child_env, child.localvariables)
+            return child_env, state[1]
 
-            if isinstance(child, FrameModule):
-                self._check_module_code(child.modulecode, child_path, env)
-                self._walk_modules(
-                    child.submodules or [],
-                    parent_path=child_path,
-                    env=env,
-                    current_library=current_library,
-                )
-                continue
+        def _visit_single(
+            child: SingleModule,
+            child_path: list[str],
+            state: tuple[dict[str, Variable], str | None],
+        ) -> None:
+            self._check_module_code(child.modulecode, child_path, state[0])
 
+        def _visit_frame(
+            child: FrameModule,
+            child_path: list[str],
+            state: tuple[dict[str, Variable], str | None],
+        ) -> None:
+            self._check_module_code(child.modulecode, child_path, state[0])
+
+        def _visit_instance(
+            child: ModuleTypeInstance,
+            child_path: list[str],
+            state: tuple[dict[str, Variable], str | None],
+        ) -> None:
             candidate = self._collect_alarm_candidate(
                 child,
                 module_path=child_path,
-                env=env,
-                current_library=current_library,
+                env=state[0],
+                current_library=state[1],
             )
             if candidate is not None:
                 self._candidates.append(candidate)
+
+        walk_nested_modules_with_state(
+            children,
+            parent_path=parent_path,
+            state=(env, current_library),
+            build_single_state=_build_single_state,
+            visit_single=_visit_single,
+            visit_frame=_visit_frame,
+            visit_instance=_visit_instance,
+        )
 
     def _collect_alarm_candidate(
         self,
@@ -302,11 +311,11 @@ class AlarmIntegrityAnalyzer:
     ) -> set[str]:
         names: set[str] = set()
         if mt_def is not None:
-            names = {variable.name.casefold() for variable in (mt_def.moduleparameters or [])}
+            names = {casefold_key(variable.name) for variable in (mt_def.moduleparameters or [])}
         for mapping in inst.parametermappings or []:
             target_name = varname_base(mapping.target)
             if target_name:
-                names.add(target_name)
+                names.add(casefold_key(target_name))
         return names
 
     def _pick_parameter_name(
@@ -353,10 +362,10 @@ class AlarmIntegrityAnalyzer:
         mappings: list[ParameterMapping] | None,
         parameter_name: str,
     ) -> ParameterMapping | None:
-        wanted = parameter_name.casefold()
+        wanted = casefold_key(parameter_name)
         for mapping in mappings or []:
             target_name = varname_base(mapping.target)
-            if target_name == wanted:
+            if target_name is not None and casefold_key(target_name) == wanted:
                 return mapping
         return None
 
@@ -377,7 +386,7 @@ class AlarmIntegrityAnalyzer:
         if not full_ref:
             return None
 
-        signature = full_ref.casefold()
+        signature = casefold_key(full_ref)
         if mapping.is_source_global:
             return _ParameterValue(
                 status="reference",
@@ -386,7 +395,7 @@ class AlarmIntegrityAnalyzer:
             )
 
         if "." not in full_ref and ":" not in full_ref:
-            variable = env.get(full_ref.casefold())
+            variable = env.get(casefold_key(full_ref))
             if variable is not None and variable.init_value is not None:
                 return _ParameterValue(
                     status="resolved",
@@ -406,15 +415,14 @@ class AlarmIntegrityAnalyzer:
         variables: list[Variable] | None,
         wanted_name: str,
     ) -> Variable | None:
-        wanted = wanted_name.casefold()
         for variable in variables or []:
-            if variable.name.casefold() == wanted:
+            if casefold_equal(variable.name, wanted_name):
                 return variable
         return None
 
     def _tag_key(self, value: _ParameterValue) -> str | None:
         if isinstance(value.value, str) and value.value.strip():
-            return f"tag:{value.value.strip().casefold()}"
+            return f"tag:{casefold_key(value.value.strip())}"
         if value.signature:
             return f"ref:{value.signature}"
         return None
@@ -450,7 +458,7 @@ class AlarmIntegrityAnalyzer:
 
     def _literal_signature(self, value: object | None) -> str:
         if isinstance(value, str):
-            return f"literal:{value.strip().casefold()}"
+            return f"literal:{casefold_key(value.strip())}"
         return f"literal:{value!r}"
 
     def _emit_duplicate_tag_issues(self) -> None:

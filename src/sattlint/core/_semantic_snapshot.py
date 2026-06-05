@@ -10,8 +10,8 @@ from typing import Any
 from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef, SourceSpan
 
 from ..call_signatures import CallSignatureOccurrence
+from ..models._variable_issues import VariableIssue
 from ..models.project_graph import ProjectGraph
-from ..reporting.variables_report import VariableIssue
 from ..resolution import CanonicalSymbolTable, TypeGraph
 from ..resolution.access_graph import AccessEvent
 from ..resolution.common import resolve_module_by_strict_path

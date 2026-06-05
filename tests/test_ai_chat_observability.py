@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from typing import Any
 
@@ -40,7 +41,7 @@ def test_ai_chat_observability_writes_fixture_artifacts(tmp_path, monkeypatch):
                     "session_id": "fixture-review",
                     "status": "ungrounded",
                     "query": "Review this slice",
-                    "candidate_file_paths": ["tests/test_repo_audit.py"],
+                    "candidate_file_paths": ["tests/test_repo_audit_part1.py"],
                     "matched_file_paths": [],
                     "match_ratio": 0.0,
                     "explanation": "ungrounded",
@@ -229,7 +230,7 @@ def test_build_semantic_grounding_report_uses_prompt_and_file_overlap(monkeypatc
                     score=0.77,
                 ),
                 SembleMatch(
-                    file_path="tests/test_repo_audit.py",
+                    file_path="tests/test_repo_audit_part1.py",
                     start_line=1,
                     end_line=20,
                     content="def test_repo_audit(...)",
@@ -267,6 +268,88 @@ def test_build_semantic_grounding_report_uses_prompt_and_file_overlap(monkeypatc
     assert report["sessions"][1]["status"] == "ungrounded"
 
 
+def test_known_failure_pattern_updater_writes_auto_section(tmp_path):
+    updater = _load_script_module("update_ai_known_failure_patterns")
+    doc_path = tmp_path / "known-failure-patterns.md"
+    doc_path.write_text(
+        "# Known Failure Patterns\n\n"
+        "Agents should learn from prior mistakes. Update after each root-cause analysis.\n\n"
+        "## 2026-05-01 Chat Review\n\n"
+        "### Discovery Churn Before First Edit\n\n"
+        "- **Pattern**: Existing pattern.\n",
+        encoding="utf-8",
+    )
+
+    changed = updater.update_known_failure_patterns_doc(
+        doc_path=doc_path,
+        findings=[
+            {
+                "id": "repeated-tool-retries",
+                "detail": "Repeated retries were observed in 3 session(s).",
+                "suggestion": "After the first tool failure, switch to the controlling seam.",
+                "data": {"session_ids": ["a", "b", "c"]},
+            },
+            {
+                "id": "low-semantic-grounding",
+                "detail": "Only 1 of 4 searchable sessions had overlap.",
+                "suggestion": "Route to the owning seam sooner.",
+                "data": {"grounded_session_count": 1, "searchable_session_count": 4},
+            },
+        ],
+        review_date="2026-06-02",
+    )
+
+    assert changed is True
+    updated = doc_path.read_text(encoding="utf-8")
+    assert "## Automated AI Chat Review" in updated
+    assert "### Repeated Tool Retries After Failure" in updated
+    assert "### Low Semantic Grounding" in updated
+    assert updated.count("## Automated AI Chat Review") == 1
+
+    changed_again = updater.update_known_failure_patterns_doc(
+        doc_path=doc_path,
+        findings=[
+            {
+                "id": "repeated-tool-retries",
+                "detail": "Repeated retries were observed in 3 session(s).",
+                "suggestion": "After the first tool failure, switch to the controlling seam.",
+                "data": {"session_ids": ["a", "b", "c"]},
+            }
+        ],
+        review_date="2026-06-02",
+    )
+
+    assert changed_again is True
+    rewritten = doc_path.read_text(encoding="utf-8")
+    assert rewritten.count("## Automated AI Chat Review") == 1
+    assert "### Low Semantic Grounding" not in rewritten
+
+
+def test_known_failure_pattern_updater_skips_below_threshold(tmp_path):
+    updater = _load_script_module("update_ai_known_failure_patterns_threshold")
+    doc_path = tmp_path / "known-failure-patterns.md"
+    original = (
+        "# Known Failure Patterns\n\nAgents should learn from prior mistakes. Update after each root-cause analysis.\n"
+    )
+    doc_path.write_text(original, encoding="utf-8")
+
+    changed = updater.update_known_failure_patterns_doc(
+        doc_path=doc_path,
+        findings=[
+            {
+                "id": "repeated-tool-retries",
+                "detail": "Repeated retries were observed in 1 session(s).",
+                "suggestion": "After the first tool failure, switch to the controlling seam.",
+                "data": {"session_ids": ["only-one"]},
+            }
+        ],
+        review_date="2026-06-02",
+    )
+
+    assert changed is False
+    assert doc_path.read_text(encoding="utf-8") == original
+
+
 def _write_degraded_session_store(path: Path) -> Path:
     connection = sqlite3.connect(path)
     with connection:
@@ -288,3 +371,13 @@ def _write_degraded_session_store(path: Path) -> Path:
 
 def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _load_script_module(module_name: str):
+    script_path = Path(__file__).resolve().parents[1] / "scripts" / "update_ai_known_failure_patterns.py"
+    spec = spec_from_file_location(module_name, script_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module

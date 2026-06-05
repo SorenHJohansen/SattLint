@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import importlib
-from collections.abc import Callable
+from collections.abc import Callable, Set
 from dataclasses import dataclass, field
 from typing import Any, Protocol, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
+from ..models import IssueKind
 from ._shared_analysis import AnalysisSharedArtifacts
 from .issue import Issue, format_report_header
 
@@ -99,6 +100,7 @@ class AnalysisContext:
     graph: Any | None = None
     debug: bool = False
     target_is_library: bool = False
+    selected_issue_kinds: Set[IssueKind] | None = None
     config: dict[str, Any] | None = None
     shared_artifacts: AnalysisSharedArtifacts | None = None
 

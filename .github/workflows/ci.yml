@@ -65,6 +65,23 @@ jobs:
             docs/generated/context-health.md
             docs/generated/repo-health.md
 
+  vscode-extension-lint:
+    if: ${{ github.event_name != 'schedule' }}
+    name: VS Code Extension Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up shared CI tooling
+        uses: ./.github/actions/setup-ci-tooling
+        with:
+          install-dependencies: "false"
+          install-node: "true"
+
+      - name: Lint VS Code extension
+        run: cd vscode/sattline-vscode && npm ci && npm run lint
+
   nightly-health:
     if: ${{ github.event_name == 'schedule' }}
     name: Nightly Health

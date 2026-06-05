@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .._validation_shared import ValidationNotice
+from ._validation_notice import ValidationNotice
 from .ast_model import BasePicture, DataType, ModuleTypeDef
 
 

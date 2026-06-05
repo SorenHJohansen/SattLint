@@ -1,0 +1,160 @@
+name: Review AI Sessions
+
+on:
+  workflow_dispatch:
+    inputs:
+      workspace_storage:
+        description: Path on the runner to a GitHub.copilot-chat workspace-storage root. Leave empty to use the fixture corpus.
+        required: false
+        type: string
+      transcripts_dir:
+        description: Path on the runner to a transcripts directory. Overrides workspace_storage when set.
+        required: false
+        type: string
+      session_db:
+        description: Optional path on the runner to a local session-store SQLite database.
+        required: false
+        type: string
+  schedule:
+    - cron: "0 9 * * 1"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  review-ai-sessions:
+    name: Review AI Sessions
+    runs-on: ubuntu-latest
+    env:
+      WORKSPACE_STORAGE_INPUT: ${{ inputs.workspace_storage }}
+      TRANSCRIPTS_DIR_INPUT: ${{ inputs.transcripts_dir }}
+      SESSION_DB_INPUT: ${{ inputs.session_db }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up shared CI tooling
+        uses: ./.github/actions/setup-ci-tooling
+        with:
+          dependency-spec: ".[dev]"
+
+      - name: Set review date
+        id: review-date
+        shell: bash
+        run: printf 'value=%s\n' "$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Select transcript seam
+        id: transcript-input
+        shell: bash
+        run: |
+          fixture_dir="tests/fixtures/ai_chat/sample_workspace/GitHub.copilot-chat/transcripts"
+          if [[ -n "$TRANSCRIPTS_DIR_INPUT" ]]; then
+            {
+              printf 'kind=transcripts-dir\n'
+              printf 'value=%s\n' "$TRANSCRIPTS_DIR_INPUT"
+              printf 'label=%s\n' "$TRANSCRIPTS_DIR_INPUT"
+            } >> "$GITHUB_OUTPUT"
+          elif [[ -n "$WORKSPACE_STORAGE_INPUT" ]]; then
+            {
+              printf 'kind=workspace-storage\n'
+              printf 'value=%s\n' "$WORKSPACE_STORAGE_INPUT"
+              printf 'label=%s/transcripts\n' "$WORKSPACE_STORAGE_INPUT"
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              printf 'kind=transcripts-dir\n'
+              printf 'value=%s\n' "$fixture_dir"
+              printf 'label=%s\n' "$fixture_dir"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      # GitHub Actions does not yet expose a stable Copilot prompt runner for this repo.
+      # Until that seam exists, keep the workflow useful by reusing the shipped observability
+      # command and a small Markdown renderer that produces a review artifact and PR surface.
+      - name: Build AI chat observability artifacts
+        shell: bash
+        run: |
+          mkdir -p artifacts/ai-chat
+          command=(python -m sattlint.devtools.ai_chat_observability --output-dir artifacts/ai-chat)
+          if [[ "${{ steps.transcript-input.outputs.kind }}" == "workspace-storage" ]]; then
+            command+=(--workspace-storage "${{ steps.transcript-input.outputs.value }}")
+          else
+            command+=(--transcripts-dir "${{ steps.transcript-input.outputs.value }}")
+          fi
+          if [[ -n "$SESSION_DB_INPUT" ]]; then
+            command+=(--session-db "$SESSION_DB_INPUT")
+          fi
+          "${command[@]}"
+
+      - name: Render review artifact
+        shell: bash
+        run: |
+          python scripts/render_ai_session_review.py \
+            --summary-json artifacts/ai-chat/summary.json \
+            --findings-json artifacts/ai-chat/findings.json \
+            --output "artifacts/ai-chat/session-review-${{ steps.review-date.outputs.value }}.md" \
+            --prompt-path .github/prompts/review-ai-sessions.prompt.md \
+            --known-failure-patterns-path docs/lessons-learned/known-failure-patterns.md \
+            --source-label "${{ steps.transcript-input.outputs.label }}"
+
+      - name: Update known failure patterns
+        shell: bash
+        run: |
+          python scripts/update_ai_known_failure_patterns.py \
+            --findings-json artifacts/ai-chat/findings.json \
+            --known-failure-patterns-path docs/lessons-learned/known-failure-patterns.md \
+            --review-date "${{ steps.review-date.outputs.value }}"
+
+      - name: Upload review artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          if-no-files-found: error
+          name: ai-session-review-${{ github.run_id }}
+          path: artifacts/ai-chat/
+
+      - name: Commit review artifact branch
+        id: commit-review
+        shell: bash
+        run: |
+          branch="automation/review-ai-sessions-${{ steps.review-date.outputs.value }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add "artifacts/ai-chat/session-review-${{ steps.review-date.outputs.value }}.md" docs/lessons-learned/known-failure-patterns.md
+          if git diff --cached --quiet; then
+            printf 'has_changes=false\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git commit -m "chore: review ai sessions ${{ steps.review-date.outputs.value }}"
+          git push --force-with-lease origin "$branch"
+          {
+            printf 'has_changes=true\n'
+            printf 'branch=%s\n' "$branch"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Open or update review pull request
+        if: ${{ steps.commit-review.outputs.has_changes == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          branch="${{ steps.commit-review.outputs.branch }}"
+          pr_title="chore: review ai sessions ${{ steps.review-date.outputs.value }}"
+          pr_body="$RUNNER_TEMP/review-ai-sessions-pr.md"
+          cat > "$pr_body" <<'EOF'
+          Automated AI session review artifact refresh.
+
+          - Source artifact: `artifacts/ai-chat/session-review-${{ steps.review-date.outputs.value }}.md`
+          - Prompt reference: `.github/prompts/review-ai-sessions.prompt.md`
+          - Known failure patterns doc is staged only when the workflow or a later prompt runner updates it.
+          - Copilot prompt execution in GitHub Actions remains a TODO; this PR uses the repo-owned observability fallback so the review loop stays observable.
+          EOF
+          existing_pr="$(gh pr list --head "$branch" --base main --json number --jq '.[0].number')"
+          if [[ -n "$existing_pr" ]]; then
+            gh pr edit "$existing_pr" --title "$pr_title" --body-file "$pr_body"
+          else
+            gh pr create --base main --head "$branch" --title "$pr_title" --body-file "$pr_body"
+          fi

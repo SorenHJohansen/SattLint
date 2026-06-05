@@ -5,9 +5,9 @@ from __future__ import annotations
 import ast
 import re
 import tomllib
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 
 def load_pyproject(root: Path) -> dict[str, Any]:
@@ -67,8 +67,8 @@ def collect_cli_metadata(
     subcommands: set[str] = set()
     for action in parser._actions:
         choices = getattr(action, "choices", None)
-        if choices:
-            subcommands.update(choices.keys())
+        if isinstance(choices, Mapping):
+            subcommands.update(cast(Mapping[str, Any], choices))
     return scripts, subcommands
 
 

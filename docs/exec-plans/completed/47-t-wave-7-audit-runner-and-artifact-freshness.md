@@ -61,7 +61,7 @@ Date/Author: 2026-05-15 / Copilot (GPT-5.4)
 
 The repo now has a staged runner in `src/sattlint/devtools/repo_audit_runs.py`, a readiness checker in `src/sattlint/devtools/artifact_readiness.py`, and a findings diff CLI in `src/sattlint/devtools/compare_audit_findings.py`. The common VS Code quick and full audit tasks now publish through the staged runner, and focused regression tests cover publication, incomplete-run rejection, and before/after findings comparison.
 
-Validation landed in three layers. Focused tests passed with `python scripts/run_repo_python.sh -m pytest --no-cov tests/test_repo_audit_runs.py tests/test_artifact_readiness.py -x -q --tb=short`. Ruff and Pyright both passed on the touched Python files. The end-to-end quick smoke run published `artifacts/audit-quick-current` through the new task surface, archived the previous quick snapshot under `artifacts/audit-history/`, and `python scripts/run_repo_python.sh -m sattlint.devtools.artifact_readiness --artifact-dir artifacts/audit-quick-current` reported the published directory as complete and safe to read.
+Validation landed in three layers. Focused tests passed with `bash scripts/run_repo_python.sh -m pytest --no-cov tests/test_repo_audit_runs.py tests/test_artifact_readiness.py -x -q --tb=short`. Ruff and Pyright both passed on the touched Python files. The end-to-end quick smoke run published `artifacts/audit-quick-current` through the new task surface, archived the previous quick snapshot under `artifacts/audit-history/`, and `bash scripts/run_repo_python.sh -m sattlint.devtools.artifact_readiness --artifact-dir artifacts/audit-quick-current` reported the published directory as complete and safe to read.
 
 ## Context and Orientation
 

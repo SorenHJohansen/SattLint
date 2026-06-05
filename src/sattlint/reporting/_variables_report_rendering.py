@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from sattline_parser.grammar import constants as grammar_const
@@ -8,6 +9,16 @@ from sattline_parser.models.ast_model import Simple_DataType, Variable
 
 if TYPE_CHECKING:
     from .variables_report import VariableIssue
+
+
+@dataclass(frozen=True)
+class _StringMismatchRow:
+    location_path: tuple[str, ...]
+    source_name: str
+    source_role: str
+    source_type: str
+    target_name: str
+    target_type: str
 
 
 def section_header(title: str, count: int) -> str:
@@ -36,6 +47,93 @@ def split_moduletype_and_singlemodule_issues(
         issue for issue in issues if not (issue.module_path and issue.module_path[-1].startswith("TypeDef:"))
     ]
     return moduletype_issues, singlemodule_issues
+
+
+def _uses_typedef_path(module_path: list[str] | tuple[str, ...]) -> bool:
+    return any(segment.startswith("TypeDef:") for segment in module_path)
+
+
+def _build_string_mapping_rows(issues: list[VariableIssue]) -> list[_StringMismatchRow]:
+    rows: list[_StringMismatchRow] = []
+    for issue in issues:
+        source_name = issue.source_display_name or (
+            issue.source_variable.name if issue.source_variable is not None else "?"
+        )
+        source_type = issue.source_variable.datatype_text if issue.source_variable is not None else "?"
+        source_role = issue.source_role or "?"
+        rows.append(
+            _StringMismatchRow(
+                location_path=tuple(issue.module_path),
+                source_name=source_name,
+                source_role=source_role,
+                source_type=source_type,
+                target_name=(issue.target_display_name or issue.variable.name) if issue.variable is not None else "?",
+                target_type=issue.variable.datatype_text if issue.variable is not None else "?",
+            )
+        )
+    rows.sort(
+        key=lambda row: (
+            ".".join(row.location_path).casefold(),
+            row.source_name.casefold(),
+            row.source_role.casefold(),
+            row.source_type.casefold(),
+            row.target_name.casefold(),
+            row.target_type.casefold(),
+        )
+    )
+    return rows
+
+
+def count_string_mapping_mismatch_rows(issues: list[VariableIssue]) -> int:
+    return len(issues)
+
+
+def _is_declaration_destination_mismatch(row: _StringMismatchRow) -> bool:
+    return row.target_type.casefold() != row.source_type.casefold()
+
+
+def _render_string_mapping_group(
+    lines: list[str],
+    title: str,
+    rows: list[_StringMismatchRow],
+    preserve_typedef_path: bool,
+) -> None:
+    lines.append(f"        {title} ({len(rows)}):")
+    _render_string_mapping_rows(lines, rows, preserve_typedef_path)
+
+
+def _render_string_mapping_rows(lines: list[str], rows: list[_StringMismatchRow], preserve_typedef_path: bool) -> None:
+    if not rows:
+        lines.append("        none")
+        return
+
+    rendered_locations = [
+        ".".join(
+            row.location_path if preserve_typedef_path else tuple(singlemodule_display_path(list(row.location_path)))
+        )
+        for row in rows
+    ]
+    location_width = max(len(location) for location in rendered_locations)
+    source_name_width = max(len(row.source_name) for row in rows)
+    source_role_width = max(len(row.source_role) for row in rows)
+    source_type_width = max(len(row.source_type) for row in rows)
+    target_name_width = max(len(row.target_name) for row in rows)
+    target_type_width = max(len(row.target_type) for row in rows)
+
+    header = (
+        f"        {'Location':<{location_width}}  "
+        f"{'Source Var':<{source_name_width}}  {'Role':<{source_role_width}}  "
+        f"{'Declared Type':<{source_type_width}}  {'Target Var':<{target_name_width}}  =>  {'Destination Type':<{target_type_width}}"
+    )
+    lines.append(header)
+    lines.append("        " + "-" * len(header.strip()))
+
+    for row, location in zip(rows, rendered_locations, strict=False):
+        lines.append(
+            f"        {location:<{location_width}}  "
+            f"{row.source_name:<{source_name_width}}  {row.source_role:<{source_role_width}}  "
+            f"{row.source_type:<{source_type_width}}  {row.target_name:<{target_name_width}}  =>  {row.target_type:<{target_type_width}}"
+        )
 
 
 def singlemodule_display_path(module_path: list[str]) -> list[str]:
@@ -226,15 +324,40 @@ def append_unused_datatype_fields(lines: list[str], title: str, issues: list[Var
 
 
 def append_string_mapping_mismatch(lines: list[str], title: str, issues: list[VariableIssue]) -> None:
-    append_grouped_issue_blocks(
+    rows = _build_string_mapping_rows(issues)
+    if not rows:
+        append_empty_section(lines, title)
+        return
+
+    moduletype_rows = [row for row in rows if _uses_typedef_path(row.location_path)]
+    singlemodule_rows = [row for row in rows if not _uses_typedef_path(row.location_path)]
+
+    lines.append(section_header(title, len(rows)))
+    lines.append("      Moduletype:")
+    _render_string_mapping_group(
         lines,
-        title,
-        issues,
-        lambda grouped_lines, grouped_issues, _preserve_typedef_path: render_table_issue_rows(
-            grouped_lines,
-            grouped_issues,
-            include_target_type=True,
-        ),
+        "Declaration/final destination mismatch",
+        [row for row in moduletype_rows if _is_declaration_destination_mismatch(row)],
+        True,
+    )
+    _render_string_mapping_group(
+        lines,
+        "Intermediate path mismatch only",
+        [row for row in moduletype_rows if not _is_declaration_destination_mismatch(row)],
+        True,
+    )
+    lines.append("      SingleModule:")
+    _render_string_mapping_group(
+        lines,
+        "Declaration/final destination mismatch",
+        [row for row in singlemodule_rows if _is_declaration_destination_mismatch(row)],
+        False,
+    )
+    _render_string_mapping_group(
+        lines,
+        "Intermediate path mismatch only",
+        [row for row in singlemodule_rows if not _is_declaration_destination_mismatch(row)],
+        False,
     )
 
 

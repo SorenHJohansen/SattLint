@@ -1,35 +1,54 @@
 {
-  "canonical_command": "sattlint-analysis-pipeline --profile quick --output-dir artifacts/analysis",
-  "error": {
-    "message": "",
-    "stage": "pytest",
-    "type": "KeyboardInterrupt"
-  },
-  "failing_tools": [
-    "pytest"
-  ],
+  "canonical_command": "sattlint-analysis-pipeline --profile full --output-dir artifacts/analysis",
+  "failing_tools": [],
   "findings_schema": {
     "kind": "sattlint.findings",
     "schema_version": 1
   },
   "kind": "sattlint.pipeline.status",
   "non_blocking_tools": [],
-  "overall_status": "fail",
-  "profile": "quick",
+  "overall_status": "pass",
+  "profile": "full",
   "progress_report": "artifacts/analysis/progress.json",
+  "selected_checks": [
+    "ruff",
+    "pyright"
+  ],
   "status_report": "artifacts/analysis/status.json",
   "summary_report": "artifacts/analysis/summary.json",
+  "timing": {
+    "check_durations_seconds": {
+      "pyright": 30.647,
+      "ruff": 0.039,
+      "structural-reports": 0.0,
+      "trace": 0.0
+    },
+    "stage_durations_seconds": {
+      "bandit": 0.0,
+      "corpus": 0.0,
+      "environment": 0.022,
+      "findings": 0.001,
+      "pyright": 30.647,
+      "pytest": 0.0,
+      "ruff": 0.039,
+      "structural_reports": 0.0,
+      "trace": 0.0,
+      "vulture": 0.0,
+      "write_artifacts": 0.006
+    },
+    "total_duration_seconds": 30.715
+  },
   "tool_statuses": {
     "bandit": {
-      "detail": "not reached due earlier failure",
+      "detail": "skipped by profile",
       "finding_count": 0,
-      "normalized_exit_code": null,
+      "normalized_exit_code": 0,
       "raw_exit_code": null,
       "report": null,
       "status": "skipped"
     },
     "baseline_drift": {
-      "detail": "not reached due earlier failure",
+      "detail": "skipped: no baseline supplied",
       "finding_count": 0,
       "normalized_exit_code": null,
       "raw_exit_code": null,
@@ -37,7 +56,7 @@
       "status": "skipped"
     },
     "corpus": {
-      "detail": "not reached due earlier failure",
+      "detail": "skipped because no manifest directory was provided",
       "finding_count": 0,
       "normalized_exit_code": null,
       "raw_exit_code": null,
@@ -45,7 +64,7 @@
       "status": "skipped"
     },
     "performance_budget": {
-      "detail": "not reached due earlier failure",
+      "detail": "skipped because trace profiling is unavailable",
       "finding_count": 0,
       "normalized_exit_code": null,
       "raw_exit_code": null,
@@ -57,27 +76,27 @@
       "finding_count": 0,
       "normalized_exit_code": 0,
       "raw_exit_code": 0,
-      "report": null,
+      "report": "pyright.json",
       "status": "pass"
     },
     "pytest": {
-      "detail": "KeyboardInterrupt",
+      "detail": "skipped by check selection",
       "finding_count": 0,
-      "normalized_exit_code": 1,
-      "raw_exit_code": 1,
+      "normalized_exit_code": null,
+      "raw_exit_code": null,
       "report": null,
-      "status": "fail"
+      "status": "skipped"
     },
     "ruff": {
       "detail": "0 findings",
       "finding_count": 0,
       "normalized_exit_code": 0,
       "raw_exit_code": 0,
-      "report": null,
+      "report": "ruff.json",
       "status": "pass"
     },
     "rule_metadata": {
-      "detail": "not reached due earlier failure",
+      "detail": "skipped by profile",
       "finding_count": 0,
       "normalized_exit_code": null,
       "raw_exit_code": null,
@@ -85,9 +104,9 @@
       "status": "skipped"
     },
     "vulture": {
-      "detail": "not reached due earlier failure",
+      "detail": "skipped by profile",
       "finding_count": 0,
-      "normalized_exit_code": null,
+      "normalized_exit_code": 0,
       "raw_exit_code": null,
       "report": null,
       "status": "skipped"

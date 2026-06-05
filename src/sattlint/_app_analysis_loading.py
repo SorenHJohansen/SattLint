@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import logging
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from pathlib import Path
@@ -16,6 +17,56 @@ from .models.project_graph import ProjectGraph
 ConfigDict = dict[str, Any]
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
 _STAGE_ORDER = ("load_or_parse", "validate", "attach_graphics", "index", "ast_cache_save")
+log = logging.getLogger("SattLint")
+
+
+def _debug_enabled(cfg: ConfigDict) -> bool:
+    return bool(cfg.get("debug", False))
+
+
+def _log_debug_exception(cfg: ConfigDict, message: str) -> None:
+    if _debug_enabled(cfg):
+        log.exception(message)
+
+
+def _safe_count(value: object) -> int:
+    try:
+        return len(cast(Any, value))
+    except TypeError:
+        return 0
+
+
+def _format_named_timings(label: str, timings: Mapping[str, float]) -> str:
+    parts = [f"{name}={duration:.4f}s" for name, duration in sorted(timings.items())]
+    return f"{label}: " + ", ".join(parts)
+
+
+def _emit_debug_load_summary(
+    cfg: ConfigDict,
+    *,
+    target_name: str,
+    graph: ProjectGraph,
+    emit_output_fn: Callable[..., None],
+) -> None:
+    if not _debug_enabled(cfg):
+        return
+
+    emit_output_fn(
+        f"DEBUG load summary for {target_name}: source_files={_safe_count(getattr(graph, 'source_files', None))}, "
+        f"warnings={_safe_count(getattr(graph, 'warnings', None))}, "
+        f"missing={_safe_count(getattr(graph, 'missing', None))}, "
+        f"unavailable_libraries={_safe_count(getattr(graph, 'unavailable_libraries', None))}"
+    )
+
+    stage_timings = getattr(graph, "load_stage_timings", None)
+    if isinstance(stage_timings, Mapping) and stage_timings:
+        emit_output_fn(
+            _format_refresh_stage_timings(dict(cast(Mapping[str, float], stage_timings)), refresh_mode="full")
+        )
+
+    graphics_timings = getattr(graph, "graphics_load_timings", None)
+    if isinstance(graphics_timings, Mapping) and graphics_timings:
+        emit_output_fn(_format_named_timings("Graphics load phase totals", cast(Mapping[str, float], graphics_timings)))
 
 
 def _attach_analysis_cache_metadata(graph: ProjectGraph, *, cache_key: str, manifest_files: Iterable[Path]) -> None:
@@ -205,10 +256,12 @@ def iter_loaded_projects(
                 collect_stage_timings=_collect_analysis_timings(cfg),
             )
         except Exception as exc:
+            _log_debug_exception(cfg, f"Failed to load analysis target {target_name!r}")
             emit_output_fn(f"\n=== Target: {target_name} ===")
             emit_output_fn("? Failed to load target:")
             emit_output_fn(exc)
             continue
+        _emit_debug_load_summary(cfg, target_name=target_name, graph=graph, emit_output_fn=emit_output_fn)
         yield target_name, project_bp, graph
 
 
@@ -656,6 +709,7 @@ def ensure_ast_cache(
             load_project_fn(cfg, target_name=target_name, use_cache=False)
             emit_output_fn("✔ AST cache updated")
         except Exception as exc:
+            _log_debug_exception(cfg, f"Failed to rebuild AST cache for {target_name!r}")
             emit_output_fn(f"❌ Failed to build AST cache for {target_name}: {exc}")
             ok = False
 

@@ -8,7 +8,7 @@ from typing import Any
 from sattline_parser.models.ast_model import BasePicture, FrameModule, ModuleTypeInstance, SingleModule
 
 from ..analyzers.framework import Issue
-from ..reporting.variables_report import IssueKind, VariableIssue
+from ..models._variable_issues import IssueKind, VariableIssue
 from ..types import ProjectPath, TargetName
 
 

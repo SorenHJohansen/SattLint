@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from collections import Counter, defaultdict
 from collections.abc import Callable
@@ -24,6 +25,7 @@ from ..resolution.common import varname_base
 from ..resolution.scope import ScopeContext
 from ._reset_contamination import detect_implicit_latching, detect_reset_contamination
 from ._usage_tracker import UsageTracker
+from ._variable_traversal_support import _IGNORED_GRAPHICS_TAIL_BASENAMES
 from ._variables_picture_display_support import (
     build_typedef_root_context,
     record_graphics_binding_occurrences,
@@ -33,6 +35,13 @@ from .layout_geometry import collect_layout_overlap_issues
 
 if TYPE_CHECKING:
     from .variables import VariablesAnalyzer
+
+
+log = logging.getLogger("SattLint")
+
+_PhaseTimingEntry = dict[str, str | float]
+_UnresolvedLookupCounts = dict[str, int]
+_UnresolvedLookupExamples = dict[str, tuple[int, str]]
 
 
 class _ModuleWithParameters(Protocol):
@@ -117,6 +126,90 @@ def _maybe_update_status(self: object, detail: str) -> None:
     update_status = getattr(self, "_update_status", None)
     if callable(update_status):
         update_status(detail)
+
+
+def _format_selected_issue_kinds(self: object) -> str:
+    selected_kinds = _selected_issue_kinds(self)
+    if not selected_kinds:
+        return "all default issue kinds"
+    return ", ".join(kind.value for kind in sorted(selected_kinds, key=lambda item: item.value))
+
+
+def _format_phase_timing_summary(self: object) -> str | None:
+    phase_timings = cast(list[_PhaseTimingEntry] | None, getattr(self, "_phase_timings", None))
+    if phase_timings is None or not phase_timings:
+        return None
+
+    parts: list[str] = []
+    for entry in phase_timings:
+        phase = entry.get("phase")
+        duration_ms = entry.get("duration_ms")
+        if isinstance(phase, str) and isinstance(duration_ms, int | float):
+            parts.append(f"{phase}={float(duration_ms):.3f}")
+    return ", ".join(parts) if parts else None
+
+
+def _log_debug_analysis_summary(self: object, issue_counts: dict[str, int]) -> None:
+    log.debug("Variables analysis complete. Issues=%d", len(getattr(self, "_issues", [])))
+    log.debug("Variables selected issue kinds: %s", _format_selected_issue_kinds(self))
+    if issue_counts:
+        log.debug(
+            "Variables issue counts: %s",
+            ", ".join(f"{issue_kind}={count}" for issue_kind, count in issue_counts.items()),
+        )
+    else:
+        log.debug("Variables issue counts: none")
+
+    phase_summary = _format_phase_timing_summary(self)
+    if phase_summary is not None:
+        log.debug("Variables phase timings (ms): %s", phase_summary)
+
+    unresolved_total = getattr(self, "_unresolved_variable_lookup_total", 0)
+    unresolved_counts = cast(_UnresolvedLookupCounts | None, getattr(self, "_unresolved_variable_lookup_counts", None))
+    unresolved_examples = cast(
+        _UnresolvedLookupExamples | None,
+        getattr(self, "_unresolved_variable_lookup_examples", None),
+    )
+    if not isinstance(unresolved_total, int) or unresolved_total <= 0:
+        return
+    if unresolved_counts is None:
+        unresolved_counts = {}
+    if unresolved_examples is None:
+        unresolved_examples = {}
+
+    filtered_counts = {
+        variable_name: count
+        for variable_name, count in unresolved_counts.items()
+        if variable_name.casefold() not in _IGNORED_GRAPHICS_TAIL_BASENAMES
+    }
+    filtered_total = sum(filtered_counts.values())
+    suppressed_total = max(unresolved_total - filtered_total, 0)
+    if filtered_total <= 0:
+        if suppressed_total > 0:
+            log.debug(
+                "Variables unresolved lookups: suppressed %d ignored UI token hit(s)",
+                suppressed_total,
+            )
+        return
+
+    log.debug(
+        "Variables unresolved lookups: total=%d unique=%d%s",
+        filtered_total,
+        len(filtered_counts),
+        f" suppressed_noise={suppressed_total}" if suppressed_total else "",
+    )
+    for variable_name, count in sorted(
+        filtered_counts.items(),
+        key=lambda item: (-item[1], item[0].casefold()),
+    )[:10]:
+        env_size, path = unresolved_examples.get(variable_name, (0, ""))
+        log.debug(
+            "  unresolved %s x%d (first env size=%d, first path=%s)",
+            variable_name,
+            count,
+            env_size,
+            path,
+        )
 
 
 def _mapping_target_name(mapping: ParameterMapping) -> str | None:
@@ -438,6 +531,9 @@ def run(
     limit_to_module_path: list[str] | None = None,
 ) -> list[VariableIssue]:
     _reset_analysis_state(self)
+    self._unresolved_variable_lookup_total = 0
+    self._unresolved_variable_lookup_counts = defaultdict(int)
+    self._unresolved_variable_lookup_examples = {}
     self._limit_to_module_path = limit_to_module_path
     self._trace(
         "start",
@@ -450,13 +546,13 @@ def run(
     )
 
     if self.debug:
-        log = __import__("logging").getLogger("SattLint")
         log.debug(
-            "Variables analysis start: %s locals=%d submodules=%d typedefs=%d",
+            "Variables analysis start: %s locals=%d submodules=%d typedefs=%d selected=%s",
             self.bp.header.name,
             len(self.bp.localvariables or []),
             len(self.bp.submodules or []),
             len(self.bp.moduletype_defs or []),
+            _format_selected_issue_kinds(self),
         )
 
     def _record_display_bindings() -> None:
@@ -552,8 +648,7 @@ def run(
     )
 
     if self.debug:
-        log = __import__("logging").getLogger("SattLint")
-        log.debug("Variables analysis complete. Issues=%d", len(self._issues))
+        _log_debug_analysis_summary(self, issue_counts)
 
     return self._issues
 
@@ -625,7 +720,7 @@ def _analyze_typedef(self: VariablesAnalyzer, mt: ModuleTypeDef, path: list[str]
             for mapping in mt.parametermappings or []:
                 target_name = _mapping_target_name(mapping)
                 target_var = env.get(target_name) if target_name else None
-                self._check_param_mapping(mapping, target_var, env, path)
+                self._check_param_mapping(mapping, target_var, env, context, path)
     finally:
         self._analyzing_typedefs.discard(mt_key)
 
@@ -719,6 +814,12 @@ def _analyze_typedef_with_context(
         self._walk_module_code(mt.modulecode, context, path)
         self._walk_submodules(mt.submodules or [], parent_context=context, parent_path=path)
         self._walk_typedef_groupconn(mt, context, path)
+
+        if _should_collect_any_issue_kinds(self, _PARAM_MAPPING_CHECK_ISSUE_KINDS):
+            for mapping in mt.parametermappings or []:
+                target_name = _mapping_target_name(mapping)
+                target_var = context.env.get(target_name) if target_name else None
+                self._check_param_mapping(mapping, target_var, context.env, context, path)
 
         used_reads = {
             variable.name.lower() for variable in (mt.moduleparameters or []) if self._get_usage(variable).read

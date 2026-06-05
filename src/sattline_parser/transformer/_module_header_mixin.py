@@ -14,6 +14,26 @@ from sattline_parser.models.ast_model import ModuleHeader
 from ._module_shared import TransformerItem, TransformerTree, _float_tuple, _meta_span, _v_args
 
 
+def _normalize_module_header_tail(value: object) -> object:
+    if not isinstance(value, Tree):
+        return value
+
+    tree_value = cast(Tree[object], value)
+    if tree_value.data not in (
+        const.GRAMMAR_VALUE_INVAR_PREFIX,
+        const.GRAMMAR_VALUE_OUTVAR_PREFIX,
+        "invar_tail",
+    ):
+        return cast(object, tree_value)
+    if len(tree_value.children) != 1:
+        return cast(object, tree_value)
+
+    child = tree_value.children[0]
+    if isinstance(child, Token):
+        return cast(object, tree_value)
+    return cast(object, child)
+
+
 def _collect_module_header_argument_tails(value: object) -> list[object]:
     tails: list[object] = []
 
@@ -26,7 +46,7 @@ def _collect_module_header_argument_tails(value: object) -> list[object]:
                 return
             tail_obj = payload.get(const.KEY_TAIL)
             if tail_obj is not None:
-                tails.append(tail_obj)
+                tails.append(_normalize_module_header_tail(tail_obj))
                 return
             assign_payload = payload.get(const.KEY_ASSIGN)
             if assign_payload is not None:
@@ -38,8 +58,13 @@ def _collect_module_header_argument_tails(value: object) -> list[object]:
         if isinstance(node, Tree):
             tree_node = cast(Tree[object], node)
             data = tree_node.data
-            if data in (const.GRAMMAR_VALUE_INVAR_PREFIX, const.KEY_ENABLE_EXPRESSION, "invar_tail"):
-                tails.append(cast(object, tree_node))
+            if data in (
+                const.GRAMMAR_VALUE_INVAR_PREFIX,
+                const.GRAMMAR_VALUE_OUTVAR_PREFIX,
+                const.KEY_ENABLE_EXPRESSION,
+                "invar_tail",
+            ):
+                tails.append(_normalize_module_header_tail(cast(object, tree_node)))
                 return
             for child in cast(list[object], tree_node.children):
                 visit(child)
@@ -106,7 +131,7 @@ class _ModuleHeaderMixin:
                     coords5 = cast(tuple[float, float, float, float, float], coords)
                     tails = mapping.get(const.KEY_TAILS)
                     if isinstance(tails, list):
-                        coord_tails = list(cast(list[Any], tails))
+                        coord_tails = [_normalize_module_header_tail(tail) for tail in cast(list[Any], tails)]
             elif isinstance(it, tuple):
                 coords = _float_tuple(cast(tuple[object, ...], it), 5)
                 if coords is not None:

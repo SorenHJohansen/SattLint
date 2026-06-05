@@ -328,6 +328,16 @@ SATTLINE_BUILTINS_PART2: dict[str, BuiltinFunction] = {
     "getsystemtype": BuiltinFunction(
         name="getsystemtype", type="Function", return_type="Integer", parameters=[], precision_scangroup=False
     ),
+    "getthissystemname": BuiltinFunction(
+        name="getthissystemname",
+        type="Procedure",
+        return_type=None,
+        parameters=[
+            Parameter(name="ThisSystem", datatype="String", direction="out", sorting="WS", ownership="WO"),
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
+        ],
+        precision_scangroup=False,
+    ),
     "gettime": BuiltinFunction(
         name="gettime",
         type="Procedure",

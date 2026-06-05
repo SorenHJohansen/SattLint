@@ -14,7 +14,10 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
+from ..casefolding import casefold_key
+from ._walk_utils import iter_nested_modules
 from .framework import Issue, format_report_header
+from .variable_utils import matches_root_origin
 
 SUPPORTED_NAMING_STYLES: tuple[str, ...] = (
     "infer",
@@ -63,7 +66,7 @@ class NamingRule:
 
     @property
     def allowed_names(self) -> set[str]:
-        return {name.casefold() for name in self.allow}
+        return {casefold_key(name) for name in self.allow}
 
 
 @dataclass(frozen=True)
@@ -118,7 +121,7 @@ def _normalize_rule(raw: object) -> NamingRule:
             if not isinstance(item, str):
                 continue
             value = item.strip()
-            if value and value.casefold() not in {entry.casefold() for entry in allow}:
+            if value and casefold_key(value) not in {casefold_key(entry) for entry in allow}:
                 allow.append(value)
 
     return NamingRule(style=style, allow=tuple(allow))
@@ -243,20 +246,17 @@ class NamingConsistencyAnalyzer:
         modules: list[SingleModule | FrameModule | ModuleTypeInstance],
         parent_path: list[str],
     ) -> None:
-        for module in modules:
-            child_path = [*parent_path, module.header.name]
+        for module, child_path in iter_nested_modules(modules, parent_path=parent_path):
             if isinstance(module, SingleModule):
                 self._collect_module_name(module.header.name, child_path)
                 self._collect_variables(
                     [*(module.moduleparameters or []), *(module.localvariables or [])],
                     child_path,
                 )
-                self._walk_modules(module.submodules or [], child_path)
                 continue
 
             if isinstance(module, FrameModule):
                 self._collect_module_name(module.header.name, child_path)
-                self._walk_modules(module.submodules or [], child_path)
                 continue
 
             self._declarations.append(
@@ -299,7 +299,7 @@ class NamingConsistencyAnalyzer:
 
             allowed_names = rule.allowed_names
             for declaration in declarations:
-                if declaration.name.casefold() in allowed_names:
+                if casefold_key(declaration.name) in allowed_names:
                     continue
                 actual_style = _identifier_style(declaration.name)
                 if actual_style == expected_style:
@@ -322,12 +322,7 @@ class NamingConsistencyAnalyzer:
                 )
 
     def _is_from_root_origin(self, origin_file: str | None) -> bool:
-        if not origin_file:
-            return True
-        root_origin = getattr(self.bp, "origin_file", None)
-        if not root_origin:
-            return False
-        return origin_file.rsplit(".", 1)[0].casefold() == root_origin.rsplit(".", 1)[0].casefold()
+        return matches_root_origin(origin_file, getattr(self.bp, "origin_file", None))
 
 
 def analyze_naming_consistency(

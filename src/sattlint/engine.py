@@ -442,7 +442,7 @@ class SattLineProjectLoader(DebugMixin):
         if prefetched is not None and prefetched.code_path is not None:
             return prefetched.code_path
 
-        extensions = [".s", ".x"] if self.mode == CodeMode.DRAFT else [".x"]
+        extensions = [code_ext(self.mode), ".x"] if self.mode == CodeMode.DRAFT else [code_ext(self.mode)]
 
         if self.contextual_lookup is not None:
             resolved = self.contextual_lookup(name, extensions, requester_dir, "code")
@@ -484,14 +484,6 @@ class SattLineProjectLoader(DebugMixin):
         self.dbg(f"No code file found for '{name}' in mode={self.mode.value}")
         return None
 
-    def _find_deps(self, name: str) -> Path | None:
-        """
-        Find deps file with fallback support.
-        In draft mode: try .l first, fallback to .z
-        In official mode: only use .z
-        """
-        return self._find_deps_with_context(name, requester_dir=None)
-
     def _find_deps_with_context(
         self,
         name: str,
@@ -502,7 +494,7 @@ class SattLineProjectLoader(DebugMixin):
         if prefetched is not None and prefetched.deps_path is not None:
             return prefetched.deps_path
 
-        extensions = [".l", ".z"] if self.mode == CodeMode.DRAFT else [".z"]
+        extensions = [deps_ext(self.mode), ".z"] if self.mode == CodeMode.DRAFT else [deps_ext(self.mode)]
 
         if self.contextual_lookup is not None:
             resolved = self.contextual_lookup(name, extensions, requester_dir, "deps")
@@ -546,7 +538,7 @@ class SattLineProjectLoader(DebugMixin):
 
     def _find_vendor_code(self, name: str) -> Path | None:
         """Find code file in vendor directories with fallback."""
-        extensions = [".s", ".x"] if self.mode == CodeMode.DRAFT else [".x"]
+        extensions = [code_ext(self.mode), ".x"] if self.mode == CodeMode.DRAFT else [code_ext(self.mode)]
 
         for ign in self._ignored_dirs:
             for ext in extensions:
@@ -557,7 +549,7 @@ class SattLineProjectLoader(DebugMixin):
 
     def _find_vendor_deps(self, name: str) -> Path | None:
         """Find deps file in vendor directories with fallback."""
-        extensions = [".l", ".z"] if self.mode == CodeMode.DRAFT else [".z"]
+        extensions = [deps_ext(self.mode), ".z"] if self.mode == CodeMode.DRAFT else [deps_ext(self.mode)]
 
         for ign in self._ignored_dirs:
             for ext in extensions:
@@ -572,9 +564,6 @@ class SattLineProjectLoader(DebugMixin):
         names = [ln.strip() for ln in lines if ln.strip()]
         self.dbg(f"Deps from {deps_path.name}: {names}")
         return names
-
-    def _read_text_simple(self, path: Path) -> str:
-        return read_text_with_fallback(path)
 
     def _library_name_for_path(self, code_path: Path) -> str:
         """
@@ -718,8 +707,8 @@ class SattLineProjectLoader(DebugMixin):
             return
 
         self._prime_base_indexes()
-        code_extensions = [".s", ".x"] if self.mode == CodeMode.DRAFT else [".x"]
-        deps_extensions = [".l", ".z"] if self.mode == CodeMode.DRAFT else [".z"]
+        code_extensions = [code_ext(self.mode), ".x"] if self.mode == CodeMode.DRAFT else [code_ext(self.mode)]
+        deps_extensions = [deps_ext(self.mode), ".z"] if self.mode == CodeMode.DRAFT else [deps_ext(self.mode)]
         code_paths_to_prefetch: list[Path] = []
         for dep_name in unique_dep_names:
             code_path = self._find_in_bases_without_cache(dep_name, code_extensions)
@@ -736,7 +725,8 @@ class SattLineProjectLoader(DebugMixin):
             if code_path is not None:
                 code_paths_to_prefetch.append(code_path)
 
-        self._prefetched_load_results_by_path.update(self._prefetch_ast_candidates(code_paths_to_prefetch))
+        cached_prefetch_results = self._prefetch_ast_candidates(code_paths_to_prefetch)
+        self._prefetched_load_results_by_path.update(cached_prefetch_results)
 
     def _load_or_parse_for_owner(self, code_path: Path, *, owner_name: str) -> BasePicture | None:
         load_or_parse = self._load_or_parse

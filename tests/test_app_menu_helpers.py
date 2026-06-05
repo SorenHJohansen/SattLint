@@ -129,6 +129,7 @@ def test_config_value_helpers_cover_false_and_remove_paths(tmp_path: Path) -> No
             cfg,
             prompt_fn=lambda *_: "2",
             confirm_fn=lambda message: message == "Remove entry?",
+            pause_fn=lambda: None,
         )
         is True
     )
@@ -171,10 +172,33 @@ def test_menu_remove_and_other_lib_dir_success_and_invalid_remove_paths() -> Non
             cfg,
             prompt_fn=lambda *_: "9",
             confirm_fn=lambda *_: next(confirms),
+            pause_fn=lambda: None,
         )
         is False
     )
     assert cfg["other_lib_dirs"] == ["/one"]
+
+
+def test_edit_other_lib_dirs_handles_non_integer_remove_index(capsys: pytest.CaptureFixture[str]) -> None:
+    cfg = {
+        "analyzed_programs_and_libraries": ["Demo"],
+        "other_lib_dirs": ["/one"],
+    }
+    pause_calls: list[str] = []
+    confirms = iter([False, True])
+
+    changed = app_menus._edit_other_lib_dirs(
+        cfg,
+        prompt_fn=lambda *_: "nope",
+        confirm_fn=lambda *_: next(confirms),
+        pause_fn=lambda: pause_calls.append("pause"),
+    )
+
+    out = capsys.readouterr().out
+    assert changed is False
+    assert cfg["other_lib_dirs"] == ["/one"]
+    assert "Invalid index" in out
+    assert pause_calls == ["pause"]
 
 
 def test_save_configuration_keeps_dirty_on_save_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

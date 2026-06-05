@@ -39,7 +39,7 @@ AGENT_ROUTING_RULES: tuple[dict[str, Any], ...] = (
         "owner_surface_keywords": ("docgen", "classification", "docs"),
         "path_globs": (
             "src/sattlint/docgenerator/**",
-            "tests/test_docgen.py",
+            "tests/test_docgen*.py",
             "tests/test_app_docgen.py",
         ),
     },
@@ -83,7 +83,7 @@ AGENT_ROUTING_RULES: tuple[dict[str, Any], ...] = (
         ),
         "path_globs": (
             "src/sattlint/devtools/**",
-            "tests/test_repo_audit.py",
+            "tests/test_repo_audit*.py",
             "tests/test_pipeline*.py",
             "tests/test_artifact_contracts.py",
             "docs/references/cli-commands.md",

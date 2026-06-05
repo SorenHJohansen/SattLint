@@ -7,7 +7,7 @@ import argparse
 import logging
 import os
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from types import ModuleType
 from typing import Any, ClassVar, cast
@@ -313,3 +313,19 @@ def prompt(msg: str, default: str | None = None) -> str:
     if default is not None:
         return input(f"{msg} [{default}]: ").strip() or default
     return input(f"{msg}: ").strip()
+
+
+def choose_menu_option(
+    title: str,
+    options: Sequence[Any],
+    *,
+    print_menu_fn: Callable[..., None],
+    intro: str | None = None,
+    note: str | None = None,
+    input_fn: Callable[[str], str] | None = None,
+) -> str:
+    if input_fn is None:
+        input_fn = input
+
+    print_menu_fn(title, options, intro=intro, note=note)
+    return input_fn("> ").strip().lower()

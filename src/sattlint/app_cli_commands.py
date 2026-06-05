@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, cast
@@ -14,10 +15,20 @@ from .docgenerator import generate_docx
 from .models.project_graph import ProjectGraph
 
 emit_output = console_module.print_output  # type: ignore[assignment]
+log = logging.getLogger("SattLint")
 
 ConfigDict = dict[str, Any]
 DocumentationSelection = dict[str, Any]
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
+
+
+def _debug_enabled(cfg: ConfigDict) -> bool:
+    return bool(cfg.get("debug", False))
+
+
+def _log_debug_exception(cfg: ConfigDict, message: str) -> None:
+    if _debug_enabled(cfg):
+        log.exception(message)
 
 
 def _run_with_live_status(status_text: str, run_fn: Callable[[], Any]) -> Any:
@@ -26,11 +37,13 @@ def _run_with_live_status(status_text: str, run_fn: Callable[[], Any]) -> Any:
         return run_fn()
 
 
-def _write_output_file(destination: Path, content: str, *, label: str) -> bool:
+def _write_output_file(destination: Path, content: str, *, label: str, cfg: ConfigDict | None = None) -> bool:
     try:
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(content + "\n", encoding="utf-8")
     except OSError as exc:
+        if cfg is not None:
+            _log_debug_exception(cfg, f"Failed to write {label} to {destination}")
         emit_output(f"Failed to write {label} to {destination}: {exc}")
         return False
     emit_output(f"Wrote {destination}")
@@ -58,11 +71,12 @@ def run_analyze_command(
     cfg: ConfigDict,
     *,
     selected_keys: list[str] | None,
+    selected_issue_kinds: frozenset[str] | None = None,
     use_cache: bool,
-    run_checks_fn: Callable[[ConfigDict, list[str] | None, bool], None],
+    run_checks_fn: Callable[..., None],
     exit_success: int,
 ) -> int:
-    run_checks_fn(cfg, selected_keys, use_cache)
+    run_checks_fn(cfg, selected_keys, use_cache, selected_issue_kinds=selected_issue_kinds)
     return exit_success
 
 
@@ -96,6 +110,7 @@ def run_simulate_command(
         emit_output(str(exc))
         return exit_usage_error
     except Exception as exc:
+        _log_debug_exception(cfg, f"Simulation command failed for module {module_name!r} from {target_path!r}")
         emit_output(f"Simulation failed: {exc}")
         return exit_usage_error
 
@@ -103,7 +118,7 @@ def run_simulate_command(
         payload = json.dumps(result.to_dict(), indent=2)
         if output_path:
             destination = Path(output_path)
-            if not _write_output_file(destination, payload, label="simulation output"):
+            if not _write_output_file(destination, payload, label="simulation output", cfg=cfg):
                 return exit_usage_error
         else:
             emit_output(payload)
@@ -112,7 +127,7 @@ def run_simulate_command(
     summary = result.render_summary()
     if output_path:
         destination = Path(output_path)
-        if not _write_output_file(destination, summary, label="simulation output"):
+        if not _write_output_file(destination, summary, label="simulation output", cfg=cfg):
             return exit_usage_error
     else:
         emit_output(summary)
@@ -171,6 +186,7 @@ def run_docgen_command(
                 ),
             )
         except OSError as exc:
+            _log_debug_exception(cfg, f"Documentation generation failed for target {target_name!r} to {destination}")
             emit_output(f"Documentation generation failed for {destination}: {exc}")
             return exit_usage_error
         emit_output(f"Generated {destination}")
@@ -190,8 +206,6 @@ def run_telemetry_summary_command(
     exit_success: int,
     exit_usage_error: int,
 ) -> int:
-    del cfg
-
     telemetry_path = telemetry_output_path_fn(config_path)
     try:
         summary = summarize_telemetry_fn(telemetry_path)
@@ -199,13 +213,14 @@ def run_telemetry_summary_command(
         emit_output(f"Telemetry file not found: {telemetry_path}")
         return exit_usage_error
     except (OSError, ValueError) as exc:
+        _log_debug_exception(cfg, f"Telemetry summary failed for {telemetry_path}")
         emit_output(f"Telemetry summary failed: {exc}")
         return exit_usage_error
 
     content = json.dumps(summary, indent=2) if output_format == "json" else render_text_summary_fn(summary)
 
     if output_path:
-        if not _write_output_file(Path(output_path), content, label="telemetry summary"):
+        if not _write_output_file(Path(output_path), content, label="telemetry summary", cfg=cfg):
             return exit_usage_error
     else:
         emit_output(content)

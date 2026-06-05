@@ -1,8 +1,7 @@
-# pyright: reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownVariableType=false
-
 """Tests for app analysis project loading and AST cache behavior."""
 
 import json
+import logging
 import pickle
 from pathlib import Path
 from types import SimpleNamespace
@@ -160,9 +159,82 @@ def test_load_project_rebuilds_when_cached_project_is_invalid(monkeypatch):
     assert len(save_calls) == 1
     assert save_calls[0][0] == "cache-key"
     saved_project, cached_graph = cast(tuple[object, object], save_calls[0][1]["project"])
-    assert getattr(saved_project, "header", None).name == "TargetA"
+    saved_header = cast(Any, getattr(saved_project, "header", None))
+    assert saved_header is not None
+    assert saved_header.name == "TargetA"
     assert getattr(cached_graph, "source_files", None) == {Path("programs/TargetA.s")}
     assert save_calls[0][1]["files"] == {Path("programs/TargetA.s")}
+
+
+def test_iter_loaded_projects_emits_debug_load_summary_when_debug_enabled(monkeypatch):
+    lines: list[str] = []
+    project_bp = SimpleNamespace(header=SimpleNamespace(name="TargetA"))
+    graph = SimpleNamespace(
+        source_files={Path("programs/TargetA.s"), Path("libs/Dep.l")},
+        warnings=["warn"],
+        missing=["MissingLib"],
+        unavailable_libraries={"ControlLib"},
+        load_stage_timings={
+            "load_or_parse": 1.25,
+            "validate": 0.5,
+            "attach_graphics": 0.25,
+            "index": 0.1,
+        },
+        graphics_load_timings={
+            "picture-display-warnings": 0.1,
+            "validate-graphics-file": 0.4,
+        },
+    )
+
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+
+    loaded = list(
+        app_analysis.iter_loaded_projects(
+            {"debug": True},
+            use_cache=False,
+            require_analyzed_targets_fn=lambda _cfg: ["TargetA"],
+            load_project_fn=cast(Any, lambda _cfg, **_kwargs: (project_bp, graph)),
+        )
+    )
+
+    assert loaded == [("TargetA", project_bp, graph)]
+    assert any(
+        "DEBUG load summary for TargetA: source_files=2, warnings=1, missing=1, unavailable_libraries=1" in line
+        for line in lines
+    )
+    assert any(
+        "AST refresh stage totals:" in line and "load_or_parse=1.2500s" in line and "graphics=0.2500s" in line
+        for line in lines
+    )
+    assert any("Graphics load phase totals:" in line and "validate-graphics-file=0.4000s" in line for line in lines)
+
+
+def test_iter_loaded_projects_debug_summary_tolerates_unsized_fields(monkeypatch):
+    lines: list[str] = []
+    project_bp = SimpleNamespace(header=SimpleNamespace(name="TargetA"))
+    graph = SimpleNamespace(
+        source_files=object(),
+        warnings=object(),
+        missing=object(),
+        unavailable_libraries=object(),
+    )
+
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+
+    loaded = list(
+        app_analysis.iter_loaded_projects(
+            {"debug": True},
+            use_cache=False,
+            require_analyzed_targets_fn=lambda _cfg: ["TargetA"],
+            load_project_fn=cast(Any, lambda _cfg, **_kwargs: (project_bp, graph)),
+        )
+    )
+
+    assert loaded == [("TargetA", project_bp, graph)]
+    assert any(
+        "DEBUG load summary for TargetA: source_files=0, warnings=0, missing=0, unavailable_libraries=0" in line
+        for line in lines
+    )
 
 
 def test_analysis_report_cache_round_trips_report_payload(tmp_path):
@@ -1093,6 +1165,40 @@ def test_ensure_ast_cache_handles_valid_fast_path_rebuilds_and_failures(monkeypa
     assert any("AST cache missing; building" in line for line in lines)
     assert any("AST cache updated" in line for line in lines)
     assert any("Failed to build AST cache for Broken: boom" in line for line in lines)
+
+
+def test_ensure_ast_cache_logs_debug_traceback_on_rebuild_failure(monkeypatch, caplog):
+    lines: list[str] = []
+
+    class FakeCache:
+        def __init__(self, cache_dir):
+            self.cache_dir = cache_dir
+
+        def has_payload(self, key):
+            return False
+
+        def has_manifest(self, key):
+            return False
+
+    def fail_load_project(_cfg, target_name=None, use_cache=True, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+
+    with caplog.at_level(logging.ERROR, logger="SattLint"):
+        ok = app_analysis.ensure_ast_cache(
+            {"debug": True},
+            get_analyzed_targets_fn=lambda _cfg: ["Broken"],
+            cache_key_for_target_fn=lambda _cfg, target_name: f"key:{target_name}",
+            load_project_fn=cast(Any, fail_load_project),
+            ast_cache_cls=cast(Any, FakeCache),
+            get_cache_dir_fn=lambda: Path("cache-dir"),
+        )
+
+    assert ok is False
+    assert any("Failed to build AST cache for Broken: boom" in line for line in lines)
+    assert any("Failed to rebuild AST cache for 'Broken'" in message for message in caplog.messages)
+    assert "Traceback (most recent call last)" in caplog.text
 
 
 def test_ensure_ast_cache_slow_path_passes_fast_false_to_validate(monkeypatch):

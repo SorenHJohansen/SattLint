@@ -92,6 +92,7 @@ _TIME_LITERAL_RE = re.compile(r"\d{4}-\d{2}-\d{2}-\d{2}:\d{2}:\d{2}\.\d{3}")
 _MAX_IDENTIFIER_LENGTH = 20
 _TYPO_SUGGESTION_MAX_DISTANCE = 2
 _RESERVED_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+_SIMPLE_BUILTIN_DATATYPE_NAMES = tuple(datatype.value for datatype in Simple_DataType)
 _ALLOWED_IDENTIFIER_KEYWORDS = frozenset(
     {
         const.GRAMMAR_VALUE_COLOUR.casefold(),
@@ -161,7 +162,9 @@ def _validate_declared_variable(
         if _is_anytype_datatype(variable.datatype):
             pass
         elif not type_graph.has_record(variable.datatype):
-            suggestion_candidates = _BUILTIN_DATATYPE_NAMES if allow_unresolved_external_datatypes else known_datatypes
+            suggestion_candidates = (
+                _SIMPLE_BUILTIN_DATATYPE_NAMES if allow_unresolved_external_datatypes else known_datatypes
+            )
             suggestion = _suggest_datatype_name(variable.datatype, suggestion_candidates)
             if suggestion is not None:
                 raise StructuralValidationError(
@@ -739,7 +742,7 @@ def validate_transformed_basepicture(
 
     type_graph = TypeGraph.from_datatypes(available_datatypes)
     known_datatypes = tuple(
-        [datatype.value for datatype in Simple_DataType] + [datatype.name for datatype in available_datatypes]
+        dict.fromkeys([*_BUILTIN_DATATYPE_NAMES, *[datatype.name for datatype in available_datatypes]])
     )
     moduletype_index: dict[str, list[ModuleTypeDef]] = {}
     for moduletype in available_moduletype_defs:

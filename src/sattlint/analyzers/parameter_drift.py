@@ -13,13 +13,16 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
+from ..casefolding import casefold_equal, casefold_key
 from ..grammar import constants as const
 from ..resolution.common import (
     format_moduletype_label,
     resolve_moduletype_def_strict,
     varname_full,
 )
+from ._walk_utils import walk_nested_modules_with_state
 from .framework import Issue, SimpleReport
+from .variable_utils import merge_variable_env
 
 
 @dataclass(frozen=True)
@@ -64,18 +67,28 @@ class ParameterDriftAnalyzer:
         parent_path: list[str],
         env: dict[str, Variable],
     ) -> None:
-        for module in modules:
-            module_path = [*parent_path, module.header.name]
-            if isinstance(module, ModuleTypeInstance):
-                self._collect_instance_parameter_values(module, module_path, env)
-                continue
-            if isinstance(module, SingleModule):
-                nested_env = self._merge_env(env, module.moduleparameters)
-                nested_env = self._merge_env(nested_env, module.localvariables)
-                self._walk_modules(module.submodules or [], parent_path=module_path, env=nested_env)
-                continue
-            else:
-                self._walk_modules(module.submodules or [], parent_path=module_path, env=env)
+        def _build_single_state(
+            module: SingleModule,
+            _module_path: list[str],
+            parent_env: dict[str, Variable],
+        ) -> dict[str, Variable]:
+            nested_env = self._merge_env(parent_env, module.moduleparameters)
+            return self._merge_env(nested_env, module.localvariables)
+
+        def _visit_instance(
+            module: ModuleTypeInstance,
+            module_path: list[str],
+            current_env: dict[str, Variable],
+        ) -> None:
+            self._collect_instance_parameter_values(module, module_path, current_env)
+
+        walk_nested_modules_with_state(
+            modules,
+            parent_path=parent_path,
+            state=env,
+            build_single_state=_build_single_state,
+            visit_instance=_visit_instance,
+        )
 
     def _collect_instance_parameter_values(
         self,
@@ -99,7 +112,7 @@ class ParameterDriftAnalyzer:
             value = self._get_parameter_value(inst, mt_def, env, parameter_name)
             if value.status != "resolved" or not value.signature:
                 continue
-            self._parameter_values[(moduletype_label.casefold(), parameter_name.casefold())].append(
+            self._parameter_values[(casefold_key(moduletype_label), casefold_key(parameter_name))].append(
                 _InstanceParameterValue(
                     module_path=module_path.copy(),
                     moduletype_label=moduletype_label,
@@ -118,10 +131,10 @@ class ParameterDriftAnalyzer:
         for mapping in inst.parametermappings or []:
             target_name = self._mapping_parameter_name(mapping)
             if target_name:
-                names_by_key.setdefault(target_name.casefold(), target_name)
+                names_by_key.setdefault(casefold_key(target_name), target_name)
         for parameter in mt_def.moduleparameters if mt_def is not None else []:
             if parameter.init_value is not None:
-                names_by_key.setdefault(parameter.name.casefold(), parameter.name)
+                names_by_key.setdefault(casefold_key(parameter.name), parameter.name)
         return tuple(names_by_key[key] for key in sorted(names_by_key))
 
     def _get_parameter_value(
@@ -156,10 +169,10 @@ class ParameterDriftAnalyzer:
         mappings: list[ParameterMapping] | None,
         parameter_name: str,
     ) -> ParameterMapping | None:
-        wanted = parameter_name.casefold()
+        wanted = casefold_key(parameter_name)
         for mapping in mappings or []:
             target_name = self._mapping_parameter_name(mapping)
-            if target_name and target_name.casefold() == wanted:
+            if target_name and casefold_key(target_name) == wanted:
                 return mapping
         return None
 
@@ -188,7 +201,7 @@ class ParameterDriftAnalyzer:
         if "." in full_ref or ":" in full_ref:
             return None
 
-        variable = env.get(full_ref.casefold())
+        variable = env.get(casefold_key(full_ref))
         if variable is None or variable.init_value is None:
             return None
         return _ParameterValue(
@@ -203,9 +216,8 @@ class ParameterDriftAnalyzer:
         variables: list[Variable] | None,
         wanted_name: str,
     ) -> Variable | None:
-        wanted = wanted_name.casefold()
         for variable in variables or []:
-            if variable.name.casefold() == wanted:
+            if casefold_equal(variable.name, wanted_name):
                 return variable
         return None
 
@@ -214,10 +226,7 @@ class ParameterDriftAnalyzer:
         env: dict[str, Variable],
         variables: list[Variable] | None,
     ) -> dict[str, Variable]:
-        merged = dict(env)
-        for variable in variables or []:
-            merged[variable.name.casefold()] = variable
-        return merged
+        return merge_variable_env(env, variables)
 
     def _value_display(self, value: _ParameterValue) -> str:
         if value.value is not None:
@@ -226,7 +235,7 @@ class ParameterDriftAnalyzer:
 
     def _literal_signature(self, value: object | None) -> str:
         if isinstance(value, str):
-            return f"literal:{value.strip().casefold()}"
+            return f"literal:{casefold_key(value.strip())}"
         return f"literal:{value!r}"
 
     def _emit_parameter_drift_issues(self) -> None:

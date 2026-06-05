@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 
 from sattline_parser.models.ast_model import Simple_DataType, Variable
 
+from ..casefolding import casefold_key
+
 if TYPE_CHECKING:
     from .variables import VariablesAnalyzer
 
@@ -59,6 +61,11 @@ def matches_root_origin(
     origin_lib: str | None = None,
     root_origin_lib: str | None = None,
 ) -> bool:
+    if root_origin_lib and origin_lib and not origin_file:
+        # Merged dependency ASTs can drop origin_file while still preserving origin_lib.
+        # Treat foreign-library definitions as out of scope for both program and library targets.
+        return origin_lib.casefold() == root_origin_lib.casefold()
+
     if analyzed_target_is_library and root_origin_lib and origin_lib:
         try:
             root_stem = Path(root_origin).stem.casefold() if root_origin else None
@@ -74,4 +81,20 @@ def matches_root_origin(
     return same_origin_file_stem(origin_file, root_origin)
 
 
-__all__ = ["external_mapping_usage", "is_const_candidate", "matches_root_origin", "same_origin_file_stem"]
+def merge_variable_env(
+    env: dict[str, Variable],
+    variables: list[Variable] | None,
+) -> dict[str, Variable]:
+    merged = dict(env)
+    for variable in variables or []:
+        merged[casefold_key(variable.name)] = variable
+    return merged
+
+
+__all__ = [
+    "external_mapping_usage",
+    "is_const_candidate",
+    "matches_root_origin",
+    "merge_variable_env",
+    "same_origin_file_stem",
+]

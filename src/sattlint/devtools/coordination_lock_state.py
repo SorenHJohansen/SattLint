@@ -159,7 +159,12 @@ def _hold_lock(repo_root: Path):
         yield
     finally:
         os.close(lock_fd)
-        lock_path.unlink(missing_ok=True)
+        try:
+            current_pid_text = lock_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            current_pid_text = ""
+        if current_pid_text == str(os.getpid()):
+            lock_path.unlink(missing_ok=True)
 
 
 normalize_relative_path = lock_paths.normalize_relative_path

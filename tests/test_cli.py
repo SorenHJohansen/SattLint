@@ -1,6 +1,7 @@
 """CLI behavior tests for SattLint."""
 
 import runpy
+from collections.abc import Mapping
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -10,6 +11,7 @@ import pytest
 import sattlint
 from sattlint import _app_startup, app, app_base, engine
 from sattlint.cli import entry as cli_entry
+from sattlint.models import IssueKind
 from sattlint.models.project_graph import ProjectGraph
 
 
@@ -19,7 +21,9 @@ def _run_base_cli(argv: list[str], **overrides) -> int:
         "load_config_fn": lambda path: ({"debug": False}, False),
         "apply_debug_fn": lambda _cfg: None,
         "run_validate_config_command_fn": lambda cfg, *, config_path, default_used: app_base.EXIT_SUCCESS,
-        "run_analyze_command_fn": lambda cfg, *, selected_keys, use_cache: app_base.EXIT_SUCCESS,
+        "run_analyze_command_fn": lambda cfg, *, selected_keys, selected_issue_kinds=None, use_cache: (
+            app_base.EXIT_SUCCESS
+        ),
         "run_simulate_command_fn": (
             lambda cfg, *, target_path, module_name, mode, max_scans, output_format, output_path, use_cache: (
                 app_base.EXIT_SUCCESS
@@ -39,7 +43,7 @@ def test_build_cli_parser_has_descriptions():
     parser = app_base.build_cli_parser()
 
     assert parser.description
-    action = next(action for action in parser._actions if getattr(action, "choices", None))
+    action = next(action for action in parser._actions if isinstance(getattr(action, "choices", None), Mapping))
     choices = cast(dict[str, object], action.choices)
     syntax_parser = cast(object, choices["syntax-check"])
     assert {
@@ -59,7 +63,7 @@ def test_build_cli_parser_has_descriptions():
 def test_build_cli_parser_repo_audit_includes_dedicated_options():
     parser = app_base.build_cli_parser()
 
-    action = next(action for action in parser._actions if getattr(action, "choices", None))
+    action = next(action for action in parser._actions if isinstance(getattr(action, "choices", None), Mapping))
     choices = cast(dict[str, object], action.choices)
     repo_audit_parser = cast(Any, choices["repo-audit"])
     option_strings = {
@@ -69,6 +73,16 @@ def test_build_cli_parser_repo_audit_includes_dedicated_options():
     }
 
     assert {"--profile", "--fail-on", "--list-checks", "--planning-context"} <= option_strings
+
+
+def test_build_cli_parser_exposes_interactive_ui_override():
+    parser = app_base.build_cli_parser()
+
+    option_strings = {
+        option for parser_action in parser._actions for option in getattr(parser_action, "option_strings", [])
+    }
+
+    assert "--ui" in option_strings
 
 
 def test_run_cli_without_command_returns_usage_error():
@@ -110,6 +124,143 @@ def test_startup_main_routes_cli_argv_to_run_cli() -> None:
     assert seen == {"argv": ["analyze", "--check", "variables"]}
 
 
+def test_startup_main_routes_debug_only_cli_argv_to_interactive_loop() -> None:
+    seen: dict[str, object] = {}
+    cfg = {"debug": False}
+    parser = _FakeParser(
+        args=SimpleNamespace(command=None, config=None, no_cache=False, quiet=False, debug=True),
+    )
+
+    exit_code = _app_startup.main(
+        ["--debug"],
+        run_cli_fn=lambda _argv: pytest.fail("run_cli should not run for interactive debug-only argv"),
+        build_cli_parser_fn=lambda: parser,
+        load_config_fn=lambda _path: (cfg, False),
+        config_path=Path("config.toml"),
+        apply_debug_fn=lambda local_cfg: seen.update({"apply_debug_cfg": dict(local_cfg)}),
+        emit_output_fn=lambda *_args: None,
+        pause_fn=lambda: None,
+        self_check_fn=lambda _cfg: True,
+        confirm_fn=lambda _message: True,
+        has_analyzed_targets_fn=lambda _cfg: False,
+        ensure_ast_cache_fn=lambda _cfg: True,
+        run_main_loop_fn=lambda local_cfg, **kwargs: seen.update(
+            {"main_loop_cfg": dict(local_cfg), "main_loop_kwargs": kwargs}
+        ),
+        clear_screen_fn=lambda: None,
+        print_menu_fn=lambda *_args, **_kwargs: None,
+        menu_option_factory=lambda key, label, description: (key, label, description),
+        summarize_targets_fn=lambda _cfg: "targets",
+        require_targets_for_menu_action_fn=lambda _cfg, _action: True,
+        analysis_menu_fn=lambda _cfg: None,
+        documentation_menu_fn=lambda _cfg: True,
+        config_menu_fn=lambda _cfg: True,
+        tools_menu_fn=lambda _cfg: None,
+        show_help_fn=lambda _cfg: None,
+        save_config_fn=lambda _path, _cfg: None,
+        quit_app_fn=lambda: None,
+        quit_app_error=RuntimeError,
+    )
+
+    assert exit_code == 0
+    assert seen["apply_debug_cfg"] == {"debug": True}
+    assert seen["main_loop_cfg"] == {"debug": True}
+    assert seen["main_loop_kwargs"]["config_path"] == Path("config.toml")
+    assert "choose_menu_option_fn" not in cast(dict[str, object], seen["main_loop_kwargs"])
+    assert "interaction" not in cast(dict[str, object], seen["main_loop_kwargs"])
+
+
+def test_startup_main_routes_ui_only_cli_argv_to_interactive_loop() -> None:
+    seen: dict[str, object] = {}
+    cfg = {"debug": False}
+    parser = _FakeParser(
+        args=SimpleNamespace(command=None, config=None, no_cache=False, quiet=False, debug=False, ui="rich"),
+    )
+
+    exit_code = _app_startup.main(
+        ["--ui", "rich"],
+        run_cli_fn=lambda _argv: pytest.fail("run_cli should not run for interactive ui-only argv"),
+        build_cli_parser_fn=lambda: parser,
+        load_config_fn=lambda _path: (cfg, False),
+        config_path=Path("config.toml"),
+        apply_debug_fn=lambda local_cfg: seen.update({"apply_debug_cfg": dict(local_cfg)}),
+        emit_output_fn=lambda *_args: None,
+        pause_fn=lambda: None,
+        self_check_fn=lambda _cfg: True,
+        confirm_fn=lambda _message: True,
+        has_analyzed_targets_fn=lambda _cfg: False,
+        ensure_ast_cache_fn=lambda _cfg: True,
+        run_main_loop_fn=lambda local_cfg, **kwargs: seen.update(
+            {"main_loop_cfg": dict(local_cfg), "main_loop_kwargs": kwargs}
+        ),
+        clear_screen_fn=lambda: None,
+        print_menu_fn=lambda *_args, **_kwargs: None,
+        menu_option_factory=lambda key, label, description: (key, label, description),
+        summarize_targets_fn=lambda _cfg: "targets",
+        require_targets_for_menu_action_fn=lambda _cfg, _action: True,
+        analysis_menu_fn=lambda _cfg: None,
+        documentation_menu_fn=lambda _cfg: True,
+        config_menu_fn=lambda _cfg: True,
+        tools_menu_fn=lambda _cfg: None,
+        show_help_fn=lambda _cfg: None,
+        save_config_fn=lambda _path, _cfg: None,
+        quit_app_fn=lambda: None,
+        quit_app_error=RuntimeError,
+    )
+
+    assert exit_code == 0
+    assert seen["apply_debug_cfg"] == {"debug": False}
+    assert seen["main_loop_cfg"] == {"debug": False}
+    assert seen["main_loop_kwargs"]["config_path"] == Path("config.toml")
+
+
+def test_startup_main_defaults_plain_interactive_session_to_textual() -> None:
+    seen: dict[str, object] = {}
+    cfg = {"debug": False}
+
+    exit_code = _app_startup.main(
+        None,
+        run_cli_fn=lambda _argv: pytest.fail("run_cli should not run for plain interactive startup"),
+        load_config_fn=lambda _path: (cfg, False),
+        config_path=Path("config.toml"),
+        apply_debug_fn=lambda local_cfg: seen.update({"apply_debug_cfg": dict(local_cfg)}),
+        resolve_interactive_ui_mode_fn=lambda _cfg, override: seen.update({"resolved_override": override}) or "textual",
+        set_interactive_ui_mode_fn=lambda mode: seen.update({"ui_mode": mode}),
+        reset_interactive_ui_mode_fn=lambda: seen.update({"reset_called": True}),
+        emit_output_fn=lambda *_args: None,
+        pause_fn=lambda: None,
+        self_check_fn=lambda _cfg: True,
+        confirm_fn=lambda _message: True,
+        has_analyzed_targets_fn=lambda _cfg: False,
+        ensure_ast_cache_fn=lambda _cfg: True,
+        run_main_loop_fn=lambda local_cfg, **kwargs: seen.update(
+            {"main_loop_cfg": dict(local_cfg), "main_loop_kwargs": kwargs}
+        ),
+        clear_screen_fn=lambda: None,
+        print_menu_fn=lambda *_args, **_kwargs: None,
+        menu_option_factory=lambda key, label, description: (key, label, description),
+        summarize_targets_fn=lambda _cfg: "targets",
+        require_targets_for_menu_action_fn=lambda _cfg, _action: True,
+        analysis_menu_fn=lambda _cfg: None,
+        documentation_menu_fn=lambda _cfg: True,
+        config_menu_fn=lambda _cfg: True,
+        tools_menu_fn=lambda _cfg: None,
+        show_help_fn=lambda _cfg: None,
+        save_config_fn=lambda _path, _cfg: None,
+        quit_app_fn=lambda: None,
+        quit_app_error=RuntimeError,
+    )
+
+    assert exit_code == 0
+    assert seen["apply_debug_cfg"] == {"debug": False}
+    assert seen["resolved_override"] is None
+    assert seen["ui_mode"] == "textual"
+    assert seen["reset_called"] is True
+    assert seen["main_loop_cfg"] == {"debug": False}
+    assert seen["main_loop_kwargs"]["config_path"] == Path("config.toml")
+    assert seen["main_loop_kwargs"]["quit_app_error"] is RuntimeError
+
+
 def test_startup_main_warns_and_pauses_for_default_config() -> None:
     seen: dict[str, object] = {"paused": 0}
     cfg = {"debug": False}
@@ -149,6 +300,8 @@ def test_startup_main_warns_and_pauses_for_default_config() -> None:
     assert seen["message"] == "Warning: Default config created. Open Setup before running analysis."
     assert seen["paused"] == 1
     assert seen["main_loop_cfg"] is cfg
+    assert "choose_menu_option_fn" not in cast(dict[str, object], seen["main_loop_kwargs"])
+    assert "interaction" not in cast(dict[str, object], seen["main_loop_kwargs"])
 
 
 def test_startup_main_aborts_when_self_check_is_rejected() -> None:
@@ -225,6 +378,8 @@ def test_startup_main_pauses_when_ast_cache_setup_fails() -> None:
     assert exit_code == 0
     assert seen["paused"] == 1
     assert seen["main_loop_cfg"] is cfg
+    assert "choose_menu_option_fn" not in cast(dict[str, object], seen["main_loop_kwargs"])
+    assert "interaction" not in cast(dict[str, object], seen["main_loop_kwargs"])
 
 
 def test_startup_main_handles_quit_app_error() -> None:
@@ -576,17 +731,39 @@ def test_run_cli_analyze_passes_flags():
     seen = {}
 
     exit_code = _run_base_cli(
-        ["--no-cache", "analyze", "--check", "variables", "--check", "shadowing"],
+        [
+            "--debug",
+            "--no-cache",
+            "analyze",
+            "--check",
+            "variables",
+            "--check",
+            "shadowing",
+            "--issue-kind",
+            "unused",
+            "--issue-kind",
+            "shadowing",
+        ],
         load_config_fn=lambda path: ({"debug": False}, False),
         apply_debug_fn=lambda _cfg: None,
-        run_analyze_command_fn=lambda cfg, *, selected_keys, use_cache: (
-            seen.update({"cfg": cfg, "selected_keys": selected_keys, "use_cache": use_cache}) or app_base.EXIT_SUCCESS
+        run_analyze_command_fn=lambda cfg, *, selected_keys, selected_issue_kinds, use_cache: (
+            seen.update(
+                {
+                    "cfg": cfg,
+                    "selected_keys": selected_keys,
+                    "selected_issue_kinds": selected_issue_kinds,
+                    "use_cache": use_cache,
+                }
+            )
+            or app_base.EXIT_SUCCESS
         ),
     )
 
     assert exit_code == app_base.EXIT_SUCCESS
     assert seen["selected_keys"] == ["variables", "shadowing"]
+    assert seen["selected_issue_kinds"] == frozenset({"unused", "shadowing"})
     assert seen["use_cache"] is False
+    assert cast(dict[str, Any], seen["cfg"])["debug"] is True
 
 
 def test_run_cli_analyze_passes_opt_in_state_inference_key():
@@ -598,8 +775,16 @@ def test_run_cli_analyze_passes_opt_in_state_inference_key():
         load_config_fn=lambda path: ({"debug": False}, False),
         apply_debug_fn=lambda _cfg: None,
         run_validate_config_command_fn=lambda cfg, *, config_path, default_used: app_base.EXIT_SUCCESS,
-        run_analyze_command_fn=lambda cfg, *, selected_keys, use_cache: (
-            seen.update({"cfg": cfg, "selected_keys": selected_keys, "use_cache": use_cache}) or app_base.EXIT_SUCCESS
+        run_analyze_command_fn=lambda cfg, *, selected_keys, selected_issue_kinds=None, use_cache: (
+            seen.update(
+                {
+                    "cfg": cfg,
+                    "selected_keys": selected_keys,
+                    "selected_issue_kinds": selected_issue_kinds,
+                    "use_cache": use_cache,
+                }
+            )
+            or app_base.EXIT_SUCCESS
         ),
         run_docgen_command_fn=lambda cfg, *, use_cache, output_dir, output_path: app_base.EXIT_SUCCESS,
         run_format_icf_command_fn=lambda cfg, *, check: app_base.EXIT_SUCCESS,
@@ -607,6 +792,7 @@ def test_run_cli_analyze_passes_opt_in_state_inference_key():
 
     assert exit_code == app_base.EXIT_SUCCESS
     assert seen["selected_keys"] == ["state-inference"]
+    assert seen["selected_issue_kinds"] is None
     assert seen["use_cache"] is True
 
 
@@ -624,6 +810,20 @@ def test_run_cli_analyze_list_checks_prints_available_keys(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert exit_code == app_base.EXIT_SUCCESS
     assert captured.out.splitlines() == ["variables", "timing"]
+    assert captured.err == ""
+
+
+def test_run_cli_analyze_list_issue_kinds_prints_values_without_loading_config(capsys):
+    exit_code = cli_entry.run_cli(
+        ["analyze", "--list-issue-kinds"],
+        config_path=Path("config.toml"),
+        load_config_fn=lambda _path: pytest.fail("load_config should not run for --list-issue-kinds"),
+        apply_debug_fn=lambda _cfg: pytest.fail("apply_debug should not run for --list-issue-kinds"),
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == app_base.EXIT_SUCCESS
+    assert captured.out.splitlines() == [issue_kind.value for issue_kind in IssueKind]
     assert captured.err == ""
 
 
@@ -1025,6 +1225,48 @@ def test_cli_entry_telemetry_summary_requires_handler():
             load_config_fn=lambda _path: ({"debug": False}, False),
             apply_debug_fn=lambda _cfg: None,
         )
+
+
+def test_cli_entry_telemetry_summary_skips_config_loading():
+    parser = _FakeParser(
+        args=SimpleNamespace(
+            command="telemetry-summary",
+            checks=[],
+            config="broken.toml",
+            no_cache=False,
+            quiet=False,
+            format="json",
+            output="summary.json",
+        ),
+    )
+    seen: dict[str, Any] = {}
+
+    exit_code = cli_entry.run_cli(
+        ["--config", "broken.toml", "telemetry-summary", "--format", "json", "--output", "summary.json"],
+        config_path=Path("config.toml"),
+        build_cli_parser_fn=lambda: parser,
+        load_config_fn=lambda _path: (_ for _ in ()).throw(AssertionError("config should not be loaded")),
+        apply_debug_fn=lambda _cfg: (_ for _ in ()).throw(AssertionError("debug should not be applied")),
+        run_telemetry_summary_command_fn=lambda cfg, *, config_path, output_format, output_path: (
+            seen.update(
+                {
+                    "cfg": cfg,
+                    "config_path": config_path,
+                    "output_format": output_format,
+                    "output_path": output_path,
+                }
+            )
+            or cli_entry.EXIT_SUCCESS
+        ),
+    )
+
+    assert exit_code == cli_entry.EXIT_SUCCESS
+    assert seen == {
+        "cfg": {},
+        "config_path": Path("broken.toml"),
+        "output_format": "json",
+        "output_path": "summary.json",
+    }
 
 
 def test_cli_entry_simulate_requires_handler():

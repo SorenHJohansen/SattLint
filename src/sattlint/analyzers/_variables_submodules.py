@@ -71,9 +71,17 @@ def _walk_submodule_headers(
     inst_context: ScopeContext,
     child_path: list[str],
 ) -> None:
-    self.walk_header_enable(child.header, inst_context, path=child_path)
-    self.walk_header_invoke_tails(child.header, inst_context, path=child_path)
-    self.walk_header_groupconn(child.header, inst_context, path=child_path)
+    walk_header_enable = getattr(self, "walk_header_enable", None)
+    if callable(walk_header_enable):
+        walk_header_enable(child.header, inst_context, path=child_path)
+
+    walk_header_invoke_tails = getattr(self, "walk_header_invoke_tails", None)
+    if callable(walk_header_invoke_tails):
+        walk_header_invoke_tails(child.header, inst_context, path=child_path)
+
+    walk_header_groupconn = getattr(self, "walk_header_groupconn", None)
+    if callable(walk_header_groupconn):
+        walk_header_groupconn(child.header, inst_context, path=child_path)
 
 
 def _walk_singlemodule_subtree(
@@ -92,6 +100,7 @@ def _walk_singlemodule_subtree(
     )
     self.contexts_by_module_path[tuple(child_path)] = child_context
 
+    _walk_submodule_headers(self, child, child_context, child_path)
     self.walk_moduledef(child.moduledef, child_context, child_path)
     self.walk_module_code(child.modulecode, child_context, child_path)
     _walk_submodules(self, child.submodules or [], child_context, child_path)
@@ -142,6 +151,7 @@ def _walk_singlemodule_subtree(
         child,
         child_env=child_context.env,
         parent_env=parent_context.env,
+        parent_context=parent_context,
         parent_path=child_path,
     )
 
@@ -171,8 +181,27 @@ def _walk_moduletype_instance_subtree(
     parent_path: list[str],
     child_path: list[str],
     child_display_path: list[str],
+    header_context: ScopeContext | None = None,
 ) -> None:
     child_name = child.header.name
+    resolved_header_context: ScopeContext
+    if header_context is None:
+        repath_context = getattr(self, "repath_context", None)
+        if callable(repath_context):
+            resolved_header_context = cast(
+                ScopeContext,
+                repath_context(
+                    parent_context,
+                    module_path=child_path,
+                    display_module_path=child_display_path,
+                ),
+            )
+        else:
+            resolved_header_context = parent_context
+        _walk_submodule_headers(self, child, resolved_header_context, child_path)
+    else:
+        resolved_header_context = header_context
+
     external = self.is_external_typename(child.moduletype_name)
     moduletype: ModuleTypeDef | None = None
 
@@ -214,9 +243,15 @@ def _walk_moduletype_instance_subtree(
             display_module_path=child_display_path,
         )
         self.contexts_by_module_path[tuple(child_path)] = typedef_context
+        _walk_submodule_headers(self, child, typedef_context, child_path)
 
         if mt_key not in self.param_reads_by_typedef and mt_key not in self.analyzing_typedefs:
-            self.analyze_typedef_with_context(moduletype, typedef_context, path=child_path)
+            if dependency_owned_moduletype:
+                # Traverse dependency typedefs for usage propagation, but keep findings on the edge mapping.
+                with self.divert_issue_collection():
+                    self.analyze_typedef_with_context(moduletype, typedef_context, path=child_path)
+            else:
+                self.analyze_typedef_with_context(moduletype, typedef_context, path=child_path)
 
         for mapping in child.parametermappings or []:
             full_source_name = _mapping_source_full_ref(mapping)
@@ -280,6 +315,7 @@ def _walk_moduletype_instance_subtree(
         self.check_param_mappings_for_type_instance(
             child,
             parent_env=parent_context.env,
+            parent_context=parent_context,
             parent_path=[*parent_path, child_name],
             current_library=parent_context.current_library,
         )
@@ -309,14 +345,23 @@ def _walk_submodules(
             module_path=child_path,
             display_module_path=child_display_path,
         )
-        _walk_submodule_headers(self, child, inst_context, child_path)
 
         if isinstance(child, SingleModule):
             _walk_singlemodule_subtree(self, child, parent_context, parent_path, child_path, child_display_path)
         elif isinstance(child, FrameModule):
+            _walk_submodule_headers(self, child, inst_context, child_path)
             _walk_framemodule_subtree(self, child, parent_context, child_path, child_display_path)
         else:
-            _walk_moduletype_instance_subtree(self, child, parent_context, parent_path, child_path, child_display_path)
+            _walk_submodule_headers(self, child, inst_context, child_path)
+            _walk_moduletype_instance_subtree(
+                self,
+                child,
+                parent_context,
+                parent_path,
+                child_path,
+                child_display_path,
+                inst_context,
+            )
 
 
 def _propagate_mapping_to_parent(

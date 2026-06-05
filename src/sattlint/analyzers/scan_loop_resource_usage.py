@@ -18,6 +18,7 @@ from sattline_parser.models.ast_model import (
 )
 
 from ..grammar import constants as const
+from ._walk_utils import iter_nested_modules
 from .framework import Issue, SimpleReport
 from .sattline_builtins import get_function_signature
 
@@ -51,12 +52,10 @@ class ScanLoopResourceUsageAnalyzer:
         *,
         parent_path: list[str],
     ) -> None:
-        for module in modules:
+        for module, module_path in iter_nested_modules(modules, parent_path=parent_path):
             if isinstance(module, ModuleTypeInstance):
                 continue
-            module_path = [*parent_path, module.header.name]
             self._scan_modulecode(module_path, module.modulecode)
-            self._walk_modules(module.submodules or [], parent_path=module_path)
 
     def _scan_modulecode(
         self,

@@ -13,10 +13,13 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
+from .._validation_type_helpers import resolve_variable_field_datatype as _resolve_variable_field_datatype
 from ..casefolding import casefold_key, is_anytype_name
 from ..reporting.variables_report import IssueKind, VariableIssue
-from ..resolution.common import resolve_moduletype_def_strict, varname_base
+from ..resolution.common import resolve_moduletype_def_strict, varname_base, varname_full
+from ..resolution.scope import ScopeContext
 from ._validators import AnyTypeFieldContract
+from ._walk_utils import iter_nested_modules
 
 if TYPE_CHECKING:
     from .variables import VariablesAnalyzer
@@ -57,15 +60,13 @@ def _collect_module_vars(
     mods: list[SingleModule | FrameModule | ModuleTypeInstance],
     index: dict[str, list[Variable]],
 ) -> None:
-    for module in mods or []:
-        if isinstance(module, SingleModule):
-            for variable in module.moduleparameters or []:
-                index.setdefault(variable.name.lower(), []).append(variable)
-            for variable in module.localvariables or []:
-                index.setdefault(variable.name.lower(), []).append(variable)
-            _collect_module_vars(module.submodules or [], index)
-        elif isinstance(module, FrameModule):
-            _collect_module_vars(module.submodules or [], index)
+    for module, _module_path in iter_nested_modules(mods, parent_path=[]):
+        if not isinstance(module, SingleModule):
+            continue
+        for variable in module.moduleparameters or []:
+            index.setdefault(casefold_key(variable.name), []).append(variable)
+        for variable in module.localvariables or []:
+            index.setdefault(casefold_key(variable.name), []).append(variable)
 
 
 def _iter_anytype_typedefs(self: VariablesAnalyzer) -> list[ModuleTypeDef]:
@@ -146,7 +147,7 @@ def _get_required_parameter_names_for_typedef(
             continue
         if usage.is_display_only:
             continue
-        required_names[variable.name.casefold()] = variable.name
+        required_names[casefold_key(variable.name)] = variable.name
 
     self.required_parameter_names_by_owner[owner_id] = required_names
     return required_names
@@ -174,22 +175,26 @@ def _check_param_mappings_for_single(
     mod: SingleModule,
     child_env: dict[str, Variable],
     parent_env: dict[str, Variable],
+    parent_context: ScopeContext,
     parent_path: list[str],
 ) -> None:
+    if getattr(self, "_suppress_param_mapping_validation_depth", 0) > 0:
+        return
+
     if not _should_collect_any_issue_kinds(self, _PARAM_MAPPING_VALIDATION_ISSUE_KINDS):
         return
 
-    params_by_name = {v.name.casefold(): v for v in (mod.moduleparameters or [])}
+    params_by_name = {casefold_key(v.name): v for v in (mod.moduleparameters or [])}
     if _should_collect_issue_kind(self, IssueKind.REQUIRED_PARAMETER_CONNECTION):
         mapped_target_keys = {
-            target_name.casefold()
+            casefold_key(target_name)
             for pm in mod.parametermappings or []
             for target_name in [varname_base(cast(Any, pm).target)]
-            if target_name and target_name.casefold() in params_by_name
+            if target_name and casefold_key(target_name) in params_by_name
         }
 
         for parameter in mod.moduleparameters or []:
-            if parameter.name.casefold() in mapped_target_keys:
+            if casefold_key(parameter.name) in mapped_target_keys:
                 continue
             usage = self.get_usage(parameter)
             if not (usage.read or usage.written):
@@ -211,16 +216,20 @@ def _check_param_mappings_for_single(
     for pm in mod.parametermappings or []:
         tgt_name = varname_base(cast(Any, pm).target)
         tgt_var = params_by_name.get(tgt_name) if tgt_name else None
-        self.check_param_mapping(pm, tgt_var, parent_env, parent_path)
+        self.check_param_mapping(pm, tgt_var, parent_env, parent_context, parent_path)
 
 
 def _check_param_mappings_for_type_instance(
     self: VariablesAnalyzer,
     inst: ModuleTypeInstance,
     parent_env: dict[str, Variable],
+    parent_context: ScopeContext,
     parent_path: list[str],
     current_library: str | None = None,
 ) -> None:
+    if getattr(self, "_suppress_param_mapping_validation_depth", 0) > 0:
+        return
+
     if not _should_collect_any_issue_kinds(self, _PARAM_MAPPING_VALIDATION_ISSUE_KINDS):
         return
 
@@ -233,13 +242,13 @@ def _check_param_mappings_for_type_instance(
         )
     except ValueError:
         return
-    params_by_name = {v.name.casefold(): v for v in (mt.moduleparameters or [])}
+    params_by_name = {casefold_key(v.name): v for v in (mt.moduleparameters or [])}
     if _should_collect_issue_kind(self, IssueKind.REQUIRED_PARAMETER_CONNECTION):
         mapped_target_keys = {
-            target_name.casefold()
+            casefold_key(target_name)
             for pm in inst.parametermappings or []
             for target_name in [varname_base(cast(Any, pm).target)]
-            if target_name and target_name.casefold() in params_by_name
+            if target_name and casefold_key(target_name) in params_by_name
         }
         required_parameter_names = self.get_required_parameter_names_for_typedef(mt)
         for required_key in sorted(required_parameter_names):
@@ -267,9 +276,57 @@ def _check_param_mappings_for_type_instance(
             pm,
             tgt_var,
             parent_env,
+            parent_context,
             parent_path,
             owner_contract_id=id(mt),
         )
+
+
+def _source_issue_metadata(
+    self: VariablesAnalyzer,
+    source_context: ScopeContext | None,
+    source_ref: object,
+    source_var: Variable | None,
+) -> tuple[Variable | None, list[str] | None, str | None, str | None]:
+    def _issue_variable(variable: Variable, field_path: str) -> Variable:
+        if not field_path:
+            return variable
+
+        field_segments = tuple(segment for segment in field_path.split(".") if segment)
+        datatype = _resolve_variable_field_datatype(variable, field_segments, self.type_graph)
+        return Variable(
+            name=f"{variable.name}.{field_path}",
+            datatype=datatype or variable.datatype,
+        )
+
+    if source_context is None:
+        if source_var is not None:
+            full_source_name = varname_full(source_ref)
+            if isinstance(full_source_name, str) and "." in full_source_name:
+                issue_var = _issue_variable(source_var, full_source_name.split(".", 1)[1])
+                return issue_var, None, None, issue_var.name
+        return source_var, None, None, source_var.name if source_var is not None else None
+
+    full_source_name = varname_full(source_ref)
+    if not full_source_name:
+        return source_var, None, None, source_var.name if source_var is not None else None
+
+    resolved_var, field_prefix, decl_path, _decl_display_path = source_context.resolve_variable(full_source_name)
+    effective_var = resolved_var or source_var
+    if effective_var is None:
+        return None, None, None, None
+
+    declaring_context = self.contexts_by_module_path.get(tuple(decl_path))
+    if declaring_context is None and decl_path == source_context.module_path:
+        declaring_context = source_context
+
+    source_role: str | None = None
+    if declaring_context is not None:
+        source_key = casefold_key(effective_var.name)
+        source_role = "moduleparameter" if source_key in declaring_context.moduleparameter_keys else "localvariable"
+
+    issue_var = _issue_variable(effective_var, field_prefix)
+    return issue_var, list(decl_path), source_role, issue_var.name
 
 
 def _check_param_mapping(
@@ -277,6 +334,7 @@ def _check_param_mapping(
     pm: ParameterMapping,
     tgt_var: Variable | None,
     parent_env: dict[str, Variable],
+    source_context: ScopeContext | None,
     path: list[str],
     *,
     owner_contract_id: int | None = None,
@@ -304,10 +362,57 @@ def _check_param_mapping(
     ):
         self.append_param_mapping_issue(pm, issue)
 
+    target_name = varname_full(cast(Any, pm).target) or tgt_var.name
+    target_datatype, target_field_path = self.contract_validator.resolve_target_datatype(target_name, tgt_var)
+    target_issue_var = (
+        Variable(name=target_name, datatype=target_datatype)
+        if target_field_path and target_datatype is not None
+        else tgt_var
+    )
+
     if src_var is None:
+        if pm.source_literal is not None:
+            for issue in self.string_validator.check_string_literal_mapping(
+                target_issue_var,
+                pm.source_literal,
+                path,
+                is_duration=bool(pm.is_duration),
+            ):
+                issue.source_decl_module_path = list(path)
+                issue.source_role = "literal"
+                issue.target_display_name = target_name
+                self.append_param_mapping_issue(pm, issue)
         return
 
-    for issue in self.string_validator.check_string_mapping(tgt_var, src_var, path):
+    current_source_datatype, current_source_name = self.contract_validator.resolve_source_datatype(pm, src_var)
+    current_source_var = (
+        Variable(
+            name=current_source_name,
+            datatype=src_var.datatype if current_source_datatype is None else current_source_datatype,
+        )
+        if current_source_name is not None
+        and (current_source_name != src_var.name or current_source_datatype not in {None, src_var.datatype})
+        else src_var
+    )
+
+    source_issue_var, source_decl_module_path, source_role, source_display_name = _source_issue_metadata(
+        self, source_context, source_ref, src_var
+    )
+    preferred_source_issue_var = source_issue_var or current_source_var
+    if "." in current_source_var.name and (
+        source_issue_var is None
+        or "." not in source_issue_var.name
+        or source_issue_var.datatype_text == src_var.datatype_text
+    ):
+        preferred_source_issue_var = current_source_var
+        source_display_name = current_source_var.name
+
+    for issue in self.string_validator.check_string_mapping(target_issue_var, current_source_var, path):
+        issue.source_variable = preferred_source_issue_var
+        issue.source_decl_module_path = source_decl_module_path
+        issue.source_role = source_role
+        issue.source_display_name = source_display_name
+        issue.target_display_name = target_name
         self.append_param_mapping_issue(pm, issue)
     for issue in self.min_max_validator.check_min_max_mapping(pm, tgt_var, src_var, path):
         self.append_param_mapping_issue(pm, issue)

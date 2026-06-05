@@ -312,17 +312,17 @@ def test_documentation_menu_routes_actions_tracks_dirty_and_handles_invalid_choi
     monkeypatch.setattr(
         app_docs,
         "reset_documentation_scope",
-        lambda *, pause_fn: actions.append("reset") or True,
+        lambda **_kwargs: actions.append("reset") or True,
     )
     monkeypatch.setattr(
         app_docs,
         "configure_documentation_scope_by_moduletype",
-        lambda *, split_csv_values_fn, pause_fn: actions.append("moduletype") or True,
+        lambda **_kwargs: actions.append("moduletype") or True,
     )
     monkeypatch.setattr(
         app_docs,
         "configure_documentation_scope_by_instance_path",
-        lambda *, split_csv_values_fn, pause_fn: actions.append("instance_path") or False,
+        lambda **_kwargs: actions.append("instance_path") or False,
     )
     monkeypatch.setattr(builtins, "input", make_input(["1", "2", "3", "4", "5", "x", "b"]))
 
@@ -331,7 +331,7 @@ def test_documentation_menu_routes_actions_tracks_dirty_and_handles_invalid_choi
         dirty = app_docs.documentation_menu(
             {"documentation": {}},
             clear_screen_fn=lambda: clears.append("clear"),
-            print_menu_fn=lambda title, options, intro=None: menus.append((title, len(options), intro)),
+            print_menu_fn=lambda title, options, intro=None, note=None: menus.append((title, len(options), intro)),
             menu_option_factory=lambda key, label, description: {
                 "key": key,
                 "label": label,
@@ -382,7 +382,7 @@ def test_documentation_menu_handles_keyboard_interrupt_and_returns_default_false
     monkeypatch.setattr(
         app_docs,
         "configure_documentation_scope_by_moduletype",
-        lambda *, split_csv_values_fn, pause_fn: (_ for _ in ()).throw(KeyboardInterrupt()),
+        lambda **_kwargs: (_ for _ in ()).throw(KeyboardInterrupt()),
     )
 
     dirty = app_docs.documentation_menu(

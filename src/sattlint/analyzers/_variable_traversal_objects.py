@@ -38,6 +38,10 @@ def _walk_header_groupconn(self: VariablesAnalyzer, header: Any, context: ScopeC
     base = var_dict.get(const.KEY_VAR_NAME)
     if not isinstance(base, str):
         return
+    local_var = context.env.get(base.casefold())
+    if local_var is not None:
+        self._get_usage(local_var).mark_read(path)
+        return
     var, _field_prefix, _decl_path, _decl_display = context.resolve_variable(base)
     if var is not None:
         self._mark_ref_access(base, context, path, AccessKind.READ)
@@ -53,6 +57,10 @@ def _walk_typedef_groupconn(self: VariablesAnalyzer, mt: Any, context: ScopeCont
         return
     base = var_dict.get(const.KEY_VAR_NAME)
     if not isinstance(base, str):
+        return
+    local_var = context.env.get(base.casefold())
+    if local_var is not None:
+        self._get_usage(local_var).mark_read(path)
         return
     var, _field_prefix, _decl_path, _decl_display = context.resolve_variable(base)
     if var is not None:
@@ -89,7 +97,10 @@ def _walk_graph_object(self: VariablesAnalyzer, go: Any, context: ScopeContext, 
 def _walk_interact_object(self: VariablesAnalyzer, io: Any, context: ScopeContext, path: list[str]) -> None:
     props = cast(dict[str, Any], getattr(io, "properties", {}) or {})
     for tail in cast(list[Any], props.get(const.KEY_TAILS, []) or []):
-        self._walk_tail(tail, context, path, is_ui_read=True)
+        if getattr(tail, "data", None) == const.GRAMMAR_VALUE_OUTVAR_PREFIX:
+            self._walk_output_tail(tail, context, path, is_ui_read=True)
+        else:
+            self._walk_tail(tail, context, path, is_ui_read=True)
     self._scan_for_varrefs(props.get(const.KEY_BODY), context, path, is_ui_read=True)
 
     procedure = props.get(const.KEY_PROCEDURE)

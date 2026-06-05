@@ -1,5 +1,3 @@
-# pyright: reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownVariableType=false
-
 """Rename and completion focused LSP tests."""
 
 from __future__ import annotations

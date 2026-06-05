@@ -396,6 +396,30 @@ def test_validation_type_helpers_cover_predicates_literals_and_matching() -> Non
         type_helpers_module._resolve_variable_field_datatype(env["config"], ("Inner", "Weight"), graph)
         == Simple_DataType.REAL
     )
+    assert (
+        type_helpers_module._resolve_variable_field_datatype(
+            Variable(name="Station", datatype="ProgStationData"),
+            ("TimeFormats", "DateAndTime"),
+            TypeGraph.from_datatypes([]),
+        )
+        == Simple_DataType.STRING
+    )
+    assert (
+        type_helpers_module._resolve_variable_field_datatype(
+            Variable(name="Acof", datatype="AcofType"),
+            ("Elapsed",),
+            TypeGraph.from_datatypes([]),
+        )
+        == Simple_DataType.DURATION
+    )
+    assert (
+        type_helpers_module._resolve_variable_field_datatype(
+            Variable(name="Signal", datatype="IP4Signal"),
+            ("Parameters", "Unit"),
+            TypeGraph.from_datatypes([]),
+        )
+        == Simple_DataType.IDENTSTRING
+    )
     assert type_helpers_module._resolve_variable_field_datatype(env["config"], ("Counter", "Leaf"), graph) is None
     assert type_helpers_module._resolve_variable_field_datatype(env["config"], ("Missing",), graph) is None
     assert type_helpers_module._infer_literal_datatype(True) == Simple_DataType.BOOLEAN
@@ -426,6 +450,46 @@ def test_validation_type_helpers_cover_predicates_literals_and_matching() -> Non
     assert type_helpers_module._normalize_builtin_datatype("CustomType") == "CustomType"
     assert (
         type_helpers_module._resolve_ref_datatype(_var_ref("Config.Inner.Leaf"), env, graph) == Simple_DataType.BOOLEAN
+    )
+    assert (
+        type_helpers_module._resolve_ref_datatype(
+            _var_ref("ProgStationData.TimeFormats.DateAndTime"),
+            {"progstationdata": Variable(name="ProgStationData", datatype="ProgStationData")},
+            TypeGraph.from_datatypes([]),
+        )
+        == Simple_DataType.STRING
+    )
+    assert (
+        type_helpers_module._resolve_ref_datatype(
+            _var_ref("Signal.Parameters.Unit"),
+            {"signal": Variable(name="Signal", datatype="IP4Signal")},
+            TypeGraph.from_datatypes([]),
+        )
+        == Simple_DataType.IDENTSTRING
+    )
+    assert (
+        type_helpers_module._resolve_ref_datatype(
+            _var_ref("Pid.Gain"),
+            {"pid": Variable(name="Pid", datatype="PidPar")},
+            TypeGraph.from_datatypes([]),
+        )
+        == Simple_DataType.REAL
+    )
+    assert (
+        type_helpers_module._resolve_ref_datatype(
+            _var_ref("Selector.Signal.Valid"),
+            {"selector": Variable(name="Selector", datatype="SelectorChain")},
+            TypeGraph.from_datatypes([]),
+        )
+        == Simple_DataType.BOOLEAN
+    )
+    assert (
+        type_helpers_module._resolve_ref_datatype(
+            _var_ref("Adaptive.RampDuration"),
+            {"adaptive": Variable(name="Adaptive", datatype="AdaptivePidPar")},
+            TypeGraph.from_datatypes([]),
+        )
+        == Simple_DataType.DURATION
     )
     assert type_helpers_module._resolve_ref_datatype(_var_ref("Config.Inner.Missing"), env, graph) is None
     assert type_helpers_module._resolve_ref_datatype(_var_ref("Config.Counter.Leaf"), env, graph) is None
@@ -497,6 +561,8 @@ def test_validation_type_helpers_cover_predicates_literals_and_matching() -> Non
     assert type_helpers_module._assignment_type_matches("CustomType", Simple_DataType.INTEGER) is False
     assert type_helpers_module._assignment_type_matches(Simple_DataType.INTEGER, "CustomType") is False
     assert type_helpers_module._assignment_type_matches("CustomType", "customtype") is True
+    assert "ProgStationData" in type_helpers_module.BUILTIN_DATATYPE_NAMES
+    assert "AdaptivePidPar" in type_helpers_module.BUILTIN_DATATYPE_NAMES
 
 
 def test_validation_expression_helpers_cover_iterators_and_type_inference(monkeypatch) -> None:

@@ -33,11 +33,10 @@ SKIP_SELF_SCAN_PATHS = {
     "src/sattlint/devtools/leak_detection.py",
     "src/sattlint/devtools/repo_audit.py",
     "src/sattlint/devtools/repo_audit_shared.py",
-    "tests/test_repo_audit.py",
 }
 SKIP_SELF_SCAN_PREFIXES = (
-    "tests/_pipeline_collection_part",
-    "tests/_repo_audit_part",
+    "tests/test_pipeline_collection_part",
+    "tests/test_repo_audit_part",
 )
 WINDOWS_PATH_RE = re.compile(r"(?<![\w/])(?:[A-Za-z]:[\\/][^\s'\">|]+)")
 UNIX_PATH_RE = re.compile(r"(?<![\w.])/(?:home|Users|mnt/c|mnt/[A-Za-z]/Users)/[^\s'\">]+")

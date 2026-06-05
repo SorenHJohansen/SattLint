@@ -184,7 +184,13 @@
 				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
 			},
 			"args": [
-				"scripts/run_pre_push_gate.py"
+				"-m",
+				"sattlint.devtools.repo_audit",
+				"--profile",
+				"full",
+				"--check-my-changes",
+				"--output-dir",
+				"artifacts/audit"
 			],
 			"group": "build",
 			"problemMatcher": []
@@ -395,6 +401,41 @@
 			"group": "test"
 		},
 		{
+			"label": "AI: Validate app_textual",
+			"type": "process",
+			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"-m",
+				"pytest",
+				"--no-cov",
+				"tests/test_app_textual.py",
+				"-q",
+				"--tb=short"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "AI: Pyright app_textual",
+			"type": "process",
+			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"-m",
+				"pyright",
+				"src/sattlint/app_textual.py"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
 			"label": "AI: Validate unused report dedupe",
 			"type": "process",
 			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
@@ -516,7 +557,7 @@
 				"pyright",
 				"src/sattlint/analyzers/_variables_access.py",
 				"src/sattlint/analyzers/dataflow.py",
-				"src/sattlint/analyzers/variable_issue_collection.py",
+				"src/sattlint/analyzers/_variable_issue_collection.py",
 				"src/sattlint/analyzers/_variables_execution.py",
 				"src/sattlint/analyzers/_variables_submodules.py",
 				"tests/test_analyzers_variables.py"
@@ -537,7 +578,7 @@
 				"pyright",
 				"src/sattlint/analyzers/_variables_access.py",
 				"src/sattlint/analyzers/dataflow.py",
-				"src/sattlint/analyzers/variable_issue_collection.py",
+				"src/sattlint/analyzers/_variable_issue_collection.py",
 				"src/sattlint/analyzers/_variables_execution.py",
 				"src/sattlint/analyzers/_variables_submodules.py",
 				"tests/test_analyzers_variables.py"

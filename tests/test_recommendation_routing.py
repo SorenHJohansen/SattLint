@@ -16,7 +16,7 @@ from sattlint.devtools.pipeline_checks import (
 PIPELINE_ROUTE_CASES = {
     "ruff": ("src/sattlint/devtools/pipeline.py", "docs/references/cli-commands.md"),
     "pyright": ("src/sattlint/devtools/pipeline.py", "docs/references/cli-commands.md"),
-    "pytest": ("tests/test_pipeline.py", "docs/references/cli-commands.md"),
+    "pytest": ("tests/test_pipeline_run.py", "docs/references/cli-commands.md"),
     "vulture": ("src/sattlint/devtools/pipeline.py", "docs/references/cli-commands.md"),
     "bandit": ("src/sattlint/devtools/pipeline.py", "docs/references/cli-commands.md"),
     "structural-reports": ("src/sattlint/devtools/repo_audit.py", "docs/references/cli-commands.md"),
@@ -26,7 +26,7 @@ PIPELINE_ROUTE_CASES = {
 
 REPO_AUDIT_ROUTE_CASES = {
     "text-scan": ("README.md", "LICENSE"),
-    "local-ci-parity": ("tests/test_repo_audit.py", "LICENSE"),
+    "local-ci-parity": ("tests/test_repo_audit_part1.py", "LICENSE"),
     "documented-commands": ("docs/references/cli-commands.md", "src/sattline_parser/api.py"),
     "unused-config-keys": ("src/sattlint/config.py", "README.md"),
     "architecture": ("src/sattlint/devtools/repo_audit.py", "README.md"),

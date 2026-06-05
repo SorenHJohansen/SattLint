@@ -1,5 +1,3 @@
-# pyright: reportMissingParameterType=false, reportPrivateUsage=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownVariableType=false
-
 """Workspace document and workspace-diagnostics focused LSP tests."""
 
 from __future__ import annotations

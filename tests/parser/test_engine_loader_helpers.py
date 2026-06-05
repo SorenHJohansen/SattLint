@@ -648,7 +648,7 @@ def test_loader_status_and_lookup_wrappers_cover_blank_duplicate_and_forget(
     monkeypatch.setattr(loader, "_find_deps_with_context", lambda _name, requester_dir=None: tmp_path / "Cached.l")
 
     assert loader._find_code("Program") == tmp_path / "Cached.s"
-    assert loader._find_deps("Program") == tmp_path / "Cached.l"
+    assert loader._find_deps_with_context("Program", requester_dir=None) == tmp_path / "Cached.l"
     assert status_messages == ["Loading Root", "Loading Dep"]
     assert cache.forget_calls == [("code", "Program", "draft")]
 
@@ -1090,7 +1090,7 @@ def test_loader_read_and_library_helpers_cover_all_library_roots(
     external_path = tmp_path.parent / "ExternalLib" / "Program.s"
 
     assert loader._read_deps(tmp_path / "Program.l") == ["DepA", "DepB"]
-    assert loader._read_text_simple(tmp_path / "Program.s") == " DepA \n\nDepB\n"
+    assert engine.read_text_with_fallback(tmp_path / "Program.s") == " DepA \n\nDepB\n"
     assert loader._library_name_for_path(tmp_path / "Program.s") == tmp_path.name
     assert loader._library_name_for_path(other_lib / "Program.s") == "OtherLib"
     assert loader._library_name_for_path(abb_lib / "Program.s") == "AbbLib"

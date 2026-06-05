@@ -5,20 +5,30 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-# Define the layers based on SattLint architecture from AGENTS.md
-# We define layers such that dependencies should only go from higher layer number to lower (or same)
-# Layer 0: Foundational (parser)
-# Layer 1: Core semantics
-# Layer 2: CLI and tools
-# Layer 3: LSP
-# Layer 4: VS Code client
+# Define the layers based on SattLint architecture from AGENTS.md and docs/architecture.md
+# Dependencies must only flow from higher layer number to lower (or same).
+# Layer 0: sattline_parser  - grammar, AST, transformer
+# Layer 1: sattlint.models  - pure data containers and enums
+# Layer 2: sattlint.core    - semantic snapshots, diagnostics, semantic indexes
+# Layer 3: sattlint.resolution - scope building, symbol tables, context builders
+# Layer 4: sattlint.analyzers  - the 34+ analysis checks
+# Layer 5: sattlint (app root) - project loading, engine, config, orchestration
+# Layer 6: sattlint.reporting  - report rendering and formatting
+# Layer 7: sattlint_lsp        - language server
+# Layer 8: vscode              - VS Code extension client
+# Layer 9: sattlint.devtools   - tooling-only; must not be imported by layers 0-7
 
 LAYER_MAP = {
     "sattline_parser": 0,
-    "sattlint.core": 1,
-    "sattlint": 2,
-    "sattlint_lsp": 3,
-    "vscode": 4,
+    "sattlint.models": 1,
+    "sattlint.core": 2,
+    "sattlint.resolution": 3,
+    "sattlint.analyzers": 4,
+    "sattlint": 5,
+    "sattlint.reporting": 6,
+    "sattlint_lsp": 7,
+    "vscode": 8,
+    "sattlint.devtools": 9,
 }
 
 # Allowed dependencies: a layer can depend on same layer or lower layers (lower number)
@@ -66,12 +76,13 @@ def get_layer_for_module(module_name: str) -> int:
     if module_name in LAYER_MAP:
         return LAYER_MAP[module_name]
 
-    # Check for parent package matches
-    for prefix, layer in LAYER_MAP.items():
+    # Sort by prefix length descending so the most specific prefix wins
+    # (e.g. sattlint.devtools before sattlint)
+    for prefix, layer in sorted(LAYER_MAP.items(), key=lambda x: len(x[0]), reverse=True):
         if module_name.startswith(prefix + ".") or module_name == prefix:
             return layer
 
-    # If not found, assume it's an external or unknown layer (we'll treat as layer -1 for safety)
+    # Unknown/external module
     return -1
 
 
@@ -138,8 +149,14 @@ def check_file_for_arch_violations(file_path: Path) -> list[ArchViolation]:
                             message=message,
                         )
                     )
-    except Exception:
-        # If we can't parse the file, skip it (but we might want to log this)
+    except Exception as exc:
+        violations.append(
+            ArchViolation(
+                file=str(file_path),
+                line=0,
+                message=f"Failed to parse file for architecture check: {exc}",
+            )
+        )
         return violations
 
     return violations

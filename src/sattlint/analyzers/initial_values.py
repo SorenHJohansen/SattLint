@@ -13,6 +13,7 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
+from ..casefolding import casefold_equal, casefold_key
 from ..grammar import constants as const
 from ..resolution.common import (
     format_moduletype_label,
@@ -20,7 +21,9 @@ from ..resolution.common import (
     varname_base,
     varname_full,
 )
+from ._walk_utils import walk_nested_modules_with_state
 from .framework import Issue, empty_issues, format_report_header
+from .variable_utils import matches_root_origin, merge_variable_env
 
 _PARAMETER_CATEGORY_MARKERS = {
     "recipe": ("recpar",),
@@ -144,22 +147,14 @@ class InitialValueAnalyzer:
         return self._issues
 
     def _is_from_root_origin(self, origin_file: str | None) -> bool:
-        if not origin_file:
-            return True
-        root_origin = getattr(self.bp, "origin_file", None)
-        if not root_origin:
-            return False
-        return origin_file.rsplit(".", 1)[0].casefold() == root_origin.rsplit(".", 1)[0].casefold()
+        return matches_root_origin(origin_file, getattr(self.bp, "origin_file", None))
 
     def _merge_env(
         self,
         parent_env: dict[str, Variable],
         variables: list[Variable] | None,
     ) -> dict[str, Variable]:
-        merged = dict(parent_env)
-        for variable in variables or []:
-            merged[variable.name.casefold()] = variable
-        return merged
+        return merge_variable_env(parent_env, variables)
 
     def _walk_moduletype_def(
         self,
@@ -184,34 +179,34 @@ class InitialValueAnalyzer:
         env: dict[str, Variable],
         current_library: str | None,
     ) -> None:
-        for child in children:
-            child_path = [*parent_path, child.header.name]
-            if isinstance(child, SingleModule):
-                child_env = self._merge_env(env, child.moduleparameters)
-                child_env = self._merge_env(child_env, child.localvariables)
-                self._walk_modules(
-                    child.submodules or [],
-                    parent_path=child_path,
-                    env=child_env,
-                    current_library=current_library,
-                )
-                continue
+        def _build_single_state(
+            child: SingleModule,
+            _child_path: list[str],
+            state: tuple[dict[str, Variable], str | None],
+        ) -> tuple[dict[str, Variable], str | None]:
+            child_env = self._merge_env(state[0], child.moduleparameters)
+            child_env = self._merge_env(child_env, child.localvariables)
+            return child_env, state[1]
 
-            if isinstance(child, FrameModule):
-                self._walk_modules(
-                    child.submodules or [],
-                    parent_path=child_path,
-                    env=env,
-                    current_library=current_library,
-                )
-                continue
-
+        def _visit_instance(
+            child: ModuleTypeInstance,
+            child_path: list[str],
+            state: tuple[dict[str, Variable], str | None],
+        ) -> None:
             self._check_instance_initial_values(
                 child,
                 module_path=child_path,
-                env=env,
-                current_library=current_library,
+                env=state[0],
+                current_library=state[1],
             )
+
+        walk_nested_modules_with_state(
+            children,
+            parent_path=parent_path,
+            state=(env, current_library),
+            build_single_state=_build_single_state,
+            visit_instance=_visit_instance,
+        )
 
     def _check_instance_initial_values(
         self,
@@ -289,7 +284,7 @@ class InitialValueAnalyzer:
             candidates.append(format_moduletype_label(mt_def))
 
         for candidate in candidates:
-            candidate_cf = candidate.casefold()
+            candidate_cf = casefold_key(candidate)
             for category, markers in _PARAMETER_CATEGORY_MARKERS.items():
                 if any(marker in candidate_cf for marker in markers):
                     return category
@@ -304,7 +299,7 @@ class InitialValueAnalyzer:
         seen: set[str] = set()
 
         for variable in mt_def.moduleparameters or [] if mt_def is not None else []:
-            normalized = variable.name.casefold()
+            normalized = casefold_key(variable.name)
             if normalized in seen:
                 continue
             names.append(variable.name)
@@ -314,7 +309,7 @@ class InitialValueAnalyzer:
             target_name = self._mapping_target_name(mapping)
             if not target_name:
                 continue
-            normalized = target_name.casefold()
+            normalized = casefold_key(target_name)
             if normalized in seen:
                 continue
             names.append(target_name)
@@ -323,7 +318,7 @@ class InitialValueAnalyzer:
         return [name for name in names if self._looks_like_required_value_parameter(name)]
 
     def _looks_like_required_value_parameter(self, name: str) -> bool:
-        normalized = name.casefold()
+        normalized = casefold_key(name)
         if normalized in _VALUE_PARAMETER_ALLOWLIST:
             return False
         if normalized in _VALUE_PARAMETER_NAMES:
@@ -376,10 +371,10 @@ class InitialValueAnalyzer:
         mappings: list[ParameterMapping] | None,
         parameter_name: str,
     ) -> ParameterMapping | None:
-        wanted = parameter_name.casefold()
+        wanted = casefold_key(parameter_name)
         for mapping in mappings or []:
             target_name = self._mapping_target_name(mapping)
-            if target_name == wanted:
+            if target_name is not None and casefold_key(target_name) == wanted:
                 return mapping
         return None
 
@@ -409,7 +404,7 @@ class InitialValueAnalyzer:
                 source=f"mapping from {full_ref}",
             )
 
-        variable = env.get(full_ref.casefold())
+        variable = env.get(casefold_key(full_ref))
         if variable is None or variable.init_value is None:
             return _ParameterValue(
                 status="unresolved_mapping",
@@ -430,9 +425,8 @@ class InitialValueAnalyzer:
         variables: list[Variable] | None,
         wanted_name: str,
     ) -> Variable | None:
-        wanted = wanted_name.casefold()
         for variable in variables or []:
-            if variable.name.casefold() == wanted:
+            if casefold_equal(variable.name, wanted_name):
                 return variable
         return None
 

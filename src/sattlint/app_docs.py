@@ -7,6 +7,7 @@ from sattline_parser.models.ast_model import BasePicture
 
 from . import config as config_module
 from . import console as console_module
+from .app_interaction import MenuInteraction, build_menu_interaction
 from .docgenerator import classification as documentation_classification_module
 from .docgenerator import generate_docx
 from .models.project_graph import ProjectGraph
@@ -114,53 +115,73 @@ def preview_documentation_unit_candidates(
 def configure_documentation_scope_by_moduletype(
     *,
     split_csv_values_fn: Callable[[str], list[str]],
-    pause_fn: Callable[[], None],
+    pause_fn: Callable[[], None] | None = None,
+    prompt_fn: Callable[[str, str | None], str] | None = None,
+    interaction: MenuInteraction | None = None,
 ) -> bool:
+    menu_interaction = interaction or build_menu_interaction(
+        print_menu_fn=lambda *_args, **_kwargs: None,
+        prompt_fn=prompt_fn,
+        pause_fn=pause_fn,
+    )
     emit_output("\n--- Documentation Scope by Unit ModuleType ---")
     emit_output("Enter one or more unit moduletype names (comma-separated).")
     emit_output("Example: ApplTank, XDilute_221X251XY")
-    raw = input("> ").strip()
+    raw = menu_interaction.prompt(">", None)
     values = split_csv_values_fn(raw)
     if not values:
         emit_output("❌ No moduletype names provided")
-        pause_fn()
+        menu_interaction.pause()
         return False
     set_documentation_unit_selection(
         mode="moduletype_names",
         moduletype_names=values,
     )
     emit_output("✔ Documentation scope updated")
-    pause_fn()
+    menu_interaction.pause()
     return True
 
 
 def configure_documentation_scope_by_instance_path(
     *,
     split_csv_values_fn: Callable[[str], list[str]],
-    pause_fn: Callable[[], None],
+    pause_fn: Callable[[], None] | None = None,
+    prompt_fn: Callable[[str, str | None], str] | None = None,
+    interaction: MenuInteraction | None = None,
 ) -> bool:
+    menu_interaction = interaction or build_menu_interaction(
+        print_menu_fn=lambda *_args, **_kwargs: None,
+        prompt_fn=prompt_fn,
+        pause_fn=pause_fn,
+    )
     emit_output("\n--- Documentation Scope by Unit Instance Path ---")
     emit_output("Enter one or more unit instance paths (comma-separated).")
     emit_output("Use the candidate preview to find valid paths.")
-    raw = input("> ").strip()
+    raw = menu_interaction.prompt(">", None)
     values = split_csv_values_fn(raw)
     if not values:
         emit_output("❌ No instance paths provided")
-        pause_fn()
+        menu_interaction.pause()
         return False
     set_documentation_unit_selection(
         mode="instance_paths",
         instance_paths=values,
     )
     emit_output("✔ Documentation scope updated")
-    pause_fn()
+    menu_interaction.pause()
     return True
 
 
-def reset_documentation_scope(*, pause_fn: Callable[[], None]) -> bool:
+def reset_documentation_scope(
+    *, pause_fn: Callable[[], None] | None = None, interaction: MenuInteraction | None = None
+) -> bool:
+    menu_interaction = interaction or build_menu_interaction(
+        print_menu_fn=lambda *_args, **_kwargs: None,
+        pause_fn=pause_fn,
+    )
     set_documentation_unit_selection(mode="all")
     emit_output("✔ Documentation scope reset to all units")
-    pause_fn()
+    menu_interaction.pause()
     return True
 
 
@@ -168,9 +189,15 @@ def run_generate_documentation(
     cfg: ConfigDict,
     *,
     iter_loaded_projects_fn: Callable[[ConfigDict], Iterator[LoadedProject]],
-    prompt_fn: Callable[[str, str | None], str],
-    pause_fn: Callable[[], None],
+    prompt_fn: Callable[[str, str | None], str] | None = None,
+    pause_fn: Callable[[], None] | None = None,
+    interaction: MenuInteraction | None = None,
 ) -> None:
+    menu_interaction = interaction or build_menu_interaction(
+        print_menu_fn=lambda *_args, **_kwargs: None,
+        prompt_fn=prompt_fn,
+        pause_fn=pause_fn,
+    )
     emit_output("\n--- Generate Documentation ---")
     documentation_cfg = config_module.get_documentation_config(cfg)
     documentation_cfg["units"] = get_documentation_unit_selection()
@@ -193,7 +220,7 @@ def run_generate_documentation(
                 continue
 
             default_name = f"{target_name}_FS.docx"
-            out_name = prompt_fn(f"Output DOCX for {target_name}", default_name)
+            out_name = menu_interaction.prompt(f"Output DOCX for {target_name}", default_name)
             if scope and scope.roots:
                 emit_output(
                     f"Selected units for {target_name}: " + ", ".join(entry.short_path for entry in scope.roots)
@@ -206,7 +233,7 @@ def run_generate_documentation(
                 unavailable_libraries=unavailable_libraries,
             )
 
-    pause_fn()
+    menu_interaction.pause()
 
 
 def documentation_menu(
@@ -216,11 +243,19 @@ def documentation_menu(
     print_menu_fn: Callable[..., None],
     menu_option_factory: Callable[[str, str, str], Any],
     quit_app_fn: Callable[[], None],
-    pause_fn: Callable[[], None],
+    pause_fn: Callable[[], None] | None,
     split_csv_values_fn: Callable[[str], list[str]],
     iter_loaded_projects_fn: Callable[[ConfigDict], Iterator[LoadedProject]],
-    prompt_fn: Callable[[str, str | None], str],
+    prompt_fn: Callable[[str, str | None], str] | None,
+    choose_menu_option_fn: Callable[..., str] | None = None,
+    interaction: MenuInteraction | None = None,
 ) -> bool:
+    menu_interaction = interaction or build_menu_interaction(
+        print_menu_fn=print_menu_fn,
+        choose_menu_option_fn=choose_menu_option_fn,
+        prompt_fn=prompt_fn,
+        pause_fn=pause_fn,
+    )
     dirty = False
 
     def _run_documentation_action(action_fn: Callable[[], Any], *, default: bool = False) -> bool:
@@ -228,13 +263,18 @@ def documentation_menu(
             return cast(bool, action_fn())
         except KeyboardInterrupt:
             emit_output("\nOperation canceled. Returning to the menu.")
-            pause_fn()
+            menu_interaction.pause()
             return default
 
     while True:
         clear_screen_fn()
         selection = get_documentation_unit_selection()
-        print_menu_fn(
+        current_scope = (
+            "all units"
+            if selection["mode"] == "all"
+            else f"{selection['mode']} -> " + ", ".join(selection["instance_paths"] or selection["moduletype_names"])
+        )
+        c = menu_interaction.choose_menu_option(
             "Documentation",
             [
                 menu_option_factory("1", "Generate documentation", "Create DOCX output for each configured target"),
@@ -251,17 +291,8 @@ def documentation_menu(
                 "Generate FS-style DOCX documentation for the configured targets. "
                 "Preview candidates first if you want to scope the output to specific units."
             ),
+            note="Current scope: " + current_scope,
         )
-        emit_output(
-            "\nCurrent scope: "
-            + (
-                "all units"
-                if selection["mode"] == "all"
-                else f"{selection['mode']} -> "
-                + ", ".join(selection["instance_paths"] or selection["moduletype_names"])
-            )
-        )
-        c = input("> ").strip().lower()
         if c == "b":
             return dirty
         if c == "q":
@@ -272,8 +303,7 @@ def documentation_menu(
                 lambda: run_generate_documentation(
                     cfg,
                     iter_loaded_projects_fn=iter_loaded_projects_fn,
-                    prompt_fn=prompt_fn,
-                    pause_fn=pause_fn,
+                    interaction=menu_interaction,
                 )
             )
         elif c == "2":
@@ -281,16 +311,19 @@ def documentation_menu(
                 lambda: preview_documentation_unit_candidates(
                     cfg,
                     iter_loaded_projects_fn=iter_loaded_projects_fn,
-                    pause_fn=pause_fn,
+                    pause_fn=menu_interaction.pause,
                 )
             )
         elif c == "3":
-            dirty |= _run_documentation_action(lambda: reset_documentation_scope(pause_fn=pause_fn), default=False)
+            dirty |= _run_documentation_action(
+                lambda: reset_documentation_scope(interaction=menu_interaction),
+                default=False,
+            )
         elif c == "4":
             dirty |= _run_documentation_action(
                 lambda: configure_documentation_scope_by_moduletype(
                     split_csv_values_fn=split_csv_values_fn,
-                    pause_fn=pause_fn,
+                    interaction=menu_interaction,
                 ),
                 default=False,
             )
@@ -298,10 +331,10 @@ def documentation_menu(
             dirty |= _run_documentation_action(
                 lambda: configure_documentation_scope_by_instance_path(
                     split_csv_values_fn=split_csv_values_fn,
-                    pause_fn=pause_fn,
+                    interaction=menu_interaction,
                 ),
                 default=False,
             )
         else:
             emit_output("Invalid choice.")
-            pause_fn()
+            menu_interaction.pause()

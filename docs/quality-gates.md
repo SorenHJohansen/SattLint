@@ -60,10 +60,17 @@ The public-readiness slice also treats tracked helper or scratch entries at the 
 
 For long-running quick or full audit snapshots, use the staged runner instead of writing directly into a reused `*-current` directory:
 
-- `python scripts/run_repo_python.sh -m sattlint.devtools.repo_audit_runs --final-output-dir artifacts/audit-quick-current --keep-history artifacts/audit-history --profile quick`
-- `python scripts/run_repo_python.sh -m sattlint.devtools.repo_audit_runs --final-output-dir artifacts/audit-full-current --keep-history artifacts/audit-history --profile full`
+- `bash scripts/run_repo_python.sh -m sattlint.devtools.repo_audit_runs --final-output-dir artifacts/audit-quick-current --keep-history artifacts/audit-history --profile quick`
+- `bash scripts/run_repo_python.sh -m sattlint.devtools.repo_audit_runs --final-output-dir artifacts/audit-full-current --keep-history artifacts/audit-history --profile full`
 
-Validate a published audit directory with `python scripts/run_repo_python.sh -m sattlint.devtools.artifact_readiness --artifact-dir <dir>` before reading JSON artifacts in automation. Compare before/after findings with `python scripts/run_repo_python.sh -m sattlint.devtools.compare_audit_findings --before <dir> --after <dir>` instead of manually reading both `findings.json` files.
+When a repo-owned Python command needs reliable post-run capture instead of shell redirection, `scripts/run_repo_python.py` also supports an opt-in artifact mode via environment variables:
+
+- `SATTLINT_RUN_REPO_PYTHON_ARTIFACT_DIR=<dir>`
+- `SATTLINT_RUN_REPO_PYTHON_ARTIFACT_PREFIX=<prefix>`
+
+With both variables set, the runner writes `<prefix>.stdout`, `<prefix>.stderr`, and `<prefix>.exit` under the selected directory after the child process finishes. This mode is capture-only rather than live tee output; if early Python flushing matters for the child command, prefer `-u` in the forwarded Python arguments.
+
+Validate a published audit directory with `bash scripts/run_repo_python.sh -m sattlint.devtools.artifact_readiness --artifact-dir <dir>` before reading JSON artifacts in automation. Compare before/after findings with `bash scripts/run_repo_python.sh -m sattlint.devtools.compare_audit_findings --before <dir> --after <dir>` instead of manually reading both `findings.json` files.
 
 ## CI Gate
 

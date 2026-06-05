@@ -115,7 +115,11 @@ def run_staged_repo_audit(
 ) -> RepoAuditRunResult:
     staged_output_dir = build_staging_output_dir(final_output_dir)
     audit_exit_code = audit_main(_forwarded_repo_audit_args(forwarded_args, staged_output_dir))
-    readiness_report = readiness_check(staged_output_dir)
+    try:
+        readiness_report = readiness_check(staged_output_dir)
+    except BaseException:
+        shutil.rmtree(staged_output_dir, ignore_errors=True)
+        raise
     archived_output_dir = publish_completed_run(
         staged_output_dir,
         final_output_dir.resolve(),

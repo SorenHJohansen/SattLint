@@ -9,6 +9,10 @@ def _empty_resolve_cache() -> dict[str, tuple[Variable | None, str, list[str], l
     return {}
 
 
+def _empty_moduleparameter_keys() -> frozenset[str]:
+    return frozenset()
+
+
 @dataclass
 class ScopeContext:
     """Tracks variable environment with field-aware parameter mappings."""
@@ -18,6 +22,7 @@ class ScopeContext:
     param_mappings: dict[str, tuple[Variable, str, list[str], list[str]]]
     module_path: list[str]
     display_module_path: list[str]
+    moduleparameter_keys: frozenset[str] = field(default_factory=_empty_moduleparameter_keys)
     current_library: str | None = None
     parent_context: ScopeContext | None = None
     _resolve_cache: dict[str, tuple[Variable | None, str, list[str], list[str]]] = field(

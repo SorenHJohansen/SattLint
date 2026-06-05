@@ -101,119 +101,108 @@ class VersionDriftReport:
         return render_version_drift_summary(self)
 
 
+@dataclass
+class _ModuleSearchStats:
+    visited_nodes: int = 0
+    single_modules: int = 0
+    frame_modules: int = 0
+    moduletype_defs: int = 0
+    moduletype_instances: int = 0
+    unknown_nodes: int = 0
+
+
 def _walk_modules(
     node: Any,
     target_name: str,
     current_path: list[str],
     results: list[tuple[list[str], SingleModule]],
-    debug: bool = False,
+    *,
+    stats: _ModuleSearchStats | None = None,
 ) -> None:
     """Recursively find all SingleModule instances with the target name (case-insensitive)."""
     target_name_lower = target_name.lower()
-
-    if debug:
-        log.debug(
-            "_walk_modules: checking node type=%s, path=%s",
-            type(node).__name__,
-            current_path,
-        )
+    if stats is not None:
+        stats.visited_nodes += 1
 
     if isinstance(node, SingleModule):
+        if stats is not None:
+            stats.single_modules += 1
         node_name = node.header.name
         node_name_lower = node_name.lower()
-
-        if debug:
-            log.debug(
-                "  SingleModule found: %r, comparing with target=%r, match=%s",
-                node_name,
-                target_name,
-                node_name_lower == target_name_lower,
-            )
 
         path_with_current = [*current_path, node_name]
 
         if node_name_lower == target_name_lower:
-            if debug:
-                log.debug("  MATCH: adding to results")
             results.append((path_with_current, node))
 
-        if debug:
-            log.debug(
-                "  Checking %d submodules of %r",
-                len(node.submodules),
-                node_name,
-            )
-        for i, sub in enumerate(node.submodules):
-            if debug:
-                log.debug("  Submodule[%d]: %s", i, type(sub).__name__)
-            _walk_modules(sub, target_name, path_with_current, results, debug)
+        for sub in node.submodules:
+            _walk_modules(sub, target_name, path_with_current, results, stats=stats)
 
     elif isinstance(node, FrameModule):
+        if stats is not None:
+            stats.frame_modules += 1
         node_name = node.header.name
-        if debug:
-            log.debug("  FrameModule: %r", node_name)
         path_with_current = [*current_path, node_name]
 
-        if debug:
-            log.debug(
-                "  Checking %d submodules of FrameModule %r",
-                len(node.submodules),
-                node_name,
-            )
-        for i, sub in enumerate(node.submodules):
-            if debug:
-                log.debug("  Submodule[%d]: %s", i, type(sub).__name__)
-            _walk_modules(sub, target_name, path_with_current, results, debug)
+        for sub in node.submodules:
+            _walk_modules(sub, target_name, path_with_current, results, stats=stats)
 
     elif isinstance(node, ModuleTypeDef):
+        if stats is not None:
+            stats.moduletype_defs += 1
         node_name = node.name
-        if debug:
-            log.debug("  ModuleTypeDef: %r", node_name)
-            log.debug("  Has %d submodules", len(node.submodules))
         path_with_current = [*current_path, f"TypeDef:{node_name}"]
 
-        for i, sub in enumerate(node.submodules):
-            if debug:
-                log.debug("  Submodule[%d]: %s", i, type(sub).__name__)
-            _walk_modules(sub, target_name, path_with_current, results, debug)
+        for sub in node.submodules:
+            _walk_modules(sub, target_name, path_with_current, results, stats=stats)
 
     elif isinstance(node, BasePicture):
-        if debug:
-            log.debug("  BasePicture: %r", node.name)
-            log.debug("  Has %d direct submodules", len(node.submodules))
-            log.debug("  Has %d moduletype_defs", len(node.moduletype_defs))
+        for sub in node.submodules:
+            _walk_modules(sub, target_name, current_path, results, stats=stats)
 
-        for i, sub in enumerate(node.submodules):
-            if debug:
-                log.debug("  Submodule[%d]: %s", i, type(sub).__name__)
-            _walk_modules(sub, target_name, current_path, results, debug)
-
-        for i, mtd in enumerate(node.moduletype_defs):
-            if debug:
-                log.debug("  ModuleTypeDef[%d]: %r", i, mtd.name)
-            _walk_modules(mtd, target_name, current_path, results, debug)
+        for mtd in node.moduletype_defs:
+            _walk_modules(mtd, target_name, current_path, results, stats=stats)
 
     elif isinstance(node, ModuleTypeInstance):
-        if debug:
-            log.debug("  ModuleTypeInstance: %r (no submodules)", node.header.name)
-        pass
+        if stats is not None:
+            stats.moduletype_instances += 1
     else:
-        if debug:
-            log.debug("  Unknown node type: %s", type(node).__name__)
+        if stats is not None:
+            stats.unknown_nodes += 1
 
 
 def find_modules_by_name(
     base_picture: BasePicture, target_name: str, debug: bool = False
 ) -> list[tuple[list[str], SingleModule]]:
     """Find all SingleModule instances with the given name, returning path and module."""
+    stats = _ModuleSearchStats() if debug else None
     if debug:
-        log.debug("=== SEARCHING FOR %r ===", target_name)
+        log.debug(
+            "Module search start: target=%r root=%r",
+            target_name,
+            base_picture.header.name,
+        )
 
     results: list[tuple[list[str], SingleModule]] = []
-    _walk_modules(base_picture, target_name, [base_picture.header.name], results, debug)
+    _walk_modules(base_picture, target_name, [base_picture.header.name], results, stats=stats)
 
-    if debug:
-        log.debug("=== SEARCH COMPLETE: Found %d matches ===", len(results))
+    if debug and stats is not None:
+        log.debug(
+            "Module search complete: target=%r visited=%d single_modules=%d frame_modules=%d moduletype_defs=%d moduletype_instances=%d unknown_nodes=%d matches=%d",
+            target_name,
+            stats.visited_nodes,
+            stats.single_modules,
+            stats.frame_modules,
+            stats.moduletype_defs,
+            stats.moduletype_instances,
+            stats.unknown_nodes,
+            len(results),
+        )
+        if results:
+            preview = [" -> ".join(path) for path, _module in results[:5]]
+            if len(results) > 5:
+                preview.append(f"... (+{len(results) - 5} more)")
+            log.debug("Module search matches: %s", "; ".join(preview))
 
     return results
 

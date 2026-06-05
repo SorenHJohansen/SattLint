@@ -33,7 +33,7 @@ def default_delivery_templates(
             lsp_exposed=True,
             acceptance_tests=(
                 "tests/analyzers/test_sattline_semantics.py",
-                "tests/test_pipeline.py",
+                "tests/test_pipeline_phase2.py",
             ),
             min_fixture_set=shared_fixtures,
         ),
@@ -119,7 +119,7 @@ def default_delivery_templates(
             acceptance_tests=(
                 "tests/test_analyzers.py",
                 "tests/test_app.py",
-                "tests/test_pipeline.py",
+                "tests/test_pipeline_phase2.py",
             ),
             min_fixture_set=shared_fixtures,
         ),
@@ -300,7 +300,7 @@ def default_delivery_templates(
             implementation_bucket="engineering-rules",
             acceptance_tests=(
                 "tests/test_analyzers.py",
-                "tests/test_docgen.py",
+                "tests/test_docgen_part1.py",
             ),
             min_fixture_set=shared_fixtures,
             exposed_via=("docgen",),
@@ -337,7 +337,7 @@ def default_delivery_templates(
             implementation_bucket="shared-semantic-core",
             lsp_exposed=True,
             acceptance_tests=(
-                "tests/test_pipeline.py",
+                "tests/test_pipeline_phase2.py",
                 "tests/test_sattline_semantics.py",
             ),
             depends_on_analyzers=(semantic_layer_analyzer_key,),

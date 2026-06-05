@@ -15,10 +15,15 @@ def _write(path: Path, content: str) -> None:
 
 def test_get_layer_for_module_matches_known_prefixes():
     assert layer_linter.get_layer_for_module("sattline_parser") == 0
-    assert layer_linter.get_layer_for_module("sattlint.core.document") == 1
-    assert layer_linter.get_layer_for_module("sattlint.devtools.layer_linter") == 2
-    assert layer_linter.get_layer_for_module("sattlint_lsp.server") == 3
-    assert layer_linter.get_layer_for_module("vscode") == 4
+    assert layer_linter.get_layer_for_module("sattlint.models.ast_model") == 1
+    assert layer_linter.get_layer_for_module("sattlint.core.document") == 2
+    assert layer_linter.get_layer_for_module("sattlint.resolution.scope") == 3
+    assert layer_linter.get_layer_for_module("sattlint.analyzers.unused") == 4
+    assert layer_linter.get_layer_for_module("sattlint.engine") == 5
+    assert layer_linter.get_layer_for_module("sattlint.reporting.variables_report") == 6
+    assert layer_linter.get_layer_for_module("sattlint_lsp.server") == 7
+    assert layer_linter.get_layer_for_module("vscode") == 8
+    assert layer_linter.get_layer_for_module("sattlint.devtools.layer_linter") == 9
     assert layer_linter.get_layer_for_module("external_package") == -1
 
 
@@ -31,7 +36,7 @@ def test_resolve_current_module_handles_empty_vscode_and_misc_paths():
             return self._relative_path
 
     assert layer_linter._resolve_current_module(_FakePath()) == (".", -1)
-    assert layer_linter._resolve_current_module(_FakePath("vscode/pkg/__init__.py")) == ("pkg", 4)
+    assert layer_linter._resolve_current_module(_FakePath("vscode/pkg/__init__.py")) == ("pkg", 8)
     assert layer_linter._resolve_current_module(_FakePath("scripts/tool.txt")) == ("scripts.tool.txt", -1)
 
 
@@ -112,14 +117,17 @@ def test_check_file_for_arch_violations_skips_relative_imports(tmp_path, monkeyp
     assert violations == []
 
 
-def test_check_file_for_arch_violations_skips_unparseable_file(tmp_path, monkeypatch):
+def test_check_file_for_arch_violations_reports_unparseable_file(tmp_path, monkeypatch):
     repo_file = tmp_path / "src" / "sattlint" / "broken.py"
     _write(repo_file, "def broken(:\n")
     monkeypatch.chdir(tmp_path)
 
     violations = layer_linter.check_file_for_arch_violations(repo_file)
 
-    assert violations == []
+    assert len(violations) == 1
+    assert violations[0].file == str(repo_file)
+    assert violations[0].line == 0
+    assert "Failed to parse" in violations[0].message
 
 
 def test_main_exits_zero_when_no_violations(monkeypatch, capsys):

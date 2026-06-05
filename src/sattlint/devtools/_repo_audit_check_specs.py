@@ -195,7 +195,7 @@ def build_repo_audit_check_catalog(
                     "src/sattlint/app*.py",
                     "src/sattlint/devtools/repo_audit_cli.py",
                 ],
-                "owner_test_targets": ["tests/test_repo_audit.py"],
+                "owner_test_targets": ["tests/test_repo_audit_part7.py"],
                 "ai_summary": "Use when CLI consistency reporting or command-reference alignment changes.",
                 "ai_instruction_files": [
                     ".github/instructions/cli-app.instructions.md",

@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
 
 from sattline_parser.models.ast_model import SourceSpan
+
+from .models._validation_notice import ValidationNotice
 
 __all__ = [
     "RawSourceValidationError",
@@ -18,17 +19,6 @@ __all__ = [
     "_warn_or_raise",
     "coerce_validation_notice",
 ]
-
-
-@dataclass(frozen=True, slots=True)
-class ValidationNotice:
-    message: str
-    line: int | None = None
-    column: int | None = None
-    length: int | None = None
-
-    def __str__(self) -> str:
-        return self.message
 
 
 type ValidationWarning = ValidationNotice | str

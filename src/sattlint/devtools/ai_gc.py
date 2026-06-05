@@ -63,7 +63,10 @@ def _path_size_bytes(path: Path) -> int:
     total = 0
     for child in path.rglob("*"):
         if child.is_file():
-            total += child.stat().st_size
+            try:
+                total += child.stat().st_size
+            except OSError:
+                continue
     return total
 
 

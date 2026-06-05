@@ -18,6 +18,7 @@ from sattline_parser.models.ast_model import (
 )
 
 from ..grammar import constants as const
+from ._walk_utils import iter_nested_modules
 from .framework import Issue, SimpleReport
 
 DEFAULT_MODULE_COMPLEXITY_THRESHOLD = 10
@@ -69,16 +70,14 @@ class CyclomaticComplexityAnalyzer:
         *,
         parent_path: list[str],
     ) -> None:
-        for module in modules:
+        for module, module_path in iter_nested_modules(modules, parent_path=parent_path):
             if isinstance(module, ModuleTypeInstance):
                 continue
-            module_path = [*parent_path, module.header.name]
             self._record_scope_complexity_issue(
                 module_path=module_path,
                 scope_kind="module",
                 modulecode=module.modulecode,
             )
-            self._walk_modules(module.submodules or [], parent_path=module_path)
 
     def _record_scope_complexity_issue(
         self,

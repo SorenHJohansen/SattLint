@@ -8,6 +8,8 @@ from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture, Simple_DataType, Variable
 
+from ._builtin_datatypes import BUILTIN_RECORD_SPECS
+
 
 def _cf(s: str) -> str:
     return s.casefold()
@@ -36,9 +38,19 @@ class TypeGraph:
     def __init__(self, records_by_key: dict[str, RecordDef]):
         self._records_by_key = records_by_key
 
+    @staticmethod
+    def _builtin_records() -> dict[str, RecordDef]:
+        records: dict[str, RecordDef] = {}
+        for datatype_name, field_specs in BUILTIN_RECORD_SPECS.items():
+            fields = {
+                _cf(field_name): FieldDef(name=field_name, datatype=datatype) for field_name, datatype in field_specs
+            }
+            records[_cf(datatype_name)] = RecordDef(name=datatype_name, fields_by_key=fields)
+        return records
+
     @classmethod
     def from_datatypes(cls, datatypes: Iterable[object]) -> TypeGraph:
-        records: dict[str, RecordDef] = {}
+        records = cls._builtin_records()
         for dt in datatypes or []:
             datatype = cast(Any, dt)
             datatype_name = cast(str, datatype.name)
@@ -93,6 +105,10 @@ class TypeGraph:
             rec = self._records_by_key.get(tkey)
             if rec is None:
                 # Unknown external type; treat as leaf.
+                yield prefix
+                continue
+
+            if not rec.fields_by_key:
                 yield prefix
                 continue
 

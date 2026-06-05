@@ -1,5 +1,3 @@
-# pyright: reportPrivateUsage=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnknownMemberType=false
-
 from __future__ import annotations
 
 from collections import defaultdict
@@ -14,27 +12,41 @@ from sattline_parser.models.ast_model import (
 )
 from sattlint.analyzers import _variable_issue_collection as variable_issue_collection_module
 from sattlint.analyzers import _variables_access as variables_access_module
-from sattlint.analyzers import _variables_analyzer_facade as variables_analyzer_facade_module
 from sattlint.analyzers import _variables_execution as variables_execution_module
-from sattlint.analyzers import _variables_facade_properties as variables_facade_properties_module
 from sattlint.analyzers import _variables_status as variables_status_module
 from sattlint.analyzers import variable_utils as variable_utils_module
 from sattlint.analyzers import variables as variables_module
+from sattlint.analyzers._variables_analyzer_facade import VariablesAnalyzerFacadeMixin
+from sattlint.analyzers._variables_facade_properties import VariablesAnalyzerFacadePropertiesMixin
 from sattlint.analyzers.variables import IssueKind, VariableIssue, VariablesAnalyzer
 from sattlint.reporting.variables_report import VariablesReport
 from tests.helpers.variable_test_support import UsageStub as _UsageStub
 from tests.helpers.variable_test_support import ns as _ns
 
+variable_issue_collection_impl: Any = variable_issue_collection_module
+variables_access_impl: Any = variables_access_module
+variables_execution_impl: Any = variables_execution_module
+variables_status_impl: Any = variables_status_module
+VariablesAnalyzerType: Any = VariablesAnalyzer
+
+
+def _returns_false(*_args: object, **_kwargs: object) -> bool:
+    return False
+
+
+def _returns_true(*_args: object, **_kwargs: object) -> bool:
+    return True
+
 
 def test_variables_status_cover_pattern_and_binding_branches(monkeypatch: pytest.MonkeyPatch) -> None:
-    assert variables_status_module._normalize_role_pattern_values("bad") == ()
-    assert variables_status_module._normalize_role_pattern_values([" Cmd ", "cmd", 1, ""]) == ("cmd",)
-    defaults = variables_status_module._configured_naming_role_patterns(None)
+    assert variables_status_impl._normalize_role_pattern_values("bad") == ()
+    assert variables_status_impl._normalize_role_pattern_values([" Cmd ", "cmd", 1, ""]) == ("cmd",)
+    defaults = variables_status_impl._configured_naming_role_patterns(None)
     assert defaults["status"].suffixes == ("status",)
-    assert variables_status_module._configured_naming_role_patterns({"analysis": "bad"}) == defaults
-    assert variables_status_module._configured_naming_role_patterns({"analysis": {}}) == defaults
-    assert variables_status_module._configured_naming_role_patterns({"analysis": {"naming": {}}}) == defaults
-    configured = variables_status_module._configured_naming_role_patterns(
+    assert variables_status_impl._configured_naming_role_patterns({"analysis": "bad"}) == defaults
+    assert variables_status_impl._configured_naming_role_patterns({"analysis": {}}) == defaults
+    assert variables_status_impl._configured_naming_role_patterns({"analysis": {"naming": {}}}) == defaults
+    configured = variables_status_impl._configured_naming_role_patterns(
         {"analysis": {"naming": {"role_patterns": {"command": {"prefixes": ["Start", "start"]}}}}}
     )
     assert "start" in configured["command"].prefixes
@@ -44,34 +56,41 @@ def test_variables_status_cover_pattern_and_binding_branches(monkeypatch: pytest
         procedure_status_bindings=defaultdict(list),
         ignorable_output_variable_ids=set(),
     )
-    none_context: Any = _ns(resolve_variable=lambda *_: (None, None, [], None))
-    variables_status_module._bind_procedure_status(
+
+    def _resolve_missing_variable(*_args: object) -> tuple[None, None, list[str], None]:
+        return (None, None, [], None)
+
+    none_context: Any = _ns(resolve_variable=_resolve_missing_variable)
+    variables_status_impl._bind_procedure_status(
         helper,
         "StatusVar",
         call_name="Fn",
         parameter=_ns(name="Out", channel_kind=None),
         context=none_context,
     )
-    variables_status_module._bind_ignorable_output(helper, "StatusVar", context=none_context)
+    variables_status_impl._bind_ignorable_output(helper, "StatusVar", context=none_context)
     assert helper.procedure_status_bindings == {}
     assert helper.ignorable_output_variable_ids == set()
 
-    good_context: Any = _ns(resolve_variable=lambda *_: (variable, "Field", ["Root"], None))
-    variables_status_module._bind_procedure_status(
+    def _resolve_bound_variable(*_args: object) -> tuple[Variable, str, list[str], None]:
+        return (variable, "Field", ["Root"], None)
+
+    good_context: Any = _ns(resolve_variable=_resolve_bound_variable)
+    variables_status_impl._bind_procedure_status(
         helper,
         "StatusVar",
         call_name="Fn",
         parameter=_ns(name="Out", channel_kind=None),
         context=good_context,
     )
-    variables_status_module._bind_procedure_status(
+    variables_status_impl._bind_procedure_status(
         helper,
         "StatusVar",
         call_name="Fn",
         parameter=_ns(name="Out", channel_kind=None),
         context=good_context,
     )
-    variables_status_module._bind_ignorable_output(helper, "StatusVar", context=good_context)
+    variables_status_impl._bind_ignorable_output(helper, "StatusVar", context=good_context)
     assert len(helper.procedure_status_bindings[id(variable)]) == 1
     assert id(variable) in helper.ignorable_output_variable_ids
 
@@ -84,58 +103,72 @@ def test_variables_status_cover_pattern_and_binding_branches(monkeypatch: pytest
     )
     status_calls: list[str] = []
     ignorable_calls: list[str] = []
+
+    def _bind_status(full_ref: str, **_kwargs: object) -> None:
+        status_calls.append(full_ref)
+
+    def _bind_ignorable(full_ref: str, **_kwargs: object) -> None:
+        ignorable_calls.append(full_ref)
+
     recorder: Any = SimpleNamespace(
-        bind_procedure_status=lambda full_ref, **kwargs: status_calls.append(full_ref),
-        bind_ignorable_output=lambda full_ref, **kwargs: ignorable_calls.append(full_ref),
+        bind_procedure_status=_bind_status,
+        bind_ignorable_output=_bind_ignorable,
     )
-    monkeypatch.setattr(variables_status_module, "resolve_call_signature", lambda fn_name: None)
-    variables_status_module._record_procedure_status_bindings(recorder, "Fn", [], good_context)
-    variables_status_module._record_procedure_status_bindings(recorder, "Fn", [{"var_name": 5}], good_context)
-    variables_status_module._record_ignorable_output_bindings(recorder, "SearchRecComponent", [], good_context)
-    monkeypatch.setattr(variables_status_module, "resolve_call_signature", lambda fn_name: signature)
-    variables_status_module._record_procedure_status_bindings(
+
+    def _resolve_missing_signature(_fn_name: str) -> None:
+        return None
+
+    def _resolve_signature(_fn_name: str) -> Any:
+        return signature
+
+    monkeypatch.setattr(variables_status_module, "resolve_call_signature", _resolve_missing_signature)
+    variables_status_impl._record_procedure_status_bindings(recorder, "Fn", [], good_context)
+    variables_status_impl._record_procedure_status_bindings(recorder, "Fn", [{"var_name": 5}], good_context)
+    variables_status_impl._record_ignorable_output_bindings(recorder, "SearchRecComponent", [], good_context)
+    monkeypatch.setattr(variables_status_module, "resolve_call_signature", _resolve_signature)
+    variables_status_impl._record_procedure_status_bindings(
         recorder,
         "Fn",
         [{"var_name": 5}],
         good_context,
     )
-    variables_status_module._record_procedure_status_bindings(
+    variables_status_impl._record_procedure_status_bindings(
         recorder,
         "Fn",
         [{}, {"var_name": 5}, {"var_name": "Ignored"}],
         good_context,
     )
-    variables_status_module._record_procedure_status_bindings(
+    variables_status_impl._record_procedure_status_bindings(
         recorder,
         "Fn",
         [{"var_name": "StatusVar"}],
         good_context,
     )
-    variables_status_module._record_ignorable_output_bindings(
+    variables_status_impl._record_ignorable_output_bindings(
         recorder,
         "SearchRecComponent",
         [],
         good_context,
     )
-    variables_status_module._record_ignorable_output_bindings(
+    variables_status_impl._record_ignorable_output_bindings(
         recorder,
         "SearchRecComponent",
         [{}, {}, {}],
         good_context,
     )
-    variables_status_module._record_ignorable_output_bindings(
+    variables_status_impl._record_ignorable_output_bindings(
         recorder,
         "SearchRecComponent",
         [{}, {}, {"var_name": 7}],
         good_context,
     )
-    variables_status_module._record_ignorable_output_bindings(
+    variables_status_impl._record_ignorable_output_bindings(
         recorder,
         "SearchRecComponent",
         [{"var_name": 7}, {"var_name": "Ignored"}, {"var_name": "StatusVar"}],
         good_context,
     )
-    variables_status_module._record_ignorable_output_bindings(
+    variables_status_impl._record_ignorable_output_bindings(
         recorder,
         "Fn",
         [{"var_name": "StatusVar"}],
@@ -164,8 +197,8 @@ def test_variables_status_propagation_and_variables_helpers(monkeypatch: pytest.
         alias_links=[(source, target, "Mapped")],
         procedure_status_bindings=defaultdict(list, {id(target): [binding, root_binding], id(source): []}),
     )
-    variables_status_module._propagate_procedure_status_bindings(helper)
-    variables_status_module._propagate_procedure_status_bindings(helper)
+    variables_status_impl._propagate_procedure_status_bindings(helper)
+    variables_status_impl._propagate_procedure_status_bindings(helper)
     assert helper.procedure_status_bindings[id(source)] == [
         variables_status_module.ProcedureStatusBinding(
             call_name="Fn",
@@ -184,24 +217,24 @@ def test_variables_status_propagation_and_variables_helpers(monkeypatch: pytest.
         alias_links=[(source, target, "Mapped")],
         procedure_status_bindings=defaultdict(list),
     )
-    variables_status_module._propagate_procedure_status_bindings(no_binding_helper)
+    variables_status_impl._propagate_procedure_status_bindings(no_binding_helper)
     assert no_binding_helper.procedure_status_bindings == defaultdict(list)
 
     assert (
-        variables_status_module._has_procedure_status_binding(
+        variables_status_impl._has_procedure_status_binding(
             _ns(procedure_status_bindings={id(source): [binding]}),
             source,
         )
         is True
     )
     assert (
-        variables_status_module._has_ignorable_output_binding(
+        variables_status_impl._has_ignorable_output_binding(
             _ns(ignorable_output_variable_ids={id(source)}),
             source,
         )
         is True
     )
-    status_issue = variables_status_module._procedure_status_issue(
+    status_issue = variables_status_impl._procedure_status_issue(
         _ns(procedure_status_bindings={id(source): [binding]}),
         source,
         cast(Any, _UsageStub(written=True, ui_read=True)),
@@ -224,10 +257,14 @@ def test_variables_status_propagation_and_variables_helpers(monkeypatch: pytest.
 
     warning_log: list[str] = []
     traces: list[tuple[str, dict[str, str]]] = []
-    analyzer = VariablesAnalyzer.__new__(VariablesAnalyzer)
+    analyzer: Any = VariablesAnalyzer.__new__(VariablesAnalyzer)
     analyzer._analysis_warnings = []
     analyzer.debug = True
-    analyzer._trace = lambda action, **kwargs: traces.append((action, kwargs))
+
+    def _trace(action: str, **kwargs: str) -> None:
+        traces.append((action, kwargs))
+
+    analyzer._trace = _trace
     monkeypatch.setattr(variables_module.log, "warning", warning_log.append)
     analyzer._warn("demo warning")
     assert analyzer.analysis_warnings == ["demo warning"]
@@ -250,20 +287,24 @@ def test_variables_status_naming_role_and_issue_helpers_cover_remaining_branches
     )
     helper: Any = SimpleNamespace(
         naming_role_patterns={},
-        matches_naming_role=lambda name_key, role_name: (
-            (name_key, role_name)
-            in {
-                (command_var.name.casefold(), "command"),
-                (status_var.name.casefold(), "status"),
-                (alarm_var.name.casefold(), "alarm"),
-            }
-        ),
-        has_output_effect=lambda *_args, **_kwargs: False,
-        has_procedure_status_binding=lambda variable: variable is bound_var,
-        procedure_status_bindings={id(bound_var): [binding]},
     )
 
-    assert variables_status_module._procedure_status_issue(
+    def _matches_naming_role(name_key: str, role_name: str) -> bool:
+        return (name_key, role_name) in {
+            (command_var.name.casefold(), "command"),
+            (status_var.name.casefold(), "status"),
+            (alarm_var.name.casefold(), "alarm"),
+        }
+
+    def _has_bound_status(variable: Variable) -> bool:
+        return variable is bound_var
+
+    helper.matches_naming_role = _matches_naming_role
+    helper.has_output_effect = _returns_false
+    helper.has_procedure_status_binding = _has_bound_status
+    helper.procedure_status_bindings = {id(bound_var): [binding]}
+
+    assert variables_status_impl._procedure_status_issue(
         helper,
         bound_var,
         cast(Any, _UsageStub(written=True, ui_read=False, non_ui_read=False)),
@@ -272,7 +313,7 @@ def test_variables_status_naming_role_and_issue_helpers_cover_remaining_branches
         "Leaf",
     )
     assert (
-        variables_status_module._procedure_status_issue(
+        variables_status_impl._procedure_status_issue(
             helper,
             bound_var,
             cast(Any, _UsageStub(written=False)),
@@ -280,7 +321,7 @@ def test_variables_status_naming_role_and_issue_helpers_cover_remaining_branches
         is None
     )
     assert (
-        variables_status_module._procedure_status_issue(
+        variables_status_impl._procedure_status_issue(
             helper,
             bound_var,
             cast(Any, _UsageStub(written=True, non_ui_read=True)),
@@ -288,7 +329,7 @@ def test_variables_status_naming_role_and_issue_helpers_cover_remaining_branches
         is None
     )
     assert (
-        variables_status_module._naming_role_mismatch_reason(
+        variables_status_impl._naming_role_mismatch_reason(
             helper,
             command_var,
             cast(Any, _UsageStub(read=True, written=True)),
@@ -297,7 +338,7 @@ def test_variables_status_naming_role_and_issue_helpers_cover_remaining_branches
         == "Cmd-suffixed variable behaves like internal state instead of a one-way command signal."
     )
     assert (
-        variables_status_module._naming_role_mismatch_reason(
+        variables_status_impl._naming_role_mismatch_reason(
             helper,
             status_var,
             cast(Any, _UsageStub(written=True)),
@@ -306,7 +347,7 @@ def test_variables_status_naming_role_and_issue_helpers_cover_remaining_branches
         == "Status-suffixed variable is written directly in logic instead of being treated as observed status."
     )
     assert (
-        variables_status_module._naming_role_mismatch_reason(
+        variables_status_impl._naming_role_mismatch_reason(
             helper,
             alarm_var,
             cast(Any, _UsageStub(non_ui_read=True)),
@@ -317,11 +358,11 @@ def test_variables_status_naming_role_and_issue_helpers_cover_remaining_branches
     command_ok_helper: Any = SimpleNamespace(
         **{
             **helper.__dict__,
-            "has_output_effect": lambda *_args, **_kwargs: True,
+            "has_output_effect": _returns_true,
         }
     )
     assert (
-        variables_status_module._naming_role_mismatch_reason(
+        variables_status_impl._naming_role_mismatch_reason(
             command_ok_helper,
             command_var,
             cast(Any, _UsageStub(read=True, written=True)),
@@ -330,13 +371,15 @@ def test_variables_status_naming_role_and_issue_helpers_cover_remaining_branches
         is None
     )
     bound_helper: Any = SimpleNamespace(
-        **{
-            **helper.__dict__,
-            "has_procedure_status_binding": lambda variable: variable is status_var,
-        }
+        **helper.__dict__,
     )
+
+    def _has_status_binding(variable: Variable) -> bool:
+        return variable is status_var
+
+    bound_helper.has_procedure_status_binding = _has_status_binding
     assert (
-        variables_status_module._naming_role_mismatch_reason(
+        variables_status_impl._naming_role_mismatch_reason(
             bound_helper,
             status_var,
             cast(Any, _UsageStub(written=True)),
@@ -345,7 +388,7 @@ def test_variables_status_naming_role_and_issue_helpers_cover_remaining_branches
         is None
     )
     assert (
-        variables_status_module._naming_role_mismatch_reason(
+        variables_status_impl._naming_role_mismatch_reason(
             helper,
             alarm_var,
             cast(Any, _UsageStub(non_ui_read=False)),
@@ -354,7 +397,7 @@ def test_variables_status_naming_role_and_issue_helpers_cover_remaining_branches
         is None
     )
     assert (
-        variables_status_module._naming_role_mismatch_reason(
+        variables_status_impl._naming_role_mismatch_reason(
             helper,
             Variable(name="PlainVar", datatype=Simple_DataType.INTEGER),
             cast(Any, _UsageStub()),
@@ -363,8 +406,8 @@ def test_variables_status_naming_role_and_issue_helpers_cover_remaining_branches
         is None
     )
     assert (
-        variables_status_module._matches_naming_role(
-            SimpleNamespace(naming_role_patterns={}),
+        variables_status_impl._matches_naming_role(
+            cast(Any, SimpleNamespace(naming_role_patterns={})),
             "plain_name",
             "status",
         )
@@ -372,20 +415,39 @@ def test_variables_status_naming_role_and_issue_helpers_cover_remaining_branches
     )
 
     added_issues: list[tuple[IssueKind, list[str], Variable, str]] = []
+
+    def _get_usage(_variable: Variable) -> _UsageStub:
+        return _UsageStub(read=True, written=True)
+
+    def _naming_role_mismatch_reason(
+        variable: Variable,
+        _usage: _UsageStub,
+        _decl_path: list[str],
+    ) -> str | None:
+        if variable is alarm_var:
+            return None
+        return "mismatch"
+
+    def _add_issue(kind: IssueKind, decl_path: list[str], variable: Variable, role: str = "") -> None:
+        added_issues.append((kind, decl_path, variable, role))
+
     analyzer: Any = SimpleNamespace(
-        get_usage=lambda variable: cast(Any, _UsageStub(read=True, written=True)),
-        naming_role_mismatch_reason=lambda variable, usage, decl_path: "mismatch",
-        add_issue=lambda kind, decl_path, variable, role="": added_issues.append((kind, decl_path, variable, role)),
+        get_usage=_get_usage,
+        naming_role_mismatch_reason=_naming_role_mismatch_reason,
+        add_issue=_add_issue,
     )
+
+    def _iter_variables_for_datatype_field_analysis(
+        _self: object,
+    ) -> list[tuple[list[str], Variable, None, bool]]:
+        return [(["Root"], command_var, None, True), (["Root"], alarm_var, None, True)]
+
     monkeypatch.setattr(
         variables_status_module,
         "_iter_variables_for_datatype_field_analysis",
-        lambda _self: [(["Root"], command_var, None, True), (["Root"], alarm_var, None, True)],
+        _iter_variables_for_datatype_field_analysis,
     )
-    analyzer.naming_role_mismatch_reason = lambda variable, usage, decl_path: (
-        None if variable is alarm_var else "mismatch"
-    )
-    variables_status_module._add_naming_role_mismatch_issues(analyzer)
+    variables_status_impl._add_naming_role_mismatch_issues(analyzer)
     assert added_issues == [(IssueKind.NAMING_ROLE_MISMATCH, ["Root"], command_var, "mismatch")]
 
 
@@ -394,12 +456,14 @@ def test_variables_analyzer_warn_trace_and_status_helpers_cover_remaining_branch
     trace_events: list[tuple[str, str, dict[str, object]]] = []
     status_updates: list[str] = []
 
-    analyzer = VariablesAnalyzer.__new__(VariablesAnalyzer)
+    analyzer: Any = VariablesAnalyzer.__new__(VariablesAnalyzer)
     analyzer._analysis_warnings = []
     analyzer.debug = False
-    analyzer._trace_recorder = SimpleNamespace(
-        event=lambda category, action, **data: trace_events.append((category, action, data))
-    )
+
+    def _record_trace_event(category: str, action: str, **data: object) -> None:
+        trace_events.append((category, action, data))
+
+    analyzer._trace_recorder = SimpleNamespace(event=_record_trace_event)
     analyzer._status_update_fn = status_updates.append
     analyzer._last_status_message = None
     analyzer.bp = _ns(header=_ns(name="Root"))
@@ -412,13 +476,13 @@ def test_variables_analyzer_warn_trace_and_status_helpers_cover_remaining_branch
     assert trace_events == [("variables", "custom-action", {"detail": "value"})]
 
     analyzer._last_status_message = None
-    VariablesAnalyzer._update_status(analyzer, "building root scope")
-    VariablesAnalyzer._update_status(analyzer, "building root scope")
+    VariablesAnalyzerType._update_status(analyzer, "building root scope")
+    VariablesAnalyzerType._update_status(analyzer, "building root scope")
     assert status_updates == ["Analyzing variable issues for Root: building root scope"]
     assert analyzer._last_status_message == status_updates[0]
 
     analyzer._status_update_fn = None
-    VariablesAnalyzer._update_status(analyzer, "ignored")
+    VariablesAnalyzerType._update_status(analyzer, "ignored")
 
 
 def test_variables_facade_forwarders_and_properties_cover_remaining_branches() -> None:
@@ -430,32 +494,58 @@ def test_variables_facade_forwarders_and_properties_cover_remaining_branches() -
     context = SimpleNamespace(name="ctx")
     forwarded_calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
 
-    class FacadeProbe(variables_analyzer_facade_module.VariablesAnalyzerFacadeMixin):
+    class FacadeProbe(VariablesAnalyzerFacadeMixin):
         _OPAQUE_BUILTIN_TYPES = cast(set[str], frozenset({"OPAQUE"}))
 
-    facade = FacadeProbe.__new__(FacadeProbe)
-    facade.usage_tracker = SimpleNamespace(get_usage=lambda arg: ("usage", arg), access_graph="graph")
-    facade._append_issue = lambda arg: forwarded_calls.append(("append_issue", (arg,), {}))
-    facade._append_param_mapping_issue = lambda arg1, arg2: forwarded_calls.append(
-        ("append_param_mapping_issue", (arg1, arg2), {})
-    )
-    facade._add_issue = lambda *args, **kwargs: forwarded_calls.append(("add_issue", args, kwargs))
-    facade._is_from_root_origin = lambda origin_file, origin_lib=None: (
-        (origin_file, origin_lib)
-        == (
-            "root.mod",
-            "LIB",
-        )
-    )
-    facade._has_output_effect = lambda arg, path: (arg, path) == (variable, ["Root", "Out"])
-    facade._has_ignorable_output_binding = lambda arg: arg is variable
-    facade._analyze_library_dependency_typedef_usage = lambda: forwarded_calls.append(
-        ("analyze_library_dependency_typedef_usage", (), {})
-    )
-    facade._check_param_mapping = lambda *args, **kwargs: forwarded_calls.append(("check_param_mapping", args, kwargs))
-    facade._lookup_global_variable = lambda name: other_variable if name == "GlobalVar" else None
-    facade._walk_moduledef = lambda *args: forwarded_calls.append(("walk_moduledef", args, {}))
-    facade._walk_module_code = lambda *args: forwarded_calls.append(("walk_module_code", args, {}))
+    def _get_usage(arg: Variable) -> tuple[str, Variable]:
+        return ("usage", arg)
+
+    def _append_issue(arg: VariableIssue) -> None:
+        forwarded_calls.append(("append_issue", (arg,), {}))
+
+    def _append_param_mapping_issue(arg1: object, arg2: object) -> None:
+        forwarded_calls.append(("append_param_mapping_issue", (arg1, arg2), {}))
+
+    def _add_issue(*args: object, **kwargs: object) -> None:
+        forwarded_calls.append(("add_issue", args, dict(kwargs)))
+
+    def _is_from_root_origin(origin_file: str | None, origin_lib: str | None = None) -> bool:
+        return (origin_file, origin_lib) == ("root.mod", "LIB")
+
+    def _has_output_effect(arg: Variable, path: list[str]) -> bool:
+        return (arg, path) == (variable, ["Root", "Out"])
+
+    def _has_ignorable_output_binding(arg: Variable) -> bool:
+        return arg is variable
+
+    def _analyze_library_dependency_typedef_usage() -> None:
+        forwarded_calls.append(("analyze_library_dependency_typedef_usage", (), {}))
+
+    def _check_param_mapping(*args: object, **kwargs: object) -> None:
+        forwarded_calls.append(("check_param_mapping", args, dict(kwargs)))
+
+    def _lookup_global_variable(name: str | None) -> Variable | None:
+        return other_variable if name == "GlobalVar" else None
+
+    def _walk_moduledef(*args: object) -> None:
+        forwarded_calls.append(("walk_moduledef", args, {}))
+
+    def _walk_module_code(*args: object) -> None:
+        forwarded_calls.append(("walk_module_code", args, {}))
+
+    facade: Any = FacadeProbe.__new__(FacadeProbe)
+    facade.usage_tracker = SimpleNamespace(get_usage=_get_usage, access_graph="graph")
+    facade._append_issue = _append_issue
+    facade._append_param_mapping_issue = _append_param_mapping_issue
+    facade._add_issue = _add_issue
+    facade._is_from_root_origin = _is_from_root_origin
+    facade._has_output_effect = _has_output_effect
+    facade._has_ignorable_output_binding = _has_ignorable_output_binding
+    facade._analyze_library_dependency_typedef_usage = _analyze_library_dependency_typedef_usage
+    facade._check_param_mapping = _check_param_mapping
+    facade._lookup_global_variable = _lookup_global_variable
+    facade._walk_moduledef = _walk_moduledef
+    facade._walk_module_code = _walk_module_code
 
     assert facade.get_usage(variable) == ("usage", variable)
     facade.append_issue(issue)
@@ -465,7 +555,7 @@ def test_variables_facade_forwarders_and_properties_cover_remaining_branches() -
     assert facade.has_output_effect(variable, ["Root", "Out"]) is True
     assert facade.has_ignorable_output_binding(variable) is True
     facade.analyze_library_dependency_typedef_usage()
-    facade.check_param_mapping(mapping, variable, {"FacadeVar": variable}, ["Root"], owner_contract_id=17)
+    facade.check_param_mapping(mapping, variable, {"FacadeVar": variable}, None, ["Root"], owner_contract_id=17)
     assert facade.lookup_global_variable("GlobalVar") is other_variable
     facade.walk_moduledef("moduledef", context, ["Root"])
     facade.walk_module_code("modulecode", context, ["Root"])
@@ -473,10 +563,10 @@ def test_variables_facade_forwarders_and_properties_cover_remaining_branches() -
     with pytest.raises(AttributeError, match="missing_attr"):
         _ = facade.missing_attr
 
-    class PropertiesProbe(variables_facade_properties_module.VariablesAnalyzerFacadePropertiesMixin):
+    class PropertiesProbe(VariablesAnalyzerFacadePropertiesMixin):
         _OPAQUE_BUILTIN_TYPES = cast(set[str], frozenset({"OPAQUE", "OPAQUE2"}))
 
-    properties_probe = PropertiesProbe.__new__(PropertiesProbe)
+    properties_probe: Any = PropertiesProbe.__new__(PropertiesProbe)
     properties_probe.usage_tracker = SimpleNamespace(access_graph="graph")
     properties_probe._effect_flow_edges = {("src",): {("z",), ("a",)}}
     properties_probe._contexts_by_module_path = {("Root",): parent_context}
@@ -504,7 +594,7 @@ def test_variables_facade_forwarders_and_properties_cover_remaining_branches() -
         ("analyze_library_dependency_typedef_usage", (), {}),
         (
             "check_param_mapping",
-            (mapping, variable, {"FacadeVar": variable}, ["Root"]),
+            (mapping, variable, {"FacadeVar": variable}, None, ["Root"]),
             {"owner_contract_id": 17},
         ),
         ("walk_moduledef", ("moduledef", context, ["Root"]), {}),
@@ -513,7 +603,7 @@ def test_variables_facade_forwarders_and_properties_cover_remaining_branches() -
 
 
 def test_variable_utils_cover_mapping_and_origin_fallback_branches(monkeypatch: pytest.MonkeyPatch) -> None:
-    analyzer = SimpleNamespace()
+    analyzer: Any = SimpleNamespace()
     assert (
         variable_utils_module.is_const_candidate(
             analyzer,
@@ -572,6 +662,26 @@ def test_variable_utils_cover_mapping_and_origin_fallback_branches(monkeypatch: 
         monkeypatch.setattr(variable_utils_module, "Path", original_path)
 
     assert variable_utils_module.matches_root_origin(None, "Root.s") is True
+    assert (
+        variable_utils_module.matches_root_origin(
+            None,
+            "Root.s",
+            analyzed_target_is_library=False,
+            origin_lib="ProjectLib",
+            root_origin_lib="ProjectLib",
+        )
+        is True
+    )
+    assert (
+        variable_utils_module.matches_root_origin(
+            None,
+            "Root.s",
+            analyzed_target_is_library=False,
+            origin_lib="SupportLib",
+            root_origin_lib="ProjectLib",
+        )
+        is False
+    )
     assert variable_utils_module.matches_root_origin("Root.s", "root.g") is True
 
 
@@ -579,36 +689,58 @@ def test_variable_issue_collection_and_variables_cover_remaining_branches(monkey
     proc_var = Variable(name="Proc", datatype=Simple_DataType.INTEGER)
     ui_var = Variable(name="Display", datatype=Simple_DataType.INTEGER)
     effect_var = Variable(name="Effect", datatype=Simple_DataType.INTEGER)
-    issues: list[tuple[IssueKind, str, str | None]] = []
+    issues: list[tuple[IssueKind, str | None, str | None]] = []
+
+    def _is_from_root_origin(*_args: object) -> bool:
+        return True
+
+    def _get_usage(variable: Variable) -> _UsageStub:
+        return {
+            id(proc_var): _UsageStub(read=True, written=True),
+            id(ui_var): _UsageStub(is_display_only=True),
+            id(effect_var): _UsageStub(read=True, written=True),
+        }[id(variable)]
+
+    def _procedure_status_issue(
+        variable: Variable,
+        _usage: _UsageStub,
+    ) -> tuple[str, str | None] | None:
+        if variable is proc_var:
+            return ("status-role", "Field")
+        return None
+
+    def _append_issue(issue: VariableIssue) -> None:
+        issues.append((issue.kind, issue.role, issue.field_path))
+
     helper: Any = SimpleNamespace(
         bp=SimpleNamespace(),
         unavailable_libraries=set(),
         analyzed_target_is_library=False,
         limit_to_module_path=["Root"],
-        is_from_root_origin=lambda *_: True,
-        get_usage=lambda variable: {
-            id(proc_var): _UsageStub(read=True, written=True),
-            id(ui_var): _UsageStub(is_display_only=True),
-            id(effect_var): _UsageStub(read=True, written=True),
-        }[id(variable)],
-        procedure_status_issue=lambda variable, usage: ("status-role", "Field") if variable is proc_var else None,
-        has_output_effect=lambda *args, **kwargs: False,
-        has_procedure_status_binding=lambda *args, **kwargs: False,
-        append_issue=lambda issue: issues.append((issue.kind, issue.role, issue.field_path)),
+        is_from_root_origin=_is_from_root_origin,
+        get_usage=_get_usage,
+        procedure_status_issue=_procedure_status_issue,
+        has_output_effect=_returns_false,
+        has_procedure_status_binding=_returns_false,
+        append_issue=_append_issue,
     )
-    monkeypatch.setattr(
-        variable_issue_collection_module,
-        "resolve_moduletype_def_strict",
-        lambda *args, **kwargs: _ns(
+
+    def _resolve_moduletype_def_strict(*_args: object, **_kwargs: object) -> Any:
+        return _ns(
             moduleparameters=[proc_var, ui_var, effect_var],
             localvariables=[],
             submodules=[],
             origin_file="Root.s",
             origin_lib=None,
-        ),
+        )
+
+    monkeypatch.setattr(
+        variable_issue_collection_module,
+        "resolve_moduletype_def_strict",
+        _resolve_moduletype_def_strict,
     )
     mod: Any = _ns(header=_ns(name="Worker"), moduletype_name="WorkerType")
-    variable_issue_collection_module._collect_issues_from_module(helper, mod, ["Root"])
+    variable_issue_collection_impl._collect_issues_from_module(helper, mod, ["Root"])
     assert issues == [
         (IssueKind.PROCEDURE_STATUS, "status-role", "Field"),
         (IssueKind.UI_ONLY, "moduleparameter", None),
@@ -623,9 +755,9 @@ def test_variable_issue_collection_and_variables_cover_remaining_branches(monkey
         visible_kinds=frozenset({IssueKind.UNUSED}),
         include_empty_sections=True,
     )
-    assert variables_execution_module._mapping_target_name(_ns(target="Demo.Field")) == "demo"
-    assert variables_execution_module._mapping_target_name(_ns(target={"var_name": "Demo.Field"})) == "demo"
-    assert variables_execution_module._mapping_target_name(_ns(target={})) is None
-    assert variables_access_module._site_str(_ns(site_stack=[])) == ""
-    assert variables_access_module._site_str(_ns(site_stack=["A", "B"])) == "A > B"
+    assert variables_execution_impl._mapping_target_name(_ns(target="Demo.Field")) == "demo"
+    assert variables_execution_impl._mapping_target_name(_ns(target={"var_name": "Demo.Field"})) == "demo"
+    assert variables_execution_impl._mapping_target_name(_ns(target={})) is None
+    assert variables_access_impl._site_str(_ns(site_stack=[])) == ""
+    assert variables_access_impl._site_str(_ns(site_stack=["A", "B"])) == "A > B"
     assert report.basepicture_name == "Root"
