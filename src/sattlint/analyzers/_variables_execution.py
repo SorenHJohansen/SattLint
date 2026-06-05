@@ -253,7 +253,7 @@ def _reset_analysis_state(self: VariablesAnalyzer) -> None:
     _clear_or_set("_analysis_warnings", [])
     self._last_status_message = None
     self._limit_to_module_path = None
-    self._phase_timings = []
+    _clear_or_set("_phase_timings", [])
     _clear_or_set("_record_component_order_datatypes_seen", set[str]())
     self.usage_tracker = UsageTracker()
     _clear_or_set("_site_stack", [])

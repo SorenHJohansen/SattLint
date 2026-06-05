@@ -123,7 +123,7 @@ def test_main_rejects_invalid_capture_env_without_spawning_child(
 
     exit_code = run_repo_python.main(
         ["-m", "pytest"],
-        env={run_repo_python.ARTIFACT_DIR_ENV: "artifacts/tmp"},
+        env={run_repo_python.ARTIFACT_DIR_ENV: "artifacts/generated"},
     )
 
     captured = capsys.readouterr()

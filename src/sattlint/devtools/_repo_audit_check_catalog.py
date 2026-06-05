@@ -172,6 +172,7 @@ def build_repo_audit_finding_check_definitions(
             "path_globs": (
                 "src/**",
                 "tests/**",
+                "metrics/layer_lint_policy.json",
                 "pyproject.toml",
             ),
             "owner_test_targets": _REPO_AUDIT_ARCHITECTURE_OWNER_TARGETS,
@@ -251,7 +252,6 @@ def build_repo_audit_finding_check_definitions(
             "owner_test_targets": _REPO_AUDIT_AI_GC_OWNER_TARGETS,
             **_ai_metadata(
                 "Use when AI-generated artifacts, coordination state, or related cleanup policy changes.",
-                ".github/instructions/agent-customizations.instructions.md",
                 ".github/instructions/repo-audit.instructions.md",
             ),
         },
@@ -282,10 +282,9 @@ def build_repo_audit_finding_check_definitions(
             "estimated_cost": "low",
             "path_globs": (
                 "AGENTS.md",
-                ".github/agents/**",
                 ".github/instructions/**",
-                ".github/skills/**",
-                "docs/context-loading-order.md",
+                "docs/maintainers/**",
+                "docs/public/architecture.md",
                 "docs/design-docs/core-beliefs.md",
                 "docs/references/ai-agent-reference.md",
                 "src/sattlint/devtools/ai_work_map.py",
@@ -298,7 +297,6 @@ def build_repo_audit_finding_check_definitions(
             "owner_test_targets": _REPO_AUDIT_HARNESS_OWNER_TARGETS,
             **_ai_metadata(
                 "Use when AI instructions, agents, generated routing maps, or other AI-control surfaces change.",
-                ".github/instructions/agent-customizations.instructions.md",
                 ".github/instructions/repo-audit.instructions.md",
             ),
         },
@@ -385,7 +383,6 @@ def build_repo_audit_finding_check_definitions(
             "owner_test_targets": _REPO_AUDIT_RECOMMENDATION_OWNER_TARGETS,
             **_ai_metadata(
                 "Use when routing catalogs, recommendation metadata, or generated AI registry outputs change.",
-                ".github/instructions/agent-customizations.instructions.md",
                 ".github/instructions/repo-audit.instructions.md",
             ),
         },

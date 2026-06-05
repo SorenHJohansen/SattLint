@@ -586,11 +586,7 @@ def test_main_pauses_when_initial_ast_check_fails(monkeypatch):
     monkeypatch.setattr(app, "self_check", lambda *_: True)
     monkeypatch.setattr(app, "ensure_ast_cache", lambda *_: False)
     monkeypatch.setattr(app, "pause", lambda: calls.append("pause"))
-    monkeypatch.setattr(
-        app.app_menus_module,
-        "run_main_loop",
-        lambda *_args, **_kwargs: calls.append("menu"),
-    )
+    monkeypatch.setattr(app, "run_interactive_session", lambda *_args, **_kwargs: calls.append("menu"))
 
     exit_code = app.main()
 

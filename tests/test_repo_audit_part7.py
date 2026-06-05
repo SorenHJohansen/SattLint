@@ -616,10 +616,7 @@ def test_build_repo_audit_check_catalog_lists_pipeline_and_custom_checks(tmp_pat
     ai_gc_entry = next(entry for entry in catalog["checks"] if entry["id"] == "ai-gc")
     assert "ai_gc" in ai_gc_entry["artifact_ids"]
     assert ai_gc_entry["owner_surface"] == "ai-hygiene"
-    assert ai_gc_entry["ai_instruction_files"] == [
-        ".github/instructions/agent-customizations.instructions.md",
-        ".github/instructions/repo-audit.instructions.md",
-    ]
+    assert ai_gc_entry["ai_instruction_files"] == [".github/instructions/repo-audit.instructions.md"]
 
     harness_entry = next(entry for entry in catalog["checks"] if entry["id"] == "harness-freshness")
     assert "--check harness-freshness" in harness_entry["command"]

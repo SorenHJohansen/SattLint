@@ -47,17 +47,15 @@ def run_harness_freshness_check(
     doc_gardener_finding_to_repo_audit_fn: Callable[[Any], Any],
     harness_freshness_doc_scanners: tuple[str, ...],
 ) -> list[Any]:
+    from sattlint.devtools import ai_work_map as ai_work_map_module
+
     findings = [
         ai_harness_issue_to_finding_fn(issue)
         for issue in verify_ai_harness_freshness_fn(
             repo_root=context.root,
-            output_path=context.root / ".github" / "skills" / "validation-routing" / "references" / "ai-work-map.json",
-            session_output_path=context.root
-            / ".github"
-            / "skills"
-            / "validation-routing"
-            / "references"
-            / "ai-session-context-map.json",
+            output_path=ai_work_map_module.DEFAULT_OUTPUT_PATH,
+            session_output_path=ai_work_map_module.DEFAULT_SESSION_CONTEXT_OUTPUT_PATH,
+            check_catalog_output_path=ai_work_map_module.DEFAULT_CHECK_CATALOG_OUTPUT_PATH,
         )["issues"]
     ]
     with patch_doc_gardener_paths_fn(context.root):

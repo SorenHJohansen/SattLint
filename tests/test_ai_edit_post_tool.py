@@ -76,7 +76,7 @@ def test_main_runs_ai_edit_gate_for_apply_patch(monkeypatch, tmp_path):
     assert calls == [["python", "scripts/run_ai_edit_gate.py", "src/demo.py"]]
 
 
-def test_main_reports_warning_when_ai_edit_gate_fails(monkeypatch, tmp_path, capsys):
+def test_main_blocks_when_ai_edit_gate_fails(monkeypatch, tmp_path, capsys):
     hook = _load_post_tool_module()
     payload = {
         "hookEventName": "PostToolUse",
@@ -92,8 +92,28 @@ def test_main_reports_warning_when_ai_edit_gate_fails(monkeypatch, tmp_path, cap
         lambda command, **_kwargs: subprocess.CompletedProcess(command, 1, stdout="", stderr="boom"),
     )
 
-    assert hook.main() == 0
-    payload = json.loads(capsys.readouterr().out)
+    assert hook.main() == 1
+    assert "AI edit gate blocked: boom" in capsys.readouterr().err
 
-    assert payload["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
-    assert "AI edit gate warning" in payload["systemMessage"]
+
+def test_main_fails_open_when_hook_runtime_raises(monkeypatch, tmp_path, capsys):
+    hook = _load_post_tool_module()
+    payload = {
+        "hookEventName": "PostToolUse",
+        "cwd": str(tmp_path),
+        "tool_name": "functions.create_file",
+        "tool_input": {"filePath": str(tmp_path / "docs" / "repo-map.md"), "content": "# Repo Map\n"},
+    }
+    monkeypatch.setattr(hook.sys, "stdin", io.StringIO(json.dumps(payload)))
+    monkeypatch.setattr(hook, "_resolve_python", lambda _repo_root: Path("python"))
+
+    def raise_runtime(_command, **_kwargs):
+        raise RuntimeError("subprocess unavailable")
+
+    monkeypatch.setattr(hook.subprocess, "run", raise_runtime)
+
+    assert hook.main() == 0
+    warning_payload = json.loads(capsys.readouterr().out)
+
+    assert warning_payload["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
+    assert "hook failed open" in warning_payload["systemMessage"]

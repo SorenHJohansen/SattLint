@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager, nullcontext
 from typing import TYPE_CHECKING, Any, cast
 
 from sattline_parser.models.ast_model import (
@@ -248,7 +249,13 @@ def _walk_moduletype_instance_subtree(
         if mt_key not in self.param_reads_by_typedef and mt_key not in self.analyzing_typedefs:
             if dependency_owned_moduletype:
                 # Traverse dependency typedefs for usage propagation, but keep findings on the edge mapping.
-                with self.divert_issue_collection():
+                divert_issue_collection = getattr(self, "divert_issue_collection", None)
+                diversion: AbstractContextManager[object]
+                if callable(divert_issue_collection):
+                    diversion = cast(AbstractContextManager[object], divert_issue_collection())
+                else:
+                    diversion = nullcontext()
+                with diversion:
                     self.analyze_typedef_with_context(moduletype, typedef_context, path=child_path)
             else:
                 self.analyze_typedef_with_context(moduletype, typedef_context, path=child_path)

@@ -162,9 +162,8 @@ def main() -> int:
         detail = (
             completed.stderr.strip() or completed.stdout.strip() or "run_ai_edit_gate.py returned a non-zero exit code."
         )
-        message = f"AI edit gate warning: {detail}"
-        sys.stdout.write(json.dumps(_warning_payload(message)))
-        return 0
+        print(f"AI edit gate blocked: {detail}", file=sys.stderr)
+        return 1
     except Exception as exc:  # pragma: no cover - hook failures should not block edits
         message = f"AI edit gate hook warning: hook failed open with {type(exc).__name__}: {exc}"
         sys.stdout.write(json.dumps(_warning_payload(message)))

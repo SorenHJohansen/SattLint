@@ -21,6 +21,7 @@ DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "release-smoke"
 STATUS_SCHEMA_KIND = "sattlint.release_smoke.status"
 SUMMARY_SCHEMA_KIND = "sattlint.release_smoke.summary"
 SCHEMA_VERSION = 1
+LSP_RUNTIME_DEPENDENCIES = ("pygls>=1.3.1",)
 
 
 class _CommandRunner(Protocol):
@@ -33,6 +34,7 @@ class _CommandRunner(Protocol):
         text: bool,
         capture_output: bool,
         check: bool,
+        timeout: float | None,
     ) -> subprocess.CompletedProcess[str]: ...
 
 
@@ -45,6 +47,8 @@ class _SmokeStepDefinition:
     step_id: str
     display_name: str
     command: tuple[str, ...]
+    timeout_seconds: float | None = None
+    timeout_is_success: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,12 +60,14 @@ class _SmokeStepResult:
     status: str
     stdout: str
     stderr: str
+    timed_out: bool = False
 
     def to_status_payload(self) -> dict[str, Any]:
         return {
             "status": self.status,
             "exit_code": self.exit_code,
             "command": list(self.command),
+            "timed_out": self.timed_out,
         }
 
     def to_summary_payload(self) -> dict[str, Any]:
@@ -73,7 +79,16 @@ class _SmokeStepResult:
             "command": list(self.command),
             "stdout": self.stdout,
             "stderr": self.stderr,
+            "timed_out": self.timed_out,
         }
+
+
+def _ensure_text(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
 
 
 def _sanitize_path(path: Path, *, repo_root: Path) -> str:
@@ -94,6 +109,7 @@ def _run_subprocess(
     text: bool,
     capture_output: bool,
     check: bool,
+    timeout: float | None,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(  # nosec B603 - commands are explicit argv sequences built from repo-controlled paths
         list(command),
@@ -102,6 +118,7 @@ def _run_subprocess(
         text=text,
         capture_output=capture_output,
         check=check,
+        timeout=timeout,
     )
 
 
@@ -121,12 +138,17 @@ def _venv_script(venv_dir: Path, name: str) -> Path:
 def _build_step_definitions(venv_dir: Path, *, wheel: Path, sample_file: Path) -> tuple[_SmokeStepDefinition, ...]:
     python_executable = _venv_python(venv_dir)
     sattlint_executable = _venv_script(venv_dir, "sattlint")
-    repo_audit_executable = _venv_script(venv_dir, "sattlint-repo-audit")
+    lsp_executable = _venv_script(venv_dir, "sattlint-lsp")
     return (
         _SmokeStepDefinition(
             step_id="install_wheel",
             display_name="Install built wheel",
             command=(str(python_executable), "-m", "pip", "install", str(wheel)),
+        ),
+        _SmokeStepDefinition(
+            step_id="install_lsp_runtime_dependencies",
+            display_name="Install stable LSP runtime dependencies",
+            command=(str(python_executable), "-m", "pip", "install", *LSP_RUNTIME_DEPENDENCIES),
         ),
         _SmokeStepDefinition(
             step_id="cli_version",
@@ -140,8 +162,15 @@ def _build_step_definitions(venv_dir: Path, *, wheel: Path, sample_file: Path) -
         ),
         _SmokeStepDefinition(
             step_id="repo_audit_boot",
-            display_name="Boot repo-audit CLI",
-            command=(str(repo_audit_executable), "--profile", "full", "--list-checks"),
+            display_name="Boot stable repo-audit subcommand",
+            command=(str(sattlint_executable), "repo-audit", "--profile", "full", "--list-checks"),
+        ),
+        _SmokeStepDefinition(
+            step_id="lsp_boot",
+            display_name="Boot stable LSP entrypoint",
+            command=(str(lsp_executable),),
+            timeout_seconds=1.0,
+            timeout_is_success=True,
         ),
     )
 
@@ -153,14 +182,38 @@ def _run_step(
     env: Mapping[str, str],
     run_command: _CommandRunner,
 ) -> _SmokeStepResult:
-    completed = run_command(
-        definition.command,
-        cwd=cwd,
-        env=env,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    try:
+        completed = run_command(
+            definition.command,
+            cwd=cwd,
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=definition.timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        if not definition.timeout_is_success:
+            return _SmokeStepResult(
+                step_id=definition.step_id,
+                display_name=definition.display_name,
+                command=definition.command,
+                exit_code=1,
+                status="fail",
+                stdout=_ensure_text(exc.stdout),
+                stderr=_ensure_text(exc.stderr),
+                timed_out=True,
+            )
+        return _SmokeStepResult(
+            step_id=definition.step_id,
+            display_name=definition.display_name,
+            command=definition.command,
+            exit_code=0,
+            status="pass",
+            stdout=_ensure_text(exc.stdout),
+            stderr=_ensure_text(exc.stderr),
+            timed_out=True,
+        )
     return _SmokeStepResult(
         step_id=definition.step_id,
         display_name=definition.display_name,

@@ -1,7 +1,7 @@
 ---
 description: "Use when routing work to the owning SattLint surface or choosing the closest repo area for a change. Provides the condensed repo map that was removed from AGENTS.md for context efficiency."
 name: "Repo Map Instructions"
-applyTo: ["src/**", "tests/**", "scripts/**", ".github/**", ".ai/**", "docs/**", "vscode/**", "metrics/**"]
+applyTo: ["src/**", "tests/**", "scripts/**", ".github/**", "docs/**", "vscode/**", "metrics/**"]
 ---
 # Repo Map
 
@@ -14,8 +14,7 @@ applyTo: ["src/**", "tests/**", "scripts/**", ".github/**", ".ai/**", "docs/**",
 | `src/sattlint_lsp/` | Language server and workspace loading |
 | `vscode/sattline-vscode/` | No-build VS Code client for SattLine editing in external workspaces; not the default owner for this repo's Python-side health or audit UX |
 | `tests/` | Owner suites and regression coverage |
-| `.github/` | CI, instructions, prompts, agents, coordination |
-| `.ai/` | Task contracts and handoffs |
+| `.github/` | CI, instructions, hooks, and optional chat customizations |
 | `metrics/` | Ratchets and curated health history |
 | `artifacts/` | Machine-readable audit outputs |
 

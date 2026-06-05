@@ -133,6 +133,34 @@ def test_find_architecture_findings_reports_cycle_size_and_core_coupling(tmp_pat
     assert coupling_finding.path is not None
 
 
+def test_find_architecture_findings_translates_layer_linter_policy_violations(tmp_path, monkeypatch):
+    source_root = tmp_path / "src"
+    repo_file = source_root / "sattlint" / "core" / "rules.py"
+    repo_file.parent.mkdir(parents=True)
+    repo_file.write_text("import sattlint.devtools.layer_linter\n", encoding="utf-8")
+    monkeypatch.setattr(
+        repo_audit._layer_linter_module,
+        "load_policy",
+        lambda: repo_audit._layer_linter_module.LayerLintPolicy(
+            forbidden_imports={"sattlint.core": ("sattlint.devtools",)},
+            path="<test>",
+        ),
+    )
+
+    findings = repo_audit._find_architecture_findings(
+        source_root,
+        content_by_file={repo_file: "import sattlint.devtools.layer_linter\n"},
+    )
+
+    policy_finding = next(finding for finding in findings if finding.id == "forbidden-import-policy")
+
+    assert policy_finding.category == "architecture"
+    assert policy_finding.path == "src/sattlint/core/rules.py"
+    assert policy_finding.line == 1
+    assert policy_finding.detail == "sattlint.core.rules -> sattlint.devtools.layer_linter"
+    assert policy_finding.source == "layer-linter"
+
+
 def test_find_cli_findings_flags_missing_parser_and_subcommand_descriptions(monkeypatch):
     parser = SimpleNamespace(
         description=None,

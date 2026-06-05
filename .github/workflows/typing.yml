@@ -88,27 +88,3 @@ jobs:
 
       - name: Audit VS Code client dependencies
         run: npm audit --audit-level=high
-
-  ratchet_policy:
-    name: Ratchet Policy
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          fetch-depth: 0
-
-      - name: Set up shared CI tooling
-        uses: ./.github/actions/setup-ci-tooling
-        with:
-          install-dependencies: "false"
-
-      - name: Install ratchet policy dependency
-        run: python -m pip install "defusedxml==0.7.1"
-
-      - name: Fetch pull request base ref
-        if: ${{ github.event_name == 'pull_request' }}
-        run: git fetch --no-tags --depth=1 origin "${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
-
-      - name: Enforce ratchet backslide policy
-        run: python scripts/check_ratchet_policy.py

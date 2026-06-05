@@ -11,31 +11,22 @@
   },
   "context_files": {
     "auto_loaded": [
-      "AGENTS.md",
-      "docs/context-loading-order.md"
+      "AGENTS.md"
     ],
     "scoped_globs": [
-      ".github/instructions/*.md",
-      ".github/agents/*.agent.md",
-      ".github/prompts/*.prompt.md",
-      ".github/skills/**/SKILL.md"
+      ".github/instructions/*.md"
     ]
   },
   "required_paths": {
     "docs": [
-      "docs/repo-map.md",
-      "docs/architecture.md",
-      "docs/quality-gates.md",
-      "docs/ai-workflows.md"
+      "docs/maintainers/repo-map.md",
+      "docs/public/architecture.md",
+      "docs/maintainers/quality-gates.md"
     ],
     "vscode": [
       ".vscode/settings.json",
       ".vscode/extensions.json",
       ".vscode/tasks.json"
-    ],
-    "ai": [
-      ".ai/tasks/task-contract.schema.json",
-      ".ai/handoffs/handoff.schema.json"
     ]
   },
   "context_optimizer": {

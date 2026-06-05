@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import io
 import sys
 import traceback
@@ -22,6 +23,10 @@ RunSyntaxCheckCommandFn = Callable[[str], int]
 LoadConfigFn = Callable[[Path], tuple[ConfigDict, bool]]
 ApplyDebugFn = Callable[[ConfigDict], None]
 AppCommandFn = Callable[..., int | None]
+
+
+def _load_devtools_module(module_name: str) -> Any:
+    return importlib.import_module(f"sattlint.devtools.{module_name}")
 
 
 class _ParsedCliArgs(Protocol):
@@ -220,7 +225,7 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         ),
     )
 
-    from ..devtools import repo_audit_cli
+    repo_audit_cli = _load_devtools_module("repo_audit_cli")
 
     repo_audit_parent = repo_audit_cli.build_cli_parser(prog="sattlint repo-audit", add_help=False)
     subparsers.add_parser(
@@ -275,7 +280,7 @@ def run_cli(
             return run_syntax_check_command_fn(args.file)
 
     if command == "repo-audit":
-        from ..devtools import repo_audit
+        repo_audit = _load_devtools_module("repo_audit")
 
         try:
             idx = next(i for i, arg in enumerate(argv) if arg == "repo-audit")
@@ -287,7 +292,7 @@ def run_cli(
             return repo_audit.main(remaining) or exit_success
 
     if command == "source-diff":
-        from ..devtools import source_diff_report
+        source_diff_report = _load_devtools_module("source_diff_report")
 
         try:
             idx = next(i for i, arg in enumerate(argv) if arg == "source-diff")

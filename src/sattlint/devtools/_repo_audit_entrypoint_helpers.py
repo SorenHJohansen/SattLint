@@ -73,6 +73,32 @@ def _cli_consistency_findings(report: dict[str, Any]) -> list[Any]:
                 source="cli-consistency",
             )
         )
+    for entry in report.get("gaps", {}).get("missing_tasks", []):
+        findings.append(
+            repo_audit.Finding(
+                id="cli-consistency-missing-task",
+                category="feature-wiring",
+                severity="high",
+                confidence="high",
+                message=f"Required VS Code task '{entry.get('label')}' is missing.",
+                path=entry.get("referenced_in"),
+                line=entry.get("line"),
+                source="cli-consistency",
+            )
+        )
+    for entry in report.get("gaps", {}).get("mismatched_tasks", []):
+        findings.append(
+            repo_audit.Finding(
+                id="cli-consistency-task-mismatch",
+                category="feature-wiring",
+                severity="high",
+                confidence="high",
+                message=f"VS Code task '{entry.get('label')}' does not match the canonical command.",
+                path=entry.get("referenced_in"),
+                line=entry.get("line"),
+                source="cli-consistency",
+            )
+        )
     return findings
 
 

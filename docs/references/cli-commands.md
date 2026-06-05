@@ -153,11 +153,10 @@ sattlint-repo-audit --profile quick --fail-on medium --output-dir artifacts/audi
 sattlint-repo-audit --profile full --fail-on high --output-dir artifacts/audit
 ```
 
-AI edit autofix:
+AI-control health gate:
 
 ```bash
-python scripts/run_ai_edit_gate.py
-python scripts/run_ai_edit_gate.py scripts/context_health.py tests/test_ai_edit_gate.py
+python scripts/context_health.py --check
 ```
 
 Fast local pre-commit gate:
@@ -166,7 +165,7 @@ Fast local pre-commit gate:
 python -m pre_commit run --all-files
 ```
 
-That hook set is now intentionally fast and file-scoped. It auto-fixes Python formatting with Ruff, lints changed Markdown files, checks staged SattLine files, and reruns context health only when the AI-control plane is touched.
+That hook set is now intentionally fast and file-scoped. It runs Ruff, lints changed Markdown files, checks staged SattLine files, and reruns context health only when the AI-control plane is touched.
 
 Standalone workflow and Markdown lint wrappers:
 
@@ -177,6 +176,15 @@ python scripts/run_markdownlint.py --config .markdownlint-cli2.jsonc
 
 Use these wrappers when running the tools directly outside pre-commit. Pre-commit and CI both call the same wrappers so the fallback behavior and platform handling stay aligned.
 
+Manual AI post-change gate:
+
+```bash
+python scripts/run_ai_edit_gate.py path/to/file.py [path/to/other-file]
+```
+
+This is the same runner invoked by `.github/hooks/ai-edit-gate.json` after AI file edits.
+It enforces touched-file Ruff fix and format, touched-file Pyright, AI-control checks such as `context_health.py --check`, and touched-file ratchet policy through `scripts/check_ratchet_policy.py`.
+
 Local pre-push gate:
 
 ```bash
@@ -184,6 +192,7 @@ sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/aud
 ```
 
 Use the pre-push gate for the heavier proof burden: focused owner tests, touched-file Ruff and Pyright, ratchet policy, and the recommended repo-audit slice for the current change set.
+It also evaluates changed-file structural surface proof against the recorded `import_max_count`, `dependency_max_count`, `public_symbol_max_count`, and `nesting_max_depth` ceilings.
 
 Output:
 

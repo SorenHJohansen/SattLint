@@ -40,7 +40,7 @@ REPO_AUDIT_ROUTE_CASES = {
     "public-readiness": ("SECURITY.md", "src/sattlint/devtools/repo_audit.py"),
     "ratchet-policy": ("artifacts/analysis/file_debt_ratchet.json", "README.md"),
     "verify-recommendations": ("src/sattlint/devtools/pipeline_checks.py", "src/sattlint/config.py"),
-    "cli-consistency": ("docs/references/cli-commands.md", "src/sattline_parser/api.py"),
+    "cli-consistency": (".vscode/tasks.json", "src/sattline_parser/api.py"),
 }
 
 
@@ -83,6 +83,14 @@ def test_repo_audit_route_cases_cover_positive_and_negative_paths(tmp_path, chec
 
     assert path_matches_globs(positive_path, path_globs)
     assert not path_matches_globs(negative_path, path_globs)
+
+
+def test_architecture_route_also_matches_layer_lint_policy_file(tmp_path):
+    catalog = repo_audit.build_repo_audit_check_catalog(profile="full", output_dir=tmp_path, fail_on="high")
+    entry = _catalog_entry_by_id(catalog, "architecture")
+    path_globs = cast(list[str], entry["path_globs"])
+
+    assert path_matches_globs("metrics/layer_lint_policy.json", path_globs)
 
 
 def test_repo_audit_helper_filters_findings_to_changed_scope():

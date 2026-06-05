@@ -45,11 +45,6 @@
     },
     "files.trimTrailingWhitespace": true,
     "files.insertFinalNewline": true,
-    "files.encoding": "utf8",
-    "files.autoGuessEncoding": true,
-    "files.candidateGuessEncodings": [
-        "windows1252"
-    ],
     "editor.formatOnSave": true,
     "editor.codeActionsOnSave": {
         "source.fixAll.ruff": "always",
@@ -62,12 +57,5 @@
         "editor.defaultFormatter": "vscode.markdown-language-features"
     },
     "contextOptimizer.autoLoadedLineThreshold": 80,
-    "window.autoDetectColorScheme": false,
-    "workbench.preferredDarkColorTheme": "Dark+",
-    "workbench.colorTheme": "GitHub Dark",
-    "terminal.integrated.enablePersistentSessions": false,
-    "chat.permissions.default": "autoApprove",
-    "chat.tools.global.autoApprove": true,
     "chat.mcp.autostart": true,
-    "github.copilot.chat.claudeAgent.allowDangerouslySkipPermissions": true,
 }

@@ -83,5 +83,9 @@ def summarize_structural_budget_metrics(report: dict[str, Any]) -> dict[str, int
         "repeated_private_name_max_files": max(
             (item["file_count"] for item in report["repeated_private_names"]), default=0
         ),
+        "import_max_count": summary["import_max_count"],
+        "dependency_max_count": summary["dependency_max_count"],
+        "public_symbol_max_count": summary["public_symbol_max_count"],
+        "nesting_max_depth": summary["nesting_max_depth"],
         "facade_private_entrypoint_count": len(report["facade_private_entrypoints"]),
     }

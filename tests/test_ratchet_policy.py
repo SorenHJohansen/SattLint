@@ -121,6 +121,18 @@ def test_new_file_size_errors_rejects_added_markdown_files_over_500_lines(tmp_pa
     assert errors == ["New Markdown file docs/guide.md is 501 lines; new files must stay at or under 500 lines."]
 
 
+def test_run_policy_check_for_paths_rejects_touched_python_files_over_500_lines(tmp_path):
+    oversized = tmp_path / "src" / "pkg" / "legacy.py"
+    oversized.parent.mkdir(parents=True)
+    oversized.write_text("\n".join(f"value_{index} = {index}" for index in range(501)), encoding="utf-8")
+
+    errors = ratchet_policy.run_policy_check_for_paths(("src/pkg/legacy.py",), repo_root=tmp_path)
+
+    assert errors == [
+        "Touched Python file src/pkg/legacy.py is 501 lines; AI-touched Python files must stay at or under 500 lines."
+    ]
+
+
 def test_new_file_coverage_errors_rejects_added_source_files_below_100_percent(tmp_path):
     (tmp_path / "coverage.xml").write_text(
         """<?xml version=\"1.0\" ?>

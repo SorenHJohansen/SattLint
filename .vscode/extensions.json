@@ -5,8 +5,6 @@
     "charliermarsh.ruff",
     "github.copilot",
     "github.copilot-chat",
-    "wanderleyferreiradealbuquerque.context-optimizer",
-    "eamodio.gitlens",
-    "github.vscode-pull-request-github"
+    "wanderleyferreiradealbuquerque.context-optimizer"
   ]
 }

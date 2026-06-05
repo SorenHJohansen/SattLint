@@ -229,7 +229,7 @@ AI can unintentionally create broad regressions.
 
 Agents start with small, stable entry point (`AGENTS.md`), follow pointers to depth.
 
-- `AGENTS.md` → `ARCHITECTURE.md` → domain-specific docs
+- `AGENTS.md` -> `docs/public/architecture.md` -> domain-specific docs
 - Subsystem instructions in `.github/instructions/*.md`
 - Never dump 1000-line manual into context
 

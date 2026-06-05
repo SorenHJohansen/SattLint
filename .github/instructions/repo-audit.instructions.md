@@ -7,7 +7,7 @@ applyTo: ["src/sattlint/devtools/**", "tests/test_repo_audit*.py", "tests/test_p
 
 - Extend existing devtools seams instead of adding parallel registries or artifact formats.
 - Keep outputs machine-readable and actionable.
-- Choose the first focused validation route from [validation map](../skills/validation-routing/references/validation-map.md) before full-profile verification.
+- Choose the first focused validation route from [validation map](../../docs/maintainers/validation-map.md) before full-profile verification.
 - Open `artifacts/audit/status.json` first when inspecting audit results.
 - For `--check-my-changes` triage, separate current-slice findings from inherited repo findings before choosing the owner seam or widening scope.
 - Prefer scoping and path-attribution fixes before suppressing findings or broadening checks.

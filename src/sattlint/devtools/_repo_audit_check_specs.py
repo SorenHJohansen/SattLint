@@ -186,6 +186,7 @@ def build_repo_audit_check_catalog(
                 "owner_surface": "cli-docs",
                 "estimated_cost": "low",
                 "path_globs": [
+                    ".vscode/tasks.json",
                     "README.md",
                     "CONTRIBUTING.md",
                     "docs/references/cli-commands.md",

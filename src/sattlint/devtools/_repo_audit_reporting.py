@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, cast
 
+from sattlint.devtools import _portable_command_text as _portable_command_text_module
 from sattlint.devtools import coverage_reports as _coverage_reports_module
 from sattlint.devtools._repo_audit_ai_gc import (
     _ai_gc_report_findings,
@@ -143,11 +144,111 @@ def _cli_consistency_doc_paths(root: Path) -> list[Path]:
     return doc_paths
 
 
+_REQUIRED_VSCODE_TASKS = (
+    {
+        "label": "Quality: Pre-push Gate",
+        "command": _portable_command_text_module.repo_audit_command(
+            "--profile",
+            "full",
+            "--check-my-changes",
+            "--output-dir",
+            "artifacts/audit",
+        ),
+    },
+)
+
+
+def _line_number_for_literal(text: str, literal: str) -> int | None:
+    index = text.find(literal)
+    if index < 0:
+        return None
+    return text.count("\n", 0, index) + 1
+
+
+def _normalize_vscode_task_command(command: object, args: object) -> str | None:
+    if not isinstance(command, str):
+        return None
+    normalized_command = command.strip().replace("\\", "/")
+    if not normalized_command:
+        return None
+
+    command_name = normalized_command.rsplit("/", 1)[-1].casefold()
+    parts = ["python" if command_name in {"python", "python3", "python.exe"} else normalized_command]
+    if isinstance(args, list):
+        for arg in cast(list[object], args):
+            if isinstance(arg, str) and arg.strip():
+                parts.append(arg.strip().replace("\\", "/"))
+    return " ".join(parts)
+
+
+def _string_key_mapping(value: object) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    mapping: dict[str, object] = {}
+    for key, item in cast(dict[object, object], value).items():
+        if isinstance(key, str):
+            mapping[key] = item
+    return mapping
+
+
+def _build_required_vscode_task_gaps(root: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    tasks_path = root / ".vscode" / "tasks.json"
+    rel_path = ".vscode/tasks.json"
+    missing_tasks: list[dict[str, Any]] = []
+    mismatched_tasks: list[dict[str, Any]] = []
+    try:
+        text = tasks_path.read_text(encoding="utf-8")
+        payload = json.loads(text)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        text = ""
+        payload = None
+
+    payload_mapping = _string_key_mapping(payload)
+    task_entries = payload_mapping.get("tasks") if payload_mapping is not None else None
+    tasks_by_label: dict[str, dict[str, object]] = {}
+    if isinstance(task_entries, list):
+        for task_entry in cast(list[object], task_entries):
+            task_mapping = _string_key_mapping(task_entry)
+            if task_mapping is None:
+                continue
+            label_value = task_mapping.get("label")
+            if isinstance(label_value, str):
+                tasks_by_label[label_value] = task_mapping
+
+    for required_task in _REQUIRED_VSCODE_TASKS:
+        label = required_task["label"]
+        line = _line_number_for_literal(text, f'"label": "{label}"') if text else None
+        task = tasks_by_label.get(label)
+        if task is None:
+            missing_tasks.append(
+                {
+                    "label": label,
+                    "referenced_in": rel_path,
+                    "line": line,
+                    "expected_command": required_task["command"],
+                }
+            )
+            continue
+        actual_command = _normalize_vscode_task_command(task.get("command"), task.get("args"))
+        if actual_command != required_task["command"]:
+            mismatched_tasks.append(
+                {
+                    "label": label,
+                    "referenced_in": rel_path,
+                    "line": line,
+                    "expected_command": required_task["command"],
+                    "actual_command": actual_command,
+                }
+            )
+    return missing_tasks, mismatched_tasks
+
+
 def build_cli_consistency_report(*, root: Path) -> dict[str, Any]:
     repo_audit = _repo_audit_reporting_module()
     scripts, subcommands = repo_audit._collect_cli_metadata()
     doc_paths = _cli_consistency_doc_paths(root)
     documented_commands = repo_audit._extract_documented_commands(doc_paths, root=root)
+    missing_tasks, mismatched_tasks = _build_required_vscode_task_gaps(root)
 
     undeclared_subcommands: list[dict[str, Any]] = []
     undeclared_scripts: list[dict[str, Any]] = []
@@ -177,7 +278,7 @@ def build_cli_consistency_report(*, root: Path) -> dict[str, Any]:
     documented_script_names = {item.command for item in documented_commands if item.command.startswith("sattlint-")}
     undocumented_scripts = sorted(scripts - documented_script_names)
 
-    gap_count = len(undeclared_subcommands) + len(undeclared_scripts)
+    gap_count = len(undeclared_subcommands) + len(undeclared_scripts) + len(missing_tasks) + len(mismatched_tasks)
     return {
         "kind": repo_audit.CLI_CONSISTENCY_SCHEMA_KIND,
         "schema_version": repo_audit.CLI_CONSISTENCY_SCHEMA_VERSION,
@@ -191,6 +292,8 @@ def build_cli_consistency_report(*, root: Path) -> dict[str, Any]:
             "undeclared_scripts": undeclared_scripts,
             "undocumented_subcommands": undocumented_subcommands,
             "undocumented_scripts": undocumented_scripts,
+            "missing_tasks": missing_tasks,
+            "mismatched_tasks": mismatched_tasks,
         },
         "summary": {
             "declared_script_count": len(scripts),
@@ -199,6 +302,8 @@ def build_cli_consistency_report(*, root: Path) -> dict[str, Any]:
             "undeclared_script_count": len(undeclared_scripts),
             "undocumented_subcommand_count": len(undocumented_subcommands),
             "undocumented_script_count": len(undocumented_scripts),
+            "missing_task_count": len(missing_tasks),
+            "mismatched_task_count": len(mismatched_tasks),
             "gap_count": gap_count,
         },
         "status": "fail" if gap_count > 0 else "pass",

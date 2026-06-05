@@ -32,6 +32,9 @@ STATUS_BONUS = {
     "planned": 1,
     "blocked": 0,
 }
+PRIMARY_AGENT_BY_INSTRUCTION = {
+    "CLI App Instructions": "CLI App Menu",
+}
 
 
 class ClaimInfo(TypedDict):
@@ -239,6 +242,20 @@ def _signal_changed_files(signals: PayloadSignals, cwd: Path) -> list[str]:
     return changed_files
 
 
+def _resolve_primary_agent(planning_context: dict[str, object]) -> str | None:
+    primary_agent = planning_context.get("primary_agent")
+    if isinstance(primary_agent, str) and primary_agent.strip():
+        return primary_agent
+    for item in planning_context.get("instruction_files", []):
+        if not isinstance(item, dict):
+            continue
+        instruction_name = str(item.get("name", "")).strip()
+        fallback_agent = PRIMARY_AGENT_BY_INSTRUCTION.get(instruction_name)
+        if fallback_agent:
+            return fallback_agent
+    return None
+
+
 def _build_planning_context_payload(signals: PayloadSignals, cwd: Path) -> PlanningContextPayload | None:
     changed_files = _signal_changed_files(signals, cwd)
     if not changed_files:
@@ -251,6 +268,12 @@ def _build_planning_context_payload(signals: PayloadSignals, cwd: Path) -> Plann
     from sattlint.devtools import ai_work_map
 
     session_context_map = ai_work_map.load_session_context_map()
+    if ("generated_by" in session_context_map or "generated_from" in session_context_map) and (
+        not session_context_map.get("agents") or not session_context_map.get("agent_routing")
+    ):
+        session_context_map = dict(session_context_map)
+        session_context_map["agents"] = ai_work_map._collect_agent_metadata(ai_work_map.AGENTS_DIR)
+        session_context_map["agent_routing"] = list(ai_work_map.AGENT_ROUTING_RULES)
     planning_context = ai_work_map.build_planning_context(
         changed_files=changed_files,
         recommended_check_ids=None,
@@ -268,6 +291,7 @@ def _build_planning_context_payload(signals: PayloadSignals, cwd: Path) -> Plann
     first_validation_commands = [
         str(command) for command in planning_context.get("first_validation_commands", []) if str(command).strip()
     ]
+    primary_agent = _resolve_primary_agent(planning_context)
     return {
         "changed_files": changed_files,
         "semantic_suggestion_paths": [
@@ -276,7 +300,7 @@ def _build_planning_context_payload(signals: PayloadSignals, cwd: Path) -> Plann
             if isinstance(item, dict) and str(item.get("file_path", "")).strip()
         ],
         "selected_surface": "session-start",
-        "primary_agent": planning_context.get("primary_agent"),
+        "primary_agent": primary_agent,
         "instruction_names": [
             str(item.get("name", ""))
             for item in planning_context.get("instruction_files", [])

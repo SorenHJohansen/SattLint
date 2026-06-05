@@ -272,7 +272,7 @@ def build_report(*, section: str | None = None) -> dict[str, Any]:
             }
         )
 
-    repo_map_path = REPO_ROOT / "docs" / "repo-map.md"
+    repo_map_path = REPO_ROOT / "docs" / "maintainers" / "repo-map.md"
     repo_map_max_lines = int(thresholds.get("repo_map_max_lines", 220))
     repo_map_lines = _line_count(repo_map_path) if repo_map_path.exists() else 0
     if repo_map_path.exists() and repo_map_lines > repo_map_max_lines:
@@ -280,8 +280,8 @@ def build_report(*, section: str | None = None) -> dict[str, Any]:
             {
                 "id": "repo-map-over-budget",
                 "severity": "error",
-                "path": "docs/repo-map.md",
-                "message": f"docs/repo-map.md is {repo_map_lines} lines; budget is {repo_map_max_lines}.",
+                "path": "docs/maintainers/repo-map.md",
+                "message": (f"docs/maintainers/repo-map.md is {repo_map_lines} lines; budget is {repo_map_max_lines}."),
             }
         )
 
@@ -370,7 +370,7 @@ def _render_markdown(report: dict[str, Any]) -> str:
             f"{metrics['auto_loaded_context_budget']} lines"
         ),
         f"- AGENTS.md: {metrics['agents_lines']}/{metrics['agents_max_lines']} lines",
-        f"- docs/repo-map.md: {metrics['repo_map_lines']}/{metrics['repo_map_max_lines']} lines",
+        (f"- docs/maintainers/repo-map.md: {metrics['repo_map_lines']}/{metrics['repo_map_max_lines']} lines"),
         f"- Scoped context files: {metrics['scoped_context_file_count']}",
         (f"- Context optimizer recommended: {'yes' if metrics['context_optimizer_recommended'] else 'no'}"),
         "",

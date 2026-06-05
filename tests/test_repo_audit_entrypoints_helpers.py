@@ -336,7 +336,7 @@ def test_run_verify_recommendations_check_converts_catalog_issues_to_findings(mo
     )
     monkeypatch.setattr(repo_audit_entrypoints, "build_repo_audit_check_catalog", lambda **kwargs: {"checks": []})
     monkeypatch.setattr(repo_audit_entrypoints, "verify_check_catalog", lambda catalog, repo_root: next(reports))
-    work_map_path = tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-work-map.json"
+    work_map_path = tmp_path / "docs" / "maintainers" / "ai" / "ai-work-map.json"
     session_map_path = work_map_path.with_name("ai-session-context-map.json")
     check_catalog_path = work_map_path.with_name("ai-check-catalog.md")
     work_map_path.parent.mkdir(parents=True, exist_ok=True)
@@ -367,7 +367,7 @@ def test_run_verify_recommendations_check_flags_generated_artifact_drift(monkeyp
         REPO_ROOT=tmp_path,
         Finding=lambda **kwargs: SimpleNamespace(**kwargs),
     )
-    work_map_path = tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-work-map.json"
+    work_map_path = tmp_path / "docs" / "maintainers" / "ai" / "ai-work-map.json"
     session_map_path = work_map_path.with_name("ai-session-context-map.json")
     check_catalog_path = work_map_path.with_name("ai-check-catalog.md")
     work_map_path.parent.mkdir(parents=True, exist_ok=True)
@@ -396,5 +396,5 @@ def test_run_verify_recommendations_check_flags_generated_artifact_drift(monkeyp
         "recommendation-generated-artifact-drift-ai-check-catalog",
     ]
     assert all(finding.severity == "high" for finding in findings)
-    assert findings[0].path == ".github/skills/validation-routing/references/ai-work-map.json"
+    assert findings[0].path == "docs/maintainers/ai/ai-work-map.json"
     assert "python -m sattlint.devtools.ai_work_map --write" in findings[0].detail

@@ -12,4 +12,18 @@
             }
         ]
     }
+}{
+    "hooks": {
+        "PostToolUse": [
+            {
+                "type": "command",
+                "command": "python .github/hooks/scripts/ai_edit_gate_post_tool.py",
+                "windows": ".venv\\Scripts\\python.exe .github\\hooks\\scripts\\ai_edit_gate_post_tool.py",
+                "linux": "python .github/hooks/scripts/hook_python_runner.py .github/hooks/scripts/ai_edit_gate_post_tool.py",
+                "osx": "python .github/hooks/scripts/hook_python_runner.py .github/hooks/scripts/ai_edit_gate_post_tool.py",
+                "cwd": ".",
+                "timeout": 30
+            }
+        ]
+    }
 }

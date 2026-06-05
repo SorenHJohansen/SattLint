@@ -1,0 +1,24 @@
+{
+  "kind": "sattlint.layer_lint_policy",
+  "schema_version": 1,
+  "forbidden_imports": {
+    "sattline_parser": {
+      "cannot_import": [
+        "sattlint.devtools",
+        "sattlint_lsp",
+        "vscode"
+      ]
+    },
+    "sattlint.core": {
+      "cannot_import": [
+        "sattlint.devtools",
+        "vscode"
+      ]
+    },
+    "sattlint": {
+      "cannot_import": [
+        "vscode"
+      ]
+    }
+  }
+}

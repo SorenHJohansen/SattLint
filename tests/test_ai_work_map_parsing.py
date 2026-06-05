@@ -341,7 +341,7 @@ def test_ai_work_map_parsers_skip_blank_and_non_command_lines_before_collecting(
 
 def test_ai_work_map_parsing_collectors_and_wrappers_cover_remaining_branches(tmp_path, monkeypatch):
     instructions_dir = tmp_path / ".github" / "instructions"
-    agents_dir = tmp_path / ".github" / "agents"
+    agents_dir = tmp_path / "docs" / "maintainers" / "agents"
     exec_plans_dir = tmp_path / "docs" / "exec-plans"
     instructions_dir.mkdir(parents=True)
     agents_dir.mkdir(parents=True)
@@ -390,7 +390,7 @@ def test_ai_work_map_parsing_collectors_and_wrappers_cover_remaining_branches(tm
     ]
     assert ai_work_map._collect_agent_metadata(agents_dir) == [
         {
-            "file_path": ".github/agents/demo.agent.md",
+            "file_path": "docs/maintainers/agents/demo.agent.md",
             "name": "Demo Agent",
             "description": "Handles demo work",
             "user_invocable": True,

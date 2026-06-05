@@ -1,69 +1,64 @@
-# AGENTS.md - Table of Contents
+# AGENTS.md
 
-> Primary AI guide for SattLint conventions, workflows, and invariants.
-> Keep this file short; move subsystem detail to scoped instructions under `.github/instructions/`.
+> Single AI control-plane entry for SattLint.
+> Supporting docs are references, not parallel authorities.
 
 ## Quick Reference
 
 **Purpose:** SattLint is a parser, analyzer, editor-facade, documentation, LSP, and repo-audit toolchain for SattLine.
-**Audience:** AI-only repository. Design solutions, workflows, and supporting docs for agent execution rather than human-first operation.
-**Communication:** Terse. Pattern: `[thing] [action] [reason]. [next step].`
-**Machine entrypoint:** `sattlint-repo-audit --profile full --planning-context --output-dir artifacts/audit`.
+**Default workflow:** one chat owns routing, editing, validation, and summary unless the user explicitly asks for something else.
+**Global authority:** this file is the root AI guide; compatibility docs must not add competing workflow rules.
+**Communication:** terse and concrete.
 **Health checks:** `python scripts/context_health.py --check`; `python scripts/repo_health.py --check --audit-dir artifacts/audit`.
-**Naming:** task ids, worktree folders, and handoff files use lower-kebab-case.
 
 ## Repo Map
 
-- Start routing from `docs/repo-map.md` when you need the owning surface for CLI, editor facade, LSP, devtools, or the preview VS Code client.
-- Route analyzer package structure, registry naming, and helper-boundary work through `.github/instructions/analyzer-architecture.instructions.md`.
+- Start from the owning file, symbol, failing command, or failing test.
+- Read only the matching `.github/instructions/*.md` files for the touched surface.
+- Use `docs/maintainers/repo-map.md` when owner routing is still unclear.
+- Use `docs/public/architecture.md` for layering and runtime boundaries.
+- Use `docs/maintainers/quality-gates.md` for wider validation commands and finish gates.
 
 ## Key Docs
 
-- `docs/context-loading-order.md`, `docs/repo-map.md`, `docs/architecture.md`, `docs/quality-gates.md`, `docs/ai-workflows.md`, `docs/lessons-learned/known-failure-patterns.md`, `.github/instructions/*.md`, `.ai/tasks/task-contract.schema.json`, `.ai/handoffs/handoff.schema.json`
+- `docs/maintainers/repo-map.md`
+- `docs/public/architecture.md`
+- `docs/maintainers/quality-gates.md`
+- `docs/design-docs/`
+- `docs/lessons-learned/known-failure-patterns.md`
+- `.github/instructions/*.md`
 
-## Critical Invariants (Auto-Loaded)
+## Critical Invariants
 
-- Prefer the architecture that removes debt at the root. Reuse existing seams when they support the right design; otherwise refactor or replace them deliberately instead of layering more compatibility code or duplicate tooling.
-- This repo is pre-release. Optimize for correctness, coherence, and maintainability over preserving provisional APIs, file boundaries, or legacy behavior.
-- Start from the owning file or symbol. Run focused validation before widening.
-- Use Semble MCP for code exploration; keep `rg` for exhaustive literal matches and exact-string confirmation.
+- Keep `AGENTS.md` as the only root AI authority.
+- Prefer root-cause fixes over compatibility shims or duplicate abstractions.
+- Start from the owning seam. Run focused executable validation before widening.
+- Treat 500 lines as the hard cap for checked-in files.
+- Treat 100% focused coverage as the bar for the touched slice.
+- Keep touched Python files Pyright strict-clean.
 - `sattlint syntax-check` stays strict. No silent fallback behavior.
-- Use repo venv commands, not the VS Code test runner, for executable proof.
-- Prefer existing VS Code tasks in `.vscode/tasks.json` for common repo workflows before composing ad hoc shell commands.
-- Treat `vscode/sattline-vscode/` as the editor client for external workspaces, not the default host for this repo.
-- Bootstrap slices with `python scripts/bootstrap_ai_slice.py ...`; use `--from-request-kind` for ambiguous `implement-plan`, `review-artifact`, or `chat-review` requests.
-- Use `.git/sattlint-ai-coordination/current_work_lock.json` as the active-claim lock.
-- One task contract and one handoff per scoped slice when work moves between executor, test, and reviewer.
-- Use `@context-optimizer /audit` before growing AI control files.
-- Keep AGENTS small, scoped instructions rich, and handoffs machine-readable.
+- Use repo venv commands or existing VS Code tasks for executable proof.
+- Use markdown links for workspace file and line references.
 - Ratchets are monotonic. Never loosen a baseline, debt allowlist, file exception, or touch rule.
-- Prefer simplifying the owning design, extracting clean modules, and deleting obsolete paths when a touched owner is already open, as long as focused validation stays tractable.
-- Treat `artifacts/audit/` outputs as snapshots; refresh or mark them stale when focused validation contradicts them.
-- See `.github/instructions/repo-map.instructions.md`, `.github/instructions/ratchet-policy.instructions.md`, and `.github/instructions/workspace-lsp.instructions.md` for owner routing, ratchet policy, and LSP restart details.
+- Treat `artifacts/audit/` outputs as snapshots; refresh them when validation changes the relevant evidence.
+- Never use `python3 - << 'PY'` heredocs through the VS Code terminal tools.
 
 ## Workflow
 
-- Durable edit flow: route -> choose the right design -> implement the owning refactor -> focused check -> finish gate -> handoff.
-- Preferred task size: one coherent owner surface and one behavior goal; if the right fix spans adjacent owners, keep the refactor whole instead of splitting it into debt-preserving slices.
-- Executor -> Test -> Reviewer uses `.ai/tasks/*.json` and `.ai/handoffs/*.json`.
-- GitHub Actions split: `ci.yml` owns the integrated PR, `main`, manual, and nightly gate; `lint.yml`, `typing.yml`, and `repo-audit.yml` stay owner workflows; `publish.yml` supports manual release rehearsal, only publishes on real `v*` tags, and routes the final publish step through the protected `pypi-release` environment.
-- Chat-review starts from `<workspace-storage>/GitHub.copilot-chat/transcripts/*.jsonl`; use `debug-logs/` only as session metadata, not as the controlling content seam.
-- Never use `python3 - << 'PY'` heredocs through the VS Code terminal tools; prefer a named task, a temp script file, or a one-line command.
-- Testing expectation: bug fix or feature change moves with focused tests in same change.
-- Finish gate: focused proof plus touched-file Ruff and Pyright; widen to `--check-my-changes` for shared infra.
-- Open `artifacts/audit/status.json` first, then `summary.json`, then owner artifacts when debugging audit output.
-- See `docs/ai-workflows.md` and `docs/quality-gates.md` for branch, worktree, handoff, and pipeline details.
-- Security: redact secrets, PII, and machine-specific paths.
+- Go from `AGENTS.md` to the owner file or failing command immediately.
+- Load `docs/maintainers/repo-map.md` or `docs/public/architecture.md` only when local routing is still unclear.
+- Make the smallest grounded edit that tests the current hypothesis.
+- Run the first focused validation immediately after the first substantive edit.
+- Widen to Ruff, Pyright, pre-commit, or `--check-my-changes` only after the local check passes.
+- Use `docs/lessons-learned/known-failure-patterns.md` only after a dead end or repeated validation failure.
 
 ## Guardrails
 
-- Do not broaden changes aimlessly; broaden on purpose when the broader refactor is the cleaner long-term solution and can be validated.
-- Do not preserve temporary compatibility shims, fallback paths, or duplicate abstractions unless the user explicitly asks for transitional behavior.
-- No empty handoffs, empty final answers, or path-dump outputs.
-- Do not expand global instructions when scoped instructions or prompts fit.
-- Do not skip focused validation when an executable local check exists.
-- When validation, hooks, or audits fail, fix the underlying problems when feasible instead of bypassing them to force completion.
-- Never use `git commit --no-verify` or `git push --no-verify`; surface hook failures and resolve them or stop for direction.
+- Do not broaden changes aimlessly.
+- Do not preserve temporary compatibility seams unless the phase plan still requires them.
+- Do not keep parallel AI workflow docs with independent rules.
+- Do not skip focused validation when a narrower executable check exists.
+- Never use `git commit --no-verify` or `git push --no-verify`.
 
 ## Last Updated
 

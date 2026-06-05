@@ -29,8 +29,9 @@ def _write_json(path: Path, payload: object) -> None:
 
 def _write_repo_fixture(tmp_path: Path) -> Path:
     _write_text(tmp_path / "AGENTS.md", "# AGENTS\n")
-    _write_text(tmp_path / "docs" / "context-loading-order.md", "# Context\n")
-    _write_text(tmp_path / "docs" / "repo-map.md", "# Repo Map\n")
+    _write_text(tmp_path / "docs" / "maintainers" / "repo-map.md", "# Repo Map\n")
+    _write_text(tmp_path / "docs" / "public" / "architecture.md", "# Architecture\n")
+    _write_text(tmp_path / "docs" / "maintainers" / "quality-gates.md", "# Quality Gates\n")
     _write_json(
         tmp_path / ".vscode" / "settings.json",
         {"contextOptimizer.autoLoadedLineThreshold": 80},
@@ -49,70 +50,24 @@ def _write_repo_fixture(tmp_path: Path) -> Path:
                 "context_optimizer_auto_loaded_line_threshold": 80,
             },
             "context_files": {
-                "auto_loaded": ["AGENTS.md", "docs/context-loading-order.md"],
-                "scoped_globs": [".github/agents/*.agent.md"],
+                "auto_loaded": ["AGENTS.md"],
+                "scoped_globs": [".github/instructions/*.md"],
             },
             "required_paths": {
-                "docs": ["docs/repo-map.md"],
+                "docs": [
+                    "docs/maintainers/repo-map.md",
+                    "docs/public/architecture.md",
+                    "docs/maintainers/quality-gates.md",
+                ],
                 "vscode": [".vscode/settings.json", ".vscode/extensions.json"],
-                "ai": [".ai/tasks/task-contract.schema.json", ".ai/handoffs/handoff.schema.json"],
             },
             "context_optimizer": {"extension_id": "wanderleyferreiradealbuquerque.context-optimizer"},
         },
     )
-    _write_json(
-        tmp_path / ".ai" / "tasks" / "task-contract.schema.json",
-        {
-            "type": "object",
-            "required": ["task_id", "files"],
-            "properties": {
-                "task_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
-                "files": {
-                    "type": "array",
-                    "items": {"type": "string", "minLength": 1},
-                    "minItems": 1,
-                    "uniqueItems": True,
-                },
-            },
-            "additionalProperties": False,
-        },
-    )
-    _write_json(
-        tmp_path / ".ai" / "handoffs" / "handoff.schema.json",
-        {
-            "type": "object",
-            "required": ["task_id", "validation_status"],
-            "properties": {
-                "task_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
-                "validation_status": {
-                    "type": "object",
-                    "required": ["state", "commands"],
-                    "properties": {
-                        "state": {"type": "string", "enum": ["pending", "failed", "passed"]},
-                        "commands": {
-                            "type": "array",
-                            "items": {"type": "string", "minLength": 1},
-                            "minItems": 1,
-                        },
-                    },
-                    "additionalProperties": False,
-                },
-            },
-            "additionalProperties": False,
-        },
-    )
-    _write_json(
-        tmp_path / ".ai" / "tasks" / "task-contract.example.json",
-        {"task_id": "t-001-demo", "files": ["src/demo.py"]},
-    )
-    _write_json(
-        tmp_path / ".ai" / "handoffs" / "handoff.example.json",
-        {"task_id": "t-001-demo", "validation_status": {"state": "pending", "commands": ["pytest"]}},
-    )
     return tmp_path / "metrics" / "ratchet.json"
 
 
-def test_build_report_passes_for_schema_valid_ai_artifacts(monkeypatch, tmp_path):
+def test_build_report_passes_without_legacy_ai_contract_paths(monkeypatch, tmp_path):
     ratchet_path = _write_repo_fixture(tmp_path)
 
     monkeypatch.setattr(context_health, "REPO_ROOT", tmp_path)
@@ -123,13 +78,12 @@ def test_build_report_passes_for_schema_valid_ai_artifacts(monkeypatch, tmp_path
     report = context_health.build_report()
 
     assert report["status"] == "pass"
-    assert report["metrics"]["validated_ai_artifact_count"] == 2
     assert report["issues"] == []
 
 
-def test_build_report_fails_for_schema_invalid_ai_artifact(monkeypatch, tmp_path):
+def test_build_report_fails_for_missing_required_path(monkeypatch, tmp_path):
     ratchet_path = _write_repo_fixture(tmp_path)
-    _write_json(tmp_path / ".ai" / "tasks" / "broken.json", {"task_id": "bad"})
+    (tmp_path / "docs" / "maintainers" / "repo-map.md").unlink()
 
     monkeypatch.setattr(context_health, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(context_health, "RATCHET_PATH", ratchet_path)
@@ -139,4 +93,4 @@ def test_build_report_fails_for_schema_invalid_ai_artifact(monkeypatch, tmp_path
     report = context_health.build_report()
 
     assert report["status"] == "fail"
-    assert any(issue["id"] == "invalid-ai-artifact-schema" for issue in report["issues"])
+    assert any(issue["id"] == "missing-required-path" for issue in report["issues"])
