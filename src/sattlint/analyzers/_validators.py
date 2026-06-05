@@ -107,6 +107,38 @@ class StringMappingValidator:
 
         return issues
 
+    def check_string_literal_mapping(
+        self,
+        tgt_var: Variable,
+        source_literal: object,
+        path: list[str],
+        *,
+        is_duration: bool = False,
+    ) -> list[VariableIssue]:
+        """Check if a literal-to-parameter mapping narrows a string type."""
+        source_datatype = _infer_literal_datatype(source_literal, is_duration=is_duration)
+        target_limit = self._string_limit(tgt_var.datatype)
+        if target_limit is None:
+            return []
+
+        if isinstance(source_literal, str) and self._is_string_simple_type(source_datatype):
+            if len(source_literal) <= target_limit:
+                return []
+        else:
+            source_limit = self._string_limit(source_datatype)
+            if source_limit is None or source_limit <= target_limit:
+                return []
+
+        return [
+            VariableIssue(
+                kind=IssueKind.STRING_MAPPING_MISMATCH,
+                module_path=list(path),
+                variable=tgt_var,
+                role="parameter mapping type mismatch",
+                source_variable=Variable(name=repr(source_literal), datatype=cast(Simple_DataType, source_datatype)),
+            )
+        ]
+
 
 class MinMaxValidator:
     """Validates min/max naming conventions in parameter mappings."""
@@ -306,6 +338,13 @@ class ContractMappingValidator:
         )
         return datatype, ".".join(field_path)
 
+    def resolve_target_datatype(
+        self,
+        target_name: str,
+        target_variable: Variable,
+    ) -> tuple[Simple_DataType | str | None, str | None]:
+        return self._resolve_target_datatype(target_name, target_variable)
+
     def _resolve_source_datatype(
         self,
         mapping: ParameterMapping,
@@ -334,6 +373,13 @@ class ContractMappingValidator:
             self._type_graph,
         )
         return datatype, source_name
+
+    def resolve_source_datatype(
+        self,
+        mapping: ParameterMapping,
+        source_variable: Variable | None,
+    ) -> tuple[Simple_DataType | str | None, str | None]:
+        return self._resolve_source_datatype(mapping, source_variable)
 
     def check_contract_mapping(
         self,

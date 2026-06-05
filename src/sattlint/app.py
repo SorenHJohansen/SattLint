@@ -18,13 +18,16 @@ from . import _app_analysis_from_app as app_analysis_from_app_module
 from . import _app_docs_from_app as app_docs_from_app_module
 from . import _app_graphics_from_app as app_graphics_from_app_module
 from . import _app_menus_from_app as app_menus_from_app_module
+from . import _app_source_diff as app_source_diff_module
 from . import _app_startup_from_app as app_startup_module
 from . import app_analysis as app_analysis_module
 from . import app_base as app_base_module
 from . import app_cli_commands as app_cli_commands_module
 from . import app_docs as app_docs_module
 from . import app_graphics as app_graphics_module
+from . import app_interaction as app_interaction_module
 from . import app_menus as app_menus_module
+from . import app_rich as app_rich_module
 from . import app_support as app_support_module
 from . import app_telemetry as app_telemetry_module
 from . import cache as cache_module
@@ -65,6 +68,10 @@ app_telemetry = cast(Any, app_telemetry_module)
 cache = cast(Any, cache_module)
 engine_module: Any = engine_module_impl
 telemetry_summary = cast(Any, telemetry_summary_module)
+
+_APP_MODULE: Any = cast(Any, sys.modules[__name__])
+_interactive_ui_mode = "classic"
+_textual_menu_interaction: Any | None = None
 
 VARIABLE_ANALYSES: VariableAnalysisMap = app_analysis.VARIABLE_ANALYSES
 HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = app_analysis.HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS
@@ -132,7 +139,6 @@ def validate_effective_config(cfg: ConfigDict) -> ConfigValidationResult:
 
 
 log: Any = app_base.log
-_APP_MODULE: Any = cast(Any, sys.modules[__name__])
 
 
 # ----------------------------
@@ -147,6 +153,9 @@ def clear_screen() -> None:
 
 
 def pause() -> None:
+    if _interactive_ui_mode == "textual" and _textual_menu_interaction is not None:
+        _textual_menu_interaction.pause()
+        return
     app_base.pause()
 
 
@@ -158,10 +167,14 @@ def quit_app() -> None:
 
 
 def confirm(msg: str) -> bool:
+    if _interactive_ui_mode == "textual" and _textual_menu_interaction is not None:
+        return bool(_textual_menu_interaction.confirm(msg))
     return cast(bool, app_base.confirm(msg))
 
 
 def prompt(msg: str, default: str | None = None) -> str:
+    if _interactive_ui_mode == "textual" and _textual_menu_interaction is not None:
+        return str(_textual_menu_interaction.prompt(msg, default))
     return cast(str, app_base.prompt(msg, default))
 
 
@@ -194,10 +207,17 @@ def run_validate_config_command(cfg: ConfigDict, *, config_path: Path, default_u
     )
 
 
-def run_analyze_command(cfg: ConfigDict, *, selected_keys: list[str] | None, use_cache: bool) -> int:
+def run_analyze_command(
+    cfg: ConfigDict,
+    *,
+    selected_keys: list[str] | None,
+    selected_issue_kinds: frozenset[str] | None = None,
+    use_cache: bool,
+) -> int:
     return app_startup_module.run_analyze_command_from_app(
         cfg,
         selected_keys=selected_keys,
+        selected_issue_kinds=selected_issue_kinds,
         use_cache=use_cache,
         app_module=_APP_MODULE,
     )
@@ -315,7 +335,97 @@ def _print_menu(
     intro: str | None = None,
     note: str | None = None,
 ) -> None:
+    if _interactive_ui_mode == "rich":
+        app_rich_module.print_menu(title, options, intro=intro, note=note)
+        return
     app_startup_module.print_menu_from_app(title, options, intro=intro, note=note, app_module=_APP_MODULE)
+
+
+def set_interactive_ui_mode(ui_mode: str | None) -> None:
+    global _interactive_ui_mode
+    if ui_mode in {"classic", "rich", "textual"}:
+        _interactive_ui_mode = ui_mode
+        return
+    _interactive_ui_mode = "classic"
+
+
+def reset_interactive_ui_mode() -> None:
+    set_interactive_ui_mode("classic")
+    clear_textual_menu_interaction()
+
+
+def get_interactive_ui_mode() -> str:
+    return _interactive_ui_mode
+
+
+def set_textual_menu_interaction(interaction: Any) -> None:
+    global _textual_menu_interaction
+    _textual_menu_interaction = interaction
+
+
+def clear_textual_menu_interaction() -> None:
+    global _textual_menu_interaction
+    _textual_menu_interaction = None
+
+
+def choose_menu_option(
+    title: str,
+    options: Sequence[MenuOption],
+    *,
+    intro: str | None = None,
+    note: str | None = None,
+) -> str:
+    return cast(
+        str,
+        app_base.choose_menu_option(
+            title,
+            options,
+            print_menu_fn=_print_menu,
+            intro=intro,
+            note=note,
+        ),
+    )
+
+
+def build_menu_interaction() -> Any:
+    if _interactive_ui_mode == "textual" and _textual_menu_interaction is not None:
+        return _textual_menu_interaction
+    return app_interaction_module.build_menu_interaction(
+        print_menu_fn=_print_menu,
+        choose_menu_option_fn=choose_menu_option,
+        prompt_fn=prompt,
+        confirm_fn=confirm,
+        pause_fn=pause,
+    )
+
+
+def resolve_interactive_ui_mode(cfg: ConfigDict, override_ui_mode: str | None = None) -> str:
+    del cfg
+    requested_ui = override_ui_mode or os.environ.get("SATTLINT_UI")
+    if requested_ui is None:
+        from . import app_textual as app_textual_module
+
+        return "textual" if app_textual_module.has_textual() else "classic"
+
+    normalized = requested_ui.strip().casefold()
+    if normalized == "rich":
+        return "rich" if console_module.has_rich() else "classic"
+    if normalized == "textual":
+        from . import app_textual as app_textual_module
+
+        return "textual" if app_textual_module.has_textual() else "classic"
+    return "classic"
+
+
+def run_interactive_session(cfg: ConfigDict, **kwargs: Any) -> None:
+    if _interactive_ui_mode == "textual":
+        from . import app_textual as app_textual_module
+
+        app_textual_module.run_textual_shell(cfg, app_module=_APP_MODULE, **kwargs)
+        return
+
+    kwargs.pop("quit_app_error", None)
+    app_menus.run_main_loop(cfg, **kwargs)
 
 
 def _menu_option(key: str, label: str, description: str) -> MenuOption:
@@ -587,6 +697,7 @@ def run_datatype_usage_analysis(cfg: ConfigDict) -> None:
         cfg,
         iter_loaded_projects_fn=_iter_loaded_projects,
         pause_fn=pause,
+        interaction=build_menu_interaction(),
     )
 
 
@@ -623,6 +734,7 @@ def run_module_duplicates_analysis(cfg: ConfigDict) -> None:
         cfg,
         iter_loaded_projects_fn=_iter_loaded_projects,
         pause_fn=pause,
+        interaction=build_menu_interaction(),
     )
 
 
@@ -631,6 +743,7 @@ def run_module_find_by_name(cfg: ConfigDict) -> None:
         cfg,
         iter_loaded_projects_fn=_iter_loaded_projects,
         pause_fn=pause,
+        interaction=build_menu_interaction(),
     )
 
 
@@ -657,6 +770,7 @@ def run_module_localvar_analysis(cfg: ConfigDict) -> None:
         load_project_fn=load_project,
         iter_loaded_projects_fn=_iter_loaded_projects,
         pause_fn=pause,
+        interaction=build_menu_interaction(),
     )
 
 
@@ -709,6 +823,7 @@ def run_debug_variable_usage(cfg: ConfigDict) -> None:
         cfg,
         iter_loaded_projects_fn=_iter_loaded_projects,
         pause_fn=pause,
+        interaction=build_menu_interaction(),
     )
 
 
@@ -726,6 +841,7 @@ def run_advanced_datatype_analysis(cfg: ConfigDict) -> None:
         cfg,
         iter_loaded_projects_fn=_iter_loaded_projects,
         pause_fn=pause,
+        interaction=build_menu_interaction(),
     )
 
 
@@ -733,104 +849,17 @@ def dump_menu(cfg: ConfigDict) -> None:
     app_menus_from_app_module.dump_menu_from_app(cfg, app_module=_APP_MODULE)
 
 
-def _collect_source_diff_pairs_for_paths(source_paths: set[Path]) -> list[tuple[Path, Path]]:
-    grouped: dict[tuple[Path, str], dict[str, Path]] = {}
-    for source_path in source_paths:
-        resolved = source_path.resolve()
-        suffix = resolved.suffix.casefold()
-        if suffix not in {".s", ".x"}:
-            continue
-        key = (resolved.parent, resolved.stem.casefold())
-        pair = grouped.setdefault(key, {})
-
-        if suffix == ".s":
-            pair["draft"] = resolved
-        elif suffix == ".x":
-            pair["official"] = resolved
-
-        sibling_draft = resolved.with_suffix(".s")
-        sibling_official = resolved.with_suffix(".x")
-        if sibling_draft.exists():
-            pair["draft"] = sibling_draft.resolve()
-        if sibling_official.exists():
-            pair["official"] = sibling_official.resolve()
-
-    pairs: list[tuple[Path, Path]] = []
-    for pair in grouped.values():
-        draft = pair.get("draft")
-        official = pair.get("official")
-        if draft is None or official is None:
-            continue
-        pairs.append((draft, official))
-    return sorted(pairs, key=lambda item: (item[0].stem.casefold(), str(item[0]).casefold()))
-
-
-def run_source_diff_report(cfg: ConfigDict) -> None:
-    workspace_root = Path(cfg.get("program_dir") or ".").resolve()
-    pair_reports: list[dict[str, Any]] = []
-    selection_errors: list[dict[str, str]] = []
-    seen_pairs: set[tuple[Path, Path]] = set()
-
-    unique_pairs: list[tuple[Path, Path]] = []
-    with console_module.live_status_line() as status_update_fn:
-        status_update_fn("Source diff: resolving comparison pairs")
-        for target_name, project_bp, graph in _iter_loaded_projects(cfg):
-            status_update_fn(f"Source diff: collecting comparison pairs for {target_name}")
-            source_paths = _source_paths_for_current_target(project_bp, graph)
-            target_pairs = _collect_source_diff_pairs_for_paths(source_paths)
-            if not target_pairs:
-                selection_errors.append(
-                    {
-                        "draft_file": "",
-                        "official_file": "",
-                        "message": f"No same-basename .s/.x pair was found for analysis target '{target_name}'.",
-                    }
-                )
-                continue
-
-            for draft_file, official_file in target_pairs:
-                pair_key = (draft_file.resolve(), official_file.resolve())
-                if pair_key in seen_pairs:
-                    continue
-                seen_pairs.add(pair_key)
-                unique_pairs.append((draft_file, official_file))
-
-        total_pairs = len(unique_pairs)
-        for index, (draft_file, official_file) in enumerate(unique_pairs, start=1):
-            status_update_fn(f"Source diff: comparing {index}/{total_pairs} {draft_file.name}")
-            pair_reports.append(
-                source_diff_report_module.build_pair_report(
-                    draft_file,
-                    official_file,
-                    workspace_root=workspace_root,
-                )
-            )
-
-    error_count = len(selection_errors) + sum(1 for report in pair_reports if report["status"] == "error")
-    status = "ok"
-    if error_count and not pair_reports:
-        status = "error"
-    elif error_count:
-        status = "partial"
-
-    report = {
-        "generated_by": "sattlint.app.tools_menu",
-        "report_kind": "source-diff-report",
-        "status": status,
-        "workspace_root": str(workspace_root),
-        "summary": {
-            "compared_pair_count": len(pair_reports),
-            "changed_pair_count": sum(1 for report in pair_reports if report["changed"]),
-            "identical_pair_count": sum(1 for report in pair_reports if report["classification"] == "identical"),
-            "layout_only_pair_count": sum(1 for report in pair_reports if report["classification"] == "layout-only"),
-            "structural_pair_count": sum(1 for report in pair_reports if report["classification"] == "structural"),
-            "error_count": error_count,
-        },
-        "pairs": pair_reports,
-        "selection_errors": selection_errors,
-    }
-    emit_output(source_diff_report_module.render_markdown(report))
-    pause()
+def run_source_diff_report(cfg: ConfigDict, *, _pause_fn: Callable[[], None] | None = None) -> None:
+    app_source_diff_module.run_source_diff_report(
+        cfg,
+        iter_loaded_projects_fn=_iter_loaded_projects,
+        source_paths_for_current_target_fn=_source_paths_for_current_target,
+        live_status_line_factory=console_module.live_status_line,
+        build_pair_report_fn=source_diff_report_module.build_pair_report,
+        render_markdown_fn=source_diff_report_module.render_markdown,
+        emit_output_fn=emit_output,
+        pause_fn=_pause_fn if _pause_fn is not None else pause,
+    )
 
 
 # ----------------------------

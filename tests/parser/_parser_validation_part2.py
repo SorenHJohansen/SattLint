@@ -293,6 +293,18 @@ def test_validate_transformed_basepicture_workspace_mode_allows_external_style_d
     )
 
 
+def test_validate_transformed_basepicture_workspace_mode_allows_external_datatype_close_to_builtin_name():
+    bp = BasePicture(
+        header=ModuleHeader(name="BasePicture", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+        localvariables=[Variable(name="Output", datatype="AOType")],
+    )
+
+    validate_transformed_basepicture(
+        bp,
+        allow_unresolved_external_datatypes=True,
+    )
+
+
 def test_validate_transformed_basepicture_workspace_mode_allows_duplicate_submodule_names():
     code = """
 "SyntaxVersion"

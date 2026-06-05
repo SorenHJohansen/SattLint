@@ -48,6 +48,24 @@ def _ai_metadata(summary: str, *instruction_files: str) -> dict[str, Any]:
     }
 
 
+_REPO_AUDIT_TEXT_SCAN_OWNER_TARGETS = ("tests/test_repo_audit_part1.py",)
+_REPO_AUDIT_ARCHITECTURE_OWNER_TARGETS = (
+    "tests/test_repo_audit_part1.py",
+    "tests/test_repo_audit_part2.py",
+)
+_REPO_AUDIT_STRUCTURAL_OWNER_TARGETS = ("tests/test_repo_audit_part4.py",)
+_REPO_AUDIT_AI_GC_OWNER_TARGETS = ("tests/test_repo_audit_part7.py",)
+_REPO_AUDIT_IGNORED_PATHS_OWNER_TARGETS = ("tests/test_repo_audit_part2.py",)
+_REPO_AUDIT_HARNESS_OWNER_TARGETS = ("tests/test_ai_work_map.py", "tests/test_repo_audit_part5.py")
+_REPO_AUDIT_COVERAGE_OWNER_TARGETS = ("tests/test_repo_audit_part1.py", "tests/test_repo_audit_part3.py")
+_REPO_AUDIT_PUBLIC_OWNER_TARGETS = ("tests/test_repo_audit_part3.py",)
+_REPO_AUDIT_RECOMMENDATION_OWNER_TARGETS = (
+    "tests/test_pipeline_run.py",
+    "tests/test_repo_audit_part8.py",
+    "tests/test_recommendation_routing.py",
+)
+
+
 def build_repo_audit_finding_check_definitions(
     *,
     repo_audit: Any,
@@ -72,7 +90,7 @@ def build_repo_audit_finding_check_definitions(
                 "scripts/**/*.py",
                 "pyproject.toml",
             ),
-            "owner_test_targets": ("tests/test_repo_audit.py",),
+            "owner_test_targets": _REPO_AUDIT_TEXT_SCAN_OWNER_TARGETS,
             **_ai_metadata(
                 "Use when documentation or Python sources may have leaked local paths, secrets, or unsafe text.",
                 ".github/instructions/repo-audit.instructions.md",
@@ -96,7 +114,7 @@ def build_repo_audit_finding_check_definitions(
                 "scripts/**/*.py",
                 "pyproject.toml",
             ),
-            "owner_test_targets": ("tests/test_repo_audit.py",),
+            "owner_test_targets": _REPO_AUDIT_TEXT_SCAN_OWNER_TARGETS,
             **_ai_metadata(
                 "Use when changes may rely on local-only paths, guards, or machine-specific assumptions.",
                 ".github/instructions/repo-audit.instructions.md",
@@ -119,7 +137,7 @@ def build_repo_audit_finding_check_definitions(
                 "src/sattlint/app*.py",
                 "src/sattlint/devtools/repo_audit_cli.py",
             ),
-            "owner_test_targets": ("tests/test_repo_audit.py",),
+            "owner_test_targets": _REPO_AUDIT_TEXT_SCAN_OWNER_TARGETS,
             **_ai_metadata(
                 "Use when CLI help, command docs, or agent reference commands must stay in sync with implementation.",
                 ".github/instructions/cli-app.instructions.md",
@@ -138,7 +156,7 @@ def build_repo_audit_finding_check_definitions(
                 "src/sattlint/config.py",
                 "src/sattlint/**/*.py",
             ),
-            "owner_test_targets": ("tests/test_repo_audit.py",),
+            "owner_test_targets": _REPO_AUDIT_TEXT_SCAN_OWNER_TARGETS,
             **_ai_metadata(
                 "Use when config declarations or config consumers change and unused keys may drift.",
                 ".github/instructions/cli-app.instructions.md",
@@ -156,7 +174,7 @@ def build_repo_audit_finding_check_definitions(
                 "tests/**",
                 "pyproject.toml",
             ),
-            "owner_test_targets": ("tests/test_repo_audit.py",),
+            "owner_test_targets": _REPO_AUDIT_ARCHITECTURE_OWNER_TARGETS,
             **_ai_metadata(
                 "Use when Python architecture, import layering, or module-size constraints may shift.",
                 ".github/instructions/repo-audit.instructions.md",
@@ -174,7 +192,7 @@ def build_repo_audit_finding_check_definitions(
                 "tests/**",
                 "artifacts/analysis/structural_budget_ratchet.json",
             ),
-            "owner_test_targets": ("tests/test_repo_audit.py",),
+            "owner_test_targets": _REPO_AUDIT_STRUCTURAL_OWNER_TARGETS,
             **_ai_metadata(
                 "Use when structural budget artifacts or their translation into findings may change.",
                 ".github/instructions/repo-audit.instructions.md",
@@ -193,7 +211,7 @@ def build_repo_audit_finding_check_definitions(
                 "src/sattlint/app*.py",
                 "src/sattlint/devtools/repo_audit_cli.py",
             ),
-            "owner_test_targets": ("tests/test_repo_audit.py",),
+            "owner_test_targets": _REPO_AUDIT_TEXT_SCAN_OWNER_TARGETS,
             **_ai_metadata(
                 "Use when CLI parser descriptions, subcommand help, or interactive command surfaces change.",
                 ".github/instructions/cli-app.instructions.md",
@@ -207,7 +225,7 @@ def build_repo_audit_finding_check_definitions(
             "owner_surface": "logging",
             "estimated_cost": "low",
             "path_globs": ("src/**/*.py",),
-            "owner_test_targets": ("tests/test_repo_audit.py",),
+            "owner_test_targets": _REPO_AUDIT_TEXT_SCAN_OWNER_TARGETS,
             **_ai_metadata(
                 "Use when library code changes may introduce unexpected prints or weak failure-path diagnostics.",
                 ".github/instructions/repo-audit.instructions.md",
@@ -228,9 +246,9 @@ def build_repo_audit_finding_check_definitions(
                 "src/sattlint/devtools/repo_audit.py",
                 "src/sattlint/devtools/repo_audit_cli.py",
                 "src/sattlint/devtools/repo_audit_entrypoints.py",
-                "tests/test_repo_audit.py",
+                "tests/test_repo_audit_part7.py",
             ),
-            "owner_test_targets": ("tests/test_repo_audit.py",),
+            "owner_test_targets": _REPO_AUDIT_AI_GC_OWNER_TARGETS,
             **_ai_metadata(
                 "Use when AI-generated artifacts, coordination state, or related cleanup policy changes.",
                 ".github/instructions/agent-customizations.instructions.md",
@@ -249,7 +267,7 @@ def build_repo_audit_finding_check_definitions(
                 "tests/**/*.py",
                 "scripts/**/*.py",
             ),
-            "owner_test_targets": ("tests/test_repo_audit.py",),
+            "owner_test_targets": _REPO_AUDIT_IGNORED_PATHS_OWNER_TARGETS,
             **_ai_metadata(
                 "Use when repo-local ignored paths or hidden dependency roots may leak into tracked code.",
                 ".github/instructions/repo-audit.instructions.md",
@@ -275,9 +293,9 @@ def build_repo_audit_finding_check_definitions(
                 "src/sattlint/devtools/repo_audit.py",
                 "src/sattlint/devtools/repo_audit_entrypoints.py",
                 "tests/test_ai_work_map.py",
-                "tests/test_repo_audit.py",
+                "tests/test_repo_audit_part5.py",
             ),
-            "owner_test_targets": ("tests/test_ai_work_map.py", "tests/test_repo_audit.py"),
+            "owner_test_targets": _REPO_AUDIT_HARNESS_OWNER_TARGETS,
             **_ai_metadata(
                 "Use when AI instructions, agents, generated routing maps, or other AI-control surfaces change.",
                 ".github/instructions/agent-customizations.instructions.md",
@@ -296,7 +314,7 @@ def build_repo_audit_finding_check_definitions(
                 "coverage.xml",
                 "pyproject.toml",
             ),
-            "owner_test_targets": ("tests/test_repo_audit.py",),
+            "owner_test_targets": _REPO_AUDIT_COVERAGE_OWNER_TARGETS,
             **_ai_metadata(
                 "Use when coverage artifacts or audit-facing coverage recommendations may change.",
                 ".github/instructions/repo-audit.instructions.md",
@@ -318,7 +336,7 @@ def build_repo_audit_finding_check_definitions(
                 "docs/**",
                 "pyproject.toml",
             ),
-            "owner_test_targets": ("tests/test_repo_audit.py",),
+            "owner_test_targets": _REPO_AUDIT_PUBLIC_OWNER_TARGETS,
             **_ai_metadata(
                 "Use when top-level repo hygiene, public metadata, or publish-facing docs may drift.",
                 ".github/instructions/repo-audit.instructions.md",
@@ -359,16 +377,12 @@ def build_repo_audit_finding_check_definitions(
                 "src/sattlint/devtools/repo_audit_cli.py",
                 "src/sattlint/devtools/repo_audit_entrypoints.py",
                 "tests/test_pipeline_run.py",
-                "tests/test_repo_audit.py",
+                "tests/test_repo_audit_part8.py",
                 "tests/test_recommendation_routing.py",
                 "docs/references/cli-commands.md",
                 "docs/references/ai-agent-reference.md",
             ),
-            "owner_test_targets": (
-                "tests/test_pipeline_run.py",
-                "tests/test_repo_audit.py",
-                "tests/test_recommendation_routing.py",
-            ),
+            "owner_test_targets": _REPO_AUDIT_RECOMMENDATION_OWNER_TARGETS,
             **_ai_metadata(
                 "Use when routing catalogs, recommendation metadata, or generated AI registry outputs change.",
                 ".github/instructions/agent-customizations.instructions.md",

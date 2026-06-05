@@ -44,6 +44,9 @@ Evidence: the strict dependency-conflict fixture in `tests/parser/test_engine.py
 Observation: narrowing prefetch to dependency discovery plus cached-AST preload removed the earlier timing blind spot and catastrophic cold-path regression, but the current cold dependency-heavy measurement still lands at parity rather than a clear win over serial resolution.
 Evidence: `artifacts/tmp/plan68_measurements.json` now shows `parallel_prefetch.wall_ms = 337.295` ms versus `serial_control.wall_ms = 336.818` ms on the same 32-dependency target, and the recorded `load_or_parse` stage totals are correspondingly close (`165.769 ms` versus `157.783 ms`) because uncached parse work is no longer hidden outside `_load_or_parse()` timing.
 
+Observation: 2026-06-02 experiments to pre-parse uncached sibling dependency files in worker tasks did not beat the measured serial control and were reverted instead of shipping a regression.
+Evidence: focused loader-owner tests stayed green during the experiment, but repeated synthetic runs against `artifacts/tmp/plan68_measurement_workspace/` failed to produce a `parallel_prefetch.wall_ms` below the serial control, so the current shipped code remains the cached-hit-only prefetch path.
+
 ## Decision Log
 
 - Decision: assign the project-loading follow-on a new active identifier rather than reusing `62`.

@@ -2,13 +2,95 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sattlint.contracts import FindingCollection, FindingLocation, FindingRecord
 
 DISCOVERY_ALERT_THRESHOLD = 5
 EMPTY_ASSISTANT_OUTPUT_THRESHOLD = 0.2
+
+
+@dataclass(frozen=True)
+class KnownFailurePatternUpdate:
+    finding_id: str
+    title: str
+    pattern: str
+    root_cause: str
+    fix: str
+    prevention: str
+
+
+def _string_value(mapping: dict[str, Any], key: str, default: str = "") -> str:
+    value = mapping.get(key, default)
+    return str(value)
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    sequence = cast(list[Any], value)
+    return [str(item) for item in sequence]
+
+
+def known_failure_pattern_updates(findings: list[dict[str, Any]]) -> tuple[KnownFailurePatternUpdate, ...]:
+    updates: list[KnownFailurePatternUpdate] = []
+    for finding in findings:
+        update = _known_failure_pattern_update(finding)
+        if update is not None:
+            updates.append(update)
+    return tuple(updates)
+
+
+def should_update_known_failure_patterns(findings: list[dict[str, Any]]) -> bool:
+    return bool(known_failure_pattern_updates(findings))
+
+
+def _known_failure_pattern_update(finding: dict[str, Any]) -> KnownFailurePatternUpdate | None:
+    finding_id = _string_value(finding, "id").strip()
+    detail = _string_value(finding, "detail") or _string_value(finding, "message")
+    suggestion = _string_value(
+        finding,
+        "suggestion",
+        "Review the finding and tighten the owning seam before the next AI chat review run.",
+    )
+    data = finding.get("data")
+    if finding_id == "repeated-tool-retries" and isinstance(data, dict):
+        data_mapping = cast(dict[str, Any], data)
+        session_ids = _string_list(data_mapping.get("session_ids"))
+        if len(session_ids) < 2:
+            return None
+        return KnownFailurePatternUpdate(
+            finding_id=finding_id,
+            title="Repeated Tool Retries After Failure",
+            pattern=detail,
+            root_cause=(
+                "Agents kept retrying the same failing tool instead of stopping at the first error and stepping to "
+                "the controlling seam."
+            ),
+            fix=suggestion,
+            prevention=(
+                "After the first tool failure, inspect the error or switch to the nearest owner file before issuing "
+                "the same tool again."
+            ),
+        )
+    if finding_id == "low-semantic-grounding":
+        return KnownFailurePatternUpdate(
+            finding_id=finding_id,
+            title="Low Semantic Grounding",
+            pattern=detail,
+            root_cause=(
+                "Discovery started from search terms or repo areas that did not overlap with the files eventually "
+                "read or edited."
+            ),
+            fix=suggestion,
+            prevention=(
+                "Tighten prompt wording and route to the owner seam earlier so search results overlap with the real "
+                "edit surface."
+            ),
+        )
+    return None
 
 
 def build_findings(
@@ -172,4 +254,9 @@ def _finding(
     )
 
 
-__all__ = ["build_findings"]
+__all__ = [
+    "KnownFailurePatternUpdate",
+    "build_findings",
+    "known_failure_pattern_updates",
+    "should_update_known_failure_patterns",
+]

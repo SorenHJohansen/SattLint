@@ -81,17 +81,19 @@ TOP_LEVEL_TRACKED_ENTRY_ALLOWLIST = frozenset(
         "vscode",
     }
 )
-IGNORED_REPO_PATH_REFERENCE_ALLOWLIST_PREFIXES = ("src/sattlint/devtools/",)
+IGNORED_REPO_PATH_REFERENCE_ALLOWLIST_PREFIXES = (
+    "src/sattlint/devtools/",
+    "tests/test_pipeline_collection_part",
+    "tests/test_repo_audit_part",
+)
 IGNORED_REPO_PATH_REFERENCE_ALLOWLIST_PATHS = {
     "scripts/check_ratchet_policy.py",
     "scripts/repo_health.py",
     "tests/test_artifact_contracts.py",
     "tests/devtools/test_devtools_review_observability.py",
-    "tests/test_pipeline_collection.py",
     "tests/test_pipeline_run.py",
     "tests/test_repo_audit_reporting_helpers.py",
     "tests/devtools/test_context_health.py",
-    "tests/test_repo_audit.py",
     "tests/test_repo_audit_entrypoints_helpers.py",
     "tests/devtools/test_run_markdownlint.py",
     "tests/test_ratchet_policy.py",
@@ -115,11 +117,10 @@ SKIP_SELF_SCAN_PATHS = {
     "src/sattlint/devtools/leak_detection.py",
     "src/sattlint/devtools/repo_audit.py",
     "src/sattlint/devtools/repo_audit_shared.py",
-    "tests/test_repo_audit.py",
 }
 SKIP_SELF_SCAN_PREFIXES = (
-    "tests/_pipeline_collection_part",
-    "tests/_repo_audit_part",
+    "tests/test_pipeline_collection_part",
+    "tests/test_repo_audit_part",
 )
 SKIP_DIRS = {
     ".git",

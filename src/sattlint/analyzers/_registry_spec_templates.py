@@ -46,6 +46,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "debug",
                 "unavailable_libraries",
                 "analyzed_target_is_library",
+                "selected_issue_kinds",
                 "config",
             ),
             supports_live_diagnostics=True,

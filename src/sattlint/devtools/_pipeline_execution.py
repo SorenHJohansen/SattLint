@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import os
 import shutil
 import subprocess  # nosec B404
@@ -21,6 +22,18 @@ class CommandResult:
     duration_seconds: float
     stdout: str
     stderr: str
+
+
+def _decode_porcelain_path(path_text: str) -> str:
+    if not (path_text.startswith('"') and path_text.endswith('"')):
+        return path_text
+    try:
+        decoded_bytes = ast.literal_eval(f"b{path_text}")
+    except (SyntaxError, ValueError):
+        return path_text[1:-1]
+    if not isinstance(decoded_bytes, bytes):
+        return path_text[1:-1]
+    return decoded_bytes.decode("utf-8", errors="surrogateescape")
 
 
 def _resolve_python_executable() -> str:
@@ -122,6 +135,7 @@ def _detect_changed_files(*, repo_root: Path = REPO_ROOT) -> list[str]:
             continue
         if " -> " in path_text:
             path_text = path_text.split(" -> ", 1)[1].strip()
+        path_text = _decode_porcelain_path(path_text)
         changed_files.add(path_text.replace("\\", "/"))
     return sorted(changed_files)
 

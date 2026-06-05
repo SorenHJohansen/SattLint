@@ -1,7 +1,7 @@
 ---
 description: "Use when changing DOCX generation, documentation classification, FS grouping, unit scope selection, or app documentation workflows in SattLint. Covers docgen-specific boundaries and tests."
 name: "Documentation Generation Instructions"
-applyTo: ["src/sattlint/docgenerator/**", "tests/test_docgen.py", "tests/test_app_docgen.py"]
+applyTo: ["src/sattlint/docgenerator/**", "tests/test_docgen*.py", "tests/test_app_docgen.py"]
 ---
 # Documentation Generation
 

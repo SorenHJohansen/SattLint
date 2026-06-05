@@ -132,6 +132,7 @@ class VariablesAnalyzerFacadeMixin(VariablesAnalyzerFacadePropertiesMixin):
         pm: Any,
         tgt_var: Variable | None,
         parent_env: dict[str, Variable],
+        source_context: ScopeContext | None,
         path: list[str],
         *,
         owner_contract_id: int | None = None,
@@ -140,6 +141,7 @@ class VariablesAnalyzerFacadeMixin(VariablesAnalyzerFacadePropertiesMixin):
             pm,
             tgt_var,
             parent_env,
+            source_context,
             path,
             owner_contract_id=owner_contract_id,
         )
@@ -186,20 +188,23 @@ class VariablesAnalyzerFacadeMixin(VariablesAnalyzerFacadePropertiesMixin):
         mod: Any,
         child_env: dict[str, Variable],
         parent_env: dict[str, Variable],
+        parent_context: ScopeContext,
         parent_path: list[str],
     ) -> None:
-        self._check_param_mappings_for_single(mod, child_env, parent_env, parent_path)
+        self._check_param_mappings_for_single(mod, child_env, parent_env, parent_context, parent_path)
 
     def check_param_mappings_for_type_instance(
         self,
         inst: Any,
         parent_env: dict[str, Variable],
+        parent_context: ScopeContext,
         parent_path: list[str],
         current_library: str | None = None,
     ) -> None:
         self._check_param_mappings_for_type_instance(
             inst,
             parent_env,
+            parent_context,
             parent_path,
             current_library=current_library,
         )

@@ -16,6 +16,7 @@ from ._variable_traversal_support import (
     _walk_header_invoke_tails,
     _walk_interact_object,
     _walk_moduledef,
+    _walk_output_tail,
     _walk_tail,
     _walk_typedef_groupconn,
 )
@@ -39,6 +40,7 @@ __all__ = [
     "_walk_interact_object",
     "_walk_module_code",
     "_walk_moduledef",
+    "_walk_output_tail",
     "_walk_seq_nodes",
     "_walk_sequence",
     "_walk_stmt_or_expr",

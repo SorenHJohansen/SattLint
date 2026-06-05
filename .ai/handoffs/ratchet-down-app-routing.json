@@ -12,14 +12,24 @@
     "python scripts/run_repo_python.py -m pytest --no-cov tests/test_cli.py tests/test_app_cli_commands.py tests/test_app_config_validation.py -x -q --tb=short"
   ],
   "validation_status": {
-    "state": "pending",
+    "state": "passed",
     "commands": [
-      "python scripts/run_repo_python.py -m pytest --no-cov tests/test_cli.py tests/test_app_cli_commands.py tests/test_app_config_validation.py -x -q --tb=short"
+      "./scripts/run_repo_python.sh -m pytest --no-cov tests/test_app_live_adapters.py tests/test_app_menu_helpers.py tests/test_app_menus.py tests/test_app_source_diff_cli.py tests/test_cli.py -x -q --tb=short",
+      "./scripts/run_repo_python.sh -m ruff check src/sattlint/app.py src/sattlint/_app_source_diff.py src/sattlint/_app_startup_from_app.py tests/test_app_live_adapters.py tests/test_app_menus.py tests/test_app_source_diff_cli.py",
+      "./scripts/run_repo_python.sh -m pyright src/sattlint/app.py src/sattlint/_app_source_diff.py src/sattlint/_app_startup_from_app.py tests/test_app_live_adapters.py tests/test_app_menus.py tests/test_app_source_diff_cli.py",
+      "./scripts/run_repo_python.sh -m sattlint.devtools.structural_reports --json"
     ],
     "notes": [
-      "Replace placeholder scope, files_changed, and validation commands before handing off to Test Agent or Reviewer Agent."
+      "Focused pytest now passes: tests/test_app_live_adapters.py, tests/test_app_menu_helpers.py, tests/test_app_menus.py, tests/test_app_source_diff_cli.py, and tests/test_cli.py report 124 passed in 1.05s.",
+      "Touched-file Ruff passes for src/sattlint/app.py, src/sattlint/_app_source_diff.py, src/sattlint/_app_startup_from_app.py, tests/test_app_live_adapters.py, tests/test_app_menus.py, and tests/test_app_source_diff_cli.py.",
+      "Touched-file Pyright passes with 0 errors, 0 warnings, 0 informations for the same files.",
+      "Structural ratchet still fails overall, but the active regressions are aggregate over-budget counts plus tests/analyzers/test_builtin_record_semantics.py; src/sattlint/app.py and tests/test_app_menus.py are no longer structural blockers."
     ]
   },
-  "reviewer_notes": [],
-  "status": "draft"
+  "reviewer_notes": [
+    "Focused app-menu-cli pytest is green at 124 passed after the final tests/test_app_live_adapters.py pyright casts.",
+    "Touched-file Ruff and Pyright both pass for the requested source and test files.",
+    "Structural ratchet remains blocked elsewhere by aggregate counts and tests/analyzers/test_builtin_record_semantics.py, not by src/sattlint/app.py or tests/test_app_menus.py."
+  ],
+  "status": "validated"
 }

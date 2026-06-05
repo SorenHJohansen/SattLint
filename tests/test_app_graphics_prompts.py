@@ -82,6 +82,33 @@ def test_prompt_graphics_rule_selector_reprompts_for_scope_choice(monkeypatch):
     assert "? Choose 1, 2, or 3" in outputs
 
 
+def test_prompt_graphics_rule_selector_can_use_interaction_choice_handler():
+    selector_calls: list[tuple[str, str, dict[str, Any] | None]] = []
+    menu_titles: list[str] = []
+
+    def fake_pick(selector_field: str, module_kind: str, *, cfg: dict[str, Any] | None = None) -> str:
+        selector_calls.append((selector_field, module_kind, cfg))
+        return "Area.UnitControl"
+
+    interaction = app.app_interaction_module.MenuInteraction(
+        choose_menu_option=lambda title, _options, **_kwargs: menu_titles.append(title) or "2",
+        prompt=lambda message, default=None: default or message,
+        confirm=lambda _message: False,
+        pause=lambda: None,
+    )
+
+    selector_field, selector_value = app.app_graphics_module.prompt_graphics_rule_selector(
+        "single",
+        cfg=app.DEFAULT_CONFIG.copy(),
+        pick_or_prompt_graphics_rule_selector_value_fn=fake_pick,
+        interaction=interaction,
+    )
+
+    assert (selector_field, selector_value) == ("unit_structure_path", "Area.UnitControl")
+    assert selector_calls == [("unit_structure_path", "single", app.DEFAULT_CONFIG.copy())]
+    assert menu_titles == ["Selector Scope"]
+
+
 def test_optional_prompt_or_none_returns_none_for_skip_and_validation_errors():
     def raise_skip() -> None:
         raise app.app_graphics_module.OptionalPromptSkipped()

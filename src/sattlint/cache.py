@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import cast
 
 CACHE_VERSION = 14  # Bump when cached AST semantics or warning content changes.
-ANALYSIS_REPORT_CACHE_VERSION = 1
+ANALYSIS_REPORT_CACHE_VERSION = 3
 LOOKUP_CACHE_VERSION = 1
 
 
@@ -250,7 +250,7 @@ class FileASTCache:
 
 
 PROJECT_CACHE_SCHEMA_VERSION = "2026-05-28-library-reverse-consumer-scan"
-ANALYSIS_REPORT_CACHE_SCHEMA_VERSION = "2026-05-29-analysis-report-cache"
+ANALYSIS_REPORT_CACHE_SCHEMA_VERSION = "2026-06-04-string-literal-mismatch-threshold"
 
 
 def compute_cache_key(cfg: Mapping[str, object]) -> str:

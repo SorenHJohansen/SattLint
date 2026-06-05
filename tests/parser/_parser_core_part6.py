@@ -33,6 +33,53 @@ def test_parser_core_accepts_clipping_bounds_and_interact_tail_sequences():
     assert len(bp.moduledef.interact_objects) == 1
 
 
+def test_parser_core_preserves_interact_outvar_tails_for_output_bindings():
+    code = (
+        '"SyntaxVersion"\n'
+        '"OriginalFileDate"\n'
+        '"ProgramDate"\n'
+        "BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1\n"
+        "LOCALVARIABLES\n"
+        "    Changed: boolean := False;\n"
+        "ModuleDef\n"
+        "    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )\n"
+        "    InteractObjects :\n"
+        "        ComBut_ ( 0.0 , 0.0 ) ( 1.0 , 1.0 )\n"
+        '            Value_Changed = True : OutVar_ "Changed"\n'
+        "ENDDEF (*BasePicture*);\n"
+    )
+
+    bp = parser_core_parse_source_text(code)
+
+    assert bp.moduledef is not None
+    assert bp.moduledef.interact_objects is not None
+    interact = bp.moduledef.interact_objects[0]
+    body = interact.properties[const.KEY_BODY]
+    tails: list[Any] = []
+
+    def visit(value: Any) -> None:
+        if isinstance(value, dict):
+            for nested in value.values():
+                visit(nested)
+            return
+        if isinstance(value, list):
+            for nested in value:
+                visit(nested)
+            return
+        if getattr(value, "data", None) == parser_const.GRAMMAR_VALUE_OUTVAR_PREFIX:
+            tails.append(value)
+            return
+        children = getattr(value, "children", None)
+        if isinstance(children, list):
+            for child in children:
+                visit(child)
+
+    visit(body)
+
+    assert len(tails) == 1
+    assert tails[0].children == ["Changed"]
+
+
 def test_parser_core_accepts_interact_flag_plus_textobject_assignment():
     code = (
         '"SyntaxVersion"\n'

@@ -1,11 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
 
-from sattline_parser.models.ast_model import Simple_DataType, SourceSpan, Variable
-
-from ..types import VariableId
+from ..models._variable_issues import IssueKind, VariableIssue
 from ._variables_report_rendering import (
     append_datatype_duplication,
     append_magic_numbers,
@@ -15,35 +12,8 @@ from ._variables_report_rendering import (
     append_unused_datatype_fields,
     append_unused_variable_issue_list,
     append_variable_issue_list,
+    count_string_mapping_mismatch_rows,
 )
-
-
-class IssueKind(Enum):
-    UNUSED = "unused"
-    UNUSED_DATATYPE_FIELD = "unused_datatype_field"
-    READ_ONLY_NON_CONST = "read_only_non_const"
-    NAMING_ROLE_MISMATCH = "naming_role_mismatch"
-    UI_ONLY = "ui_only"
-    PROCEDURE_STATUS = "procedure_status"
-    NEVER_READ = "never_read"
-    RECORD_COMPONENT_ORDER_DEPENDENCE = "record_component_order_dependence"
-    WRITE_WITHOUT_EFFECT = "write_without_effect"
-    GLOBAL_SCOPE_MINIMIZATION = "global_scope_minimization"
-    HIDDEN_GLOBAL_COUPLING = "hidden_global_coupling"
-    HIGH_FAN_IN_OUT = "high_fan_in_out"
-    UNKNOWN_PARAMETER_TARGET = "unknown_parameter_target"
-    REQUIRED_PARAMETER_CONNECTION = "required_parameter_connection"
-    CONTRACT_MISMATCH = "contract_mismatch"
-    STRING_MAPPING_MISMATCH = "string_mapping_mismatch"
-    DATATYPE_DUPLICATION = "datatype_duplication"
-    NAME_COLLISION = "name_collision"
-    LAYOUT_OVERLAP = "layout_overlap"
-    MIN_MAX_MAPPING_MISMATCH = "min_max_mapping_mismatch"
-    MAGIC_NUMBER = "magic_number"
-    SHADOWING = "shadowing"
-    RESET_CONTAMINATION = "reset_contamination"
-    IMPLICIT_LATCH = "implicit_latch"
-
 
 DEFAULT_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
     IssueKind.UNUSED,
@@ -118,50 +88,11 @@ SECTION_TITLES: dict[IssueKind, str] = {
 
 
 @dataclass
-class VariableIssue:
-    kind: IssueKind
-    module_path: list[str]
-    variable: Variable | None
-    datatype_name: str | None = None
-    role: str | None = None
-    source_variable: Variable | None = None
-    duplicate_count: int | None = None
-    duplicate_locations: list[tuple[list[str], str, VariableId]] | None = None
-    literal_value: int | float | None = None
-    literal_span: SourceSpan | None = None
-    site: str | None = None
-    field_path: str | None = None
-    sequence_name: str | None = None
-    reset_variable: VariableId | None = None
-
-    def __str__(self) -> str:
-        mp = ".".join(self.module_path)
-        if self.variable is None and self.datatype_name is not None:
-            field_txt = f".{self.field_path}" if self.field_path else ""
-            return f"[{mp}] datatype {self.datatype_name!r}{field_txt}"
-        if self.variable is None and self.literal_value is not None:
-            return f"[{mp}] magic number {self.literal_value}"
-        if self.variable is None and self.role is not None:
-            return f"[{mp}] {self.role}"
-        if self.variable is None:
-            return f"[{mp}]"
-        dt = (
-            self.variable.datatype.value
-            if isinstance(self.variable.datatype, Simple_DataType)
-            else str(self.variable.datatype)
-        )
-        role_txt = f"{self.role} "
-        field_txt = f".{self.field_path}" if self.field_path else ""
-        seq_txt = f" seq={self.sequence_name!r}" if self.sequence_name else ""
-        reset_txt = f" reset={self.reset_variable!r}" if self.reset_variable else ""
-        return f"[{mp}] {role_txt} {self.variable.name!r}{field_txt} ({dt}){seq_txt}{reset_txt}"
-
-
-@dataclass
 class VariablesReport:
     basepicture_name: str
     issues: list[VariableIssue]
     visible_kinds: frozenset[IssueKind] | set[IssueKind] | tuple[IssueKind, ...] | list[IssueKind] | None = None
+    selected_issue_kinds: frozenset[IssueKind] | set[IssueKind] | tuple[IssueKind, ...] | list[IssueKind] | None = None
     include_empty_sections: bool = False
     analyzed_version: str | None = None
     last_changed: str | None = None
@@ -170,6 +101,8 @@ class VariablesReport:
     def __post_init__(self) -> None:
         if self.visible_kinds is not None and not isinstance(self.visible_kinds, frozenset):
             self.visible_kinds = frozenset(self.visible_kinds)
+        if self.selected_issue_kinds is not None and not isinstance(self.selected_issue_kinds, frozenset):
+            self.selected_issue_kinds = frozenset(self.selected_issue_kinds)
 
     @property
     def name(self) -> str:
@@ -275,6 +208,26 @@ class VariablesReport:
         if self.visible_kinds is not None:
             return tuple(kind for kind in SUMMARY_SECTION_ORDER if kind in self.visible_kinds)
         return tuple(kind for kind in SUMMARY_SECTION_ORDER if kind in {issue.kind for issue in self.issues})
+
+    def _ordered_selected_issue_kinds(self) -> tuple[IssueKind, ...]:
+        if not self.selected_issue_kinds:
+            return ()
+        return tuple(kind for kind in SUMMARY_SECTION_ORDER if kind in self.selected_issue_kinds)
+
+    def _selected_issue_kinds_line(self) -> str | None:
+        selected_kinds = self._ordered_selected_issue_kinds()
+        if not selected_kinds:
+            return None
+        return f"Selected issue kinds: {', '.join(kind.value for kind in selected_kinds)}"
+
+    def _selected_no_issues_message(self) -> str:
+        selected_kinds = self._ordered_selected_issue_kinds()
+        if len(selected_kinds) == 1:
+            return f"No {SECTION_TITLES[selected_kinds[0]].lower()} found."
+        if selected_kinds:
+            joined = ", ".join(kind.value for kind in selected_kinds)
+            return f"No issues found for selected issue kinds: {joined}."
+        return "No issues found."
 
     def _issues_for_kind(self, kind: IssueKind) -> list[VariableIssue]:
         if kind is IssueKind.UNUSED:
@@ -497,8 +450,20 @@ class VariablesReport:
             )
             return
 
+    def _display_issue_count(self, kind: IssueKind) -> int:
+        issues = self._issues_for_kind(kind)
+        if kind is IssueKind.STRING_MAPPING_MISMATCH:
+            return count_string_mapping_mismatch_rows(issues)
+        return len(issues)
+
+    def _display_total_issue_count(self, summary_kinds: tuple[IssueKind, ...]) -> int:
+        if summary_kinds:
+            return sum(self._display_issue_count(kind) for kind in summary_kinds)
+        return len(self.issues)
+
     def summary(self) -> str:
         summary_kinds = self._summary_kinds()
+        selected_issue_kinds_line = self._selected_issue_kinds_line()
         if not self.issues and not summary_kinds:
             lines = [
                 "Report: Variable issues",
@@ -508,12 +473,16 @@ class VariablesReport:
                 lines.append(f"Version: {self.analyzed_version}")
             if self.last_changed is not None:
                 lines.append(f"Last changed: {self.last_changed}")
+            if selected_issue_kinds_line is not None:
+                lines.append(selected_issue_kinds_line)
             lines.extend(
                 [
                     "Status: ok",
                 ]
             )
-            lines.append("No issues found.")
+            lines.append(
+                self._selected_no_issues_message() if self.selected_issue_kinds is not None else "No issues found."
+            )
             return "\n".join(lines)
 
         status = "issues" if self.issues else "ok"
@@ -525,13 +494,18 @@ class VariablesReport:
             lines.append(f"Version: {self.analyzed_version}")
         if self.last_changed is not None:
             lines.append(f"Last changed: {self.last_changed}")
+        if selected_issue_kinds_line is not None:
+            lines.append(selected_issue_kinds_line)
         lines.append(f"Status: {status}")
-        lines.append(f"Issues: {len(self.issues)}")
+        lines.append(f"Issues: {self._display_total_issue_count(summary_kinds)}")
         show_sections_overview = len(summary_kinds) > 1 or (self.visible_kinds is None and bool(summary_kinds))
         if show_sections_overview:
             lines.append("Sections:")
-            lines.extend(f"  - {SECTION_TITLES[kind]}: {len(self._issues_for_kind(kind))}" for kind in summary_kinds)
+            lines.extend(f"  - {SECTION_TITLES[kind]}: {self._display_issue_count(kind)}" for kind in summary_kinds)
         for kind in summary_kinds:
             lines.append("")
             self._append_section(lines, kind)
+        if not self.issues and self.selected_issue_kinds is not None:
+            lines.append("")
+            lines.append(self._selected_no_issues_message())
         return "\n".join(lines)

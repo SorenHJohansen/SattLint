@@ -59,12 +59,14 @@ def run_analyze_command_from_app(
     cfg: ConfigDict,
     *,
     selected_keys: list[str] | None,
+    selected_issue_kinds: frozenset[str] | None = None,
     use_cache: bool,
     app_module: Any,
 ) -> int:
     return startup_core.run_analyze_command(
         cfg,
         selected_keys=selected_keys,
+        selected_issue_kinds=selected_issue_kinds,
         use_cache=use_cache,
         run_analyze_command_fn=app_module.app_cli_commands.run_analyze_command,
         run_checks_owner_fn=app_module.app_analysis.run_checks,
@@ -284,6 +286,7 @@ def prompt_graphics_rule_definition_with_config_from_app(
         prompt_fn=app_module.prompt,
         pause_fn=app_module.pause,
         pick_or_prompt_graphics_rule_selector_value_fn=app_module._pick_or_prompt_graphics_rule_selector_value,
+        interaction=app_module.build_menu_interaction(),
     )
 
 
@@ -433,18 +436,23 @@ def main_from_app(argv: list[str] | None, *, app_module: Any) -> int:
     return startup_core.main(
         argv,
         run_cli_fn=app_module.run_cli,
+        build_cli_parser_fn=app_module.build_cli_parser,
         load_config_fn=app_module.load_config,
         config_path=app_module.CONFIG_PATH,
         apply_debug_fn=app_module.apply_debug,
+        resolve_interactive_ui_mode_fn=app_module.resolve_interactive_ui_mode,
+        set_interactive_ui_mode_fn=app_module.set_interactive_ui_mode,
+        reset_interactive_ui_mode_fn=app_module.reset_interactive_ui_mode,
         emit_output_fn=app_module.emit_output,
         pause_fn=app_module.pause,
         self_check_fn=app_module.self_check,
         confirm_fn=app_module.confirm,
         has_analyzed_targets_fn=app_module._has_analyzed_targets,
         ensure_ast_cache_fn=app_module.ensure_ast_cache,
-        run_main_loop_fn=app_module.app_menus.run_main_loop,
+        run_main_loop_fn=app_module.run_interactive_session,
         clear_screen_fn=app_module.clear_screen,
         print_menu_fn=app_module._print_menu,
+        choose_menu_option_fn=app_module.choose_menu_option,
         menu_option_factory=app_module._menu_option,
         summarize_targets_fn=app_module._summarize_targets,
         require_targets_for_menu_action_fn=app_module._require_targets_for_menu_action,

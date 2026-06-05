@@ -125,6 +125,31 @@ def test_run_staged_repo_audit_rejects_incomplete_results_without_replacing_exis
     assert (final_output_dir / "marker.txt").read_text(encoding="utf-8") == "stable"
 
 
+def test_run_staged_repo_audit_cleans_staging_dir_when_readiness_check_fails(tmp_path):
+    final_output_dir = tmp_path / "audit-full-current"
+    seen: dict[str, Path] = {}
+
+    def audit_main(argv: list[str] | None) -> int:
+        assert argv is not None
+        staged_output_dir = Path(argv[argv.index("--output-dir") + 1])
+        seen["staged_output_dir"] = staged_output_dir
+        _write_complete_staged_audit(staged_output_dir)
+        return 0
+
+    def readiness_check(staged_output_dir: Path) -> dict[str, object]:
+        raise ReadinessError(f"staged output not ready: {staged_output_dir}")
+
+    with pytest.raises(ReadinessError, match="staged output not ready"):
+        run_staged_repo_audit(
+            final_output_dir=final_output_dir,
+            forwarded_args=["--profile", "full"],
+            audit_main=audit_main,
+            readiness_check=readiness_check,
+        )
+
+    assert seen["staged_output_dir"].exists() is False
+
+
 def test_run_staged_repo_audit_rejects_forwarded_output_dir_override(tmp_path):
     with pytest.raises(ValueError, match="controls --output-dir"):
         run_staged_repo_audit(

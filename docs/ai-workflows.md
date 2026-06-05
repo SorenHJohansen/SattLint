@@ -22,6 +22,9 @@ Preferred flow for parallel work:
 4. Bootstrap the review or test lane from the executor handoff when isolation is needed.
 5. Use `--from-handoff .ai/handoffs/<id>.json` or `--from-branch ai/task-<id>` so review and test lanes start from executor output instead of `main`.
 
+Operator note: prefer the existing VS Code tasks in `.vscode/tasks.json` for common repo workflows such as planning context, AI observability, and quick or full repo audits before handcrafting a shell command in chat.
+Operator note: never use heredoc Python in the terminal. If no task exists, write the script to a temp file and run it, or use a one-line command that does not depend on `python3 - << 'PY'` transport.
+
 Bootstrap defaults are stage-aware:
 
 - executor: branch `ai/task-<id>`, worktree `../SattLint-ai-<id>`
@@ -70,6 +73,7 @@ Example commands:
 
 - Claims files through the shared `.git/sattlint-ai-coordination/current_work_lock.json`.
 - Works from one task contract in `.ai/tasks/`.
+- Prefers named VS Code tasks from `.vscode/tasks.json` for repeatable repo operations before composing an ad hoc terminal command.
 - Classifies the touched surface before the first edit: safe owner, debt-controlled owner, protected config, or shared infra.
 - Routes debt-controlled owners toward a sibling helper seam or explicit decomposition slice before editing the owner directly.
 - Checks approval-record requirements and change-context detection before editing protected config paths such as `pyproject.toml` or ratchet files.

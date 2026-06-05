@@ -21,7 +21,11 @@
     "LICENSE"
   ],
   "scripts": {
+    "lint": "eslint extension.js --no-eslintrc --env node --env es2021 --rule \"no-undef: error\"",
     "package:vsix": "npm exec --yes --package @vscode/vsce -- vsce package"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.1"
   },
   "engines": {
     "vscode": "^1.90.0"

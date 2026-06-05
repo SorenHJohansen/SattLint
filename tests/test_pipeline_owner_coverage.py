@@ -135,7 +135,10 @@ def test_pipeline_execution_helpers_cover_venv_tool_run_command_and_changed_file
                 [
                     " M src/file.py",
                     "R  old.py -> renamed/new.py",
+                    'R  "old path.s" -> "renamed/new path.s"',
                     "?? nested\\path.py",
+                    '?? "path with spaces/file.s"',
+                    '?? "s\\303\\270ren/file.s"',
                     "X",
                     "??   ",
                 ]
@@ -146,8 +149,11 @@ def test_pipeline_execution_helpers_cover_venv_tool_run_command_and_changed_file
 
     assert helper._detect_changed_files(repo_root=tmp_path) == [
         "nested/path.py",
+        "path with spaces/file.s",
+        "renamed/new path.s",
         "renamed/new.py",
         "src/file.py",
+        "s\u00f8ren/file.s",
     ]
 
 

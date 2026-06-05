@@ -203,24 +203,6 @@
         "touch_rule": "must_shrink"
       }
     },
-    "tests/analyzers/test_builtin_record_semantics.py": {
-      "structural": {
-        "allow_rebaseline": false,
-        "current_baseline": 636,
-        "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
-        "target": 500,
-        "touch_rule": "must_shrink"
-      }
-    },
-    "tests/test_comment_code.py": {
-      "structural": {
-        "allow_rebaseline": false,
-        "current_baseline": 544,
-        "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
-        "target": 500,
-        "touch_rule": "must_shrink"
-      }
-    },
     "tests/test_corpus.py": {
       "structural": {
         "allow_rebaseline": false,

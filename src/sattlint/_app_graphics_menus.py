@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Protocol, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
+from .app_interaction import MenuInteraction, build_menu_interaction
 from .models.project_graph import ProjectGraph
 
 ConfigDict = dict[str, Any]
@@ -21,7 +23,34 @@ class PrintGraphicsRulesSummaryFn(Protocol):
     def __call__(self, path: Path, rules: dict[str, Any], *, dirty: bool) -> None: ...
 
 
-def prompt_graphics_rule_kind(*, emit_output_fn: Callable[..., None]) -> str:
+def _graphics_prompt_option(key: str, label: str, description: str = "") -> Any:
+    return SimpleNamespace(key=key, label=label, description=description)
+
+
+def prompt_graphics_rule_kind(
+    *,
+    emit_output_fn: Callable[..., None],
+    interaction: MenuInteraction | None = None,
+) -> str:
+    if interaction is not None:
+        while True:
+            choice = interaction.choose_menu_option(
+                "Graphics Rule Target Kind",
+                [
+                    _graphics_prompt_option("1", "Frame"),
+                    _graphics_prompt_option("2", "Single module"),
+                    _graphics_prompt_option("3", "ModuleType"),
+                ],
+                intro="Choose graphics rule target kind:",
+            )
+            if choice == "1":
+                return "frame"
+            if choice == "2":
+                return "single"
+            if choice == "3":
+                return "moduletype"
+            emit_output_fn("? Choose 1, 2, or 3")
+
     emit_output_fn("\nChoose graphics rule target kind:")
     emit_output_fn("  1) Frame")
     emit_output_fn("  2) Single module")
@@ -125,6 +154,7 @@ def pick_or_prompt_graphics_rule_selector_value(
     discover_graphics_rule_selector_options_fn: Callable[..., list[GraphicsRule]],
     emit_output_fn: Callable[..., None],
     required_prompt_validation_error: type[Exception],
+    interaction: MenuInteraction | None = None,
 ) -> str:
     options = discover_graphics_rule_selector_options_fn(
         cfg,
@@ -134,28 +164,58 @@ def pick_or_prompt_graphics_rule_selector_value(
     prompt_text = selector_prompt_text(selector_field)
 
     if options:
-        emit_output_fn(f"\nAvailable {prompt_text.lower()} values:")
-        for index, option in enumerate(options, start=1):
-            emit_output_fn(
-                f"  {index}) {option['selector_value']} "
-                f"[{option['count']} matches across {option['target_count']} targets]"
-            )
-        emit_output_fn("  m) Enter manually")
+        if interaction is not None:
+            menu_options = [
+                _graphics_prompt_option(
+                    str(index),
+                    str(option["selector_value"]),
+                    f"{option['count']} matches across {option['target_count']} targets",
+                )
+                for index, option in enumerate(options, start=1)
+            ]
+            menu_options.append(_graphics_prompt_option("m", "Enter manually"))
 
-        while True:
-            raw = input("> ").strip().lower()
-            if raw == "m":
-                break
-            try:
-                selected_index = int(raw) - 1
-            except ValueError:
-                emit_output_fn("? Choose an index or 'm'")
-                continue
-            if 0 <= selected_index < len(options):
-                return str(options[selected_index]["selector_value"])
-            emit_output_fn("? Invalid index")
+            while True:
+                raw = interaction.choose_menu_option(
+                    f"Select {prompt_text}",
+                    menu_options,
+                    intro=f"Available {prompt_text.lower()} values:",
+                )
+                if raw == "m":
+                    break
+                try:
+                    selected_index = int(raw) - 1
+                except ValueError:
+                    emit_output_fn("? Choose an index or 'm'")
+                    continue
+                if 0 <= selected_index < len(options):
+                    return str(options[selected_index]["selector_value"])
+                emit_output_fn("? Invalid index")
+        else:
+            emit_output_fn(f"\nAvailable {prompt_text.lower()} values:")
+            for index, option in enumerate(options, start=1):
+                emit_output_fn(
+                    f"  {index}) {option['selector_value']} "
+                    f"[{option['count']} matches across {option['target_count']} targets]"
+                )
+            emit_output_fn("  m) Enter manually")
 
-    selector_value = input(f"{prompt_text}: ").strip()
+            while True:
+                raw = input("> ").strip().lower()
+                if raw == "m":
+                    break
+                try:
+                    selected_index = int(raw) - 1
+                except ValueError:
+                    emit_output_fn("? Choose an index or 'm'")
+                    continue
+                if 0 <= selected_index < len(options):
+                    return str(options[selected_index]["selector_value"])
+                emit_output_fn("? Invalid index")
+
+    selector_value = (
+        interaction.prompt(prompt_text, None).strip() if interaction is not None else input(f"{prompt_text}: ").strip()
+    )
     if not selector_value:
         emit_output_fn("? Selector path is required")
         raise required_prompt_validation_error("Selector path is required")
@@ -168,49 +228,111 @@ def prompt_graphics_rule_selector(
     cfg: ConfigDict | None,
     pick_or_prompt_graphics_rule_selector_value_fn: Callable[..., str],
     emit_output_fn: Callable[..., None],
+    interaction: MenuInteraction | None = None,
 ) -> tuple[str, str]:
     if module_kind == "frame":
         selector_field = "relative_module_path"
     elif module_kind == "single":
-        emit_output_fn("\nChoose selector scope:")
-        emit_output_fn("  1) Relative module path")
-        emit_output_fn("  2) Unit structure path")
-        emit_output_fn("  3) Equipment module structure path")
-        while True:
-            choice = input("> ").strip().lower()
-            if choice == "1":
-                selector_field = "relative_module_path"
-                break
-            if choice == "2":
-                selector_field = "unit_structure_path"
-                break
-            if choice == "3":
-                selector_field = "equipment_module_structure_path"
-                break
-            emit_output_fn("? Choose 1, 2, or 3")
+        if interaction is not None:
+            while True:
+                choice = interaction.choose_menu_option(
+                    "Selector Scope",
+                    [
+                        _graphics_prompt_option("1", "Relative module path"),
+                        _graphics_prompt_option("2", "Unit structure path"),
+                        _graphics_prompt_option("3", "Equipment module structure path"),
+                    ],
+                    intro="Choose selector scope:",
+                )
+                if choice == "1":
+                    selector_field = "relative_module_path"
+                    break
+                if choice == "2":
+                    selector_field = "unit_structure_path"
+                    break
+                if choice == "3":
+                    selector_field = "equipment_module_structure_path"
+                    break
+                emit_output_fn("? Choose 1, 2, or 3")
+        else:
+            emit_output_fn("\nChoose selector scope:")
+            emit_output_fn("  1) Relative module path")
+            emit_output_fn("  2) Unit structure path")
+            emit_output_fn("  3) Equipment module structure path")
+            while True:
+                choice = input("> ").strip().lower()
+                if choice == "1":
+                    selector_field = "relative_module_path"
+                    break
+                if choice == "2":
+                    selector_field = "unit_structure_path"
+                    break
+                if choice == "3":
+                    selector_field = "equipment_module_structure_path"
+                    break
+                emit_output_fn("? Choose 1, 2, or 3")
     else:
-        emit_output_fn("\nChoose ModuleType selector scope:")
-        emit_output_fn("  1) Relative module path")
-        emit_output_fn("  2) Unit structure path")
-        emit_output_fn("  3) Equipment module structure path")
-        while True:
-            choice = input("> ").strip().lower()
-            if choice == "1":
-                selector_field = "relative_module_path"
-                break
-            if choice == "2":
-                selector_field = "unit_structure_path"
-                break
-            if choice == "3":
-                selector_field = "equipment_module_structure_path"
-                break
-            emit_output_fn("? Choose 1, 2, or 3")
+        if interaction is not None:
+            while True:
+                choice = interaction.choose_menu_option(
+                    "ModuleType Selector Scope",
+                    [
+                        _graphics_prompt_option("1", "Relative module path"),
+                        _graphics_prompt_option("2", "Unit structure path"),
+                        _graphics_prompt_option("3", "Equipment module structure path"),
+                    ],
+                    intro="Choose ModuleType selector scope:",
+                )
+                if choice == "1":
+                    selector_field = "relative_module_path"
+                    break
+                if choice == "2":
+                    selector_field = "unit_structure_path"
+                    break
+                if choice == "3":
+                    selector_field = "equipment_module_structure_path"
+                    break
+                emit_output_fn("? Choose 1, 2, or 3")
+        else:
+            emit_output_fn("\nChoose ModuleType selector scope:")
+            emit_output_fn("  1) Relative module path")
+            emit_output_fn("  2) Unit structure path")
+            emit_output_fn("  3) Equipment module structure path")
+            while True:
+                choice = input("> ").strip().lower()
+                if choice == "1":
+                    selector_field = "relative_module_path"
+                    break
+                if choice == "2":
+                    selector_field = "unit_structure_path"
+                    break
+                if choice == "3":
+                    selector_field = "equipment_module_structure_path"
+                    break
+                emit_output_fn("? Choose 1, 2, or 3")
 
-    selector_value = pick_or_prompt_graphics_rule_selector_value_fn(
-        selector_field,
-        module_kind,
-        cfg=cfg,
-    )
+    if interaction is not None:
+        try:
+            selector_value = pick_or_prompt_graphics_rule_selector_value_fn(
+                selector_field,
+                module_kind,
+                cfg=cfg,
+                interaction=interaction,
+            )
+        except TypeError as exc:
+            if "interaction" not in str(exc):
+                raise
+            selector_value = pick_or_prompt_graphics_rule_selector_value_fn(
+                selector_field,
+                module_kind,
+                cfg=cfg,
+            )
+    else:
+        selector_value = pick_or_prompt_graphics_rule_selector_value_fn(
+            selector_field,
+            module_kind,
+            cfg=cfg,
+        )
     return selector_field, selector_value
 
 
@@ -327,17 +449,35 @@ def prompt_graphics_rule_definition_with_config(
     prompt_fn: Callable[..., str],
     pause_fn: Callable[[], None],
     pick_or_prompt_graphics_rule_selector_value_fn: Callable[..., str],
-    prompt_graphics_rule_kind_fn: Callable[[], str],
+    prompt_graphics_rule_kind_fn: Callable[..., str],
     prompt_graphics_rule_selector_fn: Callable[..., tuple[str, str]],
     optional_prompt_or_none_fn: Callable[[Callable[[], Any]], Any | None],
     prompt_optional_float_list_fn: Callable[..., list[float]],
-    prompt_optional_text_list_fn: Callable[[str], list[str]],
-    prompt_optional_bool_fn: Callable[[str], bool],
+    prompt_optional_text_list_fn: Callable[..., list[str]],
+    prompt_optional_bool_fn: Callable[..., bool],
     emit_output_fn: Callable[..., None],
     required_prompt_validation_error: type[Exception],
+    interaction: MenuInteraction | None = None,
 ) -> GraphicsRule | None:
+    def _text_prompt(message: str, *, use_prompt_fn: bool = False) -> str:
+        if interaction is not None:
+            return interaction.prompt(message, None).strip()
+        if use_prompt_fn:
+            return prompt_fn(message).strip()
+        return input(f"{message}: ").strip()
+
+    pause = interaction.pause if interaction is not None else pause_fn
+
     emit_output_fn("\nEnter graphics rule values. Leave optional fields blank to skip them.")
-    module_kind = prompt_graphics_rule_kind_fn()
+    if interaction is not None:
+        try:
+            module_kind = prompt_graphics_rule_kind_fn(interaction=interaction)
+        except TypeError as exc:
+            if "interaction" not in str(exc):
+                raise
+            module_kind = prompt_graphics_rule_kind_fn()
+    else:
+        module_kind = prompt_graphics_rule_kind_fn()
 
     module_name = ""
     relative_module_path = ""
@@ -346,29 +486,63 @@ def prompt_graphics_rule_definition_with_config(
     moduletype_name = ""
 
     if module_kind == "moduletype":
-        moduletype_name = prompt_fn("ModuleType name")
+        moduletype_name = _text_prompt("ModuleType name", use_prompt_fn=True)
         if not moduletype_name:
             emit_output_fn("? ModuleType name is required")
-            pause_fn()
+            pause()
             return None
         try:
-            selector_field, selector_value = prompt_graphics_rule_selector_fn(
-                module_kind,
-                cfg=cfg,
-                pick_or_prompt_graphics_rule_selector_value_fn=pick_or_prompt_graphics_rule_selector_value_fn,
-            )
+            if interaction is not None:
+                try:
+                    selector_field, selector_value = prompt_graphics_rule_selector_fn(
+                        module_kind,
+                        cfg=cfg,
+                        pick_or_prompt_graphics_rule_selector_value_fn=pick_or_prompt_graphics_rule_selector_value_fn,
+                        interaction=interaction,
+                    )
+                except TypeError as exc:
+                    if "interaction" not in str(exc):
+                        raise
+                    selector_field, selector_value = prompt_graphics_rule_selector_fn(
+                        module_kind,
+                        cfg=cfg,
+                        pick_or_prompt_graphics_rule_selector_value_fn=pick_or_prompt_graphics_rule_selector_value_fn,
+                    )
+            else:
+                selector_field, selector_value = prompt_graphics_rule_selector_fn(
+                    module_kind,
+                    cfg=cfg,
+                    pick_or_prompt_graphics_rule_selector_value_fn=pick_or_prompt_graphics_rule_selector_value_fn,
+                )
         except required_prompt_validation_error:
-            pause_fn()
+            pause()
             return None
     else:
         try:
-            selector_field, selector_value = prompt_graphics_rule_selector_fn(
-                module_kind,
-                cfg=cfg,
-                pick_or_prompt_graphics_rule_selector_value_fn=pick_or_prompt_graphics_rule_selector_value_fn,
-            )
+            if interaction is not None:
+                try:
+                    selector_field, selector_value = prompt_graphics_rule_selector_fn(
+                        module_kind,
+                        cfg=cfg,
+                        pick_or_prompt_graphics_rule_selector_value_fn=pick_or_prompt_graphics_rule_selector_value_fn,
+                        interaction=interaction,
+                    )
+                except TypeError as exc:
+                    if "interaction" not in str(exc):
+                        raise
+                    selector_field, selector_value = prompt_graphics_rule_selector_fn(
+                        module_kind,
+                        cfg=cfg,
+                        pick_or_prompt_graphics_rule_selector_value_fn=pick_or_prompt_graphics_rule_selector_value_fn,
+                    )
+            else:
+                selector_field, selector_value = prompt_graphics_rule_selector_fn(
+                    module_kind,
+                    cfg=cfg,
+                    pick_or_prompt_graphics_rule_selector_value_fn=pick_or_prompt_graphics_rule_selector_value_fn,
+                )
         except required_prompt_validation_error:
-            pause_fn()
+            pause()
             return None
 
     if selector_field == "relative_module_path":
@@ -382,21 +556,31 @@ def prompt_graphics_rule_definition_with_config(
     if selector_name:
         module_name = selector_name.split(".")[-1].strip()
 
-    description = input("Description (optional): ").strip()
+    description = _text_prompt("Description (optional)")
     invocation: dict[str, Any] = {}
     moduledef: dict[str, Any] = {}
 
     invocation_coords = optional_prompt_or_none_fn(
-        lambda: prompt_optional_float_list_fn("Invocation coords", 5, pause_fn=pause_fn)
+        lambda: prompt_optional_float_list_fn(
+            "Invocation coords",
+            5,
+            pause_fn=pause,
+            prompt_fn=interaction.prompt if interaction is not None else None,
+        )
     )
     if invocation_coords is not None:
         invocation["coords"] = invocation_coords
 
-    invocation_arguments = optional_prompt_or_none_fn(lambda: prompt_optional_text_list_fn("Invocation arguments"))
+    invocation_arguments = optional_prompt_or_none_fn(
+        lambda: prompt_optional_text_list_fn(
+            "Invocation arguments",
+            prompt_fn=interaction.prompt if interaction is not None else None,
+        )
+    )
     if invocation_arguments is not None:
         invocation["arguments"] = invocation_arguments
 
-    invocation_layer = input("Invocation layer (blank to skip): ").strip()
+    invocation_layer = _text_prompt("Invocation layer (blank to skip)")
     if invocation_layer:
         invocation["layer"] = invocation_layer
 
@@ -404,44 +588,70 @@ def prompt_graphics_rule_definition_with_config(
         lambda: prompt_optional_float_list_fn(
             "Invocation zoom limits",
             2,
-            pause_fn=pause_fn,
+            pause_fn=pause,
+            prompt_fn=interaction.prompt if interaction is not None else None,
         )
     )
     if invocation_zoom_limits is not None:
         invocation["zoom_limits"] = invocation_zoom_limits
 
-    invocation_zoomable = optional_prompt_or_none_fn(lambda: prompt_optional_bool_fn("Invocation zoomable"))
+    invocation_zoomable = optional_prompt_or_none_fn(
+        lambda: prompt_optional_bool_fn(
+            "Invocation zoomable",
+            prompt_fn=interaction.prompt if interaction is not None else None,
+        )
+    )
     if invocation_zoomable is not None:
         invocation["zoomable"] = invocation_zoomable
 
     clipping_origin = optional_prompt_or_none_fn(
-        lambda: prompt_optional_float_list_fn("Clipping origin", 2, pause_fn=pause_fn)
+        lambda: prompt_optional_float_list_fn(
+            "Clipping origin",
+            2,
+            pause_fn=pause,
+            prompt_fn=interaction.prompt if interaction is not None else None,
+        )
     )
     if clipping_origin is not None:
         moduledef["clipping_origin"] = clipping_origin
 
     clipping_size = optional_prompt_or_none_fn(
-        lambda: prompt_optional_float_list_fn("Clipping size", 2, pause_fn=pause_fn)
+        lambda: prompt_optional_float_list_fn(
+            "Clipping size",
+            2,
+            pause_fn=pause,
+            prompt_fn=interaction.prompt if interaction is not None else None,
+        )
     )
     if clipping_size is not None:
         moduledef["clipping_size"] = clipping_size
 
     moduledef_zoom_limits = optional_prompt_or_none_fn(
-        lambda: prompt_optional_float_list_fn("ModuleDef zoom limits", 2, pause_fn=pause_fn)
+        lambda: prompt_optional_float_list_fn(
+            "ModuleDef zoom limits",
+            2,
+            pause_fn=pause,
+            prompt_fn=interaction.prompt if interaction is not None else None,
+        )
     )
     if moduledef_zoom_limits is not None:
         moduledef["zoom_limits"] = moduledef_zoom_limits
 
-    moduledef_grid = input("ModuleDef grid (blank to skip): ").strip()
+    moduledef_grid = _text_prompt("ModuleDef grid (blank to skip)")
     if moduledef_grid:
         try:
             moduledef["grid"] = float(moduledef_grid)
         except ValueError:
             emit_output_fn("? ModuleDef grid must be numeric")
-            pause_fn()
+            pause()
             return None
 
-    moduledef_zoomable = optional_prompt_or_none_fn(lambda: prompt_optional_bool_fn("ModuleDef zoomable"))
+    moduledef_zoomable = optional_prompt_or_none_fn(
+        lambda: prompt_optional_bool_fn(
+            "ModuleDef zoomable",
+            prompt_fn=interaction.prompt if interaction is not None else None,
+        )
+    )
     if moduledef_zoomable is not None:
         moduledef["zoomable"] = moduledef_zoomable
 
@@ -453,7 +663,7 @@ def prompt_graphics_rule_definition_with_config(
 
     if not expected:
         emit_output_fn("? At least one expected graphics field is required")
-        pause_fn()
+        pause()
         return None
 
     return {
@@ -474,7 +684,7 @@ def graphics_rules_menu(
     get_graphics_rules_path_fn: Callable[[], Path],
     load_graphics_rules_fn: Callable[..., tuple[dict[str, Any], bool]],
     save_graphics_rules_fn: Callable[[Path, dict[str, Any]], None],
-    prompt_graphics_rule_definition_with_config_fn: Callable[[dict[str, Any] | None], dict[str, Any] | None],
+    prompt_graphics_rule_definition_with_config_fn: Callable[..., dict[str, Any] | None],
     graphics_rule_label_fn: Callable[[dict[str, Any]], str],
     clear_screen_fn: Callable[[], None],
     print_menu_fn: Callable[..., None],
@@ -487,7 +697,14 @@ def graphics_rules_menu(
     emit_output_fn: Callable[..., None],
     upsert_graphics_rule_fn: Callable[[dict[str, Any], dict[str, Any]], bool],
     remove_graphics_rule_fn: Callable[[dict[str, Any], int], dict[str, Any]],
+    interaction: MenuInteraction | None = None,
 ) -> None:
+    menu_interaction = interaction or build_menu_interaction(
+        print_menu_fn=print_menu_fn,
+        prompt_fn=prompt_fn,
+        confirm_fn=confirm_fn,
+        pause_fn=pause_fn,
+    )
     rules_path = get_graphics_rules_path_fn()
     rules, _created = load_graphics_rules_fn(rules_path)
     dirty = False
@@ -497,7 +714,7 @@ def graphics_rules_menu(
             save_graphics_rules_fn(rules_path, rules)
         except OSError as exc:
             emit_output_fn(f"? Failed to save graphics rules to {rules_path}: {exc}")
-            pause_fn()
+            menu_interaction.pause()
             return False
         return True
 
@@ -505,7 +722,7 @@ def graphics_rules_menu(
         clear_screen_fn()
         print_graphics_rules_summary_fn(rules_path, rules, dirty=dirty)
         emit_output_fn()
-        print_menu_fn(
+        choice = menu_interaction.choose_menu_option(
             "Graphics rules",
             [
                 menu_option_factory("1", "Add or replace rule", "Prompt for one module graphics rule"),
@@ -520,46 +737,58 @@ def graphics_rules_menu(
                 "or ModuleType names depending on the rule scope."
             ),
         )
-        choice = input("> ").strip().lower()
 
         if choice == "b":
-            if dirty and confirm_fn("Unsaved graphics rule changes. Save before leaving?") and not _save_rules():
+            if (
+                dirty
+                and menu_interaction.confirm("Unsaved graphics rule changes. Save before leaving?")
+                and not _save_rules()
+            ):
                 continue
             return
         if choice == "q":
-            if dirty and confirm_fn("Unsaved graphics rule changes. Save before quitting?") and not _save_rules():
+            if (
+                dirty
+                and menu_interaction.confirm("Unsaved graphics rule changes. Save before quitting?")
+                and not _save_rules()
+            ):
                 continue
             quit_app_fn()
 
         if choice == "1":
-            rule = prompt_graphics_rule_definition_with_config_fn(cfg)
+            try:
+                rule = prompt_graphics_rule_definition_with_config_fn(cfg, interaction=menu_interaction)
+            except TypeError as exc:
+                if "interaction" not in str(exc):
+                    raise
+                rule = prompt_graphics_rule_definition_with_config_fn(cfg)
             if rule is None:
                 continue
             updated = upsert_graphics_rule_fn(rules, rule)
             emit_output_fn("Updated existing graphics rule" if updated else "Added graphics rule")
             dirty = True
-            pause_fn()
+            menu_interaction.pause()
         elif choice == "2":
             if not rules.get("rules"):
                 emit_output_fn("? No graphics rules configured")
-                pause_fn()
+                menu_interaction.pause()
                 continue
-            idx_text = prompt_fn("Index to remove")
+            idx_text = menu_interaction.prompt("Index to remove", None)
             try:
                 idx = int(idx_text) - 1
                 removed = remove_graphics_rule_fn(rules, idx)
             except (ValueError, IndexError):
                 emit_output_fn("? Invalid index")
-                pause_fn()
+                menu_interaction.pause()
                 continue
             emit_output_fn(f"Removed {graphics_rule_label_fn(removed)}")
             dirty = True
-            pause_fn()
+            menu_interaction.pause()
         elif choice == "3":
             if not _save_rules():
                 continue
             dirty = False
-            pause_fn()
+            menu_interaction.pause()
         else:
             emit_output_fn("Invalid choice.")
-            pause_fn()
+            menu_interaction.pause()

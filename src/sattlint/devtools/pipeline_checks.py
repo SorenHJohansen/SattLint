@@ -55,7 +55,7 @@ PIPELINE_CHECK_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "owner_surface": "python-tests",
         "estimated_cost": "medium",
         "path_globs": ("src/**/*.py", "tests/**/*.py", "pyproject.toml"),
-        "owner_test_targets": ("tests/test_pipeline.py", "tests/test_pipeline_run.py"),
+        "owner_test_targets": ("tests/test_pipeline_run.py", "tests/test_pipeline_run_recommendations.py"),
         **_ai_metadata(
             "Use targeted owner pytest first for behavior proof on Python changes.",
             ".github/instructions/sattline-invariants.instructions.md",
@@ -108,7 +108,7 @@ PIPELINE_CHECK_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "owner_surface": "structural",
         "estimated_cost": "high",
         "path_globs": ("src/**/*.py", "tests/**/*.py", "pyproject.toml"),
-        "owner_test_targets": ("tests/test_pipeline.py", "tests/test_pipeline_run.py"),
+        "owner_test_targets": ("tests/test_pipeline_collection_graphs.py", "tests/test_pipeline_run.py"),
         **_ai_metadata(
             "Use when architecture, dependency, or structural-budget artifacts need regeneration.",
             ".github/instructions/repo-audit.instructions.md",
@@ -128,7 +128,7 @@ PIPELINE_CHECK_DEFINITIONS: tuple[dict[str, Any], ...] = (
             "src/sattlint_lsp/**",
             "tests/fixtures/sample_sattline_files/**",
         ),
-        "owner_test_targets": ("tests/test_pipeline.py",),
+        "owner_test_targets": ("tests/test_pipeline_phase2.py",),
         **_ai_metadata(
             "Use when parser, analyzer, or workspace-loading edits need trace or profiling artifacts.",
             ".github/instructions/parser-analysis.instructions.md",

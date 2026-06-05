@@ -1,4 +1,7 @@
+import logging
 from typing import Any, cast
+
+import pytest
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -19,6 +22,7 @@ from sattlint.analyzers.modules import (
     analyze_version_drift,
     compare_modules,
     create_fingerprint,
+    find_modules_by_name,
 )
 from sattlint.analyzers.registry import get_default_analyzers
 
@@ -27,7 +31,7 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict:
+def _varref(name: str) -> dict[str, str]:
     return {const.KEY_VAR_NAME: name}
 
 
@@ -275,3 +279,55 @@ def test_modules_analyzer_is_enabled_by_default() -> None:
     assert "version-drift" in specs
     assert specs["version-drift"].enabled is True
     assert compare_modules([(["Root", "Area", "PumpA"], module)]).module_name == "Pump"
+
+
+def test_find_modules_by_name_debug_logs_summary_without_per_node_chatter(caplog: pytest.LogCaptureFixture) -> None:
+    pump_a = SingleModule(
+        header=_hdr("Pump"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        parametermappings=[],
+    )
+    pump_b = SingleModule(
+        header=_hdr("Pump"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        parametermappings=[],
+    )
+    area = SingleModule(
+        header=_hdr("Area"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[],
+        submodules=[pump_a, pump_b],
+        modulecode=None,
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[area],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    with caplog.at_level(logging.DEBUG, logger="SattLint"):
+        matches = find_modules_by_name(bp, "Pump", debug=True)
+
+    assert len(matches) == 2
+    assert "Module search start: target='Pump' root='Root'" in caplog.messages
+    assert any(message.startswith("Module search complete: target='Pump' visited=") for message in caplog.messages)
+    assert any("matches=2" in message for message in caplog.messages)
+    assert any(
+        message == "Module search matches: Root -> Area -> Pump; Root -> Area -> Pump" for message in caplog.messages
+    )
+    assert not any("_walk_modules:" in message for message in caplog.messages)
+    assert not any("Submodule[" in message for message in caplog.messages)

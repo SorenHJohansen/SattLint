@@ -107,12 +107,14 @@ def prompt_graphics_rule_definition_with_config(
     prompt_fn: Callable[..., str],
     pause_fn: Callable[[], None],
     pick_or_prompt_graphics_rule_selector_value_fn: Callable[..., str],
+    interaction: Any | None = None,
 ) -> dict[str, Any] | None:
     return prompt_graphics_rule_definition_with_config_fn(
         cfg,
         prompt_fn=prompt_fn,
         pause_fn=pause_fn,
         pick_or_prompt_graphics_rule_selector_value_fn=pick_or_prompt_graphics_rule_selector_value_fn,
+        interaction=interaction,
     )
 
 

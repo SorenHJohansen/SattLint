@@ -7,7 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from sattlint.devtools import repo_audit_cli
+from sattlint import app_base
+from sattlint.devtools import audit_core_discovery, repo_audit_cli
 
 
 def _fake_repo_audit_module(tmp_path: Path, summaries: list[dict[str, object]]) -> SimpleNamespace:
@@ -123,6 +124,17 @@ def test_repo_audit_cli_build_parser_supports_alias_parent_usage(monkeypatch, tm
     assert parser.prog == "sattlint repo-audit"
     assert "-h" not in option_strings
     assert {"--profile", "--fail-on", "--list-checks", "--planning-context"} <= option_strings
+
+
+def test_collect_cli_metadata_ignores_non_subparser_choices(tmp_path):
+    scripts, subcommands = audit_core_discovery.collect_cli_metadata(
+        repo_root=tmp_path,
+        load_pyproject_fn=lambda _root: {"project": {"scripts": {"sattlint": "sattlint.app:cli"}}},
+        build_cli_parser=app_base.build_cli_parser,
+    )
+
+    assert scripts == {"sattlint"}
+    assert {"syntax-check", "analyze", "repo-audit"} <= subcommands
 
 
 def test_repo_audit_cli_conflicts_and_latest_links(monkeypatch, tmp_path):

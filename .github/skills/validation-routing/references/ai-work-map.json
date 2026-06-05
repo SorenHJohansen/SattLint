@@ -28,7 +28,7 @@
       ],
       "path_globs": [
         "src/sattlint/docgenerator/**",
-        "tests/test_docgen.py",
+        "tests/test_docgen*.py",
         "tests/test_app_docgen.py"
       ],
       "selected_surfaces": [
@@ -88,7 +88,7 @@
       ],
       "path_globs": [
         "src/sattlint/devtools/**",
-        "tests/test_repo_audit.py",
+        "tests/test_repo_audit*.py",
         "tests/test_pipeline*.py",
         "tests/test_artifact_contracts.py",
         "docs/references/cli-commands.md",
@@ -343,7 +343,7 @@
     {
       "apply_to": [
         "src/sattlint/docgenerator/**",
-        "tests/test_docgen.py",
+        "tests/test_docgen*.py",
         "tests/test_app_docgen.py"
       ],
       "description": "Use when changing DOCX generation, documentation classification, FS grouping, unit scope selection, or app documentation workflows in SattLint. Covers docgen-specific boundaries and tests.",
@@ -388,8 +388,8 @@
     {
       "apply_to": [
         "src/sattlint/devtools/**",
-        "tests/test_repo_audit.py",
-        "tests/test_pipeline.py",
+        "tests/test_repo_audit*.py",
+        "tests/test_pipeline*.py",
         "tests/test_artifact_contracts.py"
       ],
       "description": "Use when changing repo audit checks, pipeline artifacts, public-readiness scans, portability checks, or devtools JSON outputs in SattLint. Covers preferred seams and focused validation.",
@@ -501,8 +501,8 @@
       "label": "Run pytest",
       "owner_surface": "python-tests",
       "owner_test_targets": [
-        "tests/test_pipeline.py",
-        "tests/test_pipeline_run.py"
+        "tests/test_pipeline_run.py",
+        "tests/test_pipeline_run_recommendations.py"
       ],
       "path_globs": [
         "src/**/*.py",
@@ -564,7 +564,7 @@
       "label": "Collect structural reports",
       "owner_surface": "structural",
       "owner_test_targets": [
-        "tests/test_pipeline.py",
+        "tests/test_pipeline_collection_graphs.py",
         "tests/test_pipeline_run.py"
       ],
       "path_globs": [
@@ -586,7 +586,7 @@
       "label": "Collect trace report",
       "owner_surface": "trace",
       "owner_test_targets": [
-        "tests/test_pipeline.py"
+        "tests/test_pipeline_phase2.py"
       ],
       "path_globs": [
         "src/sattline_parser/**",
@@ -632,7 +632,7 @@
       "label": "Scan repository text for leaks and local paths",
       "owner_surface": "text-scan",
       "owner_test_targets": [
-        "tests/test_repo_audit.py"
+        "tests/test_repo_audit_part1.py"
       ],
       "path_globs": [
         "README.md",
@@ -658,7 +658,7 @@
       "label": "Detect local-versus-CI parity drift in paths, test guards, and local dependency roots",
       "owner_surface": "local-ci-parity",
       "owner_test_targets": [
-        "tests/test_repo_audit.py"
+        "tests/test_repo_audit_part1.py"
       ],
       "path_globs": [
         "README.md",
@@ -685,7 +685,7 @@
       "label": "Check documented commands against implemented CLI surfaces",
       "owner_surface": "cli-docs",
       "owner_test_targets": [
-        "tests/test_repo_audit.py"
+        "tests/test_repo_audit_part1.py"
       ],
       "path_globs": [
         "README.md",
@@ -710,7 +710,7 @@
       "label": "Report declared but unused config keys",
       "owner_surface": "config",
       "owner_test_targets": [
-        "tests/test_repo_audit.py"
+        "tests/test_repo_audit_part1.py"
       ],
       "path_globs": [
         "pyproject.toml",
@@ -730,7 +730,8 @@
       "label": "Run repository architecture checks",
       "owner_surface": "architecture",
       "owner_test_targets": [
-        "tests/test_repo_audit.py"
+        "tests/test_repo_audit_part1.py",
+        "tests/test_repo_audit_part2.py"
       ],
       "path_globs": [
         "src/**",
@@ -750,7 +751,7 @@
       "label": "Translate structural report findings into repo-audit findings",
       "owner_surface": "structural",
       "owner_test_targets": [
-        "tests/test_repo_audit.py"
+        "tests/test_repo_audit_part4.py"
       ],
       "path_globs": [
         "src/**",
@@ -770,7 +771,7 @@
       "label": "Validate CLI descriptions and subcommand help",
       "owner_surface": "cli",
       "owner_test_targets": [
-        "tests/test_repo_audit.py"
+        "tests/test_repo_audit_part1.py"
       ],
       "path_globs": [
         "pyproject.toml",
@@ -791,7 +792,7 @@
       "label": "Check library modules for unexpected print calls",
       "owner_surface": "logging",
       "owner_test_targets": [
-        "tests/test_repo_audit.py"
+        "tests/test_repo_audit_part1.py"
       ],
       "path_globs": [
         "src/**/*.py"
@@ -810,7 +811,7 @@
       "label": "Report stale AI-generated artifacts and oversized local coordination state",
       "owner_surface": "ai-hygiene",
       "owner_test_targets": [
-        "tests/test_repo_audit.py"
+        "tests/test_repo_audit_part7.py"
       ],
       "path_globs": [
         "artifacts/**",
@@ -820,7 +821,7 @@
         "src/sattlint/devtools/repo_audit.py",
         "src/sattlint/devtools/repo_audit_cli.py",
         "src/sattlint/devtools/repo_audit_entrypoints.py",
-        "tests/test_repo_audit.py"
+        "tests/test_repo_audit_part7.py"
       ],
       "source": "repo-audit"
     },
@@ -835,7 +836,7 @@
       "label": "Detect ignored repo-local dependency references",
       "owner_surface": "path-safety",
       "owner_test_targets": [
-        "tests/test_repo_audit.py"
+        "tests/test_repo_audit_part2.py"
       ],
       "path_globs": [
         "src/**/*.py",
@@ -857,7 +858,7 @@
       "owner_surface": "harness-freshness",
       "owner_test_targets": [
         "tests/test_ai_work_map.py",
-        "tests/test_repo_audit.py"
+        "tests/test_repo_audit_part5.py"
       ],
       "path_globs": [
         "AGENTS.md",
@@ -872,7 +873,7 @@
         "src/sattlint/devtools/repo_audit.py",
         "src/sattlint/devtools/repo_audit_entrypoints.py",
         "tests/test_ai_work_map.py",
-        "tests/test_repo_audit.py"
+        "tests/test_repo_audit_part5.py"
       ],
       "source": "repo-audit"
     },
@@ -887,7 +888,8 @@
       "label": "Translate low-coverage modules into audit findings",
       "owner_surface": "coverage",
       "owner_test_targets": [
-        "tests/test_repo_audit.py"
+        "tests/test_repo_audit_part1.py",
+        "tests/test_repo_audit_part3.py"
       ],
       "path_globs": [
         "tests/**",
@@ -907,7 +909,7 @@
       "label": "Check public-repository readiness files and metadata",
       "owner_surface": "public-readiness",
       "owner_test_targets": [
-        "tests/test_repo_audit.py"
+        "tests/test_repo_audit_part3.py"
       ],
       "path_globs": [
         "README.md",
@@ -956,7 +958,7 @@
       "owner_surface": "recommendations",
       "owner_test_targets": [
         "tests/test_pipeline_run.py",
-        "tests/test_repo_audit.py",
+        "tests/test_repo_audit_part8.py",
         "tests/test_recommendation_routing.py"
       ],
       "path_globs": [
@@ -966,7 +968,7 @@
         "src/sattlint/devtools/repo_audit_cli.py",
         "src/sattlint/devtools/repo_audit_entrypoints.py",
         "tests/test_pipeline_run.py",
-        "tests/test_repo_audit.py",
+        "tests/test_repo_audit_part8.py",
         "tests/test_recommendation_routing.py",
         "docs/references/cli-commands.md",
         "docs/references/ai-agent-reference.md"
@@ -985,7 +987,7 @@
       "label": "Build the full CLI consistency report",
       "owner_surface": "cli-docs",
       "owner_test_targets": [
-        "tests/test_repo_audit.py"
+        "tests/test_repo_audit_part7.py"
       ],
       "path_globs": [
         "README.md",
@@ -1028,14 +1030,14 @@
     },
     {
       "commands": [
-        "python scripts/run_repo_python.py -m pytest --no-cov tests/test_app_menus.py tests/test_app_analysis.py tests/test_cli.py -x -q --tb=short"
+        "python scripts/run_repo_python.py -m pytest --no-cov tests/test_app_menus.py tests/test_app_analysis_part*.py tests/test_cli.py -x -q --tb=short"
       ],
       "notes": [],
       "surface": "CLI menu, prompt, or interactive app behavior"
     },
     {
       "commands": [
-        "python scripts/run_repo_python.py -m pytest --no-cov tests/test_docgen.py -x -q --tb=short",
+        "python scripts/run_repo_python.py -m pytest --no-cov tests/test_docgen_part*.py -x -q --tb=short",
         "tests/test_app_docgen.py",
         "tests/test_app_menus.py"
       ],
@@ -1047,8 +1049,8 @@
     {
       "commands": [
         "python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile quick --output-dir artifacts/audit",
-        "tests/test_repo_audit.py",
-        "tests/test_pipeline.py"
+        "tests/test_repo_audit_part*.py",
+        "tests/test_pipeline_run.py"
       ],
       "notes": [
         "or focused pytest such as  or  when that is narrower."

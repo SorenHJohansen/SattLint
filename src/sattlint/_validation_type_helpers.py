@@ -15,6 +15,7 @@ from sattline_parser.models.ast_model import (
 
 from .casefolding import is_anytype_name
 from .grammar import constants as const
+from .resolution._builtin_datatypes import BUILTIN_DECLARED_DATATYPE_NAMES
 from .resolution.type_graph import TypeGraph
 
 _PLAIN_DURATION_LITERAL_RE = re.compile(r"\d+(?:\.\d+)?")
@@ -135,7 +136,7 @@ def _suggest_datatype_name(name: str, known_datatypes: AbcSequence[str]) -> str 
     return best_match
 
 
-_BUILTIN_DATATYPE_NAMES = tuple(datatype.value for datatype in Simple_DataType)
+_BUILTIN_DATATYPE_NAMES = BUILTIN_DECLARED_DATATYPE_NAMES
 
 
 def _is_anytype_datatype(datatype: Simple_DataType | str | None) -> bool:

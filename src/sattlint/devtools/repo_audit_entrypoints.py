@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-import subprocess  # nosec
+import shlex
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
@@ -59,7 +59,7 @@ def _run_verify_recommendations_check(_context: Any) -> list[Any]:
 
 
 def _shell_command(command: list[str]) -> str:
-    return subprocess.list2cmdline(command)
+    return shlex.join(command)
 
 
 def _changed_file_flag_args(changed_files: Iterable[str]) -> list[str]:

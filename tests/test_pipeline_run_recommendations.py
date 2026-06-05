@@ -206,7 +206,7 @@ def test_main_run_recommended_slice_uses_recommended_check_ids(monkeypatch, tmp_
             "--pytest-workers",
             "4",
             "--changed-file",
-            "tests/test_repo_audit.py",
+            "tests/test_repo_audit_part8.py",
         ]
     )
 

@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
+    AstNodeDict,
     BasePicture,
     Equation,
     FrameModule,
@@ -47,15 +48,15 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(s: str) -> dict:
+def _varref(s: str) -> AstNodeDict:
     return {const.KEY_VAR_NAME: s}
 
 
-def _state_ref(name: str, state: str) -> dict:
+def _state_ref(name: str, state: str) -> AstNodeDict:
     return {const.KEY_VAR_NAME: name, "state": state}
 
 
-def _issue_kinds(report) -> set[str]:
+def _issue_kinds(report: VariablesReport) -> set[IssueKind]:
     return {issue.kind for issue in report.issues}
 
 

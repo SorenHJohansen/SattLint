@@ -60,6 +60,12 @@ def test_repo_audit_entrypoint_helper_normalizers_and_reason_selection():
     )
 
 
+def test_shell_command_uses_posix_joining():
+    assert repo_audit_entrypoints._shell_command(["python", "-m", "sattlint", "path with space"]) == (
+        "python -m sattlint 'path with space'"
+    )
+
+
 def test_focused_python_files_skips_duplicates_after_normalization(monkeypatch):
     monkeypatch.setattr(
         repo_audit_entrypoints,
@@ -176,7 +182,7 @@ def test_build_selected_finish_gate_plan_uses_selected_surface_commands(monkeypa
             "description": "shared pipeline gate",
             "includes": ["recommended pipeline slice", "owner pytest targets"],
         },
-        "owner_test_targets": ["tests/test_pipeline.py"],
+        "owner_test_targets": ["tests/test_pipeline_run.py"],
     }
     recommendation = {
         "recommended_check_ids": ["ruff"],
@@ -216,7 +222,7 @@ def test_build_selected_finish_gate_plan_uses_selected_surface_commands(monkeypa
         ],
         "description": "shared pipeline gate",
         "includes": ["recommended pipeline slice", "owner pytest targets"],
-        "owner_test_targets": ["tests/test_pipeline.py"],
+        "owner_test_targets": ["tests/test_pipeline_run.py"],
         "recommended_check_ids": ["ruff", "pyright"],
     }
 
@@ -258,7 +264,7 @@ def test_ai_feedback_and_severity_helpers_cover_failure_reporting():
         planning_context={
             "primary_agent": "Repo Audit",
             "instruction_files": [{"name": "Repo Audit Instructions"}],
-            "owner_test_targets": ["tests/test_repo_audit.py"],
+            "owner_test_targets": ["tests/test_repo_audit_part1.py"],
             "first_validation_commands": ["ruff check src/module.py"],
         },
         recommendation={

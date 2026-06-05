@@ -12,7 +12,10 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
+from ..casefolding import casefold_equal, casefold_key
+from ._walk_utils import iter_nested_modules
 from .framework import Issue, format_report_header
+from .variable_utils import matches_root_origin
 
 _IDENTIFIER_TOKEN_RE = re.compile(r"[A-Z]+(?=[A-Z][a-z]|\d|$)|[A-Z]?[a-z]+|\d+")
 
@@ -74,16 +77,11 @@ class UnsafeDefaultsAnalyzer:
         children: list[SingleModule | FrameModule | ModuleTypeInstance],
         parent_path: list[str],
     ) -> None:
-        for child in children:
-            child_path = [*parent_path, child.header.name]
-            if isinstance(child, SingleModule):
-                self._check_variables(child_path, child.moduleparameters)
-                self._check_variables(child_path, child.localvariables)
-                self._walk_modules(child.submodules or [], child_path)
+        for child, child_path in iter_nested_modules(children, parent_path=parent_path):
+            if not isinstance(child, SingleModule):
                 continue
-
-            if isinstance(child, FrameModule):
-                self._walk_modules(child.submodules or [], child_path)
+            self._check_variables(child_path, child.moduleparameters)
+            self._check_variables(child_path, child.localvariables)
 
     def _check_variables(
         self,
@@ -111,7 +109,7 @@ class UnsafeDefaultsAnalyzer:
     def _unsafe_default_reason(self, variable: Variable) -> str | None:
         if variable.init_value is not True:
             return None
-        if variable.datatype_text.casefold() != "boolean":
+        if not casefold_equal(variable.datatype_text, "boolean"):
             return None
 
         tokens = _identifier_tokens(variable.name)
@@ -122,12 +120,7 @@ class UnsafeDefaultsAnalyzer:
         return None
 
     def _is_from_root_origin(self, origin_file: str | None) -> bool:
-        if not origin_file:
-            return True
-        root_origin = getattr(self.bp, "origin_file", None)
-        if not root_origin:
-            return False
-        return origin_file.rsplit(".", 1)[0].casefold() == root_origin.rsplit(".", 1)[0].casefold()
+        return matches_root_origin(origin_file, getattr(self.bp, "origin_file", None))
 
 
 def _identifier_tokens(name: str) -> tuple[str, ...]:
@@ -136,9 +129,9 @@ def _identifier_tokens(name: str) -> tuple[str, ...]:
     for part in parts:
         matches = _IDENTIFIER_TOKEN_RE.findall(part)
         if matches:
-            tokens.extend(match.casefold() for match in matches)
+            tokens.extend(casefold_key(match) for match in matches)
         else:
-            tokens.append(part.casefold())
+            tokens.append(casefold_key(part))
     return tuple(tokens)
 
 

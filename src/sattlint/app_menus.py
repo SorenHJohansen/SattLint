@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -9,13 +10,20 @@ from sattline_parser.models.ast_model import BasePicture
 
 from . import console as console_module
 from . import engine as engine_module
+from .app_interaction import MenuInteraction, build_menu_interaction
 from .casefolding import casefold_equal
 from .models.project_graph import ProjectGraph
 
 emit_output = console_module.print_output  # type: ignore[assignment]
+log = logging.getLogger("SattLint")
 
 ConfigDict = dict[str, Any]
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
+
+
+def _log_debug_save_exception(cfg: ConfigDict, message: str) -> None:
+    if cfg.get("debug", False):
+        log.exception(message)
 
 
 def _run_menu_action(
@@ -72,6 +80,7 @@ def _print_variable_report(
     status_update_fn: Callable[[str], None],
     *,
     cfg: ConfigDict,
+    target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool],
     analyze_variables_fn: Callable[..., Any],
 ) -> None:
     emit_output(f"\n=== Target: {target_name} ===")
@@ -80,6 +89,7 @@ def _print_variable_report(
             project_bp,
             debug=cfg.get("debug", False),
             unavailable_libraries=cast(set[str], getattr(graph, "unavailable_libraries", cast(set[str], set()))),
+            analyzed_target_is_library=target_is_library_fn(cfg, project_bp, graph),
             config=cfg,
             status_update_fn=status_update_fn,
         ).summary()
@@ -101,7 +111,7 @@ def _add_analysis_target(
         pause_fn()
         return False
     if any(casefold_equal(existing, new) for existing in targets):
-        emit_output("⚠ Target already listed")
+        emit_output("Warning: Target already listed")
         pause_fn()
         return False
     if not confirm_fn(f"Add '{new}' to analyzed_programs_and_libraries?"):
@@ -119,7 +129,7 @@ def _remove_analysis_target(
 ) -> bool:
     targets = cfg["analyzed_programs_and_libraries"]
     if not targets:
-        emit_output("⚠ No analyzed targets configured")
+        emit_output("Warning: No analyzed targets configured")
         pause_fn()
         return False
 
@@ -198,6 +208,7 @@ def _edit_other_lib_dirs(
     *,
     prompt_fn: Callable[..., str],
     confirm_fn: Callable[[str], bool],
+    pause_fn: Callable[[], None],
 ) -> bool:
     libs = cfg["other_lib_dirs"]
     emit_output("\nCurrent other_lib_dirs:")
@@ -207,7 +218,12 @@ def _edit_other_lib_dirs(
         libs.append(prompt_fn("Path", None))
         return True
     if confirm_fn("Remove entry?"):
-        idx = int(prompt_fn("Index", None)) - 1
+        try:
+            idx = int(prompt_fn("Index", None)) - 1
+        except ValueError:
+            emit_output("Invalid index")
+            pause_fn()
+            return False
         if 0 <= idx < len(libs):
             libs.pop(idx)
             return True
@@ -226,6 +242,7 @@ def _save_configuration(
         try:
             save_config_fn(config_path, cfg)
         except OSError as exc:
+            _log_debug_save_exception(cfg, f"Failed to save config to {config_path}")
             emit_output(f"Failed to save config to {config_path}: {exc}")
             return True
         return False
@@ -245,6 +262,7 @@ def _handle_config_menu_exit(
         try:
             save_config_fn(config_path, cfg)
         except OSError as exc:
+            _log_debug_save_exception(cfg, f"Failed to save config to {config_path}")
             emit_output(f"Failed to save config to {config_path}: {exc}")
             return
     quit_app_fn()
@@ -258,13 +276,25 @@ def dump_menu(
     print_menu_fn: Callable[..., None],
     menu_option_factory: Callable[[str, str, str], Any],
     quit_app_fn: Callable[[], None],
-    confirm_fn: Callable[[str], bool],
+    confirm_fn: Callable[[str], bool] | None = None,
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]],
+    target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
     analyze_variables_fn: Callable[..., Any],
+    choose_menu_option_fn: Callable[..., str] | None = None,
+    interaction: MenuInteraction | None = None,
 ) -> None:
+    def _default_target_is_library_fn(_cfg: ConfigDict, _project_bp: BasePicture, _graph: ProjectGraph) -> bool:
+        return False
+
+    local_target_is_library_fn = target_is_library_fn or _default_target_is_library_fn
+    menu_interaction = interaction or build_menu_interaction(
+        print_menu_fn=print_menu_fn,
+        choose_menu_option_fn=choose_menu_option_fn,
+        confirm_fn=confirm_fn,
+    )
     while True:
         clear_screen_fn()
-        print_menu_fn(
+        choice = menu_interaction.choose_menu_option(
             "Diagnostics & dumps",
             [
                 menu_option_factory("1", "Dump parse tree", "Write the parser tree for each loaded target"),
@@ -280,13 +310,12 @@ def dump_menu(
             ],
             intro="Use these tools when you need raw diagnostics or want to inspect parser and dependency artifacts.",
         )
-        choice = input("> ").strip().lower()
         if choice == "b":
             return
         if choice == "q":
             quit_app_fn()
 
-        if choice == "1" and confirm_fn("Dump parse tree?"):
+        if choice == "1" and menu_interaction.confirm("Dump parse tree?"):
             _run_menu_action(
                 lambda: _run_targeted_status_action(
                     cfg,
@@ -298,7 +327,7 @@ def dump_menu(
                 ),
                 pause_fn=lambda: None,
             )
-        elif choice == "2" and confirm_fn("Dump AST?"):
+        elif choice == "2" and menu_interaction.confirm("Dump AST?"):
             _run_menu_action(
                 lambda: _run_targeted_status_action(
                     cfg,
@@ -310,7 +339,7 @@ def dump_menu(
                 ),
                 pause_fn=lambda: None,
             )
-        elif choice == "3" and confirm_fn("Dump dependency graph?"):
+        elif choice == "3" and menu_interaction.confirm("Dump dependency graph?"):
             _run_menu_action(
                 lambda: _run_targeted_status_action(
                     cfg,
@@ -322,7 +351,7 @@ def dump_menu(
                 ),
                 pause_fn=lambda: None,
             )
-        elif choice == "4" and confirm_fn("Dump variable report?"):
+        elif choice == "4" and menu_interaction.confirm("Dump variable report?"):
             _run_menu_action(
                 lambda: _run_targeted_status_action(
                     cfg,
@@ -334,6 +363,7 @@ def dump_menu(
                         graph,
                         status_update_fn,
                         cfg=cfg,
+                        target_is_library_fn=local_target_is_library_fn,
                         analyze_variables_fn=analyze_variables_fn,
                     ),
                 ),
@@ -351,20 +381,30 @@ def config_menu(
     show_config_fn: Callable[[ConfigDict], None],
     print_menu_fn: Callable[..., None],
     menu_option_factory: Callable[[str, str, str], Any],
-    prompt_fn: Callable[..., str],
-    pause_fn: Callable[[], None],
-    confirm_fn: Callable[[str], bool],
+    prompt_fn: Callable[..., str] | None = None,
+    pause_fn: Callable[[], None] | None = None,
+    confirm_fn: Callable[[str], bool] | None = None,
     target_exists_fn: Callable[[str, ConfigDict], bool],
     save_config_fn: Callable[[Path, ConfigDict], None],
     apply_debug_fn: Callable[[ConfigDict], None],
     graphics_rules_menu_fn: Callable[[ConfigDict], None],
     quit_app_fn: Callable[[], None],
+    choose_menu_option_fn: Callable[..., str] | None = None,
+    interaction: MenuInteraction | None = None,
 ) -> bool:
+    menu_interaction = interaction or build_menu_interaction(
+        print_menu_fn=print_menu_fn,
+        choose_menu_option_fn=choose_menu_option_fn,
+        prompt_fn=prompt_fn,
+        confirm_fn=confirm_fn,
+        pause_fn=pause_fn,
+    )
+
     dirty = False
     while True:
         clear_screen_fn()
         show_config_fn(cfg)
-        print_menu_fn(
+        choice = menu_interaction.choose_menu_option(
             "Setup",
             _build_config_menu_options(menu_option_factory),
             intro=(
@@ -372,7 +412,6 @@ def config_menu(
                 "Start here on first run, then save and use Tools -> Self-check diagnostics to confirm the paths."
             ),
         )
-        choice = input("> ").strip().lower()
 
         if choice == "b":
             return dirty
@@ -382,7 +421,7 @@ def config_menu(
                 dirty=dirty,
                 config_path=config_path,
                 save_config_fn=save_config_fn,
-                confirm_fn=confirm_fn,
+                confirm_fn=menu_interaction.confirm,
                 quit_app_fn=quit_app_fn,
             )
 
@@ -391,14 +430,14 @@ def config_menu(
                 lambda dirty=dirty: (
                     _add_analysis_target(
                         cfg,
-                        prompt_fn=prompt_fn,
+                        prompt_fn=menu_interaction.prompt,
                         target_exists_fn=target_exists_fn,
-                        confirm_fn=confirm_fn,
-                        pause_fn=pause_fn,
+                        confirm_fn=menu_interaction.confirm,
+                        pause_fn=menu_interaction.pause,
                     )
                     or dirty
                 ),
-                pause_fn=pause_fn,
+                pause_fn=menu_interaction.pause,
                 default=dirty,
             )
 
@@ -407,13 +446,13 @@ def config_menu(
                 lambda dirty=dirty: (
                     _remove_analysis_target(
                         cfg,
-                        prompt_fn=prompt_fn,
-                        confirm_fn=confirm_fn,
-                        pause_fn=pause_fn,
+                        prompt_fn=menu_interaction.prompt,
+                        confirm_fn=menu_interaction.confirm,
+                        pause_fn=menu_interaction.pause,
                     )
                     or dirty
                 ),
-                pause_fn=pause_fn,
+                pause_fn=menu_interaction.pause,
                 default=dirty,
             )
 
@@ -424,14 +463,14 @@ def config_menu(
                         cfg,
                         "mode",
                         confirm_message=f"Switch mode to '{'draft' if cfg['mode'] == 'official' else 'official'}'?",
-                        confirm_fn=confirm_fn,
+                        confirm_fn=menu_interaction.confirm,
                         on_change_fn=lambda local_cfg: local_cfg.__setitem__(
                             "mode", "draft" if local_cfg["mode"] == "official" else "official"
                         ),
                     )
                     or dirty
                 ),
-                pause_fn=pause_fn,
+                pause_fn=menu_interaction.pause,
                 default=dirty,
             )
 
@@ -442,11 +481,11 @@ def config_menu(
                         cfg,
                         "scan_root_only",
                         confirm_message="Toggle scan_root_only?",
-                        confirm_fn=confirm_fn,
+                        confirm_fn=menu_interaction.confirm,
                     )
                     or dirty
                 ),
-                pause_fn=pause_fn,
+                pause_fn=menu_interaction.pause,
                 default=dirty,
             )
 
@@ -457,11 +496,11 @@ def config_menu(
                         cfg,
                         "fast_cache_validation",
                         confirm_message="Toggle fast_cache_validation?",
-                        confirm_fn=confirm_fn,
+                        confirm_fn=menu_interaction.confirm,
                     )
                     or dirty
                 ),
-                pause_fn=pause_fn,
+                pause_fn=menu_interaction.pause,
                 default=dirty,
             )
 
@@ -473,12 +512,12 @@ def config_menu(
                         "program_dir",
                         prompt_message="New program_dir",
                         confirm_message="Change program_dir?",
-                        prompt_fn=prompt_fn,
-                        confirm_fn=confirm_fn,
+                        prompt_fn=menu_interaction.prompt,
+                        confirm_fn=menu_interaction.confirm,
                     )
                     or dirty
                 ),
-                pause_fn=pause_fn,
+                pause_fn=menu_interaction.pause,
                 default=dirty,
             )
 
@@ -490,12 +529,12 @@ def config_menu(
                         "ABB_lib_dir",
                         prompt_message="New ABB_lib_dir",
                         confirm_message="Change ABB_lib_dir?",
-                        prompt_fn=prompt_fn,
-                        confirm_fn=confirm_fn,
+                        prompt_fn=menu_interaction.prompt,
+                        confirm_fn=menu_interaction.confirm,
                     )
                     or dirty
                 ),
-                pause_fn=pause_fn,
+                pause_fn=menu_interaction.pause,
                 default=dirty,
             )
 
@@ -504,12 +543,13 @@ def config_menu(
                 lambda dirty=dirty: (
                     _edit_other_lib_dirs(
                         cfg,
-                        prompt_fn=prompt_fn,
-                        confirm_fn=confirm_fn,
+                        prompt_fn=menu_interaction.prompt,
+                        confirm_fn=menu_interaction.confirm,
+                        pause_fn=menu_interaction.pause,
                     )
                     or dirty
                 ),
-                pause_fn=pause_fn,
+                pause_fn=menu_interaction.pause,
                 default=dirty,
             )
         elif choice == "9":
@@ -519,9 +559,9 @@ def config_menu(
                     dirty=dirty,
                     config_path=config_path,
                     save_config_fn=save_config_fn,
-                    confirm_fn=confirm_fn,
+                    confirm_fn=menu_interaction.confirm,
                 ),
-                pause_fn=pause_fn,
+                pause_fn=menu_interaction.pause,
                 default=dirty,
             )
         elif choice == "10":
@@ -532,12 +572,12 @@ def config_menu(
                         "icf_dir",
                         prompt_message="New ICF_dir",
                         confirm_message="Change ICF_dir?",
-                        prompt_fn=prompt_fn,
-                        confirm_fn=confirm_fn,
+                        prompt_fn=menu_interaction.prompt,
+                        confirm_fn=menu_interaction.confirm,
                     )
                     or dirty
                 ),
-                pause_fn=pause_fn,
+                pause_fn=menu_interaction.pause,
                 default=dirty,
             )
         elif choice == "11":
@@ -547,25 +587,25 @@ def config_menu(
                         cfg,
                         "debug",
                         confirm_message="Toggle debug?",
-                        confirm_fn=confirm_fn,
+                        confirm_fn=menu_interaction.confirm,
                         on_change_fn=apply_debug_fn,
                     )
                     or dirty
                 ),
-                pause_fn=pause_fn,
+                pause_fn=menu_interaction.pause,
                 default=dirty,
             )
         elif choice == "12":
             dirty = _run_menu_action(
-                lambda dirty=dirty: _toggle_telemetry_enabled(cfg, confirm_fn=confirm_fn) or dirty,
-                pause_fn=pause_fn,
+                lambda dirty=dirty: _toggle_telemetry_enabled(cfg, confirm_fn=menu_interaction.confirm) or dirty,
+                pause_fn=menu_interaction.pause,
                 default=dirty,
             )
         elif choice == "13":
-            _run_menu_action(lambda: graphics_rules_menu_fn(cfg), pause_fn=pause_fn)
+            _run_menu_action(lambda: graphics_rules_menu_fn(cfg), pause_fn=menu_interaction.pause)
         else:
             emit_output("Invalid choice.", flush=True)
-            pause_fn()
+            menu_interaction.pause()
 
 
 def tools_menu(
@@ -576,16 +616,25 @@ def tools_menu(
     menu_option_factory: Callable[[str, str, str], Any],
     quit_app_fn: Callable[[], None],
     self_check_fn: Callable[[ConfigDict], bool],
-    pause_fn: Callable[[], None],
+    pause_fn: Callable[[], None] | None = None,
     require_targets_for_menu_action_fn: Callable[[ConfigDict, str], bool],
     dump_menu_fn: Callable[[ConfigDict], None],
     run_source_diff_report_fn: Callable[[ConfigDict], None],
-    confirm_fn: Callable[[str], bool],
+    confirm_fn: Callable[[str], bool] | None = None,
     force_refresh_ast_fn: Callable[[ConfigDict], Any],
+    choose_menu_option_fn: Callable[..., str] | None = None,
+    interaction: MenuInteraction | None = None,
 ) -> None:
+    menu_interaction = interaction or build_menu_interaction(
+        print_menu_fn=print_menu_fn,
+        choose_menu_option_fn=choose_menu_option_fn,
+        confirm_fn=confirm_fn,
+        pause_fn=pause_fn,
+    )
+
     while True:
         clear_screen_fn()
-        print_menu_fn(
+        choice = menu_interaction.choose_menu_option(
             "Tools",
             [
                 menu_option_factory("1", "Self-check diagnostics", "Verify configuration and path setup"),
@@ -604,8 +653,6 @@ def tools_menu(
                 "Most users only need them when paths change or results look stale."
             ),
         )
-
-        choice = input("> ").strip().lower()
         if choice == "b":
             return
         if choice == "q":
@@ -613,23 +660,26 @@ def tools_menu(
 
         if choice == "1":
             _run_menu_action(
-                lambda: (clear_screen_fn(), self_check_fn(cfg), pause_fn()),
-                pause_fn=pause_fn,
+                lambda: (clear_screen_fn(), self_check_fn(cfg), menu_interaction.pause()),
+                pause_fn=menu_interaction.pause,
             )
         elif choice == "2":
             if require_targets_for_menu_action_fn(cfg, "using diagnostics and dumps"):
-                _run_menu_action(lambda: dump_menu_fn(cfg), pause_fn=pause_fn)
+                _run_menu_action(lambda: dump_menu_fn(cfg), pause_fn=menu_interaction.pause)
         elif choice == "3":
             if require_targets_for_menu_action_fn(cfg, "generating source diff reports"):
-                _run_menu_action(lambda: run_source_diff_report_fn(cfg), pause_fn=pause_fn)
+                _run_menu_action(lambda: run_source_diff_report_fn(cfg), pause_fn=menu_interaction.pause)
         elif choice == "4":
-            if require_targets_for_menu_action_fn(cfg, "refreshing cached ASTs") and confirm_fn(
+            if require_targets_for_menu_action_fn(cfg, "refreshing cached ASTs") and menu_interaction.confirm(
                 "Force refresh cached AST?"
             ):
-                _run_menu_action(lambda: (force_refresh_ast_fn(cfg), pause_fn()), pause_fn=pause_fn)
+                _run_menu_action(
+                    lambda: (force_refresh_ast_fn(cfg), menu_interaction.pause()),
+                    pause_fn=menu_interaction.pause,
+                )
         else:
             emit_output("Invalid choice.")
-            pause_fn()
+            menu_interaction.pause()
 
 
 def run_main_loop(
@@ -645,16 +695,25 @@ def run_main_loop(
     config_menu_fn: Callable[[ConfigDict], bool],
     tools_menu_fn: Callable[[ConfigDict], None],
     show_help_fn: Callable[[ConfigDict], None],
-    pause_fn: Callable[[], None],
-    confirm_fn: Callable[[str], bool],
+    pause_fn: Callable[[], None] | None = None,
+    confirm_fn: Callable[[str], bool] | None = None,
     save_config_fn: Callable[[Path, ConfigDict], None],
     config_path: Path,
     quit_app_fn: Callable[[], None],
+    choose_menu_option_fn: Callable[..., str] | None = None,
+    interaction: MenuInteraction | None = None,
 ) -> None:
+    menu_interaction = interaction or build_menu_interaction(
+        print_menu_fn=print_menu_fn,
+        choose_menu_option_fn=choose_menu_option_fn,
+        confirm_fn=confirm_fn,
+        pause_fn=pause_fn,
+    )
+
     dirty = False
     while True:
         clear_screen_fn()
-        print_menu_fn(
+        choice = menu_interaction.choose_menu_option(
             "SattLint",
             [
                 menu_option_factory("1", "Analyze", "Run checks and reports for configured targets"),
@@ -670,32 +729,40 @@ def run_main_loop(
             ),
             note=(summarize_targets_fn(cfg) + "\nChanges are not saved until you choose Save configuration in Setup."),
         )
-        choice = input("> ").strip().lower()
 
         if choice == "1":
             if require_targets_for_menu_action_fn(cfg, "running analyses"):
-                _run_menu_action(lambda: analysis_menu_fn(cfg), pause_fn=pause_fn)
+                _run_menu_action(lambda: analysis_menu_fn(cfg), pause_fn=menu_interaction.pause)
 
         elif choice == "2":
             if require_targets_for_menu_action_fn(cfg, "using documentation tools"):
                 dirty |= cast(
-                    bool, _run_menu_action(lambda: documentation_menu_fn(cfg), pause_fn=pause_fn, default=False)
+                    bool,
+                    _run_menu_action(
+                        lambda: documentation_menu_fn(cfg),
+                        pause_fn=menu_interaction.pause,
+                        default=False,
+                    ),
                 )
 
         elif choice == "3":
-            dirty |= cast(bool, _run_menu_action(lambda: config_menu_fn(cfg), pause_fn=pause_fn, default=False))
+            dirty |= cast(
+                bool,
+                _run_menu_action(lambda: config_menu_fn(cfg), pause_fn=menu_interaction.pause, default=False),
+            )
 
         elif choice == "4":
-            _run_menu_action(lambda: tools_menu_fn(cfg), pause_fn=pause_fn)
+            _run_menu_action(lambda: tools_menu_fn(cfg), pause_fn=menu_interaction.pause)
 
         elif choice == "5":
-            _run_menu_action(lambda: show_help_fn(cfg), pause_fn=pause_fn)
+            _run_menu_action(lambda: show_help_fn(cfg), pause_fn=menu_interaction.pause)
 
         elif choice == "q":
-            if dirty and confirm_fn("Unsaved config changes. Save before quitting?"):
+            if dirty and menu_interaction.confirm("Unsaved config changes. Save before quitting?"):
                 try:
                     save_config_fn(config_path, cfg)
                 except OSError as exc:
+                    _log_debug_save_exception(cfg, f"Failed to save config to {config_path}")
                     emit_output(f"Failed to save config to {config_path}: {exc}")
                     continue
             quit_app_fn()

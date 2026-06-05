@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from ..reporting.variables_report import IssueKind, VariableIssue
+from ..models._variable_issues import IssueKind, VariableIssue
 from .common import varname_base, varname_full
 from .paths import decorate_segment
 from .scope import ScopeContext
@@ -55,6 +55,7 @@ class ContextBuilder:
             param_mappings={},
             module_path=module_path,
             display_module_path=display_path,
+            moduleparameter_keys=frozenset(),
             current_library=getattr(self.bp, "origin_lib", None),
             parent_context=None,
         )
@@ -145,6 +146,7 @@ class ContextBuilder:
             param_mappings=param_mappings,
             module_path=module_path,
             display_module_path=display_module_path,
+            moduleparameter_keys=frozenset(param_keys.keys()),
             current_library=parent_context.current_library,
             parent_context=parent_context,
         )
@@ -240,6 +242,7 @@ class ContextBuilder:
             param_mappings=param_mappings,
             module_path=module_path,
             display_module_path=display_module_path,
+            moduleparameter_keys=frozenset(param_keys.keys()),
             current_library=parent_context.current_library if parent_context else None,
             parent_context=parent_context,
         )

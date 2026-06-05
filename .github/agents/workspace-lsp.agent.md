@@ -23,7 +23,7 @@ You are the workspace and LSP specialist for SattLint. Your job is to handle edi
 
 1. Find controlling workspace or editor abstraction.
 2. Check nearby call site or test that distinguishes workspace mode from strict mode.
-3. Make smallest local edit.
+3. Make the smallest complete change that keeps workspace and strict-mode boundaries clean.
 4. Run focused validation and restart command when applicable.
 
 ## Validation Routing

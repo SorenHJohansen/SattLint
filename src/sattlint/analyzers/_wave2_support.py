@@ -23,6 +23,7 @@ from ._wave2_node_traversal import (
     iter_statement_sites,
     root_variable_name,
 )
+from .variable_utils import merge_variable_env
 
 __all__ = [
     "AssignmentEvent",
@@ -73,10 +74,7 @@ def merge_env(
     env: dict[str, Variable],
     variables: list[Variable] | None,
 ) -> dict[str, Variable]:
-    merged = dict(env)
-    for variable in variables or []:
-        merged[variable.name.casefold()] = variable
-    return merged
+    return merge_variable_env(env, variables)
 
 
 def walk_module_scopes(base_picture: BasePicture) -> list[ModuleScope]:

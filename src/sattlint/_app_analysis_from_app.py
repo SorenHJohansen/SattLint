@@ -22,6 +22,7 @@ def variable_usage_submenu_from_app(cfg: ConfigDict, *, app_module: Any) -> None
         run_module_localvar_analysis_fn=app_module.run_module_localvar_analysis,
         pause_fn=app_module.pause,
         emit_output_fn=_emit_output_fn(app_module),
+        interaction=app_module.build_menu_interaction(),
     )
 
 
@@ -38,6 +39,7 @@ def module_analysis_submenu_from_app(cfg: ConfigDict, *, app_module: Any) -> Non
         run_graphics_rules_validation_fn=app_module.run_graphics_rules_validation,
         pause_fn=app_module.pause,
         emit_output_fn=_emit_output_fn(app_module),
+        interaction=app_module.build_menu_interaction(),
     )
 
 
@@ -53,6 +55,7 @@ def interface_communication_submenu_from_app(cfg: ConfigDict, *, app_module: Any
         run_icf_formatter_fn=app_module.run_icf_formatter,
         pause_fn=app_module.pause,
         emit_output_fn=_emit_output_fn(app_module),
+        interaction=app_module.build_menu_interaction(),
     )
 
 
@@ -66,6 +69,7 @@ def code_quality_submenu_from_app(cfg: ConfigDict, *, app_module: Any) -> None:
         run_comment_code_analysis_fn=app_module.run_comment_code_analysis,
         pause_fn=app_module.pause,
         emit_output_fn=_emit_output_fn(app_module),
+        interaction=app_module.build_menu_interaction(),
     )
 
 
@@ -80,6 +84,7 @@ def analyzer_catalog_menu_from_app(cfg: ConfigDict, *, app_module: Any) -> None:
         run_checks_fn=app_module._run_checks,
         pause_fn=app_module.pause,
         emit_output_fn=_emit_output_fn(app_module),
+        interaction=app_module.build_menu_interaction(),
     )
 
 
@@ -95,6 +100,7 @@ def advanced_analysis_menu_from_app(cfg: ConfigDict, *, app_module: Any) -> None
         run_module_localvar_analysis_fn=app_module.run_module_localvar_analysis,
         pause_fn=app_module.pause,
         emit_output_fn=_emit_output_fn(app_module),
+        interaction=app_module.build_menu_interaction(),
     )
 
 
@@ -115,4 +121,5 @@ def analysis_menu_from_app(cfg: ConfigDict, *, app_module: Any) -> None:
         summarize_targets_fn=app_module._summarize_targets,
         pause_fn=app_module.pause,
         emit_output_fn=_emit_output_fn(app_module),
+        interaction=app_module.build_menu_interaction(),
     )

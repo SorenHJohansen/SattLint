@@ -162,8 +162,8 @@ def test_dependency_mapping_distinguishes_program_and_library_targets(monkeypatc
         analyzed_target_is_library=False,
         include_dependency_moduletype_usage=False,
         is_from_root_origin=lambda *args, **kwargs: False,
-        check_param_mappings_for_type_instance=lambda child, parent_env, parent_path, current_library=None: (
-            checked.append((parent_path, current_library))
+        check_param_mappings_for_type_instance=lambda child, parent_env, parent_context=None, parent_path=None, current_library=None: (
+            checked.append(((parent_path if parent_path is not None else parent_context), current_library))
         ),
         context_builder=_ns(build_for_typedef=lambda *args, **kwargs: _ns(env={})),
         param_reads_by_typedef={},

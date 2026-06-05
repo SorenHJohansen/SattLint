@@ -20,6 +20,7 @@ from sattline_parser.models.ast_model import (
 
 from .. import constants as const
 from ..core.ast_tools import iter_variable_refs
+from ._walk_utils import iter_nested_modules
 from .framework import Issue, SimpleReport
 
 
@@ -71,12 +72,10 @@ class LoopOutputRefactorAnalyzer:
         modules: list[SingleModule | FrameModule | ModuleTypeInstance],
         parent_path: list[str],
     ) -> None:
-        for module in modules:
+        for module, module_path in iter_nested_modules(modules, parent_path=parent_path):
             if isinstance(module, ModuleTypeInstance):
                 continue
-            module_path = [*parent_path, module.header.name]
             self._scan_modulecode(module_path, module.modulecode)
-            self._scan_modules(module.submodules or [], module_path)
 
     def _scan_modulecode(self, module_path: list[str], modulecode: ModuleCode | None) -> None:
         if modulecode is None:

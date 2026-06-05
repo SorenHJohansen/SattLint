@@ -39,8 +39,8 @@ Regenerate with `python -m sattlint.devtools.ai_work_map --write`.
   - `.github/instructions/sattline-invariants.instructions.md`
   - `.github/instructions/python-tests.instructions.md`
 - Owner tests:
-  - `tests/test_pipeline.py`
   - `tests/test_pipeline_run.py`
+  - `tests/test_pipeline_run_recommendations.py`
 - Command: `sattlint-analysis-pipeline --profile full --check pytest --output-dir artifacts/generated/ai-work-map/pipeline`
 
 ### `vulture`
@@ -76,7 +76,7 @@ Regenerate with `python -m sattlint.devtools.ai_work_map --write`.
 - AI instruction files:
   - `.github/instructions/repo-audit.instructions.md`
 - Owner tests:
-  - `tests/test_pipeline.py`
+  - `tests/test_pipeline_collection_graphs.py`
   - `tests/test_pipeline_run.py`
 - Command: `sattlint-analysis-pipeline --profile full --check structural-reports --output-dir artifacts/generated/ai-work-map/pipeline`
 
@@ -90,7 +90,7 @@ Regenerate with `python -m sattlint.devtools.ai_work_map --write`.
   - `.github/instructions/parser-analysis.instructions.md`
   - `.github/instructions/workspace-lsp.instructions.md`
 - Owner tests:
-  - `tests/test_pipeline.py`
+  - `tests/test_pipeline_phase2.py`
 - Command: `sattlint-analysis-pipeline --profile full --check trace --output-dir artifacts/generated/ai-work-map/pipeline`
 
 ### `corpus`
@@ -117,7 +117,7 @@ Regenerate with `python -m sattlint.devtools.ai_work_map --write`.
 - AI instruction files:
   - `.github/instructions/repo-audit.instructions.md`
 - Owner tests:
-  - `tests/test_repo_audit.py`
+  - `tests/test_repo_audit_part1.py`
 - Command: `sattlint-repo-audit --profile full --check text-scan --skip-pipeline --fail-on high --output-dir artifacts/generated/ai-work-map`
 
 ### `local-ci-parity`
@@ -129,7 +129,7 @@ Regenerate with `python -m sattlint.devtools.ai_work_map --write`.
 - AI instruction files:
   - `.github/instructions/repo-audit.instructions.md`
 - Owner tests:
-  - `tests/test_repo_audit.py`
+  - `tests/test_repo_audit_part1.py`
 - Command: `sattlint-repo-audit --profile full --check local-ci-parity --skip-pipeline --fail-on high --output-dir artifacts/generated/ai-work-map`
 
 ### `documented-commands`
@@ -142,7 +142,7 @@ Regenerate with `python -m sattlint.devtools.ai_work_map --write`.
   - `.github/instructions/cli-app.instructions.md`
   - `.github/instructions/repo-audit.instructions.md`
 - Owner tests:
-  - `tests/test_repo_audit.py`
+  - `tests/test_repo_audit_part1.py`
 - Command: `sattlint-repo-audit --profile full --check documented-commands --skip-pipeline --fail-on high --output-dir artifacts/generated/ai-work-map`
 
 ### `unused-config-keys`
@@ -154,7 +154,7 @@ Regenerate with `python -m sattlint.devtools.ai_work_map --write`.
 - AI instruction files:
   - `.github/instructions/cli-app.instructions.md`
 - Owner tests:
-  - `tests/test_repo_audit.py`
+  - `tests/test_repo_audit_part1.py`
 - Command: `sattlint-repo-audit --profile full --check unused-config-keys --skip-pipeline --fail-on high --output-dir artifacts/generated/ai-work-map`
 
 ### `architecture`
@@ -166,7 +166,8 @@ Regenerate with `python -m sattlint.devtools.ai_work_map --write`.
 - AI instruction files:
   - `.github/instructions/repo-audit.instructions.md`
 - Owner tests:
-  - `tests/test_repo_audit.py`
+  - `tests/test_repo_audit_part1.py`
+  - `tests/test_repo_audit_part2.py`
 - Command: `sattlint-repo-audit --profile full --check architecture --skip-pipeline --fail-on high --output-dir artifacts/generated/ai-work-map`
 
 ### `structural-report`
@@ -178,7 +179,7 @@ Regenerate with `python -m sattlint.devtools.ai_work_map --write`.
 - AI instruction files:
   - `.github/instructions/repo-audit.instructions.md`
 - Owner tests:
-  - `tests/test_repo_audit.py`
+  - `tests/test_repo_audit_part4.py`
 - Command: `sattlint-repo-audit --profile full --check structural-report --skip-pipeline --fail-on high --output-dir artifacts/generated/ai-work-map`
 
 ### `cli`
@@ -190,7 +191,7 @@ Regenerate with `python -m sattlint.devtools.ai_work_map --write`.
 - AI instruction files:
   - `.github/instructions/cli-app.instructions.md`
 - Owner tests:
-  - `tests/test_repo_audit.py`
+  - `tests/test_repo_audit_part1.py`
 - Command: `sattlint-repo-audit --profile full --check cli --skip-pipeline --fail-on high --output-dir artifacts/generated/ai-work-map`
 
 ### `logging`
@@ -202,7 +203,7 @@ Regenerate with `python -m sattlint.devtools.ai_work_map --write`.
 - AI instruction files:
   - `.github/instructions/repo-audit.instructions.md`
 - Owner tests:
-  - `tests/test_repo_audit.py`
+  - `tests/test_repo_audit_part1.py`
 - Command: `sattlint-repo-audit --profile full --check logging --skip-pipeline --fail-on high --output-dir artifacts/generated/ai-work-map`
 
 ### `ai-gc`
@@ -215,7 +216,7 @@ Regenerate with `python -m sattlint.devtools.ai_work_map --write`.
   - `.github/instructions/agent-customizations.instructions.md`
   - `.github/instructions/repo-audit.instructions.md`
 - Owner tests:
-  - `tests/test_repo_audit.py`
+  - `tests/test_repo_audit_part7.py`
 - Command: `sattlint-repo-audit --profile full --check ai-gc --skip-pipeline --fail-on high --output-dir artifacts/generated/ai-work-map`
 
 ### `ignored-repo-paths`
@@ -227,7 +228,7 @@ Regenerate with `python -m sattlint.devtools.ai_work_map --write`.
 - AI instruction files:
   - `.github/instructions/repo-audit.instructions.md`
 - Owner tests:
-  - `tests/test_repo_audit.py`
+  - `tests/test_repo_audit_part2.py`
 - Command: `sattlint-repo-audit --profile full --check ignored-repo-paths --skip-pipeline --fail-on high --output-dir artifacts/generated/ai-work-map`
 
 ### `harness-freshness`
@@ -241,7 +242,7 @@ Regenerate with `python -m sattlint.devtools.ai_work_map --write`.
   - `.github/instructions/repo-audit.instructions.md`
 - Owner tests:
   - `tests/test_ai_work_map.py`
-  - `tests/test_repo_audit.py`
+  - `tests/test_repo_audit_part5.py`
 - Command: `sattlint-repo-audit --profile full --check harness-freshness --skip-pipeline --fail-on high --output-dir artifacts/generated/ai-work-map`
 
 ### `coverage`
@@ -253,7 +254,8 @@ Regenerate with `python -m sattlint.devtools.ai_work_map --write`.
 - AI instruction files:
   - `.github/instructions/repo-audit.instructions.md`
 - Owner tests:
-  - `tests/test_repo_audit.py`
+  - `tests/test_repo_audit_part1.py`
+  - `tests/test_repo_audit_part3.py`
 - Command: `sattlint-repo-audit --profile full --check coverage --skip-pipeline --fail-on high --output-dir artifacts/generated/ai-work-map`
 
 ### `public-readiness`
@@ -265,7 +267,7 @@ Regenerate with `python -m sattlint.devtools.ai_work_map --write`.
 - AI instruction files:
   - `.github/instructions/repo-audit.instructions.md`
 - Owner tests:
-  - `tests/test_repo_audit.py`
+  - `tests/test_repo_audit_part3.py`
 - Command: `sattlint-repo-audit --profile full --check public-readiness --skip-pipeline --fail-on high --output-dir artifacts/generated/ai-work-map`
 
 ### `ratchet-policy`
@@ -292,7 +294,7 @@ Regenerate with `python -m sattlint.devtools.ai_work_map --write`.
   - `.github/instructions/repo-audit.instructions.md`
 - Owner tests:
   - `tests/test_pipeline_run.py`
-  - `tests/test_repo_audit.py`
+  - `tests/test_repo_audit_part8.py`
   - `tests/test_recommendation_routing.py`
 - Command: `sattlint-repo-audit --profile full --check verify-recommendations --skip-pipeline --fail-on high --output-dir artifacts/generated/ai-work-map`
 
@@ -306,5 +308,5 @@ Regenerate with `python -m sattlint.devtools.ai_work_map --write`.
   - `.github/instructions/cli-app.instructions.md`
   - `.github/instructions/repo-audit.instructions.md`
 - Owner tests:
-  - `tests/test_repo_audit.py`
+  - `tests/test_repo_audit_part7.py`
 - Command: `sattlint-repo-audit --profile full --check cli-consistency --skip-pipeline --fail-on high --output-dir artifacts/generated/ai-work-map`

@@ -1,9 +1,10 @@
 import json
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from sattlint.devtools import _repo_audit_ai_gc as repo_audit_ai_gc
-from sattlint.devtools import repo_audit
+from sattlint.devtools import ai_gc, repo_audit
 
 
 def _artifact_path(*parts: str) -> str:
@@ -211,3 +212,19 @@ def test_ai_gc_helpers_passthrough_path_matching_and_findings_filtering():
     )
 
     assert [finding.id for finding in filtered_findings] == ["stale-ai-artifact", "other"]
+
+
+def test_path_size_bytes_skips_children_that_disappear_during_stat(monkeypatch, tmp_path):
+    present_child = tmp_path / "present.json"
+    present_child.write_text("1234", encoding="utf-8")
+
+    class _MissingChild:
+        def is_file(self) -> bool:
+            return True
+
+        def stat(self):
+            raise FileNotFoundError("gone")
+
+    monkeypatch.setattr(Path, "rglob", lambda self, pattern: [present_child, _MissingChild()])
+
+    assert ai_gc._path_size_bytes(tmp_path) == 4

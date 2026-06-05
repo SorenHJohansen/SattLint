@@ -30,8 +30,25 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("SattLint")
 
+_IGNORED_BOOLEAN_CONSTANT_BASENAMES = {
+    "off",
+    "on",
+}
+
+_IGNORED_INTERACT_TAIL_BASENAMES = {
+    "bool_value",
+    "resetaction",
+    "setaction",
+    "setval_",
+    "string_value",
+    "toggleaction",
+    "togglewindow",
+    "windowcontent",
+}
+
 _IGNORED_GRAPHICS_TAIL_BASENAMES = {
     "abs_",
+    "bool_value",
     "centeraligned",
     "decimal_",
     "digits_",
@@ -42,6 +59,8 @@ _IGNORED_GRAPHICS_TAIL_BASENAMES = {
     "relative_",
     "rightaligned",
     "setapp_",
+    *_IGNORED_BOOLEAN_CONSTANT_BASENAMES,
+    *_IGNORED_INTERACT_TAIL_BASENAMES,
 }
 
 _POSITIONAL_RECORD_COMPONENT_BUILTINS: dict[str, str] = {
@@ -92,6 +111,7 @@ def _repath_context(
         param_mappings=context.param_mappings,
         module_path=module_path,
         display_module_path=display_module_path,
+        moduleparameter_keys=context.moduleparameter_keys,
         current_library=context.current_library,
         parent_context=context.parent_context,
     )
@@ -466,18 +486,32 @@ def _scan_for_varrefs(
     if isinstance(obj, dict):
         mapping = cast(dict[str, Any], obj)
         if const.TREE_TAG_ENABLE in mapping and const.KEY_TAIL in mapping:
-            self._walk_tail(mapping[const.KEY_TAIL], context, path, is_ui_read=is_ui_read)
+            tail_value = mapping[const.KEY_TAIL]
+            if _is_output_tail(tail_value):
+                self._walk_output_tail(tail_value, context, path, is_ui_read=is_ui_read)
+            else:
+                self._walk_tail(tail_value, context, path, is_ui_read=is_ui_read)
         if const.KEY_TAIL in mapping and mapping[const.KEY_TAIL] is not None:
-            self._walk_tail(mapping[const.KEY_TAIL], context, path, is_ui_read=is_ui_read)
+            tail_value = mapping[const.KEY_TAIL]
+            if _is_output_tail(tail_value):
+                self._walk_output_tail(tail_value, context, path, is_ui_read=is_ui_read)
+            else:
+                self._walk_tail(tail_value, context, path, is_ui_read=is_ui_read)
         if const.KEY_ASSIGN in mapping:
             tail_owner = _mapping_of(mapping.get(const.KEY_ASSIGN))
             tail = tail_owner.get(const.KEY_TAIL) if tail_owner is not None else None
             if tail is not None:
-                self._walk_tail(tail, context, path, is_ui_read=is_ui_read)
+                if _is_output_tail(tail):
+                    self._walk_output_tail(tail, context, path, is_ui_read=is_ui_read)
+                else:
+                    self._walk_tail(tail, context, path, is_ui_read=is_ui_read)
         for value in mapping.values():
             self._scan_for_varrefs(value, context, path, is_ui_read=is_ui_read)
         return
     if hasattr(obj, "data"):
+        if obj.data == const.GRAMMAR_VALUE_OUTVAR_PREFIX:
+            self._walk_output_tail(obj, context, path, is_ui_read=is_ui_read)
+            return
         if obj.data in {
             const.KEY_TAIL,
             const.KEY_ENABLE_EXPRESSION,
@@ -489,6 +523,58 @@ def _scan_for_varrefs(
             return
         for child in _children_of(obj) or []:
             self._scan_for_varrefs(child, context, path, is_ui_read=is_ui_read)
+
+
+def _is_output_tail(value: Any) -> bool:
+    return getattr(value, "data", None) == const.GRAMMAR_VALUE_OUTVAR_PREFIX
+
+
+def _walk_output_tail(
+    self: VariablesAnalyzer,
+    tail: Any,
+    context: ScopeContext,
+    path: list[str],
+    *,
+    is_ui_read: bool = False,
+) -> None:
+    if tail is None:
+        return
+
+    if isinstance(tail, IntLiteral | FloatLiteral | int | float | bool):
+        return
+
+    if isinstance(tail, tuple):
+        self._walk_stmt_or_expr(tail, context, path, is_ui_read=is_ui_read)
+        return
+
+    if isinstance(tail, str):
+        self._mark_ref_access(
+            tail,
+            context,
+            path,
+            AccessKind.WRITE,
+            is_ui_read=is_ui_read,
+        )
+        return
+
+    mapped_ref = _var_name_of(tail)
+    if mapped_ref is not None:
+        self._mark_ref_access(
+            mapped_ref,
+            context,
+            path,
+            AccessKind.WRITE,
+            is_ui_read=is_ui_read,
+        )
+        return
+
+    children = _children_of(tail)
+    if children is not None:
+        for child in children:
+            self._walk_output_tail(child, context, path, is_ui_read=is_ui_read)
+        return
+
+    raise ValueError(f"_walk_output_tail: unexpected tail type {type(tail).__name__}: {tail}")
 
 
 def _walk_tail(
@@ -594,12 +680,16 @@ def _mark_var_by_basename(
             usage.mark_read(path)
         return
     if self.debug:
-        log.debug(
-            "Variable not found in scope: %s (env size=%d, path=%s)",
-            base_name,
-            len(env),
-            " -> ".join(path),
+        self._unresolved_variable_lookup_total = getattr(self, "_unresolved_variable_lookup_total", 0) + 1
+        unresolved_counts = cast(dict[str, int] | None, getattr(self, "_unresolved_variable_lookup_counts", None))
+        if unresolved_counts is not None:
+            unresolved_counts[base_name] = int(unresolved_counts.get(base_name, 0)) + 1
+        unresolved_examples = cast(
+            dict[str, tuple[int, str]] | None,
+            getattr(self, "_unresolved_variable_lookup_examples", None),
         )
+        if unresolved_examples is not None:
+            unresolved_examples.setdefault(base_name, (len(env), " -> ".join(path)))
 
 
 __all__ = [
@@ -626,6 +716,7 @@ __all__ = [
     "_walk_header_invoke_tails",
     "_walk_interact_object",
     "_walk_moduledef",
+    "_walk_output_tail",
     "_walk_tail",
     "_walk_typedef_groupconn",
 ]

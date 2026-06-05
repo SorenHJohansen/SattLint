@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 import os
-from collections.abc import Callable, Iterator
+import sys
+from collections.abc import Callable, Iterator, Set
 from pathlib import Path
 from time import perf_counter
+from types import SimpleNamespace
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
@@ -32,6 +35,7 @@ from .analyzers.rule_profiles import apply_rule_profile_to_report
 from .analyzers.shadowing import analyze_shadowing
 from .analyzers.variable_usage_reporting import debug_variable_usage
 from .analyzers.variables import IssueKind, analyze_variables, filter_variable_report
+from .app_interaction import MenuInteraction
 from .cache import AnalysisReportCache, ASTCache
 from .casefolding import casefold_equal, casefold_key
 from .models.project_graph import ProjectGraph
@@ -51,6 +55,7 @@ emit_output: Callable[..., None] = console_module.print_output  # type: ignore[a
 compute_cache_key: Callable[[ConfigDict], str] = cache.compute_cache_key
 compute_analysis_report_cache_key: Callable[[str, str], str] = cache.compute_analysis_report_cache_key
 get_cache_dir: Callable[[], Path] = cache.get_cache_dir
+log = logging.getLogger("SattLint")
 
 _DRAFT_SOURCE_SUFFIXES = frozenset({".s", ".l"})
 _OFFICIAL_SOURCE_SUFFIXES = frozenset({".x", ".z"})
@@ -62,6 +67,18 @@ def _target_validation_warnings(target_name: str, warnings: list[str]) -> list[s
 
 def _print_validation_warnings(warnings: list[str], *, limit: int = 12) -> None:
     app_support.print_validation_warnings(warnings, print_fn=emit_output, limit=limit)
+
+
+def _flush_stdout() -> None:
+    flush = getattr(sys.stdout, "flush", None)
+    if callable(flush):
+        flush()
+
+
+def _format_selected_issue_kind_values(selected_issue_kinds: Set[IssueKind] | None) -> str | None:
+    if not selected_issue_kinds:
+        return None
+    return ", ".join(kind.value for kind in sorted(selected_issue_kinds, key=lambda item: item.value))
 
 
 def _get_analyzed_targets(cfg: ConfigDict) -> list[str]:
@@ -227,6 +244,11 @@ def _debug_enabled(cfg: ConfigDict) -> bool:
     return bool(cfg.get("debug", False))
 
 
+def _log_debug_exception(cfg: ConfigDict, message: str) -> None:
+    if _debug_enabled(cfg):
+        log.exception(message)
+
+
 def _use_cache_enabled(cfg: ConfigDict) -> bool:
     return bool(cfg.get("use_cache", True))
 
@@ -282,6 +304,7 @@ def run_variable_analysis(
         return VariablesReport(
             basepicture_name=basepicture_name,
             issues=issues,
+            selected_issue_kinds=(frozenset(visible_kinds) if kinds is not None and visible_kinds else None),
             visible_kinds=frozenset(visible_kinds) if visible_kinds else None,
             include_empty_sections=include_empty_sections,
             phase_timings=phase_timings,
@@ -333,6 +356,7 @@ def run_variable_analysis(
                 report = VariablesReport(
                     basepicture_name=getattr(getattr(project_bp, "header", None), "name", target_name),
                     issues=[],
+                    selected_issue_kinds=frozenset(standard_kinds) if kinds is not None else None,
                     visible_kinds=frozenset(),
                     include_empty_sections=False,
                 )
@@ -430,13 +454,14 @@ def run_datatype_usage_analysis(
     *,
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
     pause_fn: Callable[[], None] | None = None,
+    interaction: MenuInteraction | None = None,
 ) -> None:
     if iter_loaded_projects_fn is None:
         iter_loaded_projects_fn = _iter_loaded_projects
 
     emit_output("\n--- Datatype Usage Analysis ---")
     emit_output("Enter the variable name to analyze:")
-    var_name = input("> ").strip()
+    var_name = interaction.prompt("Variable name", None).strip() if interaction is not None else input("> ").strip()
 
     if not var_name:
         emit_output("❌ No variable name provided")
@@ -458,6 +483,10 @@ def run_datatype_usage_analysis(
             emit_output(f"\n=== Target: {target_name} ===")
             emit_output(report)
         except Exception as exc:
+            _log_debug_exception(
+                cfg,
+                f"Datatype usage analysis failed for target {target_name!r} and variable {var_name!r}",
+            )
             emit_output(f"❌ Error during analysis for {target_name}: {exc}")
 
     if pause_fn is not None:
@@ -659,10 +688,11 @@ def run_module_duplicates_analysis(
     *,
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] = _iter_loaded_projects,
     pause_fn: Callable[[], None] | None = None,
+    interaction: MenuInteraction | None = None,
 ) -> None:
     emit_output("\n--- Compare Module Variants ---")
     emit_output("Enter module name(s) to compare (comma-separated):")
-    raw_names = input("> ").strip()
+    raw_names = interaction.prompt("Module name(s)", None).strip() if interaction is not None else input("> ").strip()
     module_names = [name.strip() for name in raw_names.split(",") if name.strip()]
 
     if not module_names:
@@ -695,7 +725,11 @@ def run_module_duplicates_analysis(
 
                 emit_output("\nSelect instances to compare (e.g., 6,7).")
                 emit_output("Press Enter to compare all instances.")
-                selection = input("> ").strip()
+                selection = (
+                    interaction.prompt("Instances to compare", None).strip()
+                    if interaction is not None
+                    else input("> ").strip()
+                )
 
                 if selection:
                     indices = _parse_index_selection(selection, len(matches))
@@ -719,6 +753,10 @@ def run_module_duplicates_analysis(
 
                 emit_output("\n" + result.summary())
             except Exception as exc:
+                _log_debug_exception(
+                    cfg,
+                    f"Module duplicate analysis failed for target {target_name!r} and module {module_name!r}",
+                )
                 emit_output(f"❌ Error during analysis for {module_name!r}: {exc}")
 
     if pause_fn is not None:
@@ -730,10 +768,11 @@ def run_module_find_by_name(
     *,
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] = _iter_loaded_projects,
     pause_fn: Callable[[], None] | None = None,
+    interaction: MenuInteraction | None = None,
 ) -> None:
     emit_output("\n--- Find Module Instances ---")
     emit_output("Enter module name(s) to search for (comma-separated):")
-    raw_names = input("> ").strip()
+    raw_names = interaction.prompt("Module name(s)", None).strip() if interaction is not None else input("> ").strip()
     module_names = [name.strip() for name in raw_names.split(",") if name.strip()]
 
     if not module_names:
@@ -763,6 +802,7 @@ def run_module_find_by_name(
                     datecode_txt = f" (DateCode: {datecode})" if datecode else ""
                     emit_output(f"  - {' -> '.join(path)}{datecode_txt}")
     except Exception as exc:
+        _log_debug_exception(cfg, f"Module search failed for names {module_names!r}")
         emit_output(f"❌ Error during search: {exc}")
 
     if pause_fn is not None:
@@ -792,6 +832,7 @@ def run_module_tree_debug(
                 lambda project_bp=project_bp: debug_module_structure(project_bp, max_depth=max_depth),
             )
     except Exception as exc:
+        _log_debug_exception(cfg, f"Module tree debug failed with max_depth={max_depth}")
         emit_output(f"❌ Error during debug: {exc}")
 
     if pause_fn is not None:
@@ -812,12 +853,17 @@ def run_module_localvar_analysis(
     load_project_fn: Callable[[ConfigDict], tuple[BasePicture, ProjectGraph]],
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] = _iter_loaded_projects,
     pause_fn: Callable[[], None] | None = None,
+    interaction: MenuInteraction | None = None,
 ) -> None:
     emit_output("\n--- Module Local Variable Analysis ---")
     emit_output("Enter the module path (strict) relative to BasePicture.")
     emit_output("Example: StartMaster.KaHA251A")
     default_bp, _default_graph = load_project_fn(cfg)
-    module_path = input(f"{default_bp.header.name}.").strip()
+    module_path = (
+        interaction.prompt(f"{default_bp.header.name}.", None).strip()
+        if interaction is not None
+        else input(f"{default_bp.header.name}.").strip()
+    )
 
     if not module_path:
         emit_output("❌ No module path provided")
@@ -826,7 +872,7 @@ def run_module_localvar_analysis(
         return
 
     emit_output("Enter the local variable name (e.g., Dv):")
-    var_name = input("> ").strip()
+    var_name = interaction.prompt("Variable name", None).strip() if interaction is not None else input("> ").strip()
 
     if not var_name:
         emit_output("❌ No variable name provided")
@@ -850,6 +896,13 @@ def run_module_localvar_analysis(
             emit_output(f"\n=== Target: {target_name} ===")
             emit_output(report)
         except Exception as exc:
+            _log_debug_exception(
+                cfg,
+                (
+                    f"Module local variable analysis failed for target {target_name!r}, "
+                    f"module {module_path!r}, variable {var_name!r}"
+                ),
+            )
             emit_output(f"❌ Error during analysis for {target_name}: {exc}")
 
     if pause_fn is not None:
@@ -898,6 +951,7 @@ def _emit_shared_artifact_profile(target_name: str, shared_artifacts: AnalysisSh
 def _run_checks(
     cfg: ConfigDict,
     selected_keys: list[str] | None,
+    selected_issue_kinds: Set[str] | None = None,
     *,
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] = _iter_loaded_projects,
     get_enabled_analyzers_fn: Callable[[], list[Any]] = _get_enabled_analyzers,
@@ -905,6 +959,11 @@ def _run_checks(
     pause_fn: Callable[[], None] | None = None,
 ) -> None:
     analyzers = get_enabled_analyzers_fn()
+    normalized_selected_issue_kinds = (
+        frozenset(IssueKind(issue_kind) for issue_kind in selected_issue_kinds)
+        if selected_issue_kinds is not None
+        else None
+    )
     if selected_keys:
         selected = {canonicalize_analyzer_key(key) for key in selected_keys}
         analyzers = [spec for spec in analyzers if spec.key.casefold() in selected]
@@ -917,6 +976,7 @@ def _run_checks(
         return
 
     emit_output("\n--- Running checks ---")
+    _flush_stdout()
     report_cache = analysis_reporting_module.create_analysis_report_cache(
         cfg,
         use_cache_enabled_fn=_use_cache_enabled,
@@ -944,12 +1004,20 @@ def _run_checks(
                 graph=graph,
                 debug=_debug_enabled(cfg),
                 target_is_library=target_is_library_fn(cfg, project_bp, graph),
+                selected_issue_kinds=normalized_selected_issue_kinds,
                 config=cfg,
                 shared_artifacts=shared_artifacts,
             )
             emit_output(f"\n=== Target: {target_name} ===")
+            _flush_stdout()
             for spec in analyzers:
                 emit_output(f"\n=== {spec.name} ({spec.key}) ===")
+                _flush_stdout()
+                if spec.key == "variables":
+                    selected_issue_kind_values = _format_selected_issue_kind_values(normalized_selected_issue_kinds)
+                    if selected_issue_kind_values is not None:
+                        emit_output(f"Running variables analyzer for issue kinds: {selected_issue_kind_values}")
+                        _flush_stdout()
                 analyzer_started_at = perf_counter()
                 try:
                     report = _run_with_live_status(
@@ -1038,6 +1106,7 @@ def _run_checks(
 def run_checks(
     cfg: ConfigDict,
     selected_keys: list[str] | None,
+    selected_issue_kinds: Set[str] | None = None,
     *,
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] = _iter_loaded_projects,
     get_enabled_analyzers_fn: Callable[[], list[Any]] = _get_enabled_analyzers,
@@ -1047,6 +1116,7 @@ def run_checks(
     _run_checks(
         cfg,
         selected_keys,
+        selected_issue_kinds,
         iter_loaded_projects_fn=iter_loaded_projects_fn,
         get_enabled_analyzers_fn=get_enabled_analyzers_fn,
         target_is_library_fn=target_is_library_fn,
@@ -1084,6 +1154,7 @@ def run_mms_interface_analysis(
             emit_output(f"\n=== Target: {target_name} ===")
             emit_output(report.summary())
         except Exception as exc:
+            _log_debug_exception(cfg, f"MMS interface analysis failed for target {target_name!r}")
             emit_output(f"❌ Error during analysis for {target_name}: {exc}")
 
     if pause_fn is not None:
@@ -1136,6 +1207,10 @@ def run_icf_validation(
             program_bp, graph = load_program_ast_fn(cfg, program_name)
             program_bp = engine_module.merge_project_basepicture(program_bp, graph)
         except Exception as exc:
+            _log_debug_exception(
+                cfg,
+                f"ICF validation failed while loading program {program_name!r} from {icf_file}",
+            )
             emit_output(f"❌ {icf_file.name}: failed to load program {program_name!r}: {exc}")
             files_failed += 1
             continue
@@ -1183,10 +1258,11 @@ def run_debug_variable_usage(
     *,
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] = _iter_loaded_projects,
     pause_fn: Callable[[], None] | None = None,
+    interaction: MenuInteraction | None = None,
 ) -> None:
     emit_output("\n--- Variable Usage (Fields + Locations) ---")
     emit_output("Enter the variable name to analyze:")
-    var_name = input("> ").strip()
+    var_name = interaction.prompt("Variable name", None).strip() if interaction is not None else input("> ").strip()
 
     if not var_name:
         emit_output("❌ No variable name provided")
@@ -1203,6 +1279,10 @@ def run_debug_variable_usage(
             emit_output(f"\n=== Target: {target_name} ===")
             emit_output(report)
         except Exception as exc:
+            _log_debug_exception(
+                cfg,
+                f"Variable usage debug failed for target {target_name!r} and variable {var_name!r}",
+            )
             emit_output(f"❌ Error during debug for {target_name}: {exc}")
 
     if pause_fn is not None:
@@ -1238,20 +1318,48 @@ def run_advanced_datatype_analysis(
     *,
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
     pause_fn: Callable[[], None] | None = None,
+    interaction: MenuInteraction | None = None,
 ) -> None:
     if iter_loaded_projects_fn is None:
         iter_loaded_projects_fn = _iter_loaded_projects
 
-    emit_output("\n--- Advanced Datatype Analysis ---")
-    emit_output("1) Analyze variable by name (field-level usage)")
-    emit_output("2) Compare module variants by name")
-    emit_output("3) Debug specific variable usage")
-    emit_output("b) Back")
+    if interaction is not None:
+        choice = interaction.choose_menu_option(
+            "Advanced Datatype Analysis",
+            [
+                SimpleNamespace(
+                    key="1",
+                    label="Analyze variable by name",
+                    description="Field-level usage",
+                ),
+                SimpleNamespace(
+                    key="2",
+                    label="Compare module variants by name",
+                    description="",
+                ),
+                SimpleNamespace(
+                    key="3",
+                    label="Debug specific variable usage",
+                    description="",
+                ),
+                SimpleNamespace(key="b", label="Back", description=""),
+            ],
+        )
+    else:
+        emit_output("\n--- Advanced Datatype Analysis ---")
+        emit_output("1) Analyze variable by name (field-level usage)")
+        emit_output("2) Compare module variants by name")
+        emit_output("3) Debug specific variable usage")
+        emit_output("b) Back")
 
-    choice = input("> ").strip()
+        choice = input("> ").strip()
 
     if choice == "1":
-        var_name = input("Enter variable name: ").strip()
+        var_name = (
+            interaction.prompt("Variable name", None).strip()
+            if interaction is not None
+            else input("Enter variable name: ").strip()
+        )
         if var_name:
             for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
                 report = _run_with_live_status(
@@ -1267,12 +1375,20 @@ def run_advanced_datatype_analysis(
                 emit_output(report)
 
     elif choice == "2":
-        module_name = input("Enter module name to compare: ").strip()
+        module_name = (
+            interaction.prompt("Module name to compare", None).strip()
+            if interaction is not None
+            else input("Enter module name to compare: ").strip()
+        )
         if module_name:
             emit_output("⚠ Module comparison analysis not yet implemented")
 
     elif choice == "3":
-        var_name = input("Enter variable name to debug: ").strip()
+        var_name = (
+            interaction.prompt("Variable name to debug", None).strip()
+            if interaction is not None
+            else input("Enter variable name to debug: ").strip()
+        )
         if var_name:
             for target_name, project_bp, _graph in iter_loaded_projects_fn(cfg):
                 report = _run_with_live_status(

@@ -27,6 +27,7 @@ _CONTEXT_VALUE_PROVIDERS: dict[str, ContextValueProvider] = {
     "sfc_step_contracts": lambda registry_module, context: registry_module.get_configured_step_contracts(
         context.config
     ),
+    "selected_issue_kinds": lambda _registry_module, context: getattr(context, "selected_issue_kinds", None),
     "step_contracts": lambda registry_module, context: registry_module.get_configured_step_contracts(context.config),
     "unavailable_libraries": lambda _registry_module, context: context.unavailable_libraries,
 }

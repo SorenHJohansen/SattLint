@@ -14,8 +14,10 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
+from ..casefolding import casefold_key
 from ..reporting.variables_report import IssueKind, VariableIssue, VariablesReport
 from ..resolution.common import resolve_moduletype_def_strict
+from .variable_utils import matches_root_origin
 
 
 @dataclass(frozen=True)
@@ -40,7 +42,7 @@ class ShadowingAnalyzer:
 
     def run(self) -> list[VariableIssue]:
         root_path = [self.bp.header.name]
-        parent_locals = {v.name.casefold(): ShadowedVar(v, root_path) for v in (self.bp.localvariables or [])}
+        parent_locals = {casefold_key(v.name): ShadowedVar(v, root_path) for v in (self.bp.localvariables or [])}
         self._walk_submodules(
             self.bp.submodules or [],
             parent_path=root_path,
@@ -50,13 +52,7 @@ class ShadowingAnalyzer:
         return self._issues
 
     def _is_from_root_origin(self, origin_file: str | None) -> bool:
-        if not origin_file:
-            return True
-        root_origin = getattr(self.bp, "origin_file", None)
-        if not root_origin:
-            return False
-
-        return origin_file.rsplit(".", 1)[0].casefold() == root_origin.rsplit(".", 1)[0].casefold()
+        return matches_root_origin(origin_file, getattr(self.bp, "origin_file", None))
 
     def _walk_submodules(
         self,
@@ -124,7 +120,7 @@ class ShadowingAnalyzer:
         module_path: list[str],
     ) -> None:
         for var in locals_:
-            key = var.name.casefold()
+            key = casefold_key(var.name)
             parent = parent_locals.get(key)
             if not parent:
                 continue
@@ -147,7 +143,7 @@ class ShadowingAnalyzer:
     ) -> dict[str, ShadowedVar]:
         merged = dict(parent_locals)
         for var in locals_:
-            merged[var.name.casefold()] = ShadowedVar(var, module_path)
+            merged[casefold_key(var.name)] = ShadowedVar(var, module_path)
         return merged
 
 

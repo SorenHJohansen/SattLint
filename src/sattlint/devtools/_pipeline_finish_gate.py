@@ -134,7 +134,7 @@ def _mutation_guidance(changed_files: Iterable[str]) -> dict[str, Any]:
             pytest_command(
                 "--no-cov",
                 "tests/test_pipeline_run.py",
-                "tests/test_repo_audit.py",
+                "tests/test_repo_audit_part8.py",
                 "tests/test_recommendation_routing.py",
                 "-x",
                 "-q",

@@ -158,7 +158,7 @@ def test_verify_ai_harness_freshness_passes_for_live_metadata(tmp_path):
                 "label": "CLI",
                 "owner_surface": "cli",
                 "estimated_cost": "low",
-                "owner_test_targets": ["tests/test_repo_audit.py"],
+                "owner_test_targets": ["tests/test_repo_audit_part1.py"],
                 "ai_summary": "cli summary",
                 "ai_instruction_files": [".github/instructions/cli-app.instructions.md"],
                 "command": "repo-audit --check cli",

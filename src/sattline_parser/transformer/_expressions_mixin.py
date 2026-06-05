@@ -37,8 +37,13 @@ class _ExpressionsMixin:
 
     def invar_tail(self, items: list[Any]) -> Any:
         """Grammar invar_tail rule -> tail specification or variable reference."""
+        saw_outvar = False
         for it in items:
+            if isinstance(it, Token) and it.type == "OUTVAR_PREFIX":
+                saw_outvar = True
             if not isinstance(it, Token):
+                if saw_outvar:
+                    return Tree(const.GRAMMAR_VALUE_OUTVAR_PREFIX, [it])
                 return it
         raise ValueError(f"invar_tail expected a non-Token child; got: {items}")
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,14 @@ from .models.project_graph import ProjectGraph
 
 ConfigDict = dict[str, Any]
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
+
+
+@dataclass(frozen=True)
+class InteractiveCliOverrides:
+    config_path: Path
+    debug: bool
+    ui_mode: str | None = None
+
 
 annotate_graphics_entries_with_structure_paths = (
     _app_startup_docs_graphics.annotate_graphics_entries_with_structure_paths
@@ -68,6 +77,43 @@ def run_cli(
     )
 
 
+def resolve_interactive_cli_overrides(
+    argv: list[str],
+    *,
+    build_cli_parser_fn: Callable[[], Any] | None,
+    default_config_path: Path,
+) -> InteractiveCliOverrides | None:
+    if not argv or build_cli_parser_fn is None:
+        return None
+
+    try:
+        parser = build_cli_parser_fn()
+        parsed_namespace, leftover = parser.parse_known_args(argv)
+    except SystemExit:
+        return None
+
+    if leftover:
+        return None
+
+    command = getattr(parsed_namespace, "command", None)
+    if command is not None:
+        return None
+
+    quiet = bool(getattr(parsed_namespace, "quiet", False))
+    no_cache = bool(getattr(parsed_namespace, "no_cache", False))
+    if quiet or no_cache:
+        return None
+
+    debug = bool(getattr(parsed_namespace, "debug", False))
+    ui_mode = getattr(parsed_namespace, "ui", None)
+    config_path_text = getattr(parsed_namespace, "config", None)
+    if not debug and config_path_text is None and ui_mode is None:
+        return None
+
+    config_path = Path(config_path_text) if config_path_text else default_config_path
+    return InteractiveCliOverrides(config_path=config_path, debug=debug, ui_mode=ui_mode)
+
+
 def run_telemetry_summary_command(
     cfg: ConfigDict,
     *,
@@ -118,6 +164,7 @@ def run_analyze_command(
     cfg: ConfigDict,
     *,
     selected_keys: list[str] | None,
+    selected_issue_kinds: frozenset[str] | None = None,
     use_cache: bool,
     run_analyze_command_fn: Callable[..., int],
     run_checks_owner_fn: Callable[..., None],
@@ -127,13 +174,20 @@ def run_analyze_command(
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool],
     exit_success: int,
 ) -> int:
-    def _run_checks(local_cfg: ConfigDict, local_selected_keys: list[str] | None, local_use_cache: bool) -> None:
+    def _run_checks(
+        local_cfg: ConfigDict,
+        local_selected_keys: list[str] | None,
+        local_use_cache: bool,
+        *,
+        selected_issue_kinds: frozenset[str] | None = None,
+    ) -> None:
         def _iter_nested_projects(nested_cfg: ConfigDict) -> Iterator[LoadedProject]:
             return iter_loaded_projects_fn(nested_cfg, use_cache=local_use_cache)
 
         run_checks_owner_fn(
             local_cfg | {"use_cache": local_use_cache},
             local_selected_keys,
+            selected_issue_kinds=selected_issue_kinds,
             iter_loaded_projects_fn=_iter_nested_projects,
             get_enabled_analyzers_fn=get_selectable_analyzers_fn if local_selected_keys else get_enabled_analyzers_fn,
             target_is_library_fn=target_is_library_fn,
@@ -143,6 +197,7 @@ def run_analyze_command(
     return run_analyze_command_fn(
         cfg,
         selected_keys=selected_keys,
+        selected_issue_kinds=selected_issue_kinds,
         use_cache=use_cache,
         run_checks_fn=_run_checks,
         exit_success=exit_success,
@@ -367,9 +422,13 @@ def main(
     argv: list[str] | None,
     *,
     run_cli_fn: Callable[[list[str]], int],
+    build_cli_parser_fn: Callable[[], Any] | None = None,
     load_config_fn: Callable[[Path], tuple[ConfigDict, bool]],
     config_path: Path,
     apply_debug_fn: Callable[[ConfigDict], None],
+    resolve_interactive_ui_mode_fn: Callable[[ConfigDict, str | None], str] | None = None,
+    set_interactive_ui_mode_fn: Callable[[str], None] | None = None,
+    reset_interactive_ui_mode_fn: Callable[[], None] | None = None,
     emit_output_fn: Callable[..., None],
     pause_fn: Callable[[], None],
     self_check_fn: Callable[[ConfigDict], bool],
@@ -379,6 +438,8 @@ def main(
     run_main_loop_fn: Callable[..., None],
     clear_screen_fn: Callable[[], None],
     print_menu_fn: Callable[..., None],
+    choose_menu_option_fn: Callable[..., str] | None = None,
+    interaction: Any | None = None,
     menu_option_factory: Callable[[str, str, str], Any],
     summarize_targets_fn: Callable[[ConfigDict], str],
     require_targets_for_menu_action_fn: Callable[[ConfigDict, str], bool],
@@ -392,11 +453,22 @@ def main(
     quit_app_error: type[BaseException],
 ) -> int:
     cli_args = [] if argv is None else argv
-    if cli_args:
+    interactive_cli_overrides = resolve_interactive_cli_overrides(
+        cli_args,
+        build_cli_parser_fn=build_cli_parser_fn,
+        default_config_path=config_path,
+    )
+    if cli_args and interactive_cli_overrides is None:
         return run_cli_fn(cli_args)
 
     try:
-        cfg, default_used = load_config_fn(config_path)
+        effective_config_path = config_path
+        if interactive_cli_overrides is not None:
+            effective_config_path = interactive_cli_overrides.config_path
+
+        cfg, default_used = load_config_fn(effective_config_path)
+        if interactive_cli_overrides is not None and interactive_cli_overrides.debug:
+            cfg["debug"] = True
         apply_debug_fn(cfg)
         if default_used:
             emit_output_fn("Warning: Default config created. Open Setup before running analysis.")
@@ -406,24 +478,41 @@ def main(
                 return 0
             if has_analyzed_targets_fn(cfg) and not ensure_ast_cache_fn(cfg):
                 pause_fn()
-        run_main_loop_fn(
-            cfg,
-            clear_screen_fn=clear_screen_fn,
-            print_menu_fn=print_menu_fn,
-            menu_option_factory=menu_option_factory,
-            summarize_targets_fn=summarize_targets_fn,
-            require_targets_for_menu_action_fn=require_targets_for_menu_action_fn,
-            analysis_menu_fn=analysis_menu_fn,
-            documentation_menu_fn=documentation_menu_fn,
-            config_menu_fn=config_menu_fn,
-            tools_menu_fn=tools_menu_fn,
-            show_help_fn=show_help_fn,
-            pause_fn=pause_fn,
-            confirm_fn=confirm_fn,
-            save_config_fn=save_config_fn,
-            config_path=config_path,
-            quit_app_fn=quit_app_fn,
-        )
+        resolved_ui_mode = "classic"
+        if resolve_interactive_ui_mode_fn is not None:
+            resolved_ui_mode = resolve_interactive_ui_mode_fn(
+                cfg,
+                interactive_cli_overrides.ui_mode if interactive_cli_overrides is not None else None,
+            )
+        if set_interactive_ui_mode_fn is not None:
+            set_interactive_ui_mode_fn(resolved_ui_mode)
+        try:
+            run_main_loop_kwargs: dict[str, Any] = {
+                "clear_screen_fn": clear_screen_fn,
+                "print_menu_fn": print_menu_fn,
+                "menu_option_factory": menu_option_factory,
+                "summarize_targets_fn": summarize_targets_fn,
+                "require_targets_for_menu_action_fn": require_targets_for_menu_action_fn,
+                "analysis_menu_fn": analysis_menu_fn,
+                "documentation_menu_fn": documentation_menu_fn,
+                "config_menu_fn": config_menu_fn,
+                "tools_menu_fn": tools_menu_fn,
+                "show_help_fn": show_help_fn,
+                "pause_fn": pause_fn,
+                "confirm_fn": confirm_fn,
+                "save_config_fn": save_config_fn,
+                "config_path": effective_config_path,
+                "quit_app_fn": quit_app_fn,
+                "quit_app_error": quit_app_error,
+            }
+            if choose_menu_option_fn is not None:
+                run_main_loop_kwargs["choose_menu_option_fn"] = choose_menu_option_fn
+            if interaction is not None:
+                run_main_loop_kwargs["interaction"] = interaction
+            run_main_loop_fn(cfg, **run_main_loop_kwargs)
+        finally:
+            if reset_interactive_ui_mode_fn is not None:
+                reset_interactive_ui_mode_fn()
         return 0
     except quit_app_error:
         return 0

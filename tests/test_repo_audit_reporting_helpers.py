@@ -336,7 +336,7 @@ def test_doc_gardener_load_active_workstream_statuses_extracts_status_from_lock_
                         "status": "active",
                         "claimed_paths": ["src/demo.py"],
                         "updated_at": coordination_lock_state.utc_now_timestamp(),
-                        "first_validation": "pytest tests/test_repo_audit.py -x -q --tb=short",
+                        "first_validation": "pytest tests/test_repo_audit_part1.py -x -q --tb=short",
                     },
                     {
                         "workstream_id": "W2",
@@ -344,7 +344,7 @@ def test_doc_gardener_load_active_workstream_statuses_extracts_status_from_lock_
                         "status": "blocked",
                         "claimed_paths": ["src/other.py"],
                         "updated_at": coordination_lock_state.utc_now_timestamp(),
-                        "first_validation": "pytest tests/test_repo_audit.py -x -q --tb=short",
+                        "first_validation": "pytest tests/test_repo_audit_part1.py -x -q --tb=short",
                     },
                 ]
             },

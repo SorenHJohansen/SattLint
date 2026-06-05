@@ -87,7 +87,14 @@ DEFAULT_TRACE_TARGET = REPO_ROOT / "tests" / "fixtures" / "sample_sattline_files
 DEFAULT_CORPUS_MANIFEST_DIR = REPO_ROOT / "tests" / "fixtures" / "corpus" / "manifests"
 PIPELINE_PROFILE_CHOICES = ("quick", "full")
 DEFAULT_PIPELINE_PROFILE = "full"
-DEFAULT_QUICK_PYTEST_TARGETS = ("tests/test_pipeline.py", "tests/test_repo_audit.py", "tests/parser/test_corpus.py")
+DEFAULT_QUICK_PYTEST_TARGETS = (
+    "tests/test_pipeline_run.py",
+    "tests/test_pipeline_run_recommendations.py",
+    "tests/test_repo_audit_part7.py",
+    "tests/test_repo_audit_part8.py",
+    "tests/test_recommendation_routing.py",
+    "tests/parser/test_corpus.py",
+)
 _VULTURE_LINE_RE = re.compile(r"^(?P<file>.*?):(?P<line>\d+): (?P<message>.*) \((?P<confidence>\d+)% confidence\)$")
 
 CommandResult = pipeline_execution_helpers.CommandResult

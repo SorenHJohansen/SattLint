@@ -44,6 +44,7 @@ def build_typedef_root_context(
         param_mappings={},
         module_path=path.copy(),
         display_module_path=display_path,
+        moduleparameter_keys=frozenset(variable.name.casefold() for variable in (moduletype.moduleparameters or [])),
         current_library=moduletype.origin_lib,
         parent_context=None,
     )

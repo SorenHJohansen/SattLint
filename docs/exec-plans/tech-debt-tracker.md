@@ -93,6 +93,15 @@ Active follow-on plan from the 2026-06-01 analyzer architecture-drift review:
 
 - `docs/exec-plans/active/66-t-wave-9-analyzer-architecture-drift-hardening.md` covers analyzer registry key normalization, analyzer-specific drift-prevention guardrails, private helper-module naming, import-style consistency, and the first shared traversal plus origin-helper consolidation inside `src/sattlint/analyzers/`.
 
+Active follow-on plans from the 2026-06-02 code-review pattern audit:
+
+- `docs/exec-plans/active/70-t-wave-10-layer-architecture-correction-and-type-extraction.md` covers fixing the broken 9-layer `LAYER_MAP` in `layer_linter.py`, extracting `IssueKind`/`VariableIssue` to `models/_variable_issues.py`, and extracting `ValidationNotice` to `models/_validation_notice.py` to eliminate the four confirmed reverse-dependency violations.
+- `docs/exec-plans/active/71-c-wave-cli-issue-kind-filter-and-debug-flag.md` covers adding `--debug` top-level flag and `--issue-kind`/`--list-issue-kinds` to the `analyze` subparser, threading `selected_issue_kinds` through CLI → `run_analyze_command` → `_run_checks` → `AnalysisContext` → the variables analyzer.
+- `docs/exec-plans/active/72-t-wave-10-observability-rewrite-and-ci-security-hardening.md` covers rewriting `observability.py` to use `sys.executable` (not `uvx`/`uv`), removing the `--fix` side-effect, implementing real `get_test_metrics`, removing the `pytest-benchmark` false dependency, and adding a `bandit` CI step.
+- `docs/exec-plans/active/73-t-wave-10-app-devtools-reliability-hardening.md` covers six reliability bugs: git-porcelain path unquoting, `list2cmdline→shlex.join`, `_path_size_bytes` OSError guard, `telemetry-summary` config bypass removal, staged-run temp-dir cleanup, and the TOCTOU lock-file race.
+- `docs/exec-plans/active/74-t-wave-10-dead-code-removal-and-walk-consolidation.md` covers deleting `scripts/run_pre_push_gate.py` (orphaned), removing `engine._find_deps` and `engine._read_text_simple` one-line wrappers, replacing six inline `[".s", ".x"]` extension-list copies in `engine.py` with `code_ext`/`deps_ext` calls, and adopting `iter_nested_modules` at two or three of the 25 inline walk sites in `analyzers/`.
+- `docs/exec-plans/active/75-t-wave-10-ai-feedback-loop-and-ci-gap-closure.md` covers creating a weekly cron workflow to invoke the `review-ai-sessions` prompt, pruning `known-failure-patterns.md` noise entries, consolidating `AGENTS.md` duplicate sections, and adding a VS Code extension `eslint` lint step to CI.
+
 ---
 
 ## Scan Log

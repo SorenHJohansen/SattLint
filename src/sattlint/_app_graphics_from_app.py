@@ -78,6 +78,7 @@ def graphics_rules_menu_from_app(cfg: ConfigDict | None, *, app_module: Any) -> 
         emit_output_fn=app_module.app_graphics.emit_output,
         upsert_graphics_rule_fn=graphics_rules_module.upsert_graphics_rule,
         remove_graphics_rule_fn=graphics_rules_module.remove_graphics_rule,
+        interaction=app_module.build_menu_interaction(),
     )
 
 
@@ -91,6 +92,7 @@ def prompt_graphics_rule_definition_with_config_from_app(
         prompt_fn=app_module.prompt,
         pause_fn=app_module.pause,
         pick_or_prompt_graphics_rule_selector_value_fn=app_module._pick_or_prompt_graphics_rule_selector_value,
+        interaction=app_module.build_menu_interaction(),
     )
 
 

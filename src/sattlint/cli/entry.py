@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import io
 import sys
+import traceback
 from collections.abc import Callable
 from contextlib import nullcontext, redirect_stdout
 from pathlib import Path
@@ -27,10 +28,14 @@ class _ParsedCliArgs(Protocol):
     config: str | None
     no_cache: bool
     quiet: bool
+    debug: bool
+    ui: str | None
     command: str | None
     file: str
     checks: list[str]
     list_checks: bool
+    issue_kinds: list[str]
+    list_issue_kinds: bool
     target_path: str
     module: str
     mode: str
@@ -53,6 +58,17 @@ def _list_analyzer_keys() -> None:
         print_output(spec.key)
 
 
+def _issue_kind_values() -> tuple[str, ...]:
+    from ..models import IssueKind
+
+    return tuple(issue_kind.value for issue_kind in IssueKind)
+
+
+def _list_issue_kind_values() -> None:
+    for issue_kind in _issue_kind_values():
+        print_output(issue_kind)
+
+
 def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sattlint",
@@ -62,6 +78,13 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
     parser.add_argument("--config", default=None, metavar="PATH", help="Path to a SattLint config file")
     parser.add_argument("--no-cache", action="store_true", dest="no_cache", help="Skip the AST cache")
     parser.add_argument("--quiet", action="store_true", help="Suppress stdout output")
+    parser.add_argument("--debug", action="store_true", help="Enable debug output")
+    parser.add_argument(
+        "--ui",
+        default=None,
+        choices=["classic", "rich", "textual"],
+        help="Interactive UI mode to use when no subcommand is selected",
+    )
     subparsers = parser.add_subparsers(dest="command")
 
     syntax_parser = subparsers.add_parser(
@@ -94,6 +117,20 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         "--list-checks",
         action="store_true",
         help="List available analysis check keys and exit",
+    )
+    analyze_parser.add_argument(
+        "--issue-kind",
+        action="append",
+        dest="issue_kinds",
+        default=[],
+        metavar="KIND",
+        choices=_issue_kind_values(),
+        help="Filter variable analysis to this issue kind (repeatable; use --list-issue-kinds to see choices)",
+    )
+    analyze_parser.add_argument(
+        "--list-issue-kinds",
+        action="store_true",
+        help="List available issue kind values for --issue-kind and exit",
     )
 
     simulate_parser = subparsers.add_parser(
@@ -271,14 +308,39 @@ def run_cli(
             _list_analyzer_keys()
         return exit_success
 
-    if command in ("validate-config", "analyze", "simulate", "docgen", "telemetry-summary", "format-icf"):
+    if command == "analyze" and getattr(args, "list_issue_kinds", False):
+        context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
+        with context:
+            _list_issue_kind_values()
+        return exit_success
+
+    if command == "telemetry-summary":
+        if run_telemetry_summary_command_fn is None:
+            raise RuntimeError("telemetry-summary handler is required")
+        return _exit_code(
+            run_telemetry_summary_command_fn(
+                {},
+                config_path=resolved_config_path,
+                output_format=getattr(args, "format", "text"),
+                output_path=getattr(args, "output", None),
+            ),
+            fallback=exit_success,
+        )
+
+    if command in ("validate-config", "analyze", "simulate", "docgen", "format-icf"):
+        debug_requested = bool(getattr(args, "debug", False))
         try:
             if load_config_fn is None or apply_debug_fn is None:
                 raise RuntimeError("CLI config handlers are required for this command")
             cfg, default_used = load_config_fn(resolved_config_path)
+            debug_requested = debug_requested or bool(cfg.get("debug", False))
+            if getattr(args, "debug", False):
+                cfg["debug"] = True
             apply_debug_fn(cfg)
         except Exception as exc:
             print_output(f"ERROR [config] {exc}", file=sys.stderr)
+            if debug_requested:
+                traceback.print_exc(file=sys.stderr)
             return exit_usage_error
 
         if command == "validate-config":
@@ -293,8 +355,14 @@ def run_cli(
             if run_analyze_command_fn is None:
                 raise RuntimeError("analyze handler is required")
             selected_keys = args.checks or None
+            selected_issue_kinds = frozenset(getattr(args, "issue_kinds", [])) or None
             return _exit_code(
-                run_analyze_command_fn(cfg, selected_keys=selected_keys, use_cache=use_cache),
+                run_analyze_command_fn(
+                    cfg,
+                    selected_keys=selected_keys,
+                    selected_issue_kinds=selected_issue_kinds,
+                    use_cache=use_cache,
+                ),
                 fallback=exit_success,
             )
 
@@ -324,19 +392,6 @@ def run_cli(
                     use_cache=use_cache,
                     output_dir=getattr(args, "output_dir", None),
                     output_path=getattr(args, "output_path", None),
-                ),
-                fallback=exit_success,
-            )
-
-        if command == "telemetry-summary":
-            if run_telemetry_summary_command_fn is None:
-                raise RuntimeError("telemetry-summary handler is required")
-            return _exit_code(
-                run_telemetry_summary_command_fn(
-                    cfg,
-                    config_path=resolved_config_path,
-                    output_format=args.format,
-                    output_path=args.output,
                 ),
                 fallback=exit_success,
             )

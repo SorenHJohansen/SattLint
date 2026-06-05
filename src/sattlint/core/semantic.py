@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from pathlib import Path
 
@@ -38,6 +39,8 @@ _source_file_key = _semantic_helpers.source_file_key
 _first_branch_under = _workspace_discovery.first_branch_under
 _resolved_path = _workspace_discovery.resolved_path
 
+log = logging.getLogger("SattLint")
+
 
 class WorkspaceSnapshotError(RuntimeError):
     def __init__(
@@ -52,6 +55,10 @@ class WorkspaceSnapshotError(RuntimeError):
         self.line = line
         self.column = column
         self.length = length
+
+
+def _emit_parser_debug(message: str) -> None:
+    log.debug("Semantic snapshot parser: %s", message)
 
 
 def _build_lsp_workspace_lookup(
@@ -135,7 +142,7 @@ def load_source_snapshot(
     debug: bool = False,
     _analysis_provider: SemanticAnalysisProvider | None = None,
 ) -> SemanticSnapshot:
-    base_picture = parser_core_parse_source_text(source_text, debug=(print if debug else None))
+    base_picture = parser_core_parse_source_text(source_text, debug=(_emit_parser_debug if debug else None))
     return build_source_snapshot_from_basepicture(
         base_picture,
         source_file,

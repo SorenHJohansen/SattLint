@@ -57,12 +57,14 @@ def test_run_analyze_command_delegates_to_cli_owner(monkeypatch):
         cfg: dict,
         *,
         selected_keys: list[str] | None,
+        selected_issue_kinds: frozenset[str] | None = None,
         use_cache: bool,
         run_checks_fn,
         exit_success: int,
     ) -> int:
         seen["cfg"] = cfg
         seen["selected_keys"] = selected_keys
+        seen["selected_issue_kinds"] = selected_issue_kinds
         seen["use_cache"] = use_cache
         seen["run_checks_fn"] = run_checks_fn
         seen["exit_success"] = exit_success
@@ -75,11 +77,17 @@ def test_run_analyze_command_delegates_to_cli_owner(monkeypatch):
     )
 
     cfg = {"debug": False}
-    result = app.run_analyze_command(cfg, selected_keys=["variables"], use_cache=False)
+    result = app.run_analyze_command(
+        cfg,
+        selected_keys=["variables"],
+        selected_issue_kinds=frozenset({"unused"}),
+        use_cache=False,
+    )
 
     assert result == 78
     assert seen["cfg"] is cfg
     assert seen["selected_keys"] == ["variables"]
+    assert seen["selected_issue_kinds"] == frozenset({"unused"})
     assert seen["use_cache"] is False
     assert callable(seen["run_checks_fn"])
     assert seen["exit_success"] == app.EXIT_SUCCESS
@@ -91,6 +99,7 @@ def test_run_analyze_command_allows_opt_in_analyzer_keys(monkeypatch) -> None:
     def fake_run_checks(
         cfg: dict,
         selected_keys: list[str] | None,
+        selected_issue_kinds: frozenset[str] | None = None,
         *,
         iter_loaded_projects_fn,
         get_enabled_analyzers_fn,
@@ -99,27 +108,35 @@ def test_run_analyze_command_allows_opt_in_analyzer_keys(monkeypatch) -> None:
     ) -> None:
         del cfg, iter_loaded_projects_fn, target_is_library_fn, pause_fn
         seen["selected_keys"] = selected_keys
+        seen["selected_issue_kinds"] = selected_issue_kinds
         seen["analyzer_keys"] = [spec.key for spec in get_enabled_analyzers_fn()]
 
     def fake_run_analyze_command(
         cfg: dict,
         *,
         selected_keys: list[str] | None,
+        selected_issue_kinds: frozenset[str] | None = None,
         use_cache: bool,
         run_checks_fn,
         exit_success: int,
     ) -> int:
         del use_cache, exit_success
-        run_checks_fn(cfg, selected_keys, False)
+        run_checks_fn(cfg, selected_keys, False, selected_issue_kinds=selected_issue_kinds)
         return 0
 
     monkeypatch.setattr(app.app_analysis, "run_checks", fake_run_checks)
     monkeypatch.setattr(app.app_cli_commands_module, "run_analyze_command", fake_run_analyze_command)
 
-    result = app.run_analyze_command({"debug": False}, selected_keys=["timing"], use_cache=False)
+    result = app.run_analyze_command(
+        {"debug": False},
+        selected_keys=["timing"],
+        selected_issue_kinds=frozenset({"unused"}),
+        use_cache=False,
+    )
 
     assert result == 0
     assert seen["selected_keys"] == ["timing"]
+    assert seen["selected_issue_kinds"] == frozenset({"unused"})
     assert "timing" in cast(list[str], seen["analyzer_keys"])
 
 
@@ -436,15 +453,22 @@ def test_cli_owner_run_analyze_command_delegates_and_returns_success():
     exit_code = app.app_cli_commands_module.run_analyze_command(
         {"debug": False},
         selected_keys=["variables"],
+        selected_issue_kinds=frozenset({"unused"}),
         use_cache=False,
-        run_checks_fn=lambda cfg, selected_keys, use_cache: seen.update(
-            {"cfg": cfg, "selected_keys": selected_keys, "use_cache": use_cache}
+        run_checks_fn=lambda cfg, selected_keys, use_cache, *, selected_issue_kinds=None: seen.update(
+            {
+                "cfg": cfg,
+                "selected_keys": selected_keys,
+                "selected_issue_kinds": selected_issue_kinds,
+                "use_cache": use_cache,
+            }
         ),
         exit_success=app.EXIT_SUCCESS,
     )
 
     assert exit_code == app.EXIT_SUCCESS
     assert seen["selected_keys"] == ["variables"]
+    assert seen["selected_issue_kinds"] == frozenset({"unused"})
     assert seen["use_cache"] is False
 
 

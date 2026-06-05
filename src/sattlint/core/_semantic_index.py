@@ -12,7 +12,7 @@ from sattline_parser.models.ast_model import (
 )
 
 from ..call_signatures import CallSignatureOccurrence
-from ..reporting.variables_report import VariableIssue
+from ..models._variable_issues import VariableIssue
 from ..resolution import (
     CanonicalPath,
     CanonicalSymbolTable,

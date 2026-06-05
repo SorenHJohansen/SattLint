@@ -4,6 +4,7 @@ import runpy
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -52,56 +53,112 @@ def test_observability_get_coverage_metrics_defaults_when_missing_root_or_parse_
 
     coverage_xml = tmp_path / "coverage.xml"
     coverage_xml.write_text("<coverage />", encoding="utf-8")
-    monkeypatch.setattr(observability.ElementTree, "parse", lambda _path: SimpleNamespace(getroot=lambda: None))
     assert observability.get_coverage_metrics() == {"line_coverage": 0.0, "branch_coverage": 0.0}
 
-    def _parse_boom(_path):
-        raise observability.ElementTree.ParseError("bad xml")
-
-    monkeypatch.setattr(observability.ElementTree, "parse", _parse_boom)
+    coverage_xml.write_text("<coverage", encoding="utf-8")
     assert observability.get_coverage_metrics() == {"line_coverage": 0.0, "branch_coverage": 0.0}
 
 
-def test_observability_get_lint_metrics_counts_warning_and_error(monkeypatch):
+def test_observability_get_lint_metrics_counts_errors_and_fixable(monkeypatch):
     calls = []
 
     def _fake_run_command(cmd):
         calls.append(cmd)
-        if "--fix" in cmd:
-            return 0, "", ""
-        return 1, "src/demo.py:1:1 warning\nsrc/demo.py:2:1 error\n", ""
+        return (
+            1,
+            json.dumps(
+                [
+                    {"code": "F401", "message": "unused import", "fix": {"applicability": "safe"}},
+                    {"code": "F841", "message": "unused variable"},
+                ]
+            ),
+            "",
+        )
 
     monkeypatch.setattr(observability, "run_command", _fake_run_command)
 
     metrics = observability.get_lint_metrics()
 
-    assert metrics["ruff_warnings"] == 1
-    assert metrics["ruff_errors"] == 1
-    assert metrics["ruff_fixable"] == 0
-    assert len(calls) == 2
+    assert metrics == {"ruff_errors": 2, "ruff_fixable": 1}
+    assert calls == [[sys.executable, "-m", "ruff", "check", "src", "--output-format=json"]]
+    assert all("--fix" not in call for call in calls)
 
 
-def test_observability_get_test_metrics_and_build_metrics(monkeypatch):
+def test_observability_get_lint_metrics_does_not_modify_source_file(monkeypatch):
+    source_path = Path(observability.__file__)
+    before = source_path.read_text(encoding="utf-8")
+
+    monkeypatch.setattr(observability, "run_command", lambda _cmd: (0, "[]", ""))
+
+    metrics = observability.get_lint_metrics()
+    after = source_path.read_text(encoding="utf-8")
+
+    assert metrics == {"ruff_errors": 0, "ruff_fixable": 0}
+    assert after == before
+
+
+def test_observability_get_test_metrics_reads_pytest_json(tmp_path, monkeypatch):
+    monkeypatch.setattr(observability, "ARTIFACTS_DIR", tmp_path)
+    pytest_json = tmp_path / "audit" / "pipeline" / "pytest.json"
+    pytest_json.parent.mkdir(parents=True)
+    pytest_json.write_text(
+        json.dumps({"summary": {"tests": 7, "failures": 1, "errors": 1, "skipped": 2}}),
+        encoding="utf-8",
+    )
+
+    assert observability.get_test_metrics() == {
+        "test_count": 7,
+        "passed": 3,
+        "failed": 2,
+        "skipped": 2,
+        "stale": False,
+    }
+
+
+def test_observability_get_test_metrics_reads_junit_then_falls_back_to_stale(tmp_path, monkeypatch):
+    monkeypatch.setattr(observability, "ARTIFACTS_DIR", tmp_path)
+    junit_xml = tmp_path / "audit" / "pipeline" / "pytest.junit.xml"
+    junit_xml.parent.mkdir(parents=True)
+    junit_xml.write_text(
+        '<testsuite tests="5" failures="1" errors="0" skipped="1"></testsuite>',
+        encoding="utf-8",
+    )
+
+    assert observability.get_test_metrics() == {
+        "test_count": 5,
+        "passed": 3,
+        "failed": 1,
+        "skipped": 1,
+        "stale": False,
+    }
+
+    junit_xml.unlink()
     assert observability.get_test_metrics() == {
         "test_count": 0,
         "passed": 0,
         "failed": 0,
         "skipped": 0,
-        "duration": 0.0,
+        "stale": True,
     }
 
+
+def test_observability_get_build_metrics_uses_install_check_and_lint_status(monkeypatch):
     monkeypatch.setattr(observability, "run_command", lambda _cmd: (0, "", ""))
+
     assert observability.get_build_metrics() == {
         "install_success": True,
+        "lint_success": True,
+    }
+
+    assert observability.get_build_metrics({"ruff_errors": 2}) == {
+        "install_success": True,
         "lint_success": False,
-        "test_success": False,
     }
 
     monkeypatch.setattr(observability, "run_command", lambda _cmd: (1, "", ""))
-    assert observability.get_build_metrics() == {
+    assert observability.get_build_metrics({"ruff_errors": 0}) == {
         "install_success": False,
-        "lint_success": False,
-        "test_success": False,
+        "lint_success": True,
     }
 
 
@@ -115,7 +172,7 @@ def test_observability_collect_all_metrics(monkeypatch):
     monkeypatch.setattr(observability, "get_test_metrics", lambda: {"tests": 1})
     monkeypatch.setattr(observability, "get_coverage_metrics", lambda: {"line_coverage": 50.0})
     monkeypatch.setattr(observability, "get_lint_metrics", lambda: {"ruff_errors": 0})
-    monkeypatch.setattr(observability, "get_build_metrics", lambda: {"install_success": True})
+    monkeypatch.setattr(observability, "get_build_metrics", lambda _lint_metrics=None: {"install_success": True})
 
     assert observability.collect_all_metrics() == {
         "timestamp": "2026-05-28T16:00:00Z",
@@ -129,7 +186,7 @@ def test_observability_collect_all_metrics(monkeypatch):
 def test_observability_write_and_read_metrics(tmp_path, monkeypatch):
     monkeypatch.setattr(observability, "ARTIFACTS_DIR", tmp_path)
     monkeypatch.setattr(observability, "OBSERVABILITY_FILE", tmp_path / "observability.json")
-    payload = {"coverage": {"line_coverage": 12.5}}
+    payload = {"coverage": {"line_coverage": 12.5}, "message": "Søjle"}
 
     observability.write_metrics(payload)
 
@@ -160,7 +217,7 @@ def test_observability_module_main_guard(tmp_path, monkeypatch):
 def test_observability_main_writes_and_prints(monkeypatch, capsys):
     payload = {
         "coverage": {"line_coverage": 88.1, "branch_coverage": 77.2},
-        "lint": {"ruff_warnings": 2, "ruff_errors": 1},
+        "lint": {"ruff_errors": 1, "ruff_fixable": 1},
         "build": {},
         "test": {},
         "timestamp": "now",
@@ -181,7 +238,7 @@ def test_observability_main_writes_and_prints(monkeypatch, capsys):
 def test_observability_main_returns_failure_when_output_write_fails(monkeypatch, capsys):
     payload = {
         "coverage": {"line_coverage": 88.1, "branch_coverage": 77.2},
-        "lint": {"ruff_warnings": 2, "ruff_errors": 1},
+        "lint": {"ruff_errors": 1, "ruff_fixable": 1},
         "build": {},
         "test": {},
         "timestamp": "now",

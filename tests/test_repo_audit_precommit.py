@@ -69,7 +69,7 @@ def test_main_skips_when_no_repo_audit_checks_are_recommended(monkeypatch, tmp_p
     monkeypatch.setattr(
         repo_audit_precommit.sys,
         "argv",
-        ["run_repo_audit_precommit.py", "src/sattlint/app.py", "tests/test_repo_audit.py"],
+        ["run_repo_audit_precommit.py", "src/sattlint/app.py", "tests/test_repo_audit_part1.py"],
     )
 
     exit_code = repo_audit_precommit.main()
@@ -89,11 +89,11 @@ def test_main_skips_when_no_repo_audit_checks_are_recommended(monkeypatch, tmp_p
         "--changed-file",
         "src/sattlint/app.py",
         "--changed-file",
-        "tests/test_repo_audit.py",
+        "tests/test_repo_audit_part1.py",
     ]
 
     output = capsys.readouterr().out
-    assert "[repo-audit-slice] changed files: 2 [src/sattlint/app.py, tests/test_repo_audit.py]" in output
+    assert "[repo-audit-slice] changed files: 2 [src/sattlint/app.py, tests/test_repo_audit_part1.py]" in output
     assert "[repo-audit-slice] recommending repo-audit-specific checks" in output
     assert "[repo-audit-slice] no repo-audit custom checks recommended; skipping" in output
 

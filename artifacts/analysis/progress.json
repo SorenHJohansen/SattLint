@@ -1,50 +1,50 @@
 {
   "active_stage": null,
-  "canonical_command": "sattlint-analysis-pipeline --profile quick --output-dir artifacts/analysis",
-  "completed_at": 1778829502.2976003,
-  "completed_stage_count": 3,
-  "created_at": 1778829422.005315,
-  "failed_stage_count": 1,
+  "canonical_command": "sattlint-analysis-pipeline --profile full --output-dir artifacts/analysis --check ruff --check pyright",
+  "completed_at": 1780646695.0533133,
+  "completed_stage_count": 5,
+  "created_at": 1780646664.3275838,
+  "failed_stage_count": 0,
   "kind": "sattlint.pipeline.progress",
-  "overall_status": "failed",
-  "skipped_stage_count": 0,
+  "overall_status": "pass",
+  "skipped_stage_count": 3,
   "stage_count": 11,
   "stages": [
     {
       "detail": null,
-      "duration_seconds": 0.042,
-      "ended_at": 1778829422.0478344,
+      "duration_seconds": 0.022,
+      "ended_at": 1780646664.3501344,
       "key": "environment",
       "label": "Collect environment",
-      "started_at": 1778829422.0061522,
+      "started_at": 1780646664.3283005,
       "status": "completed"
     },
     {
       "detail": "0 findings",
-      "duration_seconds": 0.044,
-      "ended_at": 1778829422.0932653,
+      "duration_seconds": 0.039,
+      "ended_at": 1780646664.3897114,
       "key": "ruff",
       "label": "Run Ruff",
-      "started_at": 1778829422.0487883,
+      "started_at": 1780646664.3507135,
       "status": "completed"
     },
     {
       "detail": "0 errors, 0 warnings",
-      "duration_seconds": 72.478,
-      "ended_at": 1778829494.572483,
+      "duration_seconds": 30.647,
+      "ended_at": 1780646695.037254,
       "key": "pyright",
       "label": "Run pyright",
-      "started_at": 1778829422.09401,
+      "started_at": 1780646664.3903255,
       "status": "completed"
     },
     {
-      "detail": "KeyboardInterrupt",
-      "duration_seconds": 7.723,
-      "ended_at": 1778829502.2966979,
+      "detail": null,
+      "duration_seconds": null,
+      "ended_at": null,
       "key": "pytest",
       "label": "Run pytest",
-      "started_at": 1778829494.5732844,
-      "status": "failed"
+      "started_at": null,
+      "status": "pending"
     },
     {
       "detail": null,
@@ -65,51 +65,51 @@
       "status": "pending"
     },
     {
-      "detail": null,
+      "detail": "skipped by profile",
       "duration_seconds": null,
       "ended_at": null,
       "key": "structural_reports",
       "label": "Collect structural reports",
       "started_at": null,
-      "status": "pending"
+      "status": "skipped"
     },
     {
-      "detail": null,
+      "detail": "skipped by profile",
       "duration_seconds": null,
       "ended_at": null,
       "key": "trace",
       "label": "Collect trace report",
       "started_at": null,
-      "status": "pending"
+      "status": "skipped"
     },
     {
-      "detail": null,
+      "detail": "no manifest directory",
       "duration_seconds": null,
       "ended_at": null,
       "key": "corpus",
       "label": "Run corpus suite",
       "started_at": null,
-      "status": "pending"
+      "status": "skipped"
     },
     {
-      "detail": null,
-      "duration_seconds": null,
-      "ended_at": null,
+      "detail": "0 normalized findings",
+      "duration_seconds": 0.001,
+      "ended_at": 1780646695.04563,
       "key": "findings",
       "label": "Normalize findings",
-      "started_at": null,
-      "status": "pending"
+      "started_at": 1780646695.0447898,
+      "status": "completed"
     },
     {
       "detail": null,
-      "duration_seconds": null,
-      "ended_at": null,
+      "duration_seconds": 0.006,
+      "ended_at": 1780646695.0527716,
       "key": "write_artifacts",
       "label": "Write artifacts",
-      "started_at": null,
-      "status": "pending"
+      "started_at": 1780646695.0466073,
+      "status": "completed"
     }
   ],
   "title": "Pipeline",
-  "updated_at": 1778829502.297603
+  "updated_at": 1780646695.0533152
 }

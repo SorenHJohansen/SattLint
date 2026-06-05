@@ -335,6 +335,10 @@ def _iter_leaf_field_paths_strict(
             results.append(prefix)
             continue
 
+        if not record_type.fields_by_key:
+            results.append(prefix)
+            continue
+
         next_chain = (*chain, type_name)
         for field in record_type.fields_by_key.values():
             new_prefix = (*prefix, field.name)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,10 +14,12 @@ from . import _app_graphics_reports as graphics_reports_module
 from . import config as config_module
 from . import console as console_module
 from . import graphics_rules as graphics_rules_module
+from .app_interaction import MenuInteraction
 from .docgenerator import classification as documentation_classification_module
 from .models.project_graph import ProjectGraph
 
 emit_output = console_module.print_output  # type: ignore[assignment]
+log = logging.getLogger("SattLint")
 
 ConfigDict = dict[str, Any]
 GraphicsRule = dict[str, Any]
@@ -35,6 +38,15 @@ DEFAULT_DISCOVER_DOCUMENTATION_UNIT_CANDIDATES_FN = cast(
     DiscoverDocumentationUnitCandidatesFn,
     cast(Any, documentation_classification_module).discover_documentation_unit_candidates,
 )
+
+
+def _debug_enabled(cfg: ConfigDict) -> bool:
+    return bool(cfg.get("debug", False))
+
+
+def _log_debug_exception(cfg: ConfigDict, message: str) -> None:
+    if _debug_enabled(cfg):
+        log.exception(message)
 
 
 def get_graphics_rules_path(config_path: Path) -> Path:
@@ -148,8 +160,18 @@ class RequiredPromptValidationError(Exception):
     """Raised when required prompt input is missing or invalid."""
 
 
-def prompt_optional_float_list(label: str, expected_count: int, *, pause_fn: Callable[[], None]) -> list[float]:
-    raw = input(f"{label} ({expected_count} comma-separated numbers, blank to skip): ").strip()
+def prompt_optional_float_list(
+    label: str,
+    expected_count: int,
+    *,
+    pause_fn: Callable[[], None],
+    prompt_fn: Callable[..., str] | None = None,
+) -> list[float]:
+    raw = (
+        prompt_fn(f"{label} ({expected_count} comma-separated numbers, blank to skip)", None).strip()
+        if prompt_fn is not None
+        else input(f"{label} ({expected_count} comma-separated numbers, blank to skip): ").strip()
+    )
     if not raw:
         raise OptionalPromptSkipped()
     try:
@@ -165,15 +187,23 @@ def prompt_optional_float_list(label: str, expected_count: int, *, pause_fn: Cal
     return values
 
 
-def prompt_optional_text_list(label: str) -> list[str]:
-    raw = input(f"{label} (comma-separated, blank to skip): ").strip()
+def prompt_optional_text_list(label: str, *, prompt_fn: Callable[..., str] | None = None) -> list[str]:
+    raw = (
+        prompt_fn(f"{label} (comma-separated, blank to skip)", None).strip()
+        if prompt_fn is not None
+        else input(f"{label} (comma-separated, blank to skip): ").strip()
+    )
     if not raw:
         raise OptionalPromptSkipped()
     return [part.strip() for part in raw.split(",") if part.strip()]
 
 
-def prompt_optional_bool(label: str) -> bool:
-    raw = input(f"{label} [y/n, blank to skip]: ").strip().lower()
+def prompt_optional_bool(label: str, *, prompt_fn: Callable[..., str] | None = None) -> bool:
+    raw = (
+        prompt_fn(f"{label} [y/n, blank to skip]", None).strip().lower()
+        if prompt_fn is not None
+        else input(f"{label} [y/n, blank to skip]: ").strip().lower()
+    )
     if not raw:
         raise OptionalPromptSkipped()
     if raw in {"y", "yes", "true", "1"}:
@@ -193,8 +223,8 @@ def optional_prompt_or_none(prompt_fn: Callable[[], Any]) -> Any | None:
         return None
 
 
-def prompt_graphics_rule_kind() -> str:
-    return graphics_menus_module.prompt_graphics_rule_kind(emit_output_fn=emit_output)
+def prompt_graphics_rule_kind(*, interaction: MenuInteraction | None = None) -> str:
+    return graphics_menus_module.prompt_graphics_rule_kind(emit_output_fn=emit_output, interaction=interaction)
 
 
 def selector_prompt_text(selector_field: str) -> str:
@@ -230,6 +260,7 @@ def pick_or_prompt_graphics_rule_selector_value(
     *,
     cfg: ConfigDict | None = None,
     discover_graphics_rule_selector_options_fn: Callable[..., list[GraphicsRule]],
+    interaction: MenuInteraction | None = None,
 ) -> str:
     return graphics_menus_module.pick_or_prompt_graphics_rule_selector_value(
         selector_field,
@@ -238,6 +269,7 @@ def pick_or_prompt_graphics_rule_selector_value(
         discover_graphics_rule_selector_options_fn=discover_graphics_rule_selector_options_fn,
         emit_output_fn=emit_output,
         required_prompt_validation_error=RequiredPromptValidationError,
+        interaction=interaction,
     )
 
 
@@ -246,12 +278,14 @@ def prompt_graphics_rule_selector(
     *,
     cfg: ConfigDict | None = None,
     pick_or_prompt_graphics_rule_selector_value_fn: Callable[..., str],
+    interaction: MenuInteraction | None = None,
 ) -> tuple[str, str]:
     return graphics_menus_module.prompt_graphics_rule_selector(
         module_kind,
         cfg=cfg,
         pick_or_prompt_graphics_rule_selector_value_fn=pick_or_prompt_graphics_rule_selector_value_fn,
         emit_output_fn=emit_output,
+        interaction=interaction,
     )
 
 
@@ -302,6 +336,7 @@ def prompt_graphics_rule_definition_with_config(
     prompt_fn: Callable[..., str],
     pause_fn: Callable[[], None],
     pick_or_prompt_graphics_rule_selector_value_fn: Callable[..., str],
+    interaction: MenuInteraction | None = None,
 ) -> GraphicsRule | None:
     return graphics_menus_module.prompt_graphics_rule_definition_with_config(
         cfg,
@@ -316,6 +351,7 @@ def prompt_graphics_rule_definition_with_config(
         prompt_optional_bool_fn=prompt_optional_bool,
         emit_output_fn=emit_output,
         required_prompt_validation_error=RequiredPromptValidationError,
+        interaction=interaction,
     )
 
 
@@ -366,6 +402,7 @@ def graphics_rules_menu(
     prompt_fn: Callable[..., str],
     quit_app_fn: Callable[[], None],
     pause_fn: Callable[[], None],
+    interaction: MenuInteraction | None = None,
 ) -> None:
     graphics_menus_module.graphics_rules_menu(
         cfg,
@@ -385,6 +422,7 @@ def graphics_rules_menu(
         emit_output_fn=emit_output,
         upsert_graphics_rule_fn=graphics_rules_module.upsert_graphics_rule,
         remove_graphics_rule_fn=graphics_rules_module.remove_graphics_rule,
+        interaction=interaction,
     )
 
 
@@ -424,6 +462,7 @@ def run_graphics_rules_validation(
                 emit_output(f"\n=== Target: {target_name} ===")
                 emit_output(report.summary())
             except Exception as exc:
+                _log_debug_exception(cfg, f"Graphics rules validation failed for {target_name!r}")
                 emit_output(f"? Error during graphics rules validation for {target_name}: {exc}")
 
     pause_fn()
