@@ -10,6 +10,7 @@ from sattline_parser.models.ast_model import BasePicture
 
 from . import config as config_module
 from . import console as console_module
+from ._app_debug import log_debug_exception
 from .config import ConfigValidationResult
 from .docgenerator import generate_docx
 from .models.project_graph import ProjectGraph
@@ -20,15 +21,6 @@ log = logging.getLogger("SattLint")
 ConfigDict = dict[str, Any]
 DocumentationSelection = dict[str, Any]
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
-
-
-def _debug_enabled(cfg: ConfigDict) -> bool:
-    return bool(cfg.get("debug", False))
-
-
-def _log_debug_exception(cfg: ConfigDict, message: str) -> None:
-    if _debug_enabled(cfg):
-        log.exception(message)
 
 
 def _run_with_live_status(status_text: str, run_fn: Callable[[], Any]) -> Any:
@@ -43,7 +35,7 @@ def _write_output_file(destination: Path, content: str, *, label: str, cfg: Conf
         destination.write_text(content + "\n", encoding="utf-8")
     except OSError as exc:
         if cfg is not None:
-            _log_debug_exception(cfg, f"Failed to write {label} to {destination}")
+            log_debug_exception(cfg, f"Failed to write {label} to {destination}", logger=log)
         emit_output(f"Failed to write {label} to {destination}: {exc}")
         return False
     emit_output(f"Wrote {destination}")
@@ -110,7 +102,9 @@ def run_simulate_command(
         emit_output(str(exc))
         return exit_usage_error
     except Exception as exc:
-        _log_debug_exception(cfg, f"Simulation command failed for module {module_name!r} from {target_path!r}")
+        log_debug_exception(
+            cfg, f"Simulation command failed for module {module_name!r} from {target_path!r}", logger=log
+        )
         emit_output(f"Simulation failed: {exc}")
         return exit_usage_error
 
@@ -186,7 +180,9 @@ def run_docgen_command(
                 ),
             )
         except OSError as exc:
-            _log_debug_exception(cfg, f"Documentation generation failed for target {target_name!r} to {destination}")
+            log_debug_exception(
+                cfg, f"Documentation generation failed for target {target_name!r} to {destination}", logger=log
+            )
             emit_output(f"Documentation generation failed for {destination}: {exc}")
             return exit_usage_error
         emit_output(f"Generated {destination}")
@@ -213,7 +209,7 @@ def run_telemetry_summary_command(
         emit_output(f"Telemetry file not found: {telemetry_path}")
         return exit_usage_error
     except (OSError, ValueError) as exc:
-        _log_debug_exception(cfg, f"Telemetry summary failed for {telemetry_path}")
+        log_debug_exception(cfg, f"Telemetry summary failed for {telemetry_path}", logger=log)
         emit_output(f"Telemetry summary failed: {exc}")
         return exit_usage_error
 

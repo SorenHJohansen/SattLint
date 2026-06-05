@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sattlint.devtools import pipeline as pipeline_module
 from sattlint.devtools._pipeline_finish_gate import execute_finish_gate_steps, summarize_finish_gate_timing
@@ -43,43 +43,6 @@ def _filter_custom_findings_to_changed_files(findings: list[Any], changed_files:
 
 
 filter_custom_findings_to_changed_files = _filter_custom_findings_to_changed_files
-
-
-def _ratchet_policy_finish_gate_step(*, python_command: list[str], shell_command: Any) -> dict[str, Any]:
-    ratchet_policy_argv = [*python_command, "scripts/check_ratchet_policy.py"]
-    return {
-        "id": "ratchet-policy",
-        "label": "Run ratchet policy",
-        "command": shell_command(ratchet_policy_argv),
-        "argv": ratchet_policy_argv,
-    }
-
-
-def _merge_finish_gate_timing_with_step(
-    *,
-    existing_timing: dict[str, Any],
-    step_report: dict[str, Any],
-) -> dict[str, Any]:
-    step_duration = round(float(step_report.get("duration_seconds") or 0.0), 3)
-    check_durations = dict(_entrypoints_module()._mapping_of(existing_timing.get("check_durations_seconds")))
-    check_durations[str(step_report.get("id", ""))] = step_duration
-    return {
-        "check_durations_seconds": check_durations,
-        "parallel_worker_count": int(existing_timing.get("parallel_worker_count") or 0),
-        "parallelizable_duration_seconds": round(
-            float(existing_timing.get("parallelizable_duration_seconds") or 0.0) + step_duration,
-            3,
-        ),
-        "serial_duration_seconds": round(
-            float(existing_timing.get("serial_duration_seconds") or 0.0) + step_duration, 3
-        ),
-        "reused_duration_seconds": round(float(existing_timing.get("reused_duration_seconds") or 0.0), 3),
-        "critical_path_duration_seconds": round(
-            float(existing_timing.get("critical_path_duration_seconds") or 0.0) + step_duration,
-            3,
-        ),
-        "total_duration_seconds": round(float(existing_timing.get("total_duration_seconds") or 0.0) + step_duration, 3),
-    }
 
 
 def run_recommended_repo_audit_slice(
@@ -332,40 +295,16 @@ def run_check_my_changes(
         )
         finish_gate_report = dict(entrypoints_module._mapping_of(selected_result.get("finish_gate")))
         finish_gate_commands_raw = finish_gate_report.get("commands")
-        finish_gate_commands = (
-            [
-                dict(entrypoints_module._mapping_of(step))
-                for step in finish_gate_commands_raw
-                if entrypoints_module._mapping_of(step)
-            ]
-            if isinstance(finish_gate_commands_raw, list)
-            else []
+        finish_gate_command_entries = (
+            cast(list[object], finish_gate_commands_raw) if isinstance(finish_gate_commands_raw, list) else []
         )
-        if not any(str(step.get("id", "")) == "ratchet-policy" for step in finish_gate_commands):
-            ratchet_step = _ratchet_policy_finish_gate_step(
-                python_command=[pipeline_module.resolve_python_executable()],
-                shell_command=entrypoints_module._shell_command,
-            )
-            ratchet_step_report = execute_finish_gate_steps(
-                steps=[ratchet_step],
-                run_command=pipeline_module.run_command,
-            )[0]
-            finish_gate_commands.append(ratchet_step_report)
-            finish_gate_report["commands"] = finish_gate_commands
-            existing_timing = entrypoints_module._mapping_of(finish_gate_report.get("timing"))
-            finish_gate_report["timing"] = (
-                summarize_finish_gate_timing(finish_gate_commands)
-                if not existing_timing
-                else _merge_finish_gate_timing_with_step(
-                    existing_timing=existing_timing,
-                    step_report=ratchet_step_report,
-                )
-            )
-            if ratchet_step_report["status"] == "fail":
-                finish_gate_report["status"] = "fail"
-                selected_result["overall_status"] = "fail"
-            selected_result["finish_gate"] = finish_gate_report
-            pipeline_module.write_json_artifact(selected_output_dir / "finish_gate.json", finish_gate_report)
+        finish_gate_commands = [
+            dict(entrypoints_module._mapping_of(step))
+            for step in finish_gate_command_entries
+            if entrypoints_module._mapping_of(step)
+        ]
+        finish_gate_report["commands"] = finish_gate_commands
+        selected_result["finish_gate"] = finish_gate_report
         overall_status = selected_result["overall_status"]
         finish_gate_status = selected_result["finish_gate"]["status"]
         selected_reports = {

@@ -24,7 +24,7 @@ def _checkpoint_count_map() -> dict[str, int]:
     return {}
 
 
-def _string_list() -> list[str]:
+def _triggered_fault_id_list() -> list[str]:
     return []
 
 
@@ -62,7 +62,7 @@ class FaultInjector:
 
     specs: tuple[FaultSpec, ...] = ()
     checkpoint_counts: dict[str, int] = field(default_factory=_checkpoint_count_map)
-    triggered_fault_ids: list[str] = field(default_factory=_string_list)
+    triggered_fault_ids: list[str] = field(default_factory=_triggered_fault_id_list)
 
     def checkpoint(self, checkpoint: str) -> None:
         current_count = self.checkpoint_counts.get(checkpoint, 0) + 1

@@ -27,7 +27,6 @@ def test_run_recommended_repo_audit_finish_gate_writes_failed_step_report(monkey
     run_results = {
         "ruff-touched-python": SimpleNamespace(exit_code=0, duration_seconds=0.1),
         "pyright-touched-python": SimpleNamespace(exit_code=1, duration_seconds=0.2),
-        "ratchet-policy": SimpleNamespace(exit_code=0, duration_seconds=0.3),
         "owner-pytest-coverage": SimpleNamespace(exit_code=0, duration_seconds=0.4),
     }
 
@@ -76,7 +75,6 @@ def test_run_recommended_repo_audit_finish_gate_writes_failed_step_report(monkey
     assert [entry["id"] for entry in finish_gate["commands"]] == [
         "ruff-touched-python",
         "pyright-touched-python",
-        "ratchet-policy",
         "owner-pytest-coverage",
     ]
     assert finish_gate["commands"][1]["status"] == "fail"

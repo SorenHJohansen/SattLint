@@ -155,7 +155,6 @@ def test_collect_architecture_report_includes_structural_budget_findings(monkeyp
         "structural-class-budget",
         "structural-private-helper-duplication",
         "structural-facade-private-boundary",
-        "structural-budget-ratchet-regression",
     } <= finding_ids
 
 

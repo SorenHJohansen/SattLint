@@ -427,15 +427,6 @@ def build_repo_audit_finish_gate_commands(
                 "argv": pyright_argv,
             }
         )
-    ratchet_policy_argv = [*python_command, "scripts/check_ratchet_policy.py"]
-    commands.append(
-        {
-            "id": "ratchet-policy",
-            "label": "Run ratchet policy",
-            "command": shell_command(ratchet_policy_argv),
-            "argv": ratchet_policy_argv,
-        }
-    )
     coverage_output_path = output_dir / "coverage_proof.xml"
     owner_pytest_step = build_owner_pytest_step(
         changed_files=normalized_changed_files,

@@ -35,7 +35,7 @@ def _mapping_of(value: object) -> dict[str, Any]:
     return repo_audit_planning_helpers.mapping_of(value)
 
 
-def _string_list(value: object) -> list[str]:
+def _planning_string_list(value: object) -> list[str]:
     return repo_audit_planning_helpers.string_list(value)
 
 

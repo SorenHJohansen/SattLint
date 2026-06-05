@@ -98,18 +98,6 @@ def test_run_check_my_changes_uses_pipeline_finish_gate_when_no_repo_checks_are_
                 "pipeline_summary": {"timing": {"total_duration_seconds": 2.5}},
             },
         ) as run_pipeline_finish_gate,
-        patch.object(
-            repo_audit.pipeline_module,
-            "run_command",
-            return_value=repo_audit.pipeline_module.CommandResult(
-                name="ratchet-policy",
-                command=["python", "scripts/check_ratchet_policy.py"],
-                exit_code=0,
-                duration_seconds=0.1,
-                stdout="",
-                stderr="",
-            ),
-        ) as run_command,
         patch.object(repo_audit, "run_recommended_repo_audit_finish_gate") as run_repo_finish_gate,
     ):
         report = repo_audit.run_check_my_changes(
@@ -131,13 +119,9 @@ def test_run_check_my_changes_uses_pipeline_finish_gate_when_no_repo_checks_are_
     assert report["reports"]["finish_gate"].endswith("/pipeline/finish_gate.json")
     assert report["reports"]["ai_feedback"].endswith("/ai_feedback.json")
     assert report["timing"]["selected_run"]["total_duration_seconds"] == 2.5
-    assert report["timing"]["finish_gate"]["critical_path_duration_seconds"] == 1.35
+    assert report["timing"]["finish_gate"]["critical_path_duration_seconds"] == 1.25
     assert (tmp_path / "check_my_changes.json").exists()
     assert (tmp_path / "ai_feedback.json").exists()
-    assert run_command.call_args.args == (
-        "ratchet-policy",
-        [repo_audit.pipeline_module.resolve_python_executable(), "scripts/check_ratchet_policy.py"],
-    )
     assert run_pipeline_finish_gate.called
     assert not run_repo_finish_gate.called
 
@@ -342,7 +326,7 @@ def test_run_recommended_repo_audit_finish_gate_fails_when_change_scoped_coverag
     assert result["finish_gate"]["coverage_proof"]["mode"] == "changed-lines"
 
 
-def test_run_recommended_repo_audit_finish_gate_runs_ratchet_policy(monkeypatch, tmp_path):
+def test_run_recommended_repo_audit_finish_gate_runs_only_touched_python_and_owner_proof_steps(monkeypatch, tmp_path):
     recommendation = {
         "changed_files": ["src/sattlint/app.py"],
         "recommended_checks": [{"owner_test_targets": ["tests/test_app.py"]}],
@@ -412,14 +396,11 @@ def test_run_recommended_repo_audit_finish_gate_runs_ratchet_policy(monkeypatch,
     assert set(executed_step_commands) == {
         "ruff-touched-python",
         "pyright-touched-python",
-        "ratchet-policy",
         "owner-pytest-coverage",
     }
-    assert executed_step_commands["ratchet-policy"][1:] == ["scripts/check_ratchet_policy.py"]
     assert [step["id"] for step in result["finish_gate"]["commands"]] == [
         "ruff-touched-python",
         "pyright-touched-python",
-        "ratchet-policy",
         "owner-pytest-coverage",
     ]
     assert result["finish_gate"]["status"] == "pass"

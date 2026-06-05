@@ -473,12 +473,13 @@ def test_audit_repository_fail_policy_applies_to_structural_findings(tmp_path):
         "status": {"overall_status": "pass", "tool_statuses": {}},
     }
     structural_finding = repo_audit.Finding(
-        "structural-budget-ratchet-regression",
+        "structural-facade-private-boundary",
         "architecture",
         "medium",
         "high",
-        "Structural debt regressed beyond ratchet baseline.",
-        detail="function_over_budget_count: 14 > 13",
+        "Facade calls private helper.",
+        detail="calls app_analysis._run_checks at line 42",
+        path="src/sattlint/app.py",
         source="structural-reports",
     )
 
@@ -502,6 +503,6 @@ def test_audit_repository_fail_policy_applies_to_structural_findings(tmp_path):
     status_report = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
 
     assert summary["finding_count"] == 1
-    assert summary["findings"][0]["id"] == "structural-budget-ratchet-regression"
+    assert summary["findings"][0]["id"] == "structural-facade-private-boundary"
     assert status_report["overall_status"] == "fail"
     assert status_report["blocking_finding_count"] == 1

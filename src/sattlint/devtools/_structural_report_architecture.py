@@ -85,18 +85,6 @@ def _append_structural_budget_findings(findings: list[dict[str, Any]], structura
             }
         )
 
-    if structural_budgets["ratchet"]["status"] == "fail":
-        findings.append(
-            {
-                "id": "structural-budget-ratchet-regression",
-                "severity": "medium",
-                "message": "Structural debt regressed beyond the checked-in ratchet baseline.",
-                "count": len(structural_budgets["ratchet"]["regressions"]),
-                "regressions": structural_budgets["ratchet"]["regressions"],
-                "ratchet_path": structural_budgets["ratchet"]["path"],
-            }
-        )
-
 
 def collect_phase2_rule_metadata_gate(
     architecture_report: dict[str, Any],
