@@ -38,7 +38,6 @@ REPO_AUDIT_ROUTE_CASES = {
     "harness-freshness": ("AGENTS.md", "README.md"),
     "coverage": ("coverage.xml", "README.md"),
     "public-readiness": ("SECURITY.md", "src/sattlint/devtools/repo_audit.py"),
-    "ratchet-policy": ("artifacts/analysis/file_debt_ratchet.json", "README.md"),
     "verify-recommendations": ("src/sattlint/devtools/pipeline_checks.py", "src/sattlint/config.py"),
     "cli-consistency": (".vscode/tasks.json", "src/sattline_parser/api.py"),
 }

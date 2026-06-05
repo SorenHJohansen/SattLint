@@ -81,6 +81,9 @@ def build_selected_finish_gate_plan(
             changed_files=normalized_changed_files,
         )
         command_list = list(surface_recommendation.get("suggested_finish_gate_commands", []))
+        ratchet_command = "python scripts/check_ratchet_policy.py"
+        if ratchet_command not in command_list:
+            command_list.append(ratchet_command)
         recommended_check_ids = list(surface_recommendation.get("recommended_check_ids", []))
         sanitized_selected_output_dir = repo_audit.PIPELINE_OUTPUT_DIRNAME
     else:

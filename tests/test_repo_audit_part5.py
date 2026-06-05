@@ -99,8 +99,13 @@ def test_doc_gardener_scan_dead_links_and_structure_findings(tmp_path):
     assert dead_link_findings == [
         doc_gardener.DocFinding("docs/index.md", 2, "Medium", "dead_link", "Broken link: missing.md")
     ]
-    assert any(finding.message == "Missing directory: docs/design-docs" for finding in structure_findings)
-    assert any(finding.message == "Missing file: docs/design-docs/core-beliefs.md" for finding in structure_findings)
+    assert structure_findings == [
+        doc_gardener.DocFinding("docs/", 0, "High", "structure", "Missing directory: docs/design-docs"),
+        doc_gardener.DocFinding("docs/", 0, "High", "structure", "Missing directory: docs/references"),
+        doc_gardener.DocFinding("docs/", 0, "High", "missing", "Missing file: docs/quality-score.md"),
+        doc_gardener.DocFinding("docs/", 0, "High", "missing", "Missing file: docs/design-docs/core-beliefs.md"),
+        doc_gardener.DocFinding("docs/", 0, "High", "missing", "Missing file: docs/design-docs/index.md"),
+    ]
 
 
 def test_doc_gardener_scan_completed_exec_plans_still_active(tmp_path):

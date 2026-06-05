@@ -199,13 +199,11 @@ def scan_dead_links(
 
 def scan_docs_structure(*, doc_finding_cls: type[Any], docs_dir: Path) -> Sequence[Any]:
     findings: list[Any] = []
-    required_dirs = ["design-docs", "exec-plans", "references"]
+    required_dirs = ["design-docs", "references"]
     required_files = [
         "quality-score.md",
         "design-docs/core-beliefs.md",
         "design-docs/index.md",
-        "exec-plans/completed/ai-first-repo-hardening.md",
-        "exec-plans/tech-debt-tracker.md",
     ]
 
     for directory in required_dirs:
