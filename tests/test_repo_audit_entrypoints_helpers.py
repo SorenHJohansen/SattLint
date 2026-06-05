@@ -219,6 +219,7 @@ def test_build_selected_finish_gate_plan_uses_selected_surface_commands(monkeypa
         "commands": [
             "sattlint-analysis-pipeline --run-recommended-finish-gate",
             "ruff check src/module.py",
+            "python scripts/check_ratchet_policy.py",
         ],
         "description": "shared pipeline gate",
         "includes": ["recommended pipeline slice", "owner pytest targets"],

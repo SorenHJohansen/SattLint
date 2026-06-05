@@ -98,6 +98,18 @@ def test_run_check_my_changes_uses_pipeline_finish_gate_when_no_repo_checks_are_
                 "pipeline_summary": {"timing": {"total_duration_seconds": 2.5}},
             },
         ) as run_pipeline_finish_gate,
+        patch.object(
+            repo_audit.pipeline_module,
+            "run_command",
+            return_value=repo_audit.pipeline_module.CommandResult(
+                name="ratchet-policy",
+                command=["python", "scripts/check_ratchet_policy.py"],
+                exit_code=0,
+                duration_seconds=0.1,
+                stdout="",
+                stderr="",
+            ),
+        ) as run_command,
         patch.object(repo_audit, "run_recommended_repo_audit_finish_gate") as run_repo_finish_gate,
     ):
         report = repo_audit.run_check_my_changes(
@@ -119,9 +131,13 @@ def test_run_check_my_changes_uses_pipeline_finish_gate_when_no_repo_checks_are_
     assert report["reports"]["finish_gate"].endswith("/pipeline/finish_gate.json")
     assert report["reports"]["ai_feedback"].endswith("/ai_feedback.json")
     assert report["timing"]["selected_run"]["total_duration_seconds"] == 2.5
-    assert report["timing"]["finish_gate"]["critical_path_duration_seconds"] == 1.25
+    assert report["timing"]["finish_gate"]["critical_path_duration_seconds"] == 1.35
     assert (tmp_path / "check_my_changes.json").exists()
     assert (tmp_path / "ai_feedback.json").exists()
+    assert run_command.call_args.args == (
+        "ratchet-policy",
+        [repo_audit.pipeline_module.resolve_python_executable(), "scripts/check_ratchet_policy.py"],
+    )
     assert run_pipeline_finish_gate.called
     assert not run_repo_finish_gate.called
 
