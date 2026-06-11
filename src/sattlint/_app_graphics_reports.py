@@ -70,7 +70,7 @@ def show_config(
     if graphics_rules_path.exists():
         try:
             graphics_rules, _created = load_graphics_rules_fn(graphics_rules_path)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             graphics_rule_count = f"invalid ({exc})"
         else:
             graphics_rules_payload = graphics_rules

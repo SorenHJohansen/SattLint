@@ -17,8 +17,8 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
-from sattlint.analyzers import _variables_submodules as variables_submodules_module
 from sattlint.analyzers.variables import VariableIssue
+from sattlint.analyzers.variables import _variables_submodules as variables_submodules_module
 
 
 def _ns(**kwargs: Any) -> Any:

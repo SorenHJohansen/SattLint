@@ -10,7 +10,7 @@ from sattlint.devtools._semble_adapter import search_local_repo
 GROUNDING_TOP_K = 3
 
 
-def build_semantic_grounding_report(*, transcript_report: dict[str, Any], repo_root: Path) -> dict[str, Any]:
+def build_semantic_grounding_report(*, transcript_report: dict[str, Any], repo_root: Path) -> dict[str, Any]:  # noqa: PLR0915
     session_reports: list[dict[str, Any]] = []
     queryable_session_count = 0
     searchable_session_count = 0

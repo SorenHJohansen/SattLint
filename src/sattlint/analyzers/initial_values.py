@@ -21,9 +21,9 @@ from ..resolution.common import (
     varname_base,
     varname_full,
 )
-from ._walk_utils import walk_nested_modules_with_state
 from .framework import Issue, empty_issues, format_report_header
-from .variable_utils import matches_root_origin, merge_variable_env
+from .shared._walk_utils import walk_nested_modules_with_state
+from .shared.variable_utils import matches_root_origin, merge_variable_env
 
 _PARAMETER_CATEGORY_MARKERS = {
     "recipe": ("recpar",),

@@ -54,6 +54,7 @@ def run_cli(
     run_analyze_command_fn: Callable[..., int],
     run_simulate_command_fn: Callable[..., int],
     run_docgen_command_fn: Callable[..., int],
+    run_cache_prune_command_fn: Callable[..., int] | None = None,
     run_telemetry_summary_command_fn: Callable[..., int],
     run_format_icf_command_fn: Callable[..., int],
     exit_success: int,
@@ -70,6 +71,7 @@ def run_cli(
         run_analyze_command_fn=run_analyze_command_fn,
         run_simulate_command_fn=run_simulate_command_fn,
         run_docgen_command_fn=run_docgen_command_fn,
+        run_cache_prune_command_fn=run_cache_prune_command_fn,
         run_telemetry_summary_command_fn=run_telemetry_summary_command_fn,
         run_format_icf_command_fn=run_format_icf_command_fn,
         exit_success=exit_success,
@@ -135,6 +137,24 @@ def run_telemetry_summary_command(
         telemetry_output_path_fn=telemetry_output_path_fn,
         summarize_telemetry_fn=summarize_telemetry_fn,
         render_text_summary_fn=render_text_summary_fn,
+        exit_success=exit_success,
+        exit_usage_error=exit_usage_error,
+    )
+
+
+def run_cache_prune_command(
+    *,
+    cache_dir: str | None,
+    run_cache_prune_command_fn: Callable[..., int],
+    prune_cache_dir_fn: Callable[[Path | None], Any],
+    get_cache_dir_fn: Callable[[], Path],
+    exit_success: int,
+    exit_usage_error: int,
+) -> int:
+    return run_cache_prune_command_fn(
+        cache_dir=cache_dir,
+        prune_cache_dir_fn=prune_cache_dir_fn,
+        get_cache_dir_fn=get_cache_dir_fn,
         exit_success=exit_success,
         exit_usage_error=exit_usage_error,
     )
@@ -338,6 +358,7 @@ def dump_menu(
     quit_app_fn: Callable[[], None],
     confirm_fn: Callable[[str], bool],
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]],
+    target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
     analyze_variables_fn: Callable[..., Any],
 ) -> None:
     dump_menu_fn(
@@ -348,6 +369,7 @@ def dump_menu(
         quit_app_fn=quit_app_fn,
         confirm_fn=confirm_fn,
         iter_loaded_projects_fn=iter_loaded_projects_fn,
+        target_is_library_fn=target_is_library_fn,
         analyze_variables_fn=analyze_variables_fn,
     )
 
@@ -400,6 +422,7 @@ def tools_menu(
     pause_fn: Callable[[], None],
     require_targets_for_menu_action_fn: Callable[[ConfigDict, str], bool],
     dump_menu_fn: Callable[[ConfigDict], None],
+    run_source_diff_report_fn: Callable[[ConfigDict], None],
     confirm_fn: Callable[[str], bool],
     force_refresh_ast_fn: Callable[[ConfigDict], Any],
 ) -> None:
@@ -413,6 +436,7 @@ def tools_menu(
         pause_fn=pause_fn,
         require_targets_for_menu_action_fn=require_targets_for_menu_action_fn,
         dump_menu_fn=dump_menu_fn,
+        run_source_diff_report_fn=run_source_diff_report_fn,
         confirm_fn=confirm_fn,
         force_refresh_ast_fn=force_refresh_ast_fn,
     )
@@ -470,45 +494,25 @@ def main(
         if interactive_cli_overrides is not None and interactive_cli_overrides.debug:
             cfg["debug"] = True
         apply_debug_fn(cfg)
-        if default_used:
-            emit_output_fn("Warning: Default config created. Open Setup before running analysis.")
-            pause_fn()
-        else:
-            if not self_check_fn(cfg) and not confirm_fn("Self-check failed. Continue?"):
-                return 0
-            if has_analyzed_targets_fn(cfg) and not ensure_ast_cache_fn(cfg):
-                pause_fn()
-        resolved_ui_mode = "classic"
+        resolved_ui_mode = "textual"
         if resolve_interactive_ui_mode_fn is not None:
             resolved_ui_mode = resolve_interactive_ui_mode_fn(
                 cfg,
                 interactive_cli_overrides.ui_mode if interactive_cli_overrides is not None else None,
             )
+        if default_used:
+            emit_output_fn("Warning: Default config created. Open Setup before running analysis.")
+            pause_fn()
         if set_interactive_ui_mode_fn is not None:
             set_interactive_ui_mode_fn(resolved_ui_mode)
         try:
             run_main_loop_kwargs: dict[str, Any] = {
-                "clear_screen_fn": clear_screen_fn,
-                "print_menu_fn": print_menu_fn,
-                "menu_option_factory": menu_option_factory,
                 "summarize_targets_fn": summarize_targets_fn,
-                "require_targets_for_menu_action_fn": require_targets_for_menu_action_fn,
-                "analysis_menu_fn": analysis_menu_fn,
-                "documentation_menu_fn": documentation_menu_fn,
-                "config_menu_fn": config_menu_fn,
-                "tools_menu_fn": tools_menu_fn,
                 "show_help_fn": show_help_fn,
-                "pause_fn": pause_fn,
-                "confirm_fn": confirm_fn,
                 "save_config_fn": save_config_fn,
                 "config_path": effective_config_path,
-                "quit_app_fn": quit_app_fn,
                 "quit_app_error": quit_app_error,
             }
-            if choose_menu_option_fn is not None:
-                run_main_loop_kwargs["choose_menu_option_fn"] = choose_menu_option_fn
-            if interaction is not None:
-                run_main_loop_kwargs["interaction"] = interaction
             run_main_loop_fn(cfg, **run_main_loop_kwargs)
         finally:
             if reset_interactive_ui_mode_fn is not None:

@@ -21,8 +21,8 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 from sattlint import constants as const
-from sattlint.analyzers import reset_contamination as reset_contamination_module
 from sattlint.reporting.variables_report import VariableIssue
+from tests._reset_contamination_test_api import reset_contamination_module
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -194,7 +194,7 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
     ] == [(["Root"], "RootLatched")]
 
 
-def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: Any) -> None:
+def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: Any) -> None:  # noqa: PLR0915
     env = reset_contamination_module._build_local_env(
         object(),
         [Variable(name="Param", datatype=Simple_DataType.INTEGER)],

@@ -75,7 +75,7 @@ def _required_pipeline_artifacts(summary_payload: dict[str, Any]) -> tuple[list[
     return sorted(dict.fromkeys(required)), None
 
 
-def build_artifact_readiness_report(artifact_dir: Path) -> dict[str, Any]:
+def build_artifact_readiness_report(artifact_dir: Path) -> dict[str, Any]:  # noqa: PLR0915
     resolved_dir = artifact_dir.resolve()
     report: dict[str, Any] = {
         "kind": READINESS_SCHEMA_KIND,

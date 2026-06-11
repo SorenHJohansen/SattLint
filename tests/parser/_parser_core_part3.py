@@ -226,7 +226,7 @@ def test_modules_mixin_layout_helpers_cover_moduledef_and_numeric_errors():
         mixin.grid([Token("JUNK", ",")])
 
 
-def test_ast_model_helpers_cover_reduce_usage_and_string_formats(monkeypatch: pytest.MonkeyPatch):
+def test_ast_model_helpers_cover_reduce_usage_and_string_formats(monkeypatch: pytest.MonkeyPatch):  # noqa: PLR0915
     span = SourceSpan(2, 3)
     int_lit = IntLiteral(7, span)
     float_lit = FloatLiteral(2.5, span)

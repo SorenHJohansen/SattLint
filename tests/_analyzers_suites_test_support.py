@@ -1,3 +1,5 @@
+# pyright: reportPrivateUsage=false
+
 """Tests for full-suite analyzers.
 
 Covers SFC parallel write race, dataflow, variables analyzer suites,
@@ -33,7 +35,6 @@ from sattline_parser.models.ast_model import (
 )
 from sattlint import constants as const
 from sattlint.analyzers import registry as registry_module
-from sattlint.analyzers._sfc_guard_logic import _normalize_guard_signature
 from sattlint.analyzers.alarm_integrity import analyze_alarm_integrity
 from sattlint.analyzers.dataflow import analyze_dataflow
 from sattlint.analyzers.framework import AnalyzerSpec
@@ -66,6 +67,7 @@ from sattlint.analyzers.naming import analyze_naming_consistency, get_configured
 from sattlint.analyzers.registry import get_default_analyzers
 from sattlint.analyzers.safety_paths import analyze_safety_paths
 from sattlint.analyzers.sfc import analyze_sfc
+from sattlint.analyzers.sfc._sfc_guard_logic import _normalize_guard_signature
 from sattlint.analyzers.taint_paths import analyze_taint_paths
 from sattlint.analyzers.variable_usage_reporting import (
     _find_module_instances,
@@ -74,51 +76,21 @@ from sattlint.analyzers.variable_usage_reporting import (
     report_module_localvar_fields,
 )
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
-
-
-def _hdr(name: str) -> ModuleHeader:
-    return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
-
-
-def _varref(s: str) -> dict:
-    return {const.KEY_VAR_NAME: s}
-
-
-def _state_ref(name: str, state: str) -> dict:
-    return {const.KEY_VAR_NAME: name, "state": state}
-
-
-def _issue_kinds(report) -> set[str]:
-    return {issue.kind for issue in report.issues}
-
-
-def _status_bridge_typedef() -> ModuleTypeDef:
-    return ModuleTypeDef(
-        name="StatusBridge",
-        moduleparameters=[Variable(name="OperationStatus", datatype=Simple_DataType.INTEGER)],
-        localvariables=[
-            Variable(name="Source", datatype=Simple_DataType.INTEGER),
-            Variable(name="Destination", datatype=Simple_DataType.INTEGER),
-        ],
-        moduledef=None,
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="BridgeEq",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "CopyVariable",
-                            [_varref("Source"), _varref("Destination"), _varref("OperationStatus")],
-                        )
-                    ],
-                )
-            ]
-        ),
-    )
-
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    issue_kinds as _issue_kinds,
+)
+from tests.helpers.variable_test_support import (
+    state_ref as _state_ref,
+)
+from tests.helpers.variable_test_support import (
+    status_bridge_typedef as _status_bridge_typedef,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 __all__ = [
     "AnalyzerSpec",

@@ -18,7 +18,7 @@ from ..casefolding import casefold_key
 from ..grammar import constants as const
 from ..resolution.common import resolve_moduletype_def_strict, varname_base
 from ..resolution.scope import ScopeContext
-from .variable_utils import matches_root_origin
+from .shared.variable_utils import matches_root_origin
 
 
 class _DependencyUsageScopeState(Protocol):

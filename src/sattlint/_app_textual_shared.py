@@ -10,6 +10,8 @@ from typing import Any, cast
 
 from .app_interaction import MenuInteraction
 
+_SessionOutputLog: type[Any] | None = None
+
 try:
     from textual.app import App as _ImportedTextualApp  # type: ignore[import-untyped]
     from textual.app import ComposeResult as _ImportedComposeResult  # type: ignore[import-untyped]
@@ -25,8 +27,10 @@ try:
     from textual.widgets import ListItem as _ImportedListItem  # type: ignore[import-untyped]
     from textual.widgets import ListView as _ImportedListView  # type: ignore[import-untyped]
     from textual.widgets import Log as _ImportedLog  # type: ignore[import-untyped]
+    from textual.widgets import RichLog as _ImportedRichLog  # type: ignore[import-untyped]
     from textual.widgets import SelectionList as _ImportedSelectionList  # type: ignore[import-untyped]
     from textual.widgets import Static as _ImportedStatic  # type: ignore[import-untyped]
+    from textual.widgets import TextArea as _ImportedTextArea  # type: ignore[import-untyped]
 except ImportError:  # pragma: no cover - optional dependency path
     _TEXTUAL_APP: Any = None
     _TEXTUAL_COMPOSE_RESULT: Any = Any
@@ -41,8 +45,10 @@ except ImportError:  # pragma: no cover - optional dependency path
     _TEXTUAL_LIST_ITEM: Any = None
     _TEXTUAL_LIST_VIEW: Any = None
     _TEXTUAL_LOG: Any = None
+    _TEXTUAL_RICH_LOG: Any = None
     _TEXTUAL_SELECTION_LIST: Any = None
     _TEXTUAL_STATIC: Any = None
+    _TEXTUAL_TEXT_AREA: Any = None
 else:
     _TEXTUAL_APP = _ImportedTextualApp
     _TEXTUAL_COMPOSE_RESULT = _ImportedComposeResult
@@ -57,8 +63,38 @@ else:
     _TEXTUAL_LIST_ITEM = _ImportedListItem
     _TEXTUAL_LIST_VIEW = _ImportedListView
     _TEXTUAL_LOG = _ImportedLog
+    _TEXTUAL_RICH_LOG = _ImportedRichLog
     _TEXTUAL_SELECTION_LIST = _ImportedSelectionList
     _TEXTUAL_STATIC = _ImportedStatic
+    _TEXTUAL_TEXT_AREA = _ImportedTextArea
+
+
+if _TEXTUAL_RICH_LOG is not None:
+
+    class _RichSessionOutputLog(_TEXTUAL_RICH_LOG):
+        def __init__(self, *, id: str | None = None, classes: str | None = None) -> None:
+            super().__init__(id=id, classes=classes, wrap=True, highlight=False, markup=False, auto_scroll=False)
+            self._plain_text_parts: list[str] = []
+            self.read_only = True
+            self.show_line_numbers = False
+
+        @property
+        def text(self) -> str:
+            return "".join(self._plain_text_parts)
+
+        @property
+        def selected_text(self) -> str:
+            return ""
+
+        def append_plain_text(self, text: str) -> None:
+            if text:
+                self._plain_text_parts.append(text)
+
+    _SessionOutputLog = _RichSessionOutputLog
+
+
+else:
+    _SessionOutputLog = None
 
 
 def has_textual() -> bool:

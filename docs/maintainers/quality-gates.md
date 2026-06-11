@@ -9,7 +9,8 @@ This file defines the layered operating contract so single-chat assistant work a
 | --- | --- | --- | --- |
 | Focused local | Immediate correctness on the touched slice | Focused pytest or owner validation, touched-file Pyright when Python files changed, `python scripts/context_health.py --check` when AI-control files changed | One focused executable check before widening |
 | Pre-commit | Fast local hygiene before sharing work | `python -m pre_commit run --all-files` | Ruff fix, Ruff format, changed Markdown lint, SattLine syntax-check, context health when AI-control files changed |
-| Pre-push | Broader branch health | `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit` | Recommended finish gate plus machine-readable audit output |
+| AI drift | Diff-scoped repo-audit proof after AI work | `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit` | Recommended finish gate plus machine-readable current-slice audit output |
+| Pre-push | Broader branch health | `sattlint-repo-audit --profile full --output-dir artifacts/audit` | Full-repo audit output that mirrors the CI trust gate |
 | CI | Full trust on PRs and main | Fast pre-commit gate, doc-gardener, `check-my-changes` on PRs, full audit on main and manual CI runs | Deterministic install, diff-scoped proof on PRs, full audit on main, artifact upload |
 | Nightly | Strategic health and trend visibility | Scheduled `ci.yml` run with repo and context health outputs | Trend snapshot, slowest tests, structural drift, context efficiency review |
 
@@ -60,13 +61,19 @@ This is the local runner behind `.github/hooks/ai-edit-gate.json`.
 For AI-touched files it applies Ruff fix and format, touched-file Pyright, AI-control checks such as `context_health.py --check`, existing doc-gardener and layer-linter checks for Python edits, and touched-file ratchet enforcement through the single policy engine in `scripts/check_ratchet_policy.py`.
 Validation failures block the edit through the post-tool hook. Hook infrastructure failures still fail open and emit a warning payload.
 
-## Pre-Push Gate
+## AI Drift Gate
 
 `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit`
 
-Use this as the real local pre-push gate. It chooses the correct finish gate automatically and carries the heavier proof burden that no longer belongs in default pre-commit.
+Use this after AI-assisted coding to verify the current slice. It chooses the correct finish gate automatically and carries the heavier diff-scoped proof burden that no longer belongs in default pre-commit.
 It now also evaluates changed-file structural surface proof for the recorded `import_max_count`, `dependency_max_count`, `public_symbol_max_count`, and `nesting_max_depth` ceilings, so new maxima fail here instead of in the AI post-tool hook.
 The public-readiness slice also treats tracked helper or scratch entries at the repo root as hygiene failures; move reusable tooling under `scripts/` and keep the top-level layout canonical.
+
+## Pre-Push Gate
+
+`sattlint-repo-audit --profile full --output-dir artifacts/audit`
+
+Use this before pushing when you want the same full-repo audit burden that CI expects on `main` and manual full runs.
 
 For long-running quick or full audit snapshots, use the staged runner instead of writing directly into a reused `*-current` directory:
 

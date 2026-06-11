@@ -79,6 +79,7 @@ class PictureDisplayRecord:
     record_start_line: int
     record_end_line: int
     subtype: Literal["2"] = _PICTURE_DISPLAY_SUBTYPE
+    path_row_lines: tuple[int, ...] = ()
     path_rows: tuple[PictureDisplayPathRow, ...] = ()
 
 
@@ -202,7 +203,7 @@ def _parse_graphics_binding_match(
             SLTransformer().transform(_graphics_expression_parser().parse(normalized_payload))
         )
         _offset_source_spans(parsed, line_offset=line, column_offset=payload_column)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         return (
             GraphicsBinding(kind=kind, raw_text=payload, value=payload, span=span),
             (
@@ -289,6 +290,9 @@ def _parse_picture_display_row(
 
     binding_match = _BINDING_LINE_RE.match(payload)
     if binding_match is not None:
+        binding_meta = binding_match.group(2).casefold()
+        if binding_meta not in {"true", "false"} and not binding_meta.lstrip("+-").isdigit():
+            return None
         binding, _binding_messages = _parse_graphics_binding_match(payload, line=line, match=binding_match)
         if binding is None or binding.kind != "var":
             return None
@@ -323,6 +327,7 @@ def _extract_picture_display_record(
     record_start_line: int,
     record_end_line: int,
 ) -> PictureDisplayRecord:
+    path_row_lines = tuple(row_line_index + 1 for row_line_index, _row_line in record_lines[5:-2])
     path_rows = tuple(
         row
         for row_line_index, row_line in record_lines[5:-2]
@@ -332,6 +337,7 @@ def _extract_picture_display_record(
         record_index=record_index,
         record_start_line=record_start_line,
         record_end_line=record_end_line,
+        path_row_lines=path_row_lines,
         path_rows=path_rows,
     )
 

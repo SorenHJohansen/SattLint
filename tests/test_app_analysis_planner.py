@@ -65,6 +65,30 @@ def test_planner_reports_missing_handlers() -> None:
     assert [step.label for step in plan.executable_steps] == []
 
 
+def test_planner_merges_same_analyzer_issue_leaf_steps() -> None:
+    analyzer_specs = [SimpleNamespace(key="dataflow", name="Dataflow", description="Check dataflow")]
+
+    plan = planner.plan_analysis_entries(
+        [
+            "catalog.issue.dataflow.dead_overwrite",
+            "catalog.issue.dataflow.read_before_write",
+        ],
+        analyzer_specs=analyzer_specs,
+        available_handler_names={"_run_checks"},
+    )
+
+    assert [step.step_id for step in plan.steps] == ["step.analyzer.dataflow"]
+    assert plan.steps[0].label == "Dataflow"
+    assert plan.steps[0].source_entry_ids == (
+        "catalog.issue.dataflow.read_before_write",
+        "catalog.issue.dataflow.dead_overwrite",
+    )
+    assert plan.steps[0].execution.selected_issue_kind_names == frozenset(
+        {"dataflow.read_before_write", "dataflow.dead_overwrite"}
+    )
+    assert [skip.entry_id for skip in plan.skipped_entries] == ["catalog.issue.dataflow.dead_overwrite"]
+
+
 def test_render_analysis_plan_summary_mentions_skips_and_missing_handlers() -> None:
     analyzer_specs = [SimpleNamespace(key="shadowing", name="Shadowing", description="Check shadowing")]
     plan = planner.plan_analysis_entries(

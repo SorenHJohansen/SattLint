@@ -45,7 +45,7 @@ class MMSInterfaceReport:
     def unique_variables(self) -> set[str]:
         return {h.source_variable.casefold() for h in self.hits}
 
-    def summary(self) -> str:
+    def summary(self) -> str:  # noqa: PLR0915
         if not self.hits and not self.issues:
             lines = format_report_header(
                 "MMS interface mappings",

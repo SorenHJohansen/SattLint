@@ -1,9 +1,10 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
 # ruff: noqa: F403, F405
 from ._pipeline_collection_test_support import *
 
 
 def test_build_coverage_summary_report_flags_high_severity(tmp_path):
-    from sattlint.devtools.coverage_reports import build_coverage_summary_report
+    from sattlint.devtools.coverage_reports import build_coverage_summary_report  # noqa: PLC0415
 
     xml_content = """<?xml version="1.0" ?>
 <coverage>
@@ -20,7 +21,7 @@ def test_build_coverage_summary_report_flags_high_severity(tmp_path):
 
 
 def test_build_coverage_summary_report_normalizes_src_paths_and_tracks_totals(tmp_path):
-    from sattlint.devtools.coverage_reports import build_coverage_summary_report
+    from sattlint.devtools.coverage_reports import build_coverage_summary_report  # noqa: PLC0415
 
     (tmp_path / "artifacts" / "analysis").mkdir(parents=True)
     (tmp_path / "artifacts" / "analysis" / "coverage_ratchet.json").write_text(
@@ -55,7 +56,7 @@ def test_build_coverage_summary_report_normalizes_src_paths_and_tracks_totals(tm
 
 
 def test_build_coverage_summary_report_flags_ratchet_regression(tmp_path):
-    from sattlint.devtools.coverage_reports import build_coverage_summary_report
+    from sattlint.devtools.coverage_reports import build_coverage_summary_report  # noqa: PLC0415
 
     (tmp_path / "artifacts" / "analysis").mkdir(parents=True)
     (tmp_path / "artifacts" / "analysis" / "coverage_ratchet.json").write_text(
@@ -84,7 +85,7 @@ def test_build_coverage_summary_report_flags_ratchet_regression(tmp_path):
 
 
 def test_build_coverage_summary_report_prefers_changed_line_proof(tmp_path):
-    from sattlint.devtools.coverage_reports import build_coverage_summary_report
+    from sattlint.devtools.coverage_reports import build_coverage_summary_report  # noqa: PLC0415
 
     (tmp_path / "artifacts" / "analysis").mkdir(parents=True)
     (tmp_path / "artifacts" / "analysis" / "coverage_ratchet.json").write_text(
@@ -127,7 +128,7 @@ def test_build_coverage_summary_report_prefers_changed_line_proof(tmp_path):
 
 
 def test_build_coverage_summary_report_falls_back_to_touched_file_proof(tmp_path):
-    from sattlint.devtools.coverage_reports import build_coverage_summary_report
+    from sattlint.devtools.coverage_reports import build_coverage_summary_report  # noqa: PLC0415
 
     (tmp_path / "artifacts" / "analysis").mkdir(parents=True)
     (tmp_path / "artifacts" / "analysis" / "coverage_ratchet.json").write_text(
@@ -170,7 +171,7 @@ def test_build_coverage_summary_report_falls_back_to_touched_file_proof(tmp_path
 
 
 def test_build_current_debt_snapshot_report_marks_live_and_stale_entries(tmp_path):
-    from sattlint.devtools.current_debt_snapshot import build_current_debt_snapshot_report
+    from sattlint.devtools.current_debt_snapshot import build_current_debt_snapshot_report  # noqa: PLC0415
 
     (tmp_path / "artifacts" / "analysis").mkdir(parents=True)
     (tmp_path / "artifacts" / "analysis" / "file_debt_ratchet.json").write_text(
@@ -234,7 +235,7 @@ def test_build_current_debt_snapshot_report_marks_live_and_stale_entries(tmp_pat
 
 
 def test_coverage_report_normalizers_cover_empty_absolute_and_duplicate_inputs():
-    from sattlint.devtools import coverage_reports
+    from sattlint.devtools import coverage_reports  # noqa: PLC0415
 
     absolute_windows_path = "C:" + "/tmp/demo.py"
 
@@ -251,7 +252,7 @@ def test_coverage_report_normalizers_cover_empty_absolute_and_duplicate_inputs()
 
 
 def test_coverage_report_git_diff_helpers_cover_edge_cases(tmp_path, monkeypatch):
-    from sattlint.devtools import coverage_reports
+    from sattlint.devtools import coverage_reports  # noqa: PLC0415
 
     diff_text = "\n".join(
         [
@@ -295,7 +296,7 @@ def test_coverage_report_git_diff_helpers_cover_edge_cases(tmp_path, monkeypatch
 
 
 def test_coverage_report_ratchet_and_module_helpers_cover_invalid_inputs(tmp_path):
-    from sattlint.devtools import coverage_reports
+    from sattlint.devtools import coverage_reports  # noqa: PLC0415
 
     ratchet_path = tmp_path / coverage_reports.COVERAGE_RATCHET_PATH
     ratchet_path.parent.mkdir(parents=True)
@@ -340,7 +341,7 @@ def test_coverage_report_ratchet_and_module_helpers_cover_invalid_inputs(tmp_pat
 
 
 def test_build_coverage_summary_report_discovers_changed_lines_and_flags_low_severity(tmp_path, monkeypatch):
-    from sattlint.devtools import coverage_reports
+    from sattlint.devtools import coverage_reports  # noqa: PLC0415
 
     (tmp_path / "coverage.xml").write_text(
         """<?xml version=\"1.0\" ?>
@@ -377,14 +378,14 @@ def test_build_coverage_summary_report_discovers_changed_lines_and_flags_low_sev
 
 # --- resolution/paths.py: CanonicalPath.join() no-arg, ModuleSegment.display() branches ---
 def test_canonical_path_join_no_args_returns_self():
-    from sattlint.resolution.paths import CanonicalPath
+    from sattlint.resolution.paths import CanonicalPath  # noqa: PLC0415
 
     cp = CanonicalPath(("Main", "Guard"))
     assert cp.join() is cp
 
 
 def test_module_segment_display_variants():
-    from sattlint.resolution.paths import ModuleSegment
+    from sattlint.resolution.paths import ModuleSegment  # noqa: PLC0415
 
     assert ModuleSegment("Guard", "SM").display() == "Guard<SM>"
     assert ModuleSegment("Loop", "FM").display() == "Loop<FM>"
@@ -395,8 +396,8 @@ def test_module_segment_display_variants():
 
 # --- resolution/scope.py: param mapping prefix-only and no-prefix branches, resolve_global_name ---
 def test_scope_context_resolve_variable_prefix_only_mapping():
-    from sattline_parser.models.ast_model import Variable
-    from sattlint.resolution.scope import ScopeContext
+    from sattline_parser.models.ast_model import Variable  # noqa: PLC0415
+    from sattlint.resolution.scope import ScopeContext  # noqa: PLC0415
 
     src_var = Variable(name="Dv", datatype="UserType")
     ctx = ScopeContext(
@@ -411,8 +412,8 @@ def test_scope_context_resolve_variable_prefix_only_mapping():
 
 
 def test_scope_context_resolve_variable_no_prefix_mapping():
-    from sattline_parser.models.ast_model import Variable
-    from sattlint.resolution.scope import ScopeContext
+    from sattline_parser.models.ast_model import Variable  # noqa: PLC0415
+    from sattlint.resolution.scope import ScopeContext  # noqa: PLC0415
 
     src_var = Variable(name="Dv", datatype="UserType")
     ctx = ScopeContext(

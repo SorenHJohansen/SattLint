@@ -44,7 +44,7 @@ def _is_virtual_repo_path_glob(glob_pattern: str) -> bool:
     return glob_pattern.startswith(".git/")
 
 
-def verify_ai_harness_freshness(
+def verify_ai_harness_freshness(  # noqa: PLR0915
     work_map: dict[str, Any] | None = None,
     session_context_map: dict[str, Any] | None = None,
     *,
@@ -53,7 +53,7 @@ def verify_ai_harness_freshness(
     session_output_path: Path,
     check_catalog_output_path: Path | None = None,
 ) -> dict[str, Any]:
-    from sattlint.devtools import ai_work_map as ai_work_map_module
+    from sattlint.devtools import ai_work_map as ai_work_map_module  # noqa: PLC0415
 
     resolved_work_map = ai_work_map_module.build_ai_work_map() if work_map is None else work_map
     resolved_session_context_map = (

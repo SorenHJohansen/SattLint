@@ -173,7 +173,7 @@ def iter_sequence_node_refs(nodes: list[object]) -> AbcSequence[dict[str, object
     return refs
 
 
-def validate_step_auto_variable_refs(
+def validate_step_auto_variable_refs(  # noqa: PLR0915
     modulecode: ModuleCode | None,
     env: dict[str, Variable],
     context: str,
@@ -301,7 +301,7 @@ def iter_variable_refs(node: object) -> Iterator[VariableRef]:
         return
 
     if isinstance(node, Tree):
-        for child in cast(list[object], cast(Any, node).children):
+        for child in cast(list[object], getattr(node, "children", ())):
             yield from iter_variable_refs(child)
         return
 
@@ -466,7 +466,7 @@ def validate_code_blocks(
     )
 
 
-def validate_sequence_nodes(
+def validate_sequence_nodes(  # noqa: PLR0915
     nodes: list[object],
     context: str,
     *,

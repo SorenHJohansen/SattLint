@@ -57,7 +57,7 @@ class TargetLoadError(RuntimeError):
             return f"{name}: {detail}"
         return item
 
-    def _build_message(self) -> str:
+    def _build_message(self) -> str:  # noqa: PLR0915
         direct_keys = {casefold_key(name) for name in self.direct_dependencies}
         root_failures: list[str] = []
         direct_failures: list[str] = []
@@ -148,6 +148,11 @@ def print_validation_warnings(warnings: list[str], *, print_fn: Callable[..., No
         print_fn(item)
     if len(warnings) > limit:
         print_fn(f"  - ... (+{len(warnings) - limit} more)")
+
+
+def is_picture_display_warning(item: str) -> bool:
+    display_item = item.split(": ", 1)[1] if ": " in item else item
+    return _PICTURE_DISPLAY_WARNING_RE.match(display_item) is not None
 
 
 def _format_validation_warning_items(warnings: Sequence[str]) -> tuple[str, ...]:

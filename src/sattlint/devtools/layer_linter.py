@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from ..repo_paths import repo_root_from
+
 # Define the layers based on SattLint architecture from AGENTS.md and docs/public/architecture.md
 # Dependencies must only flow from higher layer number to lower (or same).
 # Layer 0: sattline_parser  - grammar, AST, transformer
@@ -33,7 +35,7 @@ LAYER_MAP = {
     "sattlint.devtools": 9,
 }
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = repo_root_from(Path(__file__))
 POLICY_PATH = REPO_ROOT / "metrics" / "layer_lint_policy.json"
 POLICY_KIND = "sattlint.layer_lint_policy"
 POLICY_SCHEMA_VERSION = 1
@@ -348,7 +350,7 @@ def check_file_for_arch_violations(
                         if violation is not None:
                             violations.append(violation)
                             break
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         violations.append(
             ArchViolation(
                 file=str(file_path),

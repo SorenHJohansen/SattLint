@@ -15,7 +15,20 @@ import typing as t
 from .api import parse_source_text
 from .models.ast_model import BasePicture
 
-REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+def _repo_root_from(anchor: pathlib.Path) -> pathlib.Path:
+    current = anchor.resolve()
+    if current.is_file():
+        current = current.parent
+    while True:
+        if (current / "pyproject.toml").is_file() and (current / "AGENTS.md").is_file():
+            return current
+        if current.parent == current:
+            raise RuntimeError(f"Could not locate repository root from {anchor}")
+        current = current.parent
+
+
+REPO_ROOT = _repo_root_from(pathlib.Path(__file__))
 CORPUS_DIR = REPO_ROOT / "tests" / "fixtures" / "corpus"
 DEFAULT_TIMEOUT_SECONDS = 10
 
@@ -64,7 +77,7 @@ def _run_with_timeout(
             except concurrent.futures.TimeoutError:
                 duration = (time.perf_counter() - start) * 1000
                 return None, TimeoutError(f"Parse timed out after {timeout}s"), duration
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         duration = (time.perf_counter() - start) * 1000
         return None, exc, duration
 
@@ -240,7 +253,7 @@ def assert_no_timeouts(results: list[FuzzResult]) -> None:
 
 
 def _is_expected_parse_error(error: Exception) -> bool:
-    from lark.exceptions import UnexpectedCharacters, UnexpectedEOF, UnexpectedInput, UnexpectedToken
+    from lark.exceptions import UnexpectedCharacters, UnexpectedEOF, UnexpectedInput, UnexpectedToken  # noqa: PLC0415
 
     return isinstance(
         error, UnexpectedInput | UnexpectedCharacters | UnexpectedEOF | UnexpectedToken | ValueError | SyntaxError

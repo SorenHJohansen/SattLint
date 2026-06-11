@@ -1,5 +1,7 @@
 from pathlib import Path
+from types import SimpleNamespace
 
+from sattlint.analyzers import comment_code as comment_code_module
 from sattlint.analyzers.comment_code import analyze_comment_code_files
 from sattlint.utils import text_processing
 from sattlint.utils.text_processing import find_comments_with_code, find_disallowed_comments
@@ -47,6 +49,125 @@ ENDDEF (*BasePicture*);
     assert report.hits[0].file_path.name == "Program.s"
     assert report.hits[0].module_path == ("BasePicture",)
     assert "control" in report.hits[0].indicators
+
+
+def test_comment_code_analysis_copies_context_into_report_hits_and_issue_data(tmp_path: Path):
+    source = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0,0,0,1,1) : MODULEDEFINITION DateCode_ 123
+ModuleCode
+EQUATIONBLOCK MainEq :
+    (* OldEquation = Value + 1; *)
+ENDEQUATIONBLOCK;
+OPENSEQUENCE MainSequence (SeqControl) COORD 0.0, 0.2 OBJSIZE 2.0, 1.68
+    SEQSTEP Running
+        (* CallSomething(A); *)
+ENDOPENSEQUENCE
+ENDDEF (*BasePicture*);
+"""
+    path = tmp_path / "Program.s"
+    path.write_text(source, encoding="utf-8")
+
+    report = analyze_comment_code_files([path], basepicture_name="Program")
+
+    assert len(report.hits) == 2
+    assert report.hits[0].equation_name == "MainEq"
+    assert report.hits[0].sequence_name is None
+    assert report.hits[0].step_name is None
+    assert report.hits[1].equation_name is None
+    assert report.hits[1].sequence_name == "MainSequence"
+    assert report.hits[1].step_name == "Running"
+    issue0_data = report.issues[0].data
+    issue1_data = report.issues[1].data
+
+    assert issue0_data is not None
+    assert issue0_data["path"] == str(path)
+    assert issue0_data["start_line"] == 8
+    assert issue0_data["end_line"] == 8
+    assert issue0_data["start_col"] == 5
+    assert issue0_data["end_col"] > issue0_data["start_col"]
+    assert issue0_data["indicators"] == ("assignment",)
+    assert issue0_data["equation_name"] == "MainEq"
+    assert issue0_data["sequence_name"] is None
+    assert issue0_data["step_name"] is None
+
+    assert issue1_data is not None
+    assert issue1_data["path"] == str(path)
+    assert issue1_data["start_line"] == 12
+    assert issue1_data["end_line"] == 12
+    assert issue1_data["start_col"] == 9
+    assert issue1_data["end_col"] > issue1_data["start_col"]
+    assert issue1_data["indicators"] == ("call",)
+    assert issue1_data["equation_name"] is None
+    assert issue1_data["sequence_name"] == "MainSequence"
+    assert issue1_data["step_name"] == "Running"
+
+
+def test_comment_code_analysis_skips_missing_and_unsupported_paths(tmp_path: Path):
+    txt_path = tmp_path / "Notes.txt"
+    txt_path.write_text("(* Counter = Counter + 1; *)", encoding="utf-8")
+
+    report = analyze_comment_code_files([tmp_path / "Missing.s", txt_path], basepicture_name="Program")
+
+    assert report.files_scanned == 0
+    assert report.hits == []
+    assert report.issues == []
+
+
+def test_comment_code_analysis_reports_read_errors(tmp_path: Path, monkeypatch) -> None:
+    path = tmp_path / "Broken.s"
+    path.write_text("placeholder", encoding="utf-8")
+
+    def _raise_read_error(_path: Path) -> str:
+        raise OSError("boom")
+
+    monkeypatch.setattr(comment_code_module, "_read_source_text", _raise_read_error)
+
+    report = analyze_comment_code_files([path], basepicture_name="Program")
+
+    assert report.files_scanned == 1
+    assert report.hits == []
+    assert len(report.issues) == 1
+    assert report.issues[0].kind == "comment_code_read_error"
+    assert report.issues[0].message == "Broken.s: boom"
+
+
+def test_comment_code_read_source_text_preprocesses_compressed(monkeypatch, tmp_path: Path) -> None:
+    path = tmp_path / "Compressed.s"
+    path.write_text("compressed", encoding="utf-8")
+
+    monkeypatch.setattr(comment_code_module, "is_compressed", lambda text: text == "compressed")
+    monkeypatch.setattr(comment_code_module, "preprocess_sl_text", lambda text: ("expanded", {"meta": text}))
+
+    assert comment_code_module._read_source_text(path) == "expanded"
+
+
+def test_comment_code_comment_preview_handles_empty_and_truncates() -> None:
+    assert comment_code_module._comment_preview("\n   \n") == ""
+
+    preview = comment_code_module._comment_preview("\n  " + "A" * 140)
+
+    assert preview == ("A" * 117) + "..."
+
+
+def test_comment_code_format_line_range_handles_single_line_and_range() -> None:
+    assert comment_code_module._format_line_range(4, 4) == "4"
+    assert comment_code_module._format_line_range(4, 6) == "4-6"
+
+
+def test_analyze_comment_code_handles_missing_graph() -> None:
+    context = SimpleNamespace(
+        base_picture=SimpleNamespace(header=SimpleNamespace(name="Program")),
+        graph=None,
+    )
+
+    report = comment_code_module.analyze_comment_code(context)
+
+    assert report.basepicture_name == "Program"
+    assert report.files_scanned == 0
+    assert report.hits == []
 
 
 def test_comments_outside_modulecode_are_ignored():
@@ -134,6 +255,9 @@ ENDDEF (*BasePicture*);
 
     assert len(hits) == 1
     assert hits[0].indicators == ("assignment",)
+    assert hits[0].equation_name == "Main"
+    assert hits[0].sequence_name is None
+    assert hits[0].step_name is None
 
 
 def test_sequence_block_comments():
@@ -157,6 +281,95 @@ ENDDEF (*BasePicture*);
     hits = find_comments_with_code(text)
 
     assert len(hits) == 1
+    assert hits[0].sequence_name == "MySeq"
+    assert hits[0].step_name is None
+
+
+def test_sequence_step_comments_track_step_name():
+    text = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0,0,0,1,1) : MODULEDEFINITION DateCode_ 123
+ModuleCode
+OPENSEQUENCE MainSequence (SeqControl) COORD 0.0, 0.2 OBJSIZE 2.0, 1.68
+    SEQINITSTEP InitStep
+        (* Counter = Counter + 1; *)
+    SEQTRANSITION Next WAIT_FOR Ready
+    SEQSTEP Running
+        (* CallSomething(A); *)
+ENDOPENSEQUENCE
+ENDDEF (*BasePicture*);
+"""
+
+    hits = find_comments_with_code(text)
+
+    assert len(hits) == 2
+    assert hits[0].sequence_name == "MainSequence"
+    assert hits[0].step_name == "InitStep"
+    assert hits[0].equation_name is None
+    assert hits[1].sequence_name == "MainSequence"
+    assert hits[1].step_name == "Running"
+
+
+def test_sequence_transition_comments_clear_step_name():
+    text = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0,0,0,1,1) : MODULEDEFINITION DateCode_ 123
+ModuleCode
+OPENSEQUENCE MainSequence (SeqControl) COORD 0.0, 0.2 OBJSIZE 2.0, 1.68
+    SEQSTEP Running
+        Active:
+            DoNewThing();
+    SEQTRANSITION Next WAIT_FOR Ready
+    (* OldTransitionLogic = True; *)
+ENDOPENSEQUENCE
+ENDDEF (*BasePicture*);
+"""
+
+    hits = find_comments_with_code(text)
+
+    assert len(hits) == 1
+    assert hits[0].sequence_name == "MainSequence"
+    assert hits[0].step_name is None
+
+
+def test_nested_module_code_restores_outer_sequence_context_after_inner_module():
+    text = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0,0,0,1,1) : MODULEDEFINITION DateCode_ 123
+SUBMODULES
+    Sub1 Invocation (0,0,0,1,1) : MODULEDEFINITION DateCode_ 456
+    ModuleCode
+        OPENSEQUENCE OuterSequence (SeqControl) COORD 0.0, 0.2 OBJSIZE 2.0, 1.68
+            SEQSTEP OuterStep
+                (* OuterCode = True; *)
+            SUBMODULES
+                Sub2 Invocation (0,0,0,1,1) : MODULEDEFINITION DateCode_ 789
+                ModuleCode
+                    EQUATIONBLOCK InnerEquation :
+                        (* InnerCode = True; *)
+                    ENDEQUATIONBLOCK;
+                ENDDEF (*Sub2*);
+            (* OuterStillApplies = True; *)
+        ENDOPENSEQUENCE
+    ENDDEF (*Sub1*);
+ENDDEF (*BasePicture*);
+"""
+
+    hits = find_comments_with_code(text)
+
+    assert len(hits) == 3
+    assert hits[0].sequence_name == "OuterSequence"
+    assert hits[0].step_name == "OuterStep"
+    assert hits[1].equation_name == "InnerEquation"
+    assert hits[1].sequence_name is None
+    assert hits[2].sequence_name == "OuterSequence"
+    assert hits[2].step_name == "OuterStep"
 
 
 def test_nested_module_code_sections():
@@ -522,7 +735,7 @@ ENDDEF (*BasePicture*);
 
 # --- comment_code_report.py CommentCodeReport.summary() ---
 def test_comment_code_report_summary_no_hits_returns_ok():
-    from sattlint.reporting.comment_code_report import CommentCodeReport
+    from sattlint.reporting.comment_code_report import CommentCodeReport  # noqa: PLC0415
 
     report = CommentCodeReport(basepicture_name="Main", hits=[], issues=[], files_scanned=3)
     assert report.name == "Main"
@@ -532,9 +745,9 @@ def test_comment_code_report_summary_no_hits_returns_ok():
 
 
 def test_comment_code_report_summary_with_single_line_hit():
-    from pathlib import Path
+    from pathlib import Path  # noqa: PLC0415
 
-    from sattlint.reporting.comment_code_report import CommentCodeHit, CommentCodeReport
+    from sattlint.reporting.comment_code_report import CommentCodeHit, CommentCodeReport  # noqa: PLC0415
 
     hit = CommentCodeHit(
         file_path=Path("Main.s"),
@@ -545,18 +758,20 @@ def test_comment_code_report_summary_with_single_line_hit():
         indicators=("IF", "THEN"),
         preview="IF x THEN",
         module_path=("BasePicture", "Pump"),
+        sequence_name="MainSequence",
+        step_name="Running",
     )
     report = CommentCodeReport(basepicture_name="Main", hits=[hit], issues=[], files_scanned=1)
     result = report.summary()
     assert "Findings:" in result
-    assert "BasePicture.Pump (Main.s:10)" in result
+    assert "BasePicture.Pump (Main.s:10) [sequence=MainSequence | step=Running]" in result
     assert "IF, THEN" in result
 
 
 def test_comment_code_report_summary_with_multi_line_hit():
-    from pathlib import Path
+    from pathlib import Path  # noqa: PLC0415
 
-    from sattlint.reporting.comment_code_report import CommentCodeHit, CommentCodeReport
+    from sattlint.reporting.comment_code_report import CommentCodeHit, CommentCodeReport  # noqa: PLC0415
 
     hit = CommentCodeHit(
         file_path=Path("Main.s"),
@@ -567,17 +782,18 @@ def test_comment_code_report_summary_with_multi_line_hit():
         indicators=(),
         preview="",
         module_path=("BasePicture", "TypeDef:WorkerType"),
+        equation_name="MainEq",
     )
     report = CommentCodeReport(basepicture_name="Main", hits=[hit], issues=[], files_scanned=1)
     result = report.summary()
-    assert "BasePicture.WorkerType (Main.s:5-8)" in result
+    assert "BasePicture.WorkerType (Main.s:5-8) [equation=MainEq]" in result
     assert "<empty>" in result
     assert "unknown" in result
 
 
 def test_comment_code_report_summary_with_read_error():
-    from sattlint.analyzers.framework import Issue
-    from sattlint.reporting.comment_code_report import CommentCodeReport
+    from sattlint.analyzers.framework import Issue  # noqa: PLC0415
+    from sattlint.reporting.comment_code_report import CommentCodeReport  # noqa: PLC0415
 
     err_issue = Issue(kind="comment_code_read_error", message="Could not read Foo.s")
     report = CommentCodeReport(basepicture_name="Main", hits=[], issues=[err_issue], files_scanned=1)
@@ -587,9 +803,9 @@ def test_comment_code_report_summary_with_read_error():
 
 
 def test_comment_code_report_summary_without_module_path_uses_source_location_only():
-    from pathlib import Path
+    from pathlib import Path  # noqa: PLC0415
 
-    from sattlint.reporting.comment_code_report import CommentCodeHit, CommentCodeReport
+    from sattlint.reporting.comment_code_report import CommentCodeHit, CommentCodeReport  # noqa: PLC0415
 
     hit = CommentCodeHit(
         file_path=Path("Main.s"),
@@ -605,3 +821,26 @@ def test_comment_code_report_summary_without_module_path_uses_source_location_on
     result = report.summary()
 
     assert "Main.s:12 [assignment] Value := 1;" in result
+
+
+def test_comment_code_report_summary_without_module_path_shows_sequence_context():
+    from pathlib import Path  # noqa: PLC0415
+
+    from sattlint.reporting.comment_code_report import CommentCodeHit, CommentCodeReport  # noqa: PLC0415
+
+    hit = CommentCodeHit(
+        file_path=Path("Main.s"),
+        start_line=12,
+        end_line=12,
+        start_col=1,
+        end_col=8,
+        indicators=("assignment",),
+        preview="Value := 1;",
+        sequence_name="MainSequence",
+        step_name="Running",
+    )
+    report = CommentCodeReport(basepicture_name="Main", hits=[hit], issues=[], files_scanned=1)
+
+    result = report.summary()
+
+    assert "Main.s:12 [sequence=MainSequence | step=Running] [assignment] Value := 1;" in result

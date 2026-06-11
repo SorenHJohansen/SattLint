@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
+from . import cache as cache_module
 from .analyzers.variables import IssueKind
 from .cache import AnalysisReportCache
 from .models.project_graph import ProjectGraph
@@ -38,7 +39,7 @@ def select_report_source_path(
 ) -> Path | None:
     try:
         source_paths = source_paths_for_current_target_fn(project_bp, graph)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
 
     if not source_paths:
@@ -119,7 +120,10 @@ def create_analysis_report_cache(
         if log.isEnabledFor(logging.DEBUG):
             log.debug("Analysis report cache disabled in debug mode")
         return None
-    return analysis_report_cache_cls(get_cache_dir_fn())
+    return cast(
+        AnalysisReportCache,
+        cache_module.build_analysis_report_cache(get_cache_dir_fn(), analysis_report_cache_cls),
+    )
 
 
 def graph_analysis_cache_metadata(graph: ProjectGraph) -> tuple[str, frozenset[Path]] | None:
@@ -161,7 +165,8 @@ def run_with_analysis_report_cache(
         if cached_map is not None and "report" in cached_map:
             if log.isEnabledFor(logging.DEBUG):
                 log.debug("Analysis report cache hit: %s", analyzer_cache_key)
-            return cast(Any, cached_map["report"])
+            report: Any = cached_map["report"]
+            return report
 
     if log.isEnabledFor(logging.DEBUG):
         log.debug("Analysis report cache miss: %s", analyzer_cache_key)

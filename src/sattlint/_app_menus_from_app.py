@@ -47,6 +47,6 @@ def tools_menu_from_app(cfg: ConfigDict, *, app_module: Any) -> None:
         require_targets_for_menu_action_fn=app_module._require_targets_for_menu_action,
         dump_menu_fn=app_module.dump_menu,
         run_source_diff_report_fn=app_module.run_source_diff_report,
-        force_refresh_ast_fn=app_module.force_refresh_ast,
+        force_refresh_ast_fn=app_module.refresh_analysis_caches,
         interaction=app_module.build_menu_interaction(),
     )

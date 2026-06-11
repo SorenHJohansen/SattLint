@@ -13,9 +13,9 @@ from sattline_parser.models.ast_model import (
 )
 
 from ..casefolding import casefold_equal, casefold_key
-from ._walk_utils import iter_nested_modules
 from .framework import Issue, format_report_header
-from .variable_utils import matches_root_origin
+from .shared._walk_utils import iter_nested_modules
+from .shared.variable_utils import matches_root_origin
 
 _IDENTIFIER_TOKEN_RE = re.compile(r"[A-Z]+(?=[A-Z][a-z]|\d|$)|[A-Z]?[a-z]+|\d+")
 

@@ -139,7 +139,6 @@
 				"sattlint.devtools.repo_audit",
 				"--profile",
 				"full",
-				"--check-my-changes",
 				"--output-dir",
 				"artifacts/audit"
 			],
@@ -147,7 +146,7 @@
 			"problemMatcher": []
 		},
 		{
-			"label": "Audit: Full Repo Audit",
+			"label": "Quality: AI Drift Check",
 			"type": "process",
 			"command": "python",
 			"windows": {
@@ -159,9 +158,11 @@
 				"sattlint.devtools.repo_audit",
 				"--profile",
 				"full",
+				"--check-my-changes",
 				"--output-dir",
 				"artifacts/audit"
 			],
+			"group": "test",
 			"problemMatcher": []
 		},
 		{

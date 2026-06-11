@@ -278,7 +278,7 @@ def test_load_workspace_snapshot_formats_dependency_issues_readably(tmp_path):
 
 
 def test_sattlint_package_discover_workspace_sources_wrapper(tmp_path):
-    import sattlint
+    import sattlint  # noqa: PLC0415
 
     discovery = sattlint.discover_workspace_sources(tmp_path)
     assert discovery is not None

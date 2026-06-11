@@ -11,6 +11,7 @@ from sattline_parser.models.ast_model import BasePicture
 from . import config as config_module
 from . import console as console_module
 from ._app_debug import log_debug_exception
+from .cache import CachePruneResult
 from .config import ConfigValidationResult
 from .docgenerator import generate_docx
 from .models.project_graph import ProjectGraph
@@ -40,6 +41,18 @@ def _write_output_file(destination: Path, content: str, *, label: str, cfg: Conf
         return False
     emit_output(f"Wrote {destination}")
     return True
+
+
+def _format_cache_prune_result(result: CachePruneResult) -> str:
+    details = (
+        ("lookup", result.file_lookup_entries),
+        ("file-ast", result.file_ast_entries),
+        ("ast-payload", result.ast_payload_entries),
+        ("ast-manifest", result.ast_manifest_entries),
+        ("analysis-report", result.analysis_report_entries),
+    )
+    parts = [f"{label}={count}" for label, count in details if count]
+    return ", ".join(parts) if parts else "no stale entries"
 
 
 def run_validate_config_command(
@@ -101,7 +114,7 @@ def run_simulate_command(
     except (FileNotFoundError, ValueError) as exc:
         emit_output(str(exc))
         return exit_usage_error
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         log_debug_exception(
             cfg, f"Simulation command failed for module {module_name!r} from {target_path!r}", logger=log
         )
@@ -220,4 +233,30 @@ def run_telemetry_summary_command(
             return exit_usage_error
     else:
         emit_output(content)
+    return exit_success
+
+
+def run_cache_prune_command(
+    *,
+    cache_dir: str | None,
+    prune_cache_dir_fn: Callable[[Path | None], CachePruneResult],
+    get_cache_dir_fn: Callable[[], Path],
+    exit_success: int,
+    exit_usage_error: int,
+) -> int:
+    target_dir = Path(cache_dir).expanduser() if cache_dir else get_cache_dir_fn()
+    try:
+        result = prune_cache_dir_fn(target_dir)
+    except OSError as exc:
+        emit_output(f"Cache prune failed for {target_dir}: {exc}")
+        return exit_usage_error
+
+    if result.removed_entries == 0:
+        emit_output(f"Cache directory already clean: {target_dir}")
+        return exit_success
+
+    entry_label = "entry" if result.removed_entries == 1 else "entries"
+    emit_output(
+        f"Removed {result.removed_entries} stale cache {entry_label} from {target_dir} ({_format_cache_prune_result(result)})."
+    )
     return exit_success

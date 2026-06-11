@@ -19,13 +19,13 @@ RECOMMENDED_REPO_AUDIT_MAX_WORKERS = 2
 
 
 def _recommended_slice_entrypoints_module() -> Any:
-    from sattlint.devtools import repo_audit_entrypoints as entrypoints_module
+    from sattlint.devtools import repo_audit_entrypoints as entrypoints_module  # noqa: PLC0415
 
     return entrypoints_module
 
 
 def _recommended_slice_runs_module() -> Any:
-    from sattlint.devtools import _repo_audit_entrypoint_runs as runs_module
+    from sattlint.devtools import _repo_audit_entrypoint_runs as runs_module  # noqa: PLC0415
 
     return runs_module
 
@@ -111,7 +111,7 @@ def _run_recommended_slice_custom_scan(
     }
 
 
-def run_recommended_repo_audit_slice(
+def run_recommended_repo_audit_slice(  # noqa: PLR0915
     output_dir: Path,
     *,
     profile: str,

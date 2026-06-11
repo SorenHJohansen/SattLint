@@ -17,10 +17,11 @@ from sattlint.devtools._diff_rendering import (
 )
 from sattlint.engine import parse_source_text
 from sattlint.path_sanitizer import sanitize_path_for_report
+from sattlint.repo_paths import repo_root_from
 from sattlint.semantic_analysis import build_variable_semantic_artifacts
 from sattlint.tracing import collect_ast_summary
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = repo_root_from(Path(__file__))
 DEFAULT_OUTPUT_FILENAME = "refactoring_preview.json"
 DEFAULT_REFACTORING_KIND = "normalize-layout"
 
@@ -144,7 +145,7 @@ def build_refactoring_candidate(
             "errors": [],
         }
         return candidate, transformed_text
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         candidate = {
             "source_file": sanitized_source,
             "refactoring_kind": refactoring_kind,

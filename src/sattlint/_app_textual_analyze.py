@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 from . import _app_analysis_catalog as analysis_catalog
+from . import _app_analysis_catalog_metadata as analysis_catalog_metadata
 from . import _app_analysis_planner as analysis_planner
 from ._app_textual_shared import (
     _ANALYZE_PLANNER_LIST_ID_PREFIX,
@@ -59,18 +60,41 @@ def _available_analyzer_specs(self: Any) -> tuple[Any, ...]:
     return ()
 
 
+def _planner_entries_for_section(
+    self: Any,
+    section_id: str,
+) -> tuple[analysis_catalog.AnalysisCatalogEntry, ...]:
+    analyzer_specs = self._available_analyzer_specs()
+    removed_entry_ids = {
+        analysis_catalog.ENTRY_ANALYZE_FULL_SUITE,
+        analysis_catalog.ENTRY_VARIABLE_HIGH_CONFIDENCE_SUITE,
+    }
+    planner_hidden_analyzer_keys = {"comment-code", "mms-interface", "shadowing", "variables"}
+    return tuple(
+        entry
+        for entry in analysis_catalog.analysis_entries_for_section(
+            section_id,
+            analyzer_specs=analyzer_specs,
+        )
+        if entry.entry_id not in removed_entry_ids
+        and not (
+            section_id == analysis_catalog.SECTION_CATALOG_ANALYZERS
+            and entry.execution.selected_analyzer_keys is not None
+            and any(key in planner_hidden_analyzer_keys for key in entry.execution.selected_analyzer_keys)
+        )
+    )
+
+
 def _planner_section_groups(
     self: Any,
 ) -> tuple[tuple[analysis_catalog.AnalysisSectionSpec, tuple[analysis_catalog.AnalysisCatalogEntry, ...]], ...]:
-    analyzer_specs = self._available_analyzer_specs()
     groups: list[tuple[analysis_catalog.AnalysisSectionSpec, tuple[analysis_catalog.AnalysisCatalogEntry, ...]]] = []
     for section in analysis_catalog.analysis_section_specs():
-        if section.section_id == analysis_catalog.SECTION_CATALOG_SUITE:
+        if section.section_id in {
+            analysis_catalog.SECTION_CATALOG_SUITE,
+        }:
             continue
-        entries = analysis_catalog.analysis_entries_for_section(
-            section.section_id,
-            analyzer_specs=analyzer_specs,
-        )
+        entries = self._planner_entries_for_section(section.section_id)
         if not entries:
             continue
         groups.append((section, entries))
@@ -131,7 +155,7 @@ def _selection_list_highlighted_entry_id(self: Any, selection_list: Any) -> str 
         return None
     try:
         option = selection_list.get_option_at_index(highlighted_index)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
     value = _stringify_value(cast(object | None, getattr(option, "value", None))).strip()
     entry = self._planner_entry(value)
@@ -142,13 +166,7 @@ def _sync_analyze_selection_from_selection_list(self: Any, selection_list: Any) 
     section_id = self._analyze_section_id_from_list(selection_list)
     if section_id is None:
         return False
-    section_entry_ids = {
-        entry.entry_id
-        for entry in analysis_catalog.analysis_entries_for_section(
-            section_id,
-            analyzer_specs=self._available_analyzer_specs(),
-        )
-    }
+    section_entry_ids = {entry.entry_id for entry in self._planner_entries_for_section(section_id)}
     selected_ids = {
         _stringify_value(cast(object | None, value)).strip()
         for value in cast(list[object], getattr(selection_list, "selected", []))
@@ -181,7 +199,7 @@ def _update_analyze_planner_selection_list(
 def _refresh_analyze_planner(self: Any) -> None:
     try:
         container = self.query_one("#analyze-browser-left", _TEXTUAL_VERTICAL)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return
 
     self._suppress_analyze_planner_events = True
@@ -247,29 +265,50 @@ def _refresh_analyze_planner(self: Any) -> None:
         self._suppress_analyze_planner_events = False
 
 
-def _entry_family_label(self: Any, entry: analysis_catalog.AnalysisCatalogEntry) -> str:
-    return analysis_catalog.top_level_analysis_family(entry.family_id).label
+def _planner_entry_description(self: Any, entry: analysis_catalog.AnalysisCatalogEntry | None) -> str:
+    if entry is None:
+        return "Select an analysis on the left to see what the report covers."
+
+    description = entry.description.strip()
+    return description or "No description available."
 
 
-def _entry_section_label(self: Any, entry: analysis_catalog.AnalysisCatalogEntry) -> str:
-    for section in analysis_catalog.analysis_section_specs():
-        if section.section_id == entry.section_id:
-            return section.label
-    return entry.section_id
-
-
-def _entry_issue_kind_summary(self: Any, entry: analysis_catalog.AnalysisCatalogEntry) -> str | None:
-    issue_kinds = entry.execution.variable_issue_kinds
-    if not issue_kinds:
+def _planner_entry_analyzer_key(
+    self: Any,
+    entry: analysis_catalog.AnalysisCatalogEntry | None,
+) -> str | None:
+    if entry is None or entry.execution.selected_analyzer_keys is None:
         return None
-    return ", ".join(kind.name.casefold().replace("_", " ") for kind in sorted(issue_kinds, key=lambda item: item.name))
+    if len(entry.execution.selected_analyzer_keys) != 1:
+        return None
+    return entry.execution.selected_analyzer_keys[0]
+
+
+def _planner_entry_detection(self: Any, entry: analysis_catalog.AnalysisCatalogEntry | None) -> str:
+    if entry is None:
+        return "Select an analysis on the left to see what it detects."
+    return analysis_catalog_metadata.planner_entry_detection(
+        entry.entry_id,
+        self._planner_entry_analyzer_key(entry),
+        entry.description.strip(),
+    )
+
+
+def _planner_entry_how(self: Any, entry: analysis_catalog.AnalysisCatalogEntry | None) -> str:
+    if entry is None:
+        return "Select an analysis on the left to see how it works."
+    return analysis_catalog_metadata.planner_entry_how(
+        entry.entry_id,
+        self._planner_entry_analyzer_key(entry),
+        entry.description.strip(),
+    )
 
 
 def _refresh_analyze_planner_summary_widgets(self: Any) -> None:
     try:
         self.query_one("#view-note", _TEXTUAL_STATIC).update(self._analyze_note_text())
         self.query_one("#analyze-browser-right", _TEXTUAL_STATIC).update(self._analyze_browser_detail_text())
-    except Exception:
+    except Exception:  # noqa: BLE001
         return
 
 
@@ -277,39 +316,28 @@ def _analyze_browser_detail_text(self: Any) -> str:
     self._normalize_analyze_planner_state()
     focused_entry = self._planner_entry(self._analyze_focused_entry_id)
     plan = self._analyze_plan()
+    selected_entry_count = len(self._ordered_selected_analyze_entry_ids())
     if self._busy and self._active_job_action_id == "action-analyze":
-        status_text = "Status: Running selected analyses. Live output is shown in Session output below."
+        if self._active_job_cancel_requested:
+            status_text = "Status: Stop requested. Interrupting the running analysis now."
+        else:
+            status_text = "Status: Running selected analyses. Live output is shown in Session output below."
     elif not self._setup_has_targets():
         status_text = "Status: Configure a target in Setup to enable the planner runner."
-    elif not self._ordered_selected_analyze_entry_ids():
+    elif not selected_entry_count:
         status_text = "Status: Select one or more analyses to build a queue."
     elif plan.missing_handlers:
         status_text = "Status: Queue blocked by unavailable handlers in the current Textual session."
     else:
         status_text = "Status: Ready to run."
     lines = [
-        "Analyze planner",
         status_text,
-        f"Selected entries: {len(self._ordered_selected_analyze_entry_ids())}",
-        f"Runnable steps: {len(plan.executable_steps)}",
+        f"Selected entries: {selected_entry_count}",
+        "Focused entry: " + (focused_entry.label if focused_entry is not None else "None"),
+        f"Description: {self._planner_entry_description(focused_entry)}",
+        f"Detection: {self._planner_entry_detection(focused_entry)}",
+        f"How: {self._planner_entry_how(focused_entry)}",
     ]
-    if focused_entry is not None:
-        lines.extend(
-            [
-                "",
-                f"Focused entry: {focused_entry.label}",
-                f"Family: {self._entry_family_label(focused_entry)}",
-                f"Section: {self._entry_section_label(focused_entry)}",
-                f"Description: {focused_entry.description}",
-                f"Action: {focused_entry.execution.action_text}",
-            ]
-        )
-        if focused_entry.execution.selected_analyzer_keys:
-            lines.append("Analyzer keys: " + ", ".join(focused_entry.execution.selected_analyzer_keys))
-        issue_kind_summary = self._entry_issue_kind_summary(focused_entry)
-        if issue_kind_summary:
-            lines.append(f"Issue kinds: {issue_kind_summary}")
-    lines.extend(["", "Queue summary", analysis_planner.render_analysis_plan_summary(plan)])
     return "\n".join(lines)
 
 
@@ -328,7 +356,11 @@ def _execute_planned_analysis_step(self: Any, step: analysis_planner.PlannedAnal
         selected_keys = (
             None if step.execution.selected_analyzer_keys is None else list(step.execution.selected_analyzer_keys)
         )
-        action_fn(self._cfg, selected_keys)
+        selected_issue_kinds = step.execution.selected_issue_kind_names
+        if selected_issue_kinds is None:
+            action_fn(self._cfg, selected_keys)
+        else:
+            action_fn(self._cfg, selected_keys, selected_issue_kinds=frozenset(selected_issue_kinds))
         return
     if step.execution.kind == "run_variable_analysis":
         issue_kinds = None if step.execution.variable_issue_kinds is None else set(step.execution.variable_issue_kinds)
@@ -342,6 +374,9 @@ def _execute_analyze_plan(self: Any, plan: analysis_planner.AnalysisPlan) -> Non
     self._emit_output_from_thread(analysis_planner.render_analysis_plan_summary(plan))
     total_steps = len(plan.executable_steps)
     for index, step in enumerate(plan.executable_steps, start=1):
+        if self._active_job_cancel_requested:
+            self._emit_output_from_thread("Cancellation requested. Remaining queued analyses were not started.")
+            return
         self._emit_output_from_thread(f"[{index}/{total_steps}] {step.label}")
         if len(step.source_labels) > 1:
             self._emit_output_from_thread("Merged selections: " + ", ".join(step.source_labels))
@@ -379,6 +414,7 @@ ANALYZE_METHODS = (
     on_selection_list_selection_toggled,
     on_selection_list_selection_highlighted,
     _available_analyzer_specs,
+    _planner_entries_for_section,
     _planner_section_groups,
     _planner_entry_ids,
     _planner_entry,
@@ -391,9 +427,10 @@ ANALYZE_METHODS = (
     _sync_analyze_selection_from_selection_list,
     _update_analyze_planner_selection_list,
     _refresh_analyze_planner,
-    _entry_family_label,
-    _entry_section_label,
-    _entry_issue_kind_summary,
+    _planner_entry_description,
+    _planner_entry_analyzer_key,
+    _planner_entry_detection,
+    _planner_entry_how,
     _refresh_analyze_planner_summary_widgets,
     _analyze_browser_detail_text,
     _execute_planned_analysis_step,

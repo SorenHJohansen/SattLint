@@ -13,9 +13,9 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 from sattlint import constants as const
-from sattlint.analyzers import _variables_effect_flow as effect_flow_module
-from sattlint.analyzers import _variables_effect_sources as effect_sources_module
-from sattlint.analyzers._variables_effect_flow import EffectFlowTracker
+from sattlint.analyzers.variables import _variables_effect_flow as effect_flow_module
+from sattlint.analyzers.variables import _variables_effect_sources as effect_sources_module
+from sattlint.analyzers.variables._variables_effect_flow import EffectFlowTracker
 from sattlint.resolution import AccessKind
 from sattlint.resolution.scope import ScopeContext
 
@@ -501,3 +501,30 @@ def test_effect_flow_tracker_special_function_paths_ignore_unreadable_var_refs(m
     tracker.record_function_call_effect_flow("InitVariable", [_varref("Target"), _varref("Missing")], context)
 
     assert dict(edges) == {}
+
+
+def test_effect_flow_tracker_records_dynamic_array_edges() -> None:
+    array_var = Variable(name="Arr", datatype="ArrayObject")
+    source = Variable(name="Source", datatype=Simple_DataType.INTEGER)
+    target = Variable(name="Target", datatype=Simple_DataType.INTEGER)
+    tracker, edges, _external, _usage, _access = _build_tracker()
+    context = _context(env={"arr": array_var, "source": source, "target": target})
+
+    tracker.record_function_call_effect_flow(
+        "CreateArray",
+        [_varref("Arr"), 1, 2, _varref("Source"), _varref("Target")],
+        context,
+    )
+    tracker.record_function_call_effect_flow(
+        "GetArray",
+        [_varref("Arr"), 1, _varref("Target"), _varref("Source")],
+        context,
+    )
+    tracker.record_function_call_effect_flow(
+        "PutArray",
+        [_varref("Arr"), 1, _varref("Source"), _varref("Target")],
+        context,
+    )
+
+    assert ("root", "arr") in edges[("root", "source")]
+    assert ("root", "target") in edges[("root", "arr")]

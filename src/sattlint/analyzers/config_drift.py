@@ -6,9 +6,9 @@ from typing import cast
 
 from sattline_parser.models.ast_model import BasePicture
 
-from ._report_defaults import empty_issue_list, empty_object_summary_data
 from ._wave2_support import InstanceParameterValue, collect_instance_parameter_values
 from .framework import Issue
+from .shared._report_defaults import empty_issue_list, empty_object_summary_data
 
 
 @dataclass

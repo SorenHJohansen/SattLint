@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from concurrent.futures import Future, TimeoutError
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -86,7 +87,7 @@ def test_workspace_snapshot_store_index_and_configuration_edges(tmp_path, monkey
     store._drop_entry_state_locked("missing")
 
 
-def test_workspace_snapshot_store_bundle_resolution_edges(tmp_path, monkeypatch):
+def test_workspace_snapshot_store_bundle_resolution_edges(tmp_path, monkeypatch):  # noqa: PLR0915
     entry = (tmp_path / "Programs" / "Main.s").resolve()
     dependency = (tmp_path / "Libs" / "Support.l").resolve()
     for path in (entry, dependency):
@@ -281,7 +282,7 @@ def _assert_snapshot_finalize_error_paths(entry: Path, monkeypatch: pytest.Monke
         captured_error_store.get_bundle_for_entry(entry, wait_budget=1.0, raise_on_error=True)
 
 
-def test_workspace_snapshot_store_cache_submit_build_and_finalize_edges(tmp_path, monkeypatch):
+def test_workspace_snapshot_store_cache_submit_build_and_finalize_edges(tmp_path, monkeypatch):  # noqa: PLR0915
     workspace_root = tmp_path.resolve()
     entry = (tmp_path / "Programs" / "Main.s").resolve()
     old_source = (tmp_path / "Programs" / "Old.s").resolve()
@@ -393,9 +394,21 @@ def test_workspace_snapshot_store_cache_submit_build_and_finalize_edges(tmp_path
     assert built_bundle.entry_file == entry
     assert built_bundle.source_files == tuple(sorted((dependency, entry), key=lambda path: path.as_posix().casefold()))
     assert built_bundle.source_paths_by_key[("main.s", "programs")] == entry
-    assert load_calls == [
-        (entry, workspace_root, "official", True, False, lsp_workspace_store.build_variable_semantic_artifacts)
-    ]
+    assert len(load_calls) == 1
+    assert load_calls[0][:5] == (entry, workspace_root, "official", True, False)
+    analysis_provider = load_calls[0][5]
+    assert isinstance(analysis_provider, partial)
+    assert analysis_provider.func is lsp_workspace_store.build_variable_semantic_artifacts
+    assert analysis_provider.keywords == {
+        "config": {
+            "enable_variable_diagnostics": False,
+            "entry_file": str(entry),
+            "mode": "official",
+            "scan_root_only": True,
+            "workspace_root": str(workspace_root),
+        },
+        "target_is_library": False,
+    }
 
     config_store = lsp_workspace_store.WorkspaceSnapshotStore()
     config_state = config_store._state_for_entry_locked(entry)

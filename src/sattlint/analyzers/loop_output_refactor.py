@@ -20,8 +20,8 @@ from sattline_parser.models.ast_model import (
 
 from .. import constants as const
 from ..core.ast_tools import iter_variable_refs
-from ._walk_utils import iter_nested_modules
 from .framework import Issue, SimpleReport
+from .shared._walk_utils import iter_nested_modules
 
 
 @dataclass(frozen=True)

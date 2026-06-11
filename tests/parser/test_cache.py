@@ -15,8 +15,12 @@ from sattlint.cache import (
     LOOKUP_CACHE_VERSION,
     AnalysisReportCache,
     ASTCache,
+    CacheManager,
+    CachePruneResult,
     FileASTCache,
     FileLookupCache,
+    get_cache_manager,
+    prune_cache_dir,
 )
 
 
@@ -46,14 +50,14 @@ def test_legacy_literal_unpickle_without_span_defaults_to_origin():
     assert legacy_float.span is None
 
 
-def test_file_lookup_cache_batches_save_until_flush(tmp_path: Path) -> None:
+def test_file_lookup_cache_can_batch_save_until_manual_flush(tmp_path: Path) -> None:
     save_calls: list[Path] = []
 
     class _LookupCache(FileLookupCache):
         def _save(self) -> None:
             save_calls.append(self.path)
 
-    lookup_cache = _LookupCache(tmp_path)
+    lookup_cache = _LookupCache(tmp_path, flush_interval=None)
 
     lookup_cache.set("code", "Root", "draft", tmp_path, ".s")
     lookup_cache.set("deps", "Root", "draft", tmp_path, ".l")
@@ -65,8 +69,41 @@ def test_file_lookup_cache_batches_save_until_flush(tmp_path: Path) -> None:
     assert save_calls == [lookup_cache.path]
 
 
-def test_cache_helpers_cover_lookup_env_and_validation_edges(tmp_path: Path, monkeypatch) -> None:
-    import sattlint.cache as cache_mod
+def test_file_lookup_cache_flushes_periodically_by_mutation_count(tmp_path: Path) -> None:
+    save_calls: list[Path] = []
+
+    class _LookupCache(FileLookupCache):
+        def _save(self) -> None:
+            save_calls.append(self.path)
+
+    lookup_cache = _LookupCache(tmp_path, flush_interval=2)
+
+    lookup_cache.set("code", "Root", "draft", tmp_path, ".s")
+    assert save_calls == []
+
+    lookup_cache.set("deps", "Root", "draft", tmp_path, ".l")
+
+    assert save_calls == [lookup_cache.path]
+    assert lookup_cache._dirty is False
+
+
+def test_file_lookup_cache_supports_write_through_mode(tmp_path: Path) -> None:
+    save_calls: list[Path] = []
+
+    class _LookupCache(FileLookupCache):
+        def _save(self) -> None:
+            save_calls.append(self.path)
+
+    lookup_cache = _LookupCache(tmp_path, write_through=True)
+
+    lookup_cache.set("code", "Root", "draft", tmp_path, ".s")
+    lookup_cache.forget("code", "Root", "draft")
+
+    assert save_calls == [lookup_cache.path, lookup_cache.path]
+
+
+def test_cache_helpers_cover_lookup_env_and_validation_edges(tmp_path: Path, monkeypatch) -> None:  # noqa: PLR0915
+    import sattlint.cache as cache_mod  # noqa: PLC0415
 
     assert cache_mod._as_mapping(["not", "a", "mapping"]) is None
     mapping = {"name": "value"}
@@ -78,10 +115,22 @@ def test_cache_helpers_cover_lookup_env_and_validation_edges(tmp_path: Path, mon
     monkeypatch.setenv("APPDATA", str(windows_base))
     assert cache_mod.get_cache_dir() == windows_base / "sattlint" / "cache"
 
-    xdg_base = tmp_path / "xdg-config"
+    xdg_config_base = tmp_path / "xdg-config"
+    xdg_cache_base = tmp_path / "xdg-cache"
     monkeypatch.setattr(cache_mod.os, "name", "posix", raising=False)
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_base))
-    assert cache_mod.get_cache_dir() == xdg_base / "sattlint" / "cache"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_config_base))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(xdg_cache_base))
+    assert cache_mod.get_cache_dir() == xdg_cache_base / "sattlint"
+
+    legacy_cache_dir = xdg_config_base / "sattlint" / "cache"
+    legacy_cache_dir.mkdir(parents=True, exist_ok=True)
+    legacy_file = legacy_cache_dir / "file_lookup_cache.json"
+    legacy_payload = '{"version": 1, "entries": {}}'
+    legacy_file.write_text(legacy_payload, encoding="utf-8")
+    migrated_cache_dir = cache_mod.get_cache_dir()
+    assert migrated_cache_dir == xdg_cache_base / "sattlint"
+    assert (migrated_cache_dir / "file_lookup_cache.json").read_text(encoding="utf-8") == legacy_payload
+    assert not legacy_file.exists()
 
     lookup_dir = tmp_path / "lookup"
     lookup_dir.mkdir()
@@ -192,8 +241,8 @@ def test_cache_helpers_cover_lookup_env_and_validation_edges(tmp_path: Path, mon
     assert not ast_cache._manifest_path(project_key).exists()
 
 
-def test_cache_helpers_cover_persistence_and_hash_edge_paths(tmp_path: Path) -> None:
-    import sattlint.cache as cache_mod
+def test_cache_helpers_cover_persistence_and_hash_edge_paths(tmp_path: Path) -> None:  # noqa: PLR0915
+    import sattlint.cache as cache_mod  # noqa: PLC0415
 
     lookup_cache = FileLookupCache(tmp_path / "lookup-persist")
     lookup_cache.set("code", "Root", "draft", tmp_path, ".s")
@@ -254,8 +303,17 @@ def test_cache_helpers_cover_persistence_and_hash_edge_paths(tmp_path: Path) -> 
     first_key = cache_mod.compute_cache_key(cfg)
     second_key = cache_mod.compute_cache_key({**cfg, "mode": "official"})
     third_key = cache_mod.compute_cache_key({**cfg, "include_reverse_library_consumers": False})
+    telemetry_key = cache_mod.compute_cache_key({**cfg, "telemetry": {"enabled": True}})
+    analysis_key = cache_mod.compute_cache_key(
+        {
+            **cfg,
+            "analysis": {"naming": {"variables": {"style": "snake", "allow": []}}},
+        }
+    )
     assert first_key != second_key
     assert first_key != third_key
+    assert first_key == telemetry_key
+    assert first_key == analysis_key
 
     ast_cache = ASTCache(tmp_path / "project-cache-extra")
     manifest_path = tmp_path / "manifest-extra.s"
@@ -347,8 +405,66 @@ def test_ast_cache_validate_tolerates_stat_race(tmp_path: Path, monkeypatch) -> 
     assert ast_cache.validate("project") is False
 
 
+def test_ast_cache_load_and_validate_require_matching_payload_version(tmp_path: Path) -> None:
+    ast_cache = ASTCache(tmp_path / "project-cache-version")
+    manifest_path = tmp_path / "manifest-version.s"
+    manifest_path.write_text('"x"\n"y"\n"z"\n', encoding="utf-8")
+    manifest = (manifest_path.stat().st_mtime_ns, manifest_path.stat().st_size)
+
+    ast_cache._path("project").write_bytes(
+        pickle.dumps({"version": CACHE_VERSION + 1, "project": "stale"}, protocol=pickle.HIGHEST_PROTOCOL)
+    )
+    ast_cache._manifest_path("project").write_text(json.dumps({str(manifest_path): list(manifest)}), encoding="utf-8")
+
+    assert ast_cache.load("project") is None
+    assert ast_cache.validate("project") is False
+
+
+def test_cache_prune_dir_removes_stale_persistent_cache_artifacts(tmp_path: Path) -> None:
+    cache_dir = tmp_path / "cache-root"
+    cache_dir.mkdir()
+    (cache_dir / "file_lookup_cache.json").write_text(
+        json.dumps({"version": LOOKUP_CACHE_VERSION + 1, "entries": {}}),
+        encoding="utf-8",
+    )
+
+    file_ast_dir = cache_dir / "file_ast"
+    file_ast_dir.mkdir()
+    (file_ast_dir / "stale.pickle").write_bytes(
+        pickle.dumps({"version": CACHE_VERSION + 1}, protocol=pickle.HIGHEST_PROTOCOL)
+    )
+
+    (cache_dir / "project.pickle").write_bytes(
+        pickle.dumps({"version": CACHE_VERSION + 1}, protocol=pickle.HIGHEST_PROTOCOL)
+    )
+    (cache_dir / "project.manifest.json").write_text("{}", encoding="utf-8")
+    (cache_dir / "orphan.manifest.json").write_text("{}", encoding="utf-8")
+
+    report_dir = cache_dir / "analysis_reports"
+    report_dir.mkdir()
+    (report_dir / "stale-report.pickle").write_bytes(
+        pickle.dumps({"version": ANALYSIS_REPORT_CACHE_VERSION + 1}, protocol=pickle.HIGHEST_PROTOCOL)
+    )
+
+    result = prune_cache_dir(cache_dir)
+
+    assert result == CachePruneResult(
+        file_lookup_entries=1,
+        file_ast_entries=1,
+        ast_payload_entries=1,
+        ast_manifest_entries=2,
+        analysis_report_entries=1,
+    )
+    assert result.removed_entries == 6
+    assert (cache_dir / "file_lookup_cache.json").exists() is False
+    assert list(file_ast_dir.glob("*.pickle")) == []
+    assert list(cache_dir.glob("*.pickle")) == []
+    assert list(cache_dir.glob("*.manifest.json")) == []
+    assert list(report_dir.glob("*.pickle")) == []
+
+
 def test_cache_manifest_and_analysis_report_edge_branches(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    import sattlint.cache as cache_mod
+    import sattlint.cache as cache_mod  # noqa: PLC0415
 
     manifest_file = tmp_path / "manifest-edge.s"
     manifest_file.write_text('"x"\n"y"\n"z"\n', encoding="utf-8")
@@ -398,3 +514,72 @@ def test_cache_manifest_and_analysis_report_edge_branches(tmp_path: Path, monkey
     )
     report_cache.clear(key)
     assert report_cache._path(key).exists() is False
+
+
+def test_file_lookup_cache_normalizes_equivalent_base_dirs(tmp_path: Path) -> None:
+    actual_base = tmp_path / "lookup-real"
+    actual_base.mkdir()
+    alias_base = tmp_path / "lookup-alias"
+    alias_base.symlink_to(actual_base, target_is_directory=True)
+
+    lookup_cache = FileLookupCache(tmp_path / "lookup-normalized")
+    lookup_cache.set("code", "Root", "draft", alias_base, ".s")
+    lookup_cache.flush()
+
+    persisted = json.loads(lookup_cache.path.read_text(encoding="utf-8"))
+    assert persisted["entries"]["code:draft:root"] == {"base_dir": str(actual_base.resolve()), "ext": ".s"}
+
+    lookup_cache._dirty = False
+    lookup_cache.set("code", "Root", "draft", actual_base, ".s")
+    assert lookup_cache._dirty is False
+
+
+def test_file_ast_cache_load_rejects_non_integer_stat_metadata(tmp_path: Path) -> None:
+    source_path = tmp_path / "Program" / "Main.s"
+    source_path.parent.mkdir(parents=True, exist_ok=True)
+    source_path.write_text('"a"\n"b"\n"c"\n', encoding="utf-8")
+
+    file_ast_cache = FileASTCache(tmp_path)
+    cache_file = file_ast_cache._path(source_path, "draft")
+    with cache_file.open("wb") as handle:
+        pickle.dump(
+            {
+                "version": CACHE_VERSION,
+                "meta": {
+                    "path": str(source_path),
+                    "mode": "draft",
+                    "mtime_ns": "bad",
+                    "size": source_path.stat().st_size,
+                },
+                "ast": "value",
+            },
+            handle,
+            protocol=pickle.HIGHEST_PROTOCOL,
+        )
+
+    assert file_ast_cache.load(source_path, "draft") is None
+
+
+def test_analysis_report_cache_clear_all_removes_cached_entries(tmp_path):
+    source_path = tmp_path / "report-source.s"
+    source_path.write_text("code", encoding="utf-8")
+    report_cache = AnalysisReportCache(tmp_path)
+
+    assert report_cache.save("report-a", report={"issues": []}, files=[source_path]) is True
+    assert report_cache.save("report-b", report={"issues": []}, files=[source_path]) is True
+
+    assert report_cache.clear_all() == 2
+    assert list(report_cache.cache_dir.glob("*.pickle")) == []
+    assert report_cache.clear_all() == 0
+
+
+def test_cache_manager_reuses_singleton_instances_for_same_directory(tmp_path: Path) -> None:
+    manager = get_cache_manager(tmp_path)
+    same_manager = get_cache_manager(tmp_path)
+
+    assert isinstance(manager, CacheManager)
+    assert same_manager is manager
+    assert manager.file_lookup_cache is same_manager.file_lookup_cache
+    assert manager.file_ast_cache is same_manager.file_ast_cache
+    assert manager.ast_cache is same_manager.ast_cache
+    assert manager.analysis_report_cache is same_manager.analysis_report_cache

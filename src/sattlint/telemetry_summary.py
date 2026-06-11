@@ -75,7 +75,7 @@ def _aggregate_named_timings(
     return records
 
 
-def summarize_telemetry_file(path: Path) -> dict[str, Any]:
+def summarize_telemetry_file(path: Path) -> dict[str, Any]:  # noqa: PLR0915
     telemetry_path = Path(path)
     if not telemetry_path.exists():
         raise FileNotFoundError(telemetry_path)

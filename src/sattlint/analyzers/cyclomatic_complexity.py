@@ -18,8 +18,8 @@ from sattline_parser.models.ast_model import (
 )
 
 from ..grammar import constants as const
-from ._walk_utils import iter_nested_modules
 from .framework import Issue, SimpleReport
+from .shared._walk_utils import iter_nested_modules
 
 DEFAULT_MODULE_COMPLEXITY_THRESHOLD = 10
 DEFAULT_STEP_COMPLEXITY_THRESHOLD = 6
@@ -180,7 +180,7 @@ class CyclomaticComplexityAnalyzer:
     def _count_statement_list(self, statements: list[object]) -> int:
         return sum(self._count_node(statement) for statement in statements)
 
-    def _count_node(self, node: object) -> int:
+    def _count_node(self, node: object) -> int:  # noqa: PLR0915
         if node is None:
             return 0
         if isinstance(node, tuple):

@@ -197,7 +197,7 @@ def _run_with_timeout(runner: Callable[[str], Any], source: str, timeout: float)
             except concurrent.futures.TimeoutError:
                 duration_ms = (time.perf_counter() - start) * 1000
                 return TimeoutError(f"Fuzz target timed out after {timeout}s"), duration_ms
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         return exc, (time.perf_counter() - start) * 1000
 
 

@@ -20,9 +20,9 @@ from ..resolution.common import (
     resolve_moduletype_def_strict,
     varname_full,
 )
-from ._walk_utils import walk_nested_modules_with_state
 from .framework import Issue, SimpleReport
-from .variable_utils import merge_variable_env
+from .shared._walk_utils import walk_nested_modules_with_state
+from .shared.variable_utils import merge_variable_env
 
 
 @dataclass(frozen=True)

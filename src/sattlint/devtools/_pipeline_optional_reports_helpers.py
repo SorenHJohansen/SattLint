@@ -223,7 +223,7 @@ def build_derived_reports(
 
     mutation_results: dict[str, Any] | None = None
     if context.get("run_mutation_analysis"):
-        from sattlint.devtools.mutation_engine import run_mutation_analysis
+        from sattlint.devtools.mutation_engine import run_mutation_analysis  # noqa: PLC0415
 
         target = context.get("mutation_target") or default_trace_target
         if target.exists():

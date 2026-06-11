@@ -100,7 +100,7 @@ def collect_impact_analysis_report(
     dependency_graph_report: dict[str, Any] | None = None,
     call_graph_report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    from sattlint.devtools import structural_reports as structural_reports_module
+    from sattlint.devtools import structural_reports as structural_reports_module  # noqa: PLC0415
 
     resolved_graph_inputs = structural_reports_module.normalize_graph_inputs(
         graph_inputs, workspace_root=workspace_root

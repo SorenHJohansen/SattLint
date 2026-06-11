@@ -16,6 +16,9 @@ class CommentCodeHit:
     indicators: tuple[str, ...]
     preview: str
     module_path: tuple[str, ...] = ()
+    equation_name: str | None = None
+    sequence_name: str | None = None
+    step_name: str | None = None
 
 
 def _format_module_path(module_path: tuple[str, ...]) -> str:
@@ -30,6 +33,19 @@ def _format_source_location(file_path: Path, start_line: int, end_line: int) -> 
     if start_line == end_line:
         return f"{file_path.name}:{start_line}"
     return f"{file_path.name}:{start_line}-{end_line}"
+
+
+def _format_context_details(hit: CommentCodeHit) -> str:
+    details: list[str] = []
+    if hit.equation_name:
+        details.append(f"equation={hit.equation_name}")
+    if hit.sequence_name:
+        details.append(f"sequence={hit.sequence_name}")
+    if hit.step_name:
+        details.append(f"step={hit.step_name}")
+    if not details:
+        return ""
+    return f" [{' | '.join(details)}]"
 
 
 @dataclass
@@ -69,11 +85,14 @@ class CommentCodeReport:
                 indicator_txt = ", ".join(hit.indicators) if hit.indicators else "unknown"
                 source_location = _format_source_location(hit.file_path, hit.start_line, hit.end_line)
                 module_location = _format_module_path(hit.module_path)
+                context_details = _format_context_details(hit)
                 preview = hit.preview or "<empty>"
                 if module_location:
-                    lines.append(f"  - {module_location} ({source_location}) [{indicator_txt}] {preview}")
+                    lines.append(
+                        f"  - {module_location} ({source_location}){context_details} [{indicator_txt}] {preview}"
+                    )
                 else:
-                    lines.append(f"  - {source_location} [{indicator_txt}] {preview}")
+                    lines.append(f"  - {source_location}{context_details} [{indicator_txt}] {preview}")
 
         # Only show actual read errors (not duplicate comment code entries)
         read_errors = [issue for issue in self.issues if issue.kind == "comment_code_read_error"]

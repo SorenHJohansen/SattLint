@@ -2,14 +2,44 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Protocol
 
 from sattline_parser.models.ast_model import BasePicture, FrameModule, ModuleTypeInstance, SingleModule
 
 from ..analyzers.framework import Issue
+from ..analyzers.rule_profiles import materialize_issue_metadata
 from ..models._variable_issues import IssueKind, VariableIssue
 from ..types import ProjectPath, TargetName
+
+
+class _DeclarationSpanLike(Protocol):
+    @property
+    def line(self) -> int: ...
+
+    @property
+    def column(self) -> int: ...
+
+
+class DefinitionLike(Protocol):
+    @property
+    def canonical_path(self) -> str: ...
+
+    @property
+    def field_path(self) -> str | None: ...
+
+    @property
+    def source_file(self) -> str | None: ...
+
+    @property
+    def source_library(self) -> str | None: ...
+
+    @property
+    def declaration_span(self) -> _DeclarationSpanLike | None: ...
+
+
+type DefinitionLookup = Mapping[tuple[str, ...], DefinitionLike]
 
 
 def _diagnostics_by_file_factory() -> dict[str, tuple[SemanticDiagnostic, ...]]:
@@ -174,12 +204,9 @@ def _cf(value: str) -> str:
     return value.casefold()
 
 
-def _definition_label_length(definition: Any) -> int:
-    label = (
-        definition.field_path.split(".")[-1]
-        if getattr(definition, "field_path", None)
-        else definition.canonical_path.split(".")[-1]
-    )
+def _definition_label_length(definition: DefinitionLike) -> int:
+    field_path = definition.field_path
+    label = field_path.split(".")[-1] if field_path else definition.canonical_path.split(".")[-1]
     return max(len(label), 1)
 
 
@@ -199,8 +226,6 @@ def _format_semantic_diagnostic_message(issue: VariableIssue) -> str:
 
 
 def _format_issue_diagnostic_message(issue: Issue) -> str:
-    from ..analyzers.rule_profiles import materialize_issue_metadata
-
     materialized = materialize_issue_metadata(issue)
     lines = [materialized.message]
     if materialized.explanation:
@@ -417,7 +442,7 @@ def merge_diagnostic_projection_results(
 
 def project_variable_issues(
     issues: tuple[VariableIssue, ...],
-    definitions_by_key: dict[tuple[str, ...], Any],
+    definitions_by_key: DefinitionLookup,
 ) -> DiagnosticProjectionResult:
     by_file: dict[str, list[SemanticDiagnostic]] = {}
     dropped_issues: list[DroppedDiagnosticIssue] = []
@@ -488,6 +513,6 @@ def project_variable_issues(
 
 def project_variable_issues_by_file(
     issues: tuple[VariableIssue, ...],
-    definitions_by_key: dict[tuple[str, ...], Any],
+    definitions_by_key: DefinitionLookup,
 ) -> dict[str, tuple[SemanticDiagnostic, ...]]:
     return project_variable_issues(issues, definitions_by_key).diagnostics_by_file

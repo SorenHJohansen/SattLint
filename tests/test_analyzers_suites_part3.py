@@ -1,4 +1,6 @@
 # ruff: noqa: F403, F405
+import pytest
+
 from ._analyzers_suites_test_support import *
 
 
@@ -219,7 +221,7 @@ def test_build_delivery_metadata_falls_back_for_unknown_analyzer_key():
     assert delivery.output_artifacts == ("custom-analyzer.summary",)
 
 
-def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_paths(tmp_path, monkeypatch):
+def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_paths(tmp_path, monkeypatch):  # noqa: PLR0915
     missing_manifest_dir = tmp_path / "missing-manifests"
     monkeypatch.setattr(registry_module, "DEFAULT_CORPUS_MANIFEST_DIR", missing_manifest_dir)
     registry_module._rule_corpus_cases_by_rule_id.cache_clear()
@@ -338,10 +340,148 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
     registry_module._rule_corpus_cases_by_rule_id.cache_clear()
 
 
+def test_run_registry_analyzer_falls_back_to_spec_runner_without_registry_attr():
+    from sattlint.analyzers.registry._registry_dispatch import run_registry_analyzer  # noqa: PLC0415
+
+    report = SimpleNamespace(issues=[])
+    seen: dict[str, object] = {}
+
+    def _run(context: object) -> object:
+        seen["context"] = context
+        return report
+
+    context = SimpleNamespace(base_picture="bp", shared_artifacts=None)
+    spec = SimpleNamespace(key="custom-analyzer", run=_run)
+
+    assert run_registry_analyzer(spec, context) is report
+    assert seen["context"] is context
+
+
+def test_run_registry_analyzer_passes_include_dependency_usage_override(monkeypatch):
+    from sattlint.analyzers.registry._registry_dispatch import (  # noqa: PLC0415
+        get_registry_analyzer_spec,
+        run_registry_analyzer,
+    )
+
+    report = SimpleNamespace(issues=[])
+    seen: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        registry_module,
+        "analyze_variables",
+        lambda *args, **kwargs: seen.update({"args": args, "kwargs": kwargs}) or report,
+    )
+
+    spec = get_registry_analyzer_spec("variables")
+    context: Any = SimpleNamespace(
+        base_picture="bp",
+        graph=None,
+        debug=True,
+        target_is_library=False,
+        selected_issue_kinds=None,
+        config={"profile": "test"},
+        shared_artifacts=None,
+        unavailable_libraries={"MissingLib"},
+    )
+
+    assert (
+        run_registry_analyzer(
+            spec,
+            context,
+            overrides={"include_dependency_moduletype_usage": True},
+        )
+        is report
+    )
+    assert seen["args"] == ("bp",)
+    assert seen["kwargs"] == {
+        "analysis_context": context,
+        "debug": True,
+        "unavailable_libraries": {"MissingLib"},
+        "analyzed_target_is_library": False,
+        "include_dependency_moduletype_usage": True,
+        "selected_issue_kinds": None,
+        "config": {"profile": "test"},
+    }
+
+
+def test_run_registry_analyzer_passes_shared_artifacts_to_dataflow(monkeypatch):
+    from sattlint.analyzers.registry._registry_dispatch import (  # noqa: PLC0415
+        get_registry_analyzer_spec,
+        run_registry_analyzer,
+    )
+
+    report = SimpleNamespace(issues=[])
+    seen: dict[str, object] = {}
+    shared_artifacts = object()
+
+    monkeypatch.setattr(
+        registry_module,
+        "analyze_dataflow",
+        lambda *args, **kwargs: seen.update({"args": args, "kwargs": kwargs}) or report,
+    )
+
+    spec = get_registry_analyzer_spec("dataflow")
+    context: Any = SimpleNamespace(
+        base_picture="bp",
+        graph=None,
+        debug=False,
+        target_is_library=True,
+        config={"profile": "test"},
+        shared_artifacts=shared_artifacts,
+        unavailable_libraries={"MissingLib"},
+    )
+
+    assert run_registry_analyzer(spec, context) is report
+    assert seen["args"] == ("bp",)
+    assert seen["kwargs"] == {
+        "unavailable_libraries": {"MissingLib"},
+        "analyzed_target_is_library": True,
+        "shared_artifacts": shared_artifacts,
+    }
+
+
+def test_get_cli_dispatch_analyzers_includes_required_variables_for_sfc_selection():
+    from sattlint.analyzers.registry._registry_dispatch import (  # noqa: PLC0415
+        get_cli_dispatch_analyzers,
+        get_registry_analyzer_spec,
+    )
+
+    variables_spec = get_registry_analyzer_spec("variables")
+    sfc_spec = get_registry_analyzer_spec("sfc")
+
+    analyzers = get_cli_dispatch_analyzers(
+        selected_keys=["sfc"],
+        get_enabled_analyzers_fn=lambda: [sfc_spec, variables_spec],
+    )
+
+    assert [spec.key for spec in analyzers] == ["variables", "sfc"]
+
+
+def test_run_registry_analyzer_requires_variable_artifacts_for_sfc():
+    from sattlint.analyzers.registry._registry_dispatch import (  # noqa: PLC0415
+        get_registry_analyzer_spec,
+        run_registry_analyzer,
+    )
+
+    spec = get_registry_analyzer_spec("sfc")
+    context: Any = SimpleNamespace(
+        base_picture="bp",
+        graph=None,
+        debug=False,
+        target_is_library=False,
+        config={},
+        shared_artifacts=SimpleNamespace(variable_analysis=None, reports_by_analyzer_key={}),
+        unavailable_libraries=set(),
+    )
+
+    with pytest.raises(RuntimeError, match="requires analyzer results from: variables"):
+        run_registry_analyzer(spec, context)
+
+
 def test_analyze_sattline_semantics_uses_declared_semantic_contributors(monkeypatch):
-    from sattlint.analyzers.issue import Issue
-    from sattlint.analyzers.sattline_semantics import analyze_sattline_semantics
-    from sattlint.reporting.variables_report import VariableIssue
+    from sattlint.analyzers.framework import Issue  # noqa: PLC0415
+    from sattlint.analyzers.sattline_semantics import analyze_sattline_semantics  # noqa: PLC0415
+    from sattlint.reporting.variables_report import VariableIssue  # noqa: PLC0415
 
     calls: list[str] = []
     bp = BasePicture(
@@ -424,6 +564,50 @@ def test_analyze_sattline_semantics_uses_declared_semantic_contributors(monkeypa
 
     assert calls == ["variables", "spec-compliance"]
     assert {issue.rule.source for issue in report.issues} == {"variables", "spec-compliance"}
+
+
+def test_analyze_sattline_semantics_builds_context_with_config_and_shared_artifacts(monkeypatch):
+    from sattlint.analyzers.sattline_semantics import analyze_sattline_semantics  # noqa: PLC0415
+
+    seen: dict[str, object] = {}
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    monkeypatch.setattr(
+        "sattlint.analyzers.sattline_semantics.get_semantic_contributor_specs",
+        lambda: (SimpleNamespace(key="variables", semantic_mapping_kind="variable"),),
+    )
+
+    def _run_registry_analyzer(spec, context, **kwargs):
+        seen["spec"] = spec
+        seen["context"] = context
+        seen["kwargs"] = kwargs
+        return SimpleNamespace(issues=[])
+
+    monkeypatch.setattr("sattlint.analyzers.sattline_semantics.run_registry_analyzer", _run_registry_analyzer)
+    monkeypatch.setattr("sattlint.analyzers.sattline_semantics.detect_transform_invariant_violations", lambda _bp: [])
+
+    report = analyze_sattline_semantics(
+        bp,
+        unavailable_libraries={"MissingLib"},
+        analyzed_target_is_library=True,
+        config={"mode": "workspace"},
+    )
+
+    assert report.issues == []
+    context = seen["context"]
+    assert context.config == {"mode": "workspace"}
+    assert context.target_is_library is True
+    assert context.shared_artifacts is not None
+    assert context.unavailable_libraries == {"MissingLib"}
+    assert seen["kwargs"]["use_shared_artifacts"] is True
 
 
 def test_naming_consistency_flags_inconsistent_variable_names():

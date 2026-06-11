@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from sattlint.analyzers import rule_profiles as rule_profiles_module
-from sattlint.analyzers.issue import Issue
+from sattlint.analyzers.framework import Issue, SimpleReport
 from sattlint.analyzers.sattline_semantics import SemanticRule
 from sattlint.reporting.variables_report import IssueKind, VariableIssue, VariablesReport
 
@@ -174,6 +174,13 @@ def test_rule_profile_metadata_and_override_helpers_cover_fallbacks() -> None:
     assert overridden is not None
     assert overridden.severity == "error"
     assert overridden.confidence == "definite"
+
+
+def test_simple_report_summary_uses_registered_issue_metadata_materializer() -> None:
+    summary = SimpleReport(name="Dummy", issues=[Issue(kind="comment_code", message="Commented code")]).summary()
+
+    assert "semantic.commented-code" in summary
+    assert "warning" in summary
 
 
 def test_apply_rule_profile_to_report_filters_disabled_rules_and_handles_non_list_issues() -> None:

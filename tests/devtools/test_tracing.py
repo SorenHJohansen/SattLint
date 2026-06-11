@@ -299,8 +299,8 @@ def test_tracing_cli_writes_to_output_file(tmp_path):
 
 # --- analyzers/_sfc_module_walk.py: iter_sfc_modulecodes with nested modules ---
 def test_iter_sfc_modulecodes_yields_root_and_nested(tmp_path):
-    from sattline_parser.models.ast_model import BasePicture, ModuleHeader, SingleModule
-    from sattlint.analyzers._sfc_module_walk import iter_sfc_modulecodes
+    from sattline_parser.models.ast_model import BasePicture, ModuleHeader, SingleModule  # noqa: PLC0415
+    from sattlint.analyzers.sfc._sfc_module_walk import iter_sfc_modulecodes  # noqa: PLC0415
 
     bp_header = ModuleHeader(name="BP", invoke_coord=(0, 0, 0, 1, 1))
     sm_header = ModuleHeader(name="Child", invoke_coord=(0, 0, 0, 1, 1))
@@ -314,8 +314,8 @@ def test_iter_sfc_modulecodes_yields_root_and_nested(tmp_path):
 
 
 def test_iter_sfc_modulecodes_yields_moduletype_defs():
-    from sattline_parser.models.ast_model import BasePicture, ModuleHeader, ModuleTypeDef
-    from sattlint.analyzers._sfc_module_walk import iter_sfc_modulecodes
+    from sattline_parser.models.ast_model import BasePicture, ModuleHeader, ModuleTypeDef  # noqa: PLC0415
+    from sattlint.analyzers.sfc._sfc_module_walk import iter_sfc_modulecodes  # noqa: PLC0415
 
     bp_header = ModuleHeader(name="BP", invoke_coord=(0, 0, 0, 1, 1))
     mtd = ModuleTypeDef(name="MyType")

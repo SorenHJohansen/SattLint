@@ -9,7 +9,7 @@ from time import perf_counter
 from types import SimpleNamespace
 from typing import Any, cast
 
-from sattline_parser.models.ast_model import BasePicture
+from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef
 
 from . import _app_analysis_loading as analysis_loading_module
 from . import _app_analysis_menus as analysis_menus_module
@@ -23,15 +23,12 @@ from . import engine as engine_module
 from ._app_debug import debug_enabled, log_debug_exception
 from .analyzers import variable_usage_reporting as variables_reporting_module
 from .analyzers.comment_code import analyze_comment_code_files
-from .analyzers.framework import AnalysisContext, AnalysisSharedArtifacts
+from .analyzers.framework import AnalysisSharedArtifacts, Issue, SimpleReport, build_analysis_context
 from .analyzers.icf import parse_icf_file, validate_icf_entries_against_program
 from .analyzers.mms import analyze_mms_interface_variables
 from .analyzers.modules import analyze_module_duplicates, compare_modules, debug_module_structure, find_modules_by_name
-from .analyzers.registry import (
-    SEMANTIC_LAYER_ANALYZER_KEY,
-    canonicalize_analyzer_key,
-    get_default_cli_analyzers,
-)
+from .analyzers.registry import get_default_cli_analyzers
+from .analyzers.registry._registry_dispatch import get_cli_dispatch_analyzers, run_registry_analyzer
 from .analyzers.rule_profiles import apply_rule_profile_to_report
 from .analyzers.shadowing import analyze_shadowing
 from .analyzers.variable_usage_reporting import debug_variable_usage
@@ -49,9 +46,9 @@ VariableAnalysisMap = analysis_variable_analyses_module.VariableAnalysisMap
 VARIABLE_ANALYSES = analysis_variable_analyses_module.VARIABLE_ANALYSES
 HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS = analysis_variable_analyses_module.HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS
 LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS = analysis_variable_analyses_module.LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS
-app_support = cast(Any, app_support_module)
-cache = cast(Any, cache_module)
-engine = cast(Any, engine_module)
+app_support: Any = app_support_module
+cache: Any = cache_module
+engine: Any = engine_module
 emit_output: Callable[..., None] = console_module.print_output  # type: ignore[assignment]
 compute_cache_key: Callable[[ConfigDict], str] = cache.compute_cache_key
 compute_analysis_report_cache_key: Callable[[str, str], str] = cache.compute_analysis_report_cache_key
@@ -60,6 +57,7 @@ log = logging.getLogger("SattLint")
 
 _DRAFT_SOURCE_SUFFIXES = frozenset({".s", ".l"})
 _OFFICIAL_SOURCE_SUFFIXES = frozenset({".x", ".z"})
+_LIBRARY_SUPPRESSED_ANALYZER_KEYS = frozenset({"picture-display-paths"})
 
 
 def _target_validation_warnings(target_name: str, warnings: list[str]) -> list[str]:
@@ -76,10 +74,51 @@ def _flush_stdout() -> None:
         flush()
 
 
-def _format_selected_issue_kind_values(selected_issue_kinds: Set[IssueKind] | None) -> str | None:
+def _normalized_issue_kind_value(raw_kind: object) -> str | None:
+    if isinstance(raw_kind, IssueKind):
+        return raw_kind.value
+    value = getattr(raw_kind, "value", raw_kind)
+    text = str(value).strip() if value is not None else ""
+    return text or None
+
+
+def _normalize_selected_issue_kind_values(selected_issue_kinds: Set[str] | None) -> frozenset[str] | None:
+    if selected_issue_kinds is None:
+        return None
+    normalized = {
+        issue_kind
+        for raw_kind in selected_issue_kinds
+        if (issue_kind := _normalized_issue_kind_value(raw_kind)) is not None
+    }
+    return frozenset(normalized)
+
+
+def _format_selected_issue_kind_values(selected_issue_kinds: frozenset[str] | None) -> str | None:
     if not selected_issue_kinds:
         return None
-    return ", ".join(kind.value for kind in sorted(selected_issue_kinds, key=lambda item: item.value))
+    return ", ".join(sorted(selected_issue_kinds))
+
+
+def _filter_report_for_selected_issue_kinds(
+    report: object,
+    selected_issue_kinds: frozenset[str] | None,
+) -> object:
+    if not selected_issue_kinds or isinstance(report, VariablesReport):
+        return report
+
+    issues = getattr(report, "issues", None)
+    if not isinstance(issues, list):
+        return report
+
+    typed_issues = cast(list[object], issues)
+    filtered_issues: list[Issue] = [
+        issue
+        for issue in typed_issues
+        if isinstance(issue, Issue)
+        and _normalized_issue_kind_value(getattr(issue, "kind", None)) in selected_issue_kinds
+    ]
+    report_name = str(getattr(report, "name", getattr(report, "basepicture_name", "Analysis")) or "Analysis")
+    return SimpleReport(name=report_name, issues=filtered_issues)
 
 
 def _get_analyzed_targets(cfg: ConfigDict) -> list[str]:
@@ -229,7 +268,9 @@ def ensure_ast_cache(
     load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]] = load_project,
     ast_cache_cls: type[ASTCache] = ASTCache,
     get_cache_dir_fn: Callable[[], Path] = get_cache_dir,
+    emit_output_fn: Callable[..., None] | None = None,
 ) -> bool:
+    resolved_emit_output_fn = emit_output if emit_output_fn is None else emit_output_fn
     return analysis_loading_module.ensure_ast_cache(
         cfg,
         get_analyzed_targets_fn=get_analyzed_targets_fn,
@@ -237,8 +278,30 @@ def ensure_ast_cache(
         load_project_fn=load_project_fn,
         ast_cache_cls=ast_cache_cls,
         get_cache_dir_fn=get_cache_dir_fn,
-        emit_output_fn=emit_output,
+        emit_output_fn=resolved_emit_output_fn,
     )
+
+
+def refresh_analysis_caches(
+    cfg: ConfigDict,
+    *,
+    force_refresh_ast_fn: Callable[[ConfigDict], tuple[BasePicture, ProjectGraph] | None] = force_refresh_ast,
+    analysis_report_cache_cls: type[AnalysisReportCache] = AnalysisReportCache,
+    get_cache_dir_fn: Callable[[], Path] = get_cache_dir,
+    emit_output_fn: Callable[..., None] | None = None,
+) -> tuple[BasePicture, ProjectGraph] | None:
+    resolved_emit_output_fn = emit_output if emit_output_fn is None else emit_output_fn
+    report_cache = cast(
+        AnalysisReportCache,
+        cache_module.build_analysis_report_cache(get_cache_dir_fn(), analysis_report_cache_cls),
+    )
+    removed_entries = report_cache.clear_all()
+    if removed_entries == 0:
+        resolved_emit_output_fn("Analysis report cache already empty.")
+    else:
+        entry_label = "entry" if removed_entries == 1 else "entries"
+        resolved_emit_output_fn(f"Cleared cached analysis reports ({removed_entries} {entry_label}).")
+    return force_refresh_ast_fn(cfg)
 
 
 def _use_cache_enabled(cfg: ConfigDict) -> bool:
@@ -251,7 +314,75 @@ def _run_with_live_status(status_text: str, run_fn: Callable[[], Any]) -> Any:
         return run_fn()
 
 
-def run_variable_analysis(
+def _run_logged_cli_action(
+    cfg: ConfigDict,
+    *,
+    action: Callable[[], Any],
+    debug_message: str,
+    user_message: str,
+) -> tuple[bool, Any | None]:
+    try:
+        return True, action()
+    except Exception as exc:  # noqa: BLE001 - CLI analysis commands should log failures and continue cleanly
+        log_debug_exception(cfg, debug_message, logger=log)
+        emit_output(user_message.format(error=exc))
+        return False, None
+
+
+def _run_module_duplicates_for_name(
+    cfg: ConfigDict,
+    *,
+    target_name: str,
+    project_bp: BasePicture,
+    module_name: str,
+    interaction: MenuInteraction | None,
+) -> Any | None:
+    matches = _run_with_live_status(
+        f"Searching module variants in {target_name}: {module_name}",
+        lambda project_bp=project_bp, module_name=module_name: find_modules_by_name(
+            project_bp,
+            module_name,
+            debug=debug_enabled(cfg),
+        ),
+    )
+    if not matches:
+        emit_output(f"\n⚠ No modules found with name {module_name!r}.")
+        return None
+
+    emit_output(f"\nFound {len(matches)} instance(s) for {module_name!r}:")
+    for idx, (path, module) in enumerate(matches, 1):
+        datecode = getattr(module, "datecode", None)
+        datecode_txt = f" (DateCode: {datecode})" if datecode else ""
+        emit_output(f"  {idx}) {' -> '.join(path)}{datecode_txt}")
+
+    emit_output("\nSelect instances to compare (e.g., 6,7).")
+    emit_output("Press Enter to compare all instances.")
+    selection = (
+        interaction.prompt("Instances to compare", None).strip() if interaction is not None else input("> ").strip()
+    )
+
+    if selection:
+        indices = _parse_index_selection(selection, len(matches))
+        if len(indices) < 2:
+            emit_output("⚠ Need at least two instances to compare; skipping.")
+            return None
+        selected = [matches[i - 1] for i in indices]
+        return _run_with_live_status(
+            f"Comparing module variants in {target_name}: {module_name}",
+            lambda selected=selected: compare_modules(selected),
+        )
+
+    return _run_with_live_status(
+        f"Comparing module variants in {target_name}: {module_name}",
+        lambda project_bp=project_bp, module_name=module_name: analyze_module_duplicates(
+            project_bp,
+            module_name,
+            debug=debug_enabled(cfg),
+        ),
+    )
+
+
+def run_variable_analysis(  # noqa: PLR0915 - keeps per-target analysis orchestration and telemetry in one CLI seam
     cfg: ConfigDict,
     kinds: set[IssueKind] | None,
     *,
@@ -398,7 +529,12 @@ def run_variable_analysis(
                 source_last_changed_fn=analysis_reporting_module.source_last_changed,
             )
             emit_output(f"\n=== Target: {target_name} ===")
-            print_validation_warnings_fn(target_validation_warnings_fn(target_name, getattr(graph, "warnings", [])))
+            validation_warnings = target_validation_warnings_fn(target_name, getattr(graph, "warnings", []))
+            if target_is_library:
+                validation_warnings = [
+                    item for item in validation_warnings if not app_support.is_picture_display_warning(item)
+                ]
+            print_validation_warnings_fn(validation_warnings)
             emit_output(report.summary())
             phase_timings_ms = telemetry_module.normalize_phase_timings_ms(getattr(report, "phase_timings", None))
             phase_bottleneck = telemetry_module.bottleneck_from_phase_timings(phase_timings_ms, kind="phase")
@@ -462,25 +598,26 @@ def run_datatype_usage_analysis(
         return
 
     for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
-        try:
-            report = _run_with_live_status(
-                f"Analyzing datatype usage for {target_name}: {var_name}",
-                lambda project_bp=project_bp, graph=graph: variables_reporting_module.report_datatype_usage(
-                    project_bp,
-                    var_name,
-                    debug=debug_enabled(cfg),
-                    unavailable_libraries=analysis_reporting_module.unavailable_libraries(graph),
-                ),
-            )
-            emit_output(f"\n=== Target: {target_name} ===")
-            emit_output(report)
-        except Exception as exc:
-            log_debug_exception(
-                cfg,
-                f"Datatype usage analysis failed for target {target_name!r} and variable {var_name!r}",
-                logger=log,
-            )
-            emit_output(f"❌ Error during analysis for {target_name}: {exc}")
+        succeeded, report = _run_logged_cli_action(
+            cfg,
+            action=lambda target_name=target_name, var_name=var_name, project_bp=project_bp, graph=graph: (
+                _run_with_live_status(
+                    f"Analyzing datatype usage for {target_name}: {var_name}",
+                    lambda project_bp=project_bp, graph=graph: variables_reporting_module.report_datatype_usage(
+                        project_bp,
+                        var_name,
+                        debug=debug_enabled(cfg),
+                        unavailable_libraries=analysis_reporting_module.unavailable_libraries(graph),
+                    ),
+                )
+            ),
+            debug_message=f"Datatype usage analysis failed for target {target_name!r} and variable {var_name!r}",
+            user_message=f"❌ Error during analysis for {target_name}: {{error}}",
+        )
+        if not succeeded or report is None:
+            continue
+        emit_output(f"\n=== Target: {target_name} ===")
+        emit_output(report)
 
     if pause_fn is not None:
         pause_fn()
@@ -697,61 +834,23 @@ def run_module_duplicates_analysis(
     for target_name, project_bp, _graph in iter_loaded_projects_fn(cfg):
         emit_output(f"\n=== Target: {target_name} ===")
         for module_name in module_names:
-            try:
-                matches = _run_with_live_status(
-                    f"Searching module variants in {target_name}: {module_name}",
-                    lambda project_bp=project_bp, module_name=module_name: find_modules_by_name(
-                        project_bp,
-                        module_name,
-                        debug=debug_enabled(cfg),
-                    ),
-                )
-                if not matches:
-                    emit_output(f"\n⚠ No modules found with name {module_name!r}.")
-                    continue
-
-                emit_output(f"\nFound {len(matches)} instance(s) for {module_name!r}:")
-                for idx, (path, module) in enumerate(matches, 1):
-                    datecode = getattr(module, "datecode", None)
-                    datecode_txt = f" (DateCode: {datecode})" if datecode else ""
-                    emit_output(f"  {idx}) {' -> '.join(path)}{datecode_txt}")
-
-                emit_output("\nSelect instances to compare (e.g., 6,7).")
-                emit_output("Press Enter to compare all instances.")
-                selection = (
-                    interaction.prompt("Instances to compare", None).strip()
-                    if interaction is not None
-                    else input("> ").strip()
-                )
-
-                if selection:
-                    indices = _parse_index_selection(selection, len(matches))
-                    if len(indices) < 2:
-                        emit_output("⚠ Need at least two instances to compare; skipping.")
-                        continue
-                    selected = [matches[i - 1] for i in indices]
-                    result = _run_with_live_status(
-                        f"Comparing module variants in {target_name}: {module_name}",
-                        lambda selected=selected: compare_modules(selected),
+            succeeded, result = _run_logged_cli_action(
+                cfg,
+                action=lambda target_name=target_name, project_bp=project_bp, module_name=module_name, interaction=interaction: (
+                    _run_module_duplicates_for_name(
+                        cfg,
+                        target_name=target_name,
+                        project_bp=project_bp,
+                        module_name=module_name,
+                        interaction=interaction,
                     )
-                else:
-                    result = _run_with_live_status(
-                        f"Comparing module variants in {target_name}: {module_name}",
-                        lambda project_bp=project_bp, module_name=module_name: analyze_module_duplicates(
-                            project_bp,
-                            module_name,
-                            debug=debug_enabled(cfg),
-                        ),
-                    )
-
-                emit_output("\n" + result.summary())
-            except Exception as exc:
-                log_debug_exception(
-                    cfg,
-                    f"Module duplicate analysis failed for target {target_name!r} and module {module_name!r}",
-                    logger=log,
-                )
-                emit_output(f"❌ Error during analysis for {module_name!r}: {exc}")
+                ),
+                debug_message=f"Module duplicate analysis failed for target {target_name!r} and module {module_name!r}",
+                user_message=f"❌ Error during analysis for {module_name!r}: {{error}}",
+            )
+            if not succeeded or result is None:
+                continue
+            emit_output("\n" + result.summary())
 
     if pause_fn is not None:
         pause_fn()
@@ -775,7 +874,7 @@ def run_module_find_by_name(
             pause_fn()
         return
 
-    try:
+    def _emit_module_find_results() -> None:
         for target_name, project_bp, _graph in iter_loaded_projects_fn(cfg):
             emit_output(f"\n=== Target: {target_name} ===")
             for module_name in module_names:
@@ -795,9 +894,13 @@ def run_module_find_by_name(
                     datecode = getattr(module, "datecode", None)
                     datecode_txt = f" (DateCode: {datecode})" if datecode else ""
                     emit_output(f"  - {' -> '.join(path)}{datecode_txt}")
-    except Exception as exc:
-        log_debug_exception(cfg, f"Module search failed for names {module_names!r}", logger=log)
-        emit_output(f"❌ Error during search: {exc}")
+
+    _run_logged_cli_action(
+        cfg,
+        action=_emit_module_find_results,
+        debug_message=f"Module search failed for names {module_names!r}",
+        user_message="❌ Error during search: {error}",
+    )
 
     if pause_fn is not None:
         pause_fn()
@@ -818,16 +921,20 @@ def run_module_tree_debug(
         emit_output("❌ Invalid depth; using default 10")
         max_depth = 10
 
-    try:
+    def _emit_module_tree_debug() -> None:
         for target_name, project_bp, _graph in iter_loaded_projects_fn(cfg):
             emit_output(f"\n=== Target: {target_name} ===")
             _run_with_live_status(
                 f"Inspecting module tree for {target_name}",
                 lambda project_bp=project_bp: debug_module_structure(project_bp, max_depth=max_depth),
             )
-    except Exception as exc:
-        log_debug_exception(cfg, f"Module tree debug failed with max_depth={max_depth}", logger=log)
-        emit_output(f"❌ Error during debug: {exc}")
+
+    _run_logged_cli_action(
+        cfg,
+        action=_emit_module_tree_debug,
+        debug_message=f"Module tree debug failed with max_depth={max_depth}",
+        user_message="❌ Error during debug: {error}",
+    )
 
     if pause_fn is not None:
         pause_fn()
@@ -874,31 +981,30 @@ def run_module_localvar_analysis(
             pause_fn()
         return
 
-    from .analyzers.variable_usage_reporting import report_module_localvar_fields
-
     for target_name, project_bp, _graph in iter_loaded_projects_fn(cfg):
-        try:
-            report = _run_with_live_status(
-                f"Analyzing module local variable in {target_name}: {module_path}.{var_name}",
-                lambda project_bp=project_bp: report_module_localvar_fields(
-                    project_bp,
-                    module_path,
-                    var_name,
-                    debug=debug_enabled(cfg),
-                ),
-            )
-            emit_output(f"\n=== Target: {target_name} ===")
-            emit_output(report)
-        except Exception as exc:
-            log_debug_exception(
-                cfg,
-                (
-                    f"Module local variable analysis failed for target {target_name!r}, "
-                    f"module {module_path!r}, variable {var_name!r}"
-                ),
-                logger=log,
-            )
-            emit_output(f"❌ Error during analysis for {target_name}: {exc}")
+        succeeded, report = _run_logged_cli_action(
+            cfg,
+            action=lambda target_name=target_name, module_path=module_path, var_name=var_name, project_bp=project_bp: (
+                _run_with_live_status(
+                    f"Analyzing module local variable in {target_name}: {module_path}.{var_name}",
+                    lambda project_bp=project_bp: variables_reporting_module.report_module_localvar_fields(
+                        project_bp,
+                        module_path,
+                        var_name,
+                        debug=debug_enabled(cfg),
+                    ),
+                )
+            ),
+            debug_message=(
+                f"Module local variable analysis failed for target {target_name!r}, "
+                f"module {module_path!r}, variable {var_name!r}"
+            ),
+            user_message=f"❌ Error during analysis for {target_name}: {{error}}",
+        )
+        if not succeeded or report is None:
+            continue
+        emit_output(f"\n=== Target: {target_name} ===")
+        emit_output(report)
 
     if pause_fn is not None:
         pause_fn()
@@ -922,15 +1028,6 @@ def _profile_analyzers_enabled() -> bool:
     return os.environ.get("SATTLINT_PROFILE_ANALYZERS", "").strip().casefold() in {"1", "true", "yes", "on"}
 
 
-def _order_analyzers_for_batch(analyzers: list[Any]) -> list[Any]:
-    semantic_analyzers = [spec for spec in analyzers if getattr(spec, "key", None) == SEMANTIC_LAYER_ANALYZER_KEY]
-    if not semantic_analyzers:
-        return analyzers
-    return [
-        spec for spec in analyzers if getattr(spec, "key", None) != SEMANTIC_LAYER_ANALYZER_KEY
-    ] + semantic_analyzers
-
-
 def _emit_shared_artifact_profile(target_name: str, shared_artifacts: AnalysisSharedArtifacts) -> None:
     counters = shared_artifacts.counters
     emit_output(
@@ -943,7 +1040,7 @@ def _emit_shared_artifact_profile(target_name: str, shared_artifacts: AnalysisSh
     )
 
 
-def _run_checks(
+def _run_checks(  # noqa: PLR0915 - coordinates analyzer ordering, caching, filtering, and telemetry per target
     cfg: ConfigDict,
     selected_keys: list[str] | None,
     selected_issue_kinds: Set[str] | None = None,
@@ -953,16 +1050,13 @@ def _run_checks(
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] = _target_is_library,
     pause_fn: Callable[[], None] | None = None,
 ) -> None:
-    analyzers = get_enabled_analyzers_fn()
-    normalized_selected_issue_kinds = (
-        frozenset(IssueKind(issue_kind) for issue_kind in selected_issue_kinds)
-        if selected_issue_kinds is not None
-        else None
+    analyzers = list(
+        get_cli_dispatch_analyzers(
+            selected_keys=selected_keys,
+            get_enabled_analyzers_fn=get_enabled_analyzers_fn,
+        )
     )
-    if selected_keys:
-        selected = {canonicalize_analyzer_key(key) for key in selected_keys}
-        analyzers = [spec for spec in analyzers if spec.key.casefold() in selected]
-    analyzers = _order_analyzers_for_batch(analyzers)
+    normalized_selected_issue_kinds = _normalize_selected_issue_kind_values(selected_issue_kinds)
 
     if not analyzers:
         emit_output("❌ No matching checks found")
@@ -992,26 +1086,27 @@ def _run_checks(
                 getattr(graph, "graphics_load_timings", None),
                 scale=1000.0,
             )
-            shared_artifacts = AnalysisSharedArtifacts()
-            shared_artifacts.counters.shared_artifact_holders_created += 1
-            context = AnalysisContext(
-                base_picture=project_bp,
+            target_is_library = target_is_library_fn(cfg, project_bp, graph)
+            context = build_analysis_context(
+                project_bp,
                 graph=graph,
                 debug=debug_enabled(cfg),
-                target_is_library=target_is_library_fn(cfg, project_bp, graph),
+                target_is_library=target_is_library,
                 selected_issue_kinds=normalized_selected_issue_kinds,
                 config=cfg,
-                shared_artifacts=shared_artifacts,
+                create_shared_artifacts=True,
             )
             emit_output(f"\n=== Target: {target_name} ===")
             _flush_stdout()
             for spec in analyzers:
+                if target_is_library and spec.key in _LIBRARY_SUPPRESSED_ANALYZER_KEYS:
+                    continue
                 emit_output(f"\n=== {spec.name} ({spec.key}) ===")
                 _flush_stdout()
-                if spec.key == "variables":
+                if spec.key == "variables" or getattr(spec, "supports_selected_issue_kinds", False):
                     selected_issue_kind_values = _format_selected_issue_kind_values(normalized_selected_issue_kinds)
                     if selected_issue_kind_values is not None:
-                        emit_output(f"Running variables analyzer for issue kinds: {selected_issue_kind_values}")
+                        emit_output(f"Running {spec.key} analyzer for issue kinds: {selected_issue_kind_values}")
                         _flush_stdout()
                 analyzer_started_at = perf_counter()
                 try:
@@ -1022,7 +1117,7 @@ def _run_checks(
                                 graph,
                                 report_cache=report_cache,
                                 analyzer_cache_key=spec.key,
-                                run_fn=lambda spec=spec, context=context: spec.run(context),
+                                run_fn=lambda spec=spec, context=context: run_registry_analyzer(spec, context),
                                 compute_analysis_report_cache_key_fn=compute_analysis_report_cache_key,
                             )
                         ),
@@ -1047,6 +1142,7 @@ def _run_checks(
                 if phase_timings_ms:
                     analyzer_phase_timings_ms[spec.key] = phase_timings_ms
                 report = apply_rule_profile_to_report(spec.key, report, cfg)
+                report = _filter_report_for_selected_issue_kinds(report, normalized_selected_issue_kinds)
                 report = analysis_reporting_module.normalize_report_target_name(report, target_name)
                 emit_output(report.summary())
             analyzer_bottleneck = telemetry_module.bottleneck_from_named_timings(analyzer_timings_ms, kind="analyzer")
@@ -1088,8 +1184,8 @@ def _run_checks(
                 success=True,
                 payload=payload,
             )
-            if _profile_analyzers_enabled():
-                _emit_shared_artifact_profile(target_name, shared_artifacts)
+            if _profile_analyzers_enabled() and context.shared_artifacts is not None:
+                _emit_shared_artifact_profile(target_name, context.shared_artifacts)
     except KeyboardInterrupt:
         _handle_analysis_cancellation(pause_fn=pause_fn)
         return
@@ -1136,21 +1232,24 @@ def run_mms_interface_analysis(
     emit_output("\n--- MMS Interface Variables ---")
 
     for target_name, project_bp, _graph in iter_loaded_projects_fn(cfg):
-        try:
-            report = _run_with_live_status(
+        succeeded, report = _run_logged_cli_action(
+            cfg,
+            action=lambda target_name=target_name, project_bp=project_bp: _run_with_live_status(
                 f"Analyzing MMS interface variables for {target_name}",
                 lambda project_bp=project_bp: analyze_mms_interface_variables(
                     project_bp,
                     debug=debug_enabled(cfg),
                     config=cfg,
                 ),
-            )
-            report = analysis_reporting_module.normalize_report_target_name(report, target_name)
-            emit_output(f"\n=== Target: {target_name} ===")
-            emit_output(report.summary())
-        except Exception as exc:
-            log_debug_exception(cfg, f"MMS interface analysis failed for target {target_name!r}", logger=log)
-            emit_output(f"❌ Error during analysis for {target_name}: {exc}")
+            ),
+            debug_message=f"MMS interface analysis failed for target {target_name!r}",
+            user_message=f"❌ Error during analysis for {target_name}: {{error}}",
+        )
+        if not succeeded or report is None:
+            continue
+        report = analysis_reporting_module.normalize_report_target_name(report, target_name)
+        emit_output(f"\n=== Target: {target_name} ===")
+        emit_output(report.summary())
 
     if pause_fn is not None:
         pause_fn()
@@ -1198,22 +1297,21 @@ def run_icf_validation(
             emit_output(f"⚠ {icf_file.name}: no entries found")
             continue
 
-        try:
-            program_bp, graph = load_program_ast_fn(cfg, program_name)
-            program_bp = engine_module.merge_project_basepicture(program_bp, graph)
-        except Exception as exc:
-            log_debug_exception(
-                cfg,
-                f"ICF validation failed while loading program {program_name!r} from {icf_file}",
-                logger=log,
-            )
-            emit_output(f"❌ {icf_file.name}: failed to load program {program_name!r}: {exc}")
+        succeeded, loaded_program = _run_logged_cli_action(
+            cfg,
+            action=lambda program_name=program_name: load_program_ast_fn(cfg, program_name),
+            debug_message=f"ICF validation failed while loading program {program_name!r} from {icf_file}",
+            user_message=f"❌ {icf_file.name}: failed to load program {program_name!r}: {{error}}",
+        )
+        if not succeeded or loaded_program is None:
             files_failed += 1
             continue
+        program_bp, graph = loaded_program
+        program_bp = engine_module.merge_project_basepicture(program_bp, graph)
 
-        moduletype_index: dict[str, list[engine_module.ModuleTypeDef]] = {}
-        for bp in graph.ast_by_name.values():
-            for mt in bp.moduletype_defs or []:
+        moduletype_index: dict[str, list[ModuleTypeDef]] = {}
+        for bp in cast(dict[str, BasePicture], graph.ast_by_name).values():
+            for mt in cast(list[ModuleTypeDef] | None, bp.moduletype_defs) or []:
                 key = mt.name.casefold()
                 moduletype_index.setdefault(key, []).append(mt)
 
@@ -1267,20 +1365,19 @@ def run_debug_variable_usage(
         return
 
     for target_name, project_bp, _graph in iter_loaded_projects_fn(cfg):
-        try:
-            report = _run_with_live_status(
+        succeeded, report = _run_logged_cli_action(
+            cfg,
+            action=lambda target_name=target_name, var_name=var_name, project_bp=project_bp: _run_with_live_status(
                 f"Tracing variable usage for {target_name}: {var_name}",
                 lambda project_bp=project_bp: debug_variable_usage(project_bp, var_name, debug=debug_enabled(cfg)),
-            )
-            emit_output(f"\n=== Target: {target_name} ===")
-            emit_output(report)
-        except Exception as exc:
-            log_debug_exception(
-                cfg,
-                f"Variable usage debug failed for target {target_name!r} and variable {var_name!r}",
-                logger=log,
-            )
-            emit_output(f"❌ Error during debug for {target_name}: {exc}")
+            ),
+            debug_message=f"Variable usage debug failed for target {target_name!r} and variable {var_name!r}",
+            user_message=f"❌ Error during debug for {target_name}: {{error}}",
+        )
+        if not succeeded or report is None:
+            continue
+        emit_output(f"\n=== Target: {target_name} ===")
+        emit_output(report)
 
     if pause_fn is not None:
         pause_fn()

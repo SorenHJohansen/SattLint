@@ -7,10 +7,10 @@ from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
-from ._dataflow_common import OLD_PREFIX, is_scalar_value
-from ._report_defaults import empty_any_summary_data, empty_issue_list
 from .dataflow import DataflowAnalyzer
+from .dataflow._dataflow_common import OLD_PREFIX, is_scalar_value
 from .framework import Issue
+from .shared._report_defaults import empty_any_summary_data, empty_issue_list
 
 
 def _build_state_inference_summary(analyzer: DataflowAnalyzer) -> dict[str, Any]:

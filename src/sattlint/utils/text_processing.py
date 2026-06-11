@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from functools import cache
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from lark.exceptions import UnexpectedInput
 
@@ -24,6 +24,9 @@ class CommentCodeHit:
     text: str
     indicators: tuple[str, ...]
     module_path: tuple[str, ...] = ()
+    equation_name: str | None = None
+    sequence_name: str | None = None
+    step_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -83,7 +86,8 @@ def _is_valid_code_via_grammar(text: str) -> bool:
     statement_is_valid = False
     try:
         parser = _get_statement_parser()
-        cast(Any, parser).parse(text)
+        parser_any: Any = parser
+        parser_any.parse(text)
         statement_is_valid = True
     except UnexpectedInput:
         statement_is_valid = False
@@ -95,7 +99,8 @@ def _is_valid_code_via_grammar(text: str) -> bool:
     expression_is_valid = False
     try:
         parser = _get_expression_parser()
-        cast(Any, parser).parse(text)
+        parser_any: Any = parser
+        parser_any.parse(text)
         expression_is_valid = True
     except UnexpectedInput:
         expression_is_valid = False

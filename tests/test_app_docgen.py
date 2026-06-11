@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false
 """Focused documentation preview and generation tests for app docs flows."""
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from sattlint import app_docs
 from sattlint.models.project_graph import ProjectGraph
 
 from ._app_menus_support import make_input
+from .helpers import AnalysisGraphStub
 
 
 def test_preview_documentation_candidates_for_target_handles_empty_candidates(monkeypatch, capsys):
@@ -23,7 +25,7 @@ def test_preview_documentation_candidates_for_target_handles_empty_candidates(mo
     app_docs.preview_documentation_candidates_for_target(
         "TargetA",
         cast(BasePicture, SimpleNamespace()),
-        cast(ProjectGraph, SimpleNamespace(unavailable_libraries=set())),
+        cast(ProjectGraph, AnalysisGraphStub()),
         cfg={"documentation": {}},
     )
 
@@ -46,7 +48,7 @@ def test_preview_documentation_candidates_for_target_lists_candidates(monkeypatc
     app_docs.preview_documentation_candidates_for_target(
         "TargetA",
         cast(BasePicture, SimpleNamespace()),
-        cast(ProjectGraph, SimpleNamespace(unavailable_libraries={"ControlLib"})),
+        cast(ProjectGraph, AnalysisGraphStub(unavailable_libraries={"ControlLib"})),
         cfg={"documentation": {}},
     )
 
@@ -65,7 +67,7 @@ def test_preview_documentation_unit_candidates_lists_targets_and_pauses(monkeypa
     )
 
     target_bp = cast(BasePicture, SimpleNamespace())
-    target_graph = cast(ProjectGraph, SimpleNamespace())
+    target_graph = cast(ProjectGraph, AnalysisGraphStub())
     cfg = {"documentation": {}}
     app_docs.preview_documentation_unit_candidates(
         cfg,
@@ -95,7 +97,7 @@ def test_preview_documentation_unit_candidates_updates_live_status(monkeypatch):
     )
 
     target_bp = cast(BasePicture, SimpleNamespace())
-    target_graph = cast(ProjectGraph, SimpleNamespace())
+    target_graph = cast(ProjectGraph, AnalysisGraphStub())
     app_docs.preview_documentation_unit_candidates(
         {"documentation": {}},
         iter_loaded_projects_fn=lambda _cfg: iter([("TargetA", target_bp, target_graph)]),

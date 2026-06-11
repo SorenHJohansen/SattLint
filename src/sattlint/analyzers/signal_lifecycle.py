@@ -6,21 +6,21 @@ from dataclasses import dataclass, field
 from sattline_parser.models.ast_model import BasePicture, ModuleCode, Variable
 
 from ..grammar import constants as const
-from ._report_defaults import empty_int_summary_data, empty_issue_list
 from ._wave2_support import iter_read_variable_names, iter_statement_sites, root_variable_name, walk_module_scopes
-from .ast_node_helpers import (
+from .framework import Issue
+from .shared._report_defaults import empty_int_summary_data, empty_issue_list
+from .shared.ast_node_helpers import (
     iter_branch_pairs as _iter_branch_pairs,
 )
-from .ast_node_helpers import (
+from .shared.ast_node_helpers import (
     object_tuple as _object_tuple,
 )
-from .ast_node_helpers import (
+from .shared.ast_node_helpers import (
     sequence_as_list as _sequence_as_list,
 )
-from .ast_node_helpers import (
+from .shared.ast_node_helpers import (
     statement_children as _statement_children,
 )
-from .framework import Issue
 
 
 @dataclass

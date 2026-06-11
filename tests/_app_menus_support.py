@@ -1,6 +1,9 @@
+# pyright: reportPrivateUsage=false, reportUnusedImport=false
+
 """Shared fixtures and helpers for app menu tests."""
 
 import os
+from collections.abc import Sequence
 from typing import ClassVar
 
 import pytest
@@ -14,6 +17,18 @@ from sattlint.reporting.variables_report import (
     IssueKind,
     VariablesReport,
 )
+
+from .helpers import RealContext, make_input
+
+__all__ = [
+    "INVALID_SINGLE_FILE",
+    "VALID_SINGLE_FILE",
+    "DummyReport",
+    "make_input",
+    "make_shadowing_report",
+    "make_variable_report",
+    "real_context",
+]
 
 VALID_SINGLE_FILE = """
 "SyntaxVersion"
@@ -56,7 +71,7 @@ class DummyReport:
     visible_kinds: ClassVar[frozenset[IssueKind]] = frozenset(DEFAULT_VARIABLE_ANALYSIS_KINDS)
     include_empty_sections: ClassVar[bool] = True
 
-    def summary(self):
+    def summary(self) -> str:
         return "summary"
 
 
@@ -78,23 +93,12 @@ def make_variable_report(basepicture_name: str = "Dummy") -> VariablesReport:
     )
 
 
-def make_input(responses):
-    it = iter(responses)
-
-    def _input(_prompt: str = ""):
-        try:
-            return next(it)
-        except StopIteration as exc:
-            raise AssertionError("No more input responses provided") from exc
-
-    return _input
+type _NestedModule = SingleModule | FrameModule | ModuleTypeInstance
 
 
-def _find_module_with_localvar(base_picture: BasePicture):
-    def walk(mods, path):
+def _find_module_with_localvar(base_picture: BasePicture) -> tuple[list[str], str] | None:
+    def walk(mods: Sequence[_NestedModule] | None, path: list[str]) -> tuple[list[str], str] | None:
         for mod in mods or []:
-            if not hasattr(mod, "header"):
-                continue
             mod_path = [*path, mod.header.name]
 
             if isinstance(mod, SingleModule):
@@ -109,7 +113,7 @@ def _find_module_with_localvar(base_picture: BasePicture):
                 if found:
                     return found
 
-            elif isinstance(mod, ModuleTypeInstance):
+            else:
                 mt = next(
                     (
                         m
@@ -126,12 +130,12 @@ def _find_module_with_localvar(base_picture: BasePicture):
     return walk(getattr(base_picture, "submodules", None), [base_picture.header.name])
 
 
-def _pick_any_variable_name(base_picture: BasePicture, graph: ProjectGraph):
+def _pick_any_variable_name(base_picture: BasePicture, graph: ProjectGraph) -> str | None:
     analyzer = variables_module.VariablesAnalyzer(
         base_picture,
         debug=False,
         fail_loudly=False,
-        unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
+        unavailable_libraries=graph.unavailable_libraries,
     )
     for var_list in analyzer._any_var_index.values():
         if var_list:
@@ -142,7 +146,7 @@ def _pick_any_variable_name(base_picture: BasePicture, graph: ProjectGraph):
 
 
 @pytest.fixture(scope="session")
-def real_context():
+def real_context() -> RealContext | None:
     if os.getenv("SATTLINT_RUN_REAL_CONTEXT") != "1":
         return None
     cfg, _ = app.load_config(app.CONFIG_PATH)

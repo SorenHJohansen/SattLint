@@ -186,7 +186,7 @@ def test_configgen_create_station_configuration_sheet_writes_defaults_for_missin
 
 
 def test_get_example_fixtures_for_analyzer_returns_examples():
-    from sattlint.docgenerator.analyzer_ref import get_example_fixtures_for_analyzer
+    from sattlint.docgenerator.analyzer_ref import get_example_fixtures_for_analyzer  # noqa: PLC0415
 
     variables_examples = get_example_fixtures_for_analyzer("variables")
     assert len(variables_examples) >= 1
@@ -201,7 +201,7 @@ def test_get_example_fixtures_for_analyzer_returns_examples():
 
 
 def test_get_example_fixtures_for_analyzer_returns_expected_rule_ids():
-    from sattlint.docgenerator.analyzer_ref import get_example_fixtures_for_analyzer
+    from sattlint.docgenerator.analyzer_ref import get_example_fixtures_for_analyzer  # noqa: PLC0415
 
     shadowing_examples = get_example_fixtures_for_analyzer("shadowing")
     assert len(shadowing_examples) >= 1
@@ -214,11 +214,11 @@ def test_get_example_fixtures_for_analyzer_returns_expected_rule_ids():
 
 
 def test_build_analyzer_reference_entry():
-    from sattlint.analyzers.framework import AnalyzerSpec
-    from sattlint.docgenerator.analyzer_ref import build_analyzer_reference_entry
+    from sattlint.analyzers.framework import AnalyzerSpec  # noqa: PLC0415
+    from sattlint.docgenerator.analyzer_ref import build_analyzer_reference_entry  # noqa: PLC0415
 
     def _dummy_run(context):
-        from sattlint.analyzers.framework import SimpleReport
+        from sattlint.analyzers.framework import SimpleReport  # noqa: PLC0415
 
         return SimpleReport(name="test")
 
@@ -243,7 +243,7 @@ def test_build_analyzer_reference_entry():
 
 
 def test_build_full_analyzer_reference():
-    from sattlint.docgenerator.analyzer_ref import build_full_analyzer_reference
+    from sattlint.docgenerator.analyzer_ref import build_full_analyzer_reference  # noqa: PLC0415
 
     reference = build_full_analyzer_reference()
 
@@ -257,7 +257,7 @@ def test_build_full_analyzer_reference():
 
 
 def test_build_full_analyzer_reference_includes_wave2_analyzers_with_rules_and_examples():
-    from sattlint.docgenerator.analyzer_ref import build_full_analyzer_reference
+    from sattlint.docgenerator.analyzer_ref import build_full_analyzer_reference  # noqa: PLC0415
 
     reference = build_full_analyzer_reference()
     analyzers = {entry["key"]: entry for entry in reference["analyzers"]}
@@ -275,7 +275,7 @@ def test_build_full_analyzer_reference_includes_wave2_analyzers_with_rules_and_e
 
 
 def test_render_analyzer_reference_markdown():
-    from sattlint.docgenerator.analyzer_ref import render_analyzer_reference_markdown
+    from sattlint.docgenerator.analyzer_ref import render_analyzer_reference_markdown  # noqa: PLC0415
 
     markdown = render_analyzer_reference_markdown()
 
@@ -286,7 +286,7 @@ def test_render_analyzer_reference_markdown():
 
 
 def test_render_analyzer_reference_markdown_contains_analyzer_info():
-    from sattlint.docgenerator.analyzer_ref import render_analyzer_reference_markdown
+    from sattlint.docgenerator.analyzer_ref import render_analyzer_reference_markdown  # noqa: PLC0415
 
     markdown = render_analyzer_reference_markdown()
 
@@ -296,13 +296,13 @@ def test_render_analyzer_reference_markdown_contains_analyzer_info():
 
 
 def test_save_analyzer_reference_json(tmp_path):
-    from sattlint.docgenerator.analyzer_ref import save_analyzer_reference_json
+    from sattlint.docgenerator.analyzer_ref import save_analyzer_reference_json  # noqa: PLC0415
 
     output_path = tmp_path / "analyzer_ref.json"
     save_analyzer_reference_json(output_path)
 
     assert output_path.exists()
-    import json
+    import json  # noqa: PLC0415
 
     data = json.loads(output_path.read_text())
     assert "analyzers" in data
@@ -310,7 +310,7 @@ def test_save_analyzer_reference_json(tmp_path):
 
 
 def test_save_analyzer_reference_markdown(tmp_path):
-    from sattlint.docgenerator.analyzer_ref import save_analyzer_reference_markdown
+    from sattlint.docgenerator.analyzer_ref import save_analyzer_reference_markdown  # noqa: PLC0415
 
     output_path = tmp_path / "analyzer_ref.md"
     save_analyzer_reference_markdown(output_path)
@@ -322,7 +322,7 @@ def test_save_analyzer_reference_markdown(tmp_path):
 
 
 def test_resolve_fixture_path_returns_fixture_root_path():
-    from sattlint.docgenerator import analyzer_ref
+    from sattlint.docgenerator import analyzer_ref  # noqa: PLC0415
 
     resolved = analyzer_ref.resolve_fixture_path("corpus/semantic/ConfigDrift.s")
 
@@ -330,13 +330,13 @@ def test_resolve_fixture_path_returns_fixture_root_path():
 
 
 def test_build_analyzer_reference_entry_returns_error_for_unknown_catalog():
-    from types import SimpleNamespace
+    from types import SimpleNamespace  # noqa: PLC0415
 
-    from sattlint.analyzers.framework import AnalyzerSpec
-    from sattlint.docgenerator.analyzer_ref import build_analyzer_reference_entry
+    from sattlint.analyzers.framework import AnalyzerSpec  # noqa: PLC0415
+    from sattlint.docgenerator.analyzer_ref import build_analyzer_reference_entry  # noqa: PLC0415
 
     def _dummy_run(context):
-        from sattlint.analyzers.framework import SimpleReport
+        from sattlint.analyzers.framework import SimpleReport  # noqa: PLC0415
 
         return SimpleReport(name="test")
 
@@ -358,7 +358,7 @@ def test_build_analyzer_reference_entry_returns_error_for_unknown_catalog():
 
 
 def test_build_full_analyzer_reference_uses_supplied_catalog_and_explicit_markdown_reference(tmp_path):
-    from sattlint.docgenerator.analyzer_ref import (
+    from sattlint.docgenerator.analyzer_ref import (  # noqa: PLC0415
         build_full_analyzer_reference,
         render_analyzer_reference_markdown,
         save_analyzer_reference_markdown,
@@ -402,7 +402,7 @@ def test_build_full_analyzer_reference_uses_supplied_catalog_and_explicit_markdo
 
 
 def test_analyzer_ref_module_executes_type_checking_branch(monkeypatch):
-    from sattlint.docgenerator import analyzer_ref
+    from sattlint.docgenerator import analyzer_ref  # noqa: PLC0415
 
     module_name = "sattlint.docgenerator._analyzer_ref_typecheck_probe"
     spec = importlib.util.spec_from_file_location(module_name, analyzer_ref.__file__)

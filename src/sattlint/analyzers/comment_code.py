@@ -56,7 +56,7 @@ def analyze_comment_code_files(
         files_scanned += 1
         try:
             text = _read_source_text(path)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             issues.append(
                 Issue(
                     kind="comment_code_read_error",
@@ -76,6 +76,9 @@ def analyze_comment_code_files(
                     end_col=hit.end_col,
                     indicators=hit.indicators,
                     module_path=hit.module_path,
+                    equation_name=hit.equation_name,
+                    sequence_name=hit.sequence_name,
+                    step_name=hit.step_name,
                     preview=_comment_preview(hit.text),
                 )
             )
@@ -92,6 +95,9 @@ def analyze_comment_code_files(
                         "start_col": hit.start_col,
                         "end_col": hit.end_col,
                         "indicators": hit.indicators,
+                        "equation_name": hit.equation_name,
+                        "sequence_name": hit.sequence_name,
+                        "step_name": hit.step_name,
                     },
                 )
             )

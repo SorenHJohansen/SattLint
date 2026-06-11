@@ -17,7 +17,7 @@ from sattline_parser.models.ast_model import (
 from ..casefolding import casefold_key
 from ..reporting.variables_report import IssueKind, VariableIssue, VariablesReport
 from ..resolution.common import resolve_moduletype_def_strict
-from .variable_utils import matches_root_origin
+from .shared.variable_utils import matches_root_origin
 
 
 @dataclass(frozen=True)

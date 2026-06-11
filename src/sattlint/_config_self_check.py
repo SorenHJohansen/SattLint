@@ -80,11 +80,11 @@ def _self_check_graphics_rules() -> bool:
     del validation
     graphics_rules_path = config_module.get_graphics_rules_path()
     if graphics_rules_path.exists():
-        from . import graphics_rules as graphics_rules_module
+        from . import graphics_rules as graphics_rules_module  # noqa: PLC0415
 
         try:
             graphics_rules, _created = graphics_rules_module.load_graphics_rules(graphics_rules_path)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             emit_output(f"graphics_rules_path invalid: {graphics_rules_path} ({exc})")
             return False
         emit_output(f"graphics_rules_path: {graphics_rules_path} ({len(graphics_rules.get('rules', []))} rules)")

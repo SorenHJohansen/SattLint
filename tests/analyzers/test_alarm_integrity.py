@@ -296,7 +296,7 @@ def test_alarm_integrity_report_summary_covers_empty_and_populated_reports() -> 
     assert "[Root] later" in summary
 
 
-def test_alarm_integrity_helper_methods_cover_origins_mappings_and_value_formatting(monkeypatch) -> None:
+def test_alarm_integrity_helper_methods_cover_origins_mappings_and_value_formatting(monkeypatch) -> None:  # noqa: PLR0915
     bp = BasePicture(
         header=_hdr("Root"),
         origin_file="Root.s",

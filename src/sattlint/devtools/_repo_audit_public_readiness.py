@@ -10,7 +10,7 @@ _DB_CREDENTIAL_MARKERS = ("--user root", "--pass root", "root/root", "user=root"
 
 
 def _repo_audit_module() -> Any:
-    from sattlint.devtools import repo_audit as repo_audit_module
+    from sattlint.devtools import repo_audit as repo_audit_module  # noqa: PLC0415
 
     return repo_audit_module
 

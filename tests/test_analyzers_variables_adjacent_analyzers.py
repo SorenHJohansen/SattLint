@@ -9,7 +9,6 @@ from sattline_parser.models.ast_model import (
     Equation,
     IntLiteral,
     ModuleCode,
-    ModuleHeader,
     ModuleTypeDef,
     ModuleTypeInstance,
     ParameterMapping,
@@ -28,18 +27,15 @@ from sattlint.analyzers.mms import analyze_mms_interface_variables
 from sattlint.analyzers.parameter_drift import analyze_parameter_drift
 from sattlint.analyzers.scan_loop_resource_usage import analyze_scan_loop_resource_usage
 from sattlint.reporting.icf_report import ICFEntry
-
-
-def _hdr(name: str) -> ModuleHeader:
-    return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
-
-
-def _varref(name: str) -> dict:
-    return {const.KEY_VAR_NAME: name}
-
-
-def _issue_kinds(report) -> set[str]:
-    return {issue.kind for issue in report.issues}
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    issue_kinds as _issue_kinds,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_mms_interface_flags_dead_tags_for_unwritten_outgoing_variables():

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from contextlib import suppress
 from pathlib import Path
-from typing import Any, ClassVar, cast
+from typing import Any, ClassVar
 
 from ._app_textual_shared import (
     _TEXTUAL_APP,
@@ -20,7 +20,6 @@ from ._app_textual_shared import (
     _menu_option_keys,
     advance_menu_choice_buffer,
     interaction_ledger_text,
-    resolve_shell_title,
 )
 
 if _TEXTUAL_APP is not None:
@@ -36,7 +35,7 @@ if _TEXTUAL_APP is not None:
         def on_mount(self) -> None:
             title_widget = self.query_one("#shell-banner-title", _TEXTUAL_STATIC)
             subtitle_widget = self.query_one("#shell-banner-subtitle", _TEXTUAL_STATIC)
-            title_widget.update(resolve_shell_title(getattr(self, "app", None)))
+            title_widget.update("")
             subtitle_widget.update("Analysis, docs, setup, and tools")
 
     class _InteractionPane(_TEXTUAL_VERTICAL):
@@ -310,7 +309,7 @@ if _TEXTUAL_APP is not None:
         def action_dismiss_cancel(self) -> None:
             self.dismiss(None)
 else:  # pragma: no cover - optional dependency path
-    _ShellBanner = cast(Any, None)
-    _InteractionPane = cast(Any, None)
-    _HelpScreen = cast(Any, None)
-    _FileBrowserScreen = cast(Any, None)
+    _ShellBanner: Any = None
+    _InteractionPane: Any = None
+    _HelpScreen: Any = None
+    _FileBrowserScreen: Any = None

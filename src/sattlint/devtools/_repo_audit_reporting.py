@@ -21,7 +21,7 @@ from sattlint.devtools.pipeline_artifacts import write_json_artifact
 
 
 def _repo_audit_reporting_module() -> Any:
-    from sattlint.devtools import repo_audit as repo_audit_module
+    from sattlint.devtools import repo_audit as repo_audit_module  # noqa: PLC0415
 
     return repo_audit_module
 
@@ -147,6 +147,15 @@ def _cli_consistency_doc_paths(root: Path) -> list[Path]:
 _REQUIRED_VSCODE_TASKS = (
     {
         "label": "Quality: Pre-push Gate",
+        "command": _portable_command_text_module.repo_audit_command(
+            "--profile",
+            "full",
+            "--output-dir",
+            "artifacts/audit",
+        ),
+    },
+    {
+        "label": "Quality: AI Drift Check",
         "command": _portable_command_text_module.repo_audit_command(
             "--profile",
             "full",
@@ -353,7 +362,7 @@ def _structural_report_location_detail(finding: dict[str, Any]) -> tuple[str | N
 
 def _find_structural_report_findings(root: Path | None = None) -> list[Any]:
     repo_audit = _repo_audit_reporting_module()
-    from sattlint.devtools import structural_reports as structural_reports_module
+    from sattlint.devtools import structural_reports as structural_reports_module  # noqa: PLC0415
 
     report_root = repo_audit.REPO_ROOT if root is None else root
     architecture_report = structural_reports_module.collect_architecture_report(report_root)
@@ -380,7 +389,7 @@ def _find_structural_report_findings(root: Path | None = None) -> list[Any]:
     return structural_findings
 
 
-def _find_pipeline_findings(output_dir: Path) -> list[Any]:
+def _find_pipeline_findings(output_dir: Path) -> list[Any]:  # noqa: PLR0915
     repo_audit = _repo_audit_reporting_module()
     findings_path = output_dir / "findings.json"
     if findings_path.exists():

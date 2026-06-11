@@ -20,10 +20,24 @@ _COVERAGE_XML_TEMPLATE = """
 """
 
 
-def _write_pre_push_task(root: Path, *, args: list[str] | None = None) -> None:
+def _write_required_audit_tasks(
+    root: Path,
+    *,
+    pre_push_args: list[str] | None = None,
+    ai_drift_args: list[str] | None = None,
+) -> None:
     tasks_path = root / ".vscode" / "tasks.json"
     tasks_path.parent.mkdir(parents=True, exist_ok=True)
-    task_args = args or [
+    pre_push_task_args = pre_push_args or [
+        "scripts/run_repo_python.py",
+        "-m",
+        "sattlint.devtools.repo_audit",
+        "--profile",
+        "full",
+        "--output-dir",
+        "artifacts/audit",
+    ]
+    ai_drift_task_args = ai_drift_args or [
         "scripts/run_repo_python.py",
         "-m",
         "sattlint.devtools.repo_audit",
@@ -42,8 +56,14 @@ def _write_pre_push_task(root: Path, *, args: list[str] | None = None) -> None:
                         "label": "Quality: Pre-push Gate",
                         "type": "process",
                         "command": "python",
-                        "args": task_args,
-                    }
+                        "args": pre_push_task_args,
+                    },
+                    {
+                        "label": "Quality: AI Drift Check",
+                        "type": "process",
+                        "command": "python",
+                        "args": ai_drift_task_args,
+                    },
                 ],
             },
             indent=2,
@@ -184,7 +204,7 @@ def test_build_cli_consistency_report_gap_counts_match_gap_lists():
 def test_build_cli_consistency_report_detects_undeclared_subcommand(tmp_path, monkeypatch):
     readme = tmp_path / "README.md"
     readme.write_text("Run `sattlint ghost-command` to do something.\n", encoding="utf-8")
-    _write_pre_push_task(tmp_path)
+    _write_required_audit_tasks(tmp_path)
 
     monkeypatch.setattr(
         repo_audit,
@@ -203,7 +223,7 @@ def test_build_cli_consistency_report_detects_undeclared_subcommand(tmp_path, mo
 def test_build_cli_consistency_report_pass_when_all_documented_subcommands_are_declared(tmp_path, monkeypatch):
     readme = tmp_path / "README.md"
     readme.write_text("Run `sattlint syntax-check` to check syntax.\n", encoding="utf-8")
-    _write_pre_push_task(tmp_path)
+    _write_required_audit_tasks(tmp_path)
 
     monkeypatch.setattr(
         repo_audit,
@@ -221,7 +241,7 @@ def test_build_cli_consistency_report_ignores_exec_plan_markdown_noise(tmp_path,
     cli_docs = tmp_path / "docs" / "references"
     cli_docs.mkdir(parents=True)
     (cli_docs / "cli-commands.md").write_text("Run `sattlint syntax-check` to validate syntax.\n", encoding="utf-8")
-    _write_pre_push_task(tmp_path)
+    _write_required_audit_tasks(tmp_path)
 
     exec_plan = tmp_path / "docs" / "exec-plans" / "active"
     exec_plan.mkdir(parents=True)
@@ -247,9 +267,9 @@ def test_build_cli_consistency_report_ignores_exec_plan_markdown_noise(tmp_path,
 def test_build_cli_consistency_report_detects_pre_push_task_mismatch(tmp_path, monkeypatch):
     readme = tmp_path / "README.md"
     readme.write_text("Run `sattlint syntax-check` to validate syntax.\n", encoding="utf-8")
-    _write_pre_push_task(
+    _write_required_audit_tasks(
         tmp_path,
-        args=[
+        pre_push_args=[
             "scripts/run_repo_python.py",
             "-m",
             "sattlint.devtools.repo_audit",
@@ -271,6 +291,36 @@ def test_build_cli_consistency_report_detects_pre_push_task_mismatch(tmp_path, m
     assert report["status"] == "fail"
     assert report["summary"]["mismatched_task_count"] == 1
     assert report["gaps"]["mismatched_tasks"][0]["label"] == "Quality: Pre-push Gate"
+    assert report["gaps"]["mismatched_tasks"][0]["referenced_in"] == ".vscode/tasks.json"
+
+
+def test_build_cli_consistency_report_detects_ai_drift_task_mismatch(tmp_path, monkeypatch):
+    readme = tmp_path / "README.md"
+    readme.write_text("Run `sattlint syntax-check` to validate syntax.\n", encoding="utf-8")
+    _write_required_audit_tasks(
+        tmp_path,
+        ai_drift_args=[
+            "scripts/run_repo_python.py",
+            "-m",
+            "sattlint.devtools.repo_audit",
+            "--profile",
+            "full",
+            "--output-dir",
+            "artifacts/audit",
+        ],
+    )
+
+    monkeypatch.setattr(
+        repo_audit,
+        "_collect_cli_metadata",
+        lambda: ({"sattlint", "sattlint-repo-audit"}, {"syntax-check"}),
+    )
+
+    report = repo_audit.build_cli_consistency_report(root=tmp_path)
+
+    assert report["status"] == "fail"
+    assert report["summary"]["mismatched_task_count"] == 1
+    assert report["gaps"]["mismatched_tasks"][0]["label"] == "Quality: AI Drift Check"
     assert report["gaps"]["mismatched_tasks"][0]["referenced_in"] == ".vscode/tasks.json"
 
 

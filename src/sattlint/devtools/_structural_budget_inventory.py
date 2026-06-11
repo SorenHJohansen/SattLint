@@ -15,6 +15,9 @@ def iter_structural_python_files(repo_root: Path) -> Iterator[tuple[str, Path]]:
     for path in sorted((repo_root / "src").rglob("*.py")):
         if path.is_file():
             yield "src", path
+    for path in sorted((repo_root / "scripts").rglob("*.py")):
+        if path.is_file():
+            yield "src", path
     for path in sorted((repo_root / "tests").rglob("test_*.py")):
         if path.is_file():
             yield "tests", path

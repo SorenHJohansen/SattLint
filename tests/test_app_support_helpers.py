@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
 from sattlint import app_support
+
+
+class _FormatResult:
+    def __init__(self, *, changed: bool) -> None:
+        self.changed = changed
 
 
 def test_target_load_error_categorizes_other_entries_and_warnings() -> None:
@@ -136,8 +140,12 @@ def test_configured_icf_files_and_run_format_icf_command_cover_error_paths(tmp_p
     changed_file.write_text("x", encoding="utf-8")
     unchanged_file.write_text("y", encoding="utf-8")
 
+    def fake_format_icf_file(path: Path, check: bool) -> _FormatResult:
+        del check
+        return _FormatResult(changed=path.name == "a.icf")
+
     original = app_support.format_icf_file
-    app_support.format_icf_file = lambda path, check: SimpleNamespace(changed=path.name == "a.icf")
+    app_support.format_icf_file = fake_format_icf_file
     try:
         printed.clear()
         exit_code = app_support.run_format_icf_command(

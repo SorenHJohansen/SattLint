@@ -1,9 +1,10 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportIndexIssue=false
 # ruff: noqa: F403
 from ._pipeline_collection_test_support import *
 
 
 def test_scope_context_resolve_global_name_empty_returns_none():
-    from sattlint.resolution.scope import ScopeContext
+    from sattlint.resolution.scope import ScopeContext  # noqa: PLC0415
 
     ctx = ScopeContext(
         env={},
@@ -16,8 +17,8 @@ def test_scope_context_resolve_global_name_empty_returns_none():
 
 
 def test_scope_context_resolve_global_name_walks_parent():
-    from sattline_parser.models.ast_model import Variable
-    from sattlint.resolution.scope import ScopeContext
+    from sattline_parser.models.ast_model import Variable  # noqa: PLC0415
+    from sattlint.resolution.scope import ScopeContext  # noqa: PLC0415
 
     parent_var = Variable(name="GlobVar", datatype="Integer")
     parent_ctx = ScopeContext(
@@ -38,8 +39,8 @@ def test_scope_context_resolve_global_name_walks_parent():
 
 
 def test_scope_context_resolve_variable_caches_parent_lookup_result():
-    from sattline_parser.models.ast_model import Variable
-    from sattlint.resolution.scope import ScopeContext
+    from sattline_parser.models.ast_model import Variable  # noqa: PLC0415
+    from sattlint.resolution.scope import ScopeContext  # noqa: PLC0415
 
     parent_var = Variable(name="Sig", datatype="Integer")
     parent_ctx = ScopeContext(
@@ -64,8 +65,8 @@ def test_scope_context_resolve_variable_caches_parent_lookup_result():
 
 
 def test_scope_context_resolve_variable_prefix_plus_field_and_unresolved_paths():
-    from sattline_parser.models.ast_model import Variable
-    from sattlint.resolution.scope import ScopeContext
+    from sattline_parser.models.ast_model import Variable  # noqa: PLC0415
+    from sattlint.resolution.scope import ScopeContext  # noqa: PLC0415
 
     src_var = Variable(name="Dv", datatype="UserType")
     ctx = ScopeContext(
@@ -84,7 +85,7 @@ def test_scope_context_resolve_variable_prefix_plus_field_and_unresolved_paths()
 
 
 def test_scope_context_resolve_global_name_unresolved_without_parent_uses_local_paths():
-    from sattlint.resolution.scope import ScopeContext
+    from sattlint.resolution.scope import ScopeContext  # noqa: PLC0415
 
     ctx = ScopeContext(
         env={},
@@ -98,7 +99,7 @@ def test_scope_context_resolve_global_name_unresolved_without_parent_uses_local_
 
 # --- contracts/findings.py ---
 def test_finding_location_to_dict_and_from_mapping():
-    from sattlint.contracts.findings import FindingLocation
+    from sattlint.contracts.findings import FindingLocation  # noqa: PLC0415
 
     loc = FindingLocation(path="Main.s", line=5, column=3, symbol="Var1", module_path=("Main", "Guard"))
     d = loc.to_dict()
@@ -113,14 +114,14 @@ def test_finding_location_to_dict_and_from_mapping():
 
 
 def test_finding_location_from_mapping_uses_file_fallback():
-    from sattlint.contracts.findings import FindingLocation
+    from sattlint.contracts.findings import FindingLocation  # noqa: PLC0415
 
     loc = FindingLocation.from_mapping({"file": "Alt.s"})
     assert loc.path == "Alt.s"
 
 
 def test_finding_record_default_fingerprint_is_set():
-    from sattlint.contracts.findings import FindingRecord
+    from sattlint.contracts.findings import FindingRecord  # noqa: PLC0415
 
     r = FindingRecord(
         id="r1",
@@ -136,7 +137,7 @@ def test_finding_record_default_fingerprint_is_set():
 
 
 def test_finding_record_to_dict_round_trip_via_from_dict():
-    from sattlint.contracts.findings import FindingLocation, FindingRecord
+    from sattlint.contracts.findings import FindingLocation, FindingRecord  # noqa: PLC0415
 
     original = FindingRecord(
         id="r2",
@@ -167,7 +168,7 @@ def test_finding_record_to_dict_round_trip_via_from_dict():
 
 
 def test_finding_record_derives_tool_specific_failure_fields():
-    from sattlint.contracts.findings import FindingLocation, FindingRecord
+    from sattlint.contracts.findings import FindingLocation, FindingRecord  # noqa: PLC0415
 
     ruff_finding = FindingRecord(
         id="ruff-f401",
@@ -200,7 +201,7 @@ def test_finding_record_derives_tool_specific_failure_fields():
 
 
 def test_finding_record_from_mapping_with_explicit_source():
-    from sattlint.contracts.findings import FindingRecord
+    from sattlint.contracts.findings import FindingRecord  # noqa: PLC0415
 
     r = FindingRecord.from_mapping(
         {"rule_id": "x.y", "category": "cat", "severity": "err", "confidence": "low", "message": "msg"},
@@ -212,7 +213,7 @@ def test_finding_record_from_mapping_with_explicit_source():
 
 
 def test_finding_collection_to_dict_and_from_dict():
-    from sattlint.contracts.findings import FindingCollection, FindingRecord
+    from sattlint.contracts.findings import FindingCollection, FindingRecord  # noqa: PLC0415
 
     rec = FindingRecord(id="f1", rule_id="r1", category="c", severity="s", confidence="c2", message="m", source="s2")
     coll = FindingCollection(findings=(rec,))
@@ -225,7 +226,7 @@ def test_finding_collection_to_dict_and_from_dict():
 
 
 def test_finding_record_defaults_cover_explicit_and_fallback_paths():
-    from sattlint.contracts.findings import FindingCollection, FindingLocation, FindingRecord
+    from sattlint.contracts.findings import FindingCollection, FindingLocation, FindingRecord  # noqa: PLC0415
 
     explicit_owner = FindingRecord(
         id="owner",
@@ -340,7 +341,7 @@ def test_finding_record_defaults_cover_explicit_and_fallback_paths():
 
 
 def test_findings_private_coercion_helpers_cover_edge_cases():
-    from sattlint.contracts import findings as findings_module
+    from sattlint.contracts import findings as findings_module  # noqa: PLC0415
 
     assert findings_module._coerce_int(True) == 1
     assert findings_module._coerce_int("abc") is None
@@ -352,7 +353,7 @@ def test_findings_private_coercion_helpers_cover_edge_cases():
 
 # --- path_sanitizer.py ---
 def test_sanitize_path_for_report_returns_relative_for_repo_subpath(tmp_path):
-    from sattlint.path_sanitizer import sanitize_path_for_report
+    from sattlint.path_sanitizer import sanitize_path_for_report  # noqa: PLC0415
 
     sub = tmp_path / "src" / "main.py"
     result = sanitize_path_for_report(sub, repo_root=tmp_path)
@@ -360,19 +361,19 @@ def test_sanitize_path_for_report_returns_relative_for_repo_subpath(tmp_path):
 
 
 def test_sanitize_path_for_report_returns_none_for_none():
-    from pathlib import Path
+    from pathlib import Path  # noqa: PLC0415
 
-    from sattlint.path_sanitizer import sanitize_path_for_report
+    from sattlint.path_sanitizer import sanitize_path_for_report  # noqa: PLC0415
 
     result = sanitize_path_for_report(None, repo_root=Path("."))
     assert result is None
 
 
 def test_sanitize_path_for_report_external_absolute_path(tmp_path):
-    import tempfile
-    from pathlib import Path
+    import tempfile  # noqa: PLC0415
+    from pathlib import Path  # noqa: PLC0415
 
-    from sattlint.path_sanitizer import sanitize_path_for_report
+    from sattlint.path_sanitizer import sanitize_path_for_report  # noqa: PLC0415
 
     # Create a path outside of tmp_path but absolute
     other = Path(tempfile.gettempdir()) / "some_other" / "file.py"
@@ -383,7 +384,7 @@ def test_sanitize_path_for_report_external_absolute_path(tmp_path):
 
 
 def test_sanitize_command_for_report_strips_absolute_path_args(tmp_path):
-    from sattlint.path_sanitizer import sanitize_command_for_report
+    from sattlint.path_sanitizer import sanitize_command_for_report  # noqa: PLC0415
 
     sub = tmp_path / "src" / "main.py"
     sub.parent.mkdir(parents=True, exist_ok=True)
@@ -394,9 +395,9 @@ def test_sanitize_command_for_report_strips_absolute_path_args(tmp_path):
 
 
 def test_path_sanitizer_covers_empty_and_resolve_fallback_branches(tmp_path, monkeypatch):
-    from typing import Any, cast
+    from typing import Any, cast  # noqa: PLC0415
 
-    from sattlint import path_sanitizer
+    from sattlint import path_sanitizer  # noqa: PLC0415
 
     class _RepoRootFallback:
         def __init__(self, path) -> None:
@@ -434,7 +435,7 @@ def test_path_sanitizer_covers_empty_and_resolve_fallback_branches(tmp_path, mon
 
 # --- analyzers/framework.py: SimpleReport.summary() with note, with issues ---
 def test_simple_report_summary_with_note():
-    from sattlint.analyzers.framework import SimpleReport
+    from sattlint.analyzers.framework import SimpleReport  # noqa: PLC0415
 
     report = SimpleReport(name="TestReport", note="Check this info")
     summary = report.summary()
@@ -442,7 +443,7 @@ def test_simple_report_summary_with_note():
 
 
 def test_simple_report_summary_no_issues_ok():
-    from sattlint.analyzers.framework import SimpleReport
+    from sattlint.analyzers.framework import SimpleReport  # noqa: PLC0415
 
     report = SimpleReport(name="TestReport")
     summary = report.summary()
@@ -450,7 +451,7 @@ def test_simple_report_summary_no_issues_ok():
 
 
 def test_simple_report_summary_with_issues():
-    from sattlint.analyzers.framework import Issue, SimpleReport
+    from sattlint.analyzers.framework import Issue, SimpleReport  # noqa: PLC0415
 
     issue = Issue(kind="test.issue", message="Something is wrong", module_path=["Main", "Guard"])
     report = SimpleReport(name="TestReport", issues=[issue])
@@ -460,10 +461,10 @@ def test_simple_report_summary_with_issues():
 
 
 def test_simple_report_summary_formats_metadata_and_analysis_context_fallback():
-    from types import SimpleNamespace
+    from types import SimpleNamespace  # noqa: PLC0415
 
-    from sattline_parser.models.ast_model import BasePicture, ModuleHeader
-    from sattlint.analyzers.framework import AnalysisContext, Issue, SimpleReport
+    from sattline_parser.models.ast_model import BasePicture, ModuleHeader  # noqa: PLC0415
+    from sattlint.analyzers.framework import AnalysisContext, Issue, SimpleReport  # noqa: PLC0415
 
     issue = Issue(
         kind="test.issue",
@@ -500,7 +501,7 @@ def test_simple_report_summary_formats_metadata_and_analysis_context_fallback():
 
 # --- models/usage.py: all branches ---
 def test_variable_usage_mark_read_ui_and_non_ui():
-    from sattlint.models.usage import VariableUsage
+    from sattlint.models.usage import VariableUsage  # noqa: PLC0415
 
     u = VariableUsage()
     assert u.is_unused is True
@@ -514,7 +515,7 @@ def test_variable_usage_mark_read_ui_and_non_ui():
 
 
 def test_variable_usage_mark_field_read_ui():
-    from sattlint.models.usage import VariableUsage
+    from sattlint.models.usage import VariableUsage  # noqa: PLC0415
 
     u = VariableUsage()
     u.mark_field_read("Level.Value", ["Main", "Guard"], ui=True)
@@ -523,7 +524,7 @@ def test_variable_usage_mark_field_read_ui():
 
 
 def test_variable_usage_mark_field_read_non_ui():
-    from sattlint.models.usage import VariableUsage
+    from sattlint.models.usage import VariableUsage  # noqa: PLC0415
 
     u = VariableUsage()
     u.mark_field_read("Level.Value", ["Main", "Guard"])
@@ -531,7 +532,7 @@ def test_variable_usage_mark_field_read_non_ui():
 
 
 def test_variable_usage_mark_written_and_mark_field_written():
-    from sattlint.models.usage import VariableUsage
+    from sattlint.models.usage import VariableUsage  # noqa: PLC0415
 
     u = VariableUsage()
     u.mark_written(["Main", "Guard"])
@@ -541,7 +542,7 @@ def test_variable_usage_mark_written_and_mark_field_written():
 
 
 def test_variable_usage_distinct_reader_writer_counts():
-    from sattlint.models.usage import VariableUsage
+    from sattlint.models.usage import VariableUsage  # noqa: PLC0415
 
     u = VariableUsage()
     u.mark_read(["Main", "Guard"])
@@ -556,7 +557,7 @@ def test_variable_usage_distinct_reader_writer_counts():
 
 
 def test_variable_usage_is_display_only():
-    from sattlint.models.usage import VariableUsage
+    from sattlint.models.usage import VariableUsage  # noqa: PLC0415
 
     u = VariableUsage()
     u.mark_ui_read(["Main", "Display"])
@@ -565,9 +566,9 @@ def test_variable_usage_is_display_only():
 
 # --- resolution/type_graph.py: TypeGraph operations ---
 def test_type_graph_has_record_and_field():
-    from types import SimpleNamespace
+    from types import SimpleNamespace  # noqa: PLC0415
 
-    from sattlint.resolution.type_graph import TypeGraph
+    from sattlint.resolution.type_graph import TypeGraph  # noqa: PLC0415
 
     dt = SimpleNamespace(
         name="RecordType",
@@ -588,8 +589,8 @@ def test_type_graph_has_record_and_field():
 
 
 def test_type_graph_iter_leaf_field_paths_simple_type():
-    from sattline_parser.models.ast_model import Simple_DataType
-    from sattlint.resolution.type_graph import TypeGraph
+    from sattline_parser.models.ast_model import Simple_DataType  # noqa: PLC0415
+    from sattlint.resolution.type_graph import TypeGraph  # noqa: PLC0415
 
     graph = TypeGraph({})
     paths = list(graph.iter_leaf_field_paths(Simple_DataType.INTEGER))
@@ -597,7 +598,7 @@ def test_type_graph_iter_leaf_field_paths_simple_type():
 
 
 def test_type_graph_iter_leaf_field_paths_unknown_type():
-    from sattlint.resolution.type_graph import TypeGraph
+    from sattlint.resolution.type_graph import TypeGraph  # noqa: PLC0415
 
     graph = TypeGraph({})
     paths = list(graph.iter_leaf_field_paths("UnknownType"))
@@ -605,9 +606,9 @@ def test_type_graph_iter_leaf_field_paths_unknown_type():
 
 
 def test_type_graph_from_basepicture_builds_records():
-    from types import SimpleNamespace
+    from types import SimpleNamespace  # noqa: PLC0415
 
-    from sattlint.resolution.type_graph import TypeGraph
+    from sattlint.resolution.type_graph import TypeGraph  # noqa: PLC0415
 
     datatype = SimpleNamespace(
         name="RecordType",
@@ -621,8 +622,8 @@ def test_type_graph_from_basepicture_builds_records():
 
 
 def test_type_graph_seeds_builtin_datatypes():
-    from sattline_parser.models.ast_model import Simple_DataType
-    from sattlint.resolution.type_graph import TypeGraph
+    from sattline_parser.models.ast_model import Simple_DataType  # noqa: PLC0415
+    from sattlint.resolution.type_graph import TypeGraph  # noqa: PLC0415
 
     graph = TypeGraph.from_datatypes([])
 
@@ -645,22 +646,25 @@ def test_type_graph_seeds_builtin_datatypes():
     assert graph.field_type("SAPar", "Time") == Simple_DataType.DURATION
     assert graph.field_type("AdaptivePidPar", "RampDuration") == Simple_DataType.DURATION
     assert graph.field_type("Alarm4RealSPar", "TimeDelay") == Simple_DataType.INTEGER
+    assert graph.field_type("EventQueueItem", "EventText") == Simple_DataType.LINESTRING
+    assert graph.field_type("EventQueueItem", "Time") == Simple_DataType.TIME
 
 
 def test_type_graph_empty_builtin_handles_expand_as_leaf_paths():
-    from sattlint.resolution.type_graph import TypeGraph
+    from sattlint.resolution.type_graph import TypeGraph  # noqa: PLC0415
 
     graph = TypeGraph.from_datatypes([])
 
+    assert list(graph.iter_leaf_field_paths("ArrayObject")) == [()]
     assert list(graph.iter_leaf_field_paths("RandomGenerator")) == [()]
     assert list(graph.iter_leaf_field_paths("tObject")) == [()]
 
 
 def test_type_graph_iter_leaf_field_paths_nested_record():
-    from types import SimpleNamespace
+    from types import SimpleNamespace  # noqa: PLC0415
 
-    from sattline_parser.models.ast_model import Simple_DataType
-    from sattlint.resolution.type_graph import TypeGraph
+    from sattline_parser.models.ast_model import Simple_DataType  # noqa: PLC0415
+    from sattlint.resolution.type_graph import TypeGraph  # noqa: PLC0415
 
     # RecordA has field "FieldA" of type Integer (Simple_DataType)
     dt = SimpleNamespace(
@@ -673,10 +677,10 @@ def test_type_graph_iter_leaf_field_paths_nested_record():
 
 
 def test_type_graph_iter_leaf_field_paths_follows_nested_record_fields():
-    from types import SimpleNamespace
+    from types import SimpleNamespace  # noqa: PLC0415
 
-    from sattline_parser.models.ast_model import Simple_DataType
-    from sattlint.resolution.type_graph import TypeGraph
+    from sattline_parser.models.ast_model import Simple_DataType  # noqa: PLC0415
+    from sattlint.resolution.type_graph import TypeGraph  # noqa: PLC0415
 
     inner = SimpleNamespace(
         name="RecordB",
@@ -693,9 +697,9 @@ def test_type_graph_iter_leaf_field_paths_follows_nested_record_fields():
 
 
 def test_type_graph_iter_leaf_field_paths_stops_on_cycles():
-    from types import SimpleNamespace
+    from types import SimpleNamespace  # noqa: PLC0415
 
-    from sattlint.resolution.type_graph import TypeGraph
+    from sattlint.resolution.type_graph import TypeGraph  # noqa: PLC0415
 
     cyclic = SimpleNamespace(
         name="Loop",
@@ -708,10 +712,10 @@ def test_type_graph_iter_leaf_field_paths_stops_on_cycles():
 
 
 def test_type_graph_iter_all_addressable_paths():
-    from types import SimpleNamespace
+    from types import SimpleNamespace  # noqa: PLC0415
 
-    from sattline_parser.models.ast_model import Simple_DataType, Variable
-    from sattlint.resolution.type_graph import TypeGraph
+    from sattline_parser.models.ast_model import Simple_DataType, Variable  # noqa: PLC0415
+    from sattlint.resolution.type_graph import TypeGraph  # noqa: PLC0415
 
     dt = SimpleNamespace(
         name="RootType",
@@ -726,7 +730,7 @@ def test_type_graph_iter_all_addressable_paths():
 # --- console.py: print_output, has_rich, print_status fallback, print_panel fallback,
 #     print_table empty rows, print_table with rows, track_items ---
 def test_print_output_writes_to_stdout(capsys):
-    from sattlint.console import print_output
+    from sattlint.console import print_output  # noqa: PLC0415
 
     print_output("hello", "world", sep="-")
     captured = capsys.readouterr()
@@ -734,13 +738,13 @@ def test_print_output_writes_to_stdout(capsys):
 
 
 def test_has_rich_returns_bool():
-    from sattlint.console import has_rich
+    from sattlint.console import has_rich  # noqa: PLC0415
 
     assert isinstance(has_rich(), bool)
 
 
 def test_print_status_fallback_no_rich(capsys, monkeypatch):
-    import sattlint.console as console_mod
+    import sattlint.console as console_mod  # noqa: PLC0415
 
     monkeypatch.setattr(console_mod, "_RICH_AVAILABLE", False)
     console_mod.print_status("test message", level="error")
@@ -750,7 +754,7 @@ def test_print_status_fallback_no_rich(capsys, monkeypatch):
 
 
 def test_print_panel_fallback_no_rich(capsys, monkeypatch):
-    import sattlint.console as console_mod
+    import sattlint.console as console_mod  # noqa: PLC0415
 
     monkeypatch.setattr(console_mod, "_RICH_AVAILABLE", False)
     console_mod.print_panel("My Title", "Panel body text")
@@ -760,7 +764,7 @@ def test_print_panel_fallback_no_rich(capsys, monkeypatch):
 
 
 def test_print_table_empty_rows_no_rich(capsys, monkeypatch):
-    import sattlint.console as console_mod
+    import sattlint.console as console_mod  # noqa: PLC0415
 
     monkeypatch.setattr(console_mod, "_RICH_AVAILABLE", False)
     console_mod.print_table("My Table", ["Col1", "Col2"], [])
@@ -770,7 +774,7 @@ def test_print_table_empty_rows_no_rich(capsys, monkeypatch):
 
 
 def test_print_table_with_rows_no_rich(capsys, monkeypatch):
-    import sattlint.console as console_mod
+    import sattlint.console as console_mod  # noqa: PLC0415
 
     monkeypatch.setattr(console_mod, "_RICH_AVAILABLE", False)
     console_mod.print_table("My Table", ["Name", "Value"], [["alpha", "1"], ["beta", "2"]])
@@ -780,7 +784,7 @@ def test_print_table_with_rows_no_rich(capsys, monkeypatch):
 
 
 def test_track_items_returns_iterable_without_rich(monkeypatch):
-    import sattlint.console as console_mod
+    import sattlint.console as console_mod  # noqa: PLC0415
 
     monkeypatch.setattr(console_mod, "_RICH_AVAILABLE", False)
     items = [1, 2, 3]
@@ -789,7 +793,7 @@ def test_track_items_returns_iterable_without_rich(monkeypatch):
 
 
 def test_console_rich_output_paths_and_syntax_excerpt(monkeypatch, tmp_path):
-    import sattlint.console as console_mod
+    import sattlint.console as console_mod  # noqa: PLC0415
 
     class FakeConsole:
         def __init__(self) -> None:
@@ -864,7 +868,7 @@ def test_console_rich_output_paths_and_syntax_excerpt(monkeypatch, tmp_path):
 
 
 def test_live_status_line_handles_tty_and_disabled_output() -> None:
-    import sattlint.console as console_mod
+    import sattlint.console as console_mod  # noqa: PLC0415
 
     class FakeFile:
         def __init__(self, *, tty: bool) -> None:
@@ -899,7 +903,7 @@ def test_live_status_line_handles_tty_and_disabled_output() -> None:
 
 
 def test_print_syntax_excerpt_returns_when_stderr_console_is_missing(monkeypatch, tmp_path) -> None:
-    import sattlint.console as console_mod
+    import sattlint.console as console_mod  # noqa: PLC0415
 
     source_path = tmp_path / "Program" / "Main.s"
     source_path.parent.mkdir(parents=True, exist_ok=True)

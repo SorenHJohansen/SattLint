@@ -10,7 +10,7 @@ from sattlint.devtools._pipeline_finish_gate import _build_finish_gate_commands,
 
 
 def _pipeline_cli_owner_module() -> Any:
-    from sattlint.devtools import _pipeline_cli as owner_module
+    from sattlint.devtools import _pipeline_cli as owner_module  # noqa: PLC0415
 
     return owner_module
 
@@ -22,8 +22,8 @@ def build_pipeline_check_recommendations(
     changed_files: Iterable[str] | None,
     pytest_workers: str | None = None,
 ) -> dict[str, Any]:
-    from sattlint.devtools import pipeline as pipeline_module
-    from sattlint.devtools import pipeline_checks
+    from sattlint.devtools import pipeline as pipeline_module  # noqa: PLC0415
+    from sattlint.devtools import pipeline_checks  # noqa: PLC0415
 
     owner_module = _pipeline_cli_owner_module()
     resolved_output_dir = (output_dir or pipeline_module.DEFAULT_OUTPUT_DIR).resolve()

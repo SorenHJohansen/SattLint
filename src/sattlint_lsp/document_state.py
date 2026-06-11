@@ -136,7 +136,7 @@ class DocumentState:
         self.analysis_has_snapshot = result.local_snapshot is not None
 
     def remember_local_snapshot(self, snapshot: SemanticSnapshot) -> None:
-        from .local_parser import DocumentParseResult
+        from .local_parser import DocumentParseResult  # noqa: PLC0415
 
         self.local_snapshot = snapshot
         self.local_snapshot_version = self.version

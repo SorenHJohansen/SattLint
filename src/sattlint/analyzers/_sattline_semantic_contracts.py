@@ -2,6 +2,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+_ANALYZER_SUITE_ACCEPTANCE_TESTS = (
+    "tests/test_analyzers_suites_part1.py",
+    "tests/test_analyzers_suites_part2.py",
+    "tests/test_analyzers_suites_part3.py",
+    "tests/test_analyzers_suites_part4.py",
+    "tests/test_analyzers_suites_part5.py",
+    "tests/test_analyzers_suites_part6.py",
+)
+_APP_ACCEPTANCE_TESTS = (
+    "tests/test_app_cli_commands.py",
+    "tests/test_app_menus.py",
+)
+
 
 @dataclass(frozen=True)
 class SemanticRuleContract:
@@ -18,29 +31,29 @@ def _merge_acceptance_tests(*groups: tuple[str, ...]) -> tuple[str, ...]:
 
 _SEMANTIC_LAYER_ACCEPTANCE_TESTS = ("tests/test_pipeline_phase2.py", "tests/analyzers/test_sattline_semantics.py")
 _VARIABLE_SOURCE_ACCEPTANCE_TESTS = (
-    "tests/test_analyzers.py",
-    "tests/test_app.py",
+    *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
+    *_APP_ACCEPTANCE_TESTS,
     "tests/test_editor_api.py",
     "tests/analyzers/test_sattline_semantics.py",
 )
 _SFC_SOURCE_ACCEPTANCE_TESTS = (
-    "tests/test_analyzers.py",
+    *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
     "tests/analyzers/test_sattline_semantics.py",
     "tests/analyzers/test_sfc.py",
 )
-_ALARM_SOURCE_ACCEPTANCE_TESTS = ("tests/test_analyzers.py", "tests/analyzers/test_sattline_semantics.py")
-_INITIAL_VALUES_SOURCE_ACCEPTANCE_TESTS = ("tests/test_analyzers.py",)
+_ALARM_SOURCE_ACCEPTANCE_TESTS = (*_ANALYZER_SUITE_ACCEPTANCE_TESTS, "tests/analyzers/test_sattline_semantics.py")
+_INITIAL_VALUES_SOURCE_ACCEPTANCE_TESTS = _ANALYZER_SUITE_ACCEPTANCE_TESTS
 _SAFETY_SOURCE_ACCEPTANCE_TESTS = (
-    "tests/test_analyzers.py",
+    *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
     "tests/test_editor_api.py",
     "tests/analyzers/test_sattline_semantics.py",
 )
 _TAINT_SOURCE_ACCEPTANCE_TESTS = (
-    "tests/test_analyzers.py",
+    *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
     "tests/test_editor_api.py",
 )
 _DATAFLOW_SOURCE_ACCEPTANCE_TESTS = (
-    "tests/test_analyzers.py",
+    *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
     "tests/analyzers/test_dataflow.py",
     "tests/analyzers/test_sattline_semantics.py",
 )
@@ -69,7 +82,7 @@ _UNSAFE_DEFAULTS_SOURCE_ACCEPTANCE_TESTS = (
     "tests/analyzers/test_sattline_semantics.py",
 )
 _SPEC_SOURCE_ACCEPTANCE_TESTS = (
-    "tests/test_app.py",
+    *_APP_ACCEPTANCE_TESTS,
     "tests/analyzers/test_spec_compliance.py",
     "tests/analyzers/test_sattline_semantics.py",
 )
@@ -88,7 +101,8 @@ VARIABLE_RULE_CONTRACT = SemanticRuleContract(
 SHADOWING_RULE_CONTRACT = SemanticRuleContract(
     acceptance_tests=_merge_acceptance_tests(
         _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
-        ("tests/test_analyzers.py", "tests/test_app.py"),
+        _ANALYZER_SUITE_ACCEPTANCE_TESTS,
+        _APP_ACCEPTANCE_TESTS,
     ),
     corpus_cases=_WORKSPACE_CORPUS_CASES,
     mutation_applicability="required",

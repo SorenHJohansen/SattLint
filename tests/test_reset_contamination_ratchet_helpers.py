@@ -5,7 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
-from sattlint.analyzers import _reset_path_state as reset_path_state_module
+from sattlint.analyzers.reset_contamination import _reset_path_state as reset_path_state_module
 from tests.test_reset_contamination_ratchet import (
     Equation,
     ModuleCode,

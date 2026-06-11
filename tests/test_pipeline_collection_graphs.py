@@ -1,23 +1,33 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+
 from tests import test_pipeline_collection as pipeline_collection_tests
 
 
-def test_collect_dependency_graph_report_aggregates_library_edges(monkeypatch, tmp_path):
+def test_collect_dependency_graph_report_aggregates_library_edges(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     pipeline_collection_tests.test_collect_dependency_graph_report_aggregates_library_edges(monkeypatch, tmp_path)
 
 
-def test_collect_call_graph_report_aggregates_module_access_edges(monkeypatch, tmp_path):
+def test_collect_call_graph_report_aggregates_module_access_edges(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     pipeline_collection_tests.test_collect_call_graph_report_aggregates_module_access_edges(monkeypatch, tmp_path)
 
 
-def test_collect_structural_reports_streams_snapshots_once(monkeypatch, tmp_path):
+def test_collect_structural_reports_streams_snapshots_once(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     pipeline_collection_tests.test_collect_structural_reports_streams_snapshots_once(monkeypatch, tmp_path)
 
 
-def test_collect_structural_reports_limits_entries_to_fixture_programs(monkeypatch, tmp_path):
+def test_collect_structural_reports_limits_entries_to_fixture_programs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     pipeline_collection_tests.test_collect_structural_reports_limits_entries_to_fixture_programs(monkeypatch, tmp_path)
 
 
-def test_collect_impact_analysis_report_aggregates_reverse_dependencies(tmp_path):
+def test_collect_impact_analysis_report_aggregates_reverse_dependencies(tmp_path: Path) -> None:
     pipeline_collection_tests.test_collect_impact_analysis_report_aggregates_reverse_dependencies(tmp_path)

@@ -1,4 +1,4 @@
-from sattlint.analyzers.issue import Issue
+from sattlint.analyzers.framework import Issue
 from sattlint.reporting.mms_report import MMSInterfaceHit, MMSInterfaceReport
 
 

@@ -163,7 +163,7 @@ def resolve_moduletype_def_strict(
     )
 
 
-def resolve_module_by_strict_path(
+def resolve_module_by_strict_path(  # noqa: PLR0915
     bp: BasePicture,
     module_path: str,
     moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,

@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportMissingTypeArgument=false
 """Focused CLI command delegation tests for the app module."""
 
 from __future__ import annotations
@@ -185,6 +186,36 @@ def test_run_docgen_command_delegates_to_cli_owner(monkeypatch):
     assert seen["output_path"] is None
     assert callable(seen["iter_loaded_projects_fn"])
     assert seen["documentation_unit_selection_fn"] is app._get_documentation_unit_selection
+    assert seen["exit_success"] == app.EXIT_SUCCESS
+    assert seen["exit_usage_error"] == app.EXIT_USAGE_ERROR
+
+
+def test_run_cache_prune_command_delegates_to_cli_owner(monkeypatch):
+    seen: dict[str, object] = {}
+
+    def fake_run_cache_prune_command(
+        *,
+        cache_dir: str | None,
+        prune_cache_dir_fn,
+        get_cache_dir_fn,
+        exit_success: int,
+        exit_usage_error: int,
+    ) -> int:
+        seen["cache_dir"] = cache_dir
+        seen["prune_cache_dir_fn"] = prune_cache_dir_fn
+        seen["get_cache_dir_fn"] = get_cache_dir_fn
+        seen["exit_success"] = exit_success
+        seen["exit_usage_error"] = exit_usage_error
+        return 80
+
+    monkeypatch.setattr(app.app_cli_commands_module, "run_cache_prune_command", fake_run_cache_prune_command)
+
+    result = app.run_cache_prune_command(cache_dir="custom-cache")
+
+    assert result == 80
+    assert seen["cache_dir"] == "custom-cache"
+    assert seen["prune_cache_dir_fn"] is app.cache.prune_cache_dir
+    assert seen["get_cache_dir_fn"] is app.get_cache_dir
     assert seen["exit_success"] == app.EXIT_SUCCESS
     assert seen["exit_usage_error"] == app.EXIT_USAGE_ERROR
 
@@ -940,7 +971,7 @@ def test_cli_owner_run_simulate_command_reports_output_write_errors(capsys, tmp_
             raise PermissionError("locked")
         return original_write_text(self, *args, **kwargs)
 
-    from pathlib import Path as _Path
+    from pathlib import Path as _Path  # noqa: PLC0415
 
     # Monkeypatch the concrete Path type used by app_cli_commands.
     _Path.write_text = fail_write_text

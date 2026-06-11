@@ -213,6 +213,18 @@ def test_collect_structural_budget_report_tracks_actual_max_lines_even_when_unde
     assert report["metrics"]["test_file_max_lines"] == 2
 
 
+def test_collect_structural_budget_report_treats_scripts_as_source_budget_files(tmp_path):
+    oversized_script = "\n".join(f"value_{index} = {index}" for index in range(520))
+    _write(tmp_path / "scripts" / "check_demo.py", oversized_script)
+
+    report = structural_reports.collect_structural_budget_report(tmp_path)
+
+    assert report["source_files_over_budget"] == [{"path": "scripts/check_demo.py", "line_count": 520}]
+    assert report["test_files_over_budget"] == []
+    assert report["summary"]["source_file_max_lines"] == 520
+    assert report["metrics"]["source_file_max_lines"] == 520
+
+
 def test_load_structural_budget_ratchet_returns_invalid_on_bad_json(tmp_path):
     ratchet = tmp_path / "ratchet.json"
     ratchet.write_text("not valid json{", encoding="utf-8")
@@ -226,7 +238,7 @@ def test_load_structural_budget_ratchet_returns_invalid_on_bad_json(tmp_path):
 
 def test_load_structural_budget_ratchet_returns_invalid_on_non_int_metrics(tmp_path):
     ratchet = tmp_path / "ratchet.json"
-    import json
+    import json  # noqa: PLC0415
 
     ratchet.write_text(
         json.dumps({"kind": "k", "schema_version": 1, "metrics": {"count": "not_an_int"}}),
@@ -410,7 +422,7 @@ def test_collect_structural_budget_report_counts_non_utf8_files_in_line_budget(t
 
 
 def test_collect_facade_private_entrypoints_detects_importfrom_direct_private_call():
-    import ast as _ast
+    import ast as _ast  # noqa: PLC0415
 
     source = "from . import _helper_func\n\ndef run():\n    return _helper_func()\n"
     tree = _ast.parse(source)
@@ -421,7 +433,7 @@ def test_collect_facade_private_entrypoints_detects_importfrom_direct_private_ca
 
 
 def test_collect_facade_private_entrypoints_and_exception_normalization_cover_validation_edges():
-    import ast as _ast
+    import ast as _ast  # noqa: PLC0415
 
     source = "import pkg.helpers as helpers_module\n\ndef run():\n    return helpers_module._secret()\n"
     tree = _ast.parse(source)
@@ -619,7 +631,7 @@ def test_structural_ratchet_main_reports_text_regressions(monkeypatch, capsys, t
 
 
 def test_structural_reports_module_main_invokes_cli(monkeypatch, tmp_path):
-    import runpy
+    import runpy  # noqa: PLC0415
 
     monkeypatch.setattr(sys, "argv", ["structural_reports", "--repo-root", str(tmp_path), "--json"])
 
@@ -794,3 +806,83 @@ def test_collect_architecture_report_flags_metadata_drifts_and_rule_metadata_gap
     assert report["phase2_rule_metadata_gate"]["status"] == "fail"
     assert report["phase2_rule_metadata_gate"]["blocking_rule_ids"] == ["rule-gap", "rule-unspecified"]
     assert report["phase2_rule_metadata_gate"]["advisory_rule_ids"] == ["rule-gap", "rule-unspecified"]
+
+
+def test_collect_architecture_report_flags_missing_acceptance_test_paths(monkeypatch, tmp_path):
+    empty_budget = {
+        "thresholds": dict(structural_reports.STRUCTURAL_BUDGET_THRESHOLDS),
+        "source_files_over_budget": [],
+        "test_files_over_budget": [],
+        "functions_over_budget": [],
+        "classes_over_budget": [],
+        "repeated_private_names": [],
+        "facade_private_entrypoints": [],
+        "metrics": {"facade_private_entrypoint_count": 0},
+        "ratchet": {
+            "status": "pass",
+            "path": "ratchet.json",
+            "expected_metrics": {},
+            "current_metrics": {},
+            "regressions": [],
+        },
+        "scan_failures": [],
+    }
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    existing_test = tests_dir / "test_existing.py"
+    existing_test.write_text("def test_placeholder():\n    assert True\n", encoding="utf-8")
+
+    fake_spec = SimpleNamespace(key="path-gap-analyzer", enabled=True, supports_live_diagnostics=False)
+    fake_delivery = SimpleNamespace(
+        cli_exposed=True,
+        lsp_exposed=False,
+        exposed_via=[],
+        acceptance_tests=("tests/test_existing.py", "tests/test_missing.py"),
+        output_artifacts=[],
+    )
+    fake_analyzer = SimpleNamespace(
+        spec=fake_spec,
+        delivery=fake_delivery,
+        summary_output="path-gap-analyzer.summary",
+    )
+    fake_rule = SimpleNamespace(
+        id="rule-path-gap",
+        acceptance_tests=("tests/test_missing.py",),
+        corpus_cases=("workspace-common-quality-issues",),
+        mutation_applicability="required",
+        suppression_modes=("baseline",),
+        incremental_safe=True,
+        outputs=[],
+    )
+
+    monkeypatch.setattr(structural_reports, "collect_structural_budget_report", lambda *a, **k: empty_budget)
+    monkeypatch.setattr(
+        structural_reports,
+        "get_default_analyzer_catalog",
+        lambda: SimpleNamespace(analyzers=[fake_analyzer], rules=[fake_rule]),
+    )
+    monkeypatch.setattr(structural_reports, "get_declared_cli_analyzer_keys", lambda: [])
+    monkeypatch.setattr(structural_reports, "get_actual_cli_analyzer_keys", lambda: [])
+    monkeypatch.setattr(structural_reports, "get_declared_lsp_analyzer_keys", lambda: [])
+    monkeypatch.setattr(structural_reports, "get_actual_lsp_analyzer_keys", lambda: [])
+    monkeypatch.setattr(structural_reports, "VARIABLE_ANALYSES", {})
+
+    report = structural_reports.collect_architecture_report(tmp_path)
+    findings_by_id = {finding["id"]: finding for finding in report["findings"]}
+
+    assert findings_by_id["analyzer-acceptance-test-path-gap"]["missing_analyzers"] == ["path-gap-analyzer"]
+    assert findings_by_id["analyzer-acceptance-test-path-gap"]["missing_acceptance_test_paths"] == [
+        {
+            "analyzer": "path-gap-analyzer",
+            "missing_paths": ["tests/test_missing.py"],
+        }
+    ]
+    assert findings_by_id["rule-acceptance-test-path-gap"]["missing_rule_ids"] == ["rule-path-gap"]
+    assert findings_by_id["rule-acceptance-test-path-gap"]["missing_acceptance_test_paths"] == [
+        {
+            "rule_id": "rule-path-gap",
+            "missing_paths": ["tests/test_missing.py"],
+        }
+    ]
+    assert report["phase2_rule_metadata_gate"]["status"] == "fail"
+    assert report["phase2_rule_metadata_gate"]["blocking_rule_ids"] == ["rule-path-gap"]

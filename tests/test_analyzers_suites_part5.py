@@ -220,7 +220,7 @@ def test_taint_paths_analyzer_is_enabled_by_default():
 
 
 def test_state_inference_analyzer_is_not_in_default_cli_subset():
-    from sattlint.analyzers.registry import get_actual_cli_analyzer_keys
+    from sattlint.analyzers.registry import get_actual_cli_analyzer_keys  # noqa: PLC0415
 
     assert "state-inference" not in get_actual_cli_analyzer_keys()
 

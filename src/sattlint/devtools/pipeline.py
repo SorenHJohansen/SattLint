@@ -79,8 +79,9 @@ from sattlint.devtools.structural_reports import (
 from sattlint.devtools.tool_reports import build_command_report
 from sattlint.devtools.trace_reports import collect_trace_report as build_trace_report
 from sattlint.path_sanitizer import sanitize_path_for_report
+from sattlint.repo_paths import repo_root_from
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = repo_root_from(Path(__file__))
 PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "analysis"
 DEFAULT_TRACE_TARGET = REPO_ROOT / "tests" / "fixtures" / "sample_sattline_files" / "LinterTestProgram.s"
@@ -506,6 +507,8 @@ def _run_pytest_stage(
     coverage_data_path = output_dir / ".coverage.pytest"
     progress.start_stage("pytest")
     with contextlib.suppress(FileNotFoundError):
+        junit_path.unlink()
+    with contextlib.suppress(FileNotFoundError):
         coverage_data_path.unlink()
 
     previous_coverage_file = os.environ.get("COVERAGE_FILE")
@@ -539,7 +542,7 @@ def _run_pytest_stage(
     return pytest_report
 
 
-def _prepare_pipeline_run(
+def _prepare_pipeline_run(  # noqa: PLR0915
     output_dir: Path,
     *,
     trace_target: Path | None,

@@ -10,6 +10,11 @@ from ._app_analysis_catalog_data import (
     STATIC_ANALYSIS_CATALOG_ENTRIES,
     TOP_LEVEL_ANALYSIS_FAMILIES,
 )
+from ._app_analysis_catalog_metadata import (
+    analyzer_has_issue_leaf_specs,
+    analyzer_issue_exclusive_group_id,
+    analyzer_issue_leaf_specs,
+)
 from ._app_analysis_catalog_shared import (
     ENTRY_ANALYZE_FULL_SUITE,
     ENTRY_CATALOG_FULL_SUITE,
@@ -28,6 +33,7 @@ from ._app_analysis_catalog_shared import (
     FAMILY_STRUCTURE_MODULES,
     FAMILY_VARIABLE_ISSUES,
     SECTION_CATALOG_ANALYZERS,
+    SECTION_CATALOG_ISSUE_CHECKS,
     SECTION_CATALOG_SUITE,
     SECTION_CODE_QUALITY_ACTIONS,
     SECTION_INTERFACE_ACTIONS,
@@ -63,6 +69,7 @@ __all__ = [
     "FAMILY_STRUCTURE_MODULES",
     "FAMILY_VARIABLE_ISSUES",
     "SECTION_CATALOG_ANALYZERS",
+    "SECTION_CATALOG_ISSUE_CHECKS",
     "SECTION_CATALOG_SUITE",
     "SECTION_CODE_QUALITY_ACTIONS",
     "SECTION_INTERFACE_ACTIONS",
@@ -104,6 +111,8 @@ def top_level_analysis_family(family_id: str) -> TopLevelAnalysisFamilySpec:
 
 def dynamic_analyzer_catalog_entries(analyzer_specs: Sequence[Any]) -> tuple[AnalysisCatalogEntry, ...]:
     entries: list[AnalysisCatalogEntry] = []
+    issue_entries: list[AnalysisCatalogEntry] = []
+    issue_sort_order = 950
     for index, spec in enumerate(analyzer_specs, start=2):
         spec_obj = cast(object, spec)
         key = str(getattr(spec_obj, "key", "") or "").strip()
@@ -111,6 +120,8 @@ def dynamic_analyzer_catalog_entries(analyzer_specs: Sequence[Any]) -> tuple[Ana
         description = str(getattr(spec_obj, "description", "") or "").strip()
         if not key or not name:
             continue
+        has_issue_leaf_specs = analyzer_has_issue_leaf_specs(key)
+        exclusive_group_id = analyzer_issue_exclusive_group_id(key)
         entries.append(
             AnalysisCatalogEntry(
                 entry_id=f"catalog.analyzer.{key}",
@@ -124,15 +135,40 @@ def dynamic_analyzer_catalog_entries(analyzer_specs: Sequence[Any]) -> tuple[Ana
                     require_targets=True,
                     action_text="analyzer catalog",
                     normalized_step_id=f"step.analyzer.{key}",
-                    exclusive_group_id=EXCLUSIVE_GROUP_ANALYZER_SUITE,
-                    suite_role="leaf",
+                    step_label=name,
+                    exclusive_group_id=(exclusive_group_id or EXCLUSIVE_GROUP_ANALYZER_SUITE),
+                    suite_role=("suite" if has_issue_leaf_specs else "leaf"),
                     selected_analyzer_keys=(key,),
                 ),
                 sort_order=1000 + index,
                 classic_menu_key=str(index),
             )
         )
-    return tuple(entries)
+        for item_index, issue_spec in enumerate(analyzer_issue_leaf_specs(key), start=1):
+            issue_entries.append(
+                AnalysisCatalogEntry(
+                    entry_id=f"catalog.issue.{issue_spec.issue_kind}",
+                    family_id=FAMILY_ANALYZER_CATALOG,
+                    section_id=SECTION_CATALOG_ISSUE_CHECKS,
+                    label=f"{name}: {issue_spec.label}",
+                    description=f"Run only the {issue_spec.label} findings from {name}.",
+                    execution=AnalysisExecutionSpec(
+                        kind="run_checks",
+                        handler_name="_run_checks",
+                        require_targets=True,
+                        action_text="analyzer issue check",
+                        normalized_step_id=f"step.analyzer.{key}",
+                        step_label=name,
+                        exclusive_group_id=exclusive_group_id,
+                        suite_role="leaf",
+                        selected_analyzer_keys=(key,),
+                        selected_issue_kind_names=frozenset({issue_spec.issue_kind}),
+                    ),
+                    sort_order=issue_sort_order + item_index,
+                )
+            )
+        issue_sort_order += len(analyzer_issue_leaf_specs(key)) + 1
+    return tuple(issue_entries + entries)
 
 
 def analysis_catalog_entries(*, analyzer_specs: Sequence[Any] = ()) -> tuple[AnalysisCatalogEntry, ...]:

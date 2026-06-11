@@ -26,6 +26,7 @@ SECTION_STRUCTURE_ACTIONS = "structure-actions"
 SECTION_INTERFACE_ACTIONS = "interface-actions"
 SECTION_CODE_QUALITY_ACTIONS = "code-quality-actions"
 SECTION_CATALOG_SUITE = "catalog-suite"
+SECTION_CATALOG_ISSUE_CHECKS = "catalog-issue-checks"
 SECTION_CATALOG_ANALYZERS = "catalog-analyzers"
 
 ENTRY_ANALYZE_FULL_SUITE = "analyze.full-suite"
@@ -50,9 +51,11 @@ class AnalysisExecutionSpec:
     require_targets: bool
     action_text: str
     normalized_step_id: str
+    step_label: str | None = None
     exclusive_group_id: str | None = None
     suite_role: SuiteRole = "single"
     selected_analyzer_keys: tuple[str, ...] | None = None
+    selected_issue_kind_names: frozenset[str] | None = None
     variable_issue_kinds: frozenset[IssueKind] | None = None
 
 

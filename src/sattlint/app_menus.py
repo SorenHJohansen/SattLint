@@ -644,7 +644,11 @@ def tools_menu(
                     "Source diff report",
                     "Compare draft .s and official .x files for all configured analysis targets",
                 ),
-                menu_option_factory("4", "Refresh cached ASTs", "Rebuild cached ASTs when results look stale"),
+                menu_option_factory(
+                    "4",
+                    "Refresh analysis caches",
+                    "Clear cached analysis reports and rebuild ASTs when results look stale",
+                ),
                 menu_option_factory("b", "Back", ""),
                 menu_option_factory("q", "Quit", ""),
             ],
@@ -670,8 +674,8 @@ def tools_menu(
             if require_targets_for_menu_action_fn(cfg, "generating source diff reports"):
                 _run_menu_action(lambda: run_source_diff_report_fn(cfg), pause_fn=menu_interaction.pause)
         elif choice == "4":
-            if require_targets_for_menu_action_fn(cfg, "refreshing cached ASTs") and menu_interaction.confirm(
-                "Force refresh cached AST?"
+            if require_targets_for_menu_action_fn(cfg, "refreshing analysis caches") and menu_interaction.confirm(
+                "Refresh analysis caches?"
             ):
                 _run_menu_action(
                     lambda: (force_refresh_ast_fn(cfg), menu_interaction.pause()),

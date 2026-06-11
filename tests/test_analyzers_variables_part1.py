@@ -1,5 +1,5 @@
 # ruff: noqa: F403, F405
-from sattlint.analyzers import _validators as validators_module
+from sattlint.analyzers.shared import _validators as validators_module
 from sattlint.resolution.type_graph import TypeGraph
 
 from ._analyzers_variables_test_support import *

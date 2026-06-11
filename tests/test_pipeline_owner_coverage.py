@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
 from __future__ import annotations
 
 import json
@@ -406,7 +407,7 @@ def test_pipeline_optional_report_helpers_build_derived_reports_cover_remaining_
 
 
 def test_derived_reports_helper_coercions_and_incremental_defaults(tmp_path, monkeypatch):
-    from sattlint.devtools import derived_reports
+    from sattlint.devtools import derived_reports  # noqa: PLC0415
 
     generated_by_values: list[str] = []
 
@@ -461,7 +462,7 @@ def test_derived_reports_helper_coercions_and_incremental_defaults(tmp_path, mon
 
 
 def test_build_profiling_summary_report_coerces_invalid_entries():
-    from sattlint.devtools.derived_reports import build_profiling_summary_report
+    from sattlint.devtools.derived_reports import build_profiling_summary_report  # noqa: PLC0415
 
     trace = {
         "source_file": "Main.s",
@@ -487,7 +488,7 @@ def test_build_profiling_summary_report_coerces_invalid_entries():
 
 
 def test_build_performance_budget_report_handles_pass_and_fail_states():
-    from sattlint.devtools.derived_reports import build_performance_budget_report
+    from sattlint.devtools.derived_reports import build_performance_budget_report  # noqa: PLC0415
 
     assert build_performance_budget_report(None, total_budget_ms=10.0, phase_budget_ms=5.0) is None
 

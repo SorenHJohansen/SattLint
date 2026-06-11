@@ -24,9 +24,9 @@ from sattline_parser.models.ast_model import (
 from ..casefolding import casefold_equal, casefold_key
 from ..grammar import constants as const
 from ..resolution.common import format_moduletype_label, resolve_moduletype_def_strict, varname_base, varname_full
-from ._walk_utils import walk_nested_modules_with_state
 from .framework import Issue, SimpleReport
-from .variable_utils import matches_root_origin, merge_variable_env
+from .shared._walk_utils import walk_nested_modules_with_state
+from .shared.variable_utils import matches_root_origin, merge_variable_env
 
 _OPMESSAGE_NAME = "OPMessage"
 _OPMESSAGE_LIB = "NNESystem"

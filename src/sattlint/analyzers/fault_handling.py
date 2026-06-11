@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 
 from sattline_parser.models.ast_model import BasePicture, Simple_DataType
 
-from ._report_defaults import empty_int_summary_data, empty_issue_list
 from ._wave2_support import (
     as_bool_literal,
     iter_assignment_events,
@@ -13,6 +12,7 @@ from ._wave2_support import (
     walk_module_scopes,
 )
 from .framework import Issue
+from .shared._report_defaults import empty_int_summary_data, empty_issue_list
 
 
 @dataclass

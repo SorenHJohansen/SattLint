@@ -7,8 +7,8 @@ from typing import Any
 
 import pytest
 
-from sattlint.analyzers import _variables_execution as variables_execution_module
 from sattlint.analyzers.variables import IssueKind
+from sattlint.analyzers.variables import _variables_execution as variables_execution_module
 
 
 def test_variables_execution_filters_noisy_unresolved_debug_names(

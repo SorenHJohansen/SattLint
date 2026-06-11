@@ -8,7 +8,7 @@ from .json_helpers import json_mapping as _json_mapping
 
 
 def _repo_audit_ai_gc_module() -> Any:
-    from sattlint.devtools import repo_audit as repo_audit_module
+    from sattlint.devtools import repo_audit as repo_audit_module  # noqa: PLC0415
 
     return repo_audit_module
 

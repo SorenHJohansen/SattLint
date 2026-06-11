@@ -17,7 +17,7 @@ def _write_text(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def test_workspace_snapshot_store_cache_prefetch_and_invalidation_edges(tmp_path, monkeypatch):
+def test_workspace_snapshot_store_cache_prefetch_and_invalidation_edges(tmp_path, monkeypatch):  # noqa: PLR0915
     store = lsp_workspace_store.WorkspaceSnapshotStore()
     workspace_root = tmp_path.resolve()
     entry = (tmp_path / "Programs" / "Main.s").resolve()

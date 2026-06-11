@@ -3,7 +3,7 @@
 import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import Any
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -42,7 +42,9 @@ from ._modules_reporting import (
     render_version_drift_summary,
 )
 from .framework import Issue, empty_issues
-from .variable_utils import same_origin_file_stem
+from .shared.variable_utils import same_origin_file_stem
+
+_modules_diffing: Any = modules_diffing
 
 log = logging.getLogger("SattLint")
 
@@ -347,11 +349,11 @@ def _normalize_ast_value(value: Any) -> Any:
 
 
 def _collect_named_item_diffs(variant_items: Any) -> Any:
-    return cast(Any, modules_diffing)._collect_named_item_diffs(variant_items)
+    return _modules_diffing._collect_named_item_diffs(variant_items)
 
 
 def _diff_normalized_variants(variants: Any, path: str = "") -> Any:
-    return cast(Any, modules_diffing)._diff_normalized_variants(variants, path)
+    return _modules_diffing._diff_normalized_variants(variants, path)
 
 
 def _material_differences(comparison: ComparisonResult) -> dict[str, Any]:

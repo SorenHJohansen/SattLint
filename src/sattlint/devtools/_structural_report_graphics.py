@@ -67,7 +67,7 @@ def _graphics_layout_group_payload(
     module_name: str,
     members: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    from sattlint.devtools import structural_reports as structural_reports_module
+    from sattlint.devtools import structural_reports as structural_reports_module  # noqa: PLC0415
 
     differing_fields: list[str] = []
     field_variants: dict[str, list[Any]] = {}
@@ -107,7 +107,7 @@ def _graphics_layout_entry(
     resolved_moduletype: ModuleTypeDef | None = None,
     resolution_error: str | None = None,
 ) -> dict[str, Any]:
-    from sattlint.devtools import structural_reports as structural_reports_module
+    from sattlint.devtools import structural_reports as structural_reports_module  # noqa: PLC0415
 
     relative_path = ".".join(module_path[1:]) if len(module_path) > 1 else ""
     module_name = module_path[-1] if module_path else ""
@@ -148,7 +148,7 @@ def _walk_graphics_layout_children(
     definition_scope: str,
     active_moduletype_keys: set[tuple[str, str]],
 ) -> None:
-    from sattlint.devtools import structural_reports as structural_reports_module
+    from sattlint.devtools import structural_reports as structural_reports_module  # noqa: PLC0415
 
     project_graph: object = getattr(snapshot, "project_graph", None)
     raw_unavailable_libraries: object = (
@@ -223,7 +223,7 @@ def _walk_graphics_layout_children(
                 current_library=current_library,
                 unavailable_libraries=unavailable_libraries,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             resolution_error = str(exc)
 
         entries.append(
@@ -314,7 +314,7 @@ def _build_graphics_layout_report(
     snapshot_count: int,
     snapshot_failures: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    from sattlint.devtools import structural_reports as structural_reports_module
+    from sattlint.devtools import structural_reports as structural_reports_module  # noqa: PLC0415
 
     sorted_entries = sorted(entries, key=lambda item: (item["entry_file"] or "", item["module_path"].casefold()))
 
@@ -375,7 +375,7 @@ def collect_graphics_layout_report(
     *,
     graph_inputs: Any = None,
 ) -> dict[str, Any]:
-    from sattlint.devtools import structural_reports as structural_reports_module
+    from sattlint.devtools import structural_reports as structural_reports_module  # noqa: PLC0415
 
     resolved_inputs = structural_reports_module.normalize_graph_inputs(graph_inputs, workspace_root=workspace_root)
     entries: list[dict[str, Any]] = []

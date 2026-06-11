@@ -23,8 +23,8 @@ def run_recommended_pipeline_finish_gate(
     fail_on_budget: bool,
     pytest_workers: str | None = None,
 ) -> dict[str, Any]:
-    from sattlint.devtools import _pipeline_finish_gate as finish_gate_module
-    from sattlint.devtools import pipeline as pipeline_module
+    from sattlint.devtools import _pipeline_finish_gate as finish_gate_module  # noqa: PLC0415
+    from sattlint.devtools import pipeline as pipeline_module  # noqa: PLC0415
 
     recommendation = pipeline_module.build_pipeline_check_recommendations(
         profile=profile,

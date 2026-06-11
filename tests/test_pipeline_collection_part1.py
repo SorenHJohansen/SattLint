@@ -1,3 +1,4 @@
+# pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
 # ruff: noqa: F403, F405
 from ._pipeline_collection_test_support import *
 
@@ -70,6 +71,8 @@ def test_collect_architecture_report_includes_shadowing_cli_filter():
     assert phase2_gate["advisory_rule_ids"] == []
     assert "analyzer-exposure-gap" not in finding_ids
     assert "rule-corpus-link-gap" not in finding_ids
+    assert "analyzer-acceptance-test-path-gap" not in finding_ids
+    assert "rule-acceptance-test-path-gap" not in finding_ids
 
 
 def test_collect_phase2_rule_metadata_gate_fails_on_enforced_gaps():
@@ -110,7 +113,7 @@ def test_collect_phase2_rule_metadata_gate_fails_on_enforced_gaps():
     }
 
 
-def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():
+def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():  # noqa: PLR0915
     report = pipeline._collect_analyzer_registry_report()
     sattline_semantics = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "sattline-semantics")
     dataflow = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "dataflow")
@@ -152,7 +155,14 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():
     assert mms_interface["summary_output"] == "mms-interface.summary"
     assert mms_interface["cli_exposed"] is True
     assert mms_interface["rule_ids"] == []
-    assert naming_consistency["acceptance_tests"] == ["tests/test_analyzers.py"]
+    assert naming_consistency["acceptance_tests"] == [
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+    ]
     assert naming_consistency["exposed_via"] == ["pipeline"]
     assert timing["cli_exposed"] is True
     assert "semantic.scan-cycle-stale-read" in timing["rule_ids"]
@@ -190,7 +200,7 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():
     assert duplicate_alarm_tag["explanation"] == duplicate_alarm_tag["description"]
     assert "alarm-integrity" in duplicate_alarm_tag["analyzers"]
     assert "alarm-integrity.summary" in duplicate_alarm_tag["outputs"]
-    assert "tests/test_analyzers.py" in duplicate_alarm_tag["acceptance_tests"]
+    assert "tests/test_analyzers_suites_part1.py" in duplicate_alarm_tag["acceptance_tests"]
     assert duplicate_alarm_tag["corpus_cases"] == ["workspace-common-quality-issues"]
     assert duplicate_alarm_tag["mutation_applicability"] == "required"
     assert duplicate_alarm_tag["suppression_modes"] == ["baseline"]

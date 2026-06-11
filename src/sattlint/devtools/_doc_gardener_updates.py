@@ -141,7 +141,7 @@ def build_quality_trend_entry(
 
 
 def upsert_trend_section(content: str, *, row: str) -> str:
-    import re
+    import re  # noqa: PLC0415
 
     header = "## Trend\n\n| Date | Grade | Notes | Source |\n|---|---|---|---|"
     section_re = re.compile(r"(?ms)^## Trend\n.*?(?=^## |\Z)")
@@ -209,7 +209,7 @@ def update_tech_debt_scan_log(
     read_text_fn: Callable[[Path], str],
     date_str: str,
 ) -> None:
-    from ._doc_gardener_fixup import update_tech_debt_scan_log as _update_tech_debt_scan_log
+    from ._doc_gardener_fixup import update_tech_debt_scan_log as _update_tech_debt_scan_log  # noqa: PLC0415
 
     _update_tech_debt_scan_log(
         findings,
@@ -224,6 +224,6 @@ def open_fixup_pr(
     *,
     run_repo_cli_fn: Callable[[str, Sequence[str]], Any],
 ) -> bool:
-    from ._doc_gardener_fixup import open_fixup_pr as _open_fixup_pr
+    from ._doc_gardener_fixup import open_fixup_pr as _open_fixup_pr  # noqa: PLC0415
 
     return _open_fixup_pr(findings, run_repo_cli=run_repo_cli_fn)

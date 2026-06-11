@@ -36,6 +36,30 @@ repos:
         files: \.(g|l|s)$
         exclude: ^tests/fixtures/
         pass_filenames: true
+      - id: no-cast-any-bridge
+        name: Forbid cast(Any, ...) bridges
+        language: system
+        entry: python .github/hooks/scripts/hook_python_runner.py
+        args:
+          - .github/hooks/scripts/pattern_guard.py
+          - --pattern
+          - 'cast\(Any[,\s]'
+          - --label
+          - 'cast(Any,...)'
+        files: ^src/.*\.py$
+        pass_filenames: true
+      - id: no-hardcoded-parents-depth
+        name: Forbid hardcoded parents[N] repo roots
+        language: system
+        entry: python .github/hooks/scripts/hook_python_runner.py
+        args:
+          - .github/hooks/scripts/pattern_guard.py
+          - --pattern
+          - 'parents\[[0-9]+\]'
+          - --label
+          - 'parents[N]'
+        files: ^src/.*\.py$
+        pass_filenames: true
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0

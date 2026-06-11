@@ -107,7 +107,7 @@ class _ModuleHeaderMixin:
         )
 
     @_v_args(meta=True)
-    def module_header(self, meta: Any, items: list[TransformerItem]) -> ModuleHeader:
+    def module_header(self, meta: Any, items: list[TransformerItem]) -> ModuleHeader:  # noqa: PLR0915
         """Grammar module_header -> ModuleHeader with position, arguments, layer, enable."""
         name = None
         coords5: tuple[float, float, float, float, float] | None = None

@@ -172,7 +172,7 @@ def scan_dead_links(
     for md_file in md_files:
         try:
             lines = read_text_fn(md_file).splitlines(keepends=True)
-        except Exception:
+        except Exception:  # noqa: BLE001
             lines = None
         if lines is None:
             continue
@@ -422,7 +422,7 @@ def scan_completed_exec_plans_still_active(
     docs_dir: Path,
     relative_path_fn: Callable[[Path], str],
 ) -> Sequence[Any]:
-    from sattlint.devtools import ai_work_map as ai_work_map_module
+    from sattlint.devtools import ai_work_map as ai_work_map_module  # noqa: PLC0415
 
     findings: list[Any] = []
     active_exec_plans_dir = docs_dir / "exec-plans" / "active"
@@ -507,7 +507,7 @@ def scan_stale_docs(
                 except ValueError:
                     pass
 
-    except Exception:
+    except Exception:  # noqa: BLE001
         return findings
 
     return findings

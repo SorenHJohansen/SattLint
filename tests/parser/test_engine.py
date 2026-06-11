@@ -70,6 +70,32 @@ def _make_basepicture(
     )
 
 
+def test_loader_reuses_shared_cache_instances_for_same_directory(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(engine, "create_sl_parser", lambda: object())
+    monkeypatch.setattr(engine, "SLTransformer", lambda: object())
+    monkeypatch.setattr(engine, "get_cache_dir", lambda: tmp_path)
+
+    first_loader = engine.SattLineProjectLoader(
+        program_dir=tmp_path,
+        other_lib_dirs=[],
+        abb_lib_dir=tmp_path,
+        mode=engine.CodeMode.DRAFT,
+        scan_root_only=True,
+        debug=False,
+    )
+    second_loader = engine.SattLineProjectLoader(
+        program_dir=tmp_path,
+        other_lib_dirs=[],
+        abb_lib_dir=tmp_path,
+        mode=engine.CodeMode.DRAFT,
+        scan_root_only=True,
+        debug=False,
+    )
+
+    assert first_loader._lookup_cache is second_loader._lookup_cache
+    assert first_loader._ast_cache is second_loader._ast_cache
+
+
 def test_graphics_validation_to_syntax_result_merges_warnings_and_errors() -> None:
     result = SimpleNamespace(
         warnings=[SimpleNamespace(message="graphics warning")],

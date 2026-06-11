@@ -1,4 +1,6 @@
 # ruff: noqa: F403, F405
+from sattline_parser.models.ast_model import FrameModule
+
 from ._analyzers_variables_test_support import *
 
 
@@ -503,6 +505,185 @@ def test_graphics_format_tail_keywords_do_not_log_missing_variables(caplog):
     assert analyzer._unresolved_variable_lookup_total == 1
     assert analyzer._unresolved_variable_lookup_counts == {"MissingVar": 1}
     assert analyzer._get_usage(bp.localvariables[0]).read is True
+
+
+def test_frame_nested_dotted_enable_tail_marks_enclosing_moduleparameter_as_used():
+    payload = DataType(
+        name="Payload",
+        description=None,
+        datecode=None,
+        var_list=[Variable(name="Inner", datatype=Simple_DataType.BOOLEAN)],
+    )
+    child_header = _hdr("Child")
+    child_header.enable_tail = "Mapped.Inner"
+    parent_parameter = Variable(name="Mapped", datatype="Payload")
+    parent_module = SingleModule(
+        header=_hdr("Parent"),
+        moduledef=None,
+        moduleparameters=[parent_parameter],
+        localvariables=[],
+        submodules=[
+            FrameModule(
+                header=_hdr("Frame"),
+                moduledef=None,
+                modulecode=None,
+                submodules=[
+                    SingleModule(
+                        header=child_header,
+                        moduledef=None,
+                        moduleparameters=[],
+                        localvariables=[],
+                        submodules=[],
+                        modulecode=None,
+                        parametermappings=[],
+                    )
+                ],
+            )
+        ],
+        modulecode=None,
+        parametermappings=[
+            ParameterMapping(
+                target={"var_name": "Mapped"},
+                source_type="var_name",
+                is_duration=False,
+                is_source_global=False,
+                source={"var_name": "RootMapped"},
+                source_literal=None,
+            )
+        ],
+    )
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[payload],
+        moduletype_defs=[],
+        localvariables=[Variable(name="RootMapped", datatype="Payload")],
+        submodules=[parent_module],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp, selected_issue_kinds={IssueKind.UNUSED})
+    analyzer.run()
+
+    assert not any(issue.kind is IssueKind.UNUSED and issue.variable is parent_parameter for issue in analyzer.issues)
+    assert set(analyzer._get_usage(parent_parameter).field_reads) == {"Inner"}
+
+
+def test_singlemodule_header_enable_tail_marks_parent_moduleparameter_as_used():
+    payload = DataType(
+        name="ColumnUnitSetupType",
+        description=None,
+        datecode=None,
+        var_list=[Variable(name="ThisIsUnit241C", datatype=Simple_DataType.BOOLEAN)],
+    )
+    child_header = _hdr("NMPWaste")
+    child_header.enable_tail = "UnitSetup.ThisIsUnit241C"
+    parent_parameter = Variable(name="UnitSetup", datatype="ColumnUnitSetupType")
+    parent_module = SingleModule(
+        header=_hdr("Outlet"),
+        moduledef=None,
+        moduleparameters=[parent_parameter],
+        localvariables=[],
+        submodules=[
+            SingleModule(
+                header=child_header,
+                moduledef=None,
+                moduleparameters=[],
+                localvariables=[],
+                submodules=[],
+                modulecode=None,
+                parametermappings=[],
+            )
+        ],
+        modulecode=None,
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[payload],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[parent_module],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp, selected_issue_kinds={IssueKind.UNUSED})
+    analyzer.run()
+
+    assert not any(issue.kind is IssueKind.UNUSED and issue.variable is parent_parameter for issue in analyzer.issues)
+    assert set(analyzer._get_usage(parent_parameter).field_reads) == {"ThisIsUnit241C"}
+
+
+def test_absolute_enable_tail_marks_ancestor_moduleparameter_as_used():
+    child_header = _hdr("Ompak")
+    child_header.enable_tail = "BasePicture.OpsamlingsTank.L1.L2.UnitControl.OmpakAttribut"
+    parent_parameter = Variable(name="OmpakAttribut", datatype=Simple_DataType.BOOLEAN)
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[
+            SingleModule(
+                header=_hdr("OpsamlingsTank"),
+                moduledef=None,
+                moduleparameters=[],
+                localvariables=[],
+                submodules=[
+                    SingleModule(
+                        header=_hdr("L1"),
+                        moduledef=None,
+                        moduleparameters=[],
+                        localvariables=[],
+                        submodules=[
+                            SingleModule(
+                                header=_hdr("L2"),
+                                moduledef=None,
+                                moduleparameters=[],
+                                localvariables=[],
+                                submodules=[
+                                    SingleModule(
+                                        header=_hdr("UnitControl"),
+                                        moduledef=None,
+                                        moduleparameters=[parent_parameter],
+                                        localvariables=[],
+                                        submodules=[
+                                            SingleModule(
+                                                header=child_header,
+                                                moduledef=None,
+                                                moduleparameters=[],
+                                                localvariables=[],
+                                                submodules=[],
+                                                modulecode=None,
+                                                parametermappings=[],
+                                            )
+                                        ],
+                                        modulecode=None,
+                                        parametermappings=[],
+                                    )
+                                ],
+                                modulecode=None,
+                                parametermappings=[],
+                            )
+                        ],
+                        modulecode=None,
+                        parametermappings=[],
+                    )
+                ],
+                modulecode=None,
+                parametermappings=[],
+            )
+        ],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp, selected_issue_kinds={IssueKind.UNUSED})
+    analyzer.run()
+
+    assert not any(issue.kind is IssueKind.UNUSED and issue.variable is parent_parameter for issue in analyzer.issues)
+    assert analyzer._get_usage(parent_parameter).ui_read is True
 
 
 def test_variables_fallback_warnings_are_not_logged_without_debug(caplog):

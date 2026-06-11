@@ -1,3 +1,4 @@
+# pyright: reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -37,29 +38,22 @@ def test_rich_menu_renderer_uses_console_helpers(monkeypatch) -> None:
     )
 
 
-def test_app_print_menu_routes_rich_mode(monkeypatch) -> None:
+def test_app_print_menu_uses_startup_renderer(monkeypatch) -> None:
     seen: dict[str, object] = {}
 
     monkeypatch.setattr(
-        app.app_rich_module, "print_menu", lambda *args, **kwargs: seen.update({"rich": (args, kwargs)})
-    )
-    monkeypatch.setattr(
         app.app_startup_module,
         "print_menu_from_app",
-        lambda *args, **kwargs: seen.update({"classic": (args, kwargs)}),
+        lambda *args, **kwargs: seen.update({"startup": (args, kwargs)}),
     )
 
     previous_mode = app.get_interactive_ui_mode()
     try:
         app.set_interactive_ui_mode("rich")
-        app._print_menu("Menu", [app.MenuOption("1", "One")], intro="Intro", note="Note")
-        assert "rich" in seen
-        assert "classic" not in seen
+        assert app.get_interactive_ui_mode() == "textual"
 
-        seen.clear()
-        app.set_interactive_ui_mode("classic")
         app._print_menu("Menu", [app.MenuOption("1", "One")], intro="Intro", note="Note")
-        assert "classic" in seen
-        assert "rich" not in seen
+
+        assert "startup" in seen
     finally:
         app.set_interactive_ui_mode(previous_mode)

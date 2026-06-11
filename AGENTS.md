@@ -14,6 +14,7 @@
 ## Repo Map
 
 - Start from the owning file, symbol, failing command, or failing test.
+- For real-target debugging, check `~/.config/sattlint/config.toml` before assuming the repo contains the source file; follow `program_dir`, `ABB_lib_dir`, `icf_dir`, and `other_lib_dirs` to the actual external SattLine libraries.
 - Read only the matching `.github/instructions/*.md` files for the touched surface.
 - Use `docs/maintainers/repo-map.md` when owner routing is still unclear.
 - Use `docs/public/architecture.md` for layering and runtime boundaries.
@@ -62,4 +63,4 @@
 
 ## Last Updated
 
-2026-06-05
+2026-06-08

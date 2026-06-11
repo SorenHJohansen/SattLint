@@ -320,6 +320,11 @@ def test_graphics_validation_helper_branches_cover_tree_span_and_literal_paths(t
     assert parse_picture_display_row("0    ", record_index=1, line=3) is None
     assert parse_picture_display_row("1 Lit 0 4 True", record_index=1, line=3) is None
     assert parse_picture_display_row("1 None ignored", record_index=1, line=3) is None
+    variable_row = parse_picture_display_row("1 Var True 7 PathAIT", record_index=1, line=3)
+    assert variable_row is not None
+    assert variable_row.kind == "variable"
+    assert variable_row.raw_text == "PathAIT"
+    assert parse_picture_display_row("1 Var Invalid 7 PathAIT", record_index=1, line=3) is None
 
     empty_path_message = validate_literal_path(tmp_path / "Panel.g", "   ", line=4, column=5)
     assert empty_path_message is not None

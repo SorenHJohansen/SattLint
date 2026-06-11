@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
 from __future__ import annotations
 
 import json
@@ -208,6 +209,42 @@ def test_run_pytest_stage_reports_unreadable_junit(monkeypatch, tmp_path):
 
     assert pytest_report["summary"] == {"tests": 0, "failures": 0, "errors": 1, "skipped": 0}
     assert pytest_report["errors"][0]["message"] == "JUnit XML unreadable: malformed xml"
+
+
+def test_run_pytest_stage_discards_stale_junit_before_running(monkeypatch, tmp_path):
+    class ProgressStub:
+        def start_stage(self, key: str) -> None:
+            return None
+
+        def complete_stage(self, key: str, detail: str | None = None) -> None:
+            return None
+
+    typed_progress = cast(Any, ProgressStub())
+    junit_path = tmp_path / "pytest.junit.xml"
+    junit_path.write_text("stale junit", encoding="utf-8")
+
+    def fake_run_command(name, command, cwd=pipeline.REPO_ROOT):
+        assert name == "pytest"
+        assert junit_path.exists() is False
+        return pipeline.CommandResult(
+            name=name,
+            command=command,
+            exit_code=1,
+            duration_seconds=0.0,
+            stdout="",
+            stderr="missing junit",
+        )
+
+    monkeypatch.setattr(pipeline, "_run_command", fake_run_command)
+    monkeypatch.setattr(pipeline, "_parse_pytest_junit", lambda _path: (_ for _ in ()).throw(FileNotFoundError()))
+
+    pytest_report = pipeline._run_pytest_stage(
+        typed_progress, output_dir=tmp_path, python_cmd=["python"], profile="quick"
+    )
+
+    assert pytest_report["summary"] == {"tests": 0, "failures": 0, "errors": 1, "skipped": 0}
+    assert pytest_report["errors"][0]["message"] == "JUnit XML not generated: missing junit"
+    assert junit_path.exists() is False
 
 
 def test_prepare_pipeline_run_covers_missing_baseline_and_worker_command(monkeypatch, tmp_path):

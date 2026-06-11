@@ -278,7 +278,7 @@ def test_find_public_readiness_findings_assigns_change_scope_paths(tmp_path):
 
 
 def test_repo_audit_entrypoints_cover_delegate_and_default_manifest_branches(monkeypatch, tmp_path):
-    from sattlint.devtools import _repo_audit_full_run as full_run_helper
+    from sattlint.devtools import _repo_audit_full_run as full_run_helper  # noqa: PLC0415
 
     sentinel_summary = {"summary": "selected-check"}
     monkeypatch.setattr(full_run_helper, "_run_repo_audit_findings_checks", lambda *args, **kwargs: sentinel_summary)
@@ -326,7 +326,7 @@ def test_repo_audit_entrypoints_cover_delegate_and_default_manifest_branches(mon
 
 
 def test_run_repo_audit_findings_checks_writes_selected_check_reports(monkeypatch, tmp_path):
-    from sattlint.devtools import _repo_audit_full_run as full_run_helper
+    from sattlint.devtools import _repo_audit_full_run as full_run_helper  # noqa: PLC0415
 
     findings = [
         repo_audit.Finding(

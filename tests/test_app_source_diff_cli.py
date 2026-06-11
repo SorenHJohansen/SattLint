@@ -1,6 +1,6 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false
 from __future__ import annotations
 
-import builtins
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,7 +10,8 @@ import pytest
 
 from sattlint import app
 
-from ._app_menus_support import INVALID_SINGLE_FILE, VALID_SINGLE_FILE, make_input
+from ._app_menus_support import INVALID_SINGLE_FILE, VALID_SINGLE_FILE
+from .helpers import named_object
 
 
 @pytest.fixture
@@ -32,8 +33,8 @@ def test_run_source_diff_report_aggregates_all_analysis_targets(noop_screen, mon
     for path in (target_a_s, target_a_x, target_b_s, target_b_x):
         path.write_text("content", encoding="utf-8")
 
-    target_a_bp = SimpleNamespace(header=SimpleNamespace(name="TargetA"), origin_file="TargetA.s")
-    target_b_bp = SimpleNamespace(header=SimpleNamespace(name="TargetB"), origin_file="TargetB.x")
+    target_a_bp = named_object("TargetA", origin_file="TargetA.s")
+    target_b_bp = named_object("TargetB", origin_file="TargetB.x")
     graph = SimpleNamespace()
 
     monkeypatch.setattr(
@@ -108,7 +109,7 @@ def test_run_source_diff_report_updates_live_status(noop_screen, monkeypatch, tm
     for path in (target_a_s, target_a_x):
         path.write_text("content", encoding="utf-8")
 
-    target_a_bp = SimpleNamespace(header=SimpleNamespace(name="TargetA"), origin_file="TargetA.s")
+    target_a_bp = named_object("TargetA", origin_file="TargetA.s")
     graph = SimpleNamespace()
     updates: list[str] = []
 
@@ -190,6 +191,28 @@ def test_force_refresh_ast_bypasses_file_ast_cache(monkeypatch):
     assert result == ("bp", "graph")
 
 
+def test_refresh_analysis_caches_wrapper_passes_analysis_report_cache(monkeypatch):
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    seen: dict[str, object] = {}
+
+    monkeypatch.setattr(app, "force_refresh_ast", lambda _cfg: ("bp", "graph"))
+    monkeypatch.setattr(app, "get_cache_dir", lambda: Path("/tmp/cache"))
+
+    def fake_refresh_analysis_caches(_cfg, **kwargs):
+        seen.update(kwargs)
+        return ("bp", "graph")
+
+    monkeypatch.setattr(app.app_analysis, "refresh_analysis_caches", fake_refresh_analysis_caches)
+
+    result = app.refresh_analysis_caches(cfg)
+
+    assert seen["force_refresh_ast_fn"] is app.force_refresh_ast
+    assert seen["analysis_report_cache_cls"] is app.AnalysisReportCache
+    assert seen["get_cache_dir_fn"] is app.get_cache_dir
+    assert seen["emit_output_fn"] is app.emit_output
+    assert result == ("bp", "graph")
+
+
 def test_show_help_mentions_setup_and_syntax_check(noop_screen, capsys):
     cfg = deepcopy(app.DEFAULT_CONFIG)
 
@@ -235,60 +258,63 @@ def test_main_starts_without_targets_and_skips_ast_cache(noop_screen, monkeypatc
     cfg["analyzed_programs_and_libraries"] = []
     calls = []
 
+    monkeypatch.delenv("SATTLINT_UI", raising=False)
     monkeypatch.setattr(app, "load_config", lambda *_: (cfg, False))
-    monkeypatch.setattr(app, "self_check", lambda *_: calls.append("self_check") or True)
+    monkeypatch.setattr(app, "self_check", lambda *_: pytest.fail("textual startup should skip terminal self-check"))
     monkeypatch.setattr(
         app,
         "ensure_ast_cache",
-        lambda *_: pytest.fail("ensure_ast_cache should not run without analyzed targets"),
+        lambda *_: pytest.fail("textual startup should skip terminal AST cache preflight"),
     )
-    monkeypatch.setattr(builtins, "input", make_input(["q"]))
+    monkeypatch.setattr(app, "run_interactive_session", lambda *_args, **_kwargs: calls.append("session"))
 
     exit_code = app.main()
 
     assert exit_code == 0
-    assert calls == ["self_check"]
+    assert calls == ["session"]
 
 
 def test_main_blocks_target_dependent_menu_actions_without_targets(noop_screen, monkeypatch, capsys):
     cfg = deepcopy(app.DEFAULT_CONFIG)
     cfg["analyzed_programs_and_libraries"] = []
+    calls: list[str] = []
 
+    monkeypatch.delenv("SATTLINT_UI", raising=False)
     monkeypatch.setattr(app, "load_config", lambda *_: (cfg, False))
-    monkeypatch.setattr(app, "self_check", lambda *_: True)
+    monkeypatch.setattr(app, "self_check", lambda *_: pytest.fail("textual startup should skip terminal self-check"))
     monkeypatch.setattr(
         app,
         "ensure_ast_cache",
-        lambda *_: pytest.fail("ensure_ast_cache should not run without analyzed targets"),
+        lambda *_: pytest.fail("textual startup should skip terminal AST cache preflight"),
     )
     monkeypatch.setattr(
         app,
         "analysis_menu",
-        lambda *_: pytest.fail("analysis_menu should be blocked without analyzed targets"),
+        lambda *_: pytest.fail("legacy analysis menu should not run during textual startup"),
     )
     monkeypatch.setattr(
         app,
         "dump_menu",
-        lambda *_: pytest.fail("dump_menu should be blocked without analyzed targets"),
+        lambda *_: pytest.fail("legacy dump menu should not run during textual startup"),
     )
     monkeypatch.setattr(
         app,
         "documentation_menu",
-        lambda *_: pytest.fail("documentation_menu should be blocked without analyzed targets"),
+        lambda *_: pytest.fail("legacy documentation menu should not run during textual startup"),
     )
     monkeypatch.setattr(
         app,
         "force_refresh_ast",
-        lambda *_: pytest.fail("force_refresh_ast should be blocked without analyzed targets"),
+        lambda *_: pytest.fail("legacy refresh action should not run during textual startup"),
     )
-    monkeypatch.setattr(app, "pause", lambda: None)
-    monkeypatch.setattr(builtins, "input", make_input(["1", "2", "4", "2", "3", "q", "b", "q"]))
+    monkeypatch.setattr(app, "run_interactive_session", lambda *_args, **_kwargs: calls.append("session"))
 
     exit_code = app.main()
 
     out = capsys.readouterr().out
     assert exit_code == 0
-    assert out.count("No analyzed programs/libraries configured.") == 4
+    assert calls == ["session"]
+    assert out == ""
 
 
 def test_syntax_check_command_reports_parse_error(tmp_path, capsys):

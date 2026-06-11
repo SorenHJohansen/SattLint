@@ -18,7 +18,7 @@ from .json_helpers import json_mapping as _json_mapping
 
 
 def _is_structural_budget_python_path(rel_path: str) -> bool:
-    return rel_path.endswith(".py") and rel_path.startswith(("src/", "tests/"))
+    return rel_path.endswith(".py") and rel_path.startswith(("src/", "tests/", "scripts/"))
 
 
 def _load_structural_budget_ratchet(
@@ -26,7 +26,7 @@ def _load_structural_budget_ratchet(
     *,
     ratchet_path: Path | None = None,
 ) -> dict[str, Any]:
-    from sattlint.devtools import structural_reports as structural_reports_module
+    from sattlint.devtools import structural_reports as structural_reports_module  # noqa: PLC0415
 
     resolved_path = ratchet_path or (repo_root / structural_reports_module.STRUCTURAL_BUDGET_RATCHET_PATH)
     sanitized_path = structural_reports_module.sanitize_path_for_report(resolved_path, repo_root=repo_root)
@@ -213,12 +213,12 @@ def _load_structural_budget_ratchet(
     }
 
 
-def collect_structural_budget_report(
+def collect_structural_budget_report(  # noqa: PLR0915
     repo_root: Path,
     *,
     ratchet_path: Path | None = None,
 ) -> dict[str, Any]:
-    from sattlint.devtools import structural_reports as structural_reports_module
+    from sattlint.devtools import structural_reports as structural_reports_module  # noqa: PLC0415
 
     thresholds = structural_reports_module.STRUCTURAL_BUDGET_THRESHOLDS
     source_file_max_lines = thresholds["source_file_max_lines"]

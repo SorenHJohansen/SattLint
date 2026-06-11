@@ -1,3 +1,4 @@
+# pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false, reportPrivateUsage=false, reportUnknownVariableType=false, reportUnknownParameterType=false, reportUnknownMemberType=false
 from __future__ import annotations
 
 import runpy
@@ -94,6 +95,7 @@ def _build_startup_app_module() -> SimpleNamespace:
         _get_analyzed_targets=lambda _cfg: ["Root"],
         _summarize_targets=lambda _cfg: "targets",
         _has_analyzed_targets=lambda _cfg: True,
+        _target_is_library=lambda _cfg, _target_name: False,
         ensure_ast_cache=lambda _cfg: True,
         emit_output=lambda *_args: None,
         self_check=lambda _cfg: True,
@@ -120,6 +122,8 @@ def _build_startup_app_module() -> SimpleNamespace:
         analysis_menu=lambda _cfg: None,
         _require_targets_for_menu_action=lambda _cfg, _action: True,
         force_refresh_ast=lambda _cfg: None,
+        refresh_analysis_caches=lambda _cfg: None,
+        run_source_diff_report=lambda _cfg: None,
         analyze_variables=lambda *args, **kwargs: None,
         classify_documentation_structure=lambda *args, **kwargs: [],
         discover_documentation_unit_candidates=lambda *args, **kwargs: [],
@@ -351,7 +355,7 @@ def test_main_from_app_routes_interactive_session_dependencies(monkeypatch: pyte
     assert seen["quit_app_error"] is app.QuitAppError
 
 
-def test_startup_cli_command_wrappers_delegate_to_startup_core(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_startup_cli_command_wrappers_delegate_to_startup_core(monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: PLR0915
     app_module = _build_startup_app_module()
     cfg = cast(dict[str, Any], {"debug": False})
     config_path = Path("config.toml")
@@ -822,7 +826,7 @@ def test_docs_from_app_wrappers_delegate_live_dependencies() -> None:
     ]
 
 
-def test_startup_docs_graphics_helpers_delegate_dependencies() -> None:
+def test_startup_docs_graphics_helpers_delegate_dependencies() -> None:  # noqa: PLR0915
     cfg = cast(dict[str, Any], {"debug": False})
     project_bp = cast(BasePicture, SimpleNamespace())
     graph = cast(ProjectGraph, SimpleNamespace())
@@ -1372,7 +1376,7 @@ def test_menus_from_app_wrappers_delegate_live_dependencies() -> None:
     require_targets_for_menu_action = object()
     dump_menu = object()
     run_source_diff_report = object()
-    force_refresh_ast = object()
+    refresh_analysis_caches = object()
     calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
 
     def record(name: str, result: object):
@@ -1406,7 +1410,7 @@ def test_menus_from_app_wrappers_delegate_live_dependencies() -> None:
         _require_targets_for_menu_action=require_targets_for_menu_action,
         dump_menu=dump_menu,
         run_source_diff_report=run_source_diff_report,
-        force_refresh_ast=force_refresh_ast,
+        refresh_analysis_caches=refresh_analysis_caches,
     )
 
     _app_menus_from_app.dump_menu_from_app(cfg, app_module=app_module)
@@ -1458,14 +1462,14 @@ def test_menus_from_app_wrappers_delegate_live_dependencies() -> None:
                 "require_targets_for_menu_action_fn": require_targets_for_menu_action,
                 "dump_menu_fn": dump_menu,
                 "run_source_diff_report_fn": run_source_diff_report,
-                "force_refresh_ast_fn": force_refresh_ast,
+                "force_refresh_ast_fn": refresh_analysis_caches,
                 "interaction": interaction,
             },
         ),
     ]
 
 
-def test_remaining_from_app_wrappers_delegate_to_startup_core(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_remaining_from_app_wrappers_delegate_to_startup_core(monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: PLR0915
     app_module = _build_startup_app_module()
     seen: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
     project_bp = cast(BasePicture, SimpleNamespace())
@@ -1741,7 +1745,7 @@ def test_load_graphics_rules_wrapper_falls_back_to_defaults_on_invalid_rules(
     assert f"Graphics rules unavailable at {rules_path}" in out
 
 
-def test_simulation_and_analysis_wrappers_delegate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_simulation_and_analysis_wrappers_delegate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:  # noqa: PLR0915
     cfg = app.DEFAULT_CONFIG.copy()
     snapshot = object()
     project_bp = cast(BasePicture, SimpleNamespace())
@@ -1749,7 +1753,7 @@ def test_simulation_and_analysis_wrappers_delegate(monkeypatch: pytest.MonkeyPat
     analysis_calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
 
     monkeypatch.setattr(app, "load_workspace_snapshot", lambda path, **kwargs: snapshot)
-    import sattlint.simulation as simulation_module
+    import sattlint.simulation as simulation_module  # noqa: PLC0415
 
     monkeypatch.setattr(
         simulation_module,
