@@ -278,6 +278,7 @@ def test_run_checks_applies_rule_profiles_to_simple_reports(noop_screen, monkeyp
 
 def test_dump_menu_all_options(noop_screen, monkeypatch, tmp_path):
     cfg = cast(dict[str, object], build_mini_project_context(tmp_path)["cfg"])
+    monkeypatch.setattr(app, "get_cache_dir", lambda: tmp_path / "cache-dir")
 
     dump_calls = []
 
@@ -299,6 +300,7 @@ def test_dump_menu_all_options(noop_screen, monkeypatch, tmp_path):
 
 def test_dump_menu_updates_live_status(noop_screen, monkeypatch, tmp_path):
     cfg = cast(dict[str, object], build_mini_project_context(tmp_path)["cfg"])
+    monkeypatch.setattr(app, "get_cache_dir", lambda: tmp_path / "cache-dir")
     updates: list[str] = []
 
     class FakeLiveStatusLine:
@@ -319,6 +321,7 @@ def test_dump_menu_updates_live_status(noop_screen, monkeypatch, tmp_path):
 
 def test_dump_menu_variable_report_passes_library_target_flag(noop_screen, monkeypatch, tmp_path):
     cfg = cast(dict[str, object], build_mini_project_context(tmp_path)["cfg"])
+    monkeypatch.setattr(app, "get_cache_dir", lambda: tmp_path / "cache-dir")
     captured_kwargs: dict[str, object] = {}
 
     def analyze_variables_stub(*_args, **kwargs):
@@ -336,6 +339,7 @@ def test_dump_menu_variable_report_passes_library_target_flag(noop_screen, monke
 
 def test_dump_menu_can_use_injected_choice_handler(noop_screen, monkeypatch, tmp_path):
     cfg = cast(dict[str, object], build_mini_project_context(tmp_path)["cfg"])
+    monkeypatch.setattr(app, "get_cache_dir", lambda: tmp_path / "cache-dir")
     seen: dict[str, object] = {}
 
     monkeypatch.setattr(
