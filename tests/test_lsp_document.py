@@ -248,9 +248,9 @@ ENDDEF (*BasePicture*);
     def wrapped_build_source_snapshot(*args, **kwargs):
         nonlocal calls
         calls += 1
-        from sattlint.core.semantic import build_source_snapshot_from_basepicture as real_build_source_snapshot
+        from sattlint.core import semantic as semantic_module
 
-        return real_build_source_snapshot(*args, **kwargs)
+        return semantic_module.build_source_snapshot_from_basepicture(*args, **kwargs)
 
     monkeypatch.setattr(
         "sattlint_lsp.local_parser.build_source_snapshot_from_basepicture", wrapped_build_source_snapshot
