@@ -6,6 +6,7 @@ import logging
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from time import monotonic
 from typing import Any
@@ -35,6 +36,20 @@ def _path_key(path: Path) -> str:
 
 def _cache_key(entry_file: Path) -> str:
     return _path_key(entry_file.resolve())
+
+
+def _analysis_context_config(entry_file: Path, workspace_root: Path, settings: Any) -> dict[str, object]:
+    config: dict[str, object] = {
+        "enable_variable_diagnostics": bool(getattr(settings, "enable_variable_diagnostics", True)),
+        "entry_file": str(entry_file.resolve()),
+        "mode": str(getattr(settings, "mode", "draft") or "draft"),
+        "scan_root_only": bool(getattr(settings, "scan_root_only", False)),
+        "workspace_root": str(workspace_root.resolve()),
+    }
+    workspace_diagnostics_mode = getattr(settings, "workspace_diagnostics_mode", None)
+    if isinstance(workspace_diagnostics_mode, str) and workspace_diagnostics_mode:
+        config["workspace_diagnostics_mode"] = workspace_diagnostics_mode
+    return config
 
 
 def _source_file_key(path: Path) -> tuple[str, str]:
@@ -424,6 +439,11 @@ class WorkspaceSnapshotStore:
         settings: Any,
         discovery: WorkspaceSourceDiscovery,
     ) -> SnapshotBundle:
+        analysis_provider = partial(
+            build_variable_semantic_artifacts,
+            config=_analysis_context_config(entry_file, workspace_root, settings),
+            target_is_library=False,
+        )
         snapshot = load_workspace_snapshot(
             entry_file,
             workspace_root=workspace_root,
@@ -431,7 +451,7 @@ class WorkspaceSnapshotStore:
             scan_root_only=bool(getattr(settings, "scan_root_only", False)),
             collect_variable_diagnostics=bool(getattr(settings, "enable_variable_diagnostics", True)),
             discovery=discovery,
-            _analysis_provider=build_variable_semantic_artifacts,
+            _analysis_provider=analysis_provider,
         )
         source_files = tuple(
             sorted(
@@ -460,7 +480,7 @@ class WorkspaceSnapshotStore:
         try:
             bundle = future.result()
             error: Exception | None = None
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             bundle = None
             error = exc
 

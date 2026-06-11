@@ -17,6 +17,7 @@ from sattline_parser.models.ast_model import BasePicture, DataType, ModuleTypeDe
 from sattline_parser.transformer.sl_transformer import SLTransformer
 
 from . import _engine_syntax_helpers as engine_syntax_helpers
+from . import cache as cache_module
 from ._engine_dependency_helpers import collect_dependency_version_conflicts as _collect_dependency_version_conflicts
 from ._engine_graphics_helpers import (
     attach_graphics_companion as _attach_graphics_companion,
@@ -298,8 +299,13 @@ class SattLineProjectLoader(DebugMixin):
         self._visit_stack: list[str] = []  # ordered stack for cycle detection and path reporting
         self._ignored_dirs: set[Path] = set()
         self._cache_dir = get_cache_dir()
-        self._lookup_cache = FileLookupCache(self._cache_dir)
-        self._ast_cache = FileASTCache(self._cache_dir)
+        self._cache_manager = cache_module.get_cache_manager(
+            self._cache_dir,
+            file_lookup_cache_cls=FileLookupCache,
+            file_ast_cache_cls=FileASTCache,
+        )
+        self._lookup_cache = self._cache_manager.file_lookup_cache
+        self._ast_cache = self._cache_manager.file_ast_cache
         self._base_indexes: dict[Path, dict[str, dict[str, Path]]] = {}
         self._lib_by_name: dict[str, str] = {}
         self._prefetched_dependency_candidates: dict[tuple[str, str | None], _PrefetchedDependencyCandidate] = {}
@@ -835,7 +841,7 @@ class SattLineProjectLoader(DebugMixin):
         finally:
             self._flush_lookup_cache()
 
-    def _visit(
+    def _visit(  # noqa: PLR0915
         self,
         name: str,
         graph: ProjectGraph,
@@ -1048,7 +1054,7 @@ def _get_dump_dir() -> Path:
 
 def dump_parse_tree(project: tuple[BasePicture, ProjectGraph]) -> None:
     """Save the parse tree from the root BasePicture to a file."""
-    from datetime import datetime
+    from datetime import datetime  # noqa: PLC0415
 
     project_bp, _graph = project
 
@@ -1069,7 +1075,7 @@ def dump_parse_tree(project: tuple[BasePicture, ProjectGraph]) -> None:
 
 def dump_ast(project: tuple[BasePicture, ProjectGraph]) -> None:
     """Save the AST (BasePicture) structure to a file."""
-    from datetime import datetime
+    from datetime import datetime  # noqa: PLC0415
 
     project_bp, _graph = project
 
@@ -1086,7 +1092,7 @@ def dump_ast(project: tuple[BasePicture, ProjectGraph]) -> None:
 
 def dump_dependency_graph(project: tuple[BasePicture, ProjectGraph]) -> None:
     """Save the dependency graph to a file."""
-    from datetime import datetime
+    from datetime import datetime  # noqa: PLC0415
 
     project_bp, graph = project
 

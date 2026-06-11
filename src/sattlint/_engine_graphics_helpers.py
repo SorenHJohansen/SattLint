@@ -174,7 +174,7 @@ def graphics_companion_needs_refresh(
     code_path: Path,
     mode: object,
 ) -> bool:
-    from . import engine as engine_module
+    from . import engine as engine_module  # noqa: PLC0415
 
     companion_path = engine_module.resolve_graphics_companion_path(code_path, mode=mode)
     if companion_path is None or companion_path == code_path:
@@ -215,11 +215,12 @@ def attach_graphics_companion(
     owner_name: str,
     timing_sink: Callable[[str, str, float], None] | None = None,
 ) -> bool:
-    from . import engine as engine_module
+    from . import engine as engine_module  # noqa: PLC0415
 
+    engine_module_any: Any = engine_module
     record_project_warning = cast(
         Callable[[ProjectGraph, str, ValidationNotice | str], None],
-        cast(Any, engine_module)._record_project_warning,
+        engine_module_any._record_project_warning,
     )
 
     def _record_timing(phase_name: str, started_at: float) -> None:
@@ -242,6 +243,7 @@ def attach_graphics_companion(
         and getattr(bp, "graphics_file", None) == companion_path.name
         and _cached_graphics_companion_signature(bp) == signature
     ):
+        bp_any: Any = bp
         validate_started_at = perf_counter()
         result = engine_module.validate_graphics_file(companion_path)
         _record_timing("validate-graphics-file", validate_started_at)
@@ -264,12 +266,13 @@ def attach_graphics_companion(
             )
         )
         _record_timing("correlate-picture-display", picture_display_started_at)
-        cast(Any, bp).graphics_companion_signature = signature
+        bp_any.graphics_companion_signature = signature
         refreshed = True
 
     warning_context_signature = _graphics_warning_context_signature(graph)
     warning_notices = None if refreshed else _cached_graphics_warning_notices(bp)
     if warning_notices is None or _cached_graphics_warning_context_signature(bp) != warning_context_signature:
+        bp_any: Any = bp
         warnings_started_at = perf_counter()
         warning_notices = picture_display_path_warnings(
             bp,
@@ -277,8 +280,8 @@ def attach_graphics_companion(
             graph=graph,
         )
         _record_timing("picture-display-warnings", warnings_started_at)
-        cast(Any, bp).graphics_warning_notices = warning_notices
-        cast(Any, bp).graphics_warning_context_signature = warning_context_signature
+        bp_any.graphics_warning_notices = warning_notices
+        bp_any.graphics_warning_context_signature = warning_context_signature
 
     for warning in warning_notices:
         record_project_warning(graph, owner_name, warning)
@@ -319,5 +322,5 @@ def load_picture_display_source_context(source_path: Path) -> BasePicture | None
             allow_unresolved_external_datatypes=source_path.suffix.lower() in {".x", ".z"},
         )
         return basepic
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None

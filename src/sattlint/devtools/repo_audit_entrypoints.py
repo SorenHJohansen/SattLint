@@ -40,7 +40,7 @@ def _planning_string_list(value: object) -> list[str]:
 
 
 def _repo_audit_entrypoints_module() -> Any:
-    from sattlint.devtools import repo_audit as repo_audit_module
+    from sattlint.devtools import repo_audit as repo_audit_module  # noqa: PLC0415
 
     return repo_audit_module
 
@@ -53,7 +53,7 @@ def _repo_audit_finding_check_definitions() -> tuple[dict[str, Any], ...]:
 
 
 def _run_verify_recommendations_check(_context: Any) -> list[Any]:
-    from sattlint.devtools import _repo_audit_check_specs as helper
+    from sattlint.devtools import _repo_audit_check_specs as helper  # noqa: PLC0415
 
     return helper._run_verify_recommendations_check(_context)
 
@@ -152,7 +152,7 @@ def build_repo_audit_check_catalog(
     output_dir: Path | None = None,
     fail_on: str = "high",
 ) -> dict[str, Any]:
-    from sattlint.devtools import _repo_audit_check_specs as helper
+    from sattlint.devtools import _repo_audit_check_specs as helper  # noqa: PLC0415
 
     return helper.build_repo_audit_check_catalog(
         profile=profile,
@@ -168,7 +168,7 @@ def build_repo_audit_check_recommendations(
     fail_on: str = "high",
     changed_files: Iterable[str] | None = None,
 ) -> dict[str, Any]:
-    from sattlint.devtools import _repo_audit_check_specs as helper
+    from sattlint.devtools import _repo_audit_check_specs as helper  # noqa: PLC0415
 
     return helper.build_repo_audit_check_recommendations(
         profile=profile,
@@ -216,7 +216,7 @@ def _run_repo_audit_findings_checks(
     suspicious_identifiers: Iterable[str],
     latest_output_dir: Path | None = None,
 ) -> dict[str, Any]:
-    from sattlint.devtools import _repo_audit_full_run as helper
+    from sattlint.devtools import _repo_audit_full_run as helper  # noqa: PLC0415
 
     return helper._run_repo_audit_findings_checks(
         output_dir,
@@ -235,7 +235,7 @@ def _run_repo_audit_cli_consistency_check(
     fail_on: str,
     latest_output_dir: Path | None = None,
 ) -> dict[str, Any]:
-    from sattlint.devtools import _repo_audit_full_run as helper
+    from sattlint.devtools import _repo_audit_full_run as helper  # noqa: PLC0415
 
     return helper._run_repo_audit_cli_consistency_check(
         output_dir,
@@ -258,7 +258,7 @@ def run_recommended_repo_audit_slice(
     latest_output_dir: Path | None = None,
     record_history: bool = True,
 ) -> dict[str, Any]:
-    from sattlint.devtools import _repo_audit_entrypoint_runs as helper
+    from sattlint.devtools import _repo_audit_entrypoint_runs as helper  # noqa: PLC0415
 
     return helper.run_recommended_repo_audit_slice(
         output_dir,
@@ -288,7 +288,7 @@ def run_recommended_repo_audit_finish_gate(
     pytest_workers: str | None = None,
     latest_output_dir: Path | None = None,
 ) -> dict[str, Any]:
-    from sattlint.devtools import _repo_audit_entrypoint_runs as helper
+    from sattlint.devtools import _repo_audit_entrypoint_runs as helper  # noqa: PLC0415
 
     return helper.run_recommended_repo_audit_finish_gate(
         output_dir,
@@ -339,7 +339,7 @@ def build_check_my_changes_planning_report(
     fail_on: str = "high",
     changed_files: Iterable[str] | None = None,
 ) -> dict[str, Any]:
-    from sattlint.devtools import ai_work_map as ai_work_map_module
+    from sattlint.devtools import ai_work_map as ai_work_map_module  # noqa: PLC0415
 
     return repo_audit_planning_helpers.build_check_my_changes_planning_report(
         profile=profile,
@@ -398,7 +398,7 @@ def run_check_my_changes(
     pytest_workers: str | None = None,
     latest_output_dir: Path | None = None,
 ) -> dict[str, Any]:
-    from sattlint.devtools import _repo_audit_entrypoint_runs as helper
+    from sattlint.devtools import _repo_audit_entrypoint_runs as helper  # noqa: PLC0415
 
     return helper.run_check_my_changes(
         output_dir,

@@ -306,6 +306,39 @@ def test_configgen_read_dependencies_returns_empty_list_when_cached_read_fails(t
     assert extractor.read_dependencies(z_file) == []
 
 
+def test_configgen_read_dependencies_refreshes_when_file_changes(tmp_path):
+    root = tmp_path / "ProjectRoot"
+    for relative in ["unitlib", "projectlib", "nnelib", "SL_Library", "Configuration"]:
+        (root / relative).mkdir(parents=True)
+
+    extractor = configgen.SattLineConfigExtractor(root)
+    z_file = root / "unitlib" / "Dynamic.z"
+    _write_text(z_file, "LibA.z\n")
+
+    assert extractor.read_dependencies(z_file) == ["LibA"]
+
+    _write_text(z_file, "LibB.z\n")
+
+    assert extractor.read_dependencies(z_file) == ["LibB"]
+
+
+def test_configgen_read_dependencies_can_bypass_cached_reads(tmp_path, monkeypatch):
+    root = tmp_path / "ProjectRoot"
+    for relative in ["unitlib", "projectlib", "nnelib", "SL_Library", "Configuration"]:
+        (root / relative).mkdir(parents=True)
+
+    extractor = configgen.SattLineConfigExtractor(root, use_cached_dependency_reads=False)
+    z_file = root / "unitlib" / "Bypass.z"
+    _write_text(z_file, "LibA.z\n")
+
+    def _cached_read_should_not_run(_path):
+        raise AssertionError("cached dependency read should be bypassed")
+
+    monkeypatch.setattr(extractor, "_read_file_cached", _cached_read_should_not_run)
+
+    assert extractor.read_dependencies(z_file) == ["LibA"]
+
+
 def test_configgen_ip_and_slc_helpers_cover_default_and_error_paths(tmp_path, monkeypatch):
     root = tmp_path / "ProjectRoot"
     for relative in ["unitlib", "projectlib", "nnelib", "SL_Library", "Configuration"]:

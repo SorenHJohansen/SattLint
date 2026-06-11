@@ -129,7 +129,11 @@ select = [
     "N",     # pep8-naming
     "UP",    # pyupgrade
     "B",     # flake8-bugarith
+    "BLE",   # blind except Exception handlers
     "C4",    # flake8-comprehensions
+    "PLC0415", # imports outside top-level
+    "PLR0915", # too many statements
+    "S101",  # disallow assert-based error handling
     "SIM",   # flake8-simplify
     "RUF",   # ruff-specific rules
 ]
@@ -143,6 +147,11 @@ ignore = [
 "src/sattline_parser/transformer/sl_transformer.py" = ["N802"]
 "src/sattline_parser/transformer/_modules_mixin.py" = ["N802"]
 "src/sattline_parser/transformer/_tokens_mixin.py" = ["N802"]
+"tests/*.py" = ["S101"]
+"tests/**/*.py" = ["S101"]
+
+[tool.ruff.lint.pylint]
+max-statements = 50
 
 [tool.pyright]
 include = ["src", "tests"]

@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportIndexIssue=false
 import json
 from types import SimpleNamespace
 
@@ -681,44 +682,6 @@ def test_run_pytest_stage_uses_isolated_coverage_file_and_restores_environment(m
 # --- ID 10: Baseline regression enforcement tests ---
 
 
-def _make_fake_baseline_findings_file(path, finding_message="Pytest reported failing tests."):
-    """Write a minimal baseline findings.json with one finding."""
-    path.write_text(
-        json.dumps(
-            {
-                "kind": "sattlint.findings",
-                "schema_version": 1,
-                "finding_count": 1,
-                "findings": [
-                    {
-                        "id": "pytest-old",
-                        "rule_id": "pytest.failures",
-                        "category": "correctness",
-                        "severity": "high",
-                        "confidence": "high",
-                        "message": finding_message,
-                        "source": "pytest",
-                        "analyzer": "pytest",
-                        "artifact": "findings",
-                        "location": {
-                            "path": None,
-                            "line": None,
-                            "column": None,
-                            "symbol": None,
-                            "module_path": [],
-                        },
-                        "fingerprint": None,
-                        "detail": None,
-                        "suggestion": None,
-                        "data": {},
-                    }
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
-
-
 def _patched_run_command(name, command, cwd=pipeline.REPO_ROOT):
     return pipeline.CommandResult(
         name=name,
@@ -1350,7 +1313,7 @@ def test_write_json_content_handles_permission_errors_before_temp_path_assignmen
 
 
 def test_write_json_content_raises_runtime_error_when_retry_loop_never_runs(tmp_path, monkeypatch):
-    import builtins
+    import builtins  # noqa: PLC0415
 
     target_path = tmp_path / "status.json"
     original_range = builtins.range
@@ -1423,7 +1386,7 @@ def test_write_pipeline_artifacts_raises_when_validation_is_bypassed_and_produce
 
 # --- status_reports.py: build_tool_status, build_pipeline_status_report, build_pipeline_summary_report ---
 def test_build_tool_status_with_note_count_and_detail():
-    from sattlint.devtools.status_reports import build_tool_status
+    from sattlint.devtools.status_reports import build_tool_status  # noqa: PLC0415
 
     result = build_tool_status(
         status="pass_with_notes",
@@ -1439,7 +1402,7 @@ def test_build_tool_status_with_note_count_and_detail():
 
 
 def test_build_tool_status_without_optional_fields():
-    from sattlint.devtools.status_reports import build_tool_status
+    from sattlint.devtools.status_reports import build_tool_status  # noqa: PLC0415
 
     result = build_tool_status(
         status="pass",
@@ -1452,7 +1415,7 @@ def test_build_tool_status_without_optional_fields():
 
 
 def test_build_pipeline_status_report_with_progress_and_findings():
-    from sattlint.devtools.status_reports import build_pipeline_status_report
+    from sattlint.devtools.status_reports import build_pipeline_status_report  # noqa: PLC0415
 
     result = build_pipeline_status_report(
         profile="full",
@@ -1470,7 +1433,7 @@ def test_build_pipeline_status_report_with_progress_and_findings():
 
 
 def test_build_pipeline_summary_report_includes_all_fields():
-    from sattlint.devtools.status_reports import build_pipeline_summary_report
+    from sattlint.devtools.status_reports import build_pipeline_summary_report  # noqa: PLC0415
 
     result = build_pipeline_summary_report(
         profile="quick",
@@ -1493,7 +1456,7 @@ def test_build_pipeline_summary_report_includes_all_fields():
 
 # --- models/project_graph.py: add_library_dependencies, index_from_basepic ---
 def test_project_graph_add_library_dependencies_adds_deps():
-    from sattlint.models.project_graph import ProjectGraph
+    from sattlint.models.project_graph import ProjectGraph  # noqa: PLC0415
 
     graph = ProjectGraph()
     graph.add_library_dependencies("MyLib", ["DepA", "DepB", ""])
@@ -1502,7 +1465,7 @@ def test_project_graph_add_library_dependencies_adds_deps():
 
 
 def test_project_graph_index_from_basepic_sets_origin(tmp_path):
-    from sattlint.models.project_graph import ProjectGraph
+    from sattlint.models.project_graph import ProjectGraph  # noqa: PLC0415
 
     header = ModuleHeader(name="TestProgram", invoke_coord=(0, 0, 0, 0, 0))
     bp = BasePicture(
@@ -1522,14 +1485,14 @@ def test_project_graph_index_from_basepic_sets_origin(tmp_path):
 
 # --- devtools/derived_reports.py: build_incremental_analysis_report, build_profiling_summary_report ---
 def test_build_incremental_analysis_report_returns_none_for_empty_files(tmp_path):
-    from sattlint.devtools.derived_reports import build_incremental_analysis_report
+    from sattlint.devtools.derived_reports import build_incremental_analysis_report  # noqa: PLC0415
 
     result = build_incremental_analysis_report([], repo_root=tmp_path)
     assert result is None
 
 
 def test_build_incremental_analysis_report_full_mode_for_core_changes(tmp_path):
-    from sattlint.devtools.derived_reports import build_incremental_analysis_report
+    from sattlint.devtools.derived_reports import build_incremental_analysis_report  # noqa: PLC0415
 
     result = build_incremental_analysis_report(
         ["src/sattlint/engine.py"],
@@ -1542,7 +1505,7 @@ def test_build_incremental_analysis_report_full_mode_for_core_changes(tmp_path):
 
 
 def test_build_incremental_analysis_report_mixed_mode_for_program_file(tmp_path):
-    from sattlint.devtools.derived_reports import build_incremental_analysis_report
+    from sattlint.devtools.derived_reports import build_incremental_analysis_report  # noqa: PLC0415
 
     result = build_incremental_analysis_report(
         ["src/programs/Main.s"],
@@ -1559,14 +1522,14 @@ def test_build_incremental_analysis_report_mixed_mode_for_program_file(tmp_path)
 
 
 def test_build_profiling_summary_report_returns_none_for_none_input():
-    from sattlint.devtools.derived_reports import build_profiling_summary_report
+    from sattlint.devtools.derived_reports import build_profiling_summary_report  # noqa: PLC0415
 
     result = build_profiling_summary_report(None, slow_phase_threshold_ms=500.0)
     assert result is None
 
 
 def test_build_profiling_summary_report_identifies_slow_phases():
-    from sattlint.devtools.derived_reports import build_profiling_summary_report
+    from sattlint.devtools.derived_reports import build_profiling_summary_report  # noqa: PLC0415
 
     trace = {
         "source_file": "Main.s",

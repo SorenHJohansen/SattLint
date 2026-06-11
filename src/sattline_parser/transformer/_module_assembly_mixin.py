@@ -399,7 +399,7 @@ class _ModuleAssemblyMixin:
 
     def variable_group(self, items: list[TransformerItem]) -> list[Variable]:
         """Grammar variable_group -> list of Variables with common datatype and modifiers."""
-        from sattline_parser.transformer._tokens_mixin import DEFAULT_INIT
+        from sattline_parser.transformer._tokens_mixin import DEFAULT_INIT  # noqa: PLC0415
 
         items = [x for x in items if x is not None]
 

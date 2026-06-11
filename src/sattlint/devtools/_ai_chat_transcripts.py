@@ -110,7 +110,7 @@ def load_transcript_corpus(*, resolved_input: dict[str, Any], repo_root: Path) -
     }
 
 
-def _summarize_transcript(
+def _summarize_transcript(  # noqa: PLR0915
     transcript_path: Path, *, repo_root: Path
 ) -> tuple[dict[str, Any], list[TranscriptParseFailure]]:
     parse_failures: list[TranscriptParseFailure] = []

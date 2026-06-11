@@ -136,7 +136,7 @@ def run_fault_injection_campaign(
         baseline_injector = FaultInjector()
         try:
             case_fn(baseline_injector)
-        except Exception as exc:  # pragma: no cover - exercised through the same branch below
+        except Exception as exc:  # pragma: no cover - exercised through the same branch below  # noqa: BLE001
             results.records.append(
                 FaultRunRecord(
                     case_id=case_id,
@@ -159,7 +159,7 @@ def run_fault_injection_campaign(
         injector = FaultInjector(specs=(spec,))
         try:
             case_fn(injector)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             status = "fault-injected" if spec.fault_id in injector.triggered_fault_ids else "unexpected-error"
             checkpoint = spec.checkpoint if spec.fault_id in injector.triggered_fault_ids else None
             results.records.append(

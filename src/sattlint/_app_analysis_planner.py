@@ -200,7 +200,7 @@ def _dedupe_steps(
         if existing is None:
             steps_by_id[step_id] = PlannedAnalysisStep(
                 step_id=step_id,
-                label=entry.label,
+                label=entry.execution.step_label or entry.label,
                 description=entry.description,
                 execution=entry.execution,
                 source_entry_ids=(entry.entry_id,),
@@ -209,8 +209,10 @@ def _dedupe_steps(
             step_order.append(step_id)
             continue
 
+        merged_execution = _merge_execution_specs(existing.execution, entry.execution)
         steps_by_id[step_id] = replace(
             existing,
+            execution=merged_execution,
             source_entry_ids=(*existing.source_entry_ids, entry.entry_id),
             source_labels=(*existing.source_labels, entry.label),
         )
@@ -223,6 +225,37 @@ def _dedupe_steps(
         )
 
     return tuple(steps_by_id[step_id] for step_id in step_order), tuple(skipped_entries)
+
+
+def _merge_execution_specs(
+    existing: analysis_catalog.AnalysisExecutionSpec,
+    incoming: analysis_catalog.AnalysisExecutionSpec,
+) -> analysis_catalog.AnalysisExecutionSpec:
+    merged_issue_kind_names = existing.selected_issue_kind_names
+    if incoming.selected_issue_kind_names is not None:
+        merged_issue_kind_names = frozenset(
+            set(existing.selected_issue_kind_names or ()) | set(incoming.selected_issue_kind_names)
+        )
+
+    merged_variable_issue_kinds = existing.variable_issue_kinds
+    if incoming.variable_issue_kinds is not None:
+        merged_variable_issue_kinds = frozenset(
+            set(existing.variable_issue_kinds or ()) | set(incoming.variable_issue_kinds)
+        )
+
+    if (
+        merged_issue_kind_names == existing.selected_issue_kind_names
+        and merged_variable_issue_kinds == existing.variable_issue_kinds
+        and (existing.step_label or incoming.step_label) == existing.step_label
+    ):
+        return existing
+
+    return replace(
+        existing,
+        step_label=existing.step_label or incoming.step_label,
+        selected_issue_kind_names=merged_issue_kind_names,
+        variable_issue_kinds=merged_variable_issue_kinds,
+    )
 
 
 def _validate_missing_handlers(

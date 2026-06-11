@@ -80,7 +80,7 @@ def correlate_composite_records(
     )
 
 
-def collect_concrete_composite_placeholders(
+def collect_concrete_composite_placeholders(  # noqa: PLR0915
     base_picture: BasePicture,
     *,
     graph: ProjectGraph | None,
@@ -349,7 +349,7 @@ def _file_stem_casefold(file_name: str | None) -> str | None:
         return None
     try:
         return Path(file_name).stem.casefold()
-    except Exception:
+    except Exception:  # noqa: BLE001
         return file_name.rsplit(".", 1)[0].casefold()
 
 
@@ -580,7 +580,7 @@ def _resolve_runtime_moduletype(
             current_file=current_file,
             unavailable_libraries=(graph.unavailable_libraries if graph is not None else None),
         )
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
 
 

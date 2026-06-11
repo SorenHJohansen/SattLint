@@ -9,7 +9,6 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
-    AstNodeDict,
     BasePicture,
     Equation,
     FrameModule,
@@ -31,10 +30,9 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 from sattlint import constants as const
-from sattlint.analyzers import reset_contamination as reset_contamination_module
-from sattlint.analyzers._variables_effect_flow import EffectFlowTracker
 from sattlint.analyzers.sfc import analyze_sfc
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
+from sattlint.analyzers.variables._variables_effect_flow import EffectFlowTracker
 from sattlint.reporting.variables_report import (
     ALL_VARIABLE_ANALYSIS_KINDS,
     VariableIssue,
@@ -42,51 +40,22 @@ from sattlint.reporting.variables_report import (
 )
 from sattlint.resolution.scope import ScopeContext
 from sattlint.types import VariableId
-
-
-def _hdr(name: str) -> ModuleHeader:
-    return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
-
-
-def _varref(s: str) -> AstNodeDict:
-    return {const.KEY_VAR_NAME: s}
-
-
-def _state_ref(name: str, state: str) -> AstNodeDict:
-    return {const.KEY_VAR_NAME: name, "state": state}
-
-
-def _issue_kinds(report: VariablesReport) -> set[IssueKind]:
-    return {issue.kind for issue in report.issues}
-
-
-def _status_bridge_typedef() -> ModuleTypeDef:
-    return ModuleTypeDef(
-        name="StatusBridge",
-        moduleparameters=[Variable(name="OperationStatus", datatype=Simple_DataType.INTEGER)],
-        localvariables=[
-            Variable(name="Source", datatype=Simple_DataType.INTEGER),
-            Variable(name="Destination", datatype=Simple_DataType.INTEGER),
-        ],
-        moduledef=None,
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="BridgeEq",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "CopyVariable",
-                            [_varref("Source"), _varref("Destination"), _varref("OperationStatus")],
-                        )
-                    ],
-                )
-            ]
-        ),
-    )
-
+from tests._reset_contamination_test_api import reset_contamination_module
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    issue_kinds as _issue_kinds,
+)
+from tests.helpers.variable_test_support import (
+    state_ref as _state_ref,
+)
+from tests.helpers.variable_test_support import (
+    status_bridge_typedef as _status_bridge_typedef,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 __all__ = [
     "ALL_VARIABLE_ANALYSIS_KINDS",

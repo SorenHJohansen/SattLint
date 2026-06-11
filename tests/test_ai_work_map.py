@@ -251,7 +251,7 @@ def test_merge_instruction_files_for_planning_skips_blank_matched_file_paths(mon
 
 
 def test_write_ai_check_catalog_and_module_main(tmp_path, monkeypatch):
-    import runpy
+    import runpy  # noqa: PLC0415
 
     catalog_path = tmp_path / "nested" / "ai-check-catalog.md"
     monkeypatch.setattr(ai_work_map, "render_ai_check_catalog", lambda work_map=None: "# Catalog\n")

@@ -675,6 +675,59 @@ def test_picture_display_variable_rows_count_as_field_usage_for_datatype_reporti
     assert unused_fields == {"Unused"}
 
 
+def test_invalid_picture_display_path_rows_do_not_count_as_usage():
+    path_var = Variable(name="PathAIT", datatype=Simple_DataType.LINESTRING)
+    module = SingleModule(
+        header=_hdr("DisplayModule"),
+        moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
+        moduleparameters=[],
+        localvariables=[path_var],
+        submodules=[],
+        modulecode=None,
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[module],
+        modulecode=None,
+        moduledef=None,
+    )
+    bp.graphics_bindings = [
+        GraphicsBinding(
+            kind="var",
+            raw_text="PathAIT",
+            value=_varref("PathAIT"),
+            span=SourceSpan(line=2, column=5),
+        )
+    ]
+    bp.graphics_picture_display_occurrences = [
+        PictureDisplayOccurrence(
+            program_name="BasePicture",
+            declaring_module_path=("BasePicture", "DisplayModule"),
+            record=PictureDisplayRecord(
+                record_index=1,
+                record_start_line=1,
+                record_end_line=5,
+                path_row_lines=(2,),
+                path_rows=(),
+            ),
+        )
+    ]
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    assert any(
+        issue.kind is IssueKind.UNUSED
+        and issue.variable is path_var
+        and issue.module_path == ["BasePicture", "DisplayModule"]
+        for issue in analyzer.issues
+    )
+
+
 def test_library_target_picture_display_variable_rows_count_typedef_moduleparameter_usage_at_root():
     root_typedef = ModuleTypeDef(
         name="Soejle",
@@ -1504,7 +1557,7 @@ def test_unused_datatype_fields_include_context_only_variable_usage():
 
 
 def test_analyze_variables_library_target_counts_dependency_typedef_field_reads():
-    from sattlint.analyzers.variables import analyze_variables
+    from sattlint.analyzers.variables import analyze_variables  # noqa: PLC0415
 
     op_text_type = DataType(
         name="ApplOpTxtType",
@@ -1601,7 +1654,7 @@ def test_analyze_variables_library_target_counts_dependency_typedef_field_reads(
 
 
 def test_analyze_variables_library_target_counts_reverse_consumer_typedef_field_reads():
-    from sattlint.analyzers.variables import analyze_variables
+    from sattlint.analyzers.variables import analyze_variables  # noqa: PLC0415
 
     op_text_type = DataType(
         name="ApplOpTxtType",
@@ -1705,7 +1758,7 @@ def test_sample_fixture_contains_common_variable_quality_issues():
 
 
 def test_gfile_var_and_expr_reads_count_as_used_for_unused_analysis():
-    from sattlint.engine import CodeMode, SattLineProjectLoader, merge_project_basepicture
+    from sattlint.engine import CodeMode, SattLineProjectLoader, merge_project_basepicture  # noqa: PLC0415
 
     fixture = Path(__file__).parent / "fixtures" / "sample_sattline_files" / "TestGFileParse.s"
     loader = SattLineProjectLoader(
@@ -1731,7 +1784,7 @@ def test_gfile_var_and_expr_reads_count_as_used_for_unused_analysis():
 
 
 def test_nested_gfile_bindings_count_as_used_end_to_end(tmp_path: Path):
-    from sattlint.engine import CodeMode, SattLineProjectLoader, merge_project_basepicture
+    from sattlint.engine import CodeMode, SattLineProjectLoader, merge_project_basepicture  # noqa: PLC0415
 
     source = """"SyntaxVersion"
 "OriginalFileDate"

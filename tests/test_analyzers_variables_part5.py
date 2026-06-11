@@ -2,6 +2,37 @@
 from ._analyzers_variables_test_support import *
 
 
+def test_walk_tail_children_fallback_marks_parent_scope_variable_reads() -> None:
+    parent_parameter = Variable(name="p", datatype=Simple_DataType.IDENTSTRING)
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+    )
+    analyzer = VariablesAnalyzer(bp)
+    parent_context = ScopeContext(
+        env={"p": parent_parameter},
+        param_mappings={},
+        module_path=["BasePicture", "Parent"],
+        display_module_path=["BasePicture<BP>", "Parent<SM>"],
+    )
+    child_context = ScopeContext(
+        env={},
+        param_mappings={},
+        module_path=["BasePicture", "Parent", "Child"],
+        display_module_path=["BasePicture<BP>", "Parent<SM>", "Child<SM>"],
+        parent_context=parent_context,
+    )
+
+    analyzer._walk_tail(SimpleNamespace(children=[_varref("p.name")]), child_context, child_context.module_path)
+
+    assert analyzer._get_usage(parent_parameter).read is True
+
+
 def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_paths(monkeypatch):
     log_messages: list[tuple[object, ...]] = []
     monkeypatch.setattr(

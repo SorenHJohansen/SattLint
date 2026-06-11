@@ -17,7 +17,7 @@ from sattline_parser.models.ast_model import (
 
 from ..grammar import constants as const
 from ..resolution.common import varname_full
-from .ast_node_helpers import (
+from .shared.ast_node_helpers import (
     iter_branch_pairs,
     object_dict_values,
     object_list,

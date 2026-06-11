@@ -206,6 +206,18 @@ BUILTIN_RECORD_SPECS_PART2: dict[str, tuple[BuiltinFieldSpec, ...]] = {
         ("Condition", _BOOL),
         ("Status", _INT),
     ),
+    "EventQueueItem": (
+        ("EventCondName", _TAG),
+        ("EventState", _INT),
+        ("Class", _INT),
+        ("Severity", _INT),
+        ("EventText", _LINE),
+        ("TextGroup", _INT),
+        ("Time", _TIME),
+        ("TransitionType", _INT),
+        ("NewOpValue", _LINE),
+        ("OldOpValue", _LINE),
+    ),
     "LoggedEvent": (
         ("FormattedInfo", _MAX),
         ("Id", "LoggedEventKey"),

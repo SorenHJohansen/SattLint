@@ -1,3 +1,5 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false
+
 """Tests for app analysis project loading and AST cache behavior."""
 
 import json
@@ -22,12 +24,13 @@ from sattlint import app_analysis
 from sattlint import constants as const
 from sattlint.analyzers.variables import IssueKind, analyze_variables
 from sattlint.cache import ANALYSIS_REPORT_CACHE_VERSION, AnalysisReportCache, compute_analysis_report_cache_key
+from tests.helpers import named_object
 from tests.helpers.app_projects import build_mini_project_context
 
 
 def test_load_project_returns_cached_project_without_building_loader(monkeypatch):
     cached_graph = SimpleNamespace()
-    cached_root = SimpleNamespace(header=SimpleNamespace(name="TargetA"))
+    cached_root = named_object("TargetA")
     seen_cache_dirs: list[Path] = []
     validate_calls: list[tuple[str, bool]] = []
     merge_calls: list[tuple[object, object]] = []
@@ -113,7 +116,7 @@ def test_load_project_rebuilds_when_cached_project_is_invalid(monkeypatch):
             assert target_name == "TargetA"
             assert strict is False
             return SimpleNamespace(
-                ast_by_name={"TargetA": SimpleNamespace(header=SimpleNamespace(name="TargetA"))},
+                ast_by_name={"TargetA": named_object("TargetA")},
                 missing=[],
                 warnings=[],
                 source_files={Path("programs/TargetA.s")},
@@ -168,7 +171,7 @@ def test_load_project_rebuilds_when_cached_project_is_invalid(monkeypatch):
 
 def test_iter_loaded_projects_emits_debug_load_summary_when_debug_enabled(monkeypatch):
     lines: list[str] = []
-    project_bp = SimpleNamespace(header=SimpleNamespace(name="TargetA"))
+    project_bp = named_object("TargetA")
     graph = SimpleNamespace(
         source_files={Path("programs/TargetA.s"), Path("libs/Dep.l")},
         warnings=["warn"],
@@ -211,7 +214,7 @@ def test_iter_loaded_projects_emits_debug_load_summary_when_debug_enabled(monkey
 
 def test_iter_loaded_projects_debug_summary_tolerates_unsized_fields(monkeypatch):
     lines: list[str] = []
-    project_bp = SimpleNamespace(header=SimpleNamespace(name="TargetA"))
+    project_bp = named_object("TargetA")
     graph = SimpleNamespace(
         source_files=object(),
         warnings=object(),
@@ -315,7 +318,7 @@ def test_load_project_ast_only_refresh_skips_project_merge_and_save(monkeypatch)
         def save(self, key, **kwargs):
             pytest.fail("project cache should not be saved during ast-only refresh")
 
-    root_bp = SimpleNamespace(header=SimpleNamespace(name="TargetA"))
+    root_bp = named_object("TargetA")
     graph = SimpleNamespace(
         ast_by_name={"TargetA": root_bp},
         missing=[],
@@ -400,10 +403,7 @@ def test_load_project_saves_full_mode_file_family_in_cache_manifest(
     deps_path.write_text("Dependency\n", encoding="utf-8")
     graphics_path.write_text("graphics", encoding="utf-8")
 
-    root_bp = SimpleNamespace(
-        header=SimpleNamespace(name="TargetA"),
-        origin_file=code_path.name,
-    )
+    root_bp = named_object("TargetA", origin_file=code_path.name)
 
     class FakeCache:
         def __init__(self, cache_dir):
@@ -627,10 +627,7 @@ def test_load_project_library_target_includes_configured_reverse_consumers(monke
         def save(self, key, **kwargs):
             save_calls.append((key, kwargs))
 
-    root_bp = SimpleNamespace(
-        header=SimpleNamespace(name="LibraryTarget"),
-        origin_file="LibraryTarget.s",
-    )
+    root_bp = named_object("LibraryTarget", origin_file="LibraryTarget.s")
 
     class FakeLoader:
         def __init__(self, **kwargs):
@@ -663,7 +660,7 @@ def test_load_project_library_target_includes_configured_reverse_consumers(monke
 
         def _visit(self, name, graph, strict, *, requester_dir, syntax_check=False):
             visit_calls.append((name, requester_dir, syntax_check))
-            graph.ast_by_name[name] = SimpleNamespace(header=SimpleNamespace(name=name))
+            graph.ast_by_name[name] = named_object(name)
             graph.source_files.add(Path(f"ProjectLib/{name}.s"))
 
         def _flush_lookup_cache(self):
@@ -727,10 +724,7 @@ def test_load_project_library_target_includes_workspace_reverse_consumers(monkey
         def save(self, key, **kwargs):
             save_calls.append((key, kwargs))
 
-    root_bp = SimpleNamespace(
-        header=SimpleNamespace(name="LibraryTarget"),
-        origin_file="LibraryTarget.s",
-    )
+    root_bp = named_object("LibraryTarget", origin_file="LibraryTarget.s")
 
     class FakeLoader:
         def __init__(self, **kwargs):
@@ -756,7 +750,7 @@ def test_load_project_library_target_includes_workspace_reverse_consumers(monkey
 
         def _visit(self, name, graph, strict, *, requester_dir, syntax_check=False):
             visit_calls.append((name, requester_dir, syntax_check))
-            graph.ast_by_name[name] = SimpleNamespace(header=SimpleNamespace(name=name))
+            graph.ast_by_name[name] = named_object(name)
             graph.source_files.add(requester_dir / f"{name}.s")
 
         def _flush_lookup_cache(self):
@@ -1027,6 +1021,34 @@ def test_force_refresh_ast_emits_stage_timing_summary_in_debug_mode(monkeypatch)
     assert any("graphics=skipped" in line for line in lines)
     assert any("index=skipped" in line for line in lines)
     assert result == ("bp", graph)
+
+
+def test_refresh_analysis_caches_clears_report_cache_before_ast_refresh():
+    lines: list[str] = []
+    refresh_calls: list[dict[str, object]] = []
+
+    class FakeReportCache:
+        def __init__(self, cache_dir):
+            self.cache_dir = cache_dir
+
+        def clear_all(self):
+            return 3
+
+    def fake_force_refresh_ast(cfg: Any) -> Any:
+        refresh_calls.append(dict(cfg))
+        return ("bp", "graph")
+
+    result = app_analysis.refresh_analysis_caches(
+        {"analyzed_programs_and_libraries": ["TargetA"]},
+        force_refresh_ast_fn=fake_force_refresh_ast,
+        analysis_report_cache_cls=cast(Any, FakeReportCache),
+        get_cache_dir_fn=lambda: Path("cache-dir"),
+        emit_output_fn=lambda message: lines.append(str(message)),
+    )
+
+    assert lines == ["Cleared cached analysis reports (3 entries)."]
+    assert refresh_calls == [{"analyzed_programs_and_libraries": ["TargetA"]}]
+    assert result == ("bp", "graph")
 
 
 def test_force_refresh_ast_collects_stage_timings_and_writes_telemetry_when_enabled(tmp_path, monkeypatch):

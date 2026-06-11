@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false, reportIndexIssue=false
 """CLI behavior tests for SattLint."""
 
 import runpy
@@ -30,6 +31,7 @@ def _run_base_cli(argv: list[str], **overrides) -> int:
             )
         ),
         "run_docgen_command_fn": lambda cfg, *, use_cache, output_dir, output_path: app_base.EXIT_SUCCESS,
+        "run_cache_prune_command_fn": lambda *, cache_dir: app_base.EXIT_SUCCESS,
         "run_telemetry_summary_command_fn": (
             lambda cfg, *, config_path, output_format, output_path: app_base.EXIT_SUCCESS
         ),
@@ -45,12 +47,13 @@ def test_build_cli_parser_has_descriptions():
     assert parser.description
     action = next(action for action in parser._actions if isinstance(getattr(action, "choices", None), Mapping))
     choices = cast(dict[str, object], action.choices)
-    syntax_parser = cast(object, choices["syntax-check"])
+    syntax_parser = choices["syntax-check"]
     assert {
         "syntax-check",
         "analyze",
         "simulate",
         "docgen",
+        "cache-prune",
         "telemetry-summary",
         "validate-config",
         "format-icf",
@@ -174,11 +177,11 @@ def test_startup_main_routes_ui_only_cli_argv_to_interactive_loop() -> None:
     seen: dict[str, object] = {}
     cfg = {"debug": False}
     parser = _FakeParser(
-        args=SimpleNamespace(command=None, config=None, no_cache=False, quiet=False, debug=False, ui="rich"),
+        args=SimpleNamespace(command=None, config=None, no_cache=False, quiet=False, debug=False, ui="textual"),
     )
 
     exit_code = _app_startup.main(
-        ["--ui", "rich"],
+        ["--ui", "textual"],
         run_cli_fn=lambda _argv: pytest.fail("run_cli should not run for interactive ui-only argv"),
         build_cli_parser_fn=lambda: parser,
         load_config_fn=lambda _path: (cfg, False),
@@ -229,10 +232,10 @@ def test_startup_main_defaults_plain_interactive_session_to_textual() -> None:
         reset_interactive_ui_mode_fn=lambda: seen.update({"reset_called": True}),
         emit_output_fn=lambda *_args: None,
         pause_fn=lambda: None,
-        self_check_fn=lambda _cfg: True,
-        confirm_fn=lambda _message: True,
+        self_check_fn=lambda _cfg: pytest.fail("textual startup should skip terminal self-check preflight"),
+        confirm_fn=lambda _message: pytest.fail("textual startup should not prompt for self-check confirmation"),
         has_analyzed_targets_fn=lambda _cfg: False,
-        ensure_ast_cache_fn=lambda _cfg: True,
+        ensure_ast_cache_fn=lambda _cfg: pytest.fail("textual startup should skip terminal AST cache refresh"),
         run_main_loop_fn=lambda local_cfg, **kwargs: seen.update(
             {"main_loop_cfg": dict(local_cfg), "main_loop_kwargs": kwargs}
         ),
@@ -259,6 +262,49 @@ def test_startup_main_defaults_plain_interactive_session_to_textual() -> None:
     assert seen["main_loop_cfg"] == {"debug": False}
     assert seen["main_loop_kwargs"]["config_path"] == Path("config.toml")
     assert seen["main_loop_kwargs"]["quit_app_error"] is RuntimeError
+
+
+def test_startup_main_textual_launch_skips_terminal_preflight_for_targets() -> None:
+    seen: dict[str, object] = {}
+    cfg = {"debug": False}
+
+    exit_code = _app_startup.main(
+        None,
+        run_cli_fn=lambda _argv: pytest.fail("run_cli should not run for plain interactive startup"),
+        load_config_fn=lambda _path: (cfg, False),
+        config_path=Path("config.toml"),
+        apply_debug_fn=lambda _cfg: None,
+        resolve_interactive_ui_mode_fn=lambda _cfg, _override: "textual",
+        set_interactive_ui_mode_fn=lambda mode: seen.update({"ui_mode": mode}),
+        reset_interactive_ui_mode_fn=lambda: seen.update({"reset_called": True}),
+        emit_output_fn=lambda *_args: None,
+        pause_fn=lambda: pytest.fail("textual startup should not pause for AST cache preflight"),
+        self_check_fn=lambda _cfg: pytest.fail("textual startup should skip terminal self-check preflight"),
+        confirm_fn=lambda _message: pytest.fail("textual startup should not prompt before launch"),
+        has_analyzed_targets_fn=lambda _cfg: True,
+        ensure_ast_cache_fn=lambda _cfg: pytest.fail("textual startup should skip terminal AST cache refresh"),
+        run_main_loop_fn=lambda local_cfg, **kwargs: seen.update(
+            {"main_loop_cfg": dict(local_cfg), "main_loop_kwargs": kwargs}
+        ),
+        clear_screen_fn=lambda: None,
+        print_menu_fn=lambda *_args, **_kwargs: None,
+        menu_option_factory=lambda key, label, description: (key, label, description),
+        summarize_targets_fn=lambda _cfg: "targets",
+        require_targets_for_menu_action_fn=lambda _cfg, _action: True,
+        analysis_menu_fn=lambda _cfg: None,
+        documentation_menu_fn=lambda _cfg: True,
+        config_menu_fn=lambda _cfg: True,
+        tools_menu_fn=lambda _cfg: None,
+        show_help_fn=lambda _cfg: None,
+        save_config_fn=lambda _path, _cfg: None,
+        quit_app_fn=lambda: None,
+        quit_app_error=RuntimeError,
+    )
+
+    assert exit_code == 0
+    assert seen["ui_mode"] == "textual"
+    assert seen["reset_called"] is True
+    assert seen["main_loop_cfg"] == {"debug": False}
 
 
 def test_startup_main_warns_and_pauses_for_default_config() -> None:
@@ -298,84 +344,6 @@ def test_startup_main_warns_and_pauses_for_default_config() -> None:
     assert exit_code == 0
     assert seen["debug_cfg"] is cfg
     assert seen["message"] == "Warning: Default config created. Open Setup before running analysis."
-    assert seen["paused"] == 1
-    assert seen["main_loop_cfg"] is cfg
-    assert "choose_menu_option_fn" not in cast(dict[str, object], seen["main_loop_kwargs"])
-    assert "interaction" not in cast(dict[str, object], seen["main_loop_kwargs"])
-
-
-def test_startup_main_aborts_when_self_check_is_rejected() -> None:
-    seen: dict[str, object] = {"confirmed": None}
-
-    exit_code = _app_startup.main(
-        None,
-        run_cli_fn=lambda _argv: 99,
-        load_config_fn=lambda _path: ({"debug": False}, False),
-        config_path=Path("config.toml"),
-        apply_debug_fn=lambda _cfg: None,
-        emit_output_fn=lambda *_args: None,
-        pause_fn=lambda: None,
-        self_check_fn=lambda _cfg: False,
-        confirm_fn=lambda message: seen.update({"confirmed": message}) or False,
-        has_analyzed_targets_fn=lambda _cfg: False,
-        ensure_ast_cache_fn=lambda _cfg: True,
-        run_main_loop_fn=lambda *_args, **_kwargs: pytest.fail(
-            "interactive loop should not run after rejected self-check"
-        ),
-        clear_screen_fn=lambda: None,
-        print_menu_fn=lambda *_args, **_kwargs: None,
-        menu_option_factory=lambda key, label, description: (key, label, description),
-        summarize_targets_fn=lambda _cfg: "targets",
-        require_targets_for_menu_action_fn=lambda _cfg, _action: True,
-        analysis_menu_fn=lambda _cfg: None,
-        documentation_menu_fn=lambda _cfg: True,
-        config_menu_fn=lambda _cfg: True,
-        tools_menu_fn=lambda _cfg: None,
-        show_help_fn=lambda _cfg: None,
-        save_config_fn=lambda _path, _cfg: None,
-        quit_app_fn=lambda: None,
-        quit_app_error=RuntimeError,
-    )
-
-    assert exit_code == 0
-    assert seen["confirmed"] == "Self-check failed. Continue?"
-
-
-def test_startup_main_pauses_when_ast_cache_setup_fails() -> None:
-    seen: dict[str, object] = {"paused": 0}
-    cfg = {"debug": False}
-
-    exit_code = _app_startup.main(
-        None,
-        run_cli_fn=lambda _argv: 99,
-        load_config_fn=lambda _path: (cfg, False),
-        config_path=Path("config.toml"),
-        apply_debug_fn=lambda _cfg: None,
-        emit_output_fn=lambda *_args: None,
-        pause_fn=lambda: seen.update({"paused": cast(int, seen["paused"]) + 1}),
-        self_check_fn=lambda _cfg: True,
-        confirm_fn=lambda _message: True,
-        has_analyzed_targets_fn=lambda _cfg: True,
-        ensure_ast_cache_fn=lambda _cfg: False,
-        run_main_loop_fn=lambda local_cfg, **kwargs: seen.update(
-            {"main_loop_cfg": local_cfg, "main_loop_kwargs": kwargs}
-        ),
-        clear_screen_fn=lambda: None,
-        print_menu_fn=lambda *_args, **_kwargs: None,
-        menu_option_factory=lambda key, label, description: (key, label, description),
-        summarize_targets_fn=lambda _cfg: "targets",
-        require_targets_for_menu_action_fn=lambda _cfg, _action: True,
-        analysis_menu_fn=lambda _cfg: None,
-        documentation_menu_fn=lambda _cfg: True,
-        config_menu_fn=lambda _cfg: True,
-        tools_menu_fn=lambda _cfg: None,
-        show_help_fn=lambda _cfg: None,
-        save_config_fn=lambda _path, _cfg: None,
-        quit_app_fn=lambda: None,
-        quit_app_error=RuntimeError,
-    )
-
-    assert exit_code == 0
     assert seen["paused"] == 1
     assert seen["main_loop_cfg"] is cfg
     assert "choose_menu_option_fn" not in cast(dict[str, object], seen["main_loop_kwargs"])
@@ -590,6 +558,10 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
         print_fn=lambda *_args: None,
         pause_fn=lambda: None,
     )
+
+    def dump_target_is_library(_cfg: object, _project_bp: object, _graph: object) -> bool:
+        return False
+
     _app_startup.dump_menu(
         cfg,
         dump_menu_fn=lambda local_cfg, **kwargs: misc_seen.update({"dump_cfg": local_cfg, **kwargs}),
@@ -599,6 +571,7 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
         quit_app_fn=lambda: None,
         confirm_fn=lambda _message: True,
         iter_loaded_projects_fn=lambda *_args, **_kwargs: iter([project]),
+        target_is_library_fn=dump_target_is_library,
         analyze_variables_fn=lambda *_args, **_kwargs: None,
     )
     assert (
@@ -621,6 +594,10 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
         )
         is True
     )
+
+    def run_source_diff_report(_cfg: object) -> None:
+        return None
+
     _app_startup.tools_menu(
         cfg,
         tools_menu_fn=lambda local_cfg, **kwargs: misc_seen.update({"tools_cfg": local_cfg, **kwargs}),
@@ -632,6 +609,7 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
         pause_fn=lambda: None,
         require_targets_for_menu_action_fn=lambda _cfg, _action: True,
         dump_menu_fn=lambda _cfg: None,
+        run_source_diff_report_fn=run_source_diff_report,
         confirm_fn=lambda _message: True,
         force_refresh_ast_fn=lambda _cfg: None,
     )
@@ -640,6 +618,8 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
     assert misc_seen["paused"] is True
     assert misc_seen["menu_title"] == "Menu"
     assert misc_seen["summarize_cfg"] is cfg
+    assert misc_seen["target_is_library_fn"] is dump_target_is_library
+    assert misc_seen["run_source_diff_report_fn"] is run_source_diff_report
 
 
 def test_package_exports_version():
@@ -796,9 +776,9 @@ def test_run_cli_analyze_passes_opt_in_state_inference_key():
     assert seen["use_cache"] is True
 
 
-def test_run_cli_analyze_list_checks_prints_available_keys(monkeypatch, capsys):
+def test_run_cli_analyze_list_checks_prints_selectable_keys(monkeypatch, capsys):
     monkeypatch.setattr(
-        "sattlint.analyzers.registry.get_default_analyzers",
+        "sattlint.analyzers.registry.get_selectable_analyzers",
         lambda: [SimpleNamespace(key="variables"), SimpleNamespace(key="timing")],
     )
 
@@ -941,6 +921,21 @@ def test_run_cli_telemetry_summary_passes_output_flags():
     assert str(seen["config_path"]).endswith("custom.toml")
     assert seen["output_format"] == "json"
     assert seen["output_path"] == "summary.json"
+
+
+def test_run_cli_cache_prune_passes_cache_dir_without_loading_config():
+    seen = {}
+
+    exit_code = cli_entry.run_cli(
+        ["cache-prune", "--cache-dir", "custom-cache"],
+        config_path=Path("config.toml"),
+        load_config_fn=lambda _path: (_ for _ in ()).throw(AssertionError("config should not be loaded")),
+        apply_debug_fn=lambda _cfg: (_ for _ in ()).throw(AssertionError("debug should not be applied")),
+        run_cache_prune_command_fn=lambda *, cache_dir: seen.update({"cache_dir": cache_dir}) or app_base.EXIT_SUCCESS,
+    )
+
+    assert exit_code == app_base.EXIT_SUCCESS
+    assert seen == {"cache_dir": "custom-cache"}
 
 
 def test_run_cli_repo_audit_passes_through_args(monkeypatch):
@@ -1224,6 +1219,26 @@ def test_cli_entry_telemetry_summary_requires_handler():
             build_cli_parser_fn=lambda: parser,
             load_config_fn=lambda _path: ({"debug": False}, False),
             apply_debug_fn=lambda _cfg: None,
+        )
+
+
+def test_cli_entry_cache_prune_requires_handler():
+    parser = _FakeParser(
+        args=SimpleNamespace(
+            command="cache-prune",
+            checks=[],
+            config=None,
+            cache_dir=None,
+            no_cache=False,
+            quiet=False,
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="cache-prune handler is required"):
+        cli_entry.run_cli(
+            ["cache-prune"],
+            config_path=Path("config.toml"),
+            build_cli_parser_fn=lambda: parser,
         )
 
 

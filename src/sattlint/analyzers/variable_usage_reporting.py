@@ -22,7 +22,7 @@ from ..resolution.common import (
     resolve_module_by_strict_path,
     resolve_moduletype_def_strict,
 )
-from ._walk_utils import iter_nested_modules
+from .shared._walk_utils import iter_nested_modules
 from .variables import VariablesAnalyzer
 
 log = logging.getLogger("SattLint")
@@ -208,7 +208,7 @@ def report_datatype_usage(
     return "\n".join(lines)
 
 
-def report_module_localvar_fields(
+def report_module_localvar_fields(  # noqa: PLR0915
     base_picture: BasePicture,
     module_path: str,
     var_name: str,

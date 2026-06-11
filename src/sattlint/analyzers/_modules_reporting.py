@@ -136,7 +136,7 @@ def material_difference_labels(differences: dict[str, Any]) -> list[str]:
     return labels
 
 
-def render_comparison_summary(comparison: Any) -> str:
+def render_comparison_summary(comparison: Any) -> str:  # noqa: PLR0915
     status = "ok" if comparison.unique_variants <= 1 else "issues"
     lines = format_report_header("Module comparison", comparison.module_name, status=status)
     lines.extend(

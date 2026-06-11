@@ -56,6 +56,36 @@ def test_picture_display_path_analyzer_reports_unresolved_paths() -> None:
     )
 
 
+def test_picture_display_path_analyzer_marks_library_target_findings_as_info() -> None:
+    base_picture = base_picture_with_single_chain()
+    base_picture.graphics_picture_display_occurrences = [
+        PictureDisplayOccurrence(
+            program_name="Root",
+            declaring_module_path=("Root",),
+            record=PictureDisplayRecord(
+                record_index=1,
+                record_start_line=1,
+                record_end_line=5,
+                path_rows=(
+                    PictureDisplayPathRow(
+                        record_index=1,
+                        index_token=ROOT_PATH_STEP,
+                        index_value=0,
+                        kind="literal",
+                        raw_text="+MissingPanel",
+                        span=SourceSpan(line=1, column=1),
+                    ),
+                ),
+            ),
+        )
+    ]
+
+    report = analyze_picture_display_paths(base_picture, analyzed_target_is_library=True)
+
+    assert len(report.issues) == 1
+    assert report.issues[0].severity == "info"
+
+
 def test_picture_display_path_analyzer_ignores_resolved_paths() -> None:
     base_picture = base_picture_with_single_chain()
     base_picture.graphics_picture_display_occurrences = [

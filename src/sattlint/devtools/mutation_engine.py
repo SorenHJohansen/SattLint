@@ -123,7 +123,7 @@ def run_mutation_analysis(
             bp: BasePicture | None
             try:
                 bp = parser_core_parse_source_text(mutated)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 bp = None
             if bp is None:
                 continue

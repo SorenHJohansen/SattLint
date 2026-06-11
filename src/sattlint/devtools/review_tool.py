@@ -33,7 +33,7 @@ def run_command(cmd: list[str], cwd: Path | None = None) -> tuple[int, str, str]
             cwd=cwd,
         )
         return result.returncode, result.stdout, result.stderr
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return 1, "", str(e)
 
 
@@ -44,7 +44,7 @@ def run_architecture_lint() -> dict[str, Any]:
     violations = 0
     if returncode != 0:
         # Try to extract number from output like "Found X architecture violations:"
-        import re
+        import re  # noqa: PLC0415
 
         match = re.search(r"Found (\d+) architecture violations:", stdout + stderr)
         if match:
@@ -67,7 +67,7 @@ def run_doc_gardener() -> dict[str, Any]:
             "by_severity": result["by_severity"],
             "by_category": result["by_category"],
         }
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return {
             "passed": False,
             "error": str(e),
@@ -83,7 +83,7 @@ def run_tests() -> dict[str, Any]:
     for line in stdout.splitlines():
         if "passed" in line and "failed" in line and "skipped" in line:
             # Typical pytest summary line: "5 passed, 2 failed, 3 skipped in 0.12s"
-            import re
+            import re  # noqa: PLC0415
 
             nums = re.findall(r"(\d+)", line)
             if len(nums) >= 3:

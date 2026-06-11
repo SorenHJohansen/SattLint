@@ -49,7 +49,7 @@ def open_fixup_pr(
         if result.returncode != 0:
             print("  gh CLI not available, skipping PR creation")
             return False
-    except Exception:
+    except Exception:  # noqa: BLE001
         print("  gh CLI not available, skipping PR creation")
         return False
 

@@ -28,7 +28,6 @@ from . import app_docs as app_docs_module
 from . import app_graphics as app_graphics_module
 from . import app_interaction as app_interaction_module
 from . import app_menus as app_menus_module
-from . import app_rich as app_rich_module
 from . import app_support as app_support_module
 from . import app_telemetry as app_telemetry_module
 from . import cache as cache_module
@@ -36,14 +35,14 @@ from . import config as _config_module
 from . import console as console_module
 from . import engine as engine_module_impl
 from . import telemetry_summary as telemetry_summary_module
-from .analyzers.registry import get_default_analyzers, get_default_cli_analyzers
+from .analyzers.registry import get_default_cli_analyzers, get_selectable_analyzers
 from .analyzers.shadowing import analyze_shadowing
 from .analyzers.variables import (
     IssueKind,
     analyze_variables,
     filter_variable_report,
 )
-from .cache import ASTCache
+from .cache import AnalysisReportCache, ASTCache
 from .core.semantic import load_workspace_snapshot
 from .models.project_graph import ProjectGraph
 
@@ -57,21 +56,21 @@ DocumentationSelection = dict[str, Any]
 LoadedConfig = tuple[ConfigDict, bool]
 ConfigValidationResult = _config_module.ConfigValidationResult
 
-app_analysis = cast(Any, app_analysis_module)
-app_base = cast(Any, app_base_module)
-app_cli_commands = cast(Any, app_cli_commands_module)
-app_docs = cast(Any, app_docs_module)
-app_graphics = cast(Any, app_graphics_module)
-app_menus = cast(Any, app_menus_module)
-app_support = cast(Any, app_support_module)
-app_telemetry = cast(Any, app_telemetry_module)
-cache = cast(Any, cache_module)
+app_analysis: Any = app_analysis_module
+app_base: Any = app_base_module
+app_cli_commands: Any = app_cli_commands_module
+app_docs: Any = app_docs_module
+app_graphics: Any = app_graphics_module
+app_menus: Any = app_menus_module
+app_support: Any = app_support_module
+app_telemetry: Any = app_telemetry_module
+cache: Any = cache_module
 engine_module: Any = engine_module_impl
-telemetry_summary = cast(Any, telemetry_summary_module)
+telemetry_summary: Any = telemetry_summary_module
 source_diff_report_module: Any = importlib.import_module("sattlint.devtools.source_diff_report")
 
-_APP_MODULE: Any = cast(Any, sys.modules[__name__])
-_interactive_ui_mode = "classic"
+_APP_MODULE: Any = sys.modules[__name__]
+_interactive_ui_mode = "textual"
 _textual_menu_interaction: Any | None = None
 
 VARIABLE_ANALYSES: VariableAnalysisMap = app_analysis.VARIABLE_ANALYSES
@@ -149,6 +148,8 @@ def _clear_windows_console() -> None:
 
 
 def clear_screen() -> None:
+    if _interactive_ui_mode == "textual" and _textual_menu_interaction is not None:
+        return
     app_base.clear_screen(os_module=os, sys_module=sys, clear_windows_console=_clear_windows_console)
 
 
@@ -232,7 +233,7 @@ def _simulate_target(
     max_scans: int,
     use_cache: bool,
 ) -> Any:
-    from .simulation import simulate_snapshot_target
+    from .simulation import simulate_snapshot_target  # noqa: PLC0415
 
     del cfg, use_cache
     snapshot = load_workspace_snapshot(
@@ -287,6 +288,10 @@ def run_docgen_command(
     )
 
 
+def run_cache_prune_command(*, cache_dir: str | None = None) -> int:
+    return app_startup_module.run_cache_prune_command_from_app(cache_dir=cache_dir, app_module=_APP_MODULE)
+
+
 def run_telemetry_summary_command(
     cfg: ConfigDict,
     *,
@@ -335,22 +340,19 @@ def _print_menu(
     intro: str | None = None,
     note: str | None = None,
 ) -> None:
-    if _interactive_ui_mode == "rich":
-        app_rich_module.print_menu(title, options, intro=intro, note=note)
-        return
     app_startup_module.print_menu_from_app(title, options, intro=intro, note=note, app_module=_APP_MODULE)
 
 
 def set_interactive_ui_mode(ui_mode: str | None) -> None:
     global _interactive_ui_mode
-    if ui_mode in {"classic", "rich", "textual"}:
+    if ui_mode == "textual":
         _interactive_ui_mode = ui_mode
         return
-    _interactive_ui_mode = "classic"
+    _interactive_ui_mode = "textual"
 
 
 def reset_interactive_ui_mode() -> None:
-    set_interactive_ui_mode("classic")
+    set_interactive_ui_mode("textual")
     clear_textual_menu_interaction()
 
 
@@ -388,7 +390,7 @@ def choose_menu_option(
 
 
 def build_menu_interaction() -> Any:
-    if _interactive_ui_mode == "textual" and _textual_menu_interaction is not None:
+    if _textual_menu_interaction is not None:
         return _textual_menu_interaction
     return app_interaction_module.build_menu_interaction(
         print_menu_fn=_print_menu,
@@ -402,30 +404,20 @@ def build_menu_interaction() -> Any:
 def resolve_interactive_ui_mode(cfg: ConfigDict, override_ui_mode: str | None = None) -> str:
     del cfg
     requested_ui = override_ui_mode or os.environ.get("SATTLINT_UI")
-    if requested_ui is None:
-        from . import app_textual as app_textual_module
+    if requested_ui is not None and requested_ui.strip().casefold() not in {"", "textual"}:
+        raise ValueError("SattLint interactive mode is Textual-only; --ui must be 'textual'.")
 
-        return "textual" if app_textual_module.has_textual() else "classic"
+    from . import app_textual as app_textual_module  # noqa: PLC0415
 
-    normalized = requested_ui.strip().casefold()
-    if normalized == "rich":
-        return "rich" if console_module.has_rich() else "classic"
-    if normalized == "textual":
-        from . import app_textual as app_textual_module
-
-        return "textual" if app_textual_module.has_textual() else "classic"
-    return "classic"
+    if app_textual_module.has_textual():
+        return "textual"
+    raise RuntimeError("Textual is required for interactive startup, but it is unavailable in this environment.")
 
 
 def run_interactive_session(cfg: ConfigDict, **kwargs: Any) -> None:
-    if _interactive_ui_mode == "textual":
-        from . import app_textual as app_textual_module
+    from . import app_textual as app_textual_module  # noqa: PLC0415
 
-        app_textual_module.run_textual_shell(cfg, app_module=_APP_MODULE, **kwargs)
-        return
-
-    kwargs.pop("quit_app_error", None)
-    app_menus.run_main_loop(cfg, **kwargs)
+    app_textual_module.run_textual_shell(cfg, app_module=_APP_MODULE, **kwargs)
 
 
 def _menu_option(key: str, label: str, description: str) -> MenuOption:
@@ -663,7 +655,7 @@ def force_refresh_ast(cfg: ConfigDict) -> tuple[BasePicture, ProjectGraph] | Non
     )
 
 
-def ensure_ast_cache(cfg: ConfigDict) -> bool:
+def ensure_ast_cache(cfg: ConfigDict, *, emit_output_fn: Callable[..., None] | None = None) -> bool:
     return cast(
         bool,
         app_analysis.ensure_ast_cache(
@@ -673,6 +665,20 @@ def ensure_ast_cache(cfg: ConfigDict) -> bool:
             load_project_fn=load_project,
             ast_cache_cls=ASTCache,
             get_cache_dir_fn=get_cache_dir,
+            emit_output_fn=emit_output if emit_output_fn is None else emit_output_fn,
+        ),
+    )
+
+
+def refresh_analysis_caches(cfg: ConfigDict) -> tuple[BasePicture, ProjectGraph] | None:
+    return cast(
+        tuple[BasePicture, ProjectGraph] | None,
+        app_analysis.refresh_analysis_caches(
+            cfg,
+            force_refresh_ast_fn=force_refresh_ast,
+            analysis_report_cache_cls=AnalysisReportCache,
+            get_cache_dir_fn=get_cache_dir,
+            emit_output_fn=emit_output,
         ),
     )
 
@@ -779,7 +785,7 @@ def _get_enabled_analyzers() -> list[Any]:
 
 
 def _get_selectable_analyzers() -> list[Any]:
-    return cast(list[Any], get_default_analyzers())
+    return cast(list[Any], get_selectable_analyzers())
 
 
 def _run_checks(cfg: ConfigDict, selected_keys: list[str] | None) -> None:

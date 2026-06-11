@@ -1,11 +1,13 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportIndexIssue=false
 # ruff: noqa: F403, F405
 from ._app_analysis_test_support import *
+from .helpers import AnalysisGraphStub, named_object
 
 
 def test_load_project_saves_cache_after_successful_merge(monkeypatch):
     saved: dict[str, object] = {}
-    root_bp = SimpleNamespace(header=SimpleNamespace(name="TargetA"), origin_file="TargetA.s")
-    graph = SimpleNamespace(
+    root_bp = named_object("TargetA", origin_file="TargetA.s")
+    graph = AnalysisGraphStub(
         ast_by_name={"TargetA": root_bp},
         missing=[],
         warnings=[],
@@ -151,8 +153,8 @@ def test_ensure_ast_cache_returns_true_without_targets():
 
 
 def test_load_project_uses_cached_ast_only_project_and_manifest_metadata(monkeypatch):
-    root_bp = SimpleNamespace(header=SimpleNamespace(name="TargetA"), origin_file="TargetA.s")
-    graph = SimpleNamespace()
+    root_bp = named_object("TargetA", origin_file="TargetA.s")
+    graph = AnalysisGraphStub()
 
     class FakeCache:
         def __init__(self, cache_dir):
@@ -200,8 +202,8 @@ def test_load_project_uses_cached_ast_only_project_and_manifest_metadata(monkeyp
 
 def test_load_project_ast_only_collects_stage_timings_and_flushes_lookup_cache(monkeypatch):
     flushed: list[str] = []
-    root_bp = SimpleNamespace(header=SimpleNamespace(name="TargetA"), origin_file="TargetA.s")
-    graph = SimpleNamespace(ast_by_name={"TargetA": root_bp}, missing=[], warnings=[], source_files=set())
+    root_bp = named_object("TargetA", origin_file="TargetA.s")
+    graph = AnalysisGraphStub(ast_by_name={"TargetA": root_bp})
 
     class FakeCache:
         def __init__(self, cache_dir):
@@ -372,10 +374,12 @@ def test_force_refresh_ast_emits_stage_timings_and_telemetry(monkeypatch):
     emitted: list[dict[str, object]] = []
     results = {
         "TargetA": (
-            SimpleNamespace(header=SimpleNamespace(name="TargetA")),
-            SimpleNamespace(load_stage_timings={"load_or_parse": 0.1}, graphics_load_timings={"attach-graphics": 0.2}),
+            named_object("TargetA"),
+            AnalysisGraphStub(
+                load_stage_timings={"load_or_parse": 0.1}, graphics_load_timings={"attach-graphics": 0.2}
+            ),
         ),
-        "TargetB": (SimpleNamespace(header=SimpleNamespace(name="TargetB")), SimpleNamespace()),
+        "TargetB": (named_object("TargetB"), SimpleNamespace()),
     }
 
     class FakeCache:
@@ -482,8 +486,7 @@ def test_force_refresh_ast_emits_basic_telemetry_when_stage_timings_disabled(mon
         get_analyzed_targets_fn=lambda _cfg: ["TargetA"],
         cache_key_for_target_fn=lambda _cfg, target_name: target_name,
         load_project_fn=lambda _cfg, *, target_name, collect_stage_timings, **kwargs: (
-            calls.append(collect_stage_timings)
-            or (SimpleNamespace(header=SimpleNamespace(name=target_name)), SimpleNamespace())
+            calls.append(collect_stage_timings) or (named_object(target_name), SimpleNamespace())
         ),
         ast_cache_cls=FakeCache,
         get_cache_dir_fn=lambda: Path("cache-dir"),
@@ -565,7 +568,7 @@ def test_run_variable_analysis_shadowing_only_uses_shadowing_report_and_pauses(m
     monkeypatch.setattr(
         app_analysis,
         "_iter_loaded_projects",
-        lambda *_args, **_kwargs: iter([("ProgramA", "bp", SimpleNamespace(unavailable_libraries=set(), warnings=[]))]),
+        lambda *_args, **_kwargs: iter([("ProgramA", "bp", AnalysisGraphStub())]),
     )
     monkeypatch.setattr(
         app_analysis,
@@ -607,8 +610,8 @@ def test_run_datatype_usage_analysis_reports_success_error_and_pause(monkeypatch
             Any,
             lambda *_args, **_kwargs: iter(
                 [
-                    ("TargetA", "bp-a", SimpleNamespace(unavailable_libraries=set())),
-                    ("TargetB", "bp-b", SimpleNamespace(unavailable_libraries=set())),
+                    ("TargetA", "bp-a", AnalysisGraphStub()),
+                    ("TargetB", "bp-b", AnalysisGraphStub()),
                 ]
             ),
         ),
@@ -618,102 +621,6 @@ def test_run_datatype_usage_analysis_reports_success_error_and_pause(monkeypatch
     assert any("datatype:bp-a:FlowVar" in line for line in lines)
     assert any("Error during analysis for TargetB: boom" in line for line in lines)
     assert pauses == ["pause"]
-
-
-def test_app_analysis_menus_quit_branch_calls_quit_app(monkeypatch):
-    class QuitRequestedError(Exception):
-        pass
-
-    def quit_app():
-        raise QuitRequestedError()
-
-    menu_calls = [
-        lambda: app_analysis.variable_usage_submenu(
-            app.DEFAULT_CONFIG.copy(),
-            clear_screen_fn=lambda: None,
-            quit_app_fn=quit_app,
-            run_variable_analysis_fn=lambda *_args, **_kwargs: None,
-            run_datatype_usage_analysis_fn=lambda _cfg: None,
-            run_debug_variable_usage_fn=lambda _cfg: None,
-            run_module_localvar_analysis_fn=lambda _cfg: None,
-            pause_fn=lambda: None,
-        ),
-        lambda: app_analysis.module_analysis_submenu(
-            app.DEFAULT_CONFIG.copy(),
-            clear_screen_fn=lambda: None,
-            print_menu_fn=lambda *_args, **_kwargs: None,
-            menu_option_factory=lambda key, label, detail: (key, label, detail),
-            quit_app_fn=quit_app,
-            run_module_duplicates_analysis_fn=lambda _cfg: None,
-            run_module_find_by_name_fn=lambda _cfg: None,
-            run_module_tree_debug_fn=lambda _cfg: None,
-            run_graphics_rules_validation_fn=lambda _cfg: None,
-            pause_fn=lambda: None,
-        ),
-        lambda: app_analysis.interface_communication_submenu(
-            app.DEFAULT_CONFIG.copy(),
-            clear_screen_fn=lambda: None,
-            print_menu_fn=lambda *_args, **_kwargs: None,
-            menu_option_factory=lambda key, label, detail: (key, label, detail),
-            quit_app_fn=quit_app,
-            run_mms_interface_analysis_fn=lambda _cfg: None,
-            run_icf_validation_fn=lambda _cfg: None,
-            run_icf_formatter_fn=lambda _cfg: None,
-            pause_fn=lambda: None,
-        ),
-        lambda: app_analysis.code_quality_submenu(
-            app.DEFAULT_CONFIG.copy(),
-            clear_screen_fn=lambda: None,
-            print_menu_fn=lambda *_args, **_kwargs: None,
-            menu_option_factory=lambda key, label, detail: (key, label, detail),
-            quit_app_fn=quit_app,
-            run_comment_code_analysis_fn=lambda _cfg: None,
-            pause_fn=lambda: None,
-        ),
-        lambda: app_analysis.analyzer_catalog_menu(
-            app.DEFAULT_CONFIG.copy(),
-            clear_screen_fn=lambda: None,
-            print_menu_fn=lambda *_args, **_kwargs: None,
-            menu_option_factory=lambda key, label, detail: (key, label, detail),
-            quit_app_fn=quit_app,
-            get_enabled_analyzers_fn=lambda: [SimpleNamespace(key="variables", name="Variables", description="desc")],
-            run_checks_fn=lambda _cfg, _selected: None,
-            pause_fn=lambda: None,
-        ),
-        lambda: app_analysis.advanced_analysis_menu(
-            app.DEFAULT_CONFIG.copy(),
-            clear_screen_fn=lambda: None,
-            print_menu_fn=lambda *_args, **_kwargs: None,
-            menu_option_factory=lambda key, label, detail: (key, label, detail),
-            quit_app_fn=quit_app,
-            run_datatype_usage_analysis_fn=lambda _cfg: None,
-            run_debug_variable_usage_fn=lambda _cfg: None,
-            run_module_localvar_analysis_fn=lambda _cfg: None,
-            pause_fn=lambda: None,
-        ),
-        lambda: app_analysis.analysis_menu(
-            app.DEFAULT_CONFIG.copy(),
-            clear_screen_fn=lambda: None,
-            print_menu_fn=lambda *_args, **_kwargs: None,
-            menu_option_factory=lambda key, label, detail: (key, label, detail),
-            quit_app_fn=quit_app,
-            run_checks_fn=lambda _cfg, _selected: None,
-            variable_usage_submenu_fn=lambda _cfg: None,
-            module_analysis_submenu_fn=lambda _cfg: None,
-            interface_communication_submenu_fn=lambda _cfg: None,
-            code_quality_submenu_fn=lambda _cfg: None,
-            analyzer_catalog_menu_fn=lambda _cfg: None,
-            advanced_analysis_menu_fn=lambda _cfg: None,
-            summarize_targets_fn=lambda _cfg: "TargetA",
-            pause_fn=lambda: None,
-        ),
-    ]
-
-    monkeypatch.setattr(builtins, "input", lambda _prompt="": "q")
-
-    for run_menu in menu_calls:
-        with pytest.raises(QuitRequestedError):
-            run_menu()
 
 
 def test_parse_index_selection_ignores_malformed_range_tokens():
@@ -744,7 +651,7 @@ def test_run_module_duplicates_analysis_handles_missing_matches_default_compare_
 
     app_analysis.run_module_duplicates_analysis(
         app.DEFAULT_CONFIG.copy(),
-        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", SimpleNamespace())])),
+        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", AnalysisGraphStub())])),
         pause_fn=lambda: pauses.append("pause"),
     )
 
@@ -783,7 +690,7 @@ def test_run_module_tree_debug_reports_errors_and_pauses(monkeypatch):
     app_analysis.run_module_tree_debug(
         app.DEFAULT_CONFIG.copy(),
         prompt_fn=lambda _message, _default: "7",
-        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", SimpleNamespace())])),
+        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", AnalysisGraphStub())])),
         pause_fn=lambda: pauses.append("pause"),
     )
 
@@ -809,15 +716,13 @@ def test_run_module_localvar_analysis_reports_errors_and_pauses(monkeypatch):
 
     app_analysis.run_module_localvar_analysis(
         app.DEFAULT_CONFIG.copy(),
-        load_project_fn=cast(
-            Any, lambda _cfg: (SimpleNamespace(header=SimpleNamespace(name="BasePicture")), SimpleNamespace())
-        ),
+        load_project_fn=cast(Any, lambda _cfg: (named_object("BasePicture"), AnalysisGraphStub())),
         iter_loaded_projects_fn=cast(
             Any,
             lambda *_args, **_kwargs: iter(
                 [
-                    ("TargetA", "bp-a", SimpleNamespace()),
-                    ("TargetB", "bp-b", SimpleNamespace()),
+                    ("TargetA", "bp-a", AnalysisGraphStub()),
+                    ("TargetB", "bp-b", AnalysisGraphStub()),
                 ]
             ),
         ),

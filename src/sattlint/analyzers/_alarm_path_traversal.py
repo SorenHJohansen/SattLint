@@ -17,22 +17,22 @@ from sattline_parser.models.ast_model import (
 
 from ..grammar import constants as const
 from ..resolution.common import varname_full
-from .ast_node_helpers import (
+from .shared.ast_node_helpers import (
     iter_branch_pairs as _iter_branch_pairs,
 )
-from .ast_node_helpers import (
+from .shared.ast_node_helpers import (
     object_list as _object_list,
 )
-from .ast_node_helpers import (
+from .shared.ast_node_helpers import (
     object_sequence as _object_sequence,
 )
-from .ast_node_helpers import (
+from .shared.ast_node_helpers import (
     object_tuple as _object_tuple,
 )
-from .ast_node_helpers import (
+from .shared.ast_node_helpers import (
     sequence_as_list as _sequence_as_list,
 )
-from .ast_node_helpers import (
+from .shared.ast_node_helpers import (
     statement_children as _statement_children,
 )
 

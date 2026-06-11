@@ -7,10 +7,27 @@ from types import SimpleNamespace
 
 from sattline_parser.models.ast_model import BasePicture, ModuleHeader
 from sattlint.analyzers import registry as registry_module
-from sattlint.analyzers._registry_delivery_data import default_delivery_templates
-from sattlint.analyzers._registry_spec_templates import AnalyzerSpecTemplate, default_spec_templates
-from sattlint.analyzers._registry_specs import build_context_kwargs, build_default_analyzers
-from sattlint.analyzers.framework import AnalysisContext, SimpleReport
+from sattlint.analyzers.dataflow import DataflowAnalyzer
+from sattlint.analyzers.framework import (
+    AnalysisContext,
+    AnalyzerLifecycleMixin,
+    BasePictureAnalyzer,
+    SimpleReport,
+    build_analysis_context,
+)
+from sattlint.analyzers.registry._registry_delivery_data import default_delivery_templates
+from sattlint.analyzers.registry._registry_spec_templates import AnalyzerSpecTemplate, default_spec_templates
+from sattlint.analyzers.registry._registry_specs import build_context_kwargs, build_default_analyzers
+from sattlint.analyzers.reset_contamination import ResetContaminationAnalyzer
+from sattlint.analyzers.shared.variable_utils import VariablesConstMixin
+from sattlint.analyzers.variables import VariablesAnalyzer
+from sattlint.analyzers.variables._variable_issue_collection import VariablesIssueCollectionMixin
+from sattlint.analyzers.variables._variable_traversal import VariablesTraversalMixin
+from sattlint.analyzers.variables._variables_access import VariablesAccessMixin
+from sattlint.analyzers.variables._variables_contracts import VariablesContractsMixin
+from sattlint.analyzers.variables._variables_execution import VariablesExecutionMixin
+from sattlint.analyzers.variables._variables_status import VariablesStatusMixin
+from sattlint.analyzers.variables._variables_submodules import VariablesSubmodulesMixin
 
 ANALYZER_DIR = Path(__file__).resolve().parents[1] / "src" / "sattlint" / "analyzers"
 KEBAB_CASE_KEY = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -24,7 +41,15 @@ EXPLICIT_NON_REGISTRY_ANALYZE_FUNCTIONS = frozenset(
 
 
 def _iter_analyzer_modules() -> list[Path]:
-    return sorted(path for path in ANALYZER_DIR.glob("*.py") if path.name != "__init__.py")
+    module_paths = [
+        path for path in ANALYZER_DIR.glob("*.py") if path.name != "__init__.py" and not path.name.startswith("_")
+    ]
+    module_paths.extend(path for path in ANALYZER_DIR.glob("*/__init__.py") if not path.parent.name.startswith("_"))
+    return sorted(module_paths)
+
+
+def _analyzer_module_name(path: Path) -> str:
+    return f"{path.parent.name}.py" if path.name == "__init__.py" else path.name
 
 
 def _public_analyze_defs() -> set[tuple[str, str]]:
@@ -33,7 +58,7 @@ def _public_analyze_defs() -> set[tuple[str, str]]:
         module = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in module.body:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("analyze_"):
-                definitions.add((path.name, node.name))
+                definitions.add((_analyzer_module_name(path), node.name))
     return definitions
 
 
@@ -50,6 +75,26 @@ def _uses_absolute_analyzer_import(module: ast.Module) -> bool:
 
 def _uses_relative_analyzer_import(module: ast.Module) -> bool:
     return any(isinstance(node, ast.ImportFrom) and node.level == 1 for node in ast.walk(module))
+
+
+def _module_level_private_module_aliases(module: ast.Module) -> list[str]:
+    aliases: list[str] = []
+    for node in module.body:
+        if isinstance(node, ast.ImportFrom) and node.level == 1 and node.module is None:
+            for alias in node.names:
+                if alias.name.startswith("_") and alias.asname and alias.asname.endswith("_module"):
+                    aliases.append(alias.name)
+        if not isinstance(node, ast.Assign):
+            continue
+        value = node.value
+        if not isinstance(value, ast.Attribute) or not isinstance(value.value, ast.Name):
+            continue
+        if not value.value.id.endswith("_module"):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name) and target.id.startswith("_"):
+                aliases.append(target.id)
+    return aliases
 
 
 def test_registry_keys_are_kebab_case_or_explicit_legacy_allowlist() -> None:
@@ -85,9 +130,57 @@ def test_analyzer_modules_do_not_mix_absolute_and_relative_package_imports() -> 
     for path in _iter_analyzer_modules():
         module = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         if _uses_absolute_analyzer_import(module) and _uses_relative_analyzer_import(module):
-            mixed_import_modules.append(path.name)
+            mixed_import_modules.append(_analyzer_module_name(path))
 
     assert mixed_import_modules == []
+
+
+def test_variables_analyzer_uses_helper_mixins_instead_of_local_method_injection() -> None:
+    expected_mixins = (
+        VariablesIssueCollectionMixin,
+        VariablesTraversalMixin,
+        VariablesAccessMixin,
+        VariablesContractsMixin,
+        VariablesStatusMixin,
+        VariablesSubmodulesMixin,
+        VariablesExecutionMixin,
+        VariablesConstMixin,
+    )
+
+    for mixin in expected_mixins:
+        assert mixin in VariablesAnalyzer.__mro__
+
+    assert "_add_issue" not in VariablesAnalyzer.__dict__
+    assert "_repath_context" not in VariablesAnalyzer.__dict__
+    assert "_canonical_path" not in VariablesAnalyzer.__dict__
+    assert "_check_param_mapping" not in VariablesAnalyzer.__dict__
+    assert "_bind_procedure_status" not in VariablesAnalyzer.__dict__
+    assert "_walk_submodules" not in VariablesAnalyzer.__dict__
+    assert "run" not in VariablesAnalyzer.__dict__
+    assert "_is_const_candidate" not in VariablesAnalyzer.__dict__
+
+    assert VariablesAnalyzer._add_issue.__qualname__.startswith("VariablesIssueCollectionMixin.")
+    assert VariablesAnalyzer._repath_context.__qualname__.startswith("VariablesTraversalMixin.")
+    assert VariablesAnalyzer._canonical_path.__qualname__.startswith("VariablesAccessMixin.")
+    assert VariablesAnalyzer._check_param_mapping.__qualname__.startswith("VariablesContractsMixin.")
+    assert VariablesAnalyzer._bind_procedure_status.__qualname__.startswith("VariablesStatusMixin.")
+    assert VariablesAnalyzer._walk_submodules.__qualname__.startswith("VariablesSubmodulesMixin.")
+    assert VariablesAnalyzer.run.__qualname__.startswith("VariablesExecutionMixin.")
+    assert VariablesAnalyzer._is_const_candidate.__qualname__.startswith("VariablesConstMixin.")
+    assert not (ANALYZER_DIR / "variables.py").exists()
+
+
+def test_dataflow_analyzer_uses_shared_lifecycle_mixin() -> None:
+    assert AnalyzerLifecycleMixin in DataflowAnalyzer.__mro__
+
+
+def test_reset_contamination_module_uses_single_class_backed_owner() -> None:
+    assert BasePictureAnalyzer in ResetContaminationAnalyzer.__mro__
+
+    module_path = ANALYZER_DIR / "reset_contamination" / "__init__.py"
+    module = ast.parse(module_path.read_text(encoding="utf-8"), filename=str(module_path))
+    assert _module_level_private_module_aliases(module) == []
+    assert not (ANALYZER_DIR / "_reset_contamination.py").exists()
 
 
 def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch) -> None:
@@ -157,7 +250,7 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
     direct_runner = build_default_analyzers(semantic_layer_analyzer_key=registry_module.SEMANTIC_LAYER_ANALYZER_KEY)
     assert any(spec.key == "variables" for spec in direct_runner)
 
-    from sattlint.analyzers import _registry_specs as registry_specs_module
+    from sattlint.analyzers.registry import _registry_specs as registry_specs_module  # noqa: PLC0415
 
     direct_report = registry_specs_module._build_runner(direct_template, registry_stub)(context)
     assert direct_report.name == "Root"
@@ -181,4 +274,37 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
     built_specs = registry_specs_module.build_default_analyzers(semantic_layer_analyzer_key="semantic-demo")
     assert [built.key for built in built_specs] == ["direct", "demo"]
     assert built_specs[0].direct_context is True
+    assert built_specs[0].requires == ()
     assert built_specs[1].context_kwargs == spec.context_kwargs
+    assert built_specs[1].requires == ()
+
+    sfc_template = next(template for template in default_spec_templates("semantic-demo") if template.key == "sfc")
+    assert sfc_template.requires == ("variables",)
+
+
+def test_build_analysis_context_normalizes_config_and_shared_artifacts() -> None:
+    base_picture = BasePicture(
+        header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    config = {"mode": "workspace"}
+    context = build_analysis_context(
+        base_picture,
+        graph=SimpleNamespace(unavailable_libraries={"ControlLib"}),
+        selected_issue_kinds={"unused", "shadowing"},
+        config=config,
+        create_shared_artifacts=True,
+    )
+
+    assert context.config == {"mode": "workspace"}
+    assert context.config is not config
+    assert context.selected_issue_kinds == frozenset({"unused", "shadowing"})
+    assert context.shared_artifacts is not None
+    assert context.shared_artifacts.counters.shared_artifact_holders_created == 1
+    assert context.unavailable_libraries == {"ControlLib"}

@@ -6,6 +6,7 @@ import io
 import re
 import sys
 import threading
+import time
 from contextlib import redirect_stderr, redirect_stdout, suppress
 from pathlib import Path
 from typing import Any, cast
@@ -25,6 +26,54 @@ from ._app_textual_shared import (
     discover_setup_target_candidates,
 )
 from ._app_textual_widgets import _FileBrowserScreen, _HelpScreen
+
+_OUTPUT_TITLE_SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
+_OUTPUT_TITLE_SPINNER_INTERVAL_SECONDS = 1.0 / 60.0
+
+
+def _output_title_spinner_timestamp() -> float:
+    return time.monotonic()
+
+
+def _setup_value_text(primary: str, secondary: str | None = None) -> str:
+    primary_text = primary.strip()
+    secondary_text = secondary.strip() if secondary is not None else ""
+    if not secondary_text:
+        return primary_text
+    return f"{primary_text}\n{secondary_text}"
+
+
+def _setup_path_text(value: str, *, empty_label: str = "Not configured") -> str:
+    stripped = value.strip()
+    if not stripped:
+        return empty_label
+    normalized = stripped.rstrip("\\/")
+    folder_name = re.split(r"[\\/]", normalized)[-1] if normalized else stripped
+    return _setup_value_text(folder_name or stripped, stripped)
+
+
+def _setup_other_dirs_text(values: object) -> str:
+    entries = _stringify_list_values(values)
+    if not entries:
+        return "No extra libraries"
+    folder_word = "folder" if len(entries) == 1 else "folders"
+    return _setup_value_text(f"{len(entries)} {folder_word} configured", ", ".join(entries))
+
+
+def _setup_mode_text(mode: str) -> str:
+    normalized_mode = mode.strip().casefold()
+    if normalized_mode == "draft":
+        return _setup_value_text("Draft mode", ".s and .l files")
+    if normalized_mode == "official" or not normalized_mode:
+        return _setup_value_text("Official mode", ".x and .z files")
+    return _setup_value_text(mode.strip().replace("_", " ").title(), "Custom mode")
+
+
+def _setup_toggle_text(enabled: bool, *, enabled_detail: str, disabled_detail: str) -> str:
+    return _setup_value_text(
+        "Enabled" if enabled else "Disabled",
+        enabled_detail if enabled else disabled_detail,
+    )
 
 
 def _setup_candidates(self: Any) -> tuple[_SetupTargetCandidate, ...]:
@@ -56,11 +105,7 @@ def _summary_text(self: Any) -> str:
     configured_targets = self._configured_target_names()
     if not configured_targets:
         return str(self._summarize_targets_fn(self._cfg))
-
-    target_count = len(configured_targets)
-    target_label = "target" if target_count == 1 else "targets"
-    target_names = ", ".join(configured_targets)
-    return f"{target_count} {target_label} configured\n{target_names}"
+    return "\n".join(configured_targets)
 
 
 def _documentation_selection(self: Any) -> dict[str, Any]:
@@ -97,15 +142,76 @@ def _active_job_text(self: Any) -> str | None:
     return label or None
 
 
+def _output_title_spinner_frame(self: Any) -> str | None:
+    if not self._busy or self._active_job_action_id != "action-analyze":
+        return None
+    spinner_started_at = getattr(self, "_output_title_spinner_started_at", None)
+    if spinner_started_at is None:
+        return _OUTPUT_TITLE_SPINNER_FRAMES[0]
+    elapsed_seconds = max(0.0, _output_title_spinner_timestamp() - float(spinner_started_at))
+    spinner_index = int(elapsed_seconds / _OUTPUT_TITLE_SPINNER_INTERVAL_SECONDS)
+    return _OUTPUT_TITLE_SPINNER_FRAMES[spinner_index % len(_OUTPUT_TITLE_SPINNER_FRAMES)]
+
+
 def _output_title_text(self: Any) -> str:
     active_job_text = self._active_job_text()
     if active_job_text is None:
         return "Session output"
-    return f"Session output - {active_job_text} in progress"
+    spinner_frame = self._output_title_spinner_frame()
+    if spinner_frame is None:
+        return f"Session output - {active_job_text} in progress"
+    return f"Session output {spinner_frame} - {active_job_text} in progress"
+
+
+def _advance_output_title_spinner(self: Any) -> None:
+    if not self._busy or self._active_job_action_id != "action-analyze":
+        return
+    spinner_frame = self._output_title_spinner_frame()
+    if spinner_frame is None:
+        return
+    if spinner_frame == getattr(self, "_output_title_spinner_last_frame", None):
+        return
+    self._output_title_spinner_last_frame = spinner_frame
+    try:
+        self.query_one("#output-title", _TEXTUAL_STATIC).update(self._output_title_text())
+    except Exception:  # noqa: BLE001
+        return
+
+
+def _sync_output_title_spinner(self: Any) -> None:
+    try:
+        spinner_timer = getattr(self, "_output_title_spinner_timer", None)
+        animate_spinner = self._busy and self._active_job_action_id == "action-analyze"
+        created_timer = spinner_timer is None
+        if spinner_timer is None:
+            spinner_timer = self.set_interval(
+                _OUTPUT_TITLE_SPINNER_INTERVAL_SECONDS,
+                self._advance_output_title_spinner,
+                pause=not animate_spinner,
+            )
+            self._output_title_spinner_timer = spinner_timer
+        was_animating = bool(getattr(self, "_output_title_spinner_running", False))
+        if animate_spinner:
+            if not was_animating:
+                self._output_title_spinner_started_at = _output_title_spinner_timestamp()
+                self._output_title_spinner_last_frame = None
+                if not created_timer:
+                    spinner_timer.resume()
+            self._output_title_spinner_running = True
+            return
+        self._output_title_spinner_started_at = None
+        self._output_title_spinner_last_frame = None
+        self._output_title_spinner_running = False
+        if was_animating:
+            spinner_timer.pause()
+    except Exception:  # noqa: BLE001
+        return
 
 
 def _analyze_note_text(self: Any) -> str:
     if self._busy and self._active_job_action_id == "action-analyze":
+        if self._active_job_cancel_requested:
+            return "Stopping selected analyses now. Live output remains in Session output below."
         return "Selected analyses are running. Live output is shown in Session output below."
     if not self._setup_has_targets():
         return "No analysis targets are configured yet. Add one in Setup to enable the planner queue runner."
@@ -161,7 +267,7 @@ def _setup_note_text(self: Any) -> str:
 def _refresh_setup_target_list(self: Any) -> None:
     try:
         lv = self.query_one("#setup-target-listview", _TEXTUAL_LIST_VIEW)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return
 
     configured_targets = list(self._configured_target_names())
@@ -190,35 +296,57 @@ def _refresh_setup_settings_labels(self: Any) -> None:
     program_dir = _stringify_value(cast(object | None, self._cfg.get("program_dir", "")))
     abb_dir = _stringify_value(cast(object | None, self._cfg.get("ABB_lib_dir", "")))
     other_dirs = self._cfg.get("other_lib_dirs", [])
-    other_dirs_str = (
-        ", ".join(_stringify_value(d) for d in cast(list[object], other_dirs))
-        if isinstance(other_dirs, list)
-        else _stringify_value(cast(object | None, other_dirs))
-    )
     icf_dir = _stringify_value(cast(object | None, self._cfg.get("icf_dir", "")))
     mode = _stringify_value(cast(object | None, self._cfg.get("mode", "official"))) or "official"
-    scan_root_only = "on" if bool(self._cfg.get("scan_root_only", False)) else "off"
-    fast_cache = "on" if bool(self._cfg.get("fast_cache_validation", False)) else "off"
-    debug = "on" if bool(self._cfg.get("debug", False)) else "off"
+    scan_root_only = bool(self._cfg.get("scan_root_only", False))
+    fast_cache = bool(self._cfg.get("fast_cache_validation", False))
+    debug = bool(self._cfg.get("debug", False))
     telemetry = self._cfg.get("telemetry")
     telemetry_enabled = (
         bool(cast(object | None, telemetry.get("enabled", False))) if isinstance(telemetry, dict) else False
     )
-    telemetry_str = "on" if telemetry_enabled else "off"
 
-    def _safe_update(widget_id: str, text: str) -> None:
+    def _safe_update(widget_id: str, text: object) -> None:
         with suppress(Exception):
             self.query_one(f"#{widget_id}", _TEXTUAL_STATIC).update(text)
 
-    _safe_update("setup-label-program-dir", program_dir or "(not set)")
-    _safe_update("setup-label-abb-dir", abb_dir or "(not set)")
-    _safe_update("setup-label-other-dirs", other_dirs_str or "(none)")
-    _safe_update("setup-label-icf-dir", icf_dir or "(not set)")
-    _safe_update("setup-label-mode", mode)
-    _safe_update("setup-label-scan-root-only", scan_root_only)
-    _safe_update("setup-label-fast-cache", fast_cache)
-    _safe_update("setup-label-debug", debug)
-    _safe_update("setup-label-telemetry", telemetry_str)
+    _safe_update("setup-label-program-dir", _setup_path_text(program_dir))
+    _safe_update("setup-label-abb-dir", _setup_path_text(abb_dir))
+    _safe_update("setup-label-other-dirs", _setup_other_dirs_text(other_dirs))
+    _safe_update("setup-label-icf-dir", _setup_path_text(icf_dir))
+    _safe_update("setup-label-mode", _setup_mode_text(mode))
+    _safe_update(
+        "setup-label-scan-root-only",
+        _setup_toggle_text(
+            scan_root_only,
+            enabled_detail="Only configured roots are scanned",
+            disabled_detail="Nested folders are also scanned",
+        ),
+    )
+    _safe_update(
+        "setup-label-fast-cache",
+        _setup_toggle_text(
+            fast_cache,
+            enabled_detail="Fast cache validation is active",
+            disabled_detail="Full cache validation is active",
+        ),
+    )
+    _safe_update(
+        "setup-label-debug",
+        _setup_toggle_text(
+            debug,
+            enabled_detail="Verbose runtime logging",
+            disabled_detail="Standard runtime logging",
+        ),
+    )
+    _safe_update(
+        "setup-label-telemetry",
+        _setup_toggle_text(
+            telemetry_enabled,
+            enabled_detail="Anonymous telemetry is allowed",
+            disabled_detail="Telemetry stays off",
+        ),
+    )
 
 
 def on_list_view_highlighted(self: Any, event: Any) -> None:
@@ -410,7 +538,7 @@ def _open_help_popup(self: Any) -> None:
         try:
             with redirect_stdout(output_stream), redirect_stderr(output_stream):
                 self._show_help_fn(self._cfg)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             lines.append(f"Error generating help: {exc}")
         finally:
             sys.stdin = _saved_stdin
@@ -559,9 +687,43 @@ def _run_tool_source_diff(self: Any) -> None:
 
 
 def _run_tool_refresh_ast(self: Any) -> None:
-    if not self._targets_action_allowed("cached AST refresh"):
+    if not self._targets_action_allowed("analysis cache refresh"):
         return
-    self._start_action("Refresh cached ASTs", lambda: self._force_refresh_ast_fn(self._cfg), action_id="action-tools")
+    self._start_action(
+        "Refresh analysis caches",
+        lambda: self._force_refresh_ast_fn(self._cfg),
+        action_id="action-tools",
+    )
+
+
+def _run_tool_datatype_usage(self: Any) -> None:
+    self._run_app_module_cfg_action(
+        "run_datatype_usage_analysis",
+        "Datatype field trace",
+        action_id="action-tools",
+        require_targets=True,
+        action_text="datatype usage tracing",
+    )
+
+
+def _run_tool_variable_trace(self: Any) -> None:
+    self._run_app_module_cfg_action(
+        "run_debug_variable_usage",
+        "Variable usage trace",
+        action_id="action-tools",
+        require_targets=True,
+        action_text="variable usage tracing",
+    )
+
+
+def _run_tool_module_locals(self: Any) -> None:
+    self._run_app_module_cfg_action(
+        "run_module_localvar_analysis",
+        "Module local usage",
+        action_id="action-tools",
+        require_targets=True,
+        action_text="module local-variable tracing",
+    )
 
 
 def _prompt_setup_value(self: Any, field_key: str, *, label: str, is_list: bool = False) -> None:
@@ -624,7 +786,10 @@ SETUP_METHODS = (
     _documentation_selection,
     _documentation_scope_summary_text,
     _active_job_text,
+    _output_title_spinner_frame,
     _output_title_text,
+    _advance_output_title_spinner,
+    _sync_output_title_spinner,
     _analyze_note_text,
     _documentation_note_text,
     _is_target_configured,
@@ -657,6 +822,9 @@ SETUP_METHODS = (
     _run_tool_dumps,
     _run_tool_source_diff,
     _run_tool_refresh_ast,
+    _run_tool_datatype_usage,
+    _run_tool_variable_trace,
+    _run_tool_module_locals,
     _prompt_setup_value,
     _activate_view,
 )

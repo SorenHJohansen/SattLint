@@ -293,7 +293,7 @@ def _publish_diagnostics(
             allow_stale=True,
             raise_on_error=True,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         ls.text_document_publish_diagnostics(
             PublishDiagnosticsParams(
                 uri=document.uri,

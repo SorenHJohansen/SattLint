@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 
 _KEYWORD_MODULEDEFINITION = "moduledefinition"  # nosec B105 - SattLine grammar keyword
 _KEYWORD_PRIVATE = "private_"  # nosec B105 - SattLine grammar keyword
@@ -12,6 +13,18 @@ _KEYWORD_SUBMODULES = "submodules"
 _KEYWORD_TYPEDEFINITIONS = "typedefinitions"
 _KEYWORD_MODULEPARAMETERS = "moduleparameters"
 _KEYWORD_LOCALVARIABLES = "localvariables"
+_KEYWORD_EQUATIONBLOCK = "equationblock"
+_KEYWORD_ENDEQUATIONBLOCK = "endequationblock"
+_KEYWORD_SEQUENCE = "sequence"
+_KEYWORD_OPENSEQUENCE = "opensequence"
+_KEYWORD_ENDSEQUENCE = "endsequence"
+_KEYWORD_ENDOPENSEQUENCE = "endopensequence"
+_KEYWORD_SEQINITSTEP = "seqinitstep"
+_KEYWORD_SEQSTEP = "seqstep"
+_KEYWORD_SEQTRANSITION = "seqtransition"
+_KEYWORD_SUBSEQTRANSITION = "subseqtransition"
+_KEYWORD_ENDSUBSEQTRANSITION = "endsubseqtransition"
+_KEYWORD_SEQFORK = "seqfork"
 _MODULE_PATH_BREAK_KEYWORDS = frozenset(
     {
         _KEYWORD_MODULEDEFINITION,
@@ -26,7 +39,15 @@ _MODULE_PATH_BREAK_KEYWORDS = frozenset(
 )
 
 
-def scan_disallowed_comments[TViolation](
+@dataclass
+class _ModuleCodeContext:
+    equation_name: str | None = None
+    sequence_name: str | None = None
+    step_name: str | None = None
+    pending_name_kind: str | None = None
+
+
+def scan_disallowed_comments[TViolation](  # noqa: PLR0915
     text: str,
     *,
     advance_position: Callable[[str, str | None, int, int], tuple[int, int, int]],
@@ -173,14 +194,17 @@ def scan_disallowed_comments[TViolation](
     return violations
 
 
-def scan_comments_with_code[THit](
+def scan_comments_with_code[THit](  # noqa: PLR0915
     text: str,
     *,
     advance_position: Callable[[str, str | None, int, int], tuple[int, int, int]],
     is_identifier_start: Callable[[str], bool],
     consume_identifier: Callable[[str, int], tuple[str, int]],
     comment_code_indicators: Callable[[str], tuple[str, ...]],
-    hit_factory: Callable[[int, int, int, int, str, tuple[str, ...], tuple[str, ...]], THit],
+    hit_factory: Callable[
+        [int, int, int, int, str, tuple[str, ...], tuple[str, ...], str | None, str | None, str | None],
+        THit,
+    ],
 ) -> list[THit]:
     hits: list[THit] = []
     n = len(text)
@@ -195,6 +219,7 @@ def scan_comments_with_code[THit](
     comment_text: list[str] = []
     module_stack: list[str] = []
     module_code_paths: list[tuple[str, ...]] = []
+    module_code_contexts: list[_ModuleCodeContext] = []
     candidate_definition_name: str | None = None
     pending_definition_name: str | None = None
     pending_definition_mode: str | None = None
@@ -205,9 +230,28 @@ def scan_comments_with_code[THit](
 
         if depth == 0:
             if not in_string:
+                current_context = module_code_contexts[-1] if module_code_contexts else None
+                typed_module_stack: list[str] = module_stack
+
                 if is_identifier_start(ch):
                     token, token_end = consume_identifier(text, i)
                     token_cf = token.casefold()
+
+                    if current_context is not None and current_context.pending_name_kind is not None:
+                        if current_context.pending_name_kind == "equation":
+                            current_context.equation_name = token
+                            current_context.sequence_name = None
+                            current_context.step_name = None
+                        elif current_context.pending_name_kind == "sequence":
+                            current_context.equation_name = None
+                            current_context.sequence_name = token
+                            current_context.step_name = None
+                        else:
+                            current_context.step_name = token
+                        current_context.pending_name_kind = None
+                        i = token_end
+                        col += len(token)
+                        continue
 
                     if pending_definition_mode == "header_postcolon":
                         if token_cf == _KEYWORD_MODULEDEFINITION and pending_definition_name is not None:
@@ -225,18 +269,20 @@ def scan_comments_with_code[THit](
                         pending_definition_mode = None
 
                     if token_cf == _KEYWORD_MODULECODE:
-                        if module_stack:
-                            module_code_paths.append(tuple(module_stack))
+                        if typed_module_stack:
+                            module_code_paths.append(tuple(typed_module_stack))
+                            module_code_contexts.append(_ModuleCodeContext())
                         candidate_definition_name = None
                         i = token_end
                         col += len(token)
                         continue
 
                     if token_cf == _KEYWORD_ENDDEF:
-                        if module_code_paths and len(module_code_paths[-1]) == len(module_stack):
+                        if module_code_paths and len(module_code_paths[-1]) == len(typed_module_stack):
                             module_code_paths.pop()
-                        if module_stack:
-                            module_stack.pop()
+                            module_code_contexts.pop()
+                        if typed_module_stack:
+                            typed_module_stack.pop()
                         candidate_definition_name = None
                         pending_definition_name = None
                         pending_definition_mode = None
@@ -259,6 +305,68 @@ def scan_comments_with_code[THit](
                         col += len(token)
                         continue
 
+                    if current_context is not None:
+                        if token_cf == _KEYWORD_EQUATIONBLOCK:
+                            current_context.equation_name = None
+                            current_context.sequence_name = None
+                            current_context.step_name = None
+                            current_context.pending_name_kind = "equation"
+                            candidate_definition_name = None
+                            i = token_end
+                            col += len(token)
+                            continue
+
+                        if token_cf == _KEYWORD_ENDEQUATIONBLOCK:
+                            current_context.equation_name = None
+                            current_context.pending_name_kind = None
+                            candidate_definition_name = None
+                            i = token_end
+                            col += len(token)
+                            continue
+
+                        if token_cf in {_KEYWORD_SEQUENCE, _KEYWORD_OPENSEQUENCE}:
+                            current_context.equation_name = None
+                            current_context.sequence_name = None
+                            current_context.step_name = None
+                            current_context.pending_name_kind = "sequence"
+                            candidate_definition_name = None
+                            i = token_end
+                            col += len(token)
+                            continue
+
+                        if token_cf in {_KEYWORD_ENDSEQUENCE, _KEYWORD_ENDOPENSEQUENCE}:
+                            current_context.sequence_name = None
+                            current_context.step_name = None
+                            current_context.pending_name_kind = None
+                            candidate_definition_name = None
+                            i = token_end
+                            col += len(token)
+                            continue
+
+                        if token_cf in {_KEYWORD_SEQINITSTEP, _KEYWORD_SEQSTEP}:
+                            current_context.step_name = None
+                            current_context.pending_name_kind = (
+                                "step" if current_context.sequence_name is not None else None
+                            )
+                            candidate_definition_name = None
+                            i = token_end
+                            col += len(token)
+                            continue
+
+                        if token_cf in {
+                            _KEYWORD_SEQTRANSITION,
+                            _KEYWORD_SUBSEQTRANSITION,
+                            _KEYWORD_ENDSUBSEQTRANSITION,
+                            _KEYWORD_SEQFORK,
+                        }:
+                            current_context.step_name = None
+                            if current_context.pending_name_kind == "step":
+                                current_context.pending_name_kind = None
+                            candidate_definition_name = None
+                            i = token_end
+                            col += len(token)
+                            continue
+
                     candidate_definition_name = None if token_cf in _MODULE_PATH_BREAK_KEYWORDS else token
 
                     i = token_end
@@ -278,6 +386,9 @@ def scan_comments_with_code[THit](
                     i += 1
                     col += 1
                     continue
+
+                if current_context is not None and current_context.pending_name_kind is not None and not ch.isspace():
+                    current_context.pending_name_kind = None
 
                 if candidate_definition_name is not None and not ch.isspace():
                     candidate_definition_name = None
@@ -334,6 +445,7 @@ def scan_comments_with_code[THit](
                 col += 2
                 if depth == 0:
                     if module_code_paths:
+                        current_context = module_code_contexts[-1]
                         indicators = comment_code_indicators("".join(comment_text))
                         if indicators:
                             hits.append(
@@ -345,6 +457,9 @@ def scan_comments_with_code[THit](
                                     "".join(comment_text),
                                     indicators,
                                     module_code_paths[-1],
+                                    current_context.equation_name,
+                                    current_context.sequence_name,
+                                    current_context.step_name,
                                 )
                             )
                     comment_text = []
@@ -357,7 +472,7 @@ def scan_comments_with_code[THit](
     return hits
 
 
-def strip_sl_comments_impl(text: str) -> str:
+def strip_sl_comments_impl(text: str) -> str:  # noqa: PLR0915
     n = len(text)
     i = 0
     depth = 0

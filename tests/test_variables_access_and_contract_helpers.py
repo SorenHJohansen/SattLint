@@ -16,10 +16,11 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 from sattlint.analyzers import _dependency_usage_scope_support as dependency_scope_module
-from sattlint.analyzers import _variables_access as variables_access_module
-from sattlint.analyzers import _variables_contracts as variables_contracts_module
 from sattlint.analyzers import dataflow as dataflow_module
 from sattlint.analyzers.dataflow import DataflowAnalyzer
+from sattlint.analyzers.shared import _dedupe as dedupe_module
+from sattlint.analyzers.variables import _variables_access as variables_access_module
+from sattlint.analyzers.variables import _variables_contracts as variables_contracts_module
 from sattlint.reporting.variables_report import IssueKind
 from sattlint.resolution import AccessKind, CanonicalPath
 from tests.helpers.variable_test_support import UsageStub as _UsageStub
@@ -213,6 +214,17 @@ def test_variables_access_effect_and_site_helpers_cover_remaining_branches() -> 
     variables_access_impl._pop_site(helper)
     variables_access_impl._pop_site(helper)
     assert helper.site_stack == []
+
+
+def test_shared_dedupe_helpers_cover_seen_and_index_paths() -> None:
+    seen: set[tuple[str, ...]] = set()
+    indexes: dict[tuple[str, ...], int] = {}
+
+    assert dedupe_module.remember_once(seen, ("read",)) is True
+    assert dedupe_module.remember_once(seen, ("read",)) is False
+    assert dedupe_module.get_or_register_index(indexes, ("mapping",), 2) is None
+    assert indexes == {("mapping",): 2}
+    assert dedupe_module.get_or_register_index(indexes, ("mapping",), 9) == 2
 
 
 def test_variables_access_strict_datatype_helper_covers_warning_and_error_paths() -> None:
@@ -621,7 +633,7 @@ def test_variables_access_record_wide_access_and_origin_helpers() -> None:
     )
 
 
-def test_dataflow_facade_and_scalar_helpers_cover_remaining_branches(monkeypatch: Any) -> None:
+def test_dataflow_facade_and_scalar_helpers_cover_remaining_branches(monkeypatch: Any) -> None:  # noqa: PLR0915
     delegate_probe: Any = DataflowAnalyzer.__new__(DataflowAnalyzer)
     delegate_probe._issues = ["issue"]
     delegate_probe._unavailable_libraries = {"Lib"}
@@ -867,7 +879,7 @@ def test_dependency_scope_support_context_and_mapping_helpers_cover_branches() -
     }
 
 
-def test_dependency_scope_support_walk_helpers_cover_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_dependency_scope_support_walk_helpers_cover_branches(monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: PLR0915
     class Probe(dependency_scope_module._DependencyUsageScopeSupportMixin):
         pass
 
@@ -1087,7 +1099,7 @@ def test_variables_contracts_cover_guard_branches(monkeypatch: pytest.MonkeyPatc
     variables_contracts_impl._check_param_mappings_for_type_instance(self_inst, inst, {}, cast(Any, None), ["Root"])
 
 
-def test_variables_contracts_cover_remaining_collection_and_index_branches(
+def test_variables_contracts_cover_remaining_collection_and_index_branches(  # noqa: PLR0915
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     any_param = Variable(name="AnyParam", datatype="AnyType")

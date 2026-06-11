@@ -39,8 +39,8 @@ ApplyDebugFn = Callable[[ConfigDict], None]
 AppCommandFn = Callable[..., int]
 ClearScreenFn = Callable[[], None]
 
-_config_module = cast(Any, config_module)
-_cli_entry_module = cast(Any, cli_entry_module)
+_config_module: Any = config_module
+_cli_entry_module: Any = cli_entry_module
 
 _load_config = cast(LoadConfigFn, _config_module.load_config)
 _save_config = cast(Callable[[Path, ConfigDict], None], _config_module.save_config)
@@ -123,6 +123,7 @@ def run_cli(
     run_analyze_command_fn: AppCommandFn | None = None,
     run_simulate_command_fn: AppCommandFn | None = None,
     run_docgen_command_fn: AppCommandFn | None = None,
+    run_cache_prune_command_fn: AppCommandFn | None = None,
     run_telemetry_summary_command_fn: AppCommandFn | None = None,
     run_format_icf_command_fn: AppCommandFn | None = None,
     exit_success: int = EXIT_SUCCESS,
@@ -144,6 +145,7 @@ def run_cli(
         run_analyze_command_fn=run_analyze_command_fn,
         run_simulate_command_fn=run_simulate_command_fn,
         run_docgen_command_fn=run_docgen_command_fn,
+        run_cache_prune_command_fn=run_cache_prune_command_fn,
         run_telemetry_summary_command_fn=run_telemetry_summary_command_fn,
         run_format_icf_command_fn=run_format_icf_command_fn,
         exit_success=exit_success,
@@ -152,8 +154,8 @@ def run_cli(
 
 
 def _configure_windows_console_api(kernel32: Any, coord_type: Any, buffer_info_type: Any) -> None:
-    import ctypes
-    from ctypes import wintypes
+    import ctypes  # noqa: PLC0415
+    from ctypes import wintypes  # noqa: PLC0415
 
     kernel32.GetStdHandle.argtypes = [wintypes.DWORD]
     kernel32.GetStdHandle.restype = wintypes.HANDLE
@@ -191,8 +193,8 @@ def configure_windows_console_api(kernel32: Any, coord_type: Any, buffer_info_ty
 
 
 def _clear_windows_console() -> None:
-    import ctypes
-    from ctypes import wintypes
+    import ctypes  # noqa: PLC0415
+    from ctypes import wintypes  # noqa: PLC0415
 
     class _Coord(ctypes.Structure):
         _fields_: ClassVar[Any] = [("X", wintypes.SHORT), ("Y", wintypes.SHORT)]
@@ -215,7 +217,7 @@ def _clear_windows_console() -> None:
         ]
 
     kernel32 = cast(object, ctypes.WinDLL("kernel32", use_last_error=True))  # type: ignore[reportAttributeAccessIssue]
-    kernel32_api = cast(Any, kernel32)
+    kernel32_api: Any = kernel32
     _configure_windows_console_api(kernel32_api, _Coord, _ConsoleScreenBufferInfo)
     get_std_handle = cast(Callable[[object], Any], kernel32_api.GetStdHandle)
     get_console_screen_buffer_info = cast(Callable[[object, object], bool], kernel32_api.GetConsoleScreenBufferInfo)

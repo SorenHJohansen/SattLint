@@ -43,6 +43,7 @@ Use it before widening into subsystem docs.
 
 - `AGENTS.md` is the stable AI table of contents.
 - `AGENTS.md` owns context loading order and default workflow rules.
+- `docs/maintainers/analyzer-authoring.md` defines the default class-plus-mixins analyzer pattern.
 - `docs/maintainers/quality-gates.md` defines stage-by-stage validation commands.
 - `docs/public/architecture.md` captures the short architecture boundary summary.
 

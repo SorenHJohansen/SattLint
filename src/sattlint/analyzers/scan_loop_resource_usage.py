@@ -18,9 +18,9 @@ from sattline_parser.models.ast_model import (
 )
 
 from ..grammar import constants as const
-from ._walk_utils import iter_nested_modules
 from .framework import Issue, SimpleReport
 from .sattline_builtins import get_function_signature
+from .shared._walk_utils import iter_nested_modules
 
 
 class ScanLoopResourceUsageAnalyzer:

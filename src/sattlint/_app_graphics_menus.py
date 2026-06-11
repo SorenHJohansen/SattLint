@@ -107,7 +107,7 @@ def discover_graphics_rule_selector_options(
                 project_bp,
                 graph,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             entries = []
 
         for entry in entries:
@@ -222,7 +222,7 @@ def pick_or_prompt_graphics_rule_selector_value(
     return selector_value
 
 
-def prompt_graphics_rule_selector(
+def prompt_graphics_rule_selector(  # noqa: PLR0915
     module_kind: str,
     *,
     cfg: ConfigDict | None,
@@ -443,7 +443,7 @@ def prompt_graphics_rule_definition(
     return prompt_graphics_rule_definition_with_config_fn(None)
 
 
-def prompt_graphics_rule_definition_with_config(
+def prompt_graphics_rule_definition_with_config(  # noqa: PLR0915
     cfg: ConfigDict | None,
     *,
     prompt_fn: Callable[..., str],
@@ -678,7 +678,7 @@ def prompt_graphics_rule_definition_with_config(
     }
 
 
-def graphics_rules_menu(
+def graphics_rules_menu(  # noqa: PLR0915
     cfg: dict[str, Any] | None,
     *,
     get_graphics_rules_path_fn: Callable[[], Path],

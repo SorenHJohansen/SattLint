@@ -372,6 +372,43 @@ ENDDEF (*BasePicture*);
     )
 
 
+def test_variable_analysis_marks_procedure_interact_outvar_as_write_in_typedef():
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+TYPEDEFINITIONS
+    ButtonType = MODULEDEFINITION DateCode_ 1
+    LOCALVARIABLES
+        WindowDisplayed: boolean := False;
+    ModuleDef
+        ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+        InteractObjects :
+            ProcedureInteract ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+                NewWindow
+                False : OutVar_ "WindowDisplayed"
+                Variable = 0.0
+    ENDDEF (*ButtonType*);
+ModuleDef
+    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+
+    bp = parser_core_parse_source_text(code)
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    window_displayed = bp.moduletype_defs[0].localvariables[0]
+    usage = analyzer._get_usage(window_displayed)
+
+    assert usage.written is True
+    assert usage.read is False
+    assert not any(
+        issue.kind is IssueKind.READ_ONLY_NON_CONST and issue.variable is window_displayed for issue in analyzer.issues
+    )
+
+
 def test_layout_overlap_detects_overlapping_module_invocations():
     code = """
 "SyntaxVersion"

@@ -23,9 +23,9 @@ from ..resolution.common import (
     varname_full,
 )
 from . import _alarm_path_traversal as _alarm_path_traversal_module
-from ._walk_utils import walk_nested_modules_with_state
 from .framework import Issue, format_report_header
-from .variable_utils import matches_root_origin, merge_variable_env
+from .shared._walk_utils import walk_nested_modules_with_state
+from .shared.variable_utils import matches_root_origin, merge_variable_env
 
 _TAG_PARAMETER_NAMES: tuple[str, ...] = (
     "tag",

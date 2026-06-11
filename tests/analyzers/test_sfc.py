@@ -23,15 +23,14 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 from sattlint import constants as const
-from sattlint.analyzers import _sfc_collectors as sfc_collectors_module
 from sattlint.analyzers import sfc as sfc_module
 from sattlint.analyzers import variables as variables_module
-from sattlint.analyzers._sfc_collectors import _SfcAccessCollector
-from sattlint.analyzers._sfc_module_walk import iter_sfc_modulecodes
-from sattlint.analyzers._sfc_step_contracts import StepContract
-from sattlint.analyzers.framework import AnalysisContext, AnalysisSharedArtifacts
-from sattlint.analyzers.issue import Issue
+from sattlint.analyzers.framework import AnalysisContext, AnalysisSharedArtifacts, Issue
+from sattlint.analyzers.sfc import _sfc_collectors as sfc_collectors_module
 from sattlint.analyzers.sfc import analyze_sfc
+from sattlint.analyzers.sfc._sfc_collectors import _SfcAccessCollector
+from sattlint.analyzers.sfc._sfc_module_walk import iter_sfc_modulecodes
+from sattlint.analyzers.sfc._sfc_step_contracts import StepContract
 from sattlint.analyzers.variables import analyze_variables
 from sattlint.resolution import AccessKind
 from sattlint.resolution.paths import CanonicalPath
@@ -338,7 +337,7 @@ def test_sfc_access_collector_walk_helpers_cover_branch_labels_and_site_markers(
         ),
     )
     _SfcAccessCollector._walk_branch_node(collector, [step], context, ["Root", "Unit"], label="ALT:BRANCH:0")
-    _SfcAccessCollector._walk_seq_nodes(collector, [transition], {}, ["Root", "Unit"])
+    _SfcAccessCollector._walk_seq_nodes(collector, [transition], {}, ["Root", "Unit"], context)
 
     assert site_events[-2:] == [("push", "ALT:BRANCH:0"), ("pop", "")]
     assert seq_node_calls == [

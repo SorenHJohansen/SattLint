@@ -16,8 +16,8 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.transformer.sl_transformer import SLTransformer
 from sattlint import constants as const
-from sattlint.analyzers.dataflow import analyze_dataflow
-from sattlint.analyzers.framework import SimpleReport
+from sattlint.analyzers.dataflow import DataflowAnalyzer, analyze_dataflow
+from sattlint.analyzers.framework import AnalysisSharedArtifacts, SimpleReport, VariableAnalysisArtifacts
 from sattlint.analyzers.registry import get_default_analyzers
 from sattlint.engine import create_sl_parser
 
@@ -126,6 +126,37 @@ def test_read_before_write_is_reported_for_uninitialized_reads():
     )
 
 
+def test_dataflow_analyzer_reuses_shared_variable_type_graph(monkeypatch: Any) -> None:
+    bp = BasePicture(
+        header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+    )
+    shared_graph = object()
+    shared_artifacts = AnalysisSharedArtifacts(
+        variable_analysis=VariableAnalysisArtifacts(
+            type_graph=cast(Any, shared_graph),
+            typedef_index={},
+            dependency_library_display_names={},
+            root_env={},
+            any_var_index={},
+        )
+    )
+
+    def _unexpected_build(_base_picture: BasePicture) -> Any:
+        raise AssertionError("TypeGraph.from_basepicture should not run when shared artifacts are available")
+
+    monkeypatch.setattr("sattlint.analyzers.dataflow.TypeGraph.from_basepicture", _unexpected_build)
+
+    analyzer = DataflowAnalyzer(bp, shared_artifacts=shared_artifacts)
+
+    assert analyzer._type_graph is shared_graph
+
+
 def test_branch_merge_preserves_initialized_unknown_values():
     bp = _parse_to_basepicture(
         localvariables="""
@@ -190,6 +221,50 @@ def test_dead_overwrite_is_not_reported_after_intervening_read():
         issue.kind == "dataflow.dead_overwrite" and issue.data is not None and issue.data.get("symbol") == "Flag"
         for issue in report.issues
     )
+
+
+def test_putarray_marks_array_as_written_for_following_reads() -> None:
+    bp = BasePicture(
+        header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
+        localvariables=[
+            Variable(name="Arr", datatype="ArrayObject"),
+            Variable(name="Source", datatype=Simple_DataType.INTEGER, init_value=1),
+            Variable(name="Target", datatype=Simple_DataType.INTEGER),
+            Variable(name="Status", datatype=Simple_DataType.INTEGER),
+        ],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="Write",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        (const.KEY_FUNCTION_CALL, "PutArray", [_varref("Arr"), 1, _varref("Source"), _varref("Status")])
+                    ],
+                ),
+                Equation(
+                    name="Read",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        (const.KEY_FUNCTION_CALL, "GetArray", [_varref("Arr"), 1, _varref("Target"), _varref("Status")])
+                    ],
+                ),
+            ]
+        ),
+    )
+
+    report = analyze_dataflow(bp)
+
+    array_issues = [
+        issue
+        for issue in report.issues
+        if issue.kind == "dataflow.read_before_write" and issue.data is not None and issue.data.get("symbol") == "Arr"
+    ]
+
+    assert len(array_issues) == 1
+    assert array_issues[0].data is not None
+    assert array_issues[0].data.get("site") == "EQ:Write"
 
 
 def test_same_scan_old_read_is_reported_after_state_write():

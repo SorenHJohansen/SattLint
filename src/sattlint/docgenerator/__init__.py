@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Protocol, cast
 
-from ..analyzers.issue import Issue
+from ..analyzers.framework import Issue
 from .analyzer_ref import (
     build_analyzer_reference_entry,
     build_full_analyzer_reference,

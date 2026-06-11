@@ -1,7 +1,7 @@
 import json
 from types import SimpleNamespace
 
-from sattlint.analyzers.issue import Issue
+from sattlint.analyzers.framework import Issue
 from sattlint.devtools import metrics_dashboard
 from sattlint.devtools.structural_reports import WorkspaceGraphInputs
 

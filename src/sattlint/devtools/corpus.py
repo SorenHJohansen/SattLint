@@ -28,10 +28,11 @@ from sattlint.devtools._corpus_artifacts import (
     write_json,
 )
 from sattlint.path_sanitizer import sanitize_path_for_report
+from sattlint.repo_paths import repo_root_from
 
 _write_json = write_json
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = repo_root_from(Path(__file__))
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "analysis"
 DEFAULT_MANIFEST_DIR = REPO_ROOT / "tests" / "fixtures" / "corpus" / "manifests"
 DEFAULT_CASES_DIRNAME = "corpus_cases"
@@ -241,7 +242,7 @@ def execute_corpus_case(
             )
         else:
             raise ValueError(f"Unsupported corpus mode: {manifest.mode}")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         execution_error = str(exc)
         artifacts = build_execution_error_artifacts(
             case_id=manifest.case_id,
@@ -568,6 +569,28 @@ def _build_strict_finding_collection(
     return FindingCollection((finding,))
 
 
+def _corpus_analysis_context_config(
+    *,
+    target_path: Path,
+    workspace_root: Path,
+    program_dir: Path,
+    abb_lib_dir: Path,
+    other_lib_dirs: Iterable[Path],
+    debug: bool,
+) -> dict[str, object]:
+    mode = _infer_code_mode(target_path)
+    return {
+        "abb_lib_dir": str(abb_lib_dir),
+        "analyzed_targets": [target_path.stem],
+        "debug": debug,
+        "mode": getattr(mode, "value", str(mode)),
+        "other_lib_dirs": [str(path) for path in other_lib_dirs],
+        "program_dir": str(program_dir),
+        "use_cache": False,
+        "workspace_root": str(workspace_root),
+    }
+
+
 def _execute_workspace_case(
     manifest: CorpusCaseManifest,
     *,
@@ -575,6 +598,14 @@ def _execute_workspace_case(
     target_path: Path,
     repo_root: Path,
 ) -> CorpusExecutionArtifacts:
+    workspace_root = (
+        _resolve_optional_directory(
+            manifest.workspace_root,
+            manifest_path=manifest_path,
+            repo_root=repo_root,
+        )
+        or repo_root
+    )
     program_dir = (
         _resolve_optional_directory(
             manifest.program_dir,
@@ -618,6 +649,14 @@ def _execute_workspace_case(
         debug=False,
         unavailable_libraries=unavailable_libraries,
         analyzed_target_is_library=not engine_module.is_within_directory(target_path, program_dir),
+        config=_corpus_analysis_context_config(
+            target_path=target_path,
+            workspace_root=workspace_root,
+            program_dir=program_dir,
+            abb_lib_dir=abb_lib_dir,
+            other_lib_dirs=other_lib_dirs,
+            debug=False,
+        ),
     )
     findings = _build_semantic_finding_collection(
         semantic_report,

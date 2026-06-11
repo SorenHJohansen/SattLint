@@ -2,15 +2,23 @@
 
 from __future__ import annotations
 
+import ctypes
+import re
 import threading
 from contextlib import redirect_stderr, redirect_stdout, suppress
-from typing import Any
+from typing import Any, cast
+
+try:
+    from rich.rule import Rule as _RichRule  # type: ignore[import-untyped]
+    from rich.text import Text as _RichText  # type: ignore[import-untyped]
+except ImportError:  # pragma: no cover - optional dependency path
+    _RichRule = None
+    _RichText = None
 
 from ._app_textual_shared import (
     _ANALYZE_PLANNER_LIST_ID_PREFIX,
     _TEXTUAL_BUTTON,
     _TEXTUAL_HORIZONTAL,
-    _TEXTUAL_LOG,
     _TEXTUAL_QUERY_ERRORS,
     _TEXTUAL_SELECTION_LIST,
     _TEXTUAL_STATIC,
@@ -19,6 +27,155 @@ from ._app_textual_shared import (
     _TextualOutput,
 )
 from ._app_textual_widgets import _InteractionPane
+
+_TARGET_HEADER_RE = re.compile(r"^===\s*Target:\s*(?P<name>.+?)\s*===\s*$")
+_PHASE_HEADER_RE = re.compile(r"^\[(?P<index>\d+)/(?P<total>\d+)\]\s+(?P<label>.+)$")
+_NUMBERED_ITEM_RE = re.compile(r"^(?P<indent>\s*)(?P<number>\d+)\.\s+(?P<label>.+)$")
+
+_OUTPUT_ACCENT = "#001ba3"
+_OUTPUT_MUTED = "#24505f"
+_OUTPUT_RULE = "#0077b3"
+_OUTPUT_WARNING = "#8a5a00"
+_OUTPUT_SUCCESS = "#236d36"
+_OUTPUT_DANGER = "#8a3b12"
+
+
+def _styled_output_text(*segments: tuple[str, str]) -> object:
+    if _RichText is None:
+        return "".join(text for text, _style in segments)
+    text = _RichText()
+    for segment, style in segments:
+        text.append(segment, style=style)
+    return text
+
+
+def _label_value_renderable(label: str, value: str, *, value_style: str = _OUTPUT_ACCENT) -> object:
+    return _styled_output_text((f"{label}: ", f"bold {_OUTPUT_MUTED}"), (value, value_style))
+
+
+def _render_output_line(line_text: str) -> object:
+    stripped = line_text.strip()
+    if not stripped:
+        return ""
+
+    target_match = _TARGET_HEADER_RE.match(stripped)
+    if target_match is not None:
+        target_name = target_match.group("name")
+        if _RichRule is None:
+            return f"Target: {target_name}"
+        return _RichRule(
+            cast(
+                Any, _styled_output_text(("Library ", f"bold {_OUTPUT_MUTED}"), (target_name, f"bold {_OUTPUT_ACCENT}"))
+            ),
+            style=_OUTPUT_RULE,
+        )
+
+    phase_match = _PHASE_HEADER_RE.match(stripped)
+    if phase_match is not None:
+        if _RichRule is None:
+            return stripped
+        return _RichRule(
+            cast(
+                Any,
+                _styled_output_text(
+                    (
+                        f"[{phase_match.group('index')}/{phase_match.group('total')}] ",
+                        f"bold {_OUTPUT_MUTED}",
+                    ),
+                    (phase_match.group("label"), f"bold {_OUTPUT_ACCENT}"),
+                ),
+            ),
+            style=_OUTPUT_MUTED,
+        )
+
+    if stripped in {"Analyze planner queue", "Execution order"}:
+        return _styled_output_text((stripped, f"bold {_OUTPUT_ACCENT}"))
+
+    if stripped.startswith("Validation warnings"):
+        return _styled_output_text((stripped, f"bold {_OUTPUT_WARNING}"))
+
+    if stripped.startswith("Report:"):
+        return _styled_output_text((stripped, f"bold {_OUTPUT_MUTED}"))
+
+    if stripped.startswith("Status:"):
+        status_value = stripped.partition(":")[2].strip()
+        status_style = _OUTPUT_SUCCESS if status_value.casefold() == "ok" else _OUTPUT_DANGER
+        return _label_value_renderable("Status", status_value, value_style=f"bold {status_style}")
+
+    if stripped.startswith("Issues:"):
+        count_text = stripped.partition(":")[2].strip()
+        count_style = _OUTPUT_SUCCESS if count_text == "0" else _OUTPUT_DANGER
+        return _label_value_renderable("Issues", count_text, value_style=f"bold {count_style}")
+
+    for label in ("Target", "Version", "Last changed", "Selected issue kinds", "Selected entries", "Planned steps"):
+        prefix = f"{label}:"
+        if stripped.startswith(prefix):
+            return _label_value_renderable(label, stripped.partition(":")[2].strip())
+
+    if stripped in {"Moduletype:", "SingleModule:"}:
+        return _styled_output_text((line_text, f"bold {_OUTPUT_MUTED}"))
+
+    numbered_match = _NUMBERED_ITEM_RE.match(line_text)
+    if numbered_match is not None:
+        return _styled_output_text(
+            (numbered_match.group("indent"), _OUTPUT_ACCENT),
+            (f"{numbered_match.group('number')}. ", f"bold {_OUTPUT_MUTED}"),
+            (numbered_match.group("label"), _OUTPUT_ACCENT),
+        )
+
+    if stripped.startswith("No ") and stripped.endswith(" found."):
+        return _styled_output_text((line_text, f"bold {_OUTPUT_SUCCESS}"))
+
+    stripped_with_indent = line_text.lstrip()
+    indent = line_text[: len(line_text) - len(stripped_with_indent)]
+    if stripped_with_indent.startswith("- "):
+        warning_style = _OUTPUT_WARNING if stripped_with_indent.startswith("- [") else _OUTPUT_MUTED
+        body_style = _OUTPUT_WARNING if warning_style == _OUTPUT_WARNING else _OUTPUT_ACCENT
+        return _styled_output_text(
+            (indent, _OUTPUT_ACCENT),
+            ("- ", f"bold {warning_style}"),
+            (stripped_with_indent[2:], body_style),
+        )
+
+    if stripped_with_indent.startswith("* "):
+        return _styled_output_text(
+            (indent, _OUTPUT_ACCENT),
+            ("* ", f"bold {_OUTPUT_RULE}"),
+            (stripped_with_indent[2:], _OUTPUT_ACCENT),
+        )
+
+    if line_text.startswith("    "):
+        return _styled_output_text((line_text, _OUTPUT_MUTED))
+
+    return _styled_output_text((line_text, _OUTPUT_ACCENT))
+
+
+def _output_line_needs_gap(line_text: str) -> bool:
+    stripped = line_text.strip()
+    return bool(_TARGET_HEADER_RE.match(stripped) or _PHASE_HEADER_RE.match(stripped))
+
+
+def _interrupt_worker_thread(thread: Any, exception_type: type[BaseException]) -> bool:
+    thread_id = getattr(thread, "ident", None)
+    if not isinstance(thread_id, int):
+        return False
+
+    is_alive_fn = getattr(thread, "is_alive", None)
+    if callable(is_alive_fn) and not bool(is_alive_fn()):
+        return False
+
+    try:
+        set_async_exc = ctypes.pythonapi.PyThreadState_SetAsyncExc
+        result = int(set_async_exc(ctypes.c_ulong(thread_id), ctypes.py_object(exception_type)))
+    except Exception:  # noqa: BLE001
+        return False
+
+    if result == 1:
+        return True
+    if result > 1:
+        with suppress(Exception):
+            set_async_exc(ctypes.c_ulong(thread_id), 0)
+    return False
 
 
 def present_request(self: Any, request: InteractionRequest, on_response_fn: Any | None = None) -> None:
@@ -66,7 +223,10 @@ def _refresh_summary(self: Any) -> None:
     active_job_text = self._active_job_text()
     running_suffix = f"\n\nRunning: {active_job_text}" if active_job_text is not None else ""
     dirty_suffix = "\n\nUnsaved configuration changes pending." if self._dirty else ""
-    summary_widget = self.query_one("#summary", _TEXTUAL_STATIC)
+    try:
+        summary_widget = self.query_one("#summary", _TEXTUAL_STATIC)
+    except Exception:  # noqa: BLE001
+        return
     summary_widget.update(f"{summary}{running_suffix}{dirty_suffix}")
     summary_widget.set_class(self._dirty, "attention")
 
@@ -74,15 +234,15 @@ def _refresh_summary(self: Any) -> None:
 def _set_active_action(self: Any, action_id: str | None) -> None:
     self._active_job_action_id = action_id
     try:
-        summary_widget = self.query_one("#summary", _TEXTUAL_STATIC)
-        output_widget = self.query_one("#output", _TEXTUAL_LOG)
-    except Exception:
+        output_widget = self.query_one("#output")
+    except Exception:  # noqa: BLE001
         return
 
     active_view = self._view_state(self._active_view)
     highlighted_action_id = self._active_job_action_id or active_view.action_id
     config_mode = active_view.action_id == "action-setup"
-    summary_widget.set_class(config_mode, "config-mode")
+    with suppress(Exception):
+        self.query_one("#summary", _TEXTUAL_STATIC).set_class(config_mode, "config-mode")
     output_widget.set_class(config_mode, "config-mode")
     for button_id in self._ACTION_IDS:
         button = self.query_one(f"#{button_id}", _TEXTUAL_BUTTON)
@@ -91,10 +251,32 @@ def _set_active_action(self: Any, action_id: str | None) -> None:
 
 
 def _write_output(self: Any, text: str) -> None:
-    log_widget = self.query_one("#output", _TEXTUAL_LOG)
-    for line in text.splitlines() or [text]:
-        if line:
-            log_widget.write_line(line)
+    output_widget = self.query_one("#output")
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    if not normalized:
+        return
+
+    rich_output = hasattr(output_widget, "write") and hasattr(output_widget, "scroll_end")
+    follow_output = bool(getattr(output_widget, "is_vertical_scroll_end", True)) if rich_output else True
+    for chunk in normalized.splitlines(keepends=True):
+        line_text = chunk[:-1] if chunk.endswith("\n") else chunk
+        rendered = f"{line_text}\n"
+        if rich_output:
+            if hasattr(output_widget, "append_plain_text"):
+                output_widget.append_plain_text(rendered)
+            if _output_line_needs_gap(line_text) and getattr(self, "_last_output_line", None) not in (None, ""):
+                output_widget.write("", scroll_end=False)
+            output_widget.write(_render_output_line(line_text), scroll_end=False)
+        else:
+            if _output_line_needs_gap(line_text) and getattr(self, "_last_output_line", None) not in (None, ""):
+                output_widget.insert("\n", output_widget.document.end, maintain_selection_offset=False)
+            output_widget.insert(rendered, output_widget.document.end, maintain_selection_offset=False)
+        self._last_output_line = line_text
+    if rich_output:
+        if follow_output:
+            output_widget.scroll_end(animate=False)
+    else:
+        output_widget.scroll_cursor_visible(animate=False)
 
 
 def _emit_output_from_thread(self: Any, text: str) -> None:
@@ -104,6 +286,9 @@ def _emit_output_from_thread(self: Any, text: str) -> None:
 def _finish_action(self: Any, dirty: bool = False, *, clear_dirty_on_success: bool = False) -> None:
     self._busy = False
     self._active_job_label = None
+    self._active_job_cancel_event = None
+    self._active_job_cancel_requested = False
+    self._active_job_thread = None
     if clear_dirty_on_success:
         self._dirty = False
     else:
@@ -121,6 +306,12 @@ def _interaction_screen_active(self: Any) -> bool:
 def _handle_toolbar_action(self: Any, button_id: str) -> None:
     if self._interaction_screen_active():
         return
+    if self._busy:
+        if button_id == "action-quit":
+            self._write_output("An action is still running. Wait for it to finish before quitting.")
+        else:
+            self._write_output("Another action is still running. Wait for it to finish first.")
+        return
     view_name = self._VIEW_ACTIONS.get(button_id)
     if view_name is not None:
         self._activate_view(view_name)
@@ -134,9 +325,6 @@ def _handle_toolbar_action(self: Any, button_id: str) -> None:
     elif button_id == "action-help":
         self._open_help_popup()
     elif button_id == "action-quit":
-        if self._busy:
-            self._write_output("An action is still running. Wait for it to finish before quitting.")
-            return
         self._set_active_action(button_id)
         self.exit()
 
@@ -159,6 +347,53 @@ def action_show_tools(self: Any) -> None:
 
 def action_show_help(self: Any) -> None:
     self._handle_toolbar_action("action-help")
+
+
+def action_copy_output(self: Any) -> None:
+    try:
+        output_widget = self.query_one("#output")
+    except Exception:  # noqa: BLE001
+        return
+
+    selected_text = str(getattr(output_widget, "selected_text", "") or "")
+    text_to_copy = selected_text or str(getattr(output_widget, "text", "") or "")
+    if not text_to_copy:
+        self._write_output("Nothing is available in Session output yet.")
+        return
+
+    self.copy_to_clipboard(text_to_copy)
+    if selected_text:
+        self._write_output(f"Copied {len(selected_text)} character(s) from Session output.")
+    else:
+        self._write_output("Copied all Session output because no text was selected.")
+
+
+def action_cancel_running_analysis(self: Any) -> None:
+    if not self._busy or self._active_job_action_id != "action-analyze":
+        self._write_output("No selected analysis run is active.")
+        return
+
+    worker_thread = getattr(self, "_active_job_thread", None)
+    cancel_event = getattr(self, "_active_job_cancel_event", None)
+    if cancel_event is None or worker_thread is None:
+        self._write_output("The running analysis queue does not currently support cancellation.")
+        return
+    if self._active_job_cancel_requested:
+        self._write_output("Cancellation is already pending for the running analysis queue.")
+        return
+
+    self._active_job_cancel_requested = True
+    cancel_event.set()
+    interrupted = _interrupt_worker_thread(worker_thread, KeyboardInterrupt)
+    self._refresh_view()
+    self._refresh_shell_state()
+    if interrupted:
+        self._write_output("Cancellation requested. Interrupting the running analysis immediately.")
+        return
+
+    self._write_output(
+        "Immediate interruption was unavailable. The running analysis will stop after the current safe checkpoint."
+    )
 
 
 def action_quit_shell(self: Any) -> None:
@@ -188,6 +423,8 @@ def _start_action(
 
     self._busy = True
     self._active_job_label = label
+    self._active_job_cancel_event = threading.Event()
+    self._active_job_cancel_requested = False
     self._set_active_action(action_id)
     self._refresh_summary()
     self._refresh_shell_state()
@@ -206,17 +443,26 @@ def _start_action(
         except self._quit_app_error:
             self.call_from_thread(self.exit)
             return
-        except Exception as exc:  # pragma: no cover - runtime-only fallback
+        except KeyboardInterrupt:
+            if action_id == "action-analyze" and self._active_job_cancel_requested:
+                self._emit_output_from_thread("Selected analyses canceled.")
+            else:
+                self._emit_output_from_thread(f"{label} interrupted.")
+        except Exception as exc:  # pragma: no cover - runtime-only fallback  # noqa: BLE001
             self._emit_output_from_thread(f"{label} failed: {exc}")
         finally:
             self.call_from_thread(lambda: self._finish_action(dirty, clear_dirty_on_success=clear_dirty))
 
-    threading.Thread(target=_run, daemon=True).start()
+    worker_thread = threading.Thread(target=_run, daemon=True)
+    self._active_job_thread = worker_thread
+    worker_thread.start()
 
 
-def _refresh_view(self: Any) -> None:
+def _refresh_view(self: Any) -> None:  # noqa: PLR0915
     try:
+        workspace_host = self.query_one("#workspace-host", _TEXTUAL_VERTICAL)
         view_host = self.query_one("#view-host", _TEXTUAL_VERTICAL)
+        output_pane = self.query_one("#output-pane", _TEXTUAL_VERTICAL)
         title_widget = self.query_one("#view-title", _TEXTUAL_STATIC)
         description_widget = self.query_one("#view-description", _TEXTUAL_STATIC)
         note_widget = self.query_one("#view-note", _TEXTUAL_STATIC)
@@ -228,7 +474,7 @@ def _refresh_view(self: Any) -> None:
         documentation_actions = self.query_one("#documentation-actions", _TEXTUAL_HORIZONTAL)
         setup_browser = self.query_one("#setup-browser", _TEXTUAL_HORIZONTAL)
         tools_actions = self.query_one("#tools-actions", _TEXTUAL_HORIZONTAL)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return
 
     view = self._view_state(self._active_view)
@@ -236,6 +482,7 @@ def _refresh_view(self: Any) -> None:
     documentation_view = self._active_view == "documentation"
     setup_view = self._active_view == "setup"
     tools_view = self._active_view == "tools"
+    docs_tools_split_view = documentation_view or tools_view
 
     title_widget.update(view.title)
     description_widget.update(view.description)
@@ -248,7 +495,12 @@ def _refresh_view(self: Any) -> None:
     else:
         note_widget.update(view.note)
     launch_button.label = view.launch_label
+    workspace_host.set_class(analyze_view, "analyze-split")
+    workspace_host.set_class(docs_tools_split_view, "docs-tools-split")
+    workspace_host.set_class(setup_view, "no-output")
     view_host.set_class(view.action_id == "action-setup", "config-mode")
+    output_pane.set_class(setup_view, "is-hidden")
+    description_widget.set_class(False, "is-hidden")
     note_widget.set_class(False, "is-hidden")
     view_actions.set_class(self._active_view not in ("help",), "is-hidden")
     analyze_actions_primary.set_class(not analyze_view, "is-hidden")
@@ -285,13 +537,13 @@ def _launch_active_view(self: Any) -> None:
     if view.action_id == "action-help":
         self._open_help_popup()
         return
-    self._start_action("Analyze", lambda: self._analysis_menu_fn(self._cfg), action_id=view.action_id)
+    self._write_output(f"{view.title} is not available as a standalone action in the Textual shell.")
 
 
-def _refresh_shell_state(self: Any) -> None:
+def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
     try:
         output_title_widget = self.query_one("#output-title", _TEXTUAL_STATIC)
-        output_widget = self.query_one("#output", _TEXTUAL_LOG)
+        output_widget = self.query_one("#output")
         interaction_host = self.query_one("#interaction-host", _TEXTUAL_VERTICAL)
         launch_button = self.query_one("#view-primary-action", _TEXTUAL_BUTTON)
         analyze_run_selected_button = self.query_one("#analyze-run-selected", _TEXTUAL_BUTTON)
@@ -305,9 +557,13 @@ def _refresh_shell_state(self: Any) -> None:
         tools_dumps_button = self.query_one("#tools-dumps", _TEXTUAL_BUTTON)
         tools_source_diff_button = self.query_one("#tools-source-diff", _TEXTUAL_BUTTON)
         tools_refresh_ast_button = self.query_one("#tools-refresh-ast", _TEXTUAL_BUTTON)
-    except Exception:
+        tools_datatype_usage_button = self.query_one("#tools-datatype-usage", _TEXTUAL_BUTTON)
+        tools_variable_trace_button = self.query_one("#tools-variable-trace", _TEXTUAL_BUTTON)
+        tools_module_locals_button = self.query_one("#tools-module-locals", _TEXTUAL_BUTTON)
+    except Exception:  # noqa: BLE001
         return
 
+    self._sync_output_title_spinner()
     output_title_widget.update(self._output_title_text())
     interaction_active = self._active_request is not None
     output_widget.set_class(interaction_active, "interaction-active")
@@ -369,12 +625,15 @@ def _refresh_shell_state(self: Any) -> None:
     tools_dumps_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
     tools_source_diff_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
     tools_refresh_ast_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
+    tools_datatype_usage_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
+    tools_variable_trace_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
+    tools_module_locals_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
     for button_id in self._ACTION_IDS:
         with suppress(*_TEXTUAL_QUERY_ERRORS):
             self.query_one(f"#{button_id}", _TEXTUAL_BUTTON).disabled = toolbar_disabled
 
 
-def on_button_pressed(self: Any, event: Any) -> None:
+def on_button_pressed(self: Any, event: Any) -> None:  # noqa: PLR0915
     button_id = event.button.id or ""
     if button_id == "setup-target-remove":
         self._remove_selected_setup_target(self._selected_configured_target)
@@ -445,6 +704,15 @@ def on_button_pressed(self: Any, event: Any) -> None:
     if button_id == "tools-refresh-ast":
         self._run_tool_refresh_ast()
         return
+    if button_id == "tools-datatype-usage":
+        self._run_tool_datatype_usage()
+        return
+    if button_id == "tools-variable-trace":
+        self._run_tool_variable_trace()
+        return
+    if button_id == "tools-module-locals":
+        self._run_tool_module_locals()
+        return
     self._handle_toolbar_action(button_id)
 
 
@@ -464,6 +732,8 @@ ACTIONS_METHODS = (
     action_show_setup,
     action_show_tools,
     action_show_help,
+    action_copy_output,
+    action_cancel_running_analysis,
     action_quit_shell,
     action_focus_next_control,
     action_focus_previous_control,

@@ -54,7 +54,7 @@ A file can be syntactically valid but semantically broken:
 ## CLI And Testing
 
 - The installed `sattlint` console script must call `app.cli()` so `sys.argv[1:]` reaches `app.main(argv)`.
-- Calling `app.main()` with no argv still opens the interactive menu.
+- Calling `app.main()` with no argv still opens the Textual interactive shell.
 - If you change CLI menu layout or numbering, keep `tests/test_app.py` in sync.
 - Do not rely on the IDE test runner as the first validation path here; use repo-venv pytest commands directly, and treat IDE zero-test collection as expected noise rather than a project signal.
 - Prefer targeted test modules first, for example `tests/test_app.py` for CLI and menu work, `tests/parser/test_parser.py` for parser or validation work, and `tests/test_pipeline_run.py` or `tests/test_repo_audit_part1.py` for devtools artifact changes.

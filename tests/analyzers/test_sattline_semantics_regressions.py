@@ -68,7 +68,7 @@ def test_sattline_semantics_includes_scan_cycle_stale_read_rule():
 
 
 def test_sattline_semantics_rule_ids_are_stable():
-    from sattlint.analyzers.sattline_semantics import get_sattline_semantic_rules
+    from sattlint.analyzers.sattline_semantics import get_sattline_semantic_rules  # noqa: PLC0415
 
     {rule.id for rule in get_sattline_semantic_rules()}
 
@@ -168,7 +168,7 @@ def test_analyze_sattline_semantics_handles_overrides_direct_context_and_skipped
 
 
 def test_analyzer_order_independence():
-    from sattlint.analyzers.registry import get_default_analyzer_catalog
+    from sattlint.analyzers.registry import get_default_analyzer_catalog  # noqa: PLC0415
 
     catalog = get_default_analyzer_catalog()
     enabled = [a for a in catalog.analyzers if a.spec.enabled]
@@ -178,8 +178,8 @@ def test_analyzer_order_independence():
 
 
 def test_transform_invariant_deterministic():
-    from sattline_parser import parse_source_file as parser_core_parse_source_file
-    from sattlint.tracing import detect_transform_invariant_violations as check
+    from sattline_parser import parse_source_file as parser_core_parse_source_file  # noqa: PLC0415
+    from sattlint.tracing import detect_transform_invariant_violations as check  # noqa: PLC0415
 
     fixture = Path(__file__).resolve().parent.parent / "fixtures" / "sample_sattline_files" / "LinterTestProgram.s"
     if not fixture.exists():

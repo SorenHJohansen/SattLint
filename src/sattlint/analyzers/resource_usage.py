@@ -4,9 +4,9 @@ from dataclasses import dataclass
 
 from sattline_parser.models.ast_model import BasePicture
 
-from ._dependency_usage_facts import CallFact, FactRef, StatementFact, collect_statement_facts
 from .framework import Issue, SimpleReport
 from .scan_loop_resource_usage import analyze_scan_loop_resource_usage
+from .shared._dependency_usage_facts import CallFact, FactRef, StatementFact, collect_statement_facts
 
 
 @dataclass(frozen=True)

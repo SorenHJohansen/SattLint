@@ -11,7 +11,7 @@ from ._sattline_semantic_rules import (
     VARIABLE_RULES,
     attach_rule_contract,
 )
-from .issue import Issue
+from .framework import Issue
 
 
 def map_variable_issues(issues: list[VariableIssue]) -> list[SemanticIssue]:

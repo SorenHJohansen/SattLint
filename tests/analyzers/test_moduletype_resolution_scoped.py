@@ -94,7 +94,7 @@ def test_resolves_same_library_prefers_draft_source_file():
 
 
 def test_resolution_helper_source_preference_and_label_edges():
-    from sattlint.resolution.common import (
+    from sattlint.resolution.common import (  # noqa: PLC0415
         dedupe_moduletype_defs,
         format_moduletype_label,
         narrow_matches_by_source_preference,

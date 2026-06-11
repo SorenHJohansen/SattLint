@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 import logging
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sized
 from pathlib import Path
 from time import perf_counter
 from typing import Any, cast
@@ -11,6 +11,7 @@ from typing import Any, cast
 from sattline_parser.models.ast_model import BasePicture
 
 from . import app_telemetry as telemetry_module
+from . import cache as cache_module
 from ._app_debug import debug_enabled, log_debug_exception
 from .casefolding import casefold_equal, casefold_key
 from .models.project_graph import ProjectGraph
@@ -22,10 +23,9 @@ log = logging.getLogger("SattLint")
 
 
 def _safe_count(value: object) -> int:
-    try:
-        return len(cast(Any, value))
-    except TypeError:
-        return 0
+    if isinstance(value, Sized):
+        return len(value)
+    return 0
 
 
 def _format_named_timings(label: str, timings: Mapping[str, float]) -> str:
@@ -247,7 +247,7 @@ def iter_loaded_projects(
                 use_cache=use_cache,
                 collect_stage_timings=_collect_analysis_timings(cfg),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             log_debug_exception(cfg, f"Failed to load analysis target {target_name!r}", logger=log)
             emit_output_fn(f"\n=== Target: {target_name} ===")
             emit_output_fn("? Failed to load target:")
@@ -333,7 +333,7 @@ def cache_manifest_files(
     return manifest_files
 
 
-def load_project(
+def load_project(  # noqa: PLR0915
     cfg: ConfigDict,
     target_name: str | None = None,
     *,
@@ -352,7 +352,7 @@ def load_project(
     targets = require_analyzed_targets_fn(cfg)
     selected_target = target_name or targets[0]
     cache_dir = get_cache_dir_fn()
-    cache = ast_cache_cls(cache_dir)
+    cache = cache_module.build_ast_cache(cache_dir, ast_cache_cls)
 
     def build_project_view(root_bp: BasePicture, graph: ProjectGraph) -> BasePicture:
         if refresh_mode == "ast-only":
@@ -571,7 +571,7 @@ def force_refresh_ast(
     if not targets:
         return None
 
-    cache = ast_cache_cls(get_cache_dir_fn())
+    cache = cache_module.build_ast_cache(get_cache_dir_fn(), ast_cache_cls)
     telemetry = telemetry_module.create_app_telemetry(cfg)
     result = None
     total_targets = len(targets)
@@ -674,7 +674,7 @@ def ensure_ast_cache(
     if not targets:
         return True
 
-    cache = ast_cache_cls(get_cache_dir_fn())
+    cache = cache_module.build_ast_cache(get_cache_dir_fn(), ast_cache_cls)
     fast = cfg.get("fast_cache_validation", False)
     ok = True
     total_targets = len(targets)
@@ -700,7 +700,7 @@ def ensure_ast_cache(
         try:
             load_project_fn(cfg, target_name=target_name, use_cache=False)
             emit_output_fn("✔ AST cache updated")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             log_debug_exception(cfg, f"Failed to rebuild AST cache for {target_name!r}", logger=log)
             emit_output_fn(f"❌ Failed to build AST cache for {target_name}: {exc}")
             ok = False

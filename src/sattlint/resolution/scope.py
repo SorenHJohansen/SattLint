@@ -13,6 +13,15 @@ def _empty_moduleparameter_keys() -> frozenset[str]:
     return frozenset()
 
 
+def _module_path_prefix_matches(reference_segments: list[str], module_path: list[str]) -> bool:
+    if len(reference_segments) <= len(module_path):
+        return False
+    return all(
+        reference.casefold() == segment.casefold()
+        for reference, segment in zip(reference_segments, module_path, strict=False)
+    )
+
+
 @dataclass
 class ScopeContext:
     """Tracks variable environment with field-aware parameter mappings."""
@@ -69,6 +78,21 @@ class ScopeContext:
             result = var, field_path, self.module_path, self.display_module_path
             self._resolve_cache[cache_key] = result
             return result
+
+        # Allow absolute module-path references such as BasePicture.Parent.Child.Param
+        # to resolve against the nearest matching ancestor scope.
+        reference_segments = [segment for segment in var_ref.split(".") if segment]
+        if len(reference_segments) > 1:
+            ancestor: ScopeContext | None = self
+            while ancestor is not None:
+                if _module_path_prefix_matches(reference_segments, ancestor.module_path):
+                    scoped_ref = ".".join(reference_segments[len(ancestor.module_path) :])
+                    if scoped_ref.casefold() != cache_key:
+                        result = ancestor.resolve_variable(scoped_ref)
+                        if result[0] is not None:
+                            self._resolve_cache[cache_key] = result
+                            return result
+                ancestor = ancestor.parent_context
 
         # Walk up to the parent scope if still unresolved.
         if self.parent_context:

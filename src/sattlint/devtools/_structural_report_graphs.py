@@ -11,7 +11,7 @@ def _structural_entry_files(
     workspace_root: Path,
     program_files: tuple[Path, ...],
 ) -> tuple[Path, ...]:
-    from sattlint.devtools import structural_reports as structural_reports_module
+    from sattlint.devtools import structural_reports as structural_reports_module  # noqa: PLC0415
 
     scoped_files = tuple(
         path
@@ -48,7 +48,7 @@ def _structural_report_discovery(workspace_root: Path, discovery: Any) -> Any:
 
 
 def collect_workspace_graph_inputs(workspace_root: Path) -> Any:
-    from sattlint.devtools import structural_reports as structural_reports_module
+    from sattlint.devtools import structural_reports as structural_reports_module  # noqa: PLC0415
 
     full_discovery = structural_reports_module.discover_workspace_sources(workspace_root)
     discovery = structural_reports_module.structural_report_discovery(workspace_root, full_discovery)
@@ -64,7 +64,7 @@ def collect_workspace_graph_inputs(workspace_root: Path) -> Any:
                 collect_variable_diagnostics=False,
                 _analysis_provider=structural_reports_module.build_variable_semantic_artifacts,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             failures.append(
                 {
                     "entry_file": structural_reports_module.sanitize_path_for_report(
@@ -92,7 +92,7 @@ def _accumulate_dependency_graph_snapshot(
     node_index: dict[str, dict[str, Any]],
     edge_index: dict[tuple[str, str], dict[str, Any]],
 ) -> None:
-    from sattlint.devtools import structural_reports as structural_reports_module
+    from sattlint.devtools import structural_reports as structural_reports_module  # noqa: PLC0415
 
     entry_file = structural_reports_module.sanitize_path_for_report(snapshot.entry_file, repo_root=workspace_root)
     for source, targets in sorted(snapshot.project_graph.library_dependencies.items()):
@@ -134,7 +134,7 @@ def _accumulate_call_graph_snapshot(
     node_index: dict[str, dict[str, Any]],
     edge_index: dict[tuple[str, str], dict[str, Any]],
 ) -> None:
-    from sattlint.devtools import structural_reports as structural_reports_module
+    from sattlint.devtools import structural_reports as structural_reports_module  # noqa: PLC0415
 
     entry_file = structural_reports_module.sanitize_path_for_report(snapshot.entry_file, repo_root=workspace_root)
     root_module = getattr(snapshot.base_picture, "name", snapshot.entry_file.stem)
@@ -179,7 +179,7 @@ def _build_dependency_graph_report(
     snapshot_count: int,
     snapshot_failures: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    from sattlint.devtools import structural_reports as structural_reports_module
+    from sattlint.devtools import structural_reports as structural_reports_module  # noqa: PLC0415
 
     edges = [
         {
@@ -225,7 +225,7 @@ def _build_call_graph_report(
     snapshot_count: int,
     snapshot_failures: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    from sattlint.devtools import structural_reports as structural_reports_module
+    from sattlint.devtools import structural_reports as structural_reports_module  # noqa: PLC0415
 
     edges = [
         {
@@ -272,7 +272,7 @@ def _stream_workspace_graph_reports(
     *,
     progress_callback: Callable[[str], None] | None = None,
 ) -> tuple[Any, dict[str, Any], dict[str, Any], dict[str, Any]]:
-    from sattlint.devtools import structural_reports as structural_reports_module
+    from sattlint.devtools import structural_reports as structural_reports_module  # noqa: PLC0415
 
     full_discovery = structural_reports_module.discover_workspace_sources(workspace_root)
     discovery = structural_reports_module.structural_report_discovery(workspace_root, full_discovery)
@@ -300,7 +300,7 @@ def _stream_workspace_graph_reports(
                 collect_variable_diagnostics=False,
                 _analysis_provider=structural_reports_module.build_variable_semantic_artifacts,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             snapshot_failures.append(
                 {
                     "entry_file": sanitized_entry,
@@ -367,7 +367,7 @@ def collect_dependency_graph_report(
     *,
     graph_inputs: Any = None,
 ) -> dict[str, Any]:
-    from sattlint.devtools import structural_reports as structural_reports_module
+    from sattlint.devtools import structural_reports as structural_reports_module  # noqa: PLC0415
 
     resolved_inputs = structural_reports_module.normalize_graph_inputs(graph_inputs, workspace_root=workspace_root)
 
@@ -397,7 +397,7 @@ def collect_call_graph_report(
     *,
     graph_inputs: Any = None,
 ) -> dict[str, Any]:
-    from sattlint.devtools import structural_reports as structural_reports_module
+    from sattlint.devtools import structural_reports as structural_reports_module  # noqa: PLC0415
 
     resolved_inputs = structural_reports_module.normalize_graph_inputs(graph_inputs, workspace_root=workspace_root)
 

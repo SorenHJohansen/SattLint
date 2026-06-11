@@ -185,7 +185,7 @@ def test_configgen_main_module_exits_with_main_return_code(monkeypatch, tmp_path
 
 
 def test_configgen_style_manager_applies_header_styling():
-    from openpyxl import Workbook
+    from openpyxl import Workbook  # noqa: PLC0415
 
     wb = Workbook()
     ws = _active_worksheet(wb)
@@ -201,7 +201,7 @@ def test_configgen_style_manager_applies_header_styling():
 
 
 def test_configgen_worksheet_helper_setup_headers():
-    from openpyxl import Workbook
+    from openpyxl import Workbook  # noqa: PLC0415
 
     wb = Workbook()
     ws = _active_worksheet(wb)
@@ -217,7 +217,7 @@ def test_configgen_worksheet_helper_setup_headers():
 
 
 def test_configgen_worksheet_helper_create_table():
-    from openpyxl import Workbook
+    from openpyxl import Workbook  # noqa: PLC0415
 
     wb = Workbook()
     ws = _active_worksheet(wb)
@@ -229,7 +229,7 @@ def test_configgen_worksheet_helper_create_table():
 
 
 def test_configgen_worksheet_helper_auto_fit_columns():
-    from openpyxl import Workbook
+    from openpyxl import Workbook  # noqa: PLC0415
 
     wb = Workbook()
     ws = _active_worksheet(wb)

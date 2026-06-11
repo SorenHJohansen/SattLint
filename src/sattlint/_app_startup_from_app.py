@@ -25,6 +25,7 @@ def run_cli_from_app(argv: list[str], *, app_module: Any) -> int:
         run_analyze_command_fn=app_module.run_analyze_command,
         run_simulate_command_fn=app_module.run_simulate_command,
         run_docgen_command_fn=app_module.run_docgen_command,
+        run_cache_prune_command_fn=app_module.run_cache_prune_command,
         run_telemetry_summary_command_fn=app_module.run_telemetry_summary_command,
         run_format_icf_command_fn=app_module.run_format_icf_command,
         exit_success=app_module.EXIT_SUCCESS,
@@ -122,6 +123,17 @@ def run_docgen_command_from_app(
         run_docgen_command_fn=app_module.app_cli_commands.run_docgen_command,
         iter_loaded_projects_fn=app_module._iter_loaded_projects,
         documentation_unit_selection_fn=app_module._get_documentation_unit_selection,
+        exit_success=app_module.EXIT_SUCCESS,
+        exit_usage_error=app_module.EXIT_USAGE_ERROR,
+    )
+
+
+def run_cache_prune_command_from_app(*, cache_dir: str | None, app_module: Any) -> int:
+    return startup_core.run_cache_prune_command(
+        cache_dir=cache_dir,
+        run_cache_prune_command_fn=app_module.app_cli_commands.run_cache_prune_command,
+        prune_cache_dir_fn=app_module.cache.prune_cache_dir,
+        get_cache_dir_fn=app_module.get_cache_dir,
         exit_success=app_module.EXIT_SUCCESS,
         exit_usage_error=app_module.EXIT_USAGE_ERROR,
     )
@@ -391,6 +403,7 @@ def dump_menu_from_app(cfg: ConfigDict, *, app_module: Any) -> None:
         quit_app_fn=app_module.quit_app,
         confirm_fn=app_module.confirm,
         iter_loaded_projects_fn=app_module._iter_loaded_projects,
+        target_is_library_fn=app_module._target_is_library,
         analyze_variables_fn=app_module.analyze_variables,
     )
 
@@ -427,8 +440,9 @@ def tools_menu_from_app(cfg: ConfigDict, *, app_module: Any) -> None:
         pause_fn=app_module.pause,
         require_targets_for_menu_action_fn=app_module._require_targets_for_menu_action,
         dump_menu_fn=app_module.dump_menu,
+        run_source_diff_report_fn=app_module.run_source_diff_report,
         confirm_fn=app_module.confirm,
-        force_refresh_ast_fn=app_module.force_refresh_ast,
+        force_refresh_ast_fn=app_module.refresh_analysis_caches,
     )
 
 

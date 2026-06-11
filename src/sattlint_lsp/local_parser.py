@@ -552,7 +552,7 @@ class IncrementalDocumentParserAdapter:
             message = str(exc.orig_exc)
             _append_unique_diagnostic(diagnostics, seen, _diagnostic_from_message(message, line, column))
             return DocumentParseResult(syntax_diagnostics=tuple(diagnostics), local_snapshot=None)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             line, column = _extract_error_position(exc)
             _append_unique_diagnostic(diagnostics, seen, _diagnostic_from_message(str(exc), line, column))
             return DocumentParseResult(syntax_diagnostics=tuple(diagnostics), local_snapshot=None)
@@ -583,7 +583,7 @@ class IncrementalDocumentParserAdapter:
             message = str(exc.orig_exc)
             _append_unique_diagnostic(diagnostics, seen, _diagnostic_from_message(message, line, column))
             return DocumentParseResult(syntax_diagnostics=tuple(diagnostics), local_snapshot=None)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             line, column = _extract_error_position(exc)
             _append_unique_diagnostic(diagnostics, seen, _diagnostic_from_message(str(exc), line, column))
             return DocumentParseResult(syntax_diagnostics=tuple(diagnostics), local_snapshot=None)

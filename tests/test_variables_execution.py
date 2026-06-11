@@ -10,9 +10,9 @@ from typing import Any, cast
 import pytest
 
 from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef, Simple_DataType, SingleModule, Variable
-from sattlint.analyzers import _variables_execution as variables_execution_module
 from sattlint.analyzers import variables as variables_module
 from sattlint.analyzers.variables import IssueKind
+from sattlint.analyzers.variables import _variables_execution as variables_execution_module
 from tests.helpers.variable_test_support import UsageStub as _UsageStub
 from tests.helpers.variable_test_support import hdr as _hdr
 from tests.helpers.variable_test_support import ns as _ns
@@ -416,6 +416,9 @@ def test_analyze_variables_includes_phase_timings_from_analyzer(monkeypatch: pyt
         def __init__(self, *args: object, **kwargs: object) -> None:
             self.selected_issue_kinds = kwargs.get("selected_issue_kinds")
             self.phase_timings = [{"phase": "root-traversal", "duration_ms": 12.5}]
+            self.access_graph = SimpleNamespace(by_path_key={})
+            self.effect_flow_edges = {}
+            self.effect_flow_display_names = {}
 
         def run(self) -> list[object]:
             return []
@@ -436,6 +439,33 @@ def test_analyze_variables_includes_phase_timings_from_analyzer(monkeypatch: pyt
     ]
     assert report.selected_issue_kinds == frozenset({IssueKind.UNUSED})
     assert report.visible_kinds == frozenset({IssueKind.UNUSED})
+
+
+def test_analyze_variables_includes_access_and_effect_artifacts_from_analyzer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    usage_event = object()
+
+    class _FakeAnalyzer:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            self.phase_timings = []
+            self.access_graph = SimpleNamespace(by_path_key={("root", "out"): [usage_event]})
+            self.effect_flow_edges = {("root", "out"): (("root", "sink"),)}
+            self.effect_flow_display_names = {("root", "out"): "Root.Out"}
+
+        def run(self) -> list[object]:
+            return []
+
+    monkeypatch.setattr(variables_module, "VariablesAnalyzer", _FakeAnalyzer)
+    perf_counter_values = iter([1.0, 1.0])
+    monkeypatch.setattr(variables_module.time, "perf_counter", lambda: next(perf_counter_values))
+    base_picture = cast(BasePicture, SimpleNamespace(header=SimpleNamespace(name="Root")))
+
+    report = variables_module.analyze_variables(base_picture)
+
+    assert report.accesses_by_definition_key == {("root", "out"): (usage_event,)}
+    assert report.effect_flow_edges == {("root", "out"): (("root", "sink"),)}
+    assert report.effect_flow_display_names == {("root", "out"): "Root.Out"}
 
 
 def test_variables_execution_run_debug_logs_phase_counts_and_aggregated_unresolved_lookups(

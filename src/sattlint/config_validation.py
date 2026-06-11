@@ -36,19 +36,7 @@ type ConfigDict = dict[str, object]
 
 VALID_TOP_LEVEL_KEYS = frozenset(
     {
-        "analyzed_programs_and_libraries",
-        "include_reverse_library_consumers",
-        "mode",
-        "scan_root_only",
-        "fast_cache_validation",
-        "debug",
-        "program_dir",
-        "ABB_lib_dir",
-        "icf_dir",
-        "other_lib_dirs",
-        "telemetry",
-        "analysis",
-        "documentation",
+        *DEFAULT_CONFIG,
         "ignore_ABB_lib",
     }
 )
@@ -204,7 +192,7 @@ validation_errors_by_key = _validation_errors_by_key
 deep_merge_dict = _deep_merge_dict
 
 
-def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:
+def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:  # noqa: PLR0915
     errors: list[ConfigValidationError] = []
     typed_cfg = cast(ConfigDict, cfg)
 
@@ -501,15 +489,15 @@ def validate_loaded_config(cfg: dict[str, Any]) -> ConfigValidationResult:
             )
         )
 
-    from . import config as config_module
+    from . import config as config_module  # noqa: PLC0415
 
     graphics_rules_path = config_module.get_graphics_rules_path()
     if graphics_rules_path.exists():
-        from . import graphics_rules as graphics_rules_module
+        from . import graphics_rules as graphics_rules_module  # noqa: PLC0415
 
         try:
             graphics_rules_module.load_graphics_rules(graphics_rules_path)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             errors.append(
                 ConfigValidationError(
                     key_path="graphics_rules_path",

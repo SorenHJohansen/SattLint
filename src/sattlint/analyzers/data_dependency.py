@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from sattline_parser.models.ast_model import BasePicture
 
-from ._dependency_usage_facts import FactRef, StatementFact, collect_statement_facts
 from .framework import Issue, SimpleReport
+from .shared._dependency_usage_facts import FactRef, StatementFact, collect_statement_facts
 
 
 class DataDependencyAnalyzer:

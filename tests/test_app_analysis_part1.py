@@ -1,7 +1,10 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
 # ruff: noqa: F403, F405
 import json
+from typing import Any, cast
 
 from ._app_analysis_test_support import *
+from .helpers import AnalysisGraphStub, named_object
 
 
 def test_advanced_datatype_analysis_choices(noop_screen, monkeypatch, real_context):
@@ -33,7 +36,7 @@ def test_advanced_datatype_analysis_choices(noop_screen, monkeypatch, real_conte
     monkeypatch.setattr(
         app_analysis,
         "_iter_loaded_projects",
-        lambda *_args, **_kwargs: iter([("TargetA", "project", SimpleNamespace(unavailable_libraries=set()))]),
+        lambda *_args, **_kwargs: iter([("TargetA", "project", AnalysisGraphStub())]),
     )
     monkeypatch.setattr(variables_reporting_module, "report_datatype_usage", lambda *_, **__: "report")
     monkeypatch.setattr(variables_reporting_module, "debug_variable_usage", lambda *_, **__: "report")
@@ -54,8 +57,8 @@ def test_run_variable_analysis_runs_all_analyzed_targets(noop_screen, monkeypatc
         "_iter_loaded_projects",
         lambda *_args, **_kwargs: iter(
             [
-                ("ProgramA", "bp-a", SimpleNamespace(unavailable_libraries=set())),
-                ("LibB", "bp-b", SimpleNamespace(unavailable_libraries=set())),
+                ("ProgramA", "bp-a", AnalysisGraphStub()),
+                ("LibB", "bp-b", AnalysisGraphStub()),
             ]
         ),
     )
@@ -115,9 +118,7 @@ def test_run_variable_analysis_updates_live_status(monkeypatch):
     monkeypatch.setattr(
         app_analysis,
         "_iter_loaded_projects",
-        lambda *_args, **_kwargs: iter(
-            [("TargetA", "bp-a", SimpleNamespace(unavailable_libraries=set(), warnings=[]))]
-        ),
+        lambda *_args, **_kwargs: iter([("TargetA", "bp-a", AnalysisGraphStub())]),
     )
 
     def _fake_analyze_variables(*_args, **kwargs):
@@ -151,7 +152,7 @@ def test_run_variable_analysis_real_analyzer_keeps_default_status_updates_coarse
             return False
 
     project_bp = parser_core_parse_source_text(VALID_SINGLE_FILE)
-    graph = SimpleNamespace(unavailable_libraries=set(), warnings=[], source_files=set())
+    graph = AnalysisGraphStub()
 
     monkeypatch.setattr(
         app_analysis,
@@ -172,21 +173,14 @@ def test_run_variable_analysis_real_analyzer_keeps_default_status_updates_coarse
 
 
 def test_run_variable_analysis_includes_version_and_last_changed(noop_screen, monkeypatch, capsys, tmp_path):
-    from datetime import datetime
+    from datetime import datetime  # noqa: PLC0415
 
     source_path = tmp_path / "ProgramA.s"
     source_path.write_text("BasePicture placeholder\n", encoding="utf-8")
     timestamp = datetime(2024, 5, 17, 12, 0, 0).timestamp()
     os.utime(source_path, (timestamp, timestamp))
-    graph = SimpleNamespace(
-        unavailable_libraries=set(),
-        warnings=[],
-        source_files={source_path},
-    )
-    project_bp = SimpleNamespace(
-        header=SimpleNamespace(name="ProgramA"),
-        origin_file="ProgramA.s",
-    )
+    graph = AnalysisGraphStub(source_files={source_path})
+    project_bp = named_object("ProgramA", origin_file="ProgramA.s")
     monkeypatch.setattr(
         app_analysis,
         "_iter_loaded_projects",
@@ -204,12 +198,9 @@ def test_run_variable_analysis_includes_version_and_last_changed(noop_screen, mo
 
 def test_run_variable_analysis_writes_telemetry_summary(tmp_path, noop_screen, monkeypatch):
     telemetry_path = tmp_path / "telemetry.jsonl"
-    graph = SimpleNamespace(
+    graph = AnalysisGraphStub(
         load_stage_timings={"load_or_parse": 0.4, "validate": 0.2},
         graphics_load_timings={"validate-graphics-file": 0.05},
-        unavailable_libraries=set(),
-        warnings=[],
-        source_files=set(),
     )
     monkeypatch.setattr(app_analysis.telemetry_module, "get_config_path", lambda: tmp_path / "config.toml")
     monkeypatch.setattr(
@@ -288,7 +279,7 @@ def test_run_variable_analysis_all_analyses_executes_real_analyzers(noop_screen,
 
 
 def test_run_variable_analysis_all_reports_lists_empty_categories(noop_screen, monkeypatch, capsys):
-    graph = SimpleNamespace(unavailable_libraries=set(), warnings=[])
+    graph = AnalysisGraphStub()
     monkeypatch.setattr(
         app_analysis,
         "_iter_loaded_projects",
@@ -318,7 +309,8 @@ def test_run_variable_analysis_all_reports_lists_empty_categories(noop_screen, m
     assert "Sections:" in out
     assert "  - Unused variables: 0" in out
     assert "Min/Max mapping name mismatches" in out
-    assert "Name collisions" in out
+    assert "Missing required parameter connections" in out
+    assert "Overlapping layout elements" in out
     assert "Reset contamination (missing reset writes)" in out
     assert "Implicit latching (missing matching False writes)" not in out
     assert "UI/display-only variables" not in out
@@ -326,7 +318,7 @@ def test_run_variable_analysis_all_reports_lists_empty_categories(noop_screen, m
 
 
 def test_run_variable_analysis_all_reports_hide_low_confidence_categories(noop_screen, monkeypatch, capsys):
-    from sattline_parser.models.ast_model import Variable
+    from sattline_parser.models.ast_model import Variable  # noqa: PLC0415
 
     issue = VariableIssue(
         kind=app_analysis.IssueKind.UI_ONLY,
@@ -334,7 +326,7 @@ def test_run_variable_analysis_all_reports_hide_low_confidence_categories(noop_s
         variable=Variable(name="DisplayValue", datatype="integer"),
         role="localvariable",
     )
-    graph = SimpleNamespace(unavailable_libraries=set(), warnings=[])
+    graph = AnalysisGraphStub()
     monkeypatch.setattr(
         app_analysis,
         "_iter_loaded_projects",
@@ -363,7 +355,7 @@ def test_run_variable_analysis_all_reports_hide_low_confidence_categories(noop_s
 
 
 def test_run_variable_analysis_can_render_low_confidence_category_on_request(noop_screen, monkeypatch, capsys):
-    from sattline_parser.models.ast_model import Variable
+    from sattline_parser.models.ast_model import Variable  # noqa: PLC0415
 
     issue = VariableIssue(
         kind=app_analysis.IssueKind.UI_ONLY,
@@ -371,7 +363,7 @@ def test_run_variable_analysis_can_render_low_confidence_category_on_request(noo
         variable=Variable(name="DisplayValue", datatype="integer"),
         role="localvariable",
     )
-    graph = SimpleNamespace(unavailable_libraries=set(), warnings=[])
+    graph = AnalysisGraphStub()
     monkeypatch.setattr(
         app_analysis,
         "_iter_loaded_projects",
@@ -400,7 +392,7 @@ def test_run_variable_analysis_can_render_low_confidence_category_on_request(noo
 
 
 def test_run_variable_analysis_passes_selected_issue_kinds_to_analyzer(noop_screen, monkeypatch, capsys):
-    graph = SimpleNamespace(unavailable_libraries=set(), warnings=[])
+    graph = AnalysisGraphStub()
     seen_selected_kinds: list[set[IssueKind] | frozenset[IssueKind] | None] = []
 
     monkeypatch.setattr(
@@ -448,9 +440,7 @@ def test_run_variable_analysis_uses_cached_report_for_selected_issue_kinds(noop_
         def save(self, key, *, report, files):
             pytest.fail(f"cache should not save on hit: {key}, {report}, {files}")
 
-    graph = SimpleNamespace(
-        unavailable_libraries=set(),
-        warnings=[],
+    graph = AnalysisGraphStub(
         analysis_cache_key="project-key",
         analysis_manifest_files=frozenset({Path("programs/ProgramA.s")}),
     )
@@ -500,9 +490,7 @@ def test_run_variable_analysis_cache_keys_selected_issue_kinds_separately(noop_s
             save_keys.append(key)
             return True
 
-    graph = SimpleNamespace(
-        unavailable_libraries=set(),
-        warnings=[],
+    graph = AnalysisGraphStub(
         analysis_cache_key="project-key",
         analysis_manifest_files=frozenset({Path("programs/ProgramA.s")}),
     )
@@ -567,7 +555,7 @@ def test_run_variable_analysis_bypasses_report_cache_when_use_cache_disabled(noo
 def test_iter_loaded_projects_skips_failed_targets(noop_screen, monkeypatch, capsys):
     cfg = deepcopy(app.DEFAULT_CONFIG)
     cfg["analyzed_programs_and_libraries"] = ["Broken", "Working"]
-    working_graph = SimpleNamespace(unavailable_libraries=set())
+    working_graph = AnalysisGraphStub()
 
     def fake_load_project(_cfg, target_name=None, *, use_cache=True):
         if target_name == "Broken":
@@ -618,10 +606,7 @@ def test_run_variable_analysis_reports_when_no_targets_load(noop_screen, monkeyp
 
 
 def test_run_variable_analysis_prints_validation_warnings(noop_screen, monkeypatch, capsys):
-    graph = SimpleNamespace(
-        unavailable_libraries=set(),
-        warnings=["ProgramA: warning one", "dep_b: warning two"],
-    )
+    graph = AnalysisGraphStub(warnings=["ProgramA: warning one", "dep_b: warning two"])
     monkeypatch.setattr(
         app_analysis,
         "_iter_loaded_projects",
@@ -640,10 +625,7 @@ def test_run_variable_analysis_prints_validation_warnings(noop_screen, monkeypat
 
 
 def test_run_variable_analysis_hides_dependency_validation_warnings(noop_screen, monkeypatch, capsys):
-    graph = SimpleNamespace(
-        unavailable_libraries=set(),
-        warnings=["dep_a: warning one", "dep_b: warning two"],
-    )
+    graph = AnalysisGraphStub(warnings=["dep_a: warning one", "dep_b: warning two"])
     monkeypatch.setattr(
         app_analysis,
         "_iter_loaded_projects",
@@ -661,7 +643,7 @@ def test_run_variable_analysis_hides_dependency_validation_warnings(noop_screen,
 
 
 def test_run_variable_analysis_hides_expected_unavailable_dependency_warnings(noop_screen, monkeypatch, capsys):
-    graph = SimpleNamespace(
+    graph = AnalysisGraphStub(
         unavailable_libraries={"controllib"},
         warnings=["KaHAMPCSøjleLib: dependency 'controllib' unavailable: expected proprietary dependency"],
     )
@@ -682,17 +664,8 @@ def test_run_variable_analysis_hides_expected_unavailable_dependency_warnings(no
 
 
 def test_run_variable_analysis_marks_library_targets(noop_screen, monkeypatch):
-    graph = SimpleNamespace(
-        unavailable_libraries=set(),
-        warnings=[],
-        source_files={
-            Path("ProjectLib/LibraryTarget.x"),
-        },
-    )
-    project_bp = SimpleNamespace(
-        header=SimpleNamespace(name="LibraryTarget"),
-        origin_file="LibraryTarget.x",
-    )
+    graph = AnalysisGraphStub(source_files={Path("ProjectLib/LibraryTarget.x")})
+    project_bp = named_object("LibraryTarget", origin_file="LibraryTarget.x")
     monkeypatch.setattr(
         app_analysis,
         "_iter_loaded_projects",
@@ -714,6 +687,35 @@ def test_run_variable_analysis_marks_library_targets(noop_screen, monkeypatch):
     app_analysis.run_variable_analysis(cfg, None)
 
     assert captured["analyzed_target_is_library"] is True
+
+
+def test_run_variable_analysis_suppresses_library_picture_display_warnings(noop_screen):
+    graph = AnalysisGraphStub()
+    graph.warnings = [
+        (
+            "LibraryTarget: PictureDisplay in module 'Root.L1' path '+MissingPanel' could not be resolved: "
+            "module 'MissingPanel' was not found under 'Root.L1'"
+        ),
+        "LibraryTarget: other warning",
+    ]
+    project_bp = named_object("LibraryTarget", origin_file="LibraryTarget.x")
+    captured_warnings: list[list[str]] = []
+
+    app_analysis.run_variable_analysis(
+        app.DEFAULT_CONFIG.copy(),
+        {app_analysis.IssueKind.UNUSED},
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter([("LibraryTarget", project_bp, graph)]),
+        ),
+        target_is_library_fn=lambda *_args, **_kwargs: True,
+        analyze_variables_fn=lambda *_args, **_kwargs: make_variable_report(),
+        filter_variable_report_fn=lambda report, _kinds: report,
+        print_validation_warnings_fn=lambda warnings: captured_warnings.append(list(warnings)),
+        pause_fn=lambda: None,
+    )
+
+    assert captured_warnings == [["LibraryTarget: other warning"]]
 
 
 def test_print_validation_warnings_truncates(monkeypatch):
@@ -765,8 +767,8 @@ def test_cache_key_for_target_adds_analysis_target(monkeypatch):
 
 
 def test_source_paths_for_current_target_falls_back_to_header_name():
-    project_bp = SimpleNamespace(header=SimpleNamespace(name="TargetA"), origin_file=None)
-    graph = SimpleNamespace(source_files={Path("libs/Other.s"), Path("programs/TargetA.s")})
+    project_bp = named_object("TargetA")
+    graph = AnalysisGraphStub(source_files={Path("libs/Other.s"), Path("programs/TargetA.s")})
 
     result = app_analysis.source_paths_for_current_target(cast(Any, project_bp), cast(Any, graph))
 
@@ -775,8 +777,8 @@ def test_source_paths_for_current_target_falls_back_to_header_name():
 
 def test_target_is_library_returns_false_without_matching_source_paths():
     cfg = {"program_dir": "programs"}
-    project_bp = SimpleNamespace(header=SimpleNamespace(name="TargetA"), origin_file="Missing.s")
-    graph = SimpleNamespace(source_files=set())
+    project_bp = named_object("TargetA", origin_file="Missing.s")
+    graph = AnalysisGraphStub()
 
     assert app_analysis._target_is_library(cfg, cast(Any, project_bp), cast(Any, graph)) is False
 
@@ -804,7 +806,7 @@ def test_run_datatype_usage_analysis_reports_errors_and_pauses(monkeypatch):
     monkeypatch.setattr(
         app_analysis,
         "_iter_loaded_projects",
-        lambda *_args, **_kwargs: iter([("TargetA", "bp-a", SimpleNamespace(unavailable_libraries={"ControlLib"}))]),
+        lambda *_args, **_kwargs: iter([("TargetA", "bp-a", AnalysisGraphStub(unavailable_libraries={"ControlLib"}))]),
     )
     monkeypatch.setattr(
         variables_reporting_module,
@@ -832,9 +834,7 @@ def test_run_datatype_usage_analysis_updates_live_status(monkeypatch):
     monkeypatch.setattr(
         app_analysis,
         "_iter_loaded_projects",
-        lambda *_args, **_kwargs: iter(
-            [("TargetA", "bp-a", SimpleNamespace(unavailable_libraries=set(), warnings=[]))]
-        ),
+        lambda *_args, **_kwargs: iter([("TargetA", "bp-a", AnalysisGraphStub())]),
     )
     monkeypatch.setattr(variables_reporting_module, "report_datatype_usage", lambda *_args, **_kwargs: "report")
     monkeypatch.setattr(app_analysis.console_module, "live_status_line", lambda: FakeLiveStatusLine())

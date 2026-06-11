@@ -10,15 +10,15 @@ from sattline_parser.models.ast_model import (
     Simple_DataType,
     Variable,
 )
-from sattlint.analyzers import _variable_issue_collection as variable_issue_collection_module
-from sattlint.analyzers import _variables_access as variables_access_module
-from sattlint.analyzers import _variables_execution as variables_execution_module
-from sattlint.analyzers import _variables_status as variables_status_module
-from sattlint.analyzers import variable_utils as variable_utils_module
 from sattlint.analyzers import variables as variables_module
-from sattlint.analyzers._variables_analyzer_facade import VariablesAnalyzerFacadeMixin
-from sattlint.analyzers._variables_facade_properties import VariablesAnalyzerFacadePropertiesMixin
+from sattlint.analyzers.shared import variable_utils as variable_utils_module
 from sattlint.analyzers.variables import IssueKind, VariableIssue, VariablesAnalyzer
+from sattlint.analyzers.variables import _variable_issue_collection as variable_issue_collection_module
+from sattlint.analyzers.variables import _variables_access as variables_access_module
+from sattlint.analyzers.variables import _variables_execution as variables_execution_module
+from sattlint.analyzers.variables import _variables_status as variables_status_module
+from sattlint.analyzers.variables._variables_analyzer_facade import VariablesAnalyzerFacadeMixin
+from sattlint.analyzers.variables._variables_facade_properties import VariablesAnalyzerFacadePropertiesMixin
 from sattlint.reporting.variables_report import VariablesReport
 from tests.helpers.variable_test_support import UsageStub as _UsageStub
 from tests.helpers.variable_test_support import ns as _ns
@@ -464,7 +464,9 @@ def test_variables_analyzer_warn_trace_and_status_helpers_cover_remaining_branch
         trace_events.append((category, action, data))
 
     analyzer._trace_recorder = SimpleNamespace(event=_record_trace_event)
+    analyzer._trace_namespace = "variables"
     analyzer._status_update_fn = status_updates.append
+    analyzer._status_prefix = "Analyzing variable issues"
     analyzer._last_status_message = None
     analyzer.bp = _ns(header=_ns(name="Root"))
 
@@ -485,7 +487,7 @@ def test_variables_analyzer_warn_trace_and_status_helpers_cover_remaining_branch
     VariablesAnalyzerType._update_status(analyzer, "ignored")
 
 
-def test_variables_facade_forwarders_and_properties_cover_remaining_branches() -> None:
+def test_variables_facade_forwarders_and_properties_cover_remaining_branches() -> None:  # noqa: PLR0915
     variable = Variable(name="FacadeVar", datatype=Simple_DataType.INTEGER)
     other_variable = Variable(name="GlobalVar", datatype=Simple_DataType.INTEGER)
     issue = VariableIssue(kind=IssueKind.UNUSED, module_path=["Root"], variable=variable, role="unused")

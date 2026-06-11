@@ -13,7 +13,7 @@ from sattlint.path_sanitizer import sanitize_path_for_report
 
 
 def _entrypoints_module() -> Any:
-    from sattlint.devtools import repo_audit_entrypoints as entrypoints_module
+    from sattlint.devtools import repo_audit_entrypoints as entrypoints_module  # noqa: PLC0415
 
     return entrypoints_module
 
@@ -59,7 +59,7 @@ def run_recommended_repo_audit_slice(
     latest_output_dir: Path | None = None,
     record_history: bool = True,
 ) -> dict[str, Any]:
-    from sattlint.devtools import _repo_audit_recommended_slice as helper
+    from sattlint.devtools import _repo_audit_recommended_slice as helper  # noqa: PLC0415
 
     return helper.run_recommended_repo_audit_slice(
         output_dir,

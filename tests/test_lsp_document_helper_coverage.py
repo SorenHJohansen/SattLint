@@ -12,7 +12,7 @@ from tests.helpers.lsp_support import source_with_unused_variable
 
 
 def test_line_index_position_to_offset_handles_empty_line_starts():
-    from sattlint.core.document import LineIndex
+    from sattlint.core.document import LineIndex  # noqa: PLC0415
 
     idx = LineIndex(text="ignored", line_starts=())
 
@@ -20,7 +20,7 @@ def test_line_index_position_to_offset_handles_empty_line_starts():
 
 
 def test_merge_line_ranges_sorts_merges_and_keeps_non_adjacent_ranges():
-    from sattlint_lsp.document_state import _merge_line_ranges
+    from sattlint_lsp.document_state import _merge_line_ranges  # noqa: PLC0415
 
     assert _merge_line_ranges([]) == ()
     assert _merge_line_ranges([(4, 4), (-2, 0), (2, 3), (7, 7)]) == ((0, 0), (2, 4), (7, 7))
@@ -75,7 +75,7 @@ def test_document_state_remember_local_snapshot_stores_analysis_result(tmp_path)
 def test_server_document_helper_edges_cover_false_background_mode_existing_open_and_typeerror_fallback(
     monkeypatch, tmp_path
 ):
-    from sattlint_lsp._server_document import (
+    from sattlint_lsp._server_document import (  # noqa: PLC0415
         _background_workspace_diagnostics_enabled,
         _load_snapshot_bundle_compat,
         _record_document_open,

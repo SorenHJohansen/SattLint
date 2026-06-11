@@ -18,16 +18,18 @@ value = 2
     assert inventory.count_structural_lines(text) == 2
 
 
-def test_iter_structural_python_files_yields_src_then_tests(tmp_path: Path) -> None:
+def test_iter_structural_python_files_yields_src_then_scripts_then_tests(tmp_path: Path) -> None:
     src_file = tmp_path / "src" / "pkg" / "module.py"
+    script_file = tmp_path / "scripts" / "tool.py"
     test_file = tmp_path / "tests" / "test_module.py"
     ignored_test_helper = tmp_path / "tests" / "helper.py"
-    for path in (src_file, test_file, ignored_test_helper):
+    for path in (src_file, script_file, test_file, ignored_test_helper):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("value = 1\n", encoding="utf-8")
 
     assert list(inventory.iter_structural_python_files(tmp_path)) == [
         ("src", src_file),
+        ("src", script_file),
         ("tests", test_file),
     ]
 

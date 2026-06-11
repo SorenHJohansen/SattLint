@@ -103,7 +103,7 @@ def diagnose_picture_display_paths(
     diagnostics: list[PictureDisplayPathDiagnostic] = []
     runtime_trees: dict[str, RuntimeTree] = {}
     for occurrence in occurrences:
-        for path_row in occurrence.record.path_rows:
+        for path_row in getattr(occurrence.record, "path_rows", ()) or ():
             if path_row.kind != "literal":
                 continue
             resolution_module_path = (

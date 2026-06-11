@@ -11,7 +11,6 @@ from ..reporting.variables_report import VariableIssue
 from ..tracing import (
     detect_transform_invariant_violations,
 )
-from ._registry_specs import build_context_kwargs
 from ._sattline_semantic_issue_mapping import (
     map_framework_issues,
     map_spec_issues,
@@ -29,8 +28,9 @@ from ._sattline_semantic_rules import (
     FRAMEWORK_RULES_BY_KIND,
     build_semantic_rule_groups,
 )
-from .framework import AnalysisContext
-from .issue import Issue, format_report_header
+from .framework import AnalysisContext, Issue, build_analysis_context, format_report_header
+from .registry._registry_dispatch import get_semantic_contributor_specs, run_registry_analyzer
+from .registry._registry_specs import build_context_kwargs
 
 
 def get_sattline_semantic_rule_groups() -> tuple[SemanticRuleGroup, ...]:
@@ -96,15 +96,27 @@ def analyze_sattline_semantics(
 ) -> SattLineSemanticsReport:
     issues: list[SemanticIssue] = []
 
-    from . import registry as registry_module
-
-    context = analysis_context or AnalysisContext(
-        base_picture=base_picture,
-        graph=SimpleNamespace(unavailable_libraries=set(unavailable_libraries or ())),
-        debug=debug,
-        target_is_library=analyzed_target_is_library,
-        config=config,
-    )
+    fallback_graph = SimpleNamespace(unavailable_libraries=set(unavailable_libraries or ()))
+    if analysis_context is None:
+        context = build_analysis_context(
+            base_picture,
+            graph=fallback_graph,
+            debug=debug,
+            target_is_library=analyzed_target_is_library,
+            config=config,
+            create_shared_artifacts=True,
+        )
+    else:
+        context = build_analysis_context(
+            base_picture,
+            graph=analysis_context.graph if analysis_context.graph is not None else fallback_graph,
+            debug=analysis_context.debug,
+            target_is_library=analysis_context.target_is_library,
+            selected_issue_kinds=analysis_context.selected_issue_kinds,
+            config=analysis_context.config or config,
+            shared_artifacts=analysis_context.shared_artifacts,
+            create_shared_artifacts=True,
+        )
     overrides: dict[str, object] = {}
     if sfc_mutually_exclusive_steps is not None:
         configured_steps = tuple(sfc_mutually_exclusive_steps)
@@ -114,28 +126,14 @@ def analyze_sattline_semantics(
         overrides["step_contracts"] = sfc_step_contracts
         overrides["sfc_step_contracts"] = sfc_step_contracts
 
-    for analyzer in registry_module.get_default_analyzer_catalog().analyzers:
-        spec = analyzer.spec
-        if not spec.enabled or spec.semantic_mapping_kind is None:
-            continue
-        if spec.key == registry_module.SEMANTIC_LAYER_ANALYZER_KEY:
-            continue
-
-        report = None
-        if context.shared_artifacts is not None:
-            report = context.shared_artifacts.reports_by_analyzer_key.get(spec.key)
-            if report is not None:
-                context.shared_artifacts.counters.semantic_precomputed_reports_used += 1
-
-        if report is None:
-            analyzer_fn = getattr(registry_module, spec.analyzer_attr)
-            if spec.direct_context:
-                report = analyzer_fn(context)
-            else:
-                kwargs = build_context_kwargs(spec, registry_module, context, overrides=overrides)
-                report = analyzer_fn(base_picture, **kwargs)
-            if context.shared_artifacts is not None:
-                context.shared_artifacts.counters.semantic_analyzer_reruns += 1
+    for spec in get_semantic_contributor_specs():
+        report = run_registry_analyzer(
+            spec,
+            context,
+            overrides=overrides,
+            use_shared_artifacts=True,
+            build_context_kwargs_fn=build_context_kwargs,
+        )
 
         report_issues = getattr(report, "issues", None)
         if not isinstance(report_issues, list):

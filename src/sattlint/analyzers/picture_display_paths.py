@@ -11,6 +11,7 @@ def analyze_picture_display_paths(
     base_picture: BasePicture,
     *,
     graph: ProjectGraph | None = None,
+    analyzed_target_is_library: bool = False,
 ) -> SimpleReport:
     occurrences = tuple(getattr(base_picture, "graphics_picture_display_occurrences", ()) or ())
     diagnostics = diagnose_picture_display_paths(base_picture, occurrences, graph=graph)
@@ -19,6 +20,7 @@ def analyze_picture_display_paths(
             kind="picture_display_paths.unresolved",
             message=format_picture_display_path_diagnostic(diagnostic),
             module_path=list(diagnostic.occurrence.declaring_module_path),
+            severity="info" if analyzed_target_is_library else None,
             data={
                 "program_name": diagnostic.occurrence.program_name,
                 "path": diagnostic.path_row.raw_text,

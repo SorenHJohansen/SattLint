@@ -23,7 +23,7 @@ from ._wave2_node_traversal import (
     iter_statement_sites,
     root_variable_name,
 )
-from .variable_utils import merge_variable_env
+from .shared.variable_utils import merge_variable_env
 
 __all__ = [
     "AssignmentEvent",

@@ -377,3 +377,115 @@ def test_copyvariable_allows_opaque_builtin_record_type():
     analyzer.run()
     assert analyzer._get_usage(src).read
     assert analyzer._get_usage(dst).written
+
+
+def test_array_builtins_bind_record_element_contracts_and_mark_whole_record_access() -> None:
+    dt = DataType(
+        name="RecType",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="A", datatype=Simple_DataType.INTEGER),
+            Variable(name="B", datatype=Simple_DataType.REAL),
+        ],
+    )
+
+    array_var = Variable(name="Arr", datatype="ArrayObject")
+    seed = Variable(name="Seed", datatype="RecType")
+    out = Variable(name="Out", datatype="RecType")
+    status = Variable(name="Status", datatype=Simple_DataType.INTEGER)
+
+    module = SingleModule(
+        header=_hdr("M1"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[array_var, seed, out, status],
+        submodules=[],
+        modulecode=ModuleCode(
+            equations=[
+                _eq(
+                    [
+                        (
+                            const.KEY_FUNCTION_CALL,
+                            "CreateArray",
+                            [_varref("Arr"), 1, 2, _varref("Seed"), _varref("Status")],
+                        ),
+                        (const.KEY_FUNCTION_CALL, "GetArray", [_varref("Arr"), 1, _varref("Out"), _varref("Status")]),
+                        (const.KEY_FUNCTION_CALL, "PutArray", [_varref("Arr"), 2, _varref("Seed"), _varref("Status")]),
+                    ]
+                )
+            ]
+        ),
+        parametermappings=[],
+    )
+
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[dt],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[module],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    array_usage = analyzer._get_usage(array_var)
+    seed_usage = analyzer._get_usage(seed)
+    out_usage = analyzer._get_usage(out)
+
+    assert array_usage.read is True
+    assert array_usage.written is True
+    assert {key.casefold() for key in seed_usage.field_reads or {}} >= {"a", "b"}
+    assert {key.casefold() for key in out_usage.field_writes or {}} >= {"a", "b"}
+
+
+def test_getarray_reports_dynamic_array_contract_mismatch_for_incompatible_target() -> None:
+    array_var = Variable(name="Arr", datatype="ArrayObject")
+    seed = Variable(name="Seed", datatype=Simple_DataType.INTEGER)
+    out = Variable(name="Out", datatype=Simple_DataType.BOOLEAN)
+    status = Variable(name="Status", datatype=Simple_DataType.INTEGER)
+
+    module = SingleModule(
+        header=_hdr("M1"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[array_var, seed, out, status],
+        submodules=[],
+        modulecode=ModuleCode(
+            equations=[
+                _eq(
+                    [
+                        (
+                            const.KEY_FUNCTION_CALL,
+                            "CreateArray",
+                            [_varref("Arr"), 1, 2, _varref("Seed"), _varref("Status")],
+                        ),
+                        (const.KEY_FUNCTION_CALL, "GetArray", [_varref("Arr"), 1, _varref("Out"), _varref("Status")]),
+                    ]
+                )
+            ]
+        ),
+        parametermappings=[],
+    )
+
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[module],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.CONTRACT_MISMATCH]
+
+    assert len(issues) == 1
+    assert issues[0].role is not None
+    assert "dynamic array element mismatch" in issues[0].role

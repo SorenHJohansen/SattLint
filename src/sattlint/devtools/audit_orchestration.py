@@ -47,7 +47,7 @@ def run_harness_freshness_check(
     doc_gardener_finding_to_repo_audit_fn: Callable[[Any], Any],
     harness_freshness_doc_scanners: tuple[str, ...],
 ) -> list[Any]:
-    from sattlint.devtools import ai_work_map as ai_work_map_module
+    from sattlint.devtools import ai_work_map as ai_work_map_module  # noqa: PLC0415
 
     findings = [
         ai_harness_issue_to_finding_fn(issue)
@@ -83,7 +83,7 @@ def _exception_detail(error: BaseException) -> str:
     return f"{type(error).__name__}: {message}" if message else type(error).__name__
 
 
-def audit_repository(
+def audit_repository(  # noqa: PLR0915
     output_dir: Path,
     *,
     profile: str,

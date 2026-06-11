@@ -168,7 +168,7 @@ def _resolve_semantic_query(
     }
 
 
-def build_impact_analysis_selection(
+def build_impact_analysis_selection(  # noqa: PLR0915
     workspace_root: Path = REPO_ROOT,
     *,
     libraries: list[str] | None = None,

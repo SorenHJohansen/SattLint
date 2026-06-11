@@ -31,6 +31,7 @@ def _load_devtools_module(module_name: str) -> Any:
 
 class _ParsedCliArgs(Protocol):
     config: str | None
+    cache_dir: str | None
     no_cache: bool
     quiet: bool
     debug: bool
@@ -57,14 +58,14 @@ def _exit_code(result: int | None, *, fallback: int) -> int:
 
 
 def _list_analyzer_keys() -> None:
-    from ..analyzers.registry import get_default_analyzers
+    from ..analyzers.registry import get_selectable_analyzers  # noqa: PLC0415
 
-    for spec in get_default_analyzers():
+    for spec in get_selectable_analyzers():
         print_output(spec.key)
 
 
 def _issue_kind_values() -> tuple[str, ...]:
-    from ..models import IssueKind
+    from ..models import IssueKind  # noqa: PLC0415
 
     return tuple(issue_kind.value for issue_kind in IssueKind)
 
@@ -87,8 +88,8 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
     parser.add_argument(
         "--ui",
         default=None,
-        choices=["classic", "rich", "textual"],
-        help="Interactive UI mode to use when no subcommand is selected",
+        choices=["textual"],
+        help="Interactive UI mode to use when no subcommand is selected (Textual only)",
     )
     subparsers = parser.add_subparsers(dest="command")
 
@@ -103,6 +104,17 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         "validate-config",
         help="Validate the SattLint configuration file",
         description="Validate and report any issues with the current configuration.",
+    )
+
+    cache_prune_parser = subparsers.add_parser(
+        "cache-prune",
+        help="Remove stale persistent cache artifacts",
+        description="Remove stale or unusable persistent cache artifacts from the SattLint cache directory.",
+    )
+    cache_prune_parser.add_argument(
+        "--cache-dir",
+        default=None,
+        help="Optional cache directory to prune instead of the default SattLint cache location",
     )
 
     analyze_parser = subparsers.add_parser(
@@ -238,7 +250,7 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
     return parser
 
 
-def run_cli(
+def run_cli(  # noqa: PLR0915
     argv: list[str],
     *,
     config_path: Path,
@@ -250,6 +262,7 @@ def run_cli(
     run_analyze_command_fn: AppCommandFn | None = None,
     run_simulate_command_fn: AppCommandFn | None = None,
     run_docgen_command_fn: AppCommandFn | None = None,
+    run_cache_prune_command_fn: AppCommandFn | None = None,
     run_telemetry_summary_command_fn: AppCommandFn | None = None,
     run_format_icf_command_fn: AppCommandFn | None = None,
     exit_success: int = EXIT_SUCCESS,
@@ -332,6 +345,14 @@ def run_cli(
             fallback=exit_success,
         )
 
+    if command == "cache-prune":
+        if run_cache_prune_command_fn is None:
+            raise RuntimeError("cache-prune handler is required")
+        return _exit_code(
+            run_cache_prune_command_fn(cache_dir=getattr(args, "cache_dir", None)),
+            fallback=exit_success,
+        )
+
     if command in ("validate-config", "analyze", "simulate", "docgen", "format-icf"):
         debug_requested = bool(getattr(args, "debug", False))
         try:
@@ -342,7 +363,7 @@ def run_cli(
             if getattr(args, "debug", False):
                 cfg["debug"] = True
             apply_debug_fn(cfg)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             print_output(f"ERROR [config] {exc}", file=sys.stderr)
             if debug_requested:
                 traceback.print_exc(file=sys.stderr)

@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
 # ruff: noqa: F403, F405
 from ._pipeline_collection_test_support import *
 
@@ -203,7 +204,7 @@ def test_progress_reporter_fail_stage_emits_stdout(tmp_path, capsys):
 
 
 def test_progress_reporter_stage_raises_on_unknown_key(tmp_path):
-    import pytest
+    import pytest  # noqa: PLC0415
 
     reporter = ProgressReporter(
         kind="sattlint.test.progress",
@@ -220,7 +221,7 @@ def test_progress_reporter_stage_raises_on_unknown_key(tmp_path):
 
 # --- artifact_registry.py line 23 (is_available), line 24-39 (to_dict) ---
 def test_artifact_definition_is_available_false_when_not_in_profile(tmp_path):
-    from sattlint.devtools.artifact_registry import ArtifactDefinition
+    from sattlint.devtools.artifact_registry import ArtifactDefinition  # noqa: PLC0415
 
     ad = ArtifactDefinition(
         artifact_id="test",
@@ -236,7 +237,7 @@ def test_artifact_definition_is_available_false_when_not_in_profile(tmp_path):
 
 
 def test_artifact_definition_to_dict_returns_expected_shape():
-    from sattlint.devtools.artifact_registry import ArtifactDefinition
+    from sattlint.devtools.artifact_registry import ArtifactDefinition  # noqa: PLC0415
 
     ad = ArtifactDefinition(
         artifact_id="my-art",
@@ -257,9 +258,9 @@ def test_artifact_definition_to_dict_returns_expected_shape():
 
 # --- tool_reports.py lines 26, 34, 35 (build_command_report) ---
 def test_build_command_report_returns_expected_keys(tmp_path):
-    from types import SimpleNamespace
+    from types import SimpleNamespace  # noqa: PLC0415
 
-    from sattlint.devtools.tool_reports import build_command_report
+    from sattlint.devtools.tool_reports import build_command_report  # noqa: PLC0415
 
     result_obj = SimpleNamespace(
         name="mytool",
@@ -277,7 +278,7 @@ def test_build_command_report_returns_expected_keys(tmp_path):
 
 # --- issue.py lines 10-13 (format_report_header) ---
 def test_format_report_header_includes_status_when_given():
-    from sattlint.analyzers.issue import format_report_header
+    from sattlint.analyzers.framework import format_report_header  # noqa: PLC0415
 
     lines = format_report_header("varcheck", "Main.s", status="pass")
     assert "Report: varcheck" in lines
@@ -286,7 +287,7 @@ def test_format_report_header_includes_status_when_given():
 
 
 def test_format_report_header_omits_status_when_none():
-    from sattlint.analyzers.issue import format_report_header
+    from sattlint.analyzers.framework import format_report_header  # noqa: PLC0415
 
     lines = format_report_header("varcheck", "Main.s")
     assert len(lines) == 2
@@ -294,7 +295,7 @@ def test_format_report_header_omits_status_when_none():
 
 # --- sattline_builtins.py line 2090 (is_builtin_function) ---
 def test_is_builtin_function_returns_true_for_known_function():
-    from sattlint.analyzers.sattline_builtins import is_builtin_function
+    from sattlint.analyzers.sattline_builtins import is_builtin_function  # noqa: PLC0415
 
     assert is_builtin_function("CopyVariable") is True
     assert is_builtin_function("copyvariable") is True
@@ -303,7 +304,7 @@ def test_is_builtin_function_returns_true_for_known_function():
 
 # --- call_signatures.py: channel_kind async-operation branch, status_parameters, resolve_call_signature ---
 def test_call_parameter_signature_channel_kind_returns_async_operation():
-    from sattlint.call_signatures import CallParameterSignature
+    from sattlint.call_signatures import CallParameterSignature  # noqa: PLC0415
 
     p = CallParameterSignature(
         name="AsyncOperation",
@@ -317,7 +318,7 @@ def test_call_parameter_signature_channel_kind_returns_async_operation():
 
 
 def test_resolve_call_signature_returns_signature_for_known_builtin():
-    from sattlint.call_signatures import resolve_call_signature
+    from sattlint.call_signatures import resolve_call_signature  # noqa: PLC0415
 
     sig = resolve_call_signature("CopyVariable")
     assert sig is not None
@@ -328,28 +329,28 @@ def test_resolve_call_signature_returns_signature_for_known_builtin():
 
 # --- call_signatures.py lines 59 (early return) and 63 (builtin not found) ---
 def test_resolve_call_signature_returns_none_for_falsy_name():
-    from sattlint.call_signatures import resolve_call_signature
+    from sattlint.call_signatures import resolve_call_signature  # noqa: PLC0415
 
     assert resolve_call_signature(None) is None
     assert resolve_call_signature("") is None
 
 
 def test_resolve_call_signature_returns_none_for_unknown_builtin():
-    from sattlint.call_signatures import resolve_call_signature
+    from sattlint.call_signatures import resolve_call_signature  # noqa: PLC0415
 
     assert resolve_call_signature("NonExistentFunctionXyz123") is None
 
 
 # --- casefolding.py lines 13, 17-28 ---
 def test_casefold_equal_compares_case_insensitively():
-    from sattlint.casefolding import casefold_equal
+    from sattlint.casefolding import casefold_equal  # noqa: PLC0415
 
     assert casefold_equal("Hello", "hello") is True
     assert casefold_equal("FOO", "bar") is False
 
 
 def test_dedupe_casefolded_strings_removes_duplicates_and_empties():
-    from sattlint.casefolding import dedupe_casefolded_strings
+    from sattlint.casefolding import dedupe_casefolded_strings  # noqa: PLC0415
 
     result = dedupe_casefolded_strings(["Alpha", "alpha", "", "Beta", "BETA"])
     assert result == ["Alpha", "Beta"]
@@ -357,7 +358,7 @@ def test_dedupe_casefolded_strings_removes_duplicates_and_empties():
 
 # --- _validation_shared.py: RawSourceValidationError, _span_kwargs, _warn_or_raise, _ref_span ---
 def test_raw_source_validation_error_stores_line_and_column():
-    from sattlint._validation_shared import RawSourceValidationError
+    from sattlint._validation_shared import RawSourceValidationError  # noqa: PLC0415
 
     err = RawSourceValidationError("bad input", line=5, column=10, length=3)
     assert err.line == 5
@@ -367,8 +368,8 @@ def test_raw_source_validation_error_stores_line_and_column():
 
 
 def test_span_kwargs_returns_line_and_column_from_span():
-    from sattline_parser.models.ast_model import SourceSpan
-    from sattlint._validation_shared import _span_kwargs
+    from sattline_parser.models.ast_model import SourceSpan  # noqa: PLC0415
+    from sattlint._validation_shared import _span_kwargs  # noqa: PLC0415
 
     span = SourceSpan(line=3, column=7)
     result = _span_kwargs(span)
@@ -376,17 +377,17 @@ def test_span_kwargs_returns_line_and_column_from_span():
 
 
 def test_warn_or_raise_raises_when_no_sink():
-    import pytest
+    import pytest  # noqa: PLC0415
 
-    from sattlint._validation_shared import StructuralValidationError, _warn_or_raise
+    from sattlint._validation_shared import StructuralValidationError, _warn_or_raise  # noqa: PLC0415
 
     with pytest.raises(StructuralValidationError, match="something bad"):
         _warn_or_raise("something bad", line=1, column=2, length=5)
 
 
 def test_ref_span_returns_span_from_dict_with_span():
-    from sattline_parser.models.ast_model import SourceSpan
-    from sattlint._validation_shared import _ref_span
+    from sattline_parser.models.ast_model import SourceSpan  # noqa: PLC0415
+    from sattlint._validation_shared import _ref_span  # noqa: PLC0415
 
     span = SourceSpan(line=1, column=0)
     result = _ref_span({"span": span})
@@ -394,7 +395,7 @@ def test_ref_span_returns_span_from_dict_with_span():
 
 
 def test_ref_span_returns_none_for_non_dict():
-    from sattlint._validation_shared import _ref_span
+    from sattlint._validation_shared import _ref_span  # noqa: PLC0415
 
     assert _ref_span(None) is None
     assert _ref_span("string") is None
@@ -403,7 +404,7 @@ def test_ref_span_returns_none_for_non_dict():
 
 # --- coverage_reports.py: skipped when no coverage.xml, high severity branch ---
 def test_build_coverage_summary_report_skipped_when_no_xml(tmp_path):
-    from sattlint.devtools.coverage_reports import build_coverage_summary_report
+    from sattlint.devtools.coverage_reports import build_coverage_summary_report  # noqa: PLC0415
 
     result = build_coverage_summary_report(tmp_path)
     assert result["skipped"] is True

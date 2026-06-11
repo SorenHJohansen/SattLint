@@ -32,7 +32,7 @@ def _write_text(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def test_server_configuration_document_dispatch_and_passthrough_edges(monkeypatch, tmp_path):
+def test_server_configuration_document_dispatch_and_passthrough_edges(monkeypatch, tmp_path):  # noqa: PLR0915
     configuration_calls: list[str] = []
     ls = SimpleNamespace(
         settings=LspSettings(entry_file="Programs/Old.s", workspace_diagnostics_mode="background"),

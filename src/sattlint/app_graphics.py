@@ -31,14 +31,15 @@ LoadedProjectIterator = Callable[[ConfigDict], Iterator[LoadedProject]]
 CollectGraphicsLayoutEntriesForTargetFn = Callable[[str, BasePicture, ProjectGraph], list[GraphicsRule]]
 ClassifyDocumentationStructureFn = Callable[..., Any]
 DiscoverDocumentationUnitCandidatesFn = Callable[[Any], Sequence[Any]]
+_documentation_classification_module: Any = documentation_classification_module
 
 DEFAULT_CLASSIFY_DOCUMENTATION_STRUCTURE_FN = cast(
     ClassifyDocumentationStructureFn,
-    cast(Any, documentation_classification_module).classify_documentation_structure,
+    _documentation_classification_module.classify_documentation_structure,
 )
 DEFAULT_DISCOVER_DOCUMENTATION_UNIT_CANDIDATES_FN = cast(
     DiscoverDocumentationUnitCandidatesFn,
-    cast(Any, documentation_classification_module).discover_documentation_unit_candidates,
+    _documentation_classification_module.discover_documentation_unit_candidates,
 )
 
 
@@ -454,7 +455,7 @@ def run_graphics_rules_validation(
                 )
                 emit_output(f"\n=== Target: {target_name} ===")
                 emit_output(report.summary())
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 log_debug_exception(cfg, f"Graphics rules validation failed for {target_name!r}", logger=log)
                 emit_output(f"? Error during graphics rules validation for {target_name}: {exc}")
 

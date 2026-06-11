@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
 """Focused app config, self-check, and ICF command tests."""
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from sattlint import graphics_rules as graphics_rules_module
 
 @pytest.fixture
 def noop_screen(monkeypatch):
+    monkeypatch.setenv("SATTLINT_UI", "classic")
     monkeypatch.setattr(app, "clear_screen", lambda: None)
     monkeypatch.setattr(app, "pause", lambda: None)
 
@@ -576,19 +578,24 @@ def test_self_check_reports_invalid_nested_config_and_graphics_rule_errors(tmp_p
     assert "graphics_rules_path invalid" in out
 
 
-def test_main_pauses_when_initial_ast_check_fails(monkeypatch):
+def test_main_pauses_when_initial_ast_check_fails(noop_screen, monkeypatch):
     cfg = deepcopy(app.DEFAULT_CONFIG)
     cfg["analyzed_programs_and_libraries"] = ["Broken"]
     calls: list[str] = []
 
+    monkeypatch.delenv("SATTLINT_UI", raising=False)
     monkeypatch.setattr(app, "load_config", lambda *_: (cfg, False))
     monkeypatch.setattr(app, "apply_debug", lambda *_: None)
-    monkeypatch.setattr(app, "self_check", lambda *_: True)
-    monkeypatch.setattr(app, "ensure_ast_cache", lambda *_: False)
-    monkeypatch.setattr(app, "pause", lambda: calls.append("pause"))
-    monkeypatch.setattr(app, "run_interactive_session", lambda *_args, **_kwargs: calls.append("menu"))
+    monkeypatch.setattr(app, "self_check", lambda *_: pytest.fail("textual startup should skip terminal self-check"))
+    monkeypatch.setattr(
+        app,
+        "ensure_ast_cache",
+        lambda *_: pytest.fail("textual startup should skip terminal AST cache preflight"),
+    )
+    monkeypatch.setattr(app, "pause", lambda: pytest.fail("textual startup should not pause before launching"))
+    monkeypatch.setattr(app, "run_interactive_session", lambda *_args, **_kwargs: calls.append("session"))
 
     exit_code = app.main()
 
     assert exit_code == 0
-    assert calls == ["pause", "menu"]
+    assert calls == ["session"]

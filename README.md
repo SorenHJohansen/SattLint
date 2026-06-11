@@ -47,7 +47,8 @@ For repository operations, keep to the smallest stable set:
 - `python -m pre_commit run --all-files`
 - `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit`
 
-Use `sattlint-repo-audit --profile full --output-dir artifacts/audit` for the full CI or nightly pass.
+Use `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit` for AI post-change drift checks.
+Use `sattlint-repo-audit --profile full --output-dir artifacts/audit` for the full local pre-push, CI, or nightly pass.
 Use `python scripts/repo_health.py --check --audit-dir artifacts/audit` when you need a dashboard from current audit artifacts.
 
 `.github/hooks/ai-edit-gate.json` still enforces extra post-edit checks for AI-touched files.
@@ -143,7 +144,7 @@ sattlint syntax-check tests/fixtures/sample_sattline_files/SattLineFullGrammarTe
 sattlint
 ```
 
-That opens the interactive menu. The menu and other config-driven workflows are preview surfaces in the current public contract.
+That opens the Textual interactive shell. The shell and other config-driven workflows are preview surfaces in the current public contract.
 
 For non-interactive use, SattLint also exposes subcommands:
 
@@ -244,27 +245,27 @@ sattlint format-icf
 sattlint validate-config
 ```
 
-`syntax-check` and `repo-audit` are part of the current stable contract. The interactive menu, analysis, formatting, validation, and DOCX-generation workflows remain preview surfaces.
+`syntax-check` and `repo-audit` are part of the current stable contract. The Textual interactive shell, analysis, formatting, validation, and DOCX-generation workflows remain preview surfaces.
 
-Main menu:
+Textual shell views:
 
-- `1) Analyze` -> run curated checks, variable reports, and registry-backed analyzers
-- `2) Documentation` -> preview unit scope and generate Word docs
-- `3) Setup` -> change paths, targets, mode, and cache settings
-- `4) Tools` -> run self-check, inspect dumps, and refresh cached ASTs
-- `5) Help` -> first-time guidance and workflow explanations
+- `Analyze` -> queue curated reports and additional analyzers from the planner
+- `Documentation` -> preview unit scope and generate Word docs
+- `Setup` -> change paths, targets, mode, and cache settings
+- `Tools` -> run self-checks, inspect dumps, refresh caches, and open targeted tracing tools
+- `Help` -> first-time guidance and workflow explanations
 
-Inside `Analyze`, use `Full analyzer suite` for a broad pass and the focused submenus when you want specific reports or debugging tools.
+Inside `Analyze`, use the planner for a broad pass first, then add focused reports when you need a narrower follow-up.
 
 Graphics layout specification workflow:
 
-- `3) Setup` -> `12) Edit graphics rules` to add or update expected invocation coordinates, invocation flags, and clipping-related values
+- Open `Setup`, then use `Edit graphics rules` to add or update expected invocation coordinates, invocation flags, and clipping-related values
 - Use `unit:` selectors when a module should look the same in every detected unit, for example `unit:L1` or `unit:L1.L2.UnitControl`
 - Use `equipment:` selectors when a module should look the same inside every equipment module, for example `equipment:L1.L2.EquipModPanelShort`
 - Exact relative paths are still available for one-off cases, but the normalized `unit:` and `equipment:` selectors avoid hardcoding unit names such as `ApplTank` or equipment-module names such as `Empty`
 - Moduletype rules still identify modules by resolved `ModuleType` name and can optionally be narrowed with `unit:`, `equipment:`, or exact-path selectors
-- `1) Analyze` -> `3) Structure & modules` -> `4) Validate graphics rules` to report modules that are not to spec
-- `4) Tools` -> `1) Self-check diagnostics` to confirm the graphics rules JSON path and whether the file is valid
+- Open `Analyze`, then run `Validate graphics rules` from `Structure & modules` to report modules that are not to spec
+- Open `Tools`, then run `Self-check diagnostics` to confirm the graphics rules JSON path and whether the file is valid
 
 ---
 
@@ -309,7 +310,7 @@ The status bar at the bottom shows current action and task progress (e.g., "Self
 
 If you are unsure where to start:
 
-1. Open `5) Help`
+1. Open `Help`
 2. Follow the first-run checklist shown there
 3. Use `sattlint syntax-check /path/to/Program.s` when you only want to validate one file quickly
 

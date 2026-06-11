@@ -1,6 +1,9 @@
+from typing import Any, cast
+
+
 def test_phase2_rule_metadata_gate_fails_on_enforced_finding():
     """Gate status is 'fail' and rule appears in blocking_rule_ids when an enforced finding is present."""
-    from sattlint.devtools.structural_reports import collect_phase2_rule_metadata_gate
+    from sattlint.devtools.structural_reports import collect_phase2_rule_metadata_gate  # noqa: PLC0415
 
     architecture_report = {
         "findings": [
@@ -22,7 +25,7 @@ def test_phase2_rule_metadata_gate_fails_on_enforced_finding():
 
 def test_phase2_rule_metadata_gate_advisory_finding_does_not_fail():
     """Gate status remains 'pass' when only advisory findings are present."""
-    from sattlint.devtools.structural_reports import collect_phase2_rule_metadata_gate
+    from sattlint.devtools.structural_reports import collect_phase2_rule_metadata_gate  # noqa: PLC0415
 
     architecture_report = {
         "findings": [
@@ -44,7 +47,7 @@ def test_phase2_rule_metadata_gate_advisory_finding_does_not_fail():
 
 def test_phase2_rule_metadata_gate_passes_with_clean_architecture_report():
     """Gate status is 'pass' with no blocking or advisory rule IDs when no gate findings exist."""
-    from sattlint.devtools.structural_reports import collect_phase2_rule_metadata_gate
+    from sattlint.devtools.structural_reports import collect_phase2_rule_metadata_gate  # noqa: PLC0415
 
     gate = collect_phase2_rule_metadata_gate({"findings": []})
 
@@ -55,7 +58,7 @@ def test_phase2_rule_metadata_gate_passes_with_clean_architecture_report():
 
 def test_phase2_rule_metadata_gate_both_enforced_and_advisory():
     """Blocking findings cause fail; advisory findings are also collected independently."""
-    from sattlint.devtools.structural_reports import collect_phase2_rule_metadata_gate
+    from sattlint.devtools.structural_reports import collect_phase2_rule_metadata_gate  # noqa: PLC0415
 
     architecture_report = {
         "findings": [
@@ -88,7 +91,7 @@ def test_phase2_rule_metadata_gate_both_enforced_and_advisory():
 
 def test_build_sattline_semantic_report_groups_by_rule():
     """build_sattline_semantic_report extracts semantic findings and groups them correctly."""
-    from sattlint.devtools.semantic_reports import build_sattline_semantic_report
+    from sattlint.devtools.semantic_reports import build_sattline_semantic_report  # noqa: PLC0415
 
     findings_report = {
         "findings": [
@@ -115,24 +118,27 @@ def test_build_sattline_semantic_report_groups_by_rule():
         ]
     }
 
-    report = build_sattline_semantic_report(findings_report)
+    report = cast(dict[str, Any], build_sattline_semantic_report(findings_report))
+    rules = cast(list[dict[str, Any]], report["rules"])
+    by_severity = cast(dict[str, int], report["by_severity"])
+    by_category = cast(dict[str, int], report["by_category"])
 
     assert report["kind"] == "sattlint.sattline_semantic"
     assert report["schema_version"] == 1
     assert report["total_count"] == 3
-    rule_ids = [r["rule_id"] for r in report["rules"]]
+    rule_ids = [r["rule_id"] for r in rules]
     assert "semantic.unused-variable" in rule_ids
     assert "semantic.read-before-write" in rule_ids
     assert "ruff-e501" not in rule_ids
-    unused_entry = next(r for r in report["rules"] if r["rule_id"] == "semantic.unused-variable")
+    unused_entry = next(r for r in rules if r["rule_id"] == "semantic.unused-variable")
     assert unused_entry["count"] == 2
-    assert report["by_severity"]["warning"] == 3
-    assert "variable-lifecycle" in report["by_category"]
+    assert by_severity["warning"] == 3
+    assert "variable-lifecycle" in by_category
 
 
 def test_build_sattline_semantic_report_empty_findings():
     """build_sattline_semantic_report handles zero semantic findings gracefully."""
-    from sattlint.devtools.semantic_reports import build_sattline_semantic_report
+    from sattlint.devtools.semantic_reports import build_sattline_semantic_report  # noqa: PLC0415
 
     report = build_sattline_semantic_report({"findings": []})
 
@@ -144,9 +150,9 @@ def test_build_sattline_semantic_report_empty_findings():
 
 def test_build_rule_metrics_report_counts_firings():
     """build_rule_metrics_report counts per-rule firing frequency."""
-    from sattlint.devtools.semantic_reports import build_rule_metrics_report
+    from sattlint.devtools.semantic_reports import build_rule_metrics_report  # noqa: PLC0415
 
-    findings_report = {
+    findings_report: dict[str, list[dict[str, object]]] = {
         "findings": [
             {
                 "rule_id": "semantic.unused-variable",
@@ -163,21 +169,22 @@ def test_build_rule_metrics_report_counts_firings():
         ]
     }
 
-    report = build_rule_metrics_report(findings_report)
+    report = cast(dict[str, Any], build_rule_metrics_report(findings_report))
+    rules = cast(list[dict[str, Any]], report["rules"])
 
     assert report["kind"] == "sattlint.rule_metrics"
     assert report["summary"]["total_semantic_finding_count"] == 3
     assert report["summary"]["rules_triggered_count"] == 2
-    unused_entry = next(r for r in report["rules"] if r["rule_id"] == "semantic.unused-variable")
+    unused_entry = next(r for r in rules if r["rule_id"] == "semantic.unused-variable")
     assert unused_entry["finding_count"] == 2
     assert unused_entry["targets_affected"] == 2
 
 
 def test_build_rule_metrics_report_never_triggered_uses_registry():
     """Rules present in the analyzer registry but not in findings appear in never_triggered."""
-    from sattlint.devtools.semantic_reports import build_rule_metrics_report
+    from sattlint.devtools.semantic_reports import build_rule_metrics_report  # noqa: PLC0415
 
-    findings_report = {"findings": []}
+    findings_report: dict[str, list[dict[str, object]]] = {"findings": []}
     analyzer_registry = {
         "rules": [
             {"rule_id": "semantic.unused-variable"},
@@ -185,10 +192,11 @@ def test_build_rule_metrics_report_never_triggered_uses_registry():
         ]
     }
 
-    report = build_rule_metrics_report(findings_report, analyzer_registry)
+    report = cast(dict[str, Any], build_rule_metrics_report(findings_report, analyzer_registry))
+    never_triggered = cast(list[str], report["never_triggered"])
 
-    assert "semantic.unused-variable" in report["never_triggered"]
-    assert "semantic.read-before-write" in report["never_triggered"]
+    assert "semantic.unused-variable" in never_triggered
+    assert "semantic.read-before-write" in never_triggered
     assert report["summary"]["rules_never_triggered_count"] == 2
 
 
@@ -199,8 +207,8 @@ def test_build_rule_metrics_report_never_triggered_uses_registry():
 
 def test_trace_timing_summary_is_present_and_aggregates_phases():
     """trace_basepicture_analysis includes timing_summary keyed by phase."""
-    from sattline_parser.models.ast_model import BasePicture, ModuleHeader
-    from sattlint.tracing import trace_basepicture_analysis
+    from sattline_parser.models.ast_model import BasePicture, ModuleHeader  # noqa: PLC0415
+    from sattlint.tracing import trace_basepicture_analysis  # noqa: PLC0415
 
     bp = BasePicture(
         header=ModuleHeader(name="Minimal", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
@@ -211,7 +219,7 @@ def test_trace_timing_summary_is_present_and_aggregates_phases():
     result = trace_basepicture_analysis(bp)
 
     assert "timing_summary" in result
-    timing = result["timing_summary"]
+    timing = cast(dict[str, dict[str, object]], result["timing_summary"])
     assert isinstance(timing, dict)
     # There should be at least one phase in the summary
     assert len(timing) >= 1

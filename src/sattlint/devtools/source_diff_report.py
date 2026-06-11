@@ -32,10 +32,11 @@ from sattlint.devtools._diff_rendering import (
     summarize_unified_diff_lines,
 )
 from sattlint.path_sanitizer import sanitize_path_for_report
+from sattlint.repo_paths import repo_root_from
 from sattlint.tracing import collect_ast_summary
 from sattlint.validation import validate_transformed_basepicture
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = repo_root_from(Path(__file__))
 DEFAULT_JSON_OUTPUT_FILENAME = "source_diff_report.json"
 DEFAULT_MARKDOWN_OUTPUT_FILENAME = "source_diff_report.md"
 
@@ -1086,7 +1087,7 @@ def _parse_side_for_report(
             source_path=source_path,
             log_failures=False,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         errors.append(
             {
                 "side": side,
@@ -1100,7 +1101,7 @@ def _parse_side_for_report(
     validation_ok = True
     try:
         validate_transformed_basepicture(base_picture)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         validation_ok = False
         errors.append(
             {

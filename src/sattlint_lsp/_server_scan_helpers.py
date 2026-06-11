@@ -70,7 +70,7 @@ def _collect_entry_workspace_diagnostics(
             allow_stale=False,
             raise_on_error=True,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         return (
             key,
             {

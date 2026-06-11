@@ -28,7 +28,7 @@ def _shell_command(command: list[str]) -> str:
 
 
 def _changed_file_flag_args(changed_files: Iterable[str]) -> list[str]:
-    from sattlint.devtools import pipeline as pipeline_module
+    from sattlint.devtools import pipeline as pipeline_module  # noqa: PLC0415
 
     args: list[str] = []
     for path_text in pipeline_module.normalize_changed_files(changed_files):
@@ -46,7 +46,7 @@ def _pytest_worker_args(pytest_workers: str | None) -> list[str]:
 
 
 def _focused_python_files(changed_files: Iterable[str]) -> list[str]:
-    from sattlint.devtools import pipeline as pipeline_module
+    from sattlint.devtools import pipeline as pipeline_module  # noqa: PLC0415
 
     focused_files: list[str] = []
     for path_text in pipeline_module.normalize_changed_files(changed_files):
@@ -163,7 +163,7 @@ def _build_finish_gate_commands(
     python_command: list[str],
     pytest_workers: str | None = None,
 ) -> list[dict[str, Any]]:
-    from sattlint.devtools import pipeline as pipeline_module
+    from sattlint.devtools import pipeline as pipeline_module  # noqa: PLC0415
 
     normalized_changed_files = pipeline_module.normalize_changed_files(changed_files)
     commands: list[dict[str, Any]] = []

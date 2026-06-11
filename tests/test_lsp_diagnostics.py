@@ -769,7 +769,7 @@ ENDDEF (*BasePicture*);
 
 
 def test_collect_semantic_diagnostics_preserves_declared_lsp_analyzer_identity(tmp_path):
-    from sattlint.analyzers.registry import get_declared_lsp_analyzer_keys
+    from sattlint.analyzers.registry import get_declared_lsp_analyzer_keys  # noqa: PLC0415
 
     entry_file = tmp_path / "Program" / "Main.s"
     _write_text(entry_file, _source_with_unused_variable())
@@ -1031,7 +1031,7 @@ def test_lsp_helper_path_range_and_message_utilities_cover_edge_cases(tmp_path):
     assert lsp_helpers._document_uri_for_path(document_path).casefold() == document_path.resolve().as_uri().casefold()
 
 
-def test_lsp_helper_request_settings_and_merge_helpers_cover_optional_branches(tmp_path):
+def test_lsp_helper_request_settings_and_merge_helpers_cover_optional_branches(tmp_path):  # noqa: PLR0915
     assert lsp_helpers._validated_text_document_uri(SimpleNamespace(text_document=SimpleNamespace(uri=1))) is None
     assert (
         lsp_helpers._validated_text_document_position(

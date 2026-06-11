@@ -1,7 +1,11 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false
 # ruff: noqa: F403, F405
 import json
 
+from sattlint.analyzers.framework import Issue
+
 from ._app_analysis_test_support import *
+from .helpers import AnalysisGraphStub, named_object
 
 
 def test_run_module_duplicates_analysis_rejects_empty_name(monkeypatch):
@@ -49,7 +53,7 @@ def test_run_module_duplicates_analysis_uses_selected_instances(monkeypatch):
 
     app_analysis.run_module_duplicates_analysis(
         app.DEFAULT_CONFIG.copy(),
-        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", SimpleNamespace())])),
+        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", AnalysisGraphStub())])),
         pause_fn=lambda: pauses.append("pause"),
     )
 
@@ -78,7 +82,7 @@ def test_run_module_duplicates_analysis_requires_two_selected_instances(monkeypa
 
     app_analysis.run_module_duplicates_analysis(
         app.DEFAULT_CONFIG.copy(),
-        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", SimpleNamespace())])),
+        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", AnalysisGraphStub())])),
         pause_fn=lambda: pauses.append("pause"),
     )
 
@@ -103,7 +107,7 @@ def test_run_module_find_by_name_lists_matches_and_reports_errors(monkeypatch):
 
     app_analysis.run_module_find_by_name(
         app.DEFAULT_CONFIG.copy(),
-        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", SimpleNamespace())])),
+        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", AnalysisGraphStub())])),
         pause_fn=lambda: pauses.append("pause"),
     )
 
@@ -134,7 +138,7 @@ def test_run_module_find_by_name_updates_live_status(monkeypatch):
 
     app_analysis.run_module_find_by_name(
         app.DEFAULT_CONFIG.copy(),
-        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", SimpleNamespace())])),
+        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", AnalysisGraphStub())])),
         pause_fn=None,
     )
 
@@ -156,7 +160,7 @@ def test_run_module_tree_debug_uses_default_depth_on_invalid_input(monkeypatch):
     app_analysis.run_module_tree_debug(
         app.DEFAULT_CONFIG.copy(),
         prompt_fn=lambda _message, _default: "not-a-number",
-        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", SimpleNamespace())])),
+        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", AnalysisGraphStub())])),
         pause_fn=lambda: pauses.append("pause"),
     )
 
@@ -205,8 +209,8 @@ def test_run_checks_runs_selected_non_default_cli_exposed_analyzer(monkeypatch):
                 [
                     (
                         "TargetA",
-                        SimpleNamespace(header=SimpleNamespace(name="TargetA")),
-                        SimpleNamespace(
+                        named_object("TargetA"),
+                        AnalysisGraphStub(
                             unavailable_libraries=set(),
                             load_stage_timings={"load_or_parse": 0.5},
                             graphics_load_timings={"correlate-picture-display": 0.125},
@@ -246,8 +250,8 @@ def test_run_checks_announces_selected_variable_issue_kinds_before_running(monke
                 [
                     (
                         "TargetA",
-                        SimpleNamespace(header=SimpleNamespace(name="TargetA")),
-                        SimpleNamespace(
+                        named_object("TargetA"),
+                        AnalysisGraphStub(
                             unavailable_libraries=set(),
                             load_stage_timings={},
                             graphics_load_timings={},
@@ -297,8 +301,8 @@ def test_run_checks_updates_live_status_for_active_analyzer(monkeypatch):
                 [
                     (
                         "TargetA",
-                        SimpleNamespace(header=SimpleNamespace(name="TargetA")),
-                        SimpleNamespace(
+                        named_object("TargetA"),
+                        AnalysisGraphStub(
                             unavailable_libraries=set(),
                             load_stage_timings={"load_or_parse": 0.5},
                             graphics_load_timings={"correlate-picture-display": 0.125},
@@ -321,7 +325,55 @@ def test_run_checks_updates_live_status_for_active_analyzer(monkeypatch):
     assert updates == ["Analyzing TargetA: State inference (state-inference)"]
 
 
-def test_run_checks_reuses_target_shared_artifacts_and_runs_semantics_last(monkeypatch):
+def test_run_checks_filters_non_variable_report_for_selected_issue_kinds(monkeypatch):
+    lines: list[str] = []
+
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+
+    app_analysis.run_checks(
+        app.DEFAULT_CONFIG.copy(),
+        ["comment-code"],
+        selected_issue_kinds={"comment_code_read_error"},
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        named_object("TargetA"),
+                        AnalysisGraphStub(
+                            unavailable_libraries=set(),
+                            load_stage_timings={},
+                            graphics_load_timings={},
+                        ),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="comment-code",
+                name="Commented-out code",
+                run=lambda _context: app_analysis.SimpleReport(
+                    name="TargetA",
+                    issues=[
+                        Issue(kind="comment_code", message="inactive code"),
+                        Issue(kind="comment_code_read_error", message="scan read failed"),
+                    ],
+                ),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        pause_fn=None,
+    )
+
+    assert any("Issues: 1" in line for line in lines)
+    assert not any("Issues: 2" in line for line in lines)
+    assert any("scan read failed" in line for line in lines)
+    assert not any("inactive code" in line for line in lines)
+
+
+def test_run_checks_skips_semantic_layer_when_batch_selection_includes_contributors(monkeypatch):
     lines: list[str] = []
     run_order: list[str] = []
     shared_ids: list[int] = []
@@ -353,8 +405,8 @@ def test_run_checks_reuses_target_shared_artifacts_and_runs_semantics_last(monke
                 [
                     (
                         "TargetA",
-                        SimpleNamespace(header=SimpleNamespace(name="TargetA")),
-                        SimpleNamespace(
+                        named_object("TargetA"),
+                        AnalysisGraphStub(
                             unavailable_libraries=set(),
                             load_stage_timings={"load_or_parse": 0.5},
                             graphics_load_timings={"correlate-picture-display": 0.125},
@@ -371,10 +423,10 @@ def test_run_checks_reuses_target_shared_artifacts_and_runs_semantics_last(monke
         pause_fn=None,
     )
 
-    assert run_order == ["variables", "sattline-semantics"]
+    assert run_order == ["variables"]
     assert len(set(shared_ids)) == 1
     assert any("variables summary" in line for line in lines)
-    assert any("semantics summary" in line for line in lines)
+    assert not any("semantics summary" in line for line in lines)
 
 
 def test_run_checks_writes_target_telemetry_summary(tmp_path, monkeypatch):
@@ -500,8 +552,8 @@ def test_run_checks_uses_cached_report_when_available(monkeypatch):
                 [
                     (
                         "TargetA",
-                        SimpleNamespace(header=SimpleNamespace(name="TargetA")),
-                        SimpleNamespace(
+                        named_object("TargetA"),
+                        AnalysisGraphStub(
                             unavailable_libraries=set(),
                             analysis_cache_key="project-key",
                             analysis_manifest_files=frozenset({Path("programs/TargetA.s")}),
@@ -576,8 +628,8 @@ def test_run_checks_rebuilds_report_cache_when_cached_payload_is_stale(monkeypat
                 [
                     (
                         "TargetA",
-                        SimpleNamespace(header=SimpleNamespace(name="TargetA")),
-                        SimpleNamespace(
+                        named_object("TargetA"),
+                        AnalysisGraphStub(
                             unavailable_libraries=set(),
                             analysis_cache_key="project-key",
                             analysis_manifest_files=frozenset({Path("programs/TargetA.s")}),
@@ -627,8 +679,8 @@ def test_run_checks_bypasses_report_cache_when_use_cache_disabled(monkeypatch):
                 [
                     (
                         "TargetA",
-                        SimpleNamespace(header=SimpleNamespace(name="TargetA")),
-                        SimpleNamespace(
+                        named_object("TargetA"),
+                        AnalysisGraphStub(
                             unavailable_libraries=set(),
                             analysis_cache_key="project-key",
                             analysis_manifest_files=frozenset({Path("programs/TargetA.s")}),
@@ -669,8 +721,8 @@ def test_run_checks_bypasses_report_cache_when_debug_enabled(monkeypatch):
                 [
                     (
                         "TargetA",
-                        SimpleNamespace(header=SimpleNamespace(name="TargetA")),
-                        SimpleNamespace(
+                        named_object("TargetA"),
+                        AnalysisGraphStub(
                             unavailable_libraries=set(),
                             analysis_cache_key="project-key",
                             analysis_manifest_files=frozenset({Path("programs/TargetA.s")}),
@@ -708,8 +760,8 @@ def test_run_checks_handles_keyboard_interrupt_and_pauses(monkeypatch):
                 [
                     (
                         "TargetA",
-                        SimpleNamespace(header=SimpleNamespace(name="TargetA")),
-                        SimpleNamespace(unavailable_libraries=set()),
+                        named_object("TargetA"),
+                        AnalysisGraphStub(),
                     )
                 ]
             ),
@@ -743,8 +795,8 @@ def test_run_checks_accepts_legacy_underscore_analyzer_key(monkeypatch):
                 [
                     (
                         "TargetA",
-                        SimpleNamespace(header=SimpleNamespace(name="TargetA")),
-                        SimpleNamespace(unavailable_libraries=set()),
+                        named_object("TargetA"),
+                        AnalysisGraphStub(),
                     )
                 ]
             ),
@@ -807,7 +859,7 @@ def test_run_module_localvar_analysis_rejects_empty_module_path_and_variable(mon
     monkeypatch.setattr(builtins, "input", make_input(["", "UnitA", ""]))
 
     def load_project_fn(_cfg):
-        return (SimpleNamespace(header=SimpleNamespace(name="BasePicture")), SimpleNamespace())
+        return (named_object("BasePicture"), AnalysisGraphStub())
 
     app_analysis.run_module_localvar_analysis(
         app.DEFAULT_CONFIG.copy(),
@@ -839,14 +891,14 @@ def test_run_module_localvar_analysis_reports_success_and_errors(monkeypatch):
         app.DEFAULT_CONFIG.copy(),
         load_project_fn=cast(
             Any,
-            lambda _cfg: (SimpleNamespace(header=SimpleNamespace(name="BasePicture")), SimpleNamespace()),
+            lambda _cfg: (named_object("BasePicture"), AnalysisGraphStub()),
         ),
         iter_loaded_projects_fn=cast(
             Any,
             lambda *_args, **_kwargs: iter(
                 [
-                    ("TargetA", "bp-a", SimpleNamespace()),
-                    ("TargetB", "bp-b", SimpleNamespace()),
+                    ("TargetA", "bp-a", AnalysisGraphStub()),
+                    ("TargetB", "bp-b", AnalysisGraphStub()),
                 ]
             ),
         ),
@@ -901,8 +953,8 @@ def test_run_mms_interface_analysis_reports_summary_and_errors(monkeypatch):
             Any,
             lambda *_args, **_kwargs: iter(
                 [
-                    ("TargetA", "bp-a", SimpleNamespace()),
-                    ("TargetB", "bp-b", SimpleNamespace()),
+                    ("TargetA", "bp-a", AnalysisGraphStub()),
+                    ("TargetB", "bp-b", AnalysisGraphStub()),
                 ]
             ),
         ),
@@ -994,8 +1046,8 @@ def test_run_debug_variable_usage_and_comment_code_analysis_cover_empty_success_
             Any,
             lambda *_args, **_kwargs: iter(
                 [
-                    ("TargetA", "bp-a", SimpleNamespace()),
-                    ("TargetB", "bp-b", SimpleNamespace()),
+                    ("TargetA", "bp-a", AnalysisGraphStub()),
+                    ("TargetB", "bp-b", AnalysisGraphStub()),
                 ]
             ),
         ),
@@ -1005,9 +1057,7 @@ def test_run_debug_variable_usage_and_comment_code_analysis_cover_empty_success_
         app.DEFAULT_CONFIG.copy(),
         iter_loaded_projects_fn=cast(
             Any,
-            lambda *_args, **_kwargs: iter(
-                [("TargetA", SimpleNamespace(header=SimpleNamespace(name="Root")), "graph")]
-            ),
+            lambda *_args, **_kwargs: iter([("TargetA", named_object("Root"), "graph")]),
         ),
         source_paths_for_current_target_fn=lambda _project_bp, _graph: {Path("A.s"), Path("B.s")},
         pause_fn=lambda: pauses.append("pause-comment"),

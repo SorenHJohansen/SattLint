@@ -8,6 +8,72 @@ from typing import Any, cast
 from .json_helpers import nonempty_string_entries as _string_entries
 
 
+def _missing_report_paths(repo_root: Path, paths: tuple[str, ...] | list[str]) -> list[str]:
+    missing: list[str] = []
+    for raw_path in paths:
+        candidate = Path(raw_path)
+        resolved = candidate if candidate.is_absolute() else repo_root / candidate
+        if not resolved.is_file():
+            missing.append(raw_path)
+    return missing
+
+
+def _append_missing_acceptance_test_path_findings(
+    findings: list[dict[str, Any]],
+    *,
+    repo_root: Path,
+    analyzers: tuple[Any, ...],
+    rules: tuple[Any, ...],
+) -> None:
+    analyzer_path_gaps: list[dict[str, Any]] = []
+    for analyzer in analyzers:
+        if not analyzer.spec.enabled or not analyzer.delivery.acceptance_tests:
+            continue
+        missing_paths = _missing_report_paths(repo_root, analyzer.delivery.acceptance_tests)
+        if missing_paths:
+            analyzer_path_gaps.append(
+                {
+                    "analyzer": analyzer.spec.key,
+                    "missing_paths": missing_paths,
+                }
+            )
+
+    if analyzer_path_gaps:
+        findings.append(
+            {
+                "id": "analyzer-acceptance-test-path-gap",
+                "severity": "medium",
+                "message": "Some enabled analyzers declare acceptance-test files that do not exist in the repository.",
+                "missing_analyzers": sorted(entry["analyzer"] for entry in analyzer_path_gaps),
+                "missing_acceptance_test_paths": analyzer_path_gaps,
+            }
+        )
+
+    rule_path_gaps: list[dict[str, Any]] = []
+    for rule in rules:
+        if not rule.acceptance_tests:
+            continue
+        missing_paths = _missing_report_paths(repo_root, rule.acceptance_tests)
+        if missing_paths:
+            rule_path_gaps.append(
+                {
+                    "rule_id": rule.id,
+                    "missing_paths": missing_paths,
+                }
+            )
+
+    if rule_path_gaps:
+        findings.append(
+            {
+                "id": "rule-acceptance-test-path-gap",
+                "severity": "medium",
+                "message": "Some semantic rules declare acceptance-test files that do not exist in the repository.",
+                "missing_rule_ids": sorted(entry["rule_id"] for entry in rule_path_gaps),
+                "missing_acceptance_test_paths": rule_path_gaps,
+            }
+        )
+
+
 def _finding_entries(value: object) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
@@ -89,7 +155,7 @@ def _append_structural_budget_findings(findings: list[dict[str, Any]], structura
 def collect_phase2_rule_metadata_gate(
     architecture_report: dict[str, Any],
 ) -> dict[str, Any]:
-    from sattlint.devtools import structural_reports as structural_reports_module
+    from sattlint.devtools import structural_reports as structural_reports_module  # noqa: PLC0415
 
     findings = _finding_entries(architecture_report.get("findings"))
     blocking_findings = [
@@ -124,7 +190,7 @@ def collect_architecture_report(
     *,
     ratchet_path: Path | None = None,
 ) -> dict[str, Any]:
-    from sattlint.devtools import structural_reports as structural_reports_module
+    from sattlint.devtools import structural_reports as structural_reports_module  # noqa: PLC0415
 
     structural_budgets = structural_reports_module.collect_structural_budget_report(
         repo_root, ratchet_path=ratchet_path
@@ -358,6 +424,13 @@ def collect_architecture_report(
             }
         )
 
+    _append_missing_acceptance_test_path_findings(
+        findings,
+        repo_root=repo_root,
+        analyzers=analyzers,
+        rules=catalog.rules,
+    )
+
     _append_structural_budget_findings(findings, structural_budgets)
     phase2_rule_metadata_gate = structural_reports_module.collect_phase2_rule_metadata_gate({"findings": findings})
 
@@ -386,7 +459,7 @@ def collect_architecture_report(
 
 
 def collect_analyzer_registry_report() -> dict[str, Any]:
-    from sattlint.devtools import structural_reports as structural_reports_module
+    from sattlint.devtools import structural_reports as structural_reports_module  # noqa: PLC0415
 
     catalog = structural_reports_module.get_default_analyzer_catalog()
     return catalog.to_report(generated_by="sattlint.devtools.pipeline")

@@ -11,7 +11,7 @@ from typing import Any
 
 
 def _repo_audit_helpers_module() -> Any:
-    from sattlint.devtools import repo_audit as repo_audit_module
+    from sattlint.devtools import repo_audit as repo_audit_module  # noqa: PLC0415
 
     return repo_audit_module
 
@@ -190,7 +190,7 @@ def _print_cli_summary(status_report: dict[str, Any]) -> None:
 
 
 def _default_corpus_manifest_dir() -> Path | None:
-    from sattlint.devtools import pipeline as pipeline_module
+    from sattlint.devtools import pipeline as pipeline_module  # noqa: PLC0415
 
     manifest_dir = pipeline_module.DEFAULT_CORPUS_MANIFEST_DIR.resolve()
     if not manifest_dir.exists():

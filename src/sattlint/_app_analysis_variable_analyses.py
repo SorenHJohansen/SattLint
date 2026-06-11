@@ -16,7 +16,7 @@ VARIABLE_ANALYSES: VariableAnalysisMap = {
     "8": ("Duplicated complex datatypes", {IssueKind.DATATYPE_DUPLICATION}),
     "9": ("Min/Max mapping name mismatches", {IssueKind.MIN_MAX_MAPPING_MISMATCH}),
     "10": ("Magic numbers", {IssueKind.MAGIC_NUMBER}),
-    "11": ("Name collisions", {IssueKind.NAME_COLLISION}),
+    "11": ("Missing required parameter connections", {IssueKind.REQUIRED_PARAMETER_CONNECTION}),
     "12": ("Sorting-sensitive datatypes", {IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE}),
     "13": ("Reset contamination", {IssueKind.RESET_CONTAMINATION}),
     "14": ("Variable shadowing", {IssueKind.SHADOWING}),
@@ -28,6 +28,9 @@ VARIABLE_ANALYSES: VariableAnalysisMap = {
     "20": ("Global scope minimization", {IssueKind.GLOBAL_SCOPE_MINIMIZATION}),
     "21": ("Hidden global coupling", {IssueKind.HIDDEN_GLOBAL_COUPLING}),
     "22": ("High fan-in or fan-out variables", {IssueKind.HIGH_FAN_IN_OUT}),
+    "23": ("Overlapping layout elements", {IssueKind.LAYOUT_OVERLAP}),
+    "24": ("Naming-to-behavior mismatches", {IssueKind.NAMING_ROLE_MISMATCH}),
+    "25": ("Name collisions", {IssueKind.NAME_COLLISION}),
 }
 
 HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = (
@@ -44,9 +47,12 @@ HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = (
     "12",
     "13",
     "14",
+    "23",
+    "25",
 )
 
 LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = (
+    "24",
     "15",
     "16",
     "17",

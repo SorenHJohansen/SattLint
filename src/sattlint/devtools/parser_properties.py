@@ -145,7 +145,7 @@ def check_parser_property(
             result = property_fn(source)
             if result is False:
                 failures.append((source[:60], None))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             failures.append((source[:60], exc))
 
     return failures

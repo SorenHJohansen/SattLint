@@ -1,3 +1,5 @@
+# pyright: reportPrivateUsage=false
+
 import runpy
 from pathlib import Path
 from typing import Any, cast
@@ -110,7 +112,7 @@ def _table_text(document: DocClass) -> list[str]:
     ]
 
 
-def _write_text(path, content: str) -> None:
+def _write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
 

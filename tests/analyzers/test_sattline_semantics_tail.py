@@ -19,7 +19,7 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 from sattlint import constants as const
-from sattlint.analyzers.registry import get_default_analyzers
+from sattlint.analyzers.registry import get_default_analyzers, get_enabled_analyzers, get_selectable_analyzers
 from sattlint.analyzers.sattline_semantics import analyze_sattline_semantics, get_sattline_semantic_rule_groups
 from sattlint.tracing import detect_unreachable_sequence_logic
 from tests.analyzers.test_sattline_semantics import _hdr, _sequence, _varref
@@ -564,11 +564,15 @@ def test_detect_unreachable_sequence_logic_reports_nested_transition_reachabilit
     assert findings[0]["node_label"] == "SFCTransition:NeverFires"
 
 
-def test_sattline_semantics_analyzer_is_enabled_by_default():
+def test_sattline_semantics_analyzer_stays_in_catalog_but_is_not_batch_selectable():
     specs = {spec.key: spec for spec in get_default_analyzers()}
+    enabled_keys = {spec.key for spec in get_enabled_analyzers()}
+    selectable_keys = {spec.key for spec in get_selectable_analyzers()}
 
     assert "sattline-semantics" in specs
     assert specs["sattline-semantics"].enabled is True
+    assert "sattline-semantics" not in enabled_keys
+    assert "sattline-semantics" not in selectable_keys
 
 
 def test_sattline_semantic_rule_groups_cover_core_analyzers():

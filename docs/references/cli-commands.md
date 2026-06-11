@@ -110,7 +110,7 @@ Used by the VS Code extension (`vscode/sattline-vscode/`) to provide:
 
 ### sattlint-repo-audit
 
-Repository audit and quality checks. Primary entry point for CI and audit workflows. Local pre-push gate is `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit`.
+Repository audit and quality checks. Primary entry point for CI and audit workflows. Use the full audit for local pre-push or CI proof, and use `--check-my-changes` for AI drift or diff-scoped finish-gate proof.
 
 ```bash
 # Quick audit (fast iteration during development)
@@ -185,14 +185,22 @@ python scripts/run_ai_edit_gate.py path/to/file.py [path/to/other-file]
 This is the same runner invoked by `.github/hooks/ai-edit-gate.json` after AI file edits.
 It enforces touched-file Ruff fix and format, touched-file Pyright, AI-control checks such as `context_health.py --check`, and touched-file ratchet policy through `scripts/check_ratchet_policy.py`.
 
-Local pre-push gate:
+AI drift gate:
 
 ```bash
 sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit
 ```
 
-Use the pre-push gate for the heavier proof burden: focused owner tests, touched-file Ruff and Pyright, ratchet policy, and the recommended repo-audit slice for the current change set.
+Use the AI drift gate for the heavier current-slice proof burden: focused owner tests, touched-file Ruff and Pyright, ratchet policy, and the recommended repo-audit slice for the current change set.
 It also evaluates changed-file structural surface proof against the recorded `import_max_count`, `dependency_max_count`, `public_symbol_max_count`, and `nesting_max_depth` ceilings.
+
+Local pre-push or CI gate:
+
+```bash
+sattlint-repo-audit --profile full --output-dir artifacts/audit
+```
+
+Use the full audit when you want whole-repo proof that matches the CI full-audit path.
 
 Output:
 

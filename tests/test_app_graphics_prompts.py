@@ -1,3 +1,5 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownLambdaType=false, reportUnknownArgumentType=false, reportPrivateUsage=false, reportArgumentType=false
+
 """Focused graphics prompt and selector tests for the app."""
 
 from __future__ import annotations
@@ -11,17 +13,7 @@ import pytest
 
 from sattlint import app
 
-
-def make_input(responses):
-    it = iter(responses)
-
-    def _input(_prompt=""):
-        try:
-            return next(it)
-        except StopIteration as exc:
-            raise AssertionError("No more input responses provided") from exc
-
-    return _input
+from .helpers import make_input
 
 
 def test_pick_or_prompt_graphics_rule_selector_value_handles_invalid_index_then_manual_entry(monkeypatch):
@@ -406,7 +398,7 @@ def test_app_graphics_optional_prompt_helpers(monkeypatch):
 
 
 def test_app_graphics_collect_layout_entries_and_menu_wrapper(monkeypatch, tmp_path):
-    from sattlint.devtools import structural_reports
+    from sattlint.devtools import structural_reports  # noqa: PLC0415
 
     cfg = app.DEFAULT_CONFIG.copy()
     project_bp = SimpleNamespace(name="BP")

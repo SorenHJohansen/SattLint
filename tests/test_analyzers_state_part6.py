@@ -620,7 +620,7 @@ def test_effect_flow_tracker_global_mapping_uses_lookup_fallback():
 
 
 def test_effect_flow_tracker_records_copyvariable_output_edge():
-    from collections import defaultdict
+    from collections import defaultdict  # noqa: PLC0415
 
     edges = defaultdict(set)
     source = Variable(name="Source", datatype=Simple_DataType.INTEGER)

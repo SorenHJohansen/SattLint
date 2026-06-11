@@ -33,17 +33,19 @@ from sattlint.devtools._structural_budget_inventory import (
 )
 from sattlint.devtools._structural_report_impact import collect_impact_analysis_report
 from sattlint.path_sanitizer import sanitize_path_for_report
+from sattlint.repo_paths import repo_root_from
 from sattlint.reporting.variables_report import IssueKind, VariablesReport
 from sattlint.resolution.common import resolve_moduletype_def_strict
 from sattlint.semantic_analysis import build_variable_semantic_artifacts
 
 ast = _ast
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = repo_root_from(Path(__file__))
 STRUCTURAL_ENTRY_ROOTS = (Path("tests") / "fixtures" / "sample_sattline_files",)
 PHASE2_ENFORCED_RULE_METADATA_FINDING_IDS = frozenset(
     {
         "rule-acceptance-test-gap",
+        "rule-acceptance-test-path-gap",
         "rule-mutation-metadata-gap",
     }
 )

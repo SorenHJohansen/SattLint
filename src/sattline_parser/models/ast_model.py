@@ -181,7 +181,7 @@ class DataType:
         self.usage_locations.append((module_path.copy(), "write"))
 
     def __str__(self) -> str:
-        from ..utils.formatter import format_list
+        from ..utils.formatter import format_list  # noqa: PLC0415
 
         lines = [
             f"Name       : {self.name!r}",

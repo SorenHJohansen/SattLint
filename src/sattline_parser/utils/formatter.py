@@ -140,7 +140,7 @@ def format_optional(obj: object) -> str:
     return "None" if obj is None else str(obj)
 
 
-def format_expr(expr: object, indent: str = _DEFAULT_INDENT) -> str:
+def format_expr(expr: object, indent: str = _DEFAULT_INDENT) -> str:  # noqa: PLR0915
     """Pretty-print nested expressions and statements in a SattLine-like format."""
 
     children = _statement_children(expr)
@@ -251,7 +251,7 @@ def format_seq_nodes(nodes: list[object], indent: str = _DEFAULT_INDENT) -> str:
     """Pretty-print a list of SFC nodes recursively."""
     lines: list[str] = []
 
-    from ..models import ast_model
+    from ..models import ast_model  # noqa: PLC0415
 
     def _fmt_stmt_list(statements: list[object], level: int = 2) -> None:
         for statement in statements:

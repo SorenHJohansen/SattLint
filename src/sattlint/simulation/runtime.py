@@ -19,8 +19,8 @@ from sattline_parser.models.ast_model import (
     SingleModule,
 )
 
-from ..analyzers._dataflow_common import is_scalar_value
 from ..analyzers.dataflow import DataflowAnalyzer, ScalarValue, StateMap
+from ..analyzers.dataflow._dataflow_common import is_scalar_value
 from ..core.semantic import SemanticSnapshot
 from ..resolution.common import resolve_moduletype_def_strict
 from ..resolution.scope import ScopeContext

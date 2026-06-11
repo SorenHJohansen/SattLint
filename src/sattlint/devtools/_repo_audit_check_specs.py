@@ -13,13 +13,13 @@ from sattlint.path_sanitizer import sanitize_path_for_report
 
 
 def _entrypoints_module() -> Any:
-    from sattlint.devtools import repo_audit_entrypoints as entrypoints_module
+    from sattlint.devtools import repo_audit_entrypoints as entrypoints_module  # noqa: PLC0415
 
     return entrypoints_module
 
 
 def _run_verify_recommendations_check(_context: Any) -> list[Any]:
-    from sattlint.devtools import ai_work_map as ai_work_map_module
+    from sattlint.devtools import ai_work_map as ai_work_map_module  # noqa: PLC0415
 
     entrypoints_module = _entrypoints_module()
     repo_audit = entrypoints_module._repo_audit_module()

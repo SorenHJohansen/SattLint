@@ -357,7 +357,7 @@ ENDDEF (*BasePicture*);
     assert result.stage == "ok"
 
 
-def test_validation_type_helpers_cover_predicates_literals_and_matching() -> None:
+def test_validation_type_helpers_cover_predicates_literals_and_matching() -> None:  # noqa: PLR0915
     graph = _validation_expression_graph()
     env = _validation_expression_env()
     time_literal = {validation_module.const.GRAMMAR_VALUE_TIME_VALUE: "2024-01-02-03:04:05.006"}

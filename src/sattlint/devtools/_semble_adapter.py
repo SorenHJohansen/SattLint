@@ -8,6 +8,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, cast
 
+_REPO_CACHE_GENERATIONS: dict[str, int] = {}
+
 
 @dataclass(frozen=True, slots=True)
 class SembleMatch:
@@ -63,8 +65,13 @@ def _load_semble_index_class() -> type[Any] | None:
     return cast(type[Any], semble_index)
 
 
+def _repo_cache_generation(repo_path: str) -> int:
+    return _REPO_CACHE_GENERATIONS.get(repo_path, 0)
+
+
 @lru_cache(maxsize=4)
-def _index_for_repo(repo_path: str) -> Any:
+def _index_for_repo(repo_path: str, generation: int) -> Any:
+    del generation
     semble_index = _load_semble_index_class()
     if semble_index is None:
         raise ModuleNotFoundError("The 'semble' package is not installed.")
@@ -72,7 +79,7 @@ def _index_for_repo(repo_path: str) -> Any:
 
 
 @lru_cache(maxsize=32)
-def _search_repo_cached(query: str, repo_path: str, top_k: int) -> SembleSearchResponse:
+def _search_repo_cached(query: str, repo_path: str, top_k: int, generation: int) -> SembleSearchResponse:
     semble_index = _load_semble_index_class()
     if semble_index is None:
         return SembleSearchResponse(
@@ -87,9 +94,9 @@ def _search_repo_cached(query: str, repo_path: str, top_k: int) -> SembleSearchR
         )
 
     try:
-        index = _index_for_repo(repo_path)
+        index = _index_for_repo(repo_path, generation)
         raw_results = index.search(query, top_k=top_k)
-    except Exception as exc:  # pragma: no cover - defensive wrapper around optional dependency
+    except Exception as exc:  # pragma: no cover - defensive wrapper around optional dependency  # noqa: BLE001
         return SembleSearchResponse(
             available=False,
             backend="python-library",
@@ -134,21 +141,35 @@ def _search_repo_cached(query: str, repo_path: str, top_k: int) -> SembleSearchR
     )
 
 
-def search_local_repo(query: str, *, repo_root: Path, top_k: int = 5) -> SembleSearchResponse:
+def invalidate_local_repo_cache(*, repo_root: Path | None = None) -> None:
+    if repo_root is None:
+        _REPO_CACHE_GENERATIONS.clear()
+        _index_for_repo.cache_clear()
+        _search_repo_cached.cache_clear()
+        return
+
+    resolved_repo_root = repo_root.resolve().as_posix()
+    _REPO_CACHE_GENERATIONS[resolved_repo_root] = _repo_cache_generation(resolved_repo_root) + 1
+
+
+def search_local_repo(query: str, *, repo_root: Path, top_k: int = 5, refresh: bool = False) -> SembleSearchResponse:
     normalized_query = query.strip()
     resolved_repo_root = repo_root.resolve()
+    repo_path = resolved_repo_root.as_posix()
+    if refresh:
+        invalidate_local_repo_cache(repo_root=resolved_repo_root)
     if not normalized_query:
         return SembleSearchResponse(
             available=False,
             backend="python-library" if _load_semble_index_class() is not None else None,
             query="",
-            repo_path=resolved_repo_root.as_posix(),
+            repo_path=repo_path,
             top_k=top_k,
             results=(),
             explanation="Semble semantic search was skipped because the query is empty.",
             error="empty_query",
         )
-    return _search_repo_cached(normalized_query, resolved_repo_root.as_posix(), top_k)
+    return _search_repo_cached(normalized_query, repo_path, top_k, _repo_cache_generation(repo_path))
 
 
 def _normalize_file_path(raw_path: object, *, repo_root: Path) -> str:
@@ -189,4 +210,4 @@ def _coerce_score(value: object) -> float | None:
         return None
 
 
-__all__ = ["SembleMatch", "SembleSearchResponse", "search_local_repo"]
+__all__ = ["SembleMatch", "SembleSearchResponse", "invalidate_local_repo_cache", "search_local_repo"]

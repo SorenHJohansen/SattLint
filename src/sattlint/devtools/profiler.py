@@ -21,9 +21,10 @@ from sattlint.core.semantic import (
     load_workspace_snapshot,
 )
 from sattlint.path_sanitizer import sanitize_path_for_report
+from sattlint.repo_paths import repo_root_from
 from sattlint.semantic_analysis import build_variable_semantic_artifacts
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = repo_root_from(Path(__file__))
 DEFAULT_OUTPUT_FILENAME = "profiler_report.json"
 
 
@@ -167,7 +168,7 @@ def _profile_configured_target(
             project_graph=graph,
             definitions_count=_profile_definition_count(project_bp),
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         load_end = timer()
         entry_label = target_name or selected_target_name or "<configured-target>"
         phase_timings = [
@@ -378,7 +379,7 @@ def profile_workspace(
                 collect_variable_diagnostics=False,
                 _analysis_provider=build_variable_semantic_artifacts,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             load_end = clock()
             duration_ms = _duration_ms(load_start, load_end)
             load_total_ms = round(load_total_ms + duration_ms, 3)

@@ -21,8 +21,8 @@ def _ensure_workspace_api() -> tuple[Any, Any]:
     global _discover_workspace_sources, _load_workspace_snapshot
 
     if _discover_workspace_sources is None or _load_workspace_snapshot is None:
-        from .core.semantic import discover_workspace_sources as discover_workspace_sources_impl
-        from .core.semantic import load_workspace_snapshot as load_workspace_snapshot_impl
+        from .core.semantic import discover_workspace_sources as discover_workspace_sources_impl  # noqa: PLC0415
+        from .core.semantic import load_workspace_snapshot as load_workspace_snapshot_impl  # noqa: PLC0415
 
         _discover_workspace_sources = discover_workspace_sources_impl
         _load_workspace_snapshot = load_workspace_snapshot_impl
@@ -33,7 +33,7 @@ def _ensure_workspace_api() -> tuple[Any, Any]:
 def _ensure_analysis_provider() -> Any:
     analysis_provider = globals().get("build_variable_semantic_artifacts")
     if analysis_provider is None:
-        from .semantic_analysis import build_variable_semantic_artifacts as analysis_provider_impl
+        from .semantic_analysis import build_variable_semantic_artifacts as analysis_provider_impl  # noqa: PLC0415
 
         globals()["build_variable_semantic_artifacts"] = analysis_provider_impl
         return analysis_provider_impl
@@ -74,17 +74,17 @@ def load_workspace_snapshot(
 
 def __getattr__(name: str) -> Any:
     if name == "constants":
-        from .grammar import constants as constants_module
+        from .grammar import constants as constants_module  # noqa: PLC0415
 
         globals()[name] = constants_module
         return constants_module
     if name == "WorkspaceSourceDiscovery":
-        from .core.semantic import WorkspaceSourceDiscovery
+        from .core.semantic import WorkspaceSourceDiscovery  # noqa: PLC0415
 
         globals()[name] = WorkspaceSourceDiscovery
         return WorkspaceSourceDiscovery
     if name == "CodeMode":
-        from .engine import CodeMode
+        from .engine import CodeMode  # noqa: PLC0415
 
         globals()[name] = CodeMode
         return CodeMode

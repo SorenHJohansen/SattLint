@@ -118,7 +118,7 @@ def run_command(cmd: list[str]) -> tuple[int, str, str]:
             check=False,
         )
         return result.returncode, result.stdout, result.stderr
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return 1, "", str(e)
 
 

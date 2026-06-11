@@ -6,6 +6,7 @@ from typing import Any, cast
 
 from lsprotocol.types import Position, Range
 
+from sattlint.core.semantic import build_source_snapshot_from_basepicture
 from sattlint.editor_api import load_workspace_snapshot
 from sattlint_lsp.document_state import DocumentState, apply_content_changes
 from sattlint_lsp.local_parser import DocumentParseResult, FullDocumentParserAdapter, IncrementalParseState
@@ -248,9 +249,7 @@ ENDDEF (*BasePicture*);
     def wrapped_build_source_snapshot(*args, **kwargs):
         nonlocal calls
         calls += 1
-        from sattlint.core import semantic as semantic_module
-
-        return semantic_module.build_source_snapshot_from_basepicture(*args, **kwargs)
+        return build_source_snapshot_from_basepicture(*args, **kwargs)
 
     monkeypatch.setattr(
         "sattlint_lsp.local_parser.build_source_snapshot_from_basepicture", wrapped_build_source_snapshot
@@ -455,9 +454,9 @@ ENDDEF (*BasePicture*);
 # --- document_state.py: apply_content_changes no-range (full replace),
 #     apply_changes fallback, has_analysis branches ---
 def test_apply_content_changes_full_replace_when_no_range():
-    from types import SimpleNamespace
+    from types import SimpleNamespace  # noqa: PLC0415
 
-    from sattlint_lsp.document_state import apply_content_changes
+    from sattlint_lsp.document_state import apply_content_changes  # noqa: PLC0415
 
     change = SimpleNamespace(text="new full content\nsecond line", range=None)
     result_text, ranges = apply_content_changes("old text", [change])
@@ -466,7 +465,7 @@ def test_apply_content_changes_full_replace_when_no_range():
 
 
 def test_apply_content_changes_empty_list_returns_original():
-    from sattlint_lsp.document_state import apply_content_changes
+    from sattlint_lsp.document_state import apply_content_changes  # noqa: PLC0415
 
     result_text, ranges = apply_content_changes("original", [])
     assert result_text == "original"
@@ -474,7 +473,7 @@ def test_apply_content_changes_empty_list_returns_original():
 
 
 def test_document_state_has_analysis_checks_version_and_flags(tmp_path):
-    from sattlint_lsp.document_state import DocumentState
+    from sattlint_lsp.document_state import DocumentState  # noqa: PLC0415
 
     state = DocumentState(uri="file:///test.s", path=tmp_path / "test.s", version=3, text="content")
     # No analysis stored yet
@@ -489,7 +488,7 @@ def test_document_state_has_analysis_checks_version_and_flags(tmp_path):
 
 
 def test_document_state_replace_text_clears_analysis(tmp_path):
-    from sattlint_lsp.document_state import DocumentState
+    from sattlint_lsp.document_state import DocumentState  # noqa: PLC0415
 
     state = DocumentState(uri="file:///test.s", path=tmp_path / "test.s", version=1, text="old")
     state.analysis_version = 1
@@ -500,9 +499,9 @@ def test_document_state_replace_text_clears_analysis(tmp_path):
 
 
 def test_document_state_apply_changes_fallback_on_error(tmp_path):
-    from types import SimpleNamespace
+    from types import SimpleNamespace  # noqa: PLC0415
 
-    from sattlint_lsp.document_state import DocumentState
+    from sattlint_lsp.document_state import DocumentState  # noqa: PLC0415
 
     state = DocumentState(uri="file:///test.s", path=tmp_path / "test.s", version=1, text="original")
     # Pass a malformed change that triggers fallback
@@ -521,7 +520,7 @@ def test_document_state_apply_changes_fallback_on_error(tmp_path):
 
 
 def test_server_document_helpers_track_state_paths_and_source_text(tmp_path):
-    from sattlint_lsp._server_document import (
+    from sattlint_lsp._server_document import (  # noqa: PLC0415
         _document_state_for_path,
         _ensure_document_paths,
         _record_document_change,
@@ -577,7 +576,7 @@ def test_server_document_helpers_track_state_paths_and_source_text(tmp_path):
 
 # --- core/document.py: LineIndex methods ---
 def test_line_index_line_start_offset_edge_cases():
-    from sattlint.core.document import LineIndex
+    from sattlint.core.document import LineIndex  # noqa: PLC0415
 
     idx = LineIndex.from_text("Hello\nWorld\n")
     assert idx.line_start_offset(0) == 0
@@ -587,7 +586,7 @@ def test_line_index_line_start_offset_edge_cases():
 
 
 def test_line_index_line_text_strips_newlines():
-    from sattlint.core.document import LineIndex
+    from sattlint.core.document import LineIndex  # noqa: PLC0415
 
     idx = LineIndex.from_text("Line1\r\nLine2\nLine3")
     assert idx.line_text(0) == "Line1"
@@ -597,7 +596,7 @@ def test_line_index_line_text_strips_newlines():
 
 
 def test_line_index_position_to_offset_basics():
-    from sattlint.core.document import LineIndex
+    from sattlint.core.document import LineIndex  # noqa: PLC0415
 
     idx = LineIndex.from_text("Hello\nWorld")
     assert idx.position_to_offset(0, 0) == 0
@@ -607,7 +606,7 @@ def test_line_index_position_to_offset_basics():
 
 
 def test_utf16_index_to_codepoint_offset():
-    from sattlint.core.document import utf16_index_to_codepoint_offset
+    from sattlint.core.document import utf16_index_to_codepoint_offset  # noqa: PLC0415
 
     assert utf16_index_to_codepoint_offset("abc", 0) == 0
     assert utf16_index_to_codepoint_offset("abc", 2) == 2

@@ -95,7 +95,7 @@ def _iter_expression_pairs(node: object) -> tuple[_ExpressionPair, ...]:
     return tuple(pairs)
 
 
-def _validate_expression_semantics(
+def _validate_expression_semantics(  # noqa: PLR0915
     node: object,
     env: dict[str, Variable],
     type_graph: TypeGraph,

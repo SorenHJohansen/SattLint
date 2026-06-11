@@ -5,7 +5,7 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Protocol, cast
 
-from .issue import Issue
+from .framework import Issue, register_issue_metadata_materializer
 from .sattline_semantics import SemanticRule, get_rule_for_framework_issue_kind
 
 
@@ -404,3 +404,6 @@ def apply_rule_profile_to_report(analyzer_key: str, report: object, config: Mapp
         if updated is not None
     ]
     return typed_report
+
+
+register_issue_metadata_materializer(materialize_issue_metadata)

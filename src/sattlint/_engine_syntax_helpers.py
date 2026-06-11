@@ -382,7 +382,7 @@ def validate_single_file_syntax(
             column=column,
             warning_notices=tuple(coerce_validation_notice_fn(warning) for warning in validation_warnings),
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         line, column = extract_error_position_fn(exc)
         stage = "parse" if line is not None or column is not None else "validation"
         return SyntaxValidationResult(

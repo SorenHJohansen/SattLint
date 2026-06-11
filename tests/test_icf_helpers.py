@@ -15,8 +15,8 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
-from sattlint.analyzers import _icf_datatype_resolution as icf_datatype_module
 from sattlint.analyzers import icf as icf_module
+from sattlint.analyzers.icf import _icf_datatype_resolution as icf_datatype_module
 from sattlint.reporting.icf_report import ICFEntry, ICFResolvedEntry
 
 

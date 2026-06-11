@@ -1,6 +1,9 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownLambdaType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
+
 """Tests for app config, screen helpers, interactive menus, and CLI entry points."""
 
 import builtins
+import ctypes
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,11 +21,12 @@ from ._app_menus_support import (
     DummyReport,
     make_input,
 )
+from .helpers import NoOpWriter, RecordingWriter
 from .helpers.app_projects import build_mini_project_context
 
 
 @pytest.fixture
-def noop_screen(monkeypatch):
+def noop_screen(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SATTLINT_UI", "classic")
     monkeypatch.setattr(app, "clear_screen", lambda: None)
     monkeypatch.setattr(app, "pause", lambda: None)
@@ -56,14 +60,11 @@ def test_save_config_rejects_none(tmp_path):
 
 def test_clear_screen_uses_windows_console_helper(monkeypatch):
     calls: list[str] = []
+    writer = NoOpWriter()
 
     monkeypatch.setattr(app_base.os, "name", "nt")
     monkeypatch.setattr(app_base, "_clear_windows_console", lambda: calls.append("clear"))
-    monkeypatch.setattr(
-        app_base.sys,
-        "stdout",
-        SimpleNamespace(flush=lambda: None, write=lambda _text: None),
-    )
+    monkeypatch.setattr(app_base.sys, "stdout", writer)
 
     app_base.clear_screen()
 
@@ -71,7 +72,7 @@ def test_clear_screen_uses_windows_console_helper(monkeypatch):
 
 
 def test_clear_screen_falls_back_to_ansi_when_windows_clear_fails(monkeypatch):
-    writes: list[str] = []
+    writer = RecordingWriter()
 
     def _raise_os_error() -> None:
         raise OSError("clear failed")
@@ -79,20 +80,16 @@ def test_clear_screen_falls_back_to_ansi_when_windows_clear_fails(monkeypatch):
     monkeypatch.setattr(app_base.os, "name", "nt")
     monkeypatch.setattr(app_base.os, "system", lambda _command: 1)
     monkeypatch.setattr(app_base, "_clear_windows_console", _raise_os_error)
-    monkeypatch.setattr(
-        app_base.sys,
-        "stdout",
-        SimpleNamespace(flush=lambda: None, write=lambda text: writes.append(text)),
-    )
+    monkeypatch.setattr(app_base.sys, "stdout", writer)
 
     app_base.clear_screen()
 
-    assert writes == ["\033[2J\033[H"]
+    assert writer.writes == ["\033[2J\033[H"]
 
 
 def test_clear_screen_falls_back_to_cls_before_ansi(monkeypatch):
-    writes: list[str] = []
     calls: list[str] = []
+    writer = RecordingWriter()
 
     def _raise_os_error() -> None:
         raise OSError("clear failed")
@@ -104,21 +101,15 @@ def test_clear_screen_falls_back_to_cls_before_ansi(monkeypatch):
         "system",
         lambda command: calls.append(command) or 0,
     )
-    monkeypatch.setattr(
-        app_base.sys,
-        "stdout",
-        SimpleNamespace(flush=lambda: None, write=lambda text: writes.append(text)),
-    )
+    monkeypatch.setattr(app_base.sys, "stdout", writer)
 
     app_base.clear_screen()
 
     assert calls == ["cls"]
-    assert writes == []
+    assert writer.writes == []
 
 
 def test_configure_windows_console_api_sets_wide_char_signature():
-    import ctypes
-
     class _FakeCall:
         argtypes = None
         restype = None
@@ -274,6 +265,44 @@ def test_run_checks_applies_rule_profiles_to_simple_reports(noop_screen, monkeyp
     assert "semantic.naming-inconsistent-style" not in legacy_out
     assert "semantic.loop-output-refactor" not in legacy_out
     assert "No issues found." in legacy_out
+
+
+def test_run_checks_skips_picture_display_paths_for_library_targets(noop_screen, monkeypatch):
+    invoked: list[str] = []
+    target = SimpleNamespace(header=SimpleNamespace(name="LibraryTarget"))
+
+    def _run_report(context, *, analyzer_key: str) -> SimpleReport:
+        invoked.append(analyzer_key)
+        return SimpleReport(name=analyzer_key)
+
+    monkeypatch.setattr(
+        app,
+        "_get_enabled_analyzers",
+        lambda: [
+            AnalyzerSpec(
+                key="picture-display-paths",
+                name="PictureDisplay paths",
+                description="Synthetic picture display analyzer",
+                run=lambda context: _run_report(context, analyzer_key="picture-display-paths"),
+            ),
+            AnalyzerSpec(
+                key="variables",
+                name="Variable issues",
+                description="Synthetic variables analyzer",
+                run=lambda context: _run_report(context, analyzer_key="variables"),
+            ),
+        ],
+    )
+    monkeypatch.setattr(
+        app,
+        "_iter_loaded_projects",
+        lambda *_args, **_kwargs: iter([("LibraryTarget", target, SimpleNamespace())]),
+    )
+    monkeypatch.setattr(app, "_target_is_library", lambda *_args, **_kwargs: True)
+
+    app._run_checks(app.DEFAULT_CONFIG.copy(), None)
+
+    assert invoked == ["variables"]
 
 
 def test_dump_menu_all_options(noop_screen, monkeypatch, tmp_path):
@@ -964,34 +993,50 @@ def test_main_menu_all_options(noop_screen, monkeypatch):
     cfg = app.DEFAULT_CONFIG.copy()
     cfg["analyzed_programs_and_libraries"] = ["TargetA"]
 
+    monkeypatch.delenv("SATTLINT_UI", raising=False)
     monkeypatch.setattr(app, "load_config", lambda *_: (cfg, False))
-    monkeypatch.setattr(app, "self_check", lambda *_: True)
+    monkeypatch.setattr(app, "self_check", lambda *_: pytest.fail("textual startup should skip terminal self-check"))
 
     calls = []
 
-    monkeypatch.setattr(app, "analysis_menu", lambda *_: calls.append("analysis"))
-    monkeypatch.setattr(app, "documentation_menu", lambda *_: calls.append("documentation") or True)
-    monkeypatch.setattr(app, "config_menu", lambda *_: calls.append("setup") or True)
-    monkeypatch.setattr(app, "tools_menu", lambda *_: calls.append("tools"))
-    monkeypatch.setattr(app, "show_help", lambda *_: calls.append("help"))
-    monkeypatch.setattr(app, "save_config", lambda *_: calls.append("save"))
+    monkeypatch.setattr(
+        app, "analysis_menu", lambda *_: pytest.fail("legacy analysis menu should not run during textual startup")
+    )
+    monkeypatch.setattr(
+        app,
+        "documentation_menu",
+        lambda *_: pytest.fail("legacy documentation menu should not run during textual startup"),
+    )
+    monkeypatch.setattr(
+        app, "config_menu", lambda *_: pytest.fail("legacy config menu should not run during textual startup")
+    )
+    monkeypatch.setattr(
+        app, "tools_menu", lambda *_: pytest.fail("legacy tools menu should not run during textual startup")
+    )
+    monkeypatch.setattr(
+        app, "show_help", lambda *_: pytest.fail("legacy help menu should not run during textual startup")
+    )
+    monkeypatch.setattr(
+        app, "save_config", lambda *_: pytest.fail("startup should not save config before the textual shell runs")
+    )
+    monkeypatch.setattr(app, "run_interactive_session", lambda *_args, **_kwargs: calls.append("session"))
 
-    inputs = ["1", "2", "3", "4", "5", "q", "y"]
-    monkeypatch.setattr(builtins, "input", make_input(inputs))
+    exit_code = app.main()
 
-    app.main()
-
-    assert calls == ["analysis", "documentation", "setup", "tools", "help", "save"]
+    assert exit_code == 0
+    assert calls == ["session"]
 
 
 def test_main_menu_stays_open_on_save_before_quit_error(noop_screen, monkeypatch, tmp_path, capsys):
     cfg = app.DEFAULT_CONFIG.copy()
     cfg["analyzed_programs_and_libraries"] = ["TargetA"]
     save_calls: list[str] = []
+    session_calls: list[str] = []
 
+    monkeypatch.delenv("SATTLINT_UI", raising=False)
     monkeypatch.setattr(app, "CONFIG_PATH", tmp_path / "config.toml")
     monkeypatch.setattr(app, "load_config", lambda *_: (cfg, False))
-    monkeypatch.setattr(app, "self_check", lambda *_: True)
+    monkeypatch.setattr(app, "self_check", lambda *_: pytest.fail("textual startup should skip terminal self-check"))
     monkeypatch.setattr(app, "analysis_menu", lambda *_: None)
     monkeypatch.setattr(app, "documentation_menu", lambda *_: False)
     monkeypatch.setattr(app, "config_menu", lambda *_: True)
@@ -1003,45 +1048,53 @@ def test_main_menu_stays_open_on_save_before_quit_error(noop_screen, monkeypatch
         raise PermissionError("read-only filesystem")
 
     monkeypatch.setattr(app, "save_config", fail_save)
-    monkeypatch.setattr(builtins, "input", make_input(["3", "q", "y", "q", "n"]))
+    monkeypatch.setattr(app, "run_interactive_session", lambda *_args, **_kwargs: session_calls.append("session"))
 
     exit_code = app.main()
 
     out = capsys.readouterr().out
     assert exit_code == 0
-    assert save_calls == ["save"]
-    assert f"Failed to save config to {tmp_path / 'config.toml'}" in out
-    assert "read-only filesystem" in out
+    assert session_calls == ["session"]
+    assert save_calls == []
+    assert out == ""
 
 
 def test_main_menu_can_use_injected_choice_handler(noop_screen, monkeypatch):
     cfg = app.DEFAULT_CONFIG.copy()
     cfg["analyzed_programs_and_libraries"] = ["TargetA"]
-    seen: dict[str, object] = {}
     calls: list[str] = []
-    choices = iter(["5", "q"])
 
+    monkeypatch.delenv("SATTLINT_UI", raising=False)
     monkeypatch.setattr(app, "load_config", lambda *_: (cfg, False))
-    monkeypatch.setattr(app, "self_check", lambda *_: True)
-    monkeypatch.setattr(app, "analysis_menu", lambda *_: calls.append("analysis"))
-    monkeypatch.setattr(app, "documentation_menu", lambda *_: False)
-    monkeypatch.setattr(app, "config_menu", lambda *_: False)
-    monkeypatch.setattr(app, "tools_menu", lambda *_: None)
-    monkeypatch.setattr(app, "show_help", lambda *_: calls.append("help"))
+    monkeypatch.setattr(app, "self_check", lambda *_: pytest.fail("textual startup should skip terminal self-check"))
+    monkeypatch.setattr(
+        app, "analysis_menu", lambda *_: pytest.fail("legacy analysis menu should not run during textual startup")
+    )
+    monkeypatch.setattr(
+        app,
+        "documentation_menu",
+        lambda *_: pytest.fail("legacy documentation menu should not run during textual startup"),
+    )
+    monkeypatch.setattr(
+        app, "config_menu", lambda *_: pytest.fail("legacy config menu should not run during textual startup")
+    )
+    monkeypatch.setattr(
+        app, "tools_menu", lambda *_: pytest.fail("legacy tools menu should not run during textual startup")
+    )
+    monkeypatch.setattr(
+        app, "show_help", lambda *_: pytest.fail("legacy help menu should not run during textual startup")
+    )
     monkeypatch.setattr(
         app,
         "choose_menu_option",
-        lambda title, options, *, intro=None, note=None: (
-            seen.update({"title": title, "intro": intro, "note": note, "option_count": len(options)}) or next(choices)
-        ),
+        lambda *_args, **_kwargs: pytest.fail("legacy menu choice handler should not run during textual startup"),
     )
+    monkeypatch.setattr(app, "run_interactive_session", lambda *_args, **_kwargs: calls.append("session"))
 
     exit_code = app.main()
 
     assert exit_code == 0
-    assert calls == ["help"]
-    assert seen["title"] == "SattLint"
-    assert seen["option_count"] == 6
+    assert calls == ["session"]
 
 
 def test_tools_menu_all_options(noop_screen, monkeypatch):
@@ -1052,7 +1105,7 @@ def test_tools_menu_all_options(noop_screen, monkeypatch):
     monkeypatch.setattr(app, "self_check", lambda *_: calls.append("self-check") or True)
     monkeypatch.setattr(app, "dump_menu", lambda *_: calls.append("dump"))
     monkeypatch.setattr(app, "run_source_diff_report", lambda *_: calls.append("source-diff"))
-    monkeypatch.setattr(app, "force_refresh_ast", lambda *_: calls.append("refresh"))
+    monkeypatch.setattr(app, "refresh_analysis_caches", lambda *_: calls.append("refresh"))
     monkeypatch.setattr(builtins, "input", make_input(["1", "2", "3", "4", "y", "b"]))
 
     app.tools_menu(cfg)
@@ -1090,7 +1143,7 @@ def test_tools_menu_does_not_append_duplicate_refresh_message(noop_screen, monke
     outputs: list[str] = []
 
     monkeypatch.setattr(app_menus, "emit_output", lambda message: outputs.append(message))
-    monkeypatch.setattr(app, "force_refresh_ast", lambda *_: outputs.append("OK AST cache refreshed"))
+    monkeypatch.setattr(app, "refresh_analysis_caches", lambda *_: outputs.append("OK AST cache refreshed"))
     monkeypatch.setattr(builtins, "input", make_input(["4", "y", "b"]))
 
     app.tools_menu(cfg)

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from ..analyzers.framework.issue import Findings
 from ..models._variable_issues import IssueKind, VariableIssue
+from ..resolution.access_graph import AccessEvent
 from ._variables_report_rendering import (
     append_datatype_duplication,
     append_magic_numbers,
@@ -21,6 +23,7 @@ DEFAULT_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
     IssueKind.READ_ONLY_NON_CONST,
     IssueKind.NEVER_READ,
     IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE,
+    IssueKind.LAYOUT_OVERLAP,
     IssueKind.UNKNOWN_PARAMETER_TARGET,
     IssueKind.REQUIRED_PARAMETER_CONNECTION,
     IssueKind.STRING_MAPPING_MISMATCH,
@@ -28,7 +31,6 @@ DEFAULT_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
     IssueKind.MIN_MAX_MAPPING_MISMATCH,
     IssueKind.MAGIC_NUMBER,
     IssueKind.NAME_COLLISION,
-    IssueKind.LAYOUT_OVERLAP,
     IssueKind.RESET_CONTAMINATION,
 )
 
@@ -53,6 +55,22 @@ SUMMARY_SECTION_ORDER: tuple[IssueKind, ...] = (
     *ALL_VARIABLE_ANALYSIS_KINDS,
     IssueKind.SHADOWING,
 )
+
+AccessesByDefinitionKey = dict[tuple[str, ...], tuple[AccessEvent, ...]]
+EffectFlowEdges = dict[tuple[str, ...], tuple[tuple[str, ...], ...]]
+EffectFlowDisplayNames = dict[tuple[str, ...], str]
+
+
+def _empty_accesses_by_definition_key() -> AccessesByDefinitionKey:
+    return {}
+
+
+def _empty_effect_flow_edges() -> EffectFlowEdges:
+    return {}
+
+
+def _empty_effect_flow_display_names() -> EffectFlowDisplayNames:
+    return {}
 
 
 def _empty_phase_timings() -> list[dict[str, str | float]]:
@@ -90,7 +108,10 @@ SECTION_TITLES: dict[IssueKind, str] = {
 @dataclass
 class VariablesReport:
     basepicture_name: str
-    issues: list[VariableIssue]
+    issues: Findings[VariableIssue]
+    accesses_by_definition_key: AccessesByDefinitionKey = field(default_factory=_empty_accesses_by_definition_key)
+    effect_flow_edges: EffectFlowEdges = field(default_factory=_empty_effect_flow_edges)
+    effect_flow_display_names: EffectFlowDisplayNames = field(default_factory=_empty_effect_flow_display_names)
     visible_kinds: frozenset[IssueKind] | set[IssueKind] | tuple[IssueKind, ...] | list[IssueKind] | None = None
     selected_issue_kinds: frozenset[IssueKind] | set[IssueKind] | tuple[IssueKind, ...] | list[IssueKind] | None = None
     include_empty_sections: bool = False

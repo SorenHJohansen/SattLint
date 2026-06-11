@@ -131,13 +131,13 @@ python scripts/run_markdownlint.py --config .markdownlint-cli2.jsonc
 # Run the fast local pre-commit gate
 python -m pre_commit run --all-files
 
-# Run the local pre-push gate
+# Run the AI post-change drift gate
 sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit
 
 # Audit installed Python dependencies
 pip-audit
 
-# Run the repository audit report (audit and CI workflow)
+# Run the local pre-push or CI audit
 sattlint-repo-audit --profile full --output-dir artifacts/audit
 ```
 
@@ -178,7 +178,8 @@ python -m pre_commit run --all-files
 Run focused owner validation immediately after the first substantive edit.
 Use `python scripts/context_health.py --check` when the AI-control plane changes.
 Use `python -m pre_commit run --all-files` as the fast local hygiene gate for staged formatting, changed Markdown lint, SattLine syntax-check, and targeted context-health checks.
-Use `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit` as the real local pre-push gate. It selects the right finish gate for the current slice and carries the broader proof burden.
+Use `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit` as the AI post-change drift gate.
+Use `sattlint-repo-audit --profile full --output-dir artifacts/audit` as the real local pre-push gate before you push or when you want CI-equivalent repo proof.
 Use the shared workspace tasks only as thin wrappers around those same commands when you want them in VS Code.
 Use `python scripts/run_ai_edit_gate.py <touched paths...>` only when you are debugging the `.github/hooks/ai-edit-gate.json` hook itself.
 
@@ -191,7 +192,7 @@ Use one focused branch or worktree per slice.
 3. Run the first focused owner validation immediately.
 4. Run `python scripts/context_health.py --check` when AI-control files changed.
 5. AI-touched files are additionally blocked through `.github/hooks/ai-edit-gate.json`; rerun `python scripts/run_ai_edit_gate.py <touched paths...>` only when debugging that hook locally.
-6. Run `python -m pre_commit run --all-files`, then `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit`.
+6. Run `python -m pre_commit run --all-files`, then `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit` while iterating, and finish with `sattlint-repo-audit --profile full --output-dir artifacts/audit` before pushing.
 
 Repository structure for maintainer work:
 
@@ -226,7 +227,7 @@ Recommended context workflow in VS Code:
 
 1. Create a focused branch or worktree.
 2. Keep the slice small and run the first focused validation immediately.
-3. Run `python scripts/context_health.py --check` when AI-control files changed, then `python -m pre_commit run --all-files`, then `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit`.
+3. Run `python scripts/context_health.py --check` when AI-control files changed, then `python -m pre_commit run --all-files`, then `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit`, and use `sattlint-repo-audit --profile full --output-dir artifacts/audit` before pushing.
 4. Fill in the pull request template with commands run and remaining risks.
 5. Push and create the pull request.
 

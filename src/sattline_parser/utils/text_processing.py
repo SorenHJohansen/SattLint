@@ -54,7 +54,7 @@ class CommentStrippedText:
         return original_line, original_column
 
 
-def strip_sl_comments_with_mapping(text: str) -> CommentStrippedText:
+def strip_sl_comments_with_mapping(text: str) -> CommentStrippedText:  # noqa: PLR0915
     """
     Remove nested comments of the form (* ... *) from the input text while
     preserving a mapping from cleaned-text offsets back to the original source.

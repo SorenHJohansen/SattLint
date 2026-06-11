@@ -1379,7 +1379,7 @@ def generate_docx(
     _render_procedural_model(doc, units, classification)
     _render_uncategorized_appendix(doc, classification, units)
     if upgrade_issues is None:
-        from ..analyzers.modules import analyze_version_drift
+        from ..analyzers.modules import analyze_version_drift  # noqa: PLC0415
 
         upgrade_issues = analyze_version_drift(root).issues
     resolved_upgrade_issues: t.Sequence[Issue] = upgrade_issues or ()

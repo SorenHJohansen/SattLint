@@ -31,6 +31,6 @@ _validation_errors_by_key = validation_errors_by_key
 
 
 def self_check(cfg: dict[str, Any]) -> bool:
-    from ._config_self_check import self_check as _self_check
+    from ._config_self_check import self_check as _self_check  # noqa: PLC0415
 
     return _self_check(cfg)

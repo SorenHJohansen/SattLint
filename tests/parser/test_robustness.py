@@ -330,7 +330,7 @@ ENDDEF (*DateCode*);
         updated = source.replace("Dv = 1;", "Dv = 2;")
         changed_line = updated.splitlines().index("        Dv = 2;")
 
-        from sattlint_lsp.local_parser import FullDocumentParserAdapter
+        from sattlint_lsp.local_parser import FullDocumentParserAdapter  # noqa: PLC0415
 
         adapter = FullDocumentParserAdapter()
         document_path = tmp_path / "Program.s"
@@ -362,7 +362,7 @@ ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ENDDEF (*DateCode*);
 """.strip()
 
-        from sattlint_lsp.local_parser import FullDocumentParserAdapter
+        from sattlint_lsp.local_parser import FullDocumentParserAdapter  # noqa: PLC0415
 
         adapter = FullDocumentParserAdapter()
         document_path = tmp_path / "Program.s"
@@ -415,7 +415,7 @@ ModuleCode
 ENDDEF (*DateCode*);
 """.strip()
 
-        from sattlint_lsp.local_parser import FullDocumentParserAdapter
+        from sattlint_lsp.local_parser import FullDocumentParserAdapter  # noqa: PLC0415
 
         adapter = FullDocumentParserAdapter()
         document_path = tmp_path / "Program.s"
@@ -452,7 +452,7 @@ ModuleCode
 ENDDEF (*DateCode*);
 """.strip()
 
-        from sattlint_lsp.local_parser import FullDocumentParserAdapter
+        from sattlint_lsp.local_parser import FullDocumentParserAdapter  # noqa: PLC0415
 
         adapter = FullDocumentParserAdapter()
         document_path = tmp_path / "Program.s"
