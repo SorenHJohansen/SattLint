@@ -57,7 +57,7 @@ class _ParserProtocol(Protocol):
         self,
         text: str,
         start: str | None = None,
-        on_error: Callable[[UnexpectedInput], bool] | None = None,
+        _on_error: Callable[[UnexpectedInput], bool] | None = None,
     ) -> Tree[Token]: ...
 
 
