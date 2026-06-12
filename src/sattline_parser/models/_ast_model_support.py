@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import textwrap
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal
 
-from ..utils import formatter as formatter_module
+from ..utils.formatter import format_expr, format_list, format_optional, format_seq_nodes
 
 if TYPE_CHECKING:
     from .ast_model import (
@@ -30,12 +30,6 @@ type PropertyMap = dict[str, Any]
 type ModulePath = list[str]
 type UsageKind = Literal["read", "write"]
 type UsageLocation = tuple[ModulePath, UsageKind]
-
-_formatter_module = cast(Any, formatter_module)
-format_expr = cast(FormatExprFn, _formatter_module.format_expr)
-format_list = cast(FormatListFn, _formatter_module.format_list)
-format_optional = cast(FormatOptionalFn, _formatter_module.format_optional)
-format_seq_nodes = cast(FormatSeqNodesFn, _formatter_module.format_seq_nodes)
 
 
 def variable_list() -> list[Variable]:

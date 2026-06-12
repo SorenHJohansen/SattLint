@@ -223,6 +223,8 @@ class LspSettings:
 
     @staticmethod
     def _positive_int_setting(value: object, *, default: int) -> int:
+        if not isinstance(value, int | float | str):
+            return default
         try:
             return max(1, int(value))
         except (TypeError, ValueError):

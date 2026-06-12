@@ -311,7 +311,9 @@ def iter_variable_refs(node: object) -> Iterator[VariableRef]:
         return
 
     if isinstance(node, Tree):
-        for child in node.children:
+        tree_node = cast(Tree[object], node)
+        tree_children = cast(list[object], tree_node.children)
+        for child in tree_children:
             yield from iter_variable_refs(child)
         return
 

@@ -7,13 +7,41 @@ from dataclasses import dataclass
 from functools import cache
 from typing import cast
 
-from sattline_parser.models.ast_model import BasePicture, DataType, Simple_DataType, Variable
+from sattline_parser.models.ast_model import BasePicture, Simple_DataType, Variable
 
 from ._builtin_datatypes import BUILTIN_RECORD_SPECS
 
 
 def _cf(s: str) -> str:
     return s.casefold()
+
+
+def _datatype_name(record: object) -> str | None:
+    name = getattr(record, "name", None)
+    return name if isinstance(name, str) else None
+
+
+def _datatype_fields(record: object) -> Iterable[object]:
+    raw_fields = getattr(record, "var_list", None)
+    if isinstance(raw_fields, list | tuple):
+        return cast(Iterable[object], raw_fields)
+    return ()
+
+
+def _field_definition(field: object) -> FieldDef | None:
+    field_name = getattr(field, "name", None)
+    if not isinstance(field_name, str):
+        return None
+
+    datatype = getattr(field, "datatype", None)
+    if not isinstance(datatype, str | Simple_DataType):
+        return None
+
+    state = getattr(field, "state", None)
+    if state is not None and not isinstance(state, bool):
+        return None
+
+    return FieldDef(name=field_name, datatype=datatype, state=state)
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,17 +82,15 @@ class TypeGraph:
     def from_datatypes(cls, datatypes: Iterable[object]) -> TypeGraph:
         records = dict(cls._builtin_records())
         for dt in datatypes or []:
-            if not isinstance(dt, DataType):
+            datatype_name = _datatype_name(dt)
+            if datatype_name is None:
                 continue
-            datatype_name = dt.name
             fields: dict[str, FieldDef] = {}
-            for field in dt.var_list or ():
-                field_name = field.name
-                fields[_cf(field_name)] = FieldDef(
-                    name=field_name,
-                    datatype=cast(Simple_DataType | str, field.datatype),
-                    state=cast(bool | None, field.state),
-                )
+            for field in _datatype_fields(dt):
+                definition = _field_definition(field)
+                if definition is None:
+                    continue
+                fields[_cf(definition.name)] = definition
             records[_cf(datatype_name)] = RecordDef(name=datatype_name, fields_by_key=fields)
         return cls(records)
 

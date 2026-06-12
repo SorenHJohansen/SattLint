@@ -156,10 +156,12 @@ class _ModuleLayoutMixin:
                         )
                 tails = payload.get(const.KEY_TAILS)
                 if isinstance(tails, list) and tails:
-                    module_def_any = cast(Any, module_def)
-                    properties = cast(dict[str, list[Any]], module_def_any.properties)
-                    property_tails = properties.setdefault(const.KEY_TAILS, [])
-                    property_tails.extend(cast(list[Any], tails))
+                    typed_tails = cast(list[object], tails)
+                    property_tails = module_def.properties.get(const.KEY_TAILS)
+                    if isinstance(property_tails, list):
+                        cast(list[object], property_tails).extend(typed_tails)
+                    else:
+                        module_def.properties[const.KEY_TAILS] = list(typed_tails)
             elif isinstance(it, tuple):
                 clipping_tuple = cast(tuple[object, ...], it)
                 if len(clipping_tuple) == 2 and all(isinstance(t, tuple) for t in clipping_tuple):
