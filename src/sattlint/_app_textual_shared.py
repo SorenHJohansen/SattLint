@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
-import threading
+from concurrent.futures import Future
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
 from .app_interaction import MenuInteraction
+from .config_types import ConfigDict
 
 _SessionOutputLog: type[Any] | None = None
 
@@ -31,10 +33,13 @@ try:
     from textual.widgets import SelectionList as _ImportedSelectionList  # type: ignore[import-untyped]
     from textual.widgets import Static as _ImportedStatic  # type: ignore[import-untyped]
     from textual.widgets import TextArea as _ImportedTextArea  # type: ignore[import-untyped]
+    from textual.widgets.option_list import (
+        OptionDoesNotExist as _ImportedOptionDoesNotExist,  # type: ignore[import-untyped]
+    )
 except ImportError:  # pragma: no cover - optional dependency path
     _TEXTUAL_APP: Any = None
     _TEXTUAL_COMPOSE_RESULT: Any = Any
-    _TEXTUAL_QUERY_ERRORS: tuple[type[BaseException], ...] = (Exception,)
+    _TEXTUAL_QUERY_ERRORS: tuple[type[BaseException], ...] = (LookupError, AttributeError, TypeError)
     _TEXTUAL_HORIZONTAL: Any = None
     _TEXTUAL_VERTICAL: Any = None
     _TEXTUAL_MODAL_SCREEN: Any = object
@@ -45,11 +50,18 @@ except ImportError:  # pragma: no cover - optional dependency path
     _TEXTUAL_LIST_ITEM: Any = None
     _TEXTUAL_LIST_VIEW: Any = None
     _TEXTUAL_LOG: Any = None
+    _TEXTUAL_OPTION_LIST_ERRORS: tuple[type[BaseException], ...] = (LookupError,)
     _TEXTUAL_RICH_LOG: Any = None
     _TEXTUAL_SELECTION_LIST: Any = None
     _TEXTUAL_STATIC: Any = None
     _TEXTUAL_TEXT_AREA: Any = None
 else:
+
+    class _CompatStatic(_ImportedStatic):
+        @property
+        def renderable(self) -> object:
+            return self.content
+
     _TEXTUAL_APP = _ImportedTextualApp
     _TEXTUAL_COMPOSE_RESULT = _ImportedComposeResult
     _TEXTUAL_QUERY_ERRORS = (_ImportedNoMatches, _ImportedWrongType)
@@ -63,9 +75,10 @@ else:
     _TEXTUAL_LIST_ITEM = _ImportedListItem
     _TEXTUAL_LIST_VIEW = _ImportedListView
     _TEXTUAL_LOG = _ImportedLog
+    _TEXTUAL_OPTION_LIST_ERRORS = (_ImportedOptionDoesNotExist,)
     _TEXTUAL_RICH_LOG = _ImportedRichLog
     _TEXTUAL_SELECTION_LIST = _ImportedSelectionList
-    _TEXTUAL_STATIC = _ImportedStatic
+    _TEXTUAL_STATIC = _CompatStatic
     _TEXTUAL_TEXT_AREA = _ImportedTextArea
 
 
@@ -101,6 +114,17 @@ def has_textual() -> bool:
     return _TEXTUAL_APP is not None
 
 
+def _query_required(widget_owner: Any, selector: str, expected_type: Any | None = None) -> Any:
+    query_exactly_one = getattr(widget_owner, "query_exactly_one", None)
+    if callable(query_exactly_one):
+        if expected_type is None:
+            return query_exactly_one(selector)
+        return query_exactly_one(selector, expected_type)
+    if expected_type is None:
+        return widget_owner.query_one(selector)
+    return widget_owner.query_one(selector, expected_type)
+
+
 DEFAULT_SHELL_TITLE = "SattLint"
 _ANALYZE_PLANNER_LIST_ID_PREFIX = "analyze-planner-section-"
 TEXTUAL_SHELL_CSS = Path(__file__).with_name("app_textual.tcss").read_text(encoding="utf-8")
@@ -124,6 +148,8 @@ class _SetupTargetCandidate:
 
 @dataclass
 class InteractionRequest:
+    """Represents one modal interaction request flowing through the Textual bridge."""
+
     kind: str
     title: str | None = None
     options: tuple[Any, ...] = ()
@@ -132,17 +158,32 @@ class InteractionRequest:
     intro: str | None = None
     note: str | None = None
     response: object | None = None
-    completed: threading.Event = field(default_factory=threading.Event, repr=False)
+    result_future: Future[object | None] = field(default_factory=Future, repr=False)
 
 
 class TextualInteractionBridge:
+    """Adapts the shared CLI interaction protocol onto the Textual request/response UI."""
+
     def __init__(self, *, submit_request_fn: Any) -> None:
         self._submit_request_fn = submit_request_fn
 
     def _request(self, request: InteractionRequest) -> object:
-        self._submit_request_fn(request)
-        request.completed.wait()
-        return request.response
+        try:
+            self._submit_request_fn(request)
+        except BaseException as exc:
+            if not request.result_future.done():
+                request.result_future.set_exception(exc)
+            raise
+        return request.result_future.result()
+
+    async def _request_async(self, request: InteractionRequest) -> object:
+        try:
+            self._submit_request_fn(request)
+        except BaseException as exc:
+            if not request.result_future.done():
+                request.result_future.set_exception(exc)
+            raise
+        return await asyncio.wrap_future(request.result_future)
 
     def as_menu_interaction(self) -> MenuInteraction:
         return MenuInteraction(
@@ -171,8 +212,33 @@ class TextualInteractionBridge:
         )
         return str(response or "")
 
+    async def choose_menu_option_async(
+        self,
+        title: str,
+        options: list[Any] | tuple[Any, ...],
+        *,
+        intro: str | None = None,
+        note: str | None = None,
+    ) -> str:
+        response = await self._request_async(
+            InteractionRequest(
+                kind="menu",
+                title=title,
+                options=tuple(options),
+                intro=intro,
+                note=note,
+            )
+        )
+        return str(response or "")
+
     def prompt(self, message: str, default: str | None = None) -> str:
         response = self._request(InteractionRequest(kind="prompt", message=message, default=default))
+        if response is None:
+            return default or ""
+        return str(response)
+
+    async def prompt_async(self, message: str, default: str | None = None) -> str:
+        response = await self._request_async(InteractionRequest(kind="prompt", message=message, default=default))
         if response is None:
             return default or ""
         return str(response)
@@ -180,8 +246,16 @@ class TextualInteractionBridge:
     def confirm(self, message: str) -> bool:
         return bool(self._request(InteractionRequest(kind="confirm", message=message)))
 
+    async def confirm_async(self, message: str) -> bool:
+        return bool(await self._request_async(InteractionRequest(kind="confirm", message=message)))
+
     def pause(self) -> None:
-        return
+        self._request(InteractionRequest(kind="pause", message="Continue when ready."))
+        return None
+
+    async def pause_async(self) -> None:
+        await self._request_async(InteractionRequest(kind="pause", message="Continue when ready."))
+        return None
 
 
 class _TextualOutput(io.TextIOBase):
@@ -266,9 +340,8 @@ def _stringify_list_values(values: object | None) -> tuple[str, ...]:
     return tuple(result)
 
 
-def _config_directory_paths(cfg: dict[str, Any]) -> tuple[Path, ...]:
-    raw_other_dirs = cfg.get("other_lib_dirs", [])
-    other_dirs = cast(list[object], raw_other_dirs) if isinstance(raw_other_dirs, list) else []
+def _config_directory_paths(cfg: ConfigDict) -> tuple[Path, ...]:
+    other_dirs = cast(list[object], cfg.get("other_lib_dirs", []))
     values = [
         _stringify_value(cast(object | None, cfg.get("program_dir", ""))),
         _stringify_value(cast(object | None, cfg.get("ABB_lib_dir", ""))),
@@ -288,13 +361,13 @@ def _config_directory_paths(cfg: dict[str, Any]) -> tuple[Path, ...]:
     return tuple(paths)
 
 
-def _setup_candidate_is_available(cfg: dict[str, Any], files: tuple[Path, ...]) -> bool:
+def _setup_candidate_is_available(cfg: ConfigDict, files: tuple[Path, ...]) -> bool:
     mode = str(cfg.get("mode", "official")).strip().casefold()
     allowed_extensions = {".s", ".x"} if mode == "draft" else {".x"}
     return any(path.suffix.casefold() in allowed_extensions for path in files)
 
 
-def discover_setup_target_candidates(cfg: dict[str, Any]) -> tuple[_SetupTargetCandidate, ...]:
+def discover_setup_target_candidates(cfg: ConfigDict) -> tuple[_SetupTargetCandidate, ...]:
     preview_extensions = {".s", ".x", ".l", ".z"}
     candidate_program_extensions = {".s", ".x"}
     preview_files_by_stem: dict[str, list[Path]] = {}

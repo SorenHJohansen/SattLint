@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from sattlint.devtools import _pipeline_cli as pipeline_cli_helpers
+from sattlint.devtools.pipeline import _pipeline_cli as pipeline_cli_helpers
 from tests import test_pipeline_run as pipeline_run_tests
 
 
@@ -214,6 +214,59 @@ def test_main_run_recommended_slice_uses_recommended_check_ids(monkeypatch, tmp_
     assert exit_code == 0
     assert observed["selected_checks"]
     assert observed["pytest_workers"] == "4"
+
+
+def test_main_run_recommended_slice_supports_json_summary_output(monkeypatch, tmp_path, capsys):
+    observed = {"printed": False}
+
+    monkeypatch.setattr(
+        pipeline_run_tests.pipeline,
+        "build_pipeline_check_recommendations",
+        lambda **_kwargs: {"recommended_check_ids": ["ruff"]},
+    )
+    monkeypatch.setattr(
+        pipeline_run_tests.pipeline,
+        "_run_pipeline",
+        lambda *_args, **_kwargs: {
+            "profile": "full",
+            "output_dir": f"<external>/{tmp_path.name}",
+            "status": {"overall_status": "pass", "tool_statuses": {}},
+            "reports": {},
+            "counts": {
+                "baseline_new_findings": 0,
+                "baseline_resolved_findings": 0,
+                "baseline_changed_findings": 0,
+                "baseline_unchanged_findings": 0,
+            },
+            "findings_schema": {"kind": "sattlint.findings", "schema_version": 1},
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_run_tests.pipeline,
+        "_print_cli_summary",
+        lambda *_args, **_kwargs: observed.__setitem__("printed", True),
+    )
+
+    exit_code = pipeline_run_tests.pipeline.main(
+        [
+            "--profile",
+            "full",
+            "--output-dir",
+            str(tmp_path),
+            "--run-recommended-slice",
+            "--format",
+            "json",
+            "--changed-file",
+            "tests/test_repo_audit_part8.py",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["overall_status"] == "pass"
+    assert payload["profile"] == "full"
+    assert observed["printed"] is False
 
 
 def test_main_run_recommended_finish_gate_uses_finish_gate_runner(monkeypatch, tmp_path):

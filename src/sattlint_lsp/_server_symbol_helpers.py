@@ -12,8 +12,9 @@ from pygls import uris
 
 from sattline_parser.models.ast_model import Simple_DataType
 from sattlint.core.semantic import SemanticSnapshot, SymbolDefinition, SymbolReference
+from sattlint.semantic_analysis import build_variable_semantic_artifacts
 
-from . import _server_helpers as _base_helpers
+from . import _server_helpers
 from ._server_helpers import (
     DEFAULT_MAX_COMPLETION_ITEMS as _DEFAULT_MAX_COMPLETION_ITEMS,
 )
@@ -38,6 +39,7 @@ from ._server_helpers import (
 from ._server_helpers import (
     range_from_position as _range_from_position,
 )
+from ._server_semantic_cache import semantic_diagnostics_for_path as _cached_semantic_diagnostics_for_path
 from .workspace_store import SnapshotBundle
 
 _REFERENCE_EXPR_RE = re.compile(rf"{_NAME_PATTERN}(?:\.{_NAME_PATTERN})*")
@@ -370,10 +372,10 @@ def collect_local_definition_locations(
     local_snapshot = snapshot
     if local_snapshot is None:
         try:
-            local_snapshot = _base_helpers.load_source_snapshot(
+            local_snapshot = _server_helpers.load_source_snapshot(
                 document_path,
                 source_text,
-                _analysis_provider=_base_helpers.build_variable_semantic_artifacts,
+                _analysis_provider=build_variable_semantic_artifacts,
             )
         except _RECOVERABLE_LSP_EXCEPTIONS as exc:
             log.warning(
@@ -415,10 +417,10 @@ def collect_local_completion_candidates(
     local_snapshot = snapshot
     if local_snapshot is None:
         try:
-            local_snapshot = _base_helpers.load_source_snapshot(
+            local_snapshot = _server_helpers.load_source_snapshot(
                 document_path,
                 source_text,
-                _analysis_provider=_base_helpers.build_variable_semantic_artifacts,
+                _analysis_provider=build_variable_semantic_artifacts,
             )
         except _RECOVERABLE_LSP_EXCEPTIONS as exc:
             log.warning(
@@ -451,19 +453,7 @@ def collect_semantic_diagnostics(bundle: SnapshotBundle, document_path: Path) ->
 
 
 def _semantic_diagnostics_for_path(bundle: SnapshotBundle, document_path: Path) -> tuple[Diagnostic, ...]:
-    resolved_path = document_path.resolve()
-    with bundle.semantic_diagnostics_lock:
-        cached = bundle.semantic_diagnostics_by_path.get(resolved_path)
-    if cached is not None:
-        return cached
-
-    diagnostics = tuple(collect_semantic_diagnostics(bundle, resolved_path))
-    with bundle.semantic_diagnostics_lock:
-        cached = bundle.semantic_diagnostics_by_path.get(resolved_path)
-        if cached is not None:
-            return cached
-        bundle.semantic_diagnostics_by_path[resolved_path] = diagnostics
-    return diagnostics
+    return _cached_semantic_diagnostics_for_path(bundle, document_path, collect=collect_semantic_diagnostics)
 
 
 def _collect_reference_matches(

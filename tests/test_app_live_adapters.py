@@ -20,6 +20,7 @@ from sattlint import (
     app,
     app_graphics,
 )
+from sattlint.cli import command_handlers as cli_command_handlers
 from sattlint.models.project_graph import ProjectGraph
 
 
@@ -300,16 +301,17 @@ def test_run_cli_adapter_routes_through_startup_core(monkeypatch: pytest.MonkeyP
         seen.update(kwargs)
         return 23
 
-    monkeypatch.setattr(_app_startup_from_app.startup_core, "run_cli", fake_run_cli)
+    monkeypatch.setattr(_app_startup_from_app.cli_entry, "run_cli", fake_run_cli)
 
     result = app.run_cli(["analyze", "--check", "variables"])
 
     assert result == 23
     assert seen["argv"] == ["analyze", "--check", "variables"]
-    assert seen["run_cli_owner_fn"] is app.app_base.run_cli
     assert seen["config_path"] == app.CONFIG_PATH
     assert seen["build_cli_parser_fn"] is app.build_cli_parser
-    assert seen["run_syntax_check_command_fn"] is app.run_syntax_check_command
+    assert seen["load_config_fn"] is app.load_config
+    assert seen["apply_debug_fn"] is app.apply_debug
+    assert seen["command_handlers"] == cli_command_handlers.build_app_command_handlers(app)
 
 
 def test_cli_live_adapter_uses_sys_argv_tail(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -393,7 +395,7 @@ def test_startup_cli_command_wrappers_delegate_to_startup_core(monkeypatch: pyte
     )
 
     validate_config = object()
-    run_checks = object()
+    collect_run_checks_result = object()
     iter_loaded_projects = object()
     get_selectable_analyzers = object()
     get_enabled_analyzers = object()
@@ -402,7 +404,7 @@ def test_startup_cli_command_wrappers_delegate_to_startup_core(monkeypatch: pyte
     get_documentation_unit_selection = object()
 
     app_module.validate_effective_config = validate_config
-    app_module.app_analysis = SimpleNamespace(run_checks=run_checks)
+    app_module.app_analysis = SimpleNamespace(collect_run_checks_result=collect_run_checks_result)
     app_module._iter_loaded_projects = iter_loaded_projects
     app_module._get_selectable_analyzers = get_selectable_analyzers
     app_module._get_enabled_analyzers = get_enabled_analyzers
@@ -474,8 +476,8 @@ def test_startup_cli_command_wrappers_delegate_to_startup_core(monkeypatch: pyte
     assert validate_kwargs == {
         "config_path": config_path,
         "default_used": True,
-        "run_validate_config_command_fn": app_module.app_cli_commands.run_validate_config_command,
         "validate_config_fn": validate_config,
+        "output_format": "text",
         "exit_success": app_module.EXIT_SUCCESS,
         "exit_usage_error": app_module.EXIT_USAGE_ERROR,
     }
@@ -486,8 +488,9 @@ def test_startup_cli_command_wrappers_delegate_to_startup_core(monkeypatch: pyte
         "selected_keys": selected_keys,
         "selected_issue_kinds": selected_issue_kinds,
         "use_cache": False,
+        "output_format": "text",
         "run_analyze_command_fn": app_module.app_cli_commands.run_analyze_command,
-        "run_checks_owner_fn": run_checks,
+        "collect_run_checks_result_fn": collect_run_checks_result,
         "iter_loaded_projects_fn": iter_loaded_projects,
         "get_selectable_analyzers_fn": get_selectable_analyzers,
         "get_enabled_analyzers_fn": get_enabled_analyzers,
@@ -1478,11 +1481,11 @@ def test_remaining_from_app_wrappers_delegate_to_startup_core(monkeypatch: pytes
     def record(name: str, result: object):
         return lambda *args, **kwargs: seen.append((name, args, kwargs)) or result
 
-    monkeypatch.setattr(_app_startup_from_app.startup_core, "run_icf_formatter", record("icf", None))
-    monkeypatch.setattr(_app_startup_from_app.startup_core, "show_config", record("show-config", None))
-    monkeypatch.setattr(_app_startup_from_app.startup_core, "print_menu", record("print-menu", None))
-    monkeypatch.setattr(_app_startup_from_app.startup_core, "summarize_targets", record("summarize", "targets"))
-    monkeypatch.setattr(_app_startup_from_app.startup_core, "show_help", record("show-help", None))
+    monkeypatch.setattr(_app_startup_from_app.interactive_core, "run_icf_formatter", record("icf", None))
+    monkeypatch.setattr(_app_startup_from_app.interactive_core, "show_config", record("show-config", None))
+    monkeypatch.setattr(_app_startup_from_app.interactive_core, "print_menu", record("print-menu", None))
+    monkeypatch.setattr(_app_startup_from_app.interactive_core, "summarize_targets", record("summarize", "targets"))
+    monkeypatch.setattr(_app_startup_from_app.interactive_core, "show_help", record("show-help", None))
     monkeypatch.setattr(
         _app_startup_from_app.startup_core,
         "discover_graphics_rule_selector_options",
@@ -1549,9 +1552,9 @@ def test_remaining_from_app_wrappers_delegate_to_startup_core(monkeypatch: pytes
         "documentation_menu",
         record("docs-menu", True),
     )
-    monkeypatch.setattr(_app_startup_from_app.startup_core, "dump_menu", record("dump-menu", None))
-    monkeypatch.setattr(_app_startup_from_app.startup_core, "config_menu", record("config-menu", True))
-    monkeypatch.setattr(_app_startup_from_app.startup_core, "tools_menu", record("tools-menu", None))
+    monkeypatch.setattr(_app_startup_from_app.interactive_core, "dump_menu", record("dump-menu", None))
+    monkeypatch.setattr(_app_startup_from_app.interactive_core, "config_menu", record("config-menu", True))
+    monkeypatch.setattr(_app_startup_from_app.interactive_core, "tools_menu", record("tools-menu", None))
 
     _app_startup_from_app.run_icf_formatter_from_app({"debug": False}, app_module=app_module)
     _app_startup_from_app.show_config_from_app({"debug": False}, app_module=app_module)

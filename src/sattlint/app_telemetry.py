@@ -8,8 +8,8 @@ from typing import cast
 from uuid import uuid4
 
 from .config_io import get_config_path
+from .config_types import ConfigDict, TelemetryConfig
 
-ConfigDict = dict[str, object]
 APP_TELEMETRY_KIND = "sattlint.app.telemetry"
 APP_TELEMETRY_SCHEMA_VERSION = 1
 _SESSION_ID = uuid4().hex
@@ -98,14 +98,12 @@ def bottleneck_from_phase_timings(
     return bottleneck
 
 
-def _telemetry_config(cfg: ConfigDict) -> Mapping[str, object] | None:
-    telemetry = cfg.get("telemetry")
-    if not isinstance(telemetry, dict):
-        return None
-    typed_telemetry = cast(dict[object, object], telemetry)
-    if not all(isinstance(key, str) for key in typed_telemetry):
-        return None
-    return cast(dict[str, object], telemetry)
+def _telemetry_config(cfg: ConfigDict) -> TelemetryConfig:
+    telemetry = cast(dict[str, object], cfg).get("telemetry")
+    if not isinstance(telemetry, Mapping):
+        return {"enabled": False}
+    telemetry_mapping = cast(dict[str, object], telemetry)
+    return {"enabled": bool(telemetry_mapping.get("enabled", False))}
 
 
 def telemetry_output_path() -> Path:
@@ -118,7 +116,7 @@ def telemetry_output_path_for_config(config_path: Path) -> Path:
 
 def _resolve_telemetry_path(cfg: ConfigDict) -> Path | None:
     telemetry = _telemetry_config(cfg)
-    if telemetry is None or not bool(telemetry.get("enabled", False)):
+    if not bool(telemetry.get("enabled", False)):
         return None
     return telemetry_output_path()
 

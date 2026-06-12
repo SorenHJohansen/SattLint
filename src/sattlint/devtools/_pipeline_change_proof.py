@@ -52,7 +52,7 @@ def _mutation_guidance(changed_files: Iterable[str]) -> dict[str, Any]:
             "routing",
             (
                 "src/sattlint/devtools/pipeline.py",
-                "src/sattlint/devtools/pipeline_checks.py",
+                "src/sattlint/devtools/shared/pipeline_checks.py",
                 "src/sattlint/devtools/repo_audit.py",
                 "src/sattlint/devtools/repo_audit_cli.py",
                 "src/sattlint/devtools/repo_audit_entrypoints.py",
@@ -195,8 +195,8 @@ def evaluate_change_scoped_structural_surface_proof(
     changed_files: Iterable[str],
 ) -> dict[str, Any]:
     from sattlint.devtools import pipeline as pipeline_module  # noqa: PLC0415
-    from sattlint.devtools import structural_reports as structural_reports_module  # noqa: PLC0415
-    from sattlint.devtools._structural_report_budget_support import (  # noqa: PLC0415
+    from sattlint.devtools.structural import structural_reports as structural_reports_module  # noqa: PLC0415
+    from sattlint.devtools.structural._structural_report_budget_support import (  # noqa: PLC0415
         build_known_structural_modules,
         collect_python_structural_surface_metrics,
     )

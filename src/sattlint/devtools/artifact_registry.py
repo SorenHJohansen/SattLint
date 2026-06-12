@@ -5,6 +5,124 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+ANALYSIS_DIFF_FILENAME = "analysis_diff.json"
+ANALYSIS_DIFF_SCHEMA_KIND = "sattlint.analysis_diff"
+ANALYSIS_DIFF_SCHEMA_VERSION = 1
+
+CORPUS_RESULTS_FILENAME = "corpus_results.json"
+CORPUS_RESULTS_SCHEMA_KIND = "sattlint.corpus_results"
+CORPUS_RESULTS_SCHEMA_VERSION = 1
+
+AI_GC_REPORT_FILENAME = "ai_gc.json"
+AI_GC_SCHEMA_KIND = "sattlint.ai_gc"
+AI_GC_SCHEMA_VERSION = 1
+
+CLI_CONSISTENCY_FILENAME = "cli_consistency.json"
+CLI_CONSISTENCY_SCHEMA_KIND = "sattlint.cli_consistency"
+CLI_CONSISTENCY_SCHEMA_VERSION = 1
+
+AUDIT_RUN_HISTORY_FILENAME = "run_history.json"
+AUDIT_RUN_HISTORY_SCHEMA_KIND = "sattlint.audit_run_history"
+AUDIT_RUN_HISTORY_SCHEMA_VERSION = 1
+
+ACCURACY_METRICS_FILENAME = "accuracy_metrics.json"
+ACCURACY_SCHEMA_KIND = "sattlint.accuracy_metrics"
+ACCURACY_SCHEMA_VERSION = 1
+
+AI_TEMPLATE_SUMMARY_FILENAME = "ai_task_templates.json"
+AI_TEMPLATE_SCHEMA_KIND = "sattlint.ai_templates"
+AI_TEMPLATE_SCHEMA_VERSION = 1
+
+ARTIFACT_READINESS_FILENAME = "artifact_readiness.json"
+ARTIFACT_READINESS_SCHEMA_KIND = "sattlint.artifact_readiness"
+ARTIFACT_READINESS_SCHEMA_VERSION = 1
+READINESS_SCHEMA_KIND = ARTIFACT_READINESS_SCHEMA_KIND
+READINESS_SCHEMA_VERSION = ARTIFACT_READINESS_SCHEMA_VERSION
+
+AUDIT_FINDINGS_COMPARISON_FILENAME = "audit_findings_comparison.json"
+AUDIT_FINDINGS_COMPARISON_SCHEMA_KIND = "sattlint.audit_findings_comparison"
+AUDIT_FINDINGS_COMPARISON_SCHEMA_VERSION = 1
+COMPARE_RESULTS_FILENAME = AUDIT_FINDINGS_COMPARISON_FILENAME
+COMPARE_SCHEMA_KIND = AUDIT_FINDINGS_COMPARISON_SCHEMA_KIND
+COMPARE_SCHEMA_VERSION = AUDIT_FINDINGS_COMPARISON_SCHEMA_VERSION
+
+COVERAGE_RATCHET_FILENAME = "coverage_ratchet.json"
+COVERAGE_RATCHET_SCHEMA_KIND = "sattlint.coverage_ratchet"
+COVERAGE_RATCHET_SCHEMA_VERSION = 1
+
+COVERAGE_SUMMARY_FILENAME = "coverage_summary.json"
+COVERAGE_SUMMARY_SCHEMA_KIND = "sattlint.coverage_summary"
+COVERAGE_SUMMARY_SCHEMA_VERSION = 1
+
+CURRENT_DEBT_SNAPSHOT_FILENAME = "current_debt_snapshot.json"
+CURRENT_DEBT_SNAPSHOT_SCHEMA_KIND = "sattlint.current_debt_snapshot"
+CURRENT_DEBT_SNAPSHOT_SCHEMA_VERSION = 1
+
+DIFFERENTIAL_FILENAME = "differential.json"
+DIFFERENTIAL_SCHEMA_KIND = "sattlint.differential"
+DIFFERENTIAL_SCHEMA_VERSION = 1
+
+FAULT_INJECTION_RESULTS_FILENAME = "fault_injection_results.json"
+FAULT_INJECTION_SCHEMA_KIND = "sattlint.fault_injection_results"
+FAULT_INJECTION_SCHEMA_VERSION = 1
+
+FUZZER_REPORT_FILENAME = "fuzzer_report.json"
+FUZZER_REPORT_SCHEMA_KIND = "sattlint.fuzzer_report"
+FUZZER_REPORT_SCHEMA_VERSION = 1
+
+FUZZ_RESULTS_FILENAME = "fuzz_results.json"
+FUZZ_RESULTS_SCHEMA_KIND = "sattlint.fuzz_results"
+FUZZ_RESULTS_SCHEMA_VERSION = 1
+
+INCREMENTAL_ANALYSIS_FILENAME = "incremental_analysis.json"
+INCREMENTAL_ANALYSIS_SCHEMA_KIND = "sattlint.incremental_analysis"
+INCREMENTAL_ANALYSIS_SCHEMA_VERSION = 1
+
+LAYER_LINT_POLICY_FILENAME = "layer_lint_policy.json"
+LAYER_LINT_POLICY_SCHEMA_KIND = "sattlint.layer_lint_policy"
+LAYER_LINT_POLICY_SCHEMA_VERSION = 1
+POLICY_KIND = LAYER_LINT_POLICY_SCHEMA_KIND
+POLICY_SCHEMA_VERSION = LAYER_LINT_POLICY_SCHEMA_VERSION
+
+MUTATION_RESULTS_FILENAME = "mutation_results.json"
+MUTATION_SCHEMA_KIND = "sattlint.mutation_results"
+MUTATION_SCHEMA_VERSION = 1
+
+PERFORMANCE_BUDGET_FILENAME = "performance_budget.json"
+PERFORMANCE_BUDGET_SCHEMA_KIND = "sattlint.performance_budget"
+PERFORMANCE_BUDGET_SCHEMA_VERSION = 1
+
+PRODUCTION_SUMMARY_FILENAME = "production_summary.json"
+PRODUCTION_SCHEMA_KIND = "sattlint.production_summary"
+PRODUCTION_SCHEMA_VERSION = 1
+
+PROFILING_SUMMARY_FILENAME = "profiling_summary.json"
+PROFILING_SUMMARY_SCHEMA_KIND = "sattlint.profiling_summary"
+PROFILING_SUMMARY_SCHEMA_VERSION = 1
+
+PROPERTY_TEST_RESULTS_FILENAME = "property_test_results.json"
+PROPERTY_TEST_SCHEMA_KIND = "sattlint.property_test_results"
+PROPERTY_TEST_SCHEMA_VERSION = 1
+
+RELEASE_SMOKE_STATUS_FILENAME = "status.json"
+RELEASE_SMOKE_STATUS_SCHEMA_KIND = "sattlint.release_smoke.status"
+RELEASE_SMOKE_SUMMARY_FILENAME = "summary.json"
+RELEASE_SMOKE_SUMMARY_SCHEMA_KIND = "sattlint.release_smoke.summary"
+RELEASE_SMOKE_SCHEMA_VERSION = 1
+
+RULE_METRICS_FILENAME = "rule_metrics.json"
+RULE_METRICS_SCHEMA_KIND = "sattlint.rule_metrics"
+RULE_METRICS_SCHEMA_VERSION = 1
+
+SATTLINE_SEMANTIC_FILENAME = "sattline_semantic.json"
+SATTLINE_SEMANTIC_SCHEMA_KIND = "sattlint.sattline_semantic"
+SATTLINE_SEMANTIC_SCHEMA_VERSION = 1
+
+SOURCE_DIGEST_MANIFEST_FILENAME = ".sources.json"
+SOURCE_DIGEST_MANIFEST_KIND = "sattlint.generated_output_sources"
+SOURCE_DIGEST_MANIFEST_SCHEMA_VERSION = 1
+SOURCE_DIGEST_MANIFEST_SUFFIX = SOURCE_DIGEST_MANIFEST_FILENAME
+
 
 @dataclass(frozen=True, slots=True)
 class ArtifactDefinition:
@@ -53,10 +171,10 @@ PIPELINE_ARTIFACTS: tuple[ArtifactDefinition, ...] = (
     ),
     ArtifactDefinition(
         "analysis_diff",
-        "analysis_diff.json",
+        ANALYSIS_DIFF_FILENAME,
         "analysis_diff",
-        "sattlint.analysis_diff",
-        1,
+        ANALYSIS_DIFF_SCHEMA_KIND,
+        ANALYSIS_DIFF_SCHEMA_VERSION,
         profiles=("quick", "full"),
         optional=True,
         depends_on=("findings",),
@@ -73,10 +191,10 @@ PIPELINE_ARTIFACTS: tuple[ArtifactDefinition, ...] = (
     ),
     ArtifactDefinition(
         "corpus_results",
-        "corpus_results.json",
+        CORPUS_RESULTS_FILENAME,
         "corpus_results",
-        "sattlint.corpus_results",
-        1,
+        CORPUS_RESULTS_SCHEMA_KIND,
+        CORPUS_RESULTS_SCHEMA_VERSION,
         profiles=("quick", "full"),
         optional=True,
         blocking=True,
@@ -156,98 +274,98 @@ PIPELINE_ARTIFACTS: tuple[ArtifactDefinition, ...] = (
     ArtifactDefinition("trace", "trace.json", "trace", "sattlint.trace", 1, profiles=("full",), optional=True),
     ArtifactDefinition(
         "incremental_analysis",
-        "incremental_analysis.json",
+        INCREMENTAL_ANALYSIS_FILENAME,
         "incremental_analysis",
-        "sattlint.incremental_analysis",
-        1,
+        INCREMENTAL_ANALYSIS_SCHEMA_KIND,
+        INCREMENTAL_ANALYSIS_SCHEMA_VERSION,
         profiles=("quick", "full"),
         optional=True,
     ),
     ArtifactDefinition(
         "coverage_summary",
-        "coverage_summary.json",
+        COVERAGE_SUMMARY_FILENAME,
         "coverage_summary",
-        "sattlint.coverage_summary",
-        1,
+        COVERAGE_SUMMARY_SCHEMA_KIND,
+        COVERAGE_SUMMARY_SCHEMA_VERSION,
         profiles=("full",),
         optional=True,
         depends_on=(),
     ),
     ArtifactDefinition(
         "current_debt_snapshot",
-        "current_debt_snapshot.json",
+        CURRENT_DEBT_SNAPSHOT_FILENAME,
         "current_debt_snapshot",
-        "sattlint.current_debt_snapshot",
-        1,
+        CURRENT_DEBT_SNAPSHOT_SCHEMA_KIND,
+        CURRENT_DEBT_SNAPSHOT_SCHEMA_VERSION,
         profiles=("full",),
         optional=True,
     ),
     ArtifactDefinition(
         "sattline_semantic",
-        "sattline_semantic.json",
+        SATTLINE_SEMANTIC_FILENAME,
         "sattline_semantic",
-        "sattlint.sattline_semantic",
-        1,
+        SATTLINE_SEMANTIC_SCHEMA_KIND,
+        SATTLINE_SEMANTIC_SCHEMA_VERSION,
         profiles=("full",),
         optional=True,
         depends_on=("findings",),
     ),
     ArtifactDefinition(
         "rule_metrics",
-        "rule_metrics.json",
+        RULE_METRICS_FILENAME,
         "rule_metrics",
-        "sattlint.rule_metrics",
-        1,
+        RULE_METRICS_SCHEMA_KIND,
+        RULE_METRICS_SCHEMA_VERSION,
         profiles=("full",),
         optional=True,
         depends_on=("findings",),
     ),
     ArtifactDefinition(
         "mutation_results",
-        "mutation_results.json",
+        MUTATION_RESULTS_FILENAME,
         "mutation_results",
-        "sattlint.mutation_results",
-        1,
+        MUTATION_SCHEMA_KIND,
+        MUTATION_SCHEMA_VERSION,
         profiles=("full",),
         optional=True,
         depends_on=("findings",),
     ),
     ArtifactDefinition(
         "accuracy_metrics",
-        "accuracy_metrics.json",
+        ACCURACY_METRICS_FILENAME,
         "accuracy_metrics",
-        "sattlint.accuracy_metrics",
-        1,
+        ACCURACY_SCHEMA_KIND,
+        ACCURACY_SCHEMA_VERSION,
         profiles=("full",),
         optional=True,
         depends_on=("findings",),
     ),
     ArtifactDefinition(
         "differential",
-        "differential.json",
+        DIFFERENTIAL_FILENAME,
         "differential",
-        "sattlint.differential",
-        1,
+        DIFFERENTIAL_SCHEMA_KIND,
+        DIFFERENTIAL_SCHEMA_VERSION,
         profiles=("full",),
         optional=True,
         depends_on=("findings",),
     ),
     ArtifactDefinition(
         "production_summary",
-        "production_summary.json",
+        PRODUCTION_SUMMARY_FILENAME,
         "production_summary",
-        "sattlint.production_summary",
-        1,
+        PRODUCTION_SCHEMA_KIND,
+        PRODUCTION_SCHEMA_VERSION,
         profiles=("full",),
         optional=True,
         depends_on=("findings",),
     ),
     ArtifactDefinition(
         "ai_templates",
-        "ai_templates.json",
+        AI_TEMPLATE_SUMMARY_FILENAME,
         "ai_templates",
-        "sattlint.ai_templates",
-        1,
+        AI_TEMPLATE_SCHEMA_KIND,
+        AI_TEMPLATE_SCHEMA_VERSION,
         profiles=("full",),
         optional=True,
     ),
@@ -263,20 +381,20 @@ PIPELINE_ARTIFACTS: tuple[ArtifactDefinition, ...] = (
     ),
     ArtifactDefinition(
         "profiling_summary",
-        "profiling_summary.json",
+        PROFILING_SUMMARY_FILENAME,
         "profiling_summary",
-        "sattlint.profiling_summary",
-        1,
+        PROFILING_SUMMARY_SCHEMA_KIND,
+        PROFILING_SUMMARY_SCHEMA_VERSION,
         profiles=("full",),
         optional=True,
         depends_on=("trace",),
     ),
     ArtifactDefinition(
         "performance_budget",
-        "performance_budget.json",
+        PERFORMANCE_BUDGET_FILENAME,
         "performance_budget",
-        "sattlint.performance_budget",
-        1,
+        PERFORMANCE_BUDGET_SCHEMA_KIND,
+        PERFORMANCE_BUDGET_SCHEMA_VERSION,
         profiles=("full",),
         optional=True,
         depends_on=("profiling_summary",),
@@ -331,32 +449,148 @@ AUDIT_ARTIFACTS: tuple[ArtifactDefinition, ...] = (
     ),
     ArtifactDefinition(
         "run_history",
-        "run_history.json",
+        AUDIT_RUN_HISTORY_FILENAME,
         "repo_audit",
-        "sattlint.audit_run_history",
-        1,
+        AUDIT_RUN_HISTORY_SCHEMA_KIND,
+        AUDIT_RUN_HISTORY_SCHEMA_VERSION,
         profiles=("quick", "full", "leaks"),
         optional=True,
     ),
     ArtifactDefinition(
         "cli_consistency",
-        "cli_consistency.json",
+        CLI_CONSISTENCY_FILENAME,
         "repo_audit",
-        "sattlint.cli_consistency",
-        1,
+        CLI_CONSISTENCY_SCHEMA_KIND,
+        CLI_CONSISTENCY_SCHEMA_VERSION,
         profiles=("full",),
         optional=True,
     ),
     ArtifactDefinition(
         "ai_gc",
-        "ai_gc.json",
+        AI_GC_REPORT_FILENAME,
         "repo_audit",
-        "sattlint.ai_gc",
-        1,
+        AI_GC_SCHEMA_KIND,
+        AI_GC_SCHEMA_VERSION,
         profiles=("quick", "full"),
         optional=True,
     ),
 )
+
+
+DEVTOOLS_ARTIFACTS: tuple[ArtifactDefinition, ...] = (
+    ArtifactDefinition(
+        "artifact_readiness",
+        ARTIFACT_READINESS_FILENAME,
+        "artifact_readiness",
+        ARTIFACT_READINESS_SCHEMA_KIND,
+        ARTIFACT_READINESS_SCHEMA_VERSION,
+        optional=True,
+    ),
+    ArtifactDefinition(
+        "audit_findings_comparison",
+        AUDIT_FINDINGS_COMPARISON_FILENAME,
+        "compare_audit_findings",
+        AUDIT_FINDINGS_COMPARISON_SCHEMA_KIND,
+        AUDIT_FINDINGS_COMPARISON_SCHEMA_VERSION,
+        optional=True,
+    ),
+    ArtifactDefinition(
+        "coverage_ratchet",
+        COVERAGE_RATCHET_FILENAME,
+        "coverage_reports",
+        COVERAGE_RATCHET_SCHEMA_KIND,
+        COVERAGE_RATCHET_SCHEMA_VERSION,
+        optional=True,
+    ),
+    ArtifactDefinition(
+        "fault_injection_results",
+        FAULT_INJECTION_RESULTS_FILENAME,
+        "fault_injection",
+        FAULT_INJECTION_SCHEMA_KIND,
+        FAULT_INJECTION_SCHEMA_VERSION,
+        optional=True,
+    ),
+    ArtifactDefinition(
+        "fuzz_results",
+        FUZZ_RESULTS_FILENAME,
+        "sandbox.fuzzer",
+        FUZZ_RESULTS_SCHEMA_KIND,
+        FUZZ_RESULTS_SCHEMA_VERSION,
+        optional=True,
+    ),
+    ArtifactDefinition(
+        "fuzzer_report",
+        FUZZER_REPORT_FILENAME,
+        "sandbox.fuzzer",
+        FUZZER_REPORT_SCHEMA_KIND,
+        FUZZER_REPORT_SCHEMA_VERSION,
+        optional=True,
+    ),
+    ArtifactDefinition(
+        "generated_output_sources",
+        SOURCE_DIGEST_MANIFEST_FILENAME,
+        "shared.pipeline_artifacts",
+        SOURCE_DIGEST_MANIFEST_KIND,
+        SOURCE_DIGEST_MANIFEST_SCHEMA_VERSION,
+        optional=True,
+    ),
+    ArtifactDefinition(
+        "layer_lint_policy",
+        LAYER_LINT_POLICY_FILENAME,
+        "layer_linter",
+        LAYER_LINT_POLICY_SCHEMA_KIND,
+        LAYER_LINT_POLICY_SCHEMA_VERSION,
+        optional=True,
+    ),
+    ArtifactDefinition(
+        "property_test_results",
+        PROPERTY_TEST_RESULTS_FILENAME,
+        "property_tests",
+        PROPERTY_TEST_SCHEMA_KIND,
+        PROPERTY_TEST_SCHEMA_VERSION,
+        optional=True,
+    ),
+    ArtifactDefinition(
+        "release_smoke_status",
+        RELEASE_SMOKE_STATUS_FILENAME,
+        "release_smoke",
+        RELEASE_SMOKE_STATUS_SCHEMA_KIND,
+        RELEASE_SMOKE_SCHEMA_VERSION,
+        optional=True,
+    ),
+    ArtifactDefinition(
+        "release_smoke_summary",
+        RELEASE_SMOKE_SUMMARY_FILENAME,
+        "release_smoke",
+        RELEASE_SMOKE_SUMMARY_SCHEMA_KIND,
+        RELEASE_SMOKE_SCHEMA_VERSION,
+        optional=True,
+    ),
+)
+
+REGISTERED_ARTIFACTS: tuple[ArtifactDefinition, ...] = PIPELINE_ARTIFACTS + AUDIT_ARTIFACTS + DEVTOOLS_ARTIFACTS
+
+
+def _validate_registered_artifacts(artifacts: tuple[ArtifactDefinition, ...]) -> None:
+    seen_producer_filename_and_kind: set[tuple[str, str, str]] = set()
+    schema_versions: dict[str, int] = {}
+    for artifact in artifacts:
+        producer_filename_and_kind = (artifact.producer, artifact.filename, artifact.schema_kind)
+        if producer_filename_and_kind in seen_producer_filename_and_kind:
+            raise ValueError(
+                "Duplicate artifact registry entry for "
+                f"producer {artifact.producer!r}, filename {artifact.filename!r}, and schema {artifact.schema_kind!r}."
+            )
+        seen_producer_filename_and_kind.add(producer_filename_and_kind)
+        existing_version = schema_versions.get(artifact.schema_kind)
+        if existing_version is not None and existing_version != artifact.schema_version:
+            raise ValueError(
+                f"Schema kind {artifact.schema_kind!r} uses multiple versions: {existing_version} and {artifact.schema_version}."
+            )
+        schema_versions[artifact.schema_kind] = artifact.schema_version
+
+
+_validate_registered_artifacts(REGISTERED_ARTIFACTS)
 
 
 def build_artifact_registry_report(

@@ -31,7 +31,7 @@ def test_build_repo_audit_check_recommendations_limits_control_surface_fallback(
         profile="full",
         output_dir=tmp_path,
         fail_on="high",
-        changed_files=["src/sattlint/devtools/repo_audit_entrypoints.py"],
+        changed_files=["src/sattlint/devtools/audit/repo_audit_entrypoints.py"],
     )
 
     assert recommendations["fallback_required"] is True

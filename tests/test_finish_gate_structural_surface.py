@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sattlint.devtools import repo_audit
+from sattlint.devtools.audit import repo_audit
 from tests import test_pipeline_run as pipeline_run_tests
 
 

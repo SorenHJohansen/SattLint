@@ -47,7 +47,7 @@ def run_harness_freshness_check(
     doc_gardener_finding_to_repo_audit_fn: Callable[[Any], Any],
     harness_freshness_doc_scanners: tuple[str, ...],
 ) -> list[Any]:
-    from sattlint.devtools import ai_work_map as ai_work_map_module  # noqa: PLC0415
+    from sattlint.devtools.ai import ai_work_map as ai_work_map_module  # noqa: PLC0415
 
     findings = [
         ai_harness_issue_to_finding_fn(issue)
@@ -210,7 +210,7 @@ def audit_repository(  # noqa: PLR0915
         finding_collection = finding_collection_factory(tuple(finding.to_record() for finding in findings))
         overall_status_value = "fail" if blocking_count else "pass"
         summary: dict[str, Any] = {
-            "generated_by": "sattlint.devtools.repo_audit",
+            "generated_by": "sattlint.devtools.audit.repo_audit",
             "output_dir": sanitized_output_dir,
             "profile": audit_profile,
             "entry_report": "status.json",
@@ -235,7 +235,7 @@ def audit_repository(  # noqa: PLR0915
         }
         status_report: dict[str, Any] = {
             "kind": "sattlint.repo_audit.status",
-            "generated_by": "sattlint.devtools.repo_audit",
+            "generated_by": "sattlint.devtools.audit.repo_audit",
             "profile": audit_profile,
             "fail_on": fail_on,
             "overall_status": overall_status_value,
@@ -311,7 +311,7 @@ def audit_repository(  # noqa: PLR0915
             "stage": failing_stage_key,
         }
         summary: dict[str, Any] = {
-            "generated_by": "sattlint.devtools.repo_audit",
+            "generated_by": "sattlint.devtools.audit.repo_audit",
             "output_dir": sanitized_output_dir,
             "profile": audit_profile,
             "entry_report": "status.json",
@@ -335,7 +335,7 @@ def audit_repository(  # noqa: PLR0915
         }
         status_report = {
             "kind": "sattlint.repo_audit.status",
-            "generated_by": "sattlint.devtools.repo_audit",
+            "generated_by": "sattlint.devtools.audit.repo_audit",
             "profile": audit_profile,
             "fail_on": fail_on,
             "overall_status": "fail",

@@ -15,39 +15,27 @@ from typing import Any, ClassVar, cast
 from . import config as config_module
 from . import console as console_module
 from . import engine as engine_module
+from ._exit_codes import EXIT_FAILURE, EXIT_SUCCESS, EXIT_USAGE_ERROR
 from .cli import entry as cli_entry_module
+from .cli_output import emit_text_or_json
 
 CONFIG_PATH = config_module.get_config_path()
 DEFAULT_CONFIG = config_module.DEFAULT_CONFIG
-EXIT_SUCCESS = 0
-EXIT_FAILURE = 1
-EXIT_USAGE_ERROR = 2
 
 # Configure logging so normal runs stay quiet unless debug mode is enabled.
 logging.basicConfig(format="%(message)s", level=logging.INFO)
 logging.getLogger().setLevel(logging.INFO)
 
 log = logging.getLogger("SattLint")
-emit_output = console_module.print_output  # type: ignore[assignment]
 
-ConfigDict = dict[str, Any]
+ConfigDict = config_module.ConfigDict
 LoadedConfig = tuple[ConfigDict, bool]
-BuildCliParserFn = Callable[..., argparse.ArgumentParser]
-RunSyntaxCheckCommandFn = Callable[[str], int]
-LoadConfigFn = Callable[[Path], LoadedConfig]
-ApplyDebugFn = Callable[[ConfigDict], None]
-AppCommandFn = Callable[..., int]
 ClearScreenFn = Callable[[], None]
-
-_config_module: Any = config_module
-_cli_entry_module: Any = cli_entry_module
-
-_load_config = cast(LoadConfigFn, _config_module.load_config)
-_save_config = cast(Callable[[Path, ConfigDict], None], _config_module.save_config)
-_self_check = cast(Callable[[ConfigDict], bool], _config_module.self_check)
-_target_exists = cast(Callable[[str, ConfigDict], bool], _config_module.target_exists)
-_build_cli_parser = cast(BuildCliParserFn, _cli_entry_module.build_cli_parser)
-_run_cli = cast(AppCommandFn, _cli_entry_module.run_cli)
+_load_config = config_module.load_config
+_save_config = config_module.save_config
+_self_check = config_module.self_check
+_target_exists = config_module.target_exists
+_build_cli_parser = cli_entry_module.build_cli_parser
 
 
 def load_config(path: Path) -> LoadedConfig:
@@ -56,7 +44,7 @@ def load_config(path: Path) -> LoadedConfig:
 
 def save_config(path: Path, cfg: ConfigDict) -> None:
     _save_config(path, cfg)
-    emit_output("Config saved")
+    console_module.print_output("Config saved")
 
 
 def self_check(cfg: ConfigDict) -> bool:
@@ -94,63 +82,84 @@ def _format_syntax_warning(file_path: Path, message: str) -> str:
     return f"WARNING [validation] {file_path}: {message}"
 
 
-def run_syntax_check_command(file_path: str) -> int:
+def _syntax_check_json_payload(
+    *,
+    file_path: Path,
+    ok: bool,
+    stage: str,
+    message: str | None,
+    line: int | None,
+    column: int | None,
+    warnings: tuple[str, ...],
+) -> dict[str, Any]:
+    return {
+        "file_path": str(file_path),
+        "ok": ok,
+        "stage": stage,
+        "message": message,
+        "line": line,
+        "column": column,
+        "warnings": list(warnings),
+    }
+
+
+def run_syntax_check_command(file_path: str, *, output_format: str = "text") -> int:
     target_path = Path(file_path)
     if not target_path.exists() or not target_path.is_file():
-        emit_output(f"ERROR [io] {target_path}: File not found", file=sys.stderr)
+        if output_format == "json":
+            emit_text_or_json(
+                text="",
+                json_payload=_syntax_check_json_payload(
+                    file_path=target_path,
+                    ok=False,
+                    stage="io",
+                    message="File not found",
+                    line=None,
+                    column=None,
+                    warnings=(),
+                ),
+                output_format="json",
+                emit_text_fn=console_module.print_output,
+            )
+        else:
+            console_module.print_output(f"ERROR [io] {target_path}: File not found", file=sys.stderr)
         return EXIT_USAGE_ERROR
 
     result = engine_module.validate_single_file_syntax(target_path)
+    json_payload = _syntax_check_json_payload(
+        file_path=result.file_path,
+        ok=result.ok,
+        stage=result.stage,
+        message=result.message,
+        line=result.line,
+        column=result.column,
+        warnings=result.warnings,
+    )
     if result.ok:
+        if output_format == "json":
+            emit_text_or_json(
+                text="",
+                json_payload=json_payload,
+                output_format="json",
+                emit_text_fn=console_module.print_output,
+            )
+            return EXIT_SUCCESS
         for warning in result.warnings:
-            emit_output(_format_syntax_warning(result.file_path, warning), file=sys.stderr)
-        emit_output("OK")
+            console_module.print_output(_format_syntax_warning(result.file_path, warning), file=sys.stderr)
+        console_module.print_output("OK")
         return EXIT_SUCCESS
 
-    emit_output(_format_syntax_error(result), file=sys.stderr)
+    if output_format == "json":
+        emit_text_or_json(
+            text="",
+            json_payload=json_payload,
+            output_format="json",
+            emit_text_fn=console_module.print_output,
+        )
+        return EXIT_FAILURE
+
+    console_module.print_output(_format_syntax_error(result), file=sys.stderr)
     return EXIT_FAILURE
-
-
-def run_cli(
-    argv: list[str],
-    *,
-    config_path: Path,
-    build_cli_parser_fn: BuildCliParserFn | None = None,
-    run_syntax_check_command_fn: RunSyntaxCheckCommandFn | None = None,
-    load_config_fn: LoadConfigFn | None = None,
-    apply_debug_fn: ApplyDebugFn | None = None,
-    run_validate_config_command_fn: AppCommandFn | None = None,
-    run_analyze_command_fn: AppCommandFn | None = None,
-    run_simulate_command_fn: AppCommandFn | None = None,
-    run_docgen_command_fn: AppCommandFn | None = None,
-    run_cache_prune_command_fn: AppCommandFn | None = None,
-    run_telemetry_summary_command_fn: AppCommandFn | None = None,
-    run_format_icf_command_fn: AppCommandFn | None = None,
-    exit_success: int = EXIT_SUCCESS,
-    exit_usage_error: int = EXIT_USAGE_ERROR,
-) -> int:
-    if build_cli_parser_fn is None:
-        build_cli_parser_fn = build_cli_parser
-    if run_syntax_check_command_fn is None:
-        run_syntax_check_command_fn = run_syntax_check_command
-
-    return _run_cli(
-        argv,
-        config_path=config_path,
-        build_cli_parser_fn=build_cli_parser_fn,
-        run_syntax_check_command_fn=run_syntax_check_command_fn,
-        load_config_fn=load_config_fn,
-        apply_debug_fn=apply_debug_fn,
-        run_validate_config_command_fn=run_validate_config_command_fn,
-        run_analyze_command_fn=run_analyze_command_fn,
-        run_simulate_command_fn=run_simulate_command_fn,
-        run_docgen_command_fn=run_docgen_command_fn,
-        run_cache_prune_command_fn=run_cache_prune_command_fn,
-        run_telemetry_summary_command_fn=run_telemetry_summary_command_fn,
-        run_format_icf_command_fn=run_format_icf_command_fn,
-        exit_success=exit_success,
-        exit_usage_error=exit_usage_error,
-    )
 
 
 def _configure_windows_console_api(kernel32: Any, coord_type: Any, buffer_info_type: Any) -> None:

@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false, reportPrivateUsage=false
 from __future__ import annotations
 
 import json
@@ -5,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from sattlint.devtools import artifact_readiness, compare_audit_findings
 from sattlint.devtools.artifact_readiness import assert_artifact_dir_ready, build_artifact_readiness_report
 from sattlint.devtools.compare_audit_findings import build_audit_findings_comparison
 
@@ -194,3 +196,33 @@ def test_artifact_readiness_reports_missing_directory(tmp_path):
 
     with pytest.raises(RuntimeError, match="artifact directory does not exist"):
         assert_artifact_dir_ready(tmp_path / "missing-audit")
+
+
+def test_artifact_readiness_main_prints_json_and_error_message(tmp_path, capsys):
+    exit_code = artifact_readiness.main(["--artifact-dir", str(tmp_path / "missing-audit")])
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert json.loads(captured.out)["state"] == "missing"
+    assert "artifact directory does not exist" in captured.err
+
+
+def test_compare_audit_findings_main_prints_json(tmp_path, capsys):
+    before_dir = tmp_path / "before"
+    after_dir = tmp_path / "after"
+    shared = _finding("shared", path="src/shared.py", line=1, fingerprint="shared-fp")
+    _write_ready_audit_dir(before_dir, findings=[shared])
+    _write_ready_audit_dir(after_dir, findings=[shared])
+
+    exit_code = compare_audit_findings.main(["--before", str(before_dir), "--after", str(after_dir)])
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["summary"] == {
+        "new_count": 0,
+        "resolved_count": 0,
+        "changed_count": 0,
+        "unchanged_count": 1,
+    }

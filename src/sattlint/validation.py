@@ -5,13 +5,13 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence as AbcSequence
 from dataclasses import dataclass
-from functools import partial
 from typing import cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
     FrameModule,
+    ModuleCode,
     ModuleTypeDef,
     ModuleTypeInstance,
     ParameterMapping,
@@ -77,18 +77,10 @@ from ._validation_type_helpers import (
 )
 from .grammar import constants as const
 from .resolution.type_graph import TypeGraph
+from .types import VariableRef
 
 LOCAL_STRUCTURE_VALIDATION_SCHEMA_VERSION = "2026-06-01-local-structure-v1"
 
-_PLAIN_DURATION_LITERAL_RE = re.compile(r"\d+(?:\.\d+)?")
-_DURATION_COMPONENT_PATTERNS = (
-    re.compile(r"\d+d", re.IGNORECASE),
-    re.compile(r"\d+h", re.IGNORECASE),
-    re.compile(r"\d+m(?!s)", re.IGNORECASE),
-    re.compile(r"\d+(?:\.\d+)?s", re.IGNORECASE),
-    re.compile(r"\d+ms", re.IGNORECASE),
-)
-_TIME_LITERAL_RE = re.compile(r"\d{4}-\d{2}-\d{2}-\d{2}:\d{2}:\d{2}\.\d{3}")
 _MAX_IDENTIFIER_LENGTH = 20
 _TYPO_SUGGESTION_MAX_DISTANCE = 2
 _RESERVED_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
@@ -99,8 +91,6 @@ _ALLOWED_IDENTIFIER_KEYWORDS = frozenset(
         const.GRAMMAR_VALUE_NEWWINDOW.casefold(),
     }
 )
-
-type VariableRef = dict[str, object]
 
 
 def _discard_validation_warning(_warning: ValidationWarning) -> None:
@@ -244,14 +234,64 @@ _iter_variable_refs = validation_sequences_module.iter_variable_refs
 _validate_variable_refs = validation_sequences_module.validate_variable_refs
 _validate_statement_list = validation_sequences_module.validate_statement_list
 _validate_code_blocks = validation_sequences_module.validate_code_blocks
-_validate_sequence_nodes = partial(
-    validation_sequences_module.validate_sequence_nodes,
-    validate_identifier=_validate_identifier,
-)
-_validate_module_code = partial(
-    validation_sequences_module.validate_module_code,
-    validate_identifier=_validate_identifier,
-)
+
+
+def _validate_sequence_nodes(
+    nodes: list[object],
+    context: str,
+    *,
+    labels: dict[str, str],
+    label_counts: dict[str, int],
+    env: dict[str, Variable],
+    type_graph: TypeGraph,
+    require_init_step: bool,
+    module_labels: frozenset[str] = frozenset(),
+    module_label_counts: dict[str, int] | None = None,
+    warning_sink: ValidationWarningSink | None = None,
+    allow_old_state_assignment: bool = True,
+    suppress_semantic_errors: bool = False,
+    module_code_policy: validation_sequences_module.ModuleCodeValidationPolicy | None = None,
+) -> None:
+    validation_sequences_module.validate_sequence_nodes(
+        nodes,
+        context,
+        validate_identifier=_validate_identifier,
+        labels=labels,
+        label_counts=label_counts,
+        module_labels=module_labels,
+        module_label_counts=module_label_counts,
+        env=env,
+        type_graph=type_graph,
+        require_init_step=require_init_step,
+        warning_sink=warning_sink,
+        allow_old_state_assignment=allow_old_state_assignment,
+        suppress_semantic_errors=suppress_semantic_errors,
+        module_code_policy=module_code_policy,
+    )
+
+
+def _validate_module_code(
+    modulecode: ModuleCode | None,
+    context: str,
+    env: dict[str, Variable],
+    type_graph: TypeGraph,
+    *,
+    warning_sink: ValidationWarningSink | None = None,
+    allow_old_state_assignment: bool = True,
+    suppress_semantic_errors: bool = False,
+    module_code_policy: validation_sequences_module.ModuleCodeValidationPolicy | None = None,
+) -> None:
+    validation_sequences_module.validate_module_code(
+        modulecode,
+        context,
+        env,
+        type_graph,
+        validate_identifier=_validate_identifier,
+        warning_sink=warning_sink,
+        allow_old_state_assignment=allow_old_state_assignment,
+        suppress_semantic_errors=suppress_semantic_errors,
+        module_code_policy=module_code_policy,
+    )
 
 
 def _validate_variable_list(
@@ -336,6 +376,16 @@ class _ModuleValidationPolicy:
     warning_sink: ValidationWarningSink | None = None
     allow_old_state_assignment: bool = True
     suppress_module_code_semantic_errors: bool = False
+
+
+def _module_code_policy(
+    policy: _ModuleValidationPolicy,
+) -> validation_sequences_module.ModuleCodeValidationPolicy:
+    return validation_sequences_module.ModuleCodeValidationPolicy(
+        warning_sink=policy.warning_sink,
+        allow_old_state_assignment=policy.allow_old_state_assignment,
+        suppress_semantic_errors=policy.suppress_module_code_semantic_errors,
+    )
 
 
 def _validate_parameter_mappings(
@@ -493,8 +543,7 @@ def _validate_module(
             module_context,
             env,
             type_graph,
-            warning_sink=active_policy.warning_sink,
-            allow_old_state_assignment=active_policy.allow_old_state_assignment,
+            module_code_policy=_module_code_policy(active_policy),
         )
         _validate_unique_submodule_names(
             module.submodules,
@@ -523,8 +572,7 @@ def _validate_module(
             module_context,
             parent_env,
             type_graph,
-            warning_sink=active_policy.warning_sink,
-            allow_old_state_assignment=active_policy.allow_old_state_assignment,
+            module_code_policy=_module_code_policy(active_policy),
         )
         _validate_unique_submodule_names(
             module.submodules,
@@ -634,6 +682,13 @@ def validate_transformed_basepicture_locally(
     allow_old_state_assignment: bool = True,
     warning_sink: ValidationWarningSink | None = None,
 ) -> None:
+    """Validate a transformed BasePicture for local/editor flows.
+
+    Local validation intentionally downgrades module-code semantic
+    StructuralValidationError failures into ValidationNotice warnings routed to
+    warning_sink. If no warning sink is provided, those downgraded notices are
+    discarded. Other structural validation failures still raise.
+    """
     effective_warning_sink: ValidationWarningSink = warning_sink or _discard_validation_warning
 
     validate_transformed_basepicture(
@@ -723,6 +778,13 @@ def validate_transformed_basepicture(
     suppress_module_code_semantic_errors: bool = False,
     warning_sink: ValidationWarningSink | None = None,
 ) -> None:
+    """Validate a transformed BasePicture.
+
+    Module-code semantic StructuralValidationError failures are fatal by
+    default. Set suppress_module_code_semantic_errors=True to downgrade only
+    those failures into ValidationNotice warnings routed to warning_sink
+    instead of raising them.
+    """
     _validate_identifier(basepic.header.name, "BasePicture", check_reserved_keywords=False)
     if basepic.program_name is not None:
         _validate_identifier(basepic.program_name, "BasePicture program name")
@@ -799,9 +861,7 @@ def validate_transformed_basepicture(
             moduletype_context,
             env,
             type_graph,
-            warning_sink=policy.warning_sink,
-            allow_old_state_assignment=policy.allow_old_state_assignment,
-            suppress_semantic_errors=policy.suppress_module_code_semantic_errors,
+            module_code_policy=_module_code_policy(policy),
         )
         _validate_unique_submodule_names(
             moduletype.submodules,
@@ -826,9 +886,7 @@ def validate_transformed_basepicture(
         "BasePicture",
         base_env,
         type_graph,
-        warning_sink=policy.warning_sink,
-        allow_old_state_assignment=policy.allow_old_state_assignment,
-        suppress_semantic_errors=policy.suppress_module_code_semantic_errors,
+        module_code_policy=_module_code_policy(policy),
     )
     _validate_unique_submodule_names(
         basepic.submodules,
@@ -851,17 +909,27 @@ def validate_transformed_basepicture(
 
 
 # Re-exports for backward compatibility with external imports
+assignment_type_matches = _assignment_type_matches
+extract_time_literal = _extract_time_literal
+has_time_literal_marker = _has_time_literal_marker
+infer_literal_datatype = _infer_literal_datatype
+is_valid_time_literal = _is_valid_time_literal
+literal_matches_expected_datatype = _literal_matches_expected_datatype
+resolve_variable_field_datatype = _resolve_variable_field_datatype
+split_dotted_name = _split_dotted_name
+
 __all__ = [
     "RawSourceValidationError",
     "StructuralValidationError",
+    "_validate_sequence_nodes",
     # Type helpers exported to analyzers.validators
-    "_assignment_type_matches",
-    "_extract_time_literal",
-    "_has_time_literal_marker",
-    "_infer_literal_datatype",
-    "_is_valid_time_literal",
-    "_literal_matches_expected_datatype",
-    "_resolve_variable_field_datatype",
-    "_split_dotted_name",
+    "assignment_type_matches",
+    "extract_time_literal",
+    "has_time_literal_marker",
+    "infer_literal_datatype",
+    "is_valid_time_literal",
+    "literal_matches_expected_datatype",
+    "resolve_variable_field_datatype",
+    "split_dotted_name",
     "validate_transformed_basepicture",
 ]

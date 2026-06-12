@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Protocol, cast
 
 from ..analyzers.framework import Issue
+from ..config_types import DocumentationConfig, DocumentationConfigOverride
 from .analyzer_ref import (
     build_analyzer_reference_entry,
     build_full_analyzer_reference,
@@ -24,7 +25,7 @@ class GenerateDocxFn(Protocol):
         root: Any,
         out_path: str | Path,
         *,
-        documentation_config: dict[str, Any] | None = None,
+        documentation_config: DocumentationConfig | DocumentationConfigOverride | dict[str, Any] | None = None,
         unavailable_libraries: set[str] | None = None,
         upgrade_issues: Sequence[Issue] | None = None,
     ) -> None: ...

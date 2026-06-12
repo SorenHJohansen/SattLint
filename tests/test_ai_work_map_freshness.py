@@ -1,6 +1,6 @@
 import json
 
-from sattlint.devtools.ai_work_map import render_ai_check_catalog, verify_ai_harness_freshness
+from sattlint.devtools.ai.ai_work_map import render_ai_check_catalog, verify_ai_harness_freshness
 
 
 def test_verify_ai_harness_freshness_reports_generated_map_and_metadata_drift(tmp_path):

@@ -16,9 +16,7 @@ from sattline_parser.fuzz_harness import (
     is_expected_parse_error,
 )
 
-PROPERTY_TEST_RESULTS_FILENAME = "property_test_results.json"
-PROPERTY_TEST_SCHEMA_KIND = "sattlint.property_test_results"
-PROPERTY_TEST_SCHEMA_VERSION = 1
+from .artifact_registry import PROPERTY_TEST_RESULTS_FILENAME, PROPERTY_TEST_SCHEMA_KIND, PROPERTY_TEST_SCHEMA_VERSION
 
 
 def _property_check_record_list() -> list[PropertyCheckRecord]:

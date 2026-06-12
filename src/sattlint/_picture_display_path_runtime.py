@@ -349,7 +349,7 @@ def _file_stem_casefold(file_name: str | None) -> str | None:
         return None
     try:
         return Path(file_name).stem.casefold()
-    except Exception:  # noqa: BLE001
+    except (TypeError, ValueError):
         return file_name.rsplit(".", 1)[0].casefold()
 
 
@@ -580,7 +580,7 @@ def _resolve_runtime_moduletype(
             current_file=current_file,
             unavailable_libraries=(graph.unavailable_libraries if graph is not None else None),
         )
-    except Exception:  # noqa: BLE001
+    except ValueError:
         return None
 
 

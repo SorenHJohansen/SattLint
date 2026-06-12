@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import threading
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
-from ._app_textual_actions import ACTIONS_METHODS
-from ._app_textual_analyze import ANALYZE_METHODS
-from ._app_textual_setup import SETUP_METHODS
+from ._app_textual_actions import _TextualActionsMixin
+from ._app_textual_analyze import _TextualAnalyzeMixin
+from ._app_textual_setup import _TextualSetupMixin
 from ._app_textual_shared import (
     _TEXTUAL_APP,
     _TEXTUAL_BUTTON,
@@ -27,6 +28,7 @@ from ._app_textual_shared import (
     _SessionOutputLog,
     _ShellViewState,
 )
+from .config_types import ConfigDict
 
 
 @dataclass(frozen=True)
@@ -35,13 +37,60 @@ class _AstRefreshStartupResult:
     output: str
 
 
+_DEFAULT_VIEW_REGISTRY: dict[str, _ShellViewState] = {
+    "analyze": _ShellViewState(
+        action_id="action-analyze",
+        title="Analyze",
+        description="Plan one or more analyses, inspect the normalized queue, and run the selected steps directly.",
+        note="Build an analysis queue in this view and run the shared planner directly.",
+        launch_label="Open Analyze Planner",
+    ),
+    "documentation": _ShellViewState(
+        action_id="action-documentation",
+        title="Documentation",
+        description="Preview unit candidates, adjust scope, and generate DOCX output directly from this screen.",
+        note="Documentation actions are available directly in this view.",
+        launch_label="Open Documentation Flow",
+    ),
+    "setup": _ShellViewState(
+        action_id="action-setup",
+        title="Setup",
+        description="Click targets to add or remove them, then adjust directories and runtime settings inline.",
+        note="Changes happen directly in this view and remain unsaved until you use Save.",
+        launch_label="Open Setup Flow",
+    ),
+    "tools": _ShellViewState(
+        action_id="action-tools",
+        title="Tools",
+        description=(
+            "Run diagnostics, dumps, source diffs, cache refreshes, and targeted tracing tools directly from this "
+            "screen."
+        ),
+        note=(
+            "Use the upper actions for setup and cache troubleshooting, then use the trace tools when an analysis "
+            "report needs source-level follow-up."
+        ),
+        launch_label="Open Tools Flow",
+    ),
+    "help": _ShellViewState(
+        action_id="action-help",
+        title="Help",
+        description="See first-run guidance and the recommended workflow for setup, analysis, and documentation.",
+        note="Open the guide to review the recommended setup, analysis, and documentation workflow.",
+        launch_label="Open Help Guide",
+    ),
+}
+
+
 if _TEXTUAL_APP is not None:
     _SessionOutputWidget: Any = _SessionOutputLog if _TEXTUAL_RICH_LOG is not None else None
 
-    class _AstRefreshTextualApp(_TEXTUAL_APP):
+    class _AstRefreshTextualAppImpl(_TEXTUAL_APP):
+        """Shows startup AST-cache progress before the main Textual shell opens."""
+
         CSS = """
         Screen {
-            background: #f5edd5;
+            background: #f4efde;
             color: #001ba3;
         }
 
@@ -55,7 +104,7 @@ if _TEXTUAL_APP is not None:
             width: 72;
             max-width: 90%;
             padding: 1 2;
-            background: #d8d4c8;
+            background: #e6decb;
             color: #000000;
             border: tall #0077b3;
         }
@@ -147,18 +196,24 @@ if _TEXTUAL_APP is not None:
             self.exit()
 
         def _run_refresh(self) -> None:
-            refresh_ok = True
+            refresh_ok = False
             refresh_exception: BaseException | None = None
             try:
                 refresh_ok = bool(self._refresh_ast_cache_fn(self._emit_status))
-            except Exception as exc:  # pragma: no cover - exercised through direct method test  # noqa: BLE001
+            except (
+                OSError,
+                RuntimeError,
+                ValueError,
+            ) as exc:  # pragma: no cover - exercised through direct method test
                 refresh_ok = False
                 refresh_exception = exc
                 self.call_from_thread(self._update_status, f"AST cache refresh failed: {exc}")
             finally:
                 self.call_from_thread(self._finish_refresh, ok=refresh_ok, exc=refresh_exception)
 
-    class SattLintTextualApp(_TEXTUAL_APP):
+    class SattLintTextualAppImpl(_TextualSetupMixin, _TextualActionsMixin, _TextualAnalyzeMixin, _TEXTUAL_APP):
+        """Owns the main Textual shell by composing the setup, actions, and analyze mixins."""
+
         TITLE = DEFAULT_SHELL_TITLE
 
         BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
@@ -167,8 +222,13 @@ if _TEXTUAL_APP is not None:
             ("3", "show_setup", "Setup"),
             ("4", "show_tools", "Tools"),
             ("5", "show_help", "Help"),
+            ("slash", "prompt_view_filter", "Filter"),
+            ("question_mark", "show_help", "Help"),
+            ("ctrl+h", "show_help", "Help"),
             ("ctrl+c", "copy_output", "Copy Output"),
             ("ctrl+g", "cancel_running_analysis", "Cancel Analysis"),
+            ("ctrl+l", "clear_output", "Clear Output"),
+            ("escape", "back", "Back"),
             ("q", "quit_shell", "Quit"),
             ("tab", "focus_next_control", "Next"),
             ("shift+tab", "focus_previous_control", "Prev"),
@@ -183,11 +243,9 @@ if _TEXTUAL_APP is not None:
             "action-quit",
         )
 
+        _VIEW_REGISTRY: ClassVar[dict[str, _ShellViewState]] = _DEFAULT_VIEW_REGISTRY
         _VIEW_ACTIONS: ClassVar[dict[str, str]] = {
-            "action-analyze": "analyze",
-            "action-documentation": "documentation",
-            "action-setup": "setup",
-            "action-tools": "tools",
+            state.action_id: view_name for view_name, state in _DEFAULT_VIEW_REGISTRY.items() if view_name != "help"
         }
 
         CSS = TEXTUAL_SHELL_CSS
@@ -195,13 +253,14 @@ if _TEXTUAL_APP is not None:
         def __init__(
             self,
             *,
-            cfg: dict[str, Any],
+            cfg: ConfigDict,
             summarize_targets_fn: Any,
             analysis_menu_fn: Any,
             documentation_menu_fn: Any,
             config_menu_fn: Any,
             tools_menu_fn: Any,
             show_help_fn: Any,
+            get_help_text_fn: Any | None = None,
             save_config_fn: Any,
             config_path: Any,
             quit_app_error: type[BaseException],
@@ -222,6 +281,7 @@ if _TEXTUAL_APP is not None:
             self._config_menu_fn = config_menu_fn
             self._tools_menu_fn = tools_menu_fn
             self._show_help_fn = show_help_fn
+            self._get_help_text_fn = get_help_text_fn
             self._save_config_fn = save_config_fn
             self._config_path = config_path
             self._quit_app_error = quit_app_error
@@ -230,18 +290,23 @@ if _TEXTUAL_APP is not None:
             self._active_view = "analyze"
             self._active_job_action_id: str | None = None
             self._active_job_label: str | None = None
+            self._active_job_started_at: float | None = None
             self._active_job_cancel_event: threading.Event | None = None
             self._active_job_cancel_requested = False
             self._active_job_thread: threading.Thread | None = None
+            self._active_job_worker: Any | None = None
             self._analyze_focused_entry_id: str | None = None
             self._analyze_selected_entry_ids: set[str] = set()
+            self._analyze_filter_text = ""
             self._suppress_analyze_planner_events = False
             self._setup_candidate_index = 0
+            self._setup_filter_text = ""
             self._setup_target_names_list: list[str] = []
             self._selected_configured_target: str | None = None
             self._active_request = None
             self._active_request_callback: Any = None
             self._interaction_pane: Any = None
+            self._pending_ui_tasks: set[asyncio.Task[Any]] = set()
             self._self_check_fn = self_check_fn or (lambda _cfg: None)
             self._dump_menu_fn = dump_menu_fn or (lambda _cfg: None)
             self._source_diff_fn = source_diff_fn or (lambda _cfg: None)
@@ -249,6 +314,8 @@ if _TEXTUAL_APP is not None:
             self._startup_output = startup_output.strip("\n")
             self._startup_output_is_warning = startup_output_is_warning
             self._last_output_line: str | None = None
+            self._session_output_lines: list[str] = []
+            self._session_output_dropped_line_count = 0
 
         def compose(self) -> _TEXTUAL_COMPOSE_RESULT:  # noqa: PLR0915
             with _TEXTUAL_HORIZONTAL(id="actions"):
@@ -257,7 +324,7 @@ if _TEXTUAL_APP is not None:
                 yield _TEXTUAL_BUTTON("Tools", id="action-tools", classes="raised-button toolbar-button")
                 yield _TEXTUAL_STATIC("", id="actions-spacer")
                 yield _TEXTUAL_BUTTON("Setup", id="action-setup", classes="raised-button toolbar-button")
-                yield _TEXTUAL_BUTTON("Help", id="action-help", classes="raised-button toolbar-button")
+                yield _TEXTUAL_BUTTON("Help & Guide", id="action-help", classes="raised-button toolbar-button")
                 yield _TEXTUAL_BUTTON("Quit", id="action-quit", classes="raised-button toolbar-button")
             with _TEXTUAL_VERTICAL(id="content-host"):
                 with _TEXTUAL_VERTICAL(id="workspace-host"):
@@ -280,8 +347,18 @@ if _TEXTUAL_APP is not None:
                                             classes="raised-button toolbar-button",
                                         )
                                         yield _TEXTUAL_BUTTON(
+                                            "Cancel running",
+                                            id="analyze-cancel-running",
+                                            classes="raised-button toolbar-button",
+                                        )
+                                        yield _TEXTUAL_BUTTON(
                                             "Clear selection",
                                             id="analyze-clear-selection",
+                                            classes="raised-button toolbar-button",
+                                        )
+                                        yield _TEXTUAL_BUTTON(
+                                            "Clear output",
+                                            id="analyze-clear-output",
                                             classes="raised-button toolbar-button",
                                         )
                                     with _TEXTUAL_HORIZONTAL(id="documentation-actions", classes="is-hidden"):
@@ -327,7 +404,7 @@ if _TEXTUAL_APP is not None:
                                             classes="raised-button toolbar-button",
                                         )
                                         yield _TEXTUAL_BUTTON(
-                                            "Refresh analysis caches",
+                                            "Refresh all caches",
                                             id="tools-refresh-ast",
                                             classes="raised-button toolbar-button",
                                         )
@@ -467,63 +544,25 @@ if _TEXTUAL_APP is not None:
                     self._write_output(
                         "AST cache startup checks reported issues before the shell opened. Review the preserved log below."
                     )
+                else:
+                    self._write_output("Initial AST loading log:")
                 self._write_output(self._startup_output)
 
         def _view_state(self, view_name: str) -> _ShellViewState:
-            if view_name == "documentation":
-                return _ShellViewState(
-                    action_id="action-documentation",
-                    title="Documentation",
-                    description="Preview unit candidates, adjust scope, and generate DOCX output directly from this screen.",
-                    note="Documentation actions are available directly in this view.",
-                    launch_label="Open Documentation Flow",
-                )
-            if view_name == "setup":
-                return _ShellViewState(
-                    action_id="action-setup",
-                    title="Setup",
-                    description="Click targets to add or remove them, then adjust directories and runtime settings inline.",
-                    note="Changes happen directly in this view and remain unsaved until you use Save.",
-                    launch_label="Open Setup Flow",
-                )
-            if view_name == "tools":
-                return _ShellViewState(
-                    action_id="action-tools",
-                    title="Tools",
-                    description=(
-                        "Run diagnostics, dumps, source diffs, cache refreshes, and targeted tracing tools directly "
-                        "from this screen."
-                    ),
-                    note=(
-                        "Use the upper actions for setup and cache troubleshooting, then use the trace tools when an "
-                        "analysis report needs source-level follow-up."
-                    ),
-                    launch_label="Open Tools Flow",
-                )
-            if view_name == "help":
-                return _ShellViewState(
-                    action_id="action-help",
-                    title="Help",
-                    description="See first-run guidance and the recommended workflow for setup, analysis, and documentation.",
-                    note="Open the help flow to print the detailed guidance into the output pane.",
-                    launch_label="Show Help Output",
-                )
-            return _ShellViewState(
-                action_id="action-analyze",
-                title="Analyze",
-                description="Plan one or more analyses, inspect the normalized queue, and run the selected steps directly.",
-                note="Build an analysis queue in this view and run the shared planner directly.",
-                launch_label="Open Analyze Planner",
-            )
+            return self._VIEW_REGISTRY.get(view_name, self._VIEW_REGISTRY["analyze"])
 
-    for _method in (*SETUP_METHODS, *ACTIONS_METHODS, *ANALYZE_METHODS):
-        setattr(SattLintTextualApp, _method.__name__, _method)
+    _AstRefreshTextualAppImpl.__name__ = "_AstRefreshTextualApp"
+    _AstRefreshTextualAppImpl.__qualname__ = "_AstRefreshTextualApp"
+    _AstRefreshTextualApp = _AstRefreshTextualAppImpl
+    SattLintTextualAppImpl.__name__ = "SattLintTextualApp"
+    SattLintTextualAppImpl.__qualname__ = "SattLintTextualApp"
+    SattLintTextualApp = SattLintTextualAppImpl
 else:  # pragma: no cover - optional dependency path
     _AstRefreshTextualApp: Any = None
     SattLintTextualApp: Any = None
 
 
-def _run_textual_ast_refresh_screen(cfg: dict[str, Any], *, app_module: Any) -> _AstRefreshStartupResult:
+def _run_textual_ast_refresh_screen(cfg: ConfigDict, *, app_module: Any) -> _AstRefreshStartupResult:
     has_targets_fn = getattr(app_module, "_has_analyzed_targets", None)
     ensure_ast_cache_fn = getattr(app_module, "ensure_ast_cache", None)
     if not callable(has_targets_fn) or not callable(ensure_ast_cache_fn):
@@ -542,7 +581,7 @@ def _run_textual_ast_refresh_screen(cfg: dict[str, Any], *, app_module: Any) -> 
 
 
 def run_textual_shell(
-    cfg: dict[str, Any],
+    cfg: ConfigDict,
     *,
     app_module: Any,
     summarize_targets_fn: Any,
@@ -551,6 +590,7 @@ def run_textual_shell(
     config_menu_fn: Any | None = None,
     tools_menu_fn: Any | None = None,
     show_help_fn: Any,
+    get_help_text_fn: Any | None = None,
     save_config_fn: Any,
     config_path: Any,
     quit_app_error: type[BaseException],
@@ -561,7 +601,7 @@ def run_textual_shell(
 
     startup_result = _run_textual_ast_refresh_screen(cfg, app_module=app_module)
 
-    def _noop_menu_action(_cfg: dict[str, Any]) -> None:
+    def _noop_menu_action(_cfg: ConfigDict) -> None:
         return None
 
     textual_app = SattLintTextualApp(
@@ -577,10 +617,11 @@ def run_textual_shell(
         source_diff_fn=lambda cfg: app_module.run_source_diff_report(cfg, _pause_fn=lambda: None),
         force_refresh_ast_fn=app_module.refresh_analysis_caches,
         show_help_fn=show_help_fn,
+        get_help_text_fn=get_help_text_fn,
         save_config_fn=save_config_fn,
         config_path=config_path,
         quit_app_error=quit_app_error,
-        startup_output=startup_result.output if not startup_result.ok else "",
+        startup_output=startup_result.output,
         startup_output_is_warning=not startup_result.ok,
     )
     bridge = TextualInteractionBridge(

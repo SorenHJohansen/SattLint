@@ -18,6 +18,7 @@ from .core.diagnostics import (
     DiagnosticProjectionResult,
     SemanticDiagnostic,
     build_module_diagnostic_sites,
+    log_dropped_diagnostic_issues,
     merge_diagnostic_projection_results,
     project_report_issues,
     project_variable_issues,
@@ -80,7 +81,7 @@ def _project_lsp_report_diagnostics(
         shared_artifacts=shared_artifacts,
         create_shared_artifacts=True,
     )
-    module_sites_by_path = build_module_diagnostic_sites(base_picture)
+    module_sites_by_path = build_module_diagnostic_sites(context.base_picture)
     projected_reports: list[DiagnosticProjectionResult] = []
 
     for analyzer in get_lsp_projection_analyzers():
@@ -153,6 +154,7 @@ def build_variable_semantic_artifacts(
         )
         semantic_diagnostics_by_file = projection_result.diagnostics_by_file
         semantic_diagnostic_drops = projection_result.dropped_issues
+        log_dropped_diagnostic_issues(semantic_diagnostic_drops)
 
     return SemanticAnalysisArtifacts(
         diagnostics=diagnostics,

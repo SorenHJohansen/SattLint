@@ -14,7 +14,7 @@ from typing import Any, TypedDict, cast
 
 from ._config_defaults import PROJECT_CACHE_CONFIG_KEYS
 
-CACHE_VERSION = 14  # Bump when cached AST semantics or warning content changes.
+CACHE_VERSION = 15  # Bump when cached AST semantics or attached graphics companion record shapes change.
 ANALYSIS_REPORT_CACHE_VERSION = 3
 LOOKUP_CACHE_VERSION = 1
 DEFAULT_LOOKUP_CACHE_FLUSH_INTERVAL = 25
@@ -450,7 +450,7 @@ class FileASTCache:
             pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-PROJECT_CACHE_SCHEMA_VERSION = "2026-05-28-library-reverse-consumer-scan"
+PROJECT_CACHE_SCHEMA_VERSION = "2026-06-11-project-graph-root-origin-schema"
 ANALYSIS_REPORT_CACHE_SCHEMA_VERSION = "2026-06-04-string-literal-mismatch-threshold"
 
 
@@ -481,7 +481,7 @@ class ASTCache:
     def __init__(self, cache_dir: Path):
         self.cache_dir = cache_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self._startup_prune_result = self.prune_stale_entries()
+        self._startup_prune_result = self.prune_startup_entries()
 
     def _path(self, key: str) -> Path:
         return self.cache_dir / f"{key}.pickle"
@@ -548,6 +548,35 @@ class ASTCache:
             return True
 
         return _validate_manifest(manifest)
+
+    def prune_startup_entries(self) -> CachePruneResult:
+        removed_payloads = 0
+        removed_manifests = 0
+        payload_stems: set[str] = set()
+
+        for payload_path in self.cache_dir.glob("*.pickle"):
+            payload_stems.add(payload_path.stem)
+            manifest_path = self._manifest_path(payload_path.stem)
+            manifest_valid = manifest_path.exists() and _load_manifest_payload(manifest_path) is not None
+
+            if manifest_valid:
+                continue
+
+            if _remove_file(payload_path):
+                removed_payloads += 1
+            if manifest_path.exists() and _remove_file(manifest_path):
+                removed_manifests += 1
+
+        for manifest_path in self.cache_dir.glob("*.manifest.json"):
+            if manifest_path.name[: -len(".manifest.json")] in payload_stems:
+                continue
+            if _remove_file(manifest_path):
+                removed_manifests += 1
+
+        return CachePruneResult(
+            ast_payload_entries=removed_payloads,
+            ast_manifest_entries=removed_manifests,
+        )
 
     def prune_stale_entries(self) -> CachePruneResult:
         removed_payloads = 0
@@ -751,6 +780,44 @@ class CacheManager:
                 + analysis_report_cache.prune_stale_entries()
             )
         )
+        return result
+
+    def clear_all(self) -> CachePruneResult:
+        result = CachePruneResult()
+
+        lookup_path = self.file_lookup_cache.path
+        if lookup_path.exists() and _remove_file(lookup_path):
+            result = result.combine(CachePruneResult(file_lookup_entries=1))
+        self._file_lookup_cache = self._file_lookup_cache_cls(self.cache_dir)
+
+        file_ast_entries = 0
+        for path in self.file_ast_cache.cache_dir.glob("*.pickle"):
+            if _remove_file(path):
+                file_ast_entries += 1
+        result = result.combine(CachePruneResult(file_ast_entries=file_ast_entries))
+        self._file_ast_cache = self._file_ast_cache_cls(self.cache_dir)
+
+        ast_payload_entries = 0
+        ast_manifest_entries = 0
+        ast_cache_dir = self.ast_cache.cache_dir
+        for path in ast_cache_dir.glob("*.pickle"):
+            if _remove_file(path):
+                ast_payload_entries += 1
+        for path in ast_cache_dir.glob("*.manifest.json"):
+            if _remove_file(path):
+                ast_manifest_entries += 1
+        result = result.combine(
+            CachePruneResult(
+                ast_payload_entries=ast_payload_entries,
+                ast_manifest_entries=ast_manifest_entries,
+            )
+        )
+        self._ast_cache = self._ast_cache_cls(self.cache_dir)
+
+        analysis_report_entries = self.analysis_report_cache.clear_all()
+        result = result.combine(CachePruneResult(analysis_report_entries=analysis_report_entries))
+        self._analysis_report_cache = self._analysis_report_cache_cls(self.cache_dir)
+
         return result
 
 

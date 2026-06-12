@@ -8,18 +8,17 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from lark.exceptions import UnexpectedInput
+
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.models.ast_model import (
     BasePicture,
 )
+from sattlint.contracts import FindingCollection
 
-from ..contracts import FindingCollection
+from .artifact_registry import MUTATION_RESULTS_FILENAME, MUTATION_SCHEMA_KIND, MUTATION_SCHEMA_VERSION
 
 MutationRecordValue = str | bool | None
-
-MUTATION_RESULTS_FILENAME = "mutation_results.json"
-MUTATION_SCHEMA_KIND = "sattlint.mutation_results"
-MUTATION_SCHEMA_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -123,7 +122,7 @@ def run_mutation_analysis(
             bp: BasePicture | None
             try:
                 bp = parser_core_parse_source_text(mutated)
-            except Exception:  # noqa: BLE001
+            except (SyntaxError, UnexpectedInput, ValueError, RuntimeError):
                 bp = None
             if bp is None:
                 continue

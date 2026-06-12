@@ -1,3 +1,4 @@
+import ast
 import json
 from pathlib import Path
 
@@ -5,7 +6,7 @@ import pytest
 
 from sattlint.contracts import FindingCollection, FindingLocation, FindingRecord
 from sattlint.devtools import finding_exports
-from sattlint.devtools.artifact_registry import PIPELINE_ARTIFACTS, build_artifact_registry_report
+from sattlint.devtools.artifact_registry import PIPELINE_ARTIFACTS, REGISTERED_ARTIFACTS, build_artifact_registry_report
 from sattlint.devtools.baselines import build_analysis_diff_report, load_finding_collection
 from sattlint.devtools.corpus import (
     CorpusCaseManifest,
@@ -25,6 +26,164 @@ from .helpers.artifact_assertions import (
 )
 
 GOLDEN_DIR = Path(__file__).parent / "fixtures" / "goldens"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+REGISTRY_BACKED_SCHEMA_MODULES: dict[str, tuple[str, ...]] = {
+    "src/sattlint/devtools/accuracy_metrics.py": (
+        "ACCURACY_METRICS_FILENAME",
+        "ACCURACY_SCHEMA_KIND",
+        "ACCURACY_SCHEMA_VERSION",
+    ),
+    "src/sattlint/devtools/ai_templates.py": (
+        "AI_TEMPLATE_SUMMARY_FILENAME",
+        "AI_TEMPLATE_SCHEMA_KIND",
+        "AI_TEMPLATE_SCHEMA_VERSION",
+    ),
+    "src/sattlint/devtools/artifact_readiness.py": (
+        "READINESS_SCHEMA_KIND",
+        "READINESS_SCHEMA_VERSION",
+    ),
+    "src/sattlint/devtools/baselines.py": (
+        "ANALYSIS_DIFF_SCHEMA_KIND",
+        "ANALYSIS_DIFF_SCHEMA_VERSION",
+    ),
+    "src/sattlint/devtools/compare_audit_findings.py": (
+        "COMPARE_SCHEMA_KIND",
+        "COMPARE_SCHEMA_VERSION",
+    ),
+    "src/sattlint/devtools/corpus.py": (
+        "CORPUS_RESULTS_FILENAME",
+        "CORPUS_RESULTS_SCHEMA_KIND",
+        "CORPUS_RESULTS_SCHEMA_VERSION",
+    ),
+    "src/sattlint/devtools/coverage_reports.py": (
+        "COVERAGE_RATCHET_SCHEMA_KIND",
+        "COVERAGE_RATCHET_SCHEMA_VERSION",
+        "COVERAGE_SUMMARY_SCHEMA_KIND",
+        "COVERAGE_SUMMARY_SCHEMA_VERSION",
+    ),
+    "src/sattlint/devtools/current_debt_snapshot.py": (
+        "CURRENT_DEBT_SNAPSHOT_SCHEMA_KIND",
+        "CURRENT_DEBT_SNAPSHOT_SCHEMA_VERSION",
+    ),
+    "src/sattlint/devtools/derived_reports.py": (
+        "INCREMENTAL_ANALYSIS_SCHEMA_KIND",
+        "INCREMENTAL_ANALYSIS_SCHEMA_VERSION",
+        "PERFORMANCE_BUDGET_SCHEMA_KIND",
+        "PERFORMANCE_BUDGET_SCHEMA_VERSION",
+        "PROFILING_SUMMARY_SCHEMA_KIND",
+        "PROFILING_SUMMARY_SCHEMA_VERSION",
+    ),
+    "src/sattlint/devtools/differential.py": (
+        "DIFFERENTIAL_SCHEMA_KIND",
+        "DIFFERENTIAL_SCHEMA_VERSION",
+    ),
+    "src/sattlint/devtools/fault_injection.py": (
+        "FAULT_INJECTION_RESULTS_FILENAME",
+        "FAULT_INJECTION_SCHEMA_KIND",
+        "FAULT_INJECTION_SCHEMA_VERSION",
+    ),
+    "src/sattlint/devtools/layer_linter.py": (
+        "POLICY_KIND",
+        "POLICY_SCHEMA_VERSION",
+    ),
+    "src/sattlint/devtools/ledger.py": (
+        "AUDIT_RUN_HISTORY_FILENAME",
+        "AUDIT_RUN_HISTORY_SCHEMA_KIND",
+        "AUDIT_RUN_HISTORY_SCHEMA_VERSION",
+    ),
+    "src/sattlint/devtools/mutation_engine.py": (
+        "MUTATION_RESULTS_FILENAME",
+        "MUTATION_SCHEMA_KIND",
+        "MUTATION_SCHEMA_VERSION",
+    ),
+    "src/sattlint/devtools/production_summary.py": (
+        "PRODUCTION_SUMMARY_FILENAME",
+        "PRODUCTION_SCHEMA_KIND",
+        "PRODUCTION_SCHEMA_VERSION",
+    ),
+    "src/sattlint/devtools/property_tests.py": (
+        "PROPERTY_TEST_RESULTS_FILENAME",
+        "PROPERTY_TEST_SCHEMA_KIND",
+        "PROPERTY_TEST_SCHEMA_VERSION",
+    ),
+    "src/sattlint/devtools/release_smoke.py": (
+        "RELEASE_SMOKE_STATUS_SCHEMA_KIND",
+        "RELEASE_SMOKE_SUMMARY_SCHEMA_KIND",
+        "RELEASE_SMOKE_SCHEMA_VERSION",
+    ),
+    "src/sattlint/devtools/semantic_reports.py": (
+        "RULE_METRICS_SCHEMA_KIND",
+        "RULE_METRICS_SCHEMA_VERSION",
+        "SATTLINE_SEMANTIC_SCHEMA_KIND",
+        "SATTLINE_SEMANTIC_SCHEMA_VERSION",
+    ),
+    "src/sattlint/devtools/shared/pipeline_artifacts.py": (
+        "SOURCE_DIGEST_MANIFEST_KIND",
+        "SOURCE_DIGEST_MANIFEST_SCHEMA_VERSION",
+        "SOURCE_DIGEST_MANIFEST_SUFFIX",
+    ),
+    "src/sattlint/devtools/sandbox/fuzzer.py": (
+        "FUZZER_REPORT_FILENAME",
+        "FUZZER_REPORT_SCHEMA_KIND",
+        "FUZZER_REPORT_SCHEMA_VERSION",
+        "FUZZER_RESULTS_SCHEMA_KIND",
+        "FUZZER_RESULTS_SCHEMA_VERSION",
+    ),
+    "src/sattlint/devtools/ai/ai_gc.py": (
+        "AI_GC_REPORT_FILENAME",
+        "AI_GC_SCHEMA_KIND",
+        "AI_GC_SCHEMA_VERSION",
+    ),
+    "src/sattlint/devtools/audit/repo_audit_compat.py": (
+        "CLI_CONSISTENCY_SCHEMA_KIND",
+        "CLI_CONSISTENCY_SCHEMA_VERSION",
+    ),
+}
+
+EXPECTED_REGISTERED_SCHEMA_KINDS = {
+    "sattlint.accuracy_metrics",
+    "sattlint.ai_gc",
+    "sattlint.ai_templates",
+    "sattlint.analysis_diff",
+    "sattlint.artifact_readiness",
+    "sattlint.audit_findings_comparison",
+    "sattlint.audit_run_history",
+    "sattlint.cli_consistency",
+    "sattlint.corpus_results",
+    "sattlint.coverage_ratchet",
+    "sattlint.coverage_summary",
+    "sattlint.current_debt_snapshot",
+    "sattlint.differential",
+    "sattlint.fault_injection_results",
+    "sattlint.fuzz_results",
+    "sattlint.fuzzer_report",
+    "sattlint.generated_output_sources",
+    "sattlint.incremental_analysis",
+    "sattlint.layer_lint_policy",
+    "sattlint.mutation_results",
+    "sattlint.performance_budget",
+    "sattlint.production_summary",
+    "sattlint.profiling_summary",
+    "sattlint.property_test_results",
+    "sattlint.release_smoke.status",
+    "sattlint.release_smoke.summary",
+    "sattlint.rule_metrics",
+    "sattlint.sattline_semantic",
+}
+
+
+def _top_level_assigned_names(path: Path) -> set[str]:
+    module = ast.parse(path.read_text(encoding="utf-8"))
+    assigned: set[str] = set()
+    for node in module.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    assigned.add(target.id)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            assigned.add(node.target.id)
+    return assigned
 
 
 def _build_sample_findings_payload(repo_root: Path) -> dict[str, object]:
@@ -435,6 +594,19 @@ def test_artifact_registry_payload_matches_golden():
         disabled_artifact_ids=("progress", "environment", "ruff", "pyright", "pytest"),
     )
     assert_matches_golden(payload, GOLDEN_DIR / "artifact_registry_quick.json")
+
+
+def test_registered_artifacts_cover_devtools_schema_kinds():
+    registered_schema_kinds = {artifact.schema_kind for artifact in REGISTERED_ARTIFACTS}
+
+    assert registered_schema_kinds >= EXPECTED_REGISTERED_SCHEMA_KINDS
+
+
+@pytest.mark.parametrize("relative_path, forbidden_names", REGISTRY_BACKED_SCHEMA_MODULES.items())
+def test_devtools_modules_do_not_redefine_registry_backed_schema_constants(relative_path: str, forbidden_names):
+    assigned_names = _top_level_assigned_names(REPO_ROOT / relative_path)
+
+    assert assigned_names.isdisjoint(forbidden_names)
 
 
 def test_corpus_results_payload_matches_golden():

@@ -9,14 +9,14 @@ from typing import Any, TypedDict, cast
 from sattlint.analyzers.registry import get_default_analyzer_catalog
 from sattlint.path_sanitizer import sanitize_path_for_report
 
-INCREMENTAL_ANALYSIS_SCHEMA_KIND = "sattlint.incremental_analysis"
-INCREMENTAL_ANALYSIS_SCHEMA_VERSION = 1
-
-PROFILING_SUMMARY_SCHEMA_KIND = "sattlint.profiling_summary"
-PROFILING_SUMMARY_SCHEMA_VERSION = 1
-
-PERFORMANCE_BUDGET_SCHEMA_KIND = "sattlint.performance_budget"
-PERFORMANCE_BUDGET_SCHEMA_VERSION = 1
+from .artifact_registry import (
+    INCREMENTAL_ANALYSIS_SCHEMA_KIND,
+    INCREMENTAL_ANALYSIS_SCHEMA_VERSION,
+    PERFORMANCE_BUDGET_SCHEMA_KIND,
+    PERFORMANCE_BUDGET_SCHEMA_VERSION,
+    PROFILING_SUMMARY_SCHEMA_KIND,
+    PROFILING_SUMMARY_SCHEMA_VERSION,
+)
 
 _FULL_FALLBACK_PREFIXES = (
     "src/sattline_parser/",

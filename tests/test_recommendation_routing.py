@@ -3,8 +3,9 @@ from typing import Any, cast
 
 import pytest
 
-from sattlint.devtools import _repo_audit_entrypoint_runs, pipeline, repo_audit
-from sattlint.devtools.pipeline_checks import (
+from sattlint.devtools import pipeline
+from sattlint.devtools.audit import _repo_audit_entrypoint_runs, repo_audit
+from sattlint.devtools.shared.pipeline_checks import (
     collect_repo_file_inventory,
     normalize_changed_files,
     normalize_selected_checks,
@@ -19,7 +20,7 @@ PIPELINE_ROUTE_CASES = {
     "pytest": ("tests/test_pipeline_run.py", "docs/references/cli-commands.md"),
     "vulture": ("src/sattlint/devtools/pipeline.py", "docs/references/cli-commands.md"),
     "bandit": ("src/sattlint/devtools/pipeline.py", "docs/references/cli-commands.md"),
-    "structural-reports": ("src/sattlint/devtools/repo_audit.py", "docs/references/cli-commands.md"),
+    "structural-reports": ("src/sattlint/devtools/audit/repo_audit.py", "docs/references/cli-commands.md"),
     "trace": ("src/sattlint_lsp/server.py", "docs/references/cli-commands.md"),
     "corpus": ("tests/parser/test_corpus.py", "docs/references/cli-commands.md"),
 }
@@ -29,16 +30,16 @@ REPO_AUDIT_ROUTE_CASES = {
     "local-ci-parity": ("tests/test_repo_audit_part1.py", "LICENSE"),
     "documented-commands": ("docs/references/cli-commands.md", "src/sattline_parser/api.py"),
     "unused-config-keys": ("src/sattlint/config.py", "README.md"),
-    "architecture": ("src/sattlint/devtools/repo_audit.py", "README.md"),
+    "architecture": ("src/sattlint/devtools/audit/repo_audit.py", "README.md"),
     "structural-report": ("artifacts/analysis/structural_budget_ratchet.json", "README.md"),
-    "cli": ("src/sattlint/devtools/repo_audit_cli.py", "src/sattline_parser/api.py"),
-    "logging": ("src/sattlint/devtools/repo_audit.py", "README.md"),
-    "ai-gc": ("src/sattlint/devtools/ai_gc.py", "README.md"),
+    "cli": ("src/sattlint/devtools/audit/repo_audit_cli.py", "src/sattline_parser/api.py"),
+    "logging": ("src/sattlint/devtools/audit/repo_audit.py", "README.md"),
+    "ai-gc": ("src/sattlint/devtools/ai/ai_gc.py", "README.md"),
     "ignored-repo-paths": ("scripts/run_repo_python.py", "README.md"),
     "harness-freshness": ("AGENTS.md", "README.md"),
     "coverage": ("coverage.xml", "README.md"),
     "public-readiness": ("SECURITY.md", "src/sattlint/devtools/repo_audit.py"),
-    "verify-recommendations": ("src/sattlint/devtools/pipeline_checks.py", "src/sattlint/config.py"),
+    "verify-recommendations": ("src/sattlint/devtools/shared/pipeline_checks.py", "src/sattlint/config.py"),
     "cli-consistency": (".vscode/tasks.json", "src/sattline_parser/api.py"),
 }
 

@@ -1,11 +1,54 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false
 # ruff: noqa: F403, F405
 import json
+from types import SimpleNamespace
 
+from sattlint import _app_analysis_reporting as analysis_reporting_module
 from sattlint.analyzers.framework import Issue
 
 from ._app_analysis_test_support import *
 from .helpers import AnalysisGraphStub, named_object
+
+
+def test_select_report_source_path_propagates_callback_type_error() -> None:
+    with pytest.raises(TypeError, match="bad graph"):
+        analysis_reporting_module.select_report_source_path(
+            SimpleNamespace(origin_file="Root.s"),
+            SimpleNamespace(),
+            source_paths_for_current_target_fn=lambda *_args: (_ for _ in ()).throw(TypeError("bad graph")),
+            casefold_equal_fn=lambda left, right: left.casefold() == right.casefold(),
+        )
+
+
+def test_select_report_source_path_prefers_graph_root_origin_path() -> None:
+    project_bp = named_object("Root")
+    graph = AnalysisGraphStub(source_files={Path("fallback/Root.s")})
+    graph.record_root_origin("Root", source_path=Path("preferred/Root.s"), library_name="Lib")
+
+    selected = analysis_reporting_module.select_report_source_path(
+        project_bp,
+        graph,
+        source_paths_for_current_target_fn=lambda *_args: {Path("fallback/Root.s"), Path("preferred/Root.s")},
+        casefold_equal_fn=lambda left, right: left.casefold() == right.casefold(),
+    )
+
+    assert selected == Path("preferred/Root.s")
+
+
+def test_source_version_label_uses_graph_root_origin_when_source_path_missing() -> None:
+    project_bp = named_object("Root")
+    graph = AnalysisGraphStub()
+    graph.record_root_origin("Root", source_path=Path("preferred/Root.z"), library_name="Lib")
+
+    label = analysis_reporting_module.source_version_label(
+        project_bp,
+        graph,
+        None,
+        draft_source_suffixes=frozenset({".s", ".l"}),
+        official_source_suffixes=frozenset({".x", ".z"}),
+    )
+
+    assert label == "official"
 
 
 def test_run_module_duplicates_analysis_rejects_empty_name(monkeypatch):
@@ -371,6 +414,64 @@ def test_run_checks_filters_non_variable_report_for_selected_issue_kinds(monkeyp
     assert not any("Issues: 2" in line for line in lines)
     assert any("scan read failed" in line for line in lines)
     assert not any("inactive code" in line for line in lines)
+
+
+def test_collect_run_checks_result_captures_target_and_analyzer_metadata():
+    result = app_analysis.collect_run_checks_result(
+        app.DEFAULT_CONFIG.copy(),
+        ["state-inference"],
+        selected_issue_kinds={"unused"},
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        named_object("TargetA"),
+                        AnalysisGraphStub(
+                            unavailable_libraries=set(),
+                            load_stage_timings={},
+                            graphics_load_timings={},
+                        ),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                supports_selected_issue_kinds=True,
+                run=lambda _context: SimpleNamespace(
+                    summary=lambda: "state inference summary",
+                    issues=[Issue(kind="unused", message="unused state")],
+                    phase_timings=[{"phase": "plan", "duration_ms": 1.25}],
+                ),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+    )
+
+    assert result.cancelled is False
+    assert result.selected_analyzers == ("state-inference",)
+    assert result.selected_issue_kinds == ("unused",)
+    assert result.output_lines[0] == "\n--- Running checks ---"
+    assert len(result.targets) == 1
+
+    target = result.targets[0]
+    assert target.target_name == "TargetA"
+    assert target.is_library is False
+    assert len(target.analyzers) == 1
+
+    analyzer = target.analyzers[0]
+    assert analyzer.key == "state-inference"
+    assert analyzer.name == "State inference"
+    assert analyzer.status == "completed"
+    assert "unused state" in cast(str, analyzer.summary)
+    assert analyzer.report_kind == "SimpleReport"
+    assert analyzer.issue_count == 1
+    assert analyzer.selected_issue_kinds == ("unused",)
+    assert analyzer.phase_timings_ms == ({"phase": "plan", "duration_ms": 1.25},)
 
 
 def test_run_checks_skips_semantic_layer_when_batch_selection_includes_contributors(monkeypatch):

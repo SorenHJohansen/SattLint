@@ -2,15 +2,39 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
-from typing import Literal, cast
+from collections.abc import Iterable, Iterator, Mapping, Sequence
+from typing import Literal, Protocol, cast
 
 from ..grammar import constants as const
+from ..types import VariableRef
 
 _DEFAULT_VAR_NAME = "var_name"
-type VariableRef = dict[str, object]
 type CallKind = Literal["function", "procedure"]
 type CallSite = tuple[CallKind, str, tuple[object, ...]]
+
+
+class _ChildrenNode(Protocol):
+    @property
+    def children(self) -> Sequence[object] | None: ...
+
+
+def _iter_nested_values(node: object) -> Iterator[object]:
+    if isinstance(node, Mapping):
+        yield from cast(Mapping[str, object], node).values()
+        return
+
+    if isinstance(node, Sequence) and not isinstance(node, str | bytes | bytearray):
+        yield from cast(Sequence[object], node)
+        return
+
+    children = getattr(cast(_ChildrenNode, node), "children", None)
+    if isinstance(children, Sequence) and not isinstance(children, str | bytes | bytearray):
+        yield from children
+        return
+
+    node_dict = getattr(node, "__dict__", None)
+    if isinstance(node_dict, dict):
+        yield from node_dict.values()
 
 
 def iter_variable_refs(node: object, *, key_name: str = _DEFAULT_VAR_NAME) -> Iterator[VariableRef]:
@@ -33,20 +57,8 @@ def iter_variable_refs(node: object, *, key_name: str = _DEFAULT_VAR_NAME) -> It
             yield from iter_variable_refs(item, key_name=key_name)
         return
 
-    children = getattr(node, "children", None)
-    if isinstance(children, list):
-        for child in cast(list[object], children):
-            yield from iter_variable_refs(child, key_name=key_name)
-        return
-    if isinstance(children, tuple):
-        for child in cast(tuple[object, ...], children):
-            yield from iter_variable_refs(child, key_name=key_name)
-        return
-
-    node_dict = getattr(node, "__dict__", None)
-    if isinstance(node_dict, dict):
-        for value in cast(dict[str, object], node_dict).values():
-            yield from iter_variable_refs(value, key_name=key_name)
+    for child in _iter_nested_values(node):
+        yield from iter_variable_refs(child, key_name=key_name)
 
 
 def iter_call_sites(node: object) -> Iterator[CallSite]:
@@ -89,17 +101,5 @@ def iter_call_sites(node: object) -> Iterator[CallSite]:
             yield from iter_call_sites(item)
         return
 
-    children = getattr(node, "children", None)
-    if isinstance(children, list):
-        for child in cast(list[object], children):
-            yield from iter_call_sites(child)
-        return
-    if isinstance(children, tuple):
-        for child in cast(tuple[object, ...], children):
-            yield from iter_call_sites(child)
-        return
-
-    node_dict = getattr(node, "__dict__", None)
-    if isinstance(node_dict, dict):
-        for value in cast(dict[str, object], node_dict).values():
-            yield from iter_call_sites(value)
+    for child in _iter_nested_values(node):
+        yield from iter_call_sites(child)

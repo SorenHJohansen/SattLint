@@ -34,9 +34,13 @@ class _SemanticIndexBuilder(_SemanticIndexReferenceSupportMixin):
     def __init__(
         self,
         base_picture: BasePicture,
+        root_origin_file: str | None = None,
+        root_origin_library: str | None = None,
         unavailable_libraries: set[str] | None = None,
     ):
         self.base_picture = base_picture
+        self.root_origin_file = root_origin_file if root_origin_file is not None else base_picture.origin_file
+        self.root_origin_library = root_origin_library if root_origin_library is not None else base_picture.origin_lib
         self.type_graph = TypeGraph.from_basepicture(base_picture)
         self.symbol_table = CanonicalSymbolTable()
         self.unavailable_libraries = unavailable_libraries or set()
@@ -57,6 +61,7 @@ class _SemanticIndexBuilder(_SemanticIndexReferenceSupportMixin):
             type_graph=self.type_graph,
             issues=self._issues,
             global_lookup_fn=self._lookup_global_variable,
+            root_library=self.root_origin_library,
         )
 
     def build(
@@ -77,44 +82,44 @@ class _SemanticIndexBuilder(_SemanticIndexReferenceSupportMixin):
             module_path=(self.base_picture.header.name,),
             display_module_path=(decorate_segment(self.base_picture.header.name, "BP"),),
             kind=SymbolKind.LOCAL.value,
-            origin_file=self.base_picture.origin_file,
-            origin_library=self.base_picture.origin_lib,
+            origin_file=self.root_origin_file,
+            origin_library=self.root_origin_library,
         )
         self._record_scope_references(
             self.base_picture.moduledef,
             context=root_context,
-            source_file=self.base_picture.origin_file,
-            source_library=self.base_picture.origin_lib,
+            source_file=self.root_origin_file,
+            source_library=self.root_origin_library,
         )
         self._record_call_signatures(
             self.base_picture.moduledef,
             module_path=(self.base_picture.header.name,),
-            source_file=self.base_picture.origin_file,
-            source_library=self.base_picture.origin_lib,
+            source_file=self.root_origin_file,
+            source_library=self.root_origin_library,
         )
         self._record_scope_references(
             self.base_picture.modulecode,
             context=root_context,
-            source_file=self.base_picture.origin_file,
-            source_library=self.base_picture.origin_lib,
+            source_file=self.root_origin_file,
+            source_library=self.root_origin_library,
         )
         self._record_call_signatures(
             self.base_picture.modulecode,
             module_path=(self.base_picture.header.name,),
-            source_file=self.base_picture.origin_file,
-            source_library=self.base_picture.origin_lib,
+            source_file=self.root_origin_file,
+            source_library=self.root_origin_library,
         )
         self._record_scope_references(
             self.base_picture.graphics_bindings,
             context=root_context,
             source_file=self.base_picture.graphics_file,
-            source_library=self.base_picture.origin_lib,
+            source_library=self.root_origin_library,
         )
         self._record_call_signatures(
             self.base_picture.graphics_bindings,
             module_path=(self.base_picture.header.name,),
             source_file=self.base_picture.graphics_file,
-            source_library=self.base_picture.origin_lib,
+            source_library=self.root_origin_library,
         )
         self._walk_moduletype_defs(
             self.base_picture.moduletype_defs or [],
@@ -125,8 +130,8 @@ class _SemanticIndexBuilder(_SemanticIndexReferenceSupportMixin):
             parent_context=root_context,
             module_path=(self.base_picture.header.name,),
             display_module_path=(decorate_segment(self.base_picture.header.name, "BP"),),
-            current_origin_file=self.base_picture.origin_file,
-            current_origin_library=self.base_picture.origin_lib,
+            current_origin_file=self.root_origin_file,
+            current_origin_library=self.root_origin_library,
         )
         return (
             self.symbol_table,

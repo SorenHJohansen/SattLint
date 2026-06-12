@@ -7,35 +7,31 @@ import sys
 from collections.abc import Sequence
 from fnmatch import fnmatch
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+from scripts._python_runtime import resolve_repo_python  # noqa: E402
+
 check_ratchet_policy = importlib.import_module("check_ratchet_policy")
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 RATCHET_PATH = REPO_ROOT / "metrics" / "ratchet.json"
 
 
-def _resolve_python(repo_root: Path) -> Path:
-    windows_python = repo_root / ".venv" / "Scripts" / "python.exe"
-    if windows_python.exists():
-        return windows_python
-
-    posix_python = repo_root / ".venv" / "bin" / "python"
-    if posix_python.exists():
-        return posix_python
-
-    return Path(sys.executable)
+_resolve_python = resolve_repo_python
 
 
 def _read_json(path: Path) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError(f"{path} must contain a JSON object.")
-    return payload
+    return cast(dict[str, Any], payload)
 
 
 def _normalize_paths(path_texts: Sequence[str], repo_root: Path) -> list[str]:
@@ -95,10 +91,11 @@ def _flatten_required_paths(raw_groups: Any) -> set[str]:
     required_paths: set[str] = set()
     if not isinstance(raw_groups, dict):
         return required_paths
-    for raw_paths in raw_groups.values():
+    group_mapping = cast(dict[str, object], raw_groups)
+    for raw_paths in group_mapping.values():
         if not isinstance(raw_paths, list):
             continue
-        for path_text in raw_paths:
+        for path_text in cast(list[object], raw_paths):
             if isinstance(path_text, str) and path_text.strip():
                 required_paths.add(path_text.replace("\\", "/").strip("/"))
     return required_paths
@@ -108,15 +105,18 @@ def _context_health_triggers() -> tuple[set[str], tuple[str, ...]]:
     ratchet = _read_json(RATCHET_PATH)
     explicit_paths = _flatten_required_paths(ratchet.get("required_paths", {}))
 
-    context_files = ratchet.get("context_files", {})
+    raw_context_files = ratchet.get("context_files", {})
+    context_files = cast(dict[str, object], raw_context_files) if isinstance(raw_context_files, dict) else {}
     auto_loaded = context_files.get("auto_loaded", [])
     if isinstance(auto_loaded, list):
-        for path_text in auto_loaded:
+        for path_text in cast(list[object], auto_loaded):
             if isinstance(path_text, str) and path_text.strip():
                 explicit_paths.add(path_text.replace("\\", "/").strip("/"))
 
     scoped_globs = tuple(
-        pattern for pattern in context_files.get("scoped_globs", []) if isinstance(pattern, str) and pattern.strip()
+        pattern
+        for pattern in cast(list[object], context_files.get("scoped_globs", []))
+        if isinstance(pattern, str) and pattern.strip()
     )
     return explicit_paths, scoped_globs
 
@@ -136,7 +136,7 @@ def _should_sync_exec_plans(rel_paths: Sequence[str]) -> bool:
     return any(rel_path.replace("\\", "/").startswith("docs/exec-plans/active/") for rel_path in rel_paths)
 
 
-def _run_command(command: list[str], *, label: str) -> int:
+def _run_gate_command(command: list[str], *, label: str) -> int:
     print(f"[ai-edit-gate] {label}", flush=True)
     completed = subprocess.run(command, cwd=REPO_ROOT, check=False)
     return completed.returncode
@@ -170,23 +170,23 @@ def main(argv: Sequence[str] | None = None) -> int:
             "E501",
             *python_files,
         ]
-        check_exit_code = _run_command(ruff_check_command, label="ruff check --fix on touched Python files")
+        check_exit_code = _run_gate_command(ruff_check_command, label="ruff check --fix on touched Python files")
         if check_exit_code != 0:
             return check_exit_code
 
         ruff_format_command = [str(python_executable), "-m", "ruff", "format", *python_files]
-        format_exit_code = _run_command(ruff_format_command, label="ruff format on touched Python files")
+        format_exit_code = _run_gate_command(ruff_format_command, label="ruff format on touched Python files")
         if format_exit_code != 0:
             return format_exit_code
 
         pyright_command = [str(python_executable), "-m", "pyright", *python_files]
-        pyright_exit_code = _run_command(pyright_command, label="pyright on touched Python files")
+        pyright_exit_code = _run_gate_command(pyright_command, label="pyright on touched Python files")
         if pyright_exit_code != 0:
             return pyright_exit_code
 
     if run_exec_plan_sync:
-        exec_plan_sync_command = [str(python_executable), "-m", "sattlint.devtools.ai_work_map", "--write"]
-        exec_plan_sync_exit_code = _run_command(
+        exec_plan_sync_command = [str(python_executable), "-m", "sattlint.devtools.ai", "--write"]
+        exec_plan_sync_exit_code = _run_gate_command(
             exec_plan_sync_command,
             label="sync completed exec plans and AI routing artifacts",
         )
@@ -195,7 +195,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if run_context_health:
         context_health_command = [str(python_executable), "scripts/context_health.py", "--check"]
-        context_health_exit_code = _run_command(
+        context_health_exit_code = _run_gate_command(
             context_health_command, label="context health on touched AI-control files"
         )
         if context_health_exit_code != 0:
@@ -203,12 +203,15 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if python_files:
         doc_gardener_command = [str(python_executable), "-m", "sattlint.devtools.doc_gardener", "--check-only"]
-        doc_gardener_exit_code = _run_command(doc_gardener_command, label="doc-gardener on repository docs")
+        doc_gardener_exit_code = _run_gate_command(doc_gardener_command, label="doc-gardener on repository docs")
         if doc_gardener_exit_code != 0:
             return doc_gardener_exit_code
 
         layer_linter_command = [str(python_executable), "-m", "sattlint.devtools.layer_linter"]
-        layer_linter_exit_code = _run_command(layer_linter_command, label="layer-linter on repository architecture")
+        layer_linter_exit_code = _run_gate_command(
+            layer_linter_command,
+            label="layer-linter on repository architecture",
+        )
         if layer_linter_exit_code != 0:
             return layer_linter_exit_code
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Mapping, Set
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from time import perf_counter
 from typing import Any, Protocol
 
@@ -205,8 +205,20 @@ def build_analysis_context(
         resolved_shared_artifacts = AnalysisSharedArtifacts()
         resolved_shared_artifacts.counters.shared_artifact_holders_created += 1
 
+    resolved_base_picture = base_picture
+    root_origin_for_basepicture = getattr(graph, "root_origin_for_basepicture", None)
+    if callable(root_origin_for_basepicture):
+        root_origin = root_origin_for_basepicture(base_picture)
+        if root_origin is not None:
+            origin_file = getattr(base_picture, "origin_file", None) or getattr(root_origin, "origin_file", None)
+            origin_lib = getattr(base_picture, "origin_lib", None) or getattr(root_origin, "library_name", None)
+            if origin_file != getattr(base_picture, "origin_file", None) or origin_lib != getattr(
+                base_picture, "origin_lib", None
+            ):
+                resolved_base_picture = replace(base_picture, origin_file=origin_file, origin_lib=origin_lib)
+
     return AnalysisContext(
-        base_picture=base_picture,
+        base_picture=resolved_base_picture,
         graph=graph,
         debug=debug,
         target_is_library=target_is_library,

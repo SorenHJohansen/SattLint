@@ -3,16 +3,21 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import tempfile
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts._python_runtime import resolve_repo_python  # noqa: E402
+
 SRC_PATH = REPO_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
-
-from sattlint.devtools.ledger import write_text_artifact  # noqa: E402
 
 ARTIFACT_DIR_ENV = "SATTLINT_RUN_REPO_PYTHON_ARTIFACT_DIR"
 ARTIFACT_PREFIX_ENV = "SATTLINT_RUN_REPO_PYTHON_ARTIFACT_PREFIX"
@@ -31,16 +36,41 @@ class CaptureArtifactPaths:
     exit_path: Path
 
 
-def _resolve_python(repo_root: Path) -> Path:
-    windows_python = repo_root / ".venv" / "Scripts" / "python.exe"
-    if windows_python.exists():
-        return windows_python
+def _cleanup_temp_path(path: Path) -> None:
+    path.unlink(missing_ok=True)
 
-    posix_python = repo_root / ".venv" / "bin" / "python"
-    if posix_python.exists():
-        return posix_python
 
-    return Path(sys.executable)
+def _write_capture_text_artifact(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    last_error: PermissionError | None = None
+    for _ in range(5):
+        temp_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                newline="",
+                dir=path.parent,
+                prefix=f".{path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as handle:
+                handle.write(content)
+                temp_path = Path(handle.name)
+            os.replace(temp_path, path)
+            return
+        except PermissionError as exc:
+            last_error = exc
+            if temp_path is not None:
+                _cleanup_temp_path(temp_path)
+            time.sleep(0.1)
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError(f"Failed to write {path}")
+
+
+write_text_artifact = _write_capture_text_artifact
+_resolve_python = resolve_repo_python
 
 
 def _load_capture_config(*, env: Mapping[str, str], repo_root: Path) -> CaptureConfig | None:

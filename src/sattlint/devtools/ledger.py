@@ -13,14 +13,11 @@ from typing import Any, TypedDict, cast
 
 from sattlint.devtools.json_helpers import json_mapping as _json_mapping
 from sattlint.devtools.json_helpers import nonempty_string_entries as _string_entries
-from sattlint.devtools.pipeline_artifacts import write_json_artifact
+from sattlint.devtools.shared.pipeline_artifacts import write_json_artifact
 from sattlint.path_sanitizer import sanitize_path_for_report
 
-AUDIT_RUN_HISTORY_FILENAME = "run_history.json"
 AUDIT_RUN_HISTORY_DIRNAME = "history"
 AUDIT_RUN_HISTORY_LIMIT = 10
-AUDIT_RUN_HISTORY_SCHEMA_KIND = "sattlint.audit_run_history"
-AUDIT_RUN_HISTORY_SCHEMA_VERSION = 1
 
 
 class FailurePatternGroup(TypedDict):

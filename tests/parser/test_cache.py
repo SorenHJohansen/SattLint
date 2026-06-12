@@ -241,7 +241,7 @@ def test_cache_helpers_cover_lookup_env_and_validation_edges(tmp_path: Path, mon
     assert not ast_cache._manifest_path(project_key).exists()
 
 
-def test_cache_helpers_cover_persistence_and_hash_edge_paths(tmp_path: Path) -> None:  # noqa: PLR0915
+def test_cache_helpers_cover_persistence_and_hash_edge_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: PLR0915
     import sattlint.cache as cache_mod  # noqa: PLC0415
 
     lookup_cache = FileLookupCache(tmp_path / "lookup-persist")
@@ -314,6 +314,10 @@ def test_cache_helpers_cover_persistence_and_hash_edge_paths(tmp_path: Path) -> 
     assert first_key != third_key
     assert first_key == telemetry_key
     assert first_key == analysis_key
+
+    monkeypatch.setattr(cache_mod, "PROJECT_CACHE_SCHEMA_VERSION", "different-project-schema")
+    schema_key = cache_mod.compute_cache_key(cfg)
+    assert first_key != schema_key
 
     ast_cache = ASTCache(tmp_path / "project-cache-extra")
     manifest_path = tmp_path / "manifest-extra.s"
@@ -418,6 +422,35 @@ def test_ast_cache_load_and_validate_require_matching_payload_version(tmp_path: 
 
     assert ast_cache.load("project") is None
     assert ast_cache.validate("project") is False
+
+
+def test_ast_cache_startup_prune_skips_payload_deserialization(tmp_path: Path, monkeypatch) -> None:
+    import sattlint.cache as cache_mod  # noqa: PLC0415
+
+    cache_dir = tmp_path / "project-cache-startup"
+    cache_dir.mkdir()
+    manifest_path = tmp_path / "manifest-startup.s"
+    manifest_path.write_text('"x"\n"y"\n"z"\n', encoding="utf-8")
+    manifest = (manifest_path.stat().st_mtime_ns, manifest_path.stat().st_size)
+
+    (cache_dir / "project.pickle").write_bytes(
+        pickle.dumps({"version": CACHE_VERSION, "project": {"name": "project"}}, protocol=pickle.HIGHEST_PROTOCOL)
+    )
+    (cache_dir / "project.manifest.json").write_text(
+        json.dumps({str(manifest_path): list(manifest)}),
+        encoding="utf-8",
+    )
+
+    def fail_load_pickle(_path: Path) -> object:
+        raise AssertionError("startup pruning must not deserialize AST payloads")
+
+    monkeypatch.setattr(cache_mod, "_load_pickle_payload", fail_load_pickle)
+
+    ast_cache = cache_mod.ASTCache(cache_dir)
+
+    assert ast_cache.has_payload("project") is True
+    assert ast_cache.has_manifest("project") is True
+    assert ast_cache.drain_startup_prune_result() == CachePruneResult()
 
 
 def test_cache_prune_dir_removes_stale_persistent_cache_artifacts(tmp_path: Path) -> None:

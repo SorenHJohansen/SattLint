@@ -7,23 +7,24 @@ import sys
 from pathlib import Path
 from typing import Any
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+try:
+    from scripts._repo_paths import repo_root_from
+except ModuleNotFoundError:  # pragma: no cover - direct script execution resolves from scripts/
+    from _repo_paths import repo_root_from
+
+REPO_ROOT = repo_root_from(Path(__file__))
 SRC_PATH = REPO_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
+
+from sattlint.devtools._ai_chat_findings import known_failure_pattern_updates  # noqa: E402
 
 AUTOMATED_SECTION_HEADING = "## Automated AI Chat Review"
 _AUTOMATED_SECTION_RE = re.compile(rf"(?ms)^({re.escape(AUTOMATED_SECTION_HEADING)}\n.*?)(?=^## |\Z)")
 
 
-def _known_failure_pattern_updates(findings: list[dict[str, Any]]) -> tuple[Any, ...]:
-    from sattlint.devtools._ai_chat_findings import known_failure_pattern_updates
-
-    return known_failure_pattern_updates(findings)
-
-
 def _render_automated_section(*, review_date: str, findings: list[dict[str, Any]]) -> str | None:
-    updates = _known_failure_pattern_updates(findings)
+    updates = known_failure_pattern_updates(findings)
     if not updates:
         return None
 

@@ -19,7 +19,8 @@ from sattline_parser.models.ast_model import (
 
 from ...grammar import constants as const
 from ...reporting.icf_report import ICFEntry
-from ...resolution.common import find_var_in_scope, varname_base, varname_full
+from ...resolution.common import varname_base, varname_full
+from ...resolution.context_builder import ContextBuilder
 from ...resolution.type_graph import TypeGraph
 from ..icf import parse_icf_file, validate_icf_entries_against_program
 
@@ -157,7 +158,7 @@ def _resolve_string_parameter(
         full_ref = varname_full(mapping.source)
         if full_ref and ":" not in full_ref:
             base_name = full_ref.split(".", 1)[0]
-            variable = find_var_in_scope(base_picture, module_path, base_name)
+            variable = ContextBuilder.resolve_variable_in_scope(base_picture, module_path, base_name)
             if variable is not None and isinstance(variable.init_value, str):
                 value = variable.init_value.strip()
                 return value or None
@@ -215,7 +216,7 @@ def _resolve_source_details(
 
     base_name = source_variable.split(".", 1)[0]
     field_segments = source_variable.split(".")[1:]
-    variable = find_var_in_scope(base_picture, module_path, base_name)
+    variable = ContextBuilder.resolve_variable_in_scope(base_picture, module_path, base_name)
     if variable is None:
         return None, field_segments[-1] if field_segments else None
 

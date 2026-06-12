@@ -29,8 +29,8 @@ from sattlint.core.semantic import (
     load_source_snapshot,
 )
 from sattlint.engine import CodeMode
-from sattlint.semantic_analysis import build_variable_semantic_artifacts
 
+from ._server_semantic_cache import semantic_diagnostics_for_path as _cached_semantic_diagnostics_for_path
 from .local_parser import IncrementalDocumentParserAdapter
 
 _PROGRAM_SUFFIXES = {".s", ".x"}
@@ -71,9 +71,6 @@ def _path_startswith(path: tuple[str, ...], prefix: tuple[str, ...]) -> bool:
     if len(prefix) > len(path):
         return False
     return tuple(_cf(part) for part in path[: len(prefix)]) == tuple(_cf(part) for part in prefix)
-
-
-_PATH_HELPER_COMPAT_EXPORTS = (_path_startswith,)
 
 
 def _range_from_position(line: int, column: int, length: int) -> Range:
@@ -123,6 +120,10 @@ def _normalize_workspace_diagnostics_mode(value: Any) -> str:
     if normalized in {"off", "background"}:
         return normalized
     return "background"
+
+
+def background_workspace_diagnostics_enabled(ls: Any) -> bool:
+    return ls.settings.enable_variable_diagnostics and ls.settings.workspace_diagnostics_mode == "background"
 
 
 def _identifier_length(name: str) -> int:
@@ -220,6 +221,13 @@ class LspSettings:
     max_cached_entry_snapshots: int = 2
     max_completion_items: int = _DEFAULT_MAX_COMPLETION_ITEMS
 
+    @staticmethod
+    def _positive_int_setting(value: object, *, default: int) -> int:
+        try:
+            return max(1, int(value))
+        except (TypeError, ValueError):
+            return default
+
     @classmethod
     def from_initialization_options(cls, data: Any) -> LspSettings:
         if not isinstance(data, Mapping):
@@ -229,14 +237,8 @@ class LspSettings:
         raw_mode = str(settings_data.get("mode", CodeMode.DRAFT.value)).strip().lower() or CodeMode.DRAFT.value
         raw_limit = settings_data.get("maxCompletionItems", _DEFAULT_MAX_COMPLETION_ITEMS)
         raw_cache_limit = settings_data.get("maxCachedEntrySnapshots", 2)
-        try:
-            limit = max(1, int(cast(Any, raw_limit)))
-        except (TypeError, ValueError):
-            limit = _DEFAULT_MAX_COMPLETION_ITEMS
-        try:
-            cache_limit = max(1, int(cast(Any, raw_cache_limit)))
-        except (TypeError, ValueError):
-            cache_limit = 2
+        limit = cls._positive_int_setting(raw_limit, default=_DEFAULT_MAX_COMPLETION_ITEMS)
+        cache_limit = cls._positive_int_setting(raw_cache_limit, default=2)
         return cls(
             entry_file=raw_entry or None,
             mode=raw_mode,
@@ -353,19 +355,7 @@ def build_source_path_index(
 
 
 def _semantic_diagnostics_for_path(bundle: Any, document_path: Path) -> tuple[Diagnostic, ...]:
-    resolved_path = document_path.resolve()
-    with bundle.semantic_diagnostics_lock:
-        cached = bundle.semantic_diagnostics_by_path.get(resolved_path)
-    if cached is not None:
-        return cached
-
-    diagnostics = tuple(collect_semantic_diagnostics(bundle, resolved_path))
-    with bundle.semantic_diagnostics_lock:
-        cached = bundle.semantic_diagnostics_by_path.get(resolved_path)
-        if cached is not None:
-            return cached
-        bundle.semantic_diagnostics_by_path[resolved_path] = diagnostics
-    return diagnostics
+    return _cached_semantic_diagnostics_for_path(bundle, document_path, collect=collect_semantic_diagnostics)
 
 
 def _document_path(document: TextDocument) -> Path:
@@ -405,33 +395,6 @@ collect_local_definition_locations = _symbol_helpers.collect_local_definition_lo
 collect_semantic_diagnostics = _symbol_helpers.collect_semantic_diagnostics
 resolve_definition_path = _symbol_helpers.resolve_definition_path
 
-_SYMBOL_HELPER_COMPAT_EXPORTS = (
-    _collect_reference_matches,
-    _definition_locations_from_candidates,
-    _definition_uri,
-    _filter_visible_definitions,
-    _local_definition_candidates,
-    _merge_completion_items,
-    _merge_definitions,
-    _merge_locations,
-    _merge_references,
-    _overlay_definition_candidates,
-    _reference_expr_at_position,
-    _reference_locations_from_matches,
-    _resolve_bundle_source_path,
-    _resolve_reference_path,
-    _semantic_completion_kind,
-    _split_reference_matches,
-    _semantic_diagnostics_for_path,
-    collect_completion_candidates,
-    collect_local_completion_candidates,
-    collect_local_definition_locations,
-    collect_semantic_diagnostics,
-    build_variable_semantic_artifacts,
-    load_source_snapshot,
-    resolve_definition_path,
-)
-
 
 def _append_workspace_edit(
     changes: dict[str, list[TextEdit]],
@@ -456,6 +419,7 @@ def _build_hover(definition: SymbolDefinition) -> Hover | None:
 DEFAULT_LOCAL_PARSER = _DEFAULT_LOCAL_PARSER
 INTERACTIVE_SNAPSHOT_WAIT_S = _INTERACTIVE_SNAPSHOT_WAIT_S
 DIAGNOSTIC_SNAPSHOT_WAIT_S = _DIAGNOSTIC_SNAPSHOT_WAIT_S
+HELPER_SEAMS = (background_workspace_diagnostics_enabled, load_source_snapshot)
 append_workspace_edit = _append_workspace_edit
 build_hover = _build_hover
 collect_reference_matches = _collect_reference_matches

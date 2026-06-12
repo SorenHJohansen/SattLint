@@ -7,11 +7,11 @@ from enum import Enum
 
 from sattline_parser.models.ast_model import Simple_DataType, Variable
 
-from .paths import CanonicalPath
+from .paths import CanonicalPath, CanonicalPathKey
 from .type_graph import TypeGraph
 
 
-def _empty_symbols_by_key() -> dict[tuple[str, ...], SymbolDef]:
+def _symbols_by_key_factory() -> dict[CanonicalPathKey, SymbolDef]:
     return {}
 
 
@@ -31,7 +31,7 @@ class SymbolDef:
 class CanonicalSymbolTable:
     """Global-ish index of addressable symbols (case-insensitive canonical paths)."""
 
-    symbols_by_key: dict[tuple[str, ...], SymbolDef] = field(default_factory=_empty_symbols_by_key)
+    symbols_by_key: dict[CanonicalPathKey, SymbolDef] = field(default_factory=_symbols_by_key_factory)
 
     def add(self, sym: SymbolDef) -> None:
         self.symbols_by_key[sym.canonical_path.key()] = sym

@@ -3,7 +3,7 @@ from typing import Any, cast
 
 def test_phase2_rule_metadata_gate_fails_on_enforced_finding():
     """Gate status is 'fail' and rule appears in blocking_rule_ids when an enforced finding is present."""
-    from sattlint.devtools.structural_reports import collect_phase2_rule_metadata_gate  # noqa: PLC0415
+    from sattlint.devtools.structural.structural_reports import collect_phase2_rule_metadata_gate  # noqa: PLC0415
 
     architecture_report = {
         "findings": [
@@ -25,7 +25,7 @@ def test_phase2_rule_metadata_gate_fails_on_enforced_finding():
 
 def test_phase2_rule_metadata_gate_advisory_finding_does_not_fail():
     """Gate status remains 'pass' when only advisory findings are present."""
-    from sattlint.devtools.structural_reports import collect_phase2_rule_metadata_gate  # noqa: PLC0415
+    from sattlint.devtools.structural.structural_reports import collect_phase2_rule_metadata_gate  # noqa: PLC0415
 
     architecture_report = {
         "findings": [
@@ -47,7 +47,7 @@ def test_phase2_rule_metadata_gate_advisory_finding_does_not_fail():
 
 def test_phase2_rule_metadata_gate_passes_with_clean_architecture_report():
     """Gate status is 'pass' with no blocking or advisory rule IDs when no gate findings exist."""
-    from sattlint.devtools.structural_reports import collect_phase2_rule_metadata_gate  # noqa: PLC0415
+    from sattlint.devtools.structural.structural_reports import collect_phase2_rule_metadata_gate  # noqa: PLC0415
 
     gate = collect_phase2_rule_metadata_gate({"findings": []})
 
@@ -58,7 +58,7 @@ def test_phase2_rule_metadata_gate_passes_with_clean_architecture_report():
 
 def test_phase2_rule_metadata_gate_both_enforced_and_advisory():
     """Blocking findings cause fail; advisory findings are also collected independently."""
-    from sattlint.devtools.structural_reports import collect_phase2_rule_metadata_gate  # noqa: PLC0415
+    from sattlint.devtools.structural.structural_reports import collect_phase2_rule_metadata_gate  # noqa: PLC0415
 
     architecture_report = {
         "findings": [

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -10,7 +11,7 @@ from sattline_parser.models.ast_model import BasePicture, FrameModule, ModuleTyp
 
 from ..analyzers.framework import Issue
 from ..analyzers.rule_profiles import materialize_issue_metadata
-from ..models._variable_issues import IssueKind, VariableIssue
+from ..models._variable_issues import VariableIssue, materialize_variable_issue_metadata
 from ..types import ProjectPath, TargetName
 
 
@@ -41,6 +42,8 @@ class DefinitionLike(Protocol):
 
 type DefinitionLookup = Mapping[tuple[str, ...], DefinitionLike]
 
+log = logging.getLogger("SattLint")
+
 
 def _diagnostics_by_file_factory() -> dict[str, tuple[SemanticDiagnostic, ...]]:
     return {}
@@ -55,12 +58,6 @@ class SemanticDiagnostic:
     length: int
     message: str
     analyzer_key: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class DiagnosticGuidance:
-    explanation: str
-    suggestion: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,118 +85,6 @@ class _DiagnosticSite:
     length: int
 
 
-_ISSUE_LABELS = {
-    IssueKind.UNUSED: "Unused variable",
-    IssueKind.UNUSED_DATATYPE_FIELD: "Unused datatype field",
-    IssueKind.READ_ONLY_NON_CONST: "Read-only variable should be CONST",
-    IssueKind.UI_ONLY: "Variable is only used by UI or display wiring",
-    IssueKind.PROCEDURE_STATUS: "Procedure status output is not handled",
-    IssueKind.NEVER_READ: "Variable is written but never read",
-    IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE: "Positional record component access",
-    IssueKind.WRITE_WITHOUT_EFFECT: "Variable write has no observable output effect",
-    IssueKind.GLOBAL_SCOPE_MINIMIZATION: "Root global can be localized",
-    IssueKind.HIDDEN_GLOBAL_COUPLING: "Root global creates hidden coupling",
-    IssueKind.REQUIRED_PARAMETER_CONNECTION: "Required parameter connection missing",
-    IssueKind.CONTRACT_MISMATCH: "Cross-module contract mismatch",
-    IssueKind.STRING_MAPPING_MISMATCH: "String mapping datatype mismatch",
-    IssueKind.DATATYPE_DUPLICATION: "Datatype duplication",
-    IssueKind.NAME_COLLISION: "Name collision",
-    IssueKind.LAYOUT_OVERLAP: "Layout elements overlap",
-    IssueKind.MIN_MAX_MAPPING_MISMATCH: "Min/Max mapping name mismatch",
-    IssueKind.MAGIC_NUMBER: "Magic number",
-    IssueKind.SHADOWING: "Variable shadows outer scope",
-    IssueKind.RESET_CONTAMINATION: "Variable is contaminated across reset",
-    IssueKind.IMPLICIT_LATCH: "Boolean value may latch unexpectedly",
-}
-
-_ISSUE_GUIDANCE = {
-    IssueKind.UNUSED: DiagnosticGuidance(
-        explanation="Stale declarations add noise and make it harder to tell which signals still matter.",
-        suggestion="Delete the declaration, or add the missing read/write path if it is still part of the design.",
-    ),
-    IssueKind.UNUSED_DATATYPE_FIELD: DiagnosticGuidance(
-        explanation="Unused fields make shared datatypes drift away from the actual interface the code relies on.",
-        suggestion="Remove the field from the datatype, or add the missing read/write path that should use it.",
-    ),
-    IssueKind.READ_ONLY_NON_CONST: DiagnosticGuidance(
-        explanation="A writable declaration that is only read obscures intent and weakens constant-safety checks.",
-        suggestion="Mark the declaration CONST, or add the write path that is supposed to update it.",
-    ),
-    IssueKind.UI_ONLY: DiagnosticGuidance(
-        explanation="The variable is only consumed through graphics or interact display wiring, not through control logic or module contracts.",
-        suggestion="Rename or document it as display-only state, or connect it to the control path that is expected to use it.",
-    ),
-    IssueKind.PROCEDURE_STATUS: DiagnosticGuidance(
-        explanation="Procedure status channels are intended to drive control decisions, retries, or escalation paths rather than disappearing into dead storage or UI-only state.",
-        suggestion="Read the status in control logic or propagate it to the caller that owns the error path, or remove the unused status output if the contract does not require it.",
-    ),
-    IssueKind.NEVER_READ: DiagnosticGuidance(
-        explanation="Writes that are never observed usually mean dead logic or a missing connection to the real output path.",
-        suggestion="Remove the dead write, or connect the variable to the code, parameter mapping, or output that should consume it.",
-    ),
-    IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE: DiagnosticGuidance(
-        explanation="These builtins make record field declaration order part of the runtime contract, so reordering datatype fields can silently read from or write to a different field.",
-        suggestion="Replace ordinal record-component access with named-field logic, or document and isolate the order-dependent contract if it cannot be removed.",
-    ),
-    IssueKind.WRITE_WITHOUT_EFFECT: DiagnosticGuidance(
-        explanation="The value changes internally but never escapes to a root-visible output or module contract.",
-        suggestion="Map the value to an output or parent parameter, or remove the intermediate write chain if it is dead logic.",
-    ),
-    IssueKind.GLOBAL_SCOPE_MINIMIZATION: DiagnosticGuidance(
-        explanation="A root global that is only accessed inside one module subtree widens scope unnecessarily and makes the real owning scope less explicit.",
-        suggestion="Move the declaration into the narrowest owning module or moduletype scope, and only expose it upward through explicit parameter mappings when needed.",
-    ),
-    IssueKind.HIDDEN_GLOBAL_COUPLING: DiagnosticGuidance(
-        explanation="When multiple modules share a root global directly, the dependency bypasses the explicit parameter contract and becomes harder to trace safely.",
-        suggestion="Replace the shared global access with explicit parameter mappings or local coordination state so the interface stays visible in the module wiring.",
-    ),
-    IssueKind.REQUIRED_PARAMETER_CONNECTION: DiagnosticGuidance(
-        explanation="A parameter that the moduletype actively reads or writes is part of the module contract and should be wired explicitly by each instance.",
-        suggestion="Add a parameter mapping for the required parameter, or make the parameter optional by removing the internal dependency on it.",
-    ),
-    IssueKind.CONTRACT_MISMATCH: DiagnosticGuidance(
-        explanation="Incompatible parameter datatypes across module boundaries can break the interface contract or force unsafe coercions.",
-        suggestion="Align the source and target datatypes, or insert an explicit compatible conversion before the mapping.",
-    ),
-    IssueKind.STRING_MAPPING_MISMATCH: DiagnosticGuidance(
-        explanation="Mismatched string-like datatypes can truncate values or break parameter expectations between modules.",
-        suggestion="Use matching string datatypes on both sides of the mapping, or change the contract to the correct string type.",
-    ),
-    IssueKind.DATATYPE_DUPLICATION: DiagnosticGuidance(
-        explanation="Duplicate datatype layouts are easy to let drift apart and make structural changes harder to maintain.",
-        suggestion="Promote the shared layout to one named RECORD datatype and reuse that definition.",
-    ),
-    IssueKind.NAME_COLLISION: DiagnosticGuidance(
-        explanation="Case-insensitive name collisions make the declaration set ambiguous and harder to reason about.",
-        suggestion="Rename one of the declarations so the scope has a single canonical name for that concept.",
-    ),
-    IssueKind.LAYOUT_OVERLAP: DiagnosticGuidance(
-        explanation="Overlapping modules or UI elements make the layout ambiguous and often hide one control or display behind another.",
-        suggestion="Move or resize one of the colliding elements so each rectangle occupies its own visible area.",
-    ),
-    IssueKind.MIN_MAX_MAPPING_MISMATCH: DiagnosticGuidance(
-        explanation="Mismatched Min_/Max_ mappings suggest the parameter contract no longer describes the same base signal.",
-        suggestion="Reconnect the matching Min_/Max_ pair, or rename the parameters so the pair lines up again.",
-    ),
-    IssueKind.MAGIC_NUMBER: DiagnosticGuidance(
-        explanation="Unlabeled literals hide intent and make calibration or recipe changes harder to review safely.",
-        suggestion="Extract the literal into a named constant, engineering parameter, or recipe parameter.",
-    ),
-    IssueKind.SHADOWING: DiagnosticGuidance(
-        explanation="Shadowing hides which declaration is actually being referenced and increases the risk of accidental scope capture.",
-        suggestion="Rename the inner declaration, or reference the intended outer symbol more explicitly.",
-    ),
-    IssueKind.RESET_CONTAMINATION: DiagnosticGuidance(
-        explanation="Partial reset handling can leave stale state behind when the sequence or step is expected to restart cleanly.",
-        suggestion="Write the reset value on every reset path, or centralize the reset assignment in the step or sequence cleanup path.",
-    ),
-    IssueKind.IMPLICIT_LATCH: DiagnosticGuidance(
-        explanation="A one-sided TRUE assignment can leave a boolean latched longer than intended when the complementary path never clears it.",
-        suggestion="Add the matching FALSE assignment in the ELSE, alternate branch, or step exit path, or document the intentional latch behavior.",
-    ),
-}
-
-
 def _cf(value: str) -> str:
     return value.casefold()
 
@@ -211,16 +96,15 @@ def _definition_label_length(definition: DefinitionLike) -> int:
 
 
 def _format_semantic_diagnostic_message(issue: VariableIssue) -> str:
-    label = _ISSUE_LABELS.get(issue.kind, "SattLint issue")
-    headline = label if issue.role is None else f"{label}: {issue.role}"
-    guidance = _ISSUE_GUIDANCE.get(issue.kind)
-    if guidance is None:
+    metadata = materialize_variable_issue_metadata(issue)
+    headline = metadata.label if issue.role is None else f"{metadata.label}: {issue.role}"
+    if metadata.explanation is None or metadata.suggestion is None:
         return headline
     return "\n".join(
         [
             headline,
-            f"Why it matters: {guidance.explanation}",
-            f"Suggested fix: {guidance.suggestion}",
+            f"Why it matters: {metadata.explanation}",
+            f"Suggested fix: {metadata.suggestion}",
         ]
     )
 
@@ -438,6 +322,32 @@ def merge_diagnostic_projection_results(
     for result in results:
         dropped_issues.extend(result.dropped_issues)
     return DiagnosticProjectionResult(diagnostics_by_file=merged_maps, dropped_issues=tuple(dropped_issues))
+
+
+def log_dropped_diagnostic_issues(
+    dropped_issues: tuple[DroppedDiagnosticIssue, ...],
+    *,
+    logger: logging.Logger | None = None,
+    limit: int = 10,
+) -> None:
+    if not dropped_issues:
+        return
+
+    sink = logger or log
+    sink.warning("Dropped %d semantic diagnostic issue(s) during projection.", len(dropped_issues))
+    for dropped_issue in dropped_issues[:limit]:
+        sink.warning(
+            "Dropped semantic diagnostic issue analyzer=%s reason=%s module_path=%s variable=%s field=%s message=%s",
+            dropped_issue.analyzer_key,
+            dropped_issue.reason,
+            ".".join(dropped_issue.module_path) if dropped_issue.module_path else "<none>",
+            dropped_issue.variable_name or "<none>",
+            dropped_issue.field_path or "<none>",
+            dropped_issue.message or "<none>",
+        )
+    remaining = len(dropped_issues) - limit
+    if remaining > 0:
+        sink.warning("Suppressed %d additional dropped semantic diagnostic issue(s).", remaining)
 
 
 def project_variable_issues(

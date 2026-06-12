@@ -198,12 +198,14 @@ ENDDEF (*Broken_);
         root_file.write_text(source_text, encoding="utf-8")
 
         loader = engine_module.SattLineProjectLoader(
-            program_dir=tmp_path,
-            other_lib_dirs=[],
-            abb_lib_dir=tmp_path,
-            mode=engine_module.CodeMode.DRAFT,
-            scan_root_only=False,
-            debug=False,
+            engine_module.SattLineProjectLoaderConfig(
+                program_dir=tmp_path,
+                other_lib_dirs=[],
+                abb_lib_dir=tmp_path,
+                mode=engine_module.CodeMode.DRAFT,
+                scan_root_only=False,
+                debug=False,
+            )
         )
 
         graph = loader.resolve("Root")
@@ -238,12 +240,14 @@ ENDDEF (*Dep*);
         (tmp_path / "Dep.s").write_text(dep_source, encoding="utf-8")
 
         loader = engine_module.SattLineProjectLoader(
-            program_dir=tmp_path,
-            other_lib_dirs=[],
-            abb_lib_dir=tmp_path,
-            mode=engine_module.CodeMode.DRAFT,
-            scan_root_only=False,
-            debug=False,
+            engine_module.SattLineProjectLoaderConfig(
+                program_dir=tmp_path,
+                other_lib_dirs=[],
+                abb_lib_dir=tmp_path,
+                mode=engine_module.CodeMode.DRAFT,
+                scan_root_only=False,
+                debug=False,
+            )
         )
 
         graph = loader.resolve("Root")
@@ -265,12 +269,14 @@ ENDDEF (*Root*);
         root_file.with_suffix(".l").write_text("Missing\n", encoding="utf-8")
 
         loader = engine_module.SattLineProjectLoader(
-            program_dir=tmp_path,
-            other_lib_dirs=[],
-            abb_lib_dir=tmp_path,
-            mode=engine_module.CodeMode.DRAFT,
-            scan_root_only=False,
-            debug=False,
+            engine_module.SattLineProjectLoaderConfig(
+                program_dir=tmp_path,
+                other_lib_dirs=[],
+                abb_lib_dir=tmp_path,
+                mode=engine_module.CodeMode.DRAFT,
+                scan_root_only=False,
+                debug=False,
+            )
         )
 
         graph = loader.resolve("Root")
@@ -387,12 +393,14 @@ ENDDEF (*Root*);
         root_file.with_suffix(".l").write_text("Missing\n", encoding="utf-8")
 
         loader = engine_module.SattLineProjectLoader(
-            program_dir=tmp_path,
-            other_lib_dirs=[],
-            abb_lib_dir=tmp_path,
-            mode=engine_module.CodeMode.DRAFT,
-            scan_root_only=False,
-            debug=False,
+            engine_module.SattLineProjectLoaderConfig(
+                program_dir=tmp_path,
+                other_lib_dirs=[],
+                abb_lib_dir=tmp_path,
+                mode=engine_module.CodeMode.DRAFT,
+                scan_root_only=False,
+                debug=False,
+            )
         )
 
         graph = loader.resolve("Root")

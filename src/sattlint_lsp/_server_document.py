@@ -21,6 +21,9 @@ from ._server_helpers import (
     RECOVERABLE_LSP_EXCEPTIONS as _RECOVERABLE_LSP_EXCEPTIONS,
 )
 from ._server_helpers import (
+    background_workspace_diagnostics_enabled as _background_workspace_diagnostics_enabled,
+)
+from ._server_helpers import (
     diagnostic_from_message as _diagnostic_from_message,
 )
 from ._server_helpers import (
@@ -65,8 +68,6 @@ from ._server_scan_helpers import (
 from .document_state import DocumentState
 from .workspace_store import SnapshotBundle
 
-_SCAN_HELPER_COMPAT_EXPORTS = (_document_state_for_path,)
-
 if TYPE_CHECKING:
     from .server import SattLineLanguageServer
 
@@ -85,13 +86,6 @@ def _ensure_document_paths(ls: SattLineLanguageServer) -> dict[Path, str]:
     document_paths: dict[Path, str] = {}
     ls.document_paths = document_paths
     return document_paths
-
-
-def _background_workspace_diagnostics_enabled(ls: SattLineLanguageServer) -> bool:
-    return ls.settings.enable_variable_diagnostics and ls.settings.workspace_diagnostics_mode == "background"
-
-
-_DOCUMENT_COMPAT_EXPORTS = (_background_workspace_diagnostics_enabled,)
 
 
 def _source_text_for_document(ls: SattLineLanguageServer, document: TextDocument) -> str:
@@ -338,13 +332,14 @@ def _publish_closed_document_diagnostics(
     document_path: Path,
 ) -> None:
     resolved_path = document_path.resolve()
-    merged = _merge_unique_diagnostics(
-        *[
-            diagnostics_by_path.get(resolved_path, ())
-            for diagnostics_by_path in ls.entry_diagnostics.values()
-            if resolved_path in diagnostics_by_path
-        ]
-    )
+    with ls.workspace_scan_condition:
+        merged = _merge_unique_diagnostics(
+            *[
+                diagnostics_by_path.get(resolved_path, ())
+                for diagnostics_by_path in ls.entry_diagnostics.values()
+                if resolved_path in diagnostics_by_path
+            ]
+        )
 
     if not merged and ls.settings.enable_variable_diagnostics:
         try:
@@ -365,10 +360,11 @@ def _publish_closed_document_diagnostics(
         if bundle is not None:
             merged = _semantic_diagnostics_for_path(bundle, resolved_path)
 
-    if merged:
-        ls.published_workspace_diagnostics[resolved_path] = merged
-    else:
-        ls.published_workspace_diagnostics.pop(resolved_path, None)
+    with ls.workspace_scan_condition:
+        if merged:
+            ls.published_workspace_diagnostics[resolved_path] = merged
+        else:
+            ls.published_workspace_diagnostics.pop(resolved_path, None)
 
     ls.text_document_publish_diagnostics(
         PublishDiagnosticsParams(uri=_document_uri_for_path(resolved_path), diagnostics=list(merged))
@@ -431,3 +427,4 @@ record_document_open = _record_document_open
 resolve_symbol_context = _resolve_symbol_context
 schedule_workspace_scan = _schedule_workspace_scan
 source_text_for_document = _source_text_for_document
+DOCUMENT_COMPAT_SEAMS = (_background_workspace_diagnostics_enabled, _document_state_for_path)

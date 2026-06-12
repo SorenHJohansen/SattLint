@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from sattlint.devtools import ai_work_map
 from sattlint.devtools._semble_adapter import SembleMatch, SembleSearchResponse
-from sattlint.devtools.ai_work_map import (
+from sattlint.devtools.ai import ai_work_map
+from sattlint.devtools.ai.ai_work_map import (
     DEFAULT_CHECK_CATALOG_OUTPUT_PATH,
     DEFAULT_OUTPUT_PATH,
     DEFAULT_SESSION_CONTEXT_OUTPUT_PATH,
@@ -88,7 +88,10 @@ def test_build_planning_context_returns_agent_instruction_and_owner_suite_matche
     assert planning["primary_agent"] is None
     assert planning["owner_surfaces"] == ["cli"]
     assert planning["relevant_checks"][0]["id"] == "cli"
-    assert planning["relevant_checks"][0]["ai_instruction_files"] == [".github/instructions/cli-app.instructions.md"]
+    assert planning["relevant_checks"][0]["ai_instruction_files"] == [
+        ".github/instructions/cli-app.instructions.md",
+        ".github/instructions/repo-audit.instructions.md",
+    ]
     assert planning["owner_test_targets"] == ["tests/test_repo_audit_part1.py"]
     assert any(item["name"] == "CLI App Instructions" for item in planning["instruction_files"])
     assert any("recommended-check:cli" in item["selection_reasons"] for item in planning["instruction_files"])
@@ -160,6 +163,7 @@ def test_build_planning_context_includes_semantic_owner_suggestions(monkeypatch)
                 "matched_agent_names": [],
                 "matched_instruction_names": [
                     "CLI App Instructions",
+                    "Python Code Discipline",
                     "SattLine Invariants",
                 ],
                 "matched_owner_surfaces": ["cli"],
@@ -277,7 +281,7 @@ def test_write_ai_check_catalog_and_module_main(tmp_path, monkeypatch):
     )
 
     with pytest.raises(SystemExit) as exit_info:
-        runpy.run_module("sattlint.devtools.ai_work_map", run_name="__main__")
+        runpy.run_module("sattlint.devtools.ai", run_name="__main__")
 
     assert exit_info.value.code == 1
 

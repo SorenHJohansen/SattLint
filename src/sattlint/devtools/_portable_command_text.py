@@ -23,4 +23,4 @@ def sattlint_command(*args: str) -> str:
 
 
 def repo_audit_command(*args: str) -> str:
-    return repo_python_command("-m", "sattlint.devtools.repo_audit", *args)
+    return repo_python_command("-m", "sattlint.devtools.audit", *args)

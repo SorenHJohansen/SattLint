@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-ConfigDict = dict[str, Any]
+from .config_types import ConfigDict
 
 
 def get_documentation_unit_selection_from_app(*, app_module: Any) -> dict[str, Any]:

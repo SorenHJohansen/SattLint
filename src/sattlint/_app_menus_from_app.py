@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-ConfigDict = dict[str, Any]
+from .config_types import ConfigDict
 
 
 def dump_menu_from_app(cfg: ConfigDict, *, app_module: Any) -> None:

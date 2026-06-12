@@ -17,6 +17,9 @@ class _StringMismatchRow:
     source_name: str
     source_role: str
     source_type: str
+    validation_source_name: str
+    validation_source_type: str
+    validation_source_location_path: tuple[str, ...]
     target_name: str
     target_type: str
 
@@ -67,6 +70,19 @@ def _build_string_mapping_rows(issues: list[VariableIssue]) -> list[_StringMisma
                 source_name=source_name,
                 source_role=source_role,
                 source_type=source_type,
+                validation_source_name=(
+                    issue.validation_source_variable.name
+                    if issue.validation_source_variable is not None
+                    else source_name
+                ),
+                validation_source_type=(
+                    issue.validation_source_variable.datatype_text
+                    if issue.validation_source_variable is not None
+                    else source_type
+                ),
+                validation_source_location_path=tuple(
+                    issue.validation_source_module_path or issue.source_decl_module_path or issue.module_path
+                ),
                 target_name=(issue.target_display_name or issue.variable.name) if issue.variable is not None else "?",
                 target_type=issue.variable.datatype_text if issue.variable is not None else "?",
             )
@@ -97,12 +113,22 @@ def _render_string_mapping_group(
     title: str,
     rows: list[_StringMismatchRow],
     preserve_typedef_path: bool,
+    *,
+    show_direct_source: bool = False,
 ) -> None:
     lines.append(f"        {title} ({len(rows)}):")
-    _render_string_mapping_rows(lines, rows, preserve_typedef_path)
+    if show_direct_source and rows:
+        lines.append("        Direct source/type show the value seen at the mismatching hop.")
+    _render_string_mapping_rows(lines, rows, preserve_typedef_path, show_direct_source=show_direct_source)
 
 
-def _render_string_mapping_rows(lines: list[str], rows: list[_StringMismatchRow], preserve_typedef_path: bool) -> None:
+def _render_string_mapping_rows(
+    lines: list[str],
+    rows: list[_StringMismatchRow],
+    preserve_typedef_path: bool,
+    *,
+    show_direct_source: bool = False,
+) -> None:
     if not rows:
         lines.append("        none")
         return
@@ -119,6 +145,41 @@ def _render_string_mapping_rows(lines: list[str], rows: list[_StringMismatchRow]
     source_type_width = max(len(row.source_type) for row in rows)
     target_name_width = max(len(row.target_name) for row in rows)
     target_type_width = max(len(row.target_type) for row in rows)
+
+    if show_direct_source:
+        rendered_validation_sources = [
+            (
+                ".".join(
+                    row.validation_source_location_path
+                    if preserve_typedef_path
+                    else tuple(singlemodule_display_path(list(row.validation_source_location_path)))
+                )
+                + f" :: {row.validation_source_name}"
+            )
+            for row in rows
+        ]
+        validation_source_width = max(len(value) for value in rendered_validation_sources)
+        validation_type_width = max(len(row.validation_source_type) for row in rows)
+
+        header = (
+            f"        {'Location':<{location_width}}  "
+            f"{'Source Var':<{source_name_width}}  {'Role':<{source_role_width}}  "
+            f"{'Declared Type':<{source_type_width}}  {'Direct Source':<{validation_source_width}}  "
+            f"{'Direct Type':<{validation_type_width}}  {'Target Var':<{target_name_width}}  =>  {'Destination Type':<{target_type_width}}"
+        )
+        lines.append(header)
+        lines.append("        " + "-" * len(header.strip()))
+
+        for row, location, validation_source in zip(
+            rows, rendered_locations, rendered_validation_sources, strict=False
+        ):
+            lines.append(
+                f"        {location:<{location_width}}  "
+                f"{row.source_name:<{source_name_width}}  {row.source_role:<{source_role_width}}  "
+                f"{row.source_type:<{source_type_width}}  {validation_source:<{validation_source_width}}  "
+                f"{row.validation_source_type:<{validation_type_width}}  {row.target_name:<{target_name_width}}  =>  {row.target_type:<{target_type_width}}"
+            )
+        return
 
     header = (
         f"        {'Location':<{location_width}}  "
@@ -345,6 +406,7 @@ def append_string_mapping_mismatch(lines: list[str], title: str, issues: list[Va
         "Intermediate path mismatch only",
         [row for row in moduletype_rows if not _is_declaration_destination_mismatch(row)],
         True,
+        show_direct_source=True,
     )
     lines.append("      SingleModule:")
     _render_string_mapping_group(
@@ -358,6 +420,7 @@ def append_string_mapping_mismatch(lines: list[str], title: str, issues: list[Va
         "Intermediate path mismatch only",
         [row for row in singlemodule_rows if not _is_declaration_destination_mismatch(row)],
         False,
+        show_direct_source=True,
     )
 
 

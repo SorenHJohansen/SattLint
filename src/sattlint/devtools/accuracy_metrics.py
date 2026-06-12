@@ -10,9 +10,8 @@ from typing import Any
 
 from sattlint.contracts import FindingCollection
 
-ACCURACY_METRICS_FILENAME = "accuracy_metrics.json"
-ACCURACY_SCHEMA_KIND = "sattlint.accuracy_metrics"
-ACCURACY_SCHEMA_VERSION = 1
+from .artifact_registry import ACCURACY_METRICS_FILENAME, ACCURACY_SCHEMA_KIND, ACCURACY_SCHEMA_VERSION
+
 VALIDATION_ANNOTATIONS_FILENAME = "finding_validation_annotations.json"
 
 

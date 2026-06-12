@@ -7,8 +7,7 @@ from typing import Any
 from . import _app_analysis_catalog as analysis_catalog
 from .analyzers.variables import IssueKind
 from .app_interaction import MenuInteraction, build_menu_interaction
-
-ConfigDict = dict[str, Any]
+from .config_types import ConfigDict
 
 
 def _default_menu_option_factory(key: str, label: str, description: str) -> Any:

@@ -6,7 +6,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+try:
+    from scripts._repo_paths import repo_root_from
+except ModuleNotFoundError:  # pragma: no cover - direct script execution resolves from scripts/
+    from _repo_paths import repo_root_from
+
+REPO_ROOT = repo_root_from(Path(__file__))
 
 
 def _windows_path_to_wsl(path: Path) -> str:

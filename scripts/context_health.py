@@ -8,7 +8,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+try:
+    from scripts._repo_paths import repo_root_from
+except ModuleNotFoundError:  # pragma: no cover - direct script execution resolves from scripts/
+    from _repo_paths import repo_root_from
+
+REPO_ROOT = repo_root_from(Path(__file__))
 RATCHET_PATH = REPO_ROOT / "metrics" / "ratchet.json"
 SETTINGS_PATH = REPO_ROOT / ".vscode" / "settings.json"
 EXTENSIONS_PATH = REPO_ROOT / ".vscode" / "extensions.json"
@@ -195,7 +200,7 @@ def _validate_ai_artifacts() -> tuple[list[dict[str, Any]], int]:
     return issues, validated_count
 
 
-def build_report(*, section: str | None = None) -> dict[str, Any]:
+def build_report(*, section: str | None = None) -> dict[str, Any]:  # noqa: PLR0915
     generated_at = datetime.now(UTC).isoformat()
 
     ratchet = _read_json(RATCHET_PATH)

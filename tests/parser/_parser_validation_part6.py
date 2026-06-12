@@ -459,6 +459,42 @@ def test_validation_type_helpers_cover_predicates_literals_and_matching() -> Non
         )
         == Simple_DataType.STRING
     )
+
+
+def test_validation_module_exports_public_type_helper_aliases() -> None:  # noqa: PLR0915
+    public_exports = {
+        "assignment_type_matches",
+        "extract_time_literal",
+        "has_time_literal_marker",
+        "infer_literal_datatype",
+        "is_valid_time_literal",
+        "literal_matches_expected_datatype",
+        "resolve_variable_field_datatype",
+        "split_dotted_name",
+    }
+    private_exports = {
+        "_assignment_type_matches",
+        "_extract_time_literal",
+        "_has_time_literal_marker",
+        "_infer_literal_datatype",
+        "_is_valid_time_literal",
+        "_literal_matches_expected_datatype",
+        "_resolve_variable_field_datatype",
+        "_split_dotted_name",
+    }
+    env = _validation_expression_env()
+    graph = _validation_expression_graph()
+
+    assert public_exports.issubset(validation_module.__all__)
+    assert private_exports.isdisjoint(validation_module.__all__)
+    assert validation_module.assignment_type_matches is validation_module._assignment_type_matches
+    assert validation_module.extract_time_literal is validation_module._extract_time_literal
+    assert validation_module.has_time_literal_marker is validation_module._has_time_literal_marker
+    assert validation_module.infer_literal_datatype is validation_module._infer_literal_datatype
+    assert validation_module.is_valid_time_literal is validation_module._is_valid_time_literal
+    assert validation_module.literal_matches_expected_datatype is validation_module._literal_matches_expected_datatype
+    assert validation_module.resolve_variable_field_datatype is validation_module._resolve_variable_field_datatype
+    assert validation_module.split_dotted_name is validation_module._split_dotted_name
     assert (
         type_helpers_module._resolve_ref_datatype(
             _var_ref("Signal.Parameters.Unit"),

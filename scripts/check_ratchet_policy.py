@@ -14,7 +14,12 @@ from typing import Any
 
 from defusedxml import ElementTree  # type: ignore[import-untyped]
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+try:
+    from scripts._repo_paths import repo_root_from
+except ModuleNotFoundError:  # pragma: no cover - direct script execution resolves from scripts/
+    from _repo_paths import repo_root_from
+
+REPO_ROOT = repo_root_from(Path(__file__))
 SRC_PATH = REPO_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
@@ -1153,7 +1158,7 @@ def _visible_approval_record_paths(repo_root: Path) -> tuple[str, ...]:
     return _merge_unique_paths(tracked_paths, _detect_untracked_approval_records(repo_root))
 
 
-def evaluate_policy_change(
+def evaluate_policy_change(  # noqa: PLR0915
     *,
     repo_root: Path = REPO_ROOT,
     changed_files: Sequence[str],

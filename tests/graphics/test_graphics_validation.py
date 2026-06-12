@@ -286,7 +286,7 @@ def test_validate_graphics_text_tracks_all_composite_record_ranges(tmp_path: Pat
     assert result.composite_records[1].record_end_line == 18
 
 
-def test_graphics_validation_helper_branches_cover_tree_span_and_literal_paths(tmp_path: Path) -> None:
+def test_graphics_validation_helper_branches_cover_tree_span_and_literal_paths(tmp_path: Path) -> None:  # noqa: PLR0915
     unwrap_expression_root = graphics_validation._unwrap_expression_root
     offset_source_spans = graphics_validation._offset_source_spans
     coerce_graphics_literal = graphics_validation._coerce_graphics_literal
@@ -309,6 +309,16 @@ def test_graphics_validation_helper_branches_cover_tree_span_and_literal_paths(t
     child_tuple_node = SimpleNamespace(children=({"span": SourceSpan(line=1, column=1)},))
     offset_source_spans(child_tuple_node, line_offset=8, column_offset=6)
     assert child_tuple_node.children[0]["span"] == SourceSpan(line=8, column=6)
+
+    recursive_mapping: dict[str, object] = {"span": SourceSpan(line=3, column=2)}
+    recursive_mapping["self"] = recursive_mapping
+    offset_source_spans(recursive_mapping, line_offset=6, column_offset=5)
+    assert recursive_mapping["span"] == SourceSpan(line=8, column=2)
+
+    recursive_object = SimpleNamespace(child={"span": SourceSpan(line=1, column=4)})
+    recursive_object.parent = recursive_object
+    offset_source_spans(recursive_object, line_offset=4, column_offset=3)
+    assert recursive_object.child["span"] == SourceSpan(line=4, column=6)
 
     assert coerce_graphics_literal("false") is False
     assert coerce_graphics_literal("1.25") == 1.25

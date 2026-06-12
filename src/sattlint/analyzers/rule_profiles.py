@@ -5,8 +5,9 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Protocol, cast
 
+from ._sattline_semantic_models import SemanticRule
+from ._sattline_semantic_rules import FRAMEWORK_RULES_BY_KIND
 from .framework import Issue, register_issue_metadata_materializer
-from .sattline_semantics import SemanticRule, get_rule_for_framework_issue_kind
 
 
 @dataclass(frozen=True)
@@ -263,26 +264,6 @@ def _default_profiles() -> dict[str, RuleProfile]:
             name="default",
             description="Balanced default analyzer profile.",
         ),
-        "strict-pharma": RuleProfile(
-            name="strict-pharma",
-            description="Promotes style and maintainability drift during regulated review.",
-            severity_overrides={
-                "semantic.naming-inconsistent-style": "error",
-                "semantic.cyclomatic-complexity.module": "error",
-                "semantic.cyclomatic-complexity.step": "error",
-            },
-        ),
-        "legacy-plant": RuleProfile(
-            name="legacy-plant",
-            description="Suppresses style-heavy advisories while preserving contract and correctness findings.",
-            disabled_rules=(
-                "semantic.naming-role-mismatch",
-                "semantic.naming-inconsistent-style",
-                "semantic.cyclomatic-complexity.module",
-                "semantic.cyclomatic-complexity.step",
-                "semantic.loop-output-refactor",
-            ),
-        ),
     }
 
 
@@ -333,7 +314,7 @@ def get_default_rule_profile_report() -> dict[str, object]:
 
 
 def _resolve_issue_rule(issue_kind: str) -> SemanticRule | None:
-    return _EXTRA_RULES_BY_KIND.get(issue_kind) or get_rule_for_framework_issue_kind(issue_kind)
+    return _EXTRA_RULES_BY_KIND.get(issue_kind) or FRAMEWORK_RULES_BY_KIND.get(issue_kind)
 
 
 def _normalized_issue_kind(issue: Issue) -> str | None:

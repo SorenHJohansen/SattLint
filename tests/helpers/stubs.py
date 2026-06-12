@@ -59,11 +59,23 @@ class NamedHeader:
 class NamedObject:
     header: NamedHeader
     origin_file: str | None = None
+    origin_lib: str | None = None
+
+
+@dataclass(slots=True, frozen=True)
+class RootOriginStub:
+    source_path: Path | None = None
+    library_name: str | None = None
+
+    @property
+    def origin_file(self) -> str | None:
+        return None if self.source_path is None else self.source_path.name
 
 
 @dataclass(slots=True)
 class AnalysisGraphStub:
     ast_by_name: dict[str, object] = field(default_factory=_object_dict)
+    root_origins: dict[str, RootOriginStub] = field(default_factory=_object_dict)
     missing: list[str] = field(default_factory=_string_list)
     unavailable_libraries: set[str] = field(default_factory=_string_set)
     warnings: list[str] = field(default_factory=_string_list)
@@ -74,6 +86,47 @@ class AnalysisGraphStub:
     load_stage_timings_by_program: dict[str, dict[str, float]] = field(default_factory=_nested_float_dict)
     graphics_load_timings: dict[str, float] = field(default_factory=_float_dict)
     graphics_load_timings_by_program: dict[str, dict[str, float]] = field(default_factory=_nested_float_dict)
+
+    def record_root_origin(
+        self,
+        name: str,
+        *,
+        source_path: Path | None = None,
+        library_name: str | None = None,
+    ) -> None:
+        self.root_origins[name.casefold()] = RootOriginStub(source_path=source_path, library_name=library_name)
+
+    def root_origin_for_name(self, name: str) -> RootOriginStub | None:
+        return self.root_origins.get(name.casefold())
+
+    def root_origin_for_basepicture(self, bp: object) -> RootOriginStub | None:
+        header = getattr(bp, "header", None)
+        name = getattr(header, "name", None)
+        return self.root_origin_for_name(name) if isinstance(name, str) else None
+
+    def root_source_path_for_name(self, name: str) -> Path | None:
+        root_origin = self.root_origin_for_name(name)
+        return None if root_origin is None else root_origin.source_path
+
+    def root_source_path_for_basepicture(self, bp: object) -> Path | None:
+        root_origin = self.root_origin_for_basepicture(bp)
+        return None if root_origin is None else root_origin.source_path
+
+    def root_library_name_for_name(self, name: str) -> str | None:
+        root_origin = self.root_origin_for_name(name)
+        return None if root_origin is None else root_origin.library_name
+
+    def root_library_name_for_basepicture(self, bp: object) -> str | None:
+        root_origin = self.root_origin_for_basepicture(bp)
+        return None if root_origin is None else root_origin.library_name
+
+    def root_origin_file_for_name(self, name: str) -> str | None:
+        root_origin = self.root_origin_for_name(name)
+        return None if root_origin is None else root_origin.origin_file
+
+    def root_origin_file_for_basepicture(self, bp: object) -> str | None:
+        root_origin = self.root_origin_for_basepicture(bp)
+        return None if root_origin is None else root_origin.origin_file
 
 
 class InputFeeder:
@@ -91,8 +144,8 @@ def make_input(responses: Iterable[str]) -> InputFeeder:
     return InputFeeder(responses)
 
 
-def named_object(name: str, *, origin_file: str | None = None) -> NamedObject:
-    return NamedObject(header=NamedHeader(name), origin_file=origin_file)
+def named_object(name: str, *, origin_file: str | None = None, origin_lib: str | None = None) -> NamedObject:
+    return NamedObject(header=NamedHeader(name), origin_file=origin_file, origin_lib=origin_lib)
 
 
 @dataclass(slots=True)

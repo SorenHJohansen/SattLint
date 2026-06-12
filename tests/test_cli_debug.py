@@ -36,7 +36,7 @@ def test_cli_entry_prints_traceback_when_debug_config_load_fails(capsys: pytest.
         ["validate-config", "--debug"],
         config_path=Path("config.toml"),
         build_cli_parser_fn=cast(Any, lambda: parser),
-        load_config_fn=lambda _path: (_ for _ in ()).throw(RuntimeError("bad config")),
+        load_config_fn=lambda _path: (_ for _ in ()).throw(ValueError("bad config")),
         apply_debug_fn=lambda _cfg: None,
     )
 

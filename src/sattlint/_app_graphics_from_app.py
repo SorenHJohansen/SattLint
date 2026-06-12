@@ -6,9 +6,8 @@ from sattline_parser.models.ast_model import BasePicture
 
 from . import _app_graphics_menus as graphics_menus_module
 from . import graphics_rules as graphics_rules_module
+from .config_types import ConfigDict
 from .models.project_graph import ProjectGraph
-
-ConfigDict = dict[str, Any]
 
 
 def discover_graphics_rule_selector_options_from_app(

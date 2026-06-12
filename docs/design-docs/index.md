@@ -16,7 +16,8 @@ Part of harness-engineering progressive disclosure strategy.
 | ----- | --------- | -------- | ------- |
 | [../public/architecture.md](../public/architecture.md) | Canonical high-level architecture summary | Active | All agents |
 | [../../ARCHITECTURE.md](../../ARCHITECTURE.md) | Compatibility pointer for legacy links | Active | All agents |
-| (add domain-specific architecture docs here) | | | |
+| [ai-service-abstraction.md](ai-service-abstraction.md) | Planned shared AI service seam for devtools AI commands | Proposed | Devtools AI |
+| [structural-reports-extractor-seams.md](structural-reports-extractor-seams.md) | Planned extractor seam to decouple structural report orchestration from core packages | Proposed | Devtools structural reports |
 
 ## Execution Plans
 

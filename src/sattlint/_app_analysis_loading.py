@@ -14,9 +14,9 @@ from . import app_telemetry as telemetry_module
 from . import cache as cache_module
 from ._app_debug import debug_enabled, log_debug_exception
 from .casefolding import casefold_equal, casefold_key
+from .config_types import ConfigDict
 from .models.project_graph import ProjectGraph
 
-ConfigDict = dict[str, Any]
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
 _STAGE_ORDER = ("load_or_parse", "validate", "attach_graphics", "index", "ast_cache_save")
 log = logging.getLogger("SattLint")
@@ -64,6 +64,70 @@ def _emit_debug_load_summary(
 def _attach_analysis_cache_metadata(graph: ProjectGraph, *, cache_key: str, manifest_files: Iterable[Path]) -> None:
     graph.analysis_cache_key = cache_key
     graph.analysis_manifest_files = frozenset(manifest_files)
+
+
+def _loader_find_dependency_path(loader: Any, target_name: str, requester_dir: Path | None) -> Path | None:
+    public_finder = getattr(loader, "find_dependency_path", None)
+    if callable(public_finder):
+        return cast(Path | None, public_finder(target_name, requester_dir=requester_dir))
+    private_finder = getattr(loader, "_find_deps_with_context", None)
+    if callable(private_finder):
+        return cast(Path | None, private_finder(target_name, requester_dir=requester_dir))
+    return None
+
+
+def _loader_read_dependency_names(loader: Any, deps_path: Path | None) -> list[str]:
+    if deps_path is None:
+        return []
+    public_reader = getattr(loader, "read_dependency_names", None)
+    if callable(public_reader):
+        return cast(list[str], public_reader(deps_path))
+    private_reader = getattr(loader, "_read_deps", None)
+    if callable(private_reader):
+        return cast(list[str], private_reader(deps_path))
+    return []
+
+
+def _loader_flush_lookup_cache(loader: Any) -> None:
+    public_flush = getattr(loader, "flush_lookup_cache", None)
+    if callable(public_flush):
+        public_flush()
+        return
+    private_flush = getattr(loader, "_flush_lookup_cache", None)
+    if callable(private_flush):
+        private_flush()
+
+
+def _loader_visit_target(
+    loader: Any,
+    target_name: str,
+    graph: ProjectGraph,
+    syntax_only: bool,
+    *,
+    requester_dir: Path | None,
+    syntax_check: bool,
+) -> None:
+    public_visit = getattr(loader, "visit_target", None)
+    if callable(public_visit):
+        public_visit(
+            target_name,
+            graph,
+            syntax_only,
+            requester_dir=requester_dir,
+            syntax_check=syntax_check,
+        )
+        return
+    private_visit = getattr(loader, "_visit", None)
+    if callable(private_visit):
+        private_visit(
+            target_name,
+            graph,
+            syntax_only,
+            requester_dir=requester_dir,
+            syntax_check=syntax_check,
+        )
+        return
+    raise AttributeError("loader does not provide visit_target or _visit")
 
 
 def _format_refresh_stage_timings(stage_timings: dict[str, float], *, refresh_mode: str) -> str:
@@ -187,14 +251,21 @@ def _include_reverse_library_consumers(
         if queue_key in queued_targets:
             return
         queued_targets.add(queue_key)
-        loader._visit(target_name, graph, False, requester_dir=deps_path.parent, syntax_check=False)
+        _loader_visit_target(
+            loader,
+            target_name,
+            graph,
+            False,
+            requester_dir=deps_path.parent,
+            syntax_check=False,
+        )
 
     for candidate in require_analyzed_targets_fn(cfg):
         if candidate.casefold() == selected_key:
             continue
 
-        deps_path = loader._find_deps_with_context(candidate, requester_dir=requester_dir)
-        candidate_dependencies = cast(list[str], loader._read_deps(deps_path) if deps_path else [])
+        deps_path = _loader_find_dependency_path(loader, candidate, requester_dir)
+        candidate_dependencies = _loader_read_dependency_names(loader, deps_path)
         if not any(dep.casefold() == selected_key for dep in candidate_dependencies):
             continue
 
@@ -204,7 +275,7 @@ def _include_reverse_library_consumers(
         if candidate.casefold() == selected_key:
             continue
 
-        candidate_dependencies = cast(list[str], loader._read_deps(deps_path))
+        candidate_dependencies = _loader_read_dependency_names(loader, deps_path)
         if not any(dep.casefold() == selected_key for dep in candidate_dependencies):
             continue
 
@@ -223,9 +294,9 @@ def cache_key_for_target(
     cfg: ConfigDict,
     target_name: str,
     *,
-    compute_cache_key_fn: Callable[[ConfigDict], str],
+    compute_cache_key_fn: Callable[[Mapping[str, object]], str],
 ) -> str:
-    cache_cfg = cfg.copy()
+    cache_cfg: dict[str, object] = dict(cfg)
     cache_cfg["analysis_target"] = target_name
     return compute_cache_key_fn(cache_cfg)
 
@@ -247,7 +318,7 @@ def iter_loaded_projects(
                 use_cache=use_cache,
                 collect_stage_timings=_collect_analysis_timings(cfg),
             )
-        except Exception as exc:  # noqa: BLE001
+        except (OSError, RuntimeError, ValueError) as exc:
             log_debug_exception(cfg, f"Failed to load analysis target {target_name!r}", logger=log)
             emit_output_fn(f"\n=== Target: {target_name} ===")
             emit_output_fn("? Failed to load target:")
@@ -265,6 +336,12 @@ def source_paths_for_current_target(
     casefold_key_fn: Callable[[str], str],
 ) -> set[Path]:
     source_files: set[Path] = getattr(graph, "source_files", set())
+    root_source_path_for_basepicture = getattr(graph, "root_source_path_for_basepicture", None)
+    if callable(root_source_path_for_basepicture):
+        root_source_path = root_source_path_for_basepicture(project_bp)
+        if isinstance(root_source_path, Path):
+            return {root_source_path}
+
     origin_file = getattr(project_bp, "origin_file", None)
     if origin_file:
         matches = {path for path in source_files if casefold_equal_fn(path.name, origin_file)}
@@ -321,6 +398,13 @@ def cache_manifest_files(
         )
         requester_dirs = {path.parent for path in source_paths}
         if not requester_dirs:
+            root_source_path_for_basepicture = getattr(graph, "root_source_path_for_basepicture", None)
+            if callable(root_source_path_for_basepicture):
+                root_source_path = root_source_path_for_basepicture(project_bp)
+                if isinstance(root_source_path, Path):
+                    requester_dirs = {root_source_path.parent}
+
+        if not requester_dirs:
             origin_file = getattr(project_bp, "origin_file", None)
             if isinstance(origin_file, str) and origin_file.strip():
                 requester_dirs = {Path(cfg["program_dir"])}
@@ -349,6 +433,7 @@ def load_project(  # noqa: PLR0915
     engine_module: Any,
     status_update_fn: Callable[[str], None] | None = None,
 ) -> tuple[BasePicture, ProjectGraph]:
+    engine_module.validate_loader_config(cfg)
     targets = require_analyzed_targets_fn(cfg)
     selected_target = target_name or targets[0]
     cache_dir = get_cache_dir_fn()
@@ -389,43 +474,33 @@ def load_project(  # noqa: PLR0915
         owner_timings = graphics_timings_by_program.setdefault(owner_name, {})
         owner_timings[phase_name] = owner_timings.get(phase_name, 0.0) + duration
 
-    loader = engine_module.SattLineProjectLoader(
-        program_dir=Path(cfg["program_dir"]),
-        other_lib_dirs=[Path(path) for path in cfg["other_lib_dirs"]],
-        abb_lib_dir=Path(cfg["ABB_lib_dir"]),
-        mode=engine_module.CodeMode(cfg["mode"]),
-        scan_root_only=cfg["scan_root_only"],
-        debug=cfg["debug"],
+    loader, root_bp, graph = engine_module.load_project_graph(
+        cfg,
+        selected_target,
         use_file_ast_cache=use_file_ast_cache,
         status_update_fn=status_update_fn,
         refresh_mode=refresh_mode,
         stage_timing_sink=record_stage_timing if collect_stage_timings else None,
         graphics_timing_sink=record_graphics_timing if collect_stage_timings else None,
     )
-
-    graph = loader.resolve(selected_target, strict=False)
     try:
-        deps_path = loader._find_deps_with_context(
-            selected_target,
-            requester_dir=Path(cfg["program_dir"]),
-        )
-        direct_dependencies = cast(list[str], loader._read_deps(deps_path) if deps_path else [])
+        deps_path = _loader_find_dependency_path(loader, selected_target, Path(cfg["program_dir"]))
+        direct_dependencies = _loader_read_dependency_names(loader, deps_path)
     finally:
-        flush_lookup_cache = getattr(loader, "_flush_lookup_cache", None)
-        if callable(flush_lookup_cache):
-            flush_lookup_cache()
+        _loader_flush_lookup_cache(loader)
 
-    root_bp = graph.ast_by_name.get(selected_target)
     if not root_bp:
         if target_load_error_factory is None:
             raise RuntimeError(f"Target {selected_target!r} was not parsed.")
-        raise target_load_error_factory(
-            selected_target,
-            resolved=list(graph.ast_by_name.keys()),
-            missing=graph.missing,
-            warnings=graph.warnings,
-            direct_dependencies=direct_dependencies,
-        )
+        error_kwargs: dict[str, object] = {
+            "resolved": list(graph.ast_by_name.keys()),
+            "missing": graph.missing,
+            "warnings": graph.warnings,
+            "direct_dependencies": direct_dependencies,
+        }
+        if hasattr(graph, "failures"):
+            error_kwargs["failures"] = graph.failures
+        raise target_load_error_factory(selected_target, **error_kwargs)
 
     if collect_stage_timings:
         graph.load_stage_timings = dict(stage_timings)
@@ -454,10 +529,7 @@ def load_project(  # noqa: PLR0915
     manifest_files = cache_manifest_files(
         cfg,
         graph,
-        find_dependency_path_fn=lambda name, requester_dir: loader._find_deps_with_context(
-            name,
-            requester_dir=requester_dir,
-        ),
+        find_dependency_path_fn=lambda name, requester_dir: _loader_find_dependency_path(loader, name, requester_dir),
         resolve_graphics_companion_path_fn=engine_module.resolve_graphics_companion_path,
         casefold_equal_fn=casefold_equal,
         casefold_key_fn=casefold_key,
@@ -519,14 +591,10 @@ def load_program_ast(
     engine_module: Any,
     status_update_fn: Callable[[str], None] | None = None,
 ) -> tuple[BasePicture, ProjectGraph]:
-    loader = engine_module.SattLineProjectLoader(
-        program_dir=Path(cfg["program_dir"]),
-        other_lib_dirs=[Path(path) for path in cfg["other_lib_dirs"]],
-        abb_lib_dir=Path(cfg["ABB_lib_dir"]),
-        mode=engine_module.CodeMode(cfg["mode"]),
-        scan_root_only=False if force_dependency_resolution else cfg["scan_root_only"],
-        debug=cfg["debug"],
+    loader = engine_module.build_project_loader(
+        cfg,
         status_update_fn=status_update_fn,
+        scan_root_only=False if force_dependency_resolution else cfg["scan_root_only"],
     )
 
     graph = loader.resolve(program_name, strict=False)
@@ -700,7 +768,7 @@ def ensure_ast_cache(
         try:
             load_project_fn(cfg, target_name=target_name, use_cache=False)
             emit_output_fn("✔ AST cache updated")
-        except Exception as exc:  # noqa: BLE001
+        except (OSError, RuntimeError, ValueError) as exc:
             log_debug_exception(cfg, f"Failed to rebuild AST cache for {target_name!r}", logger=log)
             emit_output_fn(f"❌ Failed to build AST cache for {target_name}: {exc}")
             ok = False

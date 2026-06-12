@@ -17,15 +17,17 @@ import sys
 from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 
+from sattlint import cli_output
 from sattlint.devtools import coordination_lock_state
+from sattlint.repo_paths import repo_root_from
 
 from . import _doc_gardener_scan as doc_gardener_scan_module
 from . import _doc_gardener_updates as doc_gardener_updates_module
 
 # Constants
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = repo_root_from(Path(__file__))
 DOCS_DIR = REPO_ROOT / "docs"
 AGENTS_MD = REPO_ROOT / "AGENTS.md"
 QUALITY_SCORE = DOCS_DIR / "quality-score.md"
@@ -300,6 +302,10 @@ def open_fixup_pr(findings: Sequence[DocFinding]) -> bool:
 
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run doc-gardening checks and optional tracking updates.")
+    cli_output.add_output_format_argument(
+        parser,
+        help_text="Output format for stdout summary.",
+    )
     parser.add_argument(
         "--check-only",
         action="store_true",
@@ -319,39 +325,115 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     return parser.parse_args(list(argv) if argv is not None else [])
 
 
+def _build_cli_report(
+    *,
+    result: dict[str, Any],
+    findings: Sequence[DocFinding],
+    check_only: bool,
+    pipeline_snapshot_message: str | None,
+    tracking_updated: bool,
+    fixup_pr_attempted: bool,
+    fixup_pr_opened: bool | None,
+    output_error: str | None,
+) -> dict[str, Any]:
+    return {
+        "total_findings": result["total_findings"],
+        "by_severity": result["by_severity"],
+        "by_category": result["by_category"],
+        "findings": [finding._asdict() for finding in findings],
+        "check_only": check_only,
+        "pipeline_snapshot_message": pipeline_snapshot_message,
+        "tracking_updated": tracking_updated,
+        "fixup_pr_attempted": fixup_pr_attempted,
+        "fixup_pr_opened": fixup_pr_opened,
+        "output_error": output_error,
+    }
+
+
+def _render_cli_summary(report: dict[str, Any]) -> str:
+    lines = [
+        f"Doc-gardening scan complete: {report['total_findings']} findings",
+        f"  By severity: {report['by_severity']}",
+        f"  By category: {report['by_category']}",
+    ]
+    findings = cast(list[dict[str, Any]], report["findings"])
+    if findings:
+        lines.append("")
+        lines.append("Findings:")
+        for finding in findings:
+            lines.append(f"  [{finding['severity']}] {finding['file']}:{finding['line']} - {finding['message']}")
+
+    if report["check_only"]:
+        lines.append("")
+        lines.append("Check-only mode: tracking files not updated.")
+    else:
+        pipeline_snapshot_message = report["pipeline_snapshot_message"]
+        if pipeline_snapshot_message is not None:
+            lines.append("")
+            lines.append(f"Pipeline snapshot unavailable: {pipeline_snapshot_message}")
+        output_error = report["output_error"]
+        if output_error is not None:
+            lines.append("")
+            lines.append(f"Tracking file update error: {output_error}")
+        else:
+            lines.append("")
+            lines.append("Tracking files updated.")
+
+    if report["fixup_pr_attempted"]:
+        lines.append("")
+        lines.append("Attempting to open fix-up PR...")
+
+    return "\n".join(lines)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run doc-gardening scan and return a process exit code."""
     args = _parse_args(argv)
+    output_format = cli_output.resolve_output_format(args)
     result = run_scan()
     findings = [DocFinding(**f) for f in result["findings"]]
-
-    print(f"Doc-gardening scan complete: {result['total_findings']} findings")
-    print(f"  By severity: {result['by_severity']}")
-    print(f"  By category: {result['by_category']}")
-
-    if findings:
-        print("\nFindings:")
-        for f in findings:
-            print(f"  [{f.severity}] {f.file}:{f.line} - {f.message}")
-
+    pipeline_message: str | None = None
+    tracking_updated = False
+    output_error: str | None = None
+    fixup_pr_attempted = False
+    fixup_pr_opened: bool | None = None
     if args.check_only:
-        print("\nCheck-only mode: tracking files not updated.")
+        pass
     else:
         pipeline_snapshot, pipeline_message = load_pipeline_snapshot(args.pipeline_output_dir)
-        if pipeline_message is not None:
-            print(f"\nPipeline snapshot unavailable: {pipeline_message}")
         try:
             update_quality_score(findings, pipeline_snapshot)
             update_tech_debt_scan_log(findings)
         except OSError as exc:
-            print(f"\nTracking file update error: {exc}")
-            return 1
-        print("\nTracking files updated.")
+            output_error = str(exc)
+        else:
+            tracking_updated = True
+
+    if findings and args.open_fixup_pr and not args.check_only and output_error is None:
+        fixup_pr_attempted = True
+        fixup_pr_opened = open_fixup_pr(findings)
+
+    report = _build_cli_report(
+        result=result,
+        findings=findings,
+        check_only=args.check_only,
+        pipeline_snapshot_message=pipeline_message,
+        tracking_updated=tracking_updated,
+        fixup_pr_attempted=fixup_pr_attempted,
+        fixup_pr_opened=fixup_pr_opened,
+        output_error=output_error,
+    )
+    cli_output.emit_text_or_json(
+        text=_render_cli_summary(report),
+        json_payload=report,
+        output_format=output_format,
+        emit_text_fn=print,
+    )
+
+    if output_error is not None:
+        return 1
 
     if findings:
-        if args.open_fixup_pr and not args.check_only:
-            print("\nAttempting to open fix-up PR...")
-            open_fixup_pr(findings)
         return 1
 
     return 0

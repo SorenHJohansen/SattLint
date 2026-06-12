@@ -15,6 +15,7 @@ from sattlint import constants as const
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
 from sattlint.resolution.access_graph import AccessEvent, AccessGraph, AccessKind
 from sattlint.resolution.paths import CanonicalPath, ModuleSegment, decorate_segment
+from sattlint.resolution.type_graph import TypeGraph
 
 
 def _varref(s: str) -> dict:
@@ -197,3 +198,12 @@ def test_resolution_path_helpers_cover_display_join_and_decorators():
     assert decorate_segment("TypeDef", "TD") == "TypeDef<TD>"
     assert decorate_segment("Base", "BP") == "Base<BP>"
     assert decorate_segment("Other", "MT") == "Other"
+
+
+def test_type_graph_reuses_cached_builtin_record_shells():
+    left = TypeGraph.from_datatypes(())
+    right = TypeGraph.from_datatypes(())
+
+    builtin_name = next(iter(left._records_by_key.values())).name
+
+    assert left.record(builtin_name) is right.record(builtin_name)

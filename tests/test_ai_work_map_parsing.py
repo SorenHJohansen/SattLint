@@ -2,7 +2,7 @@ from typing import Any, cast
 
 import pytest
 
-from sattlint.devtools import ai_work_map
+from sattlint.devtools.ai import ai_work_map
 
 
 def test_parse_frontmatter_handles_plain_files_lists_and_booleans(tmp_path):

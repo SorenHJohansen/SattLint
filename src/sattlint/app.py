@@ -7,7 +7,7 @@ import argparse
 import importlib
 import os
 import sys
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -42,11 +42,11 @@ from .analyzers.variables import (
     analyze_variables,
     filter_variable_report,
 )
-from .cache import AnalysisReportCache, ASTCache
+from .cache import ASTCache
 from .core.semantic import load_workspace_snapshot
 from .models.project_graph import ProjectGraph
 
-ConfigDict = dict[str, Any]
+ConfigDict = _config_module.ConfigDict
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
 VariableAnalysisSelection = set[IssueKind] | None
 VariableAnalysisMap = dict[str, tuple[str, VariableAnalysisSelection]]
@@ -191,19 +191,26 @@ def build_cli_parser() -> argparse.ArgumentParser:
     return cast(argparse.ArgumentParser, app_base.build_cli_parser())
 
 
-def run_syntax_check_command(file_path: str) -> int:
-    return cast(int, app_base.run_syntax_check_command(file_path))
+def run_syntax_check_command(file_path: str, *, output_format: str = "text") -> int:
+    return cast(int, app_base.run_syntax_check_command(file_path, output_format=output_format))
 
 
 def run_cli(argv: list[str]) -> int:
     return app_startup_module.run_cli_from_app(argv, app_module=_APP_MODULE)
 
 
-def run_validate_config_command(cfg: ConfigDict, *, config_path: Path, default_used: bool) -> int:
+def run_validate_config_command(
+    cfg: ConfigDict,
+    *,
+    config_path: Path,
+    default_used: bool,
+    output_format: str = "text",
+) -> int:
     return app_startup_module.run_validate_config_command_from_app(
         cfg,
         config_path=config_path,
         default_used=default_used,
+        output_format=output_format,
         app_module=_APP_MODULE,
     )
 
@@ -214,12 +221,14 @@ def run_analyze_command(
     selected_keys: list[str] | None,
     selected_issue_kinds: frozenset[str] | None = None,
     use_cache: bool,
+    output_format: str = "text",
 ) -> int:
     return app_startup_module.run_analyze_command_from_app(
         cfg,
         selected_keys=selected_keys,
         selected_issue_kinds=selected_issue_kinds,
         use_cache=use_cache,
+        output_format=output_format,
         app_module=_APP_MODULE,
     )
 
@@ -325,6 +334,11 @@ def run_format_icf_command(cfg: ConfigDict, *, check: bool = False) -> int:
     )
 
 
+def run_trace_command(args: argparse.Namespace) -> int:
+    tracing_module = importlib.import_module("sattlint.tracing")
+    return cast(int, tracing_module.run_parsed_args(args))
+
+
 def run_icf_formatter(cfg: ConfigDict) -> None:
     app_startup_module.run_icf_formatter_from_app(cfg, app_module=_APP_MODULE)
 
@@ -417,6 +431,7 @@ def resolve_interactive_ui_mode(cfg: ConfigDict, override_ui_mode: str | None = 
 def run_interactive_session(cfg: ConfigDict, **kwargs: Any) -> None:
     from . import app_textual as app_textual_module  # noqa: PLC0415
 
+    kwargs.setdefault("get_help_text_fn", get_help_text)
     app_textual_module.run_textual_shell(cfg, app_module=_APP_MODULE, **kwargs)
 
 
@@ -430,6 +445,10 @@ def _summarize_targets(cfg: ConfigDict) -> str:
 
 def show_help(cfg: ConfigDict) -> None:
     app_startup_module.show_help_from_app(cfg, app_module=_APP_MODULE)
+
+
+def get_help_text(cfg: ConfigDict) -> str:
+    return app_startup_module.get_help_text_from_app(cfg, app_module=_APP_MODULE)
 
 
 def _get_analyzed_targets(cfg: ConfigDict) -> list[str]:
@@ -458,7 +477,7 @@ def _require_targets_for_menu_action(cfg: ConfigDict, action: str) -> bool:
 
 
 def _cache_key_for_target(cfg: ConfigDict, target_name: str) -> str:
-    compute_cache_key_fn = cast(Callable[[ConfigDict], str], cache.compute_cache_key)
+    compute_cache_key_fn = cast(Callable[[Mapping[str, object]], str], cache.compute_cache_key)
     return cast(str, app_support.cache_key_for_target(cfg, target_name, compute_cache_key_fn=compute_cache_key_fn))
 
 
@@ -676,8 +695,8 @@ def refresh_analysis_caches(cfg: ConfigDict) -> tuple[BasePicture, ProjectGraph]
         app_analysis.refresh_analysis_caches(
             cfg,
             force_refresh_ast_fn=force_refresh_ast,
-            analysis_report_cache_cls=AnalysisReportCache,
             get_cache_dir_fn=get_cache_dir,
+            get_cache_manager_fn=cache_module.get_cache_manager,
             emit_output_fn=emit_output,
         ),
     )
@@ -788,10 +807,16 @@ def _get_selectable_analyzers() -> list[Any]:
     return cast(list[Any], get_selectable_analyzers())
 
 
-def _run_checks(cfg: ConfigDict, selected_keys: list[str] | None) -> None:
+def _run_checks(
+    cfg: ConfigDict,
+    selected_keys: list[str] | None,
+    *,
+    selected_issue_kinds: set[str] | frozenset[str] | None = None,
+) -> None:
     app_analysis.run_checks(
         cfg,
         selected_keys,
+        selected_issue_kinds=selected_issue_kinds,
         iter_loaded_projects_fn=_iter_loaded_projects,
         get_enabled_analyzers_fn=_get_selectable_analyzers if selected_keys else _get_enabled_analyzers,
         target_is_library_fn=_target_is_library,

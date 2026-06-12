@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from sattlint import app as app_module
+from sattlint import cli_output
 from sattlint import config as config_module
 from sattlint.analyzers.framework import AnalysisContext
 from sattlint.analyzers.registry import canonicalize_analyzer_key, get_default_analyzer_catalog
@@ -20,7 +21,7 @@ from sattlint.core.semantic import (
     discover_workspace_sources,
     load_workspace_snapshot,
 )
-from sattlint.path_sanitizer import sanitize_path_for_report
+from sattlint.devtools._io import emit_progress, sanitize_repo_path
 from sattlint.repo_paths import repo_root_from
 from sattlint.semantic_analysis import build_variable_semantic_artifacts
 
@@ -32,12 +33,10 @@ def _duration_ms(start: float, end: float) -> float:
     return round((end - start) * 1000, 3)
 
 
-def _sanitize_repo_path(path: Path, *, workspace_root: Path) -> str:
-    return sanitize_path_for_report(path, repo_root=workspace_root) or path.as_posix()
+_sanitize_repo_path = sanitize_repo_path
 
 
-def _emit_profiler_progress(message: str) -> None:
-    print(message, file=sys.stderr, flush=True)
+_emit_profiler_progress = emit_progress
 
 
 def _entry_sort_key(entry: dict[str, Any]) -> tuple[float, str]:
@@ -168,7 +167,7 @@ def _profile_configured_target(
             project_graph=graph,
             definitions_count=_profile_definition_count(project_bp),
         )
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, RuntimeError, ValueError) as exc:
         load_end = timer()
         entry_label = target_name or selected_target_name or "<configured-target>"
         phase_timings = [
@@ -192,8 +191,7 @@ def _profile_configured_target(
             analyzer_keys=analyzer_keys,
             configured_target={
                 "target": entry_label,
-                "config_path": sanitize_path_for_report(resolved_config_path, repo_root=REPO_ROOT)
-                or resolved_config_path.as_posix(),
+                "config_path": sanitize_repo_path(resolved_config_path, workspace_root=REPO_ROOT),
             },
         )
 
@@ -232,8 +230,7 @@ def _profile_configured_target(
         analyzer_keys=analyzer_keys,
         configured_target={
             "target": resolved_target_name,
-            "config_path": sanitize_path_for_report(resolved_config_path, repo_root=REPO_ROOT)
-            or resolved_config_path.as_posix(),
+            "config_path": sanitize_repo_path(resolved_config_path, workspace_root=REPO_ROOT),
         },
     )
 
@@ -379,7 +376,7 @@ def profile_workspace(
                 collect_variable_diagnostics=False,
                 _analysis_provider=build_variable_semantic_artifacts,
             )
-        except Exception as exc:  # noqa: BLE001
+        except (OSError, RuntimeError, ValueError) as exc:
             load_end = clock()
             duration_ms = _duration_ms(load_start, load_end)
             load_total_ms = round(load_total_ms + duration_ms, 3)
@@ -566,10 +563,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         except OSError as exc:
             output_error = exc
 
-    if args.format == "text":
-        print(_render_text_report(report))
-    else:
-        print(json.dumps(report, indent=2, sort_keys=True))
+    cli_output.emit_text_or_json(
+        text=_render_text_report(report),
+        json_payload=report,
+        output_format="text" if args.format == "text" else "json",
+        emit_text_fn=print,
+    )
     if output_error is not None:
         print(f"profiler output error: {output_error}", file=sys.stderr, flush=True)
         return 1

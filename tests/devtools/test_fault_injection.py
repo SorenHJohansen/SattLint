@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 
 from sattlint.devtools import (
@@ -78,6 +79,27 @@ def test_run_fault_injection_campaign_marks_unexpected_errors_when_fault_does_no
     assert record.status == "unexpected-error"
     assert record.fault_id == "parse-fault"
     assert record.exception_type == "RuntimeError"
+    assert record.checkpoint is None
+
+
+def test_run_fault_injection_campaign_marks_real_errors_unexpected_when_injected_fault_was_caught():
+    def case_fn(injector: FaultInjector) -> None:
+        with contextlib.suppress(RuntimeError):
+            injector.checkpoint("parse")
+        raise ValueError("case failed later")
+
+    results = run_fault_injection_campaign(
+        "unexpected-after-caught-fault",
+        case_fn,
+        fault_specs=(FaultSpec(checkpoint="parse", fault_id="parse-fault"),),
+        include_baseline=False,
+    )
+
+    assert len(results.records) == 1
+    record = results.records[0]
+    assert record.status == "unexpected-error"
+    assert record.fault_id == "parse-fault"
+    assert record.exception_type == "ValueError"
     assert record.checkpoint is None
 
 

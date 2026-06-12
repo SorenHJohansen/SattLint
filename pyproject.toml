@@ -32,7 +32,7 @@ dependencies = [
     "opentelemetry-api>=1.36.0,<2",
     "opentelemetry-sdk>=1.36.0,<2",
     "rich>=13.9.0",
-    "textual>=0.66.0,<1",
+    "textual>=8.2.7,<9",
 ]
 
 [project.urls]
@@ -107,9 +107,9 @@ sattlint = "sattlint.app:cli"
 sattlint-lsp = "sattlint_lsp.server:cli"
 sattlint-analysis-pipeline = "sattlint.devtools.pipeline:main"
 sattlint-corpus-runner = "sattlint.devtools.corpus:main"
-sattlint-repo-audit = "sattlint.devtools.repo_audit:main"
+sattlint-repo-audit = "sattlint.devtools.audit:main"
 sattlint-release-smoke = "sattlint.devtools.release_smoke:main"
-sattlint-structural-ratchet = "sattlint.devtools.structural_reports:main"
+sattlint-structural-ratchet = "sattlint.devtools.structural.structural_reports:main"
 sattlint-doc-gardener = "sattlint.devtools.doc_gardener:main"
 sattlint-layer-lint = "sattlint.devtools.layer_linter:main"
 sattlint-review = "sattlint.devtools.review_tool:main"

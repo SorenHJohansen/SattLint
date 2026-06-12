@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
-from sattline_parser.models.ast_model import Simple_DataType, Variable
+from sattline_parser.models.ast_model import ParameterMapping, Simple_DataType, Variable
 
 from ...casefolding import casefold_key
+from ...grammar import constants as const
+from ...resolution.common import varname_base
 
 if TYPE_CHECKING:
     from ..variables import VariablesAnalyzer
@@ -49,7 +51,7 @@ def same_origin_file_stem(origin_file: str | None, root_origin: str | None) -> b
         return False
     try:
         return Path(origin_file).stem.casefold() == Path(root_origin).stem.casefold()
-    except Exception:  # noqa: BLE001
+    except (TypeError, ValueError):
         return origin_file.rsplit(".", 1)[0].casefold() == root_origin.rsplit(".", 1)[0].casefold()
 
 
@@ -69,7 +71,7 @@ def matches_root_origin(
     if analyzed_target_is_library and root_origin_lib and origin_lib:
         try:
             root_stem = Path(root_origin).stem.casefold() if root_origin else None
-        except Exception:  # noqa: BLE001
+        except (TypeError, ValueError):
             root_stem = root_origin.rsplit(".", 1)[0].casefold() if root_origin else None
 
         # Only treat the library name as authoritative when it identifies the root file itself.
@@ -91,6 +93,20 @@ def merge_variable_env(
     return merged
 
 
+def mapping_target_name(mapping: ParameterMapping) -> str | None:
+    target = getattr(mapping, "target", None)
+    if isinstance(target, str):
+        return varname_base(target)
+    if isinstance(target, dict):
+        target_dict = cast(dict[str, object], target)
+        target_name = target_dict.get(const.KEY_VAR_NAME)
+        if isinstance(target_name, str):
+            return varname_base(target_name)
+    if target is None:
+        return None
+    return varname_base(cast(object, target))
+
+
 class VariablesConstMixin:
     def _is_const_candidate(self: Any, variable: Variable) -> bool:
         return is_const_candidate(self, variable)
@@ -100,6 +116,7 @@ __all__ = [
     "VariablesConstMixin",
     "external_mapping_usage",
     "is_const_candidate",
+    "mapping_target_name",
     "matches_root_origin",
     "merge_variable_env",
     "same_origin_file_stem",

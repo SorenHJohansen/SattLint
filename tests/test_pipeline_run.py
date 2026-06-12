@@ -9,9 +9,10 @@ from sattline_parser.models.ast_model import (
     ModuleHeader,
 )
 from sattlint.devtools import _portable_command_text as portable_command_text
-from sattlint.devtools import corpus, mutation_engine, pipeline, pipeline_artifacts
+from sattlint.devtools import corpus, mutation_engine, pipeline
 from sattlint.devtools.artifact_registry import ArtifactDefinition
-from sattlint.devtools.pipeline_artifacts import (
+from sattlint.devtools.shared import pipeline_artifacts
+from sattlint.devtools.shared.pipeline_artifacts import (
     PipelineArtifactContext,
     PipelineArtifactProducer,
     write_pipeline_artifacts,
@@ -627,7 +628,7 @@ def test_portable_command_text_builds_expected_repo_commands():
     )
     assert (
         portable_command_text.repo_audit_command("--profile", "quick")
-        == "python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile quick"
+        == "python scripts/run_repo_python.py -m sattlint.devtools.audit --profile quick"
     )
 
 
@@ -1478,9 +1479,14 @@ def test_project_graph_index_from_basepic_sets_origin(tmp_path):
     source = tmp_path / "TestProgram.s"
     source.touch()
     graph.index_from_basepic(bp, source_path=source, library_name="MyLib")
+    root_origin = graph.root_origin_for_name("TestProgram")
+
     assert source in graph.source_files
-    assert bp.origin_file == "TestProgram.s"
-    assert bp.origin_lib == "MyLib"
+    assert bp.origin_file is None
+    assert bp.origin_lib is None
+    assert root_origin is not None
+    assert root_origin.source_path == source
+    assert root_origin.library_name == "MyLib"
 
 
 # --- devtools/derived_reports.py: build_incremental_analysis_report, build_profiling_summary_report ---

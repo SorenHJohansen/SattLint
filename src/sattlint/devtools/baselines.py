@@ -8,8 +8,7 @@ from typing import Any
 
 from sattlint.contracts import FindingCollection, FindingRecord
 
-ANALYSIS_DIFF_SCHEMA_KIND = "sattlint.analysis_diff"
-ANALYSIS_DIFF_SCHEMA_VERSION = 1
+from .artifact_registry import ANALYSIS_DIFF_SCHEMA_KIND, ANALYSIS_DIFF_SCHEMA_VERSION
 
 
 def load_finding_collection(path: Path) -> FindingCollection:

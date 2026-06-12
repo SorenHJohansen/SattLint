@@ -2,16 +2,17 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any
 
 from . import config as config_module
 from . import config_validation as config_validation_module
 from . import console as console_module
+from ._config_defaults import REQUIRED_TOP_LEVEL_CONFIG_KEYS
+from .config_types import ConfigDict
 
 emit_output = console_module.print_output
 
 
-def _self_check_directories(cfg: dict[str, Any]) -> bool:
+def _self_check_directories(cfg: ConfigDict) -> bool:
     validation = config_module.validate_loaded_config(cfg)
     errors_by_key = config_validation_module.validation_errors_by_key(validation)
     ok = True
@@ -42,7 +43,7 @@ def _self_check_directories(cfg: dict[str, Any]) -> bool:
     return ok
 
 
-def _self_check_targets(cfg: dict[str, Any]) -> bool:
+def _self_check_targets(cfg: ConfigDict) -> bool:
     validation = config_module.validate_loaded_config(cfg)
     errors_by_key = config_validation_module.validation_errors_by_key(validation)
     ok = True
@@ -64,7 +65,7 @@ def _self_check_targets(cfg: dict[str, Any]) -> bool:
     return ok
 
 
-def _report_validation_namespace(cfg: dict[str, Any], namespace: str) -> bool:
+def _report_validation_namespace(cfg: ConfigDict, namespace: str) -> bool:
     validation = config_module.validate_config(cfg)
     ok = True
     for error in validation.errors:
@@ -76,15 +77,13 @@ def _report_validation_namespace(cfg: dict[str, Any], namespace: str) -> bool:
 
 
 def _self_check_graphics_rules() -> bool:
-    validation = config_module.validate_loaded_config(config_module.DEFAULT_CONFIG)
-    del validation
     graphics_rules_path = config_module.get_graphics_rules_path()
     if graphics_rules_path.exists():
         from . import graphics_rules as graphics_rules_module  # noqa: PLC0415
 
         try:
             graphics_rules, _created = graphics_rules_module.load_graphics_rules(graphics_rules_path)
-        except Exception as exc:  # noqa: BLE001
+        except (OSError, RuntimeError, ValueError) as exc:
             emit_output(f"graphics_rules_path invalid: {graphics_rules_path} ({exc})")
             return False
         emit_output(f"graphics_rules_path: {graphics_rules_path} ({len(graphics_rules.get('rules', []))} rules)")
@@ -94,25 +93,13 @@ def _self_check_graphics_rules() -> bool:
     return True
 
 
-def self_check(cfg: dict[str, Any]) -> bool:
+def self_check(cfg: ConfigDict) -> bool:
     emit_output("\n--- Self-check diagnostics ---")
     ok = True
 
     emit_output(f"\u2714 Python {sys.version.split()[0]}")
 
-    required_keys = [
-        "analyzed_programs_and_libraries",
-        "mode",
-        "scan_root_only",
-        "fast_cache_validation",
-        "debug",
-        "program_dir",
-        "ABB_lib_dir",
-        "icf_dir",
-        "other_lib_dirs",
-        "documentation",
-    ]
-    for key in required_keys:
+    for key in REQUIRED_TOP_LEVEL_CONFIG_KEYS:
         if key not in cfg:
             emit_output(f"â�Œ Missing config key: {key}")
             ok = False

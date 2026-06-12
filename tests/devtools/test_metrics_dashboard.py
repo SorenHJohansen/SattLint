@@ -2,8 +2,8 @@ import json
 from types import SimpleNamespace
 
 from sattlint.analyzers.framework import Issue
-from sattlint.devtools import metrics_dashboard
-from sattlint.devtools.structural_reports import WorkspaceGraphInputs
+from sattlint.devtools.structural import metrics_dashboard
+from sattlint.devtools.structural.structural_reports import WorkspaceGraphInputs
 
 
 def test_build_metrics_dashboard_aggregates_structure_and_analyzers(tmp_path, monkeypatch):
@@ -178,7 +178,7 @@ def test_build_metrics_dashboard_aggregates_structure_and_analyzers(tmp_path, mo
 
 def test_main_writes_report_json(tmp_path, monkeypatch, capsys):
     expected_report = {
-        "generated_by": "sattlint.devtools.metrics_dashboard",
+        "generated_by": "sattlint.devtools.structural.metrics_dashboard",
         "report_kind": "metrics-dashboard",
         "status": "ok",
         "workspace_root": ".",
@@ -248,7 +248,7 @@ def test_main_writes_report_json(tmp_path, monkeypatch, capsys):
 
 def test_main_returns_failure_when_output_report_write_fails(tmp_path, monkeypatch, capsys):
     expected_report = {
-        "generated_by": "sattlint.devtools.metrics_dashboard",
+        "generated_by": "sattlint.devtools.structural.metrics_dashboard",
         "report_kind": "metrics-dashboard",
         "status": "ok",
         "workspace_root": ".",
@@ -321,7 +321,7 @@ def test_main_returns_failure_when_output_report_write_fails(tmp_path, monkeypat
 
 def test_main_reports_progress_on_stderr(tmp_path, monkeypatch, capsys):
     expected_report = {
-        "generated_by": "sattlint.devtools.metrics_dashboard",
+        "generated_by": "sattlint.devtools.structural.metrics_dashboard",
         "report_kind": "metrics-dashboard",
         "status": "ok",
         "workspace_root": ".",

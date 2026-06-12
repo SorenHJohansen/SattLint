@@ -8,19 +8,28 @@ import subprocess  # nosec B404 - repo-owned release smoke uses vetted subproces
 import sys
 import tempfile
 import venv
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from sattlint.devtools.pipeline_artifacts import write_json_artifact
+from sattlint import cli_output
+from sattlint.devtools.artifact_registry import (
+    RELEASE_SMOKE_SCHEMA_VERSION,
+    RELEASE_SMOKE_STATUS_FILENAME,
+    RELEASE_SMOKE_STATUS_SCHEMA_KIND,
+    RELEASE_SMOKE_SUMMARY_FILENAME,
+    RELEASE_SMOKE_SUMMARY_SCHEMA_KIND,
+)
+from sattlint.devtools.shared.pipeline_artifacts import write_json_artifact
 from sattlint.path_sanitizer import sanitize_path_for_report
+from sattlint.repo_paths import repo_root_from
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = repo_root_from(Path(__file__))
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "release-smoke"
-STATUS_SCHEMA_KIND = "sattlint.release_smoke.status"
-SUMMARY_SCHEMA_KIND = "sattlint.release_smoke.summary"
-SCHEMA_VERSION = 1
+STATUS_SCHEMA_KIND = RELEASE_SMOKE_STATUS_SCHEMA_KIND
+SUMMARY_SCHEMA_KIND = RELEASE_SMOKE_SUMMARY_SCHEMA_KIND
+SCHEMA_VERSION = RELEASE_SMOKE_SCHEMA_VERSION
 LSP_RUNTIME_DEPENDENCIES = ("pygls>=1.3.1",)
 
 
@@ -281,8 +290,8 @@ def execute_release_smoke(
     overall_status = "pass" if not failing_steps and error_message is None else "fail"
     step_statuses = {result.step_id: result.to_status_payload() for result in executed_steps}
     status_report: dict[str, Any] = {
-        "kind": STATUS_SCHEMA_KIND,
-        "schema_version": SCHEMA_VERSION,
+        "kind": RELEASE_SMOKE_STATUS_SCHEMA_KIND,
+        "schema_version": RELEASE_SMOKE_SCHEMA_VERSION,
         "entry_report": "status.json",
         "overall_status": overall_status,
         "output_dir": sanitized_output_dir,
@@ -299,8 +308,8 @@ def execute_release_smoke(
         status_report["error"] = {"message": error_message}
 
     summary_report: dict[str, Any] = {
-        "kind": SUMMARY_SCHEMA_KIND,
-        "schema_version": SCHEMA_VERSION,
+        "kind": RELEASE_SMOKE_SUMMARY_SCHEMA_KIND,
+        "schema_version": RELEASE_SMOKE_SCHEMA_VERSION,
         "entry_report": "status.json",
         "output_dir": sanitized_output_dir,
         "canonical_command": canonical_command,
@@ -319,6 +328,20 @@ def execute_release_smoke(
     return status_report, summary_report
 
 
+def format_cli_summary(status_report: dict[str, Any]) -> str:
+    failing_steps = ", ".join(str(step) for step in status_report["failing_steps"]) or "none"
+    pending_steps = ", ".join(str(step) for step in status_report["pending_steps"]) or "none"
+    return "\n".join(
+        (
+            f"Release smoke status: {status_report['overall_status']}",
+            f"Failing steps: {failing_steps}",
+            f"Pending steps: {pending_steps}",
+            f"Status report: {status_report['status_report']}",
+            f"Summary report: {status_report['summary_report']}",
+        )
+    )
+
+
 def run_release_smoke(
     *,
     wheel: Path,
@@ -327,6 +350,8 @@ def run_release_smoke(
     repo_root: Path = REPO_ROOT,
     run_command: _CommandRunner = _run_subprocess,
     create_virtualenv: _VirtualenvCreator = _create_virtualenv,
+    output_format: cli_output.OutputFormat = "text",
+    emit_output_fn: Callable[[str], None] = print,
 ) -> int:
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -338,16 +363,26 @@ def run_release_smoke(
             run_command=run_command,
             create_virtualenv=create_virtualenv,
         )
-        write_json_artifact(output_dir / "status.json", status_report, repo_root=repo_root)
-        write_json_artifact(output_dir / "summary.json", summary_report, repo_root=repo_root)
+        write_json_artifact(output_dir / RELEASE_SMOKE_STATUS_FILENAME, status_report, repo_root=repo_root)
+        write_json_artifact(output_dir / RELEASE_SMOKE_SUMMARY_FILENAME, summary_report, repo_root=repo_root)
     except OSError as error:
         print(f"release smoke output error: {error}", file=sys.stderr)
         return 1
+    cli_output.emit_text_or_json(
+        text=format_cli_summary(status_report),
+        json_payload=summary_report,
+        output_format=output_format,
+        emit_text_fn=emit_output_fn,
+    )
     return 0 if status_report["overall_status"] == "pass" else 1
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the SattLint release smoke rehearsal against a built wheel.")
+    cli_output.add_output_format_argument(
+        parser,
+        help_text="Output format for stdout summary.",
+    )
     parser.add_argument("--wheel", required=True, type=Path, help="Built wheel to install into a temporary environment")
     parser.add_argument(
         "--sample-file",
@@ -367,11 +402,13 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    output_format = cli_output.resolve_output_format(args)
     return run_release_smoke(
         wheel=args.wheel,
         sample_file=args.sample_file,
         output_dir=args.output_dir,
         repo_root=args.repo_root,
+        output_format=output_format,
     )
 
 

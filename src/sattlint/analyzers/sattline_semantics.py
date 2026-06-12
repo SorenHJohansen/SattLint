@@ -11,6 +11,8 @@ from ..reporting.variables_report import VariableIssue
 from ..tracing import (
     detect_transform_invariant_violations,
 )
+from ._registry_dispatch import get_semantic_contributor_specs, run_registry_analyzer
+from ._registry_specs import build_context_kwargs
 from ._sattline_semantic_issue_mapping import (
     map_framework_issues,
     map_spec_issues,
@@ -29,8 +31,6 @@ from ._sattline_semantic_rules import (
     build_semantic_rule_groups,
 )
 from .framework import AnalysisContext, Issue, build_analysis_context, format_report_header
-from .registry._registry_dispatch import get_semantic_contributor_specs, run_registry_analyzer
-from .registry._registry_specs import build_context_kwargs
 
 
 def get_sattline_semantic_rule_groups() -> tuple[SemanticRuleGroup, ...]:

@@ -10,9 +10,7 @@ from typing import Any
 from sattlint.contracts import FindingCollection
 from sattlint.core.workspace_discovery import discover_workspace_sources
 
-PRODUCTION_SUMMARY_FILENAME = "production_summary.json"
-PRODUCTION_SCHEMA_KIND = "sattlint.production_summary"
-PRODUCTION_SCHEMA_VERSION = 1
+from .artifact_registry import PRODUCTION_SCHEMA_KIND, PRODUCTION_SCHEMA_VERSION, PRODUCTION_SUMMARY_FILENAME
 
 # Allowlist of known public SattLine repository name patterns
 KNOWN_REPO_PATTERNS = (

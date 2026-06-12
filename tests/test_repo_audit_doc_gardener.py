@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import nullcontext
 from pathlib import Path
 
-from sattlint.devtools import repo_audit
+from sattlint.devtools.audit import repo_audit
 from tests import test_repo_audit as repo_audit_tests
 
 

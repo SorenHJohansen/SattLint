@@ -9,7 +9,23 @@ import pytest
 
 from sattline_parser.models.ast_model import BasePicture
 from sattlint import app_analysis
+from sattlint._app_debug import log_debug_exception
 from sattlint.models.project_graph import ProjectGraph
+
+
+def test_log_debug_exception_logs_traceback_when_debug_disabled(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    logger = logging.getLogger("SattLint")
+
+    with caplog.at_level(logging.ERROR, logger="SattLint"):
+        try:
+            raise RuntimeError("boom")
+        except RuntimeError:
+            log_debug_exception({"debug": False}, "Production failure", logger=logger)
+
+    assert any("Production failure" in message for message in caplog.messages)
+    assert "Traceback (most recent call last)" in caplog.text
 
 
 def test_run_debug_variable_usage_logs_debug_traceback_for_target_failure(

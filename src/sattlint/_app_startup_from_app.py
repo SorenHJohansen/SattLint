@@ -6,28 +6,23 @@ from typing import Any
 
 from sattline_parser.models.ast_model import BasePicture
 
+from . import _app_interactive_menus as interactive_core
 from . import _app_startup as startup_core
+from .cli import command_handlers as cli_command_handlers_module
+from .cli import entry as cli_entry
 from .models.project_graph import ProjectGraph
 
 ConfigDict = startup_core.ConfigDict
 
 
 def run_cli_from_app(argv: list[str], *, app_module: Any) -> int:
-    return startup_core.run_cli(
+    return cli_entry.run_cli(
         argv,
-        run_cli_owner_fn=app_module.app_base.run_cli,
         config_path=app_module.CONFIG_PATH,
         build_cli_parser_fn=app_module.build_cli_parser,
-        run_syntax_check_command_fn=app_module.run_syntax_check_command,
         load_config_fn=app_module.load_config,
         apply_debug_fn=app_module.apply_debug,
-        run_validate_config_command_fn=app_module.run_validate_config_command,
-        run_analyze_command_fn=app_module.run_analyze_command,
-        run_simulate_command_fn=app_module.run_simulate_command,
-        run_docgen_command_fn=app_module.run_docgen_command,
-        run_cache_prune_command_fn=app_module.run_cache_prune_command,
-        run_telemetry_summary_command_fn=app_module.run_telemetry_summary_command,
-        run_format_icf_command_fn=app_module.run_format_icf_command,
+        command_handlers=cli_command_handlers_module.build_app_command_handlers(app_module),
         exit_success=app_module.EXIT_SUCCESS,
         exit_usage_error=app_module.EXIT_USAGE_ERROR,
     )
@@ -43,14 +38,15 @@ def run_validate_config_command_from_app(
     *,
     config_path: startup_core.Path,
     default_used: bool,
+    output_format: str = "text",
     app_module: Any,
 ) -> int:
     return startup_core.run_validate_config_command(
         cfg,
         config_path=config_path,
         default_used=default_used,
-        run_validate_config_command_fn=app_module.app_cli_commands.run_validate_config_command,
         validate_config_fn=app_module.validate_effective_config,
+        output_format=output_format,
         exit_success=app_module.EXIT_SUCCESS,
         exit_usage_error=app_module.EXIT_USAGE_ERROR,
     )
@@ -62,6 +58,7 @@ def run_analyze_command_from_app(
     selected_keys: list[str] | None,
     selected_issue_kinds: frozenset[str] | None = None,
     use_cache: bool,
+    output_format: str = "text",
     app_module: Any,
 ) -> int:
     return startup_core.run_analyze_command(
@@ -69,9 +66,10 @@ def run_analyze_command_from_app(
         selected_keys=selected_keys,
         selected_issue_kinds=selected_issue_kinds,
         use_cache=use_cache,
+        output_format=output_format,
         run_analyze_command_fn=app_module.app_cli_commands.run_analyze_command,
-        run_checks_owner_fn=app_module.app_analysis.run_checks,
         iter_loaded_projects_fn=app_module._iter_loaded_projects,
+        collect_run_checks_result_fn=app_module.app_analysis.collect_run_checks_result,
         get_selectable_analyzers_fn=app_module._get_selectable_analyzers,
         get_enabled_analyzers_fn=app_module._get_enabled_analyzers,
         target_is_library_fn=app_module._target_is_library,
@@ -162,7 +160,7 @@ def run_telemetry_summary_command_from_app(
 
 
 def run_icf_formatter_from_app(cfg: ConfigDict, *, app_module: Any) -> None:
-    startup_core.run_icf_formatter(
+    interactive_core.run_icf_formatter(
         cfg,
         run_format_icf_command_fn=app_module.run_format_icf_command,
         pause_fn=app_module.pause,
@@ -170,7 +168,7 @@ def run_icf_formatter_from_app(cfg: ConfigDict, *, app_module: Any) -> None:
 
 
 def show_config_from_app(cfg: ConfigDict, *, app_module: Any) -> None:
-    startup_core.show_config(
+    interactive_core.show_config(
         cfg,
         show_config_fn=app_module.app_graphics.show_config,
         get_graphics_rules_path_fn=app_module.get_graphics_rules_path,
@@ -187,7 +185,7 @@ def print_menu_from_app(
     note: str | None,
     app_module: Any,
 ) -> None:
-    startup_core.print_menu(
+    interactive_core.print_menu(
         title,
         options,
         intro=intro,
@@ -198,7 +196,7 @@ def print_menu_from_app(
 
 
 def summarize_targets_from_app(cfg: ConfigDict, *, app_module: Any) -> str:
-    return startup_core.summarize_targets(
+    return interactive_core.summarize_targets(
         cfg,
         summarize_targets_fn=app_module.app_support.summarize_targets,
         get_analyzed_targets_fn=app_module._get_analyzed_targets,
@@ -206,7 +204,7 @@ def summarize_targets_from_app(cfg: ConfigDict, *, app_module: Any) -> str:
 
 
 def show_help_from_app(cfg: ConfigDict, *, app_module: Any) -> None:
-    startup_core.show_help(
+    interactive_core.show_help(
         cfg,
         show_help_fn=app_module.app_support.show_help,
         clear_screen_fn=app_module.clear_screen,
@@ -214,6 +212,15 @@ def show_help_from_app(cfg: ConfigDict, *, app_module: Any) -> None:
         summarize_targets_fn=app_module._summarize_targets,
         print_fn=print,
         pause_fn=app_module.pause,
+    )
+
+
+def get_help_text_from_app(cfg: ConfigDict, *, app_module: Any) -> str:
+    return interactive_core.get_help_text(
+        cfg,
+        get_help_text_fn=app_module.app_support.get_help_text,
+        get_analyzed_targets_fn=app_module._get_analyzed_targets,
+        summarize_targets_fn=app_module._summarize_targets,
     )
 
 
@@ -394,7 +401,7 @@ def documentation_menu_from_app(cfg: ConfigDict, *, app_module: Any) -> bool:
 
 
 def dump_menu_from_app(cfg: ConfigDict, *, app_module: Any) -> None:
-    startup_core.dump_menu(
+    interactive_core.dump_menu(
         cfg,
         dump_menu_fn=app_module.app_menus.dump_menu,
         clear_screen_fn=app_module.clear_screen,
@@ -409,7 +416,7 @@ def dump_menu_from_app(cfg: ConfigDict, *, app_module: Any) -> None:
 
 
 def config_menu_from_app(cfg: ConfigDict, *, app_module: Any) -> bool:
-    return startup_core.config_menu(
+    return interactive_core.config_menu(
         cfg,
         config_menu_fn=app_module.app_menus.config_menu,
         config_path=app_module.CONFIG_PATH,
@@ -429,7 +436,7 @@ def config_menu_from_app(cfg: ConfigDict, *, app_module: Any) -> bool:
 
 
 def tools_menu_from_app(cfg: ConfigDict, *, app_module: Any) -> None:
-    startup_core.tools_menu(
+    interactive_core.tools_menu(
         cfg,
         tools_menu_fn=app_module.app_menus.tools_menu,
         clear_screen_fn=app_module.clear_screen,

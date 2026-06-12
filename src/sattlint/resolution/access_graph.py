@@ -5,14 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
-from .paths import CanonicalPath
+from .paths import CanonicalPath, CanonicalPathKey
 
 
-def _empty_access_events() -> list[AccessEvent]:
+def _access_events_factory() -> list[AccessEvent]:
     return []
 
 
-def _empty_access_index() -> dict[tuple[str, ...], list[AccessEvent]]:
+def _access_index_factory() -> dict[CanonicalPathKey, list[AccessEvent]]:
     return {}
 
 
@@ -34,8 +34,8 @@ class AccessEvent:
 class AccessGraph:
     """Tracks resolved reads/writes to canonical fully-qualified paths."""
 
-    events: list[AccessEvent] = field(default_factory=_empty_access_events)
-    by_path_key: dict[tuple[str, ...], list[AccessEvent]] = field(default_factory=_empty_access_index)
+    events: list[AccessEvent] = field(default_factory=_access_events_factory)
+    by_path_key: dict[CanonicalPathKey, list[AccessEvent]] = field(default_factory=_access_index_factory)
 
     def add(self, event: AccessEvent) -> None:
         self.events.append(event)

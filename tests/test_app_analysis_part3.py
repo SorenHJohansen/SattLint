@@ -159,17 +159,27 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
     }
 
     class FakeLoader:
+        def _visit(self, target_name, graph, syntax_only, requester_dir=None, syntax_check=False):
+            self.visit_target(target_name, graph, syntax_only, requester_dir, syntax_check)
+
         def _find_deps_with_context(self, target_name, requester_dir=None):
             return deps_paths[target_name]
 
         def _read_deps(self, deps_path):
             return deps_map.get(deps_path, [])
 
-        def _visit(self, target_name, graph, syntax_only, requester_dir, syntax_check):
+        def visit_target(self, target_name, graph, syntax_only, requester_dir, syntax_check):
             del graph, syntax_only, syntax_check
             visits.append((target_name, requester_dir))
 
+        def find_dependency_path(self, target_name, requester_dir=None):
+            return self._find_deps_with_context(target_name, requester_dir=requester_dir)
+
+        def read_dependency_names(self, deps_path):
+            return self._read_deps(deps_path)
+
     loader = FakeLoader()
+    engine_stub = SimpleNamespace(is_within_directory=lambda *_args: False)
     monkeypatch.setattr(app_analysis.analysis_loading_module, "target_is_library", lambda *args, **kwargs: False)
     app_analysis.analysis_loading_module._include_reverse_library_consumers(
         cfg,
@@ -178,7 +188,7 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
         graph=cast(Any, "graph"),
         loader=loader,
         require_analyzed_targets_fn=lambda _cfg: ["Selected", "CandidateA", "NoDeps", "NoPath", "DupLocal"],
-        engine_module=SimpleNamespace(is_within_directory=lambda *_args: False),
+        engine_module=engine_stub,
     )
     assert visits == []
 
@@ -204,7 +214,7 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
         graph=cast(Any, "graph"),
         loader=loader,
         require_analyzed_targets_fn=lambda _cfg: ["Selected", "CandidateA", "NoDeps", "NoPath", "DupLocal"],
-        engine_module=SimpleNamespace(is_within_directory=lambda *_args: False),
+        engine_module=engine_stub,
     )
 
     assert visits == [
@@ -216,12 +226,14 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
 
 def test_analysis_loading_cache_manifest_files_adds_companions_and_dependency_manifests():
     cfg = {"program_dir": "programs", "mode": "draft"}
-    target_a = SimpleNamespace(header=SimpleNamespace(name="TargetA"), origin_file="TargetA.s")
-    target_b = SimpleNamespace(header=SimpleNamespace(name="TargetB"), origin_file="TargetB.s")
-    graph = SimpleNamespace(
+    target_a = SimpleNamespace(header=SimpleNamespace(name="TargetA"), origin_file=None)
+    target_b = SimpleNamespace(header=SimpleNamespace(name="TargetB"), origin_file=None)
+    graph = AnalysisGraphStub(
         source_files={Path("programs/TargetA.s")},
         ast_by_name={"TargetA": target_a, "TargetB": target_b},
     )
+    graph.record_root_origin("TargetA", source_path=Path("programs/TargetA.s"), library_name="programs")
+    graph.record_root_origin("TargetB", source_path=Path("libraries/TargetB.s"), library_name="libraries")
 
     manifest_files = app_analysis.analysis_loading_module.cache_manifest_files(
         cfg,
@@ -238,5 +250,5 @@ def test_analysis_loading_cache_manifest_files_adds_companions_and_dependency_ma
         Path("programs/TargetA.s"),
         Path("programs/TargetA.g"),
         Path("programs/TargetA.z"),
-        Path("programs/TargetB.z"),
+        Path("libraries/TargetB.z"),
     }

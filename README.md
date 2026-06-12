@@ -211,6 +211,10 @@ The first time SattLint runs, it creates a config file automatically.
     - `ABB_lib_dir` -> shared or ABB libraries
     - `other_lib_dirs` -> any additional libraries
     - `analyzed_programs_and_libraries` -> what to analyze
+    - Optional advanced key in `config.toml`: `include_reverse_library_consumers = true`
+      when a library analysis needs reverse-consumer context from other configured libraries that reference the
+      selected library target. Leave it off unless you specifically need that wider dependency view because it
+      expands analysis scope and can increase load time.
     - `10) Change icf_dir` -> directory used for ICF validation and formatting
     - `12) Edit graphics rules` -> define expected module invocation or clipping rules saved in JSON
 
@@ -246,6 +250,8 @@ sattlint validate-config
 ```
 
 `syntax-check` and `repo-audit` are part of the current stable contract. The Textual interactive shell, analysis, formatting, validation, and DOCX-generation workflows remain preview surfaces.
+
+In the preview Python validation APIs, module-code semantic `StructuralValidationError` failures have one explicit downgrade path: `validate_transformed_basepicture_locally()` reports them as `ValidationNotice` warnings through `warning_sink`, and `validate_transformed_basepicture(..., suppress_module_code_semantic_errors=True)` opts into the same downgrade. `sattlint syntax-check` remains strict.
 
 Textual shell views:
 

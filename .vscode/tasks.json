@@ -11,7 +11,7 @@
 			"args": [
 				"scripts/run_repo_python.py",
 				"-m",
-				"sattlint.devtools.repo_audit",
+				"sattlint.devtools.audit",
 				"--profile",
 				"full",
 				"--planning-context",
@@ -101,7 +101,7 @@
 			"args": [
 				"scripts/run_repo_python.py",
 				"-m",
-				"sattlint.devtools.structural_reports",
+				"sattlint.devtools.structural.structural_reports",
 				"--json"
 			],
 			"group": "test",
@@ -136,7 +136,7 @@
 			"args": [
 				"scripts/run_repo_python.py",
 				"-m",
-				"sattlint.devtools.repo_audit",
+				"sattlint.devtools.audit",
 				"--profile",
 				"full",
 				"--output-dir",
@@ -155,7 +155,7 @@
 			"args": [
 				"scripts/run_repo_python.py",
 				"-m",
-				"sattlint.devtools.repo_audit",
+				"sattlint.devtools.audit",
 				"--profile",
 				"full",
 				"--check-my-changes",

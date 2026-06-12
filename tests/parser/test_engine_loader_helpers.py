@@ -11,12 +11,13 @@ import pytest
 from lark import Lark
 
 from sattline_parser.models.ast_model import GraphObject, ModuleDef, ModuleHeader, SingleModule, SourceSpan
+from sattlint import _engine_graphics_context_helpers as engine_graphics_context_helpers
 from sattlint import _engine_graphics_helpers as engine_graphics_helpers
 from sattlint import engine
 from sattlint.graphics_validation import PictureDisplayPathRow, PictureDisplayRecord
 from sattlint.picture_display_paths import PictureDisplayOccurrence
 from tests.parser._parser_validation_test_support import _parse_to_basepicture
-from tests.parser.test_engine import _make_basepicture, _make_loader
+from tests.parser.test_engine import _loader_config, _make_basepicture, _make_loader
 
 
 def test_format_debug_list_renders_multiline_bullets() -> None:
@@ -99,8 +100,8 @@ def test_engine_graphics_cache_helpers_cover_defaults_signatures_and_invalid_pay
     graph.ast_by_name["dep"] = object()
     graph.unavailable_libraries = {"ControlLib", "UserLib"}
 
-    assert engine_graphics_helpers._normalized_mode_value(None) is None
-    assert engine_graphics_helpers._normalized_mode_value(SimpleNamespace(value=" Official ")) == "official"
+    assert engine_graphics_context_helpers._normalized_mode_value(None) is None
+    assert engine_graphics_context_helpers._normalized_mode_value(SimpleNamespace(value=" Official ")) == "official"
     assert engine_graphics_helpers._graphics_companion_signature(missing_source) is None
     assert engine_graphics_helpers._graphics_companion_signature(existing_source) is not None
     assert engine_graphics_helpers._cached_graphics_companion_signature(bp) is None
@@ -219,27 +220,31 @@ def test_graphics_companion_refresh_and_source_context_helpers_cover_cache_and_c
         is True
     )
 
-    assert engine_graphics_helpers.graphics_source_context_path(graphics_path) == source_path
-    assert engine_graphics_helpers.graphics_source_context_path(tmp_path / "Panel.y") == official_source
-    assert engine_graphics_helpers.graphics_source_context_path(tmp_path / "Missing.g") is None
+    assert engine_graphics_context_helpers.graphics_source_context_path(graphics_path) == source_path
+    assert engine_graphics_context_helpers.graphics_source_context_path(tmp_path / "Panel.y") == official_source
+    assert engine_graphics_context_helpers.graphics_source_context_path(tmp_path / "Missing.g") is None
 
     loaded = _make_basepicture(origin_file=official_source.name)
     seen: dict[str, object] = {}
-    monkeypatch.setattr(engine_graphics_helpers, "read_text_with_fallback", lambda _path: "COMPRESSED")
-    monkeypatch.setattr(engine_graphics_helpers, "is_compressed", lambda text: text == "COMPRESSED")
-    monkeypatch.setattr(engine_graphics_helpers, "preprocess_sl_text", lambda text: ("decoded", {"compressed": True}))
+    monkeypatch.setattr(engine_graphics_context_helpers, "read_text_with_fallback", lambda _path: "COMPRESSED")
+    monkeypatch.setattr(engine_graphics_context_helpers, "is_compressed", lambda text: text == "COMPRESSED")
     monkeypatch.setattr(
-        engine_graphics_helpers,
+        engine_graphics_context_helpers,
+        "preprocess_sl_text",
+        lambda text: ("decoded", {"compressed": True}),
+    )
+    monkeypatch.setattr(
+        engine_graphics_context_helpers,
         "parser_core_parse_source_text",
         lambda text: seen.update({"text": text}) or loaded,
     )
     monkeypatch.setattr(
-        engine_graphics_helpers,
+        engine_graphics_context_helpers,
         "validate_transformed_basepicture",
         lambda _bp, **kwargs: seen.update(kwargs),
     )
 
-    assert engine_graphics_helpers.load_picture_display_source_context(official_source) == loaded
+    assert engine_graphics_context_helpers.load_picture_display_source_context(official_source) == loaded
     assert seen == {
         "text": "decoded",
         "allow_old_state_assignment": True,
@@ -247,11 +252,19 @@ def test_graphics_companion_refresh_and_source_context_helpers_cover_cache_and_c
     }
 
     monkeypatch.setattr(
-        engine_graphics_helpers,
+        engine_graphics_context_helpers,
         "parser_core_parse_source_text",
         lambda _text: (_ for _ in ()).throw(RuntimeError("bad parse")),
     )
-    assert engine_graphics_helpers.load_picture_display_source_context(official_source) is None
+    assert engine_graphics_context_helpers.load_picture_display_source_context(official_source) is None
+
+    monkeypatch.setattr(
+        engine_graphics_context_helpers,
+        "parser_core_parse_source_text",
+        lambda _text: (_ for _ in ()).throw(TypeError("bad parser wiring")),
+    )
+    with pytest.raises(TypeError, match="bad parser wiring"):
+        engine_graphics_context_helpers.load_picture_display_source_context(official_source)
 
 
 def test_picture_display_path_warnings_include_declaring_module() -> None:
@@ -421,14 +434,7 @@ def test_loader_attaches_graphics_companion_metadata_to_basepicture(monkeypatch,
     root_file.write_text(source_text, encoding="utf-8")
     graphics_file.write_text("graphics", encoding="utf-8")
 
-    loader = engine.SattLineProjectLoader(
-        program_dir=tmp_path,
-        other_lib_dirs=[],
-        abb_lib_dir=tmp_path,
-        mode=engine.CodeMode.DRAFT,
-        scan_root_only=False,
-        debug=False,
-    )
+    loader = engine.SattLineProjectLoader(_loader_config(tmp_path))
 
     monkeypatch.setattr(
         engine,
@@ -707,12 +713,14 @@ def test_loader_library_name_for_path_falls_back_when_base_resolve_raises(
     other_lib.mkdir(exist_ok=True)
     abb_lib.mkdir(exist_ok=True)
     loader = engine.SattLineProjectLoader(
-        program_dir=tmp_path,
-        other_lib_dirs=[other_lib],
-        abb_lib_dir=abb_lib,
-        mode=engine.CodeMode.DRAFT,
-        scan_root_only=False,
-        debug=False,
+        engine.SattLineProjectLoaderConfig(
+            program_dir=tmp_path,
+            other_lib_dirs=[other_lib],
+            abb_lib_dir=abb_lib,
+            mode=engine.CodeMode.DRAFT,
+            scan_root_only=False,
+            debug=False,
+        )
     )
 
     original_resolve = engine.Path.resolve
@@ -747,7 +755,7 @@ def test_root_only_loader_success_records_warnings_and_indexes_definitions(
 
     cast(Any, loader)._ast_cache = _AstCache()
     monkeypatch.setattr(loader, "_find_code", lambda _name: code_path)
-    monkeypatch.setattr(loader, "_load_or_parse", lambda _path: basepicture)
+    monkeypatch.setattr(loader, "_load_or_parse", lambda _path, owner_name=None: basepicture)
     monkeypatch.setattr(
         engine,
         "validate_transformed_basepicture",
@@ -769,7 +777,7 @@ def test_root_only_loader_strict_none_basepicture_reraises(monkeypatch: pytest.M
     code_path = tmp_path / "Root.s"
 
     monkeypatch.setattr(loader, "_find_code", lambda _name: code_path)
-    monkeypatch.setattr(loader, "_load_or_parse", lambda _path: None)
+    monkeypatch.setattr(loader, "_load_or_parse", lambda _path, owner_name=None: None)
 
     with pytest.raises(RuntimeError, match="transformed to no BasePicture"):
         loader.resolve("Root", strict=True)
@@ -1063,7 +1071,7 @@ def test_loader_visit_short_circuits_and_reraises_strict_none_basepicture(
     code_path = tmp_path / "Root.s"
     monkeypatch.setattr(loader, "_find_deps_with_context", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(loader, "_find_code_with_context", lambda *_args, **_kwargs: code_path)
-    monkeypatch.setattr(loader, "_load_or_parse", lambda _path: None)
+    monkeypatch.setattr(loader, "_load_or_parse", lambda _path, owner_name=None: None)
 
     with pytest.raises(RuntimeError, match="transform produced no BasePicture"):
         loader._visit("Root", engine.ProjectGraph(), strict=True, requester_dir=tmp_path)
@@ -1078,12 +1086,14 @@ def test_loader_read_and_library_helpers_cover_all_library_roots(
     other_lib.mkdir(exist_ok=True)
     abb_lib.mkdir(exist_ok=True)
     loader = engine.SattLineProjectLoader(
-        program_dir=tmp_path,
-        other_lib_dirs=[other_lib],
-        abb_lib_dir=abb_lib,
-        mode=engine.CodeMode.DRAFT,
-        scan_root_only=False,
-        debug=False,
+        engine.SattLineProjectLoaderConfig(
+            program_dir=tmp_path,
+            other_lib_dirs=[other_lib],
+            abb_lib_dir=abb_lib,
+            mode=engine.CodeMode.DRAFT,
+            scan_root_only=False,
+            debug=False,
+        )
     )
 
     monkeypatch.setattr(engine, "read_text_with_fallback", lambda _path: " DepA \n\nDepB\n")
@@ -1167,7 +1177,7 @@ def test_root_only_loader_records_none_basepicture_without_raising(monkeypatch, 
     code_path = tmp_path / "Root.s"
 
     monkeypatch.setattr(loader, "_find_code", lambda _name: code_path)
-    monkeypatch.setattr(loader, "_load_or_parse", lambda _path: None)
+    monkeypatch.setattr(loader, "_load_or_parse", lambda _path, owner_name=None: None)
 
     graph = loader.resolve("Root")
 
@@ -1175,12 +1185,28 @@ def test_root_only_loader_records_none_basepicture_without_raising(monkeypatch, 
     assert graph.ast_by_name == {}
 
 
+def test_root_only_loader_reraises_source_lookup_errors_and_flushes_cache(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    loader = _make_loader(monkeypatch, tmp_path)
+    seen: dict[str, bool] = {"flushed": False}
+
+    monkeypatch.setattr(loader, "_find_code", lambda _name: (_ for _ in ()).throw(ValueError("bad lookup")))
+    monkeypatch.setattr(loader, "_flush_lookup_cache", lambda: seen.__setitem__("flushed", True))
+
+    with pytest.raises(ValueError, match="bad lookup"):
+        loader.resolve("Root")
+
+    assert seen["flushed"] is True
+
+
 def test_root_only_loader_records_validation_warning_before_failure(monkeypatch, tmp_path) -> None:
     loader = _make_loader(monkeypatch, tmp_path)
     code_path = tmp_path / "Root.s"
 
     monkeypatch.setattr(loader, "_find_code", lambda _name: code_path)
-    monkeypatch.setattr(loader, "_load_or_parse", lambda _path: object())
+    monkeypatch.setattr(loader, "_load_or_parse", lambda _path, owner_name=None: object())
     monkeypatch.setattr(loader, "_library_name_for_path", lambda _path: "RootLib")
     monkeypatch.setattr(
         engine,

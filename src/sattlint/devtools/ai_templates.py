@@ -8,9 +8,7 @@ from typing import Any
 from sattlint.analyzers.registry import get_default_analyzer_catalog
 from sattlint.contracts import FindingCollection
 
-AI_TEMPLATE_SUMMARY_FILENAME = "ai_task_templates.json"
-AI_TEMPLATE_SCHEMA_KIND = "sattlint.ai_templates"
-AI_TEMPLATE_SCHEMA_VERSION = 1
+from .artifact_registry import AI_TEMPLATE_SCHEMA_KIND, AI_TEMPLATE_SCHEMA_VERSION, AI_TEMPLATE_SUMMARY_FILENAME
 
 
 def _empty_strings() -> list[str]:

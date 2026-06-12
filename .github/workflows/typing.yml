@@ -1,8 +1,10 @@
 name: Typing And Quality
 
-
-
 on: [push, pull_request]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -11,6 +13,7 @@ jobs:
   pyright:
     name: Pyright (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -27,8 +30,13 @@ jobs:
         with:
           dependency-spec: ".[dev,lsp]"
 
-      - name: Pin Pyright version
-        run: uv pip install --system "pyright==1.1.409"
+      - name: Install Pyright from pyproject constraint
+        shell: bash
+        run: |
+          pyright_spec=$(
+            python -c "import tomllib; from pathlib import Path; data = tomllib.loads(Path('pyproject.toml').read_text()); deps = data['project']['optional-dependencies']['dev']; print(next(dep for dep in deps if dep.startswith('pyright')))"
+          )
+          uv pip install --system "$pyright_spec"
 
       - name: Run Pyright
         run: python -m pyright src/sattlint src/sattline_parser
@@ -36,6 +44,7 @@ jobs:
   tests:
     name: Tests & Coverage
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -54,13 +63,14 @@ jobs:
   pip-audit:
     name: Pip Audit
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Set up shared CI tooling
         uses: ./.github/actions/setup-ci-tooling
         with:
-          dependency-spec: ".[dev,lsp]"
+          install-dependencies: "false"
 
       - name: Pin pip-audit version
         run: uv pip install --system --upgrade pip "pip-audit==2.10.0"
@@ -71,6 +81,7 @@ jobs:
   npm-audit:
     name: Npm Audit
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: vscode/sattline-vscode

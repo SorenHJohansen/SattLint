@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
-from sattlint.devtools import repo_audit, repo_audit_entrypoints
+from sattlint.devtools.audit import repo_audit, repo_audit_entrypoints
 
 
 def _artifact_path(*parts: str) -> str:
@@ -133,7 +133,7 @@ def test_run_recommended_repo_audit_slice_writes_combined_reports(monkeypatch, t
     ai_gc_report = {
         "kind": "sattlint.ai_gc",
         "schema_version": 1,
-        "generated_by": "sattlint.devtools.ai_gc",
+        "generated_by": "sattlint.devtools.ai.ai_gc",
         "mode": "report",
         "root": ".",
         "status": "needs-attention",
@@ -351,7 +351,7 @@ def test_run_repo_audit_findings_checks_writes_selected_check_reports(monkeypatc
     ai_gc_report = {
         "kind": "sattlint.ai_gc",
         "schema_version": 1,
-        "generated_by": "sattlint.devtools.ai_gc",
+        "generated_by": "sattlint.devtools.ai.ai_gc",
         "mode": "report",
         "status": "needs-attention",
         "summary": {"candidate_count": 1},

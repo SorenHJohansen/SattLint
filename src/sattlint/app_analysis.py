@@ -3,7 +3,8 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from collections.abc import Callable, Iterator, Set
+from collections.abc import Callable, Iterator, Mapping, Set
+from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
 from types import SimpleNamespace
@@ -36,11 +37,48 @@ from .analyzers.variables import IssueKind, analyze_variables, filter_variable_r
 from .app_interaction import MenuInteraction
 from .cache import AnalysisReportCache, ASTCache
 from .casefolding import casefold_equal, casefold_key
+from .config_types import ConfigDict
 from .models.project_graph import ProjectGraph
 from .reporting.variables_report import DEFAULT_VARIABLE_ANALYSIS_KINDS, VariablesReport
 
-ConfigDict = dict[str, Any]
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
+
+
+@dataclass(frozen=True, slots=True)
+class ChecksAnalyzerResult:
+    key: str
+    name: str
+    status: str
+    summary: str | None = None
+    report_kind: str | None = None
+    issue_count: int | None = None
+    duration_ms: float | None = None
+    phase_timings_ms: tuple[dict[str, object], ...] = ()
+    selected_issue_kinds: tuple[str, ...] | None = None
+    skip_reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ChecksTargetResult:
+    target_name: str
+    is_library: bool
+    analyzers: tuple[ChecksAnalyzerResult, ...]
+    stage_timings_ms: dict[str, float] | None = None
+    graphics_timings_ms: dict[str, float] | None = None
+    analyzer_bottleneck: dict[str, object] | None = None
+    analyzer_phase_bottleneck: dict[str, object] | None = None
+    shared_artifact_profile: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ChecksRunResult:
+    output_lines: tuple[str, ...]
+    targets: tuple[ChecksTargetResult, ...] = ()
+    selected_analyzers: tuple[str, ...] = ()
+    selected_issue_kinds: tuple[str, ...] | None = None
+    cancelled: bool = False
+
+
 VariableAnalysisSelection = analysis_variable_analyses_module.VariableAnalysisSelection
 VariableAnalysisMap = analysis_variable_analyses_module.VariableAnalysisMap
 VARIABLE_ANALYSES = analysis_variable_analyses_module.VARIABLE_ANALYSES
@@ -50,7 +88,7 @@ app_support: Any = app_support_module
 cache: Any = cache_module
 engine: Any = engine_module
 emit_output: Callable[..., None] = console_module.print_output  # type: ignore[assignment]
-compute_cache_key: Callable[[ConfigDict], str] = cache.compute_cache_key
+compute_cache_key: Callable[[Mapping[str, object]], str] = cache.compute_cache_key
 compute_analysis_report_cache_key: Callable[[str, str], str] = cache.compute_analysis_report_cache_key
 get_cache_dir: Callable[[], Path] = cache.get_cache_dir
 log = logging.getLogger("SattLint")
@@ -97,6 +135,19 @@ def _format_selected_issue_kind_values(selected_issue_kinds: frozenset[str] | No
     if not selected_issue_kinds:
         return None
     return ", ".join(sorted(selected_issue_kinds))
+
+
+def _selected_issue_kind_tuple(selected_issue_kinds: frozenset[str] | None) -> tuple[str, ...] | None:
+    if not selected_issue_kinds:
+        return None
+    return tuple(sorted(selected_issue_kinds))
+
+
+def _issue_count_for_report(report: object) -> int | None:
+    issues = getattr(report, "issues", None)
+    if not isinstance(issues, list):
+        return None
+    return len(cast(list[object], issues))
 
 
 def _filter_report_for_selected_issue_kinds(
@@ -286,21 +337,19 @@ def refresh_analysis_caches(
     cfg: ConfigDict,
     *,
     force_refresh_ast_fn: Callable[[ConfigDict], tuple[BasePicture, ProjectGraph] | None] = force_refresh_ast,
-    analysis_report_cache_cls: type[AnalysisReportCache] = AnalysisReportCache,
     get_cache_dir_fn: Callable[[], Path] = get_cache_dir,
+    get_cache_manager_fn: Callable[..., Any] = cache_module.get_cache_manager,
     emit_output_fn: Callable[..., None] | None = None,
 ) -> tuple[BasePicture, ProjectGraph] | None:
     resolved_emit_output_fn = emit_output if emit_output_fn is None else emit_output_fn
-    report_cache = cast(
-        AnalysisReportCache,
-        cache_module.build_analysis_report_cache(get_cache_dir_fn(), analysis_report_cache_cls),
-    )
-    removed_entries = report_cache.clear_all()
+    cache_manager = get_cache_manager_fn(get_cache_dir_fn())
+    cleared = cache_manager.clear_all()
+    removed_entries = cleared.removed_entries
     if removed_entries == 0:
-        resolved_emit_output_fn("Analysis report cache already empty.")
+        resolved_emit_output_fn("All caches already empty.")
     else:
         entry_label = "entry" if removed_entries == 1 else "entries"
-        resolved_emit_output_fn(f"Cleared cached analysis reports ({removed_entries} {entry_label}).")
+        resolved_emit_output_fn(f"Cleared all caches ({removed_entries} {entry_label}).")
     return force_refresh_ast_fn(cfg)
 
 
@@ -434,7 +483,10 @@ def run_variable_analysis(  # noqa: PLR0915 - keeps per-target analysis orchestr
         )
 
     requested_kinds = set(DEFAULT_VARIABLE_ANALYSIS_KINDS) | {IssueKind.SHADOWING} if kinds is None else set(kinds)
-    cfg = cfg | {"include_reverse_library_consumers": IssueKind.UNUSED_DATATYPE_FIELD in requested_kinds}
+    cfg = cast(
+        ConfigDict,
+        cfg | {"include_reverse_library_consumers": IssueKind.UNUSED_DATATYPE_FIELD in requested_kinds},
+    )
     report_cache = analysis_reporting_module.create_analysis_report_cache(
         cfg,
         use_cache_enabled_fn=_use_cache_enabled,
@@ -520,11 +572,14 @@ def run_variable_analysis(  # noqa: PLR0915 - keeps per-target analysis orchestr
                         casefold_equal_fn=casefold_equal,
                     )
                 ),
-                source_version_label_fn=lambda project_bp, source_path: analysis_reporting_module.source_version_label(
-                    project_bp,
-                    source_path,
-                    draft_source_suffixes=_DRAFT_SOURCE_SUFFIXES,
-                    official_source_suffixes=_OFFICIAL_SOURCE_SUFFIXES,
+                source_version_label_fn=lambda project_bp, graph, source_path: (
+                    analysis_reporting_module.source_version_label(
+                        project_bp,
+                        graph,
+                        source_path,
+                        draft_source_suffixes=_DRAFT_SOURCE_SUFFIXES,
+                        official_source_suffixes=_OFFICIAL_SOURCE_SUFFIXES,
+                    )
                 ),
                 source_last_changed_fn=analysis_reporting_module.source_last_changed,
             )
@@ -1028,9 +1083,9 @@ def _profile_analyzers_enabled() -> bool:
     return os.environ.get("SATTLINT_PROFILE_ANALYZERS", "").strip().casefold() in {"1", "true", "yes", "on"}
 
 
-def _emit_shared_artifact_profile(target_name: str, shared_artifacts: AnalysisSharedArtifacts) -> None:
+def _shared_artifact_profile_text(target_name: str, shared_artifacts: AnalysisSharedArtifacts) -> str:
     counters = shared_artifacts.counters
-    emit_output(
+    return (
         "Analyzer reuse profile for "
         f"{target_name}: shared-artifact-holders={counters.shared_artifact_holders_created}, "
         f"variable-foundation-builds={counters.variable_foundation_builds}, "
@@ -1040,7 +1095,7 @@ def _emit_shared_artifact_profile(target_name: str, shared_artifacts: AnalysisSh
     )
 
 
-def _run_checks(  # noqa: PLR0915 - coordinates analyzer ordering, caching, filtering, and telemetry per target
+def collect_run_checks_result(  # noqa: PLR0915 - coordinates analyzer ordering, caching, filtering, and telemetry per target
     cfg: ConfigDict,
     selected_keys: list[str] | None,
     selected_issue_kinds: Set[str] | None = None,
@@ -1048,8 +1103,13 @@ def _run_checks(  # noqa: PLR0915 - coordinates analyzer ordering, caching, filt
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] = _iter_loaded_projects,
     get_enabled_analyzers_fn: Callable[[], list[Any]] = _get_enabled_analyzers,
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] = _target_is_library,
-    pause_fn: Callable[[], None] | None = None,
-) -> None:
+) -> ChecksRunResult:
+    output_lines: list[str] = []
+    target_results: list[ChecksTargetResult] = []
+
+    def emit_line(message: str) -> None:
+        output_lines.append(message)
+
     analyzers = list(
         get_cli_dispatch_analyzers(
             selected_keys=selected_keys,
@@ -1057,14 +1117,18 @@ def _run_checks(  # noqa: PLR0915 - coordinates analyzer ordering, caching, filt
         )
     )
     normalized_selected_issue_kinds = _normalize_selected_issue_kind_values(selected_issue_kinds)
+    selected_analyzer_keys = tuple(spec.key for spec in analyzers)
+    selected_issue_kind_tuple = _selected_issue_kind_tuple(normalized_selected_issue_kinds)
 
     if not analyzers:
-        emit_output("❌ No matching checks found")
-        if pause_fn is not None:
-            pause_fn()
-        return
+        emit_line("❌ No matching checks found")
+        return ChecksRunResult(
+            output_lines=tuple(output_lines),
+            selected_analyzers=selected_analyzer_keys,
+            selected_issue_kinds=selected_issue_kind_tuple,
+        )
 
-    emit_output("\n--- Running checks ---")
+    emit_line("\n--- Running checks ---")
     _flush_stdout()
     report_cache = analysis_reporting_module.create_analysis_report_cache(
         cfg,
@@ -1076,6 +1140,7 @@ def _run_checks(  # noqa: PLR0915 - coordinates analyzer ordering, caching, filt
     telemetry = telemetry_module.create_app_telemetry(cfg)
     try:
         for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
+            target_analyzers: list[ChecksAnalyzerResult] = []
             target_started_at = perf_counter()
             analyzer_timings_ms: dict[str, float] = {}
             analyzer_phase_timings_ms: dict[str, list[dict[str, object]]] = {}
@@ -1096,17 +1161,30 @@ def _run_checks(  # noqa: PLR0915 - coordinates analyzer ordering, caching, filt
                 config=cfg,
                 create_shared_artifacts=True,
             )
-            emit_output(f"\n=== Target: {target_name} ===")
+            emit_line(f"\n=== Target: {target_name} ===")
             _flush_stdout()
             for spec in analyzers:
                 if target_is_library and spec.key in _LIBRARY_SUPPRESSED_ANALYZER_KEYS:
+                    target_analyzers.append(
+                        ChecksAnalyzerResult(
+                            key=spec.key,
+                            name=str(spec.name),
+                            status="skipped",
+                            skip_reason="suppressed for library targets",
+                        )
+                    )
                     continue
-                emit_output(f"\n=== {spec.name} ({spec.key}) ===")
+                emit_line(f"\n=== {spec.name} ({spec.key}) ===")
                 _flush_stdout()
+                analyzer_selected_issue_kinds = (
+                    selected_issue_kind_tuple
+                    if spec.key == "variables" or getattr(spec, "supports_selected_issue_kinds", False)
+                    else None
+                )
                 if spec.key == "variables" or getattr(spec, "supports_selected_issue_kinds", False):
                     selected_issue_kind_values = _format_selected_issue_kind_values(normalized_selected_issue_kinds)
                     if selected_issue_kind_values is not None:
-                        emit_output(f"Running {spec.key} analyzer for issue kinds: {selected_issue_kind_values}")
+                        emit_line(f"Running {spec.key} analyzer for issue kinds: {selected_issue_kind_values}")
                         _flush_stdout()
                 analyzer_started_at = perf_counter()
                 try:
@@ -1124,6 +1202,15 @@ def _run_checks(  # noqa: PLR0915 - coordinates analyzer ordering, caching, filt
                     )
                 except KeyboardInterrupt:
                     analyzer_timings_ms[spec.key] = round((perf_counter() - analyzer_started_at) * 1000, 3)
+                    target_analyzers.append(
+                        ChecksAnalyzerResult(
+                            key=spec.key,
+                            name=str(spec.name),
+                            status="cancelled",
+                            duration_ms=analyzer_timings_ms[spec.key],
+                            selected_issue_kinds=analyzer_selected_issue_kinds,
+                        )
+                    )
                     telemetry.emit(
                         operation="checks",
                         target_name=target_name,
@@ -1134,7 +1221,22 @@ def _run_checks(  # noqa: PLR0915 - coordinates analyzer ordering, caching, filt
                             "analyzer_timings_ms": dict(analyzer_timings_ms),
                         },
                     )
-                    raise
+                    target_results.append(
+                        ChecksTargetResult(
+                            target_name=target_name,
+                            is_library=target_is_library,
+                            analyzers=tuple(target_analyzers),
+                            stage_timings_ms=stage_timings_ms or None,
+                            graphics_timings_ms=graphics_timings_ms or None,
+                        )
+                    )
+                    return ChecksRunResult(
+                        output_lines=tuple(output_lines),
+                        targets=tuple(target_results),
+                        selected_analyzers=selected_analyzer_keys,
+                        selected_issue_kinds=selected_issue_kind_tuple,
+                        cancelled=True,
+                    )
                 analyzer_timings_ms[spec.key] = round((perf_counter() - analyzer_started_at) * 1000, 3)
                 if context.shared_artifacts is not None:
                     context.shared_artifacts.reports_by_analyzer_key[spec.key] = report
@@ -1144,7 +1246,21 @@ def _run_checks(  # noqa: PLR0915 - coordinates analyzer ordering, caching, filt
                 report = apply_rule_profile_to_report(spec.key, report, cfg)
                 report = _filter_report_for_selected_issue_kinds(report, normalized_selected_issue_kinds)
                 report = analysis_reporting_module.normalize_report_target_name(report, target_name)
-                emit_output(report.summary())
+                summary_text = report.summary()
+                emit_line(summary_text)
+                target_analyzers.append(
+                    ChecksAnalyzerResult(
+                        key=spec.key,
+                        name=str(spec.name),
+                        status="completed",
+                        summary=summary_text,
+                        report_kind=type(report).__name__,
+                        issue_count=_issue_count_for_report(report),
+                        duration_ms=analyzer_timings_ms[spec.key],
+                        phase_timings_ms=tuple(analyzer_phase_timings_ms.get(spec.key, [])),
+                        selected_issue_kinds=analyzer_selected_issue_kinds,
+                    )
+                )
             analyzer_bottleneck = telemetry_module.bottleneck_from_named_timings(analyzer_timings_ms, kind="analyzer")
             analyzer_phase_bottleneck: dict[str, object] | None = None
             for analyzer_key, phase_timings in analyzer_phase_timings_ms.items():
@@ -1184,14 +1300,37 @@ def _run_checks(  # noqa: PLR0915 - coordinates analyzer ordering, caching, filt
                 success=True,
                 payload=payload,
             )
+            shared_artifact_profile: str | None = None
             if _profile_analyzers_enabled() and context.shared_artifacts is not None:
-                _emit_shared_artifact_profile(target_name, context.shared_artifacts)
+                shared_artifact_profile = _shared_artifact_profile_text(target_name, context.shared_artifacts)
+                emit_line(shared_artifact_profile)
+            target_results.append(
+                ChecksTargetResult(
+                    target_name=target_name,
+                    is_library=target_is_library,
+                    analyzers=tuple(target_analyzers),
+                    stage_timings_ms=stage_timings_ms or None,
+                    graphics_timings_ms=graphics_timings_ms or None,
+                    analyzer_bottleneck=analyzer_bottleneck,
+                    analyzer_phase_bottleneck=analyzer_phase_bottleneck,
+                    shared_artifact_profile=shared_artifact_profile,
+                )
+            )
     except KeyboardInterrupt:
-        _handle_analysis_cancellation(pause_fn=pause_fn)
-        return
+        return ChecksRunResult(
+            output_lines=tuple(output_lines),
+            targets=tuple(target_results),
+            selected_analyzers=selected_analyzer_keys,
+            selected_issue_kinds=selected_issue_kind_tuple,
+            cancelled=True,
+        )
 
-    if pause_fn is not None:
-        pause_fn()
+    return ChecksRunResult(
+        output_lines=tuple(output_lines),
+        targets=tuple(target_results),
+        selected_analyzers=selected_analyzer_keys,
+        selected_issue_kinds=selected_issue_kind_tuple,
+    )
 
 
 def run_checks(
@@ -1204,15 +1343,21 @@ def run_checks(
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] = _target_is_library,
     pause_fn: Callable[[], None] | None = None,
 ) -> None:
-    _run_checks(
+    result = collect_run_checks_result(
         cfg,
         selected_keys,
         selected_issue_kinds,
         iter_loaded_projects_fn=iter_loaded_projects_fn,
         get_enabled_analyzers_fn=get_enabled_analyzers_fn,
         target_is_library_fn=target_is_library_fn,
-        pause_fn=pause_fn,
     )
+    for line in result.output_lines:
+        emit_output(line)
+    if result.cancelled:
+        _handle_analysis_cancellation(pause_fn=pause_fn)
+        return
+    if pause_fn is not None:
+        pause_fn()
 
 
 def run_checks_menu(cfg: ConfigDict, *, run_checks_fn: Callable[[ConfigDict, list[str] | None], None]) -> None:
@@ -1239,7 +1384,7 @@ def run_mms_interface_analysis(
                 lambda project_bp=project_bp: analyze_mms_interface_variables(
                     project_bp,
                     debug=debug_enabled(cfg),
-                    config=cfg,
+                    config=cast(dict[str, Any], cfg),
                 ),
             ),
             debug_message=f"MMS interface analysis failed for target {target_name!r}",

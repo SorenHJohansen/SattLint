@@ -10,7 +10,13 @@ from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.models.ast_model import BasePicture
 
 from ..call_signatures import CallSignatureOccurrence
-from ..engine import CodeMode, SattLineProjectLoader, merge_project_basepicture
+from ..engine import (
+    CodeMode,
+    SattLineProjectLoader,
+    SattLineProjectLoaderConfig,
+    SattLineProjectLoaderRuntime,
+    merge_project_basepicture,
+)
 from ..models.project_graph import ProjectGraph
 from . import _semantic_helpers as _semantic_helpers
 from . import workspace_discovery as _workspace_discovery
@@ -40,6 +46,14 @@ _first_branch_under = _workspace_discovery.first_branch_under
 _resolved_path = _workspace_discovery.resolved_path
 
 log = logging.getLogger("SattLint")
+
+
+def _string_attr(value: object, attr_name: str) -> str | None:
+    raw = getattr(value, attr_name, None)
+    if isinstance(raw, str):
+        normalized = raw.strip()
+        return normalized or None
+    return None
 
 
 class WorkspaceSnapshotError(RuntimeError):
@@ -86,10 +100,32 @@ def _build_semantic_snapshot(
     debug: bool,
     analysis_provider: SemanticAnalysisProvider | None = None,
 ) -> SemanticSnapshot:
-    builder = SemanticIndexBuilder(
-        base_picture,
-        unavailable_libraries=project_graph.unavailable_libraries,
+    root_origin_for_basepicture = getattr(project_graph, "root_origin_for_basepicture", None)
+    root_origin = root_origin_for_basepicture(base_picture) if callable(root_origin_for_basepicture) else None
+    root_origin_file = (
+        _string_attr(root_origin, "origin_file")
+        if root_origin is not None
+        else getattr(base_picture, "origin_file", None)
     )
+    root_origin_library = (
+        _string_attr(root_origin, "library_name")
+        if root_origin is not None
+        else getattr(base_picture, "origin_lib", None)
+    )
+    try:
+        builder = SemanticIndexBuilder(
+            base_picture,
+            root_origin_file=root_origin_file,
+            root_origin_library=root_origin_library,
+            unavailable_libraries=project_graph.unavailable_libraries,
+        )
+    except TypeError as exc:
+        if "unexpected keyword argument" not in str(exc):
+            raise
+        builder = SemanticIndexBuilder(
+            base_picture,
+            unavailable_libraries=project_graph.unavailable_libraries,
+        )
     builder_result = builder.build()
     symbol_table = builder_result[0]
     type_graph = builder_result[1]
@@ -236,13 +272,17 @@ def load_workspace_snapshot(
     selected_abb_lib_dir = abb_lib_dir or resolved_discovery.abb_lib_dir or (root / "__missing_abb_lib__")
 
     loader = SattLineProjectLoader(
-        program_dir=entry_path.parent,
-        other_lib_dirs=selected_other_lib_dirs,
-        abb_lib_dir=selected_abb_lib_dir,
-        mode=normalized_mode,
-        scan_root_only=scan_root_only,
-        debug=debug,
-        contextual_lookup=_build_lsp_workspace_lookup(resolved_discovery),
+        SattLineProjectLoaderConfig(
+            program_dir=entry_path.parent,
+            other_lib_dirs=selected_other_lib_dirs,
+            abb_lib_dir=selected_abb_lib_dir,
+            mode=normalized_mode,
+            scan_root_only=scan_root_only,
+            debug=debug,
+        ),
+        runtime=SattLineProjectLoaderRuntime(
+            contextual_lookup=_build_lsp_workspace_lookup(resolved_discovery),
+        ),
     )
 
     graph = loader.resolve(entry_path.stem, strict=False)

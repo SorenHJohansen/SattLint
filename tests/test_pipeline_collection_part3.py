@@ -200,8 +200,8 @@ def test_write_json_artifact_retries_permission_error(tmp_path, monkeypatch):
             raise PermissionError("temporary file lock")
         real_replace(source, destination)
 
-    monkeypatch.setattr("sattlint.devtools.pipeline_artifacts.os.replace", flaky_replace)
-    monkeypatch.setattr("sattlint.devtools.pipeline_artifacts.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("sattlint.devtools.shared.pipeline_artifacts.os.replace", flaky_replace)
+    monkeypatch.setattr("sattlint.devtools.shared.pipeline_artifacts.time.sleep", lambda _seconds: None)
 
     write_json_artifact(target, {"kind": "status"})
 
@@ -219,7 +219,7 @@ def test_write_json_artifact_writes_source_digest_manifest(tmp_path):
         {
             "kind": "status",
             "schema_version": 1,
-            "generated_by": "sattlint.devtools.pipeline_artifacts",
+            "generated_by": "sattlint.devtools.shared.pipeline_artifacts",
         },
         repo_root=tmp_path,
         source_paths=(source_file,),
@@ -229,11 +229,11 @@ def test_write_json_artifact_writes_source_digest_manifest(tmp_path):
 
     assert manifest["kind"] == SOURCE_DIGEST_MANIFEST_KIND
     assert manifest["artifact_file"] == "status.json"
-    assert manifest["generated_by"] == "sattlint.devtools.pipeline_artifacts"
+    assert manifest["generated_by"] == "sattlint.devtools.shared.pipeline_artifacts"
     assert manifest["source_count"] == 2
     assert {entry["path"] for entry in manifest["sources"]} == {
         "source.py",
-        "src/sattlint/devtools/pipeline_artifacts.py",
+        "src/sattlint/devtools/shared/pipeline_artifacts.py",
     }
 
 

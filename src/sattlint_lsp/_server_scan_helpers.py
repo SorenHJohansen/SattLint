@@ -9,6 +9,12 @@ from typing import TYPE_CHECKING
 from lsprotocol.types import Diagnostic, PublishDiagnosticsParams
 
 from ._server_helpers import (
+    RECOVERABLE_LSP_EXCEPTIONS as _RECOVERABLE_LSP_EXCEPTIONS,
+)
+from ._server_helpers import (
+    background_workspace_diagnostics_enabled as _background_workspace_diagnostics_enabled,
+)
+from ._server_helpers import (
     diagnostic_from_message as _diagnostic_from_message,
 )
 from ._server_helpers import (
@@ -50,10 +56,11 @@ def _store_entry_workspace_diagnostics(
     diagnostics_by_path: dict[Path, tuple[Diagnostic, ...]],
     generation: int,
 ) -> None:
-    if generation != ls.entry_scan_generation.get(entry_key):
-        return
-    previous = ls.entry_diagnostics.get(entry_key, {})
-    ls.entry_diagnostics[entry_key] = diagnostics_by_path
+    with ls.workspace_scan_condition:
+        if generation != ls.entry_scan_generation.get(entry_key):
+            return
+        previous = ls.entry_diagnostics.get(entry_key, {})
+        ls.entry_diagnostics[entry_key] = diagnostics_by_path
     affected_paths = {path.resolve() for path in previous} | {path.resolve() for path in diagnostics_by_path}
     _publish_workspace_diagnostics_for_paths(ls, affected_paths)
 
@@ -70,13 +77,14 @@ def _collect_entry_workspace_diagnostics(
             allow_stale=False,
             raise_on_error=True,
         )
-    except Exception as exc:  # noqa: BLE001
+    except _RECOVERABLE_LSP_EXCEPTIONS as exc:
+        message = _root_workspace_failure_message(str(exc))
         return (
             key,
             {
                 entry_file.resolve(): (
                     _diagnostic_from_message(
-                        _root_workspace_failure_message(str(exc)),
+                        f"Workspace snapshot failed: {message}",
                         getattr(exc, "line", None),
                         getattr(exc, "column", None),
                         getattr(exc, "length", None),
@@ -104,7 +112,8 @@ def _process_workspace_scan_entries(
     ls.snapshot_store.prefetch_entries(entry_files)
     for entry_file in entry_files:
         entry_key = entry_file.resolve().as_posix().casefold()
-        generation = ls.entry_scan_generation.get(entry_key)
+        with ls.workspace_scan_condition:
+            generation = ls.entry_scan_generation.get(entry_key)
         if generation is None:
             continue
         key, diagnostics_by_path = _collect_entry_workspace_diagnostics(ls, entry_file)
@@ -131,7 +140,7 @@ def _schedule_workspace_scan(
     ls: SattLineLanguageServer,
     entry_files: tuple[Path, ...] | None = None,
 ) -> None:
-    if not (ls.settings.enable_variable_diagnostics and ls.settings.workspace_diagnostics_mode == "background"):
+    if not _background_workspace_diagnostics_enabled(ls):
         return
     if not _ensure_snapshot_store_configured(ls):
         return
@@ -169,9 +178,10 @@ def _invalidate_cached_entries_for_path(
     affected_entries = ls.snapshot_store.invalidate_path(document_path)
     affected_entry_keys = ls.snapshot_store.get_affected_entry_keys(document_path)
     affected_paths: set[Path] = set()
-    for entry_key in affected_entry_keys:
-        previous = ls.entry_diagnostics.pop(entry_key, {})
-        affected_paths.update(path.resolve() for path in previous)
+    with ls.workspace_scan_condition:
+        for entry_key in affected_entry_keys:
+            previous = ls.entry_diagnostics.pop(entry_key, {})
+            affected_paths.update(path.resolve() for path in previous)
     if affected_paths:
         _publish_workspace_diagnostics_for_paths(ls, affected_paths)
     return affected_entries
@@ -186,20 +196,21 @@ def _publish_workspace_diagnostics_for_paths(
         if state is not None and state.is_dirty:
             continue
 
-        merged = _merge_unique_diagnostics(
-            *[
-                diagnostics_by_path.get(path, ())
-                for diagnostics_by_path in ls.entry_diagnostics.values()
-                if path in diagnostics_by_path
-            ]
-        )
-        previous = ls.published_workspace_diagnostics.get(path, ())
-        if tuple(map(_diagnostic_signature, previous)) == tuple(map(_diagnostic_signature, merged)):
-            continue
-        if merged:
-            ls.published_workspace_diagnostics[path] = merged
-        else:
-            ls.published_workspace_diagnostics.pop(path, None)
+        with ls.workspace_scan_condition:
+            merged = _merge_unique_diagnostics(
+                *[
+                    diagnostics_by_path.get(path, ())
+                    for diagnostics_by_path in ls.entry_diagnostics.values()
+                    if path in diagnostics_by_path
+                ]
+            )
+            previous = ls.published_workspace_diagnostics.get(path, ())
+            if tuple(map(_diagnostic_signature, previous)) == tuple(map(_diagnostic_signature, merged)):
+                continue
+            if merged:
+                ls.published_workspace_diagnostics[path] = merged
+            else:
+                ls.published_workspace_diagnostics.pop(path, None)
 
         ls.text_document_publish_diagnostics(
             PublishDiagnosticsParams(uri=_document_uri_for_path(path), diagnostics=list(merged))

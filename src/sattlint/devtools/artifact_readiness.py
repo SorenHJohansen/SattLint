@@ -8,11 +8,9 @@ import sys
 from pathlib import Path
 from typing import Any, cast
 
-from sattlint.devtools.artifact_registry import AUDIT_ARTIFACTS
+from sattlint import cli_output
+from sattlint.devtools.artifact_registry import AUDIT_ARTIFACTS, READINESS_SCHEMA_KIND, READINESS_SCHEMA_VERSION
 from sattlint.devtools.json_helpers import json_mapping as _json_mapping
-
-READINESS_SCHEMA_KIND = "sattlint.artifact_readiness"
-READINESS_SCHEMA_VERSION = 1
 
 
 class ReadinessError(RuntimeError):
@@ -188,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--artifact-dir", required=True, help="Repo-audit artifact directory to validate")
     args = parser.parse_args(argv)
     report = build_artifact_readiness_report(Path(args.artifact_dir))
-    print(json.dumps(report, indent=2, sort_keys=True))
+    print(cli_output.render_json_output(report))
     if report["ready"]:
         return 0
     print(str(report["message"]), file=sys.stderr)

@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from sattlint.devtools import repo_audit
+from sattlint.devtools.audit import repo_audit
 
 
 def _artifact_path(*parts: str) -> str:
@@ -90,7 +90,7 @@ def test_main_check_my_changes_compacts_verbose_report_fields(monkeypatch, tmp_p
     report = {
         "kind": "sattlint.check_my_changes",
         "schema_version": 1,
-        "generated_by": "sattlint.devtools.repo_audit_entrypoints",
+        "generated_by": "sattlint.devtools.audit.repo_audit_entrypoints",
         "profile": "full",
         "fail_on": "high",
         "output_dir": str(tmp_path),
@@ -187,7 +187,7 @@ def test_main_planning_context_compacts_verbose_report_fields(monkeypatch, tmp_p
     report = {
         "kind": "sattlint.planning_context",
         "schema_version": 1,
-        "generated_by": "sattlint.devtools.repo_audit_entrypoints",
+        "generated_by": "sattlint.devtools.audit.repo_audit_entrypoints",
         "profile": "full",
         "fail_on": "high",
         "output_dir": str(tmp_path),
@@ -284,6 +284,16 @@ def test_main_apply_ai_gc_calls_apply_helper(monkeypatch, tmp_path, capsys):
 
 def test_repo_audit_module_main_runs_help(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["repo_audit", "--help"])
+
+    with pytest.raises(SystemExit) as exit_info:
+        runpy.run_module("sattlint.devtools.audit", run_name="__main__")
+
+    assert exit_info.value.code == 0
+
+
+def test_flat_repo_audit_module_main_runs_help(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["repo_audit", "--help"])
+    monkeypatch.delitem(sys.modules, "sattlint.devtools.repo_audit", raising=False)
 
     with pytest.raises(SystemExit) as exit_info:
         runpy.run_module("sattlint.devtools.repo_audit", run_name="__main__")

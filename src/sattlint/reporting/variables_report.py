@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from ..analyzers.framework.issue import Findings
 from ..models._variable_issues import IssueKind, VariableIssue
 from ..resolution.access_graph import AccessEvent
+from ..resolution.paths import CanonicalPathKey
 from ._variables_report_rendering import (
     append_datatype_duplication,
     append_magic_numbers,
@@ -56,24 +57,24 @@ SUMMARY_SECTION_ORDER: tuple[IssueKind, ...] = (
     IssueKind.SHADOWING,
 )
 
-AccessesByDefinitionKey = dict[tuple[str, ...], tuple[AccessEvent, ...]]
-EffectFlowEdges = dict[tuple[str, ...], tuple[tuple[str, ...], ...]]
-EffectFlowDisplayNames = dict[tuple[str, ...], str]
+AccessesByDefinitionKey = dict[CanonicalPathKey, tuple[AccessEvent, ...]]
+EffectFlowEdges = dict[CanonicalPathKey, tuple[CanonicalPathKey, ...]]
+EffectFlowDisplayNames = dict[CanonicalPathKey, str]
 
 
-def _empty_accesses_by_definition_key() -> AccessesByDefinitionKey:
+def _accesses_by_definition_key_factory() -> AccessesByDefinitionKey:
     return {}
 
 
-def _empty_effect_flow_edges() -> EffectFlowEdges:
+def _effect_flow_edges_factory() -> EffectFlowEdges:
     return {}
 
 
-def _empty_effect_flow_display_names() -> EffectFlowDisplayNames:
+def _effect_flow_display_names_factory() -> EffectFlowDisplayNames:
     return {}
 
 
-def _empty_phase_timings() -> list[dict[str, str | float]]:
+def _phase_timings_factory() -> list[dict[str, str | float]]:
     return []
 
 
@@ -109,15 +110,15 @@ SECTION_TITLES: dict[IssueKind, str] = {
 class VariablesReport:
     basepicture_name: str
     issues: Findings[VariableIssue]
-    accesses_by_definition_key: AccessesByDefinitionKey = field(default_factory=_empty_accesses_by_definition_key)
-    effect_flow_edges: EffectFlowEdges = field(default_factory=_empty_effect_flow_edges)
-    effect_flow_display_names: EffectFlowDisplayNames = field(default_factory=_empty_effect_flow_display_names)
+    accesses_by_definition_key: AccessesByDefinitionKey = field(default_factory=_accesses_by_definition_key_factory)
+    effect_flow_edges: EffectFlowEdges = field(default_factory=_effect_flow_edges_factory)
+    effect_flow_display_names: EffectFlowDisplayNames = field(default_factory=_effect_flow_display_names_factory)
     visible_kinds: frozenset[IssueKind] | set[IssueKind] | tuple[IssueKind, ...] | list[IssueKind] | None = None
     selected_issue_kinds: frozenset[IssueKind] | set[IssueKind] | tuple[IssueKind, ...] | list[IssueKind] | None = None
     include_empty_sections: bool = False
     analyzed_version: str | None = None
     last_changed: str | None = None
-    phase_timings: list[dict[str, str | float]] = field(default_factory=_empty_phase_timings)
+    phase_timings: list[dict[str, str | float]] = field(default_factory=_phase_timings_factory)
 
     def __post_init__(self) -> None:
         if self.visible_kinds is not None and not isinstance(self.visible_kinds, frozenset):

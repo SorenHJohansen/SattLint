@@ -24,6 +24,7 @@ from sattlint import app_analysis
 from sattlint import constants as const
 from sattlint.analyzers.variables import IssueKind, analyze_variables
 from sattlint.cache import ANALYSIS_REPORT_CACHE_VERSION, AnalysisReportCache, compute_analysis_report_cache_key
+from sattlint.models.project_graph import ProjectFailure
 from tests.helpers import named_object
 from tests.helpers.app_projects import build_mini_project_context
 
@@ -109,8 +110,8 @@ def test_load_project_rebuilds_when_cached_project_is_invalid(monkeypatch):
             save_calls.append((key, kwargs))
 
     class FakeLoader:
-        def __init__(self, **kwargs):
-            loader_calls.append(kwargs)
+        def __init__(self, config, *, runtime=None, dependencies=None):
+            loader_calls.append({"config": config, "runtime": runtime, "dependencies": dependencies})
 
         def resolve(self, target_name, strict=False):
             assert target_name == "TargetA"
@@ -122,13 +123,13 @@ def test_load_project_rebuilds_when_cached_project_is_invalid(monkeypatch):
                 source_files={Path("programs/TargetA.s")},
             )
 
-        def _find_deps_with_context(self, target_name, requester_dir):
+        def find_dependency_path(self, target_name, *, requester_dir):
             return None
 
-        def _read_deps(self, deps_path):
+        def read_dependency_names(self, deps_path):
             return []
 
-        def _flush_lookup_cache(self):
+        def flush_lookup_cache(self):
             return None
 
     monkeypatch.setattr(app_analysis, "ASTCache", FakeCache)
@@ -327,21 +328,21 @@ def test_load_project_ast_only_refresh_skips_project_merge_and_save(monkeypatch)
     )
 
     class FakeLoader:
-        def __init__(self, **kwargs):
-            loader_calls.append(kwargs)
+        def __init__(self, config, *, runtime=None, dependencies=None):
+            loader_calls.append({"config": config, "runtime": runtime, "dependencies": dependencies})
 
         def resolve(self, target_name, strict=False):
             assert target_name == "TargetA"
             assert strict is False
             return graph
 
-        def _find_deps_with_context(self, target_name, requester_dir):
+        def find_dependency_path(self, target_name, *, requester_dir):
             return None
 
-        def _read_deps(self, deps_path):
+        def read_dependency_names(self, deps_path):
             return []
 
-        def _flush_lookup_cache(self):
+        def flush_lookup_cache(self):
             return None
 
     monkeypatch.setattr(app_analysis, "ASTCache", FakeCache)
@@ -370,8 +371,8 @@ def test_load_project_ast_only_refresh_skips_project_merge_and_save(monkeypatch)
     )
 
     assert result == (root_bp, graph)
-    assert loader_calls[0]["refresh_mode"] == "ast-only"
-    assert loader_calls[0]["use_file_ast_cache"] is False
+    assert loader_calls[0]["config"].refresh_mode == "ast-only"
+    assert loader_calls[0]["config"].use_file_ast_cache is False
 
 
 @pytest.mark.parametrize(
@@ -426,8 +427,10 @@ def test_load_project_saves_full_mode_file_family_in_cache_manifest(
             save_calls.append((key, kwargs))
 
     class FakeLoader:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
+        def __init__(self, config, *, runtime=None, dependencies=None):
+            self.config = config
+            self.runtime = runtime
+            self.dependencies = dependencies
 
         def resolve(self, target_name, strict=False):
             assert target_name == "TargetA"
@@ -439,16 +442,16 @@ def test_load_project_saves_full_mode_file_family_in_cache_manifest(
                 source_files={code_path},
             )
 
-        def _find_deps_with_context(self, target_name, requester_dir):
+        def find_dependency_path(self, target_name, *, requester_dir):
             assert target_name == "TargetA"
             assert requester_dir == programs_dir
             return deps_path
 
-        def _read_deps(self, found_deps_path):
+        def read_dependency_names(self, found_deps_path):
             assert found_deps_path == deps_path
             return ["Dependency"]
 
-        def _flush_lookup_cache(self):
+        def flush_lookup_cache(self):
             return None
 
     monkeypatch.setattr(app_analysis, "ASTCache", FakeCache)
@@ -507,25 +510,35 @@ def test_load_project_raises_target_load_error_when_root_program_missing(monkeyp
             pytest.fail("cache should not be saved when root program is missing")
 
     class FakeLoader:
-        def __init__(self, **kwargs):
-            loader_kwargs.update(kwargs)
-            self.kwargs = kwargs
+        def __init__(self, config, *, runtime=None, dependencies=None):
+            loader_kwargs.update(
+                {
+                    "config": config,
+                    "runtime": runtime,
+                    "dependencies": dependencies,
+                    "status_update_fn": None if runtime is None else runtime.status_update_fn,
+                }
+            )
+            self.config = config
+            self.runtime = runtime
+            self.dependencies = dependencies
 
         def resolve(self, target_name, strict=False):
             return SimpleNamespace(
                 ast_by_name={"Dependency": "bp-dependency"},
                 missing=["dep parse error"],
                 warnings=["dep warning"],
+                failures={"dep": ProjectFailure("dep", "dep parse error", line=9, column=3)},
                 source_files={Path("programs/Dependency.s")},
             )
 
-        def _find_deps_with_context(self, target_name, requester_dir):
+        def find_dependency_path(self, target_name, *, requester_dir):
             return Path("programs/TargetA.l")
 
-        def _read_deps(self, deps_path):
+        def read_dependency_names(self, deps_path):
             return ["Dependency"]
 
-        def _flush_lookup_cache(self):
+        def flush_lookup_cache(self):
             return None
 
     captured: dict[str, object] = {}
@@ -558,19 +571,22 @@ def test_load_project_raises_target_load_error_when_root_program_missing(monkeyp
         "missing": ["dep parse error"],
         "warnings": ["dep warning"],
         "direct_dependencies": ["Dependency"],
+        "failures": {"dep": ProjectFailure("dep", "dep parse error", line=9, column=3)},
     }
     assert callable(loader_kwargs.get("status_update_fn"))
 
 
 def test_load_program_ast_raises_when_program_was_not_parsed(monkeypatch):
     class FakeLoader:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
+        def __init__(self, config, *, runtime=None, dependencies=None):
+            self.config = config
+            self.runtime = runtime
+            self.dependencies = dependencies
 
         def resolve(self, program_name, strict=False):
             return SimpleNamespace(ast_by_name={"Other": "bp-other"})
 
-        def _flush_lookup_cache(self):
+        def flush_lookup_cache(self):
             return None
 
     monkeypatch.setattr(app_analysis.engine_module, "SattLineProjectLoader", FakeLoader)
@@ -630,8 +646,10 @@ def test_load_project_library_target_includes_configured_reverse_consumers(monke
     root_bp = named_object("LibraryTarget", origin_file="LibraryTarget.s")
 
     class FakeLoader:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
+        def __init__(self, config, *, runtime=None, dependencies=None):
+            self.config = config
+            self.runtime = runtime
+            self.dependencies = dependencies
 
         def resolve(self, target_name, strict=False):
             assert target_name == "LibraryTarget"
@@ -643,7 +661,7 @@ def test_load_project_library_target_includes_configured_reverse_consumers(monke
                 source_files={Path("ProjectLib/LibraryTarget.s")},
             )
 
-        def _find_deps_with_context(self, target_name, requester_dir):
+        def find_dependency_path(self, target_name, *, requester_dir):
             mapping = {
                 "LibraryTarget": None,
                 "ConsumerTarget": Path("ProjectLib/ConsumerTarget.l"),
@@ -651,19 +669,19 @@ def test_load_project_library_target_includes_configured_reverse_consumers(monke
             }
             return mapping.get(target_name)
 
-        def _read_deps(self, deps_path):
+        def read_dependency_names(self, deps_path):
             if deps_path == Path("ProjectLib/ConsumerTarget.l"):
                 return ["LibraryTarget"]
             if deps_path == Path("programs/OtherTarget.l"):
                 return ["Elsewhere"]
             return []
 
-        def _visit(self, name, graph, strict, *, requester_dir, syntax_check=False):
-            visit_calls.append((name, requester_dir, syntax_check))
-            graph.ast_by_name[name] = named_object(name)
-            graph.source_files.add(Path(f"ProjectLib/{name}.s"))
+        def visit_target(self, target_name, graph, syntax_only, *, requester_dir, syntax_check=False):
+            visit_calls.append((target_name, requester_dir, syntax_check))
+            graph.ast_by_name[target_name] = named_object(target_name)
+            graph.source_files.add(Path(f"ProjectLib/{target_name}.s"))
 
-        def _flush_lookup_cache(self):
+        def flush_lookup_cache(self):
             return None
 
     monkeypatch.setattr(app_analysis, "ASTCache", FakeCache)
@@ -727,8 +745,10 @@ def test_load_project_library_target_includes_workspace_reverse_consumers(monkey
     root_bp = named_object("LibraryTarget", origin_file="LibraryTarget.s")
 
     class FakeLoader:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
+        def __init__(self, config, *, runtime=None, dependencies=None):
+            self.config = config
+            self.runtime = runtime
+            self.dependencies = dependencies
 
         def resolve(self, target_name, strict=False):
             assert target_name == "LibraryTarget"
@@ -740,20 +760,20 @@ def test_load_project_library_target_includes_workspace_reverse_consumers(monkey
                 source_files={project_lib_dir / "LibraryTarget.s"},
             )
 
-        def _find_deps_with_context(self, target_name, requester_dir):
+        def find_dependency_path(self, target_name, *, requester_dir):
             if target_name == "LibraryTarget":
                 return None
             return requester_dir / f"{target_name}.l"
 
-        def _read_deps(self, deps_path):
+        def read_dependency_names(self, deps_path):
             return [line.strip() for line in deps_path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
-        def _visit(self, name, graph, strict, *, requester_dir, syntax_check=False):
-            visit_calls.append((name, requester_dir, syntax_check))
-            graph.ast_by_name[name] = named_object(name)
-            graph.source_files.add(requester_dir / f"{name}.s")
+        def visit_target(self, target_name, graph, syntax_only, *, requester_dir, syntax_check=False):
+            visit_calls.append((target_name, requester_dir, syntax_check))
+            graph.ast_by_name[target_name] = named_object(target_name)
+            graph.source_files.add(requester_dir / f"{target_name}.s")
 
-        def _flush_lookup_cache(self):
+        def flush_lookup_cache(self):
             return None
 
     monkeypatch.setattr(app_analysis, "ASTCache", FakeCache)
@@ -865,8 +885,10 @@ def test_load_project_library_target_workspace_program_usage_suppresses_unused_d
             assert key == "cache-key"
 
     class FakeLoader:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
+        def __init__(self, config, *, runtime=None, dependencies=None):
+            self.config = config
+            self.runtime = runtime
+            self.dependencies = dependencies
 
         def resolve(self, target_name, strict=False):
             assert target_name == "LibraryTarget"
@@ -878,20 +900,20 @@ def test_load_project_library_target_workspace_program_usage_suppresses_unused_d
                 source_files={project_lib_dir / "LibraryTarget.s"},
             )
 
-        def _find_deps_with_context(self, target_name, requester_dir):
+        def find_dependency_path(self, target_name, *, requester_dir):
             if target_name == "LibraryTarget":
                 return None
             return requester_dir / f"{target_name}.l"
 
-        def _read_deps(self, deps_path):
+        def read_dependency_names(self, deps_path):
             return [line.strip() for line in deps_path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
-        def _visit(self, name, graph, strict, *, requester_dir, syntax_check=False):
-            assert name == "ProgramConsumer"
-            graph.ast_by_name[name] = program_bp
-            graph.source_files.add(requester_dir / f"{name}.s")
+        def visit_target(self, target_name, graph, syntax_only, *, requester_dir, syntax_check=False):
+            assert target_name == "ProgramConsumer"
+            graph.ast_by_name[target_name] = program_bp
+            graph.source_files.add(requester_dir / f"{target_name}.s")
 
-        def _flush_lookup_cache(self):
+        def flush_lookup_cache(self):
             return None
 
     def _merge_project_basepicture(bp, graph):
@@ -1023,16 +1045,17 @@ def test_force_refresh_ast_emits_stage_timing_summary_in_debug_mode(monkeypatch)
     assert result == ("bp", graph)
 
 
-def test_refresh_analysis_caches_clears_report_cache_before_ast_refresh():
+def test_refresh_analysis_caches_clears_all_caches_before_ast_refresh():
     lines: list[str] = []
     refresh_calls: list[dict[str, object]] = []
+    seen_cache_dirs: list[Path] = []
 
-    class FakeReportCache:
-        def __init__(self, cache_dir):
-            self.cache_dir = cache_dir
+    class FakeCacheManager:
+        def __init__(self, cache_dir: Path):
+            seen_cache_dirs.append(cache_dir)
 
         def clear_all(self):
-            return 3
+            return SimpleNamespace(removed_entries=6)
 
     def fake_force_refresh_ast(cfg: Any) -> Any:
         refresh_calls.append(dict(cfg))
@@ -1041,12 +1064,13 @@ def test_refresh_analysis_caches_clears_report_cache_before_ast_refresh():
     result = app_analysis.refresh_analysis_caches(
         {"analyzed_programs_and_libraries": ["TargetA"]},
         force_refresh_ast_fn=fake_force_refresh_ast,
-        analysis_report_cache_cls=cast(Any, FakeReportCache),
         get_cache_dir_fn=lambda: Path("cache-dir"),
+        get_cache_manager_fn=cast(Any, FakeCacheManager),
         emit_output_fn=lambda message: lines.append(str(message)),
     )
 
-    assert lines == ["Cleared cached analysis reports (3 entries)."]
+    assert seen_cache_dirs == [Path("cache-dir")]
+    assert lines == ["Cleared all caches (6 entries)."]
     assert refresh_calls == [{"analyzed_programs_and_libraries": ["TargetA"]}]
     assert result == ("bp", "graph")
 

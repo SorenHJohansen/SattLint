@@ -8,8 +8,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypeGuard, cast
 
+from . import _config_paths as _config_paths_module
 from ._config_defaults import (
     DEFAULT_CONFIG,
+    VALID_TOP_LEVEL_CONFIG_KEYS,
 )
 from ._config_defaults import (
     DOCUMENTATION_CATEGORY_KEYS as _DOCUMENTATION_CATEGORY_KEYS,
@@ -29,17 +31,16 @@ from ._config_defaults import (
 from ._config_defaults import (
     NAMING_STYLE_KEYS as _NAMING_STYLE_KEYS,
 )
+from .config_types import (
+    ConfigDict,
+    ConfigObjectMap,
+    ConfigOverrideDict,
+    DocumentationConfig,
+    DocumentationConfigOverride,
+)
 from .types import TargetName
 
-type ConfigDict = dict[str, object]
-
-
-VALID_TOP_LEVEL_KEYS = frozenset(
-    {
-        *DEFAULT_CONFIG,
-        "ignore_ABB_lib",
-    }
-)
+VALID_TOP_LEVEL_KEYS = VALID_TOP_LEVEL_CONFIG_KEYS
 
 VALID_ANALYSIS_KEYS = frozenset({"sfc", "naming", "rule_profiles"})
 VALID_TELEMETRY_KEYS = frozenset({"enabled"})
@@ -65,14 +66,14 @@ class ConfigValidationResult:
         }
 
 
-def _is_config_dict(value: object) -> TypeGuard[ConfigDict]:
+def _is_config_dict(value: object) -> TypeGuard[ConfigObjectMap]:
     if not isinstance(value, dict):
         return False
     typed_value = cast(dict[object, object], value)
     return all(isinstance(key, str) for key in typed_value)
 
 
-def _config_dict(value: object) -> ConfigDict | None:
+def _config_dict(value: object) -> ConfigObjectMap | None:
     return value if _is_config_dict(value) else None
 
 
@@ -93,7 +94,7 @@ def _string_list(value: object) -> list[str] | None:
     return [item for item in items if isinstance(item, str)]
 
 
-def _deep_merge_dict(base: ConfigDict, override: ConfigDict) -> ConfigDict:
+def _deep_merge_dict(base: ConfigObjectMap, override: ConfigObjectMap) -> ConfigObjectMap:
     merged = deepcopy(base)
     for key, value in override.items():
         nested_override = _config_dict(value)
@@ -105,15 +106,67 @@ def _deep_merge_dict(base: ConfigDict, override: ConfigDict) -> ConfigDict:
     return merged
 
 
-def _normalize_documentation_rule_keys(config: dict[str, Any]) -> dict[str, Any]:
-    normalized = deepcopy(cast(ConfigDict, config))
+def _load_time_config_warnings(cfg: ConfigOverrideDict) -> tuple[ConfigValidationError, ...]:
+    warnings: list[ConfigValidationError] = []
+
+    if "ignore_ABB_lib" in cfg:
+        warnings.append(
+            ConfigValidationError(
+                key_path="ignore_ABB_lib",
+                message="ignore_ABB_lib is no longer supported and has no effect.",
+            )
+        )
+
+    telemetry = _config_dict(cfg.get("telemetry"))
+    if telemetry is not None and "path" in telemetry:
+        warnings.append(
+            ConfigValidationError(
+                key_path="telemetry.path",
+                message="telemetry.path is deprecated and ignored when building the effective config.",
+            )
+        )
+
+    documentation = _config_dict(cfg.get("documentation"))
+    classifications = None if documentation is None else _config_dict(documentation.get("classifications"))
+    if classifications is None:
+        return tuple(warnings)
+
+    for legacy_key, short_key in _DOCUMENTATION_LEGACY_CATEGORY_KEYS.items():
+        if legacy_key not in classifications:
+            continue
+        warnings.append(
+            ConfigValidationError(
+                key_path=f"documentation.classifications.{legacy_key}",
+                message=(f"Legacy documentation category '{legacy_key}' is deprecated; use '{short_key}' instead."),
+            )
+        )
+
+    for category, rule_value in classifications.items():
+        rule = _config_dict(rule_value)
+        if rule is None:
+            continue
+        for legacy_key, short_key in _DOCUMENTATION_LEGACY_RULE_KEYS.items():
+            if legacy_key not in rule:
+                continue
+            warnings.append(
+                ConfigValidationError(
+                    key_path=f"documentation.classifications.{category}.{legacy_key}",
+                    message=f"Legacy documentation rule '{legacy_key}' is deprecated; use '{short_key}' instead.",
+                )
+            )
+
+    return tuple(warnings)
+
+
+def _normalize_documentation_rule_keys(config: ConfigOverrideDict) -> ConfigOverrideDict:
+    normalized = deepcopy(cast(ConfigObjectMap, config))
     documentation = _config_dict(normalized.get("documentation"))
     if documentation is None:
-        return cast(dict[str, Any], normalized)
+        return cast(ConfigOverrideDict, normalized)
 
     classifications = _config_dict(documentation.get("classifications"))
     if classifications is None:
-        return cast(dict[str, Any], normalized)
+        return cast(ConfigOverrideDict, normalized)
 
     for legacy_key, short_key in _DOCUMENTATION_LEGACY_CATEGORY_KEYS.items():
         if legacy_key not in classifications:
@@ -135,19 +188,26 @@ def _normalize_documentation_rule_keys(config: dict[str, Any]) -> dict[str, Any]
                 continue
             rule[short_key] = legacy_values
 
-    return cast(dict[str, Any], normalized)
+    return cast(ConfigOverrideDict, normalized)
 
 
-def get_documentation_config(cfg: dict[str, Any] | None = None) -> dict[str, Any]:
-    documentation_defaults = deepcopy(cast(ConfigDict, DEFAULT_CONFIG["documentation"]))
+def get_documentation_config(
+    cfg: ConfigDict
+    | ConfigOverrideDict
+    | DocumentationConfig
+    | DocumentationConfigOverride
+    | ConfigObjectMap
+    | None = None,
+) -> DocumentationConfig:
+    documentation_defaults = deepcopy(DEFAULT_CONFIG["documentation"])
     if not cfg:
-        return cast(dict[str, Any], documentation_defaults)
+        return documentation_defaults
 
-    normalized_cfg = cast(ConfigDict, _normalize_documentation_rule_keys(cfg))
+    normalized_cfg = _normalize_documentation_rule_keys(cast(ConfigOverrideDict, cfg))
 
     documentation_override = _config_dict(normalized_cfg.get("documentation"))
-    override = documentation_override if documentation_override is not None else normalized_cfg
-    return cast(dict[str, Any], _deep_merge_dict(documentation_defaults, override))
+    override = documentation_override if documentation_override is not None else cast(ConfigObjectMap, normalized_cfg)
+    return cast(DocumentationConfig, _deep_merge_dict(cast(ConfigObjectMap, documentation_defaults), override))
 
 
 def _build_validation_result(errors: list[ConfigValidationError]) -> ConfigValidationResult:
@@ -170,11 +230,10 @@ def _merge_validation_results(*results: ConfigValidationResult) -> ConfigValidat
     return _build_validation_result(merged_errors)
 
 
-def _configured_targets(cfg: dict[str, Any]) -> tuple[TargetName, ...]:
-    typed_cfg = cast(ConfigDict, cfg)
+def _configured_targets(cfg: ConfigDict | ConfigOverrideDict) -> tuple[TargetName, ...]:
     return tuple(
         TargetName(normalized)
-        for raw_target in _object_list(typed_cfg.get("analyzed_programs_and_libraries", []))
+        for raw_target in _object_list(cfg.get("analyzed_programs_and_libraries", []))
         if (normalized := str(raw_target).strip())
     )
 
@@ -190,13 +249,35 @@ normalize_documentation_rule_keys = _normalize_documentation_rule_keys
 configured_targets = _configured_targets
 validation_errors_by_key = _validation_errors_by_key
 deep_merge_dict = _deep_merge_dict
+load_time_config_warnings = _load_time_config_warnings
 
 
-def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:  # noqa: PLR0915
+def _none_value_errors(value: object, *, key_path: str) -> list[ConfigValidationError]:
+    if value is None:
+        return [
+            ConfigValidationError(
+                key_path=key_path,
+                message=f"{key_path} must not be null/None",
+            )
+        ]
+
     errors: list[ConfigValidationError] = []
-    typed_cfg = cast(ConfigDict, cfg)
+    nested_dict = _config_dict(value)
+    if nested_dict is not None:
+        for nested_key, nested_value in nested_dict.items():
+            errors.extend(_none_value_errors(nested_value, key_path=f"{key_path}.{nested_key}"))
+        return errors
 
-    for key in typed_cfg:
+    if isinstance(value, (list, tuple)):
+        for index, item in enumerate(cast(list[object] | tuple[object, ...], value)):
+            errors.extend(_none_value_errors(item, key_path=f"{key_path}[{index}]"))
+    return errors
+
+
+def validate_config(cfg: ConfigDict | ConfigOverrideDict) -> ConfigValidationResult:  # noqa: PLR0915
+    errors: list[ConfigValidationError] = []
+
+    for key, value in cast(ConfigObjectMap, cfg).items():
         if key not in VALID_TOP_LEVEL_KEYS:
             errors.append(
                 ConfigValidationError(
@@ -204,8 +285,9 @@ def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:  # noqa: PLR
                     message=f"Unknown config key '{key}'. Expected one of: {', '.join(sorted(VALID_TOP_LEVEL_KEYS))}",
                 )
             )
+        errors.extend(_none_value_errors(value, key_path=key))
 
-    mode = typed_cfg.get("mode")
+    mode = cfg.get("mode")
     if mode is not None and mode not in {"official", "draft"}:
         errors.append(
             ConfigValidationError(
@@ -214,7 +296,7 @@ def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:  # noqa: PLR
             )
         )
 
-    telemetry_value = typed_cfg.get("telemetry")
+    telemetry_value = cfg.get("telemetry")
     telemetry = _config_dict(telemetry_value)
     if telemetry_value is not None and telemetry is None:
         errors.append(
@@ -242,7 +324,7 @@ def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:  # noqa: PLR
                 )
             )
 
-    analysis_value = typed_cfg.get("analysis")
+    analysis_value = cfg.get("analysis")
     analysis = _config_dict(analysis_value)
     if analysis_value is not None and analysis is None:
         errors.append(
@@ -367,7 +449,7 @@ def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:  # noqa: PLR
                 )
             )
 
-    documentation_value = typed_cfg.get("documentation")
+    documentation_value = cfg.get("documentation")
     documentation = _config_dict(documentation_value)
     if documentation_value is not None and documentation is None:
         errors.append(
@@ -417,20 +499,19 @@ def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:  # noqa: PLR
     return _build_validation_result(errors)
 
 
-def target_exists(target: str, cfg: dict[str, Any]) -> bool:
-    typed_cfg = cast(ConfigDict, cfg)
-    other_lib_dirs = _object_list(typed_cfg.get("other_lib_dirs", []))
+def target_exists(target: str, cfg: ConfigDict | ConfigOverrideDict) -> bool:
+    other_lib_dirs = _object_list(cfg.get("other_lib_dirs", []))
     dirs = [
         Path(str(raw_path))
         for raw_path in (
-            typed_cfg.get("program_dir", ""),
-            typed_cfg.get("ABB_lib_dir", ""),
+            cfg.get("program_dir", ""),
+            cfg.get("ABB_lib_dir", ""),
             *other_lib_dirs,
         )
         if str(raw_path).strip()
     ]
 
-    mode = str(typed_cfg.get("mode", "official")).strip().lower()
+    mode = str(cfg.get("mode", "official")).strip().lower()
     extensions = [".s", ".x"] if mode == "draft" else [".x"]
 
     for directory in dirs:
@@ -443,12 +524,11 @@ def target_exists(target: str, cfg: dict[str, Any]) -> bool:
     return False
 
 
-def validate_loaded_config(cfg: dict[str, Any]) -> ConfigValidationResult:
+def validate_loaded_config(cfg: ConfigDict) -> ConfigValidationResult:
     errors: list[ConfigValidationError] = []
-    typed_cfg = cast(ConfigDict, cfg)
 
     for name in ("program_dir", "ABB_lib_dir", "icf_dir"):
-        raw = str(typed_cfg.get(name, "")).strip()
+        raw = str(cfg.get(name, "")).strip()
         if not raw:
             continue
         path = Path(raw)
@@ -468,7 +548,7 @@ def validate_loaded_config(cfg: dict[str, Any]) -> ConfigValidationResult:
                 )
             )
 
-    for index, raw_path in enumerate(_object_list(typed_cfg.get("other_lib_dirs", []))):
+    for index, raw_path in enumerate(_object_list(cfg.get("other_lib_dirs", []))):
         path = Path(str(raw_path))
         if path.exists():
             continue
@@ -489,15 +569,13 @@ def validate_loaded_config(cfg: dict[str, Any]) -> ConfigValidationResult:
             )
         )
 
-    from . import config as config_module  # noqa: PLC0415
-
-    graphics_rules_path = config_module.get_graphics_rules_path()
+    graphics_rules_path = _config_paths_module.get_graphics_rules_path()
     if graphics_rules_path.exists():
         from . import graphics_rules as graphics_rules_module  # noqa: PLC0415
 
         try:
             graphics_rules_module.load_graphics_rules(graphics_rules_path)
-        except Exception as exc:  # noqa: BLE001
+        except (OSError, RuntimeError, ValueError) as exc:
             errors.append(
                 ConfigValidationError(
                     key_path="graphics_rules_path",
@@ -508,5 +586,5 @@ def validate_loaded_config(cfg: dict[str, Any]) -> ConfigValidationResult:
     return _build_validation_result(errors)
 
 
-def validate_effective_config(cfg: dict[str, Any]) -> ConfigValidationResult:
+def validate_effective_config(cfg: ConfigDict) -> ConfigValidationResult:
     return _merge_validation_results(validate_config(cfg), validate_loaded_config(cfg))

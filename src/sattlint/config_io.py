@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import re
 import tomllib
 from copy import deepcopy
 from pathlib import Path
@@ -11,112 +9,87 @@ from typing import Any, cast
 
 import tomli_w
 
+from . import _config_paths as _config_paths_module
 from . import console as console_module
-from .config_validation import DEFAULT_CONFIG, deep_merge_dict, normalize_documentation_rule_keys, validate_config
+from .config_types import ConfigDict, ConfigObjectMap, ConfigOverrideDict
+from .config_validation import (
+    DEFAULT_CONFIG,
+    deep_merge_dict,
+    load_time_config_warnings,
+    normalize_documentation_rule_keys,
+    validate_effective_config,
+)
 
 emit_output = console_module.print_output
 
 
-def _strip_legacy_telemetry_path(existing_text: str) -> str:
-    lines = existing_text.splitlines()
-    if not lines:
-        return existing_text
-
-    normalized_lines: list[str] = []
-    in_telemetry = False
-    removed = False
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("[") and stripped.endswith("]"):
-            in_telemetry = stripped == "[telemetry]"
-        elif in_telemetry and re.fullmatch(r"path\s*=\s*.*", stripped):
-            removed = True
-            continue
-        normalized_lines.append(line)
-
-    if not removed:
-        return existing_text
-
-    normalized_text = "\n".join(normalized_lines)
-    if existing_text.endswith("\n"):
-        normalized_text += "\n"
-    return normalized_text
+def _merged_effective_config(cfg: ConfigDict | ConfigOverrideDict) -> ConfigDict:
+    merged = deep_merge_dict(cast(ConfigObjectMap, deepcopy(DEFAULT_CONFIG)), cast(ConfigObjectMap, cfg))
+    merged.pop("ignore_ABB_lib", None)
+    return cast(ConfigDict, merged)
 
 
-def _normalize_telemetry_section(path: Path, cfg: dict[str, Any]) -> dict[str, Any]:
-    existing_text = path.read_text(encoding="utf-8")
-    normalized_text = _strip_legacy_telemetry_path(existing_text)
+def _validation_messages(cfg: ConfigDict | ConfigOverrideDict) -> tuple[str, ...]:
+    validation = validate_effective_config(_merged_effective_config(cfg))
+    return tuple(f"[{error.key_path}] {error.message}" for error in validation.errors)
 
-    if "telemetry" not in cfg:
-        telemetry_block = "[telemetry]\nenabled = false\n"
-        separator = ""
-        if normalized_text:
-            separator = "\n\n" if not normalized_text.endswith("\n") else "\n"
-        path.write_text(f"{normalized_text}{separator}{telemetry_block}", encoding="utf-8")
 
-        merged_cfg = dict(cfg)
-        merged_cfg["telemetry"] = deepcopy(cast(dict[str, Any], DEFAULT_CONFIG["telemetry"]))
-        return merged_cfg
-
-    if normalized_text != existing_text:
-        path.write_text(normalized_text, encoding="utf-8")
-
+def _normalize_telemetry_section(cfg: ConfigOverrideDict) -> ConfigOverrideDict:
     telemetry = cfg.get("telemetry")
     if not isinstance(telemetry, dict) or "path" not in telemetry:
         return cfg
 
-    merged_cfg = dict(cfg)
+    merged_cfg = dict(cast(ConfigObjectMap, cfg))
     normalized_telemetry = dict(cast(dict[str, Any], telemetry))
     normalized_telemetry.pop("path", None)
     merged_cfg["telemetry"] = normalized_telemetry
-    return merged_cfg
+    return cast(ConfigOverrideDict, merged_cfg)
 
 
 def get_config_path() -> Path:
-    if os.name == "nt":
-        base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-    else:
-        base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-
-    cfg_dir = base / "sattlint"
-    cfg_dir.mkdir(parents=True, exist_ok=True)
-    return cfg_dir / "config.toml"
+    return _config_paths_module.get_config_path()
 
 
 def get_graphics_rules_path(config_path: Path | None = None) -> Path:
-    resolved_config_path = config_path or get_config_path()
-    return resolved_config_path.with_name("graphics_rules.json")
+    return _config_paths_module.get_graphics_rules_path(config_path)
 
 
-def load_config(path: Path) -> tuple[dict[str, Any], bool]:
+def load_config(path: Path) -> tuple[ConfigDict, bool]:
     if not path.exists():
         emit_output(f"⚠ No config found, creating default: {path}")
-        cfg = deepcopy(DEFAULT_CONFIG)
+        cfg = cast(ConfigDict, deepcopy(DEFAULT_CONFIG))
         save_config(path, cfg)
         return cfg, True
 
     with path.open("rb") as file_handle:
-        cfg = tomllib.load(file_handle)
+        cfg = cast(ConfigOverrideDict, tomllib.load(file_handle))
 
-    cfg = _normalize_telemetry_section(path, cfg)
+    for warning in load_time_config_warnings(cfg):
+        emit_output(f"⚠ Config warning [{warning.key_path}]: {warning.message}")
 
     cfg = normalize_documentation_rule_keys(cfg)
+    normalized_cfg = _normalize_telemetry_section(cfg)
 
-    validation = validate_config(cfg)
-    if not validation.passed:
-        for error in validation.errors:
-            emit_output(f"⚠ Config warning [{error.key_path}]: {error.message}")
+    for message in _validation_messages(normalized_cfg):
+        key_path, error_message = message.split("] ", maxsplit=1)
+        emit_output(f"⚠ Config warning {key_path}]: {error_message}")
 
-    merged = deep_merge_dict(DEFAULT_CONFIG, cfg)
-    merged.pop("ignore_ABB_lib", None)
-    return merged, False
+    return _merged_effective_config(normalized_cfg), False
 
 
-def save_config(path: Path, cfg: dict[str, Any]) -> None:
-    sanitized_cfg = deepcopy(cfg)
+def save_config(path: Path, cfg: ConfigDict | ConfigOverrideDict) -> None:
+    sanitized_cfg_obj = cast(object, deepcopy(cast(ConfigObjectMap, cfg)))
+    if not isinstance(sanitized_cfg_obj, dict):
+        raise ValueError("Config serialization must produce a table/object.")
+    sanitized_cfg: ConfigObjectMap = cast(ConfigObjectMap, sanitized_cfg_obj)
     telemetry = sanitized_cfg.get("telemetry")
     if isinstance(telemetry, dict):
         cast(dict[str, Any], telemetry).pop("path", None)
+
+    normalized_cfg = normalize_documentation_rule_keys(cast(ConfigOverrideDict, sanitized_cfg))
+    validation_messages = _validation_messages(normalized_cfg)
+    if validation_messages:
+        raise ValueError("Config validation failed: " + "; ".join(validation_messages))
 
     def normalize(value: object) -> object:
         if isinstance(value, Path):
@@ -132,9 +105,9 @@ def save_config(path: Path, cfg: dict[str, Any]) -> None:
             raise ValueError("Cannot serialize None to TOML. Provide a default value or omit the key.")
         return value
 
-    normalized_cfg = normalize(sanitized_cfg)
-    if not isinstance(normalized_cfg, dict):
+    serializable_cfg = normalize(normalized_cfg)
+    if not isinstance(serializable_cfg, dict):
         raise ValueError("Config serialization must produce a table/object.")
 
     with path.open("wb") as file_handle:
-        tomli_w.dump(cast(dict[str, Any], normalized_cfg), file_handle)
+        tomli_w.dump(cast(dict[str, Any], serializable_cfg), file_handle)

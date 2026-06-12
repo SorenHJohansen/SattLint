@@ -8,25 +8,53 @@ import traceback
 from collections.abc import Callable
 from contextlib import nullcontext, redirect_stdout
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import Any, Protocol, TypedDict, cast
 
+from .. import cli_output
 from ..__version__ import __version__
+from .._exit_codes import EXIT_SUCCESS, EXIT_USAGE_ERROR
+from ..cli_output import add_output_format_argument
+from ..config_types import ConfigDict
 from ..console import print_output
 
-EXIT_SUCCESS = 0
-EXIT_FAILURE = 1
-EXIT_USAGE_ERROR = 2
+_CONFIG_LOAD_EXCEPTIONS = (OSError, ValueError)
 
-ConfigDict = dict[str, Any]
 BuildCliParserFn = Callable[[], argparse.ArgumentParser]
-RunSyntaxCheckCommandFn = Callable[[str], int]
 LoadConfigFn = Callable[[Path], tuple[ConfigDict, bool]]
 ApplyDebugFn = Callable[[ConfigDict], None]
 AppCommandFn = Callable[..., int | None]
+RunParsedArgsCommandFn = Callable[[argparse.Namespace], int | None]
+
+
+class RunSyntaxCheckCommandFn(Protocol):
+    def __call__(self, file: str, *, output_format: str = "text") -> int: ...
+
+
+class CommandHandlers(TypedDict, total=False):
+    syntax_check: RunSyntaxCheckCommandFn
+    validate_config: AppCommandFn
+    analyze: AppCommandFn
+    simulate: AppCommandFn
+    docgen: AppCommandFn
+    cache_prune: AppCommandFn
+    telemetry_summary: AppCommandFn
+    format_icf: AppCommandFn
+    repo_audit: RunParsedArgsCommandFn
+    source_diff: RunParsedArgsCommandFn
+    trace: RunParsedArgsCommandFn
 
 
 def _load_devtools_module(module_name: str) -> Any:
     return importlib.import_module(f"sattlint.devtools.{module_name}")
+
+
+def _build_devtools_parent_parser(module_name: str, *, prog: str) -> argparse.ArgumentParser:
+    cli_module = _load_devtools_module(module_name)
+    return cast(argparse.ArgumentParser, cli_module.build_cli_parser(prog=prog, add_help=False))
+
+
+def _load_trace_module() -> Any:
+    return importlib.import_module("sattlint.tracing")
 
 
 class _ParsedCliArgs(Protocol):
@@ -57,11 +85,10 @@ def _exit_code(result: int | None, *, fallback: int) -> int:
     return fallback if result is None else result
 
 
-def _list_analyzer_keys() -> None:
+def _collect_analyzer_keys() -> tuple[str, ...]:
     from ..analyzers.registry import get_selectable_analyzers  # noqa: PLC0415
 
-    for spec in get_selectable_analyzers():
-        print_output(spec.key)
+    return tuple(spec.key for spec in get_selectable_analyzers())
 
 
 def _issue_kind_values() -> tuple[str, ...]:
@@ -70,9 +97,19 @@ def _issue_kind_values() -> tuple[str, ...]:
     return tuple(issue_kind.value for issue_kind in IssueKind)
 
 
-def _list_issue_kind_values() -> None:
-    for issue_kind in _issue_kind_values():
-        print_output(issue_kind)
+def _collect_issue_kind_values() -> tuple[str, ...]:
+    return _issue_kind_values()
+
+
+def _emit_value_list(*, values: tuple[str, ...], payload_key: str, output_format: str) -> None:
+    if output_format == "text" and not values:
+        return
+    cli_output.emit_text_or_json(
+        text="\n".join(values),
+        json_payload={payload_key: list(values)},
+        output_format="json" if output_format == "json" else "text",
+        emit_text_fn=print_output,
+    )
 
 
 def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
@@ -99,12 +136,14 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         description="Validate one SattLine source file and report a compact syntax or validation error.",
     )
     syntax_parser.add_argument("file", help="Path to the SattLine source file")
+    add_output_format_argument(syntax_parser)
 
-    subparsers.add_parser(
+    validate_config_parser = subparsers.add_parser(
         "validate-config",
         help="Validate the SattLint configuration file",
         description="Validate and report any issues with the current configuration.",
     )
+    add_output_format_argument(validate_config_parser)
 
     cache_prune_parser = subparsers.add_parser(
         "cache-prune",
@@ -149,6 +188,10 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         action="store_true",
         help="List available issue kind values for --issue-kind and exit",
     )
+    add_output_format_argument(
+        analyze_parser,
+        help_text="Output format for analyze list commands",
+    )
 
     simulate_parser = subparsers.add_parser(
         "simulate",
@@ -182,16 +225,17 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         help="Optional path to write the simulation output",
     )
 
-    subparsers.add_parser(
+    docgen_parser = subparsers.add_parser(
         "docgen",
         help="Generate DOCX documentation",
         description="Generate FS-style DOCX documentation for configured targets.",
-    ).add_argument(
+    )
+    docgen_parser.add_argument(
         "--output-dir",
         default=None,
         help="Directory to write generated DOCX files into",
     )
-    subparsers.choices["docgen"].add_argument(
+    docgen_parser.add_argument(
         "--output-path",
         default=None,
         help="Explicit DOCX file path for single-target generation",
@@ -228,23 +272,29 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         help="Optional path to write the telemetry summary",
     )
 
+    source_diff_parent = _build_devtools_parent_parser("source_diff_report", prog="sattlint source-diff")
     subparsers.add_parser(
         "source-diff",
+        parents=[source_diff_parent],
         help="Build a review-friendly report for draft .s versus official .x source pairs",
-        description=(
-            "Forward to the source diff reporting tool that compares one explicit draft and official "
-            "source pair or discovers same-basename .s/.x pairs under a workspace root."
-        ),
+        description=source_diff_parent.description,
     )
 
-    repo_audit_cli = _load_devtools_module("repo_audit_cli")
-
-    repo_audit_parent = repo_audit_cli.build_cli_parser(prog="sattlint repo-audit", add_help=False)
+    repo_audit_parent = _build_devtools_parent_parser("repo_audit_cli", prog="sattlint repo-audit")
     subparsers.add_parser(
         "repo-audit",
         parents=[repo_audit_parent],
         help="Run repository audit checks",
         description=repo_audit_parent.description,
+    )
+
+    trace_module = _load_trace_module()
+    trace_parent = cast(argparse.ArgumentParser, trace_module.build_cli_parser(prog="sattlint trace", add_help=False))
+    subparsers.add_parser(
+        "trace",
+        parents=[trace_parent],
+        help="Trace parser and analyzer execution for one source file",
+        description=trace_parent.description,
     )
 
     return parser
@@ -255,16 +305,9 @@ def run_cli(  # noqa: PLR0915
     *,
     config_path: Path,
     build_cli_parser_fn: BuildCliParserFn | None = None,
-    run_syntax_check_command_fn: RunSyntaxCheckCommandFn | None = None,
     load_config_fn: LoadConfigFn | None = None,
     apply_debug_fn: ApplyDebugFn | None = None,
-    run_validate_config_command_fn: AppCommandFn | None = None,
-    run_analyze_command_fn: AppCommandFn | None = None,
-    run_simulate_command_fn: AppCommandFn | None = None,
-    run_docgen_command_fn: AppCommandFn | None = None,
-    run_cache_prune_command_fn: AppCommandFn | None = None,
-    run_telemetry_summary_command_fn: AppCommandFn | None = None,
-    run_format_icf_command_fn: AppCommandFn | None = None,
+    command_handlers: CommandHandlers | None = None,
     exit_success: int = EXIT_SUCCESS,
     exit_usage_error: int = EXIT_USAGE_ERROR,
 ) -> int:
@@ -285,58 +328,88 @@ def run_cli(  # noqa: PLR0915
     quiet = args.quiet
     command = args.command
 
-    if command == "syntax-check":
-        if run_syntax_check_command_fn is None:
-            raise RuntimeError("syntax-check handler is required")
-        context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
-        with context:
-            return run_syntax_check_command_fn(args.file)
-
-    if command == "repo-audit":
-        repo_audit = _load_devtools_module("repo_audit")
-
-        try:
-            idx = next(i for i, arg in enumerate(argv) if arg == "repo-audit")
-            remaining = list(argv[idx + 1 :])
-        except StopIteration:
-            remaining = []
-        context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
-        with context:
-            return repo_audit.main(remaining) or exit_success
-
-    if command == "source-diff":
-        source_diff_report = _load_devtools_module("source_diff_report")
-
-        try:
-            idx = next(i for i, arg in enumerate(argv) if arg == "source-diff")
-            remaining = list(argv[idx + 1 :])
-        except StopIteration:
-            remaining = []
-        context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
-        with context:
-            return source_diff_report.main(remaining) or exit_success
-
     if leftover:
         print_output(f"sattlint: error: unrecognized arguments: {' '.join(leftover)}", file=sys.stderr)
         return exit_usage_error
 
+    if command == "syntax-check":
+        syntax_check_handler = None if command_handlers is None else command_handlers.get("syntax_check")
+        if syntax_check_handler is None:
+            raise RuntimeError("syntax-check handler is required")
+        context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
+        with context:
+            if getattr(args, "format", "text") == "json":
+                return syntax_check_handler(args.file, output_format="json")
+            return syntax_check_handler(args.file)
+
+    if command == "repo-audit":
+        repo_audit_handler = None if command_handlers is None else command_handlers.get("repo_audit")
+        if repo_audit_handler is None:
+            raise RuntimeError("repo-audit handler is required")
+        context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
+        try:
+            with context:
+                return _exit_code(
+                    repo_audit_handler(parsed_namespace),
+                    fallback=exit_success,
+                )
+        except SystemExit as exc:
+            return exc.code if isinstance(exc.code, int) else exit_usage_error
+
+    if command == "source-diff":
+        source_diff_handler = None if command_handlers is None else command_handlers.get("source_diff")
+        if source_diff_handler is None:
+            raise RuntimeError("source-diff handler is required")
+        context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
+        try:
+            with context:
+                return _exit_code(
+                    source_diff_handler(parsed_namespace),
+                    fallback=exit_success,
+                )
+        except SystemExit as exc:
+            return exc.code if isinstance(exc.code, int) else exit_usage_error
+
+    if command == "trace":
+        trace_handler = None if command_handlers is None else command_handlers.get("trace")
+        if trace_handler is None:
+            raise RuntimeError("trace handler is required")
+        context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
+        try:
+            with context:
+                return _exit_code(
+                    trace_handler(parsed_namespace),
+                    fallback=exit_success,
+                )
+        except SystemExit as exc:
+            return exc.code if isinstance(exc.code, int) else exit_usage_error
+
     if command == "analyze" and getattr(args, "list_checks", False):
         context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
         with context:
-            _list_analyzer_keys()
+            _emit_value_list(
+                values=_collect_analyzer_keys(),
+                payload_key="checks",
+                output_format=cli_output.resolve_output_format(args),
+            )
         return exit_success
 
     if command == "analyze" and getattr(args, "list_issue_kinds", False):
         context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
         with context:
-            _list_issue_kind_values()
+            _emit_value_list(
+                values=_collect_issue_kind_values(),
+                payload_key="issue_kinds",
+                output_format=cli_output.resolve_output_format(args),
+            )
         return exit_success
 
     if command == "telemetry-summary":
-        if run_telemetry_summary_command_fn is None:
+        telemetry_summary_handler = None if command_handlers is None else command_handlers.get("telemetry_summary")
+        if telemetry_summary_handler is None:
             raise RuntimeError("telemetry-summary handler is required")
         return _exit_code(
-            run_telemetry_summary_command_fn(
+            telemetry_summary_handler(
                 {},
                 config_path=resolved_config_path,
                 output_format=getattr(args, "format", "text"),
@@ -346,57 +419,65 @@ def run_cli(  # noqa: PLR0915
         )
 
     if command == "cache-prune":
-        if run_cache_prune_command_fn is None:
+        cache_prune_handler = None if command_handlers is None else command_handlers.get("cache_prune")
+        if cache_prune_handler is None:
             raise RuntimeError("cache-prune handler is required")
         return _exit_code(
-            run_cache_prune_command_fn(cache_dir=getattr(args, "cache_dir", None)),
+            cache_prune_handler(cache_dir=getattr(args, "cache_dir", None)),
             fallback=exit_success,
         )
 
     if command in ("validate-config", "analyze", "simulate", "docgen", "format-icf"):
         debug_requested = bool(getattr(args, "debug", False))
+        if load_config_fn is None or apply_debug_fn is None:
+            raise RuntimeError("CLI config handlers are required for this command")
         try:
-            if load_config_fn is None or apply_debug_fn is None:
-                raise RuntimeError("CLI config handlers are required for this command")
             cfg, default_used = load_config_fn(resolved_config_path)
-            debug_requested = debug_requested or bool(cfg.get("debug", False))
-            if getattr(args, "debug", False):
-                cfg["debug"] = True
-            apply_debug_fn(cfg)
-        except Exception as exc:  # noqa: BLE001
+        except _CONFIG_LOAD_EXCEPTIONS as exc:
             print_output(f"ERROR [config] {exc}", file=sys.stderr)
             if debug_requested:
                 traceback.print_exc(file=sys.stderr)
             return exit_usage_error
+        debug_requested = debug_requested or bool(cfg.get("debug", False))
+        if getattr(args, "debug", False):
+            cfg["debug"] = True
+        apply_debug_fn(cfg)
 
         if command == "validate-config":
-            if run_validate_config_command_fn is None:
+            validate_config_handler = None if command_handlers is None else command_handlers.get("validate_config")
+            if validate_config_handler is None:
                 raise RuntimeError("validate-config handler is required")
-            return _exit_code(
-                run_validate_config_command_fn(cfg, config_path=resolved_config_path, default_used=default_used),
-                fallback=exit_success,
-            )
+            validate_config_kwargs: dict[str, Any] = {
+                "config_path": resolved_config_path,
+                "default_used": default_used,
+            }
+            if getattr(args, "format", "text") == "json":
+                validate_config_kwargs["output_format"] = "json"
+            return _exit_code(validate_config_handler(cfg, **validate_config_kwargs), fallback=exit_success)
 
         if command == "analyze":
-            if run_analyze_command_fn is None:
+            analyze_handler = None if command_handlers is None else command_handlers.get("analyze")
+            if analyze_handler is None:
                 raise RuntimeError("analyze handler is required")
             selected_keys = args.checks or None
             selected_issue_kinds = frozenset(getattr(args, "issue_kinds", [])) or None
             return _exit_code(
-                run_analyze_command_fn(
+                analyze_handler(
                     cfg,
                     selected_keys=selected_keys,
                     selected_issue_kinds=selected_issue_kinds,
                     use_cache=use_cache,
+                    output_format=cli_output.resolve_output_format(args),
                 ),
                 fallback=exit_success,
             )
 
         if command == "simulate":
-            if run_simulate_command_fn is None:
+            simulate_handler = None if command_handlers is None else command_handlers.get("simulate")
+            if simulate_handler is None:
                 raise RuntimeError("simulate handler is required")
             return _exit_code(
-                run_simulate_command_fn(
+                simulate_handler(
                     cfg,
                     target_path=args.target_path,
                     module_name=args.module,
@@ -410,10 +491,11 @@ def run_cli(  # noqa: PLR0915
             )
 
         if command == "docgen":
-            if run_docgen_command_fn is None:
+            docgen_handler = None if command_handlers is None else command_handlers.get("docgen")
+            if docgen_handler is None:
                 raise RuntimeError("docgen handler is required")
             return _exit_code(
-                run_docgen_command_fn(
+                docgen_handler(
                     cfg,
                     use_cache=use_cache,
                     output_dir=getattr(args, "output_dir", None),
@@ -422,9 +504,10 @@ def run_cli(  # noqa: PLR0915
                 fallback=exit_success,
             )
 
-        if run_format_icf_command_fn is None:
+        format_icf_handler = None if command_handlers is None else command_handlers.get("format_icf")
+        if format_icf_handler is None:
             raise RuntimeError("format-icf handler is required")
-        return _exit_code(run_format_icf_command_fn(cfg, check=args.check), fallback=exit_success)
+        return _exit_code(format_icf_handler(cfg, check=args.check), fallback=exit_success)
 
     parser.print_usage(sys.stderr)
     return exit_usage_error

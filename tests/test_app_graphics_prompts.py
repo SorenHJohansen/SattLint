@@ -398,7 +398,7 @@ def test_app_graphics_optional_prompt_helpers(monkeypatch):
 
 
 def test_app_graphics_collect_layout_entries_and_menu_wrapper(monkeypatch, tmp_path):
-    from sattlint.devtools import structural_reports  # noqa: PLC0415
+    from sattlint.devtools.structural import structural_reports  # noqa: PLC0415
 
     cfg = app.DEFAULT_CONFIG.copy()
     project_bp = SimpleNamespace(name="BP")
