@@ -6,7 +6,7 @@ and layout specification.
 
 from __future__ import annotations
 
-from typing import Any, TypeGuard, cast
+from typing import Any, Protocol, TypeGuard, cast
 
 from lark import Token, Tree
 
@@ -19,18 +19,28 @@ CoordPair = tuple[float, float]
 CoordBox = tuple[CoordPair, CoordPair]
 
 
-def _coord_parts(owner: Any, items: list[TransformerItem]) -> tuple[list[object], list[object]]:
-    payloads, tails = owner._extract_coord_payloads(items)
-    return cast(list[object], list(payloads)), cast(list[object], list(tails))
+class _CoordOwner(Protocol):
+    def _extract_coord_payloads(self, items: list[TransformerItem]) -> tuple[list[object], list[object]]: ...
+
+    def _merge_tails(self, *tail_groups: list[object]) -> list[object]: ...
+
+    def _collect_invar_enable_tails(self, nodes: list[TransformerItem]) -> list[object]: ...
 
 
-def _merged_tails(owner: Any, items: list[TransformerItem], coord_tails: list[object]) -> list[object] | None:
-    return cast(list[object] | None, owner._merge_tails(coord_tails, owner._collect_invar_enable_tails(items)))
+def _coord_parts(owner: object, items: list[TransformerItem]) -> tuple[list[object], list[object]]:
+    typed_owner = cast(_CoordOwner, owner)
+    payloads, tails = typed_owner._extract_coord_payloads(items)  # pyright: ignore[reportPrivateUsage]
+    return list(payloads), list(tails)
+
+
+def _merged_tails(owner: object, items: list[TransformerItem], coord_tails: list[object]) -> list[object] | None:
+    typed_owner = cast(_CoordOwner, owner)
+    invar_enable_tails = typed_owner._collect_invar_enable_tails(items)  # pyright: ignore[reportPrivateUsage]
+    return typed_owner._merge_tails(coord_tails, invar_enable_tails)  # pyright: ignore[reportPrivateUsage]
 
 
 def _graph_properties(obj: GraphObject) -> dict[str, object]:
-    obj_any = cast(Any, obj)
-    return cast(dict[str, object], obj_any.properties)
+    return obj.properties
 
 
 def _procedure_payload(value: Any) -> dict[str, object] | None:
@@ -73,14 +83,14 @@ class _GraphicsInteractMixin:
         properties = _graph_properties(go)
 
         # Coordinates ((x,y),(w,h))
-        coord_payloads, coord_tails = _coord_parts(cast(Any, self), items)
+        coord_payloads, coord_tails = _coord_parts(self, items)
         for it in coord_payloads:
             if _is_coord_box(it):
                 properties[const.KEY_COORDS] = it
                 break
 
         # Collect tails (Enable_/InVar_ etc.) across the object
-        tails = _merged_tails(cast(Any, self), items, coord_tails)
+        tails = _merged_tails(self, items, coord_tails)
         if tails:
             properties[const.KEY_TAILS] = tails
 
@@ -124,12 +134,12 @@ class _GraphicsInteractMixin:
         """Grammar rectangle_object -> GraphObject (RECTANGLEOBJECT)."""
         go = GraphObject(const.GRAMMAR_VALUE_RECTANGLEOBJECT)
         properties = _graph_properties(go)
-        coord_payloads, coord_tails = _coord_parts(cast(Any, self), items)
+        coord_payloads, coord_tails = _coord_parts(self, items)
         for it in coord_payloads:
             if _is_coord_box(it):
                 properties[const.KEY_COORDS] = it
                 break
-        tails = _merged_tails(cast(Any, self), items, coord_tails)
+        tails = _merged_tails(self, items, coord_tails)
         if tails:
             properties[const.KEY_TAILS] = tails
         return go
@@ -138,12 +148,12 @@ class _GraphicsInteractMixin:
         """Grammar line_object -> GraphObject (LINEOBJECT)."""
         go = GraphObject(const.GRAMMAR_VALUE_LINEOBJECT)
         properties = _graph_properties(go)
-        coord_payloads, coord_tails = _coord_parts(cast(Any, self), items)
+        coord_payloads, coord_tails = _coord_parts(self, items)
         for it in coord_payloads:
             if _is_coord_box(it):
                 properties[const.KEY_COORDS] = it
                 break
-        tails = _merged_tails(cast(Any, self), items, coord_tails)
+        tails = _merged_tails(self, items, coord_tails)
         if tails:
             properties[const.KEY_TAILS] = tails
         return go
@@ -152,12 +162,12 @@ class _GraphicsInteractMixin:
         """Grammar oval_object -> GraphObject (OVALOBJECT)."""
         go = GraphObject(const.GRAMMAR_VALUE_OVALOBJECT)
         properties = _graph_properties(go)
-        coord_payloads, coord_tails = _coord_parts(cast(Any, self), items)
+        coord_payloads, coord_tails = _coord_parts(self, items)
         for it in coord_payloads:
             if _is_coord_box(it):
                 properties[const.KEY_COORDS] = it
                 break
-        tails = _merged_tails(cast(Any, self), items, coord_tails)
+        tails = _merged_tails(self, items, coord_tails)
         if tails:
             properties[const.KEY_TAILS] = tails
         return go
@@ -166,8 +176,8 @@ class _GraphicsInteractMixin:
         """Grammar polygon_object -> GraphObject (POLYGONOBJECT)."""
         go = GraphObject(const.GRAMMAR_VALUE_POLYGONOBJECT)
         properties = _graph_properties(go)
-        _coord_payloads, coord_tails = _coord_parts(cast(Any, self), items)
-        tails = _merged_tails(cast(Any, self), items, coord_tails)
+        _coord_payloads, coord_tails = _coord_parts(self, items)
+        tails = _merged_tails(self, items, coord_tails)
         if tails:
             properties[const.KEY_TAILS] = tails
         return go
@@ -176,12 +186,12 @@ class _GraphicsInteractMixin:
         """Grammar segment_object -> GraphObject (SEGMENTOBJECT)."""
         go = GraphObject(const.GRAMMAR_VALUE_SEGMENTOBJECT)
         properties = _graph_properties(go)
-        coord_payloads, coord_tails = _coord_parts(cast(Any, self), items)
+        coord_payloads, coord_tails = _coord_parts(self, items)
         for it in coord_payloads:
             if _is_coord_box(it):
                 properties[const.KEY_COORDS] = it
                 break
-        tails = _merged_tails(cast(Any, self), items, coord_tails)
+        tails = _merged_tails(self, items, coord_tails)
         if tails:
             properties[const.KEY_TAILS] = tails
         return go
@@ -190,8 +200,8 @@ class _GraphicsInteractMixin:
         """Grammar composite_object -> GraphObject (COMPOSITEOBJECT)."""
         go = GraphObject(const.GRAMMAR_VALUE_COMPOSITEOBJECT)
         properties = _graph_properties(go)
-        _coord_payloads, coord_tails = _coord_parts(cast(Any, self), items)
-        tails = _merged_tails(cast(Any, self), items, coord_tails)
+        _coord_payloads, coord_tails = _coord_parts(self, items)
+        tails = _merged_tails(self, items, coord_tails)
         if tails:
             properties[const.KEY_TAILS] = tails
         return go
@@ -237,7 +247,7 @@ class _GraphicsInteractMixin:
         props: dict[str, object] = {}
         coords: list[object] = []
         proc: dict[str, object] | None = None
-        _coord_payloads, coord_tails = _coord_parts(cast(Any, self), items)
+        _coord_payloads, coord_tails = _coord_parts(self, items)
         for it in items:
             if isinstance(it, tuple):
                 coords.append(cast(tuple[object, ...], it))
@@ -256,7 +266,7 @@ class _GraphicsInteractMixin:
         props[const.KEY_COORDS] = coords or None
         if proc:
             props[const.KEY_PROCEDURE] = proc
-        tails = _merged_tails(cast(Any, self), items, coord_tails)
+        tails = _merged_tails(self, items, coord_tails)
         if tails:
             props[const.KEY_TAILS] = tails
         return InteractObject(type=const.GRAMMAR_VALUE_COMBUTPROC, properties=props)
@@ -305,7 +315,7 @@ class _GraphicsInteractMixin:
         itype: str | None = None
         coords: list[object] = []
         body: list[object] = []
-        _coord_payloads, coord_tails = _coord_parts(cast(Any, self), items)
+        _coord_payloads, coord_tails = _coord_parts(self, items)
         for it in items:
             if isinstance(it, Token) and itype is None:
                 itype = it.value
@@ -321,7 +331,7 @@ class _GraphicsInteractMixin:
                 for child in cast(list[object], it):
                     body.append(child)
         props: dict[str, object] = {const.KEY_COORDS: coords or None, const.KEY_BODY: body or None}
-        tails = _merged_tails(cast(Any, self), items, coord_tails)
+        tails = _merged_tails(self, items, coord_tails)
         if tails:
             props[const.KEY_TAILS] = tails
         return InteractObject(type=itype or const.KEY_INTERACT, properties=props)

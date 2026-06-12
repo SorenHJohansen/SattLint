@@ -14,7 +14,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import Protocol, TypedDict, cast
 
 from openpyxl import Workbook
 from openpyxl.cell.cell import Cell
@@ -27,6 +27,10 @@ from openpyxl.worksheet.worksheet import Worksheet
 from sattline_parser.api import read_text_with_fallback
 
 log = logging.getLogger("SattLint")
+
+
+class _WorksheetCellTarget(Protocol):
+    def add(self, cell: Cell) -> None: ...
 
 
 class ProgramConfigEntry(TypedDict):
@@ -1048,7 +1052,7 @@ class ExcelGenerator:
 
             # Data validation
             dv = DataValidation(type="list", formula1="'System Components'!$B$2:$B$1000", allow_blank=True)
-            dv.add(sel_cell)
+            cast(_WorksheetCellTarget, dv).add(sel_cell)
             ws.add_data_validation(dv)
 
             # Show component type

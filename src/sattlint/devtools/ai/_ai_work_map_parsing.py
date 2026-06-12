@@ -114,15 +114,36 @@ def rewrite_exec_plan_references(
             path.write_text(updated, encoding="utf-8")
 
 
+def exec_plan_repo_root(active_dir: Path, completed_dir: Path) -> Path:
+    shared_plans_dir = active_dir.parent
+    if (
+        active_dir.name == "active"
+        and completed_dir.name == "completed"
+        and shared_plans_dir == completed_dir.parent
+        and shared_plans_dir.name == "exec-plans"
+        and shared_plans_dir.parent.name == "docs"
+    ):
+        return shared_plans_dir.parent.parent
+
+    shared_parts: list[str] = []
+    for active_part, completed_part in zip(active_dir.parts, completed_dir.parts, strict=False):
+        if active_part != completed_part:
+            break
+        shared_parts.append(active_part)
+
+    return Path(*shared_parts) if shared_parts else active_dir.parent
+
+
 def archive_completed_exec_plans(
     active_dir: Path,
     completed_dir: Path,
     *,
-    repo_root: Path,
+    repo_root: Path | None = None,
     is_completed_exec_plan: Callable[[Path], bool],
     rewrite_exec_plan_references: Callable[[list[dict[str, str]], Path], None],
 ) -> list[dict[str, str]]:
     archived: list[dict[str, str]] = []
+    resolved_repo_root = repo_root if repo_root is not None else exec_plan_repo_root(active_dir, completed_dir)
     completed_dir.mkdir(parents=True, exist_ok=True)
 
     for plan_path in sorted(active_dir.glob("*.md")):
@@ -134,12 +155,12 @@ def archive_completed_exec_plans(
         plan_path.replace(destination)
         archived.append(
             {
-                "from": plan_path.relative_to(repo_root).as_posix(),
-                "to": destination.relative_to(repo_root).as_posix(),
+                "from": plan_path.relative_to(resolved_repo_root).as_posix(),
+                "to": destination.relative_to(resolved_repo_root).as_posix(),
             }
         )
 
-    rewrite_exec_plan_references(archived, repo_root)
+    rewrite_exec_plan_references(archived, resolved_repo_root)
     return archived
 
 

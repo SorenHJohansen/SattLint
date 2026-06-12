@@ -10,9 +10,9 @@ from functools import lru_cache
 from hashlib import sha256
 from pathlib import Path
 from tempfile import gettempdir
-from typing import Any, cast
+from typing import Protocol, cast
 
-from lark import Lark
+from lark import Lark, Token, Tree
 from lark import __version__ as lark_version
 from lark.exceptions import UnexpectedCharacters, UnexpectedEOF, UnexpectedInput, UnexpectedToken
 
@@ -50,6 +50,15 @@ class ParseErrorDetails:
     message: str
     line: int | None = None
     column: int | None = None
+
+
+class _ParserProtocol(Protocol):
+    def parse(
+        self,
+        text: str,
+        start: str | None = None,
+        on_error: Callable[[UnexpectedInput], bool] | None = None,
+    ) -> Tree[Token]: ...
 
 
 @lru_cache(maxsize=1)
@@ -269,8 +278,9 @@ def parse_source_text(
     cleaned = stripped.text
     active_parser = parser if parser is not None else _default_parser()
     active_transformer = transformer if transformer is not None else SLTransformer()
+    parser_runner = cast(_ParserProtocol, active_parser)
     try:
-        tree = cast(Any, active_parser).parse(cleaned)
+        tree = parser_runner.parse(cleaned)
     except Exception as exc:
         if log_failures:
             _log_parser_failure(stage="parse", exc=exc, source_text=src, source_path=source_path)
@@ -280,7 +290,7 @@ def parse_source_text(
         debug("Parse OK, transforming with SLTransformer")
 
     try:
-        transformed = cast(Any, active_transformer).transform(tree)
+        transformed = active_transformer.transform(tree)
         if not isinstance(transformed, BasePicture):
             raise RuntimeError("Transform result is not BasePicture; check transformer.start()")
     except Exception as exc:

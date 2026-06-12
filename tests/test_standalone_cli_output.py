@@ -144,8 +144,8 @@ def test_release_smoke_supports_json_summary_output(monkeypatch, tmp_path):
         "overall_status": "pass",
         "failing_steps": [],
         "pending_steps": [],
-        "status_report": "artifacts/release-smoke/status.json",
-        "summary_report": "artifacts/release-smoke/summary.json",
+        "status_report": f"reports/{release_smoke.RELEASE_SMOKE_STATUS_FILENAME}",
+        "summary_report": f"reports/{release_smoke.RELEASE_SMOKE_SUMMARY_FILENAME}",
     }
     summary_report = {
         "kind": release_smoke.SUMMARY_SCHEMA_KIND,

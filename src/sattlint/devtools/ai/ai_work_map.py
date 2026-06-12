@@ -91,7 +91,6 @@ def archive_completed_exec_plans(
     return parsing_helpers.archive_completed_exec_plans(
         active_dir,
         completed_dir,
-        repo_root=REPO_ROOT,
         is_completed_exec_plan=_is_completed_exec_plan,
         rewrite_exec_plan_references=lambda archived, repo_root: _rewrite_exec_plan_references(
             archived,

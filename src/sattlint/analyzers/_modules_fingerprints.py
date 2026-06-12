@@ -215,9 +215,8 @@ def _hash_parameter_mappings(mappings: list[ParameterMapping]) -> int:
     """Create a hash representing parameter mappings."""
     parts: list[tuple[object, ...]] = []
     for mapping in mappings:
-        mapping_obj = cast(Any, mapping)
-        target = cast(object, mapping_obj.target)
-        source = cast(object, mapping_obj.source)
+        target = cast(object, mapping.target)
+        source = cast(object, mapping.source)
         target_str = _mapping_var_name(target) or ""
         source_str = _mapping_var_name(source)
         parts.append(

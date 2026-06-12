@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from typing import Any, Literal, cast
 
-import lark.visitors as lark_visitors
 from lark import Tree
+from lark.visitors import v_args as _lark_v_args  # pyright: ignore[reportUnknownVariableType]
 
 from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import FrameModule, ModuleTypeInstance, SingleModule, SourceSpan
@@ -14,12 +14,12 @@ from sattline_parser.models.ast_model import FrameModule, ModuleTypeInstance, Si
 TransformerTree = Tree[Any]
 TransformerItem = object
 ModuleInvocation = SingleModule | FrameModule | ModuleTypeInstance
-_LARK_VISITORS_ANY = cast(Any, lark_visitors)
+type VArgsDecorator = Callable[[object], object]
+_V_ARGS_FACTORY = cast(Callable[..., VArgsDecorator], _lark_v_args)
 
 
-def _v_args(*args: Any, **kwargs: Any) -> Any:
-    v_args_factory = _LARK_VISITORS_ANY.v_args
-    return v_args_factory(*args, **kwargs)
+def _v_args(*args: Any, **kwargs: Any) -> VArgsDecorator:
+    return _V_ARGS_FACTORY(*args, **kwargs)
 
 
 def _tree_children(tree: TransformerTree) -> list[TransformerItem]:

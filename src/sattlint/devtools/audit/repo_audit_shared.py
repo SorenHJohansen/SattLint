@@ -12,6 +12,8 @@ from typing import Any
 
 from sattlint.contracts import FindingLocation, FindingRecord
 
+from ..leak_detection import LOCAL_ENDPOINT_RE as _LEAK_LOCAL_ENDPOINT_RE
+
 TEXT_SUFFIXES = {
     "",
     ".cfg",
@@ -168,7 +170,7 @@ ALLOWED_PRINT_PREFIXES = ("src/sattlint/devtools/",)
 WINDOWS_PATH_RE = re.compile(r"(?<![\w/])(?:[A-Za-z]:[\\/][^\s'\">|]+)")
 DOCUMENTED_COMMAND_RE = re.compile(r"\b(sattlint(?:-[a-z0-9-]+)?)(?:\s+([a-z][a-z0-9-]*))?", re.IGNORECASE)
 UNIX_PATH_RE = re.compile(r"(?<![\w.])/(?:home|Users|mnt/c|mnt/[A-Za-z]/Users)/[^\s'\">]+")
-LOCAL_ENDPOINT_RE = re.compile(r"\b(?:localhost|127(?:\.\d{1,3}){3}|[a-z0-9-]+\.local)(?::\d{2,5})?\b")
+LOCAL_ENDPOINT_RE = _LEAK_LOCAL_ENDPOINT_RE
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 PRIVATE_KEY_RE = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")
 SECRET_ASSIGNMENT_RE = re.compile(

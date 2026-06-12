@@ -6,7 +6,7 @@ import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, cast
 
 from .artifact_registry import (
     FAULT_INJECTION_RESULTS_FILENAME,
@@ -20,6 +20,10 @@ _EXCEPTION_TYPES: dict[str, type[Exception]] = {
     "syntax": SyntaxError,
     "value": ValueError,
 }
+
+
+class _FaultTaggedException(Protocol):
+    _sattlint_fault_id: str
 
 
 def _checkpoint_count_map() -> dict[str, int]:
@@ -36,7 +40,8 @@ def _fault_run_record_list() -> list[FaultRunRecord]:
 
 def _mark_injected_fault_exception(exception: Exception, *, fault_id: str) -> None:
     try:
-        exception._sattlint_fault_id = fault_id
+        tagged_exception = cast(_FaultTaggedException, exception)
+        tagged_exception._sattlint_fault_id = fault_id  # pyright: ignore[reportPrivateUsage]
     except (AttributeError, TypeError):
         return
 

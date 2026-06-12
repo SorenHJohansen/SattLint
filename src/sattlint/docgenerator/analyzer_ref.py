@@ -12,11 +12,12 @@ import typing as t
 
 from ..analyzers.framework import AnalyzerSpec
 from ..analyzers.registry import AnalyzerCatalog, get_default_analyzer_catalog
+from ..repo_paths import repo_root_from
 
 if t.TYPE_CHECKING:
     pass
 
-REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
+REPO_ROOT = repo_root_from(pathlib.Path(__file__))
 FIXTURES_DIR = REPO_ROOT / "tests" / "fixtures"
 SAMPLE_FILES_DIR = FIXTURES_DIR / "sample_sattline_files"
 CORPUS_DIR = FIXTURES_DIR / "corpus"
