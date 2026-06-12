@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -16,7 +16,10 @@ from sattline_parser.models.ast_model import (
 )
 
 from .. import config as config_module
-from ..resolution.common import format_moduletype_label, path_startswith_casefold, resolve_moduletype_def_strict
+from ..config_types import ConfigObjectMap, DocumentationConfig, DocumentationConfigOverride
+from ..core._semantic_helpers import format_moduletype_label
+from ..resolution.common import resolve_moduletype_def_strict
+from ..resolution.paths import path_startswith_casefold
 
 type DocumentableNode = SingleModule | FrameModule | ModuleTypeInstance
 type DocumentationRule = dict[str, list[str]]
@@ -155,14 +158,14 @@ def _descendants_of(  # pyright: ignore[reportUnusedFunction]
     ]
 
 
-def _resolve_documentation_config(documentation_config: dict[str, Any] | None) -> ResolvedDocumentationConfig:
+def _resolve_documentation_config(
+    documentation_config: DocumentationConfig | DocumentationConfigOverride | ConfigObjectMap | None,
+) -> ResolvedDocumentationConfig:
     raw_doc_cfg = config_module.get_documentation_config(documentation_config)
-    raw_classifications = raw_doc_cfg.get("classifications")
+    raw_classifications = cast(dict[str, object], raw_doc_cfg.get("classifications", {}))
     classifications: dict[str, DocumentationRule] = {}
-    if isinstance(raw_classifications, dict):
-        typed_classifications = cast(dict[str, object], raw_classifications)
-        for name, raw_rule in typed_classifications.items():
-            classifications[name] = _coerce_documentation_rule(raw_rule)
+    for name, raw_rule in raw_classifications.items():
+        classifications[name] = _coerce_documentation_rule(raw_rule)
 
     units = DocumentationUnitsConfig()
     raw_units = raw_doc_cfg.get("units")
@@ -193,7 +196,7 @@ def _coerce_documentation_rule(raw_rule: object) -> DocumentationRule:
 
 def classify_documentation_structure(
     base_picture: BasePicture,
-    documentation_config: dict[str, Any] | None = None,
+    documentation_config: DocumentationConfig | DocumentationConfigOverride | ConfigObjectMap | None = None,
     *,
     unavailable_libraries: set[str] | None = None,
 ) -> DocumentationClassification:

@@ -12,6 +12,7 @@ from typing import Any, ClassVar, cast
 import pytest
 
 from sattline_parser.models.ast_model import BasePicture
+from sattlint import _app_graphics_menus as app_graphics_menus_module
 from sattlint import app, app_base, app_docs, app_graphics, app_menus
 from sattlint.analyzers.framework import AnalyzerSpec, Issue, SimpleReport
 from sattlint.analyzers.registry import get_actual_cli_analyzer_keys
@@ -34,12 +35,16 @@ def noop_screen(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_load_and_save_config(tmp_path, capsys):
     config_path = tmp_path / "config.toml"
+    program_dir = tmp_path / "programs"
+    program_dir.mkdir()
+    (program_dir / "RootProgram.x").write_text("official", encoding="utf-8")
 
     cfg, created = app_base.load_config(config_path)
     assert created is True
     assert cfg["mode"] == "official"
     assert config_path.exists()
 
+    cfg["program_dir"] = str(program_dir)
     cfg["analyzed_programs_and_libraries"] = ["RootProgram"]
     app_base.save_config(config_path, cfg)
     out = capsys.readouterr().out
@@ -219,6 +224,33 @@ def test_run_checks_reaches_every_default_cli_analyzer(noop_screen, monkeypatch)
     assert invoked == list(get_actual_cli_analyzer_keys())
 
 
+def test_run_checks_forwards_selected_issue_kinds(noop_screen, monkeypatch):
+    seen: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        app.app_analysis,
+        "run_checks",
+        lambda cfg, selected_keys, selected_issue_kinds=None, **kwargs: seen.update(
+            {
+                "cfg": cfg,
+                "selected_keys": selected_keys,
+                "selected_issue_kinds": selected_issue_kinds,
+                "get_enabled_analyzers_fn": kwargs.get("get_enabled_analyzers_fn"),
+            }
+        ),
+    )
+
+    app._run_checks(
+        app.DEFAULT_CONFIG.copy(),
+        ["sfc"],
+        selected_issue_kinds=frozenset({"sfc_parallel_write_race"}),
+    )
+
+    assert seen["selected_keys"] == ["sfc"]
+    assert seen["selected_issue_kinds"] == frozenset({"sfc_parallel_write_race"})
+    assert seen["get_enabled_analyzers_fn"] is app._get_selectable_analyzers
+
+
 def test_run_checks_applies_rule_profiles_to_simple_reports(noop_screen, monkeypatch, capsys):
     target = SimpleNamespace(header=SimpleNamespace(name="Program"))
 
@@ -248,7 +280,15 @@ def test_run_checks_applies_rule_profiles_to_simple_reports(noop_screen, monkeyp
     )
 
     strict_cfg = deepcopy(app.DEFAULT_CONFIG)
-    strict_cfg["analysis"]["rule_profiles"]["active"] = "strict-pharma"
+    strict_cfg["analysis"]["rule_profiles"]["active"] = "custom-escalate"
+    strict_cfg["analysis"]["rule_profiles"]["profiles"]["custom-escalate"] = {
+        "description": "Escalate style drift",
+        "disabled_rules": [],
+        "severity_overrides": {
+            "semantic.naming-inconsistent-style": "error",
+        },
+        "confidence_overrides": {},
+    }
     app._run_checks(strict_cfg, None)
     strict_out = capsys.readouterr().out
 
@@ -258,7 +298,16 @@ def test_run_checks_applies_rule_profiles_to_simple_reports(noop_screen, monkeyp
     assert "semantic.loop-output-refactor" in strict_out
 
     legacy_cfg = deepcopy(app.DEFAULT_CONFIG)
-    legacy_cfg["analysis"]["rule_profiles"]["active"] = "legacy-plant"
+    legacy_cfg["analysis"]["rule_profiles"]["active"] = "custom-suppress"
+    legacy_cfg["analysis"]["rule_profiles"]["profiles"]["custom-suppress"] = {
+        "description": "Suppress style drift",
+        "disabled_rules": [
+            "semantic.naming-inconsistent-style",
+            "semantic.loop-output-refactor",
+        ],
+        "severity_overrides": {},
+        "confidence_overrides": {},
+    }
     app._run_checks(legacy_cfg, None)
     legacy_out = capsys.readouterr().out
 
@@ -767,6 +816,23 @@ def test_discover_graphics_rule_selector_options_deduplicates_selectors(monkeypa
             "sample_module_path": "TargetA.UnitA.L1.L2.UnitControl",
         }
     ]
+
+
+def test_discover_graphics_rule_selector_options_propagates_type_errors() -> None:
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg["analyzed_programs_and_libraries"] = ["TargetA"]
+
+    with pytest.raises(TypeError, match="bad entries"):
+        app_graphics_menus_module.discover_graphics_rule_selector_options(
+            cfg,
+            selector_field="unit_structure_path",
+            module_kind="single",
+            has_analyzed_targets_fn=lambda _cfg: True,
+            iter_loaded_projects_fn=lambda _cfg: iter([("TargetA", SimpleNamespace(), SimpleNamespace())]),
+            collect_graphics_layout_entries_for_target_fn=lambda *_args: (_ for _ in ()).throw(
+                TypeError("bad entries")
+            ),
+        )
 
 
 def test_run_graphics_rules_validation_reports_not_to_spec(noop_screen, monkeypatch, capsys):

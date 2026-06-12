@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from sattlint.devtools import structural_reports
+from sattlint.devtools.structural import structural_reports
 from tests import test_pipeline_collection as pipeline_collection_tests
 
 

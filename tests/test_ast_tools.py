@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.grammar import constants as const
 from sattlint.core.ast_tools import iter_call_sites, iter_variable_refs
 
@@ -42,6 +43,29 @@ def test_iter_variable_refs_walks_nested_dicts_and_tuple_children() -> None:
         {const.KEY_VAR_NAME: "Alpha"},
         {const.KEY_VAR_NAME: "Beta"},
     ]
+
+
+def test_iter_variable_refs_walks_parser_produced_modulecode() -> None:
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    Counter: integer := 0;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        Counter = Counter + 1;
+ENDDEF (*BasePicture*);
+"""
+
+    base_picture = parser_core_parse_source_text(code)
+
+    refs = [ref[const.KEY_VAR_NAME] for ref in iter_variable_refs(base_picture.modulecode)]
+
+    assert refs == ["Counter", "Counter"]
 
 
 def test_iter_call_sites_walks_nested_dicts_and_children_variants() -> None:

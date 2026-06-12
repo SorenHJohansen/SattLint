@@ -138,7 +138,7 @@ def test_main_syncs_exec_plans_for_touched_active_exec_plan(monkeypatch, tmp_pat
     exit_code = ai_edit_gate.main(["docs/exec-plans/active/done.md"])
 
     assert exit_code == 0
-    assert commands == [["python", "-m", "sattlint.devtools.ai_work_map", "--write"]]
+    assert commands == [["python", "-m", "sattlint.devtools.ai", "--write"]]
     assert ratchet_calls == [["docs/exec-plans/active/done.md"]]
 
 

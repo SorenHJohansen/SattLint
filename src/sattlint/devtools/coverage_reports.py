@@ -14,11 +14,15 @@ from defusedxml import ElementTree  # type: ignore[import-untyped]
 
 from sattlint.path_sanitizer import sanitize_path_for_report
 
-COVERAGE_RATCHET_PATH = Path("artifacts") / "analysis" / "coverage_ratchet.json"
-COVERAGE_RATCHET_SCHEMA_KIND = "sattlint.coverage_ratchet"
-COVERAGE_RATCHET_SCHEMA_VERSION = 1
-COVERAGE_SUMMARY_SCHEMA_KIND = "sattlint.coverage_summary"
-COVERAGE_SUMMARY_SCHEMA_VERSION = 1
+from .artifact_registry import (
+    COVERAGE_RATCHET_FILENAME,
+    COVERAGE_RATCHET_SCHEMA_KIND,
+    COVERAGE_RATCHET_SCHEMA_VERSION,
+    COVERAGE_SUMMARY_SCHEMA_KIND,
+    COVERAGE_SUMMARY_SCHEMA_VERSION,
+)
+
+COVERAGE_RATCHET_PATH = Path("artifacts") / "analysis" / COVERAGE_RATCHET_FILENAME
 COVERAGE_RATCHET_SETPOINTS = {
     "min_line_rate_basis_points": 10000,
     "min_changed_line_rate_basis_points": 10000,
@@ -544,7 +548,10 @@ def build_coverage_summary_report(
 
 
 __all__ = [
+    "COVERAGE_RATCHET_SCHEMA_KIND",
+    "COVERAGE_RATCHET_SCHEMA_VERSION",
     "COVERAGE_SUMMARY_SCHEMA_KIND",
     "COVERAGE_SUMMARY_SCHEMA_VERSION",
+    "ElementTree",
     "build_coverage_summary_report",
 ]

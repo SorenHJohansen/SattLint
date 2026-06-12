@@ -8,9 +8,10 @@ from functools import partial
 from pathlib import Path
 from typing import Any, cast
 
-from sattlint.devtools import _ai_work_map_parsing as parsing_helpers
-from sattlint.devtools import _ai_work_map_planning as planning_helpers
-from sattlint.devtools._ai_work_map_constants import (
+from sattlint.devtools._semble_adapter import search_local_repo
+from sattlint.devtools.ai import _ai_work_map_parsing as parsing_helpers
+from sattlint.devtools.ai import _ai_work_map_planning as planning_helpers
+from sattlint.devtools.ai._ai_work_map_constants import (
     ACTIVE_EXEC_PLANS_DIR,
     AGENT_ROUTING_RULES,
     AGENTS_DIR,
@@ -27,10 +28,9 @@ from sattlint.devtools._ai_work_map_constants import (
     SEMANTIC_OWNER_SUGGESTION_TOP_K,
     VALIDATION_MAP_PATH,
 )
-from sattlint.devtools._ai_work_map_freshness import verify_ai_harness_freshness as verify_ai_harness_freshness
-from sattlint.devtools._semble_adapter import search_local_repo
+from sattlint.devtools.ai._ai_work_map_freshness import verify_ai_harness_freshness as verify_ai_harness_freshness
 from sattlint.devtools.json_helpers import nonempty_string_entries
-from sattlint.devtools.pipeline_checks import normalize_changed_files, path_matches_globs
+from sattlint.devtools.shared.pipeline_checks import normalize_changed_files, path_matches_globs
 
 type JsonDict = dict[str, object]
 
@@ -40,17 +40,6 @@ _FALLBACK_PLANNING_INSTRUCTION_PATHS = frozenset(
         ".github/instructions/repo-map.instructions.md",
     }
 )
-
-
-def _dict_entries(value: object) -> list[JsonDict]:
-    if not isinstance(value, list):
-        return []
-    items = cast(list[object], value)
-    entries: list[JsonDict] = []
-    for item in items:
-        if isinstance(item, dict):
-            entries.append(cast(JsonDict, item))
-    return entries
 
 
 _string_entries = partial(nonempty_string_entries, include_tuples=True, strip=True)
@@ -66,6 +55,7 @@ _parse_frontmatter = parsing_helpers.parse_frontmatter
 _parse_validation_routes = parsing_helpers.parse_validation_routes
 _parse_owner_suites = parsing_helpers.parse_owner_suites
 _parse_first_validation_commands = parsing_helpers.parse_first_validation_commands
+_dict_entries = parsing_helpers.dict_entries
 _render_json = parsing_helpers.render_json
 render_json = parsing_helpers.render_json
 _instruction_lookup = planning_helpers.instruction_lookup
@@ -233,7 +223,8 @@ def render_ai_check_catalog(work_map: dict[str, Any] | None = None) -> str:
 
 
 def build_ai_work_map() -> dict[str, Any]:
-    from sattlint.devtools import pipeline, repo_audit_entrypoints  # noqa: PLC0415
+    from sattlint.devtools import pipeline  # noqa: PLC0415
+    from sattlint.devtools.audit import repo_audit_entrypoints  # noqa: PLC0415
 
     pipeline_catalog = pipeline.build_pipeline_check_catalog(
         profile="full",
@@ -254,7 +245,7 @@ def build_ai_work_map() -> dict[str, Any]:
             "active_exec_plans": f"{ACTIVE_EXEC_PLANS_DIR.relative_to(REPO_ROOT).as_posix()}/*.md",
             "pipeline_catalog": "sattlint.devtools.pipeline.build_pipeline_check_catalog(profile='full')",
             "repo_audit_catalog": (
-                "sattlint.devtools.repo_audit_entrypoints.build_repo_audit_check_catalog(profile='full')"
+                "sattlint.devtools.audit.repo_audit_entrypoints.build_repo_audit_check_catalog(profile='full')"
             ),
         },
         "validation_routes": _parse_validation_routes(VALIDATION_MAP_PATH),

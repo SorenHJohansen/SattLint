@@ -9,14 +9,15 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
+from sattlint import cli_output
 from sattlint.core.semantic import build_source_snapshot_from_basepicture, discover_workspace_sources
 from sattlint.devtools._diff_rendering import (
     build_unified_diff_lines,
     normalize_layout_text,
     summarize_unified_diff_lines,
 )
+from sattlint.devtools._io import emit_progress, sanitize_repo_path
 from sattlint.engine import parse_source_text
-from sattlint.path_sanitizer import sanitize_path_for_report
 from sattlint.repo_paths import repo_root_from
 from sattlint.semantic_analysis import build_variable_semantic_artifacts
 from sattlint.tracing import collect_ast_summary
@@ -26,12 +27,10 @@ DEFAULT_OUTPUT_FILENAME = "refactoring_preview.json"
 DEFAULT_REFACTORING_KIND = "normalize-layout"
 
 
-def _emit_refactoring_progress(message: str) -> None:
-    print(message, file=sys.stderr, flush=True)
+_emit_refactoring_progress = emit_progress
 
 
-def _sanitize_repo_path(path: Path, *, workspace_root: Path) -> str:
-    return sanitize_path_for_report(path, repo_root=workspace_root) or path.as_posix()
+_sanitize_repo_path = sanitize_repo_path
 
 
 def _normalize_layout(source_text: str) -> str:
@@ -145,7 +144,7 @@ def build_refactoring_candidate(
             "errors": [],
         }
         return candidate, transformed_text
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, RuntimeError, ValueError) as exc:
         candidate = {
             "source_file": sanitized_source,
             "refactoring_kind": refactoring_kind,
@@ -372,10 +371,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         except OSError as exc:
             output_error = exc
 
-    if args.format == "text":
-        print(_render_text_report(report))
-    else:
-        print(json.dumps(report, indent=2, sort_keys=True))
+    cli_output.emit_text_or_json(
+        text=_render_text_report(report),
+        json_payload=report,
+        output_format="text" if args.format == "text" else "json",
+        emit_text_fn=print,
+    )
     if output_error is not None:
         print(f"refactoring output error: {output_error}", file=sys.stderr, flush=True)
         return 1

@@ -1,7 +1,7 @@
 # AI Check Catalog
 
 Generated from the pipeline and repo-audit check registries.
-Regenerate with `python -m sattlint.devtools.ai_work_map --write`.
+Regenerate with `python -m sattlint.devtools.ai --write`.
 
 ## Pipeline Checks
 
@@ -190,6 +190,7 @@ Regenerate with `python -m sattlint.devtools.ai_work_map --write`.
 - AI summary: Use when CLI parser descriptions, subcommand help, or interactive command surfaces change.
 - AI instruction files:
   - `.github/instructions/cli-app.instructions.md`
+  - `.github/instructions/repo-audit.instructions.md`
 - Owner tests:
   - `tests/test_repo_audit_part1.py`
 - Command: `sattlint-repo-audit --profile full --check cli --skip-pipeline --fail-on high --output-dir artifacts/generated/ai-work-map`

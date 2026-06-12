@@ -10,3 +10,5 @@ applyTo: ["src/sattlint/analyzers/**", "tests/test_analyzer_architecture.py", "t
 - Do not mix `from sattlint.analyzers...` imports with sibling `from .` analyzer-package imports in the same analyzer module. Keep analyzer-package imports relative within the package.
 - Before adding a new recursive module walk or root-origin comparison helper, search for the analyzer-owned shared seam first and extend that seam unless a focused test-backed exception requires a local implementation.
 - Internal analyzer helper modules should be underscore-prefixed and imported with the least noisy pattern that still keeps Pyright passing for the touched slice.
+- Do not use `cast(Any, ...)` as a bridge around analyzer typing or ownership problems. Fix the seam, narrow the type honestly, or move the helper to the owner that can expose a typed contract.
+- Do not introduce `importlib.import_module()` inside analyzer internals to dodge local-import or cycle pressure. Reserve dynamic imports for explicit entry-point or optional-dependency seams outside analyzer core, and treat analyzer-internal cases as an architectural smell to refactor.

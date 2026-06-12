@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 from lark import Tree
+from lark.exceptions import LarkError
 
 from sattline_parser.api import build_lark_parser, read_text_with_fallback
 from sattline_parser.models.ast_model import GraphicsBinding, SourceSpan
@@ -107,42 +108,67 @@ def _unwrap_expression_root(node: object) -> object:
 
 
 def _offset_source_spans(node: object, *, line_offset: int, column_offset: int) -> None:
-    if isinstance(node, dict):
-        mapping = cast(dict[str, object], node)
-        span = mapping.get("span")
-        if isinstance(span, SourceSpan):
-            mapping["span"] = SourceSpan(
-                line=line_offset + span.line - 1,
-                column=(column_offset + span.column - 1) if span.line == 1 else span.column,
-            )
-        for value in mapping.values():
-            _offset_source_spans(value, line_offset=line_offset, column_offset=column_offset)
-        return
+    seen: set[int] = set()
 
-    if isinstance(node, list):
-        for value in cast(list[object], node):
-            _offset_source_spans(value, line_offset=line_offset, column_offset=column_offset)
-        return
+    def visit(current: object) -> None:
+        current_id = id(current)
 
-    if isinstance(node, tuple):
-        for value in cast(tuple[object, ...], node):
-            _offset_source_spans(value, line_offset=line_offset, column_offset=column_offset)
-        return
+        if isinstance(current, dict):
+            if current_id in seen:
+                return
+            seen.add(current_id)
+            mapping = cast(dict[str, object], current)
+            span = mapping.get("span")
+            if isinstance(span, SourceSpan):
+                mapping["span"] = SourceSpan(
+                    line=line_offset + span.line - 1,
+                    column=(column_offset + span.column - 1) if span.line == 1 else span.column,
+                )
+            for value in mapping.values():
+                visit(value)
+            return
 
-    children = getattr(node, "children", None)
-    if isinstance(children, list):
-        for value in cast(list[object], children):
-            _offset_source_spans(value, line_offset=line_offset, column_offset=column_offset)
-        return
-    if isinstance(children, tuple):
-        for value in cast(tuple[object, ...], children):
-            _offset_source_spans(value, line_offset=line_offset, column_offset=column_offset)
-        return
+        if isinstance(current, list):
+            if current_id in seen:
+                return
+            seen.add(current_id)
+            for value in cast(list[object], current):
+                visit(value)
+            return
 
-    node_dict = getattr(node, "__dict__", None)
-    if isinstance(node_dict, dict):
-        for value in cast(dict[str, object], node_dict).values():
-            _offset_source_spans(value, line_offset=line_offset, column_offset=column_offset)
+        if isinstance(current, tuple):
+            if current_id in seen:
+                return
+            seen.add(current_id)
+            for value in cast(tuple[object, ...], current):
+                visit(value)
+            return
+
+        children = getattr(current, "children", None)
+        if isinstance(children, list):
+            if current_id in seen:
+                return
+            seen.add(current_id)
+            for value in cast(list[object], children):
+                visit(value)
+            return
+        if isinstance(children, tuple):
+            if current_id in seen:
+                return
+            seen.add(current_id)
+            for value in cast(tuple[object, ...], children):
+                visit(value)
+            return
+
+        node_dict = getattr(current, "__dict__", None)
+        if isinstance(node_dict, dict):
+            if current_id in seen:
+                return
+            seen.add(current_id)
+            for value in cast(dict[str, object], node_dict).values():
+                visit(value)
+
+    visit(node)
 
 
 def _coerce_graphics_literal(payload: str) -> object:
@@ -203,7 +229,7 @@ def _parse_graphics_binding_match(
             SLTransformer().transform(_graphics_expression_parser().parse(normalized_payload))
         )
         _offset_source_spans(parsed, line_offset=line, column_offset=payload_column)
-    except Exception as exc:  # noqa: BLE001
+    except (LarkError, RuntimeError, TypeError, ValueError) as exc:
         return (
             GraphicsBinding(kind=kind, raw_text=payload, value=payload, span=span),
             (

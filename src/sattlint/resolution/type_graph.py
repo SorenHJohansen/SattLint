@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, cast
+from functools import cache
+from typing import cast
 
-from sattline_parser.models.ast_model import BasePicture, Simple_DataType, Variable
+from sattline_parser.models.ast_model import BasePicture, DataType, Simple_DataType, Variable
 
 from ._builtin_datatypes import BUILTIN_RECORD_SPECS
 
@@ -39,6 +40,7 @@ class TypeGraph:
         self._records_by_key = records_by_key
 
     @staticmethod
+    @cache
     def _builtin_records() -> dict[str, RecordDef]:
         records: dict[str, RecordDef] = {}
         for datatype_name, field_specs in BUILTIN_RECORD_SPECS.items():
@@ -50,14 +52,14 @@ class TypeGraph:
 
     @classmethod
     def from_datatypes(cls, datatypes: Iterable[object]) -> TypeGraph:
-        records = cls._builtin_records()
+        records = dict(cls._builtin_records())
         for dt in datatypes or []:
-            datatype = cast(Any, dt)
-            datatype_name = cast(str, datatype.name)
+            if not isinstance(dt, DataType):
+                continue
+            datatype_name = dt.name
             fields: dict[str, FieldDef] = {}
-            for v in cast(Iterable[object], datatype.var_list or ()):
-                field = cast(Any, v)
-                field_name = cast(str, field.name)
+            for field in dt.var_list or ():
+                field_name = field.name
                 fields[_cf(field_name)] = FieldDef(
                     name=field_name,
                     datatype=cast(Simple_DataType | str, field.datatype),

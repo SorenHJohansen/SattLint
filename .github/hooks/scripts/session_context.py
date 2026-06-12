@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import json
 import re
 import sys
@@ -19,6 +20,14 @@ if str(SRC_PATH) not in sys.path:
 from hook_path_compat import normalize_payload_path_text, resolve_payload_cwd  # noqa: E402
 
 from sattlint.devtools import coordination_lock_state  # noqa: E402
+
+FAIL_OPEN_EXCEPTIONS = (
+    ImportError,
+    OSError,
+    RuntimeError,
+    TypeError,
+    ValueError,
+)
 
 TOKEN_RE = re.compile(r"[a-z0-9_./-]{3,}")
 SUMMARY_FILE_NAME = coordination_lock_state.SUMMARY_FILE_NAME
@@ -123,7 +132,7 @@ def _collect_payload_signals(payload: object, cwd: Path) -> PayloadSignals:
             return
         try:
             resolved = coordination_lock_state.resolve_workspace_path(normalized, cwd)
-        except Exception:
+        except (OSError, RuntimeError):
             return
         path_signals[resolved.as_posix().casefold()] = resolved
 
@@ -256,6 +265,61 @@ def _resolve_primary_agent(planning_context: dict[str, object]) -> str | None:
     return None
 
 
+def _load_ai_work_map_module():
+    return importlib.import_module("sattlint.devtools.ai.ai_work_map")
+
+
+def _compact_string_entries(value: object, *, limit: int) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    compacted: list[str] = []
+    for item in value:
+        item_text = str(item).strip()
+        if not item_text or item_text in compacted:
+            continue
+        compacted.append(item_text)
+        if len(compacted) >= limit:
+            break
+    return compacted
+
+
+def _compact_instruction_names(planning_context: dict[str, object], *, limit: int) -> list[str]:
+    instruction_files = planning_context.get("instruction_files")
+    if not isinstance(instruction_files, list):
+        return []
+    instruction_names: list[str] = []
+    for item in instruction_files:
+        if not isinstance(item, dict):
+            continue
+        instruction_name = str(item.get("name", "")).strip()
+        if not instruction_name or instruction_name in instruction_names:
+            continue
+        instruction_names.append(instruction_name)
+        if len(instruction_names) >= limit:
+            break
+    return instruction_names
+
+
+def _compact_semantic_suggestion_paths(planning_context: dict[str, object], *, limit: int) -> list[str]:
+    semantic_owner_suggestions = planning_context.get("semantic_owner_suggestions")
+    if not isinstance(semantic_owner_suggestions, dict):
+        return []
+    suggestions = semantic_owner_suggestions.get("suggestions")
+    if not isinstance(suggestions, list):
+        return []
+    semantic_paths: list[str] = []
+    for item in suggestions:
+        if not isinstance(item, dict):
+            continue
+        file_path = str(item.get("file_path", "")).strip()
+        if not file_path or file_path in semantic_paths:
+            continue
+        semantic_paths.append(file_path)
+        if len(semantic_paths) >= limit:
+            break
+    return semantic_paths
+
+
 def _build_planning_context_payload(signals: PayloadSignals, cwd: Path) -> PlanningContextPayload | None:
     changed_files = _signal_changed_files(signals, cwd)
     if not changed_files:
@@ -265,7 +329,7 @@ def _build_planning_context_payload(signals: PayloadSignals, cwd: Path) -> Plann
         src_text = str(src_path)
         if src_text not in sys.path:
             sys.path.insert(0, src_text)
-    from sattlint.devtools import ai_work_map
+    ai_work_map = _load_ai_work_map_module()
 
     session_context_map = ai_work_map.load_session_context_map()
     if ("generated_by" in session_context_map or "generated_from" in session_context_map) and (
@@ -281,33 +345,18 @@ def _build_planning_context_payload(signals: PayloadSignals, cwd: Path) -> Plann
         semantic_query=signals["text"] or None,
         work_map=session_context_map,
     )
-    owner_test_targets: list[str] = []
-    for suite in planning_context.get("nearest_owner_suites", []):
-        tests = suite.get("tests", []) if isinstance(suite, dict) else []
-        for test_path in tests[:2]:
-            test_text = str(test_path)
-            if test_text and test_text not in owner_test_targets:
-                owner_test_targets.append(test_text)
-    first_validation_commands = [
-        str(command) for command in planning_context.get("first_validation_commands", []) if str(command).strip()
-    ]
     primary_agent = _resolve_primary_agent(planning_context)
     return {
         "changed_files": changed_files,
-        "semantic_suggestion_paths": [
-            str(item.get("file_path", ""))
-            for item in planning_context.get("semantic_owner_suggestions", {}).get("suggestions", [])[:3]
-            if isinstance(item, dict) and str(item.get("file_path", "")).strip()
-        ],
         "selected_surface": "session-start",
         "primary_agent": primary_agent,
-        "instruction_names": [
-            str(item.get("name", ""))
-            for item in planning_context.get("instruction_files", [])
-            if isinstance(item, dict) and item.get("name")
-        ][:3],
-        "owner_test_targets": owner_test_targets[:3],
-        "first_validation_commands": first_validation_commands[:2],
+        "instruction_names": _compact_instruction_names(planning_context, limit=3),
+        "owner_test_targets": _compact_string_entries(planning_context.get("owner_test_targets"), limit=3),
+        "first_validation_commands": _compact_string_entries(
+            planning_context.get("first_validation_commands"),
+            limit=3,
+        ),
+        "semantic_suggestion_paths": _compact_semantic_suggestion_paths(planning_context, limit=3),
     }
 
 
@@ -414,7 +463,7 @@ def main() -> int:
             )
         )
         return 0
-    except Exception:
+    except FAIL_OPEN_EXCEPTIONS:
         return 0
 
 

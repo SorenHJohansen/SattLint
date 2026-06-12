@@ -44,6 +44,9 @@ def test_load_project_saves_cache_after_successful_merge(monkeypatch):
         def _find_deps_with_context(self, target_name, requester_dir):
             return None
 
+        def find_dependency_path(self, target_name, requester_dir=None):
+            return self._find_deps_with_context(target_name, requester_dir)
+
     monkeypatch.setattr(app_analysis, "ASTCache", FakeCache)
     monkeypatch.setattr(app_analysis, "get_cache_dir", lambda: Path("cache-dir"))
     monkeypatch.setattr(app_analysis.engine_module, "SattLineProjectLoader", FakeLoader)
@@ -99,6 +102,9 @@ def test_load_project_raises_default_error_when_target_missing(monkeypatch):
         def _find_deps_with_context(self, target_name, requester_dir):
             return None
 
+        def find_dependency_path(self, target_name, requester_dir=None):
+            return self._find_deps_with_context(target_name, requester_dir)
+
     monkeypatch.setattr(app_analysis, "ASTCache", FakeCache)
     monkeypatch.setattr(app_analysis, "get_cache_dir", lambda: Path("cache-dir"))
     monkeypatch.setattr(app_analysis.engine_module, "SattLineProjectLoader", FakeLoader)
@@ -118,9 +124,30 @@ def test_load_project_raises_default_error_when_target_missing(monkeypatch):
         )
 
 
+def test_load_project_raises_value_error_when_loader_config_missing(monkeypatch):
+    monkeypatch.setattr(app_analysis, "ASTCache", lambda cache_dir: pytest.fail(f"unexpected cache init: {cache_dir}"))
+    monkeypatch.setattr(app_analysis, "get_cache_dir", lambda: Path("cache-dir"))
+
+    with pytest.raises(ValueError, match="Missing loader config keys: debug"):
+        app_analysis.load_project(
+            {
+                "program_dir": "programs",
+                "other_lib_dirs": [],
+                "ABB_lib_dir": "abb",
+                "mode": "draft",
+                "scan_root_only": True,
+                "analyzed_programs_and_libraries": ["TargetA"],
+            },
+            cache_key_for_target_fn=lambda _cfg, _target: "cache-key",
+        )
+
+
 def test_load_program_ast_force_dependency_resolution_returns_loaded_program(monkeypatch):
+    seen_kwargs: dict[str, object] = {}
+
     class FakeLoader:
         def __init__(self, **kwargs):
+            seen_kwargs.update(kwargs)
             self.kwargs = kwargs
 
         def resolve(self, program_name, strict=False):
@@ -142,6 +169,7 @@ def test_load_program_ast_force_dependency_resolution_returns_loaded_program(mon
     )
 
     assert result == ("bp-main", SimpleNamespace(ast_by_name={"TargetA": "bp-main"}))
+    assert seen_kwargs["scan_root_only"] is False
 
 
 def test_force_refresh_ast_returns_none_without_targets():
@@ -242,6 +270,12 @@ def test_load_project_ast_only_collects_stage_timings_and_flushes_lookup_cache(m
         def _read_deps(self, deps_path):
             return []
 
+        def find_dependency_path(self, target_name, requester_dir=None):
+            return self._find_deps_with_context(target_name, requester_dir)
+
+        def read_dependency_names(self, deps_path):
+            return self._read_deps(deps_path)
+
         def _flush_lookup_cache(self):
             flushed.append("flushed")
 
@@ -307,6 +341,12 @@ def test_load_project_uses_custom_target_load_error_factory(monkeypatch):
 
         def _read_deps(self, deps_path):
             return ["DepA"]
+
+        def find_dependency_path(self, target_name, requester_dir=None):
+            return self._find_deps_with_context(target_name, requester_dir)
+
+        def read_dependency_names(self, deps_path):
+            return self._read_deps(deps_path)
 
         def _flush_lookup_cache(self):
             return None
@@ -438,27 +478,26 @@ def test_force_refresh_ast_emits_stage_timings_and_telemetry(monkeypatch):
     assert emitted[1]["payload"] == {"refresh_mode": "ast-only"}
 
 
-def test_analysis_loading_call_load_project_compat_accepts_signature_lookup_failure(monkeypatch):
-    monkeypatch.setattr(
-        app_analysis.analysis_loading_module.inspect, "signature", lambda _fn: (_ for _ in ()).throw(ValueError)
+def test_iter_loaded_projects_passes_collect_stage_timings_to_load_project(monkeypatch):
+    seen: list[tuple[str | None, bool, bool]] = []
+
+    def fake_load_project(_cfg, target_name=None, *, use_cache=True, collect_stage_timings=False, **_kwargs):
+        seen.append((target_name, use_cache, collect_stage_timings))
+        return named_object(target_name or "Unknown"), SimpleNamespace()
+
+    monkeypatch.setattr(app_analysis, "emit_output", lambda *_args, **_kwargs: None)
+
+    results = list(
+        app_analysis.iter_loaded_projects(
+            {"analyzed_programs_and_libraries": ["TargetA"], "debug": True},
+            use_cache=False,
+            require_analyzed_targets_fn=lambda _cfg: ["TargetA"],
+            load_project_fn=fake_load_project,
+        )
     )
 
-    seen: list[tuple[str, dict[str, object]]] = []
-
-    def fake_load_project(cfg, *, target_name, **kwargs):
-        seen.append((target_name, kwargs))
-        return "bp", "graph"
-
-    result = app_analysis.analysis_loading_module._call_load_project_compat(
-        fake_load_project,
-        {},
-        target_name="TargetA",
-        collect_stage_timings=True,
-        unsupported=True,
-    )
-
-    assert result == ("bp", "graph")
-    assert seen == [("TargetA", {"collect_stage_timings": True, "unsupported": True})]
+    assert [target_name for target_name, _bp, _graph in results] == ["TargetA"]
+    assert seen == [("TargetA", False, True)]
 
 
 def test_force_refresh_ast_emits_basic_telemetry_when_stage_timings_disabled(monkeypatch):

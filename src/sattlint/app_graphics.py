@@ -17,13 +17,13 @@ from . import console as console_module
 from . import graphics_rules as graphics_rules_module
 from ._app_debug import log_debug_exception
 from .app_interaction import MenuInteraction
+from .config_types import ConfigDict
 from .docgenerator import classification as documentation_classification_module
 from .models.project_graph import ProjectGraph
 
-emit_output = console_module.print_output  # type: ignore[assignment]
 log = logging.getLogger("SattLint")
+emit_output = console_module.print_output
 
-ConfigDict = dict[str, Any]
 GraphicsRule = dict[str, Any]
 GraphicsRulesConfig = dict[str, Any]
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
@@ -64,7 +64,7 @@ def _format_config_scalar(value: object) -> str:
     return graphics_reports_module.format_config_scalar(value)
 
 
-def _print_config_section(title: str, rows: list[tuple[str, object]]) -> None:
+def _print_config_section(title: str, rows: Sequence[tuple[str, object | str | bool | Path]]) -> None:
     graphics_reports_module.print_config_section(
         title,
         rows,
@@ -218,7 +218,10 @@ def optional_prompt_or_none(prompt_fn: Callable[[], Any]) -> Any | None:
 
 
 def prompt_graphics_rule_kind(*, interaction: MenuInteraction | None = None) -> str:
-    return graphics_menus_module.prompt_graphics_rule_kind(emit_output_fn=emit_output, interaction=interaction)
+    return graphics_menus_module.prompt_graphics_rule_kind(
+        emit_output_fn=emit_output,
+        interaction=interaction,
+    )
 
 
 def selector_prompt_text(selector_field: str) -> str:
@@ -382,12 +385,12 @@ def collect_graphics_layout_entries_for_target(
 
 
 def graphics_rules_menu(
-    cfg: dict[str, Any] | None = None,
+    cfg: ConfigDict | None = None,
     *,
     get_graphics_rules_path_fn: Callable[[], Path],
     load_graphics_rules_fn: Callable[..., tuple[dict[str, Any], bool]],
     save_graphics_rules_fn: Callable[[Path, dict[str, Any]], None],
-    prompt_graphics_rule_definition_with_config_fn: Callable[[dict[str, Any] | None], dict[str, Any] | None],
+    prompt_graphics_rule_definition_with_config_fn: Callable[[ConfigDict | None], dict[str, Any] | None],
     graphics_rule_label_fn: Callable[[dict[str, Any]], str],
     clear_screen_fn: Callable[[], None],
     print_menu_fn: Callable[..., None],
@@ -421,7 +424,7 @@ def graphics_rules_menu(
 
 
 def run_graphics_rules_validation(
-    cfg: dict[str, Any],
+    cfg: ConfigDict,
     *,
     get_graphics_rules_path_fn: Callable[[], Path],
     load_graphics_rules_fn: Callable[..., tuple[dict[str, Any], bool]],
@@ -455,7 +458,7 @@ def run_graphics_rules_validation(
                 )
                 emit_output(f"\n=== Target: {target_name} ===")
                 emit_output(report.summary())
-            except Exception as exc:  # noqa: BLE001
+            except (ImportError, OSError, RuntimeError, ValueError) as exc:
                 log_debug_exception(cfg, f"Graphics rules validation failed for {target_name!r}", logger=log)
                 emit_output(f"? Error during graphics rules validation for {target_name}: {exc}")
 

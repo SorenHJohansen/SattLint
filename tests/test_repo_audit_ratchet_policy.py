@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from sattlint.devtools import repo_audit
+from sattlint.devtools.audit import repo_audit
 
 
 def test_run_ratchet_policy_check_returns_no_findings_when_policy_passes(monkeypatch, tmp_path):

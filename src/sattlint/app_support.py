@@ -1,19 +1,47 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, TypeGuard, cast
 
 from .analyzers.icf import format_icf_file
 from .casefolding import casefold_equal, casefold_key, dedupe_casefolded_strings
+from .config_types import ConfigDict
 from .engine import expected_unavailable_library_reason
-
-ConfigDict = dict[str, Any]
+from .models.project_graph import ProjectFailure
 
 _PICTURE_DISPLAY_WARNING_RE = re.compile(
     r"^PictureDisplay in module '([^']+)' path ('.*?') could not be resolved: (.+)$"
 )
+
+_HELP_TEXT = """--- Help ---
+SattLint can validate a single file quickly or analyze configured programs and
+libraries together with their dependencies.
+
+Recommended first run:
+1. Open Setup and configure program_dir, ABB_lib_dir, and any extra library folders.
+2. Add one or more analysis targets without file extensions.
+3. Save the configuration.
+4. Open Tools and run Self-check diagnostics.
+5. Open Analyze to run checks, or Documentation to build DOCX output.
+
+Main areas:
+- Analyze: run curated reports, the full analyzer suite, or registry-backed checks.
+- Documentation: preview unit candidates, choose scope, and generate DOCX output.
+- Setup: edit directories, targets, mode, caching, and debug settings.
+- Tools: self-check, dumps, source diff reports across configured targets, and AST cache refresh.
+
+Quick single-file validation:
+    sattlint syntax-check /path/to/Program.s
+
+ICF formatting:
+        sattlint format-icf
+        sattlint format-icf --check
+
+That command is useful when you want a strict parser or transformer check for one file
+without loading a whole workspace.
+"""
 
 
 class TargetLoadError(RuntimeError):
@@ -25,12 +53,14 @@ class TargetLoadError(RuntimeError):
         missing: list[str],
         warnings: list[str] | None = None,
         direct_dependencies: list[str] | None = None,
+        failures: Mapping[str, ProjectFailure] | None = None,
     ):
         self.target_name = target_name
         self.resolved = list(resolved)
         self.missing = list(missing)
         self.warnings = list(warnings or [])
         self.direct_dependencies = list(direct_dependencies or [])
+        self.failures = dict(failures or {})
         super().__init__(self._build_message())
 
     @staticmethod
@@ -50,12 +80,27 @@ class TargetLoadError(RuntimeError):
         return item.split(": ", 1)[0]
 
     @staticmethod
-    def _format_missing_item(item: str) -> str:
+    def _format_failure_location(failure: ProjectFailure) -> str:
+        parts: list[str] = []
+        if failure.line is not None:
+            parts.append(f"line {failure.line}")
+        if failure.column is not None:
+            parts.append(f"column {failure.column}")
+        if failure.length is not None:
+            parts.append(f"length {failure.length}")
+        if not parts:
+            return ""
+        return f" ({', '.join(parts)})"
+
+    def _format_missing_item(self, item: str) -> str:
         marker = " parse/transform error: "
-        if marker in item:
-            name, detail = item.split(marker, 1)
-            return f"{name}: {detail}"
-        return item
+        if marker not in item:
+            return item
+
+        name, detail = item.split(marker, 1)
+        failure = self.failures.get(casefold_key(name))
+        suffix = "" if failure is None else self._format_failure_location(failure)
+        return f"{name}: {detail}{suffix}"
 
     def _build_message(self) -> str:  # noqa: PLR0915
         direct_keys = {casefold_key(name) for name in self.direct_dependencies}
@@ -293,11 +338,17 @@ def print_menu(
         print_fn(note.strip())
 
 
-def get_analyzed_targets(cfg: ConfigDict) -> list[str]:
+def get_analyzed_targets(cfg: Mapping[str, object]) -> list[str]:
     raw_targets = cfg.get("analyzed_programs_and_libraries", [])
-    if not isinstance(raw_targets, list):
+    if not _is_string_sequence(raw_targets):
         return []
-    return dedupe_casefolded_strings(cast(list[str], raw_targets))
+    return dedupe_casefolded_strings(raw_targets)
+
+
+def _is_string_sequence(value: object) -> TypeGuard[Sequence[str]]:
+    if isinstance(value, str) or not isinstance(value, Sequence):
+        return False
+    return all(isinstance(target, str) for target in cast(Sequence[object], value))
 
 
 def require_analyzed_targets(cfg: ConfigDict) -> list[str]:
@@ -352,15 +403,30 @@ def cache_key_for_target(
     cfg: ConfigDict,
     target_name: str,
     *,
-    compute_cache_key_fn: Callable[[ConfigDict], str],
+    compute_cache_key_fn: Callable[[Mapping[str, object]], str],
 ) -> str:
-    cache_cfg: ConfigDict = dict(cfg)
+    cache_cfg: dict[str, object] = dict(cfg)
     cache_cfg["analysis_target"] = target_name
     return compute_cache_key_fn(cache_cfg)
 
 
 def split_csv_values(raw: str) -> list[str]:
     return [value.strip() for value in raw.split(",") if value.strip()]
+
+
+def get_help_text(
+    cfg: ConfigDict,
+    *,
+    get_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
+    summarize_targets_fn: Callable[[ConfigDict], str],
+) -> str:
+    targets = get_analyzed_targets_fn(cfg)
+    status_line = (
+        f"Current target status: {summarize_targets_fn(cfg)}"
+        if targets
+        else "Current target status: no configured targets yet."
+    )
+    return f"{_HELP_TEXT.rstrip()}\n{status_line}"
 
 
 def show_help(
@@ -373,39 +439,10 @@ def show_help(
     pause_fn: Callable[[], None],
 ) -> None:
     clear_screen_fn()
-    targets = get_analyzed_targets_fn(cfg)
-    print_fn(
-        """
---- Help ---
-SattLint can validate a single file quickly or analyze configured programs and
-libraries together with their dependencies.
-
-Recommended first run:
-1. Open Setup and configure program_dir, ABB_lib_dir, and any extra library folders.
-2. Add one or more analysis targets without file extensions.
-3. Save the configuration.
-4. Open Tools and run Self-check diagnostics.
-5. Open Analyze to run checks, or Documentation to build DOCX output.
-
-Main areas:
-- Analyze: run curated reports, the full analyzer suite, or registry-backed checks.
-- Documentation: preview unit candidates, choose scope, and generate DOCX output.
-- Setup: edit directories, targets, mode, caching, and debug settings.
-- Tools: self-check, dumps, source diff reports across configured targets, and AST cache refresh.
-
-Quick single-file validation:
-  sattlint syntax-check /path/to/Program.s
-
-ICF formatting:
-    sattlint format-icf
-    sattlint format-icf --check
-
-That command is useful when you want a strict parser or transformer check for one file
-without loading a whole workspace.
-"""
-    )
-    if targets:
-        print_fn(f"Current target status: {summarize_targets_fn(cfg)}")
-    else:
-        print_fn("Current target status: no configured targets yet.")
+    for line in get_help_text(
+        cfg,
+        get_analyzed_targets_fn=get_analyzed_targets_fn,
+        summarize_targets_fn=summarize_targets_fn,
+    ).splitlines():
+        print_fn(line)
     pause_fn()

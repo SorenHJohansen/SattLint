@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
-from sattlint.devtools import structural_reports
+from sattlint.devtools.structural import structural_reports
 
 
 def _write(path, content: str) -> None:

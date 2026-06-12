@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false
 import builtins
 import json
 import runpy
@@ -203,6 +204,7 @@ def test_observability_read_metrics_returns_empty_when_missing(tmp_path, monkeyp
 
 def test_observability_module_main_guard(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["observability.py"])
     monkeypatch.setattr(
         subprocess,
         "run",
@@ -226,7 +228,7 @@ def test_observability_main_writes_and_prints(monkeypatch, capsys):
     monkeypatch.setattr(observability, "collect_all_metrics", lambda: payload)
     monkeypatch.setattr(observability, "write_metrics", lambda metrics: captured.setdefault("metrics", metrics))
 
-    exit_code = observability.main()
+    exit_code = observability.main([])
 
     stdout = capsys.readouterr().out
     assert exit_code == 0
@@ -250,7 +252,7 @@ def test_observability_main_returns_failure_when_output_write_fails(monkeypatch,
         lambda metrics: (_ for _ in ()).throw(PermissionError("read-only filesystem")),
     )
 
-    exit_code = observability.main()
+    exit_code = observability.main([])
 
     captured = capsys.readouterr()
     assert exit_code == 1
@@ -414,10 +416,10 @@ def test_review_tool_print_review_and_main_exit(monkeypatch, capsys):
     assert "AGENT REVIEW REPORT" in stdout
     assert "Overall Status: FAIL" in stdout
 
-    monkeypatch.setattr(review_tool, "run_full_review", lambda: report)
+    monkeypatch.setattr(review_tool, "run_full_review", lambda **_kwargs: report)
 
     with pytest.raises(SystemExit) as exc:
-        review_tool.main()
+        review_tool.main([])
 
     assert exc.value.code == 1
 
@@ -445,10 +447,10 @@ def test_review_tool_main_reports_output_write_error(monkeypatch, capsys):
             "format_passed": True,
         },
     }
-    monkeypatch.setattr(review_tool, "run_full_review", lambda: report)
+    monkeypatch.setattr(review_tool, "run_full_review", lambda **_kwargs: report)
 
     with pytest.raises(SystemExit) as exc:
-        review_tool.main()
+        review_tool.main([])
 
     captured = capsys.readouterr()
     assert exc.value.code == 1

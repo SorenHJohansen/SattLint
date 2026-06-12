@@ -1,6 +1,7 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false, reportIndexIssue=false
 """CLI behavior tests for SattLint."""
 
+import json
 import runpy
 from collections.abc import Mapping
 from pathlib import Path
@@ -10,35 +11,56 @@ from typing import Any, cast
 import pytest
 
 import sattlint
-from sattlint import _app_startup, app, app_base, engine
+from sattlint import _app_interactive_menus, _app_startup, app, app_base, engine
+from sattlint.cli import command_handlers as cli_command_handlers
 from sattlint.cli import entry as cli_entry
 from sattlint.models import IssueKind
 from sattlint.models.project_graph import ProjectGraph
 
 
+def _command_handlers(**overrides: Any) -> dict[str, Any]:
+    return cast(
+        dict[str, Any],
+        cli_command_handlers.build_command_handlers(
+            overrides=cast(
+                cli_entry.CommandHandlers,
+                {
+                    "syntax_check": lambda file_path, *, output_format="text": app_base.run_syntax_check_command(
+                        file_path,
+                        output_format=output_format,
+                    ),
+                    "validate_config": lambda cfg, *, config_path, default_used: app_base.EXIT_SUCCESS,
+                    "analyze": lambda cfg, *, selected_keys, selected_issue_kinds=None, use_cache, output_format="text": (
+                        app_base.EXIT_SUCCESS
+                    ),
+                    "simulate": (
+                        lambda cfg, *, target_path, module_name, mode, max_scans, output_format, output_path, use_cache: (
+                            app_base.EXIT_SUCCESS
+                        )
+                    ),
+                    "docgen": lambda cfg, *, use_cache, output_dir, output_path: app_base.EXIT_SUCCESS,
+                    "cache_prune": lambda *, cache_dir: app_base.EXIT_SUCCESS,
+                    "telemetry_summary": lambda cfg, *, config_path, output_format, output_path: app_base.EXIT_SUCCESS,
+                    "format_icf": lambda cfg, *, check: app_base.EXIT_SUCCESS,
+                    "trace": lambda args: app_base.EXIT_SUCCESS,
+                }
+                | overrides,
+            ),
+        ),
+    )
+
+
 def _run_base_cli(argv: list[str], **overrides) -> int:
+    command_handler_overrides = cast(dict[str, Any], overrides.pop("command_handlers", {}))
     kwargs = {
         "config_path": app.CONFIG_PATH,
+        "build_cli_parser_fn": app_base.build_cli_parser,
         "load_config_fn": lambda path: ({"debug": False}, False),
         "apply_debug_fn": lambda _cfg: None,
-        "run_validate_config_command_fn": lambda cfg, *, config_path, default_used: app_base.EXIT_SUCCESS,
-        "run_analyze_command_fn": lambda cfg, *, selected_keys, selected_issue_kinds=None, use_cache: (
-            app_base.EXIT_SUCCESS
-        ),
-        "run_simulate_command_fn": (
-            lambda cfg, *, target_path, module_name, mode, max_scans, output_format, output_path, use_cache: (
-                app_base.EXIT_SUCCESS
-            )
-        ),
-        "run_docgen_command_fn": lambda cfg, *, use_cache, output_dir, output_path: app_base.EXIT_SUCCESS,
-        "run_cache_prune_command_fn": lambda *, cache_dir: app_base.EXIT_SUCCESS,
-        "run_telemetry_summary_command_fn": (
-            lambda cfg, *, config_path, output_format, output_path: app_base.EXIT_SUCCESS
-        ),
-        "run_format_icf_command_fn": lambda cfg, *, check: app_base.EXIT_SUCCESS,
+        "command_handlers": _command_handlers(**command_handler_overrides),
     }
     kwargs.update(overrides)
-    return app_base.run_cli(list(argv), **kwargs)
+    return cli_entry.run_cli(list(argv), **kwargs)
 
 
 def test_build_cli_parser_has_descriptions():
@@ -59,8 +81,48 @@ def test_build_cli_parser_has_descriptions():
         "format-icf",
         "source-diff",
         "repo-audit",
+        "trace",
     } <= set(choices)
     assert getattr(syntax_parser, "description", None)
+
+
+def test_build_cli_parser_syntax_check_includes_output_format():
+    parser = app_base.build_cli_parser()
+
+    action = next(action for action in parser._actions if isinstance(getattr(action, "choices", None), Mapping))
+    choices = cast(dict[str, object], action.choices)
+    syntax_parser = cast(Any, choices["syntax-check"])
+    option_strings = {
+        option for parser_action in syntax_parser._actions for option in getattr(parser_action, "option_strings", [])
+    }
+
+    assert "--format" in option_strings
+
+
+def test_build_cli_parser_validate_config_includes_output_format():
+    parser = app_base.build_cli_parser()
+
+    action = next(action for action in parser._actions if isinstance(getattr(action, "choices", None), Mapping))
+    choices = cast(dict[str, object], action.choices)
+    validate_parser = cast(Any, choices["validate-config"])
+    option_strings = {
+        option for parser_action in validate_parser._actions for option in getattr(parser_action, "option_strings", [])
+    }
+
+    assert "--format" in option_strings
+
+
+def test_build_cli_parser_analyze_includes_output_format():
+    parser = app_base.build_cli_parser()
+
+    action = next(action for action in parser._actions if isinstance(getattr(action, "choices", None), Mapping))
+    choices = cast(dict[str, object], action.choices)
+    analyze_parser = cast(Any, choices["analyze"])
+    option_strings = {
+        option for parser_action in analyze_parser._actions for option in getattr(parser_action, "option_strings", [])
+    }
+
+    assert "--format" in option_strings
 
 
 def test_build_cli_parser_repo_audit_includes_dedicated_options():
@@ -76,6 +138,34 @@ def test_build_cli_parser_repo_audit_includes_dedicated_options():
     }
 
     assert {"--profile", "--fail-on", "--list-checks", "--planning-context"} <= option_strings
+
+
+def test_build_cli_parser_source_diff_includes_dedicated_options():
+    parser = app_base.build_cli_parser()
+
+    action = next(action for action in parser._actions if isinstance(getattr(action, "choices", None), Mapping))
+    choices = cast(dict[str, object], action.choices)
+    source_diff_parser = cast(Any, choices["source-diff"])
+    option_strings = {
+        option
+        for parser_action in source_diff_parser._actions
+        for option in getattr(parser_action, "option_strings", [])
+    }
+
+    assert {"--workspace-root", "--draft-file", "--official-file", "--discover-pairs"} <= option_strings
+
+
+def test_build_cli_parser_trace_includes_dedicated_options():
+    parser = app_base.build_cli_parser()
+
+    action = next(action for action in parser._actions if isinstance(getattr(action, "choices", None), Mapping))
+    choices = cast(dict[str, object], action.choices)
+    trace_parser = cast(Any, choices["trace"])
+    option_strings = {
+        option for parser_action in trace_parser._actions for option in getattr(parser_action, "option_strings", [])
+    }
+
+    assert {"--output", "--debug"} <= option_strings
 
 
 def test_build_cli_parser_exposes_interactive_ui_override():
@@ -130,14 +220,11 @@ def test_startup_main_routes_cli_argv_to_run_cli() -> None:
 def test_startup_main_routes_debug_only_cli_argv_to_interactive_loop() -> None:
     seen: dict[str, object] = {}
     cfg = {"debug": False}
-    parser = _FakeParser(
-        args=SimpleNamespace(command=None, config=None, no_cache=False, quiet=False, debug=True),
-    )
 
     exit_code = _app_startup.main(
         ["--debug"],
         run_cli_fn=lambda _argv: pytest.fail("run_cli should not run for interactive debug-only argv"),
-        build_cli_parser_fn=lambda: parser,
+        build_cli_parser_fn=lambda: pytest.fail("interactive override detection should not use the full CLI parser"),
         load_config_fn=lambda _path: (cfg, False),
         config_path=Path("config.toml"),
         apply_debug_fn=lambda local_cfg: seen.update({"apply_debug_cfg": dict(local_cfg)}),
@@ -176,14 +263,11 @@ def test_startup_main_routes_debug_only_cli_argv_to_interactive_loop() -> None:
 def test_startup_main_routes_ui_only_cli_argv_to_interactive_loop() -> None:
     seen: dict[str, object] = {}
     cfg = {"debug": False}
-    parser = _FakeParser(
-        args=SimpleNamespace(command=None, config=None, no_cache=False, quiet=False, debug=False, ui="textual"),
-    )
 
     exit_code = _app_startup.main(
         ["--ui", "textual"],
         run_cli_fn=lambda _argv: pytest.fail("run_cli should not run for interactive ui-only argv"),
-        build_cli_parser_fn=lambda: parser,
+        build_cli_parser_fn=lambda: pytest.fail("interactive override detection should not use the full CLI parser"),
         load_config_fn=lambda _path: (cfg, False),
         config_path=Path("config.toml"),
         apply_debug_fn=lambda local_cfg: seen.update({"apply_debug_cfg": dict(local_cfg)}),
@@ -215,6 +299,48 @@ def test_startup_main_routes_ui_only_cli_argv_to_interactive_loop() -> None:
     assert seen["apply_debug_cfg"] == {"debug": False}
     assert seen["main_loop_cfg"] == {"debug": False}
     assert seen["main_loop_kwargs"]["config_path"] == Path("config.toml")
+
+
+def test_startup_main_routes_config_only_cli_argv_to_interactive_loop() -> None:
+    seen: dict[str, object] = {}
+    cfg = {"debug": False}
+
+    exit_code = _app_startup.main(
+        ["--config", "custom.toml"],
+        run_cli_fn=lambda _argv: pytest.fail("run_cli should not run for interactive config-only argv"),
+        build_cli_parser_fn=lambda: pytest.fail("interactive override detection should not use the full CLI parser"),
+        load_config_fn=lambda path: (seen.update({"loaded_config_path": path}) or cfg, False),
+        config_path=Path("config.toml"),
+        apply_debug_fn=lambda local_cfg: seen.update({"apply_debug_cfg": dict(local_cfg)}),
+        emit_output_fn=lambda *_args: None,
+        pause_fn=lambda: None,
+        self_check_fn=lambda _cfg: True,
+        confirm_fn=lambda _message: True,
+        has_analyzed_targets_fn=lambda _cfg: False,
+        ensure_ast_cache_fn=lambda _cfg: True,
+        run_main_loop_fn=lambda local_cfg, **kwargs: seen.update(
+            {"main_loop_cfg": dict(local_cfg), "main_loop_kwargs": kwargs}
+        ),
+        clear_screen_fn=lambda: None,
+        print_menu_fn=lambda *_args, **_kwargs: None,
+        menu_option_factory=lambda key, label, description: (key, label, description),
+        summarize_targets_fn=lambda _cfg: "targets",
+        require_targets_for_menu_action_fn=lambda _cfg, _action: True,
+        analysis_menu_fn=lambda _cfg: None,
+        documentation_menu_fn=lambda _cfg: True,
+        config_menu_fn=lambda _cfg: True,
+        tools_menu_fn=lambda _cfg: None,
+        show_help_fn=lambda _cfg: None,
+        save_config_fn=lambda _path, _cfg: None,
+        quit_app_fn=lambda: None,
+        quit_app_error=RuntimeError,
+    )
+
+    assert exit_code == 0
+    assert seen["loaded_config_path"] == Path("custom.toml")
+    assert seen["apply_debug_cfg"] == {"debug": False}
+    assert seen["main_loop_cfg"] == {"debug": False}
+    assert seen["main_loop_kwargs"]["config_path"] == Path("custom.toml")
 
 
 def test_startup_main_defaults_plain_interactive_session_to_textual() -> None:
@@ -386,7 +512,6 @@ def test_startup_main_handles_quit_app_error() -> None:
 
 
 def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
-    run_cli_seen: dict[str, object] = {}
     telemetry_seen: dict[str, object] = {}
     validate_seen: dict[str, object] = {}
     analyze_seen: dict[str, object] = {}
@@ -395,28 +520,6 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
     misc_seen: dict[str, object] = {}
     cfg = {"debug": False}
     project = ("Root", cast(Any, object()), ProjectGraph())
-
-    assert (
-        _app_startup.run_cli(
-            ["analyze"],
-            run_cli_owner_fn=lambda argv, **kwargs: run_cli_seen.update({"argv": argv, **kwargs}) or 17,
-            config_path=Path("config.toml"),
-            build_cli_parser_fn=lambda: object(),
-            run_syntax_check_command_fn=lambda _path: 0,
-            load_config_fn=lambda _path: (cfg, False),
-            apply_debug_fn=lambda _cfg: None,
-            run_validate_config_command_fn=lambda *_args, **_kwargs: 0,
-            run_analyze_command_fn=lambda *_args, **_kwargs: 0,
-            run_simulate_command_fn=lambda *_args, **_kwargs: 0,
-            run_docgen_command_fn=lambda *_args, **_kwargs: 0,
-            run_telemetry_summary_command_fn=lambda *_args, **_kwargs: 0,
-            run_format_icf_command_fn=lambda *_args, **_kwargs: 0,
-            exit_success=0,
-            exit_usage_error=2,
-        )
-        == 17
-    )
-    assert run_cli_seen["argv"] == ["analyze"]
 
     assert (
         _app_startup.run_telemetry_summary_command(
@@ -442,14 +545,17 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
             cfg,
             config_path=Path("config.toml"),
             default_used=True,
-            run_validate_config_command_fn=lambda local_cfg, **kwargs: (
-                validate_seen.update({"cfg": local_cfg, **kwargs}) or 23
+            validate_config_fn=lambda local_cfg: (
+                validate_seen.update({"cfg": local_cfg})
+                or SimpleNamespace(
+                    passed=False,
+                    errors=[SimpleNamespace(message="bad target")],
+                )
             ),
-            validate_config_fn=lambda _cfg: SimpleNamespace(passed=True),
             exit_success=0,
             exit_usage_error=2,
         )
-        == 23
+        == 2
     )
     assert validate_seen["cfg"] is cfg
 
@@ -458,27 +564,54 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
             cfg,
             selected_keys=["variables"],
             use_cache=False,
-            run_analyze_command_fn=lambda local_cfg, **kwargs: analyze_seen.update({"cfg": local_cfg, **kwargs}) or 29,
-            run_checks_owner_fn=lambda local_cfg, selected_keys, **kwargs: analyze_seen.update(
-                {
-                    "run_checks_cfg": local_cfg,
-                    "run_checks_selected_keys": selected_keys,
-                    "nested_projects": list(kwargs["iter_loaded_projects_fn"]({"debug": False})),
-                    "enabled_keys": kwargs["get_enabled_analyzers_fn"](),
-                }
+            run_analyze_command_fn=lambda local_cfg, *, selected_keys, selected_issue_kinds=None, use_cache, output_format, collect_analyze_result_fn, exit_success: (
+                analyze_seen.update(
+                    {
+                        "cfg": local_cfg,
+                        "selected_keys": selected_keys,
+                        "selected_issue_kinds": selected_issue_kinds,
+                        "use_cache": use_cache,
+                        "output_format": output_format,
+                        "collected": collect_analyze_result_fn(
+                            local_cfg,
+                            selected_keys=selected_keys,
+                            selected_issue_kinds=selected_issue_kinds,
+                        ),
+                        "exit_success": exit_success,
+                    }
+                )
+                or exit_success
             ),
             iter_loaded_projects_fn=lambda _cfg, use_cache: iter([project] if not use_cache else []),
+            collect_run_checks_result_fn=lambda local_cfg, selected_keys, *, selected_issue_kinds=None, **kwargs: (
+                SimpleNamespace(
+                    output_lines=(
+                        str(local_cfg.get("use_cache")),
+                        str(selected_keys),
+                        str(selected_issue_kinds),
+                        str(list(kwargs["iter_loaded_projects_fn"]({"debug": False}))),
+                        str(kwargs["get_enabled_analyzers_fn"]()),
+                    ),
+                    cancelled=False,
+                )
+            ),
             get_selectable_analyzers_fn=lambda: ["selected"],
             get_enabled_analyzers_fn=lambda: ["enabled"],
             target_is_library_fn=lambda _cfg, _bp, _graph: False,
             exit_success=0,
         )
-        == 29
+        == 0
     )
-    cast(Any, analyze_seen["run_checks_fn"])(cfg, ["variables"], False)
-    assert analyze_seen["run_checks_selected_keys"] == ["variables"]
-    assert analyze_seen["nested_projects"] == [project]
-    assert analyze_seen["enabled_keys"] == ["selected"]
+    assert analyze_seen["selected_keys"] == ["variables"]
+    assert analyze_seen["use_cache"] is False
+    assert analyze_seen["output_format"] == "text"
+    assert cast(Any, analyze_seen["collected"]).output_lines == (
+        "False",
+        "['variables']",
+        "None",
+        str([project]),
+        "['selected']",
+    )
 
     assert (
         _app_startup.run_simulate_command(
@@ -517,19 +650,19 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
     )
     assert list(cast(Any, docgen_seen["iter_loaded_projects_fn"])(cfg, False)) == [project]
 
-    _app_startup.run_icf_formatter(
+    _app_interactive_menus.run_icf_formatter(
         cfg,
         run_format_icf_command_fn=lambda local_cfg: misc_seen.update({"icf_cfg": local_cfg}) or 0,
         pause_fn=lambda: misc_seen.update({"paused": True}),
     )
-    _app_startup.show_config(
+    _app_interactive_menus.show_config(
         cfg,
         show_config_fn=lambda local_cfg, **kwargs: misc_seen.update({"show_config_cfg": local_cfg, **kwargs}),
         get_graphics_rules_path_fn=lambda: Path("graphics.json"),
         load_graphics_rules_fn=lambda path=None: ({"rules": []}, False),
         graphics_rule_config_line_fn=lambda _rule: "line",
     )
-    _app_startup.print_menu(
+    _app_interactive_menus.print_menu(
         "Menu",
         [("1", "One")],
         intro="Intro",
@@ -540,7 +673,7 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
         print_fn=lambda *_args: None,
     )
     assert (
-        _app_startup.summarize_targets(
+        _app_interactive_menus.summarize_targets(
             cfg,
             summarize_targets_fn=lambda local_cfg, **kwargs: (
                 misc_seen.update({"summarize_cfg": local_cfg, **kwargs}) or "targets"
@@ -549,7 +682,7 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
         )
         == "targets"
     )
-    _app_startup.show_help(
+    _app_interactive_menus.show_help(
         cfg,
         show_help_fn=lambda local_cfg, **kwargs: misc_seen.update({"show_help_cfg": local_cfg, **kwargs}),
         clear_screen_fn=lambda: None,
@@ -562,7 +695,7 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
     def dump_target_is_library(_cfg: object, _project_bp: object, _graph: object) -> bool:
         return False
 
-    _app_startup.dump_menu(
+    _app_interactive_menus.dump_menu(
         cfg,
         dump_menu_fn=lambda local_cfg, **kwargs: misc_seen.update({"dump_cfg": local_cfg, **kwargs}),
         clear_screen_fn=lambda: None,
@@ -575,7 +708,7 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
         analyze_variables_fn=lambda *_args, **_kwargs: None,
     )
     assert (
-        _app_startup.config_menu(
+        _app_interactive_menus.config_menu(
             cfg,
             config_menu_fn=lambda local_cfg, **kwargs: misc_seen.update({"config_cfg": local_cfg, **kwargs}) or True,
             config_path=Path("config.toml"),
@@ -598,7 +731,7 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
     def run_source_diff_report(_cfg: object) -> None:
         return None
 
-    _app_startup.tools_menu(
+    _app_interactive_menus.tools_menu(
         cfg,
         tools_menu_fn=lambda local_cfg, **kwargs: misc_seen.update({"tools_cfg": local_cfg, **kwargs}),
         clear_screen_fn=lambda: None,
@@ -697,14 +830,43 @@ def test_run_cli_validate_config_uses_custom_path(monkeypatch):
         ["--config", "custom.toml", "validate-config"],
         load_config_fn=lambda path: ({"debug": False}, False),
         apply_debug_fn=lambda _cfg: None,
-        run_validate_config_command_fn=lambda cfg, *, config_path, default_used: (
-            seen.update({"cfg": cfg, "config_path": config_path, "default_used": default_used}) or app_base.EXIT_SUCCESS
-        ),
+        command_handlers={
+            "validate_config": lambda cfg, *, config_path, default_used: (
+                seen.update({"cfg": cfg, "config_path": config_path, "default_used": default_used})
+                or app_base.EXIT_SUCCESS
+            )
+        },
     )
 
     assert exit_code == app_base.EXIT_SUCCESS
     assert str(seen["config_path"]).endswith("custom.toml")
     assert seen["default_used"] is False
+
+
+def test_run_cli_validate_config_passes_json_output_format():
+    seen = {}
+
+    exit_code = _run_base_cli(
+        ["validate-config", "--format", "json"],
+        load_config_fn=lambda path: ({"debug": False}, False),
+        apply_debug_fn=lambda _cfg: None,
+        command_handlers={
+            "validate_config": lambda cfg, *, config_path, default_used, output_format: (
+                seen.update(
+                    {
+                        "cfg": cfg,
+                        "config_path": config_path,
+                        "default_used": default_used,
+                        "output_format": output_format,
+                    }
+                )
+                or app_base.EXIT_SUCCESS
+            )
+        },
+    )
+
+    assert exit_code == app_base.EXIT_SUCCESS
+    assert seen["output_format"] == "json"
 
 
 def test_run_cli_analyze_passes_flags():
@@ -726,23 +888,27 @@ def test_run_cli_analyze_passes_flags():
         ],
         load_config_fn=lambda path: ({"debug": False}, False),
         apply_debug_fn=lambda _cfg: None,
-        run_analyze_command_fn=lambda cfg, *, selected_keys, selected_issue_kinds, use_cache: (
-            seen.update(
-                {
-                    "cfg": cfg,
-                    "selected_keys": selected_keys,
-                    "selected_issue_kinds": selected_issue_kinds,
-                    "use_cache": use_cache,
-                }
+        command_handlers={
+            "analyze": lambda cfg, *, selected_keys, selected_issue_kinds, use_cache, output_format="text": (
+                seen.update(
+                    {
+                        "cfg": cfg,
+                        "selected_keys": selected_keys,
+                        "selected_issue_kinds": selected_issue_kinds,
+                        "use_cache": use_cache,
+                        "output_format": output_format,
+                    }
+                )
+                or app_base.EXIT_SUCCESS
             )
-            or app_base.EXIT_SUCCESS
-        ),
+        },
     )
 
     assert exit_code == app_base.EXIT_SUCCESS
     assert seen["selected_keys"] == ["variables", "shadowing"]
     assert seen["selected_issue_kinds"] == frozenset({"unused", "shadowing"})
     assert seen["use_cache"] is False
+    assert seen["output_format"] == "text"
     assert cast(dict[str, Any], seen["cfg"])["debug"] is True
 
 
@@ -754,26 +920,58 @@ def test_run_cli_analyze_passes_opt_in_state_inference_key():
         config_path=app.CONFIG_PATH,
         load_config_fn=lambda path: ({"debug": False}, False),
         apply_debug_fn=lambda _cfg: None,
-        run_validate_config_command_fn=lambda cfg, *, config_path, default_used: app_base.EXIT_SUCCESS,
-        run_analyze_command_fn=lambda cfg, *, selected_keys, selected_issue_kinds=None, use_cache: (
-            seen.update(
-                {
-                    "cfg": cfg,
-                    "selected_keys": selected_keys,
-                    "selected_issue_kinds": selected_issue_kinds,
-                    "use_cache": use_cache,
-                }
+        command_handlers=_command_handlers(
+            analyze=lambda cfg, *, selected_keys, selected_issue_kinds=None, use_cache, output_format="text": (
+                seen.update(
+                    {
+                        "cfg": cfg,
+                        "selected_keys": selected_keys,
+                        "selected_issue_kinds": selected_issue_kinds,
+                        "use_cache": use_cache,
+                        "output_format": output_format,
+                    }
+                )
+                or app_base.EXIT_SUCCESS
             )
-            or app_base.EXIT_SUCCESS
         ),
-        run_docgen_command_fn=lambda cfg, *, use_cache, output_dir, output_path: app_base.EXIT_SUCCESS,
-        run_format_icf_command_fn=lambda cfg, *, check: app_base.EXIT_SUCCESS,
     )
 
     assert exit_code == app_base.EXIT_SUCCESS
     assert seen["selected_keys"] == ["state-inference"]
     assert seen["selected_issue_kinds"] is None
     assert seen["use_cache"] is True
+    assert seen["output_format"] == "text"
+
+
+def test_run_cli_analyze_passes_json_output_format():
+    seen = {}
+
+    exit_code = cli_entry.run_cli(
+        ["analyze", "--check", "variables", "--format", "json"],
+        config_path=app.CONFIG_PATH,
+        load_config_fn=lambda path: ({"debug": False}, False),
+        apply_debug_fn=lambda _cfg: None,
+        command_handlers=_command_handlers(
+            analyze=lambda cfg, *, selected_keys, selected_issue_kinds=None, use_cache, output_format="text": (
+                seen.update(
+                    {
+                        "cfg": cfg,
+                        "selected_keys": selected_keys,
+                        "selected_issue_kinds": selected_issue_kinds,
+                        "use_cache": use_cache,
+                        "output_format": output_format,
+                    }
+                )
+                or app_base.EXIT_SUCCESS
+            )
+        ),
+    )
+
+    assert exit_code == app_base.EXIT_SUCCESS
+    assert seen["selected_keys"] == ["variables"]
+    assert seen["selected_issue_kinds"] is None
+    assert seen["use_cache"] is True
+    assert seen["output_format"] == "json"
 
 
 def test_run_cli_analyze_list_checks_prints_selectable_keys(monkeypatch, capsys):
@@ -793,6 +991,23 @@ def test_run_cli_analyze_list_checks_prints_selectable_keys(monkeypatch, capsys)
     assert captured.err == ""
 
 
+def test_run_cli_analyze_list_checks_supports_json_output(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "sattlint.analyzers.registry.get_selectable_analyzers",
+        lambda: [SimpleNamespace(key="variables"), SimpleNamespace(key="timing")],
+    )
+
+    exit_code = cli_entry.run_cli(
+        ["analyze", "--list-checks", "--format", "json"],
+        config_path=Path("config.toml"),
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == app_base.EXIT_SUCCESS
+    assert json.loads(captured.out) == {"checks": ["variables", "timing"]}
+    assert captured.err == ""
+
+
 def test_run_cli_analyze_list_issue_kinds_prints_values_without_loading_config(capsys):
     exit_code = cli_entry.run_cli(
         ["analyze", "--list-issue-kinds"],
@@ -804,6 +1019,20 @@ def test_run_cli_analyze_list_issue_kinds_prints_values_without_loading_config(c
     captured = capsys.readouterr()
     assert exit_code == app_base.EXIT_SUCCESS
     assert captured.out.splitlines() == [issue_kind.value for issue_kind in IssueKind]
+    assert captured.err == ""
+
+
+def test_run_cli_analyze_list_issue_kinds_supports_json_without_loading_config(capsys):
+    exit_code = cli_entry.run_cli(
+        ["analyze", "--list-issue-kinds", "--format", "json"],
+        config_path=Path("config.toml"),
+        load_config_fn=lambda _path: pytest.fail("load_config should not run for --list-issue-kinds"),
+        apply_debug_fn=lambda _cfg: pytest.fail("apply_debug should not run for --list-issue-kinds"),
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == app_base.EXIT_SUCCESS
+    assert json.loads(captured.out) == {"issue_kinds": [issue_kind.value for issue_kind in IssueKind]}
     assert captured.err == ""
 
 
@@ -828,21 +1057,23 @@ def test_run_cli_simulate_passes_flags():
         ],
         load_config_fn=lambda path: ({"debug": False}, False),
         apply_debug_fn=lambda _cfg: None,
-        run_simulate_command_fn=lambda cfg, *, target_path, module_name, mode, max_scans, output_format, output_path, use_cache: (
-            seen.update(
-                {
-                    "cfg": cfg,
-                    "target_path": target_path,
-                    "module_name": module_name,
-                    "mode": mode,
-                    "max_scans": max_scans,
-                    "output_format": output_format,
-                    "output_path": output_path,
-                    "use_cache": use_cache,
-                }
+        command_handlers={
+            "simulate": lambda cfg, *, target_path, module_name, mode, max_scans, output_format, output_path, use_cache: (
+                seen.update(
+                    {
+                        "cfg": cfg,
+                        "target_path": target_path,
+                        "module_name": module_name,
+                        "mode": mode,
+                        "max_scans": max_scans,
+                        "output_format": output_format,
+                        "output_path": output_path,
+                        "use_cache": use_cache,
+                    }
+                )
+                or app_base.EXIT_SUCCESS
             )
-            or app_base.EXIT_SUCCESS
-        ),
+        },
     )
 
     assert exit_code == app_base.EXIT_SUCCESS
@@ -862,9 +1093,9 @@ def test_run_cli_format_icf_passes_check_flag():
         ["format-icf", "--check"],
         load_config_fn=lambda path: ({"debug": False, "icf_dir": "icf"}, False),
         apply_debug_fn=lambda _cfg: None,
-        run_format_icf_command_fn=lambda cfg, *, check: (
-            seen.update({"cfg": cfg, "check": check}) or app_base.EXIT_SUCCESS
-        ),
+        command_handlers={
+            "format_icf": lambda cfg, *, check: seen.update({"cfg": cfg, "check": check}) or app_base.EXIT_SUCCESS
+        },
     )
 
     assert exit_code == app_base.EXIT_SUCCESS
@@ -878,17 +1109,19 @@ def test_run_cli_docgen_passes_output_flags():
         ["docgen", "--output-dir", "docs-out", "--output-path", "report.docx"],
         load_config_fn=lambda path: ({"debug": False}, False),
         apply_debug_fn=lambda _cfg: None,
-        run_docgen_command_fn=lambda cfg, *, use_cache, output_dir, output_path: (
-            seen.update(
-                {
-                    "cfg": cfg,
-                    "use_cache": use_cache,
-                    "output_dir": output_dir,
-                    "output_path": output_path,
-                }
+        command_handlers={
+            "docgen": lambda cfg, *, use_cache, output_dir, output_path: (
+                seen.update(
+                    {
+                        "cfg": cfg,
+                        "use_cache": use_cache,
+                        "output_dir": output_dir,
+                        "output_path": output_path,
+                    }
+                )
+                or app_base.EXIT_SUCCESS
             )
-            or app_base.EXIT_SUCCESS
-        ),
+        },
     )
 
     assert exit_code == app_base.EXIT_SUCCESS
@@ -904,17 +1137,19 @@ def test_run_cli_telemetry_summary_passes_output_flags():
         ["--config", "custom.toml", "telemetry-summary", "--format", "json", "--output", "summary.json"],
         load_config_fn=lambda path: ({"debug": False}, False),
         apply_debug_fn=lambda _cfg: None,
-        run_telemetry_summary_command_fn=lambda cfg, *, config_path, output_format, output_path: (
-            seen.update(
-                {
-                    "cfg": cfg,
-                    "config_path": config_path,
-                    "output_format": output_format,
-                    "output_path": output_path,
-                }
+        command_handlers={
+            "telemetry_summary": lambda cfg, *, config_path, output_format, output_path: (
+                seen.update(
+                    {
+                        "cfg": cfg,
+                        "config_path": config_path,
+                        "output_format": output_format,
+                        "output_path": output_path,
+                    }
+                )
+                or app_base.EXIT_SUCCESS
             )
-            or app_base.EXIT_SUCCESS
-        ),
+        },
     )
 
     assert exit_code == app_base.EXIT_SUCCESS
@@ -931,38 +1166,40 @@ def test_run_cli_cache_prune_passes_cache_dir_without_loading_config():
         config_path=Path("config.toml"),
         load_config_fn=lambda _path: (_ for _ in ()).throw(AssertionError("config should not be loaded")),
         apply_debug_fn=lambda _cfg: (_ for _ in ()).throw(AssertionError("debug should not be applied")),
-        run_cache_prune_command_fn=lambda *, cache_dir: seen.update({"cache_dir": cache_dir}) or app_base.EXIT_SUCCESS,
+        command_handlers={
+            "cache_prune": lambda *, cache_dir: seen.update({"cache_dir": cache_dir}) or app_base.EXIT_SUCCESS
+        },
     )
 
     assert exit_code == app_base.EXIT_SUCCESS
     assert seen == {"cache_dir": "custom-cache"}
 
 
-def test_run_cli_repo_audit_passes_through_args(monkeypatch):
+def test_run_cli_repo_audit_uses_parsed_handler():
     seen = {}
-
-    def mock_repo_audit_main(argv=None):
-        seen.update({"argv": argv})
-        return app_base.EXIT_SUCCESS
-
-    monkeypatch.setattr("sattlint.devtools.repo_audit.main", mock_repo_audit_main)
 
     exit_code = _run_base_cli(
         ["repo-audit", "--profile", "quick", "--fail-on", "high"],
+        command_handlers={
+            "repo_audit": lambda args: (
+                seen.update(
+                    {
+                        "command": args.command,
+                        "profile": args.profile,
+                        "fail_on": args.fail_on,
+                    }
+                )
+                or app_base.EXIT_SUCCESS
+            )
+        },
     )
 
     assert exit_code == app_base.EXIT_SUCCESS
-    assert seen["argv"] == ["--profile", "quick", "--fail-on", "high"]
+    assert seen == {"command": "repo-audit", "profile": "quick", "fail_on": "high"}
 
 
-def test_run_cli_source_diff_passes_through_args(monkeypatch):
+def test_run_cli_source_diff_uses_parsed_handler():
     seen = {}
-
-    def mock_source_diff_main(argv=None):
-        seen.update({"argv": argv})
-        return app_base.EXIT_SUCCESS
-
-    monkeypatch.setattr("sattlint.devtools.source_diff_report.main", mock_source_diff_main)
 
     exit_code = _run_base_cli(
         [
@@ -974,26 +1211,64 @@ def test_run_cli_source_diff_passes_through_args(monkeypatch):
             "--official-file",
             "WidgetReview.x",
         ],
+        command_handlers={
+            "source_diff": lambda args: (
+                seen.update(
+                    {
+                        "command": args.command,
+                        "workspace_root": args.workspace_root,
+                        "draft_file": args.draft_file,
+                        "official_file": args.official_file,
+                    }
+                )
+                or app_base.EXIT_SUCCESS
+            )
+        },
     )
 
     assert exit_code == app_base.EXIT_SUCCESS
-    assert seen["argv"] == [
-        "--workspace-root",
-        "tests/fixtures/source_diff",
-        "--draft-file",
-        "WidgetReview.s",
-        "--official-file",
-        "WidgetReview.x",
-    ]
+    assert seen == {
+        "command": "source-diff",
+        "workspace_root": "tests/fixtures/source_diff",
+        "draft_file": "WidgetReview.s",
+        "official_file": "WidgetReview.x",
+    }
 
 
-def test_run_cli_quiet_suppresses_forwarded_repo_audit_stdout(monkeypatch, capsys):
-    monkeypatch.setattr(
-        "sattlint.devtools.repo_audit.main",
-        lambda argv=None: print("visible") or app_base.EXIT_SUCCESS,
+def test_run_cli_trace_uses_parsed_handler():
+    seen = {}
+
+    exit_code = _run_base_cli(
+        ["trace", "tests/fixtures/sample_sattline_files/Program/Main.s", "--output", "trace.json", "--debug"],
+        command_handlers={
+            "trace": lambda args: (
+                seen.update(
+                    {
+                        "command": args.command,
+                        "source_file": args.source_file,
+                        "output": args.output,
+                        "debug": args.debug,
+                    }
+                )
+                or app_base.EXIT_SUCCESS
+            )
+        },
     )
 
-    exit_code = _run_base_cli(["--quiet", "repo-audit", "--list-checks"])
+    assert exit_code == app_base.EXIT_SUCCESS
+    assert seen == {
+        "command": "trace",
+        "source_file": "tests/fixtures/sample_sattline_files/Program/Main.s",
+        "output": "trace.json",
+        "debug": True,
+    }
+
+
+def test_run_cli_quiet_suppresses_repo_audit_stdout(capsys):
+    exit_code = _run_base_cli(
+        ["--quiet", "repo-audit", "--list-checks"],
+        command_handlers={"repo_audit": lambda _args: print("visible") or app_base.EXIT_SUCCESS},
+    )
 
     captured = capsys.readouterr()
     assert exit_code == app_base.EXIT_SUCCESS
@@ -1001,13 +1276,23 @@ def test_run_cli_quiet_suppresses_forwarded_repo_audit_stdout(monkeypatch, capsy
     assert captured.err == ""
 
 
-def test_run_cli_quiet_suppresses_forwarded_source_diff_stdout(monkeypatch, capsys):
-    monkeypatch.setattr(
-        "sattlint.devtools.source_diff_report.main",
-        lambda argv=None: print("visible") or app_base.EXIT_SUCCESS,
+def test_run_cli_quiet_suppresses_source_diff_stdout(capsys):
+    exit_code = _run_base_cli(
+        ["--quiet", "source-diff", "--discover-pairs"],
+        command_handlers={"source_diff": lambda _args: print("visible") or app_base.EXIT_SUCCESS},
     )
 
-    exit_code = _run_base_cli(["--quiet", "source-diff", "--discover-pairs"])
+    captured = capsys.readouterr()
+    assert exit_code == app_base.EXIT_SUCCESS
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_run_cli_quiet_suppresses_trace_stdout(capsys):
+    exit_code = _run_base_cli(
+        ["--quiet", "trace", "tests/fixtures/sample_sattline_files/Program/Main.s"],
+        command_handlers={"trace": lambda _args: print("visible") or app_base.EXIT_SUCCESS},
+    )
 
     captured = capsys.readouterr()
     assert exit_code == app_base.EXIT_SUCCESS
@@ -1016,7 +1301,11 @@ def test_run_cli_quiet_suppresses_forwarded_source_diff_stdout(monkeypatch, caps
 
 
 def test_run_cli_quiet_suppresses_stdout(monkeypatch, capsys):
-    monkeypatch.setattr(app_base, "run_syntax_check_command", lambda _path: print("visible") or app_base.EXIT_SUCCESS)
+    monkeypatch.setattr(
+        app_base,
+        "run_syntax_check_command",
+        lambda _path, *, output_format="text": print("visible") or app_base.EXIT_SUCCESS,
+    )
 
     exit_code = _run_base_cli(["--quiet", "syntax-check", "dummy.s"])
 
@@ -1041,6 +1330,37 @@ def test_run_syntax_check_command_prints_ok_for_valid_file(monkeypatch, tmp_path
     assert exit_code == app_base.EXIT_SUCCESS
     assert captured.out == "OK\n"
     assert captured.err == ""
+
+
+def test_run_syntax_check_command_prints_json_for_valid_file(monkeypatch, tmp_path, capsys):
+    source_path = tmp_path / "Program.s"
+    source_path.write_text("BasePicture\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        app_base.engine_module,
+        "validate_single_file_syntax",
+        lambda _path: engine.SyntaxValidationResult(
+            file_path=source_path,
+            ok=True,
+            stage="validation",
+            warnings=("legacy warning",),
+        ),
+    )
+
+    exit_code = app_base.run_syntax_check_command(str(source_path), output_format="json")
+
+    captured = capsys.readouterr()
+    assert exit_code == app_base.EXIT_SUCCESS
+    assert captured.err == ""
+    assert json.loads(captured.out) == {
+        "column": None,
+        "file_path": str(source_path),
+        "line": None,
+        "message": None,
+        "ok": True,
+        "stage": "validation",
+        "warnings": ["legacy warning"],
+    }
 
 
 def test_run_syntax_check_command_returns_domain_failure_for_invalid_file(monkeypatch, tmp_path, capsys):
@@ -1068,6 +1388,39 @@ def test_run_syntax_check_command_returns_domain_failure_for_invalid_file(monkey
     assert "bad syntax" in captured.err
 
 
+def test_run_syntax_check_command_prints_json_for_invalid_file(monkeypatch, tmp_path, capsys):
+    source_path = tmp_path / "Broken.s"
+    source_path.write_text("BasePicture\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        app_base.engine_module,
+        "validate_single_file_syntax",
+        lambda _path: engine.SyntaxValidationResult(
+            file_path=source_path,
+            ok=False,
+            stage="validation",
+            message="bad syntax",
+            line=7,
+            column=3,
+        ),
+    )
+
+    exit_code = app_base.run_syntax_check_command(str(source_path), output_format="json")
+
+    captured = capsys.readouterr()
+    assert exit_code == app_base.EXIT_FAILURE
+    assert captured.err == ""
+    assert json.loads(captured.out) == {
+        "column": 3,
+        "file_path": str(source_path),
+        "line": 7,
+        "message": "bad syntax",
+        "ok": False,
+        "stage": "validation",
+        "warnings": [],
+    }
+
+
 def test_run_syntax_check_command_returns_usage_error_for_missing_file(capsys, tmp_path):
     missing_path = tmp_path / "Missing.s"
 
@@ -1076,6 +1429,25 @@ def test_run_syntax_check_command_returns_usage_error_for_missing_file(capsys, t
     captured = capsys.readouterr()
     assert exit_code == app_base.EXIT_USAGE_ERROR
     assert "ERROR [io]" in captured.err
+
+
+def test_run_syntax_check_command_prints_json_for_missing_file(capsys, tmp_path):
+    missing_path = tmp_path / "Missing.s"
+
+    exit_code = app_base.run_syntax_check_command(str(missing_path), output_format="json")
+
+    captured = capsys.readouterr()
+    assert exit_code == app_base.EXIT_USAGE_ERROR
+    assert captured.err == ""
+    assert json.loads(captured.out) == {
+        "column": None,
+        "file_path": str(missing_path),
+        "line": None,
+        "message": "File not found",
+        "ok": False,
+        "stage": "io",
+        "warnings": [],
+    }
 
 
 class _FakeParser:
@@ -1145,13 +1517,28 @@ def test_cli_entry_returns_usage_error_when_config_load_fails(capsys):
         ["validate-config"],
         config_path=Path("config.toml"),
         build_cli_parser_fn=lambda: parser,
-        load_config_fn=lambda _path: (_ for _ in ()).throw(RuntimeError("bad config")),
+        load_config_fn=lambda _path: (_ for _ in ()).throw(ValueError("bad config")),
         apply_debug_fn=lambda _cfg: None,
     )
 
     captured = capsys.readouterr()
     assert exit_code == cli_entry.EXIT_USAGE_ERROR
     assert "ERROR [config]" in captured.err
+
+
+def test_cli_entry_reraises_unexpected_config_load_exceptions() -> None:
+    parser = _FakeParser(
+        args=SimpleNamespace(command="validate-config", checks=[], config=None, no_cache=False, quiet=False),
+    )
+
+    with pytest.raises(RuntimeError, match="bad config"):
+        cli_entry.run_cli(
+            ["validate-config"],
+            config_path=Path("config.toml"),
+            build_cli_parser_fn=lambda: parser,
+            load_config_fn=lambda _path: (_ for _ in ()).throw(RuntimeError("bad config")),
+            apply_debug_fn=lambda _cfg: None,
+        )
 
 
 def test_cli_entry_validate_config_requires_handler():
@@ -1167,6 +1554,34 @@ def test_cli_entry_validate_config_requires_handler():
             load_config_fn=lambda _path: ({"debug": False}, False),
             apply_debug_fn=lambda _cfg: None,
         )
+
+
+def test_cli_entry_syntax_check_passes_json_output_format():
+    seen: dict[str, object] = {}
+    parser = _FakeParser(
+        args=SimpleNamespace(
+            command="syntax-check",
+            file="prog.s",
+            config=None,
+            no_cache=False,
+            quiet=False,
+            format="json",
+        )
+    )
+
+    exit_code = cli_entry.run_cli(
+        ["syntax-check", "prog.s", "--format", "json"],
+        config_path=Path("config.toml"),
+        build_cli_parser_fn=lambda: parser,
+        command_handlers={
+            "syntax_check": lambda file_path, *, output_format="text": (
+                seen.update({"file_path": file_path, "output_format": output_format}) or 0
+            )
+        },
+    )
+
+    assert exit_code == cli_entry.EXIT_SUCCESS
+    assert seen == {"file_path": "prog.s", "output_format": "json"}
 
 
 def test_cli_entry_analyze_requires_handler():
@@ -1262,17 +1677,19 @@ def test_cli_entry_telemetry_summary_skips_config_loading():
         build_cli_parser_fn=lambda: parser,
         load_config_fn=lambda _path: (_ for _ in ()).throw(AssertionError("config should not be loaded")),
         apply_debug_fn=lambda _cfg: (_ for _ in ()).throw(AssertionError("debug should not be applied")),
-        run_telemetry_summary_command_fn=lambda cfg, *, config_path, output_format, output_path: (
-            seen.update(
-                {
-                    "cfg": cfg,
-                    "config_path": config_path,
-                    "output_format": output_format,
-                    "output_path": output_path,
-                }
+        command_handlers={
+            "telemetry_summary": lambda cfg, *, config_path, output_format, output_path: (
+                seen.update(
+                    {
+                        "cfg": cfg,
+                        "config_path": config_path,
+                        "output_format": output_format,
+                        "output_path": output_path,
+                    }
+                )
+                or cli_entry.EXIT_SUCCESS
             )
-            or cli_entry.EXIT_SUCCESS
-        ),
+        },
     )
 
     assert exit_code == cli_entry.EXIT_SUCCESS
@@ -1325,6 +1742,45 @@ def test_cli_entry_format_icf_requires_handler():
         )
 
 
+def test_cli_entry_repo_audit_requires_handler():
+    parser = _FakeParser(
+        args=SimpleNamespace(command="repo-audit", checks=[], config=None, no_cache=False, quiet=False),
+    )
+
+    with pytest.raises(RuntimeError, match="repo-audit handler is required"):
+        cli_entry.run_cli(
+            ["repo-audit"],
+            config_path=Path("config.toml"),
+            build_cli_parser_fn=lambda: parser,
+        )
+
+
+def test_cli_entry_source_diff_requires_handler():
+    parser = _FakeParser(
+        args=SimpleNamespace(command="source-diff", checks=[], config=None, no_cache=False, quiet=False),
+    )
+
+    with pytest.raises(RuntimeError, match="source-diff handler is required"):
+        cli_entry.run_cli(
+            ["source-diff"],
+            config_path=Path("config.toml"),
+            build_cli_parser_fn=lambda: parser,
+        )
+
+
+def test_cli_entry_trace_requires_handler():
+    parser = _FakeParser(
+        args=SimpleNamespace(command="trace", checks=[], config=None, no_cache=False, quiet=False),
+    )
+
+    with pytest.raises(RuntimeError, match="trace handler is required"):
+        cli_entry.run_cli(
+            ["trace", "program.s"],
+            config_path=Path("config.toml"),
+            build_cli_parser_fn=lambda: parser,
+        )
+
+
 def test_cli_entry_prints_usage_when_no_command_selected():
     parser = _FakeParser(
         args=SimpleNamespace(command=None, checks=[], config=None, no_cache=False, quiet=False),
@@ -1340,54 +1796,65 @@ def test_cli_entry_prints_usage_when_no_command_selected():
     assert parser.usage_stream is not None
 
 
-def test_cli_entry_repo_audit_without_token_uses_empty_remaining_args(monkeypatch):
+def test_cli_entry_repo_audit_uses_parsed_handler():
     seen: dict[str, Any] = {}
     parser = _FakeParser(
         args=SimpleNamespace(command="repo-audit", checks=[], config=None, no_cache=False, quiet=False),
     )
-    monkeypatch.setattr("sattlint.devtools.repo_audit.main", lambda argv=None: seen.update({"argv": argv}) or 0)
 
     exit_code = cli_entry.run_cli(
         [],
         config_path=Path("config.toml"),
         build_cli_parser_fn=lambda: parser,
+        command_handlers={"repo_audit": lambda args: seen.update({"command": args.command}) or 0},
     )
 
     assert exit_code == cli_entry.EXIT_SUCCESS
-    assert seen["argv"] == []
+    assert seen == {"command": "repo-audit"}
 
 
-def test_cli_entry_source_diff_without_token_uses_empty_remaining_args(monkeypatch):
+def test_cli_entry_source_diff_uses_parsed_handler():
     seen: dict[str, Any] = {}
     parser = _FakeParser(
         args=SimpleNamespace(command="source-diff", checks=[], config=None, no_cache=False, quiet=False),
     )
-    monkeypatch.setattr(
-        "sattlint.devtools.source_diff_report.main",
-        lambda argv=None: seen.update({"argv": argv}) or 0,
+
+    exit_code = cli_entry.run_cli(
+        [],
+        config_path=Path("config.toml"),
+        build_cli_parser_fn=lambda: parser,
+        command_handlers={"source_diff": lambda args: seen.update({"command": args.command}) or 0},
+    )
+
+    assert exit_code == cli_entry.EXIT_SUCCESS
+    assert seen == {"command": "source-diff"}
+
+
+def test_cli_entry_trace_uses_parsed_handler():
+    seen: dict[str, Any] = {}
+    parser = _FakeParser(
+        args=SimpleNamespace(command="trace", checks=[], config=None, no_cache=False, quiet=False),
     )
 
     exit_code = cli_entry.run_cli(
         [],
         config_path=Path("config.toml"),
         build_cli_parser_fn=lambda: parser,
+        command_handlers={"trace": lambda args: seen.update({"command": args.command}) or 0},
     )
 
     assert exit_code == cli_entry.EXIT_SUCCESS
-    assert seen["argv"] == []
+    assert seen == {"command": "trace"}
 
 
-def test_cli_entry_returns_usage_error_when_config_handlers_are_missing(capsys):
+def test_cli_entry_reraises_when_config_handlers_are_missing():
     parser = _FakeParser(
         args=SimpleNamespace(command="analyze", checks=[], list_checks=False, config=None, no_cache=False, quiet=False),
     )
 
-    exit_code = cli_entry.run_cli(
-        ["analyze"],
-        config_path=Path("config.toml"),
-        build_cli_parser_fn=lambda: parser,
-    )
-
-    captured = capsys.readouterr()
-    assert exit_code == cli_entry.EXIT_USAGE_ERROR
-    assert "CLI config handlers are required for this command" in captured.err
+    with pytest.raises(RuntimeError, match="CLI config handlers are required for this command"):
+        cli_entry.run_cli(
+            ["analyze"],
+            config_path=Path("config.toml"),
+            build_cli_parser_fn=lambda: parser,
+        )

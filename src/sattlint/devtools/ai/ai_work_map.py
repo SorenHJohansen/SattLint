@@ -1,0 +1,444 @@
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from collections.abc import Mapping, Sequence
+from functools import partial
+from pathlib import Path
+from typing import Any, cast
+
+from sattlint.devtools._semble_adapter import search_local_repo
+from sattlint.devtools.json_helpers import nonempty_string_entries
+from sattlint.devtools.shared.pipeline_checks import normalize_changed_files, path_matches_globs
+
+from . import _ai_work_map_parsing as parsing_helpers
+from . import _ai_work_map_planning as planning_helpers
+from ._ai_work_map_constants import (
+    ACTIVE_EXEC_PLANS_DIR,
+    AGENT_ROUTING_RULES,
+    AGENTS_DIR,
+    BLOCKING_INVARIANT_RULES,
+    COMPLETED_EXEC_PLANS_DIR,
+    DEFAULT_AGENT_ENTRYPOINT,
+    DEFAULT_CHECK_CATALOG_OUTPUT_PATH,
+    DEFAULT_OUTPUT_DIR,
+    DEFAULT_OUTPUT_PATH,
+    DEFAULT_SESSION_CONTEXT_OUTPUT_PATH,
+    FINISH_GATE_TEMPLATES,
+    INSTRUCTIONS_DIR,
+    REPO_ROOT,
+    SEMANTIC_OWNER_SUGGESTION_TOP_K,
+    VALIDATION_MAP_PATH,
+)
+from ._ai_work_map_freshness import verify_ai_harness_freshness as verify_ai_harness_freshness
+
+type JsonDict = dict[str, object]
+
+
+_FALLBACK_PLANNING_INSTRUCTION_PATHS = frozenset(
+    {
+        ".github/instructions/repo-map.instructions.md",
+    }
+)
+
+
+_string_entries = partial(nonempty_string_entries, include_tuples=True, strip=True)
+
+
+_read_lines = parsing_helpers.read_lines
+_extract_backtick_items = parsing_helpers.extract_backtick_items
+_strip_quotes = parsing_helpers.strip_quotes
+_parse_progress_checkbox_states = parsing_helpers.parse_progress_checkbox_states
+_is_completed_exec_plan = parsing_helpers.is_completed_exec_plan
+is_completed_exec_plan = parsing_helpers.is_completed_exec_plan
+_parse_frontmatter = parsing_helpers.parse_frontmatter
+_parse_validation_routes = parsing_helpers.parse_validation_routes
+_parse_owner_suites = parsing_helpers.parse_owner_suites
+_parse_first_validation_commands = parsing_helpers.parse_first_validation_commands
+_dict_entries = parsing_helpers.dict_entries
+_render_json = parsing_helpers.render_json
+render_json = parsing_helpers.render_json
+_instruction_lookup = planning_helpers.instruction_lookup
+instruction_lookup = planning_helpers.instruction_lookup
+_simplify_check_catalog = planning_helpers.simplify_check_catalog
+_all_check_entries = planning_helpers.all_check_entries
+_render_check_section = planning_helpers.render_check_section
+_collect_relevant_checks = planning_helpers.collect_relevant_checks
+_match_instruction_files = partial(planning_helpers.match_instruction_files, path_matches_globs=path_matches_globs)
+_match_owner_suites = partial(planning_helpers.match_owner_suites, path_matches_globs=path_matches_globs)
+_match_agents = partial(planning_helpers.match_agents, path_matches_globs=path_matches_globs)
+_select_finish_gate_template = planning_helpers.select_finish_gate_template
+_match_blocking_invariants = partial(planning_helpers.match_blocking_invariants, path_matches_globs=path_matches_globs)
+
+
+def _iter_reference_update_files(repo_root: Path) -> list[Path]:
+    return parsing_helpers.iter_reference_update_files(repo_root)
+
+
+def _rewrite_exec_plan_references(archived: list[dict[str, str]], *, repo_root: Path) -> None:
+    return parsing_helpers.rewrite_exec_plan_references(
+        archived,
+        repo_root=repo_root,
+        iter_reference_update_files=_iter_reference_update_files,
+    )
+
+
+def archive_completed_exec_plans(
+    active_dir: Path = ACTIVE_EXEC_PLANS_DIR,
+    completed_dir: Path = COMPLETED_EXEC_PLANS_DIR,
+) -> list[dict[str, str]]:
+    return parsing_helpers.archive_completed_exec_plans(
+        active_dir,
+        completed_dir,
+        repo_root=REPO_ROOT,
+        is_completed_exec_plan=_is_completed_exec_plan,
+        rewrite_exec_plan_references=lambda archived, repo_root: _rewrite_exec_plan_references(
+            archived,
+            repo_root=repo_root,
+        ),
+    )
+
+
+def _collect_owner_suite_plans(exec_plans_dir: Path) -> list[dict[str, Any]]:
+    return parsing_helpers.collect_owner_suite_plans(exec_plans_dir, repo_root=REPO_ROOT)
+
+
+def _collect_instruction_metadata(instructions_dir: Path) -> list[dict[str, Any]]:
+    return parsing_helpers.collect_instruction_metadata(instructions_dir, repo_root=REPO_ROOT)
+
+
+def _collect_agent_metadata(agents_dir: Path) -> list[dict[str, Any]]:
+    return parsing_helpers.collect_agent_metadata(agents_dir, repo_root=REPO_ROOT)
+
+
+def _merge_instruction_files_for_planning(
+    work_map: dict[str, Any],
+    changed_files: list[str],
+    relevant_checks: list[planning_helpers.JsonDict],
+) -> list[planning_helpers.PlanningInstructionEntry]:
+    merged = planning_helpers.merge_instruction_files_for_planning(
+        work_map,
+        changed_files,
+        relevant_checks,
+        match_instruction_files=_match_instruction_files,
+    )
+    return _filter_fallback_planning_instructions(merged)
+
+
+def _instruction_file_path(entry: object) -> str:
+    if not isinstance(entry, Mapping):
+        return ""
+    entry_mapping = cast(Mapping[str, object], entry)
+    return str(entry_mapping.get("file_path", "")).strip()
+
+
+def _filter_fallback_planning_instructions[EntryT](entries: Sequence[EntryT]) -> list[EntryT]:
+    specific_entries = [
+        entry for entry in entries if _instruction_file_path(entry) not in _FALLBACK_PLANNING_INSTRUCTION_PATHS
+    ]
+    return specific_entries if specific_entries else list(entries)
+
+
+def _build_semantic_owner_suggestions(
+    *,
+    work_map: dict[str, Any],
+    relevant_checks: list[planning_helpers.JsonDict],
+    owner_surfaces: list[str],
+    selected_surface: str,
+    semantic_query: str | None,
+) -> dict[str, Any]:
+    normalized_query = "" if semantic_query is None else semantic_query.strip()
+    if not normalized_query:
+        return {
+            "status": "not_requested",
+            "query": None,
+            "backend": None,
+            "suggestions": [],
+            "explanation": "No semantic owner query was provided.",
+        }
+
+    search_report = search_local_repo(
+        normalized_query,
+        repo_root=REPO_ROOT,
+        top_k=SEMANTIC_OWNER_SUGGESTION_TOP_K,
+    )
+    if not search_report.available:
+        return {
+            "status": "unavailable",
+            "query": normalized_query,
+            "backend": search_report.backend,
+            "suggestions": [],
+            "explanation": search_report.explanation,
+            "error": search_report.error,
+        }
+
+    suggestions: list[dict[str, Any]] = []
+    for match in search_report.results:
+        matched_agents = _match_agents(work_map, [match.file_path], owner_surfaces, selected_surface)
+        matched_instructions = _filter_fallback_planning_instructions(
+            _match_instruction_files(work_map, [match.file_path])
+        )
+        matched_owner_surfaces: list[str] = []
+        for check in relevant_checks:
+            path_globs = _string_entries(check.get("path_globs"))
+            if not path_globs or not path_matches_globs(match.file_path, path_globs):
+                continue
+            owner_surface = str(check.get("owner_surface", "")).strip()
+            if owner_surface and owner_surface not in matched_owner_surfaces:
+                matched_owner_surfaces.append(owner_surface)
+        suggestions.append(
+            {
+                "file_path": match.file_path,
+                "start_line": match.start_line,
+                "end_line": match.end_line,
+                "score": match.score,
+                "matched_agent_names": [entry["name"] for entry in matched_agents[:3]],
+                "matched_instruction_names": [entry["name"] for entry in matched_instructions[:3]],
+                "matched_owner_surfaces": matched_owner_surfaces,
+            }
+        )
+
+    return {
+        "status": "ok" if suggestions else "no-results",
+        "query": normalized_query,
+        "backend": search_report.backend,
+        "suggestions": suggestions,
+        "explanation": search_report.explanation,
+    }
+
+
+def render_ai_check_catalog(work_map: dict[str, Any] | None = None) -> str:
+    resolved_work_map = build_ai_work_map() if work_map is None else work_map
+    pipeline_checks = _dict_entries(resolved_work_map.get("pipeline_checks"))
+    repo_audit_checks = _dict_entries(resolved_work_map.get("repo_audit_checks"))
+    lines = [
+        "# AI Check Catalog",
+        "",
+        "Generated from the pipeline and repo-audit check registries.",
+        "Regenerate with `python -m sattlint.devtools.ai --write`.",
+        "",
+    ]
+    lines.extend(_render_check_section("Pipeline Checks", pipeline_checks))
+    lines.extend(_render_check_section("Repo Audit Checks", repo_audit_checks))
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def build_ai_work_map() -> dict[str, Any]:
+    from sattlint.devtools import pipeline  # noqa: PLC0415
+    from sattlint.devtools.audit import repo_audit_entrypoints  # noqa: PLC0415
+
+    pipeline_catalog = pipeline.build_pipeline_check_catalog(
+        profile="full",
+        output_dir=DEFAULT_OUTPUT_DIR / "pipeline",
+    )
+    repo_catalog = repo_audit_entrypoints.build_repo_audit_check_catalog(
+        profile="full",
+        output_dir=DEFAULT_OUTPUT_DIR,
+        fail_on="high",
+    )
+    return {
+        "kind": "sattlint.ai_work_map",
+        "schema_version": 1,
+        "generated_by": "sattlint.devtools.ai.ai_work_map",
+        "default_entrypoint": dict(DEFAULT_AGENT_ENTRYPOINT),
+        "generated_from": {
+            "validation_map": VALIDATION_MAP_PATH.relative_to(REPO_ROOT).as_posix(),
+            "active_exec_plans": f"{ACTIVE_EXEC_PLANS_DIR.relative_to(REPO_ROOT).as_posix()}/*.md",
+            "pipeline_catalog": "sattlint.devtools.pipeline.build_pipeline_check_catalog(profile='full')",
+            "repo_audit_catalog": (
+                "sattlint.devtools.audit.repo_audit_entrypoints.build_repo_audit_check_catalog(profile='full')"
+            ),
+        },
+        "validation_routes": _parse_validation_routes(VALIDATION_MAP_PATH),
+        "finish_gate_templates": [dict(template) for template in FINISH_GATE_TEMPLATES],
+        "blocking_invariant_rules": [dict(rule) for rule in BLOCKING_INVARIANT_RULES],
+        "instructions": _collect_instruction_metadata(INSTRUCTIONS_DIR),
+        "agents": _collect_agent_metadata(AGENTS_DIR),
+        "agent_routing": list(AGENT_ROUTING_RULES),
+        "pipeline_checks": _simplify_check_catalog(pipeline_catalog),
+        "repo_audit_checks": _simplify_check_catalog(repo_catalog, source="repo-audit"),
+        "owner_suite_plans": _collect_owner_suite_plans(ACTIVE_EXEC_PLANS_DIR),
+    }
+
+
+def build_session_context_map(work_map: dict[str, Any] | None = None) -> dict[str, Any]:
+    resolved_work_map = build_ai_work_map() if work_map is None else work_map
+    return {
+        "kind": "sattlint.ai_session_context_map",
+        "schema_version": 1,
+        "generated_by": "sattlint.devtools.ai.ai_work_map",
+        "generated_from": {
+            "work_map": DEFAULT_OUTPUT_PATH.relative_to(REPO_ROOT).as_posix(),
+        },
+        "default_entrypoint": dict(resolved_work_map.get("default_entrypoint", {})),
+        "finish_gate_templates": list(resolved_work_map.get("finish_gate_templates", [])),
+        "blocking_invariant_rules": list(resolved_work_map.get("blocking_invariant_rules", [])),
+        "instructions": list(resolved_work_map.get("instructions", [])),
+        "agents": list(resolved_work_map.get("agents", [])),
+        "agent_routing": list(resolved_work_map.get("agent_routing", [])),
+        "owner_suite_plans": list(resolved_work_map.get("owner_suite_plans", [])),
+    }
+
+
+def load_ai_work_map(path: Path = DEFAULT_OUTPUT_PATH) -> dict[str, Any]:
+    if path.exists():
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            return build_ai_work_map()
+    return build_ai_work_map()
+
+
+def load_session_context_map(path: Path = DEFAULT_SESSION_CONTEXT_OUTPUT_PATH) -> dict[str, Any]:
+    if path.exists():
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            return build_session_context_map()
+    return build_session_context_map()
+
+
+def build_planning_context(
+    *,
+    changed_files: list[str] | None,
+    recommended_check_ids: list[str] | None,
+    selected_surface: str,
+    semantic_query: str | None = None,
+    work_map: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    resolved_work_map = load_ai_work_map() if work_map is None else work_map
+    normalized_changed_files = normalize_changed_files(changed_files)
+    resolved_check_ids = [] if recommended_check_ids is None else list(dict.fromkeys(recommended_check_ids))
+    relevant_checks = _collect_relevant_checks(resolved_work_map, resolved_check_ids)
+    owner_test_targets: list[str] = []
+    owner_surfaces: list[str] = []
+    for entry in relevant_checks:
+        owner_surface = str(entry.get("owner_surface", "")).strip()
+        if owner_surface and owner_surface not in owner_surfaces:
+            owner_surfaces.append(owner_surface)
+        for target_text in _string_entries(entry.get("owner_test_targets")):
+            if target_text and target_text not in owner_test_targets:
+                owner_test_targets.append(target_text)
+
+    owning_agents = _match_agents(resolved_work_map, normalized_changed_files, owner_surfaces, selected_surface)
+    nearest_owner_suites = _match_owner_suites(resolved_work_map, normalized_changed_files, owner_test_targets)
+    instruction_files = _merge_instruction_files_for_planning(
+        resolved_work_map,
+        normalized_changed_files,
+        relevant_checks,
+    )
+    first_validation_commands: list[str] = []
+    for suite in nearest_owner_suites:
+        for command in suite["first_validation_commands"]:
+            command_text = str(command).strip()
+            if command_text and command_text not in first_validation_commands:
+                first_validation_commands.append(command_text)
+    finish_gate_template = _select_finish_gate_template(resolved_work_map, selected_surface)
+    blocking_invariants = _match_blocking_invariants(resolved_work_map, normalized_changed_files, selected_surface)
+    semantic_owner_suggestions = _build_semantic_owner_suggestions(
+        work_map=resolved_work_map,
+        relevant_checks=relevant_checks,
+        owner_surfaces=owner_surfaces,
+        selected_surface=selected_surface,
+        semantic_query=semantic_query,
+    )
+
+    return {
+        "default_entrypoint": dict(resolved_work_map.get("default_entrypoint", {})),
+        "primary_agent": None if not owning_agents else owning_agents[0]["name"],
+        "owning_agents": owning_agents,
+        "owner_surfaces": owner_surfaces,
+        "recommended_check_ids": resolved_check_ids,
+        "relevant_checks": relevant_checks,
+        "owner_test_targets": owner_test_targets,
+        "instruction_files": instruction_files,
+        "nearest_owner_suites": nearest_owner_suites,
+        "first_validation_commands": first_validation_commands,
+        "finish_gate_template": finish_gate_template,
+        "blocking_invariants": blocking_invariants,
+        "semantic_owner_suggestions": semantic_owner_suggestions,
+    }
+
+
+def render_ai_work_map() -> str:
+    return _render_json(build_ai_work_map())
+
+
+def render_session_context_map() -> str:
+    return _render_json(build_session_context_map())
+
+
+def write_ai_check_catalog(output_path: Path = DEFAULT_CHECK_CATALOG_OUTPUT_PATH) -> Path:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(render_ai_check_catalog(), encoding="utf-8", newline="\n")
+    return output_path
+
+
+def write_ai_work_map(output_path: Path = DEFAULT_OUTPUT_PATH) -> Path:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(render_ai_work_map(), encoding="utf-8", newline="\n")
+    return output_path
+
+
+def write_session_context_map(output_path: Path = DEFAULT_SESSION_CONTEXT_OUTPUT_PATH) -> Path:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(render_session_context_map(), encoding="utf-8", newline="\n")
+    return output_path
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Build the machine-readable SattLint AI work map.")
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_PATH, help="Path for the generated JSON file.")
+    parser.add_argument(
+        "--session-output",
+        type=Path,
+        default=DEFAULT_SESSION_CONTEXT_OUTPUT_PATH,
+        help="Path for the compact session-start planning JSON file.",
+    )
+    parser.add_argument(
+        "--reference-output",
+        type=Path,
+        default=DEFAULT_CHECK_CATALOG_OUTPUT_PATH,
+        help="Path for the generated AI check reference markdown file.",
+    )
+    parser.add_argument("--write", action="store_true", help="Write the generated JSON to --output.")
+    parser.add_argument("--check", action="store_true", help="Fail when --output does not match the generated JSON.")
+    parser.add_argument("--stdout", action="store_true", help="Print the generated JSON to stdout.")
+    args = parser.parse_args(argv)
+
+    if args.write:
+        archive_completed_exec_plans()
+
+    rendered = render_ai_work_map()
+    session_rendered = render_session_context_map()
+    reference_rendered = render_ai_check_catalog()
+    if args.check:
+        existing = args.output.read_text(encoding="utf-8") if args.output.exists() else None
+        session_existing = args.session_output.read_text(encoding="utf-8") if args.session_output.exists() else None
+        reference_existing = (
+            args.reference_output.read_text(encoding="utf-8") if args.reference_output.exists() else None
+        )
+        if existing != rendered or session_existing != session_rendered or reference_existing != reference_rendered:
+            return 1
+    write_error: OSError | None = None
+    if args.write:
+        try:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(rendered, encoding="utf-8", newline="\n")
+            args.session_output.parent.mkdir(parents=True, exist_ok=True)
+            args.session_output.write_text(session_rendered, encoding="utf-8", newline="\n")
+            args.reference_output.parent.mkdir(parents=True, exist_ok=True)
+            args.reference_output.write_text(reference_rendered, encoding="utf-8", newline="\n")
+        except OSError as exc:
+            write_error = exc
+    if args.stdout or (not args.write and not args.check):
+        print(rendered, end="")
+    if write_error is not None:
+        print(f"ai work map output error: {write_error}", file=sys.stderr, flush=True)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

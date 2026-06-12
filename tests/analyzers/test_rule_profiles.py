@@ -15,7 +15,14 @@ def test_apply_rule_profile_to_report_handles_variable_issue_without_rule_metada
     updated = rule_profiles_module.apply_rule_profile_to_report(
         analyzer_key="variables",
         report=report,
-        config={"analysis": {"rule_profiles": {"active": "legacy-plant"}}},
+        config={
+            "analysis": {
+                "rule_profiles": {
+                    "active": "custom",
+                    "profiles": {"custom": {"description": "Custom profile"}},
+                }
+            }
+        },
     )
 
     assert updated is report
@@ -134,7 +141,7 @@ def test_rule_profile_configuration_helpers_normalize_payloads_and_reports() -> 
 
     default_report = rule_profiles_module.get_default_rule_profile_report()
     assert default_report["active"] == "default"
-    assert [item["name"] for item in default_report["profiles"]] == ["default", "legacy-plant", "strict-pharma"]
+    assert [item["name"] for item in default_report["profiles"]] == ["default"]
 
 
 def test_rule_profile_metadata_and_override_helpers_cover_fallbacks() -> None:

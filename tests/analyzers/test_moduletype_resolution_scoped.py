@@ -20,7 +20,6 @@ from sattlint.resolution.common import (
     find_all_aliases,
     find_all_aliases_upstream,
     find_module_by_name,
-    find_var_in_scope,
     get_module_path,
     is_external_to_module,
     varname_base,
@@ -28,6 +27,7 @@ from sattlint.resolution.common import (
 )
 from sattlint.resolution.common import resolve_module_by_strict_path as _resolve_module_by_strict_path
 from sattlint.resolution.common import resolve_moduletype_def_strict as _resolve_moduletype_def_strict
+from sattlint.resolution.context_builder import find_var_in_scope
 
 
 def _header(name: str = "BP") -> ModuleHeader:

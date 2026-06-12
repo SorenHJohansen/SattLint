@@ -142,8 +142,8 @@ def test_evaluate_policy_change_allows_typing_scope_expansion_inventory_for_exis
         "src/sattlint/app.py",
         "src/sattlint/core/document.py",
         "src/sattlint/core/semantic.py",
-        "src/sattlint/devtools/repo_audit.py",
-        "src/sattlint/devtools/repo_audit_cli.py",
+        "src/sattlint/devtools/audit/repo_audit.py",
+        "src/sattlint/devtools/audit/repo_audit_cli.py",
     ):
         file_path = tmp_path / rel_path
         file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -151,16 +151,16 @@ def test_evaluate_policy_change_allows_typing_scope_expansion_inventory_for_exis
 
     base_pyproject = _pyproject_with_typing_ratchet(
         "87.26",
-        strict_paths=("src/sattlint/core/document.py", "src/sattlint/devtools/repo_audit_cli.py"),
-        debt_allowlist=("src/sattlint/core/semantic.py", "src/sattlint/devtools/repo_audit.py"),
+        strict_paths=("src/sattlint/core/document.py", "src/sattlint/devtools/audit/repo_audit_cli.py"),
+        debt_allowlist=("src/sattlint/core/semantic.py", "src/sattlint/devtools/audit/repo_audit.py"),
         strict_roots=("src/sattlint/core", "src/sattlint/devtools"),
     )
     head_pyproject = _pyproject_with_typing_ratchet(
         "87.26",
         strict_paths=(
             "src/sattlint/core/document.py",
-            "src/sattlint/devtools/repo_audit.py",
-            "src/sattlint/devtools/repo_audit_cli.py",
+            "src/sattlint/devtools/audit/repo_audit.py",
+            "src/sattlint/devtools/audit/repo_audit_cli.py",
         ),
         debt_allowlist=(
             "src/sattlint/__init__.py",
@@ -323,13 +323,13 @@ def test_run_policy_check_allows_preexisting_touched_debt_during_scope_expansion
     scoped_file.write_text("value = 1\n", encoding="utf-8")
     head_pyproject = _pyproject_with_typing_ratchet(
         "87.26",
-        strict_paths=("src/sattlint/devtools/repo_audit_cli.py",),
+        strict_paths=("src/sattlint/devtools/audit/repo_audit_cli.py",),
         debt_allowlist=("src/sattlint/devtools/repo_audit.py",),
         strict_roots=("src/sattlint",),
     )
     base_pyproject = _pyproject_with_typing_ratchet(
         "87.26",
-        strict_paths=("src/sattlint/devtools/repo_audit_cli.py",),
+        strict_paths=("src/sattlint/devtools/audit/repo_audit_cli.py",),
         debt_allowlist=("src/sattlint/devtools/repo_audit.py",),
         strict_roots=("src/sattlint/devtools",),
     )

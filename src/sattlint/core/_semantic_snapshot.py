@@ -12,7 +12,7 @@ from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef, SourceS
 from ..call_signatures import CallSignatureOccurrence
 from ..models._variable_issues import VariableIssue
 from ..models.project_graph import ProjectGraph
-from ..resolution import CanonicalSymbolTable, TypeGraph
+from ..resolution import CanonicalPathKey, CanonicalSymbolTable, TypeGraph
 from ..resolution.access_graph import AccessEvent
 from ..resolution.common import resolve_module_by_strict_path
 from ._semantic_helpers import (
@@ -99,7 +99,7 @@ class _ReferenceOccurrence:
 
 ReferenceOccurrence = _ReferenceOccurrence
 
-DefinitionKey = tuple[str, ...]
+DefinitionKey = CanonicalPathKey
 ReferencesByFile = dict[str, tuple[ReferenceOccurrence, ...]]
 ReferencesByDefinitionKey = dict[DefinitionKey, tuple[SymbolReference, ...]]
 AccessesByDefinitionKey = dict[DefinitionKey, tuple[AccessEvent, ...]]
@@ -174,6 +174,13 @@ SemanticAnalysisProvider = Callable[
 
 @dataclass(frozen=True, slots=True)
 class SemanticSnapshot:
+    """Frozen query facade over semantic indexes.
+
+    The container itself is immutable, but nested helper structures such as
+    `symbol_table` and `type_graph` are build artifacts that callers should
+    treat as read-only after construction.
+    """
+
     workspace_root: Path
     entry_file: Path
     discovery: WorkspaceSourceDiscovery
@@ -464,6 +471,18 @@ class SemanticSnapshot:
                     "source_library": c.source_library,
                 }
                 for c in self.call_signatures
+            ],
+            "semantic_diagnostic_drop_count": len(self._semantic_diagnostic_drops),
+            "semantic_diagnostic_drops": [
+                {
+                    "analyzer_key": drop.analyzer_key,
+                    "reason": drop.reason,
+                    "module_path": list(drop.module_path),
+                    "variable_name": drop.variable_name,
+                    "field_path": drop.field_path,
+                    "message": drop.message,
+                }
+                for drop in self._semantic_diagnostic_drops
             ],
         }
 

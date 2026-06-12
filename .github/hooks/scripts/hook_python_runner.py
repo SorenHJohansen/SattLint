@@ -5,18 +5,12 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
+from scripts._python_runtime import resolve_repo_python  # noqa: E402
 
-def _resolve_python(repo_root: Path) -> Path:
-    windows_python = repo_root / ".venv" / "Scripts" / "python.exe"
-    if windows_python.exists():
-        return windows_python
-
-    posix_python = repo_root / ".venv" / "bin" / "python"
-    if posix_python.exists():
-        return posix_python
-
-    return Path(sys.executable)
+_resolve_python = resolve_repo_python
 
 
 def _command_path(path: Path, python_executable: Path) -> str:

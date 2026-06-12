@@ -3,8 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from . import _app_analysis_menus as analysis_menus_module
-
-ConfigDict = dict[str, Any]
+from .config_types import ConfigDict
 
 
 def _emit_output_fn(app_module: Any) -> Any:

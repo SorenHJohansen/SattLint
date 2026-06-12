@@ -8,12 +8,16 @@ from sattline_parser.models.ast_model import BasePicture
 from . import config as config_module
 from . import console as console_module
 from .app_interaction import MenuInteraction, build_menu_interaction
-from .docgenerator import classification as documentation_classification_module
+from .config_types import ConfigDict, DocumentationConfig, DocumentationUnitsConfig
 from .docgenerator import generate_docx
+from .docgenerator.classification import (
+    classify_documentation_structure,
+    discover_documentation_unit_candidates,
+    document_scope_summary,
+)
 from .models.project_graph import ProjectGraph
 
-ConfigDict = dict[str, Any]
-DocumentationSelection = dict[str, Any]
+DocumentationSelection = DocumentationUnitsConfig
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
 
 
@@ -28,18 +32,6 @@ _DOCUMENTATION_SCOPE_STATE: _DocumentationScopeState = {
     "instance_paths": [],
     "moduletype_names": [],
 }
-_documentation_classification_module = cast(Any, documentation_classification_module)
-
-classify_documentation_structure = cast(
-    Callable[..., Any], _documentation_classification_module.classify_documentation_structure
-)
-discover_documentation_unit_candidates = cast(
-    Callable[[Any], list[Any]], _documentation_classification_module.discover_documentation_unit_candidates
-)
-document_scope_summary = cast(
-    Callable[[Any, Any], dict[str, Any]], _documentation_classification_module.document_scope_summary
-)
-emit_output = console_module.print_output  # type: ignore[assignment]
 
 
 def get_documentation_unit_selection() -> DocumentationSelection:
@@ -61,7 +53,7 @@ def set_documentation_unit_selection(
     _DOCUMENTATION_SCOPE_STATE["moduletype_names"] = list(moduletype_names or [])
 
 
-def documentation_config_without_scope(cfg: ConfigDict) -> dict[str, Any]:
+def documentation_config_without_scope(cfg: ConfigDict) -> DocumentationConfig:
     documentation_cfg = config_module.get_documentation_config(cfg)
     documentation_cfg["units"] = {
         "mode": "all",
@@ -84,14 +76,14 @@ def preview_documentation_candidates_for_target(
         unavailable_libraries=unavailable_libraries,
     )
     candidates = discover_documentation_unit_candidates(classification)
-    emit_output(f"\n=== Target: {target_name} ===")
+    console_module.print_output(f"\n=== Target: {target_name} ===")
     if not candidates:
-        emit_output("⚠ No unit candidates detected.")
+        console_module.print_output("⚠ No unit candidates detected.")
         return
 
     for index, entry in enumerate(candidates, 1):
         summary = document_scope_summary(entry, classification)
-        emit_output(
+        console_module.print_output(
             f"  {index}. {entry.short_path} | type={entry.moduletype_label or entry.kind} | "
             f"ops={summary['ops']} em={summary['em']} "
             f"rp={summary['rp']} ep={summary['ep']} up={summary['up']}"
@@ -104,7 +96,7 @@ def preview_documentation_unit_candidates(
     iter_loaded_projects_fn: Callable[[ConfigDict], Iterator[LoadedProject]],
     pause_fn: Callable[[], None],
 ) -> None:
-    emit_output("\n--- Documentation Unit Candidates ---")
+    console_module.print_output("\n--- Documentation Unit Candidates ---")
     with console_module.live_status_line() as status_update_fn:
         for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
             status_update_fn(f"Documentation candidates: scanning {target_name}")
@@ -124,20 +116,20 @@ def configure_documentation_scope_by_moduletype(
         prompt_fn=prompt_fn,
         pause_fn=pause_fn,
     )
-    emit_output("\n--- Documentation Scope by Unit ModuleType ---")
-    emit_output("Enter one or more unit moduletype names (comma-separated).")
-    emit_output("Example: ApplTank, XDilute_221X251XY")
+    console_module.print_output("\n--- Documentation Scope by Unit ModuleType ---")
+    console_module.print_output("Enter one or more unit moduletype names (comma-separated).")
+    console_module.print_output("Example: ApplTank, XDilute_221X251XY")
     raw = menu_interaction.prompt(">", None)
     values = split_csv_values_fn(raw)
     if not values:
-        emit_output("❌ No moduletype names provided")
+        console_module.print_output("❌ No moduletype names provided")
         menu_interaction.pause()
         return False
     set_documentation_unit_selection(
         mode="moduletype_names",
         moduletype_names=values,
     )
-    emit_output("✔ Documentation scope updated")
+    console_module.print_output("✔ Documentation scope updated")
     menu_interaction.pause()
     return True
 
@@ -154,20 +146,20 @@ def configure_documentation_scope_by_instance_path(
         prompt_fn=prompt_fn,
         pause_fn=pause_fn,
     )
-    emit_output("\n--- Documentation Scope by Unit Instance Path ---")
-    emit_output("Enter one or more unit instance paths (comma-separated).")
-    emit_output("Use the candidate preview to find valid paths.")
+    console_module.print_output("\n--- Documentation Scope by Unit Instance Path ---")
+    console_module.print_output("Enter one or more unit instance paths (comma-separated).")
+    console_module.print_output("Use the candidate preview to find valid paths.")
     raw = menu_interaction.prompt(">", None)
     values = split_csv_values_fn(raw)
     if not values:
-        emit_output("❌ No instance paths provided")
+        console_module.print_output("❌ No instance paths provided")
         menu_interaction.pause()
         return False
     set_documentation_unit_selection(
         mode="instance_paths",
         instance_paths=values,
     )
-    emit_output("✔ Documentation scope updated")
+    console_module.print_output("✔ Documentation scope updated")
     menu_interaction.pause()
     return True
 
@@ -180,7 +172,7 @@ def reset_documentation_scope(
         pause_fn=pause_fn,
     )
     set_documentation_unit_selection(mode="all")
-    emit_output("✔ Documentation scope reset to all units")
+    console_module.print_output("✔ Documentation scope reset to all units")
     menu_interaction.pause()
     return True
 
@@ -198,7 +190,7 @@ def run_generate_documentation(
         prompt_fn=prompt_fn,
         pause_fn=pause_fn,
     )
-    emit_output("\n--- Generate Documentation ---")
+    console_module.print_output("\n--- Generate Documentation ---")
     documentation_cfg = config_module.get_documentation_config(cfg)
     documentation_cfg["units"] = get_documentation_unit_selection()
 
@@ -213,16 +205,18 @@ def run_generate_documentation(
             )
             scope = classification.scope
             if scope and scope.mode != "all" and not (scope.roots or []):
-                emit_output(f"\n=== Target: {target_name} ===")
-                emit_output("⚠ No unit roots matched the configured documentation scope; skipping target.")
+                console_module.print_output(f"\n=== Target: {target_name} ===")
+                console_module.print_output(
+                    "⚠ No unit roots matched the configured documentation scope; skipping target."
+                )
                 if scope.unmatched_values:
-                    emit_output("Unmatched scope filters: " + ", ".join(scope.unmatched_values))
+                    console_module.print_output("Unmatched scope filters: " + ", ".join(scope.unmatched_values))
                 continue
 
             default_name = f"{target_name}_FS.docx"
             out_name = menu_interaction.prompt(f"Output DOCX for {target_name}", default_name)
             if scope and scope.roots:
-                emit_output(
+                console_module.print_output(
                     f"Selected units for {target_name}: " + ", ".join(entry.short_path for entry in scope.roots)
                 )
             status_update_fn(f"Documentation: generating {target_name}")
@@ -262,7 +256,7 @@ def documentation_menu(
         try:
             return cast(bool, action_fn())
         except KeyboardInterrupt:
-            emit_output("\nOperation canceled. Returning to the menu.")
+            console_module.print_output("\nOperation canceled. Returning to the menu.")
             menu_interaction.pause()
             return default
 
@@ -336,5 +330,5 @@ def documentation_menu(
                 default=False,
             )
         else:
-            emit_output("Invalid choice.")
+            console_module.print_output("Invalid choice.")
             menu_interaction.pause()

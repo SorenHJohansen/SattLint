@@ -21,7 +21,7 @@ from sattline_parser.models.ast_model import (
 from sattlint import _picture_display_path_runtime as picture_display_path_runtime
 from sattlint import engine
 from sattlint.graphics_validation import GraphicsCompositeRecord
-from tests.parser.test_engine import _make_loader
+from tests.parser.test_engine import _loader_config, _make_loader
 
 
 def _header(name: str) -> ModuleHeader:
@@ -53,14 +53,7 @@ def test_loader_resolve_logs_readable_debug_sections(monkeypatch, caplog, tmp_pa
     monkeypatch.setattr(engine, "FileASTCache", _FakeAstCache)
     monkeypatch.setattr(engine, "get_cache_dir", lambda: tmp_path)
 
-    loader = engine.SattLineProjectLoader(
-        program_dir=tmp_path,
-        other_lib_dirs=[],
-        abb_lib_dir=tmp_path,
-        mode=engine.CodeMode.DRAFT,
-        scan_root_only=False,
-        debug=True,
-    )
+    loader = engine.SattLineProjectLoader(_loader_config(tmp_path, debug=True))
 
     def fake_visit(root_name, graph, strict, requester_dir, syntax_check=False):
         assert root_name == "Root"
@@ -119,15 +112,7 @@ def test_loader_can_bypass_file_ast_cache(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(engine, "FileASTCache", _FakeAstCache)
     monkeypatch.setattr(engine, "get_cache_dir", lambda: tmp_path)
 
-    loader = engine.SattLineProjectLoader(
-        program_dir=tmp_path,
-        other_lib_dirs=[],
-        abb_lib_dir=tmp_path,
-        mode=engine.CodeMode.DRAFT,
-        scan_root_only=False,
-        debug=False,
-        use_file_ast_cache=False,
-    )
+    loader = engine.SattLineProjectLoader(_loader_config(tmp_path, use_file_ast_cache=False))
 
     parsed = object()
     monkeypatch.setattr(loader, "_parse_one", lambda *_args, **_kwargs: parsed)
@@ -157,14 +142,7 @@ def test_loader_keeps_dependency_ast_when_validation_warns(monkeypatch, tmp_path
     root_file.with_suffix(".l").write_text("Dep\n", encoding="utf-8")
     (tmp_path / "Dep.s").write_text(source_text, encoding="utf-8")
 
-    loader = engine.SattLineProjectLoader(
-        program_dir=tmp_path,
-        other_lib_dirs=[],
-        abb_lib_dir=tmp_path,
-        mode=engine.CodeMode.DRAFT,
-        scan_root_only=False,
-        debug=False,
-    )
+    loader = engine.SattLineProjectLoader(_loader_config(tmp_path))
 
     call_count = {"value": 0}
     original_validate = engine.validate_transformed_basepicture
@@ -305,7 +283,7 @@ def test_picture_display_runtime_moduletype_helpers_cover_dedup_locality_and_res
 
     class _BrokenPath:
         def __init__(self, *_args, **_kwargs) -> None:
-            raise RuntimeError("bad path")
+            raise ValueError("bad path")
 
     monkeypatch.setattr(picture_display_path_runtime, "Path", _BrokenPath)
     assert picture_display_path_runtime._file_stem_casefold("Root.s") == "root"
@@ -330,7 +308,7 @@ def test_picture_display_runtime_moduletype_helpers_cover_dedup_locality_and_res
     monkeypatch.setattr(
         picture_display_path_runtime,
         "select_moduletype_def_strict",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("bad resolve")),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("bad resolve")),
     )
     assert (
         picture_display_path_runtime._resolve_runtime_moduletype(
@@ -343,6 +321,21 @@ def test_picture_display_runtime_moduletype_helpers_cover_dedup_locality_and_res
         )
         is None
     )
+
+    monkeypatch.setattr(
+        picture_display_path_runtime,
+        "select_moduletype_def_strict",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(TypeError("bad resolver wiring")),
+    )
+    with pytest.raises(TypeError, match="bad resolver wiring"):
+        picture_display_path_runtime._resolve_runtime_moduletype(
+            base_picture,
+            child,
+            current_library="RootLib",
+            current_file="Root.s",
+            graph=graph,
+            candidate_moduletype_index=candidate_index,
+        )
 
 
 def test_picture_display_runtime_collectors_build_tree_and_correlate_placeholders() -> None:
@@ -627,6 +620,38 @@ def test_loader_code_and_deps_lookup_cover_contextual_indexed_disk_and_miss(
     assert loader._find_deps_with_context("Missing", requester_dir=tmp_path) is None
     assert ("code", "Indexed", "draft", tmp_path, ".s") in loader_any._lookup_cache.set_calls
     assert ("deps", "Loose", "draft", tmp_path, ".l") in loader_any._lookup_cache.set_calls
+
+
+def test_loader_lookup_prefers_requester_branch_without_contextual_callback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    program_dir = tmp_path / "libs" / "BranchA" / "Program"
+    same_branch_lib = tmp_path / "libs" / "BranchA" / "Shared"
+    other_branch_lib = tmp_path / "libs" / "BranchB" / "Shared"
+    abb_lib = tmp_path / "AbbLib"
+    for path in (program_dir, same_branch_lib, other_branch_lib, abb_lib):
+        path.mkdir(parents=True, exist_ok=True)
+
+    local_code = same_branch_lib / "Support.s"
+    local_deps = same_branch_lib / "Support.l"
+    remote_code = other_branch_lib / "Support.s"
+    remote_deps = other_branch_lib / "Support.l"
+    for path, text in (
+        (local_code, "local"),
+        (local_deps, "local deps"),
+        (remote_code, "remote"),
+        (remote_deps, "remote deps"),
+    ):
+        path.write_text(text, encoding="utf-8")
+
+    loader = _make_loader(monkeypatch, program_dir, scan_root_only=False)
+    loader.other_lib_dirs = [other_branch_lib, same_branch_lib]
+    loader.abb_lib_dir = abb_lib
+    loader.contextual_lookup = None
+
+    assert loader._find_code_with_context("Support", requester_dir=program_dir) == local_code
+    assert loader._find_deps_with_context("Support", requester_dir=program_dir) == local_deps
 
 
 def test_loader_resolve_flushes_lookup_cache_once_per_run(

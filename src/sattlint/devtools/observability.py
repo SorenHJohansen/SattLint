@@ -1,5 +1,6 @@
 """Observability tooling: exposes metrics and logs for agent consumption."""
 
+import argparse
 import json
 import subprocess  # nosec B404 - internal devtool wrapper runs trusted local commands only
 import sys
@@ -10,7 +11,9 @@ from typing import Any, cast
 
 from defusedxml import ElementTree
 
-from ._pipeline_parsing_helpers import parse_pytest_junit
+from sattlint import cli_output
+
+from .pipeline._pipeline_parsing_helpers import parse_pytest_junit
 
 ARTIFACTS_DIR = Path("artifacts")
 OBSERVABILITY_FILE = ARTIFACTS_DIR / "observability.json"
@@ -118,7 +121,7 @@ def run_command(cmd: list[str]) -> tuple[int, str, str]:
             check=False,
         )
         return result.returncode, result.stdout, result.stderr
-    except Exception as e:  # noqa: BLE001
+    except (OSError, RuntimeError, ValueError) as e:
         return 1, "", str(e)
 
 
@@ -214,22 +217,50 @@ def read_metrics() -> dict[str, Any]:
     return {}
 
 
-def main() -> int:
+def build_cli_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Collect and persist SattLint observability metrics.")
+    cli_output.add_output_format_argument(
+        parser,
+        help_text="Output format for stdout summary.",
+    )
+    return parser
+
+
+def _format_cli_summary(metrics: dict[str, Any], *, include_written_message: bool) -> str:
+    lines: list[str] = []
+    if include_written_message:
+        lines.append(f"Observability metrics written to {OBSERVABILITY_FILE}")
+    lines.append(f"Line coverage: {metrics['coverage']['line_coverage']:.1f}%")
+    lines.append(f"Branch coverage: {metrics['coverage']['branch_coverage']:.1f}%")
+    lines.append(f"Lint errors: {metrics['lint']['ruff_errors']}")
+    return "\n".join(lines)
+
+
+def main(argv: list[str] | None = None) -> int:
     """Main entry point: collect and write metrics."""
+    parser = build_cli_parser()
+    args = parser.parse_args(argv)
+    output_format = cli_output.resolve_output_format(args)
     metrics = collect_all_metrics()
     output_error: OSError | None = None
     try:
         write_metrics(metrics)
     except OSError as exc:
         output_error = exc
-    else:
-        print(f"Observability metrics written to {OBSERVABILITY_FILE}")
-    # Print a summary
-    print(f"Line coverage: {metrics['coverage']['line_coverage']:.1f}%")
-    print(f"Branch coverage: {metrics['coverage']['branch_coverage']:.1f}%")
-    print(f"Lint errors: {metrics['lint']['ruff_errors']}")
+    summary_payload: dict[str, Any] = {
+        "metrics_file": OBSERVABILITY_FILE.as_posix(),
+        "metrics": metrics,
+    }
     if output_error is not None:
-        print(f"Observability metrics write error: {output_error}", file=sys.stderr)
+        summary_payload["output_error"] = str(output_error)
+    cli_output.emit_text_or_json(
+        text=_format_cli_summary(metrics, include_written_message=output_error is None),
+        json_payload=summary_payload,
+        output_format=output_format,
+        emit_text_fn=print,
+    )
+    if output_error is not None:
+        sys.stderr.write(f"Observability metrics write error: {output_error}\n")
         return 1
     return 0
 

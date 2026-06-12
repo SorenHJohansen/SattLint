@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from collections.abc import Sequence as AbcSequence
+from dataclasses import dataclass
 from typing import Any, cast
 
 from lark import Tree
@@ -56,22 +57,31 @@ from ._validation_type_helpers import (
 )
 from .grammar import constants as const
 from .resolution.type_graph import TypeGraph
+from .types import VariableRef
 
-type VariableRef = dict[str, object]
+_SUPPRESSED_SEMANTIC_ERROR_PREFIX = (
+    "Module-code semantic validation downgraded from error to warning by active policy: "
+)
+
+
+@dataclass(frozen=True)
+class ModuleCodeValidationPolicy:
+    warning_sink: ValidationWarningSink | None = None
+    allow_old_state_assignment: bool = True
+    suppress_semantic_errors: bool = False
 
 
 def _handle_statement_validation_error(
     exc: StructuralValidationError,
     *,
-    warning_sink: ValidationWarningSink | None,
-    suppress_semantic_errors: bool,
+    policy: ModuleCodeValidationPolicy,
 ) -> None:
-    if not suppress_semantic_errors:
+    if not policy.suppress_semantic_errors:
         raise exc
-    if warning_sink is not None:
-        warning_sink(
+    if policy.warning_sink is not None:
+        policy.warning_sink(
             ValidationNotice(
-                message=str(exc),
+                message=f"{_SUPPRESSED_SEMANTIC_ERROR_PREFIX}{exc}",
                 line=exc.line,
                 column=exc.column,
                 length=exc.length,
@@ -301,7 +311,7 @@ def iter_variable_refs(node: object) -> Iterator[VariableRef]:
         return
 
     if isinstance(node, Tree):
-        for child in cast(list[object], getattr(node, "children", ())):
+        for child in node.children:
             yield from iter_variable_refs(child)
         return
 
@@ -360,9 +370,7 @@ def validate_statement_list(
     type_graph: TypeGraph,
     context: str,
     *,
-    warning_sink: ValidationWarningSink | None = None,
-    allow_old_state_assignment: bool,
-    suppress_semantic_errors: bool = False,
+    policy: ModuleCodeValidationPolicy,
 ) -> None:
     for statement in statements:
         try:
@@ -379,7 +387,7 @@ def validate_statement_list(
                     target_name = str(target_ref.get(const.KEY_VAR_NAME, "<unknown>"))
                     target_state = target_ref.get("state")
                     if (
-                        not allow_old_state_assignment
+                        not policy.allow_old_state_assignment
                         and isinstance(target_state, str)
                         and target_state.casefold() == const.GRAMMAR_VALUE_OLD.casefold()
                     ):
@@ -420,11 +428,7 @@ def validate_statement_list(
             _validate_no_string_literals_in_calls(statement_node, context)
             _validate_builtin_call_types(statement_node, env, type_graph, context)
         except StructuralValidationError as exc:
-            _handle_statement_validation_error(
-                exc,
-                warning_sink=warning_sink,
-                suppress_semantic_errors=suppress_semantic_errors,
-            )
+            _handle_statement_validation_error(exc, policy=policy)
 
 
 def validate_code_blocks(
@@ -433,36 +437,28 @@ def validate_code_blocks(
     type_graph: TypeGraph,
     context: str,
     *,
-    warning_sink: ValidationWarningSink | None = None,
-    allow_old_state_assignment: bool,
-    suppress_semantic_errors: bool = False,
+    policy: ModuleCodeValidationPolicy,
 ) -> None:
     validate_statement_list(
         code.enter,
         env,
         type_graph,
         f"{context} ENTERCODE",
-        warning_sink=warning_sink,
-        allow_old_state_assignment=allow_old_state_assignment,
-        suppress_semantic_errors=suppress_semantic_errors,
+        policy=policy,
     )
     validate_statement_list(
         code.active,
         env,
         type_graph,
         f"{context} ACTIVECODE",
-        warning_sink=warning_sink,
-        allow_old_state_assignment=allow_old_state_assignment,
-        suppress_semantic_errors=suppress_semantic_errors,
+        policy=policy,
     )
     validate_statement_list(
         code.exit,
         env,
         type_graph,
         f"{context} EXITCODE",
-        warning_sink=warning_sink,
-        allow_old_state_assignment=allow_old_state_assignment,
-        suppress_semantic_errors=suppress_semantic_errors,
+        policy=policy,
     )
 
 
@@ -481,7 +477,14 @@ def validate_sequence_nodes(  # noqa: PLR0915
     warning_sink: ValidationWarningSink | None = None,
     allow_old_state_assignment: bool = True,
     suppress_semantic_errors: bool = False,
+    module_code_policy: ModuleCodeValidationPolicy | None = None,
 ) -> None:
+    active_module_code_policy = module_code_policy or ModuleCodeValidationPolicy(
+        warning_sink=warning_sink,
+        allow_old_state_assignment=allow_old_state_assignment,
+        suppress_semantic_errors=suppress_semantic_errors,
+    )
+    effective_warning_sink = active_module_code_policy.warning_sink
     previous_unit_name: str | None = None
     previous_unit_kind: str | None = None
     previous_transition_name: str | None = None
@@ -492,7 +495,7 @@ def validate_sequence_nodes(  # noqa: PLR0915
         missing_initial_init_step = True
         _warn_or_raise(
             f"{context} must start with exactly one SEQINITSTEP",
-            warning_sink=warning_sink,
+            warning_sink=effective_warning_sink,
         )
 
     def recurse(branch_nodes: list[object] | None, nested_context: str) -> None:
@@ -507,9 +510,7 @@ def validate_sequence_nodes(  # noqa: PLR0915
             env=env,
             type_graph=type_graph,
             require_init_step=False,
-            warning_sink=warning_sink,
-            allow_old_state_assignment=allow_old_state_assignment,
-            suppress_semantic_errors=suppress_semantic_errors,
+            module_code_policy=active_module_code_policy,
         )
 
     for index, node in enumerate(nodes):
@@ -520,7 +521,7 @@ def validate_sequence_nodes(  # noqa: PLR0915
                 if index != 0:
                     _warn_or_raise(
                         f"{context} has SEQINITSTEP {node.name!r} outside the first position",
-                        warning_sink=warning_sink,
+                        warning_sink=effective_warning_sink,
                     )
             if previous_unit_name is not None:
                 raise StructuralValidationError(
@@ -532,9 +533,7 @@ def validate_sequence_nodes(  # noqa: PLR0915
                 env,
                 type_graph,
                 f"{context} step {node.name!r}",
-                warning_sink=warning_sink,
-                allow_old_state_assignment=allow_old_state_assignment,
-                suppress_semantic_errors=suppress_semantic_errors,
+                policy=active_module_code_policy,
             )
             previous_unit_name = node.name
             previous_unit_kind = "step"
@@ -602,7 +601,7 @@ def validate_sequence_nodes(  # noqa: PLR0915
     if require_init_step and init_steps != 1 and not (missing_initial_init_step and init_steps == 0):
         _warn_or_raise(
             f"{context} must contain exactly one SEQINITSTEP",
-            warning_sink=warning_sink,
+            warning_sink=effective_warning_sink,
         )
 
 
@@ -616,9 +615,16 @@ def validate_module_code(
     warning_sink: ValidationWarningSink | None = None,
     allow_old_state_assignment: bool = True,
     suppress_semantic_errors: bool = False,
+    module_code_policy: ModuleCodeValidationPolicy | None = None,
 ) -> None:
     if modulecode is None:
         return
+
+    active_module_code_policy = module_code_policy or ModuleCodeValidationPolicy(
+        warning_sink=warning_sink,
+        allow_old_state_assignment=allow_old_state_assignment,
+        suppress_semantic_errors=suppress_semantic_errors,
+    )
 
     validate_step_auto_variable_refs(modulecode, env, context)
 
@@ -631,9 +637,7 @@ def validate_module_code(
             env,
             type_graph,
             f"{context} equation {equation.name!r}",
-            warning_sink=warning_sink,
-            allow_old_state_assignment=allow_old_state_assignment,
-            suppress_semantic_errors=suppress_semantic_errors,
+            policy=active_module_code_policy,
         )
 
     module_label_set: set[str] = set()
@@ -664,7 +668,5 @@ def validate_module_code(
             env=env,
             type_graph=type_graph,
             require_init_step=True,
-            warning_sink=warning_sink,
-            allow_old_state_assignment=allow_old_state_assignment,
-            suppress_semantic_errors=suppress_semantic_errors,
+            module_code_policy=active_module_code_policy,
         )

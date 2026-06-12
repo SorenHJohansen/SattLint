@@ -1,634 +1,260 @@
-"""Repository audit core checks for portability, security, wiring, and public-readiness."""
+"""Compatibility wrapper for the moved repo-audit facade."""
 
-# pyright: reportPrivateUsage=false, reportUnusedFunction=false
+# pyright: reportPrivateUsage=false
 
 from __future__ import annotations
 
-import ast
-import json
-import os
-import re
-import shutil
-import subprocess  # nosec B404 - audit intentionally executes trusted local developer tools
-import sys
-import tempfile
-import time
-from collections.abc import Iterable
-from dataclasses import replace
-from pathlib import Path
-from typing import Any, cast
+from collections.abc import Generator
+from contextlib import contextmanager, suppress
+from typing import Any
 
-from sattlint import app as app_module
-from sattlint import config as config_module
-from sattlint.contracts import FindingCollection
-from sattlint.devtools import ai_gc as _ai_gc_module
-from sattlint.devtools import ai_work_map as _ai_work_map_module
-from sattlint.devtools import audit_core as _audit_core_module
-from sattlint.devtools import audit_orchestration as _audit_orchestration_module
-from sattlint.devtools import doc_gardener as _doc_gardener_module
-from sattlint.devtools import layer_linter as _layer_linter_module
-from sattlint.devtools import ledger as _ledger_module
-from sattlint.devtools import pipeline as pipeline_module
-from sattlint.devtools import repo_audit_compat as _repo_audit_compat_module
-from sattlint.devtools import repo_audit_entrypoints as _repo_audit_entrypoints
-from sattlint.devtools import repo_audit_shared as _repo_audit_shared_module
-from sattlint.devtools.artifact_registry import AUDIT_ARTIFACTS, artifact_reports_map
-from sattlint.devtools.pipeline_artifacts import write_json_artifact
-from sattlint.devtools.progress_reporting import ProgressReporter
-from sattlint.devtools.repo_audit_cli import main
-from sattlint.path_sanitizer import sanitize_path_for_report
+from .audit import repo_audit as _owner
 
-REPO_AUDIT_FINDING_CHECK_IDS = _repo_audit_entrypoints.REPO_AUDIT_FINDING_CHECK_IDS
-REPO_AUDIT_INDIVIDUAL_CHECK_IDS = _repo_audit_entrypoints.REPO_AUDIT_INDIVIDUAL_CHECK_IDS
-REPO_AUDIT_SPECIAL_CHECK_IDS = _repo_audit_entrypoints.REPO_AUDIT_SPECIAL_CHECK_IDS
-_blocking_finding_count = _repo_audit_entrypoints._blocking_finding_count
-_category_counts = _repo_audit_entrypoints._category_counts
-_default_corpus_manifest_dir = _repo_audit_entrypoints._default_corpus_manifest_dir
-_max_severity = _repo_audit_entrypoints._max_severity
-_print_cli_summary = _repo_audit_entrypoints._print_cli_summary
-_repo_audit_finding_check_definitions = _repo_audit_entrypoints._repo_audit_finding_check_definitions
-_recommended_command = _repo_audit_entrypoints._recommended_command
-_run_repo_audit_cli_consistency_check = _repo_audit_entrypoints._run_repo_audit_cli_consistency_check
-_run_repo_audit_findings_checks = _repo_audit_entrypoints._run_repo_audit_findings_checks
-_severity_counts = _repo_audit_entrypoints._severity_counts
-_should_fail = _repo_audit_entrypoints._should_fail
-build_repo_audit_check_catalog = _repo_audit_entrypoints.build_repo_audit_check_catalog
-build_repo_audit_check_recommendations = _repo_audit_entrypoints.build_repo_audit_check_recommendations
-collect_custom_findings = _repo_audit_entrypoints.collect_custom_findings
-run_check_my_changes = _repo_audit_entrypoints.run_check_my_changes
-run_recommended_repo_audit_finish_gate = _repo_audit_entrypoints.run_recommended_repo_audit_finish_gate
-run_recommended_repo_audit_slice = _repo_audit_entrypoints.run_recommended_repo_audit_slice
+_MISSING = object()
+_PUBLIC_WRAPPERS: dict[str, Any] = {}
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "audit"
-PIPELINE_OUTPUT_DIRNAME = "pipeline"
-AUDIT_RUN_HISTORY_FILENAME = _ledger_module.AUDIT_RUN_HISTORY_FILENAME
-AUDIT_RUN_HISTORY_DIRNAME = _ledger_module.AUDIT_RUN_HISTORY_DIRNAME
-AUDIT_RUN_HISTORY_LIMIT = _ledger_module.AUDIT_RUN_HISTORY_LIMIT
-AUDIT_RUN_HISTORY_SCHEMA_KIND = _ledger_module.AUDIT_RUN_HISTORY_SCHEMA_KIND
-AUDIT_RUN_HISTORY_SCHEMA_VERSION = _ledger_module.AUDIT_RUN_HISTORY_SCHEMA_VERSION
-TEXT_SUFFIXES = _repo_audit_shared_module.TEXT_SUFFIXES
-SKIP_CONTENT_SCAN_PREFIXES = _repo_audit_shared_module.SKIP_CONTENT_SCAN_PREFIXES
-GENERATED_PATH_PREFIXES = _repo_audit_shared_module.GENERATED_PATH_PREFIXES
-TOP_LEVEL_TRACKED_ENTRY_ALLOWLIST = _repo_audit_shared_module.TOP_LEVEL_TRACKED_ENTRY_ALLOWLIST
-IGNORED_REPO_PATH_REFERENCE_ALLOWLIST_PREFIXES = (
-    _repo_audit_shared_module.IGNORED_REPO_PATH_REFERENCE_ALLOWLIST_PREFIXES
+_OWNER_SEAM_NAMES = (
+    "audit_repository",
+    "run_check_my_changes",
+    "run_recommended_repo_audit_slice",
+    "run_recommended_repo_audit_finish_gate",
+    "_print_cli_summary",
+    "_run_repo_audit_findings_checks",
+    "apply_ai_gc",
+    "build_repo_audit_check_recommendations",
+    "build_cli_consistency_report",
+    "build_ai_gc_report",
+    "collect_custom_findings",
+    "_collect_audit_git_state",
+    "_find_pipeline_findings",
+    "_build_repo_audit_scan_context",
+    "_build_python_source_scan_context",
+    "_repo_audit_finding_check_definitions",
+    "_with_shared_text_line_findings",
+    "_dedupe_findings",
+    "_list_tracked_repo_paths",
+    "_iter_repo_text_entries",
+    "_line_findings",
+    "_collect_cli_metadata",
+    "_extract_documented_commands",
+    "_find_documentation_command_gaps",
+    "_find_unused_config_keys",
+    "_find_architecture_findings",
+    "_find_structural_report_findings",
+    "_find_cli_findings",
+    "_find_logging_findings",
+    "_find_ignored_repo_path_references",
+    "_run_harness_freshness_check",
+    "_run_ratchet_policy_check",
+    "_parse_coverage_findings",
+    "_find_public_readiness_findings",
+    "_build_local_import_graph",
+    "_find_import_cycles",
+    "_patch_doc_gardener_paths",
+    "_read_text",
+    "range",
 )
-IGNORED_REPO_PATH_REFERENCE_ALLOWLIST_PATHS = _repo_audit_shared_module.IGNORED_REPO_PATH_REFERENCE_ALLOWLIST_PATHS
-IGNORED_REPO_PATH_REFERENCE_PREFIXES = _repo_audit_shared_module.IGNORED_REPO_PATH_REFERENCE_PREFIXES
-IGNORED_REPO_PATH_REFERENCE_EXACT = _repo_audit_shared_module.IGNORED_REPO_PATH_REFERENCE_EXACT
-SKIP_SELF_SCAN_PATHS = _repo_audit_shared_module.SKIP_SELF_SCAN_PATHS
-SKIP_DIRS = _repo_audit_shared_module.SKIP_DIRS
-LEAK_RELEVANT_CATEGORIES = _repo_audit_shared_module.LEAK_RELEVANT_CATEGORIES
-LEAK_RELEVANT_FINDING_IDS = _repo_audit_shared_module.LEAK_RELEVANT_FINDING_IDS
-SEVERITY_RANK = _repo_audit_shared_module.SEVERITY_RANK
-AUDIT_PROFILE_CHOICES = _repo_audit_shared_module.AUDIT_PROFILE_CHOICES
-PLACEHOLDER_VALUES = _repo_audit_shared_module.PLACEHOLDER_VALUES
-ALLOWED_PRINT_MODULES = _repo_audit_shared_module.ALLOWED_PRINT_MODULES
-ALLOWED_PRINT_PREFIXES = _repo_audit_shared_module.ALLOWED_PRINT_PREFIXES
-WINDOWS_PATH_RE = _repo_audit_shared_module.WINDOWS_PATH_RE
-_DOCUMENTED_COMMAND_RE = _repo_audit_shared_module.DOCUMENTED_COMMAND_RE
-UNIX_PATH_RE = _repo_audit_shared_module.UNIX_PATH_RE
-LOCAL_ENDPOINT_RE = _repo_audit_shared_module.LOCAL_ENDPOINT_RE
-EMAIL_RE = _repo_audit_shared_module.EMAIL_RE
-PRIVATE_KEY_RE = _repo_audit_shared_module.PRIVATE_KEY_RE
-SECRET_ASSIGNMENT_RE = _repo_audit_shared_module.SECRET_ASSIGNMENT_RE
-PRINT_CALL_RE = _repo_audit_shared_module.PRINT_CALL_RE
-OVERSIZED_MODULE_LINE_LIMIT = _repo_audit_shared_module.OVERSIZED_MODULE_LINE_LIMIT
-STRUCTURAL_DEBT_FINDING_IDS = _repo_audit_shared_module.STRUCTURAL_DEBT_FINDING_IDS
-HARNESS_FRESHNESS_DOC_SCANNERS = _repo_audit_shared_module.HARNESS_FRESHNESS_DOC_SCANNERS
-IGNORED_NORMALIZED_PIPELINE_FINDINGS = _repo_audit_shared_module.IGNORED_NORMALIZED_PIPELINE_FINDINGS
-LOCAL_CI_PARITY_LINE_FINDING_IDS = _repo_audit_shared_module.LOCAL_CI_PARITY_LINE_FINDING_IDS
-LOCAL_DEPENDENCY_MARKERS = _repo_audit_shared_module.LOCAL_DEPENDENCY_MARKERS
-_PATH_INJECTION_CALL_PATHS_ATTR = "PATH_INJECTION_CALL_PATHS"
-_HOST_SIGNAL_ATTR_PATHS_ATTR = "HOST_SIGNAL_ATTR_PATHS"
-_HOST_SIGNAL_CALL_PATHS_ATTR = "HOST_SIGNAL_CALL_PATHS"
-PATH_INJECTION_CALL_PATHS = cast(
-    set[tuple[str, ...]],
-    getattr(_repo_audit_shared_module, _PATH_INJECTION_CALL_PATHS_ATTR),
+
+_CHECK_RUNNER_SEAM_NAMES = (
+    "_build_python_source_scan_context",
+    "_collect_cli_metadata",
+    "_extract_documented_commands",
+    "_find_architecture_findings",
+    "_find_cli_findings",
+    "_find_documentation_command_gaps",
+    "_find_ignored_repo_path_references",
+    "_find_import_cycles",
+    "_find_logging_findings",
+    "_find_public_readiness_findings",
+    "_find_structural_report_findings",
+    "_find_unused_config_keys",
+    "_iter_repo_text_entries",
+    "_line_findings",
+    "_parse_coverage_findings",
+    "_patch_doc_gardener_paths",
+    "_run_harness_freshness_check",
+    "_run_ratchet_policy_check",
+    "_build_local_import_graph",
 )
-HOST_SIGNAL_ATTR_PATHS = cast(
-    set[tuple[str, ...]],
-    getattr(_repo_audit_shared_module, _HOST_SIGNAL_ATTR_PATHS_ATTR),
-)
-HOST_SIGNAL_CALL_PATHS = cast(
-    set[tuple[str, ...]],
-    getattr(_repo_audit_shared_module, _HOST_SIGNAL_CALL_PATHS_ATTR),
-)
-Finding = _repo_audit_shared_module.Finding
-DocumentedCommand = _repo_audit_shared_module.DocumentedCommand
-PythonSourceScanContext = _repo_audit_shared_module.PythonSourceScanContext
-RepoAuditScanContext = _repo_audit_shared_module.RepoAuditScanContext
-_leading_string_args = _repo_audit_shared_module.leading_string_args
-_attribute_path = _repo_audit_shared_module.attribute_path
-_repo_relative_path_from_expr = _repo_audit_shared_module.repo_relative_path_from_expr
-_normalize_repo_relative_literal = _repo_audit_shared_module.normalize_repo_relative_literal
-_is_ignored_repo_path_reference = _repo_audit_shared_module.is_ignored_repo_path_reference
-_app_module = app_module
-_source_segment_summary = _repo_audit_compat_module._source_segment_summary
-_contains_host_signal = _repo_audit_compat_module._contains_host_signal
-_is_pythonpath_target = _repo_audit_compat_module._is_pythonpath_target
-_find_marker_in_segment = _repo_audit_compat_module._find_marker_in_segment
-_find_ignored_repo_path_references = _repo_audit_compat_module._find_ignored_repo_path_references
-_find_hidden_local_dependency_findings = _repo_audit_compat_module._find_hidden_local_dependency_findings
-_find_host_specific_test_assumptions = _repo_audit_compat_module._find_host_specific_test_assumptions
+
+_COMPAT_SEAM_NAMES = ("_list_tracked_repo_paths",)
+
+_OWNER_AUDIT_REPOSITORY = _owner.audit_repository
+_OWNER_RUN_CHECK_MY_CHANGES = _owner.run_check_my_changes
+_OWNER_RUN_RECOMMENDED_SLICE = _owner.run_recommended_repo_audit_slice
+_OWNER_RUN_RECOMMENDED_FINISH_GATE = _owner.run_recommended_repo_audit_finish_gate
+_OWNER_PRINT_CLI_SUMMARY = _owner._print_cli_summary
+_OWNER_RUN_REPO_AUDIT_FINDINGS_CHECKS = _owner._run_repo_audit_findings_checks
+_OWNER_APPLY_AI_GC = _owner.apply_ai_gc
+_OWNER_BUILD_RECOMMENDATIONS = _owner.build_repo_audit_check_recommendations
+_OWNER_BUILD_CLI_CONSISTENCY_REPORT = _owner.build_cli_consistency_report
+_OWNER_BUILD_AI_GC_REPORT = _owner.build_ai_gc_report
+_OWNER_COLLECT_CUSTOM_FINDINGS = _owner.collect_custom_findings
+_OWNER_COLLECT_AUDIT_GIT_STATE = _owner._collect_audit_git_state
+_OWNER_FIND_PIPELINE_FINDINGS = _owner._find_pipeline_findings
 
 
-def _run_local_ci_parity_check(context: RepoAuditScanContext) -> list[Finding]:
-    findings = [
-        finding for finding in _shared_text_line_findings(context) if finding.id in LOCAL_CI_PARITY_LINE_FINDING_IDS
-    ]
-    findings.extend(_find_hidden_local_dependency_findings(context.source_context, root=context.root))
-    findings.extend(_find_hidden_local_dependency_findings(context.test_context, root=context.root))
-    findings.extend(_find_hidden_local_dependency_findings(context.scripts_context, root=context.root))
-    findings.extend(_find_host_specific_test_assumptions(context.test_context, root=context.root))
-    return findings
+def _call_owner_with_test_seams(name: str, *args: Any, **kwargs: Any) -> Any:
+    with _patched_owner_test_seams():
+        return getattr(_owner, name)(*args, **kwargs)
 
 
-_RATCHET_POLICY_PREFIX = "ratchet-policy:"
-_RATCHET_POLICY_ERROR_PATH_RE = re.compile(r"(?P<path>(?:src|tests|docs|scripts)/[^:\s]+)")
+def _seam_override(name: str, original: Any) -> Any:
+    candidate = globals().get(name, _MISSING)
+    if candidate is _MISSING or candidate is _PUBLIC_WRAPPERS.get(name):
+        return original
+    return candidate
 
 
-def _ratchet_policy_command() -> list[str]:
-    return [sys.executable, "scripts/check_ratchet_policy.py"]
+def _capture_module_seams(module: Any, seam_names: tuple[str, ...]) -> dict[str, Any]:
+    return {name: getattr(module, name, _MISSING) for name in seam_names}
 
 
-def _normalize_ratchet_policy_errors(*, stdout: str, stderr: str) -> list[str]:
-    errors: list[str] = []
-    for raw_line in (*stderr.splitlines(), *stdout.splitlines()):
-        line = raw_line.strip()
-        if not line or line == "ratchet-policy: OK" or line == "ratchet-policy: blocked":
+def _apply_module_seams(module: Any, seam_names: tuple[str, ...]) -> None:
+    for name in seam_names:
+        original = getattr(module, name, _MISSING)
+        override = _seam_override(name, original)
+        if override is _MISSING:
             continue
-        if line.startswith("- "):
-            errors.append(line[2:].strip())
+        setattr(module, name, override)
+
+
+def _restore_module_seams(module: Any, originals: dict[str, Any]) -> None:
+    for name, original in originals.items():
+        if original is _MISSING:
+            with suppress(AttributeError):
+                delattr(module, name)
             continue
-        if line.startswith(_RATCHET_POLICY_PREFIX):
-            errors.append(line.removeprefix(_RATCHET_POLICY_PREFIX).strip())
+        setattr(module, name, original)
+
+
+@contextmanager
+def _patched_owner_test_seams() -> Generator[None]:
+    originals = {name: getattr(_owner, name, _MISSING) for name in _OWNER_SEAM_NAMES}
+    check_runner_module = _owner._repo_audit_check_runners_module
+    compat_module = _owner._repo_audit_compat_module
+    check_runner_originals = _capture_module_seams(check_runner_module, _CHECK_RUNNER_SEAM_NAMES)
+    compat_originals = _capture_module_seams(compat_module, _COMPAT_SEAM_NAMES)
+    _owner.audit_repository = _seam_override("audit_repository", _OWNER_AUDIT_REPOSITORY)
+    _owner.run_check_my_changes = _seam_override("run_check_my_changes", _OWNER_RUN_CHECK_MY_CHANGES)
+    _owner.run_recommended_repo_audit_slice = _seam_override(
+        "run_recommended_repo_audit_slice", _OWNER_RUN_RECOMMENDED_SLICE
+    )
+    _owner.run_recommended_repo_audit_finish_gate = _seam_override(
+        "run_recommended_repo_audit_finish_gate", _OWNER_RUN_RECOMMENDED_FINISH_GATE
+    )
+    _owner._print_cli_summary = _seam_override("_print_cli_summary", _OWNER_PRINT_CLI_SUMMARY)
+    _owner._run_repo_audit_findings_checks = _seam_override(
+        "_run_repo_audit_findings_checks", _OWNER_RUN_REPO_AUDIT_FINDINGS_CHECKS
+    )
+    _owner.apply_ai_gc = _seam_override("apply_ai_gc", _OWNER_APPLY_AI_GC)
+    _owner.build_repo_audit_check_recommendations = _seam_override(
+        "build_repo_audit_check_recommendations", _OWNER_BUILD_RECOMMENDATIONS
+    )
+    _owner.build_cli_consistency_report = _seam_override(
+        "build_cli_consistency_report", _OWNER_BUILD_CLI_CONSISTENCY_REPORT
+    )
+    _owner.build_ai_gc_report = _seam_override("build_ai_gc_report", _OWNER_BUILD_AI_GC_REPORT)
+    _owner.collect_custom_findings = _seam_override("collect_custom_findings", _OWNER_COLLECT_CUSTOM_FINDINGS)
+    _owner._collect_audit_git_state = _seam_override("_collect_audit_git_state", _OWNER_COLLECT_AUDIT_GIT_STATE)
+    _owner._find_pipeline_findings = _seam_override("_find_pipeline_findings", _OWNER_FIND_PIPELINE_FINDINGS)
+    for name, original in originals.items():
+        override = _seam_override(name, original)
+        if override is _MISSING:
             continue
-        errors.append(line)
-    return errors
-
-
-def _ratchet_policy_finding_id(message: str) -> str:
-    lowered = message.casefold()
-    if "coverage" in lowered:
-        return "ratchet-policy-coverage"
-    if "structural" in lowered:
-        return "ratchet-policy-structural"
-    if "typing" in lowered or "strict" in lowered:
-        return "ratchet-policy-typing"
-    return "ratchet-policy-blocked"
-
-
-def _ratchet_policy_finding_category(message: str) -> str:
-    if "coverage" in message.casefold():
-        return "coverage"
-    return "architecture"
-
-
-def build_ratchet_policy_report(root: Path = REPO_ROOT) -> dict[str, Any]:
-    result = subprocess.run(  # nosec B603 - fixed interpreter and repo-local script path
-        _ratchet_policy_command(),
-        cwd=root,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    errors = _normalize_ratchet_policy_errors(stdout=result.stdout, stderr=result.stderr)
-    return {
-        "kind": "sattlint.ratchet_policy",
-        "schema_version": 1,
-        "generated_by": "sattlint.devtools.repo_audit",
-        "command": _ratchet_policy_command(),
-        "status": "pass" if result.returncode == 0 else "fail",
-        "exit_code": result.returncode,
-        "errors": errors,
-        "stdout": result.stdout,
-        "stderr": result.stderr,
-    }
-
-
-def _run_ratchet_policy_check(context: RepoAuditScanContext) -> list[Finding]:
-    report = build_ratchet_policy_report(context.root)
-    if report["status"] == "pass":
-        return []
-
-    findings: list[Finding] = []
-    for message in report["errors"]:
-        path_match = _RATCHET_POLICY_ERROR_PATH_RE.search(message)
-        findings.append(
-            Finding(
-                id=_ratchet_policy_finding_id(message),
-                category=_ratchet_policy_finding_category(message),
-                severity="high",
-                confidence="high",
-                message=message,
-                path=None if path_match is None else path_match.group("path"),
-                source="ratchet-policy",
-            )
-        )
-    return findings
-
-
-_relative_path = _repo_audit_compat_module._relative_path
-
-
-def _write_text_artifact(path: Path, content: str) -> None:
-    _ledger_module.write_text_artifact(
-        path,
-        content,
-        replace_fn=os.replace,
-        sleep_fn=time.sleep,
-        temp_file_factory=tempfile.NamedTemporaryFile,
-        range_factory=range,
-    )
-
-
-def _write_markdown(path: Path, findings: list[Finding], summary: dict[str, Any]) -> None:
-    _ledger_module.write_markdown(path, findings, summary, write_text_artifact_fn=_write_text_artifact)
-
-
-_mirror_latest_reports = _repo_audit_compat_module._mirror_latest_reports
-_sanitize_report_path = _repo_audit_compat_module._sanitize_report_path
-
-
-def _load_audit_run_history(path: Path) -> list[dict[str, Any]]:
-    return _ledger_module.load_audit_run_history(path, read_text=_read_text)
-
-
-_build_audit_run_id = _repo_audit_compat_module._build_audit_run_id
-
-
-def _collect_audit_git_state(root: Path = REPO_ROOT) -> dict[str, Any]:
-    return _ledger_module.collect_audit_git_state(root, git_which=shutil.which, run_command=subprocess.run)
-
-
-_copy_audit_snapshot = _repo_audit_compat_module._copy_audit_snapshot
-
-
-_history_stale_reasons = _ledger_module.history_stale_reasons
-
-
-_failure_signature = _ledger_module.failure_signature
-
-
-_build_failure_patterns = _ledger_module.build_failure_patterns
-
-
-def _write_audit_run_history(
-    source_dir: Path,
-    *,
-    latest_output_dir: Path | None,
-    report_kind: str,
-    primary_payload: dict[str, Any],
-    status_payload: dict[str, Any] | None = None,
-    summary_payload: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    return _ledger_module.write_repo_audit_run_history(
-        source_dir,
-        latest_output_dir=latest_output_dir,
-        report_kind=report_kind,
-        primary_payload=primary_payload,
-        status_payload=status_payload,
-        summary_payload=summary_payload,
-        history_filename=AUDIT_RUN_HISTORY_FILENAME,
-        history_dirname=AUDIT_RUN_HISTORY_DIRNAME,
-        history_limit=AUDIT_RUN_HISTORY_LIMIT,
-        schema_kind=AUDIT_RUN_HISTORY_SCHEMA_KIND,
-        schema_version=AUDIT_RUN_HISTORY_SCHEMA_VERSION,
-        build_run_id=_build_audit_run_id,
-        copy_snapshot=_copy_audit_snapshot,
-        load_history_fn=_load_audit_run_history,
-        collect_git_state_fn=_collect_audit_git_state,
-        history_stale_reasons=_history_stale_reasons,
-        build_failure_patterns=_build_failure_patterns,
-        sanitize_report_path_fn=_sanitize_report_path,
-        write_json=write_json_artifact,
-        repo_root=REPO_ROOT,
-    )
-
-
-_read_text = _repo_audit_compat_module._read_text
-_should_skip_dir = _repo_audit_compat_module._should_skip_dir
-_list_tracked_repo_paths = _repo_audit_compat_module._list_tracked_repo_paths
-_iter_repo_file_candidates = _repo_audit_compat_module._iter_repo_file_candidates
-_iter_tracked_repo_file_candidates = _repo_audit_compat_module._iter_tracked_repo_file_candidates
-
-
-_iter_repo_text_files = _repo_audit_compat_module._iter_repo_text_files
-_iter_tracked_repo_text_files = _repo_audit_compat_module._iter_tracked_repo_text_files
-
-
-_iter_repo_text_entries = _repo_audit_compat_module._iter_repo_text_entries
-_redact_value = _repo_audit_compat_module._redact_value
-_redact_email = _repo_audit_compat_module._redact_email
-_severity_for_path = _repo_audit_compat_module._severity_for_path
-_line_findings = _repo_audit_compat_module._line_findings
-_load_pyproject = _repo_audit_compat_module._load_pyproject
-_extract_documented_commands = _repo_audit_compat_module._extract_documented_commands
-_collect_cli_metadata = _repo_audit_compat_module._collect_cli_metadata
-_find_documentation_command_gaps = _repo_audit_compat_module._find_documentation_command_gaps
-_find_unused_config_keys = _repo_audit_compat_module._find_unused_config_keys
-_module_name_from_path = _repo_audit_compat_module._module_name_from_path
-_resolve_import = _repo_audit_compat_module._resolve_import
-_build_local_import_graph = _repo_audit_compat_module._build_local_import_graph
-_find_import_cycles = _repo_audit_compat_module._find_import_cycles
-
-
-def _find_architecture_findings(
-    source_root: Path,
-    *,
-    content_by_file: dict[Path, str] | None = None,
-    ast_by_file: dict[Path, ast.AST] | None = None,
-) -> list[Finding]:
-    findings = _audit_core_module.find_architecture_findings(
-        source_root,
-        read_text_fn=_read_text,
-        relative_path=lambda path: _relative_path(path),
-        finding_factory=Finding,
-        build_local_import_graph_fn=_build_local_import_graph,
-        find_import_cycles_fn=_find_import_cycles,
-        oversized_module_line_limit=OVERSIZED_MODULE_LINE_LIMIT,
-        content_by_file=content_by_file,
-        ast_by_file=ast_by_file,
-    )
+        setattr(_owner, name, override)
+    _apply_module_seams(check_runner_module, _CHECK_RUNNER_SEAM_NAMES)
+    _apply_module_seams(compat_module, _COMPAT_SEAM_NAMES)
     try:
-        policy = _layer_linter_module.load_policy()
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
-        findings.append(
-            Finding(
-                id="layer-lint-policy-load-error",
-                category="architecture",
-                severity="high",
-                confidence="high",
-                message=f"Failed to load layer-lint policy: {type(exc).__name__}: {exc}",
-                path="metrics/layer_lint_policy.json",
-                source="layer-linter",
-            )
-        )
-        return findings
-
-    file_iterable = list((content_by_file or {}).items()) or [
-        (path, _read_text(path)) for path in source_root.rglob("*.py")
-    ]
-    repo_root = source_root.parent
-    for path, text in file_iterable:
-        violations = _layer_linter_module.check_file_for_arch_violations(
-            path,
-            repo_root=repo_root,
-            content=text,
-            tree=None if ast_by_file is None else ast_by_file.get(path),
-            policy=policy,
-        )
-        for violation in violations:
-            finding_id = "forbidden-import-policy" if violation.violation_kind == "policy" else "layer-import-violation"
-            detail = None
-            if violation.current_module and violation.imported_module:
-                detail = f"{violation.current_module} -> {violation.imported_module}"
-            try:
-                finding_path = path.relative_to(repo_root).as_posix()
-            except ValueError:
-                finding_path = _relative_path(path)
-            findings.append(
-                Finding(
-                    id=finding_id,
-                    category="architecture",
-                    severity="high",
-                    confidence="high",
-                    message=violation.message,
-                    path=finding_path,
-                    line=violation.line,
-                    detail=detail,
-                    suggestion=(
-                        "Remove the dependency or move the shared seam behind a lower-level API."
-                        if violation.violation_kind in {"layer", "policy"}
-                        else None
-                    ),
-                    source="layer-linter",
-                )
-            )
-    return findings
+        yield
+    finally:
+        _owner.audit_repository = _OWNER_AUDIT_REPOSITORY
+        _owner.run_check_my_changes = _OWNER_RUN_CHECK_MY_CHANGES
+        _owner.run_recommended_repo_audit_slice = _OWNER_RUN_RECOMMENDED_SLICE
+        _owner.run_recommended_repo_audit_finish_gate = _OWNER_RUN_RECOMMENDED_FINISH_GATE
+        _owner._print_cli_summary = _OWNER_PRINT_CLI_SUMMARY
+        _owner._run_repo_audit_findings_checks = _OWNER_RUN_REPO_AUDIT_FINDINGS_CHECKS
+        _owner.apply_ai_gc = _OWNER_APPLY_AI_GC
+        _owner.build_repo_audit_check_recommendations = _OWNER_BUILD_RECOMMENDATIONS
+        _owner.build_cli_consistency_report = _OWNER_BUILD_CLI_CONSISTENCY_REPORT
+        _owner.build_ai_gc_report = _OWNER_BUILD_AI_GC_REPORT
+        _owner.collect_custom_findings = _OWNER_COLLECT_CUSTOM_FINDINGS
+        _owner._collect_audit_git_state = _OWNER_COLLECT_AUDIT_GIT_STATE
+        _owner._find_pipeline_findings = _OWNER_FIND_PIPELINE_FINDINGS
+        for name, original in originals.items():
+            if original is _MISSING:
+                with suppress(AttributeError):
+                    delattr(_owner, name)
+                continue
+            setattr(_owner, name, original)
+        _restore_module_seams(check_runner_module, check_runner_originals)
+        _restore_module_seams(compat_module, compat_originals)
 
 
-_find_cli_findings = _repo_audit_compat_module._find_cli_findings
-build_coverage_summary_report = _repo_audit_compat_module.build_coverage_summary_report
-build_ai_gc_report = _repo_audit_compat_module.build_ai_gc_report
-apply_ai_gc = _repo_audit_compat_module.apply_ai_gc
-_ai_gc_report_findings = _repo_audit_compat_module._ai_gc_report_findings
-_is_active_output_ai_gc_path = _repo_audit_compat_module._is_active_output_ai_gc_path
-_filter_ai_gc_report_for_output_dir = _repo_audit_compat_module._filter_ai_gc_report_for_output_dir
-_filter_ai_gc_findings_for_output_dir = _repo_audit_compat_module._filter_ai_gc_findings_for_output_dir
-CLI_CONSISTENCY_SCHEMA_KIND = _repo_audit_compat_module.CLI_CONSISTENCY_SCHEMA_KIND
-CLI_CONSISTENCY_SCHEMA_VERSION = _repo_audit_compat_module.CLI_CONSISTENCY_SCHEMA_VERSION
-CLI_CONSISTENCY_DOC_PATHS = _repo_audit_compat_module.CLI_CONSISTENCY_DOC_PATHS
-_cli_consistency_doc_paths = _repo_audit_compat_module._cli_consistency_doc_paths
-build_cli_consistency_report = _repo_audit_compat_module.build_cli_consistency_report
-_find_logging_findings = _repo_audit_compat_module._find_logging_findings
-_should_ignore_normalized_pipeline_finding = _repo_audit_compat_module._should_ignore_normalized_pipeline_finding
-_build_python_source_scan_context = _repo_audit_compat_module._build_python_source_scan_context
-_parse_coverage_findings = _repo_audit_compat_module._parse_coverage_findings
-_find_public_readiness_findings = _repo_audit_compat_module._find_public_readiness_findings
-_find_pipeline_findings = _repo_audit_compat_module._find_pipeline_findings
-_dedupe_findings = _repo_audit_compat_module._dedupe_findings
-_is_leak_finding = _repo_audit_compat_module._is_leak_finding
-_structural_report_location_detail = _repo_audit_compat_module._structural_report_location_detail
-_find_structural_report_findings = _repo_audit_compat_module._find_structural_report_findings
+def audit_repository(*args: Any, **kwargs: Any) -> Any:
+    return _call_owner_with_test_seams("audit_repository", *args, **kwargs)
 
 
-def _build_repo_audit_scan_context(
-    root: Path = REPO_ROOT,
-    *,
-    include_generated: bool = False,
-    tracked_only: bool = False,
-    suspicious_identifiers: Iterable[str] = (),
-) -> RepoAuditScanContext:
-    return _audit_core_module.build_repo_audit_scan_context(
-        root,
-        include_generated=include_generated,
-        tracked_only=tracked_only,
-        suspicious_identifiers=suspicious_identifiers,
-        list_tracked_repo_paths_fn=_list_tracked_repo_paths,
-        build_python_source_scan_context_fn=_build_python_source_scan_context,
-        collect_cli_metadata_fn=_collect_cli_metadata,
-        extract_documented_commands_fn=_extract_documented_commands,
-        context_factory=RepoAuditScanContext,
-    )
+def run_check_my_changes(*args: Any, **kwargs: Any) -> Any:
+    return _call_owner_with_test_seams("run_check_my_changes", *args, **kwargs)
 
 
-def _shared_text_line_findings(context: RepoAuditScanContext) -> tuple[Finding, ...]:
-    return _audit_core_module.shared_text_line_findings(
-        context,
-        iter_repo_text_entries_fn=_iter_repo_text_entries,
-        line_findings_fn=_line_findings,
-    )
+def run_recommended_repo_audit_slice(*args: Any, **kwargs: Any) -> Any:
+    return _call_owner_with_test_seams("run_recommended_repo_audit_slice", *args, **kwargs)
 
 
-def _with_shared_text_line_findings(context: RepoAuditScanContext) -> RepoAuditScanContext:
-    if context.line_findings is not None:
-        return context
-    return replace(context, line_findings=_shared_text_line_findings(context))
+def run_recommended_repo_audit_finish_gate(*args: Any, **kwargs: Any) -> Any:
+    return _call_owner_with_test_seams("run_recommended_repo_audit_finish_gate", *args, **kwargs)
 
 
-def _run_text_scan_check(context: RepoAuditScanContext) -> list[Finding]:
-    return _audit_core_module.run_text_scan_check(
-        context,
-        shared_text_line_findings_fn=_shared_text_line_findings,
-        local_ci_parity_line_finding_ids=LOCAL_CI_PARITY_LINE_FINDING_IDS,
-    )
+def collect_custom_findings(*args: Any, **kwargs: Any) -> Any:
+    return _call_owner_with_test_seams("collect_custom_findings", *args, **kwargs)
 
 
-def _run_documented_commands_check(context: RepoAuditScanContext) -> list[Finding]:
-    return _audit_core_module.run_documented_commands_check(
-        context,
-        find_documentation_command_gaps_fn=_find_documentation_command_gaps,
-    )
+def _forward_architecture_findings(*args: Any, **kwargs: Any) -> Any:
+    return _call_owner_with_test_seams("_find_architecture_findings", *args, **kwargs)
 
 
-def _run_unused_config_keys_check(context: RepoAuditScanContext) -> list[Finding]:
-    return _audit_core_module.run_unused_config_keys_check(
-        context,
-        default_config_keys=config_module.DEFAULT_CONFIG.keys(),
-        find_unused_config_keys_fn=_find_unused_config_keys,
-    )
+_find_architecture_findings = _forward_architecture_findings
 
 
-def _run_architecture_check(context: RepoAuditScanContext) -> list[Finding]:
-    return _audit_core_module.run_architecture_check(
-        context,
-        find_architecture_findings_fn=_find_architecture_findings,
-    )
+def _load_audit_run_history(*args: Any, **kwargs: Any) -> Any:
+    return _call_owner_with_test_seams("_load_audit_run_history", *args, **kwargs)
 
 
-def _run_structural_report_check(context: RepoAuditScanContext) -> list[Finding]:
-    return _find_structural_report_findings(context.root)
+def _run_harness_freshness_check(*args: Any, **kwargs: Any) -> Any:
+    return _call_owner_with_test_seams("_run_harness_freshness_check", *args, **kwargs)
 
 
-def _run_cli_check(context: RepoAuditScanContext) -> list[Finding]:
-    return _audit_core_module.run_cli_check(context, find_cli_findings_fn=_find_cli_findings)
+def _write_text_artifact(*args: Any, **kwargs: Any) -> Any:
+    return _call_owner_with_test_seams("_write_text_artifact", *args, **kwargs)
 
 
-def _run_logging_check(context: RepoAuditScanContext) -> list[Finding]:
-    return _audit_core_module.run_logging_check(
-        context,
-        find_logging_findings_fn=_find_logging_findings,
-    )
+def main(argv: list[str] | None = None) -> int:
+    return _call_owner_with_test_seams("main", argv)
 
 
-def _run_ai_gc_check(context: RepoAuditScanContext) -> list[Finding]:
-    return _audit_core_module.run_ai_gc_check(
-        context,
-        build_ai_gc_report_fn=build_ai_gc_report,
-        ai_gc_report_findings_fn=_ai_gc_report_findings,
-    )
+_PUBLIC_WRAPPERS.update(
+    {
+        "audit_repository": audit_repository,
+        "collect_custom_findings": collect_custom_findings,
+        "_find_architecture_findings": _find_architecture_findings,
+        "_load_audit_run_history": _load_audit_run_history,
+        "_run_harness_freshness_check": _run_harness_freshness_check,
+        "_write_text_artifact": _write_text_artifact,
+        "run_check_my_changes": run_check_my_changes,
+        "run_recommended_repo_audit_slice": run_recommended_repo_audit_slice,
+        "run_recommended_repo_audit_finish_gate": run_recommended_repo_audit_finish_gate,
+    }
+)
 
 
-def _run_ignored_repo_paths_check(context: RepoAuditScanContext) -> list[Finding]:
-    return _audit_core_module.run_ignored_repo_paths_check(
-        context,
-        find_ignored_repo_path_references_fn=_find_ignored_repo_path_references,
-    )
+def __getattr__(name: str) -> Any:
+    return getattr(_owner, name)
 
 
-def _run_coverage_check(context: RepoAuditScanContext) -> list[Finding]:
-    return _audit_core_module.run_coverage_check(
-        context,
-        parse_coverage_findings_fn=_parse_coverage_findings,
-    )
-
-
-def _patch_doc_gardener_paths(root: Path) -> Any:
-    return _repo_audit_compat_module.patch_doc_gardener_paths(
-        root,
-        doc_gardener_module=_doc_gardener_module,
-    )
-
-
-def _doc_gardener_finding_to_repo_audit(finding: Any) -> Finding:
-    return _audit_orchestration_module.doc_gardener_finding_to_repo_audit(
-        finding,
-        finding_factory=Finding,
-    )
-
-
-def _ai_harness_issue_to_finding(issue: Any) -> Finding:
-    return _audit_orchestration_module.ai_harness_issue_to_finding(
-        issue,
-        finding_factory=Finding,
-    )
-
-
-def _run_harness_freshness_check(context: RepoAuditScanContext) -> list[Finding]:
-    return _audit_orchestration_module.run_harness_freshness_check(
-        context,
-        verify_ai_harness_freshness_fn=_ai_work_map_module.verify_ai_harness_freshness,
-        patch_doc_gardener_paths_fn=_patch_doc_gardener_paths,
-        doc_gardener_module=_doc_gardener_module,
-        ai_harness_issue_to_finding_fn=_ai_harness_issue_to_finding,
-        doc_gardener_finding_to_repo_audit_fn=_doc_gardener_finding_to_repo_audit,
-        harness_freshness_doc_scanners=HARNESS_FRESHNESS_DOC_SCANNERS,
-    )
-
-
-def _run_public_readiness_check(context: RepoAuditScanContext) -> list[Finding]:
-    return _audit_core_module.run_public_readiness_check(
-        context,
-        find_public_readiness_findings_fn=_find_public_readiness_findings,
-    )
-
-
-def audit_repository(
-    output_dir: Path,
-    *,
-    profile: str,
-    fail_on: str,
-    include_generated: bool,
-    leaks_only: bool,
-    suspicious_identifiers: Iterable[str],
-    skip_pipeline: bool,
-    skip_vulture: bool,
-    skip_bandit: bool,
-    latest_output_dir: Path | None = None,
-) -> dict[str, Any]:
-    return _audit_orchestration_module.audit_repository(
-        output_dir,
-        profile=profile,
-        fail_on=fail_on,
-        include_generated=include_generated,
-        leaks_only=leaks_only,
-        suspicious_identifiers=suspicious_identifiers,
-        skip_pipeline=skip_pipeline,
-        skip_vulture=skip_vulture,
-        skip_bandit=skip_bandit,
-        latest_output_dir=latest_output_dir,
-        repo_root=REPO_ROOT,
-        pipeline_output_dirname=PIPELINE_OUTPUT_DIRNAME,
-        sanitize_path_for_report_fn=lambda path: sanitize_path_for_report(path, repo_root=REPO_ROOT),
-        progress_reporter_factory=ProgressReporter,
-        recommended_command_fn=_recommended_command,
-        default_corpus_manifest_dir_fn=_default_corpus_manifest_dir,
-        pipeline_module=pipeline_module,
-        find_pipeline_findings_fn=_find_pipeline_findings,
-        collect_custom_findings_fn=collect_custom_findings,
-        filter_ai_gc_findings_for_output_dir_fn=_filter_ai_gc_findings_for_output_dir,
-        filter_ai_gc_report_for_output_dir_fn=_filter_ai_gc_report_for_output_dir,
-        build_ai_gc_report_fn=build_ai_gc_report,
-        dedupe_findings_fn=_dedupe_findings,
-        is_leak_finding_fn=_is_leak_finding,
-        severity_rank=SEVERITY_RANK,
-        blocking_finding_count_fn=_blocking_finding_count,
-        severity_counts_fn=_severity_counts,
-        category_counts_fn=_category_counts,
-        max_severity_fn=_max_severity,
-        artifact_reports_map_fn=artifact_reports_map,
-        audit_artifacts=AUDIT_ARTIFACTS,
-        finding_collection_factory=FindingCollection,
-        write_json_artifact_fn=write_json_artifact,
-        ai_gc_report_filename=_ai_gc_module.AI_GC_REPORT_FILENAME,
-        write_markdown_fn=_write_markdown,
-        build_cli_consistency_report_fn=build_cli_consistency_report,
-        write_audit_run_history_fn=_write_audit_run_history,
-        mirror_latest_reports_fn=_mirror_latest_reports,
-    )
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(dir(_owner)))
 
 
 if __name__ == "__main__":

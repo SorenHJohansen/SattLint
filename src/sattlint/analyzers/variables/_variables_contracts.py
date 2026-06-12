@@ -23,6 +23,7 @@ from ...resolution.common import resolve_moduletype_def_strict, varname_base, va
 from ...resolution.scope import ScopeContext
 from ..shared._validators import AnyTypeFieldContract
 from ..shared._walk_utils import iter_nested_modules
+from ..shared.variable_utils import mapping_target_name
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer
@@ -78,10 +79,6 @@ def _iter_anytype_typedefs(self: VariablesAnalyzer) -> list[ModuleTypeDef]:
         for typedef in (self.bp.moduletype_defs or [])
         if any(is_anytype_name(variable.datatype) for variable in (typedef.moduleparameters or []))
     ]
-
-
-def _mapping_target_name(mapping: ParameterMapping) -> str | None:
-    return varname_base(getattr(mapping, "target", None))
 
 
 def _mapping_source_ref(mapping: ParameterMapping) -> object:
@@ -201,7 +198,7 @@ def _check_param_mappings_for_single(
         mapped_target_keys = {
             casefold_key(target_name)
             for pm in mod.parametermappings or []
-            for target_name in [_mapping_target_name(pm)]
+            for target_name in [mapping_target_name(pm)]
             if target_name and casefold_key(target_name) in params_by_name
         }
 
@@ -226,7 +223,7 @@ def _check_param_mappings_for_single(
         return
 
     for pm in mod.parametermappings or []:
-        tgt_name = _mapping_target_name(pm)
+        tgt_name = mapping_target_name(pm)
         tgt_var = params_by_name.get(tgt_name) if tgt_name else None
         self.check_param_mapping(pm, tgt_var, parent_env, parent_context, parent_path)
 
@@ -259,7 +256,7 @@ def _check_param_mappings_for_type_instance(
         mapped_target_keys = {
             casefold_key(target_name)
             for pm in inst.parametermappings or []
-            for target_name in [_mapping_target_name(pm)]
+            for target_name in [mapping_target_name(pm)]
             if target_name and casefold_key(target_name) in params_by_name
         }
         required_parameter_names = self.get_required_parameter_names_for_typedef(mt)
@@ -282,7 +279,7 @@ def _check_param_mappings_for_type_instance(
         return
 
     for pm in inst.parametermappings or []:
-        tgt_name = _mapping_target_name(pm)
+        tgt_name = mapping_target_name(pm)
         tgt_var = params_by_name.get(tgt_name) if tgt_name else None
         self.check_param_mapping(
             pm,
@@ -339,6 +336,36 @@ def _source_issue_metadata(
 
     issue_var = _issue_variable(effective_var, field_prefix)
     return issue_var, list(decl_path), source_role, issue_var.name
+
+
+def _validation_source_metadata(
+    self: VariablesAnalyzer,
+    source_context: ScopeContext | None,
+    source_ref: object,
+    source_var: Variable | None,
+) -> tuple[Variable | None, list[str] | None]:
+    root_name = getattr(getattr(getattr(self, "bp", None), "header", None), "name", None)
+    root_module_path = [root_name] if isinstance(root_name, str) else None
+
+    if source_var is None:
+        return None, None
+
+    full_source_name = varname_full(source_ref)
+    if not full_source_name:
+        return source_var, list(source_context.module_path) if source_context is not None else root_module_path
+
+    if source_context is None:
+        return source_var, root_module_path
+
+    base_name = varname_base(full_source_name)
+    if base_name and base_name.casefold() in source_context.env:
+        return source_var, list(source_context.module_path)
+
+    root_var = self.root_env.get(base_name) if base_name is not None else None
+    if root_var is source_var:
+        return source_var, [self.bp.header.name]
+
+    return source_var, list(source_context.module_path)
 
 
 def _check_param_mapping(
@@ -426,6 +453,12 @@ def _check_param_mapping(
     source_issue_var, source_decl_module_path, source_role, source_display_name = _source_issue_metadata(
         self, source_context, source_ref, src_var
     )
+    validation_source_var, validation_source_module_path = _validation_source_metadata(
+        self,
+        source_context,
+        source_ref,
+        current_source_var,
+    )
     preferred_source_issue_var = source_issue_var or current_source_var
     if "." in current_source_var.name and (
         source_issue_var is None
@@ -441,6 +474,8 @@ def _check_param_mapping(
         issue.source_role = source_role
         issue.source_display_name = source_display_name
         issue.target_display_name = target_name
+        issue.validation_source_variable = validation_source_var
+        issue.validation_source_module_path = validation_source_module_path
         self.append_param_mapping_issue(pm, issue)
     for issue in self.min_max_validator.check_min_max_mapping(pm, tgt_var, src_var, path):
         self.append_param_mapping_issue(pm, issue)
@@ -634,15 +669,15 @@ def _index_all_variables(self: VariablesAnalyzer) -> None:
     index = self.any_var_index
 
     for variable in self.bp.localvariables or []:
-        index.setdefault(variable.name.lower(), []).append(variable)
+        index.setdefault(casefold_key(variable.name), []).append(variable)
 
     _collect_module_vars(self.bp.submodules or [], index)
 
     for moduletype in self.bp.moduletype_defs or []:
         for variable in moduletype.moduleparameters or []:
-            index.setdefault(variable.name.lower(), []).append(variable)
+            index.setdefault(casefold_key(variable.name), []).append(variable)
         for variable in moduletype.localvariables or []:
-            index.setdefault(variable.name.lower(), []).append(variable)
+            index.setdefault(casefold_key(variable.name), []).append(variable)
 
 
 class VariablesContractsMixin:

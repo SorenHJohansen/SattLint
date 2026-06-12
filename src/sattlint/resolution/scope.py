@@ -5,11 +5,11 @@ from dataclasses import dataclass, field
 from sattline_parser.models.ast_model import Variable
 
 
-def _empty_resolve_cache() -> dict[str, tuple[Variable | None, str, list[str], list[str]]]:
+def _resolve_cache_factory() -> dict[str, tuple[Variable | None, str, list[str], list[str]]]:
     return {}
 
 
-def _empty_moduleparameter_keys() -> frozenset[str]:
+def _moduleparameter_keys_factory() -> frozenset[str]:
     return frozenset()
 
 
@@ -31,11 +31,11 @@ class ScopeContext:
     param_mappings: dict[str, tuple[Variable, str, list[str], list[str]]]
     module_path: list[str]
     display_module_path: list[str]
-    moduleparameter_keys: frozenset[str] = field(default_factory=_empty_moduleparameter_keys)
+    moduleparameter_keys: frozenset[str] = field(default_factory=_moduleparameter_keys_factory)
     current_library: str | None = None
     parent_context: ScopeContext | None = None
     _resolve_cache: dict[str, tuple[Variable | None, str, list[str], list[str]]] = field(
-        default_factory=_empty_resolve_cache,
+        default_factory=_resolve_cache_factory,
         init=False,
         repr=False,
     )

@@ -6,9 +6,9 @@ from typing import Any
 
 from sattline_parser.models.ast_model import BasePicture
 
+from .config_types import ConfigDict
 from .models.project_graph import ProjectGraph
 
-ConfigDict = dict[str, Any]
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
 
 

@@ -1,13 +1,19 @@
 """Architecture linter: enforces layered domain architecture and dependency rules."""
 
+from __future__ import annotations
+
+import argparse
 import ast
 import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
+
+from sattlint import cli_output
 
 from ..repo_paths import repo_root_from
+from .artifact_registry import LAYER_LINT_POLICY_FILENAME, POLICY_KIND, POLICY_SCHEMA_VERSION
 
 # Define the layers based on SattLint architecture from AGENTS.md and docs/public/architecture.md
 # Dependencies must only flow from higher layer number to lower (or same).
@@ -36,9 +42,7 @@ LAYER_MAP = {
 }
 
 REPO_ROOT = repo_root_from(Path(__file__))
-POLICY_PATH = REPO_ROOT / "metrics" / "layer_lint_policy.json"
-POLICY_KIND = "sattlint.layer_lint_policy"
-POLICY_SCHEMA_VERSION = 1
+POLICY_PATH = REPO_ROOT / "metrics" / LAYER_LINT_POLICY_FILENAME
 
 # Allowed dependencies: a layer can depend on same layer or lower layers (lower number)
 # We'll compute allowed dependencies dynamically from LAYER_MAP
@@ -350,7 +354,7 @@ def check_file_for_arch_violations(
                         if violation is not None:
                             violations.append(violation)
                             break
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, SyntaxError, UnicodeError, ValueError) as exc:
         violations.append(
             ArchViolation(
                 file=str(file_path),
@@ -403,8 +407,49 @@ def collect_architecture_violations(
     return all_violations
 
 
-def main() -> None:
+def build_cli_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Run architecture linting on the codebase.")
+    cli_output.add_output_format_argument(
+        parser,
+        help_text="Output format for stdout summary.",
+    )
+    return parser
+
+
+def _build_cli_report(violations: list[ArchViolation]) -> dict[str, Any]:
+    return {
+        "status": "fail" if violations else "pass",
+        "violation_count": len(violations),
+        "violations": [
+            {
+                "file": violation.file,
+                "line": violation.line,
+                "message": violation.message,
+                "current_module": violation.current_module,
+                "imported_module": violation.imported_module,
+                "violation_kind": violation.violation_kind,
+                "policy_owner": violation.policy_owner,
+                "forbidden_import": violation.forbidden_import,
+            }
+            for violation in violations
+        ],
+    }
+
+
+def _render_cli_summary(report: dict[str, Any]) -> str:
+    if report["violation_count"] == 0:
+        return "No architecture violations found."
+    lines = [f"Found {report['violation_count']} architecture violations:"]
+    for violation in cast(list[dict[str, Any]], report["violations"]):
+        lines.append(f"  {violation['file']}:{violation['line']} - {violation['message']}")
+    return "\n".join(lines)
+
+
+def main(argv: list[str] | None = None) -> None:
     """Run architecture linting on the codebase."""
+    parser = build_cli_parser()
+    args = parser.parse_args(argv)
+    output_format = cli_output.resolve_output_format(args)
     # Define the roots of our source code
     roots = [
         Path("src"),
@@ -412,15 +457,14 @@ def main() -> None:
     ]
 
     all_violations = collect_architecture_violations(roots, repo_root=REPO_ROOT)
-
-    if all_violations:
-        print(f"Found {len(all_violations)} architecture violations:")
-        for v in all_violations:
-            print(f"  {v.file}:{v.line} - {v.message}")
-        sys.exit(1)
-    else:
-        print("No architecture violations found.")
-        sys.exit(0)
+    report = _build_cli_report(all_violations)
+    cli_output.emit_text_or_json(
+        text=_render_cli_summary(report),
+        json_payload=report,
+        output_format=output_format,
+        emit_text_fn=print,
+    )
+    sys.exit(1 if all_violations else 0)
 
 
 if __name__ == "__main__":

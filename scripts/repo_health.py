@@ -14,9 +14,14 @@ from urllib.parse import quote
 
 import context_health
 
+try:
+    from scripts._repo_paths import repo_root_from
+except ModuleNotFoundError:  # pragma: no cover - direct script execution resolves from scripts/
+    from _repo_paths import repo_root_from
+
 from sattlint.devtools.artifact_readiness import ReadinessError, assert_artifact_dir_ready
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = repo_root_from(Path(__file__))
 DEFAULT_AUDIT_DIR = REPO_ROOT / "artifacts" / "audit"
 DEFAULT_COVERAGE_RATCHET = REPO_ROOT / "artifacts" / "analysis" / "coverage_ratchet.json"
 DEFAULT_STRUCTURAL_RATCHET = REPO_ROOT / "artifacts" / "analysis" / "structural_budget_ratchet.json"

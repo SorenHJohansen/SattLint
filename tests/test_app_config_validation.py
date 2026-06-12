@@ -10,9 +10,11 @@ from typing import ClassVar
 
 import pytest
 
+from sattlint import _config_defaults as config_defaults_module
 from sattlint import app
 from sattlint import config as config_module
 from sattlint import graphics_rules as graphics_rules_module
+from sattlint.config_types import ConfigDict, ConfigOverrideDict
 
 
 @pytest.fixture
@@ -26,6 +28,7 @@ def test_validate_config_reports_key_mode_analysis_and_documentation_errors():
     result = config_module.validate_config(
         {
             "invalid_key": True,
+            "ignore_ABB_lib": True,
             "mode": "bad_mode",
             "analysis": "bad",
             "telemetry": "bad",
@@ -36,6 +39,7 @@ def test_validate_config_reports_key_mode_analysis_and_documentation_errors():
     assert result.passed is False
     assert {error.key_path for error in result.errors} == {
         "invalid_key",
+        "ignore_ABB_lib",
         "mode",
         "analysis",
         "telemetry",
@@ -59,6 +63,23 @@ def test_validate_config_reports_unknown_telemetry_keys_and_invalid_shapes():
         "telemetry.extra",
         "telemetry.enabled",
         "telemetry.path",
+    }
+
+
+def test_validate_config_reports_none_values_at_top_level_and_nested_paths():
+    result = config_module.validate_config(
+        {
+            "mode": None,
+            "telemetry": {"enabled": None},
+            "analyzed_programs_and_libraries": ["RootProgram", None],
+        }
+    )
+
+    assert result.passed is False
+    assert {error.key_path for error in result.errors} == {
+        "mode",
+        "telemetry.enabled",
+        "analyzed_programs_and_libraries[1]",
     }
 
 
@@ -126,15 +147,32 @@ def test_load_config_warns_on_invalid_keys_and_normalizes_legacy_documentation_k
     out = capsys.readouterr().out
     assert created is False
     assert "Config warning [bad_key]" in out
+    assert "Config warning [ignore_ABB_lib]: ignore_ABB_lib is no longer supported and has no effect." in out
+    assert "Config warning [documentation.classifications.equipment_modules]" in out
+    assert "Config warning [documentation.classifications.equipment_modules.moduletype_name_contains]" in out
+    assert "Config warning [documentation.classifications.equipment_modules.descendant_moduletype_label_equals]" in out
     assert "ignore_ABB_lib" not in loaded
     assert loaded["documentation"]["classifications"]["em"]["name_contains"] == ["Tank"]
     assert loaded["documentation"]["classifications"]["em"]["desc_label_equals"] == ["nnestruct:EquipModCoordinate"]
     assert "equipment_modules" not in loaded["documentation"]["classifications"]
 
 
-def test_load_config_backfills_missing_telemetry_section_without_overwriting_existing_keys(tmp_path):
+def test_load_config_warns_on_missing_paths_from_loaded_validation(tmp_path, capsys):
     config_path = tmp_path / "config.toml"
-    config_path.write_text('mode = "draft"\nprogram_dir = "programs"', encoding="utf-8")
+    config_path.write_text('program_dir = "missing-programs"\n', encoding="utf-8")
+
+    loaded, created = config_module.load_config(config_path)
+
+    out = capsys.readouterr().out
+    assert created is False
+    assert loaded["program_dir"] == "missing-programs"
+    assert "Config warning [program_dir]: program_dir does not exist: missing-programs" in out
+
+
+def test_load_config_applies_default_telemetry_without_rewriting_existing_file(tmp_path):
+    config_path = tmp_path / "config.toml"
+    original_text = 'mode = "draft"\nprogram_dir = "programs"'
+    config_path.write_text(original_text, encoding="utf-8")
 
     loaded, created = config_module.load_config(config_path)
 
@@ -143,40 +181,42 @@ def test_load_config_backfills_missing_telemetry_section_without_overwriting_exi
     assert loaded["mode"] == "draft"
     assert loaded["program_dir"] == "programs"
     assert loaded["telemetry"] == {"enabled": False}
-    assert 'mode = "draft"' in persisted_text
-    assert 'program_dir = "programs"' in persisted_text
-    assert "[telemetry]" in persisted_text
-    assert "enabled = false" in persisted_text
+    assert persisted_text == original_text
+    assert "[telemetry]" not in persisted_text
     assert 'path = ""' not in persisted_text
 
 
-def test_load_config_strips_legacy_telemetry_path_from_existing_file(tmp_path):
+def test_load_config_warns_on_legacy_telemetry_path_without_rewriting_file(tmp_path, capsys):
     config_path = tmp_path / "config.toml"
     config_path.write_text('[telemetry]\nenabled = true\npath = "legacy.jsonl"\n', encoding="utf-8")
 
     loaded, created = config_module.load_config(config_path)
 
+    out = capsys.readouterr().out
     persisted_text = config_path.read_text(encoding="utf-8")
     assert created is False
     assert loaded["telemetry"] == {"enabled": True}
+    assert (
+        "Config warning [telemetry.path]: telemetry.path is deprecated and ignored when building the effective config."
+        in out
+    )
     assert "enabled = true" in persisted_text
-    assert 'path = "legacy.jsonl"' not in persisted_text
+    assert 'path = "legacy.jsonl"' in persisted_text
 
 
-def test_config_io_helper_guards_cover_empty_legacy_text_windows_path_and_non_table_save(
+def test_config_io_helper_guards_cover_windows_path_and_non_table_save(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config_io_module = config_module._config_io_module
+    config_paths_module = config_io_module._config_paths_module
 
     class _NonTableConfig:
         def get(self, _key: str, _default: object | None = None) -> object | None:
             return None
 
-    assert config_io_module._strip_legacy_telemetry_path("") == ""
-
-    monkeypatch.setattr(config_io_module.os, "name", "nt", raising=False)
-    monkeypatch.setattr(config_io_module, "Path", PosixPath)
+    monkeypatch.setattr(config_paths_module.os, "name", "nt", raising=False)
+    monkeypatch.setattr(config_paths_module, "Path", PosixPath)
     monkeypatch.setenv("APPDATA", str(tmp_path / "AppData"))
     assert config_module.get_config_path() == tmp_path / "AppData" / "sattlint" / "config.toml"
 
@@ -201,14 +241,19 @@ def test_config_io_helper_branches_cover_missing_load_passthrough_and_save_guard
     assert "No config found, creating default" in out
 
     unchanged_cfg = {"telemetry": {"enabled": True}}
-    config_path.write_text("[telemetry]\nenabled = true\n", encoding="utf-8")
-    assert config_io_module._normalize_telemetry_section(config_path, unchanged_cfg) == unchanged_cfg
+    assert config_io_module._normalize_telemetry_section(unchanged_cfg) == unchanged_cfg
+    assert config_io_module._normalize_telemetry_section({"telemetry": {"enabled": True, "path": "old.jsonl"}}) == {
+        "telemetry": {"enabled": True}
+    }
 
     save_path = tmp_path / "saved-config.toml"
     config_module.save_config(save_path, {"mode": "draft", "telemetry": {"enabled": True, "path": "old.jsonl"}})
     assert 'path = "old.jsonl"' not in save_path.read_text(encoding="utf-8")
 
-    with pytest.raises(ValueError, match="Cannot serialize None"):
+    with pytest.raises(ValueError, match=r"Config validation failed: \[program_dir\]"):
+        config_module.save_config(tmp_path / "invalid-path-config.toml", {"program_dir": str(tmp_path / "missing")})
+
+    with pytest.raises(ValueError, match=r"Config validation failed: \[mode\] mode must not be null/None"):
         config_module.save_config(tmp_path / "invalid-config.toml", {"mode": None})
 
 
@@ -281,6 +326,8 @@ def test_config_helpers_normalize_legacy_conflicts_and_serialize_paths(tmp_path,
     )
     config_path = config_module.get_config_path()
     save_path = tmp_path / "saved-config.toml"
+    for directory_name in ("programs", "abb", "lib-a", "lib-b"):
+        (tmp_path / directory_name).mkdir()
     save_cfg = {
         "program_dir": tmp_path / "programs",
         "ABB_lib_dir": tmp_path / "abb",
@@ -349,6 +396,14 @@ def test_config_helper_branches_cover_defaults_and_deduplication() -> None:
     assert merged == helper_module.ConfigValidationResult(passed=False, errors=(duplicate_error,))
 
 
+def test_top_level_config_contract_matches_typed_config_definitions() -> None:
+    assert frozenset(config_defaults_module.REQUIRED_TOP_LEVEL_CONFIG_KEYS) == frozenset(ConfigDict.__required_keys__)
+    assert frozenset(ConfigOverrideDict.__optional_keys__) == config_defaults_module.VALID_TOP_LEVEL_CONFIG_KEYS
+    assert frozenset(config_defaults_module.TOP_LEVEL_CONFIG_CONTRACT) == frozenset(
+        config_defaults_module.REQUIRED_TOP_LEVEL_CONFIG_KEYS
+    )
+
+
 def test_self_check_reports_top_level_section_shapes_and_valid_graphics_rules(tmp_path, monkeypatch, capsys):
     readable_dir = tmp_path / "readable"
     readable_dir.mkdir()
@@ -383,6 +438,23 @@ def test_self_check_reports_top_level_section_shapes_and_valid_graphics_rules(tm
     assert "analysis must be a table/object" in out
     assert "graphics_rules_path:" in out
     assert "2 rules" in out
+
+
+def test_self_check_uses_full_top_level_config_contract(tmp_path, monkeypatch, capsys):
+    graphics_rules_path = tmp_path / "graphics-rules.json"
+    monkeypatch.setattr(config_module, "get_graphics_rules_path", lambda: graphics_rules_path)
+
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    for key in ("include_reverse_library_consumers", "telemetry", "analysis"):
+        cfg.pop(key)
+
+    ok = config_module.self_check(cfg)
+
+    out = capsys.readouterr().out
+    assert ok is False
+    assert "Missing config key: include_reverse_library_consumers" in out
+    assert "Missing config key: telemetry" in out
+    assert "Missing config key: analysis" in out
 
 
 def test_self_check_reports_nested_documentation_and_analysis_shape_errors(tmp_path, monkeypatch, capsys):

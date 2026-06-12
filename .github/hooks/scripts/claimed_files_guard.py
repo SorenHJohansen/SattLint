@@ -18,6 +18,13 @@ from hook_path_compat import normalize_payload_path_text, resolve_payload_cwd  #
 
 from sattlint.devtools import coordination_lock_state  # noqa: E402
 
+FAIL_OPEN_EXCEPTIONS = (
+    OSError,
+    RuntimeError,
+    TypeError,
+    ValueError,
+)
+
 EDIT_TOOL_NAMES = {
     "apply_patch",
     "create_file",
@@ -206,7 +213,7 @@ def main() -> int:
         }
         sys.stdout.write(json.dumps(response))
         return 0
-    except Exception as exc:  # pragma: no cover - hook failures should not block work by default
+    except FAIL_OPEN_EXCEPTIONS as exc:  # pragma: no cover - hook failures should not block work by default
         fallback = {
             "systemMessage": f"Claimed-file guard warning: hook failed open with {type(exc).__name__}: {exc}",
             "hookSpecificOutput": {

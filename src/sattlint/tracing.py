@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import time
 from collections import Counter
@@ -19,13 +18,16 @@ from sattline_parser.models.ast_model import (
     SingleModule,
 )
 
+from ._exit_codes import EXIT_FAILURE, EXIT_SUCCESS
 from .analyzers.dataflow import analyze_dataflow
 from .analyzers.sfc import collect_sfc_reachability_findings
 from .analyzers.variables import analyze_variables
+from .cli_output import render_json_output
 from .engine import parse_source_file, validate_single_file_syntax
 from .path_sanitizer import sanitize_path_for_report
+from .repo_paths import repo_root_from
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = repo_root_from(Path(__file__))
 
 
 def _empty_trace_events() -> list[dict[str, Any]]:
@@ -298,7 +300,7 @@ def trace_source_file_analysis(
     if output_path is not None:
         try:
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+            output_path.write_text(render_json_output(payload), encoding="utf-8")
         except OSError as exc:
             payload["output_error"] = {
                 "path": sanitize_path_for_report(output_path.resolve(), repo_root=REPO_ROOT)
@@ -310,34 +312,52 @@ def trace_source_file_analysis(
     return payload
 
 
-def cli(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Trace parser and analyzer execution for a SattLine file.")
+def build_cli_parser(*, prog: str = "sattlint-trace", add_help: bool = True) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog=prog,
+        add_help=add_help,
+        description="Trace parser and analyzer execution for a SattLine file.",
+    )
     parser.add_argument("source_file", help="Path to the .s or .x source file to trace")
     parser.add_argument("--output", help="Write trace JSON to this path instead of stdout")
     parser.add_argument("--debug", action="store_true", help="Include parser debug events in the trace")
-    args = parser.parse_args(argv)
+    return parser
+
+
+def run_parsed_args(args: argparse.Namespace) -> int:
+    source_file = str(args.source_file)
+    output = getattr(args, "output", None)
+    debug = bool(getattr(args, "debug", False))
 
     payload = trace_source_file_analysis(
-        Path(args.source_file),
-        output_path=Path(args.output) if args.output else None,
-        debug=args.debug,
+        Path(source_file),
+        output_path=Path(output) if output else None,
+        debug=debug,
     )
-    if args.output:
+    if output:
         if payload.get("output_error"):
             print(f"Trace output error: {payload['output_error']['error']}", file=sys.stderr, flush=True)
-            return 1
-        print(f"Trace written to {Path(args.output).resolve()}")
+            return EXIT_FAILURE
+        print(f"Trace written to {Path(output).resolve()}")
     else:
-        print(json.dumps(payload, indent=2, sort_keys=True))
-    return 0
+        print(render_json_output(payload))
+    return EXIT_SUCCESS
+
+
+def cli(argv: list[str] | None = None) -> int:
+    parser = build_cli_parser()
+    args = parser.parse_args(argv)
+    return run_parsed_args(args)
 
 
 __all__ = [
     "AnalysisTraceRecorder",
+    "build_cli_parser",
     "cli",
     "collect_ast_summary",
     "detect_transform_invariant_violations",
     "detect_unreachable_sequence_logic",
+    "run_parsed_args",
     "trace_basepicture_analysis",
     "trace_source_file_analysis",
 ]

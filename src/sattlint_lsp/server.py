@@ -178,18 +178,14 @@ _PUBLIC_SERVER_HELPERS = (
 )
 
 
-def _clear_workspace_scan_state(ls: SattLineLanguageServer) -> None:
-    ls.entry_scan_generation.clear()
-    with ls.workspace_scan_condition:
-        ls.workspace_scan_pending.clear()
-
-
 def _clear_workspace_diagnostics(ls: SattLineLanguageServer) -> None:
-    affected_paths = {path.resolve() for path in ls.published_workspace_diagnostics}
-    for diagnostics_by_path in ls.entry_diagnostics.values():
-        affected_paths.update(path.resolve() for path in diagnostics_by_path)
-    ls.entry_diagnostics.clear()
-    _clear_workspace_scan_state(ls)
+    with ls.workspace_scan_condition:
+        affected_paths = {path.resolve() for path in ls.published_workspace_diagnostics}
+        for diagnostics_by_path in ls.entry_diagnostics.values():
+            affected_paths.update(path.resolve() for path in diagnostics_by_path)
+        ls.entry_diagnostics.clear()
+        ls.entry_scan_generation.clear()
+        ls.workspace_scan_pending.clear()
     if affected_paths:
         _publish_workspace_diagnostics_for_paths(ls, affected_paths)
 
@@ -198,14 +194,13 @@ def _clear_workspace_entries(ls: SattLineLanguageServer, entry_files: tuple[Path
     if not entry_files:
         return
 
-    affected_paths: set[Path] = set()
-    removed_keys = {entry_file.resolve().as_posix().casefold() for entry_file in entry_files}
-    for entry_key in removed_keys:
-        previous = ls.entry_diagnostics.pop(entry_key, {})
-        affected_paths.update(path.resolve() for path in previous)
-        ls.entry_scan_generation.pop(entry_key, None)
-
     with ls.workspace_scan_condition:
+        affected_paths: set[Path] = set()
+        removed_keys = {entry_file.resolve().as_posix().casefold() for entry_file in entry_files}
+        for entry_key in removed_keys:
+            previous = ls.entry_diagnostics.pop(entry_key, {})
+            affected_paths.update(path.resolve() for path in previous)
+            ls.entry_scan_generation.pop(entry_key, None)
         ls.workspace_scan_pending = {
             path for path in ls.workspace_scan_pending if path.resolve().as_posix().casefold() not in removed_keys
         }
@@ -234,10 +229,10 @@ def on_initialize(ls: SattLineLanguageServer, params: InitializeParams) -> None:
 
     ls.document_states.clear()
     ls.document_paths.clear()
-    ls.entry_diagnostics.clear()
-    ls.published_workspace_diagnostics.clear()
-    ls.entry_scan_generation.clear()
     with ls.workspace_scan_condition:
+        ls.entry_diagnostics.clear()
+        ls.published_workspace_diagnostics.clear()
+        ls.entry_scan_generation.clear()
         ls.workspace_scan_pending.clear()
         ls.workspace_scan_generation = 0
         ls.workspace_scan_thread = None

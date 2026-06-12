@@ -1,14 +1,20 @@
 """Agent review tool: runs a comprehensive review of code changes for agent consumption."""
 
+import argparse
 import json
 import shutil
 
 # Internal review tool invokes trusted local commands.
 import subprocess  # nosec B404
 import sys
+from collections.abc import Callable
+from contextlib import redirect_stdout
 from datetime import UTC, datetime
+from io import StringIO
 from pathlib import Path
 from typing import Any, cast
+
+from sattlint import cli_output
 
 # Import our devtools for reuse
 from .doc_gardener import run_scan as doc_gardener_scan
@@ -33,7 +39,7 @@ def run_command(cmd: list[str], cwd: Path | None = None) -> tuple[int, str, str]
             cwd=cwd,
         )
         return result.returncode, result.stdout, result.stderr
-    except Exception as e:  # noqa: BLE001
+    except (OSError, RuntimeError, ValueError) as e:
         return 1, "", str(e)
 
 
@@ -67,7 +73,7 @@ def run_doc_gardener() -> dict[str, Any]:
             "by_severity": result["by_severity"],
             "by_category": result["by_category"],
         }
-    except Exception as e:  # noqa: BLE001
+    except (OSError, RuntimeError, ValueError) as e:
         return {
             "passed": False,
             "error": str(e),
@@ -136,19 +142,28 @@ def collect_observability() -> dict[str, Any]:
     return collect_all_metrics()
 
 
-def run_full_review() -> dict[str, Any]:
+def build_cli_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Run the SattLint agent review workflow.")
+    cli_output.add_output_format_argument(
+        parser,
+        help_text="Output format for stdout summary.",
+    )
+    return parser
+
+
+def run_full_review(*, emit_progress_fn: Callable[[str], None] = print) -> dict[str, Any]:
     """Run all review checks and return a comprehensive report."""
-    print("Running architecture lint...")
+    emit_progress_fn("Running architecture lint...")
     arch_result = run_architecture_lint()
-    print("Running doc gardener...")
+    emit_progress_fn("Running doc gardener...")
     doc_result = run_doc_gardener()
-    print("Running tests...")
+    emit_progress_fn("Running tests...")
     test_result = run_tests()
-    print("Running linting...")
+    emit_progress_fn("Running linting...")
     lint_result = run_linting()
-    print("Running format check...")
+    emit_progress_fn("Running format check...")
     format_result = run_format_check()
-    print("Collecting observability...")
+    emit_progress_fn("Collecting observability...")
     obs_result = collect_observability()
 
     # Determine overall pass/fail
@@ -247,14 +262,41 @@ def print_review(report: dict[str, Any]) -> None:
     print("\n" + "=" * 60)
 
 
-def main() -> None:
+def render_review(report: dict[str, Any]) -> str:
+    buffer = StringIO()
+    with redirect_stdout(buffer):
+        print_review(report)
+    return buffer.getvalue().rstrip()
+
+
+def _emit_progress_stdout(message: str) -> None:
+    print(message)
+
+
+def _emit_progress_stderr(message: str) -> None:
+    print(message, file=sys.stderr)
+
+
+def main(argv: list[str] | None = None) -> None:
     """Main entry point: run review and print results."""
-    report = run_full_review()
-    print_review(report)
+    parser = build_cli_parser()
+    args = parser.parse_args(argv)
+    output_format = cli_output.resolve_output_format(args)
+    progress_emitter = _emit_progress_stdout if output_format == "text" else _emit_progress_stderr
+    report = run_full_review(emit_progress_fn=progress_emitter)
+    cli_report = dict(report)
+    cli_report["report_path"] = REVIEW_FILE.as_posix()
+    cli_output.emit_text_or_json(
+        text=render_review(report),
+        json_payload=cli_report,
+        output_format=output_format,
+        emit_text_fn=print,
+    )
     if isinstance(report.get("output_error"), str):
         print(f"\nReview report write error: {report['output_error']}", file=sys.stderr)
         sys.exit(1)
-    print(f"\nFull report written to {REVIEW_FILE}")
+    if output_format == "text":
+        print(f"\nFull report written to {REVIEW_FILE}")
     sys.exit(0 if report["overall_passed"] else 1)
 
 

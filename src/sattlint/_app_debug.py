@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
-ConfigDict = dict[str, Any]
+from .config_types import ConfigDict
 
 
 def debug_enabled(cfg: ConfigDict) -> bool:
@@ -11,5 +10,5 @@ def debug_enabled(cfg: ConfigDict) -> bool:
 
 
 def log_debug_exception(cfg: ConfigDict, message: str, *, logger: logging.Logger) -> None:
-    if debug_enabled(cfg):
-        logger.exception(message)
+    del cfg
+    logger.exception(message)

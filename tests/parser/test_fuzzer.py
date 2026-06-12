@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-import sattlint.devtools.fuzzer as fuzzer
+import sattlint.devtools.sandbox.fuzzer as fuzzer
 from sattline_parser.fuzz_harness import FuzzResult, TimeoutError
 from sattline_parser.models.ast_model import BasePicture, ModuleHeader
 
@@ -40,11 +40,11 @@ def test_analyze_fuzz_crashes_filters_expected_errors_and_timeouts() -> None:
 
 def test_run_fuzz_campaign_combines_corpus_and_random_results(monkeypatch) -> None:
     monkeypatch.setattr(
-        "sattlint.devtools.fuzzer.run_corpus_regression",
+        "sattlint.devtools.sandbox.fuzzer.run_corpus_regression",
         lambda **_kwargs: [_result("corpus-a"), _result("corpus-b", success=False, error=ValueError("bad"))],
     )
     monkeypatch.setattr(
-        "sattlint.devtools.fuzzer.run_random_fuzz",
+        "sattlint.devtools.sandbox.fuzzer.run_random_fuzz",
         lambda **_kwargs: [_result("random-a"), _result("random-b", success=False, error=RuntimeError("boom"))],
     )
 
@@ -59,9 +59,12 @@ def test_run_fuzz_campaign_combines_corpus_and_random_results(monkeypatch) -> No
 
 
 def test_write_fuzz_results_writes_machine_readable_report(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr("sattlint.devtools.fuzzer.run_corpus_regression", lambda **_kwargs: [_result("corpus-a")])
     monkeypatch.setattr(
-        "sattlint.devtools.fuzzer.run_random_fuzz",
+        "sattlint.devtools.sandbox.fuzzer.run_corpus_regression",
+        lambda **_kwargs: [_result("corpus-a")],
+    )
+    monkeypatch.setattr(
+        "sattlint.devtools.sandbox.fuzzer.run_random_fuzz",
         lambda **_kwargs: [_result("random-a", success=False, error=RuntimeError("boom"))],
     )
 

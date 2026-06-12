@@ -4,7 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from sattlint.devtools import ai_work_map, repo_audit, repo_audit_entrypoints
+from sattlint.devtools.ai import ai_work_map
+from sattlint.devtools.audit import repo_audit, repo_audit_entrypoints
 
 
 def test_repo_audit_entrypoint_helper_normalizers_and_reason_selection():
@@ -397,4 +398,4 @@ def test_run_verify_recommendations_check_flags_generated_artifact_drift(monkeyp
     ]
     assert all(finding.severity == "high" for finding in findings)
     assert findings[0].path == "docs/maintainers/ai/ai-work-map.json"
-    assert "python -m sattlint.devtools.ai_work_map --write" in findings[0].detail
+    assert "python -m sattlint.devtools.ai --write" in findings[0].detail

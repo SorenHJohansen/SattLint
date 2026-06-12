@@ -27,53 +27,53 @@ from sattlint.devtools.artifact_registry import (
 )
 from sattlint.devtools.corpus import run_corpus_suite
 from sattlint.devtools.coverage_reports import build_coverage_summary_report
-from sattlint.devtools.pipeline_artifacts import (
+from sattlint.devtools.progress_reporting import ProgressReporter
+from sattlint.devtools.shared.pipeline_artifacts import (
     PipelineArtifactContext,
     write_json_artifact,
     write_pipeline_artifacts,
 )
-from sattlint.devtools.pipeline_checks import (
+from sattlint.devtools.shared.pipeline_checks import (
     PIPELINE_CHECK_IDS,
     normalize_changed_files,
     normalize_selected_checks,
     skipped_stage_report,
 )
-from sattlint.devtools.progress_reporting import ProgressReporter
 from sattlint.devtools.status_reports import (
     build_pipeline_status_report,
     build_pipeline_summary_report,
     build_tool_status,
     overall_status,
 )
-from sattlint.devtools.structural_reports import (
+from sattlint.devtools.structural.structural_reports import (
     StructuralReportsBundle,
     WorkspaceGraphInputs,
 )
-from sattlint.devtools.structural_reports import (
+from sattlint.devtools.structural.structural_reports import (
     collect_analyzer_registry_report as build_analyzer_registry_report,
 )
-from sattlint.devtools.structural_reports import (
+from sattlint.devtools.structural.structural_reports import (
     collect_architecture_report as build_architecture_report,
 )
-from sattlint.devtools.structural_reports import (
+from sattlint.devtools.structural.structural_reports import (
     collect_call_graph_report as build_call_graph_report,
 )
-from sattlint.devtools.structural_reports import (
+from sattlint.devtools.structural.structural_reports import (
     collect_dependency_graph_report as build_dependency_graph_report,
 )
-from sattlint.devtools.structural_reports import (
+from sattlint.devtools.structural.structural_reports import (
     collect_graphics_layout_report as build_graphics_layout_report,
 )
-from sattlint.devtools.structural_reports import (
+from sattlint.devtools.structural.structural_reports import (
     collect_impact_analysis_report as build_impact_analysis_report,
 )
-from sattlint.devtools.structural_reports import (
+from sattlint.devtools.structural.structural_reports import (
     collect_phase2_rule_metadata_gate as build_phase2_rule_metadata_gate,
 )
-from sattlint.devtools.structural_reports import (
+from sattlint.devtools.structural.structural_reports import (
     collect_structural_reports as build_structural_reports,
 )
-from sattlint.devtools.structural_reports import (
+from sattlint.devtools.structural.structural_reports import (
     collect_workspace_graph_inputs as build_workspace_graph_inputs,
 )
 from sattlint.devtools.tool_reports import build_command_report
@@ -965,10 +965,11 @@ def _finalize_pipeline_outputs(
             tool_statuses=tool_statuses,
         )
         summary["recommendation_drift"] = recommendation_drift
-        status_report["recommendation_drift"] = {
-            "status": recommendation_drift["status"],
-            "omitted_nonpassing_check_ids": recommendation_drift["omitted_nonpassing_check_ids"],
-        }
+        if recommendation_drift is not None:
+            status_report["recommendation_drift"] = {
+                "status": recommendation_drift["status"],
+                "omitted_nonpassing_check_ids": recommendation_drift["omitted_nonpassing_check_ids"],
+            }
     if context["selected_checks"] is not None:
         selected_checks = list(context["selected_checks"])
         status_report["selected_checks"] = selected_checks

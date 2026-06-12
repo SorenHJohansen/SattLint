@@ -9,7 +9,21 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from hook_path_compat import normalize_payload_path_text, resolve_payload_cwd  # noqa: E402
+
+from scripts._python_runtime import resolve_repo_python  # noqa: E402
+
+FAIL_OPEN_EXCEPTIONS = (
+    OSError,
+    RuntimeError,
+    TypeError,
+    ValueError,
+    subprocess.SubprocessError,
+)
 
 EDIT_TOOL_NAMES = {
     "apply_patch",
@@ -98,16 +112,7 @@ def _extract_tool_paths(tool_name: str, tool_input: object, cwd: Path) -> list[P
     return list(seen.values())
 
 
-def _resolve_python(repo_root: Path) -> Path:
-    windows_python = repo_root / ".venv" / "Scripts" / "python.exe"
-    if windows_python.exists():
-        return windows_python
-
-    posix_python = repo_root / ".venv" / "bin" / "python"
-    if posix_python.exists():
-        return posix_python
-
-    return Path(sys.executable)
+_resolve_python = resolve_repo_python
 
 
 def _relative_targets(targets: list[Path], cwd: Path) -> list[str]:
@@ -164,7 +169,7 @@ def main() -> int:
         )
         print(f"AI edit gate blocked: {detail}", file=sys.stderr)
         return 1
-    except Exception as exc:  # pragma: no cover - hook failures should not block edits
+    except FAIL_OPEN_EXCEPTIONS as exc:  # pragma: no cover - hook failures should not block edits
         message = f"AI edit gate hook warning: hook failed open with {type(exc).__name__}: {exc}"
         sys.stdout.write(json.dumps(_warning_payload(message)))
         return 0

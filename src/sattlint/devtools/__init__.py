@@ -2,162 +2,79 @@
 
 from __future__ import annotations
 
-import importlib
-from typing import TYPE_CHECKING, Any
+from importlib import import_module
+from types import ModuleType
+from typing import Any
 
-if TYPE_CHECKING:
-    from .accuracy_metrics import (
-        ACCURACY_METRICS_FILENAME,
-        ACCURACY_SCHEMA_KIND,
-        ACCURACY_SCHEMA_VERSION,
-        VALIDATION_ANNOTATIONS_FILENAME,
-        AccuracyMetrics,
-        ValidationAnnotation,
-        build_accuracy_metrics,
-        load_annotations,
-        write_accuracy_metrics,
-    )
-    from .artifact_registry import AUDIT_ARTIFACTS, PIPELINE_ARTIFACTS, ArtifactDefinition
-    from .baselines import (
-        ANALYSIS_DIFF_SCHEMA_KIND,
-        ANALYSIS_DIFF_SCHEMA_VERSION,
-        build_analysis_diff_report,
-        load_finding_collection,
-    )
-    from .corpus import (
-        CORPUS_RESULTS_FILENAME,
-        CORPUS_RESULTS_SCHEMA_KIND,
-        CORPUS_RESULTS_SCHEMA_VERSION,
-        CorpusCaseManifest,
-        CorpusEvaluation,
-        CorpusExpectation,
-        CorpusRunResult,
-        CorpusSuiteResult,
-        execute_corpus_case,
-        run_corpus_case,
-        run_corpus_suite,
-    )
-    from .doc_gardener import DocFinding, run_scan
-    from .fault_injection import (
-        FAULT_INJECTION_RESULTS_FILENAME,
-        FAULT_INJECTION_SCHEMA_KIND,
-        FAULT_INJECTION_SCHEMA_VERSION,
-        FaultInjectionResults,
-        FaultInjector,
-        FaultRunRecord,
-        FaultSpec,
-        run_fault_injection_campaign,
-        write_fault_injection_results,
-    )
-    from .fuzzer import (
-        DEFAULT_TIMEOUT_SECONDS as FUZZER_DEFAULT_TIMEOUT_SECONDS,
-    )
-    from .fuzzer import (
-        FUZZER_REPORT_FILENAME,
-        FUZZER_REPORT_SCHEMA_KIND,
-        FUZZER_REPORT_SCHEMA_VERSION,
-        FuzzerReport,
-        FuzzExecutionRecord,
-        FuzzTarget,
-        analyze_crashes,
-        build_seed_corpus,
-        parser_fuzz_target,
-        run_fuzz_target,
-        run_parser_fuzzer,
-        write_fuzzer_report,
-    )
-    from .observability import collect_all_metrics, read_metrics, write_metrics
-    from .property_tests import (
-        PROPERTY_TEST_RESULTS_FILENAME,
-        PROPERTY_TEST_SCHEMA_KIND,
-        PROPERTY_TEST_SCHEMA_VERSION,
-        PropertyCheckRecord,
-        PropertyTestResults,
-        generate_seeded_property_inputs,
-        run_property_tests,
-        write_property_test_results,
-    )
-    from .review_tool import print_review, run_full_review
+_SUBMODULE_PREFIXES = (
+    ".",
+    ".ai.",
+    ".audit.",
+    ".sandbox.",
+    ".shared.",
+    ".structural.",
+    ".pipeline.",
+)
+
+_EXPORT_PROVIDER_MODULES = (
+    ".accuracy_metrics",
+    ".artifact_registry",
+    ".baselines",
+    ".corpus",
+    ".doc_gardener",
+    ".fault_injection",
+    ".observability",
+    ".property_tests",
+    ".review_tool",
+    ".sandbox",
+    ".sandbox.fuzzer",
+    ".structural",
+    ".audit",
+)
 
 
-_EXPORT_TO_MODULE = {
-    "ACCURACY_METRICS_FILENAME": "sattlint.devtools.accuracy_metrics",
-    "ACCURACY_SCHEMA_KIND": "sattlint.devtools.accuracy_metrics",
-    "ACCURACY_SCHEMA_VERSION": "sattlint.devtools.accuracy_metrics",
-    "VALIDATION_ANNOTATIONS_FILENAME": "sattlint.devtools.accuracy_metrics",
-    "AccuracyMetrics": "sattlint.devtools.accuracy_metrics",
-    "ValidationAnnotation": "sattlint.devtools.accuracy_metrics",
-    "build_accuracy_metrics": "sattlint.devtools.accuracy_metrics",
-    "load_annotations": "sattlint.devtools.accuracy_metrics",
-    "write_accuracy_metrics": "sattlint.devtools.accuracy_metrics",
-    "AUDIT_ARTIFACTS": "sattlint.devtools.artifact_registry",
-    "PIPELINE_ARTIFACTS": "sattlint.devtools.artifact_registry",
-    "ArtifactDefinition": "sattlint.devtools.artifact_registry",
-    "ANALYSIS_DIFF_SCHEMA_KIND": "sattlint.devtools.baselines",
-    "ANALYSIS_DIFF_SCHEMA_VERSION": "sattlint.devtools.baselines",
-    "build_analysis_diff_report": "sattlint.devtools.baselines",
-    "load_finding_collection": "sattlint.devtools.baselines",
-    "CORPUS_RESULTS_FILENAME": "sattlint.devtools.corpus",
-    "CORPUS_RESULTS_SCHEMA_KIND": "sattlint.devtools.corpus",
-    "CORPUS_RESULTS_SCHEMA_VERSION": "sattlint.devtools.corpus",
-    "CorpusCaseManifest": "sattlint.devtools.corpus",
-    "CorpusEvaluation": "sattlint.devtools.corpus",
-    "CorpusExpectation": "sattlint.devtools.corpus",
-    "CorpusRunResult": "sattlint.devtools.corpus",
-    "CorpusSuiteResult": "sattlint.devtools.corpus",
-    "execute_corpus_case": "sattlint.devtools.corpus",
-    "run_corpus_case": "sattlint.devtools.corpus",
-    "run_corpus_suite": "sattlint.devtools.corpus",
-    "FAULT_INJECTION_RESULTS_FILENAME": "sattlint.devtools.fault_injection",
-    "FAULT_INJECTION_SCHEMA_KIND": "sattlint.devtools.fault_injection",
-    "FAULT_INJECTION_SCHEMA_VERSION": "sattlint.devtools.fault_injection",
-    "FaultInjectionResults": "sattlint.devtools.fault_injection",
-    "FaultInjector": "sattlint.devtools.fault_injection",
-    "FaultRunRecord": "sattlint.devtools.fault_injection",
-    "FaultSpec": "sattlint.devtools.fault_injection",
-    "run_fault_injection_campaign": "sattlint.devtools.fault_injection",
-    "write_fault_injection_results": "sattlint.devtools.fault_injection",
-    "FUZZER_DEFAULT_TIMEOUT_SECONDS": "sattlint.devtools.fuzzer",
-    "FUZZER_REPORT_FILENAME": "sattlint.devtools.fuzzer",
-    "FUZZER_REPORT_SCHEMA_KIND": "sattlint.devtools.fuzzer",
-    "FUZZER_REPORT_SCHEMA_VERSION": "sattlint.devtools.fuzzer",
-    "FuzzerReport": "sattlint.devtools.fuzzer",
-    "FuzzExecutionRecord": "sattlint.devtools.fuzzer",
-    "FuzzTarget": "sattlint.devtools.fuzzer",
-    "analyze_crashes": "sattlint.devtools.fuzzer",
-    "build_seed_corpus": "sattlint.devtools.fuzzer",
-    "parser_fuzz_target": "sattlint.devtools.fuzzer",
-    "run_fuzz_target": "sattlint.devtools.fuzzer",
-    "run_parser_fuzzer": "sattlint.devtools.fuzzer",
-    "write_fuzzer_report": "sattlint.devtools.fuzzer",
-    "collect_all_metrics": "sattlint.devtools.observability",
-    "read_metrics": "sattlint.devtools.observability",
-    "write_metrics": "sattlint.devtools.observability",
-    "PROPERTY_TEST_RESULTS_FILENAME": "sattlint.devtools.property_tests",
-    "PROPERTY_TEST_SCHEMA_KIND": "sattlint.devtools.property_tests",
-    "PROPERTY_TEST_SCHEMA_VERSION": "sattlint.devtools.property_tests",
-    "PropertyCheckRecord": "sattlint.devtools.property_tests",
-    "PropertyTestResults": "sattlint.devtools.property_tests",
-    "generate_seeded_property_inputs": "sattlint.devtools.property_tests",
-    "run_property_tests": "sattlint.devtools.property_tests",
-    "write_property_test_results": "sattlint.devtools.property_tests",
-    "DocFinding": "sattlint.devtools.doc_gardener",
-    "run_scan": "sattlint.devtools.doc_gardener",
-    "print_review": "sattlint.devtools.review_tool",
-    "run_full_review": "sattlint.devtools.review_tool",
-}
+def _is_missing_target(exc: ModuleNotFoundError, target_name: str) -> bool:
+    return exc.name == target_name
+
+
+def _load_submodule(name: str) -> ModuleType | None:
+    for prefix in _SUBMODULE_PREFIXES:
+        relative_name = f"{prefix}{name}" if prefix != "." else f".{name}"
+        target_name = f"{__name__}{relative_name}"
+        try:
+            module = import_module(relative_name, __name__)
+        except ModuleNotFoundError as exc:
+            if _is_missing_target(exc, target_name):
+                continue
+            raise
+        globals()[name] = module
+        return module
+    return None
+
+
+def _load_reexport(name: str) -> Any:
+    for provider_name in _EXPORT_PROVIDER_MODULES:
+        provider = import_module(provider_name, __name__)
+        if not hasattr(provider, name):
+            continue
+        value = getattr(provider, name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def __getattr__(name: str) -> Any:
-    module_name = _EXPORT_TO_MODULE.get(name)
-    if module_name is None:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    value = getattr(importlib.import_module(module_name), name)
-    globals()[name] = value
-    return value
+    module = _load_submodule(name)
+    if module is not None:
+        return module
+    return _load_reexport(name)
 
 
-__all__ = [
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(_EXPORTED_NAMES))
+
+
+_EXPORTED_NAMES = [
     "ACCURACY_METRICS_FILENAME",
     "ACCURACY_SCHEMA_KIND",
     "ACCURACY_SCHEMA_VERSION",
@@ -197,18 +114,64 @@ __all__ = [
     "PropertyCheckRecord",
     "PropertyTestResults",
     "ValidationAnnotation",
+    "accuracy_metrics",
+    "ai_chat_observability",
+    "ai_gc",
+    "ai_templates",
+    "ai_work_map",
     "analyze_crashes",
+    "artifact_readiness",
+    "artifact_registry",
+    "audit_core",
+    "audit_core_discovery",
+    "audit_orchestration",
+    "baselines",
     "build_accuracy_metrics",
     "build_analysis_diff_report",
     "build_seed_corpus",
     "collect_all_metrics",
+    "compare_audit_findings",
+    "coordination_lock_state",
+    "corpus",
+    "coverage_reports",
+    "derived_reports",
+    "differential",
+    "doc_gardener",
     "execute_corpus_case",
+    "fault_injection",
+    "finding_exports",
+    "fuzzer",
     "generate_seeded_property_inputs",
+    "impact_analyzer",
+    "layer_linter",
+    "leak_detection",
+    "leak_detection_scan_paths",
+    "ledger",
     "load_annotations",
     "load_finding_collection",
+    "metrics_dashboard",
+    "mutation_engine",
+    "observability",
     "parser_fuzz_target",
+    "parser_properties",
+    "pipeline",
+    "pipeline_artifacts",
+    "pipeline_checks",
     "print_review",
+    "production_summary",
+    "profiler",
+    "property_tests",
     "read_metrics",
+    "refactoring",
+    "release_smoke",
+    "repo_audit",
+    "repo_audit_cli",
+    "repo_audit_cli_reporting",
+    "repo_audit_compat",
+    "repo_audit_entrypoints",
+    "repo_audit_runs",
+    "repo_audit_shared",
+    "review_tool",
     "run_corpus_case",
     "run_corpus_suite",
     "run_fault_injection_campaign",
@@ -217,6 +180,9 @@ __all__ = [
     "run_parser_fuzzer",
     "run_property_tests",
     "run_scan",
+    "source_diff_report",
+    "structural_reports",
+    "trace_reports",
     "write_accuracy_metrics",
     "write_fault_injection_results",
     "write_fuzzer_report",

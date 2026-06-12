@@ -9,11 +9,20 @@ from typing import Any, cast
 from . import cache as cache_module
 from .analyzers.variables import IssueKind
 from .cache import AnalysisReportCache
+from .config_types import ConfigDict
 from .models.project_graph import ProjectGraph
 from .reporting.variables_report import VariablesReport
 
-ConfigDict = dict[str, Any]
 log = logging.getLogger("SattLint")
+
+
+def _origin_file_name(value: object) -> str | None:
+    if isinstance(value, Path):
+        return value.name
+    if isinstance(value, str):
+        normalized = value.strip()
+        return normalized or None
+    return None
 
 
 def normalize_report_target_name(report: Any, target_name: str) -> Any:
@@ -39,14 +48,20 @@ def select_report_source_path(
 ) -> Path | None:
     try:
         source_paths = source_paths_for_current_target_fn(project_bp, graph)
-    except Exception:  # noqa: BLE001
+    except AttributeError:
         return None
 
     if not source_paths:
         return None
 
-    origin_file = getattr(project_bp, "origin_file", None)
-    candidates = [path for path in source_paths if origin_file and casefold_equal_fn(path.name, origin_file)]
+    root_source_path_for_basepicture = getattr(graph, "root_source_path_for_basepicture", None)
+    if callable(root_source_path_for_basepicture):
+        root_source_path = root_source_path_for_basepicture(project_bp)
+        if isinstance(root_source_path, Path) and root_source_path in source_paths:
+            return root_source_path
+
+    origin_file_name = _origin_file_name(getattr(project_bp, "origin_file", None))
+    candidates = [path for path in source_paths if origin_file_name and casefold_equal_fn(path.name, origin_file_name)]
     if not candidates:
         candidates = list(source_paths)
 
@@ -61,6 +76,7 @@ def select_report_source_path(
 
 def source_version_label(
     project_bp: Any,
+    graph: Any,
     source_path: Path | None,
     *,
     draft_source_suffixes: frozenset[str],
@@ -69,8 +85,14 @@ def source_version_label(
     if source_path is not None:
         suffix = source_path.suffix.casefold()
     else:
-        origin_file = getattr(project_bp, "origin_file", None)
-        suffix = Path(origin_file).suffix.casefold() if origin_file else ""
+        root_origin_file_for_basepicture = getattr(graph, "root_origin_file_for_basepicture", None)
+        origin_file = (
+            root_origin_file_for_basepicture(project_bp)
+            if callable(root_origin_file_for_basepicture)
+            else getattr(project_bp, "origin_file", None)
+        )
+        origin_file_name = _origin_file_name(origin_file)
+        suffix = Path(origin_file_name).suffix.casefold() if origin_file_name else ""
 
     if suffix in draft_source_suffixes:
         return "draft"
@@ -95,11 +117,11 @@ def attach_variable_report_metadata(
     graph: Any,
     *,
     select_report_source_path_fn: Callable[[Any, Any], Path | None],
-    source_version_label_fn: Callable[[Any, Path | None], str | None],
+    source_version_label_fn: Callable[[Any, Any, Path | None], str | None],
     source_last_changed_fn: Callable[[Path | None], str | None],
 ) -> VariablesReport:
     source_path = select_report_source_path_fn(project_bp, graph)
-    report.analyzed_version = source_version_label_fn(project_bp, source_path)
+    report.analyzed_version = source_version_label_fn(project_bp, graph, source_path)
     report.last_changed = source_last_changed_fn(source_path)
     return report
 

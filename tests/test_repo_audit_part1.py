@@ -299,19 +299,19 @@ def test_repo_audit_read_text_rejects_binary_and_falls_back_to_cp1252(tmp_path):
 
 
 def test_list_tracked_repo_paths_returns_none_for_missing_git_and_failures(tmp_path):
-    with patch("sattlint.devtools.repo_audit.shutil.which", return_value=None):
+    with patch("sattlint.devtools.audit.repo_audit.shutil.which", return_value=None):
         assert repo_audit._list_tracked_repo_paths(tmp_path) is None
 
     with (
-        patch("sattlint.devtools.repo_audit.shutil.which", return_value="git"),
-        patch("sattlint.devtools.repo_audit.subprocess.run", side_effect=OSError("git missing")),
+        patch("sattlint.devtools.audit.repo_audit.shutil.which", return_value="git"),
+        patch("sattlint.devtools.audit.repo_audit.subprocess.run", side_effect=OSError("git missing")),
     ):
         assert repo_audit._list_tracked_repo_paths(tmp_path) is None
 
     completed = subprocess.CompletedProcess(args=["git", "ls-files", "-z"], returncode=1, stdout=b"", stderr=b"")
     with (
-        patch("sattlint.devtools.repo_audit.shutil.which", return_value="git"),
-        patch("sattlint.devtools.repo_audit.subprocess.run", return_value=completed),
+        patch("sattlint.devtools.audit.repo_audit.shutil.which", return_value="git"),
+        patch("sattlint.devtools.audit.repo_audit.subprocess.run", return_value=completed),
     ):
         assert repo_audit._list_tracked_repo_paths(tmp_path) is None
 
@@ -454,6 +454,13 @@ def test_repo_audit_ast_path_helpers_cover_branchy_cases():
             tracked_paths=("artifacts/audit/status.json",),
         )
         is False
+    )
+    assert (
+        repo_audit._is_ignored_repo_path_reference(
+            "artifacts/audit-other",
+            tracked_paths=("artifacts/audit/status.json",),
+        )
+        is True
     )
     assert repo_audit._is_ignored_repo_path_reference(".coverage.worker", tracked_paths=None) is True
     assert repo_audit._is_ignored_repo_path_reference("Libs/HA/demo.x", tracked_paths=None) is True

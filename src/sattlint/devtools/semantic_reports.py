@@ -10,11 +10,12 @@ from collections import Counter
 from collections.abc import Mapping
 from typing import TypedDict, cast
 
-SATTLINE_SEMANTIC_SCHEMA_KIND = "sattlint.sattline_semantic"
-SATTLINE_SEMANTIC_SCHEMA_VERSION = 1
-
-RULE_METRICS_SCHEMA_KIND = "sattlint.rule_metrics"
-RULE_METRICS_SCHEMA_VERSION = 1
+from .artifact_registry import (
+    RULE_METRICS_SCHEMA_KIND,
+    RULE_METRICS_SCHEMA_VERSION,
+    SATTLINE_SEMANTIC_SCHEMA_KIND,
+    SATTLINE_SEMANTIC_SCHEMA_VERSION,
+)
 
 ReportMapping = Mapping[str, object]
 

@@ -456,7 +456,10 @@ def test_find_structural_report_findings_translates_structural_architecture_find
         ]
     }
 
-    with patch("sattlint.devtools.structural_reports.collect_architecture_report", return_value=architecture_report):
+    with patch(
+        "sattlint.devtools.structural.structural_reports.collect_architecture_report",
+        return_value=architecture_report,
+    ):
         findings = repo_audit._find_structural_report_findings(tmp_path)
 
     assert len(findings) == 1

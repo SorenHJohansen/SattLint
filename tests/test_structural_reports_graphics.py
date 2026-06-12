@@ -11,7 +11,7 @@ from sattline_parser.models.ast_model import (
     ModuleTypeInstance,
     SingleModule,
 )
-from sattlint.devtools import structural_reports
+from sattlint.devtools.structural import structural_reports
 
 
 def test_access_iteration_and_graphics_helpers_cover_iterator_and_optional_fields(tmp_path):

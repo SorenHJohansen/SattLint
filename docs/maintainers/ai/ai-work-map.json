@@ -113,11 +113,11 @@
       "selected_surface": "repo-audit"
     }
   ],
-  "generated_by": "sattlint.devtools.ai_work_map",
+  "generated_by": "sattlint.devtools.ai.ai_work_map",
   "generated_from": {
     "active_exec_plans": "docs/exec-plans/active/*.md",
     "pipeline_catalog": "sattlint.devtools.pipeline.build_pipeline_check_catalog(profile='full')",
-    "repo_audit_catalog": "sattlint.devtools.repo_audit_entrypoints.build_repo_audit_check_catalog(profile='full')",
+    "repo_audit_catalog": "sattlint.devtools.audit.repo_audit_entrypoints.build_repo_audit_check_catalog(profile='full')",
     "validation_map": "docs/maintainers/validation-map.md"
   },
   "instructions": [
@@ -169,6 +169,16 @@
       "description": "Use when changing parser-core, strict validation, grammar, AST, transformer, parser fixtures, or parser tests in SattLint. Covers parser invariants and first validation routing.",
       "file_path": ".github/instructions/parser-analysis.instructions.md",
       "name": "Parser Analysis Instructions"
+    },
+    {
+      "apply_to": [
+        "src/**/*.py",
+        "tests/**/*.py",
+        "scripts/**/*.py"
+      ],
+      "description": "Use when changing Python implementation or tests in SattLint. Covers dead-code discipline, getattr boundaries, module cohesion, and side-effect documentation.",
+      "file_path": ".github/instructions/python-code-discipline.instructions.md",
+      "name": "Python Code Discipline"
     },
     {
       "apply_to": [
@@ -501,7 +511,7 @@
         "pyproject.toml",
         "src/sattlint/cli/**",
         "src/sattlint/app*.py",
-        "src/sattlint/devtools/repo_audit_cli.py"
+        "src/sattlint/devtools/audit/repo_audit_cli.py"
       ],
       "source": "repo-audit"
     },
@@ -569,7 +579,8 @@
     },
     {
       "ai_instruction_files": [
-        ".github/instructions/cli-app.instructions.md"
+        ".github/instructions/cli-app.instructions.md",
+        ".github/instructions/repo-audit.instructions.md"
       ],
       "ai_summary": "Use when CLI parser descriptions, subcommand help, or interactive command surfaces change.",
       "command": "sattlint-repo-audit --profile full --check cli --skip-pipeline --fail-on high --output-dir artifacts/generated/ai-work-map",
@@ -584,7 +595,7 @@
         "pyproject.toml",
         "src/sattlint/cli/**",
         "src/sattlint/app*.py",
-        "src/sattlint/devtools/repo_audit_cli.py"
+        "src/sattlint/devtools/audit/repo_audit_cli.py"
       ],
       "source": "repo-audit"
     },
@@ -623,10 +634,10 @@
         "artifacts/**",
         "docs/generated/**",
         ".github/coordination/current-work.template.md",
-        "src/sattlint/devtools/ai_gc.py",
-        "src/sattlint/devtools/repo_audit.py",
-        "src/sattlint/devtools/repo_audit_cli.py",
-        "src/sattlint/devtools/repo_audit_entrypoints.py",
+        "src/sattlint/devtools/ai/ai_gc.py",
+        "src/sattlint/devtools/audit/repo_audit.py",
+        "src/sattlint/devtools/audit/repo_audit_cli.py",
+        "src/sattlint/devtools/audit/repo_audit_entrypoints.py",
         "tests/test_repo_audit_part7.py"
       ],
       "source": "repo-audit"
@@ -672,10 +683,10 @@
         "docs/public/architecture.md",
         "docs/design-docs/core-beliefs.md",
         "docs/references/ai-agent-reference.md",
-        "src/sattlint/devtools/ai_work_map.py",
+        "src/sattlint/devtools/ai/ai_work_map.py",
         "src/sattlint/devtools/doc_gardener.py",
-        "src/sattlint/devtools/repo_audit.py",
-        "src/sattlint/devtools/repo_audit_entrypoints.py",
+        "src/sattlint/devtools/audit/repo_audit.py",
+        "src/sattlint/devtools/audit/repo_audit_entrypoints.py",
         "tests/test_ai_work_map.py",
         "tests/test_repo_audit_part5.py"
       ],
@@ -743,10 +754,10 @@
       ],
       "path_globs": [
         "src/sattlint/devtools/pipeline.py",
-        "src/sattlint/devtools/pipeline_checks.py",
+        "src/sattlint/devtools/shared/pipeline_checks.py",
         "src/sattlint/devtools/repo_audit.py",
-        "src/sattlint/devtools/repo_audit_cli.py",
-        "src/sattlint/devtools/repo_audit_entrypoints.py",
+        "src/sattlint/devtools/audit/repo_audit_cli.py",
+        "src/sattlint/devtools/audit/repo_audit_entrypoints.py",
         "tests/test_pipeline_run.py",
         "tests/test_repo_audit_part8.py",
         "tests/test_recommendation_routing.py",
@@ -778,7 +789,7 @@
         "pyproject.toml",
         "src/sattlint/cli/**",
         "src/sattlint/app*.py",
-        "src/sattlint/devtools/repo_audit_cli.py"
+        "src/sattlint/devtools/audit/repo_audit_cli.py"
       ],
       "source": "repo-audit"
     }

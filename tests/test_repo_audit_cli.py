@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false, reportPrivateUsage=false
 from __future__ import annotations
 
 import argparse
@@ -123,7 +124,25 @@ def test_repo_audit_cli_build_parser_supports_alias_parent_usage(monkeypatch, tm
 
     assert parser.prog == "sattlint repo-audit"
     assert "-h" not in option_strings
-    assert {"--profile", "--fail-on", "--list-checks", "--planning-context"} <= option_strings
+    assert {"--format", "--profile", "--fail-on", "--list-checks", "--planning-context"} <= option_strings
+
+
+def test_repo_audit_cli_selected_check_supports_json_summary_output(monkeypatch, tmp_path, capsys):
+    summaries: list[dict[str, object]] = []
+    fake_repo_audit = _fake_repo_audit_module(tmp_path, summaries)
+
+    monkeypatch.setattr(repo_audit_cli, "_repo_audit_module", lambda: fake_repo_audit)
+    monkeypatch.setattr(
+        repo_audit_cli,
+        "_selected_check_exit_code",
+        lambda summary, fail_on: (0, {"overall_status": "pass", "profile": "full"}),
+    )
+
+    exit_code = repo_audit_cli.main(["--check", "public-readiness", "--output-dir", str(tmp_path), "--format", "json"])
+
+    assert exit_code == 0
+    assert json.loads(capsys.readouterr().out) == {"overall_status": "pass", "profile": "full"}
+    assert summaries == []
 
 
 def test_collect_cli_metadata_ignores_non_subparser_choices(tmp_path):

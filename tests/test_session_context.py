@@ -5,7 +5,7 @@ import sys
 import textwrap
 from pathlib import Path
 
-from sattlint.devtools import ai_work_map
+from sattlint.devtools.ai import ai_work_map
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SESSION_CONTEXT_PATH = REPO_ROOT / ".github" / "hooks" / "scripts" / "session_context.py"
@@ -41,6 +41,7 @@ def test_build_planning_context_payload_uses_compact_session_map(monkeypatch, tm
         return {
             "primary_agent": "CLI App Menu",
             "instruction_files": [{"name": "CLI App Instructions"}],
+            "owner_test_targets": ["tests/test_app.py"],
             "nearest_owner_suites": [{"tests": ["tests/test_app.py"]}],
             "first_validation_commands": ["pytest tests/test_app.py -x -q --tb=short"],
             "semantic_owner_suggestions": {

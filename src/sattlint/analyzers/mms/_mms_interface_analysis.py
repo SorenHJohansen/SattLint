@@ -21,11 +21,11 @@ from ...reporting.mms_report import MMSInterfaceHit, WriteFields
 from ...resolution.common import (
     find_all_aliases,
     find_all_aliases_upstream,
-    find_var_in_scope,
     resolve_moduletype_def_strict,
     varname_base,
     varname_full,
 )
+from ...resolution.context_builder import ContextBuilder
 from ...resolution.type_graph import TypeGraph
 from ..shared.variable_utils import same_origin_file_stem
 from ..variables import VariablesAnalyzer
@@ -93,7 +93,7 @@ def _collect_write_locations(  # noqa: PLR0915
     base = source_variable.split(".", 1)[0]
     field_path = source_variable.split(".", 1)[1] if "." in source_variable else None
 
-    variable = find_var_in_scope(state.base_picture, module_path, base)
+    variable = ContextBuilder.resolve_variable_in_scope(state.base_picture, module_path, base)
     if variable is None:
         return None
 

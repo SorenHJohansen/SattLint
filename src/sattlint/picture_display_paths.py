@@ -106,14 +106,8 @@ def diagnose_picture_display_paths(
         for path_row in getattr(occurrence.record, "path_rows", ()) or ():
             if path_row.kind != "literal":
                 continue
-            resolution_module_path = (
-                getattr(occurrence, "resolution_module_path", None) or occurrence.declaring_module_path
-            )
-            resolution_parent_step_adjustment_value = getattr(
-                occurrence,
-                "resolution_parent_step_adjustment",
-                None,
-            )
+            resolution_module_path = occurrence.resolution_module_path or occurrence.declaring_module_path
+            resolution_parent_step_adjustment_value = occurrence.resolution_parent_step_adjustment
             resolution_parent_step_adjustment = (
                 resolution_parent_step_adjustment_value
                 if isinstance(resolution_parent_step_adjustment_value, int)

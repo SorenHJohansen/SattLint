@@ -1,5 +1,5 @@
 # ruff: noqa: F403, F405
-from sattlint.devtools import ai_gc
+from sattlint.devtools.ai import ai_gc
 
 from ._repo_audit_test_support import *
 
@@ -348,7 +348,7 @@ def test_build_ai_gc_report_flags_manifest_drift_before_age_cutoff(tmp_path):
         {
             "kind": "sattlint.repo_audit.status",
             "schema_version": 1,
-            "generated_by": "sattlint.devtools.repo_audit",
+            "generated_by": "sattlint.devtools.audit.repo_audit",
         },
         repo_root=tmp_path,
         source_paths=(source_path,),
@@ -361,7 +361,7 @@ def test_build_ai_gc_report_flags_manifest_drift_before_age_cutoff(tmp_path):
         stale_after_days=14,
     )
 
-    assert report["generated_by"] == "sattlint.devtools.ai_gc"
+    assert report["generated_by"] == "sattlint.devtools.ai.ai_gc"
     assert report["summary"]["manifest_drift_candidate_count"] == 1
     candidate = report["candidates"][0]
     assert candidate["candidate_id"] == "stale-generated-output-manifest"
@@ -401,7 +401,7 @@ def test_apply_ai_gc_deletes_stale_artifacts_and_writes_report(tmp_path):
         {
             "kind": "sattlint.repo_audit.status",
             "schema_version": 1,
-            "generated_by": "sattlint.devtools.repo_audit",
+            "generated_by": "sattlint.devtools.audit.repo_audit",
         },
         repo_root=tmp_path,
         source_paths=(source_path,),

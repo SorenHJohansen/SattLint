@@ -237,11 +237,7 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():  # 
     assert "powerup" in missing_parameter_initial_value["analyzers"]
     assert "powerup.summary" in missing_parameter_initial_value["outputs"]
     assert report["rule_profiles"]["active"] == "default"
-    assert [profile["name"] for profile in report["rule_profiles"]["profiles"]] == [
-        "default",
-        "legacy-plant",
-        "strict-pharma",
-    ]
+    assert [profile["name"] for profile in report["rule_profiles"]["profiles"]] == ["default"]
 
 
 def test_collect_analyzer_registry_report_exposes_semantic_layer_sources():

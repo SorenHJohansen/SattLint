@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from contextlib import suppress
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -13,18 +12,21 @@ from ._app_textual_shared import (
     _TEXTUAL_DIRECTORY_TREE,
     _TEXTUAL_HORIZONTAL,
     _TEXTUAL_INPUT,
+    _TEXTUAL_LIST_ITEM,
+    _TEXTUAL_LIST_VIEW,
     _TEXTUAL_MODAL_SCREEN,
     _TEXTUAL_STATIC,
     _TEXTUAL_VERTICAL,
     InteractionRequest,
     _menu_option_keys,
+    _query_required,
     advance_menu_choice_buffer,
     interaction_ledger_text,
 )
 
 if _TEXTUAL_APP is not None:
 
-    class _ShellBanner(_TEXTUAL_VERTICAL):
+    class _ShellBannerImpl(_TEXTUAL_VERTICAL):
         def __init__(self) -> None:
             super().__init__(id="shell-banner")
 
@@ -38,7 +40,7 @@ if _TEXTUAL_APP is not None:
             title_widget.update("")
             subtitle_widget.update("Analysis, docs, setup, and tools")
 
-    class _InteractionPane(_TEXTUAL_VERTICAL):
+    class _InteractionPaneImpl(_TEXTUAL_VERTICAL):
         BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
             ("enter", "submit_or_activate", "Select"),
             ("escape", "cancel_or_back", "Back"),
@@ -225,7 +227,7 @@ if _TEXTUAL_APP is not None:
             if self._request.kind == "prompt":
                 self._submit_response(event.value)
 
-    class _HelpScreen(_TEXTUAL_MODAL_SCREEN):
+    class _HelpScreenImpl(_TEXTUAL_MODAL_SCREEN):
         BINDINGS: ClassVar[list[tuple[str, str, str]]] = [("escape", "dismiss_help", "Close")]
 
         def __init__(self, *, help_text: str) -> None:
@@ -234,10 +236,10 @@ if _TEXTUAL_APP is not None:
 
         def compose(self) -> _TEXTUAL_COMPOSE_RESULT:
             with _TEXTUAL_VERTICAL(id="help-dialog"):
-                yield _TEXTUAL_STATIC("Help", id="help-dialog-title")
+                yield _TEXTUAL_STATIC("Help & Guide", id="help-dialog-title")
                 yield _TEXTUAL_STATIC(self._help_text, id="help-dialog-body")
                 with _TEXTUAL_HORIZONTAL(id="help-dialog-actions"):
-                    yield _TEXTUAL_BUTTON("Close", id="help-dialog-close", classes="raised-button")
+                    yield _TEXTUAL_BUTTON("Close guide", id="help-dialog-close", classes="raised-button")
 
         def on_button_pressed(self, event: Any) -> None:
             button_id = getattr(event.button, "id", "") or ""
@@ -247,36 +249,100 @@ if _TEXTUAL_APP is not None:
         def action_dismiss_help(self) -> None:
             self.dismiss(None)
 
-    class _FileBrowserScreen(_TEXTUAL_MODAL_SCREEN):
+    class _FileBrowserScreenImpl(_TEXTUAL_MODAL_SCREEN):
         BINDINGS: ClassVar[list[tuple[str, str, str]]] = [("escape", "dismiss_cancel", "Cancel")]
 
-        def __init__(self, *, start_paths: list[Path]) -> None:
+        def __init__(
+            self,
+            *,
+            start_paths: list[Path],
+            candidates: tuple[tuple[str, tuple[str, ...]], ...] = (),
+        ) -> None:
             super().__init__()
             self._start_paths = start_paths if start_paths else [Path.home()]
             self._current_path: Path | None = None
+            self._candidates = candidates
+            self._candidate_name: str | None = None
+            self._show_candidate_list = bool(candidates)
 
         def compose(self) -> _TEXTUAL_COMPOSE_RESULT:
             with _TEXTUAL_VERTICAL(id="file-browser-dialog"):
                 yield _TEXTUAL_STATIC("Select Target File or Folder", id="file-browser-title")
-                if len(self._start_paths) > 1:
+                if len(self._start_paths) > 1 and not self._show_candidate_list:
                     with _TEXTUAL_HORIZONTAL(id="file-browser-dirs"):
                         for i, p in enumerate(self._start_paths):
                             yield _TEXTUAL_BUTTON(p.name or str(p), id=f"file-browser-dir-{i}", classes="raised-button")
                 yield _TEXTUAL_STATIC("Highlighted: (none)", id="file-browser-selection")
-                yield _TEXTUAL_DIRECTORY_TREE(str(self._start_paths[0]), id="file-browser-tree")
+                if self._show_candidate_list:
+                    yield _TEXTUAL_STATIC(
+                        "Discovered targets are grouped by base name so sibling files appear once.",
+                        id="file-browser-intro",
+                    )
+                    yield _TEXTUAL_LIST_VIEW(id="file-browser-targets")
+                else:
+                    yield _TEXTUAL_DIRECTORY_TREE(str(self._start_paths[0]), id="file-browser-tree")
                 with _TEXTUAL_HORIZONTAL(id="file-browser-actions"):
                     yield _TEXTUAL_BUTTON("Select", id="file-browser-select", classes="raised-button", disabled=True)
+                    if self._candidates:
+                        yield _TEXTUAL_BUTTON(
+                            "Browse filesystem",
+                            id="file-browser-browse-filesystem",
+                            classes="raised-button",
+                        )
                     yield _TEXTUAL_BUTTON("Cancel", id="file-browser-cancel", classes="raised-button")
 
         def on_mount(self) -> None:
-            with suppress(Exception):
-                self.query_one("#file-browser-tree").focus()
+            if self._show_candidate_list:
+                list_view = _query_required(self, "#file-browser-targets", _TEXTUAL_LIST_VIEW)
+                list_view.clear()
+                for name, _paths in self._candidates:
+                    list_view.append(_TEXTUAL_LIST_ITEM(_TEXTUAL_STATIC(name)))
+                if self._candidates:
+                    list_view.index = 0
+                list_view.focus()
+                self._set_candidate_selection(0)
+                return
+            _query_required(self, "#file-browser-tree").focus()
+
+        def _candidate_summary(self, index: int) -> str:
+            if not (0 <= index < len(self._candidates)):
+                return "Highlighted: (none)"
+            name, paths = self._candidates[index]
+            return f"Highlighted: {name} ({', '.join(paths)})"
+
+        def _set_candidate_selection(self, index: int | None) -> None:
+            if index is None or not (0 <= index < len(self._candidates)):
+                self._candidate_name = None
+                _query_required(self, "#file-browser-selection", _TEXTUAL_STATIC).update("Highlighted: (none)")
+                _query_required(self, "#file-browser-select", _TEXTUAL_BUTTON).disabled = True
+                return
+            self._candidate_name = self._candidates[index][0]
+            _query_required(self, "#file-browser-selection", _TEXTUAL_STATIC).update(self._candidate_summary(index))
+            _query_required(self, "#file-browser-select", _TEXTUAL_BUTTON).disabled = False
 
         def _update_selection(self, path: Path) -> None:
             self._current_path = path
-            with suppress(Exception):
-                self.query_one("#file-browser-selection", _TEXTUAL_STATIC).update(f"Highlighted: {path}")
-                self.query_one("#file-browser-select", _TEXTUAL_BUTTON).disabled = False
+            _query_required(self, "#file-browser-selection", _TEXTUAL_STATIC).update(f"Highlighted: {path}")
+            _query_required(self, "#file-browser-select", _TEXTUAL_BUTTON).disabled = False
+
+        def on_list_view_highlighted(self, event: Any) -> None:
+            if not self._show_candidate_list:
+                return
+            list_view = getattr(event, "list_view", None)
+            if list_view is None or getattr(list_view, "id", None) != "file-browser-targets":
+                return
+            index = getattr(list_view, "index", None)
+            self._set_candidate_selection(index if isinstance(index, int) else None)
+
+        def on_list_view_selected(self, event: Any) -> None:
+            if not self._show_candidate_list:
+                return
+            list_view = getattr(event, "list_view", None)
+            if list_view is None or getattr(list_view, "id", None) != "file-browser-targets":
+                return
+            index = getattr(list_view, "index", None)
+            if isinstance(index, int) and 0 <= index < len(self._candidates):
+                self.dismiss(self._candidates[index][0])
 
         def on_tree_node_highlighted(self, event: Any) -> None:
             node_data = getattr(event.node, "data", None)
@@ -295,19 +361,30 @@ if _TEXTUAL_APP is not None:
             if button_id == "file-browser-cancel":
                 self.dismiss(None)
             elif button_id == "file-browser-select":
-                if self._current_path is not None:
+                if self._show_candidate_list:
+                    if self._candidate_name is not None:
+                        self.dismiss(self._candidate_name)
+                elif self._current_path is not None:
                     self.dismiss(self._current_path)
+            elif button_id == "file-browser-browse-filesystem":
+                self._show_candidate_list = False
+                self.app.pop_screen()
+                self.app.push_screen(_FileBrowserScreen(start_paths=self._start_paths))
             elif button_id.startswith("file-browser-dir-"):
-                with suppress(Exception):
-                    index = int(button_id[len("file-browser-dir-") :])
-                    new_path = self._start_paths[index]
-                    self.query_one("#file-browser-tree", _TEXTUAL_DIRECTORY_TREE).path = new_path
-                    self._current_path = None
-                    self.query_one("#file-browser-selection", _TEXTUAL_STATIC).update("Highlighted: (none)")
-                    self.query_one("#file-browser-select", _TEXTUAL_BUTTON).disabled = True
+                index = int(button_id[len("file-browser-dir-") :])
+                new_path = self._start_paths[index]
+                _query_required(self, "#file-browser-tree", _TEXTUAL_DIRECTORY_TREE).path = new_path
+                self._current_path = None
+                _query_required(self, "#file-browser-selection", _TEXTUAL_STATIC).update("Highlighted: (none)")
+                _query_required(self, "#file-browser-select", _TEXTUAL_BUTTON).disabled = True
 
         def action_dismiss_cancel(self) -> None:
             self.dismiss(None)
+
+    _ShellBanner = _ShellBannerImpl
+    _InteractionPane = _InteractionPaneImpl
+    _HelpScreen = _HelpScreenImpl
+    _FileBrowserScreen = _FileBrowserScreenImpl
 else:  # pragma: no cover - optional dependency path
     _ShellBanner: Any = None
     _InteractionPane: Any = None

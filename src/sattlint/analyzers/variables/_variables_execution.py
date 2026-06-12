@@ -14,17 +14,15 @@ from sattline_parser.models.ast_model import (
     FrameModule,
     ModuleTypeDef,
     ModuleTypeInstance,
-    ParameterMapping,
     SingleModule,
     Variable,
 )
 
-from ...grammar import constants as const
 from ...reporting.variables_report import IssueKind, VariableIssue
-from ...resolution.common import varname_base
 from ...resolution.scope import ScopeContext
 from ..layout_geometry import collect_layout_overlap_issues
 from ..reset_contamination import detect_implicit_latching, detect_reset_contamination
+from ..shared.variable_utils import mapping_target_name
 from ._usage_tracker import UsageTracker
 from ._variable_traversal_support import _IGNORED_GRAPHICS_TAIL_BASENAMES
 from ._variables_picture_display_support import (
@@ -56,10 +54,6 @@ class _ModuleWithParameters(Protocol):
 
     @property
     def moduleparameters(self) -> list[Variable] | None: ...
-
-
-class _ParameterMappingTarget(Protocol):
-    target: object
 
 
 _USAGE_VARIABLE_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
@@ -212,18 +206,6 @@ def _log_debug_analysis_summary(self: object, issue_counts: dict[str, int]) -> N
         )
 
 
-def _mapping_target_name(mapping: ParameterMapping) -> str | None:
-    target = cast(_ParameterMappingTarget, mapping).target
-    if isinstance(target, str):
-        return varname_base(target)
-    if isinstance(target, dict):
-        target_dict = cast(dict[str, object], target)
-        target_name = target_dict.get(const.KEY_VAR_NAME)
-        if isinstance(target_name, str):
-            return varname_base(target_name)
-    return None
-
-
 def _run_timed_phase(self: VariablesAnalyzer, phase: str, callback: Callable[[], object]) -> None:
     record_phase_timing = getattr(self, "_record_phase_timing", None)
     if not callable(record_phase_timing):
@@ -234,6 +216,9 @@ def _run_timed_phase(self: VariablesAnalyzer, phase: str, callback: Callable[[],
         callback()
     finally:
         record_phase_timing(phase, started_at)
+
+
+_mapping_target_name = mapping_target_name
 
 
 def _reset_analysis_state(self: VariablesAnalyzer) -> None:
@@ -718,7 +703,7 @@ def _analyze_typedef(self: VariablesAnalyzer, mt: ModuleTypeDef, path: list[str]
 
         if _should_collect_any_issue_kinds(self, _PARAM_MAPPING_CHECK_ISSUE_KINDS):
             for mapping in mt.parametermappings or []:
-                target_name = _mapping_target_name(mapping)
+                target_name = mapping_target_name(mapping)
                 target_var = env.get(target_name) if target_name else None
                 self._check_param_mapping(mapping, target_var, env, context, path)
     finally:
@@ -817,7 +802,7 @@ def _analyze_typedef_with_context(
 
         if _should_collect_any_issue_kinds(self, _PARAM_MAPPING_CHECK_ISSUE_KINDS):
             for mapping in mt.parametermappings or []:
-                target_name = _mapping_target_name(mapping)
+                target_name = mapping_target_name(mapping)
                 target_var = context.env.get(target_name) if target_name else None
                 self._check_param_mapping(mapping, target_var, context.env, context, path)
 

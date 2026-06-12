@@ -8,9 +8,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-FAULT_INJECTION_RESULTS_FILENAME = "fault_injection_results.json"
-FAULT_INJECTION_SCHEMA_KIND = "sattlint.fault_injection_results"
-FAULT_INJECTION_SCHEMA_VERSION = 1
+from .artifact_registry import (
+    FAULT_INJECTION_RESULTS_FILENAME,
+    FAULT_INJECTION_SCHEMA_KIND,
+    FAULT_INJECTION_SCHEMA_VERSION,
+)
 
 _EXCEPTION_TYPES: dict[str, type[Exception]] = {
     "io": OSError,
@@ -30,6 +32,22 @@ def _triggered_fault_id_list() -> list[str]:
 
 def _fault_run_record_list() -> list[FaultRunRecord]:
     return []
+
+
+def _mark_injected_fault_exception(exception: Exception, *, fault_id: str) -> None:
+    try:
+        exception._sattlint_fault_id = fault_id
+    except (AttributeError, TypeError):
+        return
+
+
+def _fault_id_for_caught_exception(exception: Exception, *, injector: FaultInjector) -> str | None:
+    fault_id = getattr(exception, "_sattlint_fault_id", None)
+    if isinstance(fault_id, str):
+        return fault_id
+    if injector.last_injected_exception is exception:
+        return injector.last_injected_fault_id
+    return None
 
 
 @dataclass(frozen=True)
@@ -63,6 +81,8 @@ class FaultInjector:
     specs: tuple[FaultSpec, ...] = ()
     checkpoint_counts: dict[str, int] = field(default_factory=_checkpoint_count_map)
     triggered_fault_ids: list[str] = field(default_factory=_triggered_fault_id_list)
+    last_injected_fault_id: str | None = None
+    last_injected_exception: Exception | None = None
 
     def checkpoint(self, checkpoint: str) -> None:
         current_count = self.checkpoint_counts.get(checkpoint, 0) + 1
@@ -72,8 +92,12 @@ class FaultInjector:
                 continue
             if spec.trigger_count != current_count:
                 continue
+            exception = spec.build_exception()
+            _mark_injected_fault_exception(exception, fault_id=spec.fault_id)
             self.triggered_fault_ids.append(spec.fault_id)
-            raise spec.build_exception()
+            self.last_injected_fault_id = spec.fault_id
+            self.last_injected_exception = exception
+            raise exception
 
 
 @dataclass(frozen=True)
@@ -160,8 +184,9 @@ def run_fault_injection_campaign(
         try:
             case_fn(injector)
         except Exception as exc:  # noqa: BLE001
-            status = "fault-injected" if spec.fault_id in injector.triggered_fault_ids else "unexpected-error"
-            checkpoint = spec.checkpoint if spec.fault_id in injector.triggered_fault_ids else None
+            injected_fault_id = _fault_id_for_caught_exception(exc, injector=injector)
+            status = "fault-injected" if injected_fault_id == spec.fault_id else "unexpected-error"
+            checkpoint = spec.checkpoint if injected_fault_id == spec.fault_id else None
             results.records.append(
                 FaultRunRecord(
                     case_id=case_id,

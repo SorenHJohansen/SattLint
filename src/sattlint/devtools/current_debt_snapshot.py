@@ -7,10 +7,9 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, cast
 
+from .artifact_registry import CURRENT_DEBT_SNAPSHOT_SCHEMA_KIND, CURRENT_DEBT_SNAPSHOT_SCHEMA_VERSION
 from .json_helpers import json_mapping as _json_mapping
 
-CURRENT_DEBT_SNAPSHOT_SCHEMA_KIND = "sattlint.current_debt_snapshot"
-CURRENT_DEBT_SNAPSHOT_SCHEMA_VERSION = 1
 FILE_DEBT_RATCHET_PATH = Path("artifacts") / "analysis" / "file_debt_ratchet.json"
 
 

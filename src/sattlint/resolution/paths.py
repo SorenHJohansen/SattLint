@@ -10,13 +10,17 @@ def _cf(s: str) -> str:
     return s.casefold()
 
 
+type CanonicalPathKey = tuple[str, ...]
+
+
 @dataclass(frozen=True, slots=True)
 class CanonicalPath:
     """A fully-qualified, addressable symbol path.
 
     Semantics:
-    - Equality / hashing for lookups should be done via `key()` (case-insensitive).
     - `segments` preserves original spelling for display/debug.
+    - `key()` returns the casefolded `CanonicalPathKey` used by resolution and snapshot indexes.
+    - Indexes intentionally store `CanonicalPathKey` tuples rather than `CanonicalPath` objects.
 
     Canonical paths are rooted at the module-instance path, then the root variable,
     then any nested field segments.
@@ -24,7 +28,7 @@ class CanonicalPath:
 
     segments: tuple[str, ...]
 
-    def key(self) -> tuple[str, ...]:
+    def key(self) -> CanonicalPathKey:
         return tuple(_cf(s) for s in self.segments)
 
     def join(self, *more: str) -> CanonicalPath:
@@ -34,6 +38,19 @@ class CanonicalPath:
 
     def __str__(self) -> str:
         return ".".join(self.segments)
+
+
+def path_startswith_casefold(location: list[str], prefix: list[str]) -> bool:
+    if len(location) < len(prefix):
+        return False
+    return all(location[index].casefold() == segment.casefold() for index, segment in enumerate(prefix))
+
+
+def is_external_to_module(location_path: list[str], module_path: list[str]) -> bool:
+    if len(module_path) >= 2 and module_path[-1].startswith("TypeDef:"):
+        typedef_segment = module_path[-1]
+        return typedef_segment not in location_path
+    return not path_startswith_casefold(location_path, module_path)
 
 
 ModuleKind = Literal["BP", "SM", "FM", "MT", "TD"]

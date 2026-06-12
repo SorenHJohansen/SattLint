@@ -3,8 +3,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from sattlint.devtools import _repo_audit_ai_gc as repo_audit_ai_gc
-from sattlint.devtools import ai_gc, repo_audit
+from sattlint.devtools.ai import ai_gc
+from sattlint.devtools.audit import _repo_audit_ai_gc as repo_audit_ai_gc
+from sattlint.devtools.audit import repo_audit
 
 
 def _artifact_path(*parts: str) -> str:
@@ -28,7 +29,7 @@ def test_audit_repository_ignores_active_output_dir_ai_gc_manifest_drift(tmp_pat
     ai_gc_report = {
         "kind": "sattlint.ai_gc",
         "schema_version": 1,
-        "generated_by": "sattlint.devtools.ai_gc",
+        "generated_by": "sattlint.devtools.ai.ai_gc",
         "mode": "report",
         "root": ".",
         "stale_after_days": 14,
@@ -52,7 +53,7 @@ def test_audit_repository_ignores_active_output_dir_ai_gc_manifest_drift(tmp_pat
                 "safe_to_apply": True,
                 "reason": "Generated output drifted from its source-digest manifest.",
                 "manifest_count": 1,
-                "drifted_sources": ["src/sattlint/devtools/ai_gc.py"],
+                "drifted_sources": ["src/sattlint/devtools/ai/ai_gc.py"],
                 "missing_sources": [],
                 "invalid_manifests": [],
                 "applied": False,

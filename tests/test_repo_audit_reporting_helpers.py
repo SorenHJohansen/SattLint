@@ -1,4 +1,6 @@
 import json
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -31,7 +33,7 @@ def _write_required_audit_tasks(
     pre_push_task_args = pre_push_args or [
         "scripts/run_repo_python.py",
         "-m",
-        "sattlint.devtools.repo_audit",
+        "sattlint.devtools.audit",
         "--profile",
         "full",
         "--output-dir",
@@ -40,7 +42,7 @@ def _write_required_audit_tasks(
     ai_drift_task_args = ai_drift_args or [
         "scripts/run_repo_python.py",
         "-m",
-        "sattlint.devtools.repo_audit",
+        "sattlint.devtools.audit",
         "--profile",
         "full",
         "--check-my-changes",
@@ -78,6 +80,23 @@ def _write_coverage_xml(root: Path, classes_xml: str) -> None:
         _COVERAGE_XML_TEMPLATE.format(classes=classes_xml).strip(),
         encoding="utf-8",
     )
+
+
+def test_repo_audit_import_chain_smoke() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; sys.path.insert(0, 'src'); import sattlint.devtools.repo_audit",
+        ],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr or completed.stdout
 
 
 def test_build_coverage_summary_report_returns_skipped_when_no_coverage_xml(tmp_path):
@@ -272,7 +291,7 @@ def test_build_cli_consistency_report_detects_pre_push_task_mismatch(tmp_path, m
         pre_push_args=[
             "scripts/run_repo_python.py",
             "-m",
-            "sattlint.devtools.repo_audit",
+            "sattlint.devtools.audit",
             "--profile",
             "quick",
             "--output-dir",
@@ -302,7 +321,7 @@ def test_build_cli_consistency_report_detects_ai_drift_task_mismatch(tmp_path, m
         ai_drift_args=[
             "scripts/run_repo_python.py",
             "-m",
-            "sattlint.devtools.repo_audit",
+            "sattlint.devtools.audit",
             "--profile",
             "full",
             "--output-dir",

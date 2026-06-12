@@ -2,10 +2,11 @@
 
 import inspect
 import logging
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from time import perf_counter
+from typing import Protocol, TypeGuard
 
 from lark import Lark
 
@@ -19,23 +20,23 @@ from sattline_parser.transformer.sl_transformer import SLTransformer
 from . import _engine_syntax_helpers as engine_syntax_helpers
 from . import cache as cache_module
 from ._engine_dependency_helpers import collect_dependency_version_conflicts as _collect_dependency_version_conflicts
+from ._engine_graphics_context_helpers import (
+    graphics_source_context_path as _graphics_source_context_path,
+)
+from ._engine_graphics_context_helpers import (
+    load_picture_display_source_context as _load_picture_display_source_context,
+)
+from ._engine_graphics_context_helpers import (
+    picture_display_path_warnings as _picture_display_path_warnings,
+)
+from ._engine_graphics_context_helpers import (
+    resolve_graphics_companion_path,
+)
 from ._engine_graphics_helpers import (
     attach_graphics_companion as _attach_graphics_companion,
 )
 from ._engine_graphics_helpers import (
     graphics_companion_needs_refresh as _graphics_companion_needs_refresh,
-)
-from ._engine_graphics_helpers import (
-    graphics_source_context_path as _graphics_source_context_path,
-)
-from ._engine_graphics_helpers import (
-    load_picture_display_source_context as _load_picture_display_source_context,
-)
-from ._engine_graphics_helpers import (
-    picture_display_path_warnings as _picture_display_path_warnings,
-)
-from ._engine_graphics_helpers import (
-    resolve_graphics_companion_path,
 )
 from ._validation_shared import ValidationNotice, ValidationWarning, coerce_validation_notice
 from .cache import FileASTCache, FileLookupCache, get_cache_dir
@@ -58,6 +59,7 @@ LoadStageTimingSink = Callable[[str, str, float], None]
 GraphicsLoadTimingSink = Callable[[str, str, float], None]
 is_expected_unavailable_library = engine_syntax_helpers.is_expected_unavailable_library
 expected_unavailable_library_reason = engine_syntax_helpers.expected_unavailable_library_reason
+_LOADER_CONFIG_KEYS = ("program_dir", "other_lib_dirs", "ABB_lib_dir", "mode", "scan_root_only", "debug")
 
 
 class CircularDependencyError(RuntimeError):
@@ -75,6 +77,266 @@ class DependencyVersionCompatibilityError(RuntimeError):
     def __init__(self, conflicts: list[str]):
         self.conflicts = conflicts
         super().__init__(f"Dependency version compatibility check failed: {'; '.join(conflicts)}")
+
+
+@dataclass(frozen=True)
+class SattLineProjectLoaderConfig:
+    program_dir: Path
+    other_lib_dirs: Sequence[Path]
+    abb_lib_dir: Path
+    mode: "CodeMode"
+    scan_root_only: bool
+    debug: bool
+    use_file_ast_cache: bool = True
+    refresh_mode: str = "full"
+
+    def __post_init__(self) -> None:
+        normalized_refresh_mode = str(self.refresh_mode).strip().lower() or "full"
+        if normalized_refresh_mode not in {"full", "ast-only"}:
+            raise ValueError(f"Unsupported refresh mode: {self.refresh_mode!r}")
+
+        object.__setattr__(self, "program_dir", Path(self.program_dir))
+        object.__setattr__(self, "other_lib_dirs", tuple(Path(path) for path in self.other_lib_dirs))
+        object.__setattr__(self, "abb_lib_dir", Path(self.abb_lib_dir))
+        object.__setattr__(self, "refresh_mode", normalized_refresh_mode)
+
+
+@dataclass(frozen=True)
+class SattLineProjectLoaderRuntime:
+    contextual_lookup: ContextualFileLookup | None = None
+    status_update_fn: Callable[[str], None] | None = None
+    stage_timing_sink: LoadStageTimingSink | None = None
+    graphics_timing_sink: GraphicsLoadTimingSink | None = None
+
+
+@dataclass(frozen=True)
+class SattLineProjectLoaderDependencies:
+    cache_manager: cache_module.CacheManager | None = None
+
+
+class _HasStringValue(Protocol):
+    value: str
+
+
+class _StructuredProjectLoaderFactory(Protocol):
+    def __call__(
+        self,
+        config: SattLineProjectLoaderConfig,
+        *,
+        runtime: SattLineProjectLoaderRuntime,
+        dependencies: SattLineProjectLoaderDependencies | None,
+    ) -> "SattLineProjectLoader": ...
+
+
+class _LegacyProjectLoaderFactory(Protocol):
+    def __call__(self, **kwargs: object) -> "SattLineProjectLoader": ...
+
+
+class _IntrospectableCallable(Protocol):
+    def __call__(self, *args: object, **kwargs: object) -> object: ...
+
+
+def _has_string_value(value: object) -> TypeGuard[_HasStringValue]:
+    return isinstance(getattr(value, "value", None), str)
+
+
+def _is_object_iterable(value: object) -> TypeGuard[Iterable[object]]:
+    return isinstance(value, Iterable) and not isinstance(value, (str, bytes))
+
+
+def _is_introspectable_callable(value: object) -> TypeGuard[_IntrospectableCallable]:
+    return callable(value)
+
+
+def _coerce_fspath_text(value: object) -> str | None:
+    fspath_method = getattr(value, "__fspath__", None)
+    if not callable(fspath_method):
+        return None
+    normalized_path = fspath_method()
+    return normalized_path if isinstance(normalized_path, str) else None
+
+
+def _coerce_path_config_value(value: object, *, key: str) -> Path:
+    if isinstance(value, Path):
+        return value
+    if isinstance(value, str):
+        return Path(value)
+    normalized_path = _coerce_fspath_text(value)
+    if normalized_path is not None:
+        return Path(normalized_path)
+    raise ValueError(f"Loader config key {key!r} must be path-like, got {type(value).__name__}")
+
+
+def _coerce_path_sequence_config_value(value: object, *, key: str) -> tuple[Path, ...]:
+    if not _is_object_iterable(value):
+        raise ValueError(f"Loader config key {key!r} must be an iterable of path-like values")
+    return tuple(_coerce_path_config_value(item, key=key) for item in value)
+
+
+def _coerce_bool_config_value(value: object, *, key: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    raise ValueError(f"Loader config key {key!r} must be a bool, got {type(value).__name__}")
+
+
+def _coerce_code_mode(value: object) -> "CodeMode":
+    if value is None or isinstance(value, (str, engine_syntax_helpers.CodeMode)):
+        normalized_mode = engine_syntax_helpers.normalize_code_mode(value)
+    elif _has_string_value(value):
+        normalized_mode = engine_syntax_helpers.normalize_code_mode(value.value)
+    else:
+        normalized_mode = None
+
+    if normalized_mode is None:
+        raise ValueError(f"Unsupported code mode: {value!r}")
+    return normalized_mode
+
+
+def _supports_structured_loader_init(loader_type: object) -> bool:
+    if not _is_introspectable_callable(loader_type):
+        return False
+    try:
+        parameters = list(inspect.signature(loader_type).parameters.values())
+    except (TypeError, ValueError):
+        return True
+    if not parameters:
+        return False
+    first_parameter = parameters[0]
+    return (
+        first_parameter.kind
+        in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        )
+        and first_parameter.name == "config"
+    )
+
+
+def _is_structured_project_loader_factory(value: object) -> TypeGuard[_StructuredProjectLoaderFactory]:
+    return callable(value) and _supports_structured_loader_init(value)
+
+
+def _is_legacy_project_loader_factory(value: object) -> TypeGuard[_LegacyProjectLoaderFactory]:
+    return callable(value)
+
+
+def _legacy_loader_kwargs(
+    config: SattLineProjectLoaderConfig,
+    runtime: SattLineProjectLoaderRuntime,
+) -> dict[str, object]:
+    return {
+        "program_dir": config.program_dir,
+        "other_lib_dirs": list(config.other_lib_dirs),
+        "abb_lib_dir": config.abb_lib_dir,
+        "mode": config.mode,
+        "scan_root_only": config.scan_root_only,
+        "debug": config.debug,
+        "contextual_lookup": runtime.contextual_lookup,
+        "use_file_ast_cache": config.use_file_ast_cache,
+        "status_update_fn": runtime.status_update_fn,
+        "refresh_mode": config.refresh_mode,
+        "stage_timing_sink": runtime.stage_timing_sink,
+        "graphics_timing_sink": runtime.graphics_timing_sink,
+    }
+
+
+def _instantiate_project_loader(
+    loader_type: object,
+    config: SattLineProjectLoaderConfig,
+    *,
+    runtime: SattLineProjectLoaderRuntime,
+    dependencies: SattLineProjectLoaderDependencies | None,
+) -> "SattLineProjectLoader":
+    if _is_structured_project_loader_factory(loader_type):
+        return loader_type(config, runtime=runtime, dependencies=dependencies)
+    if _supports_structured_loader_init(loader_type):
+        raise TypeError("Structured project loader type must be callable")
+    if not _is_legacy_project_loader_factory(loader_type):
+        raise TypeError("Legacy project loader type must be callable")
+    return loader_type(**_legacy_loader_kwargs(config, runtime))
+
+
+def validate_loader_config(cfg: Mapping[str, object]) -> None:
+    missing_keys = [key for key in _LOADER_CONFIG_KEYS if key not in cfg]
+    if missing_keys:
+        raise ValueError(f"Missing loader config keys: {', '.join(missing_keys)}")
+
+
+def build_project_loader(
+    cfg: Mapping[str, object],
+    *,
+    contextual_lookup: ContextualFileLookup | None = None,
+    use_file_ast_cache: bool = True,
+    status_update_fn: Callable[[str], None] | None = None,
+    refresh_mode: str = "full",
+    stage_timing_sink: LoadStageTimingSink | None = None,
+    graphics_timing_sink: GraphicsLoadTimingSink | None = None,
+    scan_root_only: bool | None = None,
+    dependencies: SattLineProjectLoaderDependencies | None = None,
+) -> "SattLineProjectLoader":
+    validate_loader_config(cfg)
+
+    program_dir = _coerce_path_config_value(cfg["program_dir"], key="program_dir")
+    other_lib_dirs = _coerce_path_sequence_config_value(cfg["other_lib_dirs"], key="other_lib_dirs")
+    abb_lib_dir = _coerce_path_config_value(cfg["ABB_lib_dir"], key="ABB_lib_dir")
+    mode = _coerce_code_mode(cfg["mode"])
+    configured_scan_root_only = _coerce_bool_config_value(cfg["scan_root_only"], key="scan_root_only")
+    debug = _coerce_bool_config_value(cfg["debug"], key="debug")
+    selected_scan_root_only = configured_scan_root_only if scan_root_only is None else scan_root_only
+
+    config = SattLineProjectLoaderConfig(
+        program_dir=program_dir,
+        other_lib_dirs=other_lib_dirs,
+        abb_lib_dir=abb_lib_dir,
+        mode=mode,
+        scan_root_only=selected_scan_root_only,
+        debug=debug,
+        use_file_ast_cache=use_file_ast_cache,
+        refresh_mode=refresh_mode,
+    )
+    runtime = SattLineProjectLoaderRuntime(
+        contextual_lookup=contextual_lookup,
+        status_update_fn=status_update_fn,
+        stage_timing_sink=stage_timing_sink,
+        graphics_timing_sink=graphics_timing_sink,
+    )
+
+    return _instantiate_project_loader(
+        SattLineProjectLoader,
+        config,
+        runtime=runtime,
+        dependencies=dependencies,
+    )
+
+
+def load_project_graph(
+    cfg: Mapping[str, object],
+    target_name: str,
+    *,
+    contextual_lookup: ContextualFileLookup | None = None,
+    use_file_ast_cache: bool = True,
+    status_update_fn: Callable[[str], None] | None = None,
+    refresh_mode: str = "full",
+    stage_timing_sink: LoadStageTimingSink | None = None,
+    graphics_timing_sink: GraphicsLoadTimingSink | None = None,
+    scan_root_only: bool | None = None,
+    dependencies: SattLineProjectLoaderDependencies | None = None,
+    strict: bool = False,
+) -> tuple["SattLineProjectLoader", BasePicture | None, ProjectGraph]:
+    loader = build_project_loader(
+        cfg,
+        contextual_lookup=contextual_lookup,
+        use_file_ast_cache=use_file_ast_cache,
+        status_update_fn=status_update_fn,
+        refresh_mode=refresh_mode,
+        stage_timing_sink=stage_timing_sink,
+        graphics_timing_sink=graphics_timing_sink,
+        scan_root_only=scan_root_only,
+        dependencies=dependencies,
+    )
+    graph = loader.resolve(target_name, strict=strict)
+    root_bp = graph.ast_by_name.get(target_name)
+    return loader, root_bp, graph
 
 
 def _record_missing_library(
@@ -265,52 +527,49 @@ _raise_syntax_validation_failure = engine_syntax_helpers.raise_syntax_validation
 class SattLineProjectLoader(DebugMixin):
     def __init__(
         self,
-        program_dir: Path,
-        other_lib_dirs: Iterable[Path],
-        abb_lib_dir: Path,
-        mode: CodeMode,
-        scan_root_only: bool,
-        debug: bool,
-        contextual_lookup: ContextualFileLookup | None = None,
-        use_file_ast_cache: bool = True,
-        status_update_fn: Callable[[str], None] | None = None,
-        refresh_mode: str = "full",
-        stage_timing_sink: LoadStageTimingSink | None = None,
-        graphics_timing_sink: GraphicsLoadTimingSink | None = None,
+        config: SattLineProjectLoaderConfig,
+        *,
+        runtime: SattLineProjectLoaderRuntime | None = None,
+        dependencies: SattLineProjectLoaderDependencies | None = None,
     ):
-        self.program_dir = program_dir
-        self.other_lib_dirs = list(other_lib_dirs)
-        self.abb_lib_dir = abb_lib_dir
-        self.mode = mode
-        self.scan_root_only = scan_root_only
-        self.debug = debug
-        self.contextual_lookup = contextual_lookup
-        self.use_file_ast_cache = use_file_ast_cache
-        self._status_update_fn = status_update_fn
-        self.refresh_mode = str(refresh_mode).strip().lower() or "full"
-        if self.refresh_mode not in {"full", "ast-only"}:
-            raise ValueError(f"Unsupported refresh mode: {refresh_mode!r}")
-        self._stage_timing_sink = stage_timing_sink
-        self._graphics_timing_sink = graphics_timing_sink
+        selected_runtime = SattLineProjectLoaderRuntime() if runtime is None else runtime
+        selected_dependencies = SattLineProjectLoaderDependencies() if dependencies is None else dependencies
+        self.config = config
+        self.program_dir = config.program_dir
+        self.other_lib_dirs = list(config.other_lib_dirs)
+        self.abb_lib_dir = config.abb_lib_dir
+        self.mode = config.mode
+        self.scan_root_only = config.scan_root_only
+        self.debug = config.debug
+        self.contextual_lookup = selected_runtime.contextual_lookup
+        self.use_file_ast_cache = config.use_file_ast_cache
+        self._status_update_fn = selected_runtime.status_update_fn
+        self.refresh_mode = config.refresh_mode
+        self._stage_timing_sink = selected_runtime.stage_timing_sink
+        self._graphics_timing_sink = selected_runtime.graphics_timing_sink
         self._last_status_message: str | None = None
         self.parser = create_sl_parser()  # reuse your grammar setup
         self.transformer = SLTransformer()  # reuse your transformer
         self._visited: set[str] = set()
         self._visit_stack: list[str] = []  # ordered stack for cycle detection and path reporting
         self._ignored_dirs: set[Path] = set()
-        self._cache_dir = get_cache_dir()
-        self._cache_manager = cache_module.get_cache_manager(
-            self._cache_dir,
-            file_lookup_cache_cls=FileLookupCache,
-            file_ast_cache_cls=FileASTCache,
-        )
+        if selected_dependencies.cache_manager is None:
+            self._cache_dir = get_cache_dir()
+            self._cache_manager = cache_module.get_cache_manager(
+                self._cache_dir,
+                file_lookup_cache_cls=FileLookupCache,
+                file_ast_cache_cls=FileASTCache,
+            )
+        else:
+            self._cache_manager = selected_dependencies.cache_manager
+            self._cache_dir = self._cache_manager.cache_dir
         self._lookup_cache = self._cache_manager.file_lookup_cache
         self._ast_cache = self._cache_manager.file_ast_cache
         self._base_indexes: dict[Path, dict[str, dict[str, Path]]] = {}
         self._lib_by_name: dict[str, str] = {}
         self._prefetched_dependency_candidates: dict[tuple[str, str | None], _PrefetchedDependencyCandidate] = {}
         self._prefetched_load_results_by_path: dict[Path, _PrefetchedLoadResult] = {}
-        self.dbg(f"Selected mode={mode.value}, code_ext={code_ext(mode)}, deps_ext={deps_ext(mode)}")
+        self.dbg(f"Selected mode={self.mode.value}, code_ext={code_ext(self.mode)}, deps_ext={deps_ext(self.mode)}")
         self.dbg(f"Programs dir: {self.program_dir}")
         for i, ld in enumerate(self.other_lib_dirs, start=1):
             self.dbg(f"Lib {i}: {ld}")
@@ -356,6 +615,150 @@ class SattLineProjectLoader(DebugMixin):
             if base_r == cand_r:
                 return True
         return False
+
+    def _resolved_lookup_path(self, path: Path | None) -> Path | None:
+        if path is None:
+            return None
+        try:
+            return path.resolve()
+        except OSError:
+            return path
+
+    def _lookup_path_key(self, path: Path) -> str:
+        return str(self._resolved_lookup_path(path)).casefold()
+
+    def _lookup_source_dirs(self) -> tuple[Path, ...]:
+        return (self.program_dir, *self.other_lib_dirs, self.abb_lib_dir)
+
+    def _is_lookup_relative_to(self, path: Path | None, root: Path | None) -> bool:
+        resolved_path = self._resolved_lookup_path(path)
+        resolved_root = self._resolved_lookup_path(root)
+        if resolved_path is None or resolved_root is None:
+            return False
+        try:
+            resolved_path.relative_to(resolved_root)
+        except ValueError:
+            return False
+        return True
+
+    def _first_lookup_branch_under(self, root: Path, path: Path) -> str | None:
+        resolved_root = self._resolved_lookup_path(root)
+        resolved_path = self._resolved_lookup_path(path)
+        if resolved_root is None or resolved_path is None:
+            return None
+        try:
+            relative_parts = resolved_path.relative_to(resolved_root).parts
+        except ValueError:
+            return None
+        return relative_parts[0] if relative_parts else None
+
+    def _shared_lookup_root_for(self, requester_dir: Path | None) -> Path | None:
+        requester = self._resolved_lookup_path(requester_dir)
+        if requester is None:
+            return None
+
+        candidate_dirs = [
+            resolved
+            for source_dir in self._lookup_source_dirs()
+            if (resolved := self._resolved_lookup_path(source_dir)) is not None and resolved != requester
+        ]
+        current = requester
+        while True:
+            branches: set[str] = set()
+            for source_dir in candidate_dirs:
+                if not self._is_lookup_relative_to(source_dir, current):
+                    continue
+                branch = self._first_lookup_branch_under(current, source_dir)
+                if branch is None:
+                    continue
+                branches.add(branch)
+                if len(branches) > 1:
+                    return current
+            parent = current.parent
+            if parent == current:
+                break
+            current = parent
+
+        return None
+
+    def _ordered_lookup_bases(self, requester_dir: Path | None) -> tuple[Path, ...]:
+        requester = self._resolved_lookup_path(requester_dir)
+        abb_dir = self._resolved_lookup_path(self.abb_lib_dir)
+        ordered: list[Path] = []
+        seen: set[str] = set()
+
+        def add(path: Path | None) -> None:
+            resolved = self._resolved_lookup_path(path)
+            if resolved is None or self._is_ignored_base(resolved):
+                return
+            key = self._lookup_path_key(resolved)
+            if key in seen:
+                return
+            seen.add(key)
+            ordered.append(resolved)
+
+        if requester is not None and self._is_allowed_base(requester):
+            add(requester)
+
+        cluster_root = self._shared_lookup_root_for(requester)
+        if cluster_root is not None and requester is not None:
+            requester_branch = self._first_lookup_branch_under(cluster_root, requester)
+            same_branch: list[Path] = []
+            sibling_branch: list[Path] = []
+            for source_dir in self._lookup_source_dirs():
+                resolved = self._resolved_lookup_path(source_dir)
+                if resolved is None or resolved in (requester, abb_dir):
+                    continue
+                if not self._is_lookup_relative_to(resolved, cluster_root):
+                    continue
+                branch = self._first_lookup_branch_under(cluster_root, resolved)
+                if requester_branch is not None and branch == requester_branch:
+                    same_branch.append(resolved)
+                else:
+                    sibling_branch.append(resolved)
+            for source_dir in sorted(same_branch, key=self._lookup_path_key):
+                add(source_dir)
+            for source_dir in sorted(sibling_branch, key=self._lookup_path_key):
+                add(source_dir)
+
+        for source_dir in self._lookup_source_dirs():
+            resolved = self._resolved_lookup_path(source_dir)
+            if resolved == abb_dir:
+                continue
+            add(resolved)
+
+        add(abb_dir)
+        return tuple(ordered)
+
+    def _find_in_ordered_bases_without_cache(
+        self,
+        name: str,
+        extensions: list[str],
+        *,
+        requester_dir: Path | None,
+        kind: str,
+    ) -> Path | None:
+        for base in self._ordered_lookup_bases(requester_dir):
+            indexed = self._find_in_index(base=base, name=name, extensions=extensions)
+            if indexed is not None:
+                self.dbg(f"Using ordered lookup file: {indexed}")
+                set_cache = getattr(self._lookup_cache, "set", None)
+                if callable(set_cache):
+                    set_cache(kind, name, self.mode.value, base, indexed.suffix.lower())
+                return indexed
+
+            for ext in extensions:
+                candidate = base / f"{name}{ext}"
+                self.dbg(f"Checking ordered lookup file: {candidate} (exists={candidate.exists()})")
+                if candidate.exists():
+                    self.dbg(f"Using ordered lookup file: {candidate}")
+                    set_cache = getattr(self._lookup_cache, "set", None)
+                    if callable(set_cache):
+                        set_cache(kind, name, self.mode.value, base, ext)
+                    self._add_to_index(base, name, candidate)
+                    return candidate
+
+        return None
 
     def _get_base_index(self, base: Path) -> dict[str, dict[str, Path]]:
         if base in self._base_indexes:
@@ -456,6 +859,15 @@ class SattLineProjectLoader(DebugMixin):
                 self.dbg(f"Using contextual code file: {resolved} (requested by {requester_dir or self.program_dir})")
                 return resolved
 
+        ordered = self._find_in_ordered_bases_without_cache(
+            name,
+            extensions,
+            requester_dir=requester_dir,
+            kind="code",
+        )
+        if ordered is not None:
+            return ordered
+
         cached = self._find_in_cached_base(
             kind="code",
             name=name,
@@ -508,6 +920,15 @@ class SattLineProjectLoader(DebugMixin):
                 self.dbg(f"Using contextual deps file: {resolved} (requested by {requester_dir or self.program_dir})")
                 return resolved
 
+        ordered = self._find_in_ordered_bases_without_cache(
+            name,
+            extensions,
+            requester_dir=requester_dir,
+            kind="deps",
+        )
+        if ordered is not None:
+            return ordered
+
         cached = self._find_in_cached_base(
             kind="deps",
             name=name,
@@ -542,6 +963,14 @@ class SattLineProjectLoader(DebugMixin):
         self.dbg(f"No deps file found for '{name}' in mode={self.mode.value}")
         return None
 
+    def find_dependency_path(
+        self,
+        name: str,
+        *,
+        requester_dir: Path | None,
+    ) -> Path | None:
+        return self._find_deps_with_context(name, requester_dir=requester_dir)
+
     def _find_vendor_code(self, name: str) -> Path | None:
         """Find code file in vendor directories with fallback."""
         extensions = [code_ext(self.mode), ".x"] if self.mode == CodeMode.DRAFT else [code_ext(self.mode)]
@@ -570,6 +999,29 @@ class SattLineProjectLoader(DebugMixin):
         names = [ln.strip() for ln in lines if ln.strip()]
         self.dbg(f"Deps from {deps_path.name}: {names}")
         return names
+
+    def read_dependency_names(self, deps_path: Path) -> list[str]:
+        return self._read_deps(deps_path)
+
+    def visit_target(
+        self,
+        target_name: str,
+        graph: ProjectGraph,
+        syntax_only: bool,
+        *,
+        requester_dir: Path | None,
+        syntax_check: bool,
+    ) -> None:
+        self._visit(
+            target_name,
+            graph,
+            syntax_only,
+            requester_dir=requester_dir,
+            syntax_check=syntax_check,
+        )
+
+    def flush_lookup_cache(self) -> None:
+        self._flush_lookup_cache()
 
     def _library_name_for_path(self, code_path: Path) -> str:
         """
@@ -603,6 +1055,25 @@ class SattLineProjectLoader(DebugMixin):
         lib_name = self._library_name_for_path(code_path)
         self._lib_by_name[name.casefold()] = lib_name
         return lib_name
+
+    def _dependency_library_name(
+        self,
+        graph: ProjectGraph,
+        dependency_name: str,
+        dep_bp: BasePicture | None,
+    ) -> str | None:
+        root_library_name_for_name = getattr(graph, "root_library_name_for_name", None)
+        if callable(root_library_name_for_name):
+            graph_library_name = root_library_name_for_name(dependency_name)
+            if isinstance(graph_library_name, str) and graph_library_name:
+                return graph_library_name
+
+        cached_lib = self._lib_by_name.get(dependency_name.casefold())
+        if cached_lib:
+            return cached_lib
+
+        origin_lib = getattr(dep_bp, "origin_lib", None) if dep_bp is not None else None
+        return origin_lib if isinstance(origin_lib, str) and origin_lib else None
 
     def _parse_one(self, code_path: Path) -> BasePicture:
         return parser_core_parse_source_file(
@@ -717,8 +1188,18 @@ class SattLineProjectLoader(DebugMixin):
         deps_extensions = [deps_ext(self.mode), ".z"] if self.mode == CodeMode.DRAFT else [deps_ext(self.mode)]
         code_paths_to_prefetch: list[Path] = []
         for dep_name in unique_dep_names:
-            code_path = self._find_in_bases_without_cache(dep_name, code_extensions)
-            deps_path = self._find_in_bases_without_cache(dep_name, deps_extensions)
+            code_path = self._find_in_ordered_bases_without_cache(
+                dep_name,
+                code_extensions,
+                requester_dir=requester_dir,
+                kind="code",
+            )
+            deps_path = self._find_in_ordered_bases_without_cache(
+                dep_name,
+                deps_extensions,
+                requester_dir=requester_dir,
+                kind="deps",
+            )
             candidate = _PrefetchedDependencyCandidate(
                 name=dep_name,
                 requester_dir=requester_dir,
@@ -735,18 +1216,7 @@ class SattLineProjectLoader(DebugMixin):
         self._prefetched_load_results_by_path.update(cached_prefetch_results)
 
     def _load_or_parse_for_owner(self, code_path: Path, *, owner_name: str) -> BasePicture | None:
-        load_or_parse = self._load_or_parse
-        try:
-            signature = inspect.signature(load_or_parse)
-        except (TypeError, ValueError):
-            return load_or_parse(code_path, owner_name=owner_name)
-
-        accepts_owner_name = "owner_name" in signature.parameters or any(
-            parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in signature.parameters.values()
-        )
-        if accepts_owner_name:
-            return load_or_parse(code_path, owner_name=owner_name)
-        return load_or_parse(code_path)
+        return self._load_or_parse(code_path, owner_name=owner_name)
 
     def _flush_lookup_cache(self) -> None:
         flush = getattr(self._lookup_cache, "flush", None)
@@ -773,9 +1243,17 @@ class SattLineProjectLoader(DebugMixin):
 
     def _resolve_root_only(self, root_name: str, strict: bool) -> ProjectGraph:
         graph = ProjectGraph()
+        validation_warnings: list[ValidationWarning] = []
+
+        def _record_validation_warnings() -> None:
+            for warning in validation_warnings:
+                _record_project_warning(graph, root_name, warning)
+            validation_warnings.clear()
+
         try:
             self._update_status(f"Loading {root_name}: locating source file")
             code_path = self._find_code(root_name)
+
             if not code_path:
                 _record_missing_library(
                     graph,
@@ -785,59 +1263,64 @@ class SattLineProjectLoader(DebugMixin):
                 )
                 return graph
 
-            validation_warnings: list[ValidationWarning] = []
-            bp = self._load_or_parse_for_owner(code_path, owner_name=root_name)
-            if bp is None:
-                message = f"{root_name} transformed to no BasePicture (parse/transform issue?)"
+            try:
+                bp = self._load_or_parse_for_owner(code_path, owner_name=root_name)
+            except Exception as ex:
                 if strict:
-                    raise RuntimeError(message)
-                graph.missing.append(message)
+                    raise
+                _record_project_failure(graph, root_name, ex)
                 return graph
-            self._update_status(f"Loading {root_name}: validating {code_path.name}")
-            validation_started_at = perf_counter()
-            validate_transformed_basepicture(
-                bp,
-                allow_unresolved_external_datatypes=True if self.refresh_mode == "ast-only" else not strict,
-                enforce_unique_submodule_names=False,
-                allow_parameterless_module_mappings=True,
-                warn_unknown_parameter_targets=self.refresh_mode != "ast-only",
-                warn_incompatible_parameter_mappings=self.refresh_mode != "ast-only",
-                warning_sink=validation_warnings.append,
-            )
-            self._record_stage_timing(root_name, "validate", validation_started_at)
-            for warning in validation_warnings:
-                _record_project_warning(graph, root_name, warning)
-            graph.ast_by_name[root_name] = bp
-            if self.refresh_mode == "ast-only":
+
+            try:
+                if bp is None:
+                    message = f"{root_name} transformed to no BasePicture (parse/transform issue?)"
+                    if strict:
+                        raise RuntimeError(message)
+                    graph.missing.append(message)
+                    return graph
+                self._update_status(f"Loading {root_name}: validating {code_path.name}")
+                validation_started_at = perf_counter()
+                validate_transformed_basepicture(
+                    bp,
+                    allow_unresolved_external_datatypes=True if self.refresh_mode == "ast-only" else not strict,
+                    enforce_unique_submodule_names=False,
+                    allow_parameterless_module_mappings=True,
+                    warn_unknown_parameter_targets=self.refresh_mode != "ast-only",
+                    warn_incompatible_parameter_mappings=self.refresh_mode != "ast-only",
+                    warning_sink=validation_warnings.append,
+                )
+                self._record_stage_timing(root_name, "validate", validation_started_at)
+                _record_validation_warnings()
+                graph.ast_by_name[root_name] = bp
+                if self.refresh_mode == "ast-only":
+                    return graph
+                if _graphics_companion_needs_refresh(bp, code_path=code_path, mode=self.mode):
+                    self._update_status(f"Loading {root_name}: checking graphics companion")
+                graphics_started_at = perf_counter()
+                if _attach_graphics_companion(
+                    bp,
+                    code_path=code_path,
+                    mode=self.mode,
+                    graph=graph,
+                    owner_name=root_name,
+                    timing_sink=self._graphics_timing_sink,
+                ):
+                    self._ast_cache.save(code_path, self.mode.value, bp)
+                self._record_stage_timing(root_name, "attach_graphics", graphics_started_at)
+                lib_name = self._record_library_name(root_name, code_path)
+                self._update_status(f"Loading {root_name}: indexing definitions")
+                index_started_at = perf_counter()
+                graph.index_from_basepic(
+                    bp, source_path=code_path, library_name=lib_name
+                )  # collect any defs emitted in this files
+                self._record_stage_timing(root_name, "index", index_started_at)
                 return graph
-            if _graphics_companion_needs_refresh(bp, code_path=code_path, mode=self.mode):
-                self._update_status(f"Loading {root_name}: checking graphics companion")
-            graphics_started_at = perf_counter()
-            if _attach_graphics_companion(
-                bp,
-                code_path=code_path,
-                mode=self.mode,
-                graph=graph,
-                owner_name=root_name,
-                timing_sink=self._graphics_timing_sink,
-            ):
-                self._ast_cache.save(code_path, self.mode.value, bp)
-            self._record_stage_timing(root_name, "attach_graphics", graphics_started_at)
-            lib_name = self._library_name_for_path(code_path)
-            self._update_status(f"Loading {root_name}: indexing definitions")
-            index_started_at = perf_counter()
-            graph.index_from_basepic(
-                bp, source_path=code_path, library_name=lib_name
-            )  # collect any defs emitted in this files
-            self._record_stage_timing(root_name, "index", index_started_at)
-            return graph
-        except Exception as ex:
-            for warning in locals().get("validation_warnings", []):
-                _record_project_warning(graph, root_name, warning)
-            if strict:
-                raise
-            _record_project_failure(graph, root_name, ex)
-            return graph
+            except Exception as ex:
+                _record_validation_warnings()
+                if strict:
+                    raise
+                _record_project_failure(graph, root_name, ex)
+                return graph
         finally:
             self._flush_lookup_cache()
 
@@ -890,14 +1373,9 @@ class SattLineProjectLoader(DebugMixin):
             dep_libs: list[str] = []
             for dep in dep_names:
                 dep_bp = graph.ast_by_name.get(dep)
-                if dep_bp:
-                    origin_lib = getattr(dep_bp, "origin_lib", None)
-                    if origin_lib:
-                        dep_libs.append(origin_lib)
-                        continue
-                cached_lib = self._lib_by_name.get(dep.casefold())
-                if cached_lib:
-                    dep_libs.append(cached_lib)
+                dependency_library_name = self._dependency_library_name(graph, dep, dep_bp)
+                if dependency_library_name:
+                    dep_libs.append(dependency_library_name)
 
             # Determine code path
             self._update_status(f"Loading {name}: locating source file")

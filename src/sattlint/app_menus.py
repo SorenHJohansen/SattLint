@@ -12,12 +12,12 @@ from . import console as console_module
 from . import engine as engine_module
 from .app_interaction import MenuInteraction, build_menu_interaction
 from .casefolding import casefold_equal
+from .config_types import ConfigDict, TelemetryConfig
 from .models.project_graph import ProjectGraph
 
-emit_output = console_module.print_output  # type: ignore[assignment]
 log = logging.getLogger("SattLint")
+emit_output = console_module.print_output
 
-ConfigDict = dict[str, Any]
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
 
 
@@ -83,8 +83,8 @@ def _print_variable_report(
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool],
     analyze_variables_fn: Callable[..., Any],
 ) -> None:
-    emit_output(f"\n=== Target: {target_name} ===")
-    emit_output(
+    console_module.print_output(f"\n=== Target: {target_name} ===")
+    console_module.print_output(
         analyze_variables_fn(
             project_bp,
             debug=cfg.get("debug", False),
@@ -167,6 +167,14 @@ def _toggle_config_value(
     return True
 
 
+def _toggle_mode_value(cfg: ConfigDict, *, confirm_fn: Callable[[str], bool]) -> bool:
+    next_mode = "draft" if cfg["mode"] == "official" else "official"
+    if not confirm_fn(f"Switch mode to '{next_mode}'?"):
+        return False
+    cfg["mode"] = next_mode
+    return True
+
+
 def _update_config_value(
     cfg: ConfigDict,
     key: str,
@@ -183,12 +191,18 @@ def _update_config_value(
     return True
 
 
-def _telemetry_config(cfg: ConfigDict) -> dict[str, Any]:
-    telemetry = cfg.get("telemetry")
+def _telemetry_config(cfg: ConfigDict) -> TelemetryConfig:
+    telemetry = cast(dict[str, object], cfg).get("telemetry")
     if isinstance(telemetry, dict):
-        return cast(dict[str, Any], telemetry)
-    cfg["telemetry"] = {"enabled": False}
-    return cast(dict[str, Any], cfg["telemetry"])
+        telemetry_mapping = cast(dict[str, object], telemetry)
+        normalized_telemetry: TelemetryConfig = {
+            "enabled": bool(telemetry_mapping.get("enabled", False)),
+        }
+        cfg["telemetry"] = normalized_telemetry
+        return normalized_telemetry
+    default_telemetry: TelemetryConfig = {"enabled": False}
+    cfg["telemetry"] = default_telemetry
+    return default_telemetry
 
 
 def _toggle_telemetry_enabled(
@@ -243,7 +257,7 @@ def _save_configuration(
             save_config_fn(config_path, cfg)
         except OSError as exc:
             _log_debug_save_exception(cfg, f"Failed to save config to {config_path}")
-            emit_output(f"Failed to save config to {config_path}: {exc}")
+            console_module.print_output(f"Failed to save config to {config_path}: {exc}")
             return True
         return False
     return dirty
@@ -263,7 +277,7 @@ def _handle_config_menu_exit(
             save_config_fn(config_path, cfg)
         except OSError as exc:
             _log_debug_save_exception(cfg, f"Failed to save config to {config_path}")
-            emit_output(f"Failed to save config to {config_path}: {exc}")
+            console_module.print_output(f"Failed to save config to {config_path}: {exc}")
             return
     quit_app_fn()
     sys.exit(0)
@@ -459,14 +473,9 @@ def config_menu(
         elif choice == "3":
             dirty = _run_menu_action(
                 lambda dirty=dirty: (
-                    _toggle_config_value(
+                    _toggle_mode_value(
                         cfg,
-                        "mode",
-                        confirm_message=f"Switch mode to '{'draft' if cfg['mode'] == 'official' else 'official'}'?",
                         confirm_fn=menu_interaction.confirm,
-                        on_change_fn=lambda local_cfg: local_cfg.__setitem__(
-                            "mode", "draft" if local_cfg["mode"] == "official" else "official"
-                        ),
                     )
                     or dirty
                 ),
@@ -604,7 +613,7 @@ def config_menu(
         elif choice == "13":
             _run_menu_action(lambda: graphics_rules_menu_fn(cfg), pause_fn=menu_interaction.pause)
         else:
-            emit_output("Invalid choice.", flush=True)
+            emit_output("Invalid choice.")
             menu_interaction.pause()
 
 
@@ -646,8 +655,8 @@ def tools_menu(
                 ),
                 menu_option_factory(
                     "4",
-                    "Refresh analysis caches",
-                    "Clear cached analysis reports and rebuild ASTs when results look stale",
+                    "Refresh all caches",
+                    "Clear lookup, AST, and analysis caches, then rebuild when results look stale",
                 ),
                 menu_option_factory("b", "Back", ""),
                 menu_option_factory("q", "Quit", ""),
@@ -674,8 +683,8 @@ def tools_menu(
             if require_targets_for_menu_action_fn(cfg, "generating source diff reports"):
                 _run_menu_action(lambda: run_source_diff_report_fn(cfg), pause_fn=menu_interaction.pause)
         elif choice == "4":
-            if require_targets_for_menu_action_fn(cfg, "refreshing analysis caches") and menu_interaction.confirm(
-                "Refresh analysis caches?"
+            if require_targets_for_menu_action_fn(cfg, "refreshing all caches") and menu_interaction.confirm(
+                "Refresh all caches?"
             ):
                 _run_menu_action(
                     lambda: (force_refresh_ast_fn(cfg), menu_interaction.pause()),
@@ -767,9 +776,9 @@ def run_main_loop(
                     save_config_fn(config_path, cfg)
                 except OSError as exc:
                     _log_debug_save_exception(cfg, f"Failed to save config to {config_path}")
-                    emit_output(f"Failed to save config to {config_path}: {exc}")
+                    console_module.print_output(f"Failed to save config to {config_path}: {exc}")
                     continue
             quit_app_fn()
 
         else:
-            emit_output("Invalid choice.", flush=True)
+            emit_output("Invalid choice.")

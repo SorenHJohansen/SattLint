@@ -18,7 +18,7 @@ from sattline_parser.grammar.parser_decode import is_compressed, preprocess_sl_t
 from sattline_parser.models.ast_model import BasePicture
 from sattline_parser.transformer.sl_transformer import SLTransformer
 
-from ._engine_graphics_helpers import (
+from ._engine_graphics_context_helpers import (
     graphics_source_context_path,
     load_picture_display_source_context,
     picture_display_path_warnings,
@@ -92,6 +92,19 @@ def normalize_code_mode(mode: CodeMode | str | None) -> CodeMode | None:
     if not raw_mode:
         return None
     return CodeMode(raw_mode)
+
+
+def resolve_dependency_context_path(code_path: Path, mode: CodeMode | str | None = None) -> Path | None:
+    suffix = code_path.suffix.lower()
+    if suffix not in {".s", ".x", ".g", ".y"}:
+        return None
+    resolved_mode = normalize_code_mode(mode)
+    if resolved_mode is None:
+        resolved_mode = CodeMode.OFFICIAL if suffix in {".x", ".y"} else CodeMode.DRAFT
+    candidate = code_path.with_suffix(deps_ext(resolved_mode))
+    if candidate == code_path or not candidate.exists():
+        return None
+    return candidate
 
 
 def graphics_validation_to_syntax_result(
@@ -306,6 +319,9 @@ def validate_single_file_syntax(
     correlate_picture_display_records_fn: Callable[..., Any] = correlate_picture_display_records,
     picture_display_path_warnings_fn: Callable[..., tuple[ValidationNotice, ...]] = picture_display_path_warnings,
     resolve_graphics_companion_path_fn: Callable[..., Path | None] = resolve_graphics_companion_path,
+    resolve_dependency_context_path_fn: Callable[
+        [Path, CodeMode | str | None], Path | None
+    ] = resolve_dependency_context_path,
     extract_error_position_fn: Callable[[Exception], tuple[int | None, int | None]] = extract_error_position,
     graphics_validation_to_syntax_result_fn: Callable[
         ..., SyntaxValidationResult
@@ -342,11 +358,14 @@ def validate_single_file_syntax(
                 column=first.start_col,
             )
         basepic = parser_core_parse_source_text_fn(src, log_failures=False)
+        dependency_context_path = resolve_dependency_context_path_fn(target_path, mode)
         validate_transformed_basepicture_fn(
             basepic,
             warning_sink=validation_warnings.append,
             allow_old_state_assignment=target_path.suffix.lower() in {".x", ".z"},
-            allow_unresolved_external_datatypes=target_path.suffix.lower() in {".x", ".z"},
+            allow_unresolved_external_datatypes=(
+                target_path.suffix.lower() in {".x", ".z"} or dependency_context_path is not None
+            ),
         )
     except UnexpectedInput as exc:
         details = describe_parse_error_fn(exc, src)
@@ -382,8 +401,22 @@ def validate_single_file_syntax(
             column=column,
             warning_notices=tuple(coerce_validation_notice_fn(warning) for warning in validation_warnings),
         )
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, RuntimeError, ValueError) as exc:
         line, column = extract_error_position_fn(exc)
+        stage = "parse" if line is not None or column is not None else "validation"
+        return SyntaxValidationResult(
+            file_path=target_path,
+            ok=False,
+            stage=stage,
+            message=str(exc),
+            line=line,
+            column=column,
+            warning_notices=tuple(coerce_validation_notice_fn(warning) for warning in validation_warnings),
+        )
+    except Exception as exc:
+        line, column = extract_error_position_fn(exc)
+        if line is None and column is None:
+            raise
         stage = "parse" if line is not None or column is not None else "validation"
         return SyntaxValidationResult(
             file_path=target_path,

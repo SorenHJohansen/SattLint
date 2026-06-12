@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+import json
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, cast
 
 from .app_telemetry import telemetry_output_path
+from .config_types import ConfigDict, ConfigOverrideDict, DocumentationConfig, DocumentationConfigOverride
 
-ConfigDict = dict[str, Any]
 GraphicsRule = dict[str, Any]
 GraphicsRulesConfig = dict[str, Any]
 
@@ -21,7 +22,7 @@ def format_config_scalar(value: object) -> str:
 
 def print_config_section(
     title: str,
-    rows: list[tuple[str, object]],
+    rows: Sequence[tuple[str, object | str | bool | Path]],
     *,
     emit_output_fn: Callable[..., None],
     format_config_scalar_fn: Callable[[object], str],
@@ -55,13 +56,16 @@ def print_config_list(
 def show_config(
     cfg: ConfigDict,
     *,
-    get_documentation_config_fn: Callable[[dict[str, Any] | None], dict[str, Any]],
+    get_documentation_config_fn: Callable[
+        [ConfigDict | ConfigOverrideDict | DocumentationConfig | DocumentationConfigOverride | None],
+        DocumentationConfig,
+    ],
     get_graphics_rules_path_fn: Callable[[], Path],
     load_graphics_rules_fn: Callable[..., tuple[GraphicsRulesConfig, bool]],
     graphics_rule_config_line_fn: Callable[[GraphicsRule], str],
     emit_output_fn: Callable[..., None],
     print_config_list_fn: Callable[[str, list[object]], None],
-    print_config_section_fn: Callable[[str, list[tuple[str, object]]], None],
+    print_config_section_fn: Callable[[str, Sequence[tuple[str, object | str | bool | Path]]], None],
 ) -> None:
     documentation_cfg = get_documentation_config_fn(cfg)
     graphics_rules_path = get_graphics_rules_path_fn()
@@ -70,7 +74,7 @@ def show_config(
     if graphics_rules_path.exists():
         try:
             graphics_rules, _created = load_graphics_rules_fn(graphics_rules_path)
-        except Exception as exc:  # noqa: BLE001
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
             graphics_rule_count = f"invalid ({exc})"
         else:
             graphics_rules_payload = graphics_rules

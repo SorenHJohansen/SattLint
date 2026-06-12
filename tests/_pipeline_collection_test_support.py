@@ -30,7 +30,8 @@ from sattlint.devtools import corpus, pipeline, structural_reports
 from sattlint.devtools.artifact_registry import ArtifactDefinition
 from sattlint.devtools.baselines import build_analysis_diff_report
 from sattlint.devtools.finding_exports import build_pipeline_finding_collection
-from sattlint.devtools.pipeline_artifacts import (
+from sattlint.devtools.progress_reporting import ProgressReporter
+from sattlint.devtools.shared.pipeline_artifacts import (
     SOURCE_DIGEST_MANIFEST_KIND,
     PipelineArtifactContext,
     PipelineArtifactProducer,
@@ -39,7 +40,6 @@ from sattlint.devtools.pipeline_artifacts import (
     write_json_artifact,
     write_pipeline_artifacts,
 )
-from sattlint.devtools.progress_reporting import ProgressReporter
 from sattlint.reporting.variables_report import IssueKind
 
 from .helpers.artifact_assertions import (

@@ -527,3 +527,68 @@ ENDDEF (*BasePicture*);
     bp = _parse_to_basepicture(code)
 
     validate_transformed_basepicture_locally(bp)
+
+
+def test_validate_transformed_basepicture_locally_surfaces_downgraded_semantic_error_warning():
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    Name1: string;
+    Name2: string;
+    Match: boolean := False;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        Match = EqualStrings(Name1, Name2);
+ENDDEF (*BasePicture*);
+"""
+    bp = _parse_to_basepicture(code)
+    warnings = []
+
+    validate_transformed_basepicture_locally(
+        bp,
+        warning_sink=warnings.append,
+    )
+
+    assert len(warnings) == 1
+    assert warnings[0].line is None
+    assert warnings[0].column is None
+    assert "downgraded from error to warning by active policy" in warnings[0].message
+    assert "call 'EqualStrings' has 2 arguments but builtin expects 3" in warnings[0].message
+
+
+def test_validate_transformed_basepicture_can_downgrade_module_code_semantic_errors_to_warnings():
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    Name1: string;
+    Name2: string;
+    Match: boolean := False;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        Match = EqualStrings(Name1, Name2);
+ENDDEF (*BasePicture*);
+"""
+    bp = _parse_to_basepicture(code)
+    warnings = []
+
+    validate_transformed_basepicture(
+        bp,
+        suppress_module_code_semantic_errors=True,
+        warning_sink=warnings.append,
+    )
+
+    assert len(warnings) == 1
+    assert warnings[0].line is None
+    assert warnings[0].column is None
+    assert "downgraded from error to warning by active policy" in warnings[0].message
+    assert "call 'EqualStrings' has 2 arguments but builtin expects 3" in warnings[0].message

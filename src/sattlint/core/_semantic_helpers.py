@@ -33,6 +33,26 @@ def _format_datatype(datatype: Simple_DataType | str | None) -> str | None:
     return str(datatype)
 
 
+def _format_moduletype_label(moduletype: ModuleTypeDef) -> str:
+    file_label = f" ({moduletype.origin_file})" if moduletype.origin_file else ""
+    if moduletype.origin_lib:
+        return f"{moduletype.origin_lib}:{moduletype.name}{file_label}"
+    return moduletype.name
+
+
+def _dedupe_moduletype_defs(matches: list[ModuleTypeDef]) -> list[ModuleTypeDef]:
+    unique: dict[tuple[str, str, str], ModuleTypeDef] = {}
+    for moduletype in matches:
+        key = (
+            moduletype.name.casefold(),
+            (moduletype.origin_lib or "").casefold(),
+            (moduletype.origin_file or "").casefold(),
+        )
+        if key not in unique:
+            unique[key] = moduletype
+    return list(unique.values())
+
+
 def _format_name_list(items: list[str], *, limit: int = _DEFAULT_LIST_DISPLAY_LIMIT) -> str:
     if len(items) <= limit:
         return ", ".join(items)
@@ -194,8 +214,10 @@ def _try_resolve_instance_typedef(
 
 cf = _cf
 format_datatype = _format_datatype
+format_moduletype_label = _format_moduletype_label
 format_name_list = _format_name_list
 format_workspace_snapshot_failure = _format_workspace_snapshot_failure
+dedupe_moduletype_defs = _dedupe_moduletype_defs
 path_startswith = _path_startswith
 normalize_mode = _normalize_mode
 source_file_key = _source_file_key

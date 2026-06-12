@@ -113,7 +113,7 @@
       "selected_surface": "repo-audit"
     }
   ],
-  "generated_by": "sattlint.devtools.ai_work_map",
+  "generated_by": "sattlint.devtools.ai.ai_work_map",
   "generated_from": {
     "work_map": "docs/maintainers/ai/ai-work-map.json"
   },
@@ -166,6 +166,16 @@
       "description": "Use when changing parser-core, strict validation, grammar, AST, transformer, parser fixtures, or parser tests in SattLint. Covers parser invariants and first validation routing.",
       "file_path": ".github/instructions/parser-analysis.instructions.md",
       "name": "Parser Analysis Instructions"
+    },
+    {
+      "apply_to": [
+        "src/**/*.py",
+        "tests/**/*.py",
+        "scripts/**/*.py"
+      ],
+      "description": "Use when changing Python implementation or tests in SattLint. Covers dead-code discipline, getattr boundaries, module cohesion, and side-effect documentation.",
+      "file_path": ".github/instructions/python-code-discipline.instructions.md",
+      "name": "Python Code Discipline"
     },
     {
       "apply_to": [

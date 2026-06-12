@@ -14,14 +14,14 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
+from ..core._semantic_helpers import format_moduletype_label
 from ..models.usage import VariableUsage
 from ..resolution.common import (
     find_all_aliases,
-    format_moduletype_label,
-    path_startswith_casefold,
     resolve_module_by_strict_path,
     resolve_moduletype_def_strict,
 )
+from ..resolution.paths import path_startswith_casefold
 from .shared._walk_utils import iter_nested_modules
 from .variables import VariablesAnalyzer
 

@@ -1,5 +1,5 @@
         Screen {
-            background: #f5edd5;
+            background: #f4efde;
             color: #001ba3;
             scrollbar-background: #b9d9df;
             scrollbar-background-hover: #c2c2c2;
@@ -18,20 +18,20 @@
         #content-host {
             height: 1fr;
             layout: vertical;
-            background: #f5edd5;
+            background: #f4efde;
         }
 
         #workspace-host {
             height: 1fr;
             layout: vertical;
-            background: #f5edd5;
+            background: #f4efde;
         }
 
         #view-pane {
             height: 3fr;
             layout: vertical;
             margin: 0 1 1 1;
-            background: #f5edd5;
+            background: #f4efde;
         }
 
         #workspace-host.analyze-split,
@@ -56,9 +56,9 @@
         }
 
         #view-side-actions {
-            width: 44;
+            width: 32;
             height: auto;
-            min-width: 44;
+            min-width: 24;
             margin-left: 1;
             align: right top;
         }
@@ -68,7 +68,7 @@
             min-height: 18;
             margin: 0;
             padding: 1 2;
-            background: #d8d4c8;
+            background: #e6decb;
             color: #000000;
             border: tall #0077b3;
             overflow-y: hidden;
@@ -141,7 +141,7 @@
             min-height: 10;
             margin: 0 1 1 1;
             layout: vertical;
-            background: #f5edd5;
+            background: #f4efde;
         }
 
         #workspace-host.analyze-split #output-pane,
@@ -218,7 +218,7 @@
         }
 
         #setup-targets-col {
-            width: 44;
+            width: 32;
             height: 1fr;
             padding: 1 2;
             background: #b9d9df;
@@ -252,7 +252,7 @@
 
         #setup-target-listview {
             height: 1fr;
-            background: #f5edd5;
+            background: #f4efde;
             color: #001ba3;
             border: tall #0077b3;
             margin: 1 0;
@@ -266,7 +266,7 @@
         }
 
         #setup-target-listview > ListItem {
-            background: #f5edd5;
+            background: #f4efde;
             color: #001ba3;
         }
 
@@ -310,20 +310,20 @@
             content-align: left middle;
             padding: 1 2;
             margin-left: 1;
-            background: #f5edd5;
+            background: #f4efde;
             border: round #8fb6bf;
             color: #58787e;
         }
 
         .setup-row-button {
-            width: 18;
-            min-width: 18;
-            max-width: 18;
+            width: 15;
+            min-width: 15;
+            max-width: 15;
             content-align: center middle;
         }
 
         #view-host.config-mode .setup-row-label {
-            background: #f5edd5;
+            background: #f4efde;
             border: round #d09f9f;
             color: #58787e;
         }
@@ -358,7 +358,6 @@
         }
 
         #analyze-actions-primary,
-        #analyze-actions-secondary,
         #documentation-actions,
         #tools-actions {
             height: auto;
@@ -379,7 +378,7 @@
             display: none;
             height: auto;
             margin: 0 1 1 1;
-            background: #f5edd5;
+            background: #f4efde;
         }
 
         #interaction-host.active {
@@ -390,15 +389,14 @@
             width: 100%;
             height: auto;
             padding: 1 2 2 2;
-            padding-bottom: 2;
-            background: #f5edd5;
+            background: #f4efde;
         }
 
         #actions {
             height: auto;
             margin: 1 1 0 1;
             padding: 0 1 0 1;
-            background: #f5edd5;
+            background: #f4efde;
         }
 
         #actions-spacer {
@@ -406,7 +404,7 @@
         }
 
         Button.raised-button {
-            min-width: 16;
+            min-width: 12;
             height: 3;
             padding: 0 2;
             background: #b0b0b0;
@@ -446,7 +444,6 @@
         #actions Button.raised-button,
         #view-actions Button.raised-button,
         #analyze-actions-primary Button.raised-button,
-        #analyze-actions-secondary Button.raised-button,
         #documentation-actions Button.raised-button,
         #tools-actions Button.raised-button,
         #interaction-actions Button.raised-button {
@@ -469,13 +466,13 @@
             content-align: left middle;
         }
 
-        #analyze-clear-selection {
+        #analyze-clear-output {
             margin-right: 0;
         }
 
         #actions Button.toolbar-button {
             width: auto;
-            min-width: 9;
+            min-width: 7;
             padding: 0 1;
             margin-right: 1;
         }
@@ -486,8 +483,8 @@
 
         #analyze-browser-left SelectionList > .selection-list--button,
         #analyze-browser-left SelectionList > .selection-list--button {
-            color: #f5edd5;
-            background: #f5edd5;
+            color: #f4efde;
+            background: #f4efde;
         }
 
         #analyze-browser-left SelectionList > .selection-list--button-highlighted {
@@ -498,7 +495,7 @@
         #analyze-browser-left SelectionList > .selection-list--button-selected,
         #analyze-browser-left SelectionList > .selection-list--button-selected {
             color: #001ba3;
-            background: #f5edd5;
+            background: #f4efde;
         }
 
         #analyze-browser-left SelectionList > .selection-list--button-selected-highlighted {
@@ -508,7 +505,7 @@
 
         #analyze-browser-left SelectionList > .option-list--option {
             color: #001ba3;
-            background: #f5edd5;
+            background: #f4efde;
         }
 
         #analyze-browser-left SelectionList > .option-list--option-highlighted,
@@ -597,7 +594,7 @@
         }
 
         #interaction-input {
-            background: #f5edd5;
+            background: #f4efde;
             color: #001ba3;
             border: tall #0077b3;
         }
@@ -608,13 +605,13 @@
 
         _FileBrowserScreen {
             align: center middle;
-            background: #f5edd5;
+            background: #f4efde;
         }
 
         #file-browser-dialog {
             width: 80%;
             height: 80%;
-            background: #f5edd5;
+            background: #f4efde;
             color: #001ba3;
             border: thick #0077b3;
         }
@@ -633,6 +630,12 @@
             padding: 0 2;
             color: #58787e;
             margin-top: 1;
+        }
+
+        #file-browser-intro {
+            padding: 0 2;
+            margin-top: 1;
+            color: #58787e;
         }
 
         #file-browser-dirs {
@@ -661,6 +664,31 @@
             scrollbar-corner-color: #b9d9df;
         }
 
+        #file-browser-targets {
+            height: 1fr;
+            background: #b9d9df;
+            color: #001ba3;
+            border: tall #0077b3;
+            margin: 1 2;
+            scrollbar-background: #b9d9df;
+            scrollbar-background-hover: #c2c2c2;
+            scrollbar-background-active: #ebebeb;
+            scrollbar-color: #58787e;
+            scrollbar-color-hover: #0077b3;
+            scrollbar-color-active: #0077b3;
+            scrollbar-corner-color: #b9d9df;
+        }
+
+        #file-browser-targets > ListItem {
+            background: #b9d9df;
+            color: #001ba3;
+        }
+
+        #file-browser-targets > ListItem.--highlight {
+            background: #0077b3;
+            color: #fbfbee;
+        }
+
         #file-browser-actions {
             height: auto;
             padding: 0 2 1 2;
@@ -674,7 +702,7 @@
         #help-dialog {
             width: 60%;
             height: 60%;
-            background: #f5edd5;
+            background: #f4efde;
             color: #001ba3;
             border: thick #0077b3;
         }

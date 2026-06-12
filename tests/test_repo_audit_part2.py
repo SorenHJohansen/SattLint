@@ -18,8 +18,8 @@ def test_find_hidden_local_dependency_findings_flags_site_packages_path_injectio
     )
 
     with (
-        patch("sattlint.devtools.repo_audit.shutil.which", return_value="git"),
-        patch("sattlint.devtools.repo_audit.subprocess.run", return_value=completed),
+        patch("sattlint.devtools.audit.repo_audit.shutil.which", return_value="git"),
+        patch("sattlint.devtools.audit.repo_audit.subprocess.run", return_value=completed),
     ):
         files = {
             _path.relative_to(tmp_path).as_posix()

@@ -9,6 +9,7 @@ import argparse
 import logging
 import re
 import sys
+import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import lru_cache
@@ -164,7 +165,7 @@ class ConfigurationFileParser:
                 libraries=libraries,
             )
 
-        except Exception as e:  # noqa: BLE001
+        except (OSError, UnicodeError, ValueError, tomllib.TOMLDecodeError) as e:
             log.error(f"Error parsing configuration file {config_file}: {e}")
             return None
 
@@ -364,7 +365,7 @@ class SattLineConfigExtractor:
             # Remove .z extension from each dependency, preserve original case
             deps = [line.strip().replace(".z", "") for line in text.splitlines() if line.strip()]
             return deps
-        except Exception as e:  # noqa: BLE001
+        except OSError as e:
             log.error(f"Error reading {z_file}: {e}")
             return []
 
@@ -378,7 +379,7 @@ class SattLineConfigExtractor:
             text = read_text_with_fallback(q_file)
             match = self.name_pattern.search(text)
             return match.group(1) if match else "No SLC assigned"
-        except Exception as e:  # noqa: BLE001
+        except OSError as e:
             log.error(f"Error reading {q_file}: {e}")
             return "Error reading Q-File"
 
@@ -416,7 +417,7 @@ class SattLineConfigExtractor:
             units = sorted(units_set)
             return f"({len(units)}) " + ", ".join(units)
 
-        except Exception as e:  # noqa: BLE001
+        except OSError as e:
             log.error(f"Error reading {x_file}: {e}")
             return "Error reading X-File"
 
@@ -1169,7 +1170,7 @@ def main(argv: list[str] | None = None):
 
         print(f"✅ Configuration Excel file generated successfully: {output_file}")
 
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError) as e:
         log.error(f"Failed to generate Excel file: {e}", exc_info=True)
         print(f"❌ Error: {e}")
         return 1

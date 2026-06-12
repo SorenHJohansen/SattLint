@@ -191,7 +191,7 @@ def test_force_refresh_ast_bypasses_file_ast_cache(monkeypatch):
     assert result == ("bp", "graph")
 
 
-def test_refresh_analysis_caches_wrapper_passes_analysis_report_cache(monkeypatch):
+def test_refresh_analysis_caches_wrapper_passes_cache_manager(monkeypatch):
     cfg = deepcopy(app.DEFAULT_CONFIG)
     seen: dict[str, object] = {}
 
@@ -207,8 +207,8 @@ def test_refresh_analysis_caches_wrapper_passes_analysis_report_cache(monkeypatc
     result = app.refresh_analysis_caches(cfg)
 
     assert seen["force_refresh_ast_fn"] is app.force_refresh_ast
-    assert seen["analysis_report_cache_cls"] is app.AnalysisReportCache
     assert seen["get_cache_dir_fn"] is app.get_cache_dir
+    assert seen["get_cache_manager_fn"] is app.cache_module.get_cache_manager
     assert seen["emit_output_fn"] is app.emit_output
     assert result == ("bp", "graph")
 

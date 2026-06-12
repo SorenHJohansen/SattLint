@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import os as _os
-from typing import Any
 
 from . import config_io as _config_io_module
 from . import config_validation as _config_validation_module
+from .config_types import ConfigDict
 
 os = _os
 DEFAULT_CONFIG = _config_validation_module.DEFAULT_CONFIG
@@ -30,7 +30,7 @@ _normalize_documentation_rule_keys = normalize_documentation_rule_keys
 _validation_errors_by_key = validation_errors_by_key
 
 
-def self_check(cfg: dict[str, Any]) -> bool:
+def self_check(cfg: ConfigDict) -> bool:
     from ._config_self_check import self_check as _self_check  # noqa: PLC0415
 
     return _self_check(cfg)

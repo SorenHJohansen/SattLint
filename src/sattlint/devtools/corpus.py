@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
+from sattlint import cli_output
 from sattlint import engine as engine_module
 from sattlint.analyzers.sattline_semantics import SattLineSemanticsReport, analyze_sattline_semantics
 from sattlint.contracts import FindingCollection, FindingLocation, FindingRecord
@@ -30,6 +31,8 @@ from sattlint.devtools._corpus_artifacts import (
 from sattlint.path_sanitizer import sanitize_path_for_report
 from sattlint.repo_paths import repo_root_from
 
+from .artifact_registry import CORPUS_RESULTS_FILENAME, CORPUS_RESULTS_SCHEMA_KIND, CORPUS_RESULTS_SCHEMA_VERSION
+
 _write_json = write_json
 
 REPO_ROOT = repo_root_from(Path(__file__))
@@ -39,9 +42,6 @@ DEFAULT_CASES_DIRNAME = "corpus_cases"
 DEFAULT_FINDINGS_FILENAME = "findings.json"
 DEFAULT_STATUS_FILENAME = "status.json"
 DEFAULT_SUMMARY_FILENAME = "summary.json"
-CORPUS_RESULTS_FILENAME = "corpus_results.json"
-CORPUS_RESULTS_SCHEMA_KIND = "sattlint.corpus_results"
-CORPUS_RESULTS_SCHEMA_VERSION = 1
 _CASE_ID_SANITIZER = re.compile(r"[^A-Za-z0-9._-]+")
 
 type JsonScalar = str | int | float | bool | None
@@ -242,7 +242,7 @@ def execute_corpus_case(
             )
         else:
             raise ValueError(f"Unsupported corpus mode: {manifest.mode}")
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, RuntimeError, ValueError) as exc:
         execution_error = str(exc)
         artifacts = build_execution_error_artifacts(
             case_id=manifest.case_id,
@@ -389,6 +389,10 @@ def main(argv: list[str] | None = None) -> int:
         prog="sattlint-corpus-runner",
         description="Execute corpus manifests and emit corpus_results.json together with per-case artifacts.",
     )
+    cli_output.add_output_format_argument(
+        parser,
+        help_text="Output format for stdout summary.",
+    )
     parser.add_argument(
         "--output-dir",
         default=str(DEFAULT_OUTPUT_DIR),
@@ -406,6 +410,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Specific manifest path to execute. May be provided multiple times.",
     )
     args = parser.parse_args(argv)
+    output_format = cli_output.resolve_output_format(args)
 
     output_dir = Path(args.output_dir).resolve()
     manifest_dir = Path(args.manifest_dir).resolve() if args.manifest_dir else None
@@ -425,16 +430,19 @@ def main(argv: list[str] | None = None) -> int:
         _write_json(report_path, summary)
     except OSError as exc:
         output_error = exc
-    print(
-        format_cli_summary(
-            {
-                "case_count": summary["summary"]["case_count"],
-                "failed_count": summary["summary"]["failed_count"],
-                "findings_schema": summary.get("findings_schema"),
-                "corpus_results_report": sanitize_path_for_report(report_path, repo_root=REPO_ROOT)
-                or report_path.as_posix(),
-            }
-        )
+    status_report = {
+        "case_count": summary["summary"]["case_count"],
+        "failed_count": summary["summary"]["failed_count"],
+        "findings_schema": summary.get("findings_schema"),
+        "corpus_results_report": sanitize_path_for_report(report_path, repo_root=REPO_ROOT) or report_path.as_posix(),
+    }
+    if output_error is not None:
+        status_report["output_error"] = str(output_error)
+    cli_output.emit_text_or_json(
+        text=format_cli_summary(status_report),
+        json_payload=status_report,
+        output_format=output_format,
+        emit_text_fn=print,
     )
     if output_error is not None:
         print(f"corpus output error: {output_error}", file=sys.stderr, flush=True)
@@ -626,16 +634,19 @@ def _execute_workspace_case(
         _resolve_manifest_target_path(manifest_path, raw_path, repo_root) for raw_path in manifest.other_lib_dirs
     ]
 
-    loader = engine_module.SattLineProjectLoader(
-        program_dir=program_dir,
-        other_lib_dirs=other_lib_dirs,
-        abb_lib_dir=abb_lib_dir,
-        mode=_infer_code_mode(target_path),
-        scan_root_only=False,
-        debug=False,
+    _loader, root_bp, graph = engine_module.load_project_graph(
+        {
+            "program_dir": program_dir,
+            "other_lib_dirs": other_lib_dirs,
+            "ABB_lib_dir": abb_lib_dir,
+            "mode": _infer_code_mode(target_path),
+            "scan_root_only": False,
+            "debug": False,
+        },
+        target_path.stem,
+        use_file_ast_cache=True,
+        strict=False,
     )
-    graph = loader.resolve(target_path.stem, strict=False)
-    root_bp = graph.ast_by_name.get(target_path.stem)
     if root_bp is None:
         raise RuntimeError(
             f"Target {target_path.stem!r} was not parsed. "

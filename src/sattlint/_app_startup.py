@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Sequence
+import argparse
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -8,9 +9,11 @@ from typing import Any
 from sattline_parser.models.ast_model import BasePicture
 
 from . import _app_startup_docs_graphics
+from . import console as console_module
+from .cli_output import emit_text_or_json
+from .config_types import ConfigDict
 from .models.project_graph import ProjectGraph
 
-ConfigDict = dict[str, Any]
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
 
 
@@ -19,6 +22,16 @@ class InteractiveCliOverrides:
     config_path: Path
     debug: bool
     ui_mode: str | None = None
+
+
+def _build_interactive_override_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
+    parser.add_argument("--config", default=None)
+    parser.add_argument("--no-cache", action="store_true", dest="no_cache")
+    parser.add_argument("--quiet", action="store_true")
+    parser.add_argument("--debug", action="store_true")
+    parser.add_argument("--ui", default=None)
+    return parser
 
 
 annotate_graphics_entries_with_structure_paths = (
@@ -41,55 +54,16 @@ run_generate_documentation = _app_startup_docs_graphics.run_generate_documentati
 run_graphics_rules_validation = _app_startup_docs_graphics.run_graphics_rules_validation
 
 
-def run_cli(
-    argv: list[str],
-    *,
-    run_cli_owner_fn: Callable[..., int],
-    config_path: Path,
-    build_cli_parser_fn: Callable[[], Any],
-    run_syntax_check_command_fn: Callable[[str], int],
-    load_config_fn: Callable[[Path], tuple[ConfigDict, bool]],
-    apply_debug_fn: Callable[[ConfigDict], None],
-    run_validate_config_command_fn: Callable[..., int],
-    run_analyze_command_fn: Callable[..., int],
-    run_simulate_command_fn: Callable[..., int],
-    run_docgen_command_fn: Callable[..., int],
-    run_cache_prune_command_fn: Callable[..., int] | None = None,
-    run_telemetry_summary_command_fn: Callable[..., int],
-    run_format_icf_command_fn: Callable[..., int],
-    exit_success: int,
-    exit_usage_error: int,
-) -> int:
-    return run_cli_owner_fn(
-        argv,
-        config_path=config_path,
-        build_cli_parser_fn=build_cli_parser_fn,
-        run_syntax_check_command_fn=run_syntax_check_command_fn,
-        load_config_fn=load_config_fn,
-        apply_debug_fn=apply_debug_fn,
-        run_validate_config_command_fn=run_validate_config_command_fn,
-        run_analyze_command_fn=run_analyze_command_fn,
-        run_simulate_command_fn=run_simulate_command_fn,
-        run_docgen_command_fn=run_docgen_command_fn,
-        run_cache_prune_command_fn=run_cache_prune_command_fn,
-        run_telemetry_summary_command_fn=run_telemetry_summary_command_fn,
-        run_format_icf_command_fn=run_format_icf_command_fn,
-        exit_success=exit_success,
-        exit_usage_error=exit_usage_error,
-    )
-
-
 def resolve_interactive_cli_overrides(
     argv: list[str],
     *,
-    build_cli_parser_fn: Callable[[], Any] | None,
     default_config_path: Path,
 ) -> InteractiveCliOverrides | None:
-    if not argv or build_cli_parser_fn is None:
+    if not argv:
         return None
 
     try:
-        parser = build_cli_parser_fn()
+        parser = _build_interactive_override_parser()
         parsed_namespace, leftover = parser.parse_known_args(argv)
     except SystemExit:
         return None
@@ -165,19 +139,30 @@ def run_validate_config_command(
     *,
     config_path: Path,
     default_used: bool,
-    run_validate_config_command_fn: Callable[..., int],
     validate_config_fn: Callable[[ConfigDict], Any],
+    output_format: str = "text",
     exit_success: int,
     exit_usage_error: int,
 ) -> int:
-    return run_validate_config_command_fn(
-        cfg,
-        config_path=config_path,
-        default_used=default_used,
-        validate_config_fn=validate_config_fn,
-        exit_success=exit_success,
-        exit_usage_error=exit_usage_error,
-    )
+    validation = validate_config_fn(cfg)
+    if output_format == "json":
+        emit_text_or_json(
+            text="",
+            json_payload={
+                "config_path": str(config_path),
+                "default_used": default_used,
+                **validation.to_dict(),
+            },
+            output_format="json",
+            emit_text_fn=print,
+        )
+        return exit_success if validation.passed else exit_usage_error
+
+    if default_used:
+        console_module.print_output(f"Warning: default config loaded from {config_path}")
+    for error in validation.errors:
+        console_module.print_output(error.message)
+    return exit_success if validation.passed else exit_usage_error
 
 
 def run_analyze_command(
@@ -186,32 +171,31 @@ def run_analyze_command(
     selected_keys: list[str] | None,
     selected_issue_kinds: frozenset[str] | None = None,
     use_cache: bool,
+    output_format: str = "text",
     run_analyze_command_fn: Callable[..., int],
-    run_checks_owner_fn: Callable[..., None],
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]],
+    collect_run_checks_result_fn: Callable[..., Any],
     get_selectable_analyzers_fn: Callable[[], list[Any]],
     get_enabled_analyzers_fn: Callable[[], list[Any]],
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool],
     exit_success: int,
 ) -> int:
-    def _run_checks(
+    def _collect_result(
         local_cfg: ConfigDict,
-        local_selected_keys: list[str] | None,
-        local_use_cache: bool,
         *,
+        selected_keys: list[str] | None,
         selected_issue_kinds: frozenset[str] | None = None,
-    ) -> None:
+    ) -> Any:
         def _iter_nested_projects(nested_cfg: ConfigDict) -> Iterator[LoadedProject]:
-            return iter_loaded_projects_fn(nested_cfg, use_cache=local_use_cache)
+            return iter_loaded_projects_fn(nested_cfg, use_cache=use_cache)
 
-        run_checks_owner_fn(
-            local_cfg | {"use_cache": local_use_cache},
-            local_selected_keys,
+        return collect_run_checks_result_fn(
+            local_cfg | {"use_cache": use_cache},
+            selected_keys,
             selected_issue_kinds=selected_issue_kinds,
             iter_loaded_projects_fn=_iter_nested_projects,
-            get_enabled_analyzers_fn=get_selectable_analyzers_fn if local_selected_keys else get_enabled_analyzers_fn,
+            get_enabled_analyzers_fn=get_selectable_analyzers_fn if selected_keys else get_enabled_analyzers_fn,
             target_is_library_fn=target_is_library_fn,
-            pause_fn=None,
         )
 
     return run_analyze_command_fn(
@@ -219,7 +203,8 @@ def run_analyze_command(
         selected_keys=selected_keys,
         selected_issue_kinds=selected_issue_kinds,
         use_cache=use_cache,
-        run_checks_fn=_run_checks,
+        output_format=output_format,
+        collect_analyze_result_fn=_collect_result,
         exit_success=exit_success,
     )
 
@@ -281,167 +266,6 @@ def run_docgen_command(
     )
 
 
-def run_icf_formatter(
-    cfg: ConfigDict,
-    *,
-    run_format_icf_command_fn: Callable[[ConfigDict], int],
-    pause_fn: Callable[[], None],
-) -> None:
-    run_format_icf_command_fn(cfg)
-    pause_fn()
-
-
-def show_config(
-    cfg: ConfigDict,
-    *,
-    show_config_fn: Callable[..., None],
-    get_graphics_rules_path_fn: Callable[[], Path],
-    load_graphics_rules_fn: Callable[[Path | None], tuple[dict[str, Any], bool]],
-    graphics_rule_config_line_fn: Callable[[dict[str, Any]], str],
-) -> None:
-    show_config_fn(
-        cfg,
-        get_graphics_rules_path_fn=get_graphics_rules_path_fn,
-        load_graphics_rules_fn=load_graphics_rules_fn,
-        graphics_rule_config_line_fn=graphics_rule_config_line_fn,
-    )
-
-
-def print_menu(
-    title: str,
-    options: Sequence[Any],
-    *,
-    intro: str | None,
-    note: str | None,
-    print_menu_owner_fn: Callable[..., None],
-    print_fn: Callable[..., None],
-) -> None:
-    print_menu_owner_fn(title, options, print_fn=print_fn, intro=intro, note=note)
-
-
-def summarize_targets(
-    cfg: ConfigDict,
-    *,
-    summarize_targets_fn: Callable[..., str],
-    get_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
-) -> str:
-    return summarize_targets_fn(cfg, get_analyzed_targets_fn=get_analyzed_targets_fn)
-
-
-def show_help(
-    cfg: ConfigDict,
-    *,
-    show_help_fn: Callable[..., None],
-    clear_screen_fn: Callable[[], None],
-    get_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
-    summarize_targets_fn: Callable[[ConfigDict], str],
-    print_fn: Callable[..., None],
-    pause_fn: Callable[[], None],
-) -> None:
-    show_help_fn(
-        cfg,
-        clear_screen_fn=clear_screen_fn,
-        get_analyzed_targets_fn=get_analyzed_targets_fn,
-        summarize_targets_fn=summarize_targets_fn,
-        print_fn=print_fn,
-        pause_fn=pause_fn,
-    )
-
-
-def dump_menu(
-    cfg: ConfigDict,
-    *,
-    dump_menu_fn: Callable[..., None],
-    clear_screen_fn: Callable[[], None],
-    print_menu_fn: Callable[..., None],
-    menu_option_factory: Callable[[str, str, str], Any],
-    quit_app_fn: Callable[[], None],
-    confirm_fn: Callable[[str], bool],
-    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]],
-    target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
-    analyze_variables_fn: Callable[..., Any],
-) -> None:
-    dump_menu_fn(
-        cfg,
-        clear_screen_fn=clear_screen_fn,
-        print_menu_fn=print_menu_fn,
-        menu_option_factory=menu_option_factory,
-        quit_app_fn=quit_app_fn,
-        confirm_fn=confirm_fn,
-        iter_loaded_projects_fn=iter_loaded_projects_fn,
-        target_is_library_fn=target_is_library_fn,
-        analyze_variables_fn=analyze_variables_fn,
-    )
-
-
-def config_menu(
-    cfg: ConfigDict,
-    *,
-    config_menu_fn: Callable[..., bool],
-    config_path: Path,
-    clear_screen_fn: Callable[[], None],
-    show_config_fn: Callable[[ConfigDict], None],
-    print_menu_fn: Callable[..., None],
-    menu_option_factory: Callable[[str, str, str], Any],
-    prompt_fn: Callable[..., str],
-    pause_fn: Callable[[], None],
-    confirm_fn: Callable[[str], bool],
-    target_exists_fn: Callable[[str, ConfigDict], bool],
-    save_config_fn: Callable[[Path, ConfigDict], None],
-    apply_debug_fn: Callable[[ConfigDict], None],
-    graphics_rules_menu_fn: Callable[[ConfigDict], None],
-    quit_app_fn: Callable[[], None],
-) -> bool:
-    return config_menu_fn(
-        cfg,
-        config_path=config_path,
-        clear_screen_fn=clear_screen_fn,
-        show_config_fn=show_config_fn,
-        print_menu_fn=print_menu_fn,
-        menu_option_factory=menu_option_factory,
-        prompt_fn=prompt_fn,
-        pause_fn=pause_fn,
-        confirm_fn=confirm_fn,
-        target_exists_fn=target_exists_fn,
-        save_config_fn=save_config_fn,
-        apply_debug_fn=apply_debug_fn,
-        graphics_rules_menu_fn=graphics_rules_menu_fn,
-        quit_app_fn=quit_app_fn,
-    )
-
-
-def tools_menu(
-    cfg: ConfigDict,
-    *,
-    tools_menu_fn: Callable[..., None],
-    clear_screen_fn: Callable[[], None],
-    print_menu_fn: Callable[..., None],
-    menu_option_factory: Callable[[str, str, str], Any],
-    quit_app_fn: Callable[[], None],
-    self_check_fn: Callable[[ConfigDict], bool],
-    pause_fn: Callable[[], None],
-    require_targets_for_menu_action_fn: Callable[[ConfigDict, str], bool],
-    dump_menu_fn: Callable[[ConfigDict], None],
-    run_source_diff_report_fn: Callable[[ConfigDict], None],
-    confirm_fn: Callable[[str], bool],
-    force_refresh_ast_fn: Callable[[ConfigDict], Any],
-) -> None:
-    tools_menu_fn(
-        cfg,
-        clear_screen_fn=clear_screen_fn,
-        print_menu_fn=print_menu_fn,
-        menu_option_factory=menu_option_factory,
-        quit_app_fn=quit_app_fn,
-        self_check_fn=self_check_fn,
-        pause_fn=pause_fn,
-        require_targets_for_menu_action_fn=require_targets_for_menu_action_fn,
-        dump_menu_fn=dump_menu_fn,
-        run_source_diff_report_fn=run_source_diff_report_fn,
-        confirm_fn=confirm_fn,
-        force_refresh_ast_fn=force_refresh_ast_fn,
-    )
-
-
 def main(
     argv: list[str] | None,
     *,
@@ -479,7 +303,6 @@ def main(
     cli_args = [] if argv is None else argv
     interactive_cli_overrides = resolve_interactive_cli_overrides(
         cli_args,
-        build_cli_parser_fn=build_cli_parser_fn,
         default_config_path=config_path,
     )
     if cli_args and interactive_cli_overrides is None:

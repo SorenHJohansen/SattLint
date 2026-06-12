@@ -42,6 +42,23 @@ def _make_loader(
     monkeypatch.setattr(engine, "get_cache_dir", lambda: tmp_path)
 
     return engine.SattLineProjectLoader(
+        _loader_config(
+            tmp_path,
+            scan_root_only=scan_root_only,
+            debug=debug,
+            use_file_ast_cache=use_file_ast_cache,
+        )
+    )
+
+
+def _loader_config(
+    tmp_path: Path,
+    *,
+    scan_root_only: bool = False,
+    debug: bool = False,
+    use_file_ast_cache: bool = True,
+) -> engine.SattLineProjectLoaderConfig:
+    return engine.SattLineProjectLoaderConfig(
         program_dir=tmp_path,
         other_lib_dirs=[],
         abb_lib_dir=tmp_path,
@@ -75,25 +92,33 @@ def test_loader_reuses_shared_cache_instances_for_same_directory(monkeypatch, tm
     monkeypatch.setattr(engine, "SLTransformer", lambda: object())
     monkeypatch.setattr(engine, "get_cache_dir", lambda: tmp_path)
 
-    first_loader = engine.SattLineProjectLoader(
-        program_dir=tmp_path,
-        other_lib_dirs=[],
-        abb_lib_dir=tmp_path,
-        mode=engine.CodeMode.DRAFT,
-        scan_root_only=True,
-        debug=False,
-    )
-    second_loader = engine.SattLineProjectLoader(
-        program_dir=tmp_path,
-        other_lib_dirs=[],
-        abb_lib_dir=tmp_path,
-        mode=engine.CodeMode.DRAFT,
-        scan_root_only=True,
-        debug=False,
-    )
+    first_loader = engine.SattLineProjectLoader(_loader_config(tmp_path, scan_root_only=True))
+    second_loader = engine.SattLineProjectLoader(_loader_config(tmp_path, scan_root_only=True))
 
     assert first_loader._lookup_cache is second_loader._lookup_cache
     assert first_loader._ast_cache is second_loader._ast_cache
+
+
+def test_loader_uses_injected_cache_manager(tmp_path: Path) -> None:
+    lookup_cache = object()
+    ast_cache = object()
+    injected_manager = SimpleNamespace(
+        cache_dir=tmp_path / "injected-cache",
+        file_lookup_cache=lookup_cache,
+        file_ast_cache=ast_cache,
+    )
+
+    loader = engine.SattLineProjectLoader(
+        _loader_config(tmp_path),
+        dependencies=engine.SattLineProjectLoaderDependencies(
+            cache_manager=cast(Any, injected_manager),
+        ),
+    )
+
+    assert loader._cache_manager is injected_manager
+    assert loader._cache_dir == injected_manager.cache_dir
+    assert loader._lookup_cache is lookup_cache
+    assert loader._ast_cache is ast_cache
 
 
 def test_graphics_validation_to_syntax_result_merges_warnings_and_errors() -> None:
@@ -310,6 +335,32 @@ def test_validate_single_file_syntax_passes_official_file_flags_to_validation(mo
     assert captured["allow_unresolved_external_datatypes"] is True
 
 
+def test_validate_single_file_syntax_allows_unresolved_external_datatypes_with_deps_companion(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+    source_path = tmp_path / "Program.s"
+    source_path.write_text("placeholder", encoding="utf-8")
+    source_path.with_suffix(".l").write_text("ExternalLib\n", encoding="utf-8")
+
+    monkeypatch.setattr(engine, "_load_source_text", lambda _path: "source")
+    monkeypatch.setattr(engine, "find_disallowed_comments", lambda _src: [])
+    monkeypatch.setattr(engine, "parser_core_parse_source_text", lambda _src, **_kwargs: object())
+    monkeypatch.setattr(
+        engine,
+        "validate_transformed_basepicture",
+        lambda _bp, **kwargs: captured.update(kwargs),
+    )
+    monkeypatch.setattr(engine, "resolve_graphics_companion_path", lambda *_args, **_kwargs: None)
+
+    result = engine.validate_single_file_syntax(source_path)
+
+    assert result == engine.SyntaxValidationResult(file_path=source_path, ok=True, stage="ok")
+    assert captured["allow_old_state_assignment"] is False
+    assert captured["allow_unresolved_external_datatypes"] is True
+
+
 def test_validate_single_file_syntax_validates_graphics_companion_after_parser_warnings(monkeypatch) -> None:
     warnings: list[str] = []
 
@@ -384,14 +435,7 @@ def test_loader_strict_syntax_check_validates_root_before_reading_dependencies(m
     root_file.write_text(invalid_root, encoding="utf-8")
     root_file.with_suffix(".l").write_text("Dep\n", encoding="utf-8")
 
-    loader = engine.SattLineProjectLoader(
-        program_dir=tmp_path,
-        other_lib_dirs=[],
-        abb_lib_dir=tmp_path,
-        mode=engine.CodeMode.DRAFT,
-        scan_root_only=False,
-        debug=False,
-    )
+    loader = engine.SattLineProjectLoader(_loader_config(tmp_path))
 
     def fail_if_read(*_args, **_kwargs):
         raise AssertionError("dependency list should not be read before strict root validation")
@@ -428,14 +472,7 @@ def test_loader_rejects_circular_dependencies(monkeypatch, tmp_path) -> None:
     b_file.write_text(base_code.format("LibB", "299B"), encoding="utf-8")
     b_file.with_suffix(".l").write_text("LibA\n", encoding="utf-8")
 
-    loader = engine.SattLineProjectLoader(
-        program_dir=tmp_path,
-        other_lib_dirs=[],
-        abb_lib_dir=tmp_path,
-        mode=engine.CodeMode.DRAFT,
-        scan_root_only=False,
-        debug=False,
-    )
+    loader = engine.SattLineProjectLoader(_loader_config(tmp_path))
 
     # Should raise CircularDependencyError with formatted cycle path
     with pytest.raises(engine.CircularDependencyError, match=r"Circular dependency detected:.*->.*") as exc_info:
@@ -468,14 +505,7 @@ def test_loader_rejects_self_circular_dependency(monkeypatch, tmp_path) -> None:
     self_file.write_text(base_code, encoding="utf-8")
     self_file.with_suffix(".l").write_text("SelfRef\n", encoding="utf-8")
 
-    loader = engine.SattLineProjectLoader(
-        program_dir=tmp_path,
-        other_lib_dirs=[],
-        abb_lib_dir=tmp_path,
-        mode=engine.CodeMode.DRAFT,
-        scan_root_only=False,
-        debug=False,
-    )
+    loader = engine.SattLineProjectLoader(_loader_config(tmp_path))
 
     # Should raise CircularDependencyError for self-reference
     with pytest.raises(engine.CircularDependencyError, match=r"Circular dependency detected"):
@@ -498,14 +528,7 @@ def test_loader_records_expected_unavailable_dependency_with_reason(tmp_path) ->
     root_file.write_text(source_text, encoding="utf-8")
     root_file.with_suffix(".l").write_text("ControlLib\n", encoding="utf-8")
 
-    loader = engine.SattLineProjectLoader(
-        program_dir=tmp_path,
-        other_lib_dirs=[],
-        abb_lib_dir=tmp_path,
-        mode=engine.CodeMode.DRAFT,
-        scan_root_only=False,
-        debug=False,
-    )
+    loader = engine.SattLineProjectLoader(_loader_config(tmp_path))
 
     graph = loader.resolve("Root")
 
@@ -530,14 +553,7 @@ def test_loader_records_missing_dependency_with_requester_context(tmp_path) -> N
     root_file.write_text(source_text, encoding="utf-8")
     root_file.with_suffix(".l").write_text("UserLib\n", encoding="utf-8")
 
-    loader = engine.SattLineProjectLoader(
-        program_dir=tmp_path,
-        other_lib_dirs=[],
-        abb_lib_dir=tmp_path,
-        mode=engine.CodeMode.DRAFT,
-        scan_root_only=False,
-        debug=False,
-    )
+    loader = engine.SattLineProjectLoader(_loader_config(tmp_path))
 
     graph = loader.resolve("Root")
 
@@ -596,14 +612,7 @@ def test_loader_rejects_dependency_version_datecode_conflicts_in_strict_mode(tmp
     (tmp_path / "LibA.s").write_text(lib_a_source, encoding="utf-8")
     (tmp_path / "LibB.s").write_text(lib_b_source, encoding="utf-8")
 
-    loader = engine.SattLineProjectLoader(
-        program_dir=tmp_path,
-        other_lib_dirs=[],
-        abb_lib_dir=tmp_path,
-        mode=engine.CodeMode.DRAFT,
-        scan_root_only=False,
-        debug=False,
-    )
+    loader = engine.SattLineProjectLoader(_loader_config(tmp_path))
 
     with pytest.raises(engine.DependencyVersionCompatibilityError, match="SharedType"):
         loader.resolve("Root", strict=True)
@@ -626,14 +635,7 @@ def test_loader_rejects_unresolved_external_datatypes_in_strict_mode(tmp_path) -
     root_file = tmp_path / "Root.s"
     root_file.write_text(source_text, encoding="utf-8")
 
-    loader = engine.SattLineProjectLoader(
-        program_dir=tmp_path,
-        other_lib_dirs=[],
-        abb_lib_dir=tmp_path,
-        mode=engine.CodeMode.DRAFT,
-        scan_root_only=False,
-        debug=False,
-    )
+    loader = engine.SattLineProjectLoader(_loader_config(tmp_path))
 
     with pytest.raises(engine.StructuralValidationError, match="unknown datatype"):
         loader.resolve("Root", strict=True)
@@ -656,14 +658,7 @@ def test_loader_allows_unresolved_external_datatypes_in_non_strict_mode(tmp_path
     root_file = tmp_path / "Root.s"
     root_file.write_text(source_text, encoding="utf-8")
 
-    loader = engine.SattLineProjectLoader(
-        program_dir=tmp_path,
-        other_lib_dirs=[],
-        abb_lib_dir=tmp_path,
-        mode=engine.CodeMode.DRAFT,
-        scan_root_only=False,
-        debug=False,
-    )
+    loader = engine.SattLineProjectLoader(_loader_config(tmp_path))
 
     graph = loader.resolve("Root", strict=False)
 
@@ -838,7 +833,11 @@ def test_loader_visit_uses_cached_dependency_library_and_warns_on_non_strict_con
         "_find_code_with_context",
         lambda name, **_kwargs: code_path if name == "Root" else dep_code_path if name == "Dep" else None,
     )
-    monkeypatch.setattr(loader, "_load_or_parse", lambda path: basepicture if path == code_path else dep_basepicture)
+    monkeypatch.setattr(
+        loader,
+        "_load_or_parse",
+        lambda path, owner_name=None: basepicture if path == code_path else dep_basepicture,
+    )
     monkeypatch.setattr(
         loader,
         "_record_library_name",
@@ -882,7 +881,7 @@ def test_loader_visit_records_missing_when_transform_returns_none(
 
     monkeypatch.setattr(loader, "_find_deps_with_context", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(loader, "_find_code_with_context", lambda *_args, **_kwargs: tmp_path / "Root.s")
-    monkeypatch.setattr(loader, "_load_or_parse", lambda _path: None)
+    monkeypatch.setattr(loader, "_load_or_parse", lambda _path, owner_name=None: None)
 
     loader._visit("Root", graph, strict=False, requester_dir=tmp_path)
 
@@ -915,7 +914,7 @@ def test_loader_visit_records_validation_warning_before_non_strict_failure(
 
     monkeypatch.setattr(loader, "_find_deps_with_context", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(loader, "_find_code_with_context", lambda *_args, **_kwargs: tmp_path / "Root.s")
-    monkeypatch.setattr(loader, "_load_or_parse", lambda _path: basepicture)
+    monkeypatch.setattr(loader, "_load_or_parse", lambda _path, owner_name=None: basepicture)
     monkeypatch.setattr(loader, "_record_library_name", lambda *_args, **_kwargs: "rootlib")
     monkeypatch.setattr(engine, "_collect_dependency_version_conflicts", lambda *_args, **_kwargs: [])
 
@@ -962,7 +961,7 @@ def test_loader_visit_uses_dependency_context_validation_when_local_validation_m
 
     monkeypatch.setattr(loader, "_find_deps_with_context", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(loader, "_find_code_with_context", lambda *_args, **_kwargs: tmp_path / "Root.s")
-    monkeypatch.setattr(loader, "_load_or_parse", lambda _path: basepicture)
+    monkeypatch.setattr(loader, "_load_or_parse", lambda _path, owner_name=None: basepicture)
     monkeypatch.setattr(loader, "_record_library_name", lambda *_args, **_kwargs: "rootlib")
     monkeypatch.setattr(engine, "_collect_dependency_version_conflicts", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(

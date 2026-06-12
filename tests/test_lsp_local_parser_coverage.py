@@ -2,6 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
+import pytest
 from lark.exceptions import VisitError
 from lsprotocol.types import DiagnosticSeverity
 
@@ -346,3 +347,43 @@ def test_local_parser_analyze_covers_snapshot_exception_paths(monkeypatch, tmp_p
         include_comment_validation=False,
     )
     assert generic_result.syntax_diagnostics[0].message == "snapshot generic"
+
+
+def test_local_parser_fatal_exceptions_propagate(monkeypatch, tmp_path: Path):
+    adapter = FullDocumentParserAdapter()
+    fake_state = cast(
+        Any,
+        SimpleNamespace(
+            cleaned_text="clean",
+            base_picture=SimpleNamespace(localvariables=(), modulecode=None, moduletype_defs=(), submodules=()),
+        ),
+    )
+
+    monkeypatch.setattr(lsp_local_parser, "find_disallowed_comments", lambda text: [])
+
+    monkeypatch.setattr(
+        adapter,
+        "_parse_incrementally",
+        lambda *args, **kwargs: (_ for _ in ()).throw(MemoryError("parse fatal")),
+    )
+    with pytest.raises(MemoryError, match="parse fatal"):
+        adapter.analyze(
+            tmp_path / "Program" / "ParseFatal.s",
+            "x",
+            build_snapshot=False,
+            include_comment_validation=False,
+        )
+
+    monkeypatch.setattr(adapter, "_parse_incrementally", lambda *args, **kwargs: fake_state)
+    monkeypatch.setattr(
+        lsp_local_parser,
+        "build_source_snapshot_from_basepicture",
+        lambda *args, **kwargs: (_ for _ in ()).throw(MemoryError("snapshot fatal")),
+    )
+    with pytest.raises(MemoryError, match="snapshot fatal"):
+        adapter.analyze(
+            tmp_path / "Program" / "SnapshotFatal.s",
+            "x",
+            build_snapshot=True,
+            include_comment_validation=False,
+        )

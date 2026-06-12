@@ -5,11 +5,9 @@ from __future__ import annotations
 import difflib
 from pathlib import Path
 
-from sattlint.path_sanitizer import sanitize_path_for_report
+from sattlint.devtools._io import sanitize_repo_path
 
-
-def _diff_render_label(path: Path, *, workspace_root: Path) -> str:
-    return sanitize_path_for_report(path, repo_root=workspace_root) or path.as_posix()
+_diff_render_label = sanitize_repo_path
 
 
 def normalize_layout_text(source_text: str) -> str:

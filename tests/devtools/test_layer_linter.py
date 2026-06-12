@@ -1,6 +1,8 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false, reportPrivateUsage=false
 from __future__ import annotations
 
 import runpy
+import sys
 from pathlib import Path
 
 import pytest
@@ -216,7 +218,7 @@ def test_main_exits_zero_when_no_violations(monkeypatch, capsys):
     monkeypatch.setattr(layer_linter, "collect_architecture_violations", lambda _roots, **_kwargs: [])
 
     with pytest.raises(SystemExit) as exc_info:
-        layer_linter.main()
+        layer_linter.main([])
 
     assert exc_info.value.code == 0
     assert capsys.readouterr().out.strip() == "No architecture violations found."
@@ -227,7 +229,7 @@ def test_main_exits_one_and_prints_violations(monkeypatch, capsys):
     monkeypatch.setattr(layer_linter, "collect_architecture_violations", lambda _roots, **_kwargs: [violation])
 
     with pytest.raises(SystemExit) as exc_info:
-        layer_linter.main()
+        layer_linter.main([])
 
     output = capsys.readouterr().out
     assert exc_info.value.code == 1
@@ -244,6 +246,7 @@ def test_layer_linter_module_main_guard_executes(monkeypatch):
         return original_exists(self)
 
     monkeypatch.setattr(Path, "exists", _fake_exists)
+    monkeypatch.setattr(sys, "argv", ["layer_linter.py"])
 
     with pytest.raises(SystemExit) as exc_info:
         runpy.run_module("sattlint.devtools.layer_linter", run_name="__main__")

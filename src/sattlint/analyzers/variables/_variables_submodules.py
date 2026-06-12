@@ -19,10 +19,11 @@ from ...casefolding import is_anytype_name
 from ...grammar import constants as const
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ...resolution import decorate_segment
-from ...resolution.common import path_startswith_casefold, resolve_moduletype_def_strict, varname_base, varname_full
+from ...resolution.common import resolve_moduletype_def_strict, varname_base, varname_full
+from ...resolution.paths import path_startswith_casefold
 from ...resolution.scope import ScopeContext
 from ...types import VariableId
-from ..shared.variable_utils import external_mapping_usage
+from ..shared.variable_utils import external_mapping_usage, mapping_target_name
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer
@@ -32,10 +33,6 @@ def _maybe_update_status(self: object, detail: str) -> None:
     update_status = getattr(self, "_update_status", None)
     if callable(update_status):
         update_status(detail)
-
-
-def _mapping_target_name(mapping: ParameterMapping) -> str | None:
-    return varname_base(getattr(mapping, "target", None))
 
 
 def _mapping_source_full_ref(mapping: ParameterMapping) -> str | None:
@@ -120,7 +117,7 @@ def _walk_singlemodule_subtree(
     for mapping in child.parametermappings or []:
         full_source_name = _mapping_source_full_ref(mapping)
         source_name = varname_base(full_source_name) if full_source_name is not None else None
-        target_name = _mapping_target_name(mapping)
+        target_name = mapping_target_name(mapping)
         resolve_variable = getattr(parent_context, "resolve_variable", None)
 
         if full_source_name is None:
@@ -263,7 +260,7 @@ def _walk_moduletype_instance_subtree(  # noqa: PLR0915
         for mapping in child.parametermappings or []:
             full_source_name = _mapping_source_full_ref(mapping)
             source_name = varname_base(full_source_name) if full_source_name is not None else None
-            target_name = _mapping_target_name(mapping)
+            target_name = mapping_target_name(mapping)
             resolve_variable = getattr(parent_context, "resolve_variable", None)
 
             if full_source_name is None:
@@ -285,7 +282,7 @@ def _walk_moduletype_instance_subtree(  # noqa: PLR0915
 
     for mapping in child.parametermappings or []:
         full_source_name = _mapping_source_full_ref(mapping)
-        target_name = _mapping_target_name(mapping)
+        target_name = mapping_target_name(mapping)
         mapping_reads = reads
         mapping_writes = writes
         known_external_usage = external_mapping_usage(child.moduletype_name, target_name) if external else None

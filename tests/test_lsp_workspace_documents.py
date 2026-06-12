@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
+import pytest
 from lsprotocol.types import Position, Range
 
 from sattline_parser.models.ast_model import (
@@ -21,6 +22,7 @@ from sattlint.analyzers.framework import Issue
 from sattlint.core import diagnostics as core_diagnostics
 from sattlint.reporting.variables_report import IssueKind, VariableIssue
 from sattlint_lsp import _server_helpers as lsp_helpers
+from sattlint_lsp import _server_scan_helpers as scan_helpers
 from sattlint_lsp.server import (
     LspSettings,
     SattLineLanguageServer,
@@ -157,6 +159,30 @@ def test_publish_closed_document_diagnostics_drops_stale_cache_when_snapshot_loa
     assert published[0].uri.casefold() == path.as_uri().casefold()
     assert published[0].diagnostics == []
     assert path not in ls.published_workspace_diagnostics
+
+
+def test_collect_entry_workspace_diagnostics_converts_recoverable_snapshot_failures(tmp_path):
+    entry = (tmp_path / "Program" / "Main.s").resolve()
+    snapshot_store = SimpleNamespace(
+        get_bundle_for_entry=lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("workspace unavailable"))
+    )
+    ls = SimpleNamespace(snapshot_store=snapshot_store)
+
+    key, diagnostics_by_path = scan_helpers.collect_entry_workspace_diagnostics(ls, entry)
+
+    assert key == entry.as_posix().casefold()
+    assert diagnostics_by_path[entry][0].message.startswith("Workspace snapshot failed")
+
+
+def test_collect_entry_workspace_diagnostics_propagates_fatal_snapshot_failures(tmp_path):
+    entry = (tmp_path / "Program" / "Main.s").resolve()
+    snapshot_store = SimpleNamespace(
+        get_bundle_for_entry=lambda *_args, **_kwargs: (_ for _ in ()).throw(MemoryError("fatal snapshot"))
+    )
+    ls = SimpleNamespace(snapshot_store=snapshot_store)
+
+    with pytest.raises(MemoryError, match="fatal snapshot"):
+        scan_helpers.collect_entry_workspace_diagnostics(ls, entry)
 
 
 def test_semantic_diagnostics_for_path_reuses_bundle_cache(monkeypatch, tmp_path):
@@ -303,6 +329,9 @@ def test_core_diagnostics_helper_projection_edges_cover_missing_path_and_factory
     assert right == {}
     assert left is not right
     assert core_diagnostics._cf("MiXeD") == "mixed"
+    assert core_diagnostics._format_semantic_diagnostic_message(
+        cast(Any, SimpleNamespace(kind=IssueKind.UNKNOWN_PARAMETER_TARGET, role="moduleparameter"))
+    ).startswith("Unknown parameter mapping target: moduleparameter")
     assert core_diagnostics._format_semantic_diagnostic_message(
         cast(Any, SimpleNamespace(kind="custom", role=None))
     ) == ("SattLint issue")

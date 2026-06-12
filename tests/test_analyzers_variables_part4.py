@@ -1758,17 +1758,24 @@ def test_sample_fixture_contains_common_variable_quality_issues():
 
 
 def test_gfile_var_and_expr_reads_count_as_used_for_unused_analysis():
-    from sattlint.engine import CodeMode, SattLineProjectLoader, merge_project_basepicture  # noqa: PLC0415
+    from sattlint.engine import (  # noqa: PLC0415
+        CodeMode,
+        SattLineProjectLoader,
+        SattLineProjectLoaderConfig,
+        merge_project_basepicture,
+    )
 
     fixture = Path(__file__).parent / "fixtures" / "sample_sattline_files" / "TestGFileParse.s"
     loader = SattLineProjectLoader(
-        program_dir=fixture.parent,
-        other_lib_dirs=[],
-        abb_lib_dir=fixture.parent,
-        mode=CodeMode.DRAFT,
-        scan_root_only=True,
-        debug=False,
-        use_file_ast_cache=False,
+        SattLineProjectLoaderConfig(
+            program_dir=fixture.parent,
+            other_lib_dirs=[],
+            abb_lib_dir=fixture.parent,
+            mode=CodeMode.DRAFT,
+            scan_root_only=True,
+            debug=False,
+            use_file_ast_cache=False,
+        )
     )
 
     graph = loader.resolve(fixture.stem, strict=False)
@@ -1784,7 +1791,12 @@ def test_gfile_var_and_expr_reads_count_as_used_for_unused_analysis():
 
 
 def test_nested_gfile_bindings_count_as_used_end_to_end(tmp_path: Path):
-    from sattlint.engine import CodeMode, SattLineProjectLoader, merge_project_basepicture  # noqa: PLC0415
+    from sattlint.engine import (  # noqa: PLC0415
+        CodeMode,
+        SattLineProjectLoader,
+        SattLineProjectLoaderConfig,
+        merge_project_basepicture,
+    )
 
     source = """"SyntaxVersion"
 "OriginalFileDate"
@@ -1818,13 +1830,15 @@ ENDDEF (*BasePicture*);
     fixture.with_suffix(".g").write_text(graphics, encoding="utf-8")
 
     loader = SattLineProjectLoader(
-        program_dir=tmp_path,
-        other_lib_dirs=[],
-        abb_lib_dir=tmp_path,
-        mode=CodeMode.DRAFT,
-        scan_root_only=True,
-        debug=False,
-        use_file_ast_cache=False,
+        SattLineProjectLoaderConfig(
+            program_dir=tmp_path,
+            other_lib_dirs=[],
+            abb_lib_dir=tmp_path,
+            mode=CodeMode.DRAFT,
+            scan_root_only=True,
+            debug=False,
+            use_file_ast_cache=False,
+        )
     )
 
     graph = loader.resolve(fixture.stem, strict=False)
@@ -2425,8 +2439,11 @@ def test_string_mapping_summary_prefers_original_declaration_type_for_intermedia
 
     assert "Intermediate path mismatch only (1):" in summary
     assert "Declaration/final destination mismatch (0):" in summary
+    assert "Direct source/type show the value seen at the mismatching hop." in summary
     assert "OriginalValue" in summary
     assert "identstring" in summary
+    assert "Root.Relay :: RelayValue" in summary
+    assert "string" in summary
     assert "Root.Relay.Final" in summary
     assert "Root.TypeDef:RelayType" not in summary
 

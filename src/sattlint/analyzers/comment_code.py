@@ -56,7 +56,7 @@ def analyze_comment_code_files(
         files_scanned += 1
         try:
             text = _read_source_text(path)
-        except Exception as exc:  # noqa: BLE001
+        except (OSError, UnicodeError, ValueError) as exc:
             issues.append(
                 Issue(
                     kind="comment_code_read_error",

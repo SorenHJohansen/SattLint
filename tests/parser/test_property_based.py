@@ -8,13 +8,14 @@ from types import SimpleNamespace
 import pytest
 
 from sattline_parser.fuzz_harness import TimeoutError
-from sattlint.devtools import fuzzer, parser_properties, property_tests
+from sattlint.devtools import parser_properties, property_tests
 from sattlint.devtools.parser_properties import (
     assert_parser_deterministic,
     assert_valid_program_has_no_crash,
     generate_simple_module,
     generate_simple_program,
 )
+from sattlint.devtools.sandbox import fuzzer
 from sattlint.engine import validate_single_file_syntax
 
 REPO_ROOT = Path(__file__).resolve().parents[2]

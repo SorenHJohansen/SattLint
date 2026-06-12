@@ -3,6 +3,8 @@
 import json
 from typing import Any, cast
 
+from sattlint.models.project_graph import ProjectFailure
+
 from ._app_analysis_test_support import *
 from .helpers import AnalysisGraphStub, named_object
 
@@ -557,7 +559,7 @@ def test_iter_loaded_projects_skips_failed_targets(noop_screen, monkeypatch, cap
     cfg["analyzed_programs_and_libraries"] = ["Broken", "Working"]
     working_graph = AnalysisGraphStub()
 
-    def fake_load_project(_cfg, target_name=None, *, use_cache=True):
+    def fake_load_project(_cfg, target_name=None, *, use_cache=True, collect_stage_timings=False):
         if target_name == "Broken":
             raise app.TargetLoadError(
                 "Broken",
@@ -573,6 +575,17 @@ def test_iter_loaded_projects_skips_failed_targets(noop_screen, monkeypatch, cap
                     "transitive_lib: validation warning two",
                 ],
                 direct_dependencies=["dep_c", "dep_d"],
+                failures={
+                    "broken": ProjectFailure("Broken", "Broken parse/transform error: root failed", line=7, column=2),
+                    "dep_c": ProjectFailure(
+                        "dep_c", "dep_c parse/transform error: something bad happened", line=12, column=4, length=3
+                    ),
+                    "transitive_lib": ProjectFailure(
+                        "transitive_lib",
+                        "transitive_lib parse/transform error: nested failure",
+                        line=20,
+                    ),
+                },
             )
         return "bp-working", working_graph
 
@@ -589,10 +602,12 @@ def test_iter_loaded_projects_skips_failed_targets(noop_screen, monkeypatch, cap
     assert "Resolved targets (2):" in out
     assert "  - dep_a" in out
     assert "Root target validation errors (1):" in out
+    assert "  - Broken: root failed (line 7, column 2)" in out
     assert "Failed direct dependencies (2):" in out
-    assert "  - dep_c: something bad happened" in out
+    assert "  - dep_c: something bad happened (line 12, column 4, length 3)" in out
     assert "Direct dependency warnings (1):" in out
     assert "Transitive dependency failures (1):" in out
+    assert "  - transitive_lib: nested failure (line 20)" in out
     assert "Transitive dependency warnings (1):" in out
 
 
@@ -773,6 +788,16 @@ def test_source_paths_for_current_target_falls_back_to_header_name():
     result = app_analysis.source_paths_for_current_target(cast(Any, project_bp), cast(Any, graph))
 
     assert result == {Path("programs/TargetA.s")}
+
+
+def test_source_paths_for_current_target_prefers_graph_root_origin_path():
+    project_bp = named_object("TargetA")
+    graph = AnalysisGraphStub(source_files={Path("programs/TargetA.s")})
+    graph.record_root_origin("TargetA", source_path=Path("libs/TargetA.s"), library_name="Libs")
+
+    result = app_analysis.source_paths_for_current_target(cast(Any, project_bp), cast(Any, graph))
+
+    assert result == {Path("libs/TargetA.s")}
 
 
 def test_target_is_library_returns_false_without_matching_source_paths():

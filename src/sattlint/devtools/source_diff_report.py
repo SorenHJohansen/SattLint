@@ -11,6 +11,8 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
 
+from lark.exceptions import LarkError
+
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.api import read_text_with_fallback
 from sattline_parser.grammar.parser_decode import is_compressed, preprocess_sl_text
@@ -26,12 +28,13 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 from sattline_parser.utils.formatter import format_expr, format_seq_nodes
+from sattlint import cli_output
 from sattlint.devtools._diff_rendering import (
     build_unified_diff_lines,
     normalize_layout_text,
     summarize_unified_diff_lines,
 )
-from sattlint.path_sanitizer import sanitize_path_for_report
+from sattlint.devtools._io import emit_progress, sanitize_repo_path
 from sattlint.repo_paths import repo_root_from
 from sattlint.tracing import collect_ast_summary
 from sattlint.validation import validate_transformed_basepicture
@@ -41,12 +44,10 @@ DEFAULT_JSON_OUTPUT_FILENAME = "source_diff_report.json"
 DEFAULT_MARKDOWN_OUTPUT_FILENAME = "source_diff_report.md"
 
 
-def _emit_progress(message: str) -> None:
-    print(message, file=sys.stderr, flush=True)
+_emit_progress = emit_progress
 
 
-def _source_diff_repo_path(path: Path, *, workspace_root: Path) -> str:
-    return sanitize_path_for_report(path, repo_root=workspace_root) or path.as_posix()
+_source_diff_repo_path = sanitize_repo_path
 
 
 def _pair_name(draft_file: Path, official_file: Path) -> str:
@@ -1087,7 +1088,7 @@ def _parse_side_for_report(
             source_path=source_path,
             log_failures=False,
         )
-    except Exception as exc:  # noqa: BLE001
+    except (LarkError, RuntimeError, ValueError) as exc:
         errors.append(
             {
                 "side": side,
@@ -1101,7 +1102,7 @@ def _parse_side_for_report(
     validation_ok = True
     try:
         validate_transformed_basepicture(base_picture)
-    except Exception as exc:  # noqa: BLE001
+    except (RuntimeError, ValueError) as exc:
         validation_ok = False
         errors.append(
             {
@@ -1414,9 +1415,10 @@ def _write_report_artifacts(output_dir: Path, report: dict[str, Any]) -> tuple[P
     return json_path, markdown_path
 
 
-def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
+def build_cli_parser(*, prog: str = "sattlint-source-diff-report", add_help: bool = True) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="sattlint-source-diff-report",
+        prog=prog,
+        add_help=add_help,
         description="Build a review-friendly diff report between draft .s and official .x source pairs.",
     )
     parser.add_argument("--workspace-root", default=str(REPO_ROOT), help="Workspace root used for relative paths.")
@@ -1432,6 +1434,11 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         "--output-dir", default=None, help="Optional directory that receives JSON and Markdown reports."
     )
     parser.add_argument("--no-progress", action="store_true", help="Suppress progress messages on stderr.")
+    return parser
+
+
+def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
+    parser = build_cli_parser()
     return parser.parse_args(list(argv) if argv is not None else sys.argv[1:])
 
 
@@ -1455,7 +1462,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.format == "markdown":
         print(render_markdown(report))
     else:
-        print(json.dumps(report, indent=2, sort_keys=True))
+        print(cli_output.render_json_output(report))
 
     if output_error is not None:
         print(f"source diff output error: {output_error}", file=sys.stderr, flush=True)

@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from sattlint import cli_output
 from sattlint.devtools._ai_chat_findings import build_findings
 from sattlint.devtools._ai_chat_grounding import build_semantic_grounding_report
 from sattlint.devtools._ai_chat_metrics import (
@@ -22,9 +22,10 @@ from sattlint.devtools._ai_chat_transcripts import (
     load_transcript_corpus,
     resolve_transcripts_input,
 )
-from sattlint.devtools.pipeline_artifacts import write_json_artifact
+from sattlint.devtools.shared.pipeline_artifacts import write_json_artifact
+from sattlint.repo_paths import repo_root_from
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = repo_root_from(Path(__file__))
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "ai-chat"
 
 
@@ -148,17 +149,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         write_ai_chat_observability_artifacts(report, output_dir=output_dir)
     except OSError as exc:
-        print(json.dumps(output_summary, indent=2, sort_keys=True))
+        print(cli_output.render_json_output(output_summary))
         print(f"ai chat observability output error: {exc}", file=sys.stderr, flush=True)
         return 1
 
-    print(
-        json.dumps(
-            output_summary,
-            indent=2,
-            sort_keys=True,
-        )
-    )
+    print(cli_output.render_json_output(output_summary))
     return 0
 
 

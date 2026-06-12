@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from sattlint.devtools import structural_reports
+from sattlint.devtools.structural import structural_reports
 
 
 def _write(path, content: str) -> None:
@@ -636,7 +636,7 @@ def test_structural_reports_module_main_invokes_cli(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "argv", ["structural_reports", "--repo-root", str(tmp_path), "--json"])
 
     with pytest.raises(SystemExit) as exit_info:
-        runpy.run_module("sattlint.devtools.structural_reports", run_name="__main__")
+        runpy.run_module("sattlint.devtools.structural.structural_reports", run_name="__main__")
 
     assert exit_info.value.code in {0, 1}
 

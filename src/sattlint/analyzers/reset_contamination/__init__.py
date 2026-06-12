@@ -29,7 +29,7 @@ from sattline_parser.models.ast_model import (
 
 from ...grammar import constants as const
 from ...reporting.variables_report import IssueKind, VariableIssue
-from ...resolution.common import path_startswith_casefold
+from ...resolution.paths import path_startswith_casefold
 from ...types import VariableId
 from ..framework import AnalysisSharedArtifacts, BasePictureAnalyzer
 from ..shared.variable_utils import same_origin_file_stem

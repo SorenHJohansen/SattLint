@@ -32,6 +32,7 @@ from sattline_parser.utils.formatter import format_expr
 
 from .. import config as config_module
 from ..analyzers.framework import Issue
+from ..config_types import DocumentationConfig, DocumentationConfigOverride
 from .classification import (
     DocumentationClassification,
     DocumentedModule,
@@ -1358,7 +1359,7 @@ def generate_docx(
     root: BasePicture,
     out_path: str | pathlib.Path,
     *,
-    documentation_config: dict[str, t.Any] | None = None,
+    documentation_config: DocumentationConfig | DocumentationConfigOverride | dict[str, t.Any] | None = None,
     unavailable_libraries: set[str] | None = None,
     upgrade_issues: t.Sequence[Issue] | None = None,
 ) -> None:

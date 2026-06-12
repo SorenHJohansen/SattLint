@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from sattlint.devtools.artifact_readiness import ReadinessError
-from sattlint.devtools.repo_audit_runs import run_staged_repo_audit
+from sattlint.devtools.audit.repo_audit_runs import run_staged_repo_audit
 
 
 def _write_json(path: Path, payload: object) -> None:

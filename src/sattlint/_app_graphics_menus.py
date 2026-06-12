@@ -8,9 +8,9 @@ from typing import Any, Protocol, cast
 from sattline_parser.models.ast_model import BasePicture
 
 from .app_interaction import MenuInteraction, build_menu_interaction
+from .config_types import ConfigDict
 from .models.project_graph import ProjectGraph
 
-ConfigDict = dict[str, Any]
 GraphicsRule = dict[str, Any]
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
 LoadedProjectIterator = Callable[[ConfigDict], Sequence[LoadedProject] | Any]
@@ -107,7 +107,7 @@ def discover_graphics_rule_selector_options(
                 project_bp,
                 graph,
             )
-        except Exception:  # noqa: BLE001
+        except (ImportError, OSError, RuntimeError, ValueError):
             entries = []
 
         for entry in entries:
@@ -679,7 +679,7 @@ def prompt_graphics_rule_definition_with_config(  # noqa: PLR0915
 
 
 def graphics_rules_menu(  # noqa: PLR0915
-    cfg: dict[str, Any] | None,
+    cfg: ConfigDict | None,
     *,
     get_graphics_rules_path_fn: Callable[[], Path],
     load_graphics_rules_fn: Callable[..., tuple[dict[str, Any], bool]],

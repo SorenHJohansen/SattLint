@@ -9,9 +9,9 @@ from typing import Any, cast
 
 import pytest
 
-from sattlint.devtools import _pipeline_optional_reports_helpers as pipeline_optional_report_helpers
-from sattlint.devtools import _pipeline_parsing_helpers as pipeline_parsing_helpers
 from sattlint.devtools import coverage_reports, pipeline
+from sattlint.devtools.pipeline import _pipeline_optional_reports_helpers as pipeline_optional_report_helpers
+from sattlint.devtools.pipeline import _pipeline_parsing_helpers as pipeline_parsing_helpers
 
 
 def test_resolve_python_executable_preserves_venv_entrypoint(monkeypatch, tmp_path):

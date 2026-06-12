@@ -1,9 +1,9 @@
 import json
 from types import SimpleNamespace
 
-from sattlint.devtools import impact_analyzer
 from sattlint.devtools._semble_adapter import SembleMatch, SembleSearchResponse
-from sattlint.devtools.structural_reports import WorkspaceGraphInputs
+from sattlint.devtools.structural import impact_analyzer
+from sattlint.devtools.structural.structural_reports import WorkspaceGraphInputs
 
 
 def test_build_impact_analysis_selection_filters_targets_and_expands_entry_files(tmp_path):
@@ -238,7 +238,7 @@ def test_build_impact_analysis_selection_reports_unresolved_query_without_explic
 
 def test_main_writes_report_json(tmp_path, monkeypatch, capsys):
     expected_report = {
-        "generated_by": "sattlint.devtools.impact_analyzer",
+        "generated_by": "sattlint.devtools.structural.impact_analyzer",
         "report_kind": "impact-analysis-selection",
         "status": "ok",
         "workspace_root": ".",
@@ -277,7 +277,7 @@ def test_main_writes_report_json(tmp_path, monkeypatch, capsys):
 
 def test_main_returns_failure_when_output_report_write_fails(tmp_path, monkeypatch, capsys):
     expected_report = {
-        "generated_by": "sattlint.devtools.impact_analyzer",
+        "generated_by": "sattlint.devtools.structural.impact_analyzer",
         "report_kind": "impact-analysis-selection",
         "status": "ok",
         "workspace_root": ".",
@@ -322,7 +322,7 @@ def test_main_returns_error_code_for_invalid_selection(tmp_path, monkeypatch, ca
         impact_analyzer,
         "build_impact_analysis_selection",
         lambda *args, **kwargs: {
-            "generated_by": "sattlint.devtools.impact_analyzer",
+            "generated_by": "sattlint.devtools.structural.impact_analyzer",
             "report_kind": "impact-analysis-selection",
             "status": "error",
             "workspace_root": ".",
@@ -347,7 +347,7 @@ def test_main_returns_error_code_for_invalid_selection(tmp_path, monkeypatch, ca
 
 def test_main_reports_progress_on_stderr(tmp_path, monkeypatch, capsys):
     expected_report = {
-        "generated_by": "sattlint.devtools.impact_analyzer",
+        "generated_by": "sattlint.devtools.structural.impact_analyzer",
         "report_kind": "impact-analysis-selection",
         "status": "ok",
         "workspace_root": ".",

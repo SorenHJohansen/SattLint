@@ -7,8 +7,7 @@ from typing import Any
 
 from sattlint.contracts import FindingCollection, FindingRecord
 
-DIFFERENTIAL_SCHEMA_KIND = "sattlint.differential"
-DIFFERENTIAL_SCHEMA_VERSION = 1
+from .artifact_registry import DIFFERENTIAL_SCHEMA_KIND, DIFFERENTIAL_SCHEMA_VERSION
 
 
 def _empty_strings() -> list[str]:
