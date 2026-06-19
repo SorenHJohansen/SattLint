@@ -62,7 +62,7 @@ test = [
 
 dev = [
     "sattlint[test,lsp,tui]",
-    "ruff==0.15.13",    # Match pre-commit Ruff to avoid formatter drift
+    "ruff==0.15.18",    # Match pre-commit Ruff to avoid formatter drift
     "pyright>=1.1.380", # Type checking
     "build>=1.2.2",    # Build frontend for release validation
     "bandit>=1.8.0",   # Security analysis
