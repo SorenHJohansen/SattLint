@@ -485,7 +485,14 @@ def run_variable_analysis(  # noqa: PLR0915 - keeps per-target analysis orchestr
     requested_kinds = set(DEFAULT_VARIABLE_ANALYSIS_KINDS) | {IssueKind.SHADOWING} if kinds is None else set(kinds)
     cfg = cast(
         ConfigDict,
-        cfg | {"include_reverse_library_consumers": IssueKind.UNUSED_DATATYPE_FIELD in requested_kinds},
+        cfg
+        | {
+            "include_reverse_library_consumers": (
+                IssueKind.UNUSED_DATATYPE_FIELD in requested_kinds
+                or IssueKind.FIELD_READ_ONLY in requested_kinds
+                or IssueKind.FIELD_NEVER_READ in requested_kinds
+            )
+        },
     )
     report_cache = analysis_reporting_module.create_analysis_report_cache(
         cfg,

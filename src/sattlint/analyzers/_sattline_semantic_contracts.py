@@ -57,6 +57,10 @@ _DATAFLOW_SOURCE_ACCEPTANCE_TESTS = (
     "tests/analyzers/test_dataflow.py",
     "tests/analyzers/test_sattline_semantics.py",
 )
+_SAME_CYCLE_SOURCE_ACCEPTANCE_TESTS = (
+    "tests/analyzers/test_same_cycle.py",
+    "tests/analyzers/test_sattline_semantics.py",
+)
 _SIGNAL_LIFECYCLE_SOURCE_ACCEPTANCE_TESTS = (
     "tests/analyzers/test_signal_lifecycle.py",
     "tests/analyzers/test_sattline_semantics.py",
@@ -176,6 +180,16 @@ DATAFLOW_RULE_CONTRACT = SemanticRuleContract(
     suppression_modes=("baseline",),
     incremental_safe=False,
 )
+SAME_CYCLE_RULE_CONTRACT = SemanticRuleContract(
+    acceptance_tests=_merge_acceptance_tests(
+        _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
+        _SAME_CYCLE_SOURCE_ACCEPTANCE_TESTS,
+    ),
+    corpus_cases=_WORKSPACE_CORPUS_CASES,
+    mutation_applicability="required",
+    suppression_modes=("baseline",),
+    incremental_safe=False,
+)
 SIGNAL_LIFECYCLE_RULE_CONTRACT = SemanticRuleContract(
     acceptance_tests=_merge_acceptance_tests(
         _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
@@ -257,6 +271,7 @@ __all__ = [
     "LOOP_STABILITY_RULE_CONTRACT",
     "NUMERIC_CONSTRAINTS_RULE_CONTRACT",
     "SAFETY_RULE_CONTRACT",
+    "SAME_CYCLE_RULE_CONTRACT",
     "SFC_RULE_CONTRACT",
     "SHADOWING_RULE_CONTRACT",
     "SIGNAL_LIFECYCLE_RULE_CONTRACT",

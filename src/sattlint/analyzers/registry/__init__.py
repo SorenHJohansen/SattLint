@@ -31,6 +31,7 @@ from ..powerup import analyze_powerup
 from ..resource_usage import analyze_resource_usage
 from ..rule_profiles import get_default_rule_profile_report
 from ..safety_paths import analyze_safety_paths
+from ..same_cycle import analyze_same_cycle
 from ..sattline_semantics import (
     SemanticRule,
     SemanticRuleGroup,
@@ -76,6 +77,7 @@ LEGACY_ANALYZER_KEY_ALIASES: dict[str, str] = {
     "numeric_constraints": "numeric-constraints",
     "resource_usage": "resource-usage",
     "scan_concurrency": "scan-concurrency",
+    "same_cycle": "same-cycle",
     "signal_lifecycle": "signal-lifecycle",
     "state_inference": "state-inference",
 }
@@ -87,7 +89,7 @@ _RULE_ANALYZER_ALIASES: dict[str, tuple[str, ...]] = {
     "semantic.string-mapping-mismatch": ("interface-contracts",),
     "semantic.missing-parameter-initial-value": ("powerup",),
     "semantic.unsafe-default-true": ("powerup",),
-    "semantic.parallel-write-race": ("scan-concurrency",),
+    "semantic.parallel-write-race": ("scan-concurrency", "same-cycle"),
     "semantic.scan-cycle-stale-read": ("timing",),
     "semantic.scan-cycle-implicit-new": ("timing",),
     "semantic.scan-cycle-temporal-misuse": ("timing",),
@@ -114,6 +116,7 @@ _REGISTRY_MONKEYPATCH_SURFACE = (
     analyze_powerup,
     analyze_resource_usage,
     analyze_safety_paths,
+    analyze_same_cycle,
     analyze_scan_concurrency,
     analyze_sattline_semantics,
     analyze_scan_loop_resource_usage,

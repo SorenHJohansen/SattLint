@@ -122,6 +122,7 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():  # 
     timing = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "timing")
     powerup = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "powerup")
     scan_concurrency = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "scan-concurrency")
+    same_cycle = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "same-cycle")
     interface_contracts = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "interface-contracts")
 
     duplicate_alarm_tag = next(rule for rule in report["rules"] if rule["id"] == "semantic.duplicate-alarm-tag")
@@ -129,6 +130,9 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():  # 
     dead_overwrite = next(rule for rule in report["rules"] if rule["id"] == "semantic.dead-overwrite")
     scan_cycle_stale_read = next(rule for rule in report["rules"] if rule["id"] == "semantic.scan-cycle-stale-read")
     parallel_write_race = next(rule for rule in report["rules"] if rule["id"] == "semantic.parallel-write-race")
+    same_cycle_shared_access = next(
+        rule for rule in report["rules"] if rule["id"] == "semantic.same-cycle-shared-access"
+    )
     cross_module_contract_mismatch = next(
         rule for rule in report["rules"] if rule["id"] == "semantic.cross-module-contract-mismatch"
     )
@@ -170,6 +174,12 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():  # 
     assert {"semantic.missing-parameter-initial-value", "semantic.unsafe-default-true"} <= set(powerup["rule_ids"])
     assert scan_concurrency["cli_exposed"] is False
     assert scan_concurrency["rule_ids"] == ["semantic.parallel-write-race"]
+    assert same_cycle["lsp_exposed"] is True
+    assert {
+        "semantic.parallel-read-write-hazard",
+        "semantic.parallel-write-race",
+        "semantic.same-cycle-shared-access",
+    } <= set(same_cycle["rule_ids"])
     assert interface_contracts["cli_exposed"] is False
     assert {
         "semantic.unknown-parameter-target",
@@ -218,8 +228,13 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():  # 
     assert "timing" in scan_cycle_stale_read["analyzers"]
     assert "timing.summary" in scan_cycle_stale_read["outputs"]
     assert parallel_write_race["source"] == "sfc"
+    assert "same-cycle" in parallel_write_race["analyzers"]
     assert "scan-concurrency" in parallel_write_race["analyzers"]
     assert "scan-concurrency.summary" in parallel_write_race["outputs"]
+    assert "same-cycle.summary" in parallel_write_race["outputs"]
+    assert same_cycle_shared_access["source"] == "same-cycle"
+    assert "same-cycle" in same_cycle_shared_access["analyzers"]
+    assert "same-cycle.summary" in same_cycle_shared_access["outputs"]
     assert cross_module_contract_mismatch["source"] == "variables"
     assert "interface-contracts" in cross_module_contract_mismatch["analyzers"]
     assert "interface-contracts.summary" in cross_module_contract_mismatch["outputs"]

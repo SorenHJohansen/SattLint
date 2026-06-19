@@ -6,7 +6,7 @@ from typing import Any
 from sattline_parser.models.ast_model import BasePicture
 
 from .framework import Issue, empty_issues, format_report_header
-from .sfc import analyze_sfc, get_configured_mutually_exclusive_step_sets, get_configured_step_contracts
+from .same_cycle import analyze_same_cycle
 
 _SCAN_CONCURRENCY_ISSUE_KINDS = frozenset({"sfc_parallel_write_race"})
 
@@ -36,12 +36,8 @@ def analyze_scan_concurrency(
     base_picture: BasePicture,
     config: dict[str, Any] | None = None,
 ) -> ScanConcurrencyReport:
-    report = analyze_sfc(
-        base_picture,
-        mutually_exclusive_steps=get_configured_mutually_exclusive_step_sets(config),
-        step_contracts=get_configured_step_contracts(config),
-        selected_issue_kinds=_SCAN_CONCURRENCY_ISSUE_KINDS,
-    )
+    del config
+    report = analyze_same_cycle(base_picture, selected_issue_kinds=_SCAN_CONCURRENCY_ISSUE_KINDS)
     return ScanConcurrencyReport(
         name=base_picture.header.name,
         issues=[issue for issue in report.issues if issue.kind in _SCAN_CONCURRENCY_ISSUE_KINDS],

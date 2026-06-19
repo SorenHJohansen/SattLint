@@ -25,6 +25,7 @@ from .graphics_validation import (
     is_unimplemented_picture_display_asset_path,
     unimplemented_picture_display_asset_message,
 )
+from .string_inference import ExactStringInferenceEngine
 
 if TYPE_CHECKING:
     from .models.project_graph import ProjectGraph
@@ -64,6 +65,11 @@ class PictureDisplayPathDiagnostic:
 def format_picture_display_path_diagnostic(diagnostic: PictureDisplayPathDiagnostic) -> str:
     module_path = ".".join(diagnostic.occurrence.declaring_module_path) or diagnostic.occurrence.program_name
     detail = diagnostic.resolution.detail or diagnostic.resolution.failure_reason or "unknown failure"
+    if diagnostic.path_row.raw_text != diagnostic.resolution.path_text:
+        return (
+            f"PictureDisplay in module {module_path!r} path variable {diagnostic.path_row.raw_text!r} "
+            f"candidate {diagnostic.resolution.path_text!r} could not be resolved: {detail}"
+        )
     return (
         f"PictureDisplay in module {module_path!r} path {diagnostic.path_row.raw_text!r} "
         f"could not be resolved: {detail}"
@@ -102,35 +108,57 @@ def diagnose_picture_display_paths(
 ) -> tuple[PictureDisplayPathDiagnostic, ...]:
     diagnostics: list[PictureDisplayPathDiagnostic] = []
     runtime_trees: dict[str, RuntimeTree] = {}
+    string_engine: ExactStringInferenceEngine | None = None
     for occurrence in occurrences:
+        resolution_module_path = occurrence.resolution_module_path or occurrence.declaring_module_path
+        resolution_parent_step_adjustment_value = occurrence.resolution_parent_step_adjustment
+        resolution_parent_step_adjustment = (
+            resolution_parent_step_adjustment_value
+            if isinstance(resolution_parent_step_adjustment_value, int)
+            else occurrence.parent_step_adjustment
+        )
         for path_row in getattr(occurrence.record, "path_rows", ()) or ():
-            if path_row.kind != "literal":
-                continue
-            resolution_module_path = occurrence.resolution_module_path or occurrence.declaring_module_path
-            resolution_parent_step_adjustment_value = occurrence.resolution_parent_step_adjustment
-            resolution_parent_step_adjustment = (
-                resolution_parent_step_adjustment_value
-                if isinstance(resolution_parent_step_adjustment_value, int)
-                else occurrence.parent_step_adjustment
-            )
-            resolution = resolve_picture_display_path(
-                path_row.raw_text,
-                base_picture=base_picture,
-                declaring_module_path=resolution_module_path,
-                graph=graph,
-                parent_step_adjustment=resolution_parent_step_adjustment,
-                _runtime_trees=runtime_trees,
-            )
-            if resolution.ok:
-                continue
-            diagnostics.append(
-                PictureDisplayPathDiagnostic(
-                    occurrence=occurrence,
-                    path_row=path_row,
-                    resolution=resolution,
+            if path_row.kind == "literal":
+                candidate_paths = (path_row.raw_text,)
+            else:
+                if string_engine is None:
+                    string_engine = ExactStringInferenceEngine(base_picture, graph=graph)
+                candidate_paths = _dynamic_path_candidates(
+                    path_row,
+                    declaring_module_path=resolution_module_path,
+                    string_engine=string_engine,
                 )
-            )
+            if not candidate_paths:
+                continue
+            for candidate_path in candidate_paths:
+                resolution = resolve_picture_display_path(
+                    candidate_path,
+                    base_picture=base_picture,
+                    declaring_module_path=resolution_module_path,
+                    graph=graph,
+                    parent_step_adjustment=resolution_parent_step_adjustment,
+                    _runtime_trees=runtime_trees,
+                )
+                if resolution.ok:
+                    continue
+                diagnostics.append(
+                    PictureDisplayPathDiagnostic(
+                        occurrence=occurrence,
+                        path_row=path_row,
+                        resolution=resolution,
+                    )
+                )
     return tuple(diagnostics)
+
+
+def _dynamic_path_candidates(
+    path_row: PictureDisplayPathRow,
+    *,
+    declaring_module_path: tuple[str, ...],
+    string_engine: ExactStringInferenceEngine,
+) -> tuple[str, ...]:
+    result = string_engine.infer(path_row.raw_text, module_path=declaring_module_path)
+    return result.texts
 
 
 def resolve_picture_display_path(

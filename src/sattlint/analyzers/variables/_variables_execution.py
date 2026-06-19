@@ -30,6 +30,7 @@ from ._variables_picture_display_support import (
     record_graphics_binding_occurrences,
     record_picture_display_variable_occurrences,
 )
+from ._variables_string_overflow import collect_string_operation_overflow_issues
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer
@@ -70,7 +71,9 @@ _TYPEDEF_SCAN_ISSUE_KINDS: frozenset[IssueKind] = _USAGE_VARIABLE_ISSUE_KINDS | 
 _USAGE_DERIVED_ISSUE_KINDS: frozenset[IssueKind] = _USAGE_VARIABLE_ISSUE_KINDS | frozenset(
     {
         IssueKind.UNUSED_DATATYPE_FIELD,
+        IssueKind.FIELD_READ_ONLY,
         IssueKind.NAMING_ROLE_MISMATCH,
+        IssueKind.FIELD_NEVER_READ,
         IssueKind.GLOBAL_SCOPE_MINIMIZATION,
         IssueKind.HIDDEN_GLOBAL_COUPLING,
         IssueKind.HIGH_FAN_IN_OUT,
@@ -82,6 +85,7 @@ _POST_TRAVERSAL_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
         IssueKind.LAYOUT_OVERLAP,
         IssueKind.RESET_CONTAMINATION,
         IssueKind.IMPLICIT_LATCH,
+        IssueKind.STRING_MAPPING_MISMATCH,
         IssueKind.WRITE_WITHOUT_EFFECT,
     }
 )
@@ -277,6 +281,9 @@ def _analyze_root_scope(self: VariablesAnalyzer) -> ScopeContext:
 
 
 def _run_post_traversal_analyses(self: VariablesAnalyzer) -> None:
+    if _should_collect_issue_kind(self, IssueKind.STRING_MAPPING_MISMATCH):
+        collect_string_operation_overflow_issues(self)
+
     if _should_collect_issue_kind(self, IssueKind.DATATYPE_DUPLICATION):
         self._detect_datatype_duplications()
 
@@ -589,7 +596,16 @@ def run(  # noqa: PLR0915
     should_collect_basepicture_issues = _should_collect_any_issue_kinds(self, _USAGE_VARIABLE_ISSUE_KINDS)
     should_collect_typedef_issues = _should_collect_any_issue_kinds(self, _TYPEDEF_SCAN_ISSUE_KINDS)
     should_finalize_issues = _should_collect_any_issue_kinds(self, _FINAL_SYNTHESIS_ISSUE_KINDS)
-    should_collect_datatype_field_issues = _should_collect_issue_kind(self, IssueKind.UNUSED_DATATYPE_FIELD)
+    should_collect_datatype_field_issues = _should_collect_any_issue_kinds(
+        self,
+        frozenset(
+            {
+                IssueKind.UNUSED_DATATYPE_FIELD,
+                IssueKind.FIELD_READ_ONLY,
+                IssueKind.FIELD_NEVER_READ,
+            }
+        ),
+    )
 
     _maybe_update_status(self, "building root scope")
     _run_timed_phase(self, "root-traversal", self._analyze_root_scope)
@@ -621,7 +637,12 @@ def run(  # noqa: PLR0915
         _maybe_update_status(self, "finalizing findings")
         _run_timed_phase(self, "final-issue-synthesis", _finalize_issues)
     if should_collect_datatype_field_issues:
-        _run_timed_phase(self, "datatype-field-scan", self._add_unused_datatype_field_issues)
+
+        def _collect_datatype_field_issues() -> None:
+            self._add_unused_datatype_field_issues()
+            self._add_field_usage_asymmetry_issues()
+
+        _run_timed_phase(self, "datatype-field-scan", _collect_datatype_field_issues)
     if not should_finalize_issues:
         _maybe_update_status(self, "finalizing findings")
     issue_counts = dict(sorted(Counter(issue.kind.value for issue in self._issues).items()))

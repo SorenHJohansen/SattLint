@@ -31,6 +31,8 @@ VARIABLE_ANALYSES: VariableAnalysisMap = {
     "23": ("Overlapping layout elements", {IssueKind.LAYOUT_OVERLAP}),
     "24": ("Naming-to-behavior mismatches", {IssueKind.NAMING_ROLE_MISMATCH}),
     "25": ("Name collisions", {IssueKind.NAME_COLLISION}),
+    "26": ("Read-only fields", {IssueKind.FIELD_READ_ONLY}),
+    "27": ("Written but never read fields", {IssueKind.FIELD_NEVER_READ}),
 }
 
 HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = (
@@ -49,6 +51,8 @@ HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = (
     "14",
     "23",
     "25",
+    "26",
+    "27",
 )
 
 LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = (

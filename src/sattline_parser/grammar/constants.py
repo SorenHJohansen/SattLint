@@ -218,10 +218,10 @@ GRAMMAR_REGEX_NAME = (
     r"/'[^']{1,20}'|"
     r"(?!"
     r"(?:IF|THEN|ELSE|ELSIF|ENDIF|AND|OR|NOT|True|False)"
-    r"(?![\p{L}\p{Nl}\p{M}\p{Nd}_'])"
+    r"(?![\p{L}\p{Nl}\p{M}\p{Nd}_'\uFFFD])"
     r")"
-    r"[\p{L}\p{Nl}_][\p{L}\p{Nl}\p{M}\p{Nd}_']{0,19}"
-    r"(?![\p{L}\p{Nl}\p{M}\p{Nd}_'])/"
+    r"[\p{L}\p{Nl}_\uFFFD][\p{L}\p{Nl}\p{M}\p{Nd}_'\uFFFD]{0,19}"
+    r"(?![\p{L}\p{Nl}\p{M}\p{Nd}_'\uFFFD])/"
 )
 GRAMMAR_REGEX_STRING_CRLF = r"/\"([^\"\n]|\"\")*\n/"
 

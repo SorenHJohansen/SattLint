@@ -174,6 +174,28 @@ ENDDEF (*BasePicture*);
     assert bp.localvariables[0].name == identifier
 
 
+def test_parser_core_accepts_replacement_character_in_identifier():
+    identifier = "UdluftDr\ufffdnTime"
+    code = f"""
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    {identifier}: integer := 0;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        {identifier} = {identifier} + 1;
+ENDDEF (*BasePicture*);
+"""
+
+    bp = parser_core_parse_source_text(code)
+
+    assert bp.localvariables[0].name == identifier
+
+
 def test_parser_core_sets_sequence_control_and_timer_flags():
     code = """
 "SyntaxVersion"

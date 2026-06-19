@@ -69,7 +69,7 @@ class PictureDisplayPathRow:
     record_index: int
     index_token: str
     index_value: int | None
-    kind: Literal["literal", "variable"]
+    kind: Literal["literal", "variable", "variable_invalid"]
     raw_text: str
     span: SourceSpan
 
@@ -294,6 +294,16 @@ def _extract_literal_path(row_text: str) -> str | None:
     return payload or None
 
 
+def _split_nested_picture_display_payload(payload: str) -> tuple[str | None, str]:
+    nested_parts = payload.split(None, 1)
+    if len(nested_parts) != 2:
+        return None, payload
+    nested_index_token, nested_payload = nested_parts
+    if not nested_index_token.lstrip("+-").isdigit():
+        return None, payload
+    return nested_index_token, nested_payload.strip()
+
+
 def _parse_picture_display_row(
     row_text: str,
     *,
@@ -314,20 +324,32 @@ def _parse_picture_display_row(
     if not payload:
         return None
 
-    binding_match = _BINDING_LINE_RE.match(payload)
+    binding_payload = payload
+    nested_index_token: str | None = None
+    binding_match = _BINDING_LINE_RE.match(binding_payload)
+    if binding_match is None:
+        nested_index_token, binding_payload = _split_nested_picture_display_payload(payload)
+        binding_match = _BINDING_LINE_RE.match(binding_payload)
     if binding_match is not None:
         binding_meta = binding_match.group(2).casefold()
-        if binding_meta not in {"true", "false"} and not binding_meta.lstrip("+-").isdigit():
+        if binding_meta == "invalid":
+            if nested_index_token is None:
+                return None
+            row_kind: Literal["variable", "variable_invalid"] = "variable_invalid"
+        elif binding_meta not in {"true", "false"} and not binding_meta.lstrip("+-").isdigit():
             return None
-        binding, _binding_messages = _parse_graphics_binding_match(payload, line=line, match=binding_match)
+        else:
+            row_kind = "variable"
+        binding, _binding_messages = _parse_graphics_binding_match(binding_payload, line=line, match=binding_match)
         if binding is None or binding.kind != "var":
             return None
-        span = binding.span or SourceSpan(line=line, column=1)
+        column = row_text.find(binding.raw_text)
+        span = SourceSpan(line=line, column=(column + 1) if column >= 0 else 1)
         return PictureDisplayPathRow(
             record_index=record_index,
             index_token=index_token,
             index_value=index_value,
-            kind="variable",
+            kind=row_kind,
             raw_text=binding.raw_text,
             span=span,
         )

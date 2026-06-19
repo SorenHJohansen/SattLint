@@ -142,6 +142,59 @@ def test_sattline_semantics_includes_read_before_write_rule():
     assert any(issue.rule.id == "semantic.read-before-write" for issue in report.issues)
 
 
+def test_sattline_semantics_includes_same_cycle_shared_access_rule() -> None:
+    reader = SingleModule(
+        header=_hdr("Reader"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
+        submodules=[],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="ReadEq",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[(const.KEY_ASSIGN, _varref("Output"), _varref("SharedValue"))],
+                )
+            ],
+            sequences=[],
+        ),
+        parametermappings=[],
+    )
+    writer = SingleModule(
+        header=_hdr("Writer"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="WriteEq",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[(const.KEY_ASSIGN, _varref("SharedValue"), 0)],
+                )
+            ],
+            sequences=[],
+        ),
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[Variable(name="SharedValue", datatype=Simple_DataType.INTEGER)],
+        submodules=[reader, writer],
+        modulecode=ModuleCode(equations=[], sequences=[]),
+    )
+
+    report = analyze_sattline_semantics(bp)
+
+    issues = [issue for issue in report.issues if issue.rule.id == "semantic.same-cycle-shared-access"]
+    assert len(issues) == 1
+    assert issues[0].data["symbol"] == "Root.SharedValue"
+
+
 def test_sattline_semantics_includes_cross_module_contract_mismatch_rule():
     typedef = ModuleTypeDef(
         name="ChildType",

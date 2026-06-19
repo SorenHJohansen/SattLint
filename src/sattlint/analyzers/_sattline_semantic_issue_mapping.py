@@ -40,12 +40,18 @@ def describe_variable_issue(issue: VariableIssue) -> str:
         datatype_name = issue.datatype_name or "<unknown datatype>"
         field_path = issue.field_path or "<unknown field>"
         return f"Datatype field {datatype_name}.{field_path} is never used."
+    if issue.kind is IssueKind.FIELD_READ_ONLY and variable_name is not None:
+        field_path = issue.field_path or "<unknown field>"
+        return f"Field {variable_name!r}.{field_path} is read but never written."
     if issue.kind is IssueKind.READ_ONLY_NON_CONST and variable_name is not None:
         return f"Variable {variable_name!r} is read but never written, yet it is not CONST."
     if issue.kind is IssueKind.UI_ONLY and variable_name is not None:
         return f"Variable {variable_name!r} is only read through graphics or interact UI wiring."
     if issue.kind is IssueKind.PROCEDURE_STATUS and variable_name is not None:
         return issue.role or f"Procedure status output {variable_name!r} is not handled in control logic."
+    if issue.kind is IssueKind.FIELD_NEVER_READ and variable_name is not None:
+        field_path = issue.field_path or "<unknown field>"
+        return f"Field {variable_name!r}.{field_path} is written but never read."
     if issue.kind is IssueKind.NEVER_READ and variable_name is not None:
         return f"Variable {variable_name!r} is written but never read."
     if issue.kind is IssueKind.WRITE_WITHOUT_EFFECT and variable_name is not None:

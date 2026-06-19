@@ -582,6 +582,7 @@ def test_sattline_semantic_rule_groups_cover_core_analyzers():
     assert "variables" in groups
     assert "dataflow" in groups
     assert "sfc" in groups
+    assert "same-cycle" in groups
     assert "alarm-integrity" in groups
     assert "initial-values" in groups
     assert "signal-lifecycle" in groups
@@ -595,6 +596,8 @@ def test_sattline_semantic_rule_groups_cover_core_analyzers():
     assert "semantic.hidden-global-coupling" in groups["variables"]
     assert "semantic.read-before-write" in groups["dataflow"]
     assert "semantic.parallel-write-race" in groups["sfc"]
+    assert "semantic.parallel-read-write-hazard" in groups["same-cycle"]
+    assert "semantic.same-cycle-shared-access" in groups["same-cycle"]
     assert "semantic.duplicate-transition-guard" in groups["sfc"]
     assert "semantic.missing-step-enter-contract" in groups["sfc"]
     assert "semantic.missing-step-exit-contract" in groups["sfc"]
