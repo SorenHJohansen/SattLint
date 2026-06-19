@@ -1,0 +1,7 @@
+[IcfFixtureProgram]
+BatchUnit.Operation.T.OPR_ID=valid
+BatchUnit.Operation.S.RESULT_CODE=valid
+BatchUnit.Operation.J=valid
+BatchUnit.Param.Temperature=valid
+BatchUnit.Param.MissingVar=unresolved-path
+WrongProgram.Operation.T.OPR_ID=program-mismatch

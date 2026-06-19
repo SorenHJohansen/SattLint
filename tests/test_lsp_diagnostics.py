@@ -1365,3 +1365,27 @@ def test_lsp_helper_location_and_edit_helpers_cover_local_workspace_and_missing_
     assert "**Value**" in hover_contents.value
     assert "Kind: field" in hover_contents.value
     assert "Path: Support.Value" in hover_contents.value
+
+
+def test_lsp_syntax_diagnostics_on_real_fixture_file():
+    fixture = Path(__file__).parent / "fixtures" / "sample_sattline_files" / "CommonQualityIssues.s"
+    source = fixture.read_text(encoding="utf-8")
+    diagnostics = collect_syntax_diagnostics(fixture, source)
+    assert all(d.severity is not None for d in diagnostics)
+    assert not any("syntax.parse" in d.message.casefold() for d in diagnostics)
+
+
+def test_lsp_semantic_diagnostics_on_real_fixture_file():
+    fixture = Path(__file__).parent / "fixtures" / "sample_sattline_files" / "CommonQualityIssues.s"
+    source = fixture.read_text(encoding="utf-8")
+    syntax_diagnostics = collect_syntax_diagnostics(fixture, source)
+    assert not any("syntax.parse" in d.message.casefold() for d in syntax_diagnostics)
+
+    fake_ls = SattLineLanguageServer()
+    fake_ls.workspace_root = fixture.parent
+    fake_ls.settings = LspSettings(entry_file=fixture.name, enable_variable_diagnostics=True)
+
+    bundle = _load_snapshot_bundle(cast(Any, fake_ls), fixture)
+    if bundle is not None:
+        semantic_diagnostics = collect_semantic_diagnostics(bundle)
+        assert all(d.severity is not None for d in semantic_diagnostics)

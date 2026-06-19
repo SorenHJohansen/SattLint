@@ -124,5 +124,66 @@ def test_checked_in_corpus_manifests_pass_against_repo_fixtures(tmp_path):
     case_ids = {case.manifest.case_id for case in suite.cases}
     assert "strict-invalid" in case_ids
     assert "workspace-common-quality-issues" in case_ids
+
+    new_edge_cases = {
+        "edge-sub-sequence-transition",
+        "edge-sequence-alternative",
+        "edge-sequence-parallel",
+        "edge-sub-sequence-definition",
+        "edge-seq-break",
+        "edge-elsif-expression",
+        "edge-terminal-seq-step",
+        "edge-frame-module-invocation",
+        "edge-scan-group-clause",
+        "edge-time-value-init",
+        "edge-module-options",
+        "edge-simple-module-type-invocation",
+        "edge-coordinate-invar-tail",
+        "edge-empty-record-type",
+        "edge-unicode-identifiers",
+    }
+    assert new_edge_cases.issubset(case_ids), f"Missing edge case manifests: {new_edge_cases - case_ids}"
+
+    new_semantic_cases = {
+        "semantic-sequence-unreachable",
+        "semantic-step-contract",
+        "semantic-illegal-state-combination",
+        "semantic-unreachable-sequence-dataflow",
+        "semantic-invalid-state-access",
+        "semantic-parallel-hazard",
+        "semantic-alarm-integrity",
+        "semantic-safety-signal",
+        "semantic-resource-lifecycle",
+        "semantic-mms-tag",
+        "semantic-data-dependency",
+        "semantic-code-quality",
+        "semantic-scan-cycle",
+        "semantic-fault-and-config",
+        "semantic-duplicate-sibling-name",
+        "semantic-spec-compliance",
+        "semantic-module-version-drift",
+        "semantic-power-up",
+        "workspace-state-inference",
+        "semantic-timing",
+        "semantic-icf-program",
+    }
+    assert new_semantic_cases.issubset(case_ids), f"Missing semantic manifests: {new_semantic_cases - case_ids}"
+
+    existing_semantic_manifests = {
+        "semantic-dead-overwrite",
+        "semantic-implicit-latch",
+        "semantic-magic-number",
+        "semantic-never-read-variable",
+        "semantic-parallel-write-race",
+        "semantic-read-before-write",
+        "semantic-read-only-non-const",
+        "semantic-shadowing-variable",
+        "semantic-unused-datatype-field",
+        "semantic-unused-variable",
+    }
+    assert existing_semantic_manifests.issubset(case_ids), (
+        f"Missing existing semantic manifests: {existing_semantic_manifests - case_ids}"
+    )
+
     assert suite.passed is True, f"Failed cases: {[c.manifest.case_id for c in suite.cases if not c.passed]}"
     assert all(case.execution_error is None for case in suite.cases)
