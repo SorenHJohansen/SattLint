@@ -276,6 +276,7 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
     monkeypatch.setattr(registry_module, "analyze_config_drift", _record("config-drift"))
     monkeypatch.setattr(registry_module, "analyze_powerup", _record("powerup"))
     monkeypatch.setattr(registry_module, "analyze_scan_concurrency", _record("scan-concurrency"))
+    monkeypatch.setattr(registry_module, "analyze_same_cycle", _record("same-cycle"))
     monkeypatch.setattr(registry_module, "analyze_scan_loop_resource_usage", _record("scan-loop-resource-usage"))
     monkeypatch.setattr(registry_module, "analyze_resource_usage", _record("resource-usage"))
     monkeypatch.setattr(registry_module, "analyze_version_drift", _record("version-drift"))
@@ -322,6 +323,7 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
         "config-drift",
         "powerup",
         "scan-concurrency",
+        "same-cycle",
         "scan-loop-resource-usage",
         "resource-usage",
         "timing",

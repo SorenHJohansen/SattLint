@@ -212,12 +212,20 @@ def collect_architecture_report(
             getattr(structural_reports_module.VariablesReport, "unused_datatype_fields", None),
             property,
         ),
+        structural_reports_module.IssueKind.FIELD_READ_ONLY.value: isinstance(
+            getattr(structural_reports_module.VariablesReport, "field_read_only", None),
+            property,
+        ),
         structural_reports_module.IssueKind.READ_ONLY_NON_CONST.value: isinstance(
             getattr(structural_reports_module.VariablesReport, "read_only_non_const", None),
             property,
         ),
         structural_reports_module.IssueKind.UI_ONLY.value: isinstance(
             getattr(structural_reports_module.VariablesReport, "ui_only", None),
+            property,
+        ),
+        structural_reports_module.IssueKind.FIELD_NEVER_READ.value: isinstance(
+            getattr(structural_reports_module.VariablesReport, "field_never_read", None),
             property,
         ),
         structural_reports_module.IssueKind.NEVER_READ.value: isinstance(

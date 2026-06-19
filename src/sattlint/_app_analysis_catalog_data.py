@@ -68,6 +68,8 @@ _VARIABLE_DESCRIPTIONS: dict[str, str] = {
     "23": "Report overlapping layout or graphics elements that compete for the same visible space.",
     "24": "Flag naming patterns whose prefixes or roles do not match how the variable actually behaves.",
     "25": "Report case-insensitive declaration collisions that make a scope ambiguous or harder to reason about.",
+    "26": "Highlight record fields that are read without a corresponding write on the same variable instance.",
+    "27": "Report record fields that receive writes without any matching read on the same variable instance.",
 }
 
 SECTION_SPECS: tuple[AnalysisSectionSpec, ...] = (

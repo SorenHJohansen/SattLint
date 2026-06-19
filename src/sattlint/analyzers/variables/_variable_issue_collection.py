@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "VariablesIssueCollectionMixin",
+    "_add_field_usage_asymmetry_issues",
     "_add_global_scope_minimization_issues",
     "_add_hidden_global_coupling_issues",
     "_add_high_fan_in_out_issues",
@@ -174,6 +175,108 @@ def _add_issue(
             field_path=field_path,
         )
     )
+
+
+def _selected_issue_kinds(self: VariablesAnalyzer) -> frozenset[IssueKind] | set[IssueKind] | None:
+    return cast(frozenset[IssueKind] | set[IssueKind] | None, getattr(self, "_selected_issue_kinds", None))
+
+
+def _should_collect_issue_kind(self: VariablesAnalyzer, kind: IssueKind) -> bool:
+    selected_kinds = _selected_issue_kinds(self)
+    return selected_kinds is None or kind in selected_kinds
+
+
+def _normalize_field_path(field_path: str) -> str:
+    return ".".join(segment for segment in field_path.split(".") if segment)
+
+
+def _expand_field_usage_to_leaf_keys(
+    leaf_paths_by_key: dict[str, str],
+    field_paths: dict[str, list[list[str]]],
+) -> tuple[set[str], bool]:
+    matched_leaf_keys: set[str] = set()
+    has_whole_access = False
+
+    for raw_field_path in field_paths:
+        normalized = _normalize_field_path(raw_field_path)
+        if not normalized:
+            has_whole_access = True
+            continue
+
+        normalized_key = normalized.casefold()
+        matched = {
+            leaf_key
+            for leaf_key in leaf_paths_by_key
+            if leaf_key == normalized_key or leaf_key.startswith(f"{normalized_key}.")
+        }
+        matched_leaf_keys.update(matched)
+
+    return matched_leaf_keys, has_whole_access
+
+
+def _add_field_usage_asymmetry_issues(self: VariablesAnalyzer) -> None:
+    collect_field_read_only = _should_collect_issue_kind(self, IssueKind.FIELD_READ_ONLY)
+    collect_field_never_read = _should_collect_issue_kind(self, IssueKind.FIELD_NEVER_READ)
+    if not collect_field_read_only and not collect_field_never_read:
+        return
+
+    for path, variable, role, root_owned_decl in _iter_variables_for_datatype_field_analysis(self):
+        if isinstance(variable.datatype, Simple_DataType):
+            continue
+
+        if (
+            self.analyzed_target_is_library
+            and root_owned_decl
+            and role == "moduleparameter"
+            and any(segment.startswith("TypeDef:") for segment in path)
+        ):
+            continue
+
+        leaf_paths = {
+            ".".join(field_path)
+            for field_path in self.type_graph.iter_leaf_field_paths(variable.datatype_text)
+            if field_path
+        }
+        if not leaf_paths:
+            continue
+
+        usage = self.get_usage(variable)
+        if usage.usage_locations:
+            continue
+
+        leaf_paths_by_key = {leaf_path.casefold(): leaf_path for leaf_path in leaf_paths}
+        read_leaf_keys, has_whole_field_read = _expand_field_usage_to_leaf_keys(
+            leaf_paths_by_key,
+            usage.field_reads,
+        )
+        write_leaf_keys, has_whole_field_write = _expand_field_usage_to_leaf_keys(
+            leaf_paths_by_key,
+            usage.field_writes,
+        )
+        if has_whole_field_read or has_whole_field_write:
+            continue
+
+        if collect_field_read_only:
+            for leaf_key in sorted(read_leaf_keys - write_leaf_keys):
+                _add_issue(
+                    self,
+                    IssueKind.FIELD_READ_ONLY,
+                    path,
+                    variable,
+                    role,
+                    field_path=leaf_paths_by_key[leaf_key],
+                )
+
+        if collect_field_never_read:
+            for leaf_key in sorted(write_leaf_keys - read_leaf_keys):
+                _add_issue(
+                    self,
+                    IssueKind.FIELD_NEVER_READ,
+                    path,
+                    variable,
+                    role,
+                    field_path=leaf_paths_by_key[leaf_key],
+                )
 
 
 def _iter_variables_for_datatype_field_analysis(
@@ -503,6 +606,9 @@ def _collect_issues_from_module(
 
 
 class VariablesIssueCollectionMixin:
+    def _add_field_usage_asymmetry_issues(self: Any) -> None:
+        _add_field_usage_asymmetry_issues(self)
+
     def _build_root_variable_access_summaries(self: Any) -> dict[str, _RootVariableAccessSummary]:
         return _build_root_variable_access_summaries(self)
 

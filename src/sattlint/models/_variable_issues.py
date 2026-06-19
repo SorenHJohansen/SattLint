@@ -20,10 +20,12 @@ __all__ = [
 class IssueKind(Enum):
     UNUSED = "unused"
     UNUSED_DATATYPE_FIELD = "unused_datatype_field"
+    FIELD_READ_ONLY = "field_read_only"
     READ_ONLY_NON_CONST = "read_only_non_const"
     NAMING_ROLE_MISMATCH = "naming_role_mismatch"
     UI_ONLY = "ui_only"
     PROCEDURE_STATUS = "procedure_status"
+    FIELD_NEVER_READ = "field_never_read"
     NEVER_READ = "never_read"
     RECORD_COMPONENT_ORDER_DEPENDENCE = "record_component_order_dependence"
     WRITE_WITHOUT_EFFECT = "write_without_effect"
@@ -65,6 +67,11 @@ _VARIABLE_ISSUE_METADATA: dict[IssueKind, VariableIssueMetadata] = {
         explanation="Unused fields make shared datatypes drift away from the actual interface the code relies on.",
         suggestion="Remove the field from the datatype, or add the missing read/write path that should use it.",
     ),
+    IssueKind.FIELD_READ_ONLY: VariableIssueMetadata(
+        label="Read-only field",
+        explanation="A record field that is only read often points at a sibling-mapping mistake or a missing write path.",
+        suggestion="Reconnect the field to the writer that should update it, or remove the dead read path if the field is obsolete.",
+    ),
     IssueKind.READ_ONLY_NON_CONST: VariableIssueMetadata(
         label="Read-only variable should be CONST",
         explanation="A writable declaration that is only read obscures intent and weakens constant-safety checks.",
@@ -84,6 +91,11 @@ _VARIABLE_ISSUE_METADATA: dict[IssueKind, VariableIssueMetadata] = {
         label="Procedure status output is not handled",
         explanation="Procedure status channels are intended to drive control decisions, retries, or escalation paths rather than disappearing into dead storage or UI-only state.",
         suggestion="Read the status in control logic or propagate it to the caller that owns the error path, or remove the unused status output if the contract does not require it.",
+    ),
+    IssueKind.FIELD_NEVER_READ: VariableIssueMetadata(
+        label="Field is written but never read",
+        explanation="A record field that is only written is usually dead logic or a sign that the read side is connected to the wrong sibling field.",
+        suggestion="Reconnect the consuming read to this field, or remove the dead write if nothing should observe it.",
     ),
     IssueKind.NEVER_READ: VariableIssueMetadata(
         label="Variable is written but never read",

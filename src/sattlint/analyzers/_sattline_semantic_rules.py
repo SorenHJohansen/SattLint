@@ -11,6 +11,7 @@ from ._sattline_semantic_contracts import (
     LOOP_STABILITY_RULE_CONTRACT,
     NUMERIC_CONSTRAINTS_RULE_CONTRACT,
     SAFETY_RULE_CONTRACT,
+    SAME_CYCLE_RULE_CONTRACT,
     SFC_RULE_CONTRACT,
     SHADOWING_RULE_CONTRACT,
     SIGNAL_LIFECYCLE_RULE_CONTRACT,
@@ -31,6 +32,7 @@ from ._sattline_semantic_rules_data import (
     LOOP_STABILITY_RULES,
     NUMERIC_CONSTRAINT_RULES,
     SAFETY_PATH_RULES,
+    SAME_CYCLE_RULES,
     SFC_RULES,
     SIGNAL_LIFECYCLE_RULES,
     SPEC_RULE_DESCRIPTIONS,
@@ -69,10 +71,12 @@ RULE_CONTRACTS_BY_ID: dict[str, SemanticRuleContract] = {
         VARIABLE_RULE_CONTRACT,
         "semantic.unused-variable",
         "semantic.unused-datatype-field",
+        "semantic.read-only-datatype-field",
         "semantic.read-only-non-const",
         "semantic.naming-role-mismatch",
         "semantic.ui-only-variable",
         "semantic.procedure-status-handling",
+        "semantic.never-read-datatype-field",
         "semantic.never-read-write",
         "semantic.write-without-effect",
         "semantic.global-scope-minimization",
@@ -136,6 +140,11 @@ RULE_CONTRACTS_BY_ID: dict[str, SemanticRuleContract] = {
         "semantic.invalid-state-access",
     ),
     **rule_contract_entries(
+        SAME_CYCLE_RULE_CONTRACT,
+        "semantic.parallel-read-write-hazard",
+        "semantic.same-cycle-shared-access",
+    ),
+    **rule_contract_entries(
         SIGNAL_LIFECYCLE_RULE_CONTRACT,
         "semantic.signal-lifecycle-read-before-write",
         "semantic.signal-lifecycle-unconsumed-write",
@@ -169,6 +178,8 @@ for kind, rule in list(TRACE_RULES.items()):
     TRACE_RULES[kind] = attach_rule_contract(rule, RULE_CONTRACTS_BY_ID.get(rule.id))
 for kind, rule in list(DATAFLOW_RULES.items()):
     DATAFLOW_RULES[kind] = attach_rule_contract(rule, RULE_CONTRACTS_BY_ID.get(rule.id))
+for kind, rule in list(SAME_CYCLE_RULES.items()):
+    SAME_CYCLE_RULES[kind] = attach_rule_contract(rule, RULE_CONTRACTS_BY_ID.get(rule.id))
 for kind, rule in list(SIGNAL_LIFECYCLE_RULES.items()):
     SIGNAL_LIFECYCLE_RULES[kind] = attach_rule_contract(rule, RULE_CONTRACTS_BY_ID.get(rule.id))
 for kind, rule in list(LOOP_STABILITY_RULES.items()):
@@ -209,6 +220,7 @@ FRAMEWORK_RULES_BY_KIND: dict[str, SemanticRule] = {
     **SAFETY_PATH_RULES,
     **TAINT_RULES,
     **DATAFLOW_RULES,
+    **SAME_CYCLE_RULES,
     **SIGNAL_LIFECYCLE_RULES,
     **LOOP_STABILITY_RULES,
     **FAULT_HANDLING_RULES,
@@ -229,6 +241,7 @@ def build_semantic_rule_groups() -> tuple[SemanticRuleGroup, ...]:
         SemanticRuleGroup(source="taint-paths", rules=tuple(TAINT_RULES.values())),
         SemanticRuleGroup(source="tracing", rules=tuple(TRACE_RULES.values())),
         SemanticRuleGroup(source="dataflow", rules=tuple(DATAFLOW_RULES.values())),
+        SemanticRuleGroup(source="same-cycle", rules=tuple(SAME_CYCLE_RULES.values())),
         SemanticRuleGroup(source="signal-lifecycle", rules=tuple(SIGNAL_LIFECYCLE_RULES.values())),
         SemanticRuleGroup(source="loop-stability", rules=tuple(LOOP_STABILITY_RULES.values())),
         SemanticRuleGroup(source="fault-handling", rules=tuple(FAULT_HANDLING_RULES.values())),
@@ -250,6 +263,7 @@ __all__ = [
     "NUMERIC_CONSTRAINT_RULES",
     "RULE_CONTRACTS_BY_ID",
     "SAFETY_PATH_RULES",
+    "SAME_CYCLE_RULES",
     "SFC_RULES",
     "SIGNAL_LIFECYCLE_RULES",
     "SPEC_FRAMEWORK_RULES",

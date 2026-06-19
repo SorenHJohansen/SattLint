@@ -231,6 +231,16 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             context_kwargs=("config",),
         ),
         AnalyzerSpecTemplate(
+            key="same-cycle",
+            name="Same-cycle hazards",
+            description="Detect same-scan shared-variable hazards across modules and parallel SFC branches",
+            analyzer_attr="analyze_same_cycle",
+            context_kwargs=("analysis_context", "debug", "unavailable_libraries", "analyzed_target_is_library"),
+            supports_live_diagnostics=True,
+            semantic_mapping_kind="framework",
+            semantic_rule_source="same-cycle",
+        ),
+        AnalyzerSpecTemplate(
             key="timing",
             name="Timing",
             description="Detect scan-cycle temporal hazards and non precision-scan-safe resource usage",

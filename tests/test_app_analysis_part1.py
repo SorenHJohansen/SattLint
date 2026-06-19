@@ -83,6 +83,8 @@ def test_run_variable_analysis_runs_all_analyzed_targets(noop_screen, monkeypatc
     [
         ({app_analysis.IssueKind.UNUSED}, False),
         ({app_analysis.IssueKind.UNUSED_DATATYPE_FIELD}, True),
+        ({app_analysis.IssueKind.FIELD_READ_ONLY}, True),
+        ({app_analysis.IssueKind.FIELD_NEVER_READ}, True),
     ],
 )
 def test_run_variable_analysis_scopes_reverse_consumer_loading(

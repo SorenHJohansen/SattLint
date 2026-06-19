@@ -5,6 +5,7 @@ from sattline_parser.models.ast_model import (
     BasePicture,
     ModuleCode,
     ModuleHeader,
+    ModuleTypeDef,
     Sequence,
     SFCCodeBlocks,
     SFCParallel,
@@ -86,7 +87,7 @@ def test_scan_concurrency_requests_only_parallel_write_race(monkeypatch) -> None
     bp = BasePicture(header=_hdr("Root"), localvariables=[], modulecode=ModuleCode(sequences=[], equations=[]))
     seen_selected_kinds: list[object] = []
 
-    def _fake_analyze_sfc(*_args, **kwargs):
+    def _fake_analyze_same_cycle(*_args, **kwargs):
         seen_selected_kinds.append(kwargs.get("selected_issue_kinds"))
         return SimpleNamespace(
             issues=[
@@ -95,9 +96,41 @@ def test_scan_concurrency_requests_only_parallel_write_race(monkeypatch) -> None
             ]
         )
 
-    monkeypatch.setattr(scan_concurrency_module, "analyze_sfc", _fake_analyze_sfc)
+    monkeypatch.setattr(scan_concurrency_module, "analyze_same_cycle", _fake_analyze_same_cycle)
 
     report = scan_concurrency_module.analyze_scan_concurrency(bp)
 
     assert seen_selected_kinds == [scan_concurrency_module._SCAN_CONCURRENCY_ISSUE_KINDS]
     assert [issue.kind for issue in report.issues] == ["sfc_parallel_write_race"]
+
+
+def test_scan_concurrency_reports_root_typedef_parallel_write_race() -> None:
+    typedef = ModuleTypeDef(
+        name="UnitType",
+        moduleparameters=[],
+        localvariables=[Variable(name="SharedOutput", datatype=Simple_DataType.INTEGER)],
+        submodules=[],
+        moduledef=None,
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        SFCParallel(
+                            branches=[
+                                [_step("Left", [_assign("SharedOutput", 1)])],
+                                [_step("Right", [_assign("SharedOutput", 2)])],
+                            ]
+                        )
+                    ]
+                )
+            ],
+            equations=[],
+        ),
+        parametermappings=[],
+    )
+    bp = BasePicture(header=_hdr("Root"), moduletype_defs=[typedef], localvariables=[], modulecode=None)
+
+    report = analyze_scan_concurrency(bp)
+
+    assert [issue.kind for issue in report.issues] == ["sfc_parallel_write_race"]
+    assert report.issues[0].module_path == ["Root", "TypeDef:UnitType"]

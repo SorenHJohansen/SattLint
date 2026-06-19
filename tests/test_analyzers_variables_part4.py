@@ -1758,6 +1758,32 @@ def test_sample_fixture_contains_common_variable_quality_issues():
     assert ("QualityRecord", "UnusedField") in unused_fields
 
 
+def test_sample_fixture_catches_outletprod_sibling_field_miswire():
+    fixture = Path(__file__).parent / "fixtures" / "sample_sattline_files" / "OutletProdSiblingMiswire.s"
+
+    bp = parse_source_file(fixture)
+    issues = VariablesAnalyzer(bp).run()
+
+    field_read_only = {
+        (issue.variable.name, issue.field_path)
+        for issue in issues
+        if issue.kind is IssueKind.FIELD_READ_ONLY and issue.variable is not None
+    }
+    field_never_read = {
+        (issue.variable.name, issue.field_path)
+        for issue in issues
+        if issue.kind is IssueKind.FIELD_NEVER_READ and issue.variable is not None
+    }
+    unused_fields = {
+        (issue.datatype_name, issue.field_path) for issue in issues if issue.kind is IssueKind.UNUSED_DATATYPE_FIELD
+    }
+
+    assert ("OutletConfig", "OutletProd_Def.Std") in field_read_only
+    assert ("OutletConfig", "OutletProd_X_Def.Std") in field_never_read
+    assert ("OutletProdPair", "OutletProd_Def.Std") not in unused_fields
+    assert ("OutletProdPair", "OutletProd_X_Def.Std") not in unused_fields
+
+
 def test_gfile_var_and_expr_reads_count_as_used_for_unused_analysis():
     from sattlint.engine import (  # noqa: PLC0415
         CodeMode,

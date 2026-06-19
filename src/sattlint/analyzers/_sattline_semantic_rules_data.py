@@ -31,6 +31,14 @@ VARIABLE_RULES: dict[IssueKind, SemanticRule] = {
         applies_to="datatype-field",
         description="Datatype fields that are never used across the analyzed target.",
     ),
+    IssueKind.FIELD_READ_ONLY: SemanticRule(
+        id="semantic.read-only-datatype-field",
+        source="variables",
+        category="variable-lifecycle",
+        severity="warning",
+        applies_to="datatype-field",
+        description="Datatype fields that are read but never written for a specific variable instance.",
+    ),
     IssueKind.READ_ONLY_NON_CONST: SemanticRule(
         id="semantic.read-only-non-const",
         source="variables",
@@ -62,6 +70,14 @@ VARIABLE_RULES: dict[IssueKind, SemanticRule] = {
         severity="warning",
         applies_to="procedure-status",
         description="Procedure status outputs should be checked in control logic instead of being ignored or shown only in UI.",
+    ),
+    IssueKind.FIELD_NEVER_READ: SemanticRule(
+        id="semantic.never-read-datatype-field",
+        source="variables",
+        category="variable-lifecycle",
+        severity="warning",
+        applies_to="datatype-field",
+        description="Datatype fields that are written but never subsequently read for a specific variable instance.",
     ),
     IssueKind.NEVER_READ: SemanticRule(
         id="semantic.never-read-write",
@@ -273,6 +289,25 @@ SFC_RULES: dict[str, SemanticRule] = {
         severity="warning",
         applies_to="step",
         description="Configured SFC steps can inherit stale state from earlier steps when required enter writes are missing.",
+    ),
+}
+
+SAME_CYCLE_RULES: dict[str, SemanticRule] = {
+    "same_cycle_parallel_read_write_hazard": SemanticRule(
+        id="semantic.parallel-read-write-hazard",
+        source="same-cycle",
+        category="control-flow",
+        severity="warning",
+        applies_to="sequence",
+        description="Parallel SFC branches that both read and write the same variable within one scan.",
+    ),
+    "same_cycle_shared_access_hazard": SemanticRule(
+        id="semantic.same-cycle-shared-access",
+        source="same-cycle",
+        category="interface-contracts",
+        severity="warning",
+        applies_to="variable",
+        description="Shared variables that are read and written across multiple module paths within the same scan.",
     ),
 }
 

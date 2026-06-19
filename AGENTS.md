@@ -15,6 +15,7 @@
 
 - Start from the owning file, symbol, failing command, or failing test.
 - For real-target debugging, check `~/.config/sattlint/config.toml` before assuming the repo contains the source file; follow `program_dir`, `ABB_lib_dir`, `icf_dir`, and `other_lib_dirs` to the actual external SattLine libraries.
+- Treat SattLine source files discovered outside this repository root as read-only evidence; inspect them when needed, but do not edit them unless the user explicitly asks to work in that external repository.
 - Read only the matching `.github/instructions/*.md` files for the touched surface.
 - Use `docs/maintainers/repo-map.md` when owner routing is still unclear.
 - Use `docs/public/architecture.md` for layering and runtime boundaries.
@@ -56,6 +57,7 @@
 ## Guardrails
 
 - Do not broaden changes aimlessly.
+- Do not modify SattLine source files that live outside this repository as part of SattLint work unless the user explicitly requests that external edit.
 - Do not preserve temporary compatibility seams unless the phase plan still requires them.
 - Do not keep parallel AI workflow docs with independent rules.
 - Do not skip focused validation when a narrower executable check exists.
@@ -63,4 +65,4 @@
 
 ## Last Updated
 
-2026-06-08
+2026-06-19

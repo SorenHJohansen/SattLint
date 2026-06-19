@@ -413,6 +413,59 @@ def test_variable_issue_collection_datatype_field_helper_covers_remaining_branch
     assert issue.field_path == "Unused"
 
 
+def test_field_usage_asymmetry_detects_sibling_miswire_and_suppresses_whole_access() -> None:
+    payload = Variable(name="OutletConfig", datatype="Payload")
+    usage = _UsageStub(
+        field_reads={"OutletProd_Def.Std": [["Root", "Reader"]]},
+        field_writes={"OutletProd_X_Def.Std": [["Root", "Writer"]]},
+    )
+    issues: list[VariableIssue] = []
+    helper: Any = SimpleNamespace(
+        bp=BasePicture(
+            header=_hdr("Root"),
+            datatype_defs=[],
+            moduletype_defs=[],
+            localvariables=[payload],
+            submodules=[],
+            modulecode=None,
+            moduledef=None,
+        ),
+        analyzed_target_is_library=False,
+        include_dependency_moduletype_usage=False,
+        append_issue=lambda issue: issues.append(issue),
+        get_usage=lambda variable: usage,
+        is_from_root_origin=lambda origin, origin_lib=None: True,
+        limit_to_module_path=None,
+        type_graph=SimpleNamespace(
+            iter_leaf_field_paths=lambda name: (
+                [
+                    ("OutletProd_Def", "Std"),
+                    ("OutletProd_X_Def", "Std"),
+                ]
+                if name == "Payload"
+                else []
+            )
+        ),
+        contexts_by_module_path={},
+    )
+
+    variable_issue_collection_module._add_field_usage_asymmetry_issues(helper)
+
+    assert {
+        (issue.kind, issue.variable.name if issue.variable is not None else None, issue.field_path) for issue in issues
+    } == {
+        (IssueKind.FIELD_READ_ONLY, "OutletConfig", "OutletProd_Def.Std"),
+        (IssueKind.FIELD_NEVER_READ, "OutletConfig", "OutletProd_X_Def.Std"),
+    }
+
+    usage.usage_locations = [(["Root", "WholeAccess"], "read")]
+    issues.clear()
+
+    variable_issue_collection_module._add_field_usage_asymmetry_issues(helper)
+
+    assert issues == []
+
+
 def test_variable_issue_collection_direct_global_helpers_cover_remaining_branches():
     shared = Variable(name="Shared", datatype=Simple_DataType.INTEGER)
     issues: list[VariableIssue] = []

@@ -284,6 +284,19 @@ def default_delivery_templates(
             exposed_via=("pipeline",),
         ),
         AnalyzerDeliveryTemplate(
+            key="same-cycle",
+            scope="cross-module",
+            implementation_bucket="shared-semantic-core",
+            lsp_exposed=True,
+            acceptance_tests=(
+                "tests/analyzers/test_same_cycle.py",
+                "tests/analyzers/test_sattline_semantics.py",
+            ),
+            depends_on_analyzers=(semantic_layer_analyzer_key,),
+            min_fixture_set=shared_fixtures,
+            exposed_via=(semantic_layer_analyzer_key,),
+        ),
+        AnalyzerDeliveryTemplate(
             key="timing",
             scope="single-file",
             implementation_bucket="shared-semantic-core",

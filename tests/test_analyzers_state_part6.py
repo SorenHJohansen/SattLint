@@ -340,6 +340,12 @@ def test_variables_report_properties_visible_kinds_and_empty_sections_cover_rema
             field_path="FieldA",
         ),
         VariableIssue(
+            kind=IssueKind.FIELD_READ_ONLY,
+            module_path=["BasePicture", "FieldReadOnly"],
+            variable=Variable("PayloadA", "Payload"),
+            field_path="Std",
+        ),
+        VariableIssue(
             kind=IssueKind.READ_ONLY_NON_CONST,
             module_path=["BasePicture", "ReadOnly"],
             variable=Variable("B", "integer"),
@@ -359,6 +365,12 @@ def test_variables_report_properties_visible_kinds_and_empty_sections_cover_rema
             kind=IssueKind.PROCEDURE_STATUS,
             module_path=["BasePicture", "Procedure"],
             variable=Variable("OperationStatus", "integer"),
+        ),
+        VariableIssue(
+            kind=IssueKind.FIELD_NEVER_READ,
+            module_path=["BasePicture", "FieldNeverRead"],
+            variable=Variable("PayloadB", "Payload"),
+            field_path="Std",
         ),
         VariableIssue(
             kind=IssueKind.NEVER_READ,
@@ -462,10 +474,12 @@ def test_variables_report_properties_visible_kinds_and_empty_sections_cover_rema
     selector_expectations = {
         "unused": 1,
         "unused_datatype_fields": 1,
+        "field_read_only": 1,
         "read_only_non_const": 1,
         "naming_role_mismatch": 1,
         "ui_only": 1,
         "procedure_status": 1,
+        "field_never_read": 1,
         "never_read": 1,
         "write_without_effect": 1,
         "global_scope_minimization": 1,
@@ -495,9 +509,11 @@ def test_variables_report_properties_visible_kinds_and_empty_sections_cover_rema
     assert "Status: issues" in summary
     assert "Name collisions: 0" in summary
     assert "Variable shadowing: 0" in summary
+    assert "Read-only fields" in summary
     assert "Read-only but not Const variables" in summary
     assert "Naming-to-behavior mismatches" in summary
     assert "UI/display-only variables" in summary
+    assert "Written but never read fields" in summary
     assert "Procedure status handling" in summary
     assert "Written but never read variables" in summary
     assert "Write-without-effect variables" in summary

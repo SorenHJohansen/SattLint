@@ -1,11 +1,17 @@
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
+    Equation,
+    ModuleCode,
     ModuleDef,
     ModuleHeader,
     ModuleTypeDef,
     ModuleTypeInstance,
+    ParameterMapping,
+    Simple_DataType,
     SingleModule,
     SourceSpan,
+    Variable,
 )
 from sattlint.analyzers.picture_display_paths import analyze_picture_display_paths
 from sattlint.graphics_validation import PictureDisplayPathRow, PictureDisplayRecord
@@ -14,12 +20,121 @@ from sattlint.picture_display_paths import (
     PictureDisplayOccurrence,
     resolve_picture_display_path,
 )
+from sattlint.string_inference import ExactStringInferenceEngine, StringProvenanceSegment
 from tests.helpers.picture_display_paths_support import (
     base_picture_with_leading_dash_paths,
     base_picture_with_single_chain,
 )
 
 ROOT_PATH_STEP = "0"
+
+
+def _varref(name: str) -> dict[str, str]:
+    return {"var_name": name}
+
+
+def _string_length_call(name: str) -> tuple[str, str, list[dict[str, str]]]:
+    return (const.KEY_FUNCTION_CALL, "StringLength", [_varref(name)])
+
+
+def _build_operation_path_base_picture() -> BasePicture:
+    path_builder = ModuleTypeDef(
+        name="PathBuilder",
+        moduleparameters=[
+            Variable(name="Prefix", datatype=Simple_DataType.STRING),
+            Variable(name="Name", datatype=Simple_DataType.IDENTSTRING),
+            Variable(name="Paths", datatype="PathsType"),
+        ],
+        localvariables=[Variable(name="BuilderStatus", datatype=Simple_DataType.INTEGER)],
+        moduledef=ModuleDef(),
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        (const.KEY_FUNCTION_CALL, "ClearString", [_varref("Paths.OperationPath")]),
+                        (
+                            const.KEY_FUNCTION_CALL,
+                            "InsertString",
+                            [
+                                _varref("Paths.OperationPath"),
+                                _varref("Prefix"),
+                                _string_length_call("Prefix"),
+                                _varref("BuilderStatus"),
+                            ],
+                        ),
+                        (
+                            const.KEY_FUNCTION_CALL,
+                            "InsertString",
+                            [
+                                _varref("Paths.OperationPath"),
+                                _varref("Name"),
+                                _string_length_call("Name"),
+                                _varref("BuilderStatus"),
+                            ],
+                        ),
+                    ],
+                )
+            ]
+        ),
+    )
+
+    return BasePicture(
+        header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+        name="Root",
+        moduledef=ModuleDef(),
+        moduletype_defs=[path_builder],
+        submodules=[
+            SingleModule(
+                header=ModuleHeader(name="UnitControl", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+                moduledef=ModuleDef(),
+                localvariables=[
+                    Variable(name="Paths", datatype="PathsType"),
+                    Variable(name="OprPath", datatype=Simple_DataType.STRING, init_value="+L2+Operations+L2*"),
+                    Variable(
+                        name="FyldOprName",
+                        datatype=Simple_DataType.IDENTSTRING,
+                        const=True,
+                        init_value="FyldAppl",
+                    ),
+                ],
+                submodules=[
+                    ModuleTypeInstance(
+                        header=ModuleHeader(name="Builder", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+                        moduletype_name="PathBuilder",
+                        parametermappings=[
+                            ParameterMapping(
+                                target=_varref("Prefix"),
+                                source_type=const.TREE_TAG_VARIABLE_NAME,
+                                is_duration=False,
+                                is_source_global=False,
+                                source=_varref("OprPath"),
+                                source_literal=None,
+                            ),
+                            ParameterMapping(
+                                target=_varref("Name"),
+                                source_type=const.TREE_TAG_VARIABLE_NAME,
+                                is_duration=False,
+                                is_source_global=False,
+                                source=_varref("FyldOprName"),
+                                source_literal=None,
+                            ),
+                            ParameterMapping(
+                                target=_varref("Paths"),
+                                source_type=const.TREE_TAG_VARIABLE_NAME,
+                                is_duration=False,
+                                is_source_global=False,
+                                source=_varref("Paths"),
+                                source_literal=None,
+                            ),
+                        ],
+                    )
+                ],
+            )
+        ],
+    )
 
 
 def test_picture_display_path_analyzer_reports_unresolved_paths() -> None:
@@ -113,6 +228,186 @@ def test_picture_display_path_analyzer_ignores_resolved_paths() -> None:
     report = analyze_picture_display_paths(base_picture)
 
     assert report.issues == []
+
+
+def test_picture_display_path_analyzer_reports_generic_variable_path_candidates() -> None:
+    base_picture = BasePicture(
+        header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+        name="Root",
+        moduledef=ModuleDef(),
+        localvariables=[
+            Variable(name="DisplayPath", datatype=Simple_DataType.STRING),
+            Variable(name="Prefix", datatype=Simple_DataType.STRING, init_value="+"),
+            Variable(name="PanelName", datatype=Simple_DataType.IDENTSTRING, init_value="MissingPanel"),
+            Variable(name="Status", datatype=Simple_DataType.INTEGER),
+        ],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        (const.KEY_FUNCTION_CALL, "ClearString", [_varref("DisplayPath")]),
+                        (
+                            const.KEY_FUNCTION_CALL,
+                            "InsertString",
+                            [
+                                _varref("DisplayPath"),
+                                _varref("Prefix"),
+                                _string_length_call("Prefix"),
+                                _varref("Status"),
+                            ],
+                        ),
+                        (
+                            const.KEY_FUNCTION_CALL,
+                            "InsertString",
+                            [
+                                _varref("DisplayPath"),
+                                _varref("PanelName"),
+                                _string_length_call("PanelName"),
+                                _varref("Status"),
+                            ],
+                        ),
+                    ],
+                )
+            ]
+        ),
+    )
+    base_picture.graphics_picture_display_occurrences = [
+        PictureDisplayOccurrence(
+            program_name="Root",
+            declaring_module_path=("Root",),
+            record=PictureDisplayRecord(
+                record_index=1,
+                record_start_line=1,
+                record_end_line=5,
+                path_rows=(
+                    PictureDisplayPathRow(
+                        record_index=1,
+                        index_token="1",
+                        index_value=1,
+                        kind="variable",
+                        raw_text="DisplayPath",
+                        span=SourceSpan(line=1, column=1),
+                    ),
+                ),
+            ),
+        )
+    ]
+
+    report = analyze_picture_display_paths(base_picture)
+
+    assert len(report.issues) == 1
+    assert "DisplayPath" in report.issues[0].message
+    assert "+MissingPanel" in report.issues[0].message
+
+
+def test_picture_display_path_analyzer_reports_unresolved_operationpath_candidate_from_oprframe_name() -> None:
+    base_picture = _build_operation_path_base_picture()
+    base_picture.graphics_picture_display_occurrences = [
+        PictureDisplayOccurrence(
+            program_name="Root",
+            declaring_module_path=("Root", "UnitControl"),
+            record=PictureDisplayRecord(
+                record_index=1,
+                record_start_line=1,
+                record_end_line=5,
+                path_rows=(
+                    PictureDisplayPathRow(
+                        record_index=1,
+                        index_token="1",
+                        index_value=1,
+                        kind="variable",
+                        raw_text="Paths.OperationPath",
+                        span=SourceSpan(line=1, column=1),
+                    ),
+                ),
+            ),
+        )
+    ]
+
+    report = analyze_picture_display_paths(base_picture)
+
+    assert len(report.issues) == 1
+    assert "Paths.OperationPath" in report.issues[0].message
+    assert "+L2+Operations+L2*FyldAppl" in report.issues[0].message
+    assert "FyldAppl" in report.issues[0].message
+
+
+def test_exact_string_inference_tracks_provenance_segments_across_mapped_module_writes() -> None:
+    base_picture = _build_operation_path_base_picture()
+
+    result = ExactStringInferenceEngine(base_picture).infer(
+        "Paths.OperationPath",
+        module_path=("Root", "UnitControl"),
+    )
+
+    assert result.texts == ("+L2+Operations+L2*FyldAppl",)
+    assert result.candidates[0].segments == (
+        StringProvenanceSegment(
+            text="+L2+Operations+L2*",
+            source_kind="initializer",
+            source_label="OprPath",
+            source_module_path=("Root", "UnitControl"),
+        ),
+        StringProvenanceSegment(
+            text="FyldAppl",
+            source_kind="initializer",
+            source_label="FyldOprName",
+            source_module_path=("Root", "UnitControl"),
+        ),
+    )
+
+
+def test_exact_string_inference_tracks_setstringpos_and_cutstring() -> None:
+    base_picture = BasePicture(
+        header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+        name="Root",
+        moduledef=ModuleDef(),
+        localvariables=[
+            Variable(name="Tag", datatype=Simple_DataType.STRING),
+            Variable(name="Source", datatype=Simple_DataType.STRING, init_value="ABCD"),
+            Variable(name="Status", datatype=Simple_DataType.INTEGER),
+        ],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        (const.KEY_FUNCTION_CALL, "ClearString", [_varref("Tag")]),
+                        (
+                            const.KEY_FUNCTION_CALL,
+                            "InsertString",
+                            [
+                                _varref("Tag"),
+                                _varref("Source"),
+                                _string_length_call("Source"),
+                                _varref("Status"),
+                            ],
+                        ),
+                        (const.KEY_FUNCTION_CALL, "SetStringPos", [_varref("Tag"), 2, _varref("Status")]),
+                        (const.KEY_FUNCTION_CALL, "CutString", [_varref("Tag"), 2, _varref("Status")]),
+                    ],
+                )
+            ]
+        ),
+    )
+
+    result = ExactStringInferenceEngine(base_picture).infer("Tag", module_path=("Root",))
+
+    assert result.texts == ("AD",)
+    assert result.cursor_positions == (2,)
+    assert result.candidates[0].segments == (
+        StringProvenanceSegment(
+            text="AD",
+            source_kind="initializer",
+            source_label="Source",
+            source_module_path=("Root",),
+        ),
+    )
 
 
 def test_resolve_picture_display_path_treats_single_plus_as_named_child_step() -> None:
