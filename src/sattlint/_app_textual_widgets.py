@@ -235,7 +235,7 @@ if _TEXTUAL_APP is not None:
             self._help_text = help_text
 
         def compose(self) -> _TEXTUAL_COMPOSE_RESULT:
-            with _TEXTUAL_VERTICAL(id="help-dialog"):
+            with _TEXTUAL_VERTICAL(id="help-overlay"), _TEXTUAL_VERTICAL(id="help-dialog"):
                 yield _TEXTUAL_STATIC("Help & Guide", id="help-dialog-title")
                 yield _TEXTUAL_STATIC(self._help_text, id="help-dialog-body")
                 with _TEXTUAL_HORIZONTAL(id="help-dialog-actions"):

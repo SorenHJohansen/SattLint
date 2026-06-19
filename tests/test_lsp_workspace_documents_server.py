@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
 """Server and document lifecycle focused LSP workspace tests."""
 
 from __future__ import annotations

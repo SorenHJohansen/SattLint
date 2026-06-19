@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
 """Tests for LSP entry-file resolution and diagnostics.
 
 Covers syntax and semantic publishing, module-path inference,

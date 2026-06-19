@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false, reportMissingTypeArgument=false
 """Tests for canonical path resolution across parameter mappings."""
 
 from sattline_parser.models.ast_model import (

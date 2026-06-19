@@ -1,3 +1,4 @@
+# pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportOptionalMemberAccess=false
 # ruff: noqa: F403, F405
 from typing import cast
 

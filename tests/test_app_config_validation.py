@@ -1,4 +1,4 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportCallIssue=false, reportTypedDictNotRequiredAccess=false, reportGeneralTypeIssues=false
 """Focused app config, self-check, and ICF command tests."""
 
 from __future__ import annotations

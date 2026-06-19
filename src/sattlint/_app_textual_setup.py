@@ -381,7 +381,7 @@ def _refresh_setup_settings_labels(self: Any) -> None:
     icf_dir = _stringify_value(cast(object | None, self._cfg.get("icf_dir", "")))
     mode = _stringify_value(cast(object | None, self._cfg.get("mode", "official"))) or "official"
     scan_root_only = bool(self._cfg.get("scan_root_only", False))
-    fast_cache = bool(self._cfg.get("fast_cache_validation", False))
+    fast_cache_validation = bool(self._cfg.get("use_file_ast_cache", False))
     debug = bool(self._cfg.get("debug", False))
     telemetry = self._cfg.get("telemetry")
     telemetry_enabled = (
@@ -408,7 +408,7 @@ def _refresh_setup_settings_labels(self: Any) -> None:
     _safe_update(
         "setup-label-fast-cache",
         _setup_toggle_text(
-            fast_cache,
+            fast_cache_validation,
             enabled_detail="Fast cache validation is active",
             disabled_detail="Full cache validation is active",
         ),
@@ -454,7 +454,6 @@ def _setup_browser_detail_text(self: Any) -> str:
         "Selected Target Detail",
         f"Mode: {self._cfg.get('mode', 'official')}",
         f"scan_root_only: {bool(self._cfg.get('scan_root_only', False))}",
-        f"fast_cache_validation: {bool(self._cfg.get('fast_cache_validation', False))}",
     ]
     if candidate is None:
         lines.append("Target: none")

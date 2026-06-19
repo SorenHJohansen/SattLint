@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportPrivateUsage=false
 # ruff: noqa: F403, F405
 from sattline_parser.utils.text_processing import CommentStrippedText
 

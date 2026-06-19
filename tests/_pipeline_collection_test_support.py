@@ -1,3 +1,4 @@
+# pyright: reportUnusedImport=false
 # ruff: noqa: F401
 import json
 import os

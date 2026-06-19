@@ -81,7 +81,7 @@ def test_textual_interaction_bridge_returns_responses() -> None:
     assert bridge.prompt("Name") == "value"
     assert bridge.confirm("Confirm?") is True
     bridge.pause()
-    assert seen_kinds == ["menu", "prompt", "confirm", "pause"]
+    assert seen_kinds == ["menu", "prompt", "confirm"]
 
 
 def test_textual_interaction_bridge_async_returns_responses() -> None:
@@ -108,7 +108,7 @@ def test_textual_interaction_bridge_async_returns_responses() -> None:
 
     asyncio.run(_run())
 
-    assert seen_kinds == ["menu", "prompt", "confirm", "pause"]
+    assert seen_kinds == ["menu", "prompt", "confirm"]
 
 
 def test_app_input_wrappers_use_textual_interaction_bridge() -> None:
@@ -715,13 +715,33 @@ def test_textual_question_mark_binding_opens_help() -> None:
             await pilot.press("?")
             await pilot.pause()
 
+            help_dialog = _query_any_screen(app_instance, "#help-dialog")
             help_body = str(_query_any_screen(app_instance, "#help-dialog-body").renderable)
             assert "Keyboard shortcuts" in help_body
             assert "/ filters Analyze and Setup lists" in help_body
             assert "Ctrl+L clears Session output" in help_body
             assert "Ctrl+G cancels a running analysis" in help_body
+            assert help_dialog.region.x > 0
+            assert help_dialog.region.y > 0
+            assert help_dialog.size.width < app_instance.size.width
+            assert help_dialog.size.height < app_instance.size.height
 
     asyncio.run(_run())
+
+
+def test_textual_pause_requests_are_noop() -> None:
+    seen_kinds: list[str] = []
+
+    def _submit(request: app_textual_shared_module.InteractionRequest) -> None:
+        seen_kinds.append(request.kind)
+        request.result_future.set_result(None)
+
+    bridge = app_textual.TextualInteractionBridge(submit_request_fn=_submit)
+
+    bridge.pause()
+    asyncio.run(bridge.pause_async())
+
+    assert seen_kinds == []
 
 
 def test_textual_slash_binding_filters_analyze_planner() -> None:
@@ -980,6 +1000,15 @@ def _make_textual_app(
         startup_output=startup_output,
         startup_output_is_warning=startup_output_is_warning,
     )
+
+
+def test_textual_shell_defaults_to_truecolor_console() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": []})
+
+    assert app_instance.console.color_system == "truecolor"
 
 
 def test_textual_analyze_view_shows_planner_controls() -> None:
@@ -1385,12 +1414,6 @@ def test_textual_analyze_run_selected_surfaces_variable_issue_output_from_real_a
                 assert "Analyze planner queue" in output_text
                 assert "=== Target: ProgramA ===" in output_text
                 assert "Report: Variable issues" in output_text
-                assert app_instance.query_one("#interaction-host").has_class("active")
-
-                await pilot.press("escape")
-                await pilot.pause()
-                await pilot.pause()
-
                 assert app_instance.query_one("#interaction-host").has_class("active") is False
                 assert app_instance._busy is False
         finally:

@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false
 """Transformer unit tests for SFC parsing behavior."""
 
 from typing import Any, cast

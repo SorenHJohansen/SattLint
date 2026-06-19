@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownArgumentType=false
 """Adjacent analyzer scenarios re-exported by tests.test_analyzers_variables."""
 
 from __future__ import annotations

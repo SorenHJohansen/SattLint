@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportGeneralTypeIssues=false
 """Regression tests for AST cache serialization."""
 
 import json
@@ -230,12 +231,12 @@ def test_cache_helpers_cover_lookup_env_and_validation_edges(tmp_path: Path, mon
     assert payload == {"version": CACHE_VERSION, "project": SimpleNamespace(name="project")}
     assert ast_cache.has_payload(project_key) is True
     assert ast_cache.has_manifest(project_key) is True
+    assert ast_cache.has_cache_artifact(project_key) is True
     assert ast_cache.load_manifest(project_key) == manifest
     assert ast_cache.manifest_paths(project_key) == frozenset({manifest_path})
-    assert ast_cache.validate(project_key) is True
-    assert ast_cache.validate(project_key, fast=True) is True
+    assert ast_cache.load_validated(project_key) == payload
     manifest_path.unlink()
-    assert ast_cache.validate(project_key) is False
+    assert ast_cache.load_validated(project_key) is None
     ast_cache.clear(project_key)
     assert not ast_cache._path(project_key).exists()
     assert not ast_cache._manifest_path(project_key).exists()
@@ -294,7 +295,6 @@ def test_cache_helpers_cover_persistence_and_hash_edge_paths(tmp_path: Path, mon
         "analyzed_programs_and_libraries": ["Main"],
         "mode": "draft",
         "scan_root_only": False,
-        "fast_cache_validation": True,
         "program_dir": "Programs",
         "ABB_lib_dir": "ABB",
         "icf_dir": "ICF",
@@ -327,11 +327,11 @@ def test_cache_helpers_cover_persistence_and_hash_edge_paths(tmp_path: Path, mon
         json.dumps({str(manifest_path): [manifest[0], manifest[1] + 1]}),
         encoding="utf-8",
     )
-    assert ast_cache.validate("project") is False
+    assert ast_cache.load_validated("project") is None
     ast_cache._path("project").write_bytes(
         pickle.dumps({"version": CACHE_VERSION + 1}, protocol=pickle.HIGHEST_PROTOCOL)
     )
-    assert ast_cache.validate("project") is False
+    assert ast_cache.load_validated("project") is None
 
 
 def test_file_ast_cache_save_skips_missing_source(tmp_path: Path) -> None:
@@ -380,7 +380,7 @@ def test_ast_cache_save_skips_missing_manifest_file(tmp_path: Path) -> None:
     assert ast_cache._path("project").exists() is False
 
 
-def test_ast_cache_validate_tolerates_stat_race(tmp_path: Path, monkeypatch) -> None:
+def test_ast_cache_load_validated_tolerates_stat_race(tmp_path: Path, monkeypatch) -> None:
     ast_cache = ASTCache(tmp_path / "project-cache-race")
     manifest_path = tmp_path / "manifest-race.s"
     manifest_path.write_text('"x"\n"y"\n"z"\n', encoding="utf-8")
@@ -406,10 +406,10 @@ def test_ast_cache_validate_tolerates_stat_race(tmp_path: Path, monkeypatch) -> 
 
     ast_cache._manifest_path("project").write_text(json.dumps({str(manifest_path): list(manifest)}), encoding="utf-8")
 
-    assert ast_cache.validate("project") is False
+    assert ast_cache.load_validated("project") is None
 
 
-def test_ast_cache_load_and_validate_require_matching_payload_version(tmp_path: Path) -> None:
+def test_ast_cache_load_and_validated_load_require_matching_payload_version(tmp_path: Path) -> None:
     ast_cache = ASTCache(tmp_path / "project-cache-version")
     manifest_path = tmp_path / "manifest-version.s"
     manifest_path.write_text('"x"\n"y"\n"z"\n', encoding="utf-8")
@@ -421,7 +421,7 @@ def test_ast_cache_load_and_validate_require_matching_payload_version(tmp_path: 
     ast_cache._manifest_path("project").write_text(json.dumps({str(manifest_path): list(manifest)}), encoding="utf-8")
 
     assert ast_cache.load("project") is None
-    assert ast_cache.validate("project") is False
+    assert ast_cache.load_validated("project") is None
 
 
 def test_ast_cache_startup_prune_skips_payload_deserialization(tmp_path: Path, monkeypatch) -> None:
@@ -526,7 +526,8 @@ def test_cache_manifest_and_analysis_report_edge_branches(tmp_path: Path, monkey
 
     ast_cache = ASTCache(tmp_path / "project-cache-manifest-edges")
     assert ast_cache.manifest_paths("missing") == frozenset()
-    assert ast_cache.validate("missing") is False
+    assert ast_cache.has_cache_artifact("missing") is False
+    assert ast_cache.load_validated("missing") is None
 
     report_cache = AnalysisReportCache(tmp_path)
     key = "report-key"

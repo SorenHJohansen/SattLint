@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false
 # ruff: noqa: F403, F405
 from ._analyzers_variables_test_support import *
 

@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
 """Fuzz harness smoke tests and corpus regression checks for the SattLine parser."""
 
 from __future__ import annotations

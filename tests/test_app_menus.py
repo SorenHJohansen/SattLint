@@ -1,4 +1,4 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownLambdaType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportGeneralTypeIssues=false
 
 """Tests for app config, screen helpers, interactive menus, and CLI entry points."""
 
@@ -451,27 +451,26 @@ def test_config_menu_all_options(noop_screen, monkeypatch, tmp_path):
         "4",
         "y",
         "5",
-        "6",
         str(tmp_path / "prog"),
         "y",
-        "7",
+        "6",
         str(tmp_path / "abb_new"),
         "y",
-        "8",
+        "7",
         "y",
         str(tmp_path / "lib1"),
-        "8",
+        "7",
         "n",
         "y",
         "1",
-        "10",
+        "9",
         str(tmp_path / "icf"),
+        "y",
+        "10",
         "y",
         "11",
         "y",
-        "12",
-        "y",
-        "9",
+        "8",
         "y",
         "b",
     ]
@@ -493,7 +492,7 @@ def test_config_menu_can_update_telemetry_without_touching_other_settings(noop_s
         "input",
         make_input(
             [
-                "12",
+                "11",
                 "y",
                 "b",
             ]
@@ -509,7 +508,7 @@ def test_config_menu_can_update_telemetry_without_touching_other_settings(noop_s
 
 def test_config_menu_can_use_injected_choice_handler(noop_screen, monkeypatch):
     cfg = deepcopy(app.DEFAULT_CONFIG)
-    choices = iter(["12", "b"])
+    choices = iter(["11", "b"])
     seen: dict[str, object] = {}
 
     monkeypatch.setattr(app, "confirm", lambda *_args, **_kwargs: True)
@@ -526,7 +525,7 @@ def test_config_menu_can_use_injected_choice_handler(noop_screen, monkeypatch):
     assert dirty is True
     assert cfg["telemetry"] == {"enabled": True}
     assert seen["title"] == "Setup"
-    assert seen["option_count"] == 15
+    assert seen["option_count"] == 14
 
 
 def test_show_config_uses_sectioned_layout(capsys, monkeypatch, tmp_path):
@@ -536,7 +535,6 @@ def test_show_config_uses_sectioned_layout(capsys, monkeypatch, tmp_path):
             "analyzed_programs_and_libraries": ["KaHAApplSupportLib"],
             "mode": "draft",
             "scan_root_only": False,
-            "fast_cache_validation": True,
             "debug": True,
             "program_dir": r"Projects\Program",
             "ABB_lib_dir": r"Projects\ABB",
@@ -583,7 +581,6 @@ def test_show_config_uses_sectioned_layout(capsys, monkeypatch, tmp_path):
     assert "KaHAApplSupportLib" in out
     assert "General" in out
     assert "scan_root_only" in out
-    assert "fast_cache_validation" in out
     assert "Telemetry" in out
     assert "enabled" in out
     assert "path" in out

@@ -1,4 +1,4 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false, reportAttributeAccessIssue=false
 
 """Tests for app analysis project loading and AST cache behavior."""
 
@@ -33,7 +33,7 @@ def test_load_project_returns_cached_project_without_building_loader(monkeypatch
     cached_graph = SimpleNamespace()
     cached_root = named_object("TargetA")
     seen_cache_dirs: list[Path] = []
-    validate_calls: list[tuple[str, bool]] = []
+    validated_load_calls: list[str] = []
     merge_calls: list[tuple[object, object]] = []
     cached_payload = {"project": (cached_root, cached_graph)}
 
@@ -42,13 +42,10 @@ def test_load_project_returns_cached_project_without_building_loader(monkeypatch
             self.cache_dir = cache_dir
             seen_cache_dirs.append(cache_dir)
 
-        def load(self, key):
+        def load_validated(self, key):
             assert key == "cache-key"
+            validated_load_calls.append(key)
             return cached_payload
-
-        def validate(self, key, *, fast=False):
-            validate_calls.append((key, fast))
-            return True
 
         def manifest_paths(self, key):
             assert key == "cache-key"
@@ -82,14 +79,13 @@ def test_load_project_returns_cached_project_without_building_loader(monkeypatch
 
     assert result == (("bp-cached", cached_graph), cached_graph)
     assert seen_cache_dirs == [Path("custom-cache-dir")]
-    assert validate_calls == [("cache-key", False)]
+    assert validated_load_calls == ["cache-key"]
     assert merge_calls == [(cached_root, cached_graph)]
     assert cached_graph.analysis_cache_key == "cache-key"
     assert cached_graph.analysis_manifest_files == frozenset({Path("programs/TargetA.s")})
 
 
 def test_load_project_rebuilds_when_cached_project_is_invalid(monkeypatch):
-    cached_project = ("bp-cached", SimpleNamespace())
     loader_calls: list[dict[str, object]] = []
     save_calls: list[tuple[str, dict[str, object]]] = []
 
@@ -97,14 +93,9 @@ def test_load_project_rebuilds_when_cached_project_is_invalid(monkeypatch):
         def __init__(self, cache_dir):
             self.cache_dir = cache_dir
 
-        def load(self, key):
+        def load_validated(self, key):
             assert key == "cache-key"
-            return {"project": cached_project}
-
-        def validate(self, key, *, fast=False):
-            assert key == "cache-key"
-            assert fast is False
-            return False
+            return None
 
         def save(self, key, **kwargs):
             save_calls.append((key, kwargs))
@@ -410,14 +401,9 @@ def test_load_project_saves_full_mode_file_family_in_cache_manifest(
         def __init__(self, cache_dir):
             self.cache_dir = cache_dir
 
-        def load(self, key):
+        def load_validated(self, key):
             assert key == "cache-key"
             return None
-
-        def validate(self, key, *, fast=False):
-            assert key == "cache-key"
-            assert fast is False
-            return False
 
         def manifest_paths(self, key):
             assert key == "cache-key"
@@ -496,12 +482,8 @@ def test_load_project_raises_target_load_error_when_root_program_missing(monkeyp
         def __init__(self, cache_dir):
             self.cache_dir = cache_dir
 
-        def load(self, key):
+        def load_validated(self, key):
             return None
-
-        def validate(self, key, *, fast=False):
-            assert fast is False
-            return False
 
         def manifest_paths(self, key):
             return frozenset()
@@ -627,14 +609,9 @@ def test_load_project_library_target_includes_configured_reverse_consumers(monke
         def __init__(self, cache_dir):
             self.cache_dir = cache_dir
 
-        def load(self, key):
+        def load_validated(self, key):
             assert key == "cache-key"
             return None
-
-        def validate(self, key, *, fast=False):
-            assert key == "cache-key"
-            assert fast is False
-            return False
 
         def manifest_paths(self, key):
             assert key == "cache-key"
@@ -726,14 +703,9 @@ def test_load_project_library_target_includes_workspace_reverse_consumers(monkey
         def __init__(self, cache_dir):
             self.cache_dir = cache_dir
 
-        def load(self, key):
+        def load_validated(self, key):
             assert key == "cache-key"
             return None
-
-        def validate(self, key, *, fast=False):
-            assert key == "cache-key"
-            assert fast is False
-            return False
 
         def manifest_paths(self, key):
             assert key == "cache-key"
@@ -868,14 +840,9 @@ def test_load_project_library_target_workspace_program_usage_suppresses_unused_d
         def __init__(self, cache_dir):
             self.cache_dir = cache_dir
 
-        def load(self, key):
+        def load_validated(self, key):
             assert key == "cache-key"
             return None
-
-        def validate(self, key, *, fast=False):
-            assert key == "cache-key"
-            assert fast is False
-            return False
 
         def manifest_paths(self, key):
             assert key == "cache-key"
@@ -1157,7 +1124,7 @@ def test_ensure_ast_cache_handles_valid_fast_path_rebuilds_and_failures(monkeypa
         def __init__(self, cache_dir):
             self.cache_dir = cache_dir
 
-        def load(self, key):
+        def load_validated(self, key):
             mapping = {
                 "key:Fresh": {"name": "Fresh"},
                 "key:Stale": {"name": "Stale"},
@@ -1167,15 +1134,13 @@ def test_ensure_ast_cache_handles_valid_fast_path_rebuilds_and_failures(monkeypa
             return mapping[key]
 
         def has_payload(self, key):
-            return self.load(key) is not None
+            return self.load_validated(key) is not None
 
         def has_manifest(self, key):
             return key in {"key:Fresh", "key:Stale"}
 
-        def validate(self, key, fast=False):
-            # fast_cache_validation=True → validate is always called with fast=True.
-            # "Fresh" is the only cache entry that passes validation.
-            return fast is True and key == "key:Fresh"
+        def has_cache_artifact(self, key):
+            return key == "key:Fresh"
 
     def fake_load_project(_cfg, target_name=None, use_cache=True, use_file_ast_cache=True):
         resolved_target = target_name or ""
@@ -1189,7 +1154,6 @@ def test_ensure_ast_cache_handles_valid_fast_path_rebuilds_and_failures(monkeypa
     ok = app_analysis.ensure_ast_cache(
         {
             "analyzed_programs_and_libraries": ["Fresh", "Stale", "Old", "Broken"],
-            "fast_cache_validation": True,
         },
         cache_key_for_target_fn=lambda _cfg, target_name: f"key:{target_name}",
         load_project_fn=cast(Any, fake_load_project),
@@ -1247,9 +1211,9 @@ def test_ensure_ast_cache_logs_debug_traceback_on_rebuild_failure(monkeypatch, c
     assert "Traceback (most recent call last)" in caplog.text
 
 
-def test_ensure_ast_cache_slow_path_passes_fast_false_to_validate(monkeypatch):
-    """When fast_cache_validation is False, validate() must receive fast=False (full stat sweep)."""
-    validate_fast_args: list[bool] = []
+def test_ensure_ast_cache_uses_has_cache_artifact_for_warm_cache_checks(monkeypatch):
+    """ensure_ast_cache uses the cheap artifact check during warm-cache preflight."""
+    artifact_check_calls: list[str] = []
 
     class FakeCache:
         def __init__(self, cache_dir):
@@ -1261,19 +1225,16 @@ def test_ensure_ast_cache_slow_path_passes_fast_false_to_validate(monkeypatch):
         def has_manifest(self, key):
             return key == "key:Ok"
 
-        def validate(self, key, fast=False):
+        def has_cache_artifact(self, key):
             assert key == "key:Ok"
-            validate_fast_args.append(fast)
+            artifact_check_calls.append(key)
             return True
 
     lines: list[str] = []
     monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
 
     ok = app_analysis.ensure_ast_cache(
-        {
-            "analyzed_programs_and_libraries": ["Ok"],
-            "fast_cache_validation": False,
-        },
+        {"analyzed_programs_and_libraries": ["Ok"]},
         cache_key_for_target_fn=lambda _cfg, target_name: f"key:{target_name}",
         load_project_fn=cast(Any, lambda *a, **kw: pytest.fail("should not rebuild")),
         ast_cache_cls=cast(Any, FakeCache),
@@ -1281,15 +1242,14 @@ def test_ensure_ast_cache_slow_path_passes_fast_false_to_validate(monkeypatch):
     )
 
     assert ok is True
-    assert validate_fast_args == [False], (
-        "validate() must be called with fast=False when fast_cache_validation is False"
-    )
+    assert artifact_check_calls == ["key:Ok"]
     assert any("AST cache OK" in line for line in lines)
 
 
-def test_ensure_ast_cache_fast_path_passes_fast_true_to_validate_when_manifest_present(monkeypatch):
-    """When fast_cache_validation is True and manifest is present, validate() must receive fast=True."""
-    validate_fast_args: list[bool] = []
+def test_ensure_ast_cache_rebuilds_when_has_cache_artifact_fails(monkeypatch):
+    """Warm-cache checks rebuild when the cheap artifact check fails."""
+    artifact_check_calls: list[str] = []
+    rebuild_calls: list[str] = []
 
     class FakeCache:
         def __init__(self, cache_dir):
@@ -1301,26 +1261,28 @@ def test_ensure_ast_cache_fast_path_passes_fast_true_to_validate_when_manifest_p
         def has_manifest(self, key):
             return key == "key:Ok"
 
-        def validate(self, key, fast=False):
+        def has_cache_artifact(self, key):
             assert key == "key:Ok"
-            validate_fast_args.append(fast)
-            return True
+            artifact_check_calls.append(key)
+            return False
 
     lines: list[str] = []
     monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
 
     ok = app_analysis.ensure_ast_cache(
-        {
-            "analyzed_programs_and_libraries": ["Ok"],
-            "fast_cache_validation": True,
-        },
+        {"analyzed_programs_and_libraries": ["Ok"]},
         cache_key_for_target_fn=lambda _cfg, target_name: f"key:{target_name}",
-        load_project_fn=cast(Any, lambda *a, **kw: pytest.fail("should not rebuild")),
+        load_project_fn=cast(
+            Any,
+            lambda _cfg, target_name=None, **_kwargs: (
+                rebuild_calls.append(cast(str, target_name)) or ("bp", SimpleNamespace())
+            ),
+        ),
         ast_cache_cls=cast(Any, FakeCache),
         get_cache_dir_fn=lambda: Path("cache-dir"),
     )
 
     assert ok is True
-    assert validate_fast_args == [True], (
-        "validate() must be called with fast=True when fast_cache_validation=True and manifest is present"
-    )
+    assert artifact_check_calls == ["key:Ok"]
+    assert rebuild_calls == ["Ok"]
+    assert any("AST cache stale; rebuilding" in line for line in lines)

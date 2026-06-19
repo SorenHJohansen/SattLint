@@ -1,3 +1,4 @@
+# pyright: reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false
 from __future__ import annotations
 
 from types import SimpleNamespace

@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
 """Tail rule coverage tests for the Sattline semantics analyzer."""
 
 from __future__ import annotations

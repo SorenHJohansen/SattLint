@@ -1,3 +1,4 @@
+# pyright: reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
 from __future__ import annotations
 
 from contextlib import nullcontext

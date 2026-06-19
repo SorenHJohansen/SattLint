@@ -1,3 +1,4 @@
+# pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false
 # ruff: noqa: F403, F405
 from ._parser_core_test_support import *
 

@@ -1,3 +1,4 @@
+# pyright: reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
 """Late helper coverage tests split from test_reset_contamination_ratchet.py."""
 
 from __future__ import annotations

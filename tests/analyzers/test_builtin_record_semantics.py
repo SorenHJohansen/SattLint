@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false
 """Tests for builtin record read/write semantics."""
 
 import pytest

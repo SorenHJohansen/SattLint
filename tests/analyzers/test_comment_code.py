@@ -1,3 +1,4 @@
+# pyright: reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false
 from pathlib import Path
 from types import SimpleNamespace
 

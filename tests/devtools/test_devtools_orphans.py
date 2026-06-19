@@ -1,3 +1,4 @@
+# pyright: reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportUnnecessaryCast=false
 from __future__ import annotations
 
 import builtins

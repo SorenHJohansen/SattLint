@@ -1,4 +1,4 @@
-# pyright: reportUnknownVariableType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
+# pyright: reportUnknownVariableType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false
 from __future__ import annotations
 
 import builtins
@@ -291,7 +291,7 @@ def test_dump_menu_tools_menu_and_main_loop_cover_invalid_and_quit_paths(monkeyp
     monkeypatch.setattr(
         builtins,
         "input",
-        make_input(["12", "y", "6", "new-dir", "y", "13", "2", "1", "n", "q", "y"]),
+        make_input(["11", "y", "5", "new-dir", "y", "12", "2", "1", "n", "q", "y"]),
     )
     saves: list[tuple[Path, dict[str, object]]] = []
     graphics_calls: list[dict[str, object]] = []
@@ -301,7 +301,6 @@ def test_dump_menu_tools_menu_and_main_loop_cover_invalid_and_quit_paths(monkeyp
                 "analyzed_programs_and_libraries": ["Demo"],
                 "mode": "official",
                 "scan_root_only": False,
-                "fast_cache_validation": False,
                 "program_dir": "old-dir",
                 "ABB_lib_dir": "abb",
                 "other_lib_dirs": [],
