@@ -92,6 +92,7 @@ artifacts/generated/**
 *.docx
 *.xlsx
 *.txt
+*.Zone.Identifier
 
 # Local library trees (DO NOT COMMIT)
 Libs/
