@@ -640,7 +640,8 @@ def run(  # noqa: PLR0915
 
         def _collect_datatype_field_issues() -> None:
             self._add_unused_datatype_field_issues()
-            self._add_field_usage_asymmetry_issues()
+            if hasattr(self, "_add_field_usage_asymmetry_issues"):
+                self._add_field_usage_asymmetry_issues()
 
         _run_timed_phase(self, "datatype-field-scan", _collect_datatype_field_issues)
     if not should_finalize_issues:

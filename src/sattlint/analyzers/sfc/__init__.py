@@ -28,9 +28,9 @@ from ..framework import AnalysisContext, Issue, SimpleReport
 from ._sfc_collectors import _SfcAccessCollector
 from ._sfc_guard_logic import (
     _collect_transition_logic_issues,
-    _conflict_rep,
     _format_branch_path,
-    _paths_conflict,
+    conflict_rep,
+    paths_conflict,
 )
 from ._sfc_module_walk import iter_sfc_modulecodes
 from ._sfc_step_contracts import StepContract, _SfcStepContractCollector
@@ -406,8 +406,8 @@ def analyze_sfc(
                 for right in branch_ids[index + 1 :]:
                     for left_path in branch_writes[left]:
                         for right_path in branch_writes[right]:
-                            if _paths_conflict(left_path, right_path):
-                                rep = _conflict_rep(left_path, right_path)
+                            if paths_conflict(left_path, right_path):
+                                rep = conflict_rep(left_path, right_path)
                                 conflicts.setdefault(rep.key(), rep)
 
             if not conflicts:

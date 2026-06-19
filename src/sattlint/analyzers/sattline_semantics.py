@@ -148,6 +148,16 @@ def analyze_sattline_semantics(
 
     issues.extend(map_trace_findings(detect_transform_invariant_violations(base_picture)))
 
+    seen: set[tuple[object, ...]] = set()
+    deduped: list[SemanticIssue] = []
+    for issue in issues:
+        data_key = tuple(sorted((k, repr(v)) for k, v in issue.data.items()))
+        key = (issue.rule.id, tuple(issue.module_path or ()), data_key)
+        if key not in seen:
+            seen.add(key)
+            deduped.append(issue)
+    issues = deduped
+
     return SattLineSemanticsReport(
         basepicture_name=base_picture.header.name,
         issues=issues,

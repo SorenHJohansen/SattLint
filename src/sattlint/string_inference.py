@@ -1,8 +1,10 @@
 """Shared exact string inference with cursor-aware builtin handling."""
 
+# pyright: reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnnecessaryIsInstance=false
+
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
 
@@ -620,7 +622,7 @@ class ExactStringInferenceEngine:
 
             return _unknown_string_result()
 
-            return _unknown_string_result()
+        return _unknown_string_result()
 
     def _eval_int_expr(self, expr: object, state: _AbstractState, scope: ScopeContext) -> _IntResult:
         if isinstance(expr, bool):
@@ -1315,7 +1317,7 @@ def _extract_string_result(
 
 def _transform_string_result(
     source: StringInferenceResult,
-    transform: callable,
+    transform: Callable[[str], str],
     target_capacity: int | None,
     *,
     operation_name: str,
@@ -1325,7 +1327,7 @@ def _transform_string_result(
     overflow_examples: list[str] = []
     overflowed = False
     for candidate in source.candidates:
-        transformed_text = cast(str, transform(candidate.text))
+        transformed_text = transform(candidate.text)
         if target_capacity is not None and len(transformed_text) > target_capacity:
             overflowed = True
             overflow_examples.append(transformed_text)
@@ -1451,7 +1453,7 @@ def _preserve_unchanged(
         max_length=result.max_length if max_length is None else max_length,
         unknown_text=unknown_text,
         unknown_cursor=unknown_cursor,
-        unknown_max_length=result.unknown_max_length if max_length is None else max_length is None,
+        unknown_max_length=result.unknown_max_length if max_length is None else False,
         overflow_operations=carried_operations,
         overflow_examples=carried_examples,
     )

@@ -55,7 +55,7 @@ def _comparison_pairs(raw: object) -> list[tuple[str, object]]:
     return pairs
 
 
-def _paths_conflict(a: CanonicalPath, b: CanonicalPath) -> bool:
+def paths_conflict(a: CanonicalPath, b: CanonicalPath) -> bool:
     a_key = a.key()
     b_key = b.key()
     if len(a_key) <= len(b_key):
@@ -63,7 +63,7 @@ def _paths_conflict(a: CanonicalPath, b: CanonicalPath) -> bool:
     return a_key[: len(b_key)] == b_key
 
 
-def _conflict_rep(a: CanonicalPath, b: CanonicalPath) -> CanonicalPath:
+def conflict_rep(a: CanonicalPath, b: CanonicalPath) -> CanonicalPath:
     if len(a.segments) <= len(b.segments):
         return a
     return b

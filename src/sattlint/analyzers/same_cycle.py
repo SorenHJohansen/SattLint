@@ -28,7 +28,7 @@ from ..resolution.common import resolve_moduletype_def_strict
 from ..resolution.paths import CanonicalPath
 from ..resolution.scope import ScopeContext
 from .framework import AnalysisContext, Issue, empty_issues, format_report_header
-from .sfc._sfc_guard_logic import _conflict_rep, _paths_conflict
+from .sfc._sfc_guard_logic import conflict_rep, paths_conflict
 from .shared.variable_utils import mapping_target_name
 from .variables import VariablesAnalyzer
 from .variables._variables_mapping_refs import mapping_source_ref
@@ -118,7 +118,12 @@ class SameCycleAnalyzer(VariablesAnalyzer):
             tuple[frozenset[str], frozenset[str]],
         ] = {}
 
-    def run(self) -> SameCycleReport:
+    # pyright: ignore[reportIncompatibleMethodOverride]
+    def run(  # type: ignore[override]
+        self,
+        apply_alias_back_propagation: bool = True,
+        limit_to_module_path: list[str] | None = None,
+    ) -> SameCycleReport:
         root_context = self.context_builder.build_for_basepicture()
         root_path = [self.bp.header.name]
         self._contexts_by_module_path[tuple(root_path)] = root_context
@@ -513,9 +518,9 @@ class SameCycleAnalyzer(VariablesAnalyzer):
                 for right_branch in branch_ids[index + 1 :]:
                     for left_event in branch_events[left_branch]:
                         for right_event in branch_events[right_branch]:
-                            if not _paths_conflict(left_event.canonical_path, right_event.canonical_path):
+                            if not paths_conflict(left_event.canonical_path, right_event.canonical_path):
                                 continue
-                            representative = _conflict_rep(left_event.canonical_path, right_event.canonical_path)
+                            representative = conflict_rep(left_event.canonical_path, right_event.canonical_path)
                             if left_event.kind is AccessKind.WRITE and right_event.kind is AccessKind.WRITE:
                                 write_conflicts.setdefault(representative.key(), representative)
                                 continue
@@ -581,12 +586,12 @@ class SameCycleAnalyzer(VariablesAnalyzer):
             for right_event in self._events[index + 1 :]:
                 if left_event.access_module_path == right_event.access_module_path:
                     continue
-                if not _paths_conflict(left_event.canonical_path, right_event.canonical_path):
+                if not paths_conflict(left_event.canonical_path, right_event.canonical_path):
                     continue
                 if AccessKind.WRITE not in {left_event.kind, right_event.kind}:
                     continue
 
-                representative = _conflict_rep(left_event.canonical_path, right_event.canonical_path)
+                representative = conflict_rep(left_event.canonical_path, right_event.canonical_path)
                 conflict_key = representative.key()
                 if conflict_key not in grouped:
                     grouped[conflict_key] = (
@@ -651,7 +656,9 @@ class SameCycleAnalyzer(VariablesAnalyzer):
         return f"{location} ({'/'.join(self._kind_labels(kinds))})"
 
     def _relative_module_label(self, module_path: tuple[str, ...]) -> str:
-        if len(module_path) <= 1:
+        if len(module_path) == 0:
+            return ""
+        if len(module_path) == 1:
             return module_path[0]
         return ".".join(module_path[1:])
 

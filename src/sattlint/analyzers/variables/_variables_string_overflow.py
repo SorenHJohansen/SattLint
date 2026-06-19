@@ -1,5 +1,7 @@
 """String operation overflow issue collection for variable analysis."""
 
+# pyright: reportPrivateUsage=false
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
