@@ -82,7 +82,6 @@ def show_config(
     general_rows = [
         ("mode", cfg["mode"]),
         ("scan_root_only", cfg["scan_root_only"]),
-        ("fast_cache_validation", cfg["fast_cache_validation"]),
         ("debug", cfg["debug"]),
     ]
     telemetry_cfg = cast(dict[str, object], cfg.get("telemetry", {}))

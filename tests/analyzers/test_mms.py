@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false, reportArgumentType=false, reportMissingTypeArgument=false, reportCallIssue=false
 from pathlib import Path
 
 from sattline_parser.models.ast_model import (

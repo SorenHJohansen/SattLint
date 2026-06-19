@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportPrivateUsage=false, reportUnusedImport=false
 """Tests for grammar coverage and parser-core behaviour.
 
 Covers parse_source_text, source spans, flags, and identifier rules.

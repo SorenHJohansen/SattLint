@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false, reportArgumentType=false, reportMissingTypeArgument=false
 from types import SimpleNamespace
 
 from sattline_parser.models.ast_model import (

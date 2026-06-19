@@ -1,3 +1,4 @@
+# pyright: reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportUnusedFunction=false
 """Focused tests for effect-flow helper coverage and mapping propagation."""
 
 from __future__ import annotations

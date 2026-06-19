@@ -839,9 +839,6 @@ def on_button_pressed(self: Any, event: Any) -> None:
         ),
         "setup-toggle-mode": self._toggle_setup_mode,
         "setup-toggle-scan-root-only": lambda: self._toggle_setup_flag("scan_root_only", label="scan_root_only"),
-        "setup-toggle-fast-cache-validation": lambda: self._toggle_setup_flag(
-            "fast_cache_validation", label="fast_cache_validation"
-        ),
         "setup-edit-icf-dir": lambda: self._queue_setup_value_prompt("icf_dir", label="icf_dir"),
         "setup-toggle-debug": lambda: self._toggle_setup_flag("debug", label="debug"),
         "setup-toggle-telemetry": self._toggle_setup_telemetry,

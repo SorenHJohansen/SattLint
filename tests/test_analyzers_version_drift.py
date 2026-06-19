@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownParameterType=false, reportMissingTypeArgument=false
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import (

@@ -46,15 +46,14 @@ def _build_config_menu_options(menu_option_factory: Callable[[str, str, str], An
         menu_option_factory("2", "Remove analysis target", "Remove one configured analysis target"),
         menu_option_factory("3", "Toggle mode", "Switch between official and draft file mode"),
         menu_option_factory("4", "Toggle scan_root_only", "Restrict dependency scanning to the root directory"),
-        menu_option_factory("5", "Toggle fast_cache_validation", "Use faster but lighter AST cache checks"),
-        menu_option_factory("6", "Change program_dir", "Set the main SattLine program directory"),
-        menu_option_factory("7", "Change ABB_lib_dir", "Set the ABB or shared library directory"),
-        menu_option_factory("8", "Edit other_lib_dirs", "Add or remove additional library directories"),
-        menu_option_factory("9", "Save configuration", "Write the current configuration to disk"),
-        menu_option_factory("10", "Change icf_dir", "Set the directory used for ICF validation"),
-        menu_option_factory("11", "Toggle debug", "Show extra debugging output while running"),
-        menu_option_factory("12", "Toggle telemetry", "Enable or disable local telemetry logging"),
-        menu_option_factory("13", "Edit graphics rules", "Manage the JSON graphics rules used by the graphics check"),
+        menu_option_factory("5", "Change program_dir", "Set the main SattLine program directory"),
+        menu_option_factory("6", "Change ABB_lib_dir", "Set the ABB or shared library directory"),
+        menu_option_factory("7", "Edit other_lib_dirs", "Add or remove additional library directories"),
+        menu_option_factory("8", "Save configuration", "Write the current configuration to disk"),
+        menu_option_factory("9", "Change icf_dir", "Set the directory used for ICF validation"),
+        menu_option_factory("10", "Toggle debug", "Show extra debugging output while running"),
+        menu_option_factory("11", "Toggle telemetry", "Enable or disable local telemetry logging"),
+        menu_option_factory("12", "Edit graphics rules", "Manage the JSON graphics rules used by the graphics check"),
         menu_option_factory("b", "Back", ""),
         menu_option_factory("q", "Quit", ""),
     ]
@@ -501,21 +500,6 @@ def config_menu(
         elif choice == "5":
             dirty = _run_menu_action(
                 lambda dirty=dirty: (
-                    _toggle_config_value(
-                        cfg,
-                        "fast_cache_validation",
-                        confirm_message="Toggle fast_cache_validation?",
-                        confirm_fn=menu_interaction.confirm,
-                    )
-                    or dirty
-                ),
-                pause_fn=menu_interaction.pause,
-                default=dirty,
-            )
-
-        elif choice == "6":
-            dirty = _run_menu_action(
-                lambda dirty=dirty: (
                     _update_config_value(
                         cfg,
                         "program_dir",
@@ -530,7 +514,7 @@ def config_menu(
                 default=dirty,
             )
 
-        elif choice == "7":
+        elif choice == "6":
             dirty = _run_menu_action(
                 lambda dirty=dirty: (
                     _update_config_value(
@@ -547,7 +531,7 @@ def config_menu(
                 default=dirty,
             )
 
-        elif choice == "8":
+        elif choice == "7":
             dirty = _run_menu_action(
                 lambda dirty=dirty: (
                     _edit_other_lib_dirs(
@@ -561,7 +545,7 @@ def config_menu(
                 pause_fn=menu_interaction.pause,
                 default=dirty,
             )
-        elif choice == "9":
+        elif choice == "8":
             dirty = _run_menu_action(
                 lambda dirty=dirty: _save_configuration(
                     cfg,
@@ -573,7 +557,7 @@ def config_menu(
                 pause_fn=menu_interaction.pause,
                 default=dirty,
             )
-        elif choice == "10":
+        elif choice == "9":
             dirty = _run_menu_action(
                 lambda dirty=dirty: (
                     _update_config_value(
@@ -589,7 +573,7 @@ def config_menu(
                 pause_fn=menu_interaction.pause,
                 default=dirty,
             )
-        elif choice == "11":
+        elif choice == "10":
             dirty = _run_menu_action(
                 lambda dirty=dirty: (
                     _toggle_config_value(
@@ -604,13 +588,13 @@ def config_menu(
                 pause_fn=menu_interaction.pause,
                 default=dirty,
             )
-        elif choice == "12":
+        elif choice == "11":
             dirty = _run_menu_action(
                 lambda dirty=dirty: _toggle_telemetry_enabled(cfg, confirm_fn=menu_interaction.confirm) or dirty,
                 pause_fn=menu_interaction.pause,
                 default=dirty,
             )
-        elif choice == "13":
+        elif choice == "12":
             _run_menu_action(lambda: graphics_rules_menu_fn(cfg), pause_fn=menu_interaction.pause)
         else:
             emit_output("Invalid choice.")

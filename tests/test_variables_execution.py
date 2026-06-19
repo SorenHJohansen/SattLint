@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false
 """Focused coverage tests for _variables_execution helper branches."""
 
 from __future__ import annotations

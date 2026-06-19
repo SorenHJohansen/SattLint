@@ -82,11 +82,6 @@ TOP_LEVEL_CONFIG_FIELDS: dict[str, TopLevelConfigField] = {
         "Limits discovery to the configured program root instead of scanning dependency roots recursively.",
         affects_project_cache=True,
     ),
-    "fast_cache_validation": TopLevelConfigField(
-        True,
-        "Enables lightweight cache validation before rebuilding project artifacts.",
-        affects_project_cache=True,
-    ),
     "debug": TopLevelConfigField(False, "Enables verbose CLI diagnostics and debugging behavior."),
     "program_dir": TopLevelConfigField("", "Primary directory for program source files.", affects_project_cache=True),
     "ABB_lib_dir": TopLevelConfigField(

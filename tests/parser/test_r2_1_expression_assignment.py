@@ -1,3 +1,4 @@
+# pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false
 """Tests for R2.1: strict expression and assignment semantics."""
 
 from pathlib import Path

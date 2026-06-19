@@ -1,3 +1,4 @@
+# pyright: reportAssignmentType=false
 """Typed test stubs for reusable dynamic helpers.
 
 Prefer these helpers over ad hoc ``SimpleNamespace`` or inline lambda doubles

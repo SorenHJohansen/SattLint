@@ -18,12 +18,7 @@ def test_load_project_saves_cache_after_successful_merge(monkeypatch):
         def __init__(self, cache_dir):
             self.cache_dir = cache_dir
 
-        def validate(self, key, *, fast=False):
-            assert key == "cache-key"
-            assert fast is False
-            return False
-
-        def load(self, key):
+        def load_validated(self, key):
             assert key == "cache-key"
             return None
 
@@ -79,12 +74,7 @@ def test_load_project_raises_default_error_when_target_missing(monkeypatch):
         def __init__(self, cache_dir):
             self.cache_dir = cache_dir
 
-        def validate(self, key, *, fast=False):
-            assert key == "cache-key"
-            assert fast is False
-            return False
-
-        def load(self, key):
+        def load_validated(self, key):
             assert key == "cache-key"
             return None
 
@@ -188,12 +178,7 @@ def test_load_project_uses_cached_ast_only_project_and_manifest_metadata(monkeyp
         def __init__(self, cache_dir):
             self.cache_dir = cache_dir
 
-        def validate(self, key, *, fast=False):
-            assert key == "cache-key"
-            assert fast is False
-            return True
-
-        def load(self, key):
+        def load_validated(self, key):
             assert key == "cache-key"
             return {"project": (root_bp, graph)}
 
@@ -237,12 +222,7 @@ def test_load_project_ast_only_collects_stage_timings_and_flushes_lookup_cache(m
         def __init__(self, cache_dir):
             self.cache_dir = cache_dir
 
-        def validate(self, key, *, fast=False):
-            assert key == "cache-key"
-            assert fast is False
-            return False
-
-        def load(self, key):
+        def load_validated(self, key):
             assert key == "cache-key"
             return None
 
@@ -316,12 +296,7 @@ def test_load_project_uses_custom_target_load_error_factory(monkeypatch):
         def __init__(self, cache_dir):
             self.cache_dir = cache_dir
 
-        def validate(self, key, *, fast=False):
-            assert key == "cache-key"
-            assert fast is False
-            return False
-
-        def load(self, key):
+        def load_validated(self, key):
             assert key == "cache-key"
             return None
 
@@ -565,8 +540,7 @@ def test_ensure_ast_cache_covers_cache_hit_stale_missing_and_failure(monkeypatch
         def has_manifest(self, key):
             return cache_state[key][1]
 
-        def validate(self, key, *, fast=False):
-            assert fast is True
+        def has_cache_artifact(self, key):
             return cache_state[key][2]
 
     def fake_load_project(_cfg, *, target_name, use_cache):
@@ -578,7 +552,7 @@ def test_ensure_ast_cache_covers_cache_hit_stale_missing_and_failure(monkeypatch
     monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(str(message)))
 
     ok = app_analysis.ensure_ast_cache(
-        {"fast_cache_validation": True},
+        {},
         get_analyzed_targets_fn=lambda _cfg: ["TargetA", "TargetB", "TargetC", "TargetD", "TargetE"],
         cache_key_for_target_fn=lambda _cfg, target_name: target_name,
         load_project_fn=fake_load_project,

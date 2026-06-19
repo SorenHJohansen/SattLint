@@ -1,3 +1,4 @@
+# pyright: reportUnknownMemberType=false, reportPrivateUsage=false
 """Tests for validate_single_file_syntax, validate_transformed_basepicture, workspace-mode rules, compressed library sources, and builtin type checks."""
 
 from pathlib import Path

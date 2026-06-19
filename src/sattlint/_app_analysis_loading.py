@@ -445,8 +445,8 @@ def load_project(  # noqa: PLR0915
         return cast(BasePicture, engine_module.merge_project_basepicture(root_bp, graph))
 
     key = cache_key_for_target_fn(cfg, selected_target)
-    if use_cache and cast(bool, cache.validate(key, fast=False)):
-        cached = cache.load(key)
+    if use_cache:
+        cached = cache.load_validated(key)
         payload_map = cast(Mapping[str, object], cached) if isinstance(cached, Mapping) else None
         cached_project = payload_map.get("project") if payload_map is not None else None
         cached_project_tuple = cast(tuple[object, ...], cached_project) if isinstance(cached_project, tuple) else None
@@ -743,7 +743,6 @@ def ensure_ast_cache(
         return True
 
     cache = cache_module.build_ast_cache(get_cache_dir_fn(), ast_cache_cls)
-    fast = cfg.get("fast_cache_validation", False)
     ok = True
     total_targets = len(targets)
     emit_output_fn(f"Refreshing AST caches for {total_targets} target(s)...")
@@ -753,7 +752,7 @@ def ensure_ast_cache(
         has_payload = cast(bool, cache.has_payload(key))
         has_manifest = cast(bool, cache.has_manifest(key))
         if has_payload:
-            is_valid = cast(bool, cache.validate(key, fast=fast))
+            is_valid = has_manifest and cast(bool, cache.has_cache_artifact(key))
             if is_valid:
                 emit_output_fn("✔ AST cache OK")
                 continue

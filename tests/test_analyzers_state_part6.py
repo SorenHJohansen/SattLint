@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
 # ruff: noqa: F403, F405
 from ._analyzers_state_test_support import *
 

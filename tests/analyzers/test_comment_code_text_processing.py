@@ -1,3 +1,4 @@
+# pyright: reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
 from lark.exceptions import UnexpectedInput
 
 from sattlint.utils import text_processing

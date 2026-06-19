@@ -1,3 +1,4 @@
+# pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownLambdaType=false, reportArgumentType=false
 from types import SimpleNamespace
 
 from sattline_parser.grammar import constants as const

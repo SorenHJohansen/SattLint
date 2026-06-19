@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false
 # ruff: noqa: F403, F405
 from ._docgen_fixture_builders import *
 from ._docgen_test_support import *

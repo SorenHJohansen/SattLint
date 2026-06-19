@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportIncompatibleMethodOverride=false
 """Late ICF helper grouping and path coverage tests split from test_icf_helpers.py."""
 
 from __future__ import annotations

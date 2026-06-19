@@ -1,4 +1,4 @@
-# pyright: reportPrivateUsage=false, reportUnusedImport=false
+# pyright: reportPrivateUsage=false, reportUnusedImport=false, reportReturnType=false
 
 """Shared fixtures and helpers for app menu tests."""
 

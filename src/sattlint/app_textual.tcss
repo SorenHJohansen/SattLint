@@ -695,13 +695,22 @@
         }
 
         _HelpScreen {
+            background: transparent;
+        }
+
+        #help-overlay {
+            width: 100%;
+            height: 100%;
             align: center middle;
             background: transparent;
         }
 
         #help-dialog {
-            width: 60%;
-            height: 60%;
+            width: 72;
+            max-width: 88%;
+            height: auto;
+            max-height: 80%;
+            padding-bottom: 1;
             background: #f4efde;
             color: #001ba3;
             border: thick #0077b3;
@@ -725,4 +734,5 @@
         #help-dialog-actions {
             height: auto;
             padding: 0 2 1 2;
+            align: right middle;
         }

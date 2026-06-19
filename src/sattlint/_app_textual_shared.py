@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import os
 from concurrent.futures import Future
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -13,6 +14,10 @@ from .app_interaction import MenuInteraction
 from .config_types import ConfigDict
 
 _SessionOutputLog: type[Any] | None = None
+_TEXTUAL_COLOR_SYSTEM_ENV = "TEXTUAL_COLOR_SYSTEM"
+
+# Prefer 24-bit color for the Textual shell unless the caller explicitly overrides it.
+os.environ.setdefault(_TEXTUAL_COLOR_SYSTEM_ENV, "truecolor")
 
 try:
     from textual.app import App as _ImportedTextualApp  # type: ignore[import-untyped]
@@ -250,11 +255,9 @@ class TextualInteractionBridge:
         return bool(await self._request_async(InteractionRequest(kind="confirm", message=message)))
 
     def pause(self) -> None:
-        self._request(InteractionRequest(kind="pause", message="Continue when ready."))
         return None
 
     async def pause_async(self) -> None:
-        await self._request_async(InteractionRequest(kind="pause", message="Continue when ready."))
         return None
 
 

@@ -508,6 +508,9 @@ class ASTCache:
     def has_manifest(self, key: str) -> bool:
         return self.load_manifest(key) is not None
 
+    def has_cache_artifact(self, key: str) -> bool:
+        return self.has_payload(key) and self.has_manifest(key)
+
     def manifest_paths(self, key: str) -> frozenset[Path]:
         manifest = self.load_manifest(key)
         if manifest is None:
@@ -536,18 +539,19 @@ class ASTCache:
         with self._path(key).open("wb") as f:
             pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-    def validate(self, key: str, *, fast: bool = False) -> bool:
-        if self.load(key) is None:
-            return False
-
+    def load_validated(self, key: str) -> object | None:
         manifest = self.load_manifest(key)
         if manifest is None:
-            return False
+            return None
 
-        if fast:
-            return True
+        payload = self.load(key)
+        if payload is None:
+            return None
 
-        return _validate_manifest(manifest)
+        if not _validate_manifest(manifest):
+            return None
+
+        return payload
 
     def prune_startup_entries(self) -> CachePruneResult:
         removed_payloads = 0

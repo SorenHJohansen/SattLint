@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false
 """Robustness tests for fault injection, malformed inputs, encoding stress, and oversized inputs."""
 
 from pathlib import Path

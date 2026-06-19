@@ -604,7 +604,6 @@ def test_graphics_reports_formatting_and_show_config_without_rules(monkeypatch, 
     cfg = {
         "mode": "single",
         "scan_root_only": True,
-        "fast_cache_validation": False,
         "debug": True,
         "telemetry": {"enabled": True},
         "program_dir": tmp_path / "programs",
@@ -690,7 +689,6 @@ def test_graphics_reports_show_config_covers_invalid_and_configured_rules(tmp_pa
     cfg = {
         "mode": "single",
         "scan_root_only": False,
-        "fast_cache_validation": True,
         "debug": False,
         "telemetry": {},
         "program_dir": tmp_path / "programs",

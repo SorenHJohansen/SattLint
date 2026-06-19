@@ -1,3 +1,4 @@
+# pyright: reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
 # ruff: noqa: F403, F405
 from sattlint.analyzers.shared import _validators as validators_module
 from sattlint.resolution.type_graph import TypeGraph

@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false, reportMissingTypeArgument=false
 from types import SimpleNamespace
 
 from sattline_parser import parse_source_text as parser_core_parse_source_text

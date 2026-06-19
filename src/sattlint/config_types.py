@@ -165,7 +165,6 @@ class ConfigDict(TypedDict):
     include_reverse_library_consumers: bool
     mode: ConfigMode
     scan_root_only: bool
-    fast_cache_validation: bool
     debug: bool
     program_dir: ConfigPathValue
     ABB_lib_dir: ConfigPathValue
@@ -181,7 +180,6 @@ class ConfigOverrideDict(TypedDict, total=False):
     include_reverse_library_consumers: bool
     mode: str
     scan_root_only: bool
-    fast_cache_validation: bool
     debug: bool
     program_dir: ConfigPathValue
     ABB_lib_dir: ConfigPathValue

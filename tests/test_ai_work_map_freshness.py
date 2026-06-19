@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false
 import json
 
 from sattlint.devtools.ai.ai_work_map import render_ai_check_catalog, verify_ai_harness_freshness
