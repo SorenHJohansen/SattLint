@@ -1,0 +1,23 @@
+{
+    "case_id": "edge-frame-module-invocation",
+    "target_file": "../edge_cases/FrameModuleInvocation.s",
+    "mode": "workspace",
+    "expectation": {
+        "expected_finding_ids": [],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

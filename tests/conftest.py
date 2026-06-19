@@ -19,7 +19,7 @@ SLTransformer = import_module("sattlint.transformer.sl_transformer").SLTransform
 @pytest.fixture
 def sample_sattline_dir():
     """Path to directory containing sample SattLine files"""
-    return Path(__file__).parent / "fixtures" / "sample_sattline"
+    return Path(__file__).parent / "fixtures" / "sample_sattline_files"
 
 
 @pytest.fixture(scope="session")

@@ -1,0 +1,32 @@
+{
+    "case_id": "semantic-duplicate-sibling-name",
+    "target_file": "../semantic/DuplicateSiblingName.s",
+    "mode": "workspace",
+    "expectation": {
+        "expected_finding_ids": [
+            "semantic.duplicate-sibling-name",
+            "semantic.unexpected-submodule-type"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0
+            },
+            "summary.json": {
+                "rule_counts": {
+                    "semantic.duplicate-sibling-name": 1,
+                    "semantic.unexpected-submodule-type": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}
