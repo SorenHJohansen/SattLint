@@ -25,7 +25,7 @@
     "package:vsix": "npm exec --yes --package @vscode/vsce -- vsce package"
   },
   "devDependencies": {
-    "eslint": "^8.57.1"
+    "eslint": "^10.5.0"
   },
   "engines": {
     "vscode": "^1.90.0"
