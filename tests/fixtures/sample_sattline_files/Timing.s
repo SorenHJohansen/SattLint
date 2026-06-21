@@ -7,20 +7,20 @@
 
 BasePicture Invocation
    ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
-    ) : MODULEDEFINITION DateCode_ 1
+    ) : MODULEDEFINITION DateCode_ 1 (GroupConn=FastScan)
 
 LOCALVARIABLES
    Raw: integer  := 0;
-   Smoothed: integer  := 0;
-   Accum: integer  := 0;
+   State Smoothed: integer  := 0;
+   State Accum: integer  := 0;
    PrevAccum: integer  := 0;
 
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ModuleCode
-   EQUATIONBLOCK Fast COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 SCAN_GROUP FastScan :
+   EQUATIONBLOCK Fast COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
       Smoothed = Raw * 2;
       Accum = Accum + Smoothed;
-      PrevAccum = Accum;
+      PrevAccum = Accum:Old;
 
 ENDDEF (*BasePicture*);

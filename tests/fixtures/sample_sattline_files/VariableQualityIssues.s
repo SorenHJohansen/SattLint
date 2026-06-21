@@ -1,6 +1,6 @@
 "Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
 "Original file date: ---"
-"Program date: 2026-06-19-12:00:00.000, name: VariableQualityIssues"
+"Program date: 2026-06-19-12:00:00.000, name: VarQualityIssues"
 (* Covers UI_ONLY, PROCEDURE_STATUS, WRITE_WITHOUT_EFFECT, GLOBAL_SCOPE_MINIMIZATION.
    Each kind has one triggering variable and one clean variable that does not trigger.
    Expected: strict syntax-check passes. *)
@@ -24,8 +24,8 @@ ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ModuleCode
    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
       DisplayValue = ReadValue + 1;
-      StatusWord = StatusWord OR 1;
-      ActiveStatus = ActiveStatus OR 2;
+      StatusWord = StatusWord + 1;
+      ActiveStatus = ActiveStatus + 2;
       UnusedWrite = 5;
       EffectWrite = ReadValue + 3;
       GlobalFlag = NOT GlobalFlag;

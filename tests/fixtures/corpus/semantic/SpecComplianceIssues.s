@@ -18,17 +18,27 @@ LOCALVARIABLES
    BatchStep: integer  := 0;
    TryCount: integer  := 0;
 
+SUBMODULES
+   OPMsg Invocation
+      ( 0.0 , 0.0 , 0.0 , 0.4 , 0.4
+       ) : OPMessage (UseSignature => True);
+   MESBC Invocation
+      ( 0.5 , 0.0 , 0.0 , 0.4 , 0.4
+       ) : MES_BatchControl;
+
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ModuleCode
    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
-      MMS_WRITE "Cmd_Tag" Cmd;
+      Dummy = Cmd;
 
    SEQUENCE BatchSeq (SeqControl, SeqTimer) COORD 0.0, 0.5 OBJSIZE 1.0, 0.5
       SEQINITSTEP Init
-      transition TrGo WAIT_FOR Cmd
+      SEQTRANSITION TrGo WAIT_FOR Cmd
       SEQSTEP step_mix
-      transition TrDone WAIT_FOR Done
+      SEQTRANSITION WAIT_FOR Done
+      SEQSTEP Finish
+      SEQTRANSITION MyTrans WAIT_FOR Done
    ENDSEQUENCE
 
 ENDDEF (*BasePicture*);

@@ -10,20 +10,44 @@ BasePicture Invocation
    ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
     ) : MODULEDEFINITION DateCode_ 1
 
+TYPEDEFINITIONS
+   MyAlarm = MODULEDEFINITION DateCode_ 1
+   MODULEPARAMETERS
+      Tag: string := "";
+      Priority: integer := 0;
+      Condition: boolean := False;
+   ModuleDef
+   ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+   ENDDEF (*MyAlarm*);
+
 LOCALVARIABLES
    TempHigh: boolean  := False;
    PressHigh: boolean  := False;
    LevelLow: boolean  := False;
    Ack: boolean  := False;
 
+SUBMODULES
+   Alarm1 Invocation
+      ( 0.0 , 0.0 , 0.0 , 0.4 , 0.4
+       ) : MyAlarm (Tag => "TEMP_HIGH", Priority => 1, Condition => TempHigh);
+   Alarm2 Invocation
+      ( 0.5 , 0.0 , 0.0 , 0.4 , 0.4
+       ) : MyAlarm (Tag => "TEMP_HIGH", Priority => 1, Condition => TempHigh);
+   Alarm3 Invocation
+      ( 0.0 , 0.5 , 0.0 , 0.4 , 0.4
+       ) : MyAlarm (Tag => "PRESS_HIGH", Priority => 1, Condition => PressHigh);
+   Alarm4 Invocation
+      ( 0.5 , 0.5 , 0.0 , 0.4 , 0.4
+       ) : MyAlarm (Tag => "PRESS_HIGH", Priority => 2, Condition => PressHigh);
+   Alarm5 Invocation
+      ( 0.0 , 0.0 , 0.5 , 0.4 , 0.4
+       ) : MyAlarm (Tag => "LEVEL_LOW", Priority => 3, Condition => LevelLow);
+
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ModuleCode
    EQUATIONBLOCK Alarms COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
-      ALARM "TEMP_HIGH" PRIO 1 IF TempHigh;
-      ALARM "TEMP_HIGH" PRIO 1 IF TempHigh;
-      ALARM "PRESS_HIGH" PRIO 1 IF PressHigh;
-      ALARM "PRESS_HIGH" PRIO 2 IF PressHigh;
-      ALARM "LEVEL_LOW" PRIO 3 IF LevelLow;
+      TempHigh = True;
+      PressHigh = PressHigh OR Ack;
 
 ENDDEF (*BasePicture*);
