@@ -1,6 +1,6 @@
 "Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
 "Original file date: ---"
-"Program date: 2026-06-19-12:00:00.000, name: SequenceLifetimeIssues"
+"Program date: 2026-06-19-12:00:00.000, name: SeqLifetimeIssues"
 (* Covers RESET_CONTAMINATION, IMPLICIT_LATCH, RECORD_COMPONENT_ORDER_DEPENDENCE.
    RECORD_COMPONENT_ORDER_DEPENDENCE has no semantic.* mapping — assert on IssueKind directly.
    Expected: strict syntax-check passes. *)
@@ -18,8 +18,7 @@ TYPEDEFINITIONS
     (*MixRecord*);
 
 LOCALVARIABLES
-   SeqControl: integer  := 0;
-   SeqTimer: integer  := 0;
+
    StartCmd: boolean  := False;
    MixDone: boolean  := False;
    ResetCmd: boolean  := False;

@@ -1387,5 +1387,5 @@ def test_lsp_semantic_diagnostics_on_real_fixture_file():
 
     bundle = _load_snapshot_bundle(cast(Any, fake_ls), fixture)
     if bundle is not None:
-        semantic_diagnostics = collect_semantic_diagnostics(bundle)
+        semantic_diagnostics = collect_semantic_diagnostics(bundle, fixture)
         assert all(d.severity is not None for d in semantic_diagnostics)

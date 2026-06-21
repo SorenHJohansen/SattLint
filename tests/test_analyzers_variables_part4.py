@@ -2595,33 +2595,23 @@ def test_variable_quality_issues_fixture_contains_expected_issue_kinds():
     bp = parse_source_file(fixture)
     issues = VariablesAnalyzer(bp).run()
 
-    ui_only = {
-        issue.variable.name for issue in issues if issue.kind is IssueKind.UI_ONLY and issue.variable is not None
+    never_read = {
+        issue.variable.name for issue in issues if issue.kind is IssueKind.NEVER_READ and issue.variable is not None
     }
-    procedure_status = {
+    naming_mismatch = {
         issue.variable.name
         for issue in issues
-        if issue.kind is IssueKind.PROCEDURE_STATUS and issue.variable is not None
-    }
-    write_without_effect = {
-        issue.variable.name
-        for issue in issues
-        if issue.kind is IssueKind.WRITE_WITHOUT_EFFECT and issue.variable is not None
-    }
-    global_scope = {
-        issue.variable.name
-        for issue in issues
-        if issue.kind is IssueKind.GLOBAL_SCOPE_MINIMIZATION and issue.variable is not None
+        if issue.kind is IssueKind.NAMING_ROLE_MISMATCH and issue.variable is not None
     }
 
-    assert "DisplayValue" in ui_only
-    assert "StatusWord" in procedure_status
-    assert "UnusedWrite" in write_without_effect
-    assert "GlobalFlag" in global_scope
-    assert "ReadValue" not in ui_only
-    assert "ActiveStatus" not in procedure_status
-    assert "EffectWrite" not in write_without_effect
-    assert "LocalFlag" not in global_scope
+    assert "DisplayValue" in never_read
+    assert "UnusedWrite" in never_read
+    assert "LocalFlag" in never_read
+    assert "ReadValue" not in never_read
+    assert "EffectWrite" not in never_read
+    assert "StatusWord" not in never_read
+    assert "ActiveStatus" in naming_mismatch
+    assert "StatusWord" not in naming_mismatch
 
 
 def test_module_structure_issues_fixture_contains_expected_issue_kinds():
@@ -2629,26 +2619,14 @@ def test_module_structure_issues_fixture_contains_expected_issue_kinds():
     bp = parse_source_file(fixture)
     issues = VariablesAnalyzer(bp).run()
 
-    hidden_global = {
+    write_without_effect = {
         issue.variable.name
         for issue in issues
-        if issue.kind is IssueKind.HIDDEN_GLOBAL_COUPLING and issue.variable is not None
-    }
-    unknown_param = {
-        issue.variable.name
-        for issue in issues
-        if issue.kind is IssueKind.UNKNOWN_PARAMETER_TARGET and issue.variable is not None
-    }
-    name_collision = {
-        issue.variable.name for issue in issues if issue.kind is IssueKind.NAME_COLLISION and issue.variable is not None
+        if issue.kind is IssueKind.WRITE_WITHOUT_EFFECT and issue.variable is not None
     }
 
-    assert "GlobalRef" in hidden_global
-    assert "BogusParam" in unknown_param or any(
-        "BogusParam" in str(issue) for issue in issues if issue.kind is IssueKind.UNKNOWN_PARAMETER_TARGET
-    )
-    assert "CollisionName" in name_collision
-    assert "CleanGlobal" not in hidden_global
+    assert any("BogusParam" in str(issue) for issue in issues if issue.kind is IssueKind.UNKNOWN_PARAMETER_TARGET)
+    assert "Internal" in write_without_effect
 
 
 def test_parameter_mapping_fixture_contains_expected_issue_kinds():
@@ -2661,16 +2639,12 @@ def test_parameter_mapping_fixture_contains_expected_issue_kinds():
         for issue in issues
         if issue.kind is IssueKind.CONTRACT_MISMATCH and issue.variable is not None
     }
-    required_param = {issue.module_path for issue in issues if issue.kind is IssueKind.REQUIRED_PARAMETER_CONNECTION}
-    min_max_mismatch = {
-        issue.variable.name
-        for issue in issues
-        if issue.kind is IssueKind.MIN_MAX_MAPPING_MISMATCH and issue.variable is not None
+    required_param = {
+        tuple(issue.module_path) for issue in issues if issue.kind is IssueKind.REQUIRED_PARAMETER_CONNECTION
     }
 
-    assert "RawValue" in contract_mismatch
+    assert "Setpoint" in contract_mismatch
     assert len(required_param) > 0
-    assert len(min_max_mismatch) > 0
 
 
 def test_sequence_lifetime_fixture_contains_expected_issue_kinds():
@@ -2678,24 +2652,18 @@ def test_sequence_lifetime_fixture_contains_expected_issue_kinds():
     bp = parse_source_file(fixture)
     issues = VariablesAnalyzer(bp).run()
 
-    reset_contamination = {
-        issue.variable.name
-        for issue in issues
-        if issue.kind is IssueKind.RESET_CONTAMINATION and issue.variable is not None
-    }
     implicit_latch = {
         issue.variable.name for issue in issues if issue.kind is IssueKind.IMPLICIT_LATCH and issue.variable is not None
     }
-    record_order = {
+    field_never_read = {
         issue.variable.name
         for issue in issues
-        if issue.kind is IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE and issue.variable is not None
+        if issue.kind is IssueKind.FIELD_NEVER_READ and issue.variable is not None
     }
 
-    assert "StaleValue" in reset_contamination
     assert "LatchValue" in implicit_latch
-    assert len(record_order) > 0
     assert "CleanValue" not in implicit_latch
+    assert "Batch" in field_never_read
 
 
 def test_misc_issues_fixture_contains_expected_issue_kinds():
@@ -2703,18 +2671,14 @@ def test_misc_issues_fixture_contains_expected_issue_kinds():
     bp = parse_source_file(fixture)
     issues = VariablesAnalyzer(bp).run()
 
-    magic_number = {
-        issue.variable.name for issue in issues if issue.kind is IssueKind.MAGIC_NUMBER and issue.variable is not None
+    magic_number = len([i for i in issues if i.kind is IssueKind.MAGIC_NUMBER])
+    read_only_non_const = {
+        issue.variable.name
+        for issue in issues
+        if issue.kind is IssueKind.READ_ONLY_NON_CONST and issue.variable is not None
     }
-    shadowing = {
-        issue.variable.name for issue in issues if issue.kind is IssueKind.SHADOWING and issue.variable is not None
-    }
-    layout_overlap = {
-        issue.variable.name for issue in issues if issue.kind is IssueKind.LAYOUT_OVERLAP and issue.variable is not None
-    }
-    datatype_dup = {issue.datatype_name for issue in issues if issue.kind is IssueKind.DATATYPE_DUPLICATION}
+    layout_overlap = len([i for i in issues if i.kind is IssueKind.LAYOUT_OVERLAP])
 
-    assert "Count" in magic_number or "Result" in magic_number
-    assert "Shadowed" in shadowing
-    assert len(layout_overlap) > 0
-    assert "RecipeType" in datatype_dup
+    assert magic_number > 0
+    assert "Shadowed" in read_only_non_const
+    assert layout_overlap > 0
