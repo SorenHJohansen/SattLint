@@ -27,7 +27,7 @@ ModuleCode
       IF False THEN
          Output = 0;
       ENDIF;
-      IF SelfCheck = SelfCheck THEN
+      IF SelfCheck == SelfCheck THEN
          Output = 1;
       ENDIF;
       (* IF Disabled THEN Output = 0; ENDIF; *)

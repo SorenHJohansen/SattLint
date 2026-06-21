@@ -16,15 +16,13 @@ LOCALVARIABLES
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ModuleCode
-   SUBSEQUENCE SubBlock (SeqControl, SeqTimer)
-      SEQSTEP SubStep
-      SEQTRANSITION SubDone WAIT_FOR Trigger
-   ENDSUBSEQUENCE
-
    SEQUENCE Main (SeqControl, SeqTimer) COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
       SEQINITSTEP Init
       SEQTRANSITION TrGo WAIT_FOR True
-      SEQSUB SubBlock
+      SUBSEQUENCE SubBlock
+         SEQSTEP SubStep
+         SEQTRANSITION SubDone WAIT_FOR Trigger
+      ENDSUBSEQUENCE
       SEQSTEP Finish
    ENDSEQUENCE
 

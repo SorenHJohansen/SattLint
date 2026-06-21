@@ -17,7 +17,7 @@ ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ModuleCode
    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
-      IF AlwaysOne = 1 THEN
+      IF AlwaysOne == 1 THEN
          Output = Input;
       ELSE
          Output = 0;

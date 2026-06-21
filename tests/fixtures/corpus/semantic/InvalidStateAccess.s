@@ -16,6 +16,6 @@ ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ModuleCode
    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
-      Result = OLD StateVal;
+      Result = StateVal:Old;
 
 ENDDEF (*BasePicture*);

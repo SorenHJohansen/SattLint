@@ -22,11 +22,10 @@ ModuleCode
             Abort = False;
       SEQTRANSITION TrRun WAIT_FOR True
       SEQSTEP Working
-         ACTIVECODE
-            IF Abort THEN
-               SEQBREAK;
-            ENDIF;
-      SEQTRANSITION TrDone WAIT_FOR True
+      SEQTRANSITION TrCheck WAIT_FOR Abort
+      SEQBREAK
+      SEQTRANSITION TrDone WAIT_FOR NOT Abort
+      SEQSTEP Finish
    ENDSEQUENCE
 
 ENDDEF (*BasePicture*);

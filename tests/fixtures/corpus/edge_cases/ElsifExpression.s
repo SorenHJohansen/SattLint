@@ -17,11 +17,11 @@ ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ModuleCode
    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
-      IF Mode = 1 THEN
+      IF Mode == 1 THEN
          Output = 10;
-      ELSIF Mode = 2 THEN
+      ELSIF Mode == 2 THEN
          Output = 20;
-      ELSIF Mode = 3 THEN
+      ELSIF Mode == 3 THEN
          Output = 30;
       ELSE
          Output = 0;
