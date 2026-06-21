@@ -211,7 +211,7 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():  # 
     assert "alarm-integrity" in duplicate_alarm_tag["analyzers"]
     assert "alarm-integrity.summary" in duplicate_alarm_tag["outputs"]
     assert "tests/test_analyzers_suites_part1.py" in duplicate_alarm_tag["acceptance_tests"]
-    assert duplicate_alarm_tag["corpus_cases"] == ["workspace-common-quality-issues"]
+    assert duplicate_alarm_tag["corpus_cases"] == ["semantic-alarm-integrity", "workspace-common-quality-issues"]
     assert duplicate_alarm_tag["mutation_applicability"] == "required"
     assert duplicate_alarm_tag["suppression_modes"] == ["baseline"]
     assert duplicate_alarm_tag["incremental_safe"] is False
@@ -219,7 +219,7 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():  # 
     assert {"sattline-semantics", "dataflow"} <= set(read_before_write["analyzers"])
     assert "sattline-semantics.summary" in read_before_write["outputs"]
     assert "tests/analyzers/test_dataflow.py" in read_before_write["acceptance_tests"]
-    assert read_before_write["corpus_cases"] == ["workspace-common-quality-issues"]
+    assert read_before_write["corpus_cases"] == ["semantic-read-before-write", "workspace-common-quality-issues"]
     assert read_before_write["mutation_applicability"] == "required"
     assert dead_overwrite["source"] == "dataflow"
     assert "dataflow.summary" in dead_overwrite["outputs"]

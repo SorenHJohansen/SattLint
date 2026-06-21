@@ -12,13 +12,9 @@ BasePicture Invocation
 TYPEDEFINITIONS
    RecipeType = RECORD DateCode_ 1
       Value: integer  := 0;
+      Name: string  := "";
    ENDDEF
     (*RecipeType*);
-
-   RecipeType = RECORD DateCode_ 1
-      Value: integer  := 0;
-   ENDDEF
-    (*RecipeType dup*);
 
 TYPEDEFINITIONS
    ChildType = MODULEDEFINITION DateCode_ 1

@@ -1,6 +1,6 @@
 "Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
 "Original file date: ---"
-"Program date: 2026-06-19-12:00:00.000, name: ParameterMappingIssues"
+"Program date: 2026-06-19-12:00:00.000, name: ParamMappingIssues"
 (* Covers CONTRACT_MISMATCH, REQUIRED_PARAMETER_CONNECTION, MIN_MAX_MAPPING_MISMATCH.
    Expected: strict syntax-check passes. *)
 
@@ -18,16 +18,16 @@ TYPEDEFINITIONS
       LimitMax: real  := 100.0;
    LOCALVARIABLES
       Position: real  := 0.0;
-      State: boolean  := False;
+      ValveState: boolean  := False;
    ModuleDef
    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
    ModuleCode
    EQUATIONBLOCK Eq COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
       IF CmdOpen THEN
-         State = True;
+         ValveState = True;
       ENDIF;
       IF CmdClose THEN
-         State = False;
+         ValveState = False;
       ENDIF;
       Position = LimitMin + (LimitMax - LimitMin) * 0.5;
    ENDDEF (*ValveType*);
