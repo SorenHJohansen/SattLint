@@ -9,8 +9,6 @@ BasePicture Invocation
     ) : MODULEDEFINITION DateCode_ 1
 
 LOCALVARIABLES
-   SeqControl: integer  := 0;
-   SeqTimer: integer  := 0;
    Trigger: boolean  := False;
 
 ModuleDef

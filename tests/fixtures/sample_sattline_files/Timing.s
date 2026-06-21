@@ -11,8 +11,8 @@ BasePicture Invocation
 
 LOCALVARIABLES
    Raw: integer  := 0;
-   State Smoothed: integer  := 0;
-   State Accum: integer  := 0;
+   Smoothed: integer State := 0;
+   Accum: integer State := 0;
    PrevAccum: integer  := 0;
 
 ModuleDef

@@ -15,6 +15,7 @@ TYPEDEFINITIONS
 
    MarkerRec = RECORD DateCode_ 1
       Marker: boolean  := True;
+      Count: integer  := 0;
    ENDDEF
     (*MarkerRec*);
 

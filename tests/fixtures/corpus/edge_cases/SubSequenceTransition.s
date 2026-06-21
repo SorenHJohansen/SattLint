@@ -1,6 +1,6 @@
 "Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
 "Original file date: ---"
-"Program date: 2026-06-19-12:00:00.000, name: SubSeqTransition"
+"Program date: 2026-06-19-12:00:00.000, name: SubSeqTransEdge"
 (* Edge case: transition inside a subsequence referencing the parent step label.
    Grammar rule: seqtransitionsub. *)
 
@@ -9,8 +9,6 @@ BasePicture Invocation
     ) : MODULEDEFINITION DateCode_ 1
 
 LOCALVARIABLES
-   SeqControl: integer  := 0;
-   SeqTimer: integer  := 0;
    Flag: boolean  := False;
 
 ModuleDef

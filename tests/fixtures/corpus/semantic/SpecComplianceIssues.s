@@ -13,8 +13,6 @@ BasePicture Invocation
 LOCALVARIABLES
    Cmd: boolean  := False;
    Done: boolean  := False;
-   SeqControl: integer  := 0;
-   SeqTimer: integer  := 0;
    BatchStep: integer  := 0;
    TryCount: integer  := 0;
 

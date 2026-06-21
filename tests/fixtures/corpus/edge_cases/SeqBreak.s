@@ -1,6 +1,6 @@
 "Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
 "Original file date: ---"
-"Program date: 2026-06-19-12:00:00.000, name: SeqBreak"
+"Program date: 2026-06-19-12:00:00.000, name: SeqBreakEdge"
 (* Edge case: SEQBREAK used to exit a sequence early.
    Grammar rule: seqbreak. *)
 
@@ -9,8 +9,6 @@ BasePicture Invocation
     ) : MODULEDEFINITION DateCode_ 1
 
 LOCALVARIABLES
-   SeqControl: integer  := 0;
-   SeqTimer: integer  := 0;
    Abort: boolean  := False;
 
 ModuleDef
