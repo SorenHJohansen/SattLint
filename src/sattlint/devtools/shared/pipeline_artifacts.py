@@ -79,12 +79,12 @@ def _resolve_generated_by_source_path(generated_by: str | None) -> Path | None:
     return Path(origin)
 
 
-def _file_sha1(path: Path) -> str:
-    digest = hashlib.sha1(usedforsecurity=False)
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256(usedforsecurity=False)
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(65536), b""):
             digest.update(chunk)
-    return f"sha1:{digest.hexdigest()}"
+    return f"sha256:{digest.hexdigest()}"
 
 
 def build_source_digest_manifest(
@@ -120,7 +120,7 @@ def build_source_digest_manifest(
             {
                 "path": display_path,
                 "exists": exists,
-                "digest": _file_sha1(resolved_source_path) if exists and resolved_source_path.is_file() else None,
+                "digest": _file_sha256(resolved_source_path) if exists and resolved_source_path.is_file() else None,
             }
         )
 
@@ -131,7 +131,7 @@ def build_source_digest_manifest(
         "artifact_kind": payload.get("kind"),
         "artifact_schema_version": payload.get("schema_version"),
         "generated_by": payload.get("generated_by"),
-        "artifact_digest": f"sha1:{hashlib.sha1(artifact_content.encode('utf-8'), usedforsecurity=False).hexdigest()}",
+        "artifact_digest": f"sha256:{hashlib.sha256(artifact_content.encode('utf-8'), usedforsecurity=False).hexdigest()}",
         "source_count": len(source_entries),
         "sources": source_entries,
     }
