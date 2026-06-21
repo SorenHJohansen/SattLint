@@ -1,6 +1,6 @@
 "Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
 "Original file date: ---"
-"Program date: 2026-06-19-12:00:00.000, name: UnreachableSeqDataflow"
+"Program date: 2026-06-19-12:00:00.000, name: UnreachablSeqDatafl"
 (* SEMANTIC: A sequence node that is never reached based on dataflow analysis
    (e.g., a step after an always-false guard).
    Expected: unreachable-sequence-node-dataflow. *)
@@ -10,8 +10,7 @@ BasePicture Invocation
     ) : MODULEDEFINITION DateCode_ 1
 
 LOCALVARIABLES
-   SeqControl: integer  := 0;
-   SeqTimer: integer  := 0;
+   Dummy: boolean  := False;
 
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )

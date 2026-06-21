@@ -9,8 +9,6 @@ BasePicture Invocation
     ) : MODULEDEFINITION DateCode_ 1
 
 LOCALVARIABLES
-   SeqControl: integer  := 0;
-   SeqTimer: integer  := 0;
    DoneA: boolean  := False;
    DoneB: boolean  := False;
 
@@ -22,11 +20,11 @@ ModuleCode
       SEQTRANSITION TrGo WAIT_FOR True
       PARALLELSEQ
          SEQSTEP BranchA
-         SEQTRANSITION TrA WAIT_FOR DoneA
       PARALLELBRANCH
          SEQSTEP BranchB
-         SEQTRANSITION TrB WAIT_FOR DoneB
       ENDPARALLEL
+      SEQTRANSITION TrA WAIT_FOR DoneA
+      SEQTRANSITION TrB WAIT_FOR DoneB
       SEQSTEP Sync
    ENDSEQUENCE
 

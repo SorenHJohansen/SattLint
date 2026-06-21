@@ -9,7 +9,7 @@ BasePicture Invocation
     ) : MODULEDEFINITION DateCode_ 1
 
 LOCALVARIABLES
-   StateVal: integer  := 0;
+   StateVal: integer State := 0;
    Result: integer  := 0;
 
 ModuleDef

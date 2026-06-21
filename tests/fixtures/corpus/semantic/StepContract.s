@@ -10,8 +10,6 @@ BasePicture Invocation
     ) : MODULEDEFINITION DateCode_ 1
 
 LOCALVARIABLES
-   SeqControl: integer  := 0;
-   SeqTimer: integer  := 0;
    Go: boolean  := False;
    Done: boolean  := False;
    Shared: integer  := 0;

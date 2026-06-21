@@ -11,9 +11,6 @@ BasePicture Invocation
     ) : MODULEDEFINITION DateCode_ 1
 
 LOCALVARIABLES
-   SeqControl: integer  := 0;
-   SeqTimer: integer  := 0;
-   Start: boolean  := False;
    Done: boolean  := False;
    Flag: boolean  := False;
 
@@ -24,12 +21,14 @@ ModuleCode
       SEQINITSTEP Init
          ENTERCODE
             Flag = False;
-      SEQTRANSITION TrGo WAIT_FOR Start
+      SEQTRANSITION TrGo WAIT_FOR True
+      SEQSTEP StepA
       SEQTRANSITION TrDead WAIT_FOR False
       SEQSTEP Unreachable
          ENTERCODE
             Flag = True;
       SEQTRANSITION TrDup WAIT_FOR Done
+      SEQSTEP DeadEnd
       SEQTRANSITION TrDup WAIT_FOR Done
    ENDSEQUENCE
 
