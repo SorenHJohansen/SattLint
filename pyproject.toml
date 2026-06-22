@@ -12,7 +12,7 @@ authors = [{ name = "S\u00f8ren H. Johansen" }]
 requires-python = ">=3.13"
 keywords = ["sattline", "static-analysis", "lsp", "documentation", "plc"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",

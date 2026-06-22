@@ -108,8 +108,12 @@ src/config.toml
 .github/coordination/current-work.md
 .github/coordination/current_work_lock.json
 .github/coordination/current_work_summary.json
+*.vsix
 
 # Local settings
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
+
+# CodeGraph analysis artifacts
+.codegraph/

@@ -6,6 +6,53 @@ For public support boundaries, see [SUPPORT.md](SUPPORT.md) and [docs/references
 
 Maintainer operating docs now start at [docs/maintainers/README.md](docs/maintainers/README.md), including the routing map, quality gates, and validation map.
 
+## How to Contribute as a Human Contributor
+
+### Reporting Bugs
+
+1. Check the [public support matrix](docs/references/public-support-matrix.md) to confirm whether the affected surface is stable or preview.
+2. Search existing [issues](https://github.com/SorenHJohansen/SattLint/issues) to avoid duplicates.
+3. Open a [bug report](https://github.com/SorenHJohansen/SattLint/issues/new?template=bug_report.md) with:
+   - SattLint version (`sattlint --version`)
+   - Install method and operating system
+   - Exact command that triggered the issue
+   - Minimal reproduction input (safe to share)
+   - Expected vs actual behavior
+
+### Suggesting Features
+
+1. Read the [public support matrix](docs/references/public-support-matrix.md) to understand stable vs preview boundaries.
+2. Open a [feature request](https://github.com/SorenHJohansen/SattLint/issues/new?template=feature_request.md) describing the problem you are solving, the desired behavior, and any current workaround.
+
+### Submitting Pull Requests
+
+1. Fork the repository and create a focused branch (`feature/`, `fix/`, or `chore/`).
+2. Keep changes small and scoped to a single concern.
+3. Run the pre-commit gate before pushing:
+
+   ```bash
+   python -m pre_commit run --all-files
+   ```
+
+4. Run the full audit if your change touches source or test files:
+
+   ```bash
+   sattlint-repo-audit --profile full --output-dir artifacts/audit
+   ```
+
+5. Open a pull request against `main`. Fill in the PR template with commands run and remaining risks.
+6. A maintainer will review your changes. Expect questions or requests for narrower scope.
+
+For human-readable CLI reference, see [docs/public/feature-guide.md](docs/public/feature-guide.md) and [docs/public/cli-commands.md](docs/public/cli-commands.md).
+
+### Getting Help
+
+- Usage questions: open a GitHub issue with the question template.
+- Security vulnerabilities: follow [SECURITY.md](SECURITY.md) and report privately.
+- Anything else: open a GitHub issue.
+
+---
+
 ## Prerequisites
 
 - Python 3.13 or newer

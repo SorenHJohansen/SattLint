@@ -5,10 +5,60 @@ For deeper design rationale, use `docs/design-docs/`.
 
 ## Layering
 
-```text
-VS Code client -> LSP -> editor facade / semantic core -> analyzers / engine -> parser core
-CLI + repo audit -------------------------------------> app / devtools helpers -> reporting / documentation
+```mermaid
+flowchart LR
+    subgraph User["User-Facing"]
+        CLI["sattlint CLI/TUI"]
+        LSP["sattlint-lsp"]
+        VSCODE["VS Code Extension"]
+    end
+
+    subgraph App["Application Layer"]
+        APP["app.py / app_*.py"]
+        EDITOR["editor_api.py"]
+        CONFIG["config.py / config_io.py"]
+    end
+
+    subgraph Analysis["Analysis Layer"]
+        ANALYZERS["analyzers/"]
+        CORE["core/ (semantic snapshot)"]
+        ENGINE["engine.py"]
+        RESOLUTION["resolution/"]
+        REPORTING["reporting/"]
+    end
+
+    subgraph Parser["Parser Layer"]
+        PARSER["sattline_parser/"]
+        GRAMMAR["grammar/sattline.lark"]
+        AST["models/"]
+        TRANSFORMER["transformer/"]
+    end
+
+    subgraph DevTools["DevTools Layer"]
+        AUDIT["devtools/repo_audit/"]
+        PIPELINE["devtools/pipeline.py"]
+        LINT["devtools/layer_linter.py"]
+        DOCS["docgenerator/"]
+    end
+
+    CLI --> APP
+    VSCODE --> LSP
+    LSP --> EDITOR
+    EDITOR --> CORE
+    APP --> ANALYZERS
+    APP --> ENGINE
+    APP --> CONFIG
+    ENGINE --> PARSER
+    CORE --> ANALYZERS
+    CORE --> RESOLUTION
+    CORE --> REPORTING
+    CLI --> DEVTOOLS
+    ANALYZERS --> PARSER
+    GRAMMAR --> PARSER
+    AST --> TRANSFORMER
 ```
+
+### Layer responsibilities
 
 - `vscode/sattline-vscode/` hosts the preview editor client for the Python LSP.
 - `src/sattlint_lsp/` owns workspace loading, document state, and protocol handling.
