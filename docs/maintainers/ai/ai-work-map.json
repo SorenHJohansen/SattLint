@@ -550,10 +550,12 @@
         "tests/test_repo_audit_part2.py"
       ],
       "path_globs": [
-        "src/**",
-        "tests/**",
+        "src/sattlint/devtools/audit/**",
+        "src/sattlint/devtools/layer_linter.py",
         "metrics/layer_lint_policy.json",
-        "pyproject.toml"
+        "tests/devtools/test_layer_linter.py",
+        "tests/test_repo_audit_part1.py",
+        "tests/test_repo_audit_part2.py"
       ],
       "source": "repo-audit"
     },
@@ -571,9 +573,14 @@
         "tests/test_repo_audit_part4.py"
       ],
       "path_globs": [
-        "src/**",
-        "tests/**",
-        "artifacts/analysis/structural_budget_ratchet.json"
+        "src/sattlint/devtools/audit/**",
+        "src/sattlint/devtools/structural/**",
+        "artifacts/analysis/structural_budget_ratchet.json",
+        "tests/test_repo_audit_part4.py",
+        "tests/test_structural_reports.py",
+        "tests/test_structural_reports_graphics.py",
+        "tests/test_structural_reports_graphs.py",
+        "tests/test_structural_reports_markdown.py"
       ],
       "source": "repo-audit"
     },

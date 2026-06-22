@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any, TypeGuard, cast
 
 from sattline_parser import parse_source_file
 from sattline_parser.models.ast_model import BasePicture
@@ -196,6 +196,7 @@ class CorpusSuiteResult:
             "failed_case_ids": failed_cases,
             "cases": [case.to_dict() for case in self.cases],
         }
+
         if findings_schema is not None:
             payload["findings_schema"] = findings_schema
         return payload
@@ -1306,7 +1307,7 @@ def _coerce_module_path(value: object) -> tuple[str, ...]:
     return (str(value),)
 
 
-def _is_variable_issue(issue: object) -> bool:
+def _is_variable_issue(issue: object) -> TypeGuard[VariableIssue]:
     return isinstance(issue, VariableIssue)
 
 
