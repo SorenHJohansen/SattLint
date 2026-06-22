@@ -13,3 +13,9 @@ def __getattr__(name: str) -> Any:
 
 def __dir__() -> list[str]:
     return sorted(set(globals()) | set(dir(ai_gc)) | set(dir(ai_work_map)))
+
+
+__all__ = [
+    "ai_gc",
+    "ai_work_map",
+]

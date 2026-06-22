@@ -20,3 +20,12 @@ def __dir__() -> list[str]:
         | set(dir(repo_audit_runs))
         | set(dir(repo_audit_shared))
     )
+
+
+__all__ = [
+    "repo_audit",
+    "repo_audit_cli",
+    "repo_audit_entrypoints",
+    "repo_audit_runs",
+    "repo_audit_shared",
+]

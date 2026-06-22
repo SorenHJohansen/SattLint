@@ -29,6 +29,12 @@ jobs:
       - name: Build distributions
         run: python -m build
 
+      - name: Generate SBOM
+        shell: bash
+        run: |
+          pip install cyclonedx-bom
+          cyclonedx-py requirements --pyproject -o dist/sbom.json
+
       - name: Check distribution metadata
         run: python -m twine check dist/*
 
@@ -50,7 +56,10 @@ jobs:
         with:
           if-no-files-found: error
           name: pypi-dist-${{ github.run_id }}
-          path: dist/*
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/sbom.json
 
       - name: Upload release smoke artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

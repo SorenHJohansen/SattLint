@@ -255,3 +255,11 @@ def analyze_mms_interface_variables(
         hits=hits,
         issues=issues,
     )
+
+
+__all__ = [
+    "analyze_mms_interface_variables",
+    "collect_icf_inventory_entries",
+    "collect_mms_inventory_entries",
+    "load_icf_entries_from_config",
+]

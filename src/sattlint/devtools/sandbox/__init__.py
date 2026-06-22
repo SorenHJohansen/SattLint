@@ -13,3 +13,6 @@ def __getattr__(name: str) -> Any:
 
 def __dir__() -> list[str]:
     return sorted(set(globals()) | set(dir(fuzzer)))
+
+
+__all__ = ["fuzzer"]

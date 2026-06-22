@@ -486,3 +486,20 @@ def analyze_sfc(
         issues.extend(contract_collector.collect())
 
     return SimpleReport(name=base_picture.header.name, issues=issues)
+
+
+__all__ = [
+    "ExclusiveStepGroup",
+    "SfcReachabilityFinding",
+    "StepContract",
+    "StepSet",
+    "analyze_sfc",
+    "collect_sfc_reachability_findings",
+    "conflict_rep",
+    "get_configured_mutually_exclusive_step_sets",
+    "get_configured_step_contracts",
+    "iter_sfc_modulecodes",
+    "normalize_mutually_exclusive_step_sets",
+    "normalize_step_contracts",
+    "paths_conflict",
+]
