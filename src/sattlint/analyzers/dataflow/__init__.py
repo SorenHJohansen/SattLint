@@ -439,3 +439,20 @@ def analyze_dataflow(
         shared_artifacts=shared_artifacts,
     )
     return SimpleReport(name=base_picture.header.name, issues=analyzer.run())
+
+
+__all__ = [
+    "INITIALIZED",
+    "OLD_PREFIX",
+    "PENDING_PREFIX",
+    "UNKNOWN",
+    "DataflowAnalyzer",
+    "DataflowConditionMixin",
+    "DataflowIssueReportingMixin",
+    "DataflowStateMixin",
+    "DataflowTraversalMixin",
+    "ResolvedRef",
+    "ScalarValue",
+    "StateMap",
+    "analyze_dataflow",
+]

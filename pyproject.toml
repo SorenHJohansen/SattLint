@@ -29,8 +29,6 @@ dependencies = [
     "tomli_w>=1.2.0",
     "openpyxl>=3.1.2",
     "defusedxml>=0.7.1",
-    "opentelemetry-api>=1.36.0,<2",
-    "opentelemetry-sdk>=1.36.0,<2",
     "rich>=13.9.0",
     "textual>=8.2.7,<9",
 ]
@@ -39,7 +37,7 @@ dependencies = [
 Homepage = "https://github.com/SorenHJohansen/SattLint"
 Repository = "https://github.com/SorenHJohansen/SattLint"
 Issues = "https://github.com/SorenHJohansen/SattLint/issues"
-Documentation = "https://github.com/SorenHJohansen/SattLint#readme"
+Documentation = "https://docs.sattlint.dev"
 Support = "https://github.com/SorenHJohansen/SattLint/blob/main/SUPPORT.md"
 Changelog = "https://github.com/SorenHJohansen/SattLint/blob/main/CHANGELOG.md"
 Security = "https://github.com/SorenHJohansen/SattLint/security/policy"
@@ -51,6 +49,11 @@ lsp = [
 
 tui = []
 
+telemetry = [
+    "opentelemetry-api>=1.36.0,<2",
+    "opentelemetry-sdk>=1.36.0,<2",
+]
+
 test = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",       # Coverage reporting
@@ -58,10 +61,11 @@ test = [
     "pytest-timeout>=2.3.1",   # Fail fast on stalled tests
     "pytest-xdist>=3.0.0",     # Parallel testing
     "interegular>=0.3.3",      # Lark strict-mode regex collision checks
+    "pytest-benchmark>=4.0.0", # Benchmarking support
 ]
 
 dev = [
-    "sattlint[test,lsp,tui]",
+    "sattlint[test,lsp,tui,telemetry]",
     "ruff==0.15.18",    # Match pre-commit Ruff to avoid formatter drift
     "pyright>=1.1.380", # Type checking
     "build>=1.2.2",    # Build frontend for release validation
@@ -97,6 +101,7 @@ markers = [
     "unit: marks tests as unit tests",
     "parser: marks tests related to parser functionality",
     "analyzer: marks tests related to analyzer functionality",
+    "quarantine: marks flaky tests that should be skipped in CI",
 ]
 
 [tool.coverage.report]
@@ -176,5 +181,4 @@ where = ["src"]
 version = { attr = "sattlint.__version__.__version__" }
 
 [tool.setuptools.package-data]
-sattlint = ["grammar/*.lark"]
 sattline_parser = ["grammar/*.lark"]

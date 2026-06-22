@@ -1,5 +1,7 @@
 # SattLint
 
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/SorenHJohansen/SattLint/badge)](https://securityscorecards.dev/viewer/?uri=github.com/SorenHJohansen/SattLint)
+
 SattLint is a Python toolkit for SattLine projects. It can syntax-check individual files, audit repository health, run deeper analysis, generate DOCX documentation, and expose a language-server entrypoint.
 
 ## Public support contract

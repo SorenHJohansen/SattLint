@@ -1261,3 +1261,36 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+__all__ = [
+    "DEFAULT_CORPUS_MANIFEST_DIR",
+    "DEFAULT_OUTPUT_DIR",
+    "DEFAULT_PIPELINE_PROFILE",
+    "DEFAULT_QUICK_PYTEST_TARGETS",
+    "DEFAULT_TRACE_TARGET",
+    "PIPELINE_PROFILE_CHOICES",
+    "PYPROJECT_PATH",
+    "REPO_ROOT",
+    "CommandResult",
+    "build_change_proof_requirements",
+    "build_pipeline_check_catalog",
+    "build_pipeline_check_recommendations",
+    "detect_changed_files",
+    "evaluate_change_scoped_coverage_proof",
+    "evaluate_change_scoped_structural_surface_proof",
+    "main",
+    "pipeline_cli_helpers",
+    "pipeline_execution_helpers",
+    "pipeline_failure_output_helpers",
+    "pipeline_finish_gate_helpers",
+    "pipeline_optional_report_helpers",
+    "pipeline_parsing_helpers",
+    "pipeline_status_assembly_helpers",
+    "profile_settings",
+    "resolve_python_executable",
+    "resolve_venv_tool",
+    "run_command",
+    "run_pipeline",
+    "run_recommended_pipeline_finish_gate",
+]

@@ -165,7 +165,7 @@ def _load_pickle_payload(path: Path) -> object | None:
     try:
         with path.open("rb") as handle:
             return pickle.load(handle)  # nosec B301 - loading SattLint-owned local cache files only
-    except (OSError, pickle.UnpicklingError, TypeError, AttributeError, EOFError):
+    except (OSError, pickle.UnpicklingError, TypeError, AttributeError, EOFError, ModuleNotFoundError):
         return None
 
 

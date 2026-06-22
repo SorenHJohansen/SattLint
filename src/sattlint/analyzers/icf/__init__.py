@@ -684,6 +684,17 @@ def _validate_unit_structure(
     return issues
 
 
+__all__ = [
+    "ICFFormatResult",
+    "format_icf_file",
+    "format_icf_text",
+    "parse_icf_file",
+    "resolve_leaf_datatype",
+    "resolve_record_datatype",
+    "validate_icf_entries_against_program",
+]
+
+
 def validate_icf_entries_against_program(
     base_picture: BasePicture,
     entries: list[ICFEntry],

@@ -10,46 +10,12 @@
 
 | Phase | Theme | Total Items | Est. Effort |
 |-------|-------|-------------|-------------|
-| P1 | Distribution & packaging | 7 | ~4h |
-| P3 | CI/CD hardening | 7 | ~4h |
 | P4 | Technical debt — source | 9 | ~1 week |
 | P5 | Technical debt — test | 6 | ~3 days |
 | P6 | Technical debt — architecture | 10 | ~2 weeks |
 | P7 | Polish & release | 4 | ~2h |
 
-**Completed:** P0 (Quick hygiene & baseline, 14 items) and P2 (Documentation & governance, 8 items) — 22 items finished.
-
----
-
-## P1 — Distribution & Packaging (7 items, ~4h)
-
-Get the package ready for PyPI consumption. Every user will first encounter SattLint through `pip install`.
-
-| # | Task | File(s) | Effort | Verification |
-|---|------|---------|--------|-------------|
-| P1.1 | Consolidate duplicate grammar packaging | `pyproject.toml` | 30m | `pip install -e . && pip show -f sattlint` shows grammar files only once |
-| P1.2 | Make telemetry optional — move `opentelemetry-*` to `[telemetry]` extra with graceful degradation | `pyproject.toml`, import sites | 3h | `pip install sattlint` works without opentelemetry; telemetry code is a no-op when extra absent |
-| P1.3 | Declare `__all__` in every public package | `src/sattlint/analyzers/__init__.py`, `src/sattlint/core/__init__.py`, `src/sattlint/resolution/__init__.py`, `src/sattlint/reporting/__init__.py`, etc. | 2h | `python -c "from sattlint import *"` succeeds and exports only intended names |
-| P1.4 | Add clean-venv install test to CI | `.github/workflows/ci.yml` or `publish.yml` | 30m | CI job installs into fresh venv, runs `sattlint --version` |
-| P1.5 | Add SBOM generation to publish workflow | `.github/workflows/publish.yml` | 30m | Published release includes SBOM artifact |
-| P1.6 | Update PyPI metadata: add `long_description_content_type`, project URLs for docs | `pyproject.toml` | 10m | `twine check dist/*` passes |
-| P1.7 | Add stable Python API surface documentation | `docs/public/python-api.md` | 1h | Documents all `__all__` exports per package |
-
----
-
-## P3 — CI/CD Hardening (7 items, ~4h)
-
-Make CI reliable, fast, and platform-complete.
-
-| # | Task | File(s) | Effort | Verification |
-|---|------|---------|--------|-------------|
-| P3.1 | Run Windows pytest suite (not just quick audit) | `.github/workflows/ci.yml` | 2h | Windows CI runs `pytest -q --tb=short` |
-| P3.2 | Add OpenSSF Scorecard workflow and badge | `.github/workflows/scorecard.yml`, `README.md` | 1h | Badge appears in README |
-| P3.3 | Add performance benchmark step to CI | `.benchmarks/`, CI workflow | 1h | CI measures parse/analyze time on standard fixture, fails on regression |
-| P3.4 | Add Pyright to pre-commit | `.pre-commit-config.yaml` | 30m | `pre-commit run --all-files` includes pyright |
-| P3.5 | Remove or fix misleading coverage gate scope | `pyproject.toml` (coverage config) | 15m | `--cov-fail-under` matches actual measured surface |
-| P3.6 | Start using pytest markers for CI tier differentiation | Test files | 1h | `pytest -m "not slow"` works, `pytest -m unit` runs fast subset |
-| P3.7 | Add `pytest.mark.skipif` / `pytest.mark.skip` support for quarantining flaky tests | Test files | 15m | Mechanism exists and is documented |
+**Completed:** P0 (Quick hygiene & baseline, 14 items), P1 (Distribution & packaging, 7 items), P2 (Documentation & governance, 8 items), P3 (CI/CD hardening, 7 items) — 36 items finished.
 
 ---
 
@@ -121,14 +87,10 @@ Structural improvements to internal architecture. These are the most invasive ch
 ## Dependency Graph
 
 ```text
-P1.1–P1.7 (distribution)  ───────────────────────────────────> P7.2 (classifiers)
-                                                                │
-P7.1 (changelog) ─────────────────────────────────────────────> P7.3
-                                                                │
-P1.4 (clean-venv CI test)                                      │
-P1.5 (SBOM)                                                    │
-                                                                ▼
-                                                           P7.4 (publish)
+P7.1 (changelog) ─────────────────────────────────────────────> P7.3 (tag)
+                                                                 │
+                                                                 ▼
+                                                            P7.4 (publish)
 ```
 
 P4–P6 are independent of each other and of the release track.
@@ -139,16 +101,16 @@ P4–P6 are independent of each other and of the release track.
 
 | Location | Items |
 |----------|-------|
-| `pyproject.toml` | P1.1, P1.2, P1.6, P3.5 |
+| `pyproject.toml` | (none remaining) |
 | `src/sattlint/` (source splits) | P4.1–P4.9 |
 | `src/sattlint_lsp/` | P6.5 |
-| `src/sattlint/__init__.py` + subpackages | P1.3, P1.7 |
-| `.github/workflows/` | P1.4, P1.5, P3.1, P3.2, P3.3 |
-| `.pre-commit-config.yaml` | P3.4 |
-| `docs/public/` | P1.7 |
+| `src/sattlint/__init__.py` + subpackages | (none remaining) |
+| `.github/workflows/` | (none remaining) |
+| `.pre-commit-config.yaml` | (none remaining) |
+| `docs/public/` | (none remaining) |
 | `tests/` (test splits) | P5.1–P5.6 |
 | `tests/helpers/` | P5.6 |
-| `.benchmarks/` | P3.3 |
+| `.benchmarks/` | (none remaining) |
 
 ---
 
@@ -156,13 +118,11 @@ P4–P6 are independent of each other and of the release track.
 
 | Phase | Items | Est. Effort | Calendar (sequential) | Calendar (parallel) |
 |-------|-------|-------------|----------------------|---------------------|
-| P1 — Distribution | 7 | ~4h | 1 day | 1 day |
-| P3 — CI/CD hardening | 7 | ~4h | 1 day | 1 day |
 | P4 — Source debt | 9 | ~1 week | 1 week | 3 days |
 | P5 — Test debt | 6 | ~3 days | 3 days | 2 days |
 | P6 — Architecture debt | 10 | ~2 weeks | 2 weeks | 1 week |
 | P7 — Polish & release | 4 | ~2h | 1 day | 1 day |
-| **Total remaining** | **43** | **~4 weeks** | **~4 weeks** | **~2 weeks** |
+| **Total remaining** | **29** | **~4 weeks** | **~4 weeks** | **~2 weeks** |
 
-> **Completed:** P0 (14 items, ~2h) and P2 (8 items, ~6h) — 22 items finished.
+> **Completed:** P0 (14 items, ~2h), P1 (7 items, ~4h), P2 (8 items, ~6h), P3 (7 items, ~4h) — 36 items finished.
 > **P4–P6 (post-v1.0 quality backlog):** ~4 weeks. These are not release blockers in the strict sense.
