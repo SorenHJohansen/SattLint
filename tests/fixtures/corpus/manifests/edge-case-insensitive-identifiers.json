@@ -1,0 +1,37 @@
+{
+    "case_id": "edge-case-insensitive-identifiers",
+    "target_file": "../edge_cases/CaseInsensitiveIdentifiers.s",
+    "mode": "workspace",
+    "expectation": {
+        "expected_finding_ids": [
+            "semantic.data-dependency-path",
+            "semantic.never-read-write",
+            "semantic.signal-lifecycle-unconsumed-write",
+            "spec.basepicture_direct_code"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0
+            },
+            "summary.json": {
+                "finding_count": 6,
+                "rule_counts": {
+                    "semantic.data-dependency-path": 3,
+                    "semantic.never-read-write": 1,
+                    "semantic.signal-lifecycle-unconsumed-write": 1,
+                    "spec.basepicture_direct_code": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

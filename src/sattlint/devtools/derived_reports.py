@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, TypedDict, cast
 
-from sattlint.analyzers.registry import get_default_analyzer_catalog
+from sattlint.analysis_catalog import get_default_analyzer_catalog
 from sattlint.path_sanitizer import sanitize_path_for_report
 
 from .artifact_registry import (

@@ -1,6 +1,6 @@
 {
     "case_id": "semantic-magic-number",
-    "target_file": "../semantic/MagicNumber.s",
+    "target_file": "../semantic/workspace/MagicNumber.s",
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [],

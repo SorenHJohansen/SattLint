@@ -18,6 +18,8 @@ class AnalyzerSpecTemplate:
     direct_context: bool = False
     semantic_mapping_kind: str | None = None
     semantic_rule_source: str | None = None
+    composed_analyzer_keys: tuple[str, ...] = ()
+    composed_issue_kind_names: tuple[str, ...] = ()
 
 
 def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSpecTemplate, ...]:
@@ -68,6 +70,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             description="MMSWriteVar/MMSReadVar inventory with OPC and MES validation checks",
             analyzer_attr="analyze_mms_interface_variables",
             context_kwargs=("debug", "config"),
+            semantic_rule_source="mms-interface",
         ),
         AnalyzerSpecTemplate(
             key="sfc",
@@ -85,6 +88,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             description="Code-like content inside comments",
             analyzer_attr="analyze_comment_code",
             direct_context=True,
+            semantic_rule_source="comment-code",
         ),
         AnalyzerSpecTemplate(
             key="shadowing",
@@ -109,6 +113,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             name="Loop output refactor",
             description="Detect dependency loops across sorted equation blocks and active step code",
             analyzer_attr="analyze_loop_output_refactor",
+            semantic_rule_source="loop-output-refactor",
         ),
         AnalyzerSpecTemplate(
             key="alarm-integrity",
@@ -141,6 +146,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             description="Detect startup-value gaps and unsafe startup defaults that affect power-up behavior",
             analyzer_attr="analyze_powerup",
             context_kwargs=("debug", "unavailable_libraries"),
+            composed_analyzer_keys=("initial-values", "unsafe-defaults"),
         ),
         AnalyzerSpecTemplate(
             key="naming-consistency",
@@ -200,6 +206,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             description="Report deterministic dependency chains and initialization-order hazards",
             analyzer_attr="analyze_data_dependency",
             context_kwargs=("unavailable_libraries", "analyzed_target_is_library"),
+            semantic_rule_source="data-dependency",
         ),
         AnalyzerSpecTemplate(
             key="config-drift",
@@ -222,6 +229,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             description="Detect unreleased or prematurely released resource handles and scan-loop resource hazards",
             analyzer_attr="analyze_resource_usage",
             context_kwargs=("unavailable_libraries", "analyzed_target_is_library"),
+            semantic_rule_source="resource-usage",
         ),
         AnalyzerSpecTemplate(
             key="scan-concurrency",
@@ -229,6 +237,27 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             description="Detect parallel scan or sequence branches that write the same variable without arbitration",
             analyzer_attr="analyze_scan_concurrency",
             context_kwargs=("config",),
+            composed_analyzer_keys=("same-cycle",),
+            composed_issue_kind_names=("sfc_parallel_write_race",),
+        ),
+        AnalyzerSpecTemplate(
+            key="scan-shared-access",
+            name="Scan shared access",
+            description="Detect non-STATE variables that are read and written across multiple continuous scan sites",
+            analyzer_attr="analyze_scan_shared_access",
+            context_kwargs=("config",),
+            composed_analyzer_keys=("same-cycle",),
+            composed_issue_kind_names=("same_cycle_non_state_multi_site_hazard",),
+        ),
+        AnalyzerSpecTemplate(
+            key="same-cycle",
+            name="Same-cycle hazards",
+            description="Detect same-scan shared-variable hazards across modules and parallel SFC branches",
+            analyzer_attr="analyze_same_cycle",
+            context_kwargs=("analysis_context", "debug", "unavailable_libraries", "analyzed_target_is_library"),
+            supports_live_diagnostics=True,
+            semantic_mapping_kind="framework",
+            semantic_rule_source="same-cycle",
         ),
         AnalyzerSpecTemplate(
             key="timing",
@@ -236,6 +265,13 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             description="Detect scan-cycle temporal hazards and non precision-scan-safe resource usage",
             analyzer_attr="analyze_timing",
             context_kwargs=("unavailable_libraries", "analyzed_target_is_library"),
+            composed_analyzer_keys=("dataflow", "scan-loop-resource-usage"),
+            composed_issue_kind_names=(
+                "dataflow.scan_cycle_stale_read",
+                "dataflow.scan_cycle_implicit_new",
+                "dataflow.scan_cycle_temporal_misuse",
+                "scan_cycle.resource_usage",
+            ),
         ),
         AnalyzerSpecTemplate(
             key="version-drift",
@@ -243,6 +279,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             description="Detect repeated module names that have drifted structurally beyond datecode-only changes",
             analyzer_attr="analyze_version_drift",
             context_kwargs=("debug",),
+            semantic_rule_source="version-drift",
         ),
         AnalyzerSpecTemplate(
             key="safety-paths",

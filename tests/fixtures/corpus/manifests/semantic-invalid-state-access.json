@@ -1,7 +1,8 @@
 {
     "case_id": "semantic-invalid-state-access",
-    "target_file": "../semantic/InvalidStateAccess.s",
+    "target_file": "../semantic/workspace/InvalidStateAccess.s",
     "mode": "workspace",
+    "load_strategy": "direct-parse",
     "expectation": {
         "expected_finding_ids": [
             "semantic.invalid-state-access"

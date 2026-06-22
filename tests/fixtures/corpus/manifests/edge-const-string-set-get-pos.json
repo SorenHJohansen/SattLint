@@ -1,0 +1,41 @@
+{
+    "case_id": "edge-const-string-set-get-pos",
+    "target_file": "../edge_cases/ConstStringSetGetPos.s",
+    "mode": "workspace",
+    "expectation": {
+        "expected_finding_ids": [
+            "semantic.data-dependency-path",
+            "semantic.dead-overwrite",
+            "semantic.procedure-status-handling",
+            "semantic.read-only-non-const",
+            "semantic.signal-lifecycle-unconsumed-write",
+            "spec.basepicture_direct_code"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0
+            },
+            "summary.json": {
+                "finding_count": 11,
+                "rule_counts": {
+                    "semantic.data-dependency-path": 6,
+                    "semantic.dead-overwrite": 1,
+                    "semantic.procedure-status-handling": 1,
+                    "semantic.read-only-non-const": 1,
+                    "semantic.signal-lifecycle-unconsumed-write": 1,
+                    "spec.basepicture_direct_code": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

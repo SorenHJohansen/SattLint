@@ -8,6 +8,12 @@ from typing import TYPE_CHECKING
 from sattline_parser.models.ast_model import FrameModule, ModuleTypeDef, ModuleTypeInstance, SingleModule, Variable
 
 from ...reporting.variables_report import IssueKind, VariableIssue
+from ._variables_contracts import (
+    should_collect_any_issue_kinds as _should_collect_any_issue_kinds,
+)
+from ._variables_contracts import (
+    should_collect_issue_kind as _should_collect_issue_kind,
+)
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer
@@ -23,20 +29,6 @@ _MODULE_VARIABLE_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
         IssueKind.WRITE_WITHOUT_EFFECT,
     }
 )
-
-
-def _selected_issue_kinds(self: object) -> frozenset[IssueKind] | set[IssueKind] | None:
-    return getattr(self, "_selected_issue_kinds", None)
-
-
-def _should_collect_issue_kind(self: object, kind: IssueKind) -> bool:
-    selected_kinds = _selected_issue_kinds(self)
-    return selected_kinds is None or kind in selected_kinds
-
-
-def _should_collect_any_issue_kinds(self: object, kinds: frozenset[IssueKind]) -> bool:
-    selected_kinds = _selected_issue_kinds(self)
-    return selected_kinds is None or bool(selected_kinds & kinds)
 
 
 def _append_issue(

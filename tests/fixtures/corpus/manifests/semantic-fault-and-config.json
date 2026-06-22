@@ -1,13 +1,12 @@
 {
     "case_id": "semantic-fault-and-config",
-    "target_file": "../semantic/FaultAndConfig.s",
+    "target_file": "../semantic/workspace/FaultAndConfig.s",
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [
+            "semantic.fault-missing-recovery",
             "semantic.fault-unhandled-path",
-            "semantic.missing-parameter-initial-value",
-            "semantic.instance-configuration-drift",
-            "semantic.loop-conflicting-setpoint"
+            "semantic.instance-configuration-drift"
         ],
         "artifact_fragments": {
             "status.json": {
@@ -16,10 +15,9 @@
             },
             "summary.json": {
                 "rule_counts": {
+                    "semantic.fault-missing-recovery": 1,
                     "semantic.fault-unhandled-path": 1,
-                    "semantic.missing-parameter-initial-value": 1,
-                    "semantic.instance-configuration-drift": 1,
-                    "semantic.loop-conflicting-setpoint": 1
+                    "semantic.instance-configuration-drift": 1
                 }
             }
         },

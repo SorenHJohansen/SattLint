@@ -1,6 +1,6 @@
 {
     "case_id": "semantic-spec-compliance",
-    "target_file": "../semantic/SpecComplianceIssues.s",
+    "target_file": "../semantic/workspace/SpecComplianceIssues.s",
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [
@@ -8,7 +8,6 @@
             "spec.sequence_step_prefix",
             "spec.transition_name_missing",
             "spec.transition_prefix",
-            "spec.opmessage_use_signature",
             "spec.mes_batch_control_name",
             "spec.mes_batch_control_max_try",
             "spec.mes_batch_control_repeat_try"
@@ -21,10 +20,9 @@
             "summary.json": {
                 "rule_counts": {
                     "spec.basepicture_direct_code": 1,
-                    "spec.sequence_step_prefix": 1,
+                    "spec.sequence_step_prefix": 3,
                     "spec.transition_name_missing": 1,
-                    "spec.transition_prefix": 1,
-                    "spec.opmessage_use_signature": 1,
+                    "spec.transition_prefix": 2,
                     "spec.mes_batch_control_name": 1,
                     "spec.mes_batch_control_max_try": 1,
                     "spec.mes_batch_control_repeat_try": 1

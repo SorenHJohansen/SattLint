@@ -1,6 +1,6 @@
 {
     "case_id": "semantic-implicit-latch",
-    "target_file": "../semantic/ImplicitLatch.s",
+    "target_file": "../semantic/workspace/ImplicitLatch.s",
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [

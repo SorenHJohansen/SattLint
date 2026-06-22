@@ -1,15 +1,13 @@
 {
     "case_id": "semantic-code-quality",
-    "target_file": "../semantic/CodeQuality.s",
+    "target_file": "../semantic/workspace/CodeQuality.s",
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.commented-code",
             "semantic.condition-always-true",
             "semantic.condition-always-false",
             "semantic.unreachable-branch",
-            "semantic.self-compare-condition",
-            "semantic.unsafe-default-true"
+            "semantic.self-compare-condition"
         ],
         "artifact_fragments": {
             "status.json": {
@@ -18,12 +16,10 @@
             },
             "summary.json": {
                 "rule_counts": {
-                    "semantic.commented-code": 1,
-                    "semantic.condition-always-true": 1,
+                    "semantic.condition-always-true": 2,
                     "semantic.condition-always-false": 1,
                     "semantic.unreachable-branch": 1,
-                    "semantic.self-compare-condition": 1,
-                    "semantic.unsafe-default-true": 1
+                    "semantic.self-compare-condition": 1
                 }
             }
         },

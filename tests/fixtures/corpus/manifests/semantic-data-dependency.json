@@ -1,11 +1,10 @@
 {
     "case_id": "semantic-data-dependency",
-    "target_file": "../semantic/DataDependency.s",
+    "target_file": "../semantic/shared/LoopOutputRefactor.s",
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [
             "semantic.data-dependency-path",
-            "semantic.data-dependency-initialization-order",
             "semantic.loop-output-refactor"
         ],
         "artifact_fragments": {
@@ -16,7 +15,6 @@
             "summary.json": {
                 "rule_counts": {
                     "semantic.data-dependency-path": 1,
-                    "semantic.data-dependency-initialization-order": 1,
                     "semantic.loop-output-refactor": 1
                 }
             }

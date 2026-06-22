@@ -1,6 +1,6 @@
 {
     "case_id": "semantic-module-version-drift",
-    "target_file": "../../sample_sattline_files/ModuleVersionDrift.s",
+    "target_file": "../semantic/shared/VersionDrift.s",
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [

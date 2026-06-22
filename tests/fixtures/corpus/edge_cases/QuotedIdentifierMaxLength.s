@@ -1,6 +1,6 @@
 "Syntax version 2.23, date: 2026-04-23-12:00:00.000 N"
 "Original file date: ---"
-"Program date: 2026-04-23-12:00:00.000, name: QuotedIdentifierMaxLength"
+"Program date: 2026-04-23-12:00:00.000, name: QuotedIdMax20"
 (* EDGE CASE: A quoted identifier with exactly 20 characters in its body
    (not counting the surrounding single quotes).
    20 characters is the maximum allowed length; 21 or more characters cause

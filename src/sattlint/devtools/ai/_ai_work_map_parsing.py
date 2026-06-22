@@ -304,6 +304,22 @@ def collect_owner_suite_plans(exec_plans_dir: Path, *, repo_root: Path) -> list[
     return plans
 
 
+def _frontmatter_string_list(value: object) -> list[str]:
+    if isinstance(value, str):
+        stripped = value.strip()
+        return [stripped] if stripped else []
+    if not isinstance(value, list):
+        return []
+    entries: list[str] = []
+    for item in cast(list[object], value):
+        if not isinstance(item, str):
+            continue
+        stripped = item.strip()
+        if stripped:
+            entries.append(stripped)
+    return entries
+
+
 def collect_instruction_metadata(instructions_dir: Path, *, repo_root: Path) -> list[dict[str, Any]]:
     metadata: list[dict[str, Any]] = []
     for path in sorted(instructions_dir.glob("*.instructions.md")):
@@ -313,7 +329,7 @@ def collect_instruction_metadata(instructions_dir: Path, *, repo_root: Path) -> 
                 "file_path": path.relative_to(repo_root).as_posix(),
                 "name": frontmatter.get("name", path.stem),
                 "description": frontmatter.get("description", ""),
-                "apply_to": list(frontmatter.get("applyTo", [])),
+                "apply_to": _frontmatter_string_list(frontmatter.get("applyTo", [])),
             }
         )
     return metadata

@@ -1,0 +1,41 @@
+{
+    "case_id": "edge-seq-fork-multiple-targets",
+    "target_file": "../edge_cases/SeqForkMultipleTargets.s",
+    "mode": "workspace",
+    "expectation": {
+        "expected_finding_ids": [
+            "semantic.condition-always-true",
+            "semantic.duplicate-transition-guard",
+            "semantic.transition-always-true",
+            "spec.basepicture_direct_code",
+            "spec.sequence_step_prefix",
+            "spec.transition_prefix"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0
+            },
+            "summary.json": {
+                "finding_count": 18,
+                "rule_counts": {
+                    "semantic.condition-always-true": 4,
+                    "semantic.duplicate-transition-guard": 1,
+                    "semantic.transition-always-true": 4,
+                    "spec.basepicture_direct_code": 1,
+                    "spec.sequence_step_prefix": 4,
+                    "spec.transition_prefix": 4
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

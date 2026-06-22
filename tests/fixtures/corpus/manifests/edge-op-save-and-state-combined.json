@@ -1,0 +1,37 @@
+{
+    "case_id": "edge-op-save-and-state-combined",
+    "target_file": "../edge_cases/OpSaveAndStateCombined.s",
+    "mode": "workspace",
+    "expectation": {
+        "expected_finding_ids": [
+            "semantic.condition-always-false",
+            "semantic.signal-lifecycle-unconsumed-write",
+            "semantic.unreachable-branch",
+            "spec.basepicture_direct_code"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0
+            },
+            "summary.json": {
+                "finding_count": 7,
+                "rule_counts": {
+                    "semantic.condition-always-false": 1,
+                    "semantic.signal-lifecycle-unconsumed-write": 4,
+                    "semantic.unreachable-branch": 1,
+                    "spec.basepicture_direct_code": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

@@ -1,0 +1,33 @@
+{
+    "case_id": "analyzer-loop-stability",
+    "target_file": "../semantic/workspace/LoopStability.s",
+    "mode": "analyzer-loop-stability",
+    "expectation": {
+        "expected_finding_ids": [
+            "semantic.loop-conflicting-setpoint"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "loop-stability"
+            },
+            "summary.json": {
+                "analyzer_key": "loop-stability",
+                "finding_count": 1,
+                "rule_counts": {
+                    "semantic.loop-conflicting-setpoint": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

@@ -1,6 +1,6 @@
 {
     "case_id": "semantic-never-read-variable",
-    "target_file": "../semantic/NeverReadVariable.s",
+    "target_file": "../semantic/workspace/NeverReadVariable.s",
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [

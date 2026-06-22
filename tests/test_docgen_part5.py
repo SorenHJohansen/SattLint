@@ -325,9 +325,9 @@ def test_save_analyzer_reference_markdown(tmp_path):
 def test_resolve_fixture_path_returns_fixture_root_path():
     from sattlint.docgenerator import analyzer_ref  # noqa: PLC0415
 
-    resolved = analyzer_ref.resolve_fixture_path("corpus/semantic/ConfigDrift.s")
+    resolved = analyzer_ref.resolve_fixture_path("corpus/semantic/workspace/ConfigDrift.s")
 
-    assert resolved == analyzer_ref.FIXTURES_DIR / "corpus" / "semantic" / "ConfigDrift.s"
+    assert resolved == analyzer_ref.FIXTURES_DIR / "corpus" / "semantic" / "workspace" / "ConfigDrift.s"
 
 
 def test_build_analyzer_reference_entry_returns_error_for_unknown_catalog():

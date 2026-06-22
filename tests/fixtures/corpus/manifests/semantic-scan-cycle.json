@@ -1,23 +1,23 @@
 {
     "case_id": "semantic-scan-cycle",
-    "target_file": "../semantic/ScanCycle.s",
-    "mode": "workspace",
+    "target_file": "../semantic/shared/Timing.s",
+    "mode": "analyzer-dataflow",
     "expectation": {
         "expected_finding_ids": [
             "semantic.scan-cycle-stale-read",
-            "semantic.scan-cycle-implicit-new",
-            "semantic.scan-cycle-temporal-misuse"
+            "semantic.scan-cycle-implicit-new"
         ],
         "artifact_fragments": {
             "status.json": {
                 "execution_status": "ok",
-                "missing_dependency_count": 0
+                "missing_dependency_count": 0,
+                "analyzer_key": "dataflow"
             },
             "summary.json": {
+                "analyzer_key": "dataflow",
                 "rule_counts": {
                     "semantic.scan-cycle-stale-read": 1,
-                    "semantic.scan-cycle-implicit-new": 1,
-                    "semantic.scan-cycle-temporal-misuse": 1
+                    "semantic.scan-cycle-implicit-new": 1
                 }
             }
         },

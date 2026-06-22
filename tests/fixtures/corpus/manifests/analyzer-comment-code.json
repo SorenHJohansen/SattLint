@@ -1,0 +1,32 @@
+{
+    "case_id": "analyzer-comment-code",
+    "target_file": "../semantic/analyzer/CommentedCode.s",
+    "mode": "analyzer-comment-code",
+    "expectation": {
+        "expected_finding_ids": [
+            "comment_code"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "comment-code"
+            },
+            "summary.json": {
+                "analyzer_key": "comment-code",
+                "rule_counts": {
+                    "comment_code": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

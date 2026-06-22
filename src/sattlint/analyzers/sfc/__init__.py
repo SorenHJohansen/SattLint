@@ -146,6 +146,8 @@ def _normalize_step_contract_refs(raw: object) -> tuple[str, ...]:
 
 
 def _normalize_step_contract(raw: object) -> StepContract:
+    if isinstance(raw, StepContract):
+        return raw
     if not isinstance(raw, dict):
         return StepContract()
 

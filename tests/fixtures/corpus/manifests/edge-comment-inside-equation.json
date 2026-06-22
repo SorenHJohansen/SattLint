@@ -1,0 +1,47 @@
+{
+    "case_id": "edge-comment-inside-equation",
+    "target_file": "../edge_cases/CommentInsideEquation.s",
+    "mode": "workspace",
+    "expectation": {
+        "expected_finding_ids": [
+            "semantic.condition-always-false",
+            "semantic.data-dependency-path",
+            "semantic.never-read-write",
+            "semantic.read-only-non-const",
+            "semantic.same-cycle-non-state-multi-site",
+            "semantic.signal-lifecycle-unconsumed-write",
+            "spec.basepicture_direct_code",
+            "spec.sequence_step_prefix",
+            "spec.transition_prefix"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0
+            },
+            "summary.json": {
+                "finding_count": 12,
+                "rule_counts": {
+                    "semantic.condition-always-false": 2,
+                    "semantic.data-dependency-path": 1,
+                    "semantic.never-read-write": 1,
+                    "semantic.read-only-non-const": 1,
+                    "semantic.same-cycle-non-state-multi-site": 1,
+                    "semantic.signal-lifecycle-unconsumed-write": 1,
+                    "spec.basepicture_direct_code": 1,
+                    "spec.sequence_step_prefix": 2,
+                    "spec.transition_prefix": 2
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

@@ -1,6 +1,6 @@
 {
     "case_id": "semantic-read-only-non-const",
-    "target_file": "../semantic/ReadOnlyNonConst.s",
+    "target_file": "../semantic/workspace/ReadOnlyNonConst.s",
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [
@@ -13,7 +13,7 @@
             },
             "summary.json": {
                 "rule_counts": {
-                    "semantic.read-only-non-const": 1
+                    "semantic.read-only-non-const": 2
                 }
             }
         },

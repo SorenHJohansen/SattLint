@@ -1,0 +1,41 @@
+{
+    "case_id": "edge-global-parameter-mapping",
+    "target_file": "../edge_cases/GlobalParameterMapping.s",
+    "mode": "workspace",
+    "expectation": {
+        "expected_finding_ids": [
+            "semantic.global-scope-minimization",
+            "semantic.read-only-non-const",
+            "semantic.same-cycle-shared-access",
+            "semantic.signal-lifecycle-unconsumed-write",
+            "semantic.unsafe-default-true",
+            "spec.basepicture_direct_code"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0
+            },
+            "summary.json": {
+                "finding_count": 9,
+                "rule_counts": {
+                    "semantic.global-scope-minimization": 2,
+                    "semantic.read-only-non-const": 2,
+                    "semantic.same-cycle-shared-access": 1,
+                    "semantic.signal-lifecycle-unconsumed-write": 2,
+                    "semantic.unsafe-default-true": 1,
+                    "spec.basepicture_direct_code": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

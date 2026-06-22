@@ -1,11 +1,14 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false
 import json
 import logging
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+from sattlint.analyzers.framework import Issue
 from sattlint.analyzers.sattline_semantics import SattLineSemanticsReport, SemanticIssue, SemanticRule
 from sattlint.devtools import corpus as corpus_module
 from sattlint.devtools.corpus import (
@@ -16,6 +19,7 @@ from sattlint.devtools.corpus import (
     run_corpus_case,
     run_corpus_suite,
 )
+from sattlint.models import IssueKind, VariableIssue
 
 from ..helpers.artifact_assertions import (
     assert_corpus_results_report,
@@ -78,6 +82,15 @@ def _semantic_read_before_write_report(*, explanation: str | None = None, sugges
     )
 
 
+def _patch_analyzer_catalog(monkeypatch, *specs: object) -> None:
+    catalog = SimpleNamespace(
+        analyzers=tuple(SimpleNamespace(spec=spec) for spec in specs),
+        rules=(),
+    )
+    monkeypatch.setattr("sattlint.analyzers.registry.canonicalize_analyzer_key", lambda key: key.casefold())
+    monkeypatch.setattr("sattlint.analyzers.registry.get_default_analyzer_catalog", lambda: catalog)
+
+
 def test_load_corpus_manifest_reads_expectations(tmp_path):
     manifest_path = tmp_path / "unused-variable.json"
     manifest_path.write_text(
@@ -86,6 +99,14 @@ def test_load_corpus_manifest_reads_expectations(tmp_path):
                 "case_id": "unused-variable",
                 "target_file": "tests/fixtures/corpus/valid/UnusedVariable.s",
                 "mode": "workspace",
+                "load_strategy": "direct-parse",
+                "analysis_config": {
+                    "analysis": {
+                        "sfc": {
+                            "mutually_exclusive_steps": [["Idle", "Running"]],
+                        }
+                    }
+                },
                 "expectation": {
                     "expected_finding_ids": ["semantic.read-before-write", "unused"],
                     "forbidden_finding_ids": ["hardcoded-windows-path"],
@@ -106,6 +127,7 @@ def test_load_corpus_manifest_reads_expectations(tmp_path):
     assert manifest.case_id == "unused-variable"
     assert manifest.target_file == "tests/fixtures/corpus/valid/UnusedVariable.s"
     assert manifest.mode == "workspace"
+    assert manifest.load_strategy == "direct-parse"
     assert manifest.expectation.expected_finding_ids == (
         "semantic.read-before-write",
         "unused",
@@ -117,6 +139,13 @@ def test_load_corpus_manifest_reads_expectations(tmp_path):
         },
     }
     assert manifest.required_artifacts == ("summary.json", "findings.json")
+    assert manifest.analysis_config == {
+        "analysis": {
+            "sfc": {
+                "mutually_exclusive_steps": [["Idle", "Running"]],
+            }
+        }
+    }
 
 
 def test_evaluate_finding_ids_reports_missing_and_forbidden_ids(tmp_path):
@@ -408,14 +437,56 @@ def test_corpus_main_prints_summary_and_returns_failure_for_failed_suite(monkeyp
     assert exit_code == 1
     assert "Corpus cases: 2" in capsys.readouterr().out
 
-    corpus_module._print_cli_summary(
-        {
-            "case_count": 1,
-            "failed_count": 0,
-            "corpus_results_report": "reports/corpus_results.json",
-        }
+    print(
+        corpus_module.format_cli_summary(
+            {
+                "case_count": 1,
+                "failed_count": 0,
+                "corpus_results_report": "reports/corpus_results.json",
+            }
+        )
     )
     assert "Corpus results: reports/corpus_results.json" in capsys.readouterr().out
+
+
+def test_corpus_module_entrypoint_executes_main(tmp_path):
+    manifest_dir = tmp_path / "manifests"
+    manifest_dir.mkdir()
+    broken_file = tmp_path / "Broken.s"
+    broken_file.write_text("still invalid", encoding="utf-8")
+    (manifest_dir / "expected.json").write_text(
+        json.dumps(
+            {
+                "case_id": "expected-parse-error",
+                "target_file": "../Broken.s",
+                "mode": "strict",
+                "expectation": {"expected_finding_ids": ["syntax.parse"]},
+            }
+        ),
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "out"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "sattlint.devtools.corpus",
+            "--manifest-dir",
+            str(manifest_dir),
+            "--output-dir",
+            str(output_dir),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).resolve().parents[2],
+    )
+
+    assert completed.returncode == 0
+    assert "Corpus cases: 1" in completed.stdout
+    assert "Failed cases: 0" in completed.stdout
+    assert (output_dir / CORPUS_RESULTS_FILENAME).exists()
 
 
 def test_build_strict_finding_collection_returns_empty_when_validation_succeeds():
@@ -606,6 +677,360 @@ def test_execute_corpus_case_workspace_preserves_guidance_for_semantic_findings(
     assert_findings_collection(findings_report, finding_count=1)
     assert findings_report["findings"][0]["detail"] == "The read can observe undefined state on some control paths."
     assert findings_report["findings"][0]["suggestion"] == "Initialize the variable before the first possible read."
+
+
+def test_execute_corpus_case_workspace_merges_manifest_analysis_config(monkeypatch, tmp_path):
+    manifest_path = tmp_path / "workspace-case.json"
+    target_path = tmp_path / "Program.s"
+    artifact_dir = tmp_path / "artifacts"
+    target_path.write_text("placeholder", encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "case_id": "workspace-config",
+                "target_file": "Program.s",
+                "mode": "workspace",
+                "analysis_config": {
+                    "analysis": {
+                        "sfc": {
+                            "mutually_exclusive_steps": [["Idle", "Running"]],
+                            "step_contracts": {
+                                "Run": {
+                                    "required_enter_writes": ["StepValue"],
+                                }
+                            },
+                        }
+                    }
+                },
+                "expectation": {
+                    "expected_finding_ids": ["semantic.read-before-write"],
+                },
+                "required_artifacts": ["status.json", "summary.json", "findings.json"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    captured: dict[str, object] = {}
+    _patch_workspace_case_loader(monkeypatch)
+
+    def _analyze(*args, **kwargs):
+        captured["config"] = kwargs["config"]
+        return _semantic_read_before_write_report()
+
+    monkeypatch.setattr("sattlint.devtools.corpus.analyze_sattline_semantics", _analyze)
+
+    result = execute_corpus_case(manifest_path, artifact_dir, repo_root=tmp_path)
+
+    assert result.passed is True
+    assert captured["config"] == {
+        "abb_lib_dir": str(tmp_path),
+        "analysis": {
+            "sfc": {
+                "mutually_exclusive_steps": [["Idle", "Running"]],
+                "step_contracts": {
+                    "Run": {
+                        "required_enter_writes": ["StepValue"],
+                    }
+                },
+            }
+        },
+        "analyzed_targets": ["Program"],
+        "debug": False,
+        "mode": "draft",
+        "other_lib_dirs": [],
+        "program_dir": str(tmp_path),
+        "use_cache": False,
+        "workspace_root": str(tmp_path),
+    }
+
+
+def test_execute_corpus_case_workspace_direct_parse_uses_parser_result(monkeypatch, tmp_path):
+    manifest_path = tmp_path / "workspace-direct.json"
+    target_path = tmp_path / "Program.s"
+    artifact_dir = tmp_path / "artifacts"
+    target_path.write_text("placeholder", encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "case_id": "workspace-direct",
+                "target_file": "Program.s",
+                "mode": "workspace",
+                "load_strategy": "direct-parse",
+                "expectation": {
+                    "expected_finding_ids": ["semantic.read-before-write"],
+                },
+                "required_artifacts": ["status.json", "summary.json", "findings.json"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    captured: dict[str, object] = {}
+
+    class _FakeHeader:
+        name = "Program"
+
+    class _FakeBasePicture:
+        header = _FakeHeader()
+
+    fake_bp = _FakeBasePicture()
+
+    monkeypatch.setattr("sattlint.devtools.corpus.parse_source_file", lambda path: fake_bp)
+
+    def _analyze(base_picture, *args, **kwargs):
+        captured["base_picture"] = base_picture
+        captured["config"] = kwargs["config"]
+        return _semantic_read_before_write_report()
+
+    monkeypatch.setattr("sattlint.devtools.corpus.analyze_sattline_semantics", _analyze)
+
+    result = execute_corpus_case(manifest_path, artifact_dir, repo_root=tmp_path)
+
+    assert result.passed is True
+    assert captured["base_picture"] is fake_bp
+    assert captured["config"] == {
+        "abb_lib_dir": str(tmp_path),
+        "analyzed_targets": ["Program"],
+        "debug": False,
+        "mode": "draft",
+        "other_lib_dirs": [],
+        "program_dir": str(tmp_path),
+        "use_cache": False,
+        "workspace_root": str(tmp_path),
+    }
+
+
+def test_execute_corpus_case_workspace_python_factory_uses_builder_result(monkeypatch, tmp_path):
+    manifest_path = tmp_path / "workspace-factory.json"
+    target_path = tmp_path / "Program.py"
+    artifact_dir = tmp_path / "artifacts"
+    target_path.write_text(
+        "from sattline_parser.models.ast_model import BasePicture, ModuleHeader\n"
+        "\n"
+        "def build_basepicture():\n"
+        "    return BasePicture(header=ModuleHeader(name='Program', invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)))\n",
+        encoding="utf-8",
+    )
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "case_id": "workspace-factory",
+                "target_file": "Program.py",
+                "mode": "workspace",
+                "load_strategy": "python-factory",
+                "expectation": {
+                    "expected_finding_ids": ["semantic.read-before-write"],
+                },
+                "required_artifacts": ["status.json", "summary.json", "findings.json"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    captured: dict[str, object] = {}
+
+    def _analyze(base_picture, *args, **kwargs):
+        captured["base_picture"] = base_picture
+        captured["config"] = kwargs["config"]
+        return _semantic_read_before_write_report()
+
+    monkeypatch.setattr("sattlint.devtools.corpus.analyze_sattline_semantics", _analyze)
+
+    result = execute_corpus_case(manifest_path, artifact_dir, repo_root=tmp_path)
+
+    assert result.passed is True
+    assert captured["base_picture"].header.name == "Program"
+    assert captured["config"] == {
+        "abb_lib_dir": str(tmp_path),
+        "analyzed_targets": ["Program"],
+        "debug": False,
+        "mode": "draft",
+        "other_lib_dirs": [],
+        "program_dir": str(tmp_path),
+        "use_cache": False,
+        "workspace_root": str(tmp_path),
+    }
+
+
+def test_execute_corpus_case_analyzer_mode_maps_variable_issues_to_semantic_findings(monkeypatch, tmp_path):
+    manifest_path = tmp_path / "analyzer-case.json"
+    target_path = tmp_path / "Program.s"
+    artifact_dir = tmp_path / "artifacts"
+    target_path.write_text("placeholder", encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "case_id": "analyzer-variables",
+                "target_file": "Program.s",
+                "mode": "analyzer-variables",
+                "expectation": {
+                    "expected_finding_ids": ["semantic.never-read-write"],
+                },
+                "required_artifacts": ["status.json", "summary.json", "findings.json"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    _patch_workspace_case_loader(monkeypatch)
+    variable_issue = VariableIssue(
+        kind=IssueKind.NEVER_READ,
+        module_path=["Program", "UnitA"],
+        variable=SimpleNamespace(name="PumpStart"),
+    )
+    variables_spec = SimpleNamespace(
+        key="variables",
+        semantic_mapping_kind="variable",
+        requires=(),
+        run=lambda context: SimpleNamespace(issues=[variable_issue]),
+    )
+    _patch_analyzer_catalog(monkeypatch, variables_spec)
+
+    result = execute_corpus_case(manifest_path, artifact_dir, repo_root=tmp_path)
+
+    findings_report = json.loads((artifact_dir / "findings.json").read_text(encoding="utf-8"))
+    summary_report = json.loads((artifact_dir / "summary.json").read_text(encoding="utf-8"))
+
+    assert result.passed is True
+    assert result.execution_error is None
+    assert_findings_collection(findings_report, finding_count=1)
+    assert findings_report["findings"][0]["rule_id"] == "semantic.never-read-write"
+    assert findings_report["findings"][0]["message"] == "Variable 'PumpStart' is written but never read."
+    assert findings_report["findings"][0]["owner_surface"] == "analyzers"
+    assert findings_report["findings"][0]["location"]["module_path"] == ["Program", "UnitA"]
+    assert summary_report["analyzer_key"] == "variables"
+    assert summary_report["rule_counts"] == {"semantic.never-read-write": 1}
+
+
+def test_execute_corpus_case_analyzer_mode_runs_required_analyzers_first(monkeypatch, tmp_path):
+    manifest_path = tmp_path / "analyzer-case.json"
+    target_path = tmp_path / "Program.s"
+    artifact_dir = tmp_path / "artifacts"
+    target_path.write_text("placeholder", encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "case_id": "analyzer-sfc",
+                "target_file": "Program.s",
+                "mode": "analyzer-sfc",
+                "expectation": {
+                    "expected_finding_ids": ["semantic.parallel-write-race"],
+                },
+                "required_artifacts": ["status.json", "summary.json", "findings.json"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    _patch_workspace_case_loader(monkeypatch)
+    call_order: list[str] = []
+
+    def run_variables(context):
+        call_order.append("variables")
+        context.shared_artifacts.variable_analysis = SimpleNamespace(ready=True)
+        return SimpleNamespace(issues=[])
+
+    def run_sfc(context):
+        call_order.append("sfc")
+        assert context.shared_artifacts is not None
+        assert context.shared_artifacts.variable_analysis is not None
+        return SimpleNamespace(
+            issues=[
+                Issue(
+                    kind="sfc_parallel_write_race",
+                    message="Parallel branches write the same signal.",
+                    module_path=["Program", "SeqA"],
+                )
+            ]
+        )
+
+    variables_spec = SimpleNamespace(
+        key="variables",
+        semantic_mapping_kind="variable",
+        requires=(),
+        run=run_variables,
+    )
+    sfc_spec = SimpleNamespace(
+        key="sfc",
+        semantic_mapping_kind="framework",
+        requires=("variables",),
+        run=run_sfc,
+    )
+    _patch_analyzer_catalog(monkeypatch, variables_spec, sfc_spec)
+
+    result = execute_corpus_case(manifest_path, artifact_dir, repo_root=tmp_path)
+
+    findings_report = json.loads((artifact_dir / "findings.json").read_text(encoding="utf-8"))
+    summary_report = json.loads((artifact_dir / "summary.json").read_text(encoding="utf-8"))
+
+    assert result.passed is True
+    assert call_order == ["variables", "sfc"]
+    assert_findings_collection(findings_report, finding_count=1)
+    assert findings_report["findings"][0]["rule_id"] == "semantic.parallel-write-race"
+    assert findings_report["findings"][0]["owner_surface"] == "analyzers"
+    assert summary_report["analyzer_key"] == "sfc"
+    assert summary_report["rule_counts"] == {"semantic.parallel-write-race": 1}
+
+
+def test_execute_corpus_case_analyzer_mode_preserves_raw_issue_fields_for_unmapped_analyzers(monkeypatch, tmp_path):
+    manifest_path = tmp_path / "analyzer-case.json"
+    target_path = tmp_path / "Program.s"
+    artifact_dir = tmp_path / "artifacts"
+    target_path.write_text("placeholder", encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "case_id": "analyzer-comment-code",
+                "target_file": "Program.s",
+                "mode": "analyzer-comment-code",
+                "expectation": {
+                    "expected_finding_ids": ["comment_code"],
+                },
+                "required_artifacts": ["status.json", "summary.json", "findings.json"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    _patch_workspace_case_loader(monkeypatch)
+    comment_code_spec = SimpleNamespace(
+        key="comment-code",
+        semantic_mapping_kind=None,
+        requires=(),
+        run=lambda context: SimpleNamespace(
+            issues=[
+                Issue(
+                    kind="comment_code",
+                    message="Program.s:4 IF",
+                    module_path=["Program", "UnitA"],
+                    data={
+                        "path": str(target_path),
+                        "start_line": 4,
+                        "start_col": 2,
+                        "symbol": "IF",
+                    },
+                )
+            ]
+        ),
+    )
+    _patch_analyzer_catalog(monkeypatch, comment_code_spec)
+
+    result = execute_corpus_case(manifest_path, artifact_dir, repo_root=tmp_path)
+
+    findings_report = json.loads((artifact_dir / "findings.json").read_text(encoding="utf-8"))
+    summary_report = json.loads((artifact_dir / "summary.json").read_text(encoding="utf-8"))
+
+    assert result.passed is True
+    assert_findings_collection(findings_report, finding_count=1)
+    assert findings_report["findings"][0]["rule_id"] == "comment_code"
+    assert findings_report["findings"][0]["file"] == "Program.s"
+    assert findings_report["findings"][0]["line"] == 4
+    assert findings_report["findings"][0]["location"]["column"] == 2
+    assert findings_report["findings"][0]["location"]["symbol"] == "IF"
+    assert findings_report["findings"][0]["location"]["module_path"] == ["Program", "UnitA"]
+    assert summary_report["analyzer_key"] == "comment-code"
+    assert summary_report["rule_counts"] == {"comment_code": 1}
 
 
 def test_execute_corpus_case_returns_execution_error_when_findings_evaluation_read_fails(tmp_path, monkeypatch):

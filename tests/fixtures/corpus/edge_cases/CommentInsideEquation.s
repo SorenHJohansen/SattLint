@@ -1,6 +1,6 @@
 "Syntax version 2.23, date: 2026-04-23-12:00:00.000 N"
 "Original file date: ---"
-"Program date: 2026-04-23-12:00:00.000, name: CommentInsideEquation"
+"Program date: 2026-04-23-12:00:00.000, name: CommentInEquation"
 (* EDGE CASE: Comments are allowed inside EQUATIONBLOCK and SEQUENCE bodies.
    Only freestanding comments directly inside ModuleCode (before the first
    EQUATIONBLOCK or SEQUENCE) are rejected.
@@ -15,8 +15,6 @@ LOCALVARIABLES
    A, B: integer  := 0;
    StartCmd: boolean  := False;
    Output: integer  := 0;
-   SeqControl: integer  := 0;
-   SeqTimer: integer  := 0;
 
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )

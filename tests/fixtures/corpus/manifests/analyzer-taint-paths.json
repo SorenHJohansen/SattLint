@@ -1,0 +1,33 @@
+{
+    "case_id": "analyzer-taint-paths",
+    "target_file": "../semantic/workspace/SafetySignal.s",
+    "mode": "analyzer-taint-paths",
+    "expectation": {
+        "expected_finding_ids": [
+            "semantic.external-input-to-critical-sink"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "taint-paths"
+            },
+            "summary.json": {
+                "analyzer_key": "taint-paths",
+                "finding_count": 1,
+                "rule_counts": {
+                    "semantic.external-input-to-critical-sink": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

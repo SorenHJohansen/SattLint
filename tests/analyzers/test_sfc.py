@@ -409,6 +409,9 @@ def test_sfc_configuration_helpers_normalize_groups_and_contracts() -> None:
         "Done",
     )
     assert sfc_module._normalize_step_contract("bad") == StepContract()
+    assert sfc_module._normalize_step_contract(
+        StepContract(required_enter_writes=("Output",), required_exit_writes=("Done",))
+    ) == StepContract(required_enter_writes=("Output",), required_exit_writes=("Done",))
     assert sfc_module.normalize_step_contracts("bad") == {}
     assert sfc_module.normalize_step_contracts(
         {
@@ -419,6 +422,11 @@ def test_sfc_configuration_helpers_normalize_groups_and_contracts() -> None:
                 "required_enter_writes": [" Output ", "output"],
                 "required_exit_writes": ["Done"],
             },
+        }
+    ) == {"main": StepContract(required_enter_writes=("Output",), required_exit_writes=("Done",))}
+    assert sfc_module.normalize_step_contracts(
+        {
+            "Main": StepContract(required_enter_writes=("Output",), required_exit_writes=("Done",)),
         }
     ) == {"main": StepContract(required_enter_writes=("Output",), required_exit_writes=("Done",))}
     assert sfc_module.get_configured_step_contracts(None) == {}

@@ -12,6 +12,7 @@ from ._sattline_semantic_rules import (
     attach_rule_contract,
 )
 from .framework import Issue
+from .rule_profiles import get_issue_rules_for_source
 
 
 def map_variable_issues(issues: list[VariableIssue]) -> list[SemanticIssue]:
@@ -134,6 +135,25 @@ def map_framework_issues(
     return semantic_issues
 
 
+def map_profiled_issues(issues: list[Issue], source: str) -> list[SemanticIssue]:
+    semantic_issues: list[SemanticIssue] = []
+    rule_map = dict(get_issue_rules_for_source(source))
+    for issue in issues:
+        rule = rule_map.get(issue.kind)
+        if rule is None:
+            continue
+        semantic_issues.append(
+            SemanticIssue(
+                rule=rule,
+                message=issue.message,
+                module_path=issue.module_path,
+                data=issue.data or {},
+                source_kind=issue.kind,
+            )
+        )
+    return semantic_issues
+
+
 def map_trace_findings(findings: list[dict[str, Any]]) -> list[SemanticIssue]:
     semantic_issues: list[SemanticIssue] = []
     for finding in findings:
@@ -208,6 +228,7 @@ def map_spec_issues(issues: list[Issue]) -> list[SemanticIssue]:
 
 __all__ = [
     "map_framework_issues",
+    "map_profiled_issues",
     "map_spec_issues",
     "map_trace_findings",
     "map_variable_issues",

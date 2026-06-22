@@ -1,6 +1,6 @@
 {
     "case_id": "semantic-numeric-constraints",
-    "target_file": "../semantic/NumericConstraints.s",
+    "target_file": "../semantic/workspace/NumericConstraints.s",
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [

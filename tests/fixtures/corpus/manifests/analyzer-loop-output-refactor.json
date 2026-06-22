@@ -1,0 +1,32 @@
+{
+    "case_id": "analyzer-loop-output-refactor",
+    "target_file": "../semantic/shared/LoopOutputRefactor.s",
+    "mode": "analyzer-loop-output-refactor",
+    "expectation": {
+        "expected_finding_ids": [
+            "sorting.loop_output_refactor"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "loop-output-refactor"
+            },
+            "summary.json": {
+                "analyzer_key": "loop-output-refactor",
+                "rule_counts": {
+                    "sorting.loop_output_refactor": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

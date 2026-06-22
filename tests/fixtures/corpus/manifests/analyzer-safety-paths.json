@@ -1,0 +1,33 @@
+{
+    "case_id": "analyzer-safety-paths",
+    "target_file": "../semantic/workspace/SafetySignal.s",
+    "mode": "analyzer-safety-paths",
+    "expectation": {
+        "expected_finding_ids": [
+            "semantic.unconsumed-safety-signal"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "safety-paths"
+            },
+            "summary.json": {
+                "analyzer_key": "safety-paths",
+                "finding_count": 2,
+                "rule_counts": {
+                    "semantic.unconsumed-safety-signal": 2
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

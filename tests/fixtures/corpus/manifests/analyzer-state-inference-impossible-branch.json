@@ -1,0 +1,34 @@
+{
+    "case_id": "analyzer-state-inference-impossible-branch",
+    "target_file": "../semantic/analyzer/StateInferFalse.s",
+    "mode": "analyzer-state-inference",
+    "expectation": {
+        "expected_finding_ids": [
+            "state_inference.condition_always_false",
+            "state_inference.unreachable_branch"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "state-inference"
+            },
+            "summary.json": {
+                "analyzer_key": "state-inference",
+                "rule_counts": {
+                    "state_inference.condition_always_false": 1,
+                    "state_inference.unreachable_branch": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

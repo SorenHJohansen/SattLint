@@ -3,11 +3,35 @@
     "target_file": "../edge_cases/SeqBreak.s",
     "mode": "workspace",
     "expectation": {
-        "expected_finding_ids": [],
+        "expected_finding_ids": [
+            "semantic.condition-always-false",
+            "semantic.condition-always-true",
+            "semantic.transition-always-true",
+            "semantic.unreachable-sequence-node",
+            "semantic.unreachable-sequence-node-dataflow",
+            "semantic.unreachable-transition",
+            "spec.basepicture_direct_code",
+            "spec.sequence_step_prefix",
+            "spec.transition_prefix"
+        ],
         "artifact_fragments": {
             "status.json": {
                 "execution_status": "ok",
                 "missing_dependency_count": 0
+            },
+            "summary.json": {
+                "finding_count": 14,
+                "rule_counts": {
+                    "semantic.condition-always-false": 1,
+                    "semantic.condition-always-true": 1,
+                    "semantic.transition-always-true": 1,
+                    "semantic.unreachable-sequence-node": 1,
+                    "semantic.unreachable-sequence-node-dataflow": 2,
+                    "semantic.unreachable-transition": 1,
+                    "spec.basepicture_direct_code": 1,
+                    "spec.sequence_step_prefix": 3,
+                    "spec.transition_prefix": 3
+                }
             }
         },
         "forbidden_finding_ids": [

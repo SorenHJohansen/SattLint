@@ -21,6 +21,7 @@ from . import _app_graphics_from_app as app_graphics_from_app_module
 from . import _app_menus_from_app as app_menus_from_app_module
 from . import _app_source_diff as app_source_diff_module
 from . import _app_startup_from_app as app_startup_module
+from . import analysis_catalog as analysis_catalog_module
 from . import app_analysis as app_analysis_module
 from . import app_base as app_base_module
 from . import app_cli_commands as app_cli_commands_module
@@ -35,7 +36,6 @@ from . import config as _config_module
 from . import console as console_module
 from . import engine as engine_module_impl
 from . import telemetry_summary as telemetry_summary_module
-from .analyzers.registry import get_default_cli_analyzers, get_selectable_analyzers
 from .analyzers.shadowing import analyze_shadowing
 from .analyzers.variables import (
     IssueKind,
@@ -68,6 +68,8 @@ cache: Any = cache_module
 engine_module: Any = engine_module_impl
 telemetry_summary: Any = telemetry_summary_module
 source_diff_report_module: Any = importlib.import_module("sattlint.devtools.source_diff_report")
+get_default_cli_analyzers = analysis_catalog_module.get_default_cli_analyzers
+get_selectable_analyzers = analysis_catalog_module.get_selectable_analyzers
 
 _APP_MODULE: Any = sys.modules[__name__]
 _interactive_ui_mode = "textual"

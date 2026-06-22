@@ -46,18 +46,23 @@ _PARAM_MAPPING_CHECK_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
 )
 
 
-def _selected_issue_kinds(self: object) -> frozenset[IssueKind] | set[IssueKind] | None:
+def selected_issue_kinds(self: object) -> frozenset[IssueKind] | set[IssueKind] | None:
     return getattr(self, "_selected_issue_kinds", None)
 
 
-def _should_collect_issue_kind(self: object, kind: IssueKind) -> bool:
-    selected_kinds = _selected_issue_kinds(self)
+def should_collect_issue_kind(self: object, kind: IssueKind) -> bool:
+    selected_kinds = selected_issue_kinds(self)
     return selected_kinds is None or kind in selected_kinds
 
 
-def _should_collect_any_issue_kinds(self: object, kinds: frozenset[IssueKind]) -> bool:
-    selected_kinds = _selected_issue_kinds(self)
+def should_collect_any_issue_kinds(self: object, kinds: frozenset[IssueKind]) -> bool:
+    selected_kinds = selected_issue_kinds(self)
     return selected_kinds is None or bool(selected_kinds & kinds)
+
+
+_selected_issue_kinds = selected_issue_kinds
+_should_collect_issue_kind = should_collect_issue_kind
+_should_collect_any_issue_kinds = should_collect_any_issue_kinds
 
 
 def _collect_module_vars(

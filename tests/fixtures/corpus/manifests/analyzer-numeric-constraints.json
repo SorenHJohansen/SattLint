@@ -1,0 +1,33 @@
+{
+    "case_id": "analyzer-numeric-constraints",
+    "target_file": "../semantic/workspace/NumericConstraints.s",
+    "mode": "analyzer-numeric-constraints",
+    "expectation": {
+        "expected_finding_ids": [
+            "semantic.numeric-limit-violation"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "numeric-constraints"
+            },
+            "summary.json": {
+                "analyzer_key": "numeric-constraints",
+                "finding_count": 1,
+                "rule_counts": {
+                    "semantic.numeric-limit-violation": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

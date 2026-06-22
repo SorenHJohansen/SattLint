@@ -1,6 +1,6 @@
 "Syntax version 2.23, date: 2026-04-23-12:00:00.000 N"
 "Original file date: ---"
-"Program date: 2026-04-23-12:00:00.000, name: NegativeDurationValue"
+"Program date: 2026-04-23-12:00:00.000, name: NegDurationVal"
 (* Covers negative duration initialization using the Duration_Value form.
    A negative duration represents a time-in-the-past or reverse elapsed-time.
    The Duration_Value form with a leading minus is the documented way to

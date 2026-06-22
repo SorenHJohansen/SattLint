@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
+from typing import TYPE_CHECKING
 
+from . import analysis_catalog as analysis_catalog_module
 from ._app_analysis_catalog_shared import (
     ENTRY_COMMENTED_OUT_CODE,
     ENTRY_DATATYPE_USAGE,
     ENTRY_MODULE_LOCAL_VARIABLES,
     ENTRY_VARIABLE_USAGE_TRACE,
 )
+from .analyzers.rule_profiles import get_issue_rules_for_source
+
+if TYPE_CHECKING:
+    from .analyzers.framework import AnalyzerSpec
 
 
 @dataclass(frozen=True)
@@ -164,101 +171,8 @@ _STATIC_ENTRY_DETAILS: dict[str, tuple[str, str]] = {
     ),
 }
 
-_ANALYZER_DETAILS: dict[str, tuple[str, str]] = {
-    "alarm-integrity": (
-        "Duplicate alarm tags, duplicate conditions, conflicting priorities, and never-cleared alarm writes.",
-        "Traverses alarm candidates, normalizes tag, condition, and priority signatures, and tracks boolean clear paths.",
-    ),
-    "config-drift": (
-        "Instances of the same moduletype whose visible configuration signatures diverge.",
-        "Groups instances by moduletype and compares their resolved configuration parameter signatures.",
-    ),
-    "cyclomatic-complexity": (
-        "Module or step control-flow complexity above the configured thresholds.",
-        "Counts control-flow decisions at module and step level and compares them to the configured thresholds.",
-    ),
-    "data-dependency": (
-        "Deterministic dependency chains and initialization-order hazards.",
-        "Builds dependency facts for reads and writes, then emits transitive path and initialization-order findings.",
-    ),
-    "dataflow": (
-        "Constant conditions, dead overwrites, uninitialized reads, and unreachable dataflow paths.",
-        "Runs the lightweight dataflow analyzer and evaluates per-variable state, pending writes, and branch reachability.",
-    ),
-    "fault-handling": (
-        "Fault paths that are raised without recovery or without any reachable consumer.",
-        "Tracks fault-like booleans within each scope and checks for matching clear and read paths.",
-    ),
-    "initial-values": (
-        "Required startup values that are missing from recipe or engineering parameter modules.",
-        "Walks parameter modules and reports required defaults that never resolve to a startup value.",
-    ),
-    "loop-output-refactor": (
-        "Dependency cycles across sorted equation blocks and active SFC step code.",
-        "Constructs cross-block dependency edges and reports feedback cycles that force implicit delay behavior.",
-    ),
-    "loop-stability": (
-        "Contradictory literal setpoint writes within one scope.",
-        "Scans setpoint assignments within a scope and compares literal writes for contradictions.",
-    ),
-    "mms-interface": (
-        "Duplicate MMS tags, datatype mismatches, naming drift, and dead outgoing tags.",
-        "Builds the MMS and ICF inventory, then derives issue findings from the collected interface data.",
-    ),
-    "numeric-constraints": (
-        "Literal assignments outside the resolved Min_ or Max_ bounds for a target variable.",
-        "Resolves Min_ and Max_ style bounds and compares literal assignments against those limits.",
-    ),
-    "powerup": (
-        "Startup gaps from missing required defaults and unsafe startup booleans.",
-        "Runs the initial-values and unsafe-defaults analyzers together and collates their startup findings.",
-    ),
-    "resource-usage": (
-        "Acquires without release, releases without acquire, and leaked resources.",
-        "Tracks resource-handle acquisition and release lifecycles across the analyzed control flow.",
-    ),
-    "safety-paths": (
-        "Safety-related signals that are written but never consumed across reachable paths.",
-        "Performs cross-module tracing from safety signal writes to reachable consumers.",
-    ),
-    "scan-concurrency": (
-        "Parallel SFC branches that write the same variable without arbitration.",
-        "Runs the SFC analyzer with the parallel-write-race subset and reports only those findings.",
-    ),
-    "scan-loop-resource-usage": (
-        "Non precision-scan-safe builtin calls inside equation blocks and active-step code.",
-        "Scans equation blocks and active-step code for builtins that are not safe in continuous scan execution.",
-    ),
-    "sfc": (
-        "Parallel-write races plus structural or contract issues in SFC sequences and transitions.",
-        "Walks SFC structures, normalizes transitions and contracts, and reports the selected structural or guard issues.",
-    ),
-    "signal-lifecycle": (
-        "Signals read before write or written without any later consumption in scope.",
-        "Tracks per-scope writes and reads for signals and reports read-before-write and unconsumed-write paths.",
-    ),
-    "spec-compliance": (
-        "Violations of the configured engineering specification rules.",
-        "Runs the project-specific engineering spec checks against AST-visible program structure.",
-    ),
-    "taint-paths": (
-        "External inputs that propagate into safety-critical sinks.",
-        "Marks external inputs as tainted and traces their propagation into critical sink variables.",
-    ),
-    "timing": (
-        "Scan-cycle temporal hazards combined with scan-loop resource misuse.",
-        "Combines the timing-related dataflow checks with scan-loop resource-usage findings into one report.",
-    ),
-    "unsafe-defaults": (
-        "Boolean input defaults that start TRUE and can enable logic unsafely.",
-        "Scans variable declarations for boolean VAR_INPUT or VAR_IN_OUT defaults set to TRUE.",
-    ),
-    "version-drift": (
-        "Modules sharing a name that have drifted structurally beyond datecode-only changes.",
-        "Compares repeated module structures and reports divergence beyond datecode-only changes.",
-    ),
-}
-
+# Manual leaf-spec presentation overrides. Supported issue kinds are derived from
+# central rule metadata so analyzer catalog ownership stays aligned with analyzer rules.
 _ANALYZER_ISSUE_SPECS: dict[str, tuple[AnalyzerIssueLeafSpec, ...]] = {
     "dataflow": (
         AnalyzerIssueLeafSpec(
@@ -388,6 +302,26 @@ _ANALYZER_ISSUE_SPECS: dict[str, tuple[AnalyzerIssueLeafSpec, ...]] = {
             "Step state leakage",
             "Step transitions that can inherit stale state because required enter writes are missing.",
             "Tracks prior-step writes and reports variables that remain live when a later step does not initialize them.",
+        ),
+    ),
+    "same-cycle": (
+        AnalyzerIssueLeafSpec(
+            "same_cycle_parallel_read_write_hazard",
+            "Parallel read/write hazard",
+            "Parallel SFC branches that both read and write the same variable within one scan.",
+            "Collects branch-local read and write targets inside each SFCParallel and reports variables read in one branch while another branch writes them in the same scan.",
+        ),
+        AnalyzerIssueLeafSpec(
+            "same_cycle_non_state_multi_site_hazard",
+            "Non-state multi-site hazard",
+            "Non-STATE variables that are read and written across multiple continuous scan sites within the same scan.",
+            "Groups same-scan reads and writes by continuous execution site and reports non-STATE variables whose behavior depends on values flowing across multiple continuously executed sites.",
+        ),
+        AnalyzerIssueLeafSpec(
+            "same_cycle_shared_access_hazard",
+            "Same-scan shared access hazard",
+            "Shared variables that are read and written across multiple module paths within the same scan.",
+            "Collects same-scan read and write events across module paths and reports shared variables whose behavior depends on intra-scan ordering.",
         ),
     ),
     "alarm-integrity": (
@@ -584,13 +518,138 @@ _ANALYZER_ISSUE_SPECS: dict[str, tuple[AnalyzerIssueLeafSpec, ...]] = {
     ),
 }
 
+_ANALYZER_ISSUE_SOURCES: tuple[str, ...] = tuple(_ANALYZER_ISSUE_SPECS)
+
+
+def _humanize_issue_kind_label(issue_kind: str) -> str:
+    tail = issue_kind.split(".")[-1]
+    return tail.replace("_", " ").replace("-", " ").title()
+
+
+def _ensure_terminal_punctuation(text: str) -> str:
+    stripped = text.strip()
+    if not stripped:
+        return ""
+    if stripped.endswith((".", "!", "?")):
+        return stripped
+    return f"{stripped}."
+
+
+def _summarize_labels(labels: tuple[str, ...], *, limit: int = 3) -> str:
+    cleaned = tuple(label.strip() for label in labels if label.strip())
+    if not cleaned:
+        return ""
+    if len(cleaned) == 1:
+        return cleaned[0]
+    if len(cleaned) == 2:
+        return f"{cleaned[0]} and {cleaned[1]}"
+    if len(cleaned) <= limit:
+        head = ", ".join(cleaned[:-1])
+        return f"{head}, and {cleaned[-1]}"
+    head = ", ".join(cleaned[:limit])
+    remaining = len(cleaned) - limit
+    return f"{head}, and {remaining} more"
+
+
+def _fallback_issue_leaf_spec(
+    issue_kind: str, source: str, description: str, explanation: str | None
+) -> AnalyzerIssueLeafSpec:
+    label = _humanize_issue_kind_label(issue_kind)
+    how = (explanation or "").strip() or f"Runs the {source} analyzer and reports only the {label.lower()} findings."
+    return AnalyzerIssueLeafSpec(
+        issue_kind=issue_kind,
+        label=label,
+        detection=description.strip() or f"Findings reported as {issue_kind}.",
+        how=how,
+    )
+
+
+def _build_manual_issue_leaf_specs_by_kind() -> dict[str, AnalyzerIssueLeafSpec]:
+    return {spec.issue_kind: spec for specs in _ANALYZER_ISSUE_SPECS.values() for spec in specs}
+
+
+def _build_rule_derived_analyzer_issue_specs() -> dict[str, tuple[AnalyzerIssueLeafSpec, ...]]:
+    manual_specs_by_kind = _build_manual_issue_leaf_specs_by_kind()
+    derived: dict[str, tuple[AnalyzerIssueLeafSpec, ...]] = {}
+
+    for analyzer_key in _ANALYZER_ISSUE_SOURCES:
+        rule_entries = get_issue_rules_for_source(analyzer_key)
+        if not rule_entries:
+            derived[analyzer_key] = _ANALYZER_ISSUE_SPECS.get(analyzer_key, ())
+            continue
+
+        derived[analyzer_key] = tuple(
+            manual_specs_by_kind.get(issue_kind)
+            or _fallback_issue_leaf_spec(issue_kind, rule.source, rule.description, rule.explanation)
+            for issue_kind, rule in rule_entries
+        )
+
+    return derived
+
+
+_DERIVED_ANALYZER_ISSUE_SPECS: dict[str, tuple[AnalyzerIssueLeafSpec, ...]] = _build_rule_derived_analyzer_issue_specs()
+_DERIVED_ANALYZER_ISSUE_SPECS_BY_KIND: dict[str, AnalyzerIssueLeafSpec] = {
+    spec.issue_kind: spec for specs in _DERIVED_ANALYZER_ISSUE_SPECS.values() for spec in specs
+}
+
+
+def _default_analyzer_detection(analyzer_key: str, description: str) -> str:
+    del analyzer_key
+    if description.strip():
+        return _ensure_terminal_punctuation(description)
+    return "No detection notes available."
+
+
+@lru_cache(maxsize=1)
+def _default_analyzer_specs_by_key() -> dict[str, AnalyzerSpec]:
+    return {spec.key: spec for spec in analysis_catalog_module.get_selectable_analyzers()}
+
+
+def _default_analyzer_spec_for_key(analyzer_key: str) -> AnalyzerSpec | None:
+    return _default_analyzer_specs_by_key().get(analyzer_key)
+
+
+def _analyzer_display_name(analyzer_key: str) -> str:
+    spec = _default_analyzer_spec_for_key(analyzer_key)
+    if spec is not None:
+        return spec.name
+    return analyzer_key.replace("-", " ").title()
+
+
+def _issue_display_label(issue_kind: str) -> str:
+    spec = _DERIVED_ANALYZER_ISSUE_SPECS_BY_KIND.get(issue_kind)
+    if spec is not None:
+        return spec.label
+    return _humanize_issue_kind_label(issue_kind)
+
+
+def _default_analyzer_how(analyzer_key: str, description: str) -> str:
+    analyzer_spec = _default_analyzer_spec_for_key(analyzer_key)
+    if analyzer_spec is not None and analyzer_spec.composed_analyzer_keys:
+        component_names = tuple(_analyzer_display_name(key) for key in analyzer_spec.composed_analyzer_keys)
+        if analyzer_spec.composed_issue_kind_names:
+            issue_labels = tuple(_issue_display_label(kind) for kind in analyzer_spec.composed_issue_kind_names)
+            return (
+                f"Runs {_summarize_labels(component_names)} and reports only "
+                f"{_summarize_labels(issue_labels, limit=4)} findings."
+            )
+        return f"Runs {_summarize_labels(component_names)} and collates their findings into one report."
+
+    specs = analyzer_issue_leaf_specs(analyzer_key)
+    if specs:
+        labels = tuple(spec.label for spec in specs)
+        return f"Runs the analyzer and reports the maintained rule set, including {_summarize_labels(labels)} findings."
+    if description.strip():
+        return f"Runs the selected analysis and renders its report: {description}"
+    return "No implementation notes available."
+
 
 def analyzer_issue_leaf_specs(key: str) -> tuple[AnalyzerIssueLeafSpec, ...]:
-    return _ANALYZER_ISSUE_SPECS.get(key, ())
+    return _DERIVED_ANALYZER_ISSUE_SPECS.get(key, ())
 
 
 def analyzer_has_issue_leaf_specs(key: str) -> bool:
-    return key in _ANALYZER_ISSUE_SPECS
+    return key in _DERIVED_ANALYZER_ISSUE_SPECS
 
 
 def analyzer_issue_exclusive_group_id(key: str) -> str | None:
@@ -608,12 +667,11 @@ def planner_entry_detection(entry_id: str, analyzer_key: str | None, description
         return _STATIC_ENTRY_DETAILS[entry_id][0]
     if entry_id.startswith("catalog.issue."):
         issue_kind = entry_id.removeprefix("catalog.issue.")
-        for specs in _ANALYZER_ISSUE_SPECS.values():
-            for spec in specs:
-                if spec.issue_kind == issue_kind:
-                    return spec.detection
-    if analyzer_key is not None and analyzer_key in _ANALYZER_DETAILS:
-        return _ANALYZER_DETAILS[analyzer_key][0]
+        spec = _DERIVED_ANALYZER_ISSUE_SPECS_BY_KIND.get(issue_kind)
+        if spec is not None:
+            return spec.detection
+    if analyzer_key is not None:
+        return _default_analyzer_detection(analyzer_key, description)
     return description or "No detection notes available."
 
 
@@ -626,12 +684,11 @@ def planner_entry_how(entry_id: str, analyzer_key: str | None, description: str)
         return _STATIC_ENTRY_DETAILS[entry_id][1]
     if entry_id.startswith("catalog.issue."):
         issue_kind = entry_id.removeprefix("catalog.issue.")
-        for specs in _ANALYZER_ISSUE_SPECS.values():
-            for spec in specs:
-                if spec.issue_kind == issue_kind:
-                    return spec.how
-    if analyzer_key is not None and analyzer_key in _ANALYZER_DETAILS:
-        return _ANALYZER_DETAILS[analyzer_key][1]
+        spec = _DERIVED_ANALYZER_ISSUE_SPECS_BY_KIND.get(issue_kind)
+        if spec is not None:
+            return spec.how
+    if analyzer_key is not None:
+        return _default_analyzer_how(analyzer_key, description)
     if description:
         return f"Runs the selected analysis and renders its report: {description}"
     return "No implementation notes available."

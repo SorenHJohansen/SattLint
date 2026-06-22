@@ -1,7 +1,7 @@
 {
     "case_id": "semantic-shadowing-variable",
-    "target_file": "../semantic/ShadowingVariable.s",
-    "mode": "workspace",
+    "target_file": "../semantic/analyzer/ShadowingVariable.s",
+    "mode": "analyzer-shadowing",
     "expectation": {
         "expected_finding_ids": [
             "semantic.shadowing"
@@ -9,9 +9,11 @@
         "artifact_fragments": {
             "status.json": {
                 "execution_status": "ok",
-                "missing_dependency_count": 0
+                "missing_dependency_count": 0,
+                "analyzer_key": "shadowing"
             },
             "summary.json": {
+                "analyzer_key": "shadowing",
                 "rule_counts": {
                     "semantic.shadowing": 1
                 }

@@ -3,16 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import cast
 
 from sattline_parser.models.ast_model import BasePicture
 
-from .analyzers.framework import AnalysisContext, AnalysisSharedArtifacts, Issue, build_analysis_context
-from .analyzers.registry._registry_dispatch import (
-    get_lsp_projection_analyzers,
-    get_registry_analyzer_spec,
-    run_registry_analyzer,
+from .analysis_dispatch import (
+    collect_lsp_report_issues,
+    run_variables_registry_report,
 )
+from .analyzers.framework import AnalysisContext, AnalysisSharedArtifacts, build_analysis_context
 from .analyzers.variables import analyze_variables
 from .core.diagnostics import (
     DiagnosticProjectionResult,
@@ -36,7 +34,10 @@ def _run_variables_report(
     include_dependency_moduletype_usage: bool | None = None,
 ) -> VariablesReport:
     try:
-        variables_spec = get_registry_analyzer_spec("variables")
+        return run_variables_registry_report(
+            context,
+            include_dependency_moduletype_usage=include_dependency_moduletype_usage,
+        )
     except KeyError:
         return analyze_variables(
             context.base_picture,
@@ -48,19 +49,6 @@ def _run_variables_report(
             selected_issue_kinds=context.selected_issue_kinds,
             config=context.config,
         )
-
-    return cast(
-        VariablesReport,
-        run_registry_analyzer(
-            variables_spec,
-            context,
-            overrides=(
-                None
-                if include_dependency_moduletype_usage is None
-                else {"include_dependency_moduletype_usage": include_dependency_moduletype_usage}
-            ),
-        ),
-    )
 
 
 def _project_lsp_report_diagnostics(
@@ -84,24 +72,8 @@ def _project_lsp_report_diagnostics(
     module_sites_by_path = build_module_diagnostic_sites(context.base_picture)
     projected_reports: list[DiagnosticProjectionResult] = []
 
-    for analyzer in get_lsp_projection_analyzers():
-        report = run_registry_analyzer(analyzer.spec, context)
-        issues = getattr(report, "issues", None)
-        if not isinstance(issues, list):
-            continue
-
-        typed_issues = cast(list[object], issues)
-        report_issues_list: list[Issue] = []
-        for issue in typed_issues:
-            if isinstance(issue, Issue):
-                report_issues_list.append(issue)
-        report_issues = tuple(report_issues_list)
-        if not report_issues:
-            continue
-
-        projected_reports.append(
-            project_report_issues(report_issues, module_sites_by_path, analyzer_key=analyzer.spec.key)
-        )
+    for analyzer_key, report_issues in collect_lsp_report_issues(context):
+        projected_reports.append(project_report_issues(report_issues, module_sites_by_path, analyzer_key=analyzer_key))
 
     return merge_diagnostic_projection_results(*projected_reports)
 

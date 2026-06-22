@@ -974,6 +974,20 @@ def test_run_cli_analyze_passes_json_output_format():
     assert seen["output_format"] == "json"
 
 
+def test_run_cli_analyze_requires_at_least_one_check_without_loading_config(capsys):
+    exit_code = cli_entry.run_cli(
+        ["analyze"],
+        config_path=Path("config.toml"),
+        load_config_fn=lambda _path: pytest.fail("load_config should not run when --check is missing"),
+        apply_debug_fn=lambda _cfg: pytest.fail("apply_debug should not run when --check is missing"),
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == cli_entry.EXIT_USAGE_ERROR
+    assert "at least one --check KEY is required" in captured.err
+    assert captured.out == ""
+
+
 def test_run_cli_analyze_list_checks_prints_selectable_keys(monkeypatch, capsys):
     monkeypatch.setattr(
         "sattlint.analyzers.registry.get_selectable_analyzers",
@@ -1586,12 +1600,12 @@ def test_cli_entry_syntax_check_passes_json_output_format():
 
 def test_cli_entry_analyze_requires_handler():
     parser = _FakeParser(
-        args=SimpleNamespace(command="analyze", checks=[], config=None, no_cache=False, quiet=False),
+        args=SimpleNamespace(command="analyze", checks=["variables"], config=None, no_cache=False, quiet=False),
     )
 
     with pytest.raises(RuntimeError, match="analyze handler is required"):
         cli_entry.run_cli(
-            ["analyze"],
+            ["analyze", "--check", "variables"],
             config_path=Path("config.toml"),
             build_cli_parser_fn=lambda: parser,
             load_config_fn=lambda _path: ({"debug": False}, False),
@@ -1849,12 +1863,19 @@ def test_cli_entry_trace_uses_parsed_handler():
 
 def test_cli_entry_reraises_when_config_handlers_are_missing():
     parser = _FakeParser(
-        args=SimpleNamespace(command="analyze", checks=[], list_checks=False, config=None, no_cache=False, quiet=False),
+        args=SimpleNamespace(
+            command="analyze",
+            checks=["variables"],
+            list_checks=False,
+            config=None,
+            no_cache=False,
+            quiet=False,
+        ),
     )
 
     with pytest.raises(RuntimeError, match="CLI config handlers are required for this command"):
         cli_entry.run_cli(
-            ["analyze"],
+            ["analyze", "--check", "variables"],
             config_path=Path("config.toml"),
             build_cli_parser_fn=lambda: parser,
         )

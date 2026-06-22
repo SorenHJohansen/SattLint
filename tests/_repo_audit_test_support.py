@@ -12,7 +12,8 @@ from unittest.mock import call, patch
 
 import pytest
 
-from sattlint.devtools import coordination_lock_state, doc_gardener, repo_audit, repo_audit_entrypoints
+from sattlint.devtools import coordination_lock_state, doc_gardener
+from sattlint.devtools.audit import repo_audit, repo_audit_entrypoints
 from sattlint.devtools.shared.pipeline_artifacts import artifact_source_manifest_path, write_json_artifact
 
 from .helpers.artifact_assertions import assert_findings_collection, assert_findings_schema

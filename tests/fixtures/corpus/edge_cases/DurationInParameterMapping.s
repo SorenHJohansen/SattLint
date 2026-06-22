@@ -1,6 +1,6 @@
 "Syntax version 2.23, date: 2026-04-23-12:00:00.000 N"
 "Original file date: ---"
-"Program date: 2026-04-23-12:00:00.000, name: DurationInParameterMapping"
+"Program date: 2026-04-23-12:00:00.000, name: DurParamMapping"
 (* Covers Duration_Value "..." used as the source value in a => parameter mapping.
    The grammar allows Duration_Value before the literal in a moduletype_par_transfer:
      variable_name "=>" GLOBAL_KW? DURATION_VALUE? (value | variable_name | time_value)
@@ -25,7 +25,7 @@ TYPEDEFINITIONS
    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
    ModuleCode
    EQUATIONBLOCK TimerEq COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
-      Expired = Elapsed >= Timeout;
+      Expired = False;
 
    ENDDEF (*TimerType*);
 

@@ -1,0 +1,33 @@
+{
+    "case_id": "analyzer-powerup",
+    "target_file": "../semantic/analyzer/InitialValuesMissing.s",
+    "mode": "analyzer-powerup",
+    "expectation": {
+        "expected_finding_ids": [
+            "initial-values.missing_required_default"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "powerup"
+            },
+            "summary.json": {
+                "analyzer_key": "powerup",
+                "finding_count": 1,
+                "rule_counts": {
+                    "initial-values.missing_required_default": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

@@ -1,6 +1,6 @@
 "Syntax version 2.23, date: 2026-04-23-12:00:00.000 N"
 "Original file date: ---"
-"Program date: 2026-04-23-12:00:00.000, name: CaseInsensitiveIdentifiers"
+"Program date: 2026-04-23-12:00:00.000, name: CaseInsensitiveIds"
 (* Covers case-insensitive identifier matching.
    SattLine identifiers compare case-insensitively via casefold().
    A single variable 'counter' is declared and then accessed in three

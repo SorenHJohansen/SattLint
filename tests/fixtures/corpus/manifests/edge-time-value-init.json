@@ -3,11 +3,19 @@
     "target_file": "../edge_cases/TimeValueInit.s",
     "mode": "workspace",
     "expectation": {
-        "expected_finding_ids": [],
+        "expected_finding_ids": [
+            "semantic.unused-variable"
+        ],
         "artifact_fragments": {
             "status.json": {
                 "execution_status": "ok",
                 "missing_dependency_count": 0
+            },
+            "summary.json": {
+                "finding_count": 4,
+                "rule_counts": {
+                    "semantic.unused-variable": 4
+                }
             }
         },
         "forbidden_finding_ids": [

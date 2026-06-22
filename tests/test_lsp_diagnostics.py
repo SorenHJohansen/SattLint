@@ -1368,7 +1368,7 @@ def test_lsp_helper_location_and_edit_helpers_cover_local_workspace_and_missing_
 
 
 def test_lsp_syntax_diagnostics_on_real_fixture_file():
-    fixture = Path(__file__).parent / "fixtures" / "sample_sattline_files" / "CommonQualityIssues.s"
+    fixture = Path(__file__).parent / "fixtures" / "corpus" / "semantic" / "workspace" / "CommonQualityIssues.s"
     source = fixture.read_text(encoding="utf-8")
     diagnostics = collect_syntax_diagnostics(fixture, source)
     assert all(d.severity is not None for d in diagnostics)
@@ -1376,7 +1376,7 @@ def test_lsp_syntax_diagnostics_on_real_fixture_file():
 
 
 def test_lsp_semantic_diagnostics_on_real_fixture_file():
-    fixture = Path(__file__).parent / "fixtures" / "sample_sattline_files" / "CommonQualityIssues.s"
+    fixture = Path(__file__).parent / "fixtures" / "corpus" / "semantic" / "workspace" / "CommonQualityIssues.s"
     source = fixture.read_text(encoding="utf-8")
     syntax_diagnostics = collect_syntax_diagnostics(fixture, source)
     assert not any("syntax.parse" in d.message.casefold() for d in syntax_diagnostics)

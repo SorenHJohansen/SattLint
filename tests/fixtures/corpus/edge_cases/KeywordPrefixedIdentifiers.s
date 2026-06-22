@@ -1,6 +1,6 @@
 "Syntax version 2.23, date: 2026-04-23-12:00:00.000 N"
 "Original file date: ---"
-"Program date: 2026-04-23-12:00:00.000, name: KeywordPrefixedIdentifiers"
+"Program date: 2026-04-23-12:00:00.000, name: KeywordPrefIds"
 (* EDGE CASE: Identifiers that begin with or contain SattLine keywords are valid.
    Keywords like IF, AND, NOT, OR, THEN, ELSE are only tokenized as standalone words.
    A name like "IFState", "ANDFailed", "NOTOGActive", "THENFlag", "ORResult",

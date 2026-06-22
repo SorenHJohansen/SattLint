@@ -10,8 +10,10 @@ from sattline_parser.models.ast_model import (
     ParameterMapping,
     Sequence,
     SFCCodeBlocks,
+    SFCFork,
     SFCParallel,
     SFCStep,
+    SFCTransition,
     Simple_DataType,
     SingleModule,
     Variable,
@@ -186,3 +188,198 @@ def test_same_cycle_reports_external_invocation_mapping_shared_access_hazard() -
     assert "Root.SharedValue" in issue.message
     assert "ReaderInst (read)" in issue.message
     assert "Writer (write)" in issue.message
+
+
+def test_same_cycle_reports_non_state_multi_site_hazard_across_equations() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[
+            Variable(name="SharedValue", datatype=Simple_DataType.INTEGER),
+            Variable(name="Sink", datatype=Simple_DataType.INTEGER),
+        ],
+        modulecode=ModuleCode(
+            equations=[
+                _eq("ReadEq", [_assign("Sink", _varref("SharedValue"))]),
+                _eq("WriteEq", [_assign("SharedValue", 2)]),
+            ],
+            sequences=[],
+        ),
+    )
+
+    report = analyze_same_cycle(bp)
+
+    issue = next(issue for issue in report.issues if issue.kind == "same_cycle_non_state_multi_site_hazard")
+    assert "Root.SharedValue" in issue.message
+    assert issue.data == {
+        "symbol": "Root.SharedValue",
+        "decl_module_path": ["Root"],
+        "continuous_sites": [
+            {
+                "module_path": ["Root"],
+                "site": "EQ:ReadEq",
+                "kinds": ["read"],
+                "evidence_sites": ["EQ:ReadEq"],
+            },
+            {
+                "module_path": ["Root"],
+                "site": "EQ:WriteEq",
+                "kinds": ["write"],
+                "evidence_sites": ["EQ:WriteEq"],
+            },
+        ],
+    }
+
+
+def test_same_cycle_ignores_non_state_multi_site_hazard_within_single_equation() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[
+            Variable(name="SharedValue", datatype=Simple_DataType.INTEGER),
+            Variable(name="Sink", datatype=Simple_DataType.INTEGER),
+        ],
+        modulecode=ModuleCode(
+            equations=[
+                _eq(
+                    "MainEq",
+                    [
+                        _assign("Sink", _varref("SharedValue")),
+                        _assign("SharedValue", 2),
+                    ],
+                )
+            ],
+            sequences=[],
+        ),
+    )
+
+    report = analyze_same_cycle(bp)
+
+    assert not any(issue.kind == "same_cycle_non_state_multi_site_hazard" for issue in report.issues)
+
+
+def test_same_cycle_ignores_non_state_multi_site_hazard_within_single_active_step() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[
+            Variable(name="SharedValue", datatype=Simple_DataType.INTEGER),
+            Variable(name="Sink", datatype=Simple_DataType.INTEGER),
+        ],
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        _step(
+                            "Loop",
+                            [
+                                _assign("Sink", _varref("SharedValue")),
+                                _assign("SharedValue", 2),
+                            ],
+                        )
+                    ]
+                )
+            ],
+            equations=[],
+        ),
+    )
+
+    report = analyze_same_cycle(bp)
+
+    assert not any(issue.kind == "same_cycle_non_state_multi_site_hazard" for issue in report.issues)
+
+
+def test_same_cycle_reports_non_state_multi_site_hazard_for_direct_transition_self_loop() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[Variable(name="SharedFlag", datatype=Simple_DataType.BOOLEAN)],
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        SFCStep(
+                            kind="step",
+                            name="Loop",
+                            code=SFCCodeBlocks(enter=[_assign("SharedFlag", True)]),
+                        ),
+                        SFCTransition(name="Gate", condition=_varref("SharedFlag")),
+                    ]
+                )
+            ],
+            equations=[],
+        ),
+    )
+
+    report = analyze_same_cycle(bp)
+
+    issue = next(issue for issue in report.issues if issue.kind == "same_cycle_non_state_multi_site_hazard")
+    assert issue.data is not None
+    assert [site["site"] for site in issue.data["continuous_sites"]] == [
+        "STEP:Loop:ENTER",
+        "STEP:Loop:TRANS:Gate",
+    ]
+
+
+def test_same_cycle_reports_non_state_multi_site_hazard_for_direct_fork_self_loop() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[
+            Variable(name="SharedFlag", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Sink", datatype=Simple_DataType.BOOLEAN),
+        ],
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        SFCStep(
+                            kind="step",
+                            name="Loop",
+                            code=SFCCodeBlocks(
+                                enter=[_assign("SharedFlag", True)],
+                                exit=[_assign("Sink", _varref("SharedFlag"))],
+                            ),
+                        ),
+                        SFCFork(targets=("Loop",)),
+                    ]
+                )
+            ],
+            equations=[],
+        ),
+    )
+
+    report = analyze_same_cycle(bp)
+
+    issue = next(issue for issue in report.issues if issue.kind == "same_cycle_non_state_multi_site_hazard")
+    assert issue.data is not None
+    assert [site["site"] for site in issue.data["continuous_sites"]] == [
+        "STEP:Loop:ENTER",
+        "STEP:Loop:EXIT",
+    ]
+
+
+def test_same_cycle_ignores_single_active_site_in_direct_self_loop() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[
+            Variable(name="SharedValue", datatype=Simple_DataType.INTEGER),
+            Variable(name="Sink", datatype=Simple_DataType.INTEGER),
+        ],
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        _step(
+                            "Loop",
+                            [
+                                _assign("Sink", _varref("SharedValue")),
+                                _assign("SharedValue", 1),
+                            ],
+                        ),
+                        SFCTransition(name="Gate", condition=True),
+                    ]
+                )
+            ],
+            equations=[],
+        ),
+    )
+
+    report = analyze_same_cycle(bp)
+
+    assert not any(issue.kind == "same_cycle_non_state_multi_site_hazard" for issue in report.issues)

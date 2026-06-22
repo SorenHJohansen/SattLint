@@ -3,17 +3,32 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import sys
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
+from sattline_parser import parse_source_file
+from sattline_parser.models.ast_model import BasePicture
 from sattlint import cli_output
 from sattlint import engine as engine_module
+from sattlint.analysis_catalog import canonicalize_analyzer_key, get_default_analyzer_catalog
+from sattlint.analyzers._sattline_semantic_issue_mapping import (
+    describe_variable_issue,
+    map_framework_issues,
+    map_spec_issues,
+    map_variable_issues,
+    variable_issue_data,
+)
+from sattlint.analyzers._sattline_semantic_rules import FRAMEWORK_RULES_BY_KIND
+from sattlint.analyzers.framework import Issue, build_analysis_context
 from sattlint.analyzers.sattline_semantics import SattLineSemanticsReport, analyze_sattline_semantics
 from sattlint.contracts import FindingCollection, FindingLocation, FindingRecord
 from sattlint.devtools._corpus_artifacts import (
@@ -28,6 +43,8 @@ from sattlint.devtools._corpus_artifacts import (
     write_case_artifacts,
     write_json,
 )
+from sattlint.models import VariableIssue
+from sattlint.models._variable_issues import materialize_variable_issue_metadata
 from sattlint.path_sanitizer import sanitize_path_for_report
 from sattlint.repo_paths import repo_root_from
 
@@ -40,9 +57,8 @@ DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "analysis"
 DEFAULT_MANIFEST_DIR = REPO_ROOT / "tests" / "fixtures" / "corpus" / "manifests"
 DEFAULT_CASES_DIRNAME = "corpus_cases"
 DEFAULT_FINDINGS_FILENAME = "findings.json"
-DEFAULT_STATUS_FILENAME = "status.json"
-DEFAULT_SUMMARY_FILENAME = "summary.json"
 _CASE_ID_SANITIZER = re.compile(r"[^A-Za-z0-9._-]+")
+_ANALYZER_MODE_PREFIX = "analyzer-"
 
 type JsonScalar = str | int | float | bool | None
 type JsonValue = JsonScalar | dict[str, JsonValue] | list[JsonValue]
@@ -66,11 +82,13 @@ class CorpusCaseManifest:
     target_file: str
     mode: str
     expectation: CorpusExpectation
+    load_strategy: str = "workspace"
     required_artifacts: tuple[str, ...] = ()
     workspace_root: str | None = None
     program_dir: str | None = None
     abb_lib_dir: str | None = None
     other_lib_dirs: tuple[str, ...] = ()
+    analysis_config: JsonObject = field(default_factory=_json_object_factory)
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,6 +143,26 @@ class CorpusRunResult:
 
 
 @dataclass(frozen=True, slots=True)
+class _LoadedCorpusWorkspace:
+    workspace_root: Path
+    program_dir: Path
+    abb_lib_dir: Path
+    other_lib_dirs: tuple[Path, ...]
+    graph: Any
+    project_bp: Any
+    target_is_library: bool
+    config: dict[str, object]
+
+
+@dataclass(frozen=True, slots=True)
+class _ResolvedCorpusAnalyzer:
+    key: str
+    spec: Any
+    specs_by_key: dict[str, Any]
+    rule_metadata_by_id: dict[str, object]
+
+
+@dataclass(frozen=True, slots=True)
 class CorpusSuiteResult:
     cases: tuple[CorpusRunResult, ...]
     output_dir: str
@@ -170,6 +208,7 @@ def load_corpus_manifest(path: Path) -> CorpusCaseManifest:
         case_id=str(payload["case_id"]),
         target_file=str(payload["target_file"]),
         mode=str(payload.get("mode") or "workspace"),
+        load_strategy=str(payload.get("load_strategy") or "workspace"),
         expectation=CorpusExpectation(
             expected_finding_ids=tuple(
                 str(item) for item in as_json_array(expectation_payload.get("expected_finding_ids"))
@@ -186,6 +225,7 @@ def load_corpus_manifest(path: Path) -> CorpusCaseManifest:
         program_dir=coerce_optional_str(payload.get("program_dir")),
         abb_lib_dir=coerce_optional_str(payload.get("abb_lib_dir")),
         other_lib_dirs=tuple(str(item) for item in as_json_array(payload.get("other_lib_dirs"))),
+        analysis_config=cast(JsonObject, as_json_object(payload.get("analysis_config")) or {}),
     )
 
 
@@ -226,19 +266,28 @@ def execute_corpus_case(
     artifact_dir.mkdir(parents=True, exist_ok=True)
 
     execution_error: str | None = None
+    normalized_mode = manifest.mode.casefold()
     try:
-        if manifest.mode.casefold() == "strict":
+        if normalized_mode == "strict":
             artifacts = _execute_strict_case(
                 manifest,
                 target_path=target_path,
                 repo_root=repo_root,
             )
-        elif manifest.mode.casefold() == "workspace":
+        elif normalized_mode == "workspace":
             artifacts = _execute_workspace_case(
                 manifest,
                 manifest_path=manifest_path,
                 target_path=target_path,
                 repo_root=repo_root,
+            )
+        elif normalized_mode.startswith(_ANALYZER_MODE_PREFIX):
+            artifacts = _execute_analyzer_case(
+                manifest,
+                manifest_path=manifest_path,
+                target_path=target_path,
+                repo_root=repo_root,
+                analyzer_key=manifest.mode[len(_ANALYZER_MODE_PREFIX) :],
             )
         else:
             raise ValueError(f"Unsupported corpus mode: {manifest.mode}")
@@ -450,10 +499,6 @@ def main(argv: list[str] | None = None) -> int:
     return 0 if suite.passed else 1
 
 
-def _print_cli_summary(status_report: dict[str, Any]) -> None:  # pyright: ignore[reportUnusedFunction]
-    print(format_cli_summary(status_report))
-
-
 def _normalize_severity(value: str) -> str:
     normalized = value.casefold()
     if normalized in {"error", "critical", "high"}:
@@ -487,6 +532,43 @@ def _resolve_optional_directory(
     if not raw_path:
         return None
     return _resolve_manifest_target_path(manifest_path, raw_path, repo_root)
+
+
+def _resolve_corpus_directories(
+    manifest: CorpusCaseManifest,
+    *,
+    manifest_path: Path,
+    target_path: Path,
+    repo_root: Path,
+) -> tuple[Path, Path, Path, tuple[Path, ...]]:
+    workspace_root = (
+        _resolve_optional_directory(
+            manifest.workspace_root,
+            manifest_path=manifest_path,
+            repo_root=repo_root,
+        )
+        or repo_root
+    )
+    program_dir = (
+        _resolve_optional_directory(
+            manifest.program_dir,
+            manifest_path=manifest_path,
+            repo_root=repo_root,
+        )
+        or target_path.parent
+    )
+    abb_lib_dir = (
+        _resolve_optional_directory(
+            manifest.abb_lib_dir,
+            manifest_path=manifest_path,
+            repo_root=repo_root,
+        )
+        or program_dir
+    )
+    other_lib_dirs = tuple(
+        _resolve_manifest_target_path(manifest_path, raw_path, repo_root) for raw_path in manifest.other_lib_dirs
+    )
+    return workspace_root, program_dir, abb_lib_dir, other_lib_dirs
 
 
 def _infer_code_mode(target_path: Path) -> engine_module.CodeMode:
@@ -585,9 +667,10 @@ def _corpus_analysis_context_config(
     abb_lib_dir: Path,
     other_lib_dirs: Iterable[Path],
     debug: bool,
+    analysis_config: Mapping[str, JsonValue] | None = None,
 ) -> dict[str, object]:
     mode = _infer_code_mode(target_path)
-    return {
+    base_config: JsonObject = {
         "abb_lib_dir": str(abb_lib_dir),
         "analyzed_targets": [target_path.stem],
         "debug": debug,
@@ -597,42 +680,39 @@ def _corpus_analysis_context_config(
         "use_cache": False,
         "workspace_root": str(workspace_root),
     }
+    if analysis_config:
+        return cast(dict[str, object], _merge_json_objects(base_config, analysis_config))
+    return cast(dict[str, object], base_config)
 
 
-def _execute_workspace_case(
+def _merge_json_objects(
+    base: JsonObject,
+    overrides: Mapping[str, JsonValue],
+) -> JsonObject:
+    merged = dict(base)
+    for raw_key, override_value in overrides.items():
+        key = str(raw_key)
+        base_value = merged.get(key)
+        if isinstance(base_value, dict) and isinstance(override_value, Mapping):
+            merged[key] = _merge_json_objects(base_value, cast(Mapping[str, JsonValue], override_value))
+            continue
+        merged[key] = override_value
+    return merged
+
+
+def _load_corpus_workspace(
     manifest: CorpusCaseManifest,
     *,
     manifest_path: Path,
     target_path: Path,
     repo_root: Path,
-) -> CorpusExecutionArtifacts:
-    workspace_root = (
-        _resolve_optional_directory(
-            manifest.workspace_root,
-            manifest_path=manifest_path,
-            repo_root=repo_root,
-        )
-        or repo_root
+) -> _LoadedCorpusWorkspace:
+    workspace_root, program_dir, abb_lib_dir, other_lib_dirs = _resolve_corpus_directories(
+        manifest,
+        manifest_path=manifest_path,
+        target_path=target_path,
+        repo_root=repo_root,
     )
-    program_dir = (
-        _resolve_optional_directory(
-            manifest.program_dir,
-            manifest_path=manifest_path,
-            repo_root=repo_root,
-        )
-        or target_path.parent
-    )
-    abb_lib_dir = (
-        _resolve_optional_directory(
-            manifest.abb_lib_dir,
-            manifest_path=manifest_path,
-            repo_root=repo_root,
-        )
-        or program_dir
-    )
-    other_lib_dirs = [
-        _resolve_manifest_target_path(manifest_path, raw_path, repo_root) for raw_path in manifest.other_lib_dirs
-    ]
 
     _loader, root_bp, graph = engine_module.load_project_graph(
         {
@@ -653,13 +733,16 @@ def _execute_workspace_case(
             f"Resolved targets: {sorted(graph.ast_by_name)}; missing: {graph.missing}"
         )
 
-    unavailable_libraries = graph.unavailable_libraries
     project_bp = engine_module.merge_project_basepicture(root_bp, graph)
-    semantic_report = analyze_sattline_semantics(
-        project_bp,
-        debug=False,
-        unavailable_libraries=unavailable_libraries,
-        analyzed_target_is_library=not engine_module.is_within_directory(target_path, program_dir),
+    target_is_library = not engine_module.is_within_directory(target_path, program_dir)
+    return _LoadedCorpusWorkspace(
+        workspace_root=workspace_root,
+        program_dir=program_dir,
+        abb_lib_dir=abb_lib_dir,
+        other_lib_dirs=other_lib_dirs,
+        graph=graph,
+        project_bp=project_bp,
+        target_is_library=target_is_library,
         config=_corpus_analysis_context_config(
             target_path=target_path,
             workspace_root=workspace_root,
@@ -667,7 +750,161 @@ def _execute_workspace_case(
             abb_lib_dir=abb_lib_dir,
             other_lib_dirs=other_lib_dirs,
             debug=False,
+            analysis_config=manifest.analysis_config,
         ),
+    )
+
+
+def _load_corpus_direct_parse_target(
+    manifest: CorpusCaseManifest,
+    *,
+    manifest_path: Path,
+    target_path: Path,
+    repo_root: Path,
+) -> _LoadedCorpusWorkspace:
+    workspace_root, program_dir, abb_lib_dir, other_lib_dirs = _resolve_corpus_directories(
+        manifest,
+        manifest_path=manifest_path,
+        target_path=target_path,
+        repo_root=repo_root,
+    )
+    base_picture = parse_source_file(target_path)
+    graph = SimpleNamespace(
+        ast_by_name={target_path.stem: base_picture},
+        warnings=[],
+        missing=[],
+        unavailable_libraries=set(),
+    )
+    target_is_library = not engine_module.is_within_directory(target_path, program_dir)
+    return _LoadedCorpusWorkspace(
+        workspace_root=workspace_root,
+        program_dir=program_dir,
+        abb_lib_dir=abb_lib_dir,
+        other_lib_dirs=other_lib_dirs,
+        graph=graph,
+        project_bp=base_picture,
+        target_is_library=target_is_library,
+        config=_corpus_analysis_context_config(
+            target_path=target_path,
+            workspace_root=workspace_root,
+            program_dir=program_dir,
+            abb_lib_dir=abb_lib_dir,
+            other_lib_dirs=other_lib_dirs,
+            debug=False,
+            analysis_config=manifest.analysis_config,
+        ),
+    )
+
+
+def _load_corpus_python_factory_target(
+    manifest: CorpusCaseManifest,
+    *,
+    manifest_path: Path,
+    target_path: Path,
+    repo_root: Path,
+) -> _LoadedCorpusWorkspace:
+    workspace_root, program_dir, abb_lib_dir, other_lib_dirs = _resolve_corpus_directories(
+        manifest,
+        manifest_path=manifest_path,
+        target_path=target_path,
+        repo_root=repo_root,
+    )
+
+    spec = importlib.util.spec_from_file_location(f"sattlint_corpus_{target_path.stem}", target_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load corpus Python factory from {target_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    builder = getattr(module, "build_basepicture", None)
+    if not callable(builder):
+        raise RuntimeError(f"Corpus Python factory {target_path} must define a callable build_basepicture().")
+
+    base_picture = builder()
+    if not isinstance(base_picture, BasePicture):
+        raise RuntimeError(
+            f"Corpus Python factory {target_path} returned {type(base_picture).__name__}, expected BasePicture."
+        )
+
+    graph = SimpleNamespace(
+        ast_by_name={target_path.stem: base_picture},
+        warnings=[],
+        missing=[],
+        unavailable_libraries=set(),
+    )
+    target_is_library = not engine_module.is_within_directory(target_path, program_dir)
+    return _LoadedCorpusWorkspace(
+        workspace_root=workspace_root,
+        program_dir=program_dir,
+        abb_lib_dir=abb_lib_dir,
+        other_lib_dirs=other_lib_dirs,
+        graph=graph,
+        project_bp=base_picture,
+        target_is_library=target_is_library,
+        config=_corpus_analysis_context_config(
+            target_path=target_path,
+            workspace_root=workspace_root,
+            program_dir=program_dir,
+            abb_lib_dir=abb_lib_dir,
+            other_lib_dirs=other_lib_dirs,
+            debug=False,
+            analysis_config=manifest.analysis_config,
+        ),
+    )
+
+
+def _load_corpus_target(
+    manifest: CorpusCaseManifest,
+    *,
+    manifest_path: Path,
+    target_path: Path,
+    repo_root: Path,
+) -> _LoadedCorpusWorkspace:
+    strategy = manifest.load_strategy.casefold()
+    if strategy == "workspace":
+        return _load_corpus_workspace(
+            manifest,
+            manifest_path=manifest_path,
+            target_path=target_path,
+            repo_root=repo_root,
+        )
+    if strategy == "direct-parse":
+        return _load_corpus_direct_parse_target(
+            manifest,
+            manifest_path=manifest_path,
+            target_path=target_path,
+            repo_root=repo_root,
+        )
+    if strategy == "python-factory":
+        return _load_corpus_python_factory_target(
+            manifest,
+            manifest_path=manifest_path,
+            target_path=target_path,
+            repo_root=repo_root,
+        )
+    raise ValueError(f"Unsupported corpus load strategy: {manifest.load_strategy}")
+
+
+def _execute_workspace_case(
+    manifest: CorpusCaseManifest,
+    *,
+    manifest_path: Path,
+    target_path: Path,
+    repo_root: Path,
+) -> CorpusExecutionArtifacts:
+    loaded_workspace = _load_corpus_target(
+        manifest,
+        manifest_path=manifest_path,
+        target_path=target_path,
+        repo_root=repo_root,
+    )
+    unavailable_libraries = loaded_workspace.graph.unavailable_libraries
+    semantic_report = analyze_sattline_semantics(
+        loaded_workspace.project_bp,
+        debug=False,
+        unavailable_libraries=unavailable_libraries,
+        analyzed_target_is_library=loaded_workspace.target_is_library,
+        config=loaded_workspace.config,
     )
     findings = _build_semantic_finding_collection(
         semantic_report,
@@ -682,9 +919,9 @@ def _execute_workspace_case(
         "mode": manifest.mode,
         "execution_status": "ok",
         "target_file": sanitized_target,
-        "resolved_target_count": len(graph.ast_by_name),
-        "warning_count": len(graph.warnings),
-        "missing_dependency_count": len(graph.missing),
+        "resolved_target_count": len(loaded_workspace.graph.ast_by_name),
+        "warning_count": len(loaded_workspace.graph.warnings),
+        "missing_dependency_count": len(loaded_workspace.graph.missing),
         "finding_count": len(findings.findings),
         "findings_schema": findings.schema_metadata,
         "unavailable_libraries": sorted(unavailable_libraries),
@@ -697,11 +934,398 @@ def _execute_workspace_case(
         "finding_count": len(findings.findings),
         "findings_schema": findings.schema_metadata,
         "rule_counts": dict(sorted(rule_counts.items())),
-        "resolved_targets": sorted(graph.ast_by_name),
-        "missing_dependencies": list(graph.missing),
-        "warnings": list(graph.warnings),
+        "resolved_targets": sorted(loaded_workspace.graph.ast_by_name),
+        "missing_dependencies": list(loaded_workspace.graph.missing),
+        "warnings": list(loaded_workspace.graph.warnings),
     }
     return CorpusExecutionArtifacts(findings=findings, status=status, summary=summary)
+
+
+def _resolve_corpus_analyzer(raw_key: str) -> _ResolvedCorpusAnalyzer:
+    stripped_key = raw_key.strip()
+    if not stripped_key:
+        raise ValueError("Analyzer corpus mode is missing an analyzer key.")
+
+    analyzer_key = canonicalize_analyzer_key(stripped_key)
+    catalog = get_default_analyzer_catalog()
+    specs_by_key = {analyzer.spec.key.casefold(): analyzer.spec for analyzer in catalog.analyzers}
+    spec = specs_by_key.get(analyzer_key)
+    if spec is None:
+        available = ", ".join(sorted(specs_by_key))
+        raise ValueError(f"Unknown analyzer corpus mode: {stripped_key!r}. Available analyzers: {available}")
+
+    return _ResolvedCorpusAnalyzer(
+        key=cast(str, getattr(spec, "key", analyzer_key)),
+        spec=spec,
+        specs_by_key=specs_by_key,
+        rule_metadata_by_id={str(getattr(rule, "id", "")): rule for rule in catalog.rules},
+    )
+
+
+def _run_corpus_analyzer(
+    spec: Any,
+    *,
+    context: Any,
+    specs_by_key: Mapping[str, Any],
+    completed_reports: dict[str, object] | None = None,
+    active_keys: set[str] | None = None,
+) -> object:
+    completed: dict[str, object] = {} if completed_reports is None else completed_reports
+    active: set[str] = set() if active_keys is None else active_keys
+
+    spec_key = str(getattr(spec, "key", "") or "")
+    canonical_key = spec_key.casefold()
+    if canonical_key in completed:
+        return completed[canonical_key]
+    if canonical_key in active:
+        raise RuntimeError(f"Analyzer dependency cycle detected for corpus mode: {spec_key}")
+
+    active.add(canonical_key)
+    try:
+        for required_key in cast(tuple[str, ...], getattr(spec, "requires", ())):
+            required_spec = specs_by_key.get(required_key.casefold())
+            if required_spec is None:
+                raise RuntimeError(f"Analyzer {spec_key!r} requires unavailable analyzer {required_key!r}.")
+            _run_corpus_analyzer(
+                required_spec,
+                context=context,
+                specs_by_key=specs_by_key,
+                completed_reports=completed,
+                active_keys=active,
+            )
+        report = spec.run(context)
+    finally:
+        active.discard(canonical_key)
+
+    completed[canonical_key] = report
+    shared_artifacts = getattr(context, "shared_artifacts", None)
+    reports_by_analyzer_key = getattr(shared_artifacts, "reports_by_analyzer_key", None)
+    if isinstance(reports_by_analyzer_key, dict):
+        reports_by_analyzer_key[spec_key] = report
+    return report
+
+
+def _execute_analyzer_case(
+    manifest: CorpusCaseManifest,
+    *,
+    manifest_path: Path,
+    target_path: Path,
+    repo_root: Path,
+    analyzer_key: str,
+) -> CorpusExecutionArtifacts:
+    resolved_analyzer = _resolve_corpus_analyzer(analyzer_key)
+    loaded_workspace = _load_corpus_target(
+        manifest,
+        manifest_path=manifest_path,
+        target_path=target_path,
+        repo_root=repo_root,
+    )
+    context = build_analysis_context(
+        loaded_workspace.project_bp,
+        graph=loaded_workspace.graph,
+        debug=False,
+        target_is_library=loaded_workspace.target_is_library,
+        config=loaded_workspace.config,
+        create_shared_artifacts=True,
+    )
+    report = _run_corpus_analyzer(
+        resolved_analyzer.spec,
+        context=context,
+        specs_by_key=resolved_analyzer.specs_by_key,
+    )
+    findings = _build_analyzer_finding_collection(
+        report,
+        spec=resolved_analyzer.spec,
+        analyzer_key=resolved_analyzer.key,
+        rule_metadata_by_id=resolved_analyzer.rule_metadata_by_id,
+        target_path=target_path,
+        repo_root=repo_root,
+    )
+    rule_counts = Counter(finding.rule_id for finding in findings.findings)
+    unavailable_libraries = loaded_workspace.graph.unavailable_libraries
+    sanitized_target = sanitize_path_for_report(target_path, repo_root=repo_root)
+    status = {
+        "kind": "sattlint.corpus.case_status",
+        "case_id": manifest.case_id,
+        "mode": manifest.mode,
+        "execution_status": "ok",
+        "target_file": sanitized_target,
+        "analyzer_key": resolved_analyzer.key,
+        "resolved_target_count": len(loaded_workspace.graph.ast_by_name),
+        "warning_count": len(loaded_workspace.graph.warnings),
+        "missing_dependency_count": len(loaded_workspace.graph.missing),
+        "finding_count": len(findings.findings),
+        "findings_schema": findings.schema_metadata,
+        "unavailable_libraries": sorted(unavailable_libraries),
+    }
+    summary = {
+        "kind": "sattlint.corpus.case_summary",
+        "case_id": manifest.case_id,
+        "mode": manifest.mode,
+        "target_file": sanitized_target,
+        "analyzer_key": resolved_analyzer.key,
+        "finding_count": len(findings.findings),
+        "findings_schema": findings.schema_metadata,
+        "rule_counts": dict(sorted(rule_counts.items())),
+        "resolved_targets": sorted(loaded_workspace.graph.ast_by_name),
+        "missing_dependencies": list(loaded_workspace.graph.missing),
+        "warnings": list(loaded_workspace.graph.warnings),
+    }
+    return CorpusExecutionArtifacts(findings=findings, status=status, summary=summary)
+
+
+def _build_analyzer_finding_collection(
+    report: object,
+    *,
+    spec: Any,
+    analyzer_key: str,
+    rule_metadata_by_id: Mapping[str, object],
+    target_path: Path,
+    repo_root: Path,
+) -> FindingCollection:
+    issues = getattr(report, "issues", None)
+    if not isinstance(issues, list | tuple):
+        raise RuntimeError(f"Analyzer {analyzer_key!r} did not return a list of issues.")
+
+    semantic_issues = _map_analyzer_issues_to_semantic_issues(
+        cast(list[object] | tuple[object, ...], issues),
+        semantic_mapping_kind=coerce_optional_str(getattr(spec, "semantic_mapping_kind", None)),
+    )
+    if semantic_issues is not None:
+        return _build_semantic_finding_collection_from_issues(
+            semantic_issues,
+            target_path=target_path,
+            repo_root=repo_root,
+            analyzer_key=analyzer_key,
+            owner_surface="analyzers",
+        )
+
+    target_display_path = sanitize_path_for_report(target_path, repo_root=repo_root)
+    records = tuple(
+        _build_analyzer_finding_record(
+            issue,
+            analyzer_key=analyzer_key,
+            rule_metadata_by_id=rule_metadata_by_id,
+            target_display_path=target_display_path,
+            repo_root=repo_root,
+        )
+        for issue in cast(list[object] | tuple[object, ...], issues)
+    )
+    return FindingCollection(records)
+
+
+def _map_analyzer_issues_to_semantic_issues(
+    issues: list[object] | tuple[object, ...],
+    *,
+    semantic_mapping_kind: str | None,
+) -> list[object] | None:
+    if semantic_mapping_kind is None:
+        return None
+
+    if semantic_mapping_kind == "variable":
+        return list(map_variable_issues(cast(list[VariableIssue], list(issues))))
+    if semantic_mapping_kind == "framework":
+        return list(map_framework_issues(cast(list[Issue], list(issues)), FRAMEWORK_RULES_BY_KIND))
+    if semantic_mapping_kind == "spec":
+        return list(map_spec_issues(cast(list[Issue], list(issues))))
+    return None
+
+
+def _build_analyzer_finding_record(
+    issue: object,
+    *,
+    analyzer_key: str,
+    rule_metadata_by_id: Mapping[str, object],
+    target_display_path: str | None,
+    repo_root: Path,
+) -> FindingRecord:
+    issue_kind = _coerce_issue_kind(issue)
+    issue_data = _build_analyzer_issue_data(issue, repo_root=repo_root)
+    rule_id = coerce_optional_str(getattr(issue, "rule_id", None)) or issue_kind
+    rule_metadata = rule_metadata_by_id.get(rule_id) or rule_metadata_by_id.get(issue_kind)
+    variable_metadata = _materialize_variable_issue_metadata(issue)
+
+    message = _build_analyzer_issue_message(issue)
+    detail = (
+        coerce_optional_str(getattr(issue, "explanation", None))
+        or variable_metadata.get("explanation")
+        or coerce_optional_str(getattr(rule_metadata, "explanation", None))
+        or coerce_optional_str(getattr(rule_metadata, "description", None))
+    )
+    suggestion = (
+        coerce_optional_str(getattr(issue, "suggestion", None))
+        or variable_metadata.get("suggestion")
+        or coerce_optional_str(getattr(rule_metadata, "suggestion", None))
+    )
+    severity = _normalize_severity(
+        coerce_optional_str(getattr(issue, "severity", None))
+        or coerce_optional_str(getattr(rule_metadata, "severity", None))
+        or "warning"
+    )
+    confidence = (
+        coerce_optional_str(getattr(issue, "confidence", None))
+        or coerce_optional_str(getattr(rule_metadata, "confidence", None))
+        or "medium"
+    )
+    category = (
+        coerce_optional_str(getattr(rule_metadata, "category", None))
+        or coerce_optional_str(issue_data.get("category"))
+        or ("variable" if _is_variable_issue(issue) else issue_kind)
+        or analyzer_key
+    )
+    source = coerce_optional_str(getattr(rule_metadata, "source", None)) or analyzer_key
+    issue_data.setdefault("analyzer_key", analyzer_key)
+    if issue_kind:
+        issue_data.setdefault("source_kind", issue_kind)
+    return FindingRecord(
+        id=rule_id,
+        rule_id=rule_id,
+        category=category,
+        severity=severity,
+        confidence=confidence,
+        message=message,
+        source=source,
+        analyzer=analyzer_key,
+        artifact="findings",
+        location=FindingLocation(
+            path=_coerce_issue_path(issue_data, target_display_path=target_display_path, repo_root=repo_root),
+            line=_coerce_optional_int(issue_data.get("line")) or _coerce_optional_int(issue_data.get("start_line")),
+            column=_coerce_optional_int(issue_data.get("column")) or _coerce_optional_int(issue_data.get("start_col")),
+            symbol=coerce_optional_str(issue_data.get("symbol")) or coerce_optional_str(issue_data.get("variable")),
+            module_path=_coerce_module_path(getattr(issue, "module_path", None) or issue_data.get("module_path")),
+        ),
+        detail=detail,
+        suggestion=suggestion,
+        owner_surface=("semantic" if analyzer_key == "sattline-semantics" else "analyzers"),
+        data=issue_data,
+    )
+
+
+def _build_analyzer_issue_message(issue: object) -> str:
+    message = coerce_optional_str(getattr(issue, "message", None))
+    if message:
+        return message
+
+    variable_message = _describe_variable_issue(issue)
+    if variable_message is not None:
+        return variable_message
+
+    return _coerce_issue_kind(issue) or "Analyzer reported an issue."
+
+
+def _build_analyzer_issue_data(issue: object, *, repo_root: Path) -> dict[str, Any]:
+    raw_data = getattr(issue, "data", None)
+    if isinstance(raw_data, Mapping):
+        return _normalize_issue_data_mapping(cast(Mapping[str, Any], raw_data), repo_root=repo_root)
+
+    if _is_variable_issue(issue):
+        return _normalize_issue_data_mapping(variable_issue_data(issue), repo_root=repo_root)
+
+    return {}
+
+
+def _normalize_issue_data_mapping(raw_data: Mapping[str, Any], *, repo_root: Path) -> dict[str, Any]:
+    normalized: dict[str, Any] = {}
+    for raw_key, value in raw_data.items():
+        key = str(raw_key)
+        if key.casefold() in {"path", "file"}:
+            normalized[key] = _sanitize_issue_path(value, repo_root=repo_root)
+            continue
+        normalized[key] = _normalize_issue_data_value(value, repo_root=repo_root)
+    return normalized
+
+
+def _normalize_issue_data_value(value: object, *, repo_root: Path) -> JsonValue:
+    if value is None or isinstance(value, str | int | float | bool):
+        return cast(JsonValue, value)
+    if isinstance(value, Enum):
+        return coerce_optional_str(value.value) or str(value)
+    if isinstance(value, Path):
+        return _sanitize_issue_path(value, repo_root=repo_root) or value.as_posix()
+    if isinstance(value, Mapping):
+        return cast(JsonValue, _normalize_issue_data_mapping(cast(Mapping[str, Any], value), repo_root=repo_root))
+    if isinstance(value, list | tuple | set | frozenset):
+        return [
+            _normalize_issue_data_value(item, repo_root=repo_root)
+            for item in cast(list[object] | tuple[object, ...] | set[object] | frozenset[object], value)
+        ]
+    return str(value)
+
+
+def _sanitize_issue_path(value: object, *, repo_root: Path) -> str | None:
+    if isinstance(value, Path):
+        return sanitize_path_for_report(value, repo_root=repo_root) or value.as_posix()
+
+    raw_value = coerce_optional_str(value)
+    if raw_value is None:
+        return None
+    candidate = Path(raw_value)
+    if candidate.is_absolute():
+        return sanitize_path_for_report(candidate, repo_root=repo_root) or candidate.as_posix()
+    return raw_value
+
+
+def _coerce_issue_path(
+    issue_data: Mapping[str, object],
+    *,
+    target_display_path: str | None,
+    repo_root: Path,
+) -> str | None:
+    path = _sanitize_issue_path(issue_data.get("path") or issue_data.get("file"), repo_root=repo_root)
+    if path:
+        return path
+    return target_display_path
+
+
+def _coerce_issue_kind(issue: object) -> str:
+    raw_kind = getattr(issue, "kind", None)
+    if isinstance(raw_kind, Enum):
+        return coerce_optional_str(raw_kind.value) or str(raw_kind)
+    return coerce_optional_str(raw_kind) or "unknown"
+
+
+def _coerce_optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isdigit():
+            return int(stripped)
+    return None
+
+
+def _coerce_module_path(value: object) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, list | tuple):
+        return tuple(str(item) for item in cast(list[object] | tuple[object, ...], value))
+    return (str(value),)
+
+
+def _is_variable_issue(issue: object) -> bool:
+    return isinstance(issue, VariableIssue)
+
+
+def _describe_variable_issue(issue: object) -> str | None:
+    if not _is_variable_issue(issue):
+        return None
+
+    return describe_variable_issue(issue)
+
+
+def _materialize_variable_issue_metadata(issue: object) -> dict[str, str | None]:
+    if not _is_variable_issue(issue):
+        return {"explanation": None, "suggestion": None}
+
+    metadata = materialize_variable_issue_metadata(issue)
+    return {
+        "explanation": coerce_optional_str(getattr(metadata, "explanation", None)),
+        "suggestion": coerce_optional_str(getattr(metadata, "suggestion", None)),
+    }
 
 
 def _build_semantic_finding_collection(
@@ -709,6 +1333,23 @@ def _build_semantic_finding_collection(
     *,
     target_path: Path,
     repo_root: Path,
+) -> FindingCollection:
+    return _build_semantic_finding_collection_from_issues(
+        report.issues,
+        target_path=target_path,
+        repo_root=repo_root,
+        analyzer_key="sattline-semantics",
+        owner_surface=None,
+    )
+
+
+def _build_semantic_finding_collection_from_issues(
+    issues: Sequence[object],
+    *,
+    target_path: Path,
+    repo_root: Path,
+    analyzer_key: str,
+    owner_surface: str | None,
 ) -> FindingCollection:
     target_display_path = sanitize_path_for_report(target_path, repo_root=repo_root)
     records = tuple(
@@ -720,7 +1361,7 @@ def _build_semantic_finding_collection(
             confidence="high",
             message=issue.message,
             source=issue.rule.source,
-            analyzer="sattline-semantics",
+            analyzer=analyzer_key,
             artifact="findings",
             location=FindingLocation(
                 path=target_display_path,
@@ -728,13 +1369,14 @@ def _build_semantic_finding_collection(
             ),
             detail=issue.rule.explanation or issue.rule.description,
             suggestion=issue.rule.suggestion,
+            owner_surface=owner_surface,
             data={
                 "applies_to": issue.rule.applies_to,
                 "source_kind": issue.source_kind,
                 **(issue.data or {}),
             },
         )
-        for issue in report.issues
+        for issue in cast(Sequence[Any], issues)
     )
     return FindingCollection(records)
 
@@ -789,3 +1431,7 @@ __all__ = [
     "run_corpus_case",
     "run_corpus_suite",
 ]
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

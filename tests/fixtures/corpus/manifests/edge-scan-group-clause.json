@@ -3,11 +3,25 @@
     "target_file": "../edge_cases/ScanGroupClause.s",
     "mode": "workspace",
     "expectation": {
-        "expected_finding_ids": [],
+        "expected_finding_ids": [
+            "semantic.never-read-write",
+            "semantic.read-only-non-const",
+            "semantic.signal-lifecycle-unconsumed-write",
+            "spec.basepicture_direct_code"
+        ],
         "artifact_fragments": {
             "status.json": {
                 "execution_status": "ok",
                 "missing_dependency_count": 0
+            },
+            "summary.json": {
+                "finding_count": 4,
+                "rule_counts": {
+                    "semantic.never-read-write": 1,
+                    "semantic.read-only-non-const": 1,
+                    "semantic.signal-lifecycle-unconsumed-write": 1,
+                    "spec.basepicture_direct_code": 1
+                }
             }
         },
         "forbidden_finding_ids": [

@@ -1,6 +1,6 @@
 {
     "case_id": "semantic-read-before-write",
-    "target_file": "../semantic/ReadBeforeWrite.s",
+    "target_file": "../semantic/workspace/ReadBeforeWrite.s",
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [

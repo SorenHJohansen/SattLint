@@ -1,6 +1,9 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false
 from __future__ import annotations
 
+from typing import Any
+
+from sattlint.devtools import repo_audit as compat_repo_audit
 from tests import test_repo_audit as repo_audit_tests
 
 
@@ -120,6 +123,78 @@ def test_main_planning_context_prints_machine_readable_report(monkeypatch, tmp_p
     assert payload["planning_context"]["primary_agent"] == "CLI App Menu"
     assert payload["finish_gate"]["command"] == "sattlint-repo-audit --run-recommended-finish-gate"
     assert build_planning_report.call_args.kwargs["changed_files"] == ["src/sattlint/app.py"]
+
+
+def test_collect_custom_findings_uses_injected_owner_seam_and_outer_wrapper_hides_private_hooks(tmp_path):
+    text_finding = repo_audit_tests.repo_audit.Finding(
+        "hardcoded-windows-path",
+        "portability",
+        "high",
+        "high",
+        "Absolute Windows path committed to the repository.",
+        path="README.md",
+    )
+    readiness_finding = repo_audit_tests.repo_audit.Finding(
+        "missing-ci-workflow",
+        "public-readiness",
+        "medium",
+        "high",
+        "Repository has no CI workflow.",
+    )
+    base_context = object()
+    context_with_shared_lines = object()
+    seen_contexts: list[object] = []
+
+    def record_text_scan_finding(context: object) -> list[Any]:
+        seen_contexts.append(context)
+        return [text_finding]
+
+    def record_public_readiness_finding(context: object) -> list[Any]:
+        seen_contexts.append(context)
+        return [readiness_finding]
+
+    def record_verify_recommendations(_context: object) -> list[Any]:
+        return []
+
+    with (
+        repo_audit_tests.patch.object(
+            repo_audit_tests.repo_audit_entrypoints._repo_audit_check_runners_module,
+            "_build_repo_audit_scan_context",
+            return_value=base_context,
+        ) as build_context,
+        repo_audit_tests.patch.object(
+            repo_audit_tests.repo_audit_entrypoints._repo_audit_check_runners_module,
+            "_with_shared_text_line_findings",
+            return_value=context_with_shared_lines,
+        ) as with_shared_text_line_findings,
+        repo_audit_tests.patch.object(
+            repo_audit_tests.repo_audit_entrypoints,
+            "_repo_audit_finding_runner_overrides",
+            return_value={
+                "text-scan": record_text_scan_finding,
+                "public-readiness": record_public_readiness_finding,
+                "verify-recommendations": record_verify_recommendations,
+            },
+        ),
+    ):
+        findings = compat_repo_audit.collect_custom_findings(
+            tmp_path,
+            selected_checks=["text-scan", "public-readiness"],
+        )
+
+    assert [finding.id for finding in findings] == ["hardcoded-windows-path", "missing-ci-workflow"]
+    assert seen_contexts == [context_with_shared_lines, context_with_shared_lines]
+    build_context.assert_called_once_with(
+        tmp_path,
+        include_generated=False,
+        tracked_only=False,
+        suspicious_identifiers=(),
+    )
+    with_shared_text_line_findings.assert_called_once_with(base_context)
+    with repo_audit_tests.pytest.raises(AttributeError):
+        _ = compat_repo_audit._build_repo_audit_scan_context
+    with repo_audit_tests.pytest.raises(AttributeError):
+        _ = compat_repo_audit._repo_audit_finding_check_definitions
 
 
 def test_main_run_recommended_slice_uses_combined_recommendation(monkeypatch, tmp_path):

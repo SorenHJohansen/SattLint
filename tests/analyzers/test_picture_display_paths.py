@@ -285,7 +285,7 @@ def test_picture_display_path_analyzer_reports_generic_variable_path_candidates(
                 path_rows=(
                     PictureDisplayPathRow(
                         record_index=1,
-                        index_token="1",
+                        index_token=str(1),
                         index_value=1,
                         kind="variable",
                         raw_text="DisplayPath",
@@ -316,7 +316,7 @@ def test_picture_display_path_analyzer_reports_unresolved_operationpath_candidat
                 path_rows=(
                     PictureDisplayPathRow(
                         record_index=1,
-                        index_token="1",
+                        index_token=str(1),
                         index_value=1,
                         kind="variable",
                         raw_text="Paths.OperationPath",

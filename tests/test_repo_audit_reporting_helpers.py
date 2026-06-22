@@ -8,6 +8,8 @@ from unittest.mock import patch
 import pytest
 
 from sattlint.devtools import coordination_lock_state, doc_gardener, repo_audit
+from sattlint.devtools.audit import _repo_audit_entrypoint_helpers as repo_audit_entrypoint_helpers
+from sattlint.devtools.audit import repo_audit as audit_repo_audit
 
 _COVERAGE_XML_TEMPLATE = """
 <?xml version="1.0" ?>
@@ -227,7 +229,7 @@ def test_build_cli_consistency_report_detects_undeclared_subcommand(tmp_path, mo
     _write_required_audit_tasks(tmp_path)
 
     monkeypatch.setattr(
-        repo_audit,
+        audit_repo_audit,
         "_collect_cli_metadata",
         lambda: ({"sattlint"}, {"syntax-check", "analyze"}),
     )
@@ -246,7 +248,7 @@ def test_build_cli_consistency_report_pass_when_all_documented_subcommands_are_d
     _write_required_audit_tasks(tmp_path)
 
     monkeypatch.setattr(
-        repo_audit,
+        audit_repo_audit,
         "_collect_cli_metadata",
         lambda: ({"sattlint"}, {"syntax-check"}),
     )
@@ -272,7 +274,7 @@ def test_build_cli_consistency_report_ignores_exec_plan_markdown_noise(tmp_path,
     )
 
     monkeypatch.setattr(
-        repo_audit,
+        audit_repo_audit,
         "_collect_cli_metadata",
         lambda: ({"sattlint", "sattlint-repo-audit"}, {"syntax-check"}),
     )
@@ -301,7 +303,7 @@ def test_build_cli_consistency_report_detects_pre_push_task_mismatch(tmp_path, m
     )
 
     monkeypatch.setattr(
-        repo_audit,
+        audit_repo_audit,
         "_collect_cli_metadata",
         lambda: ({"sattlint", "sattlint-repo-audit"}, {"syntax-check"}),
     )
@@ -331,7 +333,7 @@ def test_build_cli_consistency_report_detects_ai_drift_task_mismatch(tmp_path, m
     )
 
     monkeypatch.setattr(
-        repo_audit,
+        audit_repo_audit,
         "_collect_cli_metadata",
         lambda: ({"sattlint", "sattlint-repo-audit"}, {"syntax-check"}),
     )
@@ -378,7 +380,7 @@ def test_cli_consistency_findings_preserve_report_script_and_path_fields():
         }
     }
 
-    findings = repo_audit._repo_audit_entrypoints._cli_consistency_findings(report)
+    findings = repo_audit_entrypoint_helpers._cli_consistency_findings(report)
 
     assert [finding.id for finding in findings] == [
         "cli-consistency-undeclared-subcommand",

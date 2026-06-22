@@ -14,8 +14,11 @@ from sattlint.devtools.shared import pipeline_checks as pipeline_checks_module
 from sattlint.devtools.shared.pipeline_checks import matching_changed_files, normalize_changed_files
 
 from . import _repo_audit_check_catalog as repo_audit_check_catalog_helpers
+from . import _repo_audit_check_runners as _repo_audit_check_runners_module
 from . import _repo_audit_entrypoint_helpers as repo_audit_entrypoint_helpers
 from . import _repo_audit_planning_helpers as repo_audit_planning_helpers
+from . import _repo_audit_strategy_registry as repo_audit_strategy_registry
+from . import repo_audit_compat as _repo_audit_compat_module
 
 verify_check_catalog = pipeline_checks_module.verify_check_catalog
 
@@ -46,9 +49,14 @@ def _repo_audit_entrypoints_module() -> Any:
     return repo_audit_module
 
 
+def _repo_audit_finding_runner_overrides() -> repo_audit_strategy_registry.RepoAuditRunnerMap:
+    return {}
+
+
 def _repo_audit_finding_check_definitions() -> tuple[dict[str, Any], ...]:
     return repo_audit_check_catalog_helpers.build_repo_audit_finding_check_definitions(
         verify_recommendations_runner=_run_verify_recommendations_check,
+        runner_overrides=_repo_audit_finding_runner_overrides(),
     )
 
 
@@ -186,24 +194,23 @@ def collect_custom_findings(
     suspicious_identifiers: Iterable[str] = (),
     selected_checks: Iterable[str] | None = None,
 ) -> list[Any]:
-    repo_audit = _repo_audit_entrypoints_module()
-    resolved_root = repo_audit.REPO_ROOT if root is None else root
+    resolved_root = _repo_audit_check_runners_module.REPO_ROOT if root is None else root
     findings: list[Any] = []
     selected_check_ids = _normalize_repo_audit_finding_checks(selected_checks)
     selected_check_set = None if selected_check_ids is None else set(selected_check_ids)
-    context = repo_audit._build_repo_audit_scan_context(
+    context = _repo_audit_check_runners_module._build_repo_audit_scan_context(
         resolved_root,
         include_generated=include_generated,
         tracked_only=tracked_only,
         suspicious_identifiers=suspicious_identifiers,
     )
     if selected_check_set is None or {"text-scan", "local-ci-parity"} & selected_check_set:
-        context = repo_audit._with_shared_text_line_findings(context)
-    for definition in repo_audit._repo_audit_finding_check_definitions():
+        context = _repo_audit_check_runners_module._with_shared_text_line_findings(context)
+    for definition in _repo_audit_finding_check_definitions():
         if selected_check_set is not None and definition["id"] not in selected_check_set:
             continue
         findings.extend(definition["runner"](context))
-    return repo_audit._dedupe_findings(findings)
+    return _repo_audit_compat_module._dedupe_findings(findings)
 
 
 def _run_repo_audit_findings_checks(
