@@ -48,3 +48,13 @@ Include as much of this as you can:
 - Stable-surface bugs are the highest priority for public follow-up.
 - Preview-surface issues are handled on a best-effort basis and may be resolved by narrowing the documented preview scope instead of preserving exact behavior.
 - Internal-only files and AI coordination surfaces may change without compatibility notice.
+
+## Deprecation Policy
+
+SattLint follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Once a feature is part of the stable public surface, the following rules apply:
+
+- **Deprecation notice**: A feature scheduled for removal is announced in the CHANGELOG with the version in which it became deprecated. A runtime deprecation warning may be emitted when applicable.
+- **Minimum support window**: A deprecated stable feature remains functional for at least one minor release after the deprecation announcement.
+- **Major version bumps**: Breaking changes are reserved for major version releases (e.g., 1.x → 2.0). A minor release may introduce deprecation warnings but must not break the stable API or CLI contract.
+- **Preview surfaces**: Features documented as preview may change or be removed without a deprecation cycle. Their status is documented in the [public support matrix](docs/references/public-support-matrix.md).
+- **Migration path**: When a stable feature is deprecated, the CHANGELOG entry includes a migration path or recommended alternative.

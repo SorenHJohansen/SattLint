@@ -12,9 +12,7 @@ from .config_types import ConfigDict
 emit_output = console_module.print_output
 
 
-def _self_check_directories(cfg: ConfigDict) -> bool:
-    validation = config_module.validate_loaded_config(cfg)
-    errors_by_key = config_validation_module.validation_errors_by_key(validation)
+def _self_check_directories(cfg: ConfigDict, *, errors_by_key: dict[str, tuple[str, ...]]) -> bool:
     ok = True
 
     for name in ("program_dir", "ABB_lib_dir", "icf_dir"):
@@ -43,9 +41,7 @@ def _self_check_directories(cfg: ConfigDict) -> bool:
     return ok
 
 
-def _self_check_targets(cfg: ConfigDict) -> bool:
-    validation = config_module.validate_loaded_config(cfg)
-    errors_by_key = config_validation_module.validation_errors_by_key(validation)
+def _self_check_targets(cfg: ConfigDict, *, errors_by_key: dict[str, tuple[str, ...]]) -> bool:
     ok = True
     targets = list(config_validation_module.configured_targets(cfg))
     if not targets:
@@ -104,8 +100,11 @@ def self_check(cfg: ConfigDict) -> bool:
             emit_output(f"â�Œ Missing config key: {key}")
             ok = False
 
-    ok = _self_check_directories(cfg) and ok
-    ok = _self_check_targets(cfg) and ok
+    validation = config_module.validate_loaded_config(cfg)
+    errors_by_key = config_validation_module.validation_errors_by_key(validation)
+
+    ok = _self_check_directories(cfg, errors_by_key=errors_by_key) and ok
+    ok = _self_check_targets(cfg, errors_by_key=errors_by_key) and ok
     ok = _report_validation_namespace(cfg, "documentation") and ok
     ok = _report_validation_namespace(cfg, "analysis") and ok
     ok = _self_check_graphics_rules() and ok

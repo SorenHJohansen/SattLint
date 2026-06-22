@@ -497,19 +497,4 @@ def _definition_uri(
     return uris.from_fs_path(str(target_path)) or target_path.as_uri()
 
 
-collect_reference_matches = _collect_reference_matches
-definition_locations_from_candidates = _definition_locations_from_candidates
-definition_uri = _definition_uri
-filter_visible_definitions = _filter_visible_definitions
-local_definition_candidates = _local_definition_candidates
-merge_completion_items = _merge_completion_items
-merge_definitions = _merge_definitions
-merge_locations = _merge_locations
-merge_references = _merge_references
-overlay_definition_candidates = _overlay_definition_candidates
-reference_expr_at_position = _reference_expr_at_position
-reference_locations_from_matches = _reference_locations_from_matches
-resolve_reference_path = _resolve_reference_path
-semantic_completion_kind = _semantic_completion_kind
 semantic_diagnostics_for_path = _semantic_diagnostics_for_path
-split_reference_matches = _split_reference_matches

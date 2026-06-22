@@ -27,7 +27,6 @@
 - `docs/public/architecture.md`
 - `docs/maintainers/quality-gates.md`
 - `docs/design-docs/`
-- `docs/lessons-learned/known-failure-patterns.md`
 - `.github/instructions/*.md`
 
 ## Critical Invariants
@@ -52,7 +51,6 @@
 - Make the smallest grounded edit that tests the current hypothesis.
 - Run the first focused validation immediately after the first substantive edit.
 - Widen to Ruff, Pyright, pre-commit, or `--check-my-changes` only after the local check passes.
-- Use `docs/lessons-learned/known-failure-patterns.md` only after a dead end or repeated validation failure.
 
 ## Guardrails
 

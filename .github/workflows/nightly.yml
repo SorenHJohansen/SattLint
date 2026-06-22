@@ -37,6 +37,9 @@ jobs:
       - name: Run fast pre-commit gate
         run: python -m pre_commit run --all-files
 
+      - name: Run fuzz harness
+        run: python -c "from sattline_parser.fuzz_harness import run_random_fuzz, assert_no_crashes; results = run_random_fuzz(rounds=50); assert_no_crashes(results)"
+
       - name: Run doc gardener
         run: sattlint-doc-gardener --check-only
 

@@ -60,6 +60,23 @@ jobs:
       - name: Run pytest with coverage
         run: python -m pytest -q --tb=short
 
+  vulture:
+    name: Vulture
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up shared CI tooling
+        uses: ./.github/actions/setup-ci-tooling
+        with:
+          dependency-spec: ".[dev,lsp]"
+
+      - name: Run Vulture dead code analysis
+        run: python -m vulture src --min-confidence 80
+
   pip-audit:
     name: Pip Audit
     runs-on: ubuntu-latest
