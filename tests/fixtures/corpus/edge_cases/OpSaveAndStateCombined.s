@@ -1,6 +1,6 @@
 "Syntax version 2.23, date: 2026-04-23-12:00:00.000 N"
 "Original file date: ---"
-"Program date: 2026-04-23-12:00:00.000, name: OpSaveAndStateCombined"
+"Program date: 2026-04-23-12:00:00.000, name: OpSaveStateMix"
 (* Covers a variable declared with both OpSave and State modifiers.
    The grammar allows any combination of CONST, STATE, OPSAVE, SECURE modifiers
    in a variable group. OpSave causes the value to be restored on power-up,

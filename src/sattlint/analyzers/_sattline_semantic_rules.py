@@ -142,6 +142,7 @@ RULE_CONTRACTS_BY_ID: dict[str, SemanticRuleContract] = {
     **rule_contract_entries(
         SAME_CYCLE_RULE_CONTRACT,
         "semantic.parallel-read-write-hazard",
+        "semantic.same-cycle-non-state-multi-site",
         "semantic.same-cycle-shared-access",
     ),
     **rule_contract_entries(

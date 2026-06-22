@@ -1,12 +1,11 @@
 {
     "case_id": "semantic-resource-lifecycle",
-    "target_file": "../semantic/ResourceLifecycle.s",
+    "target_file": "../semantic/shared/ResourceUsage.s",
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [
             "semantic.resource-leak",
-            "semantic.resource-reacquire-before-release",
-            "semantic.resource-release-without-acquire"
+            "semantic.resource-reacquire-before-release"
         ],
         "artifact_fragments": {
             "status.json": {
@@ -16,8 +15,7 @@
             "summary.json": {
                 "rule_counts": {
                     "semantic.resource-leak": 1,
-                    "semantic.resource-reacquire-before-release": 1,
-                    "semantic.resource-release-without-acquire": 1
+                    "semantic.resource-reacquire-before-release": 1
                 }
             }
         },

@@ -59,6 +59,7 @@ _DATAFLOW_SOURCE_ACCEPTANCE_TESTS = (
 )
 _SAME_CYCLE_SOURCE_ACCEPTANCE_TESTS = (
     "tests/analyzers/test_same_cycle.py",
+    "tests/analyzers/test_scan_shared_access.py",
     "tests/analyzers/test_sattline_semantics.py",
 )
 _SIGNAL_LIFECYCLE_SOURCE_ACCEPTANCE_TESTS = (

@@ -1,6 +1,6 @@
 "Syntax version 2.23, date: 2026-04-23-12:00:00.000 N"
 "Original file date: ---"
-"Program date: 2026-04-23-12:00:00.000, name: LegacySequenceNoInitStep"
+"Program date: 2026-04-23-12:00:00.000, name: LegacySeqNoInit"
 (* EDGE CASE: A SEQUENCE that begins with a SEQSTEP instead of SEQINITSTEP.
    This is a legacy pattern. Validation accepts it but emits a warning about
    the missing initial step. The file should NOT fail strict syntax-check;

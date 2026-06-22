@@ -16,6 +16,8 @@ from . import _app_analysis_loading as analysis_loading_module
 from . import _app_analysis_menus as analysis_menus_module
 from . import _app_analysis_reporting as analysis_reporting_module
 from . import _app_analysis_variable_analyses as analysis_variable_analyses_module
+from . import analysis_catalog as analysis_catalog_module
+from . import analysis_dispatch as analysis_dispatch_module
 from . import app_support as app_support_module
 from . import app_telemetry as telemetry_module
 from . import cache as cache_module
@@ -28,8 +30,6 @@ from .analyzers.framework import AnalysisSharedArtifacts, Issue, SimpleReport, b
 from .analyzers.icf import parse_icf_file, validate_icf_entries_against_program
 from .analyzers.mms import analyze_mms_interface_variables
 from .analyzers.modules import analyze_module_duplicates, compare_modules, debug_module_structure, find_modules_by_name
-from .analyzers.registry import get_default_cli_analyzers
-from .analyzers.registry._registry_dispatch import get_cli_dispatch_analyzers, run_registry_analyzer
 from .analyzers.rule_profiles import apply_rule_profile_to_report
 from .analyzers.shadowing import analyze_shadowing
 from .analyzers.variable_usage_reporting import debug_variable_usage
@@ -40,6 +40,10 @@ from .casefolding import casefold_equal, casefold_key
 from .config_types import ConfigDict
 from .models.project_graph import ProjectGraph
 from .reporting.variables_report import DEFAULT_VARIABLE_ANALYSIS_KINDS, VariablesReport
+
+get_default_cli_analyzers = analysis_catalog_module.get_default_cli_analyzers
+get_cli_dispatch_analyzers = analysis_dispatch_module.get_cli_dispatch_analyzers
+run_registry_analyzer = analysis_dispatch_module.run_registry_analyzer
 
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
 

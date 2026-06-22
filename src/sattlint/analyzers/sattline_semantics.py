@@ -15,6 +15,7 @@ from ._registry_dispatch import get_semantic_contributor_specs, run_registry_ana
 from ._registry_specs import build_context_kwargs
 from ._sattline_semantic_issue_mapping import (
     map_framework_issues,
+    map_profiled_issues,
     map_spec_issues,
     map_trace_findings,
     map_variable_issues,
@@ -43,6 +44,18 @@ def get_sattline_semantic_rules() -> tuple[SemanticRule, ...]:
 
 def get_rule_for_framework_issue_kind(issue_kind: str) -> SemanticRule | None:
     return FRAMEWORK_RULES_BY_KIND.get(issue_kind)
+
+
+def _dedupe_semantic_issues(issues: list[SemanticIssue]) -> list[SemanticIssue]:
+    seen: set[tuple[object, ...]] = set()
+    deduped: list[SemanticIssue] = []
+    for issue in issues:
+        data_key = tuple(sorted((k, repr(v)) for k, v in issue.data.items()))
+        key = (issue.rule.id, tuple(issue.module_path or ()), data_key)
+        if key not in seen:
+            seen.add(key)
+            deduped.append(issue)
+    return deduped
 
 
 @dataclass
@@ -95,6 +108,13 @@ def analyze_sattline_semantics(
     config: dict[str, object] | None = None,
 ) -> SattLineSemanticsReport:
     issues: list[SemanticIssue] = []
+    trace_findings = detect_transform_invariant_violations(base_picture)
+    trace_issues = map_trace_findings(trace_findings)
+    if any(finding.get("kind") == "unexpected_submodule_type" for finding in trace_findings):
+        return SattLineSemanticsReport(
+            basepicture_name=base_picture.header.name,
+            issues=_dedupe_semantic_issues(trace_issues),
+        )
 
     fallback_graph = SimpleNamespace(unavailable_libraries=set(unavailable_libraries or ()))
     if analysis_context is None:
@@ -145,18 +165,11 @@ def analyze_sattline_semantics(
             issues.extend(map_framework_issues(cast(list[Issue], report_issues), FRAMEWORK_RULES_BY_KIND))
         elif spec.semantic_mapping_kind == "spec":
             issues.extend(map_spec_issues(cast(list[Issue], report_issues)))
+        elif spec.semantic_rule_source is not None:
+            issues.extend(map_profiled_issues(cast(list[Issue], report_issues), spec.semantic_rule_source))
 
-    issues.extend(map_trace_findings(detect_transform_invariant_violations(base_picture)))
-
-    seen: set[tuple[object, ...]] = set()
-    deduped: list[SemanticIssue] = []
-    for issue in issues:
-        data_key = tuple(sorted((k, repr(v)) for k, v in issue.data.items()))
-        key = (issue.rule.id, tuple(issue.module_path or ()), data_key)
-        if key not in seen:
-            seen.add(key)
-            deduped.append(issue)
-    issues = deduped
+    issues.extend(trace_issues)
+    issues = _dedupe_semantic_issues(issues)
 
     return SattLineSemanticsReport(
         basepicture_name=base_picture.header.name,

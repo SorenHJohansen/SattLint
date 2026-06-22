@@ -284,6 +284,14 @@ def default_delivery_templates(
             exposed_via=("pipeline",),
         ),
         AnalyzerDeliveryTemplate(
+            key="scan-shared-access",
+            scope="single-file",
+            implementation_bucket="shared-semantic-core",
+            acceptance_tests=("tests/analyzers/test_scan_shared_access.py",),
+            min_fixture_set=shared_fixtures,
+            exposed_via=("pipeline",),
+        ),
+        AnalyzerDeliveryTemplate(
             key="same-cycle",
             scope="cross-module",
             implementation_bucket="shared-semantic-core",

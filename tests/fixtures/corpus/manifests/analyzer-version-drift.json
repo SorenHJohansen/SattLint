@@ -1,0 +1,32 @@
+{
+    "case_id": "analyzer-version-drift",
+    "target_file": "../semantic/shared/VersionDrift.s",
+    "mode": "analyzer-version-drift",
+    "expectation": {
+        "expected_finding_ids": [
+            "module.version_drift"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "version-drift"
+            },
+            "summary.json": {
+                "analyzer_key": "version-drift",
+                "rule_counts": {
+                    "module.version_drift": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

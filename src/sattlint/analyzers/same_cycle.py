@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Set
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -37,9 +38,11 @@ from .variables._variables_picture_display_support import build_typedef_root_con
 _SAME_CYCLE_SHARED_ACCESS_KIND = "same_cycle_shared_access_hazard"
 _SAME_CYCLE_PARALLEL_READ_WRITE_KIND = "same_cycle_parallel_read_write_hazard"
 _SAME_CYCLE_PARALLEL_WRITE_KIND = "sfc_parallel_write_race"
+_SAME_CYCLE_NON_STATE_MULTI_SITE_KIND = "same_cycle_non_state_multi_site_hazard"
 
 
 type ParallelKey = tuple[tuple[str, ...], str, int]
+type ContinuousSiteKey = tuple[tuple[str, ...], str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +53,8 @@ class _CycleEvent:
     access_module_path: tuple[str, ...]
     site: str
     order: int
+    is_state_variable: bool
+    continuous_site_label: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +117,7 @@ class SameCycleAnalyzer(VariablesAnalyzer):
         self._parallel_counter = 0
         self._current_order = 0
         self._current_seq_name = "<unnamed>"
+        self._current_continuous_site_label: str | None = None
         self._active_typedefs: set[str] = set()
         self._dependency_param_usage_cache: dict[
             tuple[str, str, str],
@@ -142,6 +148,7 @@ class SameCycleAnalyzer(VariablesAnalyzer):
 
         self._collect_parallel_branch_hazards()
         self._collect_shared_access_hazards()
+        self._collect_non_state_multi_site_hazards()
         self._report_issues.sort(
             key=lambda issue: (
                 issue.kind,
@@ -207,12 +214,36 @@ class SameCycleAnalyzer(VariablesAnalyzer):
             access_module_path=tuple(path),
             site=self._site_str(),
             order=self._current_order,
+            is_state_variable=self._resolve_state_flag(variable, field_path),
+            continuous_site_label=self._current_continuous_site_label,
         )
         self._events.append(event)
 
         for parallel_key, branch_index in self._parallel_stack:
             branch_events = self._parallel_events.setdefault(parallel_key, {})
             branch_events.setdefault(branch_index, []).append(event)
+
+    @contextmanager
+    def _continuous_site(self, label: str | None):
+        previous_label = self._current_continuous_site_label
+        self._current_continuous_site_label = label
+        try:
+            yield
+        finally:
+            self._current_continuous_site_label = previous_label
+
+    def _resolve_state_flag(self, variable: Any, field_path: str) -> bool:
+        resolved_state = getattr(variable, "state", False)
+        current_datatype = getattr(variable, "datatype", None)
+        for field_name in (segment for segment in field_path.split(".") if segment):
+            if current_datatype is None or not isinstance(current_datatype, str):
+                return bool(resolved_state)
+            field = self.type_graph.field(current_datatype, field_name)
+            if field is None:
+                return bool(resolved_state)
+            current_datatype = field.datatype
+            resolved_state = field.state
+        return bool(resolved_state)
 
     def _should_collect_issue_kind(self, *issue_kinds: str) -> bool:
         if self._selected_same_cycle_issue_kinds is None:
@@ -386,6 +417,53 @@ class SameCycleAnalyzer(VariablesAnalyzer):
         self._dependency_param_usage_cache[cache_key] = usage
         return usage
 
+    def _collect_entry_step_names(self, nodes: list[object]) -> set[str]:
+        for node in nodes:
+            if isinstance(node, SFCStep):
+                return {node.name.casefold()}
+            if isinstance(node, SFCParallel | SFCAlternative):
+                active: set[str] = set()
+                for branch in node.branches or []:
+                    active.update(self._collect_entry_step_names(branch or []))
+                if active:
+                    return active
+                continue
+            if isinstance(node, SFCSubsequence | SFCTransitionSub):
+                active = self._collect_entry_step_names(node.body or [])
+                if active:
+                    return active
+        return set()
+
+    def _step_has_direct_self_loop(self, nodes: list[object], index: int) -> bool:
+        node = nodes[index]
+        if not isinstance(node, SFCStep) or index + 1 >= len(nodes):
+            return False
+
+        step_key = node.name.casefold()
+        next_node = nodes[index + 1]
+        if isinstance(next_node, SFCFork):
+            return any(target.casefold() == step_key for target in next_node.targets)
+        if not isinstance(next_node, SFCTransition):
+            return False
+
+        tail = nodes[index + 2 :]
+        if not tail:
+            return True
+        first_tail = tail[0]
+        if isinstance(first_tail, SFCFork):
+            return any(target.casefold() == step_key for target in first_tail.targets)
+        return not self._collect_entry_step_names(tail)
+
+    def _transition_loop_step_name(self, nodes: list[object], index: int) -> str | None:
+        if index == 0 or not isinstance(nodes[index], SFCTransition):
+            return None
+        previous_node = nodes[index - 1]
+        if not isinstance(previous_node, SFCStep):
+            return None
+        if not self._step_has_direct_self_loop(nodes, index - 1):
+            return None
+        return previous_node.name
+
     def _walk_module_code(
         self,
         modulecode: ModuleCode | None,
@@ -407,8 +485,9 @@ class SameCycleAnalyzer(VariablesAnalyzer):
             label = f"EQ:{getattr(equation, 'name', '<unnamed>')}"
             self._push_site(label)
             try:
-                for statement in equation.code or []:
-                    self._walk_stmt_or_expr(statement, context, path)
+                with self._continuous_site(label):
+                    for statement in equation.code or []:
+                        self._walk_stmt_or_expr(statement, context, path)
             finally:
                 self._pop_site()
 
@@ -426,15 +505,25 @@ class SameCycleAnalyzer(VariablesAnalyzer):
         context: ScopeContext,
         path: list[str],
     ) -> None:
-        for node in nodes:
+        for index, node in enumerate(nodes):
             if isinstance(node, SFCStep):
-                self._walk_step(node, context, path)
+                self._walk_step(
+                    node,
+                    context,
+                    path,
+                    direct_self_loop=self._step_has_direct_self_loop(nodes, index),
+                )
                 continue
 
             if isinstance(node, SFCTransition):
                 self._push_site(f"TRANS:{node.name or '<unnamed>'}")
                 try:
-                    self._walk_stmt_or_expr(node.condition, context, path)
+                    loop_step_name = self._transition_loop_step_name(nodes, index)
+                    continuous_label = None
+                    if loop_step_name is not None:
+                        continuous_label = f"STEP:{loop_step_name}:TRANS:{node.name or '<unnamed>'}"
+                    with self._continuous_site(continuous_label):
+                        self._walk_stmt_or_expr(node.condition, context, path)
                 finally:
                     self._pop_site()
                 continue
@@ -471,7 +560,14 @@ class SameCycleAnalyzer(VariablesAnalyzer):
             if isinstance(node, (SFCFork, SFCBreak)):
                 continue
 
-    def _walk_step(self, step: SFCStep, context: ScopeContext, path: list[str]) -> None:
+    def _walk_step(
+        self,
+        step: SFCStep,
+        context: ScopeContext,
+        path: list[str],
+        *,
+        direct_self_loop: bool,
+    ) -> None:
         base = f"STEP:{step.name}"
         for phase, statements in (
             ("ENTER", step.code.enter or []),
@@ -480,8 +576,12 @@ class SameCycleAnalyzer(VariablesAnalyzer):
         ):
             self._push_site(f"{base}:{phase}")
             try:
-                for statement in statements:
-                    self._walk_stmt_or_expr(statement, context, path)
+                continuous_label = None
+                if phase == "ACTIVE" or direct_self_loop:
+                    continuous_label = f"{base}:{phase}"
+                with self._continuous_site(continuous_label):
+                    for statement in statements:
+                        self._walk_stmt_or_expr(statement, context, path)
             finally:
                 self._pop_site()
 
@@ -643,6 +743,92 @@ class SameCycleAnalyzer(VariablesAnalyzer):
                 )
             )
 
+    def _collect_non_state_multi_site_hazards(self) -> None:
+        if not self._should_collect_issue_kind(_SAME_CYCLE_NON_STATE_MULTI_SITE_KIND):
+            return
+
+        grouped: dict[
+            tuple[str, ...],
+            tuple[
+                CanonicalPath,
+                tuple[str, ...],
+                dict[ContinuousSiteKey, set[AccessKind]],
+                dict[ContinuousSiteKey, set[str]],
+            ],
+        ] = {}
+
+        candidate_events = [
+            event for event in self._events if not event.is_state_variable and event.continuous_site_label is not None
+        ]
+
+        for index, left_event in enumerate(candidate_events):
+            left_site_key: ContinuousSiteKey = (left_event.access_module_path, str(left_event.continuous_site_label))
+            for right_event in candidate_events[index + 1 :]:
+                right_site_key: ContinuousSiteKey = (
+                    right_event.access_module_path,
+                    str(right_event.continuous_site_label),
+                )
+                if left_site_key == right_site_key:
+                    continue
+                if not paths_conflict(left_event.canonical_path, right_event.canonical_path):
+                    continue
+
+                representative = conflict_rep(left_event.canonical_path, right_event.canonical_path)
+                conflict_key = representative.key()
+                if conflict_key not in grouped:
+                    grouped[conflict_key] = (
+                        representative,
+                        left_event.decl_module_path,
+                        defaultdict(set),
+                        defaultdict(set),
+                    )
+
+                _representative, _decl_path, actions, sites = grouped[conflict_key]
+                for event, site_key in ((left_event, left_site_key), (right_event, right_site_key)):
+                    actions[site_key].add(event.kind)
+                    if event.site:
+                        sites[site_key].add(event.site)
+
+        for representative, decl_module_path, actions, sites in sorted(
+            grouped.values(),
+            key=lambda item: str(item[0]),
+        ):
+            if len(actions) < 2:
+                continue
+            if not any(AccessKind.READ in kinds for kinds in actions.values()):
+                continue
+            if not any(AccessKind.WRITE in kinds for kinds in actions.values()):
+                continue
+
+            ordered_site_keys = sorted(actions, key=self._continuous_site_sort_key)
+            access_summaries = [
+                self._format_continuous_site_summary(site_key, actions[site_key]) for site_key in ordered_site_keys
+            ]
+            self._report_issues.append(
+                Issue(
+                    kind=_SAME_CYCLE_NON_STATE_MULTI_SITE_KIND,
+                    message=(
+                        f"Non-STATE variable {str(representative)!r} is read and written across multiple "
+                        f"continuous scan sites: {'; '.join(access_summaries)}"
+                    ),
+                    module_path=list(decl_module_path),
+                    data={
+                        "symbol": str(representative),
+                        "decl_module_path": list(decl_module_path),
+                        "continuous_sites": [
+                            {
+                                "module_path": list(module_path),
+                                "site": site_label,
+                                "kinds": self._kind_labels(actions[site_key]),
+                                "evidence_sites": sorted(site for site in sites[site_key] if site),
+                            }
+                            for site_key in ordered_site_keys
+                            for module_path, site_label in [site_key]
+                        ],
+                    },
+                )
+            )
+
     def _kind_labels(self, kinds: set[AccessKind]) -> list[str]:
         labels: list[str] = []
         if AccessKind.READ in kinds:
@@ -655,6 +841,15 @@ class SameCycleAnalyzer(VariablesAnalyzer):
         location = self._relative_module_label(module_path)
         return f"{location} ({'/'.join(self._kind_labels(kinds))})"
 
+    def _format_continuous_site_summary(
+        self,
+        site_key: ContinuousSiteKey,
+        kinds: set[AccessKind],
+    ) -> str:
+        module_path, site_label = site_key
+        location = self._relative_module_label(module_path)
+        return f"{location} [{site_label}] ({'/'.join(self._kind_labels(kinds))})"
+
     def _relative_module_label(self, module_path: tuple[str, ...]) -> str:
         if len(module_path) == 0:
             return ""
@@ -664,6 +859,10 @@ class SameCycleAnalyzer(VariablesAnalyzer):
 
     def _module_path_sort_key(self, module_path: tuple[str, ...]) -> tuple[int, tuple[str, ...]]:
         return (len(module_path), tuple(segment.casefold() for segment in module_path))
+
+    def _continuous_site_sort_key(self, site_key: ContinuousSiteKey) -> tuple[tuple[int, tuple[str, ...]], str]:
+        module_path, site_label = site_key
+        return self._module_path_sort_key(module_path), site_label.casefold()
 
     def _preview_list(self, values: list[str]) -> str:
         preview = ", ".join(values[:6])

@@ -1,0 +1,35 @@
+{
+    "case_id": "edge-negative-duration-value",
+    "target_file": "../edge_cases/NegativeDurationValue.s",
+    "mode": "workspace",
+    "expectation": {
+        "expected_finding_ids": [
+            "semantic.never-read-write",
+            "semantic.signal-lifecycle-unconsumed-write",
+            "spec.basepicture_direct_code"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0
+            },
+            "summary.json": {
+                "finding_count": 3,
+                "rule_counts": {
+                    "semantic.never-read-write": 1,
+                    "semantic.signal-lifecycle-unconsumed-write": 1,
+                    "spec.basepicture_direct_code": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

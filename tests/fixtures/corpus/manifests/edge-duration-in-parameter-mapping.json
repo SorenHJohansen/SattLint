@@ -1,0 +1,33 @@
+{
+    "case_id": "edge-duration-in-parameter-mapping",
+    "target_file": "../edge_cases/DurationInParameterMapping.s",
+    "mode": "workspace",
+    "expectation": {
+        "expected_finding_ids": [
+            "semantic.instance-configuration-drift",
+            "semantic.signal-lifecycle-unconsumed-write"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0
+            },
+            "summary.json": {
+                "finding_count": 2,
+                "rule_counts": {
+                    "semantic.instance-configuration-drift": 1,
+                    "semantic.signal-lifecycle-unconsumed-write": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

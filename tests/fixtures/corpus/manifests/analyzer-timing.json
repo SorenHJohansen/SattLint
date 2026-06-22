@@ -1,0 +1,35 @@
+{
+    "case_id": "analyzer-timing",
+    "target_file": "../semantic/shared/Timing.s",
+    "mode": "analyzer-timing",
+    "expectation": {
+        "expected_finding_ids": [
+            "dataflow.scan_cycle_implicit_new",
+            "dataflow.scan_cycle_stale_read"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "timing"
+            },
+            "summary.json": {
+                "analyzer_key": "timing",
+                "finding_count": 2,
+                "rule_counts": {
+                    "dataflow.scan_cycle_implicit_new": 1,
+                    "dataflow.scan_cycle_stale_read": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

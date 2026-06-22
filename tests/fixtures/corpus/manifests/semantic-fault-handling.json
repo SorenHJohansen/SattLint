@@ -1,6 +1,6 @@
 {
     "case_id": "semantic-fault-handling",
-    "target_file": "../semantic/FaultHandling.s",
+    "target_file": "../semantic/workspace/FaultHandling.s",
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [

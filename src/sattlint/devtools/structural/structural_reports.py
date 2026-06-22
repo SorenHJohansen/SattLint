@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from sattlint._app_analysis_variable_analyses import VARIABLE_ANALYSES
-from sattlint.analyzers.registry import (
+from sattlint.analysis_catalog import (
     get_actual_cli_analyzer_keys,
     get_actual_lsp_analyzer_keys,
     get_declared_cli_analyzer_keys,

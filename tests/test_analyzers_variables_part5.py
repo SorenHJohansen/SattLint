@@ -413,7 +413,7 @@ def test_variable_issue_collection_datatype_field_helper_covers_remaining_branch
     assert issue.field_path == "Unused"
 
 
-def test_field_usage_asymmetry_detects_sibling_miswire_and_suppresses_whole_access() -> None:
+def test_field_usage_asymmetry_detects_sibling_miswire_and_treats_whole_record_read_directionally() -> None:
     payload = Variable(name="OutletConfig", datatype="Payload")
     usage = _UsageStub(
         field_reads={"OutletProd_Def.Std": [["Root", "Reader"]]},
@@ -463,7 +463,11 @@ def test_field_usage_asymmetry_detects_sibling_miswire_and_suppresses_whole_acce
 
     variable_issue_collection_module._add_field_usage_asymmetry_issues(helper)
 
-    assert issues == []
+    assert {
+        (issue.kind, issue.variable.name if issue.variable is not None else None, issue.field_path) for issue in issues
+    } == {
+        (IssueKind.FIELD_READ_ONLY, "OutletConfig", "OutletProd_Def.Std"),
+    }
 
 
 def test_variable_issue_collection_direct_global_helpers_cover_remaining_branches():

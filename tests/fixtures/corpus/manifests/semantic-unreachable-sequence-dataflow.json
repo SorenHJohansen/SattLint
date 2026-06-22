@@ -1,10 +1,17 @@
 {
     "case_id": "semantic-unreachable-sequence-dataflow",
-    "target_file": "../semantic/UnreachableSequenceDataflow.s",
+    "target_file": "../semantic/workspace/UnreachableSequenceDataflow.s",
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.unreachable-sequence-node-dataflow"
+            "semantic.condition-always-false",
+            "semantic.read-only-non-const",
+            "semantic.unreachable-sequence-node",
+            "semantic.unreachable-sequence-node-dataflow",
+            "semantic.unreachable-transition",
+            "spec.basepicture_direct_code",
+            "spec.sequence_step_prefix",
+            "spec.transition_prefix"
         ],
         "artifact_fragments": {
             "status.json": {
@@ -13,7 +20,14 @@
             },
             "summary.json": {
                 "rule_counts": {
-                    "semantic.unreachable-sequence-node-dataflow": 1
+                    "semantic.condition-always-false": 2,
+                    "semantic.read-only-non-const": 2,
+                    "semantic.unreachable-sequence-node": 1,
+                    "semantic.unreachable-sequence-node-dataflow": 2,
+                    "semantic.unreachable-transition": 1,
+                    "spec.basepicture_direct_code": 1,
+                    "spec.sequence_step_prefix": 3,
+                    "spec.transition_prefix": 3
                 }
             }
         },

@@ -1,0 +1,33 @@
+{
+    "case_id": "analyzer-scan-shared-access",
+    "target_file": "../semantic/workspace/ParallelWriteRace.s",
+    "mode": "analyzer-scan-shared-access",
+    "expectation": {
+        "expected_finding_ids": [
+            "same_cycle_non_state_multi_site_hazard"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "scan-shared-access"
+            },
+            "summary.json": {
+                "analyzer_key": "scan-shared-access",
+                "finding_count": 1,
+                "rule_counts": {
+                    "same_cycle_non_state_multi_site_hazard": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

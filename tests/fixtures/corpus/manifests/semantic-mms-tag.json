@@ -1,6 +1,6 @@
 {
     "case_id": "semantic-mms-tag",
-    "target_file": "../semantic/MmsTag.s",
+    "target_file": "../semantic/shared/MmsTag.s",
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [
@@ -19,7 +19,7 @@
                     "semantic.mms-duplicate-tag": 1,
                     "semantic.mms-datatype-mismatch": 1,
                     "semantic.mms-naming-drift": 1,
-                    "semantic.mms-dead-tag": 1
+                    "semantic.mms-dead-tag": 2
                 }
             }
         },

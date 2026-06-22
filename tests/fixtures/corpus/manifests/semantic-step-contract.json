@@ -1,7 +1,23 @@
 {
     "case_id": "semantic-step-contract",
-    "target_file": "../semantic/StepContract.s",
+    "target_file": "../semantic/workspace/StepContract.s",
     "mode": "workspace",
+    "analysis_config": {
+        "analysis": {
+            "sfc": {
+                "step_contracts": {
+                    "Run": {
+                        "required_enter_writes": [
+                            "StepValue"
+                        ],
+                        "required_exit_writes": [
+                            "StepValue"
+                        ]
+                    }
+                }
+            }
+        }
+    },
     "expectation": {
         "expected_finding_ids": [
             "semantic.missing-step-enter-contract",

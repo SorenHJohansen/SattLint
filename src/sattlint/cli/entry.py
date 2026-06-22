@@ -86,7 +86,7 @@ def _exit_code(result: int | None, *, fallback: int) -> int:
 
 
 def _collect_analyzer_keys() -> tuple[str, ...]:
-    from ..analyzers.registry import get_selectable_analyzers  # noqa: PLC0415
+    from ..analysis_catalog import get_selectable_analyzers  # noqa: PLC0415
 
     return tuple(spec.key for spec in get_selectable_analyzers())
 
@@ -159,7 +159,7 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
     analyze_parser = subparsers.add_parser(
         "analyze",
         help="Run non-interactive analysis checks",
-        description="Run selected analysis checks against configured targets.",
+        description="Run explicitly selected analysis checks against configured targets.",
     )
     analyze_parser.add_argument(
         "--check",
@@ -167,7 +167,7 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         dest="checks",
         default=[],
         metavar="KEY",
-        help="Analysis check key to run (repeatable)",
+        help="Analysis check key to run (repeatable; required unless listing checks or issue kinds)",
     )
     analyze_parser.add_argument(
         "--list-checks",
@@ -404,6 +404,13 @@ def run_cli(  # noqa: PLR0915
             )
         return exit_success
 
+    if command == "analyze" and not getattr(args, "checks", []):
+        print_output(
+            "sattlint analyze: error: at least one --check KEY is required; use --list-checks to see available analyzers",
+            file=sys.stderr,
+        )
+        return exit_usage_error
+
     if command == "telemetry-summary":
         telemetry_summary_handler = None if command_handlers is None else command_handlers.get("telemetry_summary")
         if telemetry_summary_handler is None:
@@ -459,7 +466,7 @@ def run_cli(  # noqa: PLR0915
             analyze_handler = None if command_handlers is None else command_handlers.get("analyze")
             if analyze_handler is None:
                 raise RuntimeError("analyze handler is required")
-            selected_keys = args.checks or None
+            selected_keys = args.checks
             selected_issue_kinds = frozenset(getattr(args, "issue_kinds", [])) or None
             return _exit_code(
                 analyze_handler(

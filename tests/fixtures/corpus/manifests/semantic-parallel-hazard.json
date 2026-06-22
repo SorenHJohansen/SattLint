@@ -1,23 +1,21 @@
 {
     "case_id": "semantic-parallel-hazard",
-    "target_file": "../semantic/ParallelHazard.s",
-    "mode": "workspace",
+    "target_file": "../semantic/analyzer/ModuleStructureIssues.s",
+    "mode": "analyzer-same-cycle",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.parallel-read-write-hazard",
-            "semantic.same-cycle-shared-access",
-            "semantic.parallel-write-race"
+            "semantic.same-cycle-shared-access"
         ],
         "artifact_fragments": {
             "status.json": {
                 "execution_status": "ok",
-                "missing_dependency_count": 0
+                "missing_dependency_count": 0,
+                "analyzer_key": "same-cycle"
             },
             "summary.json": {
+                "analyzer_key": "same-cycle",
                 "rule_counts": {
-                    "semantic.parallel-read-write-hazard": 1,
-                    "semantic.same-cycle-shared-access": 1,
-                    "semantic.parallel-write-race": 1
+                    "semantic.same-cycle-shared-access": 2
                 }
             }
         },

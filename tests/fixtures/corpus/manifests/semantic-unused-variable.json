@@ -1,6 +1,6 @@
 {
     "case_id": "semantic-unused-variable",
-    "target_file": "../semantic/UnusedVariable.s",
+    "target_file": "../semantic/workspace/UnusedVariable.s",
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [

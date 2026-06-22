@@ -10,8 +10,8 @@ import json
 import pathlib
 import typing as t
 
+from ..analysis_catalog import AnalyzerCatalog, get_default_analyzer_catalog
 from ..analyzers.framework import AnalyzerSpec
-from ..analyzers.registry import AnalyzerCatalog, get_default_analyzer_catalog
 from ..repo_paths import repo_root_from
 
 if t.TYPE_CHECKING:
@@ -26,7 +26,7 @@ CORPUS_DIR = FIXTURES_DIR / "corpus"
 _ANALYZER_EXAMPLE_FIXTURES: dict[str, list[dict[str, t.Any]]] = {
     "variables": [
         {
-            "fixture": "sample_sattline_files/CommonQualityIssues.s",
+            "fixture": "corpus/semantic/workspace/CommonQualityIssues.s",
             "description": "Variable lifecycle issues including unused and read-only variables",
             "expected_rule_ids": ["semantic.unused-variable", "semantic.read-only-non-const"],
         },
@@ -38,40 +38,40 @@ _ANALYZER_EXAMPLE_FIXTURES: dict[str, list[dict[str, t.Any]]] = {
             "expected_rule_ids": [],
         },
         {
-            "fixture": "corpus/semantic/ParallelWriteRace.s",
+            "fixture": "corpus/semantic/workspace/ParallelWriteRace.s",
             "description": "Parallel branches writing to same variable",
             "expected_rule_ids": ["semantic.parallel-write-race"],
         },
     ],
     "shadowing": [
         {
-            "fixture": "corpus/semantic/ShadowingVariable.s",
+            "fixture": "corpus/semantic/analyzer/ShadowingVariable.s",
             "description": "Local variables shadowing outer scope",
             "expected_rule_ids": ["semantic.shadowing"],
         },
     ],
     "spec-compliance": [
         {
-            "fixture": "sample_sattline_files/CommonQualityIssues.s",
+            "fixture": "corpus/semantic/workspace/CommonQualityIssues.s",
             "description": "Engineering spec compliance issues",
             "expected_rule_ids": ["semantic.naming-role-mismatch"],
         },
     ],
     "dataflow": [
         {
-            "fixture": "corpus/semantic/NeverReadVariable.s",
+            "fixture": "corpus/semantic/workspace/NeverReadVariable.s",
             "description": "Variables written but never read",
             "expected_rule_ids": ["semantic.never-read-write"],
         },
         {
-            "fixture": "corpus/semantic/ReadBeforeWrite.s",
+            "fixture": "corpus/semantic/workspace/ReadBeforeWrite.s",
             "description": "Variables read before being written",
             "expected_rule_ids": ["semantic.read-before-write"],
         },
     ],
     "signal-lifecycle": [
         {
-            "fixture": "corpus/semantic/SignalLifecycle.s",
+            "fixture": "corpus/semantic/workspace/SignalLifecycle.s",
             "description": "Signals consumed before a definite write and writes that are never consumed",
             "expected_rule_ids": [
                 "semantic.signal-lifecycle-read-before-write",
@@ -81,42 +81,42 @@ _ANALYZER_EXAMPLE_FIXTURES: dict[str, list[dict[str, t.Any]]] = {
     ],
     "loop-stability": [
         {
-            "fixture": "corpus/semantic/LoopStability.s",
+            "fixture": "corpus/semantic/workspace/LoopStability.s",
             "description": "Conflicting literal setpoint assignments in the same control scope",
             "expected_rule_ids": ["semantic.loop-conflicting-setpoint"],
         },
     ],
     "fault-handling": [
         {
-            "fixture": "corpus/semantic/FaultHandling.s",
+            "fixture": "corpus/semantic/workspace/FaultHandling.s",
             "description": "Fault paths that are raised without clear recovery or handling logic",
             "expected_rule_ids": ["semantic.fault-missing-recovery", "semantic.fault-unhandled-path"],
         },
     ],
     "numeric-constraints": [
         {
-            "fixture": "corpus/semantic/NumericConstraints.s",
+            "fixture": "corpus/semantic/workspace/NumericConstraints.s",
             "description": "Assignments that exceed visible Min_/Max_ bounds",
             "expected_rule_ids": ["semantic.numeric-limit-violation"],
         },
     ],
     "config-drift": [
         {
-            "fixture": "corpus/semantic/ConfigDrift.s",
+            "fixture": "corpus/semantic/workspace/ConfigDrift.s",
             "description": "Instances of the same moduletype drifting on mapped parameter values",
             "expected_rule_ids": ["semantic.instance-configuration-drift"],
         },
     ],
     "safety-paths": [
         {
-            "fixture": "sample_sattline_files/CommonQualityIssues.s",
+            "fixture": "corpus/semantic/workspace/CommonQualityIssues.s",
             "description": "Safety signal propagation paths",
             "expected_rule_ids": [],
         },
     ],
     "taint-paths": [
         {
-            "fixture": "sample_sattline_files/CommonQualityIssues.s",
+            "fixture": "corpus/semantic/workspace/CommonQualityIssues.s",
             "description": "Taint propagation from external inputs to safety sinks",
             "expected_rule_ids": [],
         },

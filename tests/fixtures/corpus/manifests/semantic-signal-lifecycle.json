@@ -1,6 +1,6 @@
 {
     "case_id": "semantic-signal-lifecycle",
-    "target_file": "../semantic/SignalLifecycle.s",
+    "target_file": "../semantic/workspace/SignalLifecycle.s",
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [

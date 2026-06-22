@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import cast
 
 from ...repo_paths import repo_root_from
+from .._registry_specs import build_default_analyzers
 from ..alarm_integrity import analyze_alarm_integrity
 from ..comment_code import analyze_comment_code
 from ..config_drift import analyze_config_drift
@@ -40,6 +41,7 @@ from ..sattline_semantics import (
 )
 from ..scan_concurrency import analyze_scan_concurrency
 from ..scan_loop_resource_usage import analyze_scan_loop_resource_usage
+from ..scan_shared_access import analyze_scan_shared_access
 from ..sfc import analyze_sfc, get_configured_mutually_exclusive_step_sets, get_configured_step_contracts
 from ..shadowing import analyze_shadowing
 from ..signal_lifecycle import analyze_signal_lifecycle
@@ -50,7 +52,6 @@ from ..timing import analyze_timing
 from ..unsafe_defaults import analyze_unsafe_defaults
 from ..variables import analyze_variables
 from ._registry_delivery import AnalyzerDeliveryMetadata, build_delivery_metadata, summary_output_for_analyzer
-from ._registry_specs import build_default_analyzers
 
 SEMANTIC_LAYER_ANALYZER_KEY = "sattline-semantics"
 DEFAULT_CLI_ANALYZER_KEYS: tuple[str, ...] = (
@@ -77,6 +78,7 @@ LEGACY_ANALYZER_KEY_ALIASES: dict[str, str] = {
     "numeric_constraints": "numeric-constraints",
     "resource_usage": "resource-usage",
     "scan_concurrency": "scan-concurrency",
+    "scan_shared_access": "scan-shared-access",
     "same_cycle": "same-cycle",
     "signal_lifecycle": "signal-lifecycle",
     "state_inference": "state-inference",
@@ -90,6 +92,7 @@ _RULE_ANALYZER_ALIASES: dict[str, tuple[str, ...]] = {
     "semantic.missing-parameter-initial-value": ("powerup",),
     "semantic.unsafe-default-true": ("powerup",),
     "semantic.parallel-write-race": ("scan-concurrency", "same-cycle"),
+    "semantic.same-cycle-non-state-multi-site": ("scan-shared-access", "same-cycle"),
     "semantic.scan-cycle-stale-read": ("timing",),
     "semantic.scan-cycle-implicit-new": ("timing",),
     "semantic.scan-cycle-temporal-misuse": ("timing",),
@@ -118,6 +121,7 @@ _REGISTRY_MONKEYPATCH_SURFACE = (
     analyze_safety_paths,
     analyze_same_cycle,
     analyze_scan_concurrency,
+    analyze_scan_shared_access,
     analyze_sattline_semantics,
     analyze_scan_loop_resource_usage,
     analyze_sfc,

@@ -13,8 +13,6 @@ BasePicture Invocation
 
 LOCALVARIABLES
    Done: boolean  := False;
-   SeqControl: integer  := 0;
-   SeqTimer: integer  := 0;
 
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )

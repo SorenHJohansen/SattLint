@@ -294,14 +294,24 @@ def test_main_reports_latest_links_for_non_default_output_dir(tmp_path):
 def test_collect_custom_findings_selected_checks_only_run_requested_runner(monkeypatch):
     calls: list[str] = []
 
-    monkeypatch.setattr(repo_audit, "_build_repo_audit_scan_context", lambda *_args, **_kwargs: object())
     monkeypatch.setattr(
-        repo_audit,
-        "_repo_audit_finding_check_definitions",
-        lambda: (
-            {"id": "text-scan", "runner": lambda context: calls.append("text-scan") or []},
-            {"id": "public-readiness", "runner": lambda context: calls.append("public-readiness") or []},
-        ),
+        repo_audit_entrypoints._repo_audit_check_runners_module,
+        "_build_repo_audit_scan_context",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(
+        repo_audit_entrypoints._repo_audit_check_runners_module,
+        "_with_shared_text_line_findings",
+        lambda _context: (_ for _ in ()).throw(AssertionError("shared text findings should not run")),
+    )
+    monkeypatch.setattr(
+        repo_audit_entrypoints,
+        "_repo_audit_finding_runner_overrides",
+        lambda: {
+            "text-scan": lambda context: calls.append("text-scan") or [],
+            "public-readiness": lambda context: calls.append("public-readiness") or [],
+            "verify-recommendations": lambda _context: [],
+        },
     )
 
     findings = repo_audit.collect_custom_findings(selected_checks=["public-readiness"])

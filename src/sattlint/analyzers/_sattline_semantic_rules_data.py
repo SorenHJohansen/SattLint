@@ -301,6 +301,14 @@ SAME_CYCLE_RULES: dict[str, SemanticRule] = {
         applies_to="sequence",
         description="Parallel SFC branches that both read and write the same variable within one scan.",
     ),
+    "same_cycle_non_state_multi_site_hazard": SemanticRule(
+        id="semantic.same-cycle-non-state-multi-site",
+        source="same-cycle",
+        category="interface-contracts",
+        severity="warning",
+        applies_to="variable",
+        description="Non-STATE variables that are read and written across multiple continuous scan sites within the same scan.",
+    ),
     "same_cycle_shared_access_hazard": SemanticRule(
         id="semantic.same-cycle-shared-access",
         source="same-cycle",

@@ -75,21 +75,15 @@ def test_project_lsp_report_diagnostics_builds_context_with_config(monkeypatch):
     monkeypatch.setattr(semantic_analysis_module, "build_module_diagnostic_sites", lambda _base_picture: {})
     monkeypatch.setattr(
         semantic_analysis_module,
-        "get_lsp_projection_analyzers",
-        lambda: (SimpleNamespace(spec=SimpleNamespace(key="custom-analyzer")),),
-    )
-    monkeypatch.setattr(
-        semantic_analysis_module,
         "merge_diagnostic_projection_results",
         lambda *reports: ("merged", reports),
     )
 
-    def _run_registry_analyzer(spec, context):
-        captured["spec"] = spec
+    def _collect_lsp_report_issues(context):
         captured["context"] = context
-        return SimpleNamespace(issues=[])
+        return ()
 
-    monkeypatch.setattr(semantic_analysis_module, "run_registry_analyzer", _run_registry_analyzer)
+    monkeypatch.setattr(semantic_analysis_module, "collect_lsp_report_issues", _collect_lsp_report_issues)
 
     result = semantic_analysis_module._project_lsp_report_diagnostics(
         BasePicture(header=ModuleHeader(name="BasePicture", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0))),
@@ -125,17 +119,14 @@ def test_build_variable_semantic_artifacts_runs_variables_via_registry(monkeypat
     calls: list[dict[str, object]] = []
     projection_calls: list[dict[str, object]] = []
 
-    monkeypatch.setattr(semantic_analysis_module, "get_registry_analyzer_spec", lambda key: SimpleNamespace(key=key))
-
-    def _run_registry_analyzer(spec, context, *, overrides=None):
+    def _run_variables_registry_report(context, *, include_dependency_moduletype_usage=None):
         calls.append(
             {
-                "key": spec.key,
+                "include_dependency_moduletype_usage": include_dependency_moduletype_usage,
                 "context": context,
-                "overrides": None if overrides is None else dict(overrides),
             }
         )
-        return usage_report if overrides else diagnostics_report
+        return usage_report if include_dependency_moduletype_usage else diagnostics_report
 
     projection_result = SimpleNamespace(
         diagnostics_by_file={"Root.s": ("diagnostic",)},
@@ -149,7 +140,7 @@ def test_build_variable_semantic_artifacts_runs_variables_via_registry(monkeypat
             ),
         ),
     )
-    monkeypatch.setattr(semantic_analysis_module, "run_registry_analyzer", _run_registry_analyzer)
+    monkeypatch.setattr(semantic_analysis_module, "run_variables_registry_report", _run_variables_registry_report)
     monkeypatch.setattr(semantic_analysis_module, "project_variable_issues", lambda diagnostics, _defs: diagnostics)
 
     def _project_lsp_report_diagnostics(*_args, **kwargs):
@@ -175,14 +166,12 @@ def test_build_variable_semantic_artifacts_runs_variables_via_registry(monkeypat
 
     assert calls == [
         {
-            "key": "variables",
             "context": calls[0]["context"],
-            "overrides": {"include_dependency_moduletype_usage": True},
+            "include_dependency_moduletype_usage": True,
         },
         {
-            "key": "variables",
             "context": calls[0]["context"],
-            "overrides": None,
+            "include_dependency_moduletype_usage": None,
         },
     ]
     context = calls[0]["context"]
@@ -223,11 +212,12 @@ def test_build_variable_semantic_artifacts_logs_dropped_projection_issues(
         message="missing definition",
     )
 
-    monkeypatch.setattr(semantic_analysis_module, "get_registry_analyzer_spec", lambda key: SimpleNamespace(key=key))
     monkeypatch.setattr(
         semantic_analysis_module,
-        "run_registry_analyzer",
-        lambda spec, _context, *, overrides=None: usage_report if overrides else diagnostics_report,
+        "run_variables_registry_report",
+        lambda _context, *, include_dependency_moduletype_usage=None: (
+            usage_report if include_dependency_moduletype_usage else diagnostics_report
+        ),
     )
     monkeypatch.setattr(semantic_analysis_module, "project_variable_issues", lambda diagnostics, _defs: diagnostics)
     monkeypatch.setattr(

@@ -8,6 +8,10 @@
             "status.json": {
                 "execution_status": "ok",
                 "missing_dependency_count": 0
+            },
+            "summary.json": {
+                "finding_count": 0,
+                "rule_counts": {}
             }
         },
         "forbidden_finding_ids": [

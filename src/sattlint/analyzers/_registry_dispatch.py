@@ -112,7 +112,7 @@ def get_semantic_contributor_specs() -> tuple[Any, ...]:
         analyzer.spec
         for analyzer in registry_module.get_default_analyzer_catalog().analyzers
         if analyzer.spec.enabled
-        and analyzer.spec.semantic_mapping_kind is not None
+        and (analyzer.spec.semantic_mapping_kind is not None or analyzer.spec.semantic_rule_source is not None)
         and analyzer.spec.key != registry_module.SEMANTIC_LAYER_ANALYZER_KEY
     )
 

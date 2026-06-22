@@ -195,6 +195,20 @@ def test_sattline_semantics_includes_same_cycle_shared_access_rule() -> None:
     assert issues[0].data["symbol"] == "Root.SharedValue"
 
 
+def test_sattline_semantics_reports_unexpected_submodule_type_without_crashing() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        submodules=[object()],
+    )
+
+    report = analyze_sattline_semantics(bp)
+
+    assert [issue.rule.id for issue in report.issues] == ["semantic.unexpected-submodule-type"]
+    assert report.issues[0].module_path == ["Root"]
+    assert report.issues[0].data["kind"] == "unexpected_submodule_type"
+    assert report.summary().startswith("Report: SattLine semantics")
+
+
 def test_sattline_semantics_includes_cross_module_contract_mismatch_rule():
     typedef = ModuleTypeDef(
         name="ChildType",
@@ -475,6 +489,70 @@ def test_sattline_semantics_includes_step_state_leakage_rule():
         bp,
         sfc_step_contracts={
             "Run": {"required_enter_writes": ["StepValue"]},
+        },
+    )
+
+    issues = [issue for issue in report.issues if issue.rule.id == "semantic.step-state-leakage"]
+    assert len(issues) == 1
+    assert issues[0].data["leaked_state"] == ["StepValue"]
+
+
+def test_sattline_semantics_uses_step_contracts_from_config():
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[
+            Variable(name="StepValue", datatype=Simple_DataType.INTEGER),
+            Variable(name="Output", datatype=Simple_DataType.INTEGER),
+        ],
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    SFCStep(
+                        kind="step",
+                        name="Prime",
+                        code=SFCCodeBlocks(
+                            active=[
+                                (
+                                    const.KEY_ASSIGN,
+                                    _varref("StepValue"),
+                                    1,
+                                )
+                            ]
+                        ),
+                    ),
+                    SFCStep(
+                        kind="step",
+                        name="Run",
+                        code=SFCCodeBlocks(
+                            enter=[],
+                            active=[
+                                (
+                                    const.KEY_ASSIGN,
+                                    _varref("Output"),
+                                    _varref("StepValue"),
+                                )
+                            ],
+                            exit=[],
+                        ),
+                    ),
+                )
+            ],
+            equations=[],
+        ),
+    )
+
+    report = analyze_sattline_semantics(
+        bp,
+        config={
+            "analysis": {
+                "sfc": {
+                    "step_contracts": {
+                        "Run": {
+                            "required_enter_writes": ["StepValue"],
+                        }
+                    }
+                }
+            }
         },
     )
 

@@ -1,0 +1,35 @@
+{
+    "case_id": "analyzer-fault-handling",
+    "target_file": "../semantic/workspace/FaultHandling.s",
+    "mode": "analyzer-fault-handling",
+    "expectation": {
+        "expected_finding_ids": [
+            "semantic.fault-missing-recovery",
+            "semantic.fault-unhandled-path"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "fault-handling"
+            },
+            "summary.json": {
+                "analyzer_key": "fault-handling",
+                "finding_count": 2,
+                "rule_counts": {
+                    "semantic.fault-missing-recovery": 1,
+                    "semantic.fault-unhandled-path": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

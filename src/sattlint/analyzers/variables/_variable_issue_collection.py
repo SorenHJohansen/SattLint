@@ -18,6 +18,7 @@ from ...reporting.variables_report import IssueKind, VariableIssue
 from ...resolution import AccessEvent, AccessKind
 from ...resolution.common import resolve_moduletype_def_strict
 from ._variable_module_issue_scan import collect_issues_from_module
+from ._variables_contracts import should_collect_issue_kind as _should_collect_issue_kind
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer
@@ -177,15 +178,6 @@ def _add_issue(
     )
 
 
-def _selected_issue_kinds(self: VariablesAnalyzer) -> frozenset[IssueKind] | set[IssueKind] | None:
-    return cast(frozenset[IssueKind] | set[IssueKind] | None, getattr(self, "_selected_issue_kinds", None))
-
-
-def _should_collect_issue_kind(self: VariablesAnalyzer, kind: IssueKind) -> bool:
-    selected_kinds = _selected_issue_kinds(self)
-    return selected_kinds is None or kind in selected_kinds
-
-
 def _normalize_field_path(field_path: str) -> str:
     return ".".join(segment for segment in field_path.split(".") if segment)
 
@@ -241,8 +233,8 @@ def _add_field_usage_asymmetry_issues(self: VariablesAnalyzer) -> None:
             continue
 
         usage = self.get_usage(variable)
-        if usage.usage_locations:
-            continue
+        has_whole_record_read = any(kind == "read" for _, kind in usage.usage_locations)
+        has_whole_record_write = any(kind == "write" for _, kind in usage.usage_locations)
 
         leaf_paths_by_key = {leaf_path.casefold(): leaf_path for leaf_path in leaf_paths}
         read_leaf_keys, has_whole_field_read = _expand_field_usage_to_leaf_keys(
@@ -253,10 +245,10 @@ def _add_field_usage_asymmetry_issues(self: VariablesAnalyzer) -> None:
             leaf_paths_by_key,
             usage.field_writes,
         )
-        if has_whole_field_read or has_whole_field_write:
-            continue
+        has_whole_read = has_whole_record_read or has_whole_field_read
+        has_whole_write = has_whole_record_write or has_whole_field_write
 
-        if collect_field_read_only:
+        if collect_field_read_only and not has_whole_write:
             for leaf_key in sorted(read_leaf_keys - write_leaf_keys):
                 _add_issue(
                     self,
@@ -267,7 +259,7 @@ def _add_field_usage_asymmetry_issues(self: VariablesAnalyzer) -> None:
                     field_path=leaf_paths_by_key[leaf_key],
                 )
 
-        if collect_field_never_read:
+        if collect_field_never_read and not has_whole_read:
             for leaf_key in sorted(write_leaf_keys - read_leaf_keys):
                 _add_issue(
                     self,

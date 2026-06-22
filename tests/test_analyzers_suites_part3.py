@@ -276,6 +276,7 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
     monkeypatch.setattr(registry_module, "analyze_config_drift", _record("config-drift"))
     monkeypatch.setattr(registry_module, "analyze_powerup", _record("powerup"))
     monkeypatch.setattr(registry_module, "analyze_scan_concurrency", _record("scan-concurrency"))
+    monkeypatch.setattr(registry_module, "analyze_scan_shared_access", _record("scan-shared-access"))
     monkeypatch.setattr(registry_module, "analyze_same_cycle", _record("same-cycle"))
     monkeypatch.setattr(registry_module, "analyze_scan_loop_resource_usage", _record("scan-loop-resource-usage"))
     monkeypatch.setattr(registry_module, "analyze_resource_usage", _record("resource-usage"))
@@ -323,6 +324,7 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
         "config-drift",
         "powerup",
         "scan-concurrency",
+        "scan-shared-access",
         "same-cycle",
         "scan-loop-resource-usage",
         "resource-usage",
@@ -344,7 +346,7 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
 
 
 def test_run_registry_analyzer_falls_back_to_spec_runner_without_registry_attr():
-    from sattlint.analyzers.registry._registry_dispatch import run_registry_analyzer  # noqa: PLC0415
+    from sattlint.analyzers._registry_dispatch import run_registry_analyzer  # noqa: PLC0415
 
     report = SimpleNamespace(issues=[])
     seen: dict[str, object] = {}
@@ -361,7 +363,7 @@ def test_run_registry_analyzer_falls_back_to_spec_runner_without_registry_attr()
 
 
 def test_run_registry_analyzer_passes_include_dependency_usage_override(monkeypatch):
-    from sattlint.analyzers.registry._registry_dispatch import (  # noqa: PLC0415
+    from sattlint.analyzers._registry_dispatch import (  # noqa: PLC0415
         get_registry_analyzer_spec,
         run_registry_analyzer,
     )
@@ -408,7 +410,7 @@ def test_run_registry_analyzer_passes_include_dependency_usage_override(monkeypa
 
 
 def test_run_registry_analyzer_passes_shared_artifacts_to_dataflow(monkeypatch):
-    from sattlint.analyzers.registry._registry_dispatch import (  # noqa: PLC0415
+    from sattlint.analyzers._registry_dispatch import (  # noqa: PLC0415
         get_registry_analyzer_spec,
         run_registry_analyzer,
     )
@@ -444,7 +446,7 @@ def test_run_registry_analyzer_passes_shared_artifacts_to_dataflow(monkeypatch):
 
 
 def test_get_cli_dispatch_analyzers_includes_required_variables_for_sfc_selection():
-    from sattlint.analyzers.registry._registry_dispatch import (  # noqa: PLC0415
+    from sattlint.analyzers._registry_dispatch import (  # noqa: PLC0415
         get_cli_dispatch_analyzers,
         get_registry_analyzer_spec,
     )
@@ -461,7 +463,7 @@ def test_get_cli_dispatch_analyzers_includes_required_variables_for_sfc_selectio
 
 
 def test_run_registry_analyzer_requires_variable_artifacts_for_sfc():
-    from sattlint.analyzers.registry._registry_dispatch import (  # noqa: PLC0415
+    from sattlint.analyzers._registry_dispatch import (  # noqa: PLC0415
         get_registry_analyzer_spec,
         run_registry_analyzer,
     )
@@ -523,6 +525,16 @@ def test_analyze_sattline_semantics_uses_declared_semantic_contributors(monkeypa
             ),
             SimpleNamespace(
                 spec=AnalyzerSpec(
+                    key="mms-interface",
+                    name="MMS",
+                    description="",
+                    run=lambda _context: SimpleNamespace(issues=[]),
+                    analyzer_attr="analyze_mms_interface_variables",
+                    semantic_rule_source="mms-interface",
+                )
+            ),
+            SimpleNamespace(
+                spec=AnalyzerSpec(
                     key="ignored-analyzer",
                     name="Ignored",
                     description="",
@@ -559,14 +571,23 @@ def test_analyze_sattline_semantics_uses_declared_semantic_contributors(monkeypa
         ),
     )
     monkeypatch.setattr(
+        registry_module,
+        "analyze_mms_interface_variables",
+        lambda *_args, **_kwargs: (
+            calls.append("mms-interface")
+            or SimpleNamespace(issues=[Issue(kind="mms.duplicate_tag", message="duplicate tag", module_path=["Root"])])
+        ),
+    )
+    monkeypatch.setattr(
         "sattlint.analyzers.sattline_semantics.detect_transform_invariant_violations",
         lambda _bp: [],
     )
 
     report = analyze_sattline_semantics(bp)
 
-    assert calls == ["variables", "spec-compliance"]
-    assert {issue.rule.source for issue in report.issues} == {"variables", "spec-compliance"}
+    assert calls == ["variables", "spec-compliance", "mms-interface"]
+    assert {issue.rule.source for issue in report.issues} == {"variables", "spec-compliance", "mms-interface"}
+    assert "semantic.mms-duplicate-tag" in {issue.rule.id for issue in report.issues}
 
 
 def test_analyze_sattline_semantics_builds_context_with_config_and_shared_artifacts(monkeypatch):

@@ -1,11 +1,11 @@
 {
     "case_id": "semantic-safety-signal",
-    "target_file": "../semantic/SafetySignal.s",
+    "target_file": "../semantic/workspace/SafetySignal.s",
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.unconsumed-safety-signal",
-            "semantic.external-input-to-critical-sink"
+            "semantic.external-input-to-critical-sink",
+            "semantic.unconsumed-safety-signal"
         ],
         "artifact_fragments": {
             "status.json": {
@@ -14,8 +14,8 @@
             },
             "summary.json": {
                 "rule_counts": {
-                    "semantic.unconsumed-safety-signal": 1,
-                    "semantic.external-input-to-critical-sink": 1
+                    "semantic.external-input-to-critical-sink": 1,
+                    "semantic.unconsumed-safety-signal": 1
                 }
             }
         },

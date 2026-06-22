@@ -1,6 +1,6 @@
 {
     "case_id": "semantic-parallel-write-race",
-    "target_file": "../semantic/ParallelWriteRace.s",
+    "target_file": "../semantic/workspace/ParallelWriteRace.s",
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [

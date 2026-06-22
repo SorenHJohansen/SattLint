@@ -25,6 +25,15 @@ from ..reset_contamination import detect_implicit_latching, detect_reset_contami
 from ..shared.variable_utils import mapping_target_name
 from ._usage_tracker import UsageTracker
 from ._variable_traversal_support import _IGNORED_GRAPHICS_TAIL_BASENAMES
+from ._variables_contracts import (
+    selected_issue_kinds as _selected_issue_kinds,
+)
+from ._variables_contracts import (
+    should_collect_any_issue_kinds as _should_collect_any_issue_kinds,
+)
+from ._variables_contracts import (
+    should_collect_issue_kind as _should_collect_issue_kind,
+)
 from ._variables_picture_display_support import (
     build_typedef_root_context,
     record_graphics_binding_occurrences,
@@ -104,20 +113,6 @@ _PARAM_MAPPING_CHECK_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
         IssueKind.MIN_MAX_MAPPING_MISMATCH,
     }
 )
-
-
-def _selected_issue_kinds(self: object) -> frozenset[IssueKind] | set[IssueKind] | None:
-    return getattr(self, "_selected_issue_kinds", None)
-
-
-def _should_collect_issue_kind(self: object, kind: IssueKind) -> bool:
-    selected_kinds = _selected_issue_kinds(self)
-    return selected_kinds is None or kind in selected_kinds
-
-
-def _should_collect_any_issue_kinds(self: object, kinds: frozenset[IssueKind]) -> bool:
-    selected_kinds = _selected_issue_kinds(self)
-    return selected_kinds is None or bool(selected_kinds & kinds)
 
 
 def _maybe_update_status(self: object, detail: str) -> None:

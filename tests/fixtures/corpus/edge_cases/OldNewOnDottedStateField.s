@@ -1,6 +1,6 @@
 "Syntax version 2.23, date: 2026-04-23-12:00:00.000 N"
 "Original file date: ---"
-"Program date: 2026-04-23-12:00:00.000, name: OldNewOnDottedStateField"
+"Program date: 2026-04-23-12:00:00.000, name: OldNewStateField"
 (* EDGE CASE: :Old accessed on a dotted record field that is declared State.
    Validation must resolve the final field's state flag, not just the root
    record variable. CMD.WaterPipeFull:Old is valid because the leaf field

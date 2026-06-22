@@ -1,7 +1,19 @@
 {
     "case_id": "semantic-illegal-state-combination",
-    "target_file": "../semantic/IllegalStateCombination.s",
+    "target_file": "../semantic/workspace/IllegalStateCombination.s",
     "mode": "workspace",
+    "analysis_config": {
+        "analysis": {
+            "sfc": {
+                "mutually_exclusive_steps": [
+                    [
+                        "Idle",
+                        "Running"
+                    ]
+                ]
+            }
+        }
+    },
     "expectation": {
         "expected_finding_ids": [
             "semantic.illegal-state-combination"

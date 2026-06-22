@@ -1,0 +1,32 @@
+{
+    "case_id": "analyzer-initial-values-missing-default",
+    "target_file": "../semantic/analyzer/InitialValuesMissing.s",
+    "mode": "analyzer-initial-values",
+    "expectation": {
+        "expected_finding_ids": [
+            "semantic.missing-parameter-initial-value"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "initial-values"
+            },
+            "summary.json": {
+                "analyzer_key": "initial-values",
+                "rule_counts": {
+                    "semantic.missing-parameter-initial-value": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

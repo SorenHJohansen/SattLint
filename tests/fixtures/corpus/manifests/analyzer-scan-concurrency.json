@@ -1,0 +1,33 @@
+{
+    "case_id": "analyzer-scan-concurrency",
+    "target_file": "../semantic/workspace/ParallelWriteRace.s",
+    "mode": "analyzer-scan-concurrency",
+    "expectation": {
+        "expected_finding_ids": [
+            "sfc_parallel_write_race"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "scan-concurrency"
+            },
+            "summary.json": {
+                "analyzer_key": "scan-concurrency",
+                "finding_count": 1,
+                "rule_counts": {
+                    "sfc_parallel_write_race": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

@@ -1,10 +1,18 @@
 {
   "case_id": "workspace-common-quality-issues",
-  "target_file": "../../sample_sattline_files/CommonQualityIssues.s",
+  "target_file": "../semantic/workspace/CommonQualityIssues.s",
   "mode": "workspace",
   "expectation": {
     "expected_finding_ids": [
+      "semantic.data-dependency-initialization-order",
+      "semantic.data-dependency-path",
+      "semantic.never-read-write",
       "semantic.read-before-write",
+      "semantic.read-only-datatype-field",
+      "semantic.read-only-non-const",
+      "semantic.signal-lifecycle-read-before-write",
+      "semantic.signal-lifecycle-unconsumed-write",
+      "spec.basepicture_direct_code",
       "semantic.unused-variable"
     ],
     "artifact_fragments": {
@@ -14,7 +22,15 @@
       },
       "summary.json": {
         "rule_counts": {
+          "semantic.data-dependency-initialization-order": 1,
+          "semantic.data-dependency-path": 2,
+          "semantic.never-read-write": 1,
           "semantic.read-before-write": 1,
+          "semantic.read-only-datatype-field": 1,
+          "semantic.read-only-non-const": 1,
+          "semantic.signal-lifecycle-read-before-write": 1,
+          "semantic.signal-lifecycle-unconsumed-write": 1,
+          "spec.basepicture_direct_code": 1,
           "semantic.unused-variable": 1
         }
       }

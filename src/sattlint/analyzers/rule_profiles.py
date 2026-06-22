@@ -257,6 +257,11 @@ _EXTRA_RULES_BY_KIND: dict[str, SemanticRule] = {
     ),
 }
 
+_ALL_ISSUE_RULES_BY_KIND: dict[str, SemanticRule] = {
+    **FRAMEWORK_RULES_BY_KIND,
+    **_EXTRA_RULES_BY_KIND,
+}
+
 
 def _default_profiles() -> dict[str, RuleProfile]:
     return {
@@ -314,7 +319,11 @@ def get_default_rule_profile_report() -> dict[str, object]:
 
 
 def _resolve_issue_rule(issue_kind: str) -> SemanticRule | None:
-    return _EXTRA_RULES_BY_KIND.get(issue_kind) or FRAMEWORK_RULES_BY_KIND.get(issue_kind)
+    return _ALL_ISSUE_RULES_BY_KIND.get(issue_kind)
+
+
+def get_issue_rules_for_source(source: str) -> tuple[tuple[str, SemanticRule], ...]:
+    return tuple((issue_kind, rule) for issue_kind, rule in _ALL_ISSUE_RULES_BY_KIND.items() if rule.source == source)
 
 
 def _normalized_issue_kind(issue: Issue) -> str | None:

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from sattlint.analyzers.registry import get_default_analyzer_catalog
+from sattlint.analysis_catalog import get_default_analyzer_catalog
 from sattlint.contracts import FindingCollection
 
 from .artifact_registry import AI_TEMPLATE_SCHEMA_KIND, AI_TEMPLATE_SCHEMA_VERSION, AI_TEMPLATE_SUMMARY_FILENAME

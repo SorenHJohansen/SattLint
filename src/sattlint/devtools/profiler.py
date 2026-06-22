@@ -11,11 +11,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
+from sattlint import analysis_catalog, cli_output
 from sattlint import app as app_module
-from sattlint import cli_output
 from sattlint import config as config_module
 from sattlint.analyzers.framework import AnalysisContext
-from sattlint.analyzers.registry import canonicalize_analyzer_key, get_default_analyzer_catalog
 from sattlint.app_analysis import source_paths_for_current_target
 from sattlint.core.semantic import (
     discover_workspace_sources,
@@ -27,6 +26,8 @@ from sattlint.semantic_analysis import build_variable_semantic_artifacts
 
 REPO_ROOT = repo_root_from(Path(__file__))
 DEFAULT_OUTPUT_FILENAME = "profiler_report.json"
+canonicalize_analyzer_key = analysis_catalog.canonicalize_analyzer_key
+get_default_analyzer_catalog = analysis_catalog.get_default_analyzer_catalog
 
 
 def _duration_ms(start: float, end: float) -> float:

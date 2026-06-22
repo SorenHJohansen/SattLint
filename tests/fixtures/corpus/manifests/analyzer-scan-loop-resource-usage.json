@@ -1,0 +1,32 @@
+{
+    "case_id": "analyzer-scan-loop-resource-usage",
+    "target_file": "../../analyzer_guardrails/ScanLoopCost.s",
+    "mode": "analyzer-scan-loop-resource-usage",
+    "expectation": {
+        "expected_finding_ids": [
+            "scan_cycle.resource_usage"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "scan-loop-resource-usage"
+            },
+            "summary.json": {
+                "analyzer_key": "scan-loop-resource-usage",
+                "rule_counts": {
+                    "scan_cycle.resource_usage": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

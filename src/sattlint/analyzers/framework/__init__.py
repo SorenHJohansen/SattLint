@@ -242,6 +242,8 @@ class AnalyzerSpec:
     direct_context: bool = False
     semantic_mapping_kind: str | None = None
     semantic_rule_source: str | None = None
+    composed_analyzer_keys: tuple[str, ...] = ()
+    composed_issue_kind_names: tuple[str, ...] = ()
 
     @property
     def supports_selected_issue_kinds(self) -> bool:

@@ -9,7 +9,11 @@ from typing import Any
 from sattlint.devtools.shared.pipeline_checks import matching_changed_files, normalize_changed_files
 from sattlint.path_sanitizer import sanitize_path_for_report
 
-from ._repo_audit_strategy_registry import build_repo_audit_finding_strategies
+from ._repo_audit_strategy_registry import (
+    RepoAuditRunnerMap,
+    build_repo_audit_finding_runner_map,
+    build_repo_audit_finding_strategies,
+)
 
 REPO_AUDIT_FINDING_CHECK_IDS = (
     "text-scan",
@@ -44,14 +48,19 @@ AI_FEEDBACK_FILENAME = "ai_feedback.json"
 
 def build_repo_audit_finding_check_definitions(
     *,
-    verify_recommendations_runner: Callable[[Any], list[Any]],
+    verify_recommendations_runner: Callable[[Any], list[Any]] | None = None,
+    runners: RepoAuditRunnerMap | None = None,
+    runner_overrides: RepoAuditRunnerMap | None = None,
 ) -> tuple[dict[str, Any], ...]:
-    return tuple(
-        strategy.to_definition()
-        for strategy in build_repo_audit_finding_strategies(
+    resolved_runners = runners
+    if resolved_runners is None:
+        if verify_recommendations_runner is None:
+            raise TypeError("verify_recommendations_runner is required when runners are not provided")
+        resolved_runners = build_repo_audit_finding_runner_map(
             verify_recommendations_runner=verify_recommendations_runner,
+            runner_overrides=runner_overrides,
         )
-    )
+    return tuple(strategy.to_definition() for strategy in build_repo_audit_finding_strategies(runners=resolved_runners))
 
 
 def build_repo_audit_finish_gate_commands(
@@ -163,5 +172,6 @@ __all__ = [
     "REPO_AUDIT_SPECIAL_CHECK_IDS",
     "build_recommendation_why_this_gate",
     "build_repo_audit_finding_check_definitions",
+    "build_repo_audit_finding_runner_map",
     "build_repo_audit_finish_gate_commands",
 ]

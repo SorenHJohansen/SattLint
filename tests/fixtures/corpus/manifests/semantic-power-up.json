@@ -1,21 +1,21 @@
 {
     "case_id": "semantic-power-up",
-    "target_file": "../../sample_sattline_files/PowerUp.s",
-    "mode": "workspace",
+    "target_file": "../semantic/analyzer/TestStringsInPictureDisplay.s",
+    "mode": "analyzer-unsafe-defaults",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.missing-parameter-initial-value",
             "semantic.unsafe-default-true"
         ],
         "artifact_fragments": {
             "status.json": {
                 "execution_status": "ok",
-                "missing_dependency_count": 0
+                "missing_dependency_count": 0,
+                "analyzer_key": "unsafe-defaults"
             },
             "summary.json": {
+                "analyzer_key": "unsafe-defaults",
                 "rule_counts": {
-                    "semantic.missing-parameter-initial-value": 1,
-                    "semantic.unsafe-default-true": 1
+                    "semantic.unsafe-default-true": 2
                 }
             }
         },

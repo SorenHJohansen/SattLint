@@ -8,6 +8,8 @@ from types import SimpleNamespace
 
 from sattline_parser.models.ast_model import BasePicture, ModuleHeader
 from sattlint.analyzers import registry as registry_module
+from sattlint.analyzers._registry_spec_templates import AnalyzerSpecTemplate, default_spec_templates
+from sattlint.analyzers._registry_specs import build_context_kwargs, build_default_analyzers
 from sattlint.analyzers.dataflow import DataflowAnalyzer
 from sattlint.analyzers.framework import (
     AnalysisContext,
@@ -17,8 +19,6 @@ from sattlint.analyzers.framework import (
     build_analysis_context,
 )
 from sattlint.analyzers.registry._registry_delivery_data import default_delivery_templates
-from sattlint.analyzers.registry._registry_spec_templates import AnalyzerSpecTemplate, default_spec_templates
-from sattlint.analyzers.registry._registry_specs import build_context_kwargs, build_default_analyzers
 from sattlint.analyzers.reset_contamination import ResetContaminationAnalyzer
 from sattlint.analyzers.shared.variable_utils import VariablesConstMixin
 from sattlint.analyzers.variables import VariablesAnalyzer
@@ -98,6 +98,43 @@ def _module_level_private_module_aliases(module: ast.Module) -> list[str]:
     return aliases
 
 
+_BANNED_ANALYZER_BOUNDARY_PREFIXES = (
+    "analyzers.registry",
+    "analyzers._registry_dispatch",
+    "analyzers.registry._registry_dispatch",
+    "analyzers.registry._registry_specs",
+    "analyzers.registry._registry_spec_templates",
+    "sattlint.analyzers.registry",
+    "sattlint.analyzers._registry_dispatch",
+    "sattlint.analyzers.registry._registry_dispatch",
+    "sattlint.analyzers.registry._registry_specs",
+    "sattlint.analyzers.registry._registry_spec_templates",
+)
+
+
+def _imports_banned_analyzer_boundary(module: ast.Module) -> bool:
+    for node in ast.walk(module):
+        if isinstance(node, ast.ImportFrom):
+            imported_module = node.module or ""
+            if any(
+                imported_module == prefix or imported_module.startswith(f"{prefix}.")
+                for prefix in _BANNED_ANALYZER_BOUNDARY_PREFIXES
+            ):
+                return True
+            if imported_module in {"analyzers", "sattlint.analyzers"} and any(
+                alias.name in {"registry", "_registry_dispatch"} for alias in node.names
+            ):
+                return True
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if any(
+                    alias.name == prefix or alias.name.startswith(f"{prefix}.")
+                    for prefix in _BANNED_ANALYZER_BOUNDARY_PREFIXES
+                ):
+                    return True
+    return False
+
+
 def test_registry_keys_are_kebab_case_or_explicit_legacy_allowlist() -> None:
     templates = default_spec_templates(registry_module.SEMANTIC_LAYER_ANALYZER_KEY)
     underscore_keys = {template.key for template in templates if "_" in template.key}
@@ -134,6 +171,28 @@ def test_analyzer_modules_do_not_mix_absolute_and_relative_package_imports() -> 
             mixed_import_modules.append(_analyzer_module_name(path))
 
     assert mixed_import_modules == []
+
+
+def test_non_analyzer_layers_use_top_level_analysis_facades_for_registry_access() -> None:
+    project_dir = ANALYZER_DIR.parent
+    direct_registry_importers: list[str] = []
+
+    for path in sorted(project_dir.rglob("*.py")):
+        if path.is_relative_to(ANALYZER_DIR):
+            continue
+        if path.name in {"analysis_catalog.py", "analysis_dispatch.py"}:
+            continue
+        module = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        if _imports_banned_analyzer_boundary(module):
+            direct_registry_importers.append(str(path.relative_to(project_dir)))
+
+    assert direct_registry_importers == []
+
+
+def test_registry_package_compat_helpers_are_removed() -> None:
+    assert not (ANALYZER_DIR / "registry" / "_registry_dispatch.py").exists()
+    assert not (ANALYZER_DIR / "registry" / "_registry_specs.py").exists()
+    assert not (ANALYZER_DIR / "registry" / "_registry_spec_templates.py").exists()
 
 
 def test_variables_analyzer_uses_helper_mixins_instead_of_local_method_injection() -> None:
@@ -227,6 +286,8 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
             "step_contracts",
             "unavailable_libraries",
         ),
+        composed_analyzer_keys=("dataflow", "scan-loop-resource-usage"),
+        composed_issue_kind_names=("dataflow.scan_cycle_stale_read",),
     )
     kwargs = build_context_kwargs(spec, registry_stub, context, overrides={"debug": False})
     assert kwargs["analysis_context"] is context
@@ -251,7 +312,7 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
     direct_runner = build_default_analyzers(semantic_layer_analyzer_key=registry_module.SEMANTIC_LAYER_ANALYZER_KEY)
     assert any(spec.key == "variables" for spec in direct_runner)
 
-    from sattlint.analyzers.registry import _registry_specs as registry_specs_module  # noqa: PLC0415
+    from sattlint.analyzers import _registry_specs as registry_specs_module  # noqa: PLC0415
 
     direct_report = registry_specs_module._build_runner(direct_template, registry_stub)(context)
     assert direct_report.name == "Root"
@@ -271,12 +332,16 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
         "default_spec_templates",
         lambda _key: (direct_template, spec),
     )
-    monkeypatch.setitem(registry_specs_module.__dict__, "registry", registry_stub)
-    built_specs = registry_specs_module.build_default_analyzers(semantic_layer_analyzer_key="semantic-demo")
+    built_specs = registry_specs_module.build_default_analyzers(
+        semantic_layer_analyzer_key="semantic-demo",
+        registry_module=registry_stub,
+    )
     assert [built.key for built in built_specs] == ["direct", "demo"]
     assert built_specs[0].direct_context is True
     assert built_specs[0].requires == ()
     assert built_specs[1].context_kwargs == spec.context_kwargs
+    assert built_specs[1].composed_analyzer_keys == ("dataflow", "scan-loop-resource-usage")
+    assert built_specs[1].composed_issue_kind_names == ("dataflow.scan_cycle_stale_read",)
     assert built_specs[1].requires == ()
 
     sfc_template = next(template for template in default_spec_templates("semantic-demo") if template.key == "sfc")

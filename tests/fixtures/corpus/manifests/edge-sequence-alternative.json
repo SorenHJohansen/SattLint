@@ -3,11 +3,31 @@
     "target_file": "../edge_cases/SequenceAlternative.s",
     "mode": "workspace",
     "expectation": {
-        "expected_finding_ids": [],
+        "expected_finding_ids": [
+            "semantic.condition-always-false",
+            "semantic.condition-always-true",
+            "semantic.read-only-non-const",
+            "semantic.transition-always-true",
+            "spec.basepicture_direct_code",
+            "spec.sequence_step_prefix",
+            "spec.transition_prefix"
+        ],
         "artifact_fragments": {
             "status.json": {
                 "execution_status": "ok",
                 "missing_dependency_count": 0
+            },
+            "summary.json": {
+                "finding_count": 18,
+                "rule_counts": {
+                    "semantic.condition-always-false": 3,
+                    "semantic.condition-always-true": 2,
+                    "semantic.read-only-non-const": 1,
+                    "semantic.transition-always-true": 2,
+                    "spec.basepicture_direct_code": 1,
+                    "spec.sequence_step_prefix": 4,
+                    "spec.transition_prefix": 5
+                }
             }
         },
         "forbidden_finding_ids": [

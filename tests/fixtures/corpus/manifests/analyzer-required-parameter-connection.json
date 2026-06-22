@@ -1,0 +1,33 @@
+{
+    "case_id": "analyzer-required-parameter-connection",
+    "target_file": "../../analyzer_guardrails/RequiredParameterConnection.s",
+    "mode": "analyzer-interface-contracts",
+    "expectation": {
+        "expected_finding_ids": [
+            "required_parameter_connection"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "interface-contracts"
+            },
+            "summary.json": {
+                "analyzer_key": "interface-contracts",
+                "finding_count": 1,
+                "rule_counts": {
+                    "required_parameter_connection": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

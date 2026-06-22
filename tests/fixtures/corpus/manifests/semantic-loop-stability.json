@@ -1,6 +1,6 @@
 {
     "case_id": "semantic-loop-stability",
-    "target_file": "../semantic/LoopStability.s",
+    "target_file": "../semantic/workspace/LoopStability.s",
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [

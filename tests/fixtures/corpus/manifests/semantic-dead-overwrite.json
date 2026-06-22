@@ -1,6 +1,6 @@
 {
     "case_id": "semantic-dead-overwrite",
-    "target_file": "../semantic/DeadOverwrite.s",
+    "target_file": "../semantic/workspace/DeadOverwrite.s",
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [

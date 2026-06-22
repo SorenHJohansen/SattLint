@@ -22,6 +22,7 @@ from sattlint.graphics_validation import PictureDisplayPathRow, PictureDisplayRe
 from sattlint.picture_display_paths import PictureDisplayOccurrence
 
 SAMPLE_FIXTURE_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "sample_sattline_files"
+CORPUS_ANALYZER_FIXTURE_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "corpus" / "semantic" / "analyzer"
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -32,8 +33,16 @@ def _varref(name: str) -> dict[str, str]:
     return {"var_name": name}
 
 
+def _resolve_fixture_path(stem: str) -> Path:
+    for fixture_dir in (SAMPLE_FIXTURE_DIR, CORPUS_ANALYZER_FIXTURE_DIR):
+        fixture = fixture_dir / f"{stem}.s"
+        if fixture.exists():
+            return fixture
+    raise FileNotFoundError(stem)
+
+
 def _load_fixture_base_picture(stem: str) -> BasePicture:
-    fixture = SAMPLE_FIXTURE_DIR / f"{stem}.s"
+    fixture = _resolve_fixture_path(stem)
     loader = SattLineProjectLoader(
         SattLineProjectLoaderConfig(
             program_dir=fixture.parent,
@@ -106,7 +115,7 @@ def test_variable_invalid_picture_display_rows_do_not_count_as_usage() -> None:
                 path_rows=(
                     PictureDisplayPathRow(
                         record_index=1,
-                        index_token="1",
+                        index_token=str(1),
                         index_value=1,
                         kind="variable_invalid",
                         raw_text="PathAIT",

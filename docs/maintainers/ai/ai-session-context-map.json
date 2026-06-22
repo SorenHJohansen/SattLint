@@ -237,7 +237,7 @@
       "apply_to": [
         "tests/fixtures/**",
         "tests/parser/test_corpus.py",
-        "tests/test_phase0_guardrails.py"
+        "tests/test_analyzer_guardrails.py"
       ],
       "description": "Use when changing SattLint test fixtures, corpus manifests, sample SattLine files, or golden analysis artifacts. Covers fixture shape, corpus layout, and minimal SattLine validity rules.",
       "file_path": ".github/instructions/test-fixtures.instructions.md",

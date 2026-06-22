@@ -14,16 +14,18 @@ from sattlint.devtools.corpus import (
 
 
 def test_print_cli_summary_includes_findings_schema(capsys):
-    corpus._print_cli_summary(
-        {
-            "case_count": 2,
-            "failed_count": 1,
-            "findings_schema": {
-                "kind": "sattlint.findings",
-                "schema_version": 1,
-            },
-            "corpus_results_report": "<external>/analysis/corpus_results.json",
-        }
+    print(
+        corpus.format_cli_summary(
+            {
+                "case_count": 2,
+                "failed_count": 1,
+                "findings_schema": {
+                    "kind": "sattlint.findings",
+                    "schema_version": 1,
+                },
+                "corpus_results_report": "<external>/analysis/corpus_results.json",
+            }
+        )
     )
 
     output = capsys.readouterr().out
@@ -89,6 +91,29 @@ def test_execute_corpus_case_captures_unsupported_mode_as_execution_error(tmp_pa
 
     assert result.execution_error is not None
     assert "Unsupported corpus mode" in result.execution_error
+    assert result.passed is False
+
+
+def test_execute_corpus_case_captures_unknown_analyzer_mode_as_execution_error(tmp_path):
+    manifest_path = tmp_path / "unknown-analyzer.json"
+    source = tmp_path / "Program.s"
+    source.write_text("placeholder", encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "case_id": "unknown-analyzer-case",
+                "target_file": "Program.s",
+                "mode": "analyzer-does-not-exist",
+                "expectation": {"expected_finding_ids": []},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = execute_corpus_case(manifest_path, tmp_path / "artifacts", repo_root=tmp_path)
+
+    assert result.execution_error is not None
+    assert "Unknown analyzer corpus mode" in result.execution_error
     assert result.passed is False
 
 
@@ -184,6 +209,22 @@ def test_checked_in_corpus_manifests_pass_against_repo_fixtures(tmp_path):
     assert existing_semantic_manifests.issubset(case_ids), (
         f"Missing existing semantic manifests: {existing_semantic_manifests - case_ids}"
     )
+
+    analyzer_cases = {
+        "analyzer-comment-code",
+        "analyzer-picture-display-unresolved",
+        "analyzer-state-inference-impossible-branch",
+        "analyzer-loop-output-refactor",
+        "analyzer-naming-inconsistent-style",
+        "analyzer-cyclomatic-complexity-high",
+        "analyzer-parameter-drift",
+        "analyzer-scan-loop-resource-usage",
+        "analyzer-data-dependency",
+        "analyzer-mms-interface",
+        "analyzer-resource-usage",
+        "analyzer-version-drift",
+    }
+    assert analyzer_cases.issubset(case_ids), f"Missing analyzer manifests: {analyzer_cases - case_ids}"
 
     assert suite.passed is True, f"Failed cases: {[c.manifest.case_id for c in suite.cases if not c.passed]}"
     assert all(case.execution_error is None for case in suite.cases)

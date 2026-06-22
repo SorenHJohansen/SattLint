@@ -294,18 +294,6 @@ def test_collect_custom_findings_aggregates_scanners_and_filters_repo_audit_sour
     vscode_readme = tmp_path / "vscode" / "sattline-vscode" / "README.md"
     vscode_readme.parent.mkdir(parents=True)
     vscode_readme.write_text("extension docs\n", encoding="utf-8")
-
-    source_context = repo_audit.PythonSourceScanContext(
-        source_root=tmp_path / "src",
-        texts={
-            tmp_path / "src" / "sattlint" / "alpha.py": "ALPHA = 1\n",
-            tmp_path / "src" / "sattlint" / "repo_audit.py": "SELF = 1\n",
-            tmp_path / "src" / "other.py": "OTHER = 1\n",
-        },
-        asts={},
-    )
-    empty_test_context = repo_audit.PythonSourceScanContext(source_root=tmp_path / "tests", texts={}, asts={})
-    empty_scripts_context = repo_audit.PythonSourceScanContext(source_root=tmp_path / "scripts", texts={}, asts={})
     text_finding = repo_audit.Finding(
         "hardcoded-windows-path",
         "portability",
@@ -354,38 +342,40 @@ def test_collect_custom_findings_aggregates_scanners_and_filters_repo_audit_sour
         "high",
         "Repository has no CI workflow.",
     )
+    base_context = object()
+    context_with_shared_lines = object()
 
     with (
         patch.object(
-            repo_audit, "_list_tracked_repo_paths", return_value=("README.md", "src/sattlint/alpha.py")
-        ) as tracked,
-        patch.object(repo_audit, "_iter_repo_text_entries", return_value=[(readme, "repo docs\n")]) as iter_entries,
-        patch.object(repo_audit, "_line_findings", return_value=[text_finding]) as line_findings,
-        patch.object(
-            repo_audit,
-            "_build_python_source_scan_context",
-            side_effect=[source_context, empty_test_context, empty_scripts_context],
+            repo_audit_entrypoints._repo_audit_check_runners_module,
+            "_build_repo_audit_scan_context",
+            return_value=base_context,
         ) as build_context,
-        patch.object(repo_audit, "_collect_cli_metadata", return_value=({"sattlint-repo-audit"}, {"syntax-check"})),
         patch.object(
-            repo_audit,
-            "_extract_documented_commands",
-            return_value=[repo_audit.DocumentedCommand("sattlint", "ghost", "README.md", 1)],
-        ) as extract_commands,
-        patch.object(repo_audit, "_find_documentation_command_gaps", return_value=[docs_finding]),
-        patch.object(repo_audit, "_find_unused_config_keys", return_value=[unused_key_finding]) as unused_keys,
-        patch.object(repo_audit, "_find_architecture_findings", return_value=[]),
-        patch.object(repo_audit, "_find_structural_report_findings", return_value=[structural_finding]),
-        patch.object(repo_audit, "_find_cli_findings", return_value=[]),
-        patch.object(repo_audit, "_find_logging_findings", return_value=[logging_finding]) as logging_findings,
-        patch.object(repo_audit, "_find_ignored_repo_path_references", return_value=[]) as ignored_path_refs,
-        patch.object(repo_audit, "_run_harness_freshness_check", return_value=[]),
-        patch.object(repo_audit, "_run_ratchet_policy_check", return_value=[]),
-        patch.object(repo_audit_entrypoints, "_run_verify_recommendations_check", return_value=[]),
-        patch.object(repo_audit, "_parse_coverage_findings", return_value=[docs_finding]) as coverage_findings,
+            repo_audit_entrypoints._repo_audit_check_runners_module,
+            "_with_shared_text_line_findings",
+            return_value=context_with_shared_lines,
+        ) as with_shared_text_line_findings,
         patch.object(
-            repo_audit, "_find_public_readiness_findings", return_value=[readiness_finding]
-        ) as readiness_findings,
+            repo_audit_entrypoints,
+            "_repo_audit_finding_runner_overrides",
+            return_value={
+                "text-scan": lambda context: [text_finding] if context is context_with_shared_lines else [],
+                "local-ci-parity": lambda _context: [],
+                "documented-commands": lambda _context: [docs_finding],
+                "unused-config-keys": lambda _context: [unused_key_finding],
+                "architecture": lambda _context: [],
+                "structural-report": lambda _context: [structural_finding],
+                "cli": lambda _context: [],
+                "logging": lambda _context: [logging_finding],
+                "ai-gc": lambda _context: [],
+                "ignored-repo-paths": lambda _context: [],
+                "harness-freshness": lambda _context: [],
+                "coverage": lambda _context: [docs_finding],
+                "public-readiness": lambda _context: [readiness_finding],
+                "verify-recommendations": lambda _context: [],
+            },
+        ),
     ):
         findings = repo_audit.collect_custom_findings(
             tmp_path,
@@ -394,36 +384,13 @@ def test_collect_custom_findings_aggregates_scanners_and_filters_repo_audit_sour
             suspicious_identifiers=[" SQHJ ", ""],
         )
 
-    tracked.assert_called_once_with(tmp_path)
-    iter_entries.assert_called_once_with(tmp_path, include_generated=True, tracked_only=True)
-    line_findings.assert_called_once_with(readme, "repo docs\n", {"SQHJ"}, root=tmp_path)
-    assert build_context.call_args_list == [
-        call(
-            tmp_path / "src",
-            root=tmp_path,
-            tracked_paths=("README.md", "src/sattlint/alpha.py"),
-        ),
-        call(
-            tmp_path / "tests",
-            root=tmp_path,
-            tracked_paths=("README.md", "src/sattlint/alpha.py"),
-        ),
-        call(
-            tmp_path / "scripts",
-            root=tmp_path,
-            tracked_paths=("README.md", "src/sattlint/alpha.py"),
-        ),
-    ]
-    extracted_paths = list(extract_commands.call_args.args[0])
-    assert extracted_paths == [readme, vscode_readme]
-    assert unused_keys.call_args.args[0] == tmp_path / "src" / "sattlint"
-    assert unused_keys.call_args.kwargs["content_by_file"] == {
-        tmp_path / "src" / "sattlint" / "alpha.py": "ALPHA = 1\n",
-    }
-    logging_findings.assert_called_once_with(tmp_path / "src", content_by_file=source_context.texts)
-    assert ignored_path_refs.call_count == 3
-    coverage_findings.assert_called_once_with(tmp_path, tracked_paths=("README.md", "src/sattlint/alpha.py"))
-    readiness_findings.assert_called_once_with(tmp_path, tracked_paths=("README.md", "src/sattlint/alpha.py"))
+    build_context.assert_called_once_with(
+        tmp_path,
+        include_generated=True,
+        tracked_only=True,
+        suspicious_identifiers=[" SQHJ ", ""],
+    )
+    with_shared_text_line_findings.assert_called_once_with(base_context)
     assert [finding.id for finding in findings] == [
         "hardcoded-windows-path",
         "documented-missing-subcommand",

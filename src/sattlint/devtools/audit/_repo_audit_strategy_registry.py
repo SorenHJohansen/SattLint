@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
 
 class RepoAuditRunner(Protocol):
     def __call__(self, context: Any, /) -> list[Any]: ...
+
+
+RepoAuditRunnerMap = Mapping[str, RepoAuditRunner]
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,18 +42,47 @@ class RepoAuditCheckStrategy:
         }
 
 
-def build_repo_audit_finding_strategies(
+def build_repo_audit_finding_runner_map(
     *,
     verify_recommendations_runner: RepoAuditRunner,
-) -> tuple[RepoAuditCheckStrategy, ...]:
+    runner_overrides: RepoAuditRunnerMap | None = None,
+) -> dict[str, RepoAuditRunner]:
     from . import _repo_audit_check_runners as repo_audit_check_runners  # noqa: PLC0415
+
+    runners: dict[str, RepoAuditRunner] = {
+        "text-scan": repo_audit_check_runners._run_text_scan_check,
+        "local-ci-parity": repo_audit_check_runners._run_local_ci_parity_check,
+        "documented-commands": repo_audit_check_runners._run_documented_commands_check,
+        "unused-config-keys": repo_audit_check_runners._run_unused_config_keys_check,
+        "architecture": repo_audit_check_runners._run_architecture_check,
+        "structural-report": repo_audit_check_runners._run_structural_report_check,
+        "cli": repo_audit_check_runners._run_cli_check,
+        "logging": repo_audit_check_runners._run_logging_check,
+        "ai-gc": repo_audit_check_runners._run_ai_gc_check,
+        "ignored-repo-paths": repo_audit_check_runners._run_ignored_repo_paths_check,
+        "harness-freshness": repo_audit_check_runners._run_harness_freshness_check,
+        "coverage": repo_audit_check_runners._run_coverage_check,
+        "public-readiness": repo_audit_check_runners._run_public_readiness_check,
+        "verify-recommendations": verify_recommendations_runner,
+    }
+    if runner_overrides is None:
+        return runners
+    unknown_check_ids = sorted(set(runner_overrides) - set(runners))
+    if unknown_check_ids:
+        joined = ", ".join(unknown_check_ids)
+        raise ValueError(f"Unsupported repo-audit finding runner overrides: {joined}")
+    runners.update(dict(runner_overrides))
+    return runners
+
+
+def build_repo_audit_finding_strategies(*, runners: RepoAuditRunnerMap) -> tuple[RepoAuditCheckStrategy, ...]:
 
     return (
         RepoAuditCheckStrategy(
             check_id="text-scan",
             label="Scan repository text for leaks and local paths",
             profiles=("quick", "full"),
-            runner=repo_audit_check_runners._run_text_scan_check,
+            runner=runners["text-scan"],
             owner_surface="text-scan",
             estimated_cost="low",
             path_globs=(
@@ -71,7 +104,7 @@ def build_repo_audit_finding_strategies(
             check_id="local-ci-parity",
             label="Detect local-versus-CI parity drift in paths, test guards, and local dependency roots",
             profiles=("quick", "full"),
-            runner=repo_audit_check_runners._run_local_ci_parity_check,
+            runner=runners["local-ci-parity"],
             owner_surface="local-ci-parity",
             estimated_cost="low",
             path_globs=(
@@ -93,7 +126,7 @@ def build_repo_audit_finding_strategies(
             check_id="documented-commands",
             label="Check documented commands against implemented CLI surfaces",
             profiles=("quick", "full"),
-            runner=repo_audit_check_runners._run_documented_commands_check,
+            runner=runners["documented-commands"],
             owner_surface="cli-docs",
             estimated_cost="low",
             path_globs=(
@@ -117,7 +150,7 @@ def build_repo_audit_finding_strategies(
             check_id="unused-config-keys",
             label="Report declared but unused config keys",
             profiles=("quick", "full"),
-            runner=repo_audit_check_runners._run_unused_config_keys_check,
+            runner=runners["unused-config-keys"],
             owner_surface="config",
             estimated_cost="low",
             path_globs=(
@@ -133,7 +166,7 @@ def build_repo_audit_finding_strategies(
             check_id="architecture",
             label="Run repository architecture checks",
             profiles=("quick", "full"),
-            runner=repo_audit_check_runners._run_architecture_check,
+            runner=runners["architecture"],
             owner_surface="architecture",
             estimated_cost="medium",
             path_globs=(
@@ -150,7 +183,7 @@ def build_repo_audit_finding_strategies(
             check_id="structural-report",
             label="Translate structural report findings into repo-audit findings",
             profiles=("quick", "full"),
-            runner=repo_audit_check_runners._run_structural_report_check,
+            runner=runners["structural-report"],
             owner_surface="structural",
             estimated_cost="medium",
             path_globs=(
@@ -166,7 +199,7 @@ def build_repo_audit_finding_strategies(
             check_id="cli",
             label="Validate CLI descriptions and subcommand help",
             profiles=("quick", "full"),
-            runner=repo_audit_check_runners._run_cli_check,
+            runner=runners["cli"],
             owner_surface="cli",
             estimated_cost="low",
             path_globs=(
@@ -186,7 +219,7 @@ def build_repo_audit_finding_strategies(
             check_id="logging",
             label="Check library modules for unexpected print calls",
             profiles=("quick", "full"),
-            runner=repo_audit_check_runners._run_logging_check,
+            runner=runners["logging"],
             owner_surface="logging",
             estimated_cost="low",
             path_globs=("src/**/*.py",),
@@ -198,7 +231,7 @@ def build_repo_audit_finding_strategies(
             check_id="ai-gc",
             label="Report stale AI-generated artifacts and oversized local coordination state",
             profiles=("quick", "full"),
-            runner=repo_audit_check_runners._run_ai_gc_check,
+            runner=runners["ai-gc"],
             owner_surface="ai-hygiene",
             estimated_cost="low",
             path_globs=(
@@ -219,7 +252,7 @@ def build_repo_audit_finding_strategies(
             check_id="ignored-repo-paths",
             label="Detect ignored repo-local dependency references",
             profiles=("quick", "full"),
-            runner=repo_audit_check_runners._run_ignored_repo_paths_check,
+            runner=runners["ignored-repo-paths"],
             owner_surface="path-safety",
             estimated_cost="low",
             path_globs=(
@@ -235,7 +268,7 @@ def build_repo_audit_finding_strategies(
             check_id="harness-freshness",
             label="Enforce AI harness freshness for instructions, agents, links, and generated maps",
             profiles=("quick", "full"),
-            runner=repo_audit_check_runners._run_harness_freshness_check,
+            runner=runners["harness-freshness"],
             owner_surface="harness-freshness",
             estimated_cost="low",
             path_globs=(
@@ -260,7 +293,7 @@ def build_repo_audit_finding_strategies(
             check_id="coverage",
             label="Translate low-coverage modules into audit findings",
             profiles=("quick", "full"),
-            runner=repo_audit_check_runners._run_coverage_check,
+            runner=runners["coverage"],
             owner_surface="coverage",
             estimated_cost="low",
             path_globs=(
@@ -276,7 +309,7 @@ def build_repo_audit_finding_strategies(
             check_id="public-readiness",
             label="Check public-repository readiness files and metadata",
             profiles=("quick", "full"),
-            runner=repo_audit_check_runners._run_public_readiness_check,
+            runner=runners["public-readiness"],
             owner_surface="public-readiness",
             estimated_cost="low",
             path_globs=(
@@ -296,7 +329,7 @@ def build_repo_audit_finding_strategies(
             check_id="verify-recommendations",
             label="Verify recommendation metadata and routing catalog coverage",
             profiles=("quick", "full"),
-            runner=verify_recommendations_runner,
+            runner=runners["verify-recommendations"],
             owner_surface="recommendations",
             estimated_cost="low",
             path_globs=(
@@ -322,4 +355,10 @@ def build_repo_audit_finding_strategies(
     )
 
 
-__all__ = ["RepoAuditCheckStrategy", "build_repo_audit_finding_strategies"]
+__all__ = [
+    "RepoAuditCheckStrategy",
+    "RepoAuditRunner",
+    "RepoAuditRunnerMap",
+    "build_repo_audit_finding_runner_map",
+    "build_repo_audit_finding_strategies",
+]

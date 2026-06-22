@@ -1,6 +1,6 @@
 "Syntax version 2.23, date: 2026-04-23-12:00:00.000 N"
 "Original file date: ---"
-"Program date: 2026-04-23-12:00:00.000, name: DurationVariousFormats"
+"Program date: 2026-04-23-12:00:00.000, name: DurationFormats"
 (* EDGE CASE: All documented valid duration literal forms in one file.
    Covers bare quoted duration strings in every supported format variation
    plus the Duration_Value wrapper form and negative duration.

@@ -122,6 +122,7 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():  # 
     timing = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "timing")
     powerup = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "powerup")
     scan_concurrency = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "scan-concurrency")
+    scan_shared_access = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "scan-shared-access")
     same_cycle = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "same-cycle")
     interface_contracts = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "interface-contracts")
 
@@ -132,6 +133,9 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():  # 
     parallel_write_race = next(rule for rule in report["rules"] if rule["id"] == "semantic.parallel-write-race")
     same_cycle_shared_access = next(
         rule for rule in report["rules"] if rule["id"] == "semantic.same-cycle-shared-access"
+    )
+    same_cycle_non_state_multi_site = next(
+        rule for rule in report["rules"] if rule["id"] == "semantic.same-cycle-non-state-multi-site"
     )
     cross_module_contract_mismatch = next(
         rule for rule in report["rules"] if rule["id"] == "semantic.cross-module-contract-mismatch"
@@ -174,8 +178,11 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():  # 
     assert {"semantic.missing-parameter-initial-value", "semantic.unsafe-default-true"} <= set(powerup["rule_ids"])
     assert scan_concurrency["cli_exposed"] is False
     assert scan_concurrency["rule_ids"] == ["semantic.parallel-write-race"]
+    assert scan_shared_access["cli_exposed"] is False
+    assert scan_shared_access["rule_ids"] == ["semantic.same-cycle-non-state-multi-site"]
     assert same_cycle["lsp_exposed"] is True
     assert {
+        "semantic.same-cycle-non-state-multi-site",
         "semantic.parallel-read-write-hazard",
         "semantic.parallel-write-race",
         "semantic.same-cycle-shared-access",
@@ -211,7 +218,11 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():  # 
     assert "alarm-integrity" in duplicate_alarm_tag["analyzers"]
     assert "alarm-integrity.summary" in duplicate_alarm_tag["outputs"]
     assert "tests/test_analyzers_suites_part1.py" in duplicate_alarm_tag["acceptance_tests"]
-    assert duplicate_alarm_tag["corpus_cases"] == ["semantic-alarm-integrity", "workspace-common-quality-issues"]
+    assert {
+        "analyzer-alarm-integrity",
+        "semantic-alarm-integrity",
+        "workspace-common-quality-issues",
+    } <= set(duplicate_alarm_tag["corpus_cases"])
     assert duplicate_alarm_tag["mutation_applicability"] == "required"
     assert duplicate_alarm_tag["suppression_modes"] == ["baseline"]
     assert duplicate_alarm_tag["incremental_safe"] is False
@@ -219,7 +230,7 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():  # 
     assert {"sattline-semantics", "dataflow"} <= set(read_before_write["analyzers"])
     assert "sattline-semantics.summary" in read_before_write["outputs"]
     assert "tests/analyzers/test_dataflow.py" in read_before_write["acceptance_tests"]
-    assert read_before_write["corpus_cases"] == ["semantic-read-before-write", "workspace-common-quality-issues"]
+    assert {"semantic-read-before-write", "workspace-common-quality-issues"} <= set(read_before_write["corpus_cases"])
     assert read_before_write["mutation_applicability"] == "required"
     assert dead_overwrite["source"] == "dataflow"
     assert "dataflow.summary" in dead_overwrite["outputs"]
@@ -235,6 +246,11 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():  # 
     assert same_cycle_shared_access["source"] == "same-cycle"
     assert "same-cycle" in same_cycle_shared_access["analyzers"]
     assert "same-cycle.summary" in same_cycle_shared_access["outputs"]
+    assert same_cycle_non_state_multi_site["source"] == "same-cycle"
+    assert "same-cycle" in same_cycle_non_state_multi_site["analyzers"]
+    assert "scan-shared-access" in same_cycle_non_state_multi_site["analyzers"]
+    assert "same-cycle.summary" in same_cycle_non_state_multi_site["outputs"]
+    assert "scan-shared-access.summary" in same_cycle_non_state_multi_site["outputs"]
     assert cross_module_contract_mismatch["source"] == "variables"
     assert "interface-contracts" in cross_module_contract_mismatch["analyzers"]
     assert "interface-contracts.summary" in cross_module_contract_mismatch["outputs"]

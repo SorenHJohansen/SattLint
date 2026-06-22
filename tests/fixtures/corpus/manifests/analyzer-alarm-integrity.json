@@ -1,0 +1,37 @@
+{
+    "case_id": "analyzer-alarm-integrity",
+    "target_file": "../semantic/workspace/AlarmIntegrity.s",
+    "mode": "analyzer-alarm-integrity",
+    "expectation": {
+        "expected_finding_ids": [
+            "semantic.conflicting-alarm-priority",
+            "semantic.duplicate-alarm-condition",
+            "semantic.duplicate-alarm-tag"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "alarm-integrity"
+            },
+            "summary.json": {
+                "analyzer_key": "alarm-integrity",
+                "finding_count": 12,
+                "rule_counts": {
+                    "semantic.conflicting-alarm-priority": 4,
+                    "semantic.duplicate-alarm-condition": 4,
+                    "semantic.duplicate-alarm-tag": 4
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

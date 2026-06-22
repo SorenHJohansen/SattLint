@@ -1,0 +1,32 @@
+{
+    "case_id": "analyzer-naming-inconsistent-style",
+    "target_file": "../../analyzer_guardrails/NamingRoleMismatch.s",
+    "mode": "analyzer-naming-consistency",
+    "expectation": {
+        "expected_finding_ids": [
+            "naming.inconsistent_style"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "naming-consistency"
+            },
+            "summary.json": {
+                "analyzer_key": "naming-consistency",
+                "rule_counts": {
+                    "naming.inconsistent_style": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

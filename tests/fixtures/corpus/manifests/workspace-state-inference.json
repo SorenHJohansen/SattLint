@@ -1,6 +1,6 @@
 {
     "case_id": "workspace-state-inference",
-    "target_file": "../../sample_sattline_files/StateInference.s",
+    "target_file": "../semantic/workspace/StateInference.s",
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [],

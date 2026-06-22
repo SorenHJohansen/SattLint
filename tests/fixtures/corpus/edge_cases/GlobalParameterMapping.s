@@ -1,6 +1,6 @@
 "Syntax version 2.23, date: 2026-04-23-12:00:00.000 N"
 "Original file date: ---"
-"Program date: 2026-04-23-12:00:00.000, name: GlobalParameterMapping"
+"Program date: 2026-04-23-12:00:00.000, name: GlobalParamMap"
 (* Covers mixed GLOBAL and non-global parameter mappings on the same submodule.
    Some parameters are mapped from the caller's local variables (normal mapping)
    while others are mapped from GLOBAL variables (GLOBAL keyword before the name).

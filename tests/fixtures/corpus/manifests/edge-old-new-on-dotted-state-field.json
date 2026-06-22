@@ -1,0 +1,43 @@
+{
+    "case_id": "edge-old-new-on-dotted-state-field",
+    "target_file": "../edge_cases/OldNewOnDottedStateField.s",
+    "mode": "workspace",
+    "expectation": {
+        "expected_finding_ids": [
+            "semantic.data-dependency-initialization-order",
+            "semantic.never-read-write",
+            "semantic.read-before-write",
+            "semantic.read-only-datatype-field",
+            "semantic.signal-lifecycle-read-before-write",
+            "semantic.signal-lifecycle-unconsumed-write",
+            "spec.basepicture_direct_code"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0
+            },
+            "summary.json": {
+                "finding_count": 9,
+                "rule_counts": {
+                    "semantic.data-dependency-initialization-order": 2,
+                    "semantic.never-read-write": 1,
+                    "semantic.read-before-write": 2,
+                    "semantic.read-only-datatype-field": 1,
+                    "semantic.signal-lifecycle-read-before-write": 1,
+                    "semantic.signal-lifecycle-unconsumed-write": 1,
+                    "spec.basepicture_direct_code": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

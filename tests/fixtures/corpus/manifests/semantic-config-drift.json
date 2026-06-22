@@ -1,6 +1,6 @@
 {
     "case_id": "semantic-config-drift",
-    "target_file": "../semantic/ConfigDrift.s",
+    "target_file": "../semantic/workspace/ConfigDrift.s",
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [
