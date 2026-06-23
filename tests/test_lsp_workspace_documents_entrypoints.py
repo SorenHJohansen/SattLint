@@ -9,6 +9,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
+from pygls import uris as lsp_uris
+
 from sattlint.core.semantic import WorkspaceSourceDiscovery
 from sattlint_lsp import workspace_store as lsp_workspace_store
 from sattlint_lsp.document_state import DocumentState
@@ -106,7 +108,8 @@ def test_server_configuration_document_dispatch_and_passthrough_edges(monkeypatc
     )
 
     monkeypatch.setattr(
-        "sattlint_lsp.server._document_path", lambda document: Path(document.uri.removeprefix("file://"))
+        "sattlint_lsp.server._document_path",
+        lambda document: Path(lsp_uris.to_fs_path(document.uri) or document.uri).resolve(),
     )
     monkeypatch.setattr(
         "sattlint_lsp.server._record_document_open",
