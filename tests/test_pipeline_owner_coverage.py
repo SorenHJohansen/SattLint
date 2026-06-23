@@ -68,7 +68,9 @@ def test_pipeline_execution_helpers_cover_python_resolution_fallbacks(monkeypatc
     assert helper._resolve_python_executable() == str(windows_python.resolve())
 
     monkeypatch.setattr(helper.shutil, "which", lambda _name: None)
-    monkeypatch.setattr(helper.os, "name", "posix")
+    if os.name != "nt":
+        monkeypatch.setattr(helper.os, "name", "posix")
+    monkeypatch.setattr(helper.sys, "prefix", str(tmp_path / "no-such-prefix"))
 
     assert helper._resolve_python_executable() == str(missing_executable)
 
