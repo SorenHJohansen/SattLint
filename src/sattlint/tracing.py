@@ -27,7 +27,15 @@ from .engine import parse_source_file, validate_single_file_syntax
 from .path_sanitizer import sanitize_path_for_report
 from .repo_paths import repo_root_from
 
-REPO_ROOT = repo_root_from(Path(__file__))
+
+def _trace_report_root() -> Path:
+    try:
+        return repo_root_from(Path(__file__))
+    except RuntimeError:
+        return Path(__file__).resolve().parent
+
+
+REPO_ROOT = _trace_report_root()
 
 
 def _empty_trace_events() -> list[dict[str, Any]]:

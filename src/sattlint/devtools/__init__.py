@@ -1,3 +1,4 @@
+# pyright: reportUnsupportedDunderAll=false
 """Developer tooling for analysis and validation workflows."""
 
 from __future__ import annotations
@@ -74,7 +75,7 @@ def __dir__() -> list[str]:
     return sorted(set(globals()) | set(_EXPORTED_NAMES))
 
 
-_EXPORTED_NAMES = [
+__all__ = (
     "ACCURACY_METRICS_FILENAME",
     "ACCURACY_SCHEMA_KIND",
     "ACCURACY_SCHEMA_VERSION",
@@ -188,7 +189,7 @@ _EXPORTED_NAMES = [
     "write_fuzzer_report",
     "write_metrics",
     "write_property_test_results",
-]
+)
 
 
-__all__ = _EXPORTED_NAMES
+_EXPORTED_NAMES = __all__

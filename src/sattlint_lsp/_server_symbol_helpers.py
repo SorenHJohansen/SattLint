@@ -184,7 +184,7 @@ def _merge_definitions(
     return merged
 
 
-def _merge_completion_items(
+def merge_completion_items(
     preferred: list[LspCompletionItem],
     fallback: list[LspCompletionItem],
     *,
@@ -227,7 +227,7 @@ def _merge_references(
     return merged
 
 
-def _definition_locations_from_candidates(
+def definition_locations_from_candidates(
     candidates: list[SymbolDefinition],
     *,
     bundle: SnapshotBundle,
@@ -257,7 +257,7 @@ def _definition_locations_from_candidates(
     return locations
 
 
-def _reference_locations_from_matches(
+def reference_locations_from_matches(
     references: list[SymbolReference],
     *,
     bundle: SnapshotBundle | None,
@@ -291,7 +291,7 @@ def _reference_locations_from_matches(
     return locations
 
 
-def _merge_locations(preferred: list[Location], fallback: list[Location]) -> list[Location]:
+def merge_locations(preferred: list[Location], fallback: list[Location]) -> list[Location]:
     merged: list[Location] = []
     seen: set[tuple[str, int, int, int, int]] = set()
     for location in [*preferred, *fallback]:
@@ -309,7 +309,7 @@ def _merge_locations(preferred: list[Location], fallback: list[Location]) -> lis
     return merged
 
 
-def _overlay_definition_candidates(
+def overlay_definition_candidates(
     bundle: SnapshotBundle,
     *,
     document_path: Path,
@@ -456,7 +456,7 @@ def _semantic_diagnostics_for_path(bundle: SnapshotBundle, document_path: Path) 
     return _cached_semantic_diagnostics_for_path(bundle, document_path, collect=collect_semantic_diagnostics)
 
 
-def _collect_reference_matches(
+def collect_reference_matches(
     bundle: SnapshotBundle | None,
     local_snapshot: SemanticSnapshot | None,
     candidates: list[SymbolDefinition],
@@ -480,7 +480,7 @@ def _split_reference_matches(
     return _merge_references(local_references, []), _merge_references(workspace_references, [])
 
 
-def _definition_uri(
+def definition_uri(
     definition: SymbolDefinition,
     *,
     bundle: SnapshotBundle | None,

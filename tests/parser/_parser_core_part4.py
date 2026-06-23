@@ -1,5 +1,8 @@
 # pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false
 # ruff: noqa: F403, F405
+import shutil
+import subprocess
+
 from ._parser_core_test_support import *
 
 
@@ -363,6 +366,37 @@ def test_fuzz_harness_collect_corpus_inputs_uses_default_dir_and_skips_missing_o
     )
 
     assert inputs == [(str(good_file), "good")]
+
+
+def test_parser_package_root_import_skips_fuzz_harness_outside_repo(tmp_path: Path) -> None:
+    package_copy = tmp_path / "sattline_parser"
+    shutil.copytree(_repo_path("src", "sattline_parser"), package_copy)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                f"import sys; sys.path.insert(0, {str(tmp_path)!r}); "
+                "import sattline_parser; print(sattline_parser.parse_source_text.__name__)"
+            ),
+        ],
+        cwd=tmp_path,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "parse_source_text"
+
+
+def test_parser_package_root_still_reexports_fuzz_harness_symbols() -> None:
+    sattline_parser = sys.modules["sattline_parser"]
+
+    assert sattline_parser.fuzz_harness is parser_fuzz_harness
+    assert sattline_parser.FuzzResult is parser_fuzz_harness.FuzzResult
+    assert sattline_parser.run_random_fuzz is parser_fuzz_harness.run_random_fuzz
 
 
 def test_internal_modules_do_not_import_editor_api_compat_facade():

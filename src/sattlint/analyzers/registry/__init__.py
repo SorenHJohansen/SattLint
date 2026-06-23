@@ -66,7 +66,16 @@ DEFAULT_CLI_ANALYZER_KEYS: tuple[str, ...] = (
     "powerup",
     "timing",
 )
-REPO_ROOT = repo_root_from(Path(__file__))
+
+
+def _registry_repo_root() -> Path:
+    try:
+        return repo_root_from(Path(__file__))
+    except RuntimeError:
+        return Path(__file__).resolve().parent
+
+
+REPO_ROOT = _registry_repo_root()
 DEFAULT_CORPUS_MANIFEST_DIR = REPO_ROOT / "tests" / "fixtures" / "corpus" / "manifests"
 
 LEGACY_ANALYZER_KEY_ALIASES: dict[str, str] = {

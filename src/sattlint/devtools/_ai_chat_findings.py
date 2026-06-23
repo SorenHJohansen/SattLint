@@ -3,24 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from sattlint.contracts import FindingCollection, FindingLocation, FindingRecord
 
 DISCOVERY_ALERT_THRESHOLD = 5
 EMPTY_ASSISTANT_OUTPUT_THRESHOLD = 0.2
-
-
-def _string_value(mapping: dict[str, Any], key: str, default: str = "") -> str:
-    value = mapping.get(key, default)
-    return str(value)
-
-
-def _session_id_list(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    sequence = cast(list[Any], value)
-    return [str(item) for item in sequence]
 
 
 def build_findings(
