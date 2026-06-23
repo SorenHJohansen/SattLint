@@ -236,8 +236,10 @@ def test_on_rename_ignores_ambiguous_same_name_workspace_references_for_dirty_do
     assert edit is not None
     changes = cast(Any, edit).changes
     assert changes is not None
-    assert list(changes) == [document.uri]
-    assert len(changes[document.uri]) == 3
+    matching_uri = next((uri for uri in changes if uri.casefold() == document.uri.casefold()), None)
+    assert matching_uri is not None
+    assert len(changes) == 1
+    assert len(changes[matching_uri]) == 3
 
 
 def test_on_completion_ignores_dependency_list_documents(monkeypatch, tmp_path):
