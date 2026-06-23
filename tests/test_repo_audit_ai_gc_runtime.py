@@ -179,6 +179,13 @@ def test_ai_gc_helpers_passthrough_path_matching_and_findings_filtering():
     output_path = _artifact_path("audit")
     assert repo_audit_ai_gc._is_active_output_ai_gc_path(None, output_dir_path=output_path) is False
     assert repo_audit_ai_gc._is_active_output_ai_gc_path(f"{output_path}/", output_dir_path=output_path) is True
+    assert (
+        repo_audit_ai_gc._is_active_output_ai_gc_path(
+            _artifact_path("audit"),
+            output_dir_path=_artifact_path("audit-ci"),
+        )
+        is True
+    )
 
     passthrough = {"candidates": "not-a-list"}
     assert repo_audit_ai_gc._filter_ai_gc_report_for_output_dir(passthrough, output_dir_path=output_path) is passthrough
@@ -214,6 +221,34 @@ def test_ai_gc_helpers_passthrough_path_matching_and_findings_filtering():
     )
 
     assert [finding.id for finding in filtered_findings] == ["stale-ai-artifact", "other"]
+
+
+def test_ai_gc_filters_transient_repo_audit_output_dirs_even_for_other_output_dir() -> None:
+    report = {
+        "mode": "report",
+        "summary": {
+            "candidate_count": 2,
+            "artifact_candidate_count": 2,
+            "manifest_drift_candidate_count": 1,
+        },
+        "candidates": [
+            {"candidate_id": "stale-generated-output-manifest", "path": _artifact_path("audit")},
+            {"candidate_id": "stale-ai-artifact", "path": _artifact_path("old.json")},
+        ],
+        "failures": [],
+    }
+
+    filtered = repo_audit_ai_gc._filter_ai_gc_report_for_output_dir(
+        report,
+        output_dir_path=_artifact_path("audit-ci"),
+    )
+
+    assert filtered["candidates"] == [{"candidate_id": "stale-ai-artifact", "path": _artifact_path("old.json")}]
+    assert filtered["summary"] == {
+        "candidate_count": 1,
+        "artifact_candidate_count": 1,
+        "manifest_drift_candidate_count": 0,
+    }
 
 
 def test_path_size_bytes_skips_children_that_disappear_during_stat(monkeypatch, tmp_path):

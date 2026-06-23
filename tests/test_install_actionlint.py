@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import tarfile
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -20,22 +21,60 @@ def _build_tar_gz(binary_name: str, content: bytes) -> bytes:
     return buffer.getvalue()
 
 
+def _build_zip(binary_name: str, content: bytes) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, mode="w") as archive:
+        archive.writestr(binary_name, content)
+    return buffer.getvalue()
+
+
 def test_install_actionlint_writes_verified_binary(tmp_path: Path) -> None:
     archive_bytes = _build_tar_gz("actionlint", b"#!/bin/sh\necho actionlint\n")
+    expected_sha = hashlib.sha256(archive_bytes).hexdigest()
+    chmod_calls: list[int] = []
+
+    original_chmod = Path.chmod
+
+    def record_chmod(self: Path, mode: int, /, *, follow_symlinks: bool = True) -> None:
+        chmod_calls.append(mode)
+        original_chmod(self, mode, follow_symlinks=follow_symlinks)
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(Path, "chmod", record_chmod)
+
+    try:
+        installed_path = install_actionlint.install_actionlint(
+            version="1.7.12",
+            sha256=expected_sha,
+            bin_dir=tmp_path,
+            system="Linux",
+            machine="x86_64",
+            download_archive=lambda url: archive_bytes,
+        )
+    finally:
+        monkeypatch.undo()
+
+    assert installed_path == tmp_path.resolve() / "actionlint"
+    assert installed_path.read_bytes() == b"#!/bin/sh\necho actionlint\n"
+    assert chmod_calls
+    assert chmod_calls[-1] & 0o111
+
+
+def test_install_actionlint_writes_windows_binary(tmp_path: Path) -> None:
+    archive_bytes = _build_zip("actionlint.exe", b"MZ-actionlint")
     expected_sha = hashlib.sha256(archive_bytes).hexdigest()
 
     installed_path = install_actionlint.install_actionlint(
         version="1.7.12",
         sha256=expected_sha,
         bin_dir=tmp_path,
-        system="Linux",
+        system="Windows",
         machine="x86_64",
         download_archive=lambda url: archive_bytes,
     )
 
-    assert installed_path == tmp_path.resolve() / "actionlint"
-    assert installed_path.read_bytes() == b"#!/bin/sh\necho actionlint\n"
-    assert installed_path.stat().st_mode & 0o111
+    assert installed_path == tmp_path.resolve() / "actionlint.exe"
+    assert installed_path.read_bytes() == b"MZ-actionlint"
 
 
 def test_install_actionlint_rejects_checksum_mismatch(tmp_path: Path) -> None:

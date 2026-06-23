@@ -85,7 +85,7 @@ def list_tracked_repo_paths(
         sorted(
             raw_rel_path.strip()
             for raw_rel_path in completed.stdout.decode("utf-8", errors="replace").split("\x00")
-            if raw_rel_path.strip()
+            if raw_rel_path.strip() and (root / raw_rel_path.strip()).exists()
         )
     )
 
