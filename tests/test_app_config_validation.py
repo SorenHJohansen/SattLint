@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from pathlib import Path, PosixPath
+from pathlib import Path
 from types import SimpleNamespace
 from typing import ClassVar
 
@@ -211,14 +211,23 @@ def test_config_io_helper_guards_cover_windows_path_and_non_table_save(
     config_io_module = config_module._config_io_module
     config_paths_module = config_io_module._config_paths_module
 
+    class TrackingPath(type(tmp_path)):
+        home_calls: ClassVar[int] = 0
+
+        @classmethod
+        def home(cls) -> Path:
+            cls.home_calls += 1
+            raise AssertionError("Path.home should not be called when APPDATA is set")
+
     class _NonTableConfig:
         def get(self, _key: str, _default: object | None = None) -> object | None:
             return None
 
     monkeypatch.setattr(config_paths_module.os, "name", "nt", raising=False)
-    monkeypatch.setattr(config_paths_module, "Path", PosixPath)
+    monkeypatch.setattr(config_paths_module, "Path", TrackingPath)
     monkeypatch.setenv("APPDATA", str(tmp_path / "AppData"))
     assert config_module.get_config_path() == tmp_path / "AppData" / "sattlint" / "config.toml"
+    assert TrackingPath.home_calls == 0
 
     monkeypatch.setattr(config_io_module, "deepcopy", lambda _value: _NonTableConfig())
     with pytest.raises(ValueError, match="Config serialization must produce a table/object"):
