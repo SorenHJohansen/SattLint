@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import os
 import types
-from pathlib import Path, PosixPath
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -61,15 +61,14 @@ def test_pipeline_execution_helpers_cover_python_resolution_fallbacks(monkeypatc
     windows_python = windows_prefix / "python.exe"
     windows_python.write_text("", encoding="utf-8")
     monkeypatch.setattr(helper.sys, "prefix", str(windows_prefix.parent))
-    if os.name != "nt":
-        monkeypatch.setattr(helper, "Path", PosixPath)
+    monkeypatch.setattr(helper, "Path", type(tmp_path))
     monkeypatch.setattr(helper.os, "name", "nt")
 
     assert helper._resolve_python_executable() == str(windows_python.resolve())
 
     monkeypatch.setattr(helper.shutil, "which", lambda _name: None)
-    if os.name != "nt":
-        monkeypatch.setattr(helper.os, "name", "posix")
+    monkeypatch.setattr(helper, "Path", type(tmp_path))
+    monkeypatch.setattr(helper.os, "name", "posix")
     monkeypatch.setattr(helper.sys, "prefix", str(tmp_path / "no-such-prefix"))
 
     assert helper._resolve_python_executable() == str(missing_executable)
@@ -82,11 +81,11 @@ def test_pipeline_execution_helpers_cover_venv_tool_run_command_and_changed_file
     windows_tool = tmp_path / ".venv" / "Scripts" / "ruff.exe"
     windows_tool.parent.mkdir(parents=True)
     windows_tool.write_text("", encoding="utf-8")
-    if os.name != "nt":
-        monkeypatch.setattr(helper, "Path", PosixPath)
+    monkeypatch.setattr(helper, "Path", type(tmp_path))
     monkeypatch.setattr(helper.os, "name", "nt")
     assert helper._resolve_venv_tool("ruff") == str(windows_tool.resolve())
 
+    monkeypatch.setattr(helper, "Path", type(tmp_path))
     monkeypatch.setattr(helper.os, "name", "posix")
     monkeypatch.setattr(helper.shutil, "which", lambda name: f"/usr/bin/{name}")
     assert helper._resolve_venv_tool("pyright") == "/usr/bin/pyright"
