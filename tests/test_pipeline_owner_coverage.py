@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import types
 from pathlib import Path, PosixPath
 from types import SimpleNamespace
@@ -15,11 +16,12 @@ from sattlint.devtools.pipeline import _pipeline_parsing_helpers as pipeline_par
 
 
 def test_resolve_python_executable_preserves_venv_entrypoint(monkeypatch, tmp_path):
-    venv_bin = tmp_path / ".venv" / "bin"
+    is_win = os.name == "nt"
+    venv_bin = tmp_path / ".venv" / ("Scripts" if is_win else "bin")
     venv_bin.mkdir(parents=True)
     target = tmp_path / "python3.14"
     target.write_text("", encoding="utf-8")
-    venv_python = venv_bin / "python"
+    venv_python = venv_bin / ("python.exe" if is_win else "python")
     try:
         venv_python.symlink_to(target)
     except OSError:
