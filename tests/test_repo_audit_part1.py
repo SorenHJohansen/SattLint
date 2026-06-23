@@ -317,6 +317,23 @@ def test_list_tracked_repo_paths_returns_none_for_missing_git_and_failures(tmp_p
         assert repo_audit._list_tracked_repo_paths(tmp_path) is None
 
 
+def test_list_tracked_repo_paths_filters_deleted_worktree_entries(tmp_path):
+    existing = tmp_path / "README.md"
+    existing.write_text("# Demo\n", encoding="utf-8")
+
+    completed = subprocess.CompletedProcess(
+        args=["git", "ls-files", "-z"],
+        returncode=0,
+        stdout=b"README.md\x00consolidated-review.md\x00",
+        stderr=b"",
+    )
+    with (
+        patch("sattlint.devtools.audit.repo_audit.shutil.which", return_value="git"),
+        patch("sattlint.devtools.audit.repo_audit.subprocess.run", return_value=completed),
+    ):
+        assert repo_audit._list_tracked_repo_paths(tmp_path) == ("README.md",)
+
+
 def test_iter_repo_file_candidates_filters_generated_suffixes_and_large_files(tmp_path):
     readme = tmp_path / "README"
     readme.write_text("docs\n", encoding="utf-8")

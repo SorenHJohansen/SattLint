@@ -6,6 +6,24 @@ from typing import Any, cast
 
 from sattlint.devtools.json_helpers import json_mapping as _json_mapping
 
+_REPO_AUDIT_TRANSIENT_OUTPUT_DIRS = {
+    "artifacts/audit",
+    "artifacts/audit-ci",
+    "artifacts/audit-windows",
+}
+_REPO_AUDIT_TRANSIENT_OUTPUT_NAMES = {"audit", "audit-ci", "audit-windows"}
+
+
+def _is_transient_repo_audit_dir(candidate_path: str) -> bool:
+    normalized_path = candidate_path.rstrip("/")
+    if normalized_path in _REPO_AUDIT_TRANSIENT_OUTPUT_DIRS:
+        return True
+    if any(normalized_path.endswith(f"/{path}") for path in _REPO_AUDIT_TRANSIENT_OUTPUT_DIRS):
+        return True
+    if normalized_path.startswith("<external>/"):
+        return normalized_path.split("/", 1)[1] in _REPO_AUDIT_TRANSIENT_OUTPUT_NAMES
+    return False
+
 
 def _repo_audit_ai_gc_module() -> Any:
     from . import repo_audit as repo_audit_module  # noqa: PLC0415
@@ -60,9 +78,12 @@ def _ai_gc_report_findings(report: dict[str, Any]) -> list[Any]:
 
 
 def _is_active_output_ai_gc_path(path: str | None, *, output_dir_path: str | None) -> bool:
-    if not path or not output_dir_path:
+    if not path:
         return False
-    return path.rstrip("/") == output_dir_path.rstrip("/")
+    normalized_path = path.rstrip("/")
+    if output_dir_path and normalized_path == output_dir_path.rstrip("/"):
+        return True
+    return _is_transient_repo_audit_dir(normalized_path)
 
 
 def _filter_ai_gc_report_for_output_dir(report: dict[str, Any], *, output_dir_path: str | None) -> dict[str, Any]:
