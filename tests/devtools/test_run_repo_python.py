@@ -39,7 +39,7 @@ def test_main_preserves_passthrough_mode(monkeypatch: pytest.MonkeyPatch, tmp_pa
 
     assert exit_code == 7
     assert recorded == {
-        "command": ["/tmp/repo-python", "-m", "pytest"],
+        "command": [str(_resolved_python(tmp_path)), "-m", "pytest"],
         "cwd": tmp_path,
         "check": False,
         "capture_output": False,
