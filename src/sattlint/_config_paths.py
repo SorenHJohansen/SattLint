@@ -8,9 +8,11 @@ from pathlib import Path
 
 def get_config_path() -> Path:
     if os.name == "nt":
-        base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+        appdata = os.environ.get("APPDATA")
+        base = Path(appdata) if appdata is not None else Path.home() / "AppData" / "Roaming"
     else:
-        base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+        xdg_config_home = os.environ.get("XDG_CONFIG_HOME")
+        base = Path(xdg_config_home) if xdg_config_home is not None else Path.home() / ".config"
 
     cfg_dir = base / "sattlint"
     cfg_dir.mkdir(parents=True, exist_ok=True)
