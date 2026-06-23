@@ -4,7 +4,7 @@
 import json
 import os
 import pickle
-from pathlib import Path, PosixPath
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -106,15 +106,24 @@ def test_file_lookup_cache_supports_write_through_mode(tmp_path: Path) -> None:
 def test_cache_helpers_cover_lookup_env_and_validation_edges(tmp_path: Path, monkeypatch) -> None:  # noqa: PLR0915
     import sattlint.cache as cache_mod  # noqa: PLC0415
 
+    class TrackingPath(type(tmp_path)):
+        home_calls = 0
+
+        @classmethod
+        def home(cls) -> Path:
+            cls.home_calls += 1
+            raise AssertionError("Path.home should not be called when cache env vars are set")
+
     assert cache_mod._as_mapping(["not", "a", "mapping"]) is None
     mapping = {"name": "value"}
     assert cache_mod._as_mapping(mapping) is mapping
 
     windows_base = tmp_path / "WindowsAppData"
-    monkeypatch.setattr(cache_mod, "Path", PosixPath)
+    monkeypatch.setattr(cache_mod, "Path", TrackingPath)
     monkeypatch.setattr(cache_mod.os, "name", "nt", raising=False)
     monkeypatch.setenv("APPDATA", str(windows_base))
     assert cache_mod.get_cache_dir() == windows_base / "sattlint" / "cache"
+    assert TrackingPath.home_calls == 0
 
     xdg_config_base = tmp_path / "xdg-config"
     xdg_cache_base = tmp_path / "xdg-cache"
@@ -122,6 +131,7 @@ def test_cache_helpers_cover_lookup_env_and_validation_edges(tmp_path: Path, mon
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_config_base))
     monkeypatch.setenv("XDG_CACHE_HOME", str(xdg_cache_base))
     assert cache_mod.get_cache_dir() == xdg_cache_base / "sattlint"
+    assert TrackingPath.home_calls == 0
 
     legacy_cache_dir = xdg_config_base / "sattlint" / "cache"
     legacy_cache_dir.mkdir(parents=True, exist_ok=True)

@@ -178,7 +178,8 @@ def _remove_file(path: Path) -> bool:
 
 
 def _legacy_cache_dir() -> Path:
-    base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    xdg_config_home = os.environ.get("XDG_CONFIG_HOME")
+    base = Path(xdg_config_home) if xdg_config_home is not None else Path.home() / ".config"
     return base / "sattlint" / "cache"
 
 
@@ -226,10 +227,12 @@ def _migrate_legacy_cache_dir(cache_dir: Path) -> None:
 
 def get_cache_dir() -> Path:
     if os.name == "nt":
-        base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+        appdata = os.environ.get("APPDATA")
+        base = Path(appdata) if appdata is not None else Path.home() / "AppData" / "Roaming"
         cache_dir = base / "sattlint" / "cache"
     else:
-        base = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+        xdg_cache_home = os.environ.get("XDG_CACHE_HOME")
+        base = Path(xdg_cache_home) if xdg_cache_home is not None else Path.home() / ".cache"
         cache_dir = base / "sattlint"
         _migrate_legacy_cache_dir(cache_dir)
 
