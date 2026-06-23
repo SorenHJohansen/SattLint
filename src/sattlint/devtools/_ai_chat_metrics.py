@@ -50,12 +50,15 @@ def probe_session_store(session_db: Path | None, *, repo_root: Path) -> dict[str
             "explanation": "The session database could not be opened, so transcript JSONL remains the source of truth.",
         }
 
-    with connection:
-        tables = _existing_tables(connection)
-        session_count = _table_count(connection, "sessions") if "sessions" in tables else 0
-        turn_count = _table_count(connection, "turns") if "turns" in tables else 0
-        session_file_count = _table_count(connection, "session_files") if "session_files" in tables else 0
-        metadata_counts = _session_metadata_counts(connection) if "sessions" in tables else {}
+    try:
+        with connection:
+            tables = _existing_tables(connection)
+            session_count = _table_count(connection, "sessions") if "sessions" in tables else 0
+            turn_count = _table_count(connection, "turns") if "turns" in tables else 0
+            session_file_count = _table_count(connection, "session_files") if "session_files" in tables else 0
+            metadata_counts = _session_metadata_counts(connection) if "sessions" in tables else {}
+    finally:
+        connection.close()
 
     if turn_count > 0 and session_file_count > 0 and any(metadata_counts.values()):
         status = "usable"
