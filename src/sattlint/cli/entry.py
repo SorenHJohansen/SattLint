@@ -112,6 +112,10 @@ def _emit_value_list(*, values: tuple[str, ...], payload_key: str, output_format
     )
 
 
+def _is_version_request(argv: list[str]) -> bool:
+    return "--version" in argv
+
+
 def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sattlint",
@@ -313,6 +317,10 @@ def run_cli(  # noqa: PLR0915
 ) -> int:
     if build_cli_parser_fn is None:
         build_cli_parser_fn = build_cli_parser
+
+    if _is_version_request(argv):
+        print_output(f"sattlint {__version__}")
+        return exit_success
 
     parser = build_cli_parser_fn()
     try:

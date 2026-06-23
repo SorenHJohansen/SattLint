@@ -15,6 +15,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
+      contents: read
+      checks: read
+      issues: read
+      pull-requests: read
       security-events: write
       id-token: write
     steps:

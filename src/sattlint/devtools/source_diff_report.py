@@ -39,7 +39,15 @@ from sattlint.repo_paths import repo_root_from
 from sattlint.tracing import collect_ast_summary
 from sattlint.validation import validate_transformed_basepicture
 
-REPO_ROOT = repo_root_from(Path(__file__))
+
+def _source_diff_repo_root() -> Path:
+    try:
+        return repo_root_from(Path(__file__))
+    except RuntimeError:
+        return Path(__file__).resolve().parent
+
+
+REPO_ROOT = _source_diff_repo_root()
 DEFAULT_JSON_OUTPUT_FILENAME = "source_diff_report.json"
 DEFAULT_MARKDOWN_OUTPUT_FILENAME = "source_diff_report.md"
 

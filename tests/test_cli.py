@@ -12,6 +12,7 @@ import pytest
 
 import sattlint
 from sattlint import _app_interactive_menus, _app_startup, app, app_base, engine
+from sattlint.__version__ import __version__ as package_version
 from sattlint.cli import command_handlers as cli_command_handlers
 from sattlint.cli import entry as cli_entry
 from sattlint.models import IssueKind
@@ -756,7 +757,7 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
 
 
 def test_package_exports_version():
-    assert sattlint.__version__ == "0.1.1"
+    assert sattlint.__version__ == package_version
 
 
 def test_package_root_exports_forward_workspace_helpers(monkeypatch):
@@ -818,6 +819,18 @@ def test_module_entrypoint_exits_with_cli_status(monkeypatch):
 def test_run_cli_version_flag(capsys):
     assert _run_base_cli(["--version"]) == app_base.EXIT_SUCCESS
 
+    captured = capsys.readouterr()
+    assert captured.out.strip() == f"sattlint {sattlint.__version__}"
+    assert captured.err == ""
+
+
+def test_run_cli_version_flag_skips_full_parser_build(capsys):
+    exit_code = _run_base_cli(
+        ["--version"],
+        build_cli_parser_fn=lambda: pytest.fail("--version should not build the full CLI parser"),
+    )
+
+    assert exit_code == app_base.EXIT_SUCCESS
     captured = capsys.readouterr()
     assert captured.out.strip() == f"sattlint {sattlint.__version__}"
     assert captured.err == ""

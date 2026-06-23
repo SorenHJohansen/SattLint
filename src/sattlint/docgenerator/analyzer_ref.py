@@ -17,7 +17,15 @@ from ..repo_paths import repo_root_from
 if t.TYPE_CHECKING:
     pass
 
-REPO_ROOT = repo_root_from(pathlib.Path(__file__))
+
+def _analyzer_ref_repo_root() -> pathlib.Path:
+    try:
+        return repo_root_from(pathlib.Path(__file__))
+    except RuntimeError:
+        return pathlib.Path(__file__).resolve().parent
+
+
+REPO_ROOT = _analyzer_ref_repo_root()
 FIXTURES_DIR = REPO_ROOT / "tests" / "fixtures"
 SAMPLE_FILES_DIR = FIXTURES_DIR / "sample_sattline_files"
 CORPUS_DIR = FIXTURES_DIR / "corpus"
