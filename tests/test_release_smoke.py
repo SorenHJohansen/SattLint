@@ -44,7 +44,7 @@ def test_run_release_smoke_writes_success_reports(tmp_path: Path) -> None:
         assert capture_output is True
         assert check is False
         commands.append(tuple(command))
-        if command[0].endswith("sattlint-lsp"):
+        if Path(command[0]).stem == "sattlint-lsp":
             raise subprocess.TimeoutExpired(command, timeout if timeout is not None else 1.0)
         return subprocess.CompletedProcess(list(command), 0, stdout="ok", stderr="")
 
@@ -64,7 +64,7 @@ def test_run_release_smoke_writes_success_reports(tmp_path: Path) -> None:
     assert commands[3][-2:] == ("syntax-check", str(sample_path.resolve()))
     assert commands[4][-3:] == ("--profile", "full", "--list-checks")
     assert commands[4][1] == "repo-audit"
-    assert commands[5][0].endswith("sattlint-lsp")
+    assert Path(commands[5][0]).stem == "sattlint-lsp"
 
     status_report = _read_json(output_dir / "status.json")
     summary_report = _read_json(output_dir / "summary.json")
