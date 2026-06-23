@@ -12,7 +12,6 @@ import sys
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 from typing import Protocol, TypedDict, cast
 
@@ -273,14 +272,13 @@ class WorkstationMapper:
 class SattLineConfigExtractor:
     """Extracts configuration information from SattLine project files."""
 
-    def __init__(self, root_dir: Path, *, use_cached_dependency_reads: bool = True):
+    def __init__(self, root_dir: Path):
         self.root_dir = root_dir
         self.unitlib_dir = root_dir / "unitlib"
         self.projectlib_dir = root_dir / "projectlib"
         self.nnelib_dir = root_dir / "nnelib"
         self.sglib_dir = root_dir / "SL_Library"
         self.kfiles_dir = root_dir / "Configuration"
-        self._use_cached_dependency_reads = use_cached_dependency_reads
 
         # Compiled regex patterns
         self.slc_pattern = re.compile(r"SLC(\d+)", re.IGNORECASE)
@@ -336,36 +334,10 @@ class SattLineConfigExtractor:
             return []
         return sorted(directory.glob("*.z"))
 
-    @staticmethod
-    @lru_cache(maxsize=512)
-    def _read_file_contents(file_path: Path, signature: tuple[int, int] | None) -> str:
-        """Cache file reads to avoid redundant I/O."""
-        del signature
-        return read_text_with_fallback(file_path)
-
-    @staticmethod
-    def _file_signature(file_path: Path) -> tuple[int, int] | None:
-        try:
-            stat_result = file_path.stat()
-        except OSError:
-            return None
-        return stat_result.st_mtime_ns, stat_result.st_size
-
-    def _read_file_cached(self, file_path: Path) -> str:
-        return self._read_file_contents(file_path, self._file_signature(file_path))
-
-    @classmethod
-    def clear_dependency_read_cache(cls) -> None:
-        cls._read_file_contents.cache_clear()
-
     def read_dependencies(self, z_file: Path) -> list[str]:
         """Read dependency list from .z file and remove .z extensions (preserve original case)."""
         try:
-            text = (
-                read_text_with_fallback(z_file)
-                if not self._use_cached_dependency_reads
-                else self._read_file_cached(z_file)
-            )
+            text = read_text_with_fallback(z_file)
             # Remove .z extension from each dependency, preserve original case
             deps = [line.strip().replace(".z", "") for line in text.splitlines() if line.strip()]
             return deps
