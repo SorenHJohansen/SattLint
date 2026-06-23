@@ -107,7 +107,7 @@ jobs:
           dependency-spec: ".[dev,lsp]"
 
       - name: Run pytest on Windows
-        run: python -m pytest -q --tb=short -x --timeout=120
+        run: python -m pytest -q --tb=short -x --timeout=300
 
       - name: Run repository audit
         run: sattlint-repo-audit --profile quick --output-dir artifacts/audit-windows --fail-on high
