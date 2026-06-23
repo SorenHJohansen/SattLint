@@ -60,9 +60,10 @@ def test_pipeline_execution_helpers_cover_python_resolution_fallbacks(monkeypatc
     windows_prefix.mkdir(parents=True)
     windows_python = windows_prefix / "python.exe"
     windows_python.write_text("", encoding="utf-8")
-    monkeypatch.setattr(helper.os, "name", "nt")
-    monkeypatch.setattr(helper, "Path", PosixPath)
     monkeypatch.setattr(helper.sys, "prefix", str(windows_prefix.parent))
+    if os.name != "nt":
+        monkeypatch.setattr(helper, "Path", PosixPath)
+    monkeypatch.setattr(helper.os, "name", "nt")
 
     assert helper._resolve_python_executable() == str(windows_python.resolve())
 
@@ -79,8 +80,9 @@ def test_pipeline_execution_helpers_cover_venv_tool_run_command_and_changed_file
     windows_tool = tmp_path / ".venv" / "Scripts" / "ruff.exe"
     windows_tool.parent.mkdir(parents=True)
     windows_tool.write_text("", encoding="utf-8")
+    if os.name != "nt":
+        monkeypatch.setattr(helper, "Path", PosixPath)
     monkeypatch.setattr(helper.os, "name", "nt")
-    monkeypatch.setattr(helper, "Path", PosixPath)
     assert helper._resolve_venv_tool("ruff") == str(windows_tool.resolve())
 
     monkeypatch.setattr(helper.os, "name", "posix")
