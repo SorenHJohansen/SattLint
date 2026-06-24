@@ -2,7 +2,7 @@
 
 # Build and install the project
 # Install the local project (source tree, not external — hash pinning not applicable)
-_pip="python3 -m pip"
+_pip="/usr/local/bin/python3.13 -m pip"
 $_pip install --no-build-isolation .
 
 # Build fuzzers into $OUT
