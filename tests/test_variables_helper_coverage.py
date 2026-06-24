@@ -438,15 +438,15 @@ def test_variables_status_naming_role_and_issue_helpers_cover_remaining_branches
         add_issue=_add_issue,
     )
 
-    def _iter_variables_for_datatype_field_analysis(
+    def iter_variables_for_datatype_field_analysis(
         _self: object,
     ) -> list[tuple[list[str], Variable, None, bool]]:
         return [(["Root"], command_var, None, True), (["Root"], alarm_var, None, True)]
 
     monkeypatch.setattr(
         variables_status_module,
-        "_iter_variables_for_datatype_field_analysis",
-        _iter_variables_for_datatype_field_analysis,
+        "iter_variables_for_datatype_field_analysis",
+        iter_variables_for_datatype_field_analysis,
     )
     variables_status_impl._add_naming_role_mismatch_issues(analyzer)
     assert added_issues == [(IssueKind.NAMING_ROLE_MISMATCH, ["Root"], command_var, "mismatch")]

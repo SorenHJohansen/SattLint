@@ -162,7 +162,7 @@ def test_run_recommended_repo_audit_slice_writes_combined_reports(monkeypatch, t
         "_run_pipeline",
         lambda *args, **kwargs: {"status": {"overall_status": "pass"}},
     )
-    monkeypatch.setattr(repo_audit, "_find_pipeline_findings", lambda *_args: [pipeline_finding])
+    monkeypatch.setattr(repo_audit, "find_pipeline_findings", lambda *_args: [pipeline_finding])
     monkeypatch.setattr(repo_audit_entrypoints, "collect_custom_findings", lambda *args, **kwargs: [custom_finding])
     monkeypatch.setattr(repo_audit, "build_ai_gc_report", lambda *_args, **_kwargs: ai_gc_report)
     monkeypatch.setattr(
@@ -259,7 +259,7 @@ def test_find_public_readiness_findings_assigns_change_scope_paths(tmp_path):
         encoding="utf-8",
     )
 
-    findings = repo_audit._find_public_readiness_findings(
+    findings = repo_audit.find_public_readiness_findings(
         tmp_path,
         tracked_paths=(
             "README.md",
