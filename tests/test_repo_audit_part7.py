@@ -68,7 +68,7 @@ def test_audit_repository_mirrors_latest_reports_to_stable_directory(tmp_path):
 
     with (
         patch.object(repo_audit, "collect_custom_findings", return_value=[finding]),
-        patch.object(repo_audit, "_find_pipeline_findings", return_value=[]),
+        patch.object(repo_audit, "find_pipeline_findings", return_value=[]),
         patch.object(repo_audit.pipeline_module, "_run_pipeline", return_value=pipeline_summary),
     ):
         repo_audit.audit_repository(
@@ -122,7 +122,7 @@ def test_audit_repository_run_history_keeps_last_ten_runs_and_marks_older_entrie
 
     with (
         patch.object(repo_audit, "collect_custom_findings", return_value=[finding]),
-        patch.object(repo_audit, "_find_pipeline_findings", return_value=[]),
+        patch.object(repo_audit, "find_pipeline_findings", return_value=[]),
         patch.object(repo_audit.pipeline_module, "_run_pipeline", return_value=pipeline_summary),
         patch.object(repo_audit, "_collect_audit_git_state", return_value={"head": "abc123", "dirty": False}),
     ):

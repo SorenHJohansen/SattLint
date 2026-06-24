@@ -93,7 +93,7 @@ def test_parse_coverage_findings_ignores_untracked_coverage_xml(tmp_path: Path):
         encoding="utf-8",
     )
 
-    findings = repo_audit._parse_coverage_findings(tmp_path, tracked_paths=("README.md",))
+    findings = repo_audit.parse_coverage_findings(tmp_path, tracked_paths=("README.md",))
 
     assert findings == []
 
@@ -105,7 +105,7 @@ def test_find_public_readiness_findings_ignores_untracked_workflow(tmp_path: Pat
     workflow_path.parent.mkdir(parents=True)
     workflow_path.write_text("name: CI\n", encoding="utf-8")
 
-    findings = repo_audit._find_public_readiness_findings(
+    findings = repo_audit.find_public_readiness_findings(
         tmp_path,
         tracked_paths=("README.md", "LICENSE", "CONTRIBUTING.md", ".gitignore", "pyproject.toml"),
     )
@@ -120,7 +120,7 @@ def test_find_public_readiness_findings_flags_unexpected_tracked_root_entries(tm
         encoding="utf-8",
     )
 
-    findings = repo_audit._find_public_readiness_findings(
+    findings = repo_audit.find_public_readiness_findings(
         tmp_path,
         tracked_paths=(
             "README.md",
@@ -148,7 +148,7 @@ def test_find_public_readiness_findings_flags_missing_public_support_docs(tmp_pa
         encoding="utf-8",
     )
 
-    findings = repo_audit._find_public_readiness_findings(
+    findings = repo_audit.find_public_readiness_findings(
         tmp_path,
         tracked_paths=(
             "README.md",
@@ -187,7 +187,7 @@ def test_find_public_readiness_findings_flags_missing_readme_public_links(tmp_pa
         encoding="utf-8",
     )
 
-    findings = repo_audit._find_public_readiness_findings(
+    findings = repo_audit.find_public_readiness_findings(
         tmp_path,
         tracked_paths=(
             "README.md",
@@ -233,7 +233,7 @@ def test_find_public_readiness_findings_flags_publish_workflow_security_gaps(tmp
     )
     tracked_paths.append(".github/workflows/publish.yml")
 
-    findings = repo_audit._find_public_readiness_findings(tmp_path, tracked_paths=tuple(tracked_paths))
+    findings = repo_audit.find_public_readiness_findings(tmp_path, tracked_paths=tuple(tracked_paths))
 
     findings_by_id = {finding.id: finding for finding in findings}
     assert findings_by_id["workflow-level-id-token-write"].path == ".github/workflows/publish.yml"
@@ -257,7 +257,7 @@ def test_find_public_readiness_findings_flags_missing_npm_dependabot_monitoring(
     package_json.write_text('{"name": "demo-extension"}\n', encoding="utf-8")
     tracked_paths.extend((".github/workflows/ci.yml", ".github/dependabot.yml", "vscode/sattline-vscode/package.json"))
 
-    findings = repo_audit._find_public_readiness_findings(tmp_path, tracked_paths=tuple(tracked_paths))
+    findings = repo_audit.find_public_readiness_findings(tmp_path, tracked_paths=tuple(tracked_paths))
 
     npm_finding = next(finding for finding in findings if finding.id == "missing-npm-dependabot-monitoring")
     assert npm_finding.path == ".github/dependabot.yml"
@@ -305,7 +305,7 @@ def test_find_public_readiness_findings_ignores_hardened_publish_and_monitored_n
         (".github/workflows/publish.yml", ".github/dependabot.yml", "vscode/sattline-vscode/package.json")
     )
 
-    findings = repo_audit._find_public_readiness_findings(tmp_path, tracked_paths=tuple(tracked_paths))
+    findings = repo_audit.find_public_readiness_findings(tmp_path, tracked_paths=tuple(tracked_paths))
 
     finding_ids = {finding.id for finding in findings}
     assert "workflow-level-id-token-write" not in finding_ids
@@ -336,7 +336,7 @@ def test_find_public_readiness_findings_flags_unverified_workflow_downloads_and_
     )
     tracked_paths.extend((".github/workflows/ci.yml", "scripts/unsafe-helper.sh"))
 
-    findings = repo_audit._find_public_readiness_findings(tmp_path, tracked_paths=tuple(tracked_paths))
+    findings = repo_audit.find_public_readiness_findings(tmp_path, tracked_paths=tuple(tracked_paths))
 
     findings_by_id = {finding.id: finding for finding in findings}
     assert findings_by_id["workflow-download-without-verification"].path == ".github/workflows/ci.yml"

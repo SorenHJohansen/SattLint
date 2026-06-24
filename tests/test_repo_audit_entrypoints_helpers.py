@@ -10,12 +10,12 @@ from sattlint.devtools.audit import repo_audit, repo_audit_entrypoints
 
 
 def test_repo_audit_entrypoint_helper_normalizers_and_reason_selection():
-    assert repo_audit_entrypoints._changed_file_flag_args(["src\\main.py", "src/main.py", ""]) == [
+    assert repo_audit_entrypoints.changed_file_flag_args(["src\\main.py", "src/main.py", ""]) == [
         "--changed-file",
         "src/main.py",
     ]
     assert repo_audit_entrypoints._planning_string_list(("not", "a", "list")) == []
-    assert repo_audit_entrypoints._focused_python_files(
+    assert repo_audit_entrypoints.focused_python_files(
         [
             "src/main.py",
             "src/main.py",
@@ -25,7 +25,7 @@ def test_repo_audit_entrypoint_helper_normalizers_and_reason_selection():
             "pkg/ignored.py",
         ]
     ) == ["src/main.py", "tests/test_main.py", "scripts/build.py"]
-    assert repo_audit_entrypoints._owner_test_targets_for_checks(
+    assert repo_audit_entrypoints.owner_test_targets_for_checks(
         [
             {"owner_test_targets": ["tests/test_a.py", "tests/test_a.py"]},
             {"owner_test_targets": ["tests/test_b.py"]},
@@ -63,7 +63,7 @@ def test_repo_audit_entrypoint_helper_normalizers_and_reason_selection():
 
 
 def test_shell_command_uses_posix_joining():
-    assert repo_audit_entrypoints._shell_command(["python", "-m", "sattlint", "path with space"]) == (
+    assert repo_audit_entrypoints.shell_command(["python", "-m", "sattlint", "path with space"]) == (
         "python -m sattlint 'path with space'"
     )
 
@@ -75,7 +75,7 @@ def test_focused_python_files_skips_duplicates_after_normalization(monkeypatch):
         lambda _changed_files: ["src/main.py", "src/main.py", "tests/test_main.py"],
     )
 
-    assert repo_audit_entrypoints._focused_python_files(["ignored"]) == ["src/main.py", "tests/test_main.py"]
+    assert repo_audit_entrypoints.focused_python_files(["ignored"]) == ["src/main.py", "tests/test_main.py"]
 
 
 def test_print_cli_summary_prints_terminal_findings(capsys):

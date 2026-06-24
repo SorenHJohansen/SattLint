@@ -373,7 +373,7 @@ def test_run_harness_freshness_check_translates_ai_and_doc_findings(monkeypatch,
     )
     monkeypatch.setattr(repo_audit._doc_gardener_module, "scan_stale_docs", lambda: [])
 
-    findings = repo_audit._run_harness_freshness_check(cast(Any, SimpleNamespace(root=tmp_path)))
+    findings = repo_audit.run_harness_freshness_check(cast(Any, SimpleNamespace(root=tmp_path)))
 
     assert captured_kwargs["output_path"] == repo_audit._ai_work_map_module.DEFAULT_OUTPUT_PATH
     assert captured_kwargs["session_output_path"] == repo_audit._ai_work_map_module.DEFAULT_SESSION_CONTEXT_OUTPUT_PATH
