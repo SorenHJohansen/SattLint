@@ -32,7 +32,7 @@ jobs:
         shell: bash
         run: |
           python -m venv /tmp/clean-venv
-          /tmp/clean-venv/bin/uv pip install --system .
+          /tmp/clean-venv/bin/pip install .
           /tmp/clean-venv/bin/sattlint --version
 
   repo-gate:
