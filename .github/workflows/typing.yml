@@ -111,8 +111,5 @@ jobs:
           install-dependencies: "false"
           install-node: "true"
 
-      - name: Materialize npm lockfile for audit
-        run: npm install --package-lock-only --ignore-scripts --no-fund --no-audit
-
       - name: Audit VS Code client dependencies
         run: npm audit --audit-level=high

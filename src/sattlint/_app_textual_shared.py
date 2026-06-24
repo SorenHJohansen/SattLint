@@ -62,7 +62,7 @@ except ImportError:  # pragma: no cover - optional dependency path
     _TEXTUAL_TEXT_AREA: Any = None
 else:
 
-    class _CompatStatic(_ImportedStatic):
+    class _CompatStatic(_ImportedStatic):  # pyright: ignore[reportUntypedBaseClass]
         @property
         def renderable(self) -> object:
             return self.content

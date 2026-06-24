@@ -18,7 +18,7 @@ Do not open a public issue for a suspected security vulnerability.
 
 Preferred path:
 
-1. Use GitHub Security Advisories for this repository and choose `Report a vulnerability`.
+1. Use [GitHub Security Advisories](https://github.com/SorenHJohansen/SattLint/security/advisories/new) for this repository and choose `Report a vulnerability`.
 2. Include affected version, impact, reproduction details, and any proposed mitigation.
 3. If credentials, tokens, or private paths are involved, redact them before submission.
 
