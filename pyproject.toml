@@ -7,7 +7,7 @@ name = "sattlint"
 dynamic = ["version"]
 description = "Static analysis, validation, documentation, and LSP tooling for SattLine projects"
 readme = "README.md"
-license = "MIT"
+license = { text = "MIT" }
 authors = [{ name = "S\u00f8ren H. Johansen" }]
 requires-python = ">=3.13"
 keywords = ["sattline", "static-analysis", "lsp", "documentation", "plc"]
