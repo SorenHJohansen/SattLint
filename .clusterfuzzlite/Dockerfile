@@ -8,10 +8,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && wget -q https://www.python.org/ftp/python/3.13.3/Python-3.13.3.tar.xz \
     && tar -xf Python-3.13.3.tar.xz \
     && cd Python-3.13.3 \
-    && ./configure \
+    && ./configure --enable-shared \
     && make -j"$(nproc)" \
     && make altinstall \
     && cd .. && rm -rf Python-3.13.3 Python-3.13.3.tar.xz \
+    && ldconfig \
     && /usr/local/bin/python3.13 -m ensurepip --upgrade \
     && /usr/local/bin/python3.13 -m pip install --upgrade pip setuptools wheel pyinstaller atheris \
     && rm -rf /var/lib/apt/lists/*
