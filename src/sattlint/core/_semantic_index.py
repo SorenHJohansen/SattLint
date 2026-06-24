@@ -26,11 +26,11 @@ from ._semantic_helpers import (
     format_datatype,
     resolve_field_datatype,
 )
-from ._semantic_index_reference_support import _SemanticIndexReferenceSupportMixin
+from ._semantic_index_reference_support import SemanticIndexReferenceSupportMixin
 from ._semantic_snapshot import ReferenceOccurrence, SymbolDefinition, SymbolReference
 
 
-class _SemanticIndexBuilder(_SemanticIndexReferenceSupportMixin):
+class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
     def __init__(
         self,
         base_picture: BasePicture,

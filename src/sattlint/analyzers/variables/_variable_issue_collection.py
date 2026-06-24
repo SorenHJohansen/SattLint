@@ -34,7 +34,7 @@ __all__ = [
     "_add_unused_datatype_field_issues",
     "_build_root_variable_access_summaries",
     "_collect_issues_from_module",
-    "_iter_variables_for_datatype_field_analysis",
+    "iter_variables_for_datatype_field_analysis",
 ]
 
 _HIGH_FAN_IN_OUT_THRESHOLD = 3
@@ -212,7 +212,7 @@ def _add_field_usage_asymmetry_issues(self: VariablesAnalyzer) -> None:
     if not collect_field_read_only and not collect_field_never_read:
         return
 
-    for path, variable, role, root_owned_decl in _iter_variables_for_datatype_field_analysis(self):
+    for path, variable, role, root_owned_decl in iter_variables_for_datatype_field_analysis(self):
         if isinstance(variable.datatype, Simple_DataType):
             continue
 
@@ -271,7 +271,7 @@ def _add_field_usage_asymmetry_issues(self: VariablesAnalyzer) -> None:
                 )
 
 
-def _iter_variables_for_datatype_field_analysis(
+def iter_variables_for_datatype_field_analysis(
     self: VariablesAnalyzer,
 ) -> list[tuple[list[str], Variable, str, bool]]:
     variables: list[tuple[list[str], Variable, str, bool]] = []
@@ -365,7 +365,7 @@ def _add_unused_datatype_field_issues(self: VariablesAnalyzer) -> None:
     if not datatype_state:
         return
 
-    for path, variable, role, root_owned_decl in _iter_variables_for_datatype_field_analysis(self):
+    for path, variable, role, root_owned_decl in iter_variables_for_datatype_field_analysis(self):
         if isinstance(variable.datatype, Simple_DataType):
             continue
 
@@ -614,10 +614,10 @@ class VariablesIssueCollectionMixin:
     ) -> None:
         _add_issue(self, kind, path, variable, role, field_path)
 
-    def _iter_variables_for_datatype_field_analysis(
+    def iter_variables_for_datatype_field_analysis(
         self: Any,
     ) -> list[tuple[list[str], Variable, str, bool]]:
-        return _iter_variables_for_datatype_field_analysis(self)
+        return iter_variables_for_datatype_field_analysis(self)
 
     def _add_unused_datatype_field_issues(self: Any) -> None:
         _add_unused_datatype_field_issues(self)

@@ -14,7 +14,7 @@ from ._semantic_snapshot import ReferenceOccurrence
 from .ast_tools import iter_call_sites, iter_variable_refs
 
 
-class _SemanticIndexReferenceSupportMixin:
+class SemanticIndexReferenceSupportMixin:
     def _record_scope_references(
         self: Any,
         node: object,
@@ -326,4 +326,4 @@ class _SemanticIndexReferenceSupportMixin:
             )
 
 
-__all__ = ["_SemanticIndexReferenceSupportMixin"]
+__all__ = ["SemanticIndexReferenceSupportMixin"]

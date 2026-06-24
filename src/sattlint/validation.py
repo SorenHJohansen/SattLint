@@ -29,9 +29,9 @@ from ._validation_shared import (
     StructuralValidationError,
     ValidationWarning,
     ValidationWarningSink,
-    _ref_span,
-    _span_kwargs,
-    _warn_or_raise,
+    ref_span,
+    span_kwargs,
+    warn_or_raise,
 )
 from ._validation_type_helpers import (
     BUILTIN_DATATYPE_NAMES as _BUILTIN_DATATYPE_NAMES,
@@ -159,12 +159,12 @@ def _validate_declared_variable(
             if suggestion is not None:
                 raise StructuralValidationError(
                     f"{context} variable {variable.name!r} uses unknown datatype {variable.datatype_text!r}; did you mean {suggestion!r}?",
-                    **_span_kwargs(variable.declaration_span),
+                    **span_kwargs(variable.declaration_span),
                 )
             if not allow_unresolved_external_datatypes:
                 raise StructuralValidationError(
                     f"{context} variable {variable.name!r} uses unknown datatype {variable.datatype_text!r}",
-                    **_span_kwargs(variable.declaration_span),
+                    **span_kwargs(variable.declaration_span),
                 )
 
     if variable.init_value is None:
@@ -173,7 +173,7 @@ def _validate_declared_variable(
     if getattr(variable, "init_is_duration", False) and not _is_valid_duration_literal(variable.init_value):
         raise StructuralValidationError(
             f"{context} variable {variable.name!r} has invalid duration literal {variable.init_value!r}",
-            **_span_kwargs(variable.declaration_span),
+            **span_kwargs(variable.declaration_span),
         )
 
     if _has_time_literal_marker(variable.init_value) and not _is_valid_time_literal(
@@ -181,7 +181,7 @@ def _validate_declared_variable(
     ):
         raise StructuralValidationError(
             f"{context} variable {variable.name!r} has invalid time literal {_extract_time_literal(variable.init_value)!r}",
-            **_span_kwargs(variable.declaration_span),
+            **span_kwargs(variable.declaration_span),
         )
 
     init_datatype = _infer_literal_datatype(
@@ -208,7 +208,7 @@ def _validate_declared_variable(
     raise StructuralValidationError(
         f"{context} variable {variable.name!r} has init value {variable.init_value!r} with datatype {_format_datatype(init_datatype)!r} "
         f"but declared datatype is {_format_datatype(variable.datatype)!r}",
-        **_span_kwargs(variable.declaration_span),
+        **span_kwargs(variable.declaration_span),
     )
 
 
@@ -334,7 +334,7 @@ def _validate_datatypes(
         if len(datatype.var_list or []) == 1:
             raise StructuralValidationError(
                 f"{context} datatype {datatype.name!r} must declare at least 2 fields",
-                **_span_kwargs(datatype.declaration_span),
+                **span_kwargs(datatype.declaration_span),
             )
         _validate_variable_list(
             datatype.var_list,
@@ -363,7 +363,7 @@ def _validate_unique_submodule_names(
         if key in seen:
             raise StructuralValidationError(
                 f"{context} has duplicate submodule names {seen[key]!r} and {name!r}",
-                **_span_kwargs(module.header.declaration_span),
+                **span_kwargs(module.header.declaration_span),
             )
         seen[key] = name
 
@@ -405,12 +405,12 @@ def _validate_parameter_mappings(
         target_ref = cast(VariableRef | None, getattr(mapping, "target", None))
         if not _is_variable_ref_node(target_ref):
             continue
-        target_name, target_span = str(target_ref.get(const.KEY_VAR_NAME)), _ref_span(target_ref)
+        target_name, target_span = str(target_ref.get(const.KEY_VAR_NAME)), ref_span(target_ref)
         target_key = target_name.casefold()
         if target_key in seen:
             raise StructuralValidationError(
                 f"{context} has duplicate parameter mapping targets {seen[target_key]!r} and {target_name!r}",
-                **_span_kwargs(target_span),
+                **span_kwargs(target_span),
                 length=max(len(target_name), 1),
             )
         seen[target_key] = target_name
@@ -430,13 +430,13 @@ def _validate_parameter_mappings(
             if isinstance(target_variable.datatype, Simple_DataType):
                 raise StructuralValidationError(
                     f"{context} parameter mapping target {target_name!r} uses field access on non-record parameter {target_variable.name!r}",
-                    **_span_kwargs(target_span),
+                    **span_kwargs(target_span),
                     length=max(len(target_name), 1),
                 )
             if type_graph.has_record(str(target_variable.datatype)):
                 raise StructuralValidationError(
                     f"{context} parameter mapping target {target_name!r} does not exist",
-                    **_span_kwargs(target_span),
+                    **span_kwargs(target_span),
                     length=max(len(target_name), 1),
                 )
             continue
@@ -452,14 +452,14 @@ def _validate_parameter_mappings(
             if bool(getattr(mapping, "is_duration", False)) and not _is_valid_duration_literal(source_literal):
                 raise StructuralValidationError(
                     f"{context} maps invalid duration literal {source_literal!r} to parameter target {target_name!r}",
-                    **_span_kwargs(target_span),
+                    **span_kwargs(target_span),
                 )
             if _has_time_literal_marker(source_literal) and not _is_valid_time_literal(
                 _extract_time_literal(source_literal)
             ):
                 raise StructuralValidationError(
                     f"{context} maps invalid time literal {_extract_time_literal(source_literal)!r} to parameter target {target_name!r}",
-                    **_span_kwargs(target_span),
+                    **span_kwargs(target_span),
                 )
             actual_datatype = _infer_literal_datatype(
                 source_literal,
@@ -483,11 +483,11 @@ def _validate_parameter_mappings(
         if _assignment_type_matches(actual_datatype, target_datatype):
             continue
 
-        _warn_or_raise(
+        warn_or_raise(
             f"{context} maps {source_description or 'value'!r} with datatype {_format_datatype(actual_datatype)!r} "
             f"to parameter target {target_name!r} with datatype {_format_datatype(target_datatype)!r}",
             warning_sink=policy.warning_sink if policy.warn_incompatible_parameter_mappings else None,
-            **_span_kwargs(target_span),
+            **span_kwargs(target_span),
         )
 
 

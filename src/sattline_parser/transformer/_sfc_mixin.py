@@ -27,13 +27,13 @@ from sattline_parser.models.ast_model import (
     SFCTransitionSub,
 )
 
-from ._module_shared import TransformerItem, TransformerTree, _coord_pair, _tree_children
+from ._module_shared import TransformerItem, TransformerTree, coord_pair, tree_children
 
 CodeBlockPayload = dict[str, list[object]]
 SfcBody = list[object]
 
 
-class _SFCMixin:
+class SFCMixin:
     """Mixin providing SFC (sequence function chart) transformation methods."""
 
     def entercode(self, items: list[TransformerItem]) -> CodeBlockPayload:
@@ -132,7 +132,7 @@ class _SFCMixin:
                 f"got: {items!r}"
             )
         tree = cast(TransformerTree, items[2])
-        return SFCTransitionSub(name=items[1], body=_tree_children(tree))
+        return SFCTransitionSub(name=items[1], body=tree_children(tree))
 
     def seqsub(self, items: list[TransformerItem]) -> SFCSubsequence:
         """Grammar seqsub -> SUBSEQUENCE NAME sequence_body ENDSUBSEQUENCE."""
@@ -143,7 +143,7 @@ class _SFCMixin:
         ):
             raise ValueError(f"seqsub expected (SUBSEQUENCE, NAME, sequence_body, ENDSUBSEQUENCE); got: {items!r}")
         tree = cast(TransformerTree, items[2])
-        return SFCSubsequence(name=items[1], body=_tree_children(tree))
+        return SFCSubsequence(name=items[1], body=tree_children(tree))
 
     def seqalternative(self, items: list[TransformerItem]) -> SFCAlternative:
         """Grammar seqalternative -> ALTERNATIVESEQ sequence_body (ALTERNATIVEBRANCH sequence_body)+ ENDALTERNATIVE."""
@@ -151,7 +151,7 @@ class _SFCMixin:
         for item in items:
             if isinstance(item, Tree) and item.data == const.KEY_SEQUENCE_BODY:
                 tree = cast(TransformerTree, item)
-                branches.append(_tree_children(tree))
+                branches.append(tree_children(tree))
         return SFCAlternative(branches=branches)
 
     def seqparallel(self, items: list[TransformerItem]) -> SFCParallel:
@@ -160,7 +160,7 @@ class _SFCMixin:
         for item in items:
             if isinstance(item, Tree) and item.data == const.KEY_SEQUENCE_BODY:
                 tree = cast(TransformerTree, item)
-                branches.append(_tree_children(tree))
+                branches.append(tree_children(tree))
         return SFCParallel(branches=branches)
 
     def seqfork(self, items: list[TransformerItem]) -> SFCFork:
@@ -214,7 +214,7 @@ class _SFCMixin:
                 name = item
                 continue
 
-            coord = _coord_pair(item)
+            coord = coord_pair(item)
             if coord is not None:
                 if position is None:
                     position = coord
@@ -224,7 +224,7 @@ class _SFCMixin:
 
             if isinstance(item, Tree) and item.data == const.KEY_SEQ_CONTROL_OPS:
                 tree = cast(TransformerTree, item)
-                for child in _tree_children(tree):
+                for child in tree_children(tree):
                     if not isinstance(child, Token):
                         continue
                     if child.value == const.GRAMMAR_VALUE_SEQCONTROL:
@@ -235,7 +235,7 @@ class _SFCMixin:
 
             if isinstance(item, Tree) and item.data == const.KEY_SEQUENCE_BODY:
                 tree = cast(TransformerTree, item)
-                code.extend(_tree_children(tree))
+                code.extend(tree_children(tree))
 
         if name is None:
             raise ValueError("Name can't be None")
@@ -269,7 +269,7 @@ class _SFCMixin:
                 name = item
                 continue
 
-            coord = _coord_pair(item)
+            coord = coord_pair(item)
             if coord is not None:
                 if position is None:
                     position = coord
@@ -279,7 +279,7 @@ class _SFCMixin:
 
             if isinstance(item, Tree) and item.data == const.KEY_STATEMENT:
                 tree = cast(TransformerTree, item)
-                code.extend(_tree_children(tree))
+                code.extend(tree_children(tree))
 
         if name is None:
             raise ValueError("Name can't be None")
@@ -291,4 +291,4 @@ class _SFCMixin:
         return Equation(name=name, position=position, size=size, code=code)
 
 
-__all__ = ["_SFCMixin"]
+__all__ = ["SFCMixin"]

@@ -31,7 +31,7 @@ def _repo_audit_ai_gc_module() -> Any:
     return repo_audit_module
 
 
-def _ai_gc_report_findings(report: dict[str, Any]) -> list[Any]:
+def ai_gc_report_findings(report: dict[str, Any]) -> list[Any]:
     repo_audit = _repo_audit_ai_gc_module()
     findings: list[Any] = []
     candidates = report.get("candidates")
@@ -77,7 +77,7 @@ def _ai_gc_report_findings(report: dict[str, Any]) -> list[Any]:
     return findings
 
 
-def _is_active_output_ai_gc_path(path: str | None, *, output_dir_path: str | None) -> bool:
+def is_active_output_ai_gc_path(path: str | None, *, output_dir_path: str | None) -> bool:
     if not path:
         return False
     normalized_path = path.rstrip("/")
@@ -86,7 +86,7 @@ def _is_active_output_ai_gc_path(path: str | None, *, output_dir_path: str | Non
     return _is_transient_repo_audit_dir(normalized_path)
 
 
-def _filter_ai_gc_report_for_output_dir(report: dict[str, Any], *, output_dir_path: str | None) -> dict[str, Any]:
+def filter_ai_gc_report_for_output_dir(report: dict[str, Any], *, output_dir_path: str | None) -> dict[str, Any]:
     candidates = report.get("candidates")
     if not isinstance(candidates, list):
         return report
@@ -97,7 +97,7 @@ def _filter_ai_gc_report_for_output_dir(report: dict[str, Any], *, output_dir_pa
         if not (
             (candidate := _json_mapping(candidate_obj)) is not None
             and str(candidate.get("candidate_id") or "") == "stale-generated-output-manifest"
-            and _is_active_output_ai_gc_path(
+            and is_active_output_ai_gc_path(
                 str(candidate.get("path") or "") or None,
                 output_dir_path=output_dir_path,
             )
@@ -134,21 +134,21 @@ def _filter_ai_gc_report_for_output_dir(report: dict[str, Any], *, output_dir_pa
     return filtered_report
 
 
-def _filter_ai_gc_findings_for_output_dir(findings: list[Any], *, output_dir_path: str | None) -> list[Any]:
+def filter_ai_gc_findings_for_output_dir(findings: list[Any], *, output_dir_path: str | None) -> list[Any]:
     return [
         finding
         for finding in findings
         if not (
             finding.source == "ai-gc"
             and finding.id == "stale-generated-output-manifest"
-            and _is_active_output_ai_gc_path(finding.path, output_dir_path=output_dir_path)
+            and is_active_output_ai_gc_path(finding.path, output_dir_path=output_dir_path)
         )
     ]
 
 
 __all__ = [
-    "_ai_gc_report_findings",
-    "_filter_ai_gc_findings_for_output_dir",
-    "_filter_ai_gc_report_for_output_dir",
-    "_is_active_output_ai_gc_path",
+    "ai_gc_report_findings",
+    "filter_ai_gc_findings_for_output_dir",
+    "filter_ai_gc_report_for_output_dir",
+    "is_active_output_ai_gc_path",
 ]

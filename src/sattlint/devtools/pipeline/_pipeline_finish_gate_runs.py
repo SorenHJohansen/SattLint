@@ -44,7 +44,7 @@ def run_recommended_pipeline_finish_gate(
             recommended_checks=recommended_checks,
         ),
     )
-    selected_pipeline_checks = finish_gate_module._finish_gate_pipeline_check_ids(
+    selected_pipeline_checks = finish_gate_module.finish_gate_pipeline_check_ids(
         recommended_check_ids=recommended_check_ids,
         changed_files=recommended_changed_files,
         recommended_checks=recommended_checks,
@@ -67,7 +67,7 @@ def run_recommended_pipeline_finish_gate(
         selected_checks=selected_pipeline_checks,
         pytest_workers=pytest_workers,
     )
-    finish_gate_steps = finish_gate_module._build_finish_gate_commands(
+    finish_gate_steps = finish_gate_module.build_finish_gate_commands(
         profile=profile,
         output_dir=output_dir,
         changed_files=recommended_changed_files,
@@ -154,7 +154,7 @@ def run_recommended_pipeline_finish_gate(
         "commands": step_reports,
         "changed_files": recommended_changed_files,
         "selected_pipeline_checks": selected_pipeline_checks,
-        "owner_test_targets": finish_gate_module._owner_test_targets_for_checks(recommended_checks),
+        "owner_test_targets": finish_gate_module.owner_test_targets_for_checks(recommended_checks),
         "proof_requirements": proof_requirements,
         "coverage_proof": coverage_proof,
         "structural_surface_proof": structural_surface_proof,

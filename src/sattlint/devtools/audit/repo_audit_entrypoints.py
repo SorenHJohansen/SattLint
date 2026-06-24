@@ -66,18 +66,18 @@ def _run_verify_recommendations_check(_context: Any) -> list[Any]:
     return helper._run_verify_recommendations_check(_context)
 
 
-def _shell_command(command: list[str]) -> str:
+def shell_command(command: list[str]) -> str:
     return shlex.join(command)
 
 
-def _changed_file_flag_args(changed_files: Iterable[str]) -> list[str]:
+def changed_file_flag_args(changed_files: Iterable[str]) -> list[str]:
     args: list[str] = []
     for path_text in normalize_changed_files(changed_files):
         args.extend(["--changed-file", path_text])
     return args
 
 
-def _focused_python_files(changed_files: Iterable[str]) -> list[str]:
+def focused_python_files(changed_files: Iterable[str]) -> list[str]:
     focused_files: list[str] = []
     for path_text in normalize_changed_files(changed_files):
         if not path_text.endswith(".py"):
@@ -90,7 +90,7 @@ def _focused_python_files(changed_files: Iterable[str]) -> list[str]:
     return focused_files
 
 
-def _owner_test_targets_for_checks(recommended_checks: Iterable[dict[str, Any]]) -> list[str]:
+def owner_test_targets_for_checks(recommended_checks: Iterable[dict[str, Any]]) -> list[str]:
     targets: list[str] = []
     for entry in recommended_checks:
         for target in entry.get("owner_test_targets", []):
@@ -123,10 +123,10 @@ def _build_repo_audit_finish_gate_commands(
         pyright_command=pyright_command,
         python_command=python_command,
         repo_root=_repo_audit_entrypoints_module().REPO_ROOT,
-        changed_file_flag_args=_changed_file_flag_args,
-        focused_python_files=_focused_python_files,
-        build_owner_pytest_step=pipeline_module._build_owner_pytest_step,
-        shell_command=_shell_command,
+        changed_file_flag_args=changed_file_flag_args,
+        focused_python_files=focused_python_files,
+        build_owner_pytest_step=pipeline_module.build_owner_pytest_step,
+        shell_command=shell_command,
         pytest_workers=pytest_workers,
     )
 

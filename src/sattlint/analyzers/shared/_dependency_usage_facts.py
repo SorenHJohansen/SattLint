@@ -17,7 +17,7 @@ from sattline_parser.models.ast_model import (
 
 from ...grammar import constants as const
 from ...resolution.scope import ScopeContext
-from .._dependency_usage_scope_support import _DependencyUsageScopeSupportMixin
+from .._dependency_usage_scope_support import DependencyUsageScopeSupportMixin
 from ..sattline_builtins import get_function_signature
 from .ast_node_helpers import (
     iter_branch_pairs as _iter_branch_pairs,
@@ -73,7 +73,7 @@ class StatementFact:
     calls: tuple[CallFact, ...]
 
 
-class DependencyUsageFactCollector(_DependencyUsageScopeSupportMixin):
+class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
     def __init__(
         self,
         base_picture: BasePicture,

@@ -161,7 +161,6 @@ venvPath = "."
 venv = ".venv"
 extraPaths = ["src"]
 reportMissingTypeStubs = false
-reportPrivateUsage = false
 
 [tool.bandit]
 exclude_dirs = ["tests"]

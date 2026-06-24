@@ -13,12 +13,12 @@ from sattlint.devtools.json_helpers import json_mapping as _json_mapping
 from sattlint.devtools.shared.pipeline_artifacts import write_json_artifact
 
 from ._repo_audit_ai_gc import (
-    _ai_gc_report_findings,
-    _filter_ai_gc_findings_for_output_dir,
-    _filter_ai_gc_report_for_output_dir,
-    _is_active_output_ai_gc_path,
+    ai_gc_report_findings,
+    filter_ai_gc_findings_for_output_dir,
+    filter_ai_gc_report_for_output_dir,
+    is_active_output_ai_gc_path,
 )
-from ._repo_audit_public_readiness import _find_public_readiness_findings
+from ._repo_audit_public_readiness import find_public_readiness_findings
 
 
 def _repo_audit_reporting_module() -> Any:
@@ -38,7 +38,7 @@ def _load_json_payload(path: Path) -> object | None:
         return None
 
 
-def _normalize_pipeline_finding_path(path: object) -> str | None:
+def normalize_pipeline_finding_path(path: object) -> str | None:
     if not isinstance(path, str):
         return None
     normalized = path.replace("\\", "/")
@@ -47,7 +47,7 @@ def _normalize_pipeline_finding_path(path: object) -> str | None:
     return normalized or None
 
 
-def _parse_coverage_findings(
+def parse_coverage_findings(
     root: Path,
     *,
     tracked_paths: tuple[str, ...] | None = None,
@@ -135,7 +135,7 @@ def apply_ai_gc(
     return report
 
 
-def _cli_consistency_doc_paths(root: Path) -> list[Path]:
+def cli_consistency_doc_paths(root: Path) -> list[Path]:
     repo_audit = _repo_audit_reporting_module()
     doc_paths: list[Path] = []
     for rel_path in repo_audit.CLI_CONSISTENCY_DOC_PATHS:
@@ -256,7 +256,7 @@ def _build_required_vscode_task_gaps(root: Path) -> tuple[list[dict[str, Any]], 
 def build_cli_consistency_report(*, root: Path) -> dict[str, Any]:
     repo_audit = _repo_audit_reporting_module()
     scripts, subcommands = repo_audit._collect_cli_metadata()
-    doc_paths = _cli_consistency_doc_paths(root)
+    doc_paths = cli_consistency_doc_paths(root)
     documented_commands = repo_audit._extract_documented_commands(doc_paths, root=root)
     missing_tasks, mismatched_tasks = _build_required_vscode_task_gaps(root)
 
@@ -320,7 +320,7 @@ def build_cli_consistency_report(*, root: Path) -> dict[str, Any]:
     }
 
 
-def _structural_report_location_detail(finding: dict[str, Any]) -> tuple[str | None, str | None]:
+def structural_report_location_detail(finding: dict[str, Any]) -> tuple[str | None, str | None]:
     finding_id = finding["id"]
     if finding_id in {"structural-source-file-budget", "structural-test-file-budget"}:
         entries = finding.get("over_budget_files", [])
@@ -361,7 +361,7 @@ def _structural_report_location_detail(finding: dict[str, Any]) -> tuple[str | N
     return None, None
 
 
-def _find_structural_report_findings(root: Path | None = None) -> list[Any]:
+def find_structural_report_findings(root: Path | None = None) -> list[Any]:
     repo_audit = _repo_audit_reporting_module()
     from sattlint.devtools.structural import structural_reports as structural_reports_module  # noqa: PLC0415
 
@@ -374,7 +374,7 @@ def _find_structural_report_findings(root: Path | None = None) -> list[Any]:
             continue
         if finding_id in repo_audit.STRUCTURAL_DEBT_FINDING_IDS:
             continue
-        path, detail = _structural_report_location_detail(finding)
+        path, detail = structural_report_location_detail(finding)
         structural_findings.append(
             repo_audit.Finding(
                 id=finding_id,
@@ -390,7 +390,7 @@ def _find_structural_report_findings(root: Path | None = None) -> list[Any]:
     return structural_findings
 
 
-def _find_pipeline_findings(output_dir: Path) -> list[Any]:  # noqa: PLR0915
+def find_pipeline_findings(output_dir: Path) -> list[Any]:  # noqa: PLR0915
     repo_audit = _repo_audit_reporting_module()
     findings_path = output_dir / "findings.json"
     if findings_path.exists():
@@ -407,7 +407,7 @@ def _find_pipeline_findings(output_dir: Path) -> list[Any]:  # noqa: PLR0915
                 if finding_id in repo_audit.STRUCTURAL_DEBT_FINDING_IDS:
                     continue
                 location = _json_mapping(entry.get("location")) or {}
-                path = _normalize_pipeline_finding_path(location.get("path"))
+                path = normalize_pipeline_finding_path(location.get("path"))
                 if repo_audit._should_ignore_normalized_pipeline_finding(finding_id, path):
                     continue
                 normalized_findings.append(
@@ -456,7 +456,7 @@ def _find_pipeline_findings(output_dir: Path) -> list[Any]:  # noqa: PLR0915
             if entry_map is None:
                 continue
             issue_severity = str(entry_map.get("issue_severity", "medium")).lower()
-            filename = _normalize_pipeline_finding_path(entry_map.get("filename")) or ""
+            filename = normalize_pipeline_finding_path(entry_map.get("filename")) or ""
             issue_text = str(entry_map.get("issue_text", ""))
             if filename.replace("\\", "/").endswith("src/sattlint/cache.py") and "pickle" in issue_text.lower():
                 issue_severity = "low"
@@ -499,19 +499,19 @@ def _find_pipeline_findings(output_dir: Path) -> list[Any]:  # noqa: PLR0915
 
 
 __all__ = [
-    "_ai_gc_report_findings",
-    "_cli_consistency_doc_paths",
-    "_filter_ai_gc_findings_for_output_dir",
-    "_filter_ai_gc_report_for_output_dir",
-    "_find_pipeline_findings",
-    "_find_public_readiness_findings",
-    "_find_structural_report_findings",
-    "_is_active_output_ai_gc_path",
-    "_normalize_pipeline_finding_path",
-    "_parse_coverage_findings",
-    "_structural_report_location_detail",
+    "ai_gc_report_findings",
     "apply_ai_gc",
     "build_ai_gc_report",
     "build_cli_consistency_report",
     "build_coverage_summary_report",
+    "cli_consistency_doc_paths",
+    "filter_ai_gc_findings_for_output_dir",
+    "filter_ai_gc_report_for_output_dir",
+    "find_pipeline_findings",
+    "find_public_readiness_findings",
+    "find_structural_report_findings",
+    "is_active_output_ai_gc_path",
+    "normalize_pipeline_finding_path",
+    "parse_coverage_findings",
+    "structural_report_location_detail",
 ]

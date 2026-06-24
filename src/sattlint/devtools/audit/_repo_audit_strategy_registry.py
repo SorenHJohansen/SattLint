@@ -50,19 +50,19 @@ def build_repo_audit_finding_runner_map(
     from . import _repo_audit_check_runners as repo_audit_check_runners  # noqa: PLC0415
 
     runners: dict[str, RepoAuditRunner] = {
-        "text-scan": repo_audit_check_runners._run_text_scan_check,
-        "local-ci-parity": repo_audit_check_runners._run_local_ci_parity_check,
-        "documented-commands": repo_audit_check_runners._run_documented_commands_check,
-        "unused-config-keys": repo_audit_check_runners._run_unused_config_keys_check,
-        "architecture": repo_audit_check_runners._run_architecture_check,
-        "structural-report": repo_audit_check_runners._run_structural_report_check,
-        "cli": repo_audit_check_runners._run_cli_check,
-        "logging": repo_audit_check_runners._run_logging_check,
-        "ai-gc": repo_audit_check_runners._run_ai_gc_check,
-        "ignored-repo-paths": repo_audit_check_runners._run_ignored_repo_paths_check,
-        "harness-freshness": repo_audit_check_runners._run_harness_freshness_check,
-        "coverage": repo_audit_check_runners._run_coverage_check,
-        "public-readiness": repo_audit_check_runners._run_public_readiness_check,
+        "text-scan": repo_audit_check_runners.run_text_scan_check,
+        "local-ci-parity": repo_audit_check_runners.run_local_ci_parity_check,
+        "documented-commands": repo_audit_check_runners.run_documented_commands_check,
+        "unused-config-keys": repo_audit_check_runners.run_unused_config_keys_check,
+        "architecture": repo_audit_check_runners.run_architecture_check,
+        "structural-report": repo_audit_check_runners.run_structural_report_check,
+        "cli": repo_audit_check_runners.run_cli_check,
+        "logging": repo_audit_check_runners.run_logging_check,
+        "ai-gc": repo_audit_check_runners.run_ai_gc_check,
+        "ignored-repo-paths": repo_audit_check_runners.run_ignored_repo_paths_check,
+        "harness-freshness": repo_audit_check_runners.run_harness_freshness_check,
+        "coverage": repo_audit_check_runners.run_coverage_check,
+        "public-readiness": repo_audit_check_runners.run_public_readiness_check,
         "verify-recommendations": verify_recommendations_runner,
     }
     if runner_overrides is None:

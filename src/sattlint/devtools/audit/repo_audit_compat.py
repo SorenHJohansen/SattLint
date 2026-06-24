@@ -434,24 +434,24 @@ def apply_ai_gc(
     )
 
 
-def _ai_gc_report_findings(report: dict[str, Any]) -> list[Finding]:
-    return _reporting_module._ai_gc_report_findings(report)
+def ai_gc_report_findings(report: dict[str, Any]) -> list[Finding]:
+    return _reporting_module.ai_gc_report_findings(report)
 
 
-def _is_active_output_ai_gc_path(path: str | None, *, output_dir_path: str | None) -> bool:
-    return _reporting_module._is_active_output_ai_gc_path(path, output_dir_path=output_dir_path)
+def is_active_output_ai_gc_path(path: str | None, *, output_dir_path: str | None) -> bool:
+    return _reporting_module.is_active_output_ai_gc_path(path, output_dir_path=output_dir_path)
 
 
-def _filter_ai_gc_report_for_output_dir(report: dict[str, Any], *, output_dir_path: str | None) -> dict[str, Any]:
-    return _reporting_module._filter_ai_gc_report_for_output_dir(report, output_dir_path=output_dir_path)
+def filter_ai_gc_report_for_output_dir(report: dict[str, Any], *, output_dir_path: str | None) -> dict[str, Any]:
+    return _reporting_module.filter_ai_gc_report_for_output_dir(report, output_dir_path=output_dir_path)
 
 
-def _filter_ai_gc_findings_for_output_dir(findings: list[Finding], *, output_dir_path: str | None) -> list[Finding]:
-    return _reporting_module._filter_ai_gc_findings_for_output_dir(findings, output_dir_path=output_dir_path)
+def filter_ai_gc_findings_for_output_dir(findings: list[Finding], *, output_dir_path: str | None) -> list[Finding]:
+    return _reporting_module.filter_ai_gc_findings_for_output_dir(findings, output_dir_path=output_dir_path)
 
 
-def _cli_consistency_doc_paths(root: Path) -> list[Path]:
-    return _reporting_module._cli_consistency_doc_paths(root)
+def cli_consistency_doc_paths(root: Path) -> list[Path]:
+    return _reporting_module.cli_consistency_doc_paths(root)
 
 
 def build_cli_consistency_report(*, root: Path = REPO_ROOT) -> dict[str, Any]:
@@ -497,24 +497,24 @@ def _build_python_source_scan_context(
     )
 
 
-def _parse_coverage_findings(
+def parse_coverage_findings(
     root: Path,
     *,
     tracked_paths: tuple[str, ...] | None = None,
 ) -> list[Finding]:
-    return _reporting_module._parse_coverage_findings(root, tracked_paths=tracked_paths)
+    return _reporting_module.parse_coverage_findings(root, tracked_paths=tracked_paths)
 
 
-def _find_public_readiness_findings(
+def find_public_readiness_findings(
     root: Path,
     *,
     tracked_paths: tuple[str, ...] | None = None,
 ) -> list[Finding]:
-    return _reporting_module._find_public_readiness_findings(root, tracked_paths=tracked_paths)
+    return _reporting_module.find_public_readiness_findings(root, tracked_paths=tracked_paths)
 
 
-def _find_pipeline_findings(output_dir: Path) -> list[Finding]:
-    return _reporting_module._find_pipeline_findings(output_dir)
+def find_pipeline_findings(output_dir: Path) -> list[Finding]:
+    return _reporting_module.find_pipeline_findings(output_dir)
 
 
 def _dedupe_findings(findings: Iterable[Finding]) -> list[Finding]:
@@ -529,12 +529,12 @@ def _is_leak_finding(finding: Finding) -> bool:
     )
 
 
-def _structural_report_location_detail(finding: dict[str, Any]) -> tuple[str | None, str | None]:
-    return _reporting_module._structural_report_location_detail(finding)
+def structural_report_location_detail(finding: dict[str, Any]) -> tuple[str | None, str | None]:
+    return _reporting_module.structural_report_location_detail(finding)
 
 
-def _find_structural_report_findings(root: Path = REPO_ROOT) -> list[Finding]:
-    return _reporting_module._find_structural_report_findings(root)
+def find_structural_report_findings(root: Path = REPO_ROOT) -> list[Finding]:
+    return _reporting_module.find_structural_report_findings(root)
 
 
 def patch_doc_gardener_paths(root: Path, *, doc_gardener_module: Any):

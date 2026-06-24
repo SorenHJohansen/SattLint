@@ -26,16 +26,16 @@ from ._module_shared import (
     ModuleInvocation,
     TransformerItem,
     TransformerTree,
-    _flatten_items,
-    _groupconn_value,
-    _meta_span,
-    _submodule_children,
-    _tree_children,
-    _v_args,
+    flatten_items,
+    groupconn_value,
+    meta_span,
+    submodule_children,
+    tree_children,
+    v_args,
 )
 
 
-class _ModuleAssemblyMixin:
+class ModuleAssemblyMixin:
     """Mixin providing module body normalization and AST assembly methods."""
 
     def module_body(self, items: list[TransformerItem]) -> TransformerTree:
@@ -63,7 +63,7 @@ class _ModuleAssemblyMixin:
         modulecode: ModuleCode | None = None
         scan_group_info: dict[str, object] | None = None
 
-        for it in _flatten_items(items[1:]):
+        for it in flatten_items(items[1:]):
             if isinstance(it, DataType):
                 datatype_defs.append(it)
             elif isinstance(it, ModuleTypeDef):
@@ -77,16 +77,16 @@ class _ModuleAssemblyMixin:
             elif isinstance(it, Tree):
                 tree = cast(TransformerTree, it)
                 if tree.data == const.TREE_TAG_DATATYPE_LIST:
-                    datatype_defs.extend([x for x in _tree_children(tree) if isinstance(x, DataType)])
+                    datatype_defs.extend([x for x in tree_children(tree) if isinstance(x, DataType)])
                 elif tree.data == const.TREE_TAG_MODULETYPE_LIST:
-                    moduletype_defs.extend([x for x in _tree_children(tree) if isinstance(x, ModuleTypeDef)])
+                    moduletype_defs.extend([x for x in tree_children(tree) if isinstance(x, ModuleTypeDef)])
                 elif tree.data == const.GRAMMAR_VALUE_LOCALVARIABLES:
-                    localvariables.extend([x for x in _tree_children(tree) if isinstance(x, Variable)])
+                    localvariables.extend([x for x in tree_children(tree) if isinstance(x, Variable)])
                 elif tree.data == const.TREE_TAG_SUBMODULES:
-                    submodules.extend(_submodule_children(_tree_children(tree)))
+                    submodules.extend(submodule_children(tree_children(tree)))
 
         if scan_group_info:
-            header.groupconn = _groupconn_value(scan_group_info)
+            header.groupconn = groupconn_value(scan_group_info)
             header.groupconn_global = bool(scan_group_info.get("global", False))
 
         return BasePicture(
@@ -114,7 +114,7 @@ class _ModuleAssemblyMixin:
         scan_group_info: dict[str, object] | None = None
         is_frame_module = any(it is True for it in items)
 
-        for item in _flatten_items(items):
+        for item in flatten_items(items):
             if isinstance(item, ModuleHeader) and header is None:
                 header = item
             elif isinstance(item, int) and datecode is None:
@@ -128,19 +128,19 @@ class _ModuleAssemblyMixin:
             elif isinstance(item, Tree):
                 tree = cast(TransformerTree, item)
                 if tree.data == const.GRAMMAR_VALUE_MODULEPARAMETERS:
-                    moduleparameters.extend([x for x in _tree_children(tree) if isinstance(x, Variable)])
+                    moduleparameters.extend([x for x in tree_children(tree) if isinstance(x, Variable)])
                 elif tree.data == const.GRAMMAR_VALUE_LOCALVARIABLES:
-                    localvariables.extend([x for x in _tree_children(tree) if isinstance(x, Variable)])
+                    localvariables.extend([x for x in tree_children(tree) if isinstance(x, Variable)])
                 elif tree.data == const.TREE_TAG_SUBMODULES:
-                    submodules.extend(_submodule_children(_tree_children(tree)))
+                    submodules.extend(submodule_children(tree_children(tree)))
                 elif tree.data == const.TREE_TAG_MODULETYPE_PAR_LIST:
-                    param_mappings.extend([x for x in _tree_children(tree) if isinstance(x, ParameterMapping)])
+                    param_mappings.extend([x for x in tree_children(tree) if isinstance(x, ParameterMapping)])
 
         if not header:
             raise ValueError("Missing module header")
 
         if scan_group_info:
-            header.groupconn = _groupconn_value(scan_group_info)
+            header.groupconn = groupconn_value(scan_group_info)
             header.groupconn_global = bool(scan_group_info.get("global", False))
 
         if is_frame_module:
@@ -179,7 +179,7 @@ class _ModuleAssemblyMixin:
                 moduletype_name = item
             elif isinstance(item, Tree) and item.data == const.TREE_TAG_MODULETYPE_PAR_LIST:
                 tree = cast(TransformerTree, item)
-                param_mappings.extend([x for x in _tree_children(tree) if isinstance(x, ParameterMapping)])
+                param_mappings.extend([x for x in tree_children(tree) if isinstance(x, ParameterMapping)])
 
         if not header:
             raise ValueError("Missing module header")
@@ -192,7 +192,7 @@ class _ModuleAssemblyMixin:
             parametermappings=param_mappings,
         )
 
-    @_v_args(meta=True)
+    @v_args(meta=True)
     def variable_name(self, meta: Any, children: list[TransformerItem]) -> dict[str, object | None]:
         """Grammar variable_name -> dict with full dotted path and optional state suffix."""
         parts: list[str] = []
@@ -220,10 +220,10 @@ class _ModuleAssemblyMixin:
         return {
             const.KEY_VAR_NAME: full_name,
             "state": state,
-            "span": _meta_span(meta),
+            "span": meta_span(meta),
         }
 
-    @_v_args(meta=True)
+    @v_args(meta=True)
     def moduletype_definition(self, meta: Any, items: list[TransformerItem]) -> ModuleTypeDef:
         """Grammar moduletype_definition -> ModuleTypeDef (named module type with datecode)."""
         datecode: int | None = None
@@ -235,7 +235,7 @@ class _ModuleAssemblyMixin:
         name: str | None = None
         scan_group_info: dict[str, object] | None = None
 
-        for it in _flatten_items(items):
+        for it in flatten_items(items):
             if isinstance(it, str) and name is None:
                 name = it
             elif isinstance(it, int) and datecode is None:
@@ -249,14 +249,14 @@ class _ModuleAssemblyMixin:
             elif isinstance(it, Tree):
                 if it.data == const.GRAMMAR_VALUE_MODULEPARAMETERS:
                     moduleparameters.extend(
-                        [x for x in _tree_children(cast(TransformerTree, it)) if isinstance(x, Variable)]
+                        [x for x in tree_children(cast(TransformerTree, it)) if isinstance(x, Variable)]
                     )
                 elif it.data == const.GRAMMAR_VALUE_LOCALVARIABLES:
                     localvariables.extend(
-                        [x for x in _tree_children(cast(TransformerTree, it)) if isinstance(x, Variable)]
+                        [x for x in tree_children(cast(TransformerTree, it)) if isinstance(x, Variable)]
                     )
                 elif it.data == const.TREE_TAG_SUBMODULES:
-                    submodules.extend(_submodule_children(_tree_children(cast(TransformerTree, it))))
+                    submodules.extend(submodule_children(tree_children(cast(TransformerTree, it))))
 
         if name is None:
             raise Exception("Name cannot be none")
@@ -269,10 +269,10 @@ class _ModuleAssemblyMixin:
             submodules=submodules,
             moduledef=moduledef,
             modulecode=modulecode,
-            declaration_span=_meta_span(meta),
+            declaration_span=meta_span(meta),
         )
         if scan_group_info:
-            moduletype.groupconn = _groupconn_value(scan_group_info)
+            moduletype.groupconn = groupconn_value(scan_group_info)
             moduletype.groupconn_global = bool(scan_group_info.get("global", False))
         return moduletype
 
@@ -284,7 +284,7 @@ class _ModuleAssemblyMixin:
                 out.append(it)
             elif isinstance(it, Tree) and it.data == const.TREE_TAG_MODULETYPE_DEFINITION:
                 tree = cast(TransformerTree, it)
-                for child in _tree_children(tree):
+                for child in tree_children(tree):
                     if isinstance(child, ModuleTypeDef):
                         out.append(child)
         return Tree(const.TREE_TAG_MODULETYPE_LIST, out)
@@ -371,7 +371,7 @@ class _ModuleAssemblyMixin:
                 var = cast(dict[str, object], it)
         return {"groupconn": var, "global": is_global}
 
-    @_v_args(meta=True)
+    @v_args(meta=True)
     def variable_item(self, meta: Any, items: list[TransformerItem]) -> tuple[str, str | None, SourceSpan | None]:
         """Grammar variable_item -> (name, description, span) tuple."""
         if not items or not isinstance(items[0], str):
@@ -380,7 +380,7 @@ class _ModuleAssemblyMixin:
         desc = None
         if len(items) > 1 and isinstance(items[1], str):
             desc = items[1]
-        return (name, desc, _meta_span(meta))
+        return (name, desc, meta_span(meta))
 
     def opt_var_init(self, items: list[TransformerItem]) -> tuple[TransformerItem, bool] | None:
         """Grammar opt_var_init -> (value, is_duration) tuple or None."""
@@ -497,7 +497,7 @@ class _ModuleAssemblyMixin:
         for it in items:
             if isinstance(it, Tree) and it.data == const.TREE_TAG_VAR_LIST:
                 tree = cast(TransformerTree, it)
-                parameters = cast(list[Any], _tree_children(tree))
+                parameters = cast(list[Any], tree_children(tree))
         return Tree(const.GRAMMAR_VALUE_MODULEPARAMETERS, parameters)
 
     def localvariables(self, items: list[TransformerItem]) -> TransformerTree:
@@ -506,18 +506,18 @@ class _ModuleAssemblyMixin:
         for it in items:
             if isinstance(it, Tree) and it.data == const.TREE_TAG_VAR_LIST:
                 tree = cast(TransformerTree, it)
-                variables = cast(list[Any], _tree_children(tree))
+                variables = cast(list[Any], tree_children(tree))
         return Tree(const.GRAMMAR_VALUE_LOCALVARIABLES, variables)
 
     def submodules(self, items: list[TransformerItem]) -> TransformerTree:
         """Grammar submodules -> Tree of module invocation nodes."""
         submodule_items: list[ModuleInvocation] = []
-        for item in _flatten_items(items):
+        for item in flatten_items(items):
             if isinstance(item, (SingleModule, FrameModule, ModuleTypeInstance)):
                 submodule_items.append(item)
         return Tree(const.TREE_TAG_SUBMODULES, cast(list[Any], submodule_items))
 
-    @_v_args(meta=True)
+    @v_args(meta=True)
     def record(self, meta: Any, items: list[TransformerItem]) -> DataType:
         """Grammar record -> DataType definition with optional description and fields."""
         name: str | None = None
@@ -534,7 +534,7 @@ class _ModuleAssemblyMixin:
             elif isinstance(item, int) and datecode is None:
                 datecode = item
             elif isinstance(item, Tree) and item.data == const.TREE_TAG_VAR_LIST:
-                fields = [child for child in _tree_children(cast(TransformerTree, item)) if isinstance(child, Variable)]
+                fields = [child for child in tree_children(cast(TransformerTree, item)) if isinstance(child, Variable)]
 
         if name is None:
             raise ValueError("record is missing datatype name")
@@ -544,7 +544,7 @@ class _ModuleAssemblyMixin:
             description=description,
             datecode=datecode,
             var_list=fields,
-            declaration_span=_meta_span(meta),
+            declaration_span=meta_span(meta),
         )
 
     def datatype_typedefinitions(self, items: list[TransformerItem]) -> TransformerTree:
@@ -555,9 +555,9 @@ class _ModuleAssemblyMixin:
                 records.append(item)
             elif isinstance(item, Tree):
                 records.extend(
-                    [child for child in _tree_children(cast(TransformerTree, item)) if isinstance(child, DataType)]
+                    [child for child in tree_children(cast(TransformerTree, item)) if isinstance(child, DataType)]
                 )
         return Tree(const.TREE_TAG_DATATYPE_LIST, cast(list[Any], records))
 
 
-__all__ = ["_ModuleAssemblyMixin"]
+__all__ = ["ModuleAssemblyMixin"]

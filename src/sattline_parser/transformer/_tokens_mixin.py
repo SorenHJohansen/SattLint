@@ -18,7 +18,7 @@ from sattline_parser.models.ast_model import FloatLiteral, IntLiteral, SourceSpa
 DEFAULT_INIT = object()
 
 
-class _TokensMixin:
+class TokensMixin:
     """Mixin providing token and terminal coercion methods."""
 
     def _unwrap_token(self, tok: object) -> str | object:

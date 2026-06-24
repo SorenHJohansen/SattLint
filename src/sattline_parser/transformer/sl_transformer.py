@@ -1,5 +1,3 @@
-# pyright: reportPrivateUsage=false
-
 """Lark transformer that builds the SattLine AST.
 
 Split into responsibility-based mixins for maintainability.
@@ -15,27 +13,27 @@ from sattline_parser.models.ast_model import BasePicture, FloatLiteral, IntLiter
 
 from ..grammar import constants as const
 from . import _module_shared as _module_shared
-from ._expressions_mixin import _ExpressionsMixin
-from ._graphics_interact_mixin import _GraphicsInteractMixin
-from ._module_assembly_mixin import _ModuleAssemblyMixin
-from ._module_header_mixin import _ModuleHeaderMixin
-from ._module_layout_mixin import _ModuleLayoutMixin
-from ._module_shared import TransformerItem, TransformerTree, _tree_children
-from ._sfc_mixin import _SFCMixin
-from ._tokens_mixin import _TokensMixin
+from ._expressions_mixin import ExpressionsMixin
+from ._graphics_interact_mixin import GraphicsInteractMixin
+from ._module_assembly_mixin import ModuleAssemblyMixin
+from ._module_header_mixin import ModuleHeaderMixin
+from ._module_layout_mixin import ModuleLayoutMixin
+from ._module_shared import TransformerItem, TransformerTree, tree_children
+from ._sfc_mixin import SFCMixin
+from ._tokens_mixin import TokensMixin
 
 __all__ = [
     "SLTransformer",
     "_extract_program_name_from_header_lines",
-    "_flatten_items",
     "_is_tree",
     "_iter_tree_children",
-    "_meta_span",
     "_strip_quoted",
+    "flatten_items",
+    "meta_span",
 ]
 
-_flatten_items = _module_shared._flatten_items
-_meta_span = _module_shared._meta_span
+flatten_items = _module_shared.flatten_items
+meta_span = _module_shared.meta_span
 
 
 def _is_tree(node: object) -> TypeGuard[TransformerTree]:
@@ -47,7 +45,7 @@ def _iter_tree_children(node: object) -> tuple[TransformerItem, ...]:
     """Yield tree children when given a Tree-like node, otherwise return an empty tuple."""
     if not _is_tree(node):
         return ()
-    return tuple(_tree_children(node))
+    return tuple(tree_children(node))
 
 
 def _strip_quoted(text: str) -> str:
@@ -57,12 +55,12 @@ def _strip_quoted(text: str) -> str:
     return text
 
 
-_EXPORTED_HELPERS = (_flatten_items, _iter_tree_children, _meta_span, _strip_quoted)
+_EXPORTED_HELPERS = (flatten_items, _iter_tree_children, meta_span, _strip_quoted)
 
 
 def _extract_program_name_from_header_lines(tree: TransformerTree) -> str | None:
     """Extract program name from the program_date_line header string."""
-    for child in _tree_children(tree):
+    for child in tree_children(tree):
         if _is_tree(child) and child.data == "program_date_line":
             for token in _iter_tree_children(child):
                 raw = _strip_quoted(str(token))
@@ -76,25 +74,25 @@ def _extract_program_name_from_header_lines(tree: TransformerTree) -> str | None
 
 
 class SLTransformer(
-    _TokensMixin,
-    _ExpressionsMixin,
-    _SFCMixin,
-    _ModuleHeaderMixin,
-    _ModuleAssemblyMixin,
-    _ModuleLayoutMixin,
-    _GraphicsInteractMixin,
+    TokensMixin,
+    ExpressionsMixin,
+    SFCMixin,
+    ModuleHeaderMixin,
+    ModuleAssemblyMixin,
+    ModuleLayoutMixin,
+    GraphicsInteractMixin,
     Transformer[Any, Any],
 ):
     """Lark transformer building SattLine AST from parsed grammar.
 
     Mixins provide grouped method implementations by responsibility:
-    - _TokensMixin: token coercion and literal conversion
-    - _ExpressionsMixin: expressions, values, and statements
-    - _SFCMixin: sequence function chart nodes
-    - _ModuleHeaderMixin: module headers and invocation argument metadata
-    - _ModuleAssemblyMixin: module-body normalization and AST assembly
-    - _ModuleLayoutMixin: layout, coordinates, and ModuleDef parsing
-    - _GraphicsInteractMixin: graphics and interact object handling
+    - TokensMixin: token coercion and literal conversion
+    - ExpressionsMixin: expressions, values, and statements
+    - SFCMixin: sequence function chart nodes
+    - ModuleHeaderMixin: module headers and invocation argument metadata
+    - ModuleAssemblyMixin: module-body normalization and AST assembly
+    - ModuleLayoutMixin: layout, coordinates, and ModuleDef parsing
+    - GraphicsInteractMixin: graphics and interact object handling
     """
 
     def __init__(self) -> None:
@@ -131,7 +129,7 @@ class SLTransformer(
                     visit(nested)
                 return
             if _is_tree(value):
-                for child in _tree_children(value):
+                for child in tree_children(value):
                     visit(child)
 
         for node in nodes:
@@ -165,7 +163,7 @@ class SLTransformer(
         if not _is_tree(node):
             return None
 
-        for child in reversed(_tree_children(node)):
+        for child in reversed(tree_children(node)):
             if isinstance(child, Token):
                 continue
             if _is_tree(child) and getattr(child, "data", None) == const.KEY_ENABLE_EXPRESSION:
@@ -213,7 +211,7 @@ class SLTransformer(
                     payload = self._extract_tailed_rule_payload(value)
                     if payload is not None:
                         tails.append(payload)
-                for child in _tree_children(value):
+                for child in tree_children(value):
                     visit(child)
                 return
             if isinstance(value, list):

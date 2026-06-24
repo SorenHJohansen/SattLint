@@ -11,7 +11,7 @@ from lark import Token, Tree
 from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import ModuleHeader
 
-from ._module_shared import TransformerItem, TransformerTree, _float_tuple, _meta_span, _v_args
+from ._module_shared import TransformerItem, TransformerTree, float_tuple, meta_span, v_args
 
 
 def _normalize_module_header_tail(value: object) -> object:
@@ -81,7 +81,7 @@ def _collect_module_header_argument_tails(value: object) -> list[object]:
     return tails
 
 
-class _ModuleHeaderMixin:
+class ModuleHeaderMixin:
     """Mixin providing module header and argument transformation methods."""
 
     def IGNOREMAXMODULE(self, _: object) -> str:
@@ -106,7 +106,7 @@ class _ModuleHeaderMixin:
             cast(list[Any], [it for it in items if not isinstance(it, Token)]),
         )
 
-    @_v_args(meta=True)
+    @v_args(meta=True)
     def module_header(self, meta: Any, items: list[TransformerItem]) -> ModuleHeader:  # noqa: PLR0915
         """Grammar module_header -> ModuleHeader with position, arguments, layer, enable."""
         name = None
@@ -126,14 +126,14 @@ class _ModuleHeaderMixin:
             elif isinstance(it, dict) and const.TREE_TAG_INVOKE_COORD in it:
                 mapping = cast(dict[str, object], it)
                 raw = mapping[const.TREE_TAG_INVOKE_COORD]
-                coords = _float_tuple(raw, 5)
+                coords = float_tuple(raw, 5)
                 if coords is not None:
                     coords5 = cast(tuple[float, float, float, float, float], coords)
                     tails = mapping.get(const.KEY_TAILS)
                     if isinstance(tails, list):
                         coord_tails = [_normalize_module_header_tail(tail) for tail in cast(list[Any], tails)]
             elif isinstance(it, tuple):
-                coords = _float_tuple(cast(tuple[object, ...], it), 5)
+                coords = float_tuple(cast(tuple[object, ...], it), 5)
                 if coords is not None:
                     coords5 = cast(tuple[float, float, float, float, float], coords)
             if isinstance(it, Tree) and it.data == const.TREE_TAG_ARGUMENTS:
@@ -157,7 +157,7 @@ class _ModuleHeaderMixin:
                             enable_tail = tail_obj
                     elif const.GRAMMAR_VALUE_ZOOMLIMITS in payload:
                         zoom_limits_obj = payload[const.GRAMMAR_VALUE_ZOOMLIMITS]
-                        zoom_limits_pair = _float_tuple(zoom_limits_obj, 2)
+                        zoom_limits_pair = float_tuple(zoom_limits_obj, 2)
                         if zoom_limits_pair is not None:
                             zoom_limits = cast(tuple[float, float], zoom_limits_pair)
                     elif const.GRAMMAR_VALUE_ZOOMABLE in payload:
@@ -170,7 +170,7 @@ class _ModuleHeaderMixin:
         return ModuleHeader(
             name=name or "",
             invoke_coord=coords5,
-            declaration_span=_meta_span(meta),
+            declaration_span=meta_span(meta),
             invocation_arguments=tuple(invocation_arguments),
             zoomable=zoomable,
             layer_info=(str(layer) if layer is not None else None),
@@ -181,4 +181,4 @@ class _ModuleHeaderMixin:
         )
 
 
-__all__ = ["_ModuleHeaderMixin"]
+__all__ = ["ModuleHeaderMixin"]

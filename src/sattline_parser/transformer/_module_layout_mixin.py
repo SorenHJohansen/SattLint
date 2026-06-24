@@ -11,10 +11,10 @@ from lark import Token, Tree
 from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import GraphObject, InteractObject, ModuleDef
 
-from ._module_shared import TransformerItem, TransformerTree, _coord_pair
+from ._module_shared import TransformerItem, TransformerTree, coord_pair
 
 
-class _ModuleLayoutMixin:
+class ModuleLayoutMixin:
     """Mixin providing module layout and ModuleDef transformation methods."""
 
     def origo_coord(self, items: list[TransformerItem]) -> list[TransformerItem]:
@@ -44,7 +44,7 @@ class _ModuleLayoutMixin:
         for it in items:
             if isinstance(it, dict) and const.KEY_COORDS in it:
                 payload = cast(dict[str, object], it)
-                coord = _coord_pair(payload[const.KEY_COORDS])
+                coord = coord_pair(payload[const.KEY_COORDS])
                 if coord is not None:
                     coords.append(coord)
                     raw_tails = payload.get(const.KEY_TAILS)
@@ -56,7 +56,7 @@ class _ModuleLayoutMixin:
                 if len(nums) >= 2:
                     coords.append((nums[0], nums[1]))
             elif isinstance(it, tuple):
-                coord = _coord_pair(cast(tuple[object, ...], it))
+                coord = coord_pair(cast(tuple[object, ...], it))
                 if coord is not None:
                     coords.append(coord)
         if len(coords) != 2:
@@ -177,7 +177,7 @@ class _ModuleLayoutMixin:
             elif isinstance(it, dict):
                 payload = cast(dict[str, object], it)
                 if const.GRAMMAR_VALUE_ZOOMLIMITS in payload:
-                    zoom_limits = _coord_pair(payload[const.GRAMMAR_VALUE_ZOOMLIMITS])
+                    zoom_limits = coord_pair(payload[const.GRAMMAR_VALUE_ZOOMLIMITS])
                     if zoom_limits is not None:
                         module_def.zoom_limits = zoom_limits
                 if const.GRAMMAR_VALUE_ZOOMABLE in payload:
@@ -193,4 +193,4 @@ class _ModuleLayoutMixin:
         return module_def
 
 
-__all__ = ["_ModuleLayoutMixin"]
+__all__ = ["ModuleLayoutMixin"]

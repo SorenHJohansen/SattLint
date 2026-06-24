@@ -12,7 +12,7 @@ from ...resolution.type_graph import TypeGraph
 from ..framework import Issue
 from ..variables import VariablesAnalyzer
 from ._mms_interface_analysis import (
-    _InterfaceInventoryEntry,
+    InterfaceInventoryEntry,
     collect_icf_inventory_entries,
     collect_mms_inventory_entries,
     load_icf_entries_from_config,
@@ -70,9 +70,9 @@ def _source_label(source_kind: str) -> str:
 
 
 def _emit_duplicate_tag_issues(
-    entries: list[_InterfaceInventoryEntry],
+    entries: list[InterfaceInventoryEntry],
 ) -> list[Issue]:
-    grouped: dict[tuple[str, str], list[_InterfaceInventoryEntry]] = defaultdict(list)
+    grouped: dict[tuple[str, str], list[InterfaceInventoryEntry]] = defaultdict(list)
     for entry in entries:
         if entry.external_tag_key is None:
             continue
@@ -105,9 +105,9 @@ def _emit_duplicate_tag_issues(
 
 
 def _emit_datatype_mismatch_issues(
-    entries: list[_InterfaceInventoryEntry],
+    entries: list[InterfaceInventoryEntry],
 ) -> list[Issue]:
-    grouped: dict[tuple[str, str], list[_InterfaceInventoryEntry]] = defaultdict(list)
+    grouped: dict[tuple[str, str], list[InterfaceInventoryEntry]] = defaultdict(list)
     for entry in entries:
         if entry.external_tag_key is None:
             continue
@@ -142,9 +142,9 @@ def _emit_datatype_mismatch_issues(
 
 
 def _emit_naming_drift_issues(
-    entries: list[_InterfaceInventoryEntry],
+    entries: list[InterfaceInventoryEntry],
 ) -> list[Issue]:
-    grouped: dict[tuple[str, str], list[_InterfaceInventoryEntry]] = defaultdict(list)
+    grouped: dict[tuple[str, str], list[InterfaceInventoryEntry]] = defaultdict(list)
     for entry in entries:
         if entry.tag_family_key is None or entry.external_tag is None:
             continue
@@ -176,7 +176,7 @@ def _emit_naming_drift_issues(
 
 
 def _emit_dead_tag_issues(
-    entries: list[_InterfaceInventoryEntry],
+    entries: list[InterfaceInventoryEntry],
 ) -> list[Issue]:
     issues: list[Issue] = []
     for entry in entries:

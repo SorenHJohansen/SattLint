@@ -47,15 +47,15 @@ _find_host_specific_test_assumptions = _repo_audit_compat_module._find_host_spec
 _find_ignored_repo_path_references = _repo_audit_compat_module._find_ignored_repo_path_references
 _find_cli_findings = _repo_audit_compat_module._find_cli_findings
 build_ai_gc_report = _repo_audit_compat_module.build_ai_gc_report
-_ai_gc_report_findings = _repo_audit_compat_module._ai_gc_report_findings
+ai_gc_report_findings = _repo_audit_compat_module.ai_gc_report_findings
 _find_logging_findings = _repo_audit_compat_module._find_logging_findings
 _build_python_source_scan_context = _repo_audit_compat_module._build_python_source_scan_context
-_parse_coverage_findings = _repo_audit_compat_module._parse_coverage_findings
-_find_public_readiness_findings = _repo_audit_compat_module._find_public_readiness_findings
-_find_structural_report_findings = _repo_audit_compat_module._find_structural_report_findings
+parse_coverage_findings = _repo_audit_compat_module.parse_coverage_findings
+find_public_readiness_findings = _repo_audit_compat_module.find_public_readiness_findings
+find_structural_report_findings = _repo_audit_compat_module.find_structural_report_findings
 
 
-def _run_local_ci_parity_check(context: RepoAuditScanContext) -> list[Finding]:
+def run_local_ci_parity_check(context: RepoAuditScanContext) -> list[Finding]:
     findings = [
         finding for finding in _shared_text_line_findings(context) if finding.id in LOCAL_CI_PARITY_LINE_FINDING_IDS
     ]
@@ -263,7 +263,7 @@ def _with_shared_text_line_findings(context: RepoAuditScanContext) -> RepoAuditS
     return replace(context, line_findings=_shared_text_line_findings(context))
 
 
-def _run_text_scan_check(context: RepoAuditScanContext) -> list[Finding]:
+def run_text_scan_check(context: RepoAuditScanContext) -> list[Finding]:
     return _audit_core_module.run_text_scan_check(
         context,
         shared_text_line_findings_fn=_shared_text_line_findings,
@@ -271,14 +271,14 @@ def _run_text_scan_check(context: RepoAuditScanContext) -> list[Finding]:
     )
 
 
-def _run_documented_commands_check(context: RepoAuditScanContext) -> list[Finding]:
+def run_documented_commands_check(context: RepoAuditScanContext) -> list[Finding]:
     return _audit_core_module.run_documented_commands_check(
         context,
         find_documentation_command_gaps_fn=_find_documentation_command_gaps,
     )
 
 
-def _run_unused_config_keys_check(context: RepoAuditScanContext) -> list[Finding]:
+def run_unused_config_keys_check(context: RepoAuditScanContext) -> list[Finding]:
     return _audit_core_module.run_unused_config_keys_check(
         context,
         default_config_keys=config_module.DEFAULT_CONFIG.keys(),
@@ -286,47 +286,47 @@ def _run_unused_config_keys_check(context: RepoAuditScanContext) -> list[Finding
     )
 
 
-def _run_architecture_check(context: RepoAuditScanContext) -> list[Finding]:
+def run_architecture_check(context: RepoAuditScanContext) -> list[Finding]:
     return _audit_core_module.run_architecture_check(
         context,
         find_architecture_findings_fn=_find_architecture_findings,
     )
 
 
-def _run_structural_report_check(context: RepoAuditScanContext) -> list[Finding]:
-    return _find_structural_report_findings(context.root)
+def run_structural_report_check(context: RepoAuditScanContext) -> list[Finding]:
+    return find_structural_report_findings(context.root)
 
 
-def _run_cli_check(context: RepoAuditScanContext) -> list[Finding]:
+def run_cli_check(context: RepoAuditScanContext) -> list[Finding]:
     return _audit_core_module.run_cli_check(context, find_cli_findings_fn=_find_cli_findings)
 
 
-def _run_logging_check(context: RepoAuditScanContext) -> list[Finding]:
+def run_logging_check(context: RepoAuditScanContext) -> list[Finding]:
     return _audit_core_module.run_logging_check(
         context,
         find_logging_findings_fn=_find_logging_findings,
     )
 
 
-def _run_ai_gc_check(context: RepoAuditScanContext) -> list[Finding]:
+def run_ai_gc_check(context: RepoAuditScanContext) -> list[Finding]:
     return _audit_core_module.run_ai_gc_check(
         context,
         build_ai_gc_report_fn=build_ai_gc_report,
-        ai_gc_report_findings_fn=_ai_gc_report_findings,
+        ai_gc_report_findings_fn=ai_gc_report_findings,
     )
 
 
-def _run_ignored_repo_paths_check(context: RepoAuditScanContext) -> list[Finding]:
+def run_ignored_repo_paths_check(context: RepoAuditScanContext) -> list[Finding]:
     return _audit_core_module.run_ignored_repo_paths_check(
         context,
         find_ignored_repo_path_references_fn=_find_ignored_repo_path_references,
     )
 
 
-def _run_coverage_check(context: RepoAuditScanContext) -> list[Finding]:
+def run_coverage_check(context: RepoAuditScanContext) -> list[Finding]:
     return _audit_core_module.run_coverage_check(
         context,
-        parse_coverage_findings_fn=_parse_coverage_findings,
+        parse_coverage_findings_fn=parse_coverage_findings,
     )
 
 
@@ -351,7 +351,7 @@ def _ai_harness_issue_to_finding(issue: Any) -> Finding:
     )
 
 
-def _run_harness_freshness_check(context: RepoAuditScanContext) -> list[Finding]:
+def run_harness_freshness_check(context: RepoAuditScanContext) -> list[Finding]:
     return _audit_orchestration_module.run_harness_freshness_check(
         context,
         verify_ai_harness_freshness_fn=_ai_work_map_module.verify_ai_harness_freshness,
@@ -363,10 +363,10 @@ def _run_harness_freshness_check(context: RepoAuditScanContext) -> list[Finding]
     )
 
 
-def _run_public_readiness_check(context: RepoAuditScanContext) -> list[Finding]:
+def run_public_readiness_check(context: RepoAuditScanContext) -> list[Finding]:
     return _audit_core_module.run_public_readiness_check(
         context,
-        find_public_readiness_findings_fn=_find_public_readiness_findings,
+        find_public_readiness_findings_fn=find_public_readiness_findings,
     )
 
 
@@ -382,21 +382,21 @@ __all__ = [
     "_find_unused_config_keys",
     "_layer_linter_module",
     "_patch_doc_gardener_paths",
-    "_run_ai_gc_check",
-    "_run_architecture_check",
-    "_run_cli_check",
-    "_run_coverage_check",
-    "_run_documented_commands_check",
-    "_run_harness_freshness_check",
-    "_run_ignored_repo_paths_check",
-    "_run_local_ci_parity_check",
-    "_run_logging_check",
-    "_run_public_readiness_check",
     "_run_ratchet_policy_check",
-    "_run_structural_report_check",
-    "_run_text_scan_check",
-    "_run_unused_config_keys_check",
     "_shared_text_line_findings",
     "_with_shared_text_line_findings",
     "build_ratchet_policy_report",
+    "run_ai_gc_check",
+    "run_architecture_check",
+    "run_cli_check",
+    "run_coverage_check",
+    "run_documented_commands_check",
+    "run_harness_freshness_check",
+    "run_ignored_repo_paths_check",
+    "run_local_ci_parity_check",
+    "run_logging_check",
+    "run_public_readiness_check",
+    "run_structural_report_check",
+    "run_text_scan_check",
+    "run_unused_config_keys_check",
 ]

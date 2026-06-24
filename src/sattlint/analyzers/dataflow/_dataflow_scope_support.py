@@ -11,7 +11,7 @@ from ...resolution.scope import ScopeContext
 from ._dataflow_common import StateMap
 
 
-class _DataflowScopeSupportMixin:
+class DataflowScopeSupportMixin:
     def _build_scope_context(
         self: Any,
         variables: list[Variable],
@@ -121,4 +121,4 @@ class _DataflowScopeSupportMixin:
         return resolved
 
 
-__all__ = ["_DataflowScopeSupportMixin"]
+__all__ = ["DataflowScopeSupportMixin"]

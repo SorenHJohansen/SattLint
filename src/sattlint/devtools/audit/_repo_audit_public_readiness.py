@@ -483,7 +483,7 @@ def _unexpected_root_entry_findings(root: Path, *, tracked_paths: tuple[str, ...
     ]
 
 
-def _find_public_readiness_findings(
+def find_public_readiness_findings(
     root: Path,
     *,
     tracked_paths: tuple[str, ...] | None = None,
@@ -504,4 +504,4 @@ def _find_public_readiness_findings(
     return findings
 
 
-__all__ = ["_find_public_readiness_findings"]
+__all__ = ["find_public_readiness_findings"]

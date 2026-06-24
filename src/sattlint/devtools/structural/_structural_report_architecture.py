@@ -84,7 +84,7 @@ def _finding_entries(value: object) -> list[dict[str, Any]]:
     return findings
 
 
-def _append_structural_budget_findings(findings: list[dict[str, Any]], structural_budgets: dict[str, Any]) -> None:
+def append_structural_budget_findings(findings: list[dict[str, Any]], structural_budgets: dict[str, Any]) -> None:
     if structural_budgets["source_files_over_budget"]:
         findings.append(
             {
@@ -439,7 +439,7 @@ def collect_architecture_report(
         rules=catalog.rules,
     )
 
-    _append_structural_budget_findings(findings, structural_budgets)
+    append_structural_budget_findings(findings, structural_budgets)
     phase2_rule_metadata_gate = structural_reports_module.collect_phase2_rule_metadata_gate({"findings": findings})
 
     return {
@@ -474,7 +474,7 @@ def collect_analyzer_registry_report() -> dict[str, Any]:
 
 
 __all__ = [
-    "_append_structural_budget_findings",
+    "append_structural_budget_findings",
     "collect_analyzer_registry_report",
     "collect_architecture_report",
     "collect_phase2_rule_metadata_gate",

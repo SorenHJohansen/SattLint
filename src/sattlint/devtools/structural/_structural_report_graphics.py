@@ -17,7 +17,7 @@ from sattline_parser.models.ast_model import (
 )
 
 
-def _serialize_invoke_coord(header: ModuleHeader) -> dict[str, Any]:
+def serialize_invoke_coord(header: ModuleHeader) -> dict[str, Any]:
     return {
         "coords": [float(value) for value in header.invoke_coord],
         "arguments": list(getattr(header, "invocation_arguments", ()) or ()),
@@ -27,7 +27,7 @@ def _serialize_invoke_coord(header: ModuleHeader) -> dict[str, Any]:
     }
 
 
-def _serialize_moduledef(moduledef: ModuleDef | None) -> dict[str, Any] | None:
+def serialize_moduledef(moduledef: ModuleDef | None) -> dict[str, Any] | None:
     if moduledef is None:
         return None
 
@@ -48,11 +48,11 @@ def _serialize_moduledef(moduledef: ModuleDef | None) -> dict[str, Any] | None:
     }
 
 
-def _stable_json_marker(value: Any) -> str:
+def stable_json_marker(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
 
-def _graphics_field_value(entry: dict[str, Any], field_name: str) -> Any:
+def graphics_field_value(entry: dict[str, Any], field_name: str) -> Any:
     value: Any = entry
     for segment in field_name.split("."):
         if not isinstance(value, dict):
@@ -61,7 +61,7 @@ def _graphics_field_value(entry: dict[str, Any], field_name: str) -> Any:
     return value
 
 
-def _graphics_layout_group_payload(
+def graphics_layout_group_payload(
     *,
     module_kind: str,
     module_name: str,
@@ -75,8 +75,8 @@ def _graphics_layout_group_payload(
     for field_name in structural_reports_module.GRAPHICS_LAYOUT_COMPARISON_FIELDS:
         variants: dict[str, Any] = {}
         for member in members:
-            value = _graphics_field_value(member, field_name)
-            variants.setdefault(_stable_json_marker(value), value)
+            value = graphics_field_value(member, field_name)
+            variants.setdefault(stable_json_marker(value), value)
         if len(variants) > 1:
             differing_fields.append(field_name)
             field_variants[field_name] = list(variants.values())
@@ -93,7 +93,7 @@ def _graphics_layout_group_payload(
     }
 
 
-def _graphics_layout_entry(
+def graphics_layout_entry(
     *,
     workspace_root: Path,
     entry_file: Path,
@@ -119,8 +119,8 @@ def _graphics_layout_entry(
         "module_kind": module_kind,
         "definition_scope": definition_scope,
         "moduledef_origin_kind": moduledef_origin_kind,
-        "invocation": _serialize_invoke_coord(header),
-        "moduledef": _serialize_moduledef(moduledef),
+        "invocation": serialize_invoke_coord(header),
+        "moduledef": serialize_moduledef(moduledef),
     }
     if moduletype_name is not None:
         payload["moduletype_name"] = moduletype_name
@@ -135,7 +135,7 @@ def _graphics_layout_entry(
     return payload
 
 
-def _walk_graphics_layout_children(
+def walk_graphics_layout_children(
     *,
     bp: BasePicture,
     children: list[SingleModule | FrameModule | ModuleTypeInstance],
@@ -162,7 +162,7 @@ def _walk_graphics_layout_children(
         child_path = (*parent_path, child.header.name)
         if isinstance(child, SingleModule):
             entries.append(
-                _graphics_layout_entry(
+                graphics_layout_entry(
                     workspace_root=workspace_root,
                     entry_file=entry_file,
                     module_path=child_path,
@@ -173,7 +173,7 @@ def _walk_graphics_layout_children(
                     moduledef_origin_kind="local-module",
                 )
             )
-            _walk_graphics_layout_children(
+            walk_graphics_layout_children(
                 bp=bp,
                 children=child.submodules or [],
                 entry_file=entry_file,
@@ -189,7 +189,7 @@ def _walk_graphics_layout_children(
 
         if isinstance(child, FrameModule):
             entries.append(
-                _graphics_layout_entry(
+                graphics_layout_entry(
                     workspace_root=workspace_root,
                     entry_file=entry_file,
                     module_path=child_path,
@@ -200,7 +200,7 @@ def _walk_graphics_layout_children(
                     moduledef_origin_kind="local-module",
                 )
             )
-            _walk_graphics_layout_children(
+            walk_graphics_layout_children(
                 bp=bp,
                 children=child.submodules or [],
                 entry_file=entry_file,
@@ -227,7 +227,7 @@ def _walk_graphics_layout_children(
             resolution_error = str(exc)
 
         entries.append(
-            _graphics_layout_entry(
+            graphics_layout_entry(
                 workspace_root=workspace_root,
                 entry_file=entry_file,
                 module_path=child_path,
@@ -255,7 +255,7 @@ def _walk_graphics_layout_children(
 
         active_moduletype_keys.add(moduletype_key)
         try:
-            _walk_graphics_layout_children(
+            walk_graphics_layout_children(
                 bp=bp,
                 children=resolved_moduletype.submodules or [],
                 entry_file=entry_file,
@@ -271,7 +271,7 @@ def _walk_graphics_layout_children(
             active_moduletype_keys.discard(moduletype_key)
 
 
-def _accumulate_graphics_layout_snapshot(
+def accumulate_graphics_layout_snapshot(
     snapshot: Any,
     *,
     workspace_root: Path,
@@ -282,7 +282,7 @@ def _accumulate_graphics_layout_snapshot(
         return
     root_path = (bp.header.name,)
     entries.append(
-        _graphics_layout_entry(
+        graphics_layout_entry(
             workspace_root=workspace_root,
             entry_file=snapshot.entry_file,
             module_path=root_path,
@@ -293,7 +293,7 @@ def _accumulate_graphics_layout_snapshot(
             moduledef_origin_kind="local-module",
         )
     )
-    _walk_graphics_layout_children(
+    walk_graphics_layout_children(
         bp=bp,
         children=bp.submodules or [],
         entry_file=snapshot.entry_file,
@@ -307,7 +307,7 @@ def _accumulate_graphics_layout_snapshot(
     )
 
 
-def _build_graphics_layout_report(
+def build_graphics_layout_report(
     *,
     workspace_root: Path,
     entries: list[dict[str, Any]],
@@ -328,7 +328,7 @@ def _build_graphics_layout_report(
         ).append(entry)
 
     groups = [
-        _graphics_layout_group_payload(
+        graphics_layout_group_payload(
             module_kind=members[0]["module_kind"],
             module_name=members[0]["module_name"],
             members=members,
@@ -396,14 +396,14 @@ def collect_graphics_layout_report(
 
 
 __all__ = [
-    "_accumulate_graphics_layout_snapshot",
-    "_build_graphics_layout_report",
-    "_graphics_field_value",
-    "_graphics_layout_entry",
-    "_graphics_layout_group_payload",
-    "_serialize_invoke_coord",
-    "_serialize_moduledef",
-    "_stable_json_marker",
-    "_walk_graphics_layout_children",
+    "accumulate_graphics_layout_snapshot",
+    "build_graphics_layout_report",
     "collect_graphics_layout_report",
+    "graphics_field_value",
+    "graphics_layout_entry",
+    "graphics_layout_group_payload",
+    "serialize_invoke_coord",
+    "serialize_moduledef",
+    "stable_json_marker",
+    "walk_graphics_layout_children",
 ]

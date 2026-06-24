@@ -33,9 +33,9 @@ from ._validation_shared import (
     StructuralValidationError,
     ValidationNotice,
     ValidationWarningSink,
-    _ref_span,
-    _span_kwargs,
-    _warn_or_raise,
+    ref_span,
+    span_kwargs,
+    warn_or_raise,
 )
 from ._validation_type_helpers import (
     assignment_type_matches as _assignment_type_matches,
@@ -288,7 +288,7 @@ def validate_step_auto_variable_refs(  # noqa: PLR0915
 
         raise StructuralValidationError(
             message,
-            **_span_kwargs(_ref_span(ref)),
+            **span_kwargs(ref_span(ref)),
             length=max(len(full_name), 1),
         )
 
@@ -361,7 +361,7 @@ def validate_variable_refs(
         if resolved_state is not None and not resolved_state:
             raise StructuralValidationError(
                 f"{context} uses {state.upper()} on non-STATE variable {str(full_name)!r}",
-                **_span_kwargs(_ref_span(ref)),
+                **span_kwargs(ref_span(ref)),
                 length=max(len(str(full_name)), 1),
             )
 
@@ -395,20 +395,20 @@ def validate_statement_list(
                     ):
                         raise StructuralValidationError(
                             f"{context} assignment target {target_name!r} must not use OLD state access",
-                            **_span_kwargs(_ref_span(target_ref)),
+                            **span_kwargs(ref_span(target_ref)),
                             length=max(len(target_name), 1),
                         )
                     variable = _resolve_root_variable(target_ref, env)
                     if variable is not None and variable.const:
                         raise StructuralValidationError(
                             f"{context} assignment writes to CONST variable {variable.name!r}",
-                            **_span_kwargs(_ref_span(target_ref)),
+                            **span_kwargs(ref_span(target_ref)),
                         )
                     if variable is not None and _is_string_simple_type(variable.datatype):
                         raise StructuralValidationError(
                             f"{context} assignment to string variable {variable.name!r} is not allowed;"
                             " use CopyString() or CopyVar() to copy strings",
-                            **_span_kwargs(_ref_span(target_ref)),
+                            **span_kwargs(ref_span(target_ref)),
                         )
                     target_datatype = _resolve_ref_datatype(target_ref, env, type_graph)
                     actual_datatype = _infer_expression_datatype(assign_statement[2], env, type_graph)
@@ -423,7 +423,7 @@ def validate_statement_list(
                         raise StructuralValidationError(
                             f"{context} assigns {source_description!r} with datatype {_format_datatype(actual_datatype)!r} "
                             f"to target {str(target_ref[const.KEY_VAR_NAME])!r} with datatype {_format_datatype(target_datatype)!r}",
-                            **_span_kwargs(_ref_span(target_ref)),
+                            **span_kwargs(ref_span(target_ref)),
                         )
             statement_node = cast(object, statement)
             validate_variable_refs(statement_node, env, type_graph, context)
@@ -495,7 +495,7 @@ def validate_sequence_nodes(  # noqa: PLR0915
 
     if require_init_step and (not nodes or not isinstance(nodes[0], SFCStep) or nodes[0].kind != "init"):
         missing_initial_init_step = True
-        _warn_or_raise(
+        warn_or_raise(
             f"{context} must start with exactly one SEQINITSTEP",
             warning_sink=effective_warning_sink,
         )
@@ -521,7 +521,7 @@ def validate_sequence_nodes(  # noqa: PLR0915
             if node.kind == "init":
                 init_steps += 1
                 if index != 0:
-                    _warn_or_raise(
+                    warn_or_raise(
                         f"{context} has SEQINITSTEP {node.name!r} outside the first position",
                         warning_sink=effective_warning_sink,
                     )
@@ -601,7 +601,7 @@ def validate_sequence_nodes(  # noqa: PLR0915
             continue
 
     if require_init_step and init_steps != 1 and not (missing_initial_init_step and init_steps == 0):
-        _warn_or_raise(
+        warn_or_raise(
             f"{context} must contain exactly one SEQINITSTEP",
             warning_sink=effective_warning_sink,
         )

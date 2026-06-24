@@ -18,15 +18,15 @@ type VArgsDecorator = Callable[[object], object]
 _V_ARGS_FACTORY = cast(Callable[..., VArgsDecorator], _lark_v_args)
 
 
-def _v_args(*args: Any, **kwargs: Any) -> VArgsDecorator:
+def v_args(*args: Any, **kwargs: Any) -> VArgsDecorator:
     return _V_ARGS_FACTORY(*args, **kwargs)
 
 
-def _tree_children(tree: TransformerTree) -> list[TransformerItem]:
+def tree_children(tree: TransformerTree) -> list[TransformerItem]:
     return cast(list[TransformerItem], tree.children)
 
 
-def _submodule_children(children: Iterable[TransformerItem]) -> list[ModuleInvocation]:
+def submodule_children(children: Iterable[TransformerItem]) -> list[ModuleInvocation]:
     submodules: list[ModuleInvocation] = []
     for child in children:
         if isinstance(child, list):
@@ -39,7 +39,7 @@ def _submodule_children(children: Iterable[TransformerItem]) -> list[ModuleInvoc
     return submodules
 
 
-def _float_tuple(raw: object, size: Literal[2, 5]) -> tuple[float, ...] | None:
+def float_tuple(raw: object, size: Literal[2, 5]) -> tuple[float, ...] | None:
     if not isinstance(raw, tuple):
         return None
     raw_values = cast(tuple[object, ...], raw)
@@ -51,21 +51,21 @@ def _float_tuple(raw: object, size: Literal[2, 5]) -> tuple[float, ...] | None:
     return tuple(float(cast(int | float, value)) for value in values)
 
 
-def _groupconn_value(info: dict[str, object] | None) -> dict[Any, Any] | None:
+def groupconn_value(info: dict[str, object] | None) -> dict[Any, Any] | None:
     if info is None:
         return None
     groupconn = info.get("groupconn")
     return cast(dict[Any, Any] | None, groupconn)
 
 
-def _coord_pair(raw: object) -> tuple[float, float] | None:
-    values = _float_tuple(raw, 2)
+def coord_pair(raw: object) -> tuple[float, float] | None:
+    values = float_tuple(raw, 2)
     if values is None:
         return None
     return cast(tuple[float, float], values)
 
 
-def _meta_span(meta: Any) -> SourceSpan | None:
+def meta_span(meta: Any) -> SourceSpan | None:
     """Extract source span from Lark meta."""
     line = getattr(meta, "line", None)
     column = getattr(meta, "column", None)
@@ -74,17 +74,17 @@ def _meta_span(meta: Any) -> SourceSpan | None:
     return SourceSpan(line=int(line), column=int(column))
 
 
-def _flatten_items(items: Iterable[TransformerItem]) -> Iterator[TransformerItem]:
+def flatten_items(items: Iterable[TransformerItem]) -> Iterator[TransformerItem]:
     """Yield flat stream of items from possibly nested lists and Trees."""
     for it in items:
         if isinstance(it, list):
-            yield from _flatten_items(cast(list[TransformerItem], it))
+            yield from flatten_items(cast(list[TransformerItem], it))
         elif isinstance(it, Tree) and it.data in (
             const.TREE_TAG_BASE_MODULE_BODY,
             const.TREE_TAG_MODULE_BODY,
         ):
             tree = cast(TransformerTree, it)
-            yield from _flatten_items(cast(list[TransformerItem], tree.children))
+            yield from flatten_items(cast(list[TransformerItem], tree.children))
         else:
             yield it
 
@@ -93,12 +93,12 @@ __all__ = [
     "ModuleInvocation",
     "TransformerItem",
     "TransformerTree",
-    "_coord_pair",
-    "_flatten_items",
-    "_float_tuple",
-    "_groupconn_value",
-    "_meta_span",
-    "_submodule_children",
-    "_tree_children",
-    "_v_args",
+    "coord_pair",
+    "flatten_items",
+    "float_tuple",
+    "groupconn_value",
+    "meta_span",
+    "submodule_children",
+    "tree_children",
+    "v_args",
 ]
