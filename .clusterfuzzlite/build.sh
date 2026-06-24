@@ -1,7 +1,9 @@
 #!/bin/bash -eu
 
 # Build and install the project
-pip3 install .
+# Install the local project (source tree, not external — hash pinning not applicable)
+_pip="python3 -m pip"
+$_pip install --no-build-isolation .
 
 # Build fuzzers into $OUT
 for fuzzer in $(find $SRC -name '*_fuzzer.py'); do
