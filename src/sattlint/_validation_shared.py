@@ -14,10 +14,10 @@ __all__ = [
     "ValidationNotice",
     "ValidationWarning",
     "ValidationWarningSink",
-    "_ref_span",
-    "_span_kwargs",
-    "_warn_or_raise",
     "coerce_validation_notice",
+    "ref_span",
+    "span_kwargs",
+    "warn_or_raise",
 ]
 
 
@@ -55,7 +55,7 @@ class RawSourceValidationError(StructuralValidationError):
         self.length = length
 
 
-def _span_kwargs(span: SourceSpan | None) -> dict[str, int]:
+def span_kwargs(span: SourceSpan | None) -> dict[str, int]:
     if span is None:
         return {}
     return {"line": span.line, "column": span.column}
@@ -67,7 +67,7 @@ def coerce_validation_notice(value: ValidationWarning) -> ValidationNotice:
     return ValidationNotice(message=value)
 
 
-def _warn_or_raise(
+def warn_or_raise(
     message: str,
     *,
     warning_sink: ValidationWarningSink | None = None,
@@ -93,7 +93,7 @@ def _warn_or_raise(
     )
 
 
-def _ref_span(ref: dict[str, object] | str | None) -> SourceSpan | None:
+def ref_span(ref: dict[str, object] | str | None) -> SourceSpan | None:
     if not isinstance(ref, dict):
         return None
     span = ref.get("span")

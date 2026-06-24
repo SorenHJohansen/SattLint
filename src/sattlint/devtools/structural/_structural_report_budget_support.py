@@ -10,7 +10,7 @@ from typing import Any, cast
 from sattlint.devtools.audit_core_discovery import module_name_from_path, resolve_import
 
 
-def _collect_facade_private_entrypoints(tree: ast.AST, *, relative_path: str) -> list[dict[str, Any]]:
+def collect_facade_private_entrypoints(tree: ast.AST, *, relative_path: str) -> list[dict[str, Any]]:
     module_aliases: dict[str, str] = {}
     imported_private_names: dict[str, str] = {}
 
@@ -58,7 +58,7 @@ def _collect_facade_private_entrypoints(tree: ast.AST, *, relative_path: str) ->
     return sorted(violations, key=lambda item: (item["path"], item["line"], item["target"]))
 
 
-def _normalize_file_line_exceptions(raw: Any, *, label: str) -> dict[str, dict[str, Any]]:
+def normalize_file_line_exceptions(raw: Any, *, label: str) -> dict[str, dict[str, Any]]:
     if raw is None:
         return {}
     if not isinstance(raw, dict):
@@ -87,7 +87,7 @@ def _normalize_file_line_exceptions(raw: Any, *, label: str) -> dict[str, dict[s
     return dict(sorted(normalized.items()))
 
 
-def _evaluate_structural_budget_ratchet(
+def evaluate_structural_budget_ratchet(
     current_metrics: dict[str, int],
     ratchet_state: dict[str, Any],
     current_file_line_counts: dict[str, int],
@@ -338,9 +338,9 @@ def _nested_statement_groups(statement: ast.stmt) -> tuple[list[ast.stmt], ...]:
 
 
 __all__ = [
-    "_collect_facade_private_entrypoints",
-    "_evaluate_structural_budget_ratchet",
-    "_normalize_file_line_exceptions",
     "build_known_structural_modules",
+    "collect_facade_private_entrypoints",
     "collect_python_structural_surface_metrics",
+    "evaluate_structural_budget_ratchet",
+    "normalize_file_line_exceptions",
 ]

@@ -32,10 +32,10 @@ from ..shared.ast_node_helpers import (
     statement_children as _statement_children,
 )
 from ._dataflow_common import StateMap
-from ._dataflow_scope_support import _DataflowScopeSupportMixin
+from ._dataflow_scope_support import DataflowScopeSupportMixin
 
 
-class _DataflowTraversalMixin(_DataflowScopeSupportMixin):
+class _DataflowTraversalMixin(DataflowScopeSupportMixin):
     def _walk_root_scope(self: Any) -> None:
         root_path = [self.bp.header.name]
         root_variables = list(self.bp.localvariables or [])

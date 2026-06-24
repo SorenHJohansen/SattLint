@@ -23,11 +23,11 @@ _PIPELINE_REUSED_FINISH_GATE_STEP_IDS = {
 }
 
 
-def _shell_command(command: list[str]) -> str:
+def shell_command(command: list[str]) -> str:
     return shlex.join(command)
 
 
-def _changed_file_flag_args(changed_files: Iterable[str]) -> list[str]:
+def changed_file_flag_args(changed_files: Iterable[str]) -> list[str]:
     from sattlint.devtools import pipeline as pipeline_module  # noqa: PLC0415
 
     args: list[str] = []
@@ -45,7 +45,7 @@ def _pytest_worker_args(pytest_workers: str | None) -> list[str]:
     return ["-n", normalized]
 
 
-def _focused_python_files(changed_files: Iterable[str]) -> list[str]:
+def focused_python_files(changed_files: Iterable[str]) -> list[str]:
     from sattlint.devtools import pipeline as pipeline_module  # noqa: PLC0415
 
     focused_files: list[str] = []
@@ -60,7 +60,7 @@ def _focused_python_files(changed_files: Iterable[str]) -> list[str]:
     return focused_files
 
 
-def _owner_test_targets_for_checks(recommended_checks: Iterable[dict[str, Any]]) -> list[str]:
+def owner_test_targets_for_checks(recommended_checks: Iterable[dict[str, Any]]) -> list[str]:
     targets: list[str] = []
     for entry in recommended_checks:
         for target in entry.get("owner_test_targets", []):
@@ -72,10 +72,10 @@ def _owner_test_targets_for_checks(recommended_checks: Iterable[dict[str, Any]])
 
 
 def _changed_source_python_files(changed_files: Iterable[str]) -> list[str]:
-    return [path_text for path_text in _focused_python_files(changed_files) if path_text.startswith("src/")]
+    return [path_text for path_text in focused_python_files(changed_files) if path_text.startswith("src/")]
 
 
-def _finish_gate_pipeline_check_ids(
+def finish_gate_pipeline_check_ids(
     *,
     recommended_check_ids: Iterable[str],
     changed_files: Iterable[str],
@@ -83,7 +83,7 @@ def _finish_gate_pipeline_check_ids(
     pytest_workers: str | None = None,
 ) -> list[str]:
     selected_checks = list(dict.fromkeys(str(check_id) for check_id in recommended_check_ids if str(check_id).strip()))
-    owner_pytest_step = _build_owner_pytest_step(
+    owner_pytest_step = build_owner_pytest_step(
         changed_files=changed_files,
         recommended_checks=recommended_checks,
         python_command=["python"],
@@ -95,7 +95,7 @@ def _finish_gate_pipeline_check_ids(
     return [check_id for check_id in selected_checks if check_id != "pytest"]
 
 
-def _build_owner_pytest_step(
+def build_owner_pytest_step(
     *,
     changed_files: Iterable[str],
     recommended_checks: Iterable[dict[str, Any]],
@@ -103,7 +103,7 @@ def _build_owner_pytest_step(
     coverage_output_path: Path,
     pytest_workers: str | None = None,
 ) -> dict[str, Any] | None:
-    owner_test_targets = _owner_test_targets_for_checks(recommended_checks)
+    owner_test_targets = owner_test_targets_for_checks(recommended_checks)
     if not owner_test_targets:
         return None
     touched_source_files = _changed_source_python_files(changed_files)
@@ -129,7 +129,7 @@ def _build_owner_pytest_step(
         return {
             "id": "owner-pytest-coverage",
             "label": "Run owner pytest targets with focused coverage for touched source files",
-            "command": _shell_command(pytest_argv),
+            "command": shell_command(pytest_argv),
             "argv": pytest_argv,
             "coverage_output_path": str(coverage_output_path.resolve()),
         }
@@ -147,12 +147,12 @@ def _build_owner_pytest_step(
     return {
         "id": "owner-pytest",
         "label": "Run owner pytest targets for the recommended checks",
-        "command": _shell_command(pytest_argv),
+        "command": shell_command(pytest_argv),
         "argv": pytest_argv,
     }
 
 
-def _build_finish_gate_commands(
+def build_finish_gate_commands(
     *,
     profile: str,
     output_dir: Path,
@@ -173,7 +173,7 @@ def _build_finish_gate_commands(
         "--profile",
         profile,
         "--run-recommended-slice",
-        *_changed_file_flag_args(normalized_changed_files),
+        *changed_file_flag_args(normalized_changed_files),
         "--output-dir",
         (
             sanitize_path_for_report(output_dir.resolve(), repo_root=pipeline_module.REPO_ROOT)
@@ -186,11 +186,11 @@ def _build_finish_gate_commands(
         {
             "id": "recommended-slice",
             "label": "Run the recommended pipeline slice",
-            "command": _shell_command(recommended_slice_command),
+            "command": shell_command(recommended_slice_command),
             "argv": recommended_slice_command,
         }
     )
-    touched_python_files = _focused_python_files(normalized_changed_files)
+    touched_python_files = focused_python_files(normalized_changed_files)
     if touched_python_files:
         ruff_argv = [*ruff_command, "check", *touched_python_files]
         pyright_argv = [*pyright_command, *touched_python_files]
@@ -198,7 +198,7 @@ def _build_finish_gate_commands(
             {
                 "id": "ruff-touched-python",
                 "label": "Run Ruff on touched Python files",
-                "command": _shell_command(ruff_argv),
+                "command": shell_command(ruff_argv),
                 "argv": ruff_argv,
             }
         )
@@ -206,11 +206,11 @@ def _build_finish_gate_commands(
             {
                 "id": "pyright-touched-python",
                 "label": "Run Pyright on touched Python files",
-                "command": _shell_command(pyright_argv),
+                "command": shell_command(pyright_argv),
                 "argv": pyright_argv,
             }
         )
-    owner_pytest_step = _build_owner_pytest_step(
+    owner_pytest_step = build_owner_pytest_step(
         changed_files=normalized_changed_files,
         recommended_checks=recommended_checks,
         python_command=python_command,
@@ -356,15 +356,15 @@ def summarize_finish_gate_timing(step_reports: Iterable[dict[str, Any]]) -> dict
 
 
 __all__ = [
-    "_build_finish_gate_commands",
-    "_build_owner_pytest_step",
-    "_changed_file_flag_args",
-    "_finish_gate_pipeline_check_ids",
-    "_focused_python_files",
-    "_owner_test_targets_for_checks",
-    "_shell_command",
     "build_change_proof_requirements",
+    "build_finish_gate_commands",
+    "build_owner_pytest_step",
+    "changed_file_flag_args",
     "evaluate_change_scoped_coverage_proof",
     "execute_finish_gate_steps",
+    "finish_gate_pipeline_check_ids",
+    "focused_python_files",
+    "owner_test_targets_for_checks",
+    "shell_command",
     "summarize_finish_gate_timing",
 ]

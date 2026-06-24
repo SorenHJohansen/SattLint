@@ -10,19 +10,19 @@ from typing import Any, cast
 from sattlint.devtools.json_helpers import json_mapping as _json_mapping
 
 from ._structural_report_budget_support import (
-    _collect_facade_private_entrypoints,
-    _evaluate_structural_budget_ratchet,
-    _normalize_file_line_exceptions,
     build_known_structural_modules,
+    collect_facade_private_entrypoints,
     collect_python_structural_surface_metrics,
+    evaluate_structural_budget_ratchet,
+    normalize_file_line_exceptions,
 )
 
 
-def _is_structural_budget_python_path(rel_path: str) -> bool:
+def is_structural_budget_python_path(rel_path: str) -> bool:
     return rel_path.endswith(".py") and rel_path.startswith(("src/", "tests/", "scripts/"))
 
 
-def _load_structural_budget_ratchet(
+def load_structural_budget_ratchet(
     repo_root: Path,
     *,
     ratchet_path: Path | None = None,
@@ -80,10 +80,10 @@ def _load_structural_budget_ratchet(
     try:
         file_line_exceptions = {
             rel_path: entry
-            for rel_path, entry in _normalize_file_line_exceptions(
+            for rel_path, entry in normalize_file_line_exceptions(
                 payload.get("file_line_exceptions"), label=sanitized_path
             ).items()
-            if _is_structural_budget_python_path(rel_path)
+            if is_structural_budget_python_path(rel_path)
         }
     except ValueError as exc:
         return {
@@ -186,7 +186,7 @@ def _load_structural_budget_ratchet(
                 }
 
             normalized_path = raw_path.replace("\\", "/").strip("/")
-            if not _is_structural_budget_python_path(normalized_path):
+            if not is_structural_budget_python_path(normalized_path):
                 continue
             existing = file_line_exceptions.get(normalized_path)
             normalized_entry = {"max_lines": max_lines, "reason": reason.strip()}
@@ -228,7 +228,7 @@ def collect_structural_budget_report(  # noqa: PLR0915
     class_method_max_count = thresholds["class_method_max_count"]
     duplicate_private_name_min_files = thresholds["duplicate_private_name_min_files"]
     duplicate_private_name_min_length = thresholds["duplicate_private_name_min_length"]
-    ratchet_state = _load_structural_budget_ratchet(repo_root, ratchet_path=ratchet_path)
+    ratchet_state = load_structural_budget_ratchet(repo_root, ratchet_path=ratchet_path)
     file_line_exceptions = ratchet_state.get("file_line_exceptions", {})
 
     source_files_over_budget: list[dict[str, Any]] = []
@@ -290,7 +290,7 @@ def collect_structural_budget_report(  # noqa: PLR0915
             continue
 
         if relative_path in structural_reports_module.FACADE_PRIVATE_BOUNDARY_FILES:
-            facade_private_entrypoints.extend(_collect_facade_private_entrypoints(tree, relative_path=relative_path))
+            facade_private_entrypoints.extend(collect_facade_private_entrypoints(tree, relative_path=relative_path))
 
         surface_metrics = collect_python_structural_surface_metrics(
             tree,
@@ -448,7 +448,7 @@ def collect_structural_budget_report(  # noqa: PLR0915
     }
     current_metrics = structural_reports_module.summarize_structural_budget_metrics(report)
     report["metrics"] = current_metrics
-    report["ratchet"] = _evaluate_structural_budget_ratchet(
+    report["ratchet"] = evaluate_structural_budget_ratchet(
         current_metrics,
         ratchet_state,
         current_file_line_counts,
@@ -457,10 +457,10 @@ def collect_structural_budget_report(  # noqa: PLR0915
 
 
 __all__ = [
-    "_collect_facade_private_entrypoints",
-    "_evaluate_structural_budget_ratchet",
-    "_is_structural_budget_python_path",
-    "_load_structural_budget_ratchet",
-    "_normalize_file_line_exceptions",
+    "collect_facade_private_entrypoints",
     "collect_structural_budget_report",
+    "evaluate_structural_budget_ratchet",
+    "is_structural_budget_python_path",
+    "load_structural_budget_ratchet",
+    "normalize_file_line_exceptions",
 ]

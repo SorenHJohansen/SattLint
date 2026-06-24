@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from ._pipeline_finish_gate import _build_finish_gate_commands, build_change_proof_requirements
+from ._pipeline_finish_gate import build_change_proof_requirements, build_finish_gate_commands
 
 
 def _pipeline_cli_owner_module() -> Any:
@@ -86,7 +86,7 @@ def build_pipeline_check_recommendations(
             continue
         recommended_checks.append({**entry, "reason": reason})
 
-    suggested_finish_gate_commands = _build_finish_gate_commands(
+    suggested_finish_gate_commands = build_finish_gate_commands(
         profile=profile,
         output_dir=resolved_output_dir,
         changed_files=resolved_changed_files,

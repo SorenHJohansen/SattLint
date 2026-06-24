@@ -20,12 +20,12 @@ from ._pipeline_change_proof import (
     evaluate_change_scoped_structural_surface_proof as _evaluate_change_scoped_structural_surface_proof,
 )
 from ._pipeline_finish_gate import (
-    _build_finish_gate_commands,
-    _build_owner_pytest_step,
-    _changed_file_flag_args,
-    _focused_python_files,
-    _owner_test_targets_for_checks,
-    _shell_command,
+    build_finish_gate_commands,
+    build_owner_pytest_step,
+    changed_file_flag_args,
+    focused_python_files,
+    owner_test_targets_for_checks,
+    shell_command,
 )
 from ._pipeline_finish_gate_runs import (
     run_recommended_pipeline_finish_gate as _run_recommended_pipeline_finish_gate,
@@ -396,18 +396,18 @@ def execute_pipeline_cli(
 
 
 __all__ = [
-    "_build_finish_gate_commands",
-    "_build_owner_pytest_step",
     "_build_recommendation_drift_report",
     "_build_recommendation_why_this_gate",
-    "_changed_file_flag_args",
-    "_focused_python_files",
-    "_owner_test_targets_for_checks",
-    "_shell_command",
     "build_change_proof_requirements",
+    "build_finish_gate_commands",
+    "build_owner_pytest_step",
     "build_pipeline_check_catalog",
     "build_pipeline_check_recommendations",
     "build_pipeline_parser",
+    "changed_file_flag_args",
     "evaluate_change_scoped_coverage_proof",
     "execute_pipeline_cli",
+    "focused_python_files",
+    "owner_test_targets_for_checks",
+    "shell_command",
 ]

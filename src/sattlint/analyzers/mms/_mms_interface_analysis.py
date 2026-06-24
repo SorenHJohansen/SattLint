@@ -56,7 +56,7 @@ _INTERFACE_TARGETS: dict[str, dict[str, str]] = {
 }
 
 
-_InterfaceInventoryEntry = _mms_icf_inventory_module.InterfaceInventoryEntry
+InterfaceInventoryEntry = _mms_icf_inventory_module.InterfaceInventoryEntry
 collect_icf_inventory_entries = _mms_icf_inventory_module.collect_icf_inventory_entries
 load_icf_entries_from_config = _mms_icf_inventory_module.load_icf_entries_from_config
 extract_external_tag = _extract_external_tag
@@ -68,7 +68,7 @@ def _empty_mms_hits() -> list[MMSInterfaceHit]:
     return []
 
 
-def _empty_inventory_entries() -> list[_InterfaceInventoryEntry]:
+def _empty_inventory_entries() -> list[InterfaceInventoryEntry]:
     return []
 
 
@@ -79,7 +79,7 @@ class _MMSInterfaceAnalysisState:
     type_graph: TypeGraph
     debug: bool
     hits: list[MMSInterfaceHit] = dataclass_field(default_factory=_empty_mms_hits)
-    inventory_entries: list[_InterfaceInventoryEntry] = dataclass_field(default_factory=_empty_inventory_entries)
+    inventory_entries: list[InterfaceInventoryEntry] = dataclass_field(default_factory=_empty_inventory_entries)
 
 
 def _collect_write_locations(  # noqa: PLR0915
@@ -254,7 +254,7 @@ def _record_interface_hit(
         )
     )
     state.inventory_entries.append(
-        _InterfaceInventoryEntry(
+        InterfaceInventoryEntry(
             source_kind="mms",
             module_path=next_path,
             moduletype_name=mt_name,
@@ -397,7 +397,7 @@ def collect_mms_inventory_entries(
     type_graph: TypeGraph,
     *,
     debug: bool = False,
-) -> tuple[list[MMSInterfaceHit], list[_InterfaceInventoryEntry]]:
+) -> tuple[list[MMSInterfaceHit], list[InterfaceInventoryEntry]]:
     state = _MMSInterfaceAnalysisState(
         base_picture=base_picture,
         analyzer=analyzer,
@@ -409,7 +409,7 @@ def collect_mms_inventory_entries(
 
 
 __all__ = [
-    "_InterfaceInventoryEntry",
+    "InterfaceInventoryEntry",
     "_extract_external_tag",
     "_normalize_external_tag",
     "_tag_family_key",

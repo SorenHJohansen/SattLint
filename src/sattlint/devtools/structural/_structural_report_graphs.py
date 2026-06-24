@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, cast
 
 
-def _structural_entry_files(
+def structural_entry_files(
     workspace_root: Path,
     program_files: tuple[Path, ...],
 ) -> tuple[Path, ...]:
@@ -24,12 +24,12 @@ def _structural_entry_files(
     return scoped_files or program_files
 
 
-def _structural_report_discovery(workspace_root: Path, discovery: Any) -> Any:
+def structural_report_discovery(workspace_root: Path, discovery: Any) -> Any:
     referenced_program_names = cast(
         frozenset[str],
         getattr(discovery, "referenced_program_names", frozenset[str]()),
     )
-    selected_program_files = _structural_entry_files(
+    selected_program_files = structural_entry_files(
         workspace_root,
         tuple(discovery.program_files),
     )
@@ -85,7 +85,7 @@ def collect_workspace_graph_inputs(workspace_root: Path) -> Any:
     )
 
 
-def _accumulate_dependency_graph_snapshot(
+def accumulate_dependency_graph_snapshot(
     snapshot: Any,
     *,
     workspace_root: Path,
@@ -112,7 +112,7 @@ def _accumulate_dependency_graph_snapshot(
             edge["entries"].add(entry_file)
 
 
-def _iter_snapshot_accesses_by_definition(
+def iter_snapshot_accesses_by_definition(
     snapshot: Any,
 ) -> Iterator[tuple[Any, tuple[Any, ...] | list[Any]]]:
     iterator = getattr(snapshot, "iter_access_events_by_definition", None)
@@ -127,7 +127,7 @@ def _iter_snapshot_accesses_by_definition(
         yield definition, snapshot.find_accesses_to(definition)
 
 
-def _accumulate_call_graph_snapshot(
+def accumulate_call_graph_snapshot(
     snapshot: Any,
     *,
     workspace_root: Path,
@@ -138,7 +138,7 @@ def _accumulate_call_graph_snapshot(
 
     entry_file = structural_reports_module.sanitize_path_for_report(snapshot.entry_file, repo_root=workspace_root)
     root_module = getattr(snapshot.base_picture, "name", snapshot.entry_file.stem)
-    for definition, accesses in _iter_snapshot_accesses_by_definition(snapshot):
+    for definition, accesses in iter_snapshot_accesses_by_definition(snapshot):
         target_path = definition.declaration_module_path or (root_module,)
         target_module = ".".join(target_path)
         node_index.setdefault(target_module.casefold(), {"id": target_module, "kind": "module"})
@@ -170,7 +170,7 @@ def _accumulate_call_graph_snapshot(
             edge["entries"].add(entry_file)
 
 
-def _build_dependency_graph_report(
+def build_dependency_graph_report(
     *,
     workspace_root: Path,
     discovery: Any,
@@ -217,7 +217,7 @@ def _build_dependency_graph_report(
     }
 
 
-def _build_call_graph_report(
+def build_call_graph_report(
     *,
     workspace_root: Path,
     node_index: dict[str, dict[str, Any]],
@@ -259,7 +259,7 @@ def _build_call_graph_report(
     }
 
 
-def _should_emit_snapshot_progress(index: int, total: int) -> bool:
+def should_emit_snapshot_progress(index: int, total: int) -> bool:
     if total <= 10:
         return True
     if index in {1, total}:
@@ -267,7 +267,7 @@ def _should_emit_snapshot_progress(index: int, total: int) -> bool:
     return index % 10 == 0
 
 
-def _stream_workspace_graph_reports(
+def stream_workspace_graph_reports(
     workspace_root: Path,
     *,
     progress_callback: Callable[[str], None] | None = None,
@@ -422,16 +422,16 @@ def collect_call_graph_report(
 
 
 __all__ = [
-    "_accumulate_call_graph_snapshot",
-    "_accumulate_dependency_graph_snapshot",
-    "_build_call_graph_report",
-    "_build_dependency_graph_report",
-    "_iter_snapshot_accesses_by_definition",
-    "_should_emit_snapshot_progress",
-    "_stream_workspace_graph_reports",
-    "_structural_entry_files",
-    "_structural_report_discovery",
+    "accumulate_call_graph_snapshot",
+    "accumulate_dependency_graph_snapshot",
+    "build_call_graph_report",
+    "build_dependency_graph_report",
     "collect_call_graph_report",
     "collect_dependency_graph_report",
     "collect_workspace_graph_inputs",
+    "iter_snapshot_accesses_by_definition",
+    "should_emit_snapshot_progress",
+    "stream_workspace_graph_reports",
+    "structural_entry_files",
+    "structural_report_discovery",
 ]

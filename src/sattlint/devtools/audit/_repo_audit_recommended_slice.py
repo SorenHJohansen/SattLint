@@ -66,7 +66,7 @@ def _run_recommended_slice_pipeline(
     )
     return {
         "pipeline_summary": pipeline_summary,
-        "pipeline_findings": repo_audit._find_pipeline_findings(output_dir),
+        "pipeline_findings": repo_audit.find_pipeline_findings(output_dir),
     }
 
 

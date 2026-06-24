@@ -14,7 +14,7 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
-from ._validation_shared import StructuralValidationError, _ref_span, _span_kwargs
+from ._validation_shared import StructuralValidationError, ref_span, span_kwargs
 from ._validation_type_helpers import (
     builtin_type_matches as _builtin_type_matches,
 )
@@ -340,7 +340,7 @@ def _validate_builtin_call_signature(
                     continue
                 raise StructuralValidationError(
                     f"{context} call {fn_name!r} argument {index} writes to CONST variable {variable.name!r}",
-                    **_span_kwargs(_ref_span(argument)),
+                    **span_kwargs(ref_span(argument)),
                 )
 
         actual = _infer_expression_datatype(argument, env, type_graph)

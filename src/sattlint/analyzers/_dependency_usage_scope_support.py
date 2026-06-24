@@ -79,7 +79,7 @@ class _DependencyUsageScopeState(Protocol):
     ) -> bool: ...
 
 
-class _DependencyUsageScopeSupportMixin:
+class DependencyUsageScopeSupportMixin:
     def _iter_root_typedefs(self: _DependencyUsageScopeState) -> list[ModuleTypeDef]:
         return [
             moduletype
@@ -224,4 +224,4 @@ class _DependencyUsageScopeSupportMixin:
         )
 
 
-__all__ = ["_DependencyUsageScopeSupportMixin"]
+__all__ = ["DependencyUsageScopeSupportMixin"]
