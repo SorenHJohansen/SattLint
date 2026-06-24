@@ -32,7 +32,7 @@ jobs:
       - name: Generate SBOM
         shell: bash
         run: |
-          pip install cyclonedx-bom
+          pip install "cyclonedx-bom==7.3.0"
           cyclonedx-py requirements --pyproject -o dist/sbom.json
 
       - name: Check distribution metadata
