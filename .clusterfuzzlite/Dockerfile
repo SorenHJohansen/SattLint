@@ -12,12 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && make -j"$(nproc)" \
     && make altinstall \
     && cd .. && rm -rf Python-3.13.3 Python-3.13.3.tar.xz \
-    && rm -f /usr/bin/python3 /usr/local/bin/python3 \
-    && ln -s /usr/local/bin/python3.13 /usr/bin/python3 \
-    && ln -s /usr/local/bin/python3.13 /usr/local/bin/python3 \
-    && python3 --version \
-    && python3 -m ensurepip --upgrade \
-    && python3 -m pip install --upgrade pip setuptools wheel pyinstaller atheris \
+    && /usr/local/bin/python3.13 -m ensurepip --upgrade \
+    && /usr/local/bin/python3.13 -m pip install --upgrade pip setuptools wheel pyinstaller atheris \
     && rm -rf /var/lib/apt/lists/*
 
 COPY . $SRC/sattlint
