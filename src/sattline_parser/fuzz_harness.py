@@ -28,8 +28,15 @@ def _repo_root_from(anchor: pathlib.Path) -> pathlib.Path:
         current = current.parent
 
 
-REPO_ROOT = _repo_root_from(pathlib.Path(__file__))
-CORPUS_DIR = REPO_ROOT / "tests" / "fixtures" / "corpus"
+def _optional_repo_root_from(anchor: pathlib.Path) -> pathlib.Path | None:
+    try:
+        return _repo_root_from(anchor)
+    except RuntimeError:
+        return None
+
+
+REPO_ROOT = _optional_repo_root_from(pathlib.Path(__file__))
+CORPUS_DIR = None if REPO_ROOT is None else REPO_ROOT / "tests" / "fixtures" / "corpus"
 DEFAULT_TIMEOUT_SECONDS = 10
 
 
@@ -110,6 +117,8 @@ def collect_corpus_inputs(
     max_files: int | None = None,
 ) -> list[tuple[str, str]]:
     if corpus_dir is None:
+        if CORPUS_DIR is None:
+            return []
         corpus_dir = CORPUS_DIR
     subdirs: list[pathlib.Path] = []
     if include_valid:
