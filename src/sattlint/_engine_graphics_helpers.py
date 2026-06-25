@@ -154,6 +154,41 @@ def graphics_companion_needs_refresh(
     )
 
 
+def _refresh_graphics_warnings(
+    bp: BasePicture,
+    *,
+    graph: ProjectGraph,
+    refreshed: bool,
+    code_is_compiled: bool,
+    warning_context_signature: _GraphicsWarningContextSignature,
+    status_callback: Callable[[str], None] | None = None,
+    timing_callback: Callable[[str, float], None] | None = None,
+) -> tuple[ValidationNotice, ...]:
+    cached = _cached_graphics_warning_notices(bp) if not refreshed else None
+    if cached is not None and _cached_graphics_warning_context_signature(bp) == warning_context_signature:
+        return cached
+    if code_is_compiled:
+        bp_any: Any = bp
+        bp_any.graphics_warning_notices = ()
+        bp_any.graphics_warning_context_signature = warning_context_signature
+        return ()
+    if status_callback:
+        status_callback("computing picture display path warnings")
+    warnings_started_at = perf_counter()
+    result = picture_display_path_warnings(
+        bp,
+        tuple(getattr(bp, "graphics_picture_display_occurrences", ())),
+        graph=graph,
+        status_callback=status_callback,
+    )
+    if timing_callback:
+        timing_callback("picture-display-warnings", warnings_started_at)
+    bp_any: Any = bp
+    bp_any.graphics_warning_notices = result
+    bp_any.graphics_warning_context_signature = warning_context_signature
+    return result
+
+
 def attach_graphics_companion(
     bp: BasePicture,
     *,
@@ -162,6 +197,7 @@ def attach_graphics_companion(
     graph: ProjectGraph,
     owner_name: str,
     timing_sink: Callable[[str, str, float], None] | None = None,
+    status_callback: Callable[[str], None] | None = None,
 ) -> bool:
     from . import engine as engine_module  # noqa: PLC0415
 
@@ -217,19 +253,17 @@ def attach_graphics_companion(
         bp_any.graphics_companion_signature = signature
         refreshed = True
 
+    code_is_compiled = code_path.suffix.lower() in {".x", ".z"}
     warning_context_signature = _graphics_warning_context_signature(graph)
-    warning_notices = None if refreshed else _cached_graphics_warning_notices(bp)
-    if warning_notices is None or _cached_graphics_warning_context_signature(bp) != warning_context_signature:
-        bp_any: Any = bp
-        warnings_started_at = perf_counter()
-        warning_notices = picture_display_path_warnings(
-            bp,
-            tuple(getattr(bp, "graphics_picture_display_occurrences", ())),
-            graph=graph,
-        )
-        _record_timing("picture-display-warnings", warnings_started_at)
-        bp_any.graphics_warning_notices = warning_notices
-        bp_any.graphics_warning_context_signature = warning_context_signature
+    warning_notices = _refresh_graphics_warnings(
+        bp,
+        graph=graph,
+        refreshed=refreshed,
+        code_is_compiled=code_is_compiled,
+        warning_context_signature=warning_context_signature,
+        status_callback=status_callback,
+        timing_callback=_record_timing,
+    )
 
     for warning in warning_notices:
         record_project_warning(graph, owner_name, warning)

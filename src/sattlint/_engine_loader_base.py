@@ -68,6 +68,10 @@ def ensure_local_validation(
     )
 
 
+def mark_local_validation(basepic: BasePicture) -> BasePicture:
+    return _mark_local_validation(basepic)
+
+
 def record_missing_library(
     graph: ProjectGraph,
     *,

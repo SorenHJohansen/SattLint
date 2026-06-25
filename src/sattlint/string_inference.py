@@ -35,6 +35,12 @@ _MAX_STRING_CANDIDATES = 24
 _MAX_CURSOR_POSITIONS = 24
 _MAX_FIXED_POINT_PASSES = 8
 _MAX_OVERFLOW_EXAMPLES = 8
+
+
+def _noop_progress(_msg: str) -> None:
+    pass
+
+
 _STRING_LIMITS: dict[Simple_DataType, int] = {
     Simple_DataType.IDENTSTRING: 15,
     Simple_DataType.TAGSTRING: 30,
@@ -127,9 +133,18 @@ class _ModuleContext:
 class ExactStringInferenceEngine:
     """Infers exact string candidates and cursor positions for module-scoped refs."""
 
-    def __init__(self, base_picture: BasePicture, *, graph: ProjectGraph | None = None):
+    def __init__(
+        self,
+        base_picture: BasePicture,
+        *,
+        graph: ProjectGraph | None = None,
+        progress_callback: Callable[[str], None] | None = None,
+    ):
         self.base_picture = base_picture
         self.graph = graph
+        self._progress_callback: Callable[[str], None] = (
+            progress_callback if progress_callback is not None else _noop_progress
+        )
         self._moduletype_index = _candidate_moduletype_index(base_picture, graph)
         self._contexts_by_path: dict[tuple[str, ...], _ModuleContext] = {}
         self._execution_contexts: list[_ModuleContext] = []
@@ -157,7 +172,8 @@ class ExactStringInferenceEngine:
         if self._solved_state is not None:
             return
         state = self._initial_state.clone()
-        for _ in range(_MAX_FIXED_POINT_PASSES):
+        for pass_idx in range(_MAX_FIXED_POINT_PASSES):
+            self._progress_callback(f"resolving string values: pass {pass_idx + 1}/{_MAX_FIXED_POINT_PASSES}")
             next_state = state.clone()
             written_string_keys: set[_SlotKey] = set()
             written_int_keys: set[_SlotKey] = set()

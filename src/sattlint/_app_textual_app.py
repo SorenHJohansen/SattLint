@@ -121,24 +121,36 @@ if _TEXTUAL_APP is not None:
             margin-top: 1;
             color: #58787e;
         }
+
+        #ast-refresh-activity {
+            dock: bottom;
+            width: 100%;
+            padding: 0 1;
+            background: #0077b3;
+            color: #ffffff;
+            text-style: bold;
+        }
         """
 
         def __init__(self, *, refresh_ast_cache_fn: Any) -> None:
             super().__init__()
             self._refresh_ast_cache_fn = refresh_ast_cache_fn
             self._status_lines: list[str] = ["Starting cached AST refresh..."]
+            self._activity_line: str | None = None
             self._failure_prompt: str | None = None
             self._refresh_failed = False
             self._refresh_exception: BaseException | None = None
 
         def compose(self) -> _TEXTUAL_COMPOSE_RESULT:
-            with _TEXTUAL_VERTICAL(id="ast-refresh-host"), _TEXTUAL_VERTICAL(id="ast-refresh-card"):
-                yield _TEXTUAL_STATIC("Refreshing cached ASTs", id="ast-refresh-title")
-                yield _TEXTUAL_STATIC(
-                    "Checking the cached project graphs before opening the main Textual shell.",
-                    id="ast-refresh-body",
-                )
-                yield _TEXTUAL_STATIC("\n".join(self._status_lines), id="ast-refresh-status")
+            with _TEXTUAL_VERTICAL(id="ast-refresh-host"):
+                with _TEXTUAL_VERTICAL(id="ast-refresh-card"):
+                    yield _TEXTUAL_STATIC("Refreshing cached ASTs", id="ast-refresh-title")
+                    yield _TEXTUAL_STATIC(
+                        "Checking the cached project graphs before opening the main Textual shell.",
+                        id="ast-refresh-body",
+                    )
+                    yield _TEXTUAL_STATIC("\n".join(self._status_lines), id="ast-refresh-status")
+                yield _TEXTUAL_STATIC("", id="ast-refresh-activity")
 
         def on_mount(self) -> None:
             threading.Thread(target=self._run_refresh, daemon=True).start()
@@ -155,7 +167,17 @@ if _TEXTUAL_APP is not None:
             normalized = message.replace("\r\n", "\n").replace("\r", "\n")
             if not normalized:
                 return
-            self._status_lines.extend(normalized.split("\n"))
+            parts = normalized.split("\n")
+            for part in parts:
+                if part.startswith("Loading "):
+                    self._activity_line = part
+                    self.query_one("#ast-refresh-activity", _TEXTUAL_STATIC).update(part)
+                elif part == "":
+                    self._status_lines.append("")
+                else:
+                    self._status_lines.append(part)
+                    self._activity_line = None
+                    self.query_one("#ast-refresh-activity", _TEXTUAL_STATIC).update("")
             self.query_one("#ast-refresh-status", _TEXTUAL_STATIC).update(self._render_status_text())
 
         def _set_failure_prompt(self) -> None:
