@@ -9,6 +9,7 @@ from typing import Any, cast
 import pytest
 
 from sattline_parser.models.ast_model import BasePicture
+from sattlint import _app_analysis_commands as app_analysis_commands
 from sattlint import app_analysis
 from sattlint._app_debug import log_debug_exception
 from sattlint.models.project_graph import ProjectGraph
@@ -71,7 +72,7 @@ def test_run_debug_variable_usage_logs_debug_traceback_for_target_failure(
     monkeypatch.setattr("builtins.input", fake_input)
 
     with caplog.at_level(logging.ERROR, logger="SattLint"):
-        app_analysis.run_debug_variable_usage(
+        app_analysis_commands.run_debug_variable_usage(
             {"debug": True},
             iter_loaded_projects_fn=iter_loaded_projects,
             pause_fn=None,

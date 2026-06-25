@@ -112,6 +112,20 @@ def test_tracing_cli_returns_failure_when_output_write_fails(monkeypatch, tmp_pa
     assert "Trace output error: locked" in captured.err
 
 
+def test_tracing_cli_delegates_to_root_trace_subcommand(monkeypatch):
+    seen: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "sattlint.app.run_cli",
+        lambda argv: seen.update({"argv": list(argv)}) or 7,
+    )
+
+    exit_code = tracing.cli(["program.s", "--debug"])
+
+    assert exit_code == 7
+    assert seen == {"argv": ["trace", "program.s", "--debug"]}
+
+
 def test_collect_trace_report_delegates_to_trace_source_file_analysis(tmp_path):
     source_file = _sample_program_path()
 

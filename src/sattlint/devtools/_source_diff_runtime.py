@@ -22,10 +22,6 @@ from sattlint.devtools._source_diff_sections import build_ast_comparison_section
 from sattlint.validation import validate_transformed_basepicture
 
 
-def _source_diff_repo_path(path: Path, *, workspace_root: Path) -> str:
-    return sanitize_repo_path(path, workspace_root=workspace_root)
-
-
 def _pair_name(draft_file: Path, official_file: Path) -> str:
     if draft_file.stem.casefold() == official_file.stem.casefold():
         return draft_file.stem
@@ -147,8 +143,8 @@ def _resolve_explicit_pair(
     if not resolved_draft.is_file() or not resolved_official.is_file():
         errors.append(
             {
-                "draft_file": _source_diff_repo_path(resolved_draft, workspace_root=workspace_root),
-                "official_file": _source_diff_repo_path(resolved_official, workspace_root=workspace_root),
+                "draft_file": sanitize_repo_path(resolved_draft, workspace_root=workspace_root),
+                "official_file": sanitize_repo_path(resolved_official, workspace_root=workspace_root),
                 "message": "Draft or official source file does not exist.",
             }
         )
@@ -178,8 +174,8 @@ def build_pair_report(
     resolved_workspace_root = workspace_root.resolve()
     resolved_draft = draft_file.resolve()
     resolved_official = official_file.resolve()
-    sanitized_draft = _source_diff_repo_path(resolved_draft, workspace_root=resolved_workspace_root)
-    sanitized_official = _source_diff_repo_path(resolved_official, workspace_root=resolved_workspace_root)
+    sanitized_draft = sanitize_repo_path(resolved_draft, workspace_root=resolved_workspace_root)
+    sanitized_official = sanitize_repo_path(resolved_official, workspace_root=resolved_workspace_root)
 
     errors: list[dict[str, str]] = []
     draft_text: str | None = None
@@ -297,7 +293,7 @@ def build_source_diff_report(
     for index, (resolved_draft, resolved_official) in enumerate(pairs, start=1):
         if progress_callback is not None:
             progress_callback(
-                f"Source diff: comparing {index}/{len(pairs)} {_source_diff_repo_path(resolved_draft, workspace_root=resolved_workspace_root)}"
+                f"Source diff: comparing {index}/{len(pairs)} {sanitize_repo_path(resolved_draft, workspace_root=resolved_workspace_root)}"
             )
         pair_reports.append(
             build_pair_report(
@@ -318,7 +314,7 @@ def build_source_diff_report(
         "generated_by": "sattlint.devtools.source_diff_report",
         "report_kind": "source-diff-report",
         "status": status,
-        "workspace_root": _source_diff_repo_path(resolved_workspace_root, workspace_root=resolved_workspace_root),
+        "workspace_root": sanitize_repo_path(resolved_workspace_root, workspace_root=resolved_workspace_root),
         "summary": {
             "compared_pair_count": len(pair_reports),
             "changed_pair_count": sum(1 for report in pair_reports if report["changed"]),

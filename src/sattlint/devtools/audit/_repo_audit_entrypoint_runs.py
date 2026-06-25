@@ -202,7 +202,10 @@ def run_recommended_repo_audit_finish_gate(
         "status": finish_gate_status,
         "commands": step_reports,
         "changed_files": recommendation["changed_files"],
-        "owner_test_targets": entrypoints_module.owner_test_targets_for_checks(recommendation["recommended_checks"]),
+        "owner_test_targets": entrypoints_module.owner_test_targets_for_checks(
+            recommendation["recommended_checks"],
+            changed_files=recommendation["changed_files"],
+        ),
         "proof_requirements": proof_requirements,
         "coverage_proof": coverage_proof,
         "structural_surface_proof": structural_surface_proof,

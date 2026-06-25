@@ -34,12 +34,6 @@ def _duration_ms(start: float, end: float) -> float:
     return round((end - start) * 1000, 3)
 
 
-_sanitize_repo_path = sanitize_repo_path
-
-
-_emit_profiler_progress = emit_progress
-
-
 def _entry_sort_key(entry: dict[str, Any]) -> tuple[float, str]:
     return (-float(entry.get("total_duration_ms") or 0.0), str(entry.get("entry_file") or "").casefold())
 
@@ -104,7 +98,7 @@ def _build_profile_report(
         "generated_by": "sattlint.devtools.profiler",
         "report_kind": "workspace-profile",
         "status": status,
-        "workspace_root": _sanitize_repo_path(workspace_root, workspace_root=workspace_root),
+        "workspace_root": sanitize_repo_path(workspace_root, workspace_root=workspace_root),
         "summary": {
             "program_file_count": len(program_files),
             "profiled_entry_count": len(program_files),
@@ -114,7 +108,7 @@ def _build_profile_report(
             "total_duration_ms": total_duration_ms,
         },
         "source_files": {
-            "program_files": [_sanitize_repo_path(path, workspace_root=workspace_root) for path in program_files],
+            "program_files": [sanitize_repo_path(path, workspace_root=workspace_root) for path in program_files],
             "dependency_file_count": dependency_file_count,
         },
         "phase_timings": phase_timings,
@@ -198,7 +192,7 @@ def _profile_configured_target(
 
     load_end = timer()
     load_duration_ms = _duration_ms(load_start, load_end)
-    sanitized_entry = _sanitize_repo_path(profiled_target.entry_file, workspace_root=resolved_workspace_root)
+    sanitized_entry = sanitize_repo_path(profiled_target.entry_file, workspace_root=resolved_workspace_root)
 
     if progress_callback is not None:
         progress_callback(f"Profiler: analyzing configured target {resolved_target_name}")
@@ -364,7 +358,7 @@ def profile_workspace(
     analyzer_total_ms = 0.0
 
     for index, entry_file in enumerate(selected_program_files, start=1):
-        sanitized_entry = _sanitize_repo_path(entry_file, workspace_root=resolved_workspace_root)
+        sanitized_entry = sanitize_repo_path(entry_file, workspace_root=resolved_workspace_root)
         if progress_callback is not None:
             progress_callback(f"Profiler: loading {index}/{len(selected_program_files)} {sanitized_entry}")
 
@@ -548,7 +542,7 @@ def _parse_profiler_args(argv: Sequence[str] | None) -> argparse.Namespace:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_profiler_args(argv)
-    progress_callback = None if args.no_progress else _emit_profiler_progress
+    progress_callback = None if args.no_progress else emit_progress
     report = profile_workspace(
         Path(args.workspace_root).resolve(),
         max_files=args.max_files,

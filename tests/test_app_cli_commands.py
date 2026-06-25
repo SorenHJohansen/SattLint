@@ -116,7 +116,7 @@ def test_run_analyze_command_delegates_to_startup_core(monkeypatch):
     assert seen["output_format"] == "json"
     assert seen["run_analyze_command_fn"] is app.app_cli_commands.run_analyze_command
     assert seen["iter_loaded_projects_fn"] is app._iter_loaded_projects
-    assert seen["collect_run_checks_result_fn"] is app.app_analysis.collect_run_checks_result
+    assert seen["collect_run_checks_result_fn"] is app.app_analysis_checks.collect_run_checks_result
     assert seen["get_selectable_analyzers_fn"] is app._get_selectable_analyzers
     assert seen["get_enabled_analyzers_fn"] is app._get_enabled_analyzers
     assert seen["target_is_library_fn"] is app._target_is_library
@@ -141,7 +141,7 @@ def test_run_analyze_command_allows_opt_in_analyzer_keys(monkeypatch) -> None:
         seen["analyzer_keys"] = [spec.key for spec in get_enabled_analyzers_fn()]
         return SimpleNamespace(output_lines=(), cancelled=False)
 
-    monkeypatch.setattr(app.app_analysis, "collect_run_checks_result", fake_collect_run_checks_result)
+    monkeypatch.setattr(app.app_analysis_checks, "collect_run_checks_result", fake_collect_run_checks_result)
 
     result = _app_startup.run_analyze_command(
         {"debug": False},
@@ -151,7 +151,7 @@ def test_run_analyze_command_allows_opt_in_analyzer_keys(monkeypatch) -> None:
         output_format="json",
         run_analyze_command_fn=app.app_cli_commands_module.run_analyze_command,
         iter_loaded_projects_fn=lambda _cfg, *, use_cache: iter(()),
-        collect_run_checks_result_fn=app.app_analysis.collect_run_checks_result,
+        collect_run_checks_result_fn=app.app_analysis_checks.collect_run_checks_result,
         get_selectable_analyzers_fn=app._get_selectable_analyzers,
         get_enabled_analyzers_fn=app._get_enabled_analyzers,
         target_is_library_fn=app._target_is_library,
