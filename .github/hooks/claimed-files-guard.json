@@ -9,15 +9,6 @@
         "osx": "python .github/hooks/scripts/hook_python_runner.py .github/hooks/scripts/claimed_files_guard.py",
         "cwd": ".",
         "timeout": 10
-      },
-      {
-        "type": "command",
-        "command": "python .github/hooks/scripts/switch_agent_plan_guard.py",
-        "windows": ".venv\\Scripts\\python.exe .github\\hooks\\scripts\\switch_agent_plan_guard.py",
-        "linux": "python .github/hooks/scripts/hook_python_runner.py .github/hooks/scripts/switch_agent_plan_guard.py",
-        "osx": "python .github/hooks/scripts/hook_python_runner.py .github/hooks/scripts/switch_agent_plan_guard.py",
-        "cwd": ".",
-        "timeout": 10
       }
     ]
   }
