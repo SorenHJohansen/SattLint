@@ -8,7 +8,12 @@ for fuzzer in $(find "$SRC/sattlint/src" -name '*_fuzzer.py'); do
   fuzzer_basename=$(basename -s .py "$fuzzer")
   fuzzer_package=${fuzzer_basename}.pkg
 
-  pyinstaller --distpath "$OUT" --onefile --name "$fuzzer_package" "$fuzzer"
+  /usr/local/bin/python3.13 -m PyInstaller \
+    --distpath "$OUT" \
+    --onefile \
+    --name "$fuzzer_package" \
+    --hidden-import=sattline_parser.models._ast_model_support \
+    "$fuzzer"
 
   echo "#!/bin/sh
 # LLVMFuzzerTestOneInput for fuzzer detection.
