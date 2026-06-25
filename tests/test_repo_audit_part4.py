@@ -40,7 +40,7 @@ def test_doc_gardener_flags_markdown_mojibake(tmp_path):
         encoding="utf-8",
     )
 
-    findings = repo_audit._find_pipeline_findings(tmp_path)
+    findings = repo_audit.find_pipeline_findings(tmp_path)
 
     assert len(findings) == 1
     assert findings[0].id == "ruff-f401"
@@ -108,7 +108,7 @@ def test_find_pipeline_findings_ignores_allowlisted_bandit_noise(tmp_path):
         encoding="utf-8",
     )
 
-    findings = repo_audit._find_pipeline_findings(tmp_path)
+    findings = repo_audit.find_pipeline_findings(tmp_path)
 
     assert len(findings) == 1
     assert findings[0].id == "bandit-b314"
@@ -141,7 +141,7 @@ def test_find_pipeline_findings_ignores_allowlisted_bandit_noise_from_bandit_rep
         encoding="utf-8",
     )
 
-    findings = repo_audit._find_pipeline_findings(tmp_path)
+    findings = repo_audit.find_pipeline_findings(tmp_path)
 
     assert len(findings) == 1
     assert findings[0].id == "bandit-b314"
@@ -156,7 +156,7 @@ def test_find_pipeline_findings_skips_malformed_optional_json_artifacts(tmp_path
         encoding="utf-8",
     )
 
-    findings = repo_audit._find_pipeline_findings(tmp_path)
+    findings = repo_audit.find_pipeline_findings(tmp_path)
 
     assert len(findings) == 1
     assert findings[0].id == "pytest-failures"
@@ -179,7 +179,7 @@ def test_audit_repository_writes_status_file_and_forwards_profile(tmp_path):
 
     with (
         patch.object(repo_audit, "collect_custom_findings", return_value=[finding]),
-        patch.object(repo_audit, "_find_pipeline_findings", return_value=[]),
+        patch.object(repo_audit, "find_pipeline_findings", return_value=[]),
         patch.object(repo_audit.pipeline_module, "_run_pipeline", return_value=pipeline_summary) as run_pipeline,
     ):
         summary = repo_audit.audit_repository(
@@ -233,7 +233,7 @@ def test_audit_repository_collects_custom_findings_from_tracked_files(tmp_path):
 
     with (
         patch.object(repo_audit, "collect_custom_findings", return_value=[]) as collect_custom_findings,
-        patch.object(repo_audit, "_find_pipeline_findings", return_value=[]),
+        patch.object(repo_audit, "find_pipeline_findings", return_value=[]),
         patch.object(repo_audit.pipeline_module, "_run_pipeline", return_value=pipeline_summary),
     ):
         repo_audit.audit_repository(
@@ -428,7 +428,7 @@ def test_find_structural_report_findings_translates_structural_architecture_find
         "sattlint.devtools.structural.structural_reports.collect_architecture_report",
         return_value=architecture_report,
     ):
-        findings = repo_audit._find_structural_report_findings(tmp_path)
+        findings = repo_audit.find_structural_report_findings(tmp_path)
 
     assert len(findings) == 1
     assert findings[0].id == "structural-facade-private-boundary"
@@ -456,7 +456,7 @@ def test_audit_repository_fail_policy_applies_to_structural_findings(tmp_path):
 
     with (
         patch.object(repo_audit, "collect_custom_findings", return_value=[structural_finding]),
-        patch.object(repo_audit, "_find_pipeline_findings", return_value=[]),
+        patch.object(repo_audit, "find_pipeline_findings", return_value=[]),
         patch.object(repo_audit.pipeline_module, "_run_pipeline", return_value=pipeline_summary),
     ):
         summary = repo_audit.audit_repository(

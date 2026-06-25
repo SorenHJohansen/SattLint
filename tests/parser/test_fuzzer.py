@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 
+import sattline_parser.fuzz_harness as fuzz_harness
 import sattlint.devtools.sandbox.fuzzer as fuzzer
 from sattline_parser.fuzz_harness import FuzzResult, TimeoutError
 from sattline_parser.models.ast_model import BasePicture, ModuleHeader
@@ -97,6 +98,12 @@ def test_build_seed_corpus_forwards_collect_inputs(monkeypatch) -> None:
         "include_edge_cases": False,
         "max_files": 3,
     }
+
+
+def test_collect_corpus_inputs_returns_empty_when_default_corpus_root_is_unavailable(monkeypatch) -> None:
+    monkeypatch.setattr(fuzz_harness, "CORPUS_DIR", None)
+
+    assert fuzz_harness.collect_corpus_inputs() == []
 
 
 def test_run_fuzz_target_classifies_success_expected_error_and_crash() -> None:

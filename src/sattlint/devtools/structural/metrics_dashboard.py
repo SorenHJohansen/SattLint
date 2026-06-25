@@ -24,12 +24,6 @@ from sattlint.tracing import collect_ast_summary
 DEFAULT_OUTPUT_FILENAME = "metrics_dashboard.json"
 
 
-_emit_metrics_progress = emit_progress
-
-
-_sanitize_repo_path = sanitize_repo_path
-
-
 def _serialize_complexity_issue(issue: Any, *, entry_file: str) -> dict[str, Any]:
     data = dict(getattr(issue, "data", {}) or {})
     module_path = list(getattr(issue, "module_path", []) or [])
@@ -91,9 +85,7 @@ def build_metrics_dashboard(
 
     snapshots = sorted(
         resolved_graph_inputs.snapshots,
-        key=lambda snapshot: _sanitize_repo_path(
-            snapshot.entry_file, workspace_root=resolved_workspace_root
-        ).casefold(),
+        key=lambda snapshot: sanitize_repo_path(snapshot.entry_file, workspace_root=resolved_workspace_root).casefold(),
     )
 
     aggregate_structure = {
@@ -114,7 +106,7 @@ def build_metrics_dashboard(
     drift_findings: list[dict[str, Any]] = []
 
     for index, snapshot in enumerate(snapshots, start=1):
-        entry_file = _sanitize_repo_path(snapshot.entry_file, workspace_root=resolved_workspace_root)
+        entry_file = sanitize_repo_path(snapshot.entry_file, workspace_root=resolved_workspace_root)
         if progress_callback is not None:
             progress_callback(f"Metrics dashboard: analyzing {index}/{len(snapshots)} {entry_file}")
 
@@ -159,7 +151,7 @@ def build_metrics_dashboard(
         "generated_by": "sattlint.devtools.structural.metrics_dashboard",
         "report_kind": "metrics-dashboard",
         "status": status,
-        "workspace_root": _sanitize_repo_path(resolved_workspace_root, workspace_root=resolved_workspace_root),
+        "workspace_root": sanitize_repo_path(resolved_workspace_root, workspace_root=resolved_workspace_root),
         "summary": {
             "program_file_count": len(resolved_graph_inputs.discovery.program_files),
             "snapshot_count": len(snapshots),
@@ -270,7 +262,7 @@ def _parse_metrics_args(argv: Sequence[str] | None) -> argparse.Namespace:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_metrics_args(argv)
-    progress_callback = None if args.no_progress else _emit_metrics_progress
+    progress_callback = None if args.no_progress else emit_progress
     report = build_metrics_dashboard(
         Path(args.workspace_root).resolve(),
         progress_callback=progress_callback,

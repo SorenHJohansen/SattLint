@@ -136,8 +136,11 @@ def build_change_proof_requirements(
     from sattlint.devtools import pipeline as pipeline_module  # noqa: PLC0415
 
     normalized_changed_files = pipeline_module.normalize_changed_files(changed_files)
-    owner_test_targets = finish_gate_module._owner_test_targets_for_checks(recommended_checks)
-    touched_python_files = finish_gate_module._focused_python_files(normalized_changed_files)
+    owner_test_targets = finish_gate_module.owner_test_targets_for_checks(
+        recommended_checks,
+        changed_files=normalized_changed_files,
+    )
+    touched_python_files = finish_gate_module.focused_python_files(normalized_changed_files)
     touched_source_files = _changed_source_python_files(touched_python_files)
     focused_behavior_required = bool(touched_python_files)
     focused_behavior_status = "satisfied" if (not focused_behavior_required or owner_test_targets) else "missing"

@@ -16,11 +16,11 @@ from sattline_parser.models.ast_model import (
 )
 from sattlint import constants as const
 from sattlint.analyzers.mms import (
+    InterfaceInventoryEntry,
     _emit_datatype_mismatch_issues,
     _emit_dead_tag_issues,
     _emit_duplicate_tag_issues,
     _emit_naming_drift_issues,
-    _InterfaceInventoryEntry,
     analyze_mms_interface_variables,
 )
 from sattlint.analyzers.registry import get_default_analyzers
@@ -39,7 +39,7 @@ def _issue_kinds(report) -> set[str]:
     return {issue.kind for issue in report.issues}
 
 
-def _inventory_entry(**overrides: object) -> _InterfaceInventoryEntry:
+def _inventory_entry(**overrides: object) -> InterfaceInventoryEntry:
     entry = {
         "source_kind": "mms",
         "module_path": ["Program", "Unit"],
@@ -56,7 +56,7 @@ def _inventory_entry(**overrides: object) -> _InterfaceInventoryEntry:
         "write_note": None,
     }
     entry.update(overrides)
-    return _InterfaceInventoryEntry(**entry)
+    return InterfaceInventoryEntry(**entry)
 
 
 def test_mms_interface_flags_dead_tags_for_unwritten_outgoing_variables() -> None:

@@ -476,9 +476,9 @@ def build_report(audit_dir: Path) -> dict[str, Any]:
     assert_artifact_dir_ready(audit_dir)
     audit_status = _read_json(audit_dir / "status.json")
     audit_summary = _read_json(audit_dir / "summary.json")
-    ruff_report = _read_json(audit_dir / "pipeline" / "ruff.json")
-    pyright_report = _read_json(audit_dir / "pipeline" / "pyright.json")
-    pytest_report = _read_json(audit_dir / "pipeline" / "pytest.json")
+    ruff_report = _read_json_optional(audit_dir / "pipeline" / "ruff.json") or {}
+    pyright_report = _read_json_optional(audit_dir / "pipeline" / "pyright.json") or {}
+    pytest_report = _read_json_optional(audit_dir / "pipeline" / "pytest.json") or {}
     coverage_ratchet = _read_json_optional(DEFAULT_COVERAGE_RATCHET)
     structural_ratchet = _read_json_optional(DEFAULT_STRUCTURAL_RATCHET)
     file_debt_ratchet = _read_json_optional(DEFAULT_FILE_DEBT_RATCHET)

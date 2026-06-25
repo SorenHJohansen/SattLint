@@ -805,7 +805,7 @@ def test_variable_issue_collection_nested_scope_and_magic_helpers_cover_remainin
         site_str=lambda: "Root > Worker",
     )
 
-    collected = variable_issue_collection_module._iter_variables_for_datatype_field_analysis(helper)
+    collected = variable_issue_collection_module.iter_variables_for_datatype_field_analysis(helper)
     collected_names = [variable.name for _, variable, _, _ in collected]
     assert collected_names == ["NestedParam", "NestedLocal", "ChildLocal"]
 

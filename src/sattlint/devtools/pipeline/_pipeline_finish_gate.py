@@ -6,7 +6,7 @@ import shlex
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sattlint.devtools.json_helpers import json_mapping as _json_mapping
 from sattlint.path_sanitizer import sanitize_path_for_report
@@ -60,7 +60,11 @@ def focused_python_files(changed_files: Iterable[str]) -> list[str]:
     return focused_files
 
 
-def owner_test_targets_for_checks(recommended_checks: Iterable[dict[str, Any]]) -> list[str]:
+def owner_test_targets_for_checks(
+    recommended_checks: Iterable[dict[str, Any]],
+    *,
+    changed_files: Iterable[str] | None = None,
+) -> list[str]:
     targets: list[str] = []
     for entry in recommended_checks:
         for target in entry.get("owner_test_targets", []):
@@ -68,6 +72,32 @@ def owner_test_targets_for_checks(recommended_checks: Iterable[dict[str, Any]]) 
             if not target_text or target_text in targets:
                 continue
             targets.append(target_text)
+    if changed_files is not None:
+        for path_text in focused_python_files(changed_files):
+            if not path_text.startswith("tests/"):
+                continue
+            if path_text in targets:
+                continue
+            targets.append(path_text)
+        from sattlint.devtools import ai_work_map as ai_work_map_module  # noqa: PLC0415
+
+        planning_context = ai_work_map_module.build_planning_context(
+            changed_files=list(changed_files),
+            recommended_check_ids=[str(entry.get("id") or "") for entry in recommended_checks],
+            selected_surface="pipeline",
+        )
+        for suite in planning_context.get("nearest_owner_suites", []):
+            if not isinstance(suite, dict):
+                continue
+            suite_mapping = cast(dict[str, object], suite)
+            suite_tests = suite_mapping.get("tests")
+            if not isinstance(suite_tests, list):
+                continue
+            for test_path in cast(list[object], suite_tests):
+                test_text = str(test_path).strip()
+                if not test_text or test_text in targets:
+                    continue
+                targets.append(test_text)
     return targets
 
 
@@ -103,7 +133,7 @@ def build_owner_pytest_step(
     coverage_output_path: Path,
     pytest_workers: str | None = None,
 ) -> dict[str, Any] | None:
-    owner_test_targets = owner_test_targets_for_checks(recommended_checks)
+    owner_test_targets = owner_test_targets_for_checks(recommended_checks, changed_files=changed_files)
     if not owner_test_targets:
         return None
     touched_source_files = _changed_source_python_files(changed_files)

@@ -138,7 +138,7 @@ def test_find_public_readiness_findings_assigns_scope_paths_for_finish_gate_cove
         encoding="utf-8",
     )
 
-    findings = repo_audit._find_public_readiness_findings(
+    findings = repo_audit.find_public_readiness_findings(
         tmp_path,
         tracked_paths=(
             "LICENSE",

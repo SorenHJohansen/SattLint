@@ -279,7 +279,7 @@ def test_run_text_scan_check_skips_local_ci_parity_findings(tmp_path):
 
     context = repo_audit._build_repo_audit_scan_context(tmp_path, suspicious_identifiers=["SQHJ"])
 
-    findings = repo_audit._run_text_scan_check(context)
+    findings = repo_audit.run_text_scan_check(context)
 
     assert any(finding.id == "email-address" for finding in findings)
     assert any(finding.id == "suspicious-identifier" for finding in findings)
@@ -432,12 +432,12 @@ def test_repo_audit_redaction_and_severity_helpers_cover_default_paths():
 
 
 def test_parse_coverage_findings_handles_missing_file_and_parse_error(tmp_path):
-    assert repo_audit._parse_coverage_findings(tmp_path) == []
+    assert repo_audit.parse_coverage_findings(tmp_path) == []
 
     coverage_path = tmp_path / "coverage.xml"
     coverage_path.write_text("<coverage>", encoding="utf-8")
 
-    assert repo_audit._parse_coverage_findings(tmp_path) == []
+    assert repo_audit.parse_coverage_findings(tmp_path) == []
 
 
 def test_repo_audit_ast_path_helpers_cover_branchy_cases():

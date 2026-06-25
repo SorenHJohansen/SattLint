@@ -356,7 +356,7 @@ def test_dedupe_casefolded_strings_removes_duplicates_and_empties():
     assert result == ["Alpha", "Beta"]
 
 
-# --- _validation_shared.py: RawSourceValidationError, _span_kwargs, _warn_or_raise, _ref_span ---
+# --- _validation_shared.py: RawSourceValidationError, span_kwargs, warn_or_raise, ref_span ---
 def test_raw_source_validation_error_stores_line_and_column():
     from sattlint._validation_shared import RawSourceValidationError  # noqa: PLC0415
 
@@ -369,37 +369,37 @@ def test_raw_source_validation_error_stores_line_and_column():
 
 def test_span_kwargs_returns_line_and_column_from_span():
     from sattline_parser.models.ast_model import SourceSpan  # noqa: PLC0415
-    from sattlint._validation_shared import _span_kwargs  # noqa: PLC0415
+    from sattlint._validation_shared import span_kwargs  # noqa: PLC0415
 
     span = SourceSpan(line=3, column=7)
-    result = _span_kwargs(span)
+    result = span_kwargs(span)
     assert result == {"line": 3, "column": 7}
 
 
 def test_warn_or_raise_raises_when_no_sink():
     import pytest  # noqa: PLC0415
 
-    from sattlint._validation_shared import StructuralValidationError, _warn_or_raise  # noqa: PLC0415
+    from sattlint._validation_shared import StructuralValidationError, warn_or_raise  # noqa: PLC0415
 
     with pytest.raises(StructuralValidationError, match="something bad"):
-        _warn_or_raise("something bad", line=1, column=2, length=5)
+        warn_or_raise("something bad", line=1, column=2, length=5)
 
 
 def test_ref_span_returns_span_from_dict_with_span():
     from sattline_parser.models.ast_model import SourceSpan  # noqa: PLC0415
-    from sattlint._validation_shared import _ref_span  # noqa: PLC0415
+    from sattlint._validation_shared import ref_span  # noqa: PLC0415
 
     span = SourceSpan(line=1, column=0)
-    result = _ref_span({"span": span})
+    result = ref_span({"span": span})
     assert result is span
 
 
 def test_ref_span_returns_none_for_non_dict():
-    from sattlint._validation_shared import _ref_span  # noqa: PLC0415
+    from sattlint._validation_shared import ref_span  # noqa: PLC0415
 
-    assert _ref_span(None) is None
-    assert _ref_span("string") is None
-    assert _ref_span({"span": "not-a-span"}) is None
+    assert ref_span(None) is None
+    assert ref_span("string") is None
+    assert ref_span({"span": "not-a-span"}) is None
 
 
 # --- coverage_reports.py: skipped when no coverage.xml, high severity branch ---

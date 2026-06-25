@@ -71,7 +71,7 @@ def test_audit_repository_ignores_active_output_dir_ai_gc_manifest_drift(tmp_pat
 
     with (
         patch.object(repo_audit, "collect_custom_findings", return_value=[stale_finding]),
-        patch.object(repo_audit, "_find_pipeline_findings", return_value=[]),
+        patch.object(repo_audit, "find_pipeline_findings", return_value=[]),
         patch.object(repo_audit.pipeline_module, "_run_pipeline", return_value=pipeline_summary),
         patch.object(repo_audit, "build_ai_gc_report", return_value=ai_gc_report),
     ):
@@ -97,7 +97,7 @@ def test_audit_repository_ignores_active_output_dir_ai_gc_manifest_drift(tmp_pat
 def test_ai_gc_helpers_build_findings_and_filter_reports():
     assert repo_audit_ai_gc._repo_audit_ai_gc_module().Finding is repo_audit.Finding
 
-    findings = repo_audit_ai_gc._ai_gc_report_findings(
+    findings = repo_audit_ai_gc.ai_gc_report_findings(
         {
             "candidates": [
                 {"candidate_id": "skip-me", "applied": True},
@@ -148,7 +148,7 @@ def test_ai_gc_helpers_build_findings_and_filter_reports():
         "failures": [],
     }
 
-    filtered = repo_audit_ai_gc._filter_ai_gc_report_for_output_dir(report, output_dir_path=output_path)
+    filtered = repo_audit_ai_gc.filter_ai_gc_report_for_output_dir(report, output_dir_path=output_path)
 
     assert filtered["candidates"] == [{"candidate_id": "stale-ai-artifact", "path": _artifact_path("old.json")}]
     assert filtered["summary"] == {
@@ -158,13 +158,13 @@ def test_ai_gc_helpers_build_findings_and_filter_reports():
     }
     assert filtered["status"] == "needs-attention"
 
-    failed = repo_audit_ai_gc._filter_ai_gc_report_for_output_dir(
+    failed = repo_audit_ai_gc.filter_ai_gc_report_for_output_dir(
         {**report, "failures": ["still broken"]},
         output_dir_path=output_path,
     )
     assert failed["status"] == "fail"
 
-    applied = repo_audit_ai_gc._filter_ai_gc_report_for_output_dir(
+    applied = repo_audit_ai_gc.filter_ai_gc_report_for_output_dir(
         {
             **report,
             "mode": "apply",
@@ -177,10 +177,10 @@ def test_ai_gc_helpers_build_findings_and_filter_reports():
 
 def test_ai_gc_helpers_passthrough_path_matching_and_findings_filtering():
     output_path = _artifact_path("audit")
-    assert repo_audit_ai_gc._is_active_output_ai_gc_path(None, output_dir_path=output_path) is False
-    assert repo_audit_ai_gc._is_active_output_ai_gc_path(f"{output_path}/", output_dir_path=output_path) is True
+    assert repo_audit_ai_gc.is_active_output_ai_gc_path(None, output_dir_path=output_path) is False
+    assert repo_audit_ai_gc.is_active_output_ai_gc_path(f"{output_path}/", output_dir_path=output_path) is True
     assert (
-        repo_audit_ai_gc._is_active_output_ai_gc_path(
+        repo_audit_ai_gc.is_active_output_ai_gc_path(
             _artifact_path("audit"),
             output_dir_path=_artifact_path("audit-ci"),
         )
@@ -188,10 +188,10 @@ def test_ai_gc_helpers_passthrough_path_matching_and_findings_filtering():
     )
 
     passthrough = {"candidates": "not-a-list"}
-    assert repo_audit_ai_gc._filter_ai_gc_report_for_output_dir(passthrough, output_dir_path=output_path) is passthrough
+    assert repo_audit_ai_gc.filter_ai_gc_report_for_output_dir(passthrough, output_dir_path=output_path) is passthrough
 
     unchanged = {"candidates": [{"candidate_id": "stale-ai-artifact", "path": _artifact_path("old.json")}]}
-    assert repo_audit_ai_gc._filter_ai_gc_report_for_output_dir(unchanged, output_dir_path=output_path) is unchanged
+    assert repo_audit_ai_gc.filter_ai_gc_report_for_output_dir(unchanged, output_dir_path=output_path) is unchanged
 
     findings = [
         repo_audit.Finding(
@@ -215,7 +215,7 @@ def test_ai_gc_helpers_passthrough_path_matching_and_findings_filtering():
         SimpleNamespace(id="other", path=output_path, source="custom"),
     ]
 
-    filtered_findings = repo_audit_ai_gc._filter_ai_gc_findings_for_output_dir(
+    filtered_findings = repo_audit_ai_gc.filter_ai_gc_findings_for_output_dir(
         findings,
         output_dir_path=output_path,
     )
@@ -238,7 +238,7 @@ def test_ai_gc_filters_transient_repo_audit_output_dirs_even_for_other_output_di
         "failures": [],
     }
 
-    filtered = repo_audit_ai_gc._filter_ai_gc_report_for_output_dir(
+    filtered = repo_audit_ai_gc.filter_ai_gc_report_for_output_dir(
         report,
         output_dir_path=_artifact_path("audit-ci"),
     )

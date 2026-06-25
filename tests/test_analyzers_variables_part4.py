@@ -1493,7 +1493,7 @@ def test_iter_variables_for_datatype_field_analysis_includes_context_only_variab
         is_from_root_origin=lambda origin_file, origin_lib=None: True,
     )
 
-    collected = variable_issue_collection_module._iter_variables_for_datatype_field_analysis(fake_analyzer)
+    collected = variable_issue_collection_module.iter_variables_for_datatype_field_analysis(fake_analyzer)
 
     assert any(variable is root_var for _path, variable, _role, _root_owned in collected)
     assert any(

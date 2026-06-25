@@ -11,8 +11,8 @@ repos:
       - id: pyright
         name: Pyright
         language: system
-        entry: python -m pyright
-        args: [src/sattlint, src/sattline_parser]
+        entry: python scripts/run_repo_python.py
+        args: [-m, pyright, src/sattlint, src/sattline_parser]
         files: ^src/.*\.py$
         pass_filenames: false
       - id: actionlint

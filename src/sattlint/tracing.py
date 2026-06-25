@@ -353,9 +353,12 @@ def run_parsed_args(args: argparse.Namespace) -> int:
 
 
 def cli(argv: list[str] | None = None) -> int:
-    parser = build_cli_parser()
-    args = parser.parse_args(argv)
-    return run_parsed_args(args)
+    from . import app as app_module  # noqa: PLC0415
+
+    # Keep the standalone console script as a thin compatibility wrapper so
+    # all parsing and exit-code handling lives on the canonical `sattlint trace` path.
+    delegated_argv = ["trace", *(sys.argv[1:] if argv is None else argv)]
+    return app_module.run_cli(delegated_argv)
 
 
 __all__ = [

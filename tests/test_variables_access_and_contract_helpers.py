@@ -31,7 +31,7 @@ RecordResolver = Callable[[str], object | None]
 
 variables_access_impl: Any = variables_access_module
 variables_contracts_impl: Any = variables_contracts_module
-dependency_scope_mixin_impl: Any = dependency_scope_module._DependencyUsageScopeSupportMixin
+dependency_scope_mixin_impl: Any = dependency_scope_module.DependencyUsageScopeSupportMixin
 DataflowAnalyzerType: Any = DataflowAnalyzer
 
 
@@ -820,7 +820,7 @@ def test_dataflow_facade_and_scalar_helpers_cover_remaining_branches(monkeypatch
 
 
 def test_dependency_scope_support_context_and_mapping_helpers_cover_branches() -> None:
-    class Probe(dependency_scope_module._DependencyUsageScopeSupportMixin):
+    class Probe(dependency_scope_module.DependencyUsageScopeSupportMixin):
         pass
 
     root_typedef = _ns(name="RootType", origin_file="Root.s", origin_lib=None)
@@ -881,7 +881,7 @@ def test_dependency_scope_support_context_and_mapping_helpers_cover_branches() -
 
 
 def test_dependency_scope_support_walk_helpers_cover_branches(monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: PLR0915
-    class Probe(dependency_scope_module._DependencyUsageScopeSupportMixin):
+    class Probe(dependency_scope_module.DependencyUsageScopeSupportMixin):
         pass
 
     module_code_calls: list[tuple[object | None, list[str]]] = []
