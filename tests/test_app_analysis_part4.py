@@ -591,7 +591,7 @@ def test_run_variable_analysis_shadowing_only_uses_shadowing_report_and_pauses(m
     monkeypatch.setattr(app_analysis, "analyze_shadowing", lambda *_, **__: make_shadowing_report("ShadowOnly"))
 
     pauses: list[str] = []
-    app_analysis.run_variable_analysis(
+    app_analysis_commands.run_variable_analysis(
         app.DEFAULT_CONFIG.copy(),
         {IssueKind.SHADOWING},
         pause_fn=lambda: pauses.append("pause"),
@@ -617,7 +617,7 @@ def test_run_datatype_usage_analysis_reports_success_error_and_pause(monkeypatch
 
     monkeypatch.setattr(variables_reporting_module, "report_datatype_usage", fake_analyze)
 
-    app_analysis.run_datatype_usage_analysis(
+    app_analysis_commands.run_datatype_usage_analysis(
         app.DEFAULT_CONFIG.copy(),
         iter_loaded_projects_fn=cast(
             Any,
@@ -662,7 +662,7 @@ def test_run_module_duplicates_analysis_handles_missing_matches_default_compare_
         lambda *_args, **_kwargs: SimpleNamespace(summary=lambda: "default comparison summary"),
     )
 
-    app_analysis.run_module_duplicates_analysis(
+    app_analysis_commands.run_module_duplicates_analysis(
         app.DEFAULT_CONFIG.copy(),
         iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", AnalysisGraphStub())])),
         pause_fn=lambda: pauses.append("pause"),
@@ -681,7 +681,7 @@ def test_run_module_find_by_name_rejects_empty_name(monkeypatch):
     monkeypatch.setattr(builtins, "input", lambda _prompt="": "   ")
     monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
 
-    app_analysis.run_module_find_by_name(
+    app_analysis_commands.run_module_find_by_name(
         app.DEFAULT_CONFIG.copy(),
         iter_loaded_projects_fn=lambda *_args, **_kwargs: pytest.fail("should not load projects"),
         pause_fn=lambda: pauses.append("pause"),
@@ -700,7 +700,7 @@ def test_run_module_tree_debug_reports_errors_and_pauses(monkeypatch):
         app_analysis, "debug_module_structure", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("boom"))
     )
 
-    app_analysis.run_module_tree_debug(
+    app_analysis_commands.run_module_tree_debug(
         app.DEFAULT_CONFIG.copy(),
         prompt_fn=lambda _message, _default: "7",
         iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", AnalysisGraphStub())])),
@@ -727,7 +727,7 @@ def test_run_module_localvar_analysis_reports_errors_and_pauses(monkeypatch):
 
     monkeypatch.setattr(reporting_module, "report_module_localvar_fields", fake_analyze_module_localvar_fields)
 
-    app_analysis.run_module_localvar_analysis(
+    app_analysis_commands.run_module_localvar_analysis(
         app.DEFAULT_CONFIG.copy(),
         load_project_fn=cast(Any, lambda _cfg: (named_object("BasePicture"), AnalysisGraphStub())),
         iter_loaded_projects_fn=cast(
@@ -753,7 +753,7 @@ def test_run_checks_success_path_pauses(monkeypatch):
 
     monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
 
-    app_analysis.run_checks(
+    app_analysis_checks.run_checks(
         app.DEFAULT_CONFIG.copy(),
         ["state-inference"],
         iter_loaded_projects_fn=cast(
@@ -814,7 +814,7 @@ def test_run_icf_validation_builds_moduletype_index(monkeypatch, tmp_path):
             summary=lambda: "icf report",
         )
 
-    app_analysis.run_icf_validation(
+    app_analysis_commands.run_icf_validation(
         app.DEFAULT_CONFIG.copy(),
         configured_icf_files_fn=lambda _cfg: (icf_dir, [valid_file]),
         load_program_ast_fn=cast(Any, lambda _cfg, _program_name: ("bp-valid", graph)),
@@ -840,7 +840,7 @@ def test_run_debug_variable_usage_reports_errors_and_pauses(monkeypatch):
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
     )
 
-    app_analysis.run_debug_variable_usage(
+    app_analysis_commands.run_debug_variable_usage(
         app.DEFAULT_CONFIG.copy(),
         iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp-a", SimpleNamespace())])),
         pause_fn=lambda: pauses.append("pause"),

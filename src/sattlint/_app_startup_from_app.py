@@ -61,6 +61,12 @@ def run_analyze_command_from_app(
     output_format: str = "text",
     app_module: Any,
 ) -> int:
+    app_analysis_checks_module = getattr(app_module, "app_analysis_checks", None)
+    collect_run_checks_result_fn = (
+        app_analysis_checks_module.collect_run_checks_result
+        if app_analysis_checks_module is not None
+        else app_module.app_analysis.collect_run_checks_result
+    )
     return startup_core.run_analyze_command(
         cfg,
         selected_keys=selected_keys,
@@ -69,7 +75,7 @@ def run_analyze_command_from_app(
         output_format=output_format,
         run_analyze_command_fn=app_module.app_cli_commands.run_analyze_command,
         iter_loaded_projects_fn=app_module._iter_loaded_projects,
-        collect_run_checks_result_fn=app_module.app_analysis.collect_run_checks_result,
+        collect_run_checks_result_fn=collect_run_checks_result_fn,
         get_selectable_analyzers_fn=app_module._get_selectable_analyzers,
         get_enabled_analyzers_fn=app_module._get_enabled_analyzers,
         target_is_library_fn=app_module._target_is_library,

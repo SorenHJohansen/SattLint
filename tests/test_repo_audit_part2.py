@@ -161,7 +161,7 @@ def test_build_local_import_graph_and_architecture_findings_cover_prefix_and_inf
 
 
 def test_structural_detail_and_cached_line_findings_cover_delegate_paths(tmp_path):
-    detail = repo_audit._structural_report_location_detail(
+    detail = repo_audit.structural_report_location_detail(
         {
             "id": "structural-budget-ratchet-regression",
             "regressions": [{"metric": "source_files", "actual": 3, "expected_max": 2}],

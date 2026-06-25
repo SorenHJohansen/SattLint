@@ -61,9 +61,9 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.transformer._expressions_mixin import _ExpressionsMixin
 from sattline_parser.transformer._graphics_interact_mixin import _GraphicsInteractMixin
-from sattline_parser.transformer._modules_mixin import _flatten_items, _meta_span, _ModulesMixin
-from sattline_parser.transformer._sfc_mixin import _SFCMixin
-from sattline_parser.transformer._tokens_mixin import DEFAULT_INIT, _TokensMixin
+from sattline_parser.transformer._modules_mixin import _ModulesMixin, flatten_items, meta_span
+from sattline_parser.transformer._sfc_mixin import SFCMixin
+from sattline_parser.transformer._tokens_mixin import DEFAULT_INIT, TokensMixin
 from sattline_parser.transformer.sl_transformer import (
     SLTransformer,
     _extract_program_name_from_header_lines,
@@ -71,13 +71,13 @@ from sattline_parser.transformer.sl_transformer import (
     _strip_quoted,
 )
 from sattline_parser.transformer.sl_transformer import (
-    _flatten_items as _sl_flatten_items,
-)
-from sattline_parser.transformer.sl_transformer import (
     _is_tree as _sl_is_tree,
 )
 from sattline_parser.transformer.sl_transformer import (
-    _meta_span as _sl_meta_span,
+    flatten_items as _sl_flatten_items,
+)
+from sattline_parser.transformer.sl_transformer import (
+    meta_span as _sl_meta_span,
 )
 from sattline_parser.utils.formatter import format_expr, format_list, format_optional, format_seq_nodes
 from sattline_parser.utils.text_processing import strip_sl_comments_with_mapping
@@ -146,7 +146,7 @@ class _GraphicsHarness(_GraphicsInteractMixin):
         return tails
 
 
-class _TokensHarness(_TokensMixin):
+class _TokensHarness(TokensMixin):
     pass
 
 
@@ -154,7 +154,7 @@ class _ExpressionsHarness(_ExpressionsMixin):
     pass
 
 
-class _SFCHarness(_SFCMixin):
+class _SFCHarness(SFCMixin):
     pass
 
 
@@ -185,6 +185,7 @@ __all__ = [
     "SFCBreak",
     "SFCCodeBlocks",
     "SFCFork",
+    "SFCMixin",
     "SFCParallel",
     "SFCStep",
     "SFCSubsequence",
@@ -197,6 +198,7 @@ __all__ = [
     "SingleModule",
     "SourceSpan",
     "Token",
+    "TokensMixin",
     "Tree",
     "UnexpectedCharacters",
     "UnexpectedEOF",
@@ -209,14 +211,10 @@ __all__ = [
     "_ModulesHarness",
     "_ModulesMixin",
     "_SFCHarness",
-    "_SFCMixin",
     "_TokensHarness",
-    "_TokensMixin",
     "_extract_program_name_from_header_lines",
-    "_flatten_items",
     "_is_tree",
     "_iter_tree_children",
-    "_meta_span",
     "_module_header",
     "_parse_to_basepicture",
     "_repo_path",
@@ -228,12 +226,14 @@ __all__ = [
     "cast",
     "const",
     "create_sl_parser",
+    "flatten_items",
     "format_expr",
     "format_list",
     "format_optional",
     "format_seq_nodes",
     "grammar_parser_decode",
     "importlib",
+    "meta_span",
     "parse_source_file",
     "parser_api",
     "parser_const",

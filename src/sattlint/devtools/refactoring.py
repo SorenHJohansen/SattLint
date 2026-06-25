@@ -27,12 +27,6 @@ DEFAULT_OUTPUT_FILENAME = "refactoring_preview.json"
 DEFAULT_REFACTORING_KIND = "normalize-layout"
 
 
-_emit_refactoring_progress = emit_progress
-
-
-_sanitize_repo_path = sanitize_repo_path
-
-
 def _normalize_layout(source_text: str) -> str:
     return normalize_layout_text(source_text)
 
@@ -85,7 +79,7 @@ def build_refactoring_candidate(
 ) -> tuple[dict[str, Any], str | None]:
     resolved_workspace_root = workspace_root.resolve()
     resolved_source_file = source_file.resolve()
-    sanitized_source = _sanitize_repo_path(resolved_source_file, workspace_root=resolved_workspace_root)
+    sanitized_source = sanitize_repo_path(resolved_source_file, workspace_root=resolved_workspace_root)
 
     try:
         original_text = resolved_source_file.read_text(encoding="utf-8")
@@ -181,7 +175,7 @@ def _resolve_selected_files(
     selected: list[Path] = []
     errors: list[dict[str, Any]] = []
     known_paths = {
-        _sanitize_repo_path(path, workspace_root=workspace_root).casefold(): path for path in discovery.program_files
+        sanitize_repo_path(path, workspace_root=workspace_root).casefold(): path for path in discovery.program_files
     }
     for raw_entry in entry_files:
         value = raw_entry.strip()
@@ -191,7 +185,7 @@ def _resolve_selected_files(
         resolved = (
             candidate_path.resolve() if candidate_path.is_absolute() else (workspace_root / candidate_path).resolve()
         )
-        sanitized = _sanitize_repo_path(resolved, workspace_root=workspace_root)
+        sanitized = sanitize_repo_path(resolved, workspace_root=workspace_root)
         matched = known_paths.get(sanitized.casefold())
         if matched is None:
             errors.append({"entry_file": sanitized, "message": f"Unknown entry-file selector: {value}"})
@@ -221,7 +215,7 @@ def build_refactoring_report(
     candidates: list[dict[str, Any]] = []
     applied_change_count = 0
     for index, source_file in enumerate(selected_files, start=1):
-        sanitized_source = _sanitize_repo_path(source_file, workspace_root=resolved_workspace_root)
+        sanitized_source = sanitize_repo_path(source_file, workspace_root=resolved_workspace_root)
         if progress_callback is not None:
             progress_callback(f"Refactoring: previewing {index}/{len(selected_files)} {sanitized_source}")
         candidate, transformed_text = build_refactoring_candidate(
@@ -260,7 +254,7 @@ def build_refactoring_report(
         "generated_by": "sattlint.devtools.refactoring",
         "report_kind": "refactoring-preview",
         "status": status,
-        "workspace_root": _sanitize_repo_path(resolved_workspace_root, workspace_root=resolved_workspace_root),
+        "workspace_root": sanitize_repo_path(resolved_workspace_root, workspace_root=resolved_workspace_root),
         "refactoring_kind": refactoring_kind,
         "apply_mode": "apply" if apply else "dry-run",
         "summary": {
@@ -356,7 +350,7 @@ def _parse_refactoring_args(argv: Sequence[str] | None) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_refactoring_args(argv)
     apply = bool(args.apply and not args.dry_run)
-    progress_callback = None if args.no_progress else _emit_refactoring_progress
+    progress_callback = None if args.no_progress else emit_progress
     report = build_refactoring_report(
         Path(args.workspace_root).resolve(),
         entry_files=list(args.entry_file),

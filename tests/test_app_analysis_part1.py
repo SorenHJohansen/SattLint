@@ -18,21 +18,21 @@ def test_advanced_datatype_analysis_choices(noop_screen, monkeypatch, real_conte
             "input",
             make_input(["1", real_context["var_name"]]),
         )
-        app_analysis.run_advanced_datatype_analysis(cfg)
+        app_analysis_commands.run_advanced_datatype_analysis(cfg)
 
         monkeypatch.setattr(
             builtins,
             "input",
             make_input(["2", real_context["module_name"]]),
         )
-        app_analysis.run_advanced_datatype_analysis(cfg)
+        app_analysis_commands.run_advanced_datatype_analysis(cfg)
 
         monkeypatch.setattr(
             builtins,
             "input",
             make_input(["3", real_context["var_name"]]),
         )
-        app_analysis.run_advanced_datatype_analysis(cfg)
+        app_analysis_commands.run_advanced_datatype_analysis(cfg)
         return
 
     monkeypatch.setattr(
@@ -44,13 +44,13 @@ def test_advanced_datatype_analysis_choices(noop_screen, monkeypatch, real_conte
     monkeypatch.setattr(variables_reporting_module, "debug_variable_usage", lambda *_, **__: "report")
 
     monkeypatch.setattr(builtins, "input", make_input(["1", "VarName"]))
-    app_analysis.run_advanced_datatype_analysis(app.DEFAULT_CONFIG.copy())
+    app_analysis_commands.run_advanced_datatype_analysis(app.DEFAULT_CONFIG.copy())
 
     monkeypatch.setattr(builtins, "input", make_input(["2", "ModuleName"]))
-    app_analysis.run_advanced_datatype_analysis(app.DEFAULT_CONFIG.copy())
+    app_analysis_commands.run_advanced_datatype_analysis(app.DEFAULT_CONFIG.copy())
 
     monkeypatch.setattr(builtins, "input", make_input(["3", "VarName"]))
-    app_analysis.run_advanced_datatype_analysis(app.DEFAULT_CONFIG.copy())
+    app_analysis_commands.run_advanced_datatype_analysis(app.DEFAULT_CONFIG.copy())
 
 
 def test_run_variable_analysis_runs_all_analyzed_targets(noop_screen, monkeypatch, capsys):
@@ -67,7 +67,7 @@ def test_run_variable_analysis_runs_all_analyzed_targets(noop_screen, monkeypatc
     monkeypatch.setattr(app_analysis, "analyze_variables", lambda *_, **__: make_variable_report("BasePicture"))
     monkeypatch.setattr(app_analysis, "analyze_shadowing", lambda *_, **__: make_shadowing_report("BasePicture"))
 
-    app_analysis.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
+    app_analysis_commands.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
 
     out = capsys.readouterr().out
     assert "=== Target: ProgramA ===" in out
@@ -99,7 +99,7 @@ def test_run_variable_analysis_scopes_reverse_consumer_loading(
         seen_flags.append(bool(cfg["include_reverse_library_consumers"]))
         return iter(())
 
-    app_analysis.run_variable_analysis(
+    app_analysis_commands.run_variable_analysis(
         app.DEFAULT_CONFIG.copy(),
         kinds,
         iter_loaded_projects_fn=_fake_iter_loaded_projects,
@@ -134,7 +134,7 @@ def test_run_variable_analysis_updates_live_status(monkeypatch):
     monkeypatch.setattr(app_analysis, "analyze_variables", _fake_analyze_variables)
     monkeypatch.setattr(app_analysis.console_module, "live_status_line", lambda: FakeLiveStatusLine())
 
-    app_analysis.run_variable_analysis(
+    app_analysis_commands.run_variable_analysis(
         app.DEFAULT_CONFIG.copy(),
         {app_analysis.IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE},
     )
@@ -165,7 +165,7 @@ def test_run_variable_analysis_real_analyzer_keeps_default_status_updates_coarse
     )
     monkeypatch.setattr(app_analysis.console_module, "live_status_line", lambda: FakeLiveStatusLine())
 
-    app_analysis.run_variable_analysis(
+    app_analysis_commands.run_variable_analysis(
         app.DEFAULT_CONFIG.copy(),
         {app_analysis.IssueKind.UNUSED},
     )
@@ -193,7 +193,7 @@ def test_run_variable_analysis_includes_version_and_last_changed(noop_screen, mo
     monkeypatch.setattr(app_analysis, "analyze_variables", lambda *_, **__: make_variable_report("BasePicture"))
     monkeypatch.setattr(app_analysis, "analyze_shadowing", lambda *_, **__: make_shadowing_report("BasePicture"))
 
-    app_analysis.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
+    app_analysis_commands.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
 
     out = capsys.readouterr().out
     assert "Version: draft" in out
@@ -231,7 +231,7 @@ def test_run_variable_analysis_writes_telemetry_summary(tmp_path, noop_screen, m
     cfg = app.DEFAULT_CONFIG.copy()
     cfg["telemetry"] = {"enabled": True}
 
-    app_analysis.run_variable_analysis(cfg, None)
+    app_analysis_commands.run_variable_analysis(cfg, None)
 
     events = [json.loads(line) for line in telemetry_path.read_text(encoding="utf-8").splitlines()]
 
@@ -274,7 +274,7 @@ def test_run_variable_analysis_all_analyses_executes_real_analyzers(noop_screen,
         lambda *_args, **_kwargs: iter([("SmokeTarget", project_bp, graph)]),
     )
 
-    app_analysis.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
+    app_analysis_commands.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
 
     out = capsys.readouterr().out
     assert "=== Target: SmokeTarget ===" in out
@@ -305,7 +305,7 @@ def test_run_variable_analysis_all_reports_lists_empty_categories(noop_screen, m
         lambda *_, **__: make_shadowing_report("ProgramA"),
     )
 
-    app_analysis.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
+    app_analysis_commands.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
 
     out = capsys.readouterr().out
     assert "=== Target: ProgramA ===" in out
@@ -352,7 +352,7 @@ def test_run_variable_analysis_all_reports_hide_low_confidence_categories(noop_s
         lambda *_, **__: make_shadowing_report("ProgramA"),
     )
 
-    app_analysis.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
+    app_analysis_commands.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
 
     out = capsys.readouterr().out
     assert "UI/display-only variables" not in out
@@ -389,7 +389,7 @@ def test_run_variable_analysis_can_render_low_confidence_category_on_request(noo
         lambda *_, **__: make_shadowing_report("ProgramA"),
     )
 
-    app_analysis.run_variable_analysis(app.DEFAULT_CONFIG.copy(), {app_analysis.IssueKind.UI_ONLY})
+    app_analysis_commands.run_variable_analysis(app.DEFAULT_CONFIG.copy(), {app_analysis.IssueKind.UI_ONLY})
 
     out = capsys.readouterr().out
     assert "UI/display-only variables" in out
@@ -417,7 +417,7 @@ def test_run_variable_analysis_passes_selected_issue_kinds_to_analyzer(noop_scre
     monkeypatch.setattr(app_analysis, "analyze_variables", _fake_analyze_variables)
     monkeypatch.setattr(app_analysis, "analyze_shadowing", lambda *_, **__: make_shadowing_report("ProgramA"))
 
-    app_analysis.run_variable_analysis(app.DEFAULT_CONFIG.copy(), {IssueKind.UNUSED})
+    app_analysis_commands.run_variable_analysis(app.DEFAULT_CONFIG.copy(), {IssueKind.UNUSED})
 
     assert seen_selected_kinds == [{IssueKind.UNUSED}]
     assert "=== Target: ProgramA ===" in capsys.readouterr().out
@@ -468,7 +468,7 @@ def test_run_variable_analysis_uses_cached_report_for_selected_issue_kinds(noop_
 
     monkeypatch.setattr(app_analysis, "analyze_variables", _fake_analyze_variables)
 
-    app_analysis.run_variable_analysis(app.DEFAULT_CONFIG.copy(), {IssueKind.UNUSED})
+    app_analysis_commands.run_variable_analysis(app.DEFAULT_CONFIG.copy(), {IssueKind.UNUSED})
 
     assert analyze_calls == []
     assert load_keys == ["project-key:variables:unused"]
@@ -514,8 +514,8 @@ def test_run_variable_analysis_cache_keys_selected_issue_kinds_separately(noop_s
     monkeypatch.setattr(app_analysis, "analyze_variables", lambda *_, **__: make_variable_report("ProgramA"))
     monkeypatch.setattr(app_analysis, "analyze_shadowing", lambda *_, **__: make_shadowing_report("ProgramA"))
 
-    app_analysis.run_variable_analysis(app.DEFAULT_CONFIG.copy(), {IssueKind.UNUSED})
-    app_analysis.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
+    app_analysis_commands.run_variable_analysis(app.DEFAULT_CONFIG.copy(), {IssueKind.UNUSED})
+    app_analysis_commands.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
 
     default_kinds_key = ",".join(sorted(kind.name.casefold() for kind in DEFAULT_VARIABLE_ANALYSIS_KINDS))
     assert save_keys == [
@@ -551,7 +551,7 @@ def test_run_variable_analysis_bypasses_report_cache_when_use_cache_disabled(noo
         lambda *_, **__: analyze_calls.append("run") or make_variable_report("ProgramA"),
     )
 
-    app_analysis.run_variable_analysis(app.DEFAULT_CONFIG.copy() | {"use_cache": False}, {IssueKind.UNUSED})
+    app_analysis_commands.run_variable_analysis(app.DEFAULT_CONFIG.copy() | {"use_cache": False}, {IssueKind.UNUSED})
 
     assert analyze_calls == ["run"]
 
@@ -616,7 +616,7 @@ def test_iter_loaded_projects_skips_failed_targets(noop_screen, monkeypatch, cap
 def test_run_variable_analysis_reports_when_no_targets_load(noop_screen, monkeypatch, capsys):
     monkeypatch.setattr(app_analysis, "_iter_loaded_projects", lambda *_args, **_kwargs: iter(()))
 
-    app_analysis.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
+    app_analysis_commands.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
 
     out = capsys.readouterr().out
     assert "No variable analysis output was produced because no target loaded successfully." in out
@@ -632,7 +632,7 @@ def test_run_variable_analysis_prints_validation_warnings(noop_screen, monkeypat
     monkeypatch.setattr(app_analysis, "analyze_variables", lambda *_, **__: make_variable_report())
     monkeypatch.setattr(app_analysis, "analyze_shadowing", lambda *_, **__: make_shadowing_report())
 
-    app_analysis.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
+    app_analysis_commands.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
 
     out = capsys.readouterr().out
     assert "Validation warnings (1):" in out
@@ -651,7 +651,7 @@ def test_run_variable_analysis_hides_dependency_validation_warnings(noop_screen,
     monkeypatch.setattr(app_analysis, "analyze_variables", lambda *_, **__: make_variable_report())
     monkeypatch.setattr(app_analysis, "analyze_shadowing", lambda *_, **__: make_shadowing_report())
 
-    app_analysis.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
+    app_analysis_commands.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
 
     out = capsys.readouterr().out
     assert "Validation warnings (" not in out
@@ -672,7 +672,7 @@ def test_run_variable_analysis_hides_expected_unavailable_dependency_warnings(no
     monkeypatch.setattr(app_analysis, "analyze_variables", lambda *_, **__: make_variable_report())
     monkeypatch.setattr(app_analysis, "analyze_shadowing", lambda *_, **__: make_shadowing_report())
 
-    app_analysis.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
+    app_analysis_commands.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
 
     out = capsys.readouterr().out
     assert "Validation warnings (" not in out
@@ -701,7 +701,7 @@ def test_run_variable_analysis_marks_library_targets(noop_screen, monkeypatch):
     cfg = app.DEFAULT_CONFIG.copy()
     cfg["program_dir"] = "programs"
 
-    app_analysis.run_variable_analysis(cfg, None)
+    app_analysis_commands.run_variable_analysis(cfg, None)
 
     assert captured["analyzed_target_is_library"] is True
 
@@ -718,7 +718,7 @@ def test_run_variable_analysis_suppresses_library_picture_display_warnings(noop_
     project_bp = named_object("LibraryTarget", origin_file="LibraryTarget.x")
     captured_warnings: list[list[str]] = []
 
-    app_analysis.run_variable_analysis(
+    app_analysis_commands.run_variable_analysis(
         app.DEFAULT_CONFIG.copy(),
         {app_analysis.IssueKind.UNUSED},
         iter_loaded_projects_fn=cast(
@@ -819,7 +819,9 @@ def test_run_datatype_usage_analysis_rejects_empty_input(monkeypatch):
         app_analysis, "_iter_loaded_projects", lambda *_args, **_kwargs: pytest.fail("should not load projects")
     )
 
-    app_analysis.run_datatype_usage_analysis(app.DEFAULT_CONFIG.copy(), pause_fn=lambda: pauses.append("pause"))
+    app_analysis_commands.run_datatype_usage_analysis(
+        app.DEFAULT_CONFIG.copy(), pause_fn=lambda: pauses.append("pause")
+    )
 
     assert "No variable name provided" in "\n".join(lines)
     assert pauses == ["pause"]
@@ -841,7 +843,9 @@ def test_run_datatype_usage_analysis_reports_errors_and_pauses(monkeypatch):
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
     )
 
-    app_analysis.run_datatype_usage_analysis(app.DEFAULT_CONFIG.copy(), pause_fn=lambda: pauses.append("pause"))
+    app_analysis_commands.run_datatype_usage_analysis(
+        app.DEFAULT_CONFIG.copy(), pause_fn=lambda: pauses.append("pause")
+    )
 
     assert any("Error during analysis for TargetA: boom" in line for line in lines)
     assert pauses == ["pause"]
@@ -867,7 +871,7 @@ def test_run_datatype_usage_analysis_updates_live_status(monkeypatch):
     monkeypatch.setattr(app_analysis.console_module, "live_status_line", lambda: FakeLiveStatusLine())
     monkeypatch.setattr(app_analysis, "emit_output", lambda *_args, **_kwargs: None)
 
-    app_analysis.run_datatype_usage_analysis(app.DEFAULT_CONFIG.copy(), pause_fn=None)
+    app_analysis_commands.run_datatype_usage_analysis(app.DEFAULT_CONFIG.copy(), pause_fn=None)
 
     assert updates == ["Analyzing datatype usage for TargetA: FlowVar"]
 

@@ -90,15 +90,15 @@ def focused_python_files(changed_files: Iterable[str]) -> list[str]:
     return focused_files
 
 
-def owner_test_targets_for_checks(recommended_checks: Iterable[dict[str, Any]]) -> list[str]:
-    targets: list[str] = []
-    for entry in recommended_checks:
-        for target in entry.get("owner_test_targets", []):
-            target_text = str(target).strip()
-            if not target_text or target_text in targets:
-                continue
-            targets.append(target_text)
-    return targets
+def owner_test_targets_for_checks(
+    recommended_checks: Iterable[dict[str, Any]],
+    *,
+    changed_files: Iterable[str] | None = None,
+) -> list[str]:
+    return pipeline_module.owner_test_targets_for_checks(
+        recommended_checks,
+        changed_files=changed_files,
+    )
 
 
 def _build_repo_audit_finish_gate_commands(

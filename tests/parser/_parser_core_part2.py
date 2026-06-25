@@ -125,11 +125,11 @@ def test_modules_mixin_helpers_flatten_nested_module_trees_and_meta_spans():
         ["beta", Tree(parser_const.TREE_TAG_BASE_MODULE_BODY, ["gamma"])],
     )
 
-    assert _meta_span(meta) == SourceSpan(line=12, column=4)
-    assert _meta_span(SimpleNamespace(line=None, column=4)) is None
+    assert meta_span(meta) == SourceSpan(line=12, column=4)
+    assert meta_span(SimpleNamespace(line=None, column=4)) is None
     assert _is_tree(nested_tree) is True
     assert _is_tree("not-a-tree") is False
-    assert list(_flatten_items(["alpha", ["delta"], nested_tree])) == ["alpha", "delta", "beta", "gamma"]
+    assert list(flatten_items(["alpha", ["delta"], nested_tree])) == ["alpha", "delta", "beta", "gamma"]
 
 
 def test_modules_mixin_module_header_collects_argument_metadata():

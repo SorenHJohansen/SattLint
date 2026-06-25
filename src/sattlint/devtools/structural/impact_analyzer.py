@@ -37,9 +37,6 @@ DEFAULT_OUTPUT_FILENAME = "impact_analysis.json"
 SEMANTIC_QUERY_TOP_K = 5
 
 
-_emit_impact_progress = emit_progress
-
-
 def _normalize_identifier_values(values: list[str]) -> list[str]:
     normalized: list[str] = []
     seen: set[str] = set()
@@ -485,7 +482,7 @@ def _parse_impact_args(argv: list[str] | None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = _parse_impact_args(argv)
     workspace_root = Path(args.workspace_root).resolve()
-    progress_callback = None if args.no_progress else _emit_impact_progress
+    progress_callback = None if args.no_progress else emit_progress
     report = build_impact_analysis_selection(
         workspace_root,
         libraries=list(args.library),

@@ -15,6 +15,8 @@ from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
+from . import _app_analysis_checks as app_analysis_checks_module
+from . import _app_analysis_commands as app_analysis_commands_module
 from . import _app_analysis_from_app as app_analysis_from_app_module
 from . import _app_docs_from_app as app_docs_from_app_module
 from . import _app_graphics_from_app as app_graphics_from_app_module
@@ -57,6 +59,8 @@ LoadedConfig = tuple[ConfigDict, bool]
 ConfigValidationResult = _config_module.ConfigValidationResult
 
 app_analysis: Any = app_analysis_module
+app_analysis_checks: Any = app_analysis_checks_module
+app_analysis_commands: Any = app_analysis_commands_module
 app_base: Any = app_base_module
 app_cli_commands: Any = app_cli_commands_module
 app_docs: Any = app_docs_module

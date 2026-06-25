@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from sattlint import cli_output
+from sattlint.devtools._io import emit_progress
 
 # Import our devtools for reuse
 from .doc_gardener import run_scan as doc_gardener_scan
@@ -269,20 +270,12 @@ def render_review(report: dict[str, Any]) -> str:
     return buffer.getvalue().rstrip()
 
 
-def _emit_progress_stdout(message: str) -> None:
-    print(message)
-
-
-def _emit_progress_stderr(message: str) -> None:
-    print(message, file=sys.stderr)
-
-
 def main(argv: list[str] | None = None) -> None:
     """Main entry point: run review and print results."""
     parser = build_cli_parser()
     args = parser.parse_args(argv)
     output_format = cli_output.resolve_output_format(args)
-    progress_emitter = _emit_progress_stdout if output_format == "text" else _emit_progress_stderr
+    progress_emitter = print if output_format == "text" else emit_progress
     report = run_full_review(emit_progress_fn=progress_emitter)
     cli_report = dict(report)
     cli_report["report_path"] = REVIEW_FILE.as_posix()
