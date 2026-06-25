@@ -167,6 +167,28 @@ def test_find_public_readiness_findings_flags_missing_public_support_docs(tmp_pa
     assert "docs/references/public-support-matrix.md" in (support_finding.detail or "")
 
 
+def test_find_public_readiness_findings_allows_clusterfuzzlite_root_dir(tmp_path: Path):
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\nversion = "0.1.0"\n[project.urls]\nRepository = "https://example.invalid/demo"\n',
+        encoding="utf-8",
+    )
+
+    findings = repo_audit.find_public_readiness_findings(
+        tmp_path,
+        tracked_paths=(
+            "README.md",
+            "LICENSE",
+            "CONTRIBUTING.md",
+            ".gitignore",
+            "pyproject.toml",
+            ".github/workflows/ci.yml",
+            ".clusterfuzzlite/build.sh",
+        ),
+    )
+
+    assert all(finding.id != "unexpected-tracked-root-entry" for finding in findings)
+
+
 def test_find_public_readiness_findings_flags_missing_readme_public_links(tmp_path: Path):
     (tmp_path / "README.md").write_text("# Demo\n\nInstall from source.\n", encoding="utf-8")
     (tmp_path / "LICENSE").write_text("MIT\n", encoding="utf-8")

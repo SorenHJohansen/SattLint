@@ -254,12 +254,6 @@ def _source_diff_repo_root() -> Path:
 REPO_ROOT = _source_diff_repo_root()
 
 
-_emit_progress = emit_progress
-
-
-_source_diff_repo_path = sanitize_repo_path
-
-
 def _pair_name(draft_file: Path, official_file: Path) -> str:
     if draft_file.stem.casefold() == official_file.stem.casefold():
         return draft_file.stem
@@ -309,8 +303,8 @@ def build_pair_report(
     errors.extend(draft_errors)
     errors.extend(official_errors)
 
-    sanitized_draft = _source_diff_repo_path(resolved_draft, workspace_root=resolved_workspace_root)
-    sanitized_official = _source_diff_repo_path(resolved_official, workspace_root=resolved_workspace_root)
+    sanitized_draft = sanitize_repo_path(resolved_draft, workspace_root=resolved_workspace_root)
+    sanitized_official = sanitize_repo_path(resolved_official, workspace_root=resolved_workspace_root)
     diff_lines: list[str] = []
     summary = {"addition_count": 0, "deletion_count": 0, "changed_line_count": 0}
     if draft_text is not None and official_text is not None:
@@ -401,7 +395,7 @@ def build_source_diff_report(
     for index, (resolved_draft, resolved_official) in enumerate(pairs, start=1):
         if progress_callback is not None:
             progress_callback(
-                f"Source diff: comparing {index}/{len(pairs)} {_source_diff_repo_path(resolved_draft, workspace_root=resolved_workspace_root)}"
+                f"Source diff: comparing {index}/{len(pairs)} {sanitize_repo_path(resolved_draft, workspace_root=resolved_workspace_root)}"
             )
         pair_reports.append(
             build_pair_report(
@@ -422,7 +416,7 @@ def build_source_diff_report(
         "generated_by": "sattlint.devtools.source_diff_report",
         "report_kind": "source-diff-report",
         "status": status,
-        "workspace_root": _source_diff_repo_path(resolved_workspace_root, workspace_root=resolved_workspace_root),
+        "workspace_root": sanitize_repo_path(resolved_workspace_root, workspace_root=resolved_workspace_root),
         "summary": {
             "compared_pair_count": len(pair_reports),
             "changed_pair_count": sum(1 for report in pair_reports if report["changed"]),
@@ -444,7 +438,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     return _run_cli(
         argv,
         default_workspace_root=REPO_ROOT,
-        emit_progress_fn=_emit_progress,
+        emit_progress_fn=emit_progress,
         build_source_diff_report_fn=build_source_diff_report,
         write_report_artifacts_fn=_write_report_artifacts,
         render_json_output_fn=cli_output.render_json_output,

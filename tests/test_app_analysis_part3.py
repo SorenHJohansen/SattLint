@@ -12,11 +12,13 @@ def test_run_advanced_datatype_analysis_covers_back_compare_and_debug_branches(m
     monkeypatch.setattr(builtins, "input", make_input(["b", "2", "Pump", "3", "FlowVar"]))
     monkeypatch.setattr(variables_reporting_module, "debug_variable_usage", lambda *_args, **_kwargs: "debug report")
 
-    app_analysis.run_advanced_datatype_analysis(app.DEFAULT_CONFIG.copy(), pause_fn=lambda: pauses.append("pause-back"))
-    app_analysis.run_advanced_datatype_analysis(
+    app_analysis_commands.run_advanced_datatype_analysis(
+        app.DEFAULT_CONFIG.copy(), pause_fn=lambda: pauses.append("pause-back")
+    )
+    app_analysis_commands.run_advanced_datatype_analysis(
         app.DEFAULT_CONFIG.copy(), pause_fn=lambda: pauses.append("pause-compare")
     )
-    app_analysis.run_advanced_datatype_analysis(
+    app_analysis_commands.run_advanced_datatype_analysis(
         app.DEFAULT_CONFIG.copy(),
         iter_loaded_projects_fn=cast(
             Any,
@@ -44,7 +46,7 @@ def test_run_advanced_datatype_analysis_can_use_interaction_choice_handler(monke
         pause=lambda: pauses.append("interaction-pause"),
     )
 
-    app_analysis.run_advanced_datatype_analysis(
+    app_analysis_commands.run_advanced_datatype_analysis(
         app.DEFAULT_CONFIG.copy(),
         iter_loaded_projects_fn=cast(
             Any,

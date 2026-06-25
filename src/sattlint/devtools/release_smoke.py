@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from sattlint import cli_output
+from sattlint.devtools._io import sanitize_repo_path
 from sattlint.devtools.artifact_registry import (
     RELEASE_SMOKE_SCHEMA_VERSION,
     RELEASE_SMOKE_STATUS_FILENAME,
@@ -22,7 +23,6 @@ from sattlint.devtools.artifact_registry import (
     RELEASE_SMOKE_SUMMARY_SCHEMA_KIND,
 )
 from sattlint.devtools.shared.pipeline_artifacts import write_json_artifact
-from sattlint.path_sanitizer import sanitize_path_for_report
 from sattlint.repo_paths import repo_root_from
 
 REPO_ROOT = repo_root_from(Path(__file__))
@@ -98,11 +98,6 @@ def _ensure_text(value: str | bytes | None) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace")
     return value
-
-
-def _sanitize_path(path: Path, *, repo_root: Path) -> str:
-    resolved = path.resolve()
-    return sanitize_path_for_report(resolved, repo_root=repo_root) or resolved.as_posix()
 
 
 def _create_virtualenv(venv_dir: Path) -> None:
@@ -247,9 +242,9 @@ def execute_release_smoke(
     resolved_wheel = wheel.resolve()
     resolved_sample_file = sample_file.resolve()
     resolved_output_dir = output_dir.resolve()
-    sanitized_output_dir = _sanitize_path(resolved_output_dir, repo_root=resolved_repo_root)
-    sanitized_wheel = _sanitize_path(resolved_wheel, repo_root=resolved_repo_root)
-    sanitized_sample = _sanitize_path(resolved_sample_file, repo_root=resolved_repo_root)
+    sanitized_output_dir = sanitize_repo_path(resolved_output_dir, workspace_root=resolved_repo_root)
+    sanitized_wheel = sanitize_repo_path(resolved_wheel, workspace_root=resolved_repo_root)
+    sanitized_sample = sanitize_repo_path(resolved_sample_file, workspace_root=resolved_repo_root)
     canonical_command = (
         "sattlint-release-smoke "
         f"--wheel {sanitized_wheel} --sample-file {sanitized_sample} --output-dir {sanitized_output_dir}"
