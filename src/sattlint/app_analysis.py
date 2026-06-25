@@ -311,7 +311,24 @@ def load_project(
     cache_key_for_target_fn: Callable[[ConfigDict, str], str] = _cache_key_for_target,
     target_load_error_factory: Callable[..., Exception] | None = None,
     get_cache_dir_fn: Callable[[], Path] = get_cache_dir,
+    status_update_fn: Callable[[str], None] | None = None,
 ) -> tuple[BasePicture, ProjectGraph]:
+    if status_update_fn is not None:
+        return analysis_loading_module.load_project(
+            cfg,
+            target_name=target_name,
+            use_cache=use_cache,
+            use_file_ast_cache=use_file_ast_cache,
+            refresh_mode=refresh_mode,
+            collect_stage_timings=collect_stage_timings,
+            require_analyzed_targets_fn=require_analyzed_targets_fn,
+            cache_key_for_target_fn=cache_key_for_target_fn,
+            target_load_error_factory=target_load_error_factory,
+            get_cache_dir_fn=get_cache_dir_fn,
+            ast_cache_cls=ASTCache,
+            engine_module=engine,
+            status_update_fn=status_update_fn,
+        )
     return analysis_loading_module.load_project_with_live_status(
         cfg,
         target_name=target_name,

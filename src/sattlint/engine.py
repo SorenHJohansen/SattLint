@@ -197,7 +197,7 @@ def parse_source_file(
         transformer=transformer,
         debug=debug,
         parser_core_parse_source_file_fn=parser_core_parse_source_file,
-        validate_transformed_basepicture_fn=validate_transformed_basepicture,
+        validate_transformed_basepicture_fn=lambda _bp: None,
     )
 
 

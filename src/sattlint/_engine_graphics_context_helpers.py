@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, TypeGuard
 
@@ -76,8 +77,11 @@ def picture_display_path_warnings(
     occurrences: tuple[PictureDisplayOccurrence, ...],
     *,
     graph: ProjectGraph | None = None,
+    status_callback: Callable[[str], None] | None = None,
 ) -> tuple[ValidationNotice, ...]:
-    diagnostics = diagnose_picture_display_paths(base_picture, occurrences, graph=graph)
+    diagnostics = diagnose_picture_display_paths(
+        base_picture, occurrences, graph=graph, progress_callback=status_callback
+    )
     return tuple(
         ValidationNotice(
             message=format_picture_display_path_diagnostic(diagnostic),
