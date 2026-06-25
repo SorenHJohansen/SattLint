@@ -765,7 +765,7 @@ def ensure_ast_cache(
             emit_output_fn("⚠ AST cache missing; building (this may take a while)...")
 
         try:
-            load_project_fn(cfg, target_name=target_name, use_cache=False)
+            load_project_fn(cfg, target_name=target_name, use_cache=False, status_update_fn=emit_output_fn)
             emit_output_fn("✔ AST cache updated")
         except (OSError, RuntimeError, ValueError) as exc:
             log_debug_exception(cfg, f"Failed to rebuild AST cache for {target_name!r}", logger=log)

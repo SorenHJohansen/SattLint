@@ -74,10 +74,7 @@ class SattLineProjectLoader(SattLineProjectLoaderLookupMixin):
 
         try:
             engine_module = _engine_module()
-            graphics_companion_needs_refresh, attach_graphics_companion = (
-                engine_module._graphics_companion_needs_refresh,
-                engine_module._attach_graphics_companion,
-            )
+            attach_graphics_companion = engine_module._attach_graphics_companion
 
             self._update_status(f"Loading {root_name}: locating source file")
             code_path = self._find_code(root_name)
@@ -122,9 +119,11 @@ class SattLineProjectLoader(SattLineProjectLoaderLookupMixin):
                 graph.ast_by_name[root_name] = basepicture
                 if self.refresh_mode == "ast-only":
                     return graph
-                if graphics_companion_needs_refresh(basepicture, code_path=code_path, mode=self.mode):
-                    self._update_status(f"Loading {root_name}: checking graphics companion")
                 graphics_started_at = perf_counter()
+
+                def _root_status_cb(msg: str) -> None:
+                    self._update_status(f"Loading {root_name}: {msg}")
+
                 if attach_graphics_companion(
                     basepicture,
                     code_path=code_path,
@@ -132,6 +131,7 @@ class SattLineProjectLoader(SattLineProjectLoaderLookupMixin):
                     graph=graph,
                     owner_name=root_name,
                     timing_sink=self._graphics_timing_sink,
+                    status_callback=_root_status_cb,
                 ):
                     self._ast_cache.save(code_path, self.mode.value, basepicture)
                 self._record_stage_timing(root_name, "attach_graphics", graphics_started_at)
@@ -162,7 +162,6 @@ class SattLineProjectLoader(SattLineProjectLoaderLookupMixin):
         key = name.lower()
         root_key = getattr(self, "_active_root_key", None)
         engine_module = _engine_module()
-        graphics_companion_needs_refresh = engine_module._graphics_companion_needs_refresh
         attach_graphics_companion = engine_module._attach_graphics_companion
         collect_dependency_version_conflicts = engine_module._collect_dependency_version_conflicts
 
@@ -206,6 +205,13 @@ class SattLineProjectLoader(SattLineProjectLoaderLookupMixin):
             self._update_status(f"Loading {name}: locating source file")
             code_path = root_code_path or self._find_code_with_context(name, requester_dir=requester_dir)
             if code_path is not None:
+                if engine_syntax_helpers.is_expected_unavailable_library(name):
+                    reason = engine_syntax_helpers.expected_unavailable_library_reason(name)
+                    graph.unavailable_libraries.add(name.casefold())
+                    _record_project_warning(
+                        graph, name, f"unavailable library: {reason or 'expected proprietary dependency'}"
+                    )
+                    return
                 try:
                     validation_warnings: list[ValidationWarning] = []
                     basepicture = self._load_or_parse_for_owner(code_path, owner_name=name)
@@ -257,12 +263,16 @@ class SattLineProjectLoader(SattLineProjectLoaderLookupMixin):
                         _record_project_warning(graph, name, f"validation warning: {ex}")
                     for warning in validation_warnings:
                         _record_project_warning(graph, name, warning)
+                    self._update_status(f"Loading {name}: validation complete")
                     graph.ast_by_name[name] = basepicture
                     if self.refresh_mode == "ast-only":
                         return
-                    if graphics_companion_needs_refresh(basepicture, code_path=code_path, mode=self.mode):
-                        self._update_status(f"Loading {name}: checking graphics companion")
-                    graphics_started_at = perf_counter()
+                    self._update_status(f"Loading {name}: checking graphics companion")
+                    self._update_status(f"Loading {name}: processing graphics companion")
+
+                    def _status_cb(msg: str) -> None:
+                        self._update_status(f"Loading {name}: {msg}")
+
                     if attach_graphics_companion(
                         basepicture,
                         code_path=code_path,
@@ -270,10 +280,13 @@ class SattLineProjectLoader(SattLineProjectLoaderLookupMixin):
                         graph=graph,
                         owner_name=name,
                         timing_sink=self._graphics_timing_sink,
+                        status_callback=_status_cb,
                     ):
+                        self._update_status(f"Loading {name}: saving AST cache")
                         self._ast_cache.save(code_path, self.mode.value, basepicture)
-                    self._record_stage_timing(name, "attach_graphics", graphics_started_at)
+                    self._update_status(f"Loading {name}: recording library")
                     library_name = self._record_library_name(name, code_path)
+                    self._update_status(f"Loading {name}: checking version conflicts")
                     version_conflicts = collect_dependency_version_conflicts(
                         graph,
                         basepicture,
@@ -289,6 +302,7 @@ class SattLineProjectLoader(SattLineProjectLoaderLookupMixin):
                                 name,
                                 f"version compatibility warning: {conflict}",
                             )
+                    self._update_status(f"Loading {name}: adding deps")
                     graph.add_library_dependencies(library_name, dep_libs)
                     self._update_status(f"Loading {name}: indexing definitions")
                     index_started_at = perf_counter()

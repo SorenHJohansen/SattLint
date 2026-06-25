@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -105,6 +106,7 @@ def diagnose_picture_display_paths(
     occurrences: tuple[PictureDisplayOccurrence, ...],
     *,
     graph: ProjectGraph | None = None,
+    progress_callback: Callable[[str], None] | None = None,
 ) -> tuple[PictureDisplayPathDiagnostic, ...]:
     diagnostics: list[PictureDisplayPathDiagnostic] = []
     runtime_trees: dict[str, RuntimeTree] = {}
@@ -122,7 +124,9 @@ def diagnose_picture_display_paths(
                 candidate_paths = (path_row.raw_text,)
             else:
                 if string_engine is None:
-                    string_engine = ExactStringInferenceEngine(base_picture, graph=graph)
+                    string_engine = ExactStringInferenceEngine(
+                        base_picture, graph=graph, progress_callback=progress_callback
+                    )
                 candidate_paths = _dynamic_path_candidates(
                     path_row,
                     declaring_module_path=resolution_module_path,
