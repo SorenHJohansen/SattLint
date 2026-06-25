@@ -7,12 +7,8 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
-from lark.exceptions import LarkError
-
-from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.api import read_text_with_fallback
 from sattline_parser.grammar.parser_decode import is_compressed, preprocess_sl_text
-from sattline_parser.models.ast_model import BasePicture
 from sattlint import cli_output
 from sattlint.devtools._diff_rendering import (
     build_unified_diff_lines,
@@ -157,6 +153,15 @@ from sattlint.devtools._source_diff_details import (
 from sattlint.devtools._source_diff_details import (
     variable_signature as _variable_signature,
 )
+from sattlint.devtools._source_diff_runtime import (
+    discover_pairs as _discover_pairs,
+)
+from sattlint.devtools._source_diff_runtime import (
+    parse_side_for_report as _parse_side_for_report,
+)
+from sattlint.devtools._source_diff_runtime import (
+    resolve_explicit_pair as _resolve_explicit_pair,
+)
 from sattlint.devtools._source_diff_sections import (
     build_ast_comparison_sections as _build_ast_comparison_sections,
 )
@@ -182,7 +187,6 @@ from sattlint.devtools._source_diff_sections import (
     full_module_details as _full_module_details,
 )
 from sattlint.repo_paths import repo_root_from
-from sattlint.validation import validate_transformed_basepicture
 
 # These compatibility re-exports are kept live for tests and external callers that
 # still reach into this facade for the split helper functions and constants.
@@ -269,110 +273,6 @@ def _read_source_text(path: Path) -> str:
     return source_text
 
 
-def _parse_side_for_report(
-    source_text: str | None,
-    *,
-    source_path: Path,
-    side: str,
-) -> tuple[BasePicture | None, bool, bool, list[dict[str, str]]]:
-    if source_text is None:
-        return None, False, False, []
-
-    errors: list[dict[str, str]] = []
-    try:
-        base_picture = parser_core_parse_source_text(
-            source_text,
-            source_path=source_path,
-            log_failures=False,
-        )
-    except (LarkError, RuntimeError, ValueError) as exc:
-        errors.append(
-            {
-                "side": side,
-                "phase": "parse",
-                "error": str(exc),
-                "error_type": type(exc).__name__,
-            }
-        )
-        return None, False, False, errors
-
-    validation_ok = True
-    try:
-        validate_transformed_basepicture(base_picture)
-    except (RuntimeError, ValueError) as exc:
-        validation_ok = False
-        errors.append(
-            {
-                "side": side,
-                "phase": "validation",
-                "error": str(exc),
-                "error_type": type(exc).__name__,
-            }
-        )
-
-    return base_picture, True, validation_ok, errors
-
-
-def _discover_pairs(workspace_root: Path) -> list[tuple[Path, Path]]:
-    indexed: dict[str, dict[str, Path]] = {}
-    for path in workspace_root.rglob("*"):
-        if not path.is_file():
-            continue
-        suffix = path.suffix.casefold()
-        if suffix not in {".s", ".x"}:
-            continue
-        relative = path.relative_to(workspace_root)
-        key = (relative.parent / relative.stem).as_posix().casefold()
-        indexed.setdefault(key, {})[suffix] = path.resolve()
-
-    pairs: list[tuple[Path, Path]] = []
-    for pair in indexed.values():
-        draft_file = pair.get(".s")
-        official_file = pair.get(".x")
-        if draft_file is None or official_file is None:
-            continue
-        pairs.append((draft_file, official_file))
-    return sorted(pairs, key=lambda item: (_pair_name(item[0], item[1]).casefold(), str(item[0]).casefold()))
-
-
-def _resolve_explicit_pair(
-    *,
-    workspace_root: Path,
-    draft_file: str | None,
-    official_file: str | None,
-) -> tuple[list[tuple[Path, Path]], list[dict[str, str]]]:
-    if not draft_file and not official_file:
-        return [], []
-    if not draft_file or not official_file:
-        return [], [
-            {
-                "draft_file": draft_file or "",
-                "official_file": official_file or "",
-                "message": "Explicit pair mode requires both --draft-file and --official-file.",
-            }
-        ]
-
-    resolved_draft = (
-        (workspace_root / draft_file).resolve() if not Path(draft_file).is_absolute() else Path(draft_file).resolve()
-    )
-    resolved_official = (
-        (workspace_root / official_file).resolve()
-        if not Path(official_file).is_absolute()
-        else Path(official_file).resolve()
-    )
-    errors: list[dict[str, str]] = []
-    if not resolved_draft.is_file() or not resolved_official.is_file():
-        errors.append(
-            {
-                "draft_file": _source_diff_repo_path(resolved_draft, workspace_root=workspace_root),
-                "official_file": _source_diff_repo_path(resolved_official, workspace_root=workspace_root),
-                "message": "Draft or official source file does not exist.",
-            }
-        )
-        return [], errors
-    return [(resolved_draft, resolved_official)], []
-
-
 def build_pair_report(
     draft_file: Path,
     official_file: Path,
@@ -382,14 +282,10 @@ def build_pair_report(
     resolved_workspace_root = workspace_root.resolve()
     resolved_draft = draft_file.resolve()
     resolved_official = official_file.resolve()
-    sanitized_draft = _source_diff_repo_path(resolved_draft, workspace_root=resolved_workspace_root)
-    sanitized_official = _source_diff_repo_path(resolved_official, workspace_root=resolved_workspace_root)
 
     errors: list[dict[str, str]] = []
     draft_text: str | None = None
     official_text: str | None = None
-    draft_bp: BasePicture | None = None
-    official_bp: BasePicture | None = None
 
     try:
         draft_text = _read_source_text(resolved_draft)
@@ -413,6 +309,8 @@ def build_pair_report(
     errors.extend(draft_errors)
     errors.extend(official_errors)
 
+    sanitized_draft = _source_diff_repo_path(resolved_draft, workspace_root=resolved_workspace_root)
+    sanitized_official = _source_diff_repo_path(resolved_official, workspace_root=resolved_workspace_root)
     diff_lines: list[str] = []
     summary = {"addition_count": 0, "deletion_count": 0, "changed_line_count": 0}
     if draft_text is not None and official_text is not None:

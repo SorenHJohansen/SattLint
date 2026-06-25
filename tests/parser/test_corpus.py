@@ -57,7 +57,7 @@ def _patch_workspace_case_loader(monkeypatch) -> None:
     monkeypatch.setattr(
         "sattlint.devtools.corpus.engine_module.merge_project_basepicture", lambda root_bp, graph: root_bp
     )
-    monkeypatch.setattr("sattlint.devtools.corpus.engine_module._is_within_directory", lambda path, directory: True)
+    monkeypatch.setattr("sattlint.devtools.corpus.engine_module.is_within_directory", lambda path, directory: True)
 
 
 def _semantic_read_before_write_report(*, explanation: str | None = None, suggestion: str | None = None):
