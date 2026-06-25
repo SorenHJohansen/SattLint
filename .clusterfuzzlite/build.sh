@@ -12,6 +12,7 @@ for fuzzer in $(find "$SRC/sattlint/src" -name '*_fuzzer.py'); do
     --distpath "$OUT" \
     --onefile \
     --name "$fuzzer_package" \
+    --collect-data=sattline_parser \
     --hidden-import=sattline_parser.models._ast_model_support \
     "$fuzzer"
 
