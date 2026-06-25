@@ -87,7 +87,12 @@ def _parse_git_changed_line_map(diff_text: str, *, allowed_paths: set[str]) -> d
         line_count = int(match.group(2) or "1")
         if line_count <= 0:
             continue
-        changed_line_map.setdefault(current_path, set()).update(range(start_line, start_line + line_count))
+        line_numbers = changed_line_map.get(current_path)
+        if line_numbers is None:
+            new_line_numbers: set[int] = set()
+            changed_line_map[current_path] = new_line_numbers
+            line_numbers = new_line_numbers
+        line_numbers.update(range(start_line, start_line + line_count))
     return changed_line_map
 
 
@@ -122,7 +127,12 @@ def _discover_changed_line_map(root: Path, changed_files: Iterable[str] | None) 
             continue
         parsed_line_map = _parse_git_changed_line_map(completed.stdout, allowed_paths=allowed_paths)
         for path_text, line_numbers in parsed_line_map.items():
-            merged_line_map.setdefault(path_text, set()).update(line_numbers)
+            merged_path_lines = merged_line_map.get(path_text)
+            if merged_path_lines is None:
+                new_merged_path_lines: set[int] = set()
+                merged_line_map[path_text] = new_merged_path_lines
+                merged_path_lines = new_merged_path_lines
+            merged_path_lines.update(line_numbers)
 
     return {path_text: sorted(line_numbers) for path_text, line_numbers in sorted(merged_line_map.items())}
 
