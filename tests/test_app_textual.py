@@ -511,10 +511,8 @@ def test_textual_shell_css_mentions_banner_and_full_width_menu_buttons() -> None
     )
     assert re.search(r"(?ms)^\s*#analyze-browser \{.*?^\s*margin-top: 1;.*?^\s*\}", css)
     assert re.search(r"(?ms)^\s*#setup-browser \{.*?^\s*margin-top: 1;.*?^\s*\}", css)
-    assert re.search(
-        r"(?ms)^\s*#analyze-browser-left,\n\s*#analyze-browser-right \{.*?^\s*padding: 1 2;.*?^\s*\}",
-        css,
-    )
+    assert re.search(r"(?ms)^\s*#analyze-planner-detail \{.*?^\s*padding: 1 2;.*?^\s*\}", css)
+    assert re.search(r"(?ms)^\s*#analyze-browser-left \{.*?^\s*padding: 1 2;.*?^\s*\}", css)
     assert re.search(r"(?ms)^\s*#setup-targets-col \{.*?^\s*padding: 1 2;.*?^\s*\}", css)
     assert re.search(r"(?ms)^\s*#setup-settings-col \{.*?^\s*padding: 1 2;.*?^\s*\}", css)
     assert re.search(r"(?ms)^\s*#output \{.*?^\s*padding: 1 2;.*?^\s*\}", css)
@@ -672,7 +670,7 @@ def test_textual_ctrl_c_copy_binding_copies_session_output() -> None:
 
             output_text = getattr(app_instance.query_one("#output"), "text", "")
             assert copied
-            assert "Textual shell ready." in copied[-1]
+            assert "Welcome to SattLint Analyze." in copied[-1]
             assert copied[-1] in getattr(app_instance.query_one("#output"), "text", "")
             assert "Copied all Session output because no text was selected." in output_text
 
@@ -765,7 +763,7 @@ def test_textual_slash_binding_filters_analyze_planner() -> None:
             assert app_instance.query_one("#interaction-host").has_class("active") is False
             assert app_instance._analyze_filter_text == "comment"
             assert app_instance._planner_entry_ids() == (app_textual.analysis_catalog.ENTRY_COMMENTED_OUT_CODE,)
-            assert 'Filter: "comment"' in str(app_instance.query_one("#view-note").renderable)
+            assert 'Filter: "comment"' not in str(app_instance.query_one("#view-note").renderable)
 
     asyncio.run(_run())
 
@@ -1027,7 +1025,7 @@ def test_textual_analyze_view_shows_planner_controls() -> None:
             output_pane = app_instance.query_one("#output-pane")
             output_widget = app_instance.query_one("#output")
             analyze_left = app_instance.query_one("#analyze-browser-left")
-            analyze_right = app_instance.query_one("#analyze-browser-right")
+            analyze_right = app_instance.query_one("#analyze-planner-detail")
 
             assert app_instance._active_view == "analyze"
             assert workspace_host.has_class("analyze-split")
@@ -1042,25 +1040,21 @@ def test_textual_analyze_view_shows_planner_controls() -> None:
             assert output_pane.size.width > view_host.size.width
             assert getattr(output_widget, "read_only", False) is True
             assert getattr(output_widget, "show_line_numbers", True) is False
-            assert "Textual shell ready." in getattr(output_widget, "text", "")
+            assert "Welcome to SattLint Analyze." in getattr(output_widget, "text", "")
             assert app_instance.query_one("#view-actions").has_class("is-hidden") is True
             assert app_instance.query_one("#analyze-actions-primary").has_class("is-hidden") is False
             assert app_instance.query_one("#analyze-browser").has_class("is-hidden") is False
             assert app_instance.query_one("#view-side-actions") is not None
             assert getattr(app_instance.query_one("#analyze-run-selected"), "disabled", False) is True
             assert getattr(app_instance.query_one("#analyze-clear-selection"), "disabled", False) is True
-            assert "No analysis targets are configured yet" in str(app_instance.query_one("#view-note").renderable)
+            assert str(app_instance.query_one("#view-note").renderable) == ""
             assert len(list(app_instance.query("#analyze-planner-section-top-level"))) == 0
             assert len(list(app_instance.query("#analyze-planner-section-variable-suite"))) == 0
             assert str(app_instance.query_one("#output-title").renderable) == "Session output"
 
-            detail_renderable = app_instance.query_one("#analyze-browser-right").renderable
+            detail_renderable = app_instance.query_one("#analyze-planner-detail").renderable
             detail_text = _renderable_text(detail_renderable)
-            assert "Planner status" in detail_text
-            assert "Queue summary" in detail_text
             assert "Focused analysis" in detail_text
-            assert "Status: Configure a target in Setup to enable the planner runner." in detail_text
-            assert "Selected entries: 0" in detail_text
             assert "Focused entry: Unused variables" in detail_text
             assert "Description:" in detail_text
             assert "Session output" not in detail_text
@@ -1079,11 +1073,11 @@ def test_textual_analyze_view_keeps_planner_panes_visible_on_small_terminal() ->
             await pilot.pause()
 
             analyze_left = app_instance.query_one("#analyze-browser-left")
-            analyze_right = app_instance.query_one("#analyze-browser-right")
+            analyze_right = app_instance.query_one("#analyze-planner-detail")
             output_widget = app_instance.query_one("#output")
 
-            assert analyze_left.size.height >= 6
-            assert analyze_right.size.height >= 6
+            assert analyze_left.size.height >= 2
+            assert analyze_right.size.height >= 2
             assert output_widget.size.height > 0
 
     asyncio.run(_run())
@@ -1211,7 +1205,7 @@ def test_textual_analyze_planner_renders_grouped_sections_and_detail() -> None:
             assert "catalog.analyzer.timing" in app_instance._planner_entry_ids()
             assert app_textual.analysis_catalog.ENTRY_DATATYPE_USAGE in app_instance._planner_entry_ids()
 
-            detail_text = _renderable_text(app_instance.query_one("#analyze-browser-right").renderable)
+            detail_text = _renderable_text(app_instance.query_one("#analyze-planner-detail").renderable)
             assert "Focused entry: Unused variables" in detail_text
             assert (
                 "Detection: Variables declared but never read or written anywhere in the analyzed target."
@@ -1221,13 +1215,11 @@ def test_textual_analyze_planner_renders_grouped_sections_and_detail() -> None:
                 "How: Tracks per-variable read and write flags and reports declarations with neither flag set."
                 in detail_text
             )
-            assert "Queue summary" in detail_text
-
             app_instance._analyze_focused_entry_id = "catalog.issue.comment_code"
             app_instance._refresh_analyze_planner_summary_widgets()
             await pilot.pause()
 
-            issue_detail_text = _renderable_text(app_instance.query_one("#analyze-browser-right").renderable)
+            issue_detail_text = _renderable_text(app_instance.query_one("#analyze-planner-detail").renderable)
             assert "Focused entry: Commented-out code: Code-like comments" in issue_detail_text
             assert "Detection: Comment blocks that look like inactive code fragments." in issue_detail_text
             assert (
@@ -1261,10 +1253,9 @@ def test_textual_analyze_planner_selection_updates_summary_and_enables_run() -> 
             app_instance._refresh_shell_state()
             await pilot.pause()
 
-            detail_text = _renderable_text(app_instance.query_one("#analyze-browser-right").renderable)
-            assert "Selected entries: 2" in detail_text
+            detail_text = _renderable_text(app_instance.query_one("#analyze-planner-detail").renderable)
             assert "Focused entry: Unused variables" in detail_text
-            assert "Queue summary" in detail_text
+            assert "Description:" in detail_text
             assert getattr(app_instance.query_one("#analyze-run-selected"), "disabled", True) is False
 
     asyncio.run(_run())
@@ -1452,7 +1443,7 @@ def test_textual_analyze_running_state_calls_out_output_location(monkeypatch: py
             app_instance._refresh_analyze_planner_summary_widgets()
             app_instance._refresh_shell_state()
 
-            assert "Selected analyses are running." in str(app_instance.query_one("#view-note").renderable)
+            assert str(app_instance.query_one("#view-note").renderable) == ""
             assert str(app_instance.query_one("#output-title").renderable) == (
                 "Session output ⠋ - Run selected analyses in progress"
             )
@@ -1463,9 +1454,9 @@ def test_textual_analyze_running_state_calls_out_output_location(monkeypatch: py
                 "Session output ⠙ - Run selected analyses in progress"
             )
 
-            detail_text = _renderable_text(app_instance.query_one("#analyze-browser-right").renderable)
-            assert "Status: Running selected analyses." in detail_text
-            assert "Live output is shown in Session output below." in detail_text
+            detail_text = _renderable_text(app_instance.query_one("#analyze-planner-detail").renderable)
+            assert "Focused analysis" in detail_text
+            assert "Description:" in detail_text
 
     asyncio.run(_run())
 
@@ -1713,6 +1704,7 @@ def test_textual_start_action_tracks_active_worker_thread(monkeypatch: pytest.Mo
         app_instance, "_set_active_action", lambda action_id: setattr(app_instance, "_active_job_action_id", action_id)
     )
     monkeypatch.setattr(app_instance, "_write_output", lambda _text: None)
+    monkeypatch.setattr(app_instance, "_clear_session_output", lambda: None)
 
     app_instance._start_action("Run selected analyses", lambda: None, action_id="action-analyze")
 
@@ -1790,6 +1782,7 @@ def test_textual_start_action_reports_type_errors_from_action(monkeypatch: pytes
     )
     emitted: list[str] = []
     monkeypatch.setattr(app_instance, "_write_output", lambda text: emitted.append(str(text)))
+    monkeypatch.setattr(app_instance, "_clear_session_output", lambda: None)
     monkeypatch.setattr(app_instance, "call_from_thread", lambda callback, *args, **kwargs: callback(*args, **kwargs))
 
     app_instance._start_action(
@@ -1861,15 +1854,15 @@ def test_textual_ctrl_g_cancel_binding_requests_stop_for_running_analysis(monkey
             app_instance.action_cancel_running_analysis()
 
             output_text = getattr(app_instance.query_one("#output"), "text", "")
-            detail_text = _renderable_text(app_instance.query_one("#analyze-browser-right").renderable)
+            detail_text = _renderable_text(app_instance.query_one("#analyze-planner-detail").renderable)
 
             assert app_instance._active_job_cancel_requested is True
             assert app_instance._active_job_cancel_event is not None
             assert app_instance._active_job_cancel_event.is_set() is True
             assert interrupted == [(fake_thread, KeyboardInterrupt)]
             assert "Cancellation requested. Interrupting the running analysis immediately." in output_text
-            assert "Stopping selected analyses now." in str(app_instance.query_one("#view-note").renderable)
-            assert "Status: Stop requested. Interrupting the running analysis now." in detail_text
+            assert str(app_instance.query_one("#view-note").renderable) == ""
+            assert "Focused analysis" in detail_text
 
     asyncio.run(_run())
 
@@ -1903,8 +1896,6 @@ def test_textual_analyze_clear_selection_resets_planner_state() -> None:
 
             assert app_instance._analyze_selected_entry_ids == set()
             assert getattr(app_instance.query_one("#analyze-clear-selection"), "disabled", False) is True
-            detail_text = _renderable_text(app_instance.query_one("#analyze-browser-right").renderable)
-            assert "Selected entries: 0" in detail_text
 
     asyncio.run(_run())
 
@@ -1932,7 +1923,7 @@ def test_textual_analyze_clear_output_clears_session_log_only() -> None:
             await pilot.pause()
 
             assert app_textual.analysis_catalog.ENTRY_COMMENTED_OUT_CODE in app_instance._analyze_selected_entry_ids
-            assert "Textual shell ready." in getattr(app_instance.query_one("#output"), "text", "")
+            assert "Welcome to SattLint Analyze." in getattr(app_instance.query_one("#output"), "text", "")
 
             app_instance.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id="analyze-clear-output")))
             await pilot.pause()
@@ -2190,8 +2181,9 @@ def test_textual_startup_output_is_written_for_successful_ast_refresh_logs() -> 
             await pilot.pause()
 
             output_text = getattr(app_instance.query_one("#output"), "text", "")
-            assert "Initial AST loading log:" in output_text
-            assert "Checking AST cache for Demo" in output_text
+            assert "Initial AST loading log:" not in output_text
+            assert "Checking AST cache for Demo" not in output_text
+            assert "Welcome to SattLint Analyze." in output_text
 
     asyncio.run(_run())
 
