@@ -47,6 +47,7 @@
             width: 1fr;
             height: auto;
             min-width: 40;
+            overflow-y: auto;
         }
 
         #view-title,
@@ -102,7 +103,7 @@
             width: 1fr;
             min-width: 0;
             margin-left: 0;
-            margin-top: 1;
+            margin-top: 0;
             align: left top;
         }
 
@@ -178,8 +179,15 @@
 
         #analyze-browser {
             height: 1fr;
-            min-height: 10;
-            margin-top: 1;
+            min-height: 12;
+            border: tall #0077b3;
+            background: #b9d9df;
+            padding: 0 1;
+            overflow-y: auto;
+        }
+
+        #workspace-host.analyze-split #view-note {
+            margin-top: 0;
         }
 
         #setup-browser {
@@ -188,15 +196,19 @@
             margin-top: 1;
         }
 
-        #analyze-browser-left,
-        #analyze-browser-right {
-            width: 1fr;
+        #analyze-planner-detail {
+            width: 100%;
+            height: 5;
+            padding: 0 1;
+            margin-bottom: 1;
+            overflow-y: auto;
+        }
+
+        #analyze-browser-left {
+            width: 100%;
             height: 1fr;
-            min-height: 1;
-            padding: 1 2;
-            background: #b9d9df;
-            color: #001ba3;
-            border: tall #0077b3;
+            min-height: 4;
+            padding: 0 1;
             overflow-y: auto;
             scrollbar-background: #b9d9df;
             scrollbar-background-hover: #c2c2c2;
@@ -205,10 +217,6 @@
             scrollbar-color-hover: #0077b3;
             scrollbar-color-active: #0077b3;
             scrollbar-corner-color: #b9d9df;
-        }
-
-        #analyze-browser-right {
-            margin-left: 1;
         }
 
         #analyze-browser-left Button.raised-button {

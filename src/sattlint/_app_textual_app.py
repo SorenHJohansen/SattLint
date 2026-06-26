@@ -41,8 +41,8 @@ _DEFAULT_VIEW_REGISTRY: dict[str, _ShellViewState] = {
     "analyze": _ShellViewState(
         action_id="action-analyze",
         title="Analyze",
-        description="Plan one or more analyses, inspect the normalized queue, and run the selected steps directly.",
-        note="Build an analysis queue in this view and run the shared planner directly.",
+        description="",
+        note="",
         launch_label="Open Analyze Planner",
     ),
     "documentation": _ShellViewState(
@@ -320,6 +320,7 @@ if _TEXTUAL_APP is not None:
             self._analyze_focused_entry_id: str | None = None
             self._analyze_selected_entry_ids: set[str] = set()
             self._analyze_filter_text = ""
+            self._analyze_help_shown = False
             self._suppress_analyze_planner_events = False
             self._setup_candidate_index = 0
             self._setup_filter_text = ""
@@ -354,9 +355,6 @@ if _TEXTUAL_APP is not None:
                         yield _TEXTUAL_STATIC("", id="view-title")
                         with _TEXTUAL_VERTICAL(id="view-host"):
                             with _TEXTUAL_HORIZONTAL(id="view-header"):
-                                with _TEXTUAL_VERTICAL(id="view-copy"):
-                                    yield _TEXTUAL_STATIC("", id="view-description")
-                                    yield _TEXTUAL_STATIC("", id="view-note")
                                 with _TEXTUAL_VERTICAL(id="view-side-actions"):
                                     with _TEXTUAL_HORIZONTAL(id="view-actions"):
                                         yield _TEXTUAL_BUTTON(
@@ -445,10 +443,13 @@ if _TEXTUAL_APP is not None:
                                             id="tools-module-locals",
                                             classes="raised-button toolbar-button",
                                         )
-                            with _TEXTUAL_HORIZONTAL(id="analyze-browser", classes="is-hidden"):
+                                with _TEXTUAL_VERTICAL(id="view-copy"):
+                                    yield _TEXTUAL_STATIC("", id="view-description")
+                                    yield _TEXTUAL_STATIC("", id="view-note")
+                            with _TEXTUAL_VERTICAL(id="analyze-browser", classes="is-hidden"):
+                                yield _TEXTUAL_STATIC("", id="analyze-planner-detail")
                                 with _TEXTUAL_VERTICAL(id="analyze-browser-left"):
                                     pass
-                                yield _TEXTUAL_STATIC("", id="analyze-browser-right")
                             with _TEXTUAL_HORIZONTAL(id="setup-browser", classes="is-hidden"):
                                 with _TEXTUAL_VERTICAL(id="setup-targets-col"):
                                     yield _TEXTUAL_STATIC("Analysis Targets", classes="setup-section-title")
@@ -560,15 +561,14 @@ if _TEXTUAL_APP is not None:
             self._set_active_action(None)
             self._refresh_shell_state()
             self.query_one("#action-analyze", _TEXTUAL_BUTTON).focus()
-            self._write_output("Textual shell ready. Use the action bar to move between native TUI views and actions.")
-            if self._startup_output:
-                if self._startup_output_is_warning:
-                    self._write_output(
-                        "AST cache startup checks reported issues before the shell opened. Review the preserved log below."
-                    )
-                else:
-                    self._write_output("Initial AST loading log:")
-                self._write_output(self._startup_output)
+            self._clear_session_output()
+            self._write_output(
+                "Welcome to SattLint Analyze.\n\n"
+                "Select one or more analysis entries from the Available analyses list below, "
+                'then press "Run selected analyses" to execute. '
+                "Press / to filter entries, 1-5 to switch views, Esc to go back, ? or Ctrl+H for help."
+            )
+            self._analyze_help_shown = True
 
         def _view_state(self, view_name: str) -> _ShellViewState:
             return self._VIEW_REGISTRY.get(view_name, self._VIEW_REGISTRY["analyze"])
