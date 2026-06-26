@@ -2,8 +2,8 @@
   "analyzers": [
     {
       "acceptance_tests": [
-        "tests/test_sattline_semantics.py",
-        "tests/test_pipeline.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "cli_exposed": false,
       "depends_on_analyzers": [],
@@ -33,28 +33,44 @@
         "semantic.duplicate-transition-guard",
         "semantic.duplicated-datatype-layout",
         "semantic.external-input-to-critical-sink",
+        "semantic.fault-missing-recovery",
+        "semantic.fault-unhandled-path",
         "semantic.global-scope-minimization",
         "semantic.hidden-global-coupling",
         "semantic.high-fan-in-out-variable",
         "semantic.illegal-state-combination",
         "semantic.implicit-latch",
+        "semantic.instance-configuration-drift",
+        "semantic.invalid-state-access",
+        "semantic.layout-overlap",
+        "semantic.loop-conflicting-setpoint",
         "semantic.min-max-mapping-mismatch",
         "semantic.missing-parameter-initial-value",
         "semantic.missing-step-enter-contract",
         "semantic.missing-step-exit-contract",
         "semantic.name-collision",
+        "semantic.naming-role-mismatch",
         "semantic.never-cleared-alarm",
+        "semantic.never-read-datatype-field",
         "semantic.never-read-write",
+        "semantic.numeric-limit-violation",
+        "semantic.parallel-read-write-hazard",
         "semantic.parallel-write-race",
         "semantic.procedure-status-handling",
         "semantic.read-before-write",
+        "semantic.read-only-datatype-field",
         "semantic.read-only-non-const",
+        "semantic.required-parameter-connection",
         "semantic.reset-contamination",
+        "semantic.same-cycle-non-state-multi-site",
+        "semantic.same-cycle-shared-access",
         "semantic.scan-cycle-implicit-new",
         "semantic.scan-cycle-stale-read",
         "semantic.scan-cycle-temporal-misuse",
         "semantic.self-compare-condition",
         "semantic.shadowing",
+        "semantic.signal-lifecycle-read-before-write",
+        "semantic.signal-lifecycle-unconsumed-write",
         "semantic.step-state-leakage",
         "semantic.string-mapping-mismatch",
         "semantic.transition-always-false",
@@ -81,6 +97,8 @@
         "spec.transition_prefix"
       ],
       "scope": "workspace",
+      "semantic_mapping_kind": null,
+      "semantic_rule_source": null,
       "summary_output": "sattline-semantics.summary",
       "supports_baselines": true,
       "supports_incremental": false,
@@ -88,9 +106,15 @@
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_sattline_semantics.py",
-        "tests/test_app.py"
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py"
       ],
       "cli_exposed": true,
       "depends_on_analyzers": [],
@@ -118,11 +142,16 @@
         "semantic.hidden-global-coupling",
         "semantic.high-fan-in-out-variable",
         "semantic.implicit-latch",
+        "semantic.layout-overlap",
         "semantic.min-max-mapping-mismatch",
         "semantic.name-collision",
+        "semantic.naming-role-mismatch",
+        "semantic.never-read-datatype-field",
         "semantic.never-read-write",
         "semantic.procedure-status-handling",
+        "semantic.read-only-datatype-field",
         "semantic.read-only-non-const",
+        "semantic.required-parameter-connection",
         "semantic.reset-contamination",
         "semantic.string-mapping-mismatch",
         "semantic.ui-only-variable",
@@ -132,6 +161,8 @@
         "semantic.write-without-effect"
       ],
       "scope": "workspace",
+      "semantic_mapping_kind": "variable",
+      "semantic_rule_source": "variables",
       "summary_output": "variables.summary",
       "supports_baselines": true,
       "supports_incremental": true,
@@ -139,8 +170,45 @@
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_app.py"
+        "tests/analyzers/test_picture_display_paths.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py"
+      ],
+      "cli_exposed": true,
+      "depends_on_analyzers": [],
+      "depends_on_artifacts": [],
+      "description": "Resolve constant PictureDisplay module paths against the loaded module tree",
+      "enabled": true,
+      "exposed_via": [],
+      "implementation_bucket": "workspace-navigation",
+      "key": "picture-display-paths",
+      "lsp_exposed": false,
+      "min_fixture_set": [
+        "tests/fixtures/sample_sattline_files"
+      ],
+      "name": "PictureDisplay paths",
+      "output_artifacts": [
+        "picture-display-paths.summary"
+      ],
+      "rule_ids": [],
+      "scope": "workspace",
+      "semantic_mapping_kind": null,
+      "semantic_rule_source": null,
+      "summary_output": "picture-display-paths.summary",
+      "supports_baselines": true,
+      "supports_incremental": false,
+      "supports_live_diagnostics": false
+    },
+    {
+      "acceptance_tests": [
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py"
       ],
       "cli_exposed": true,
       "depends_on_analyzers": [],
@@ -160,6 +228,8 @@
       ],
       "rule_ids": [],
       "scope": "workspace",
+      "semantic_mapping_kind": null,
+      "semantic_rule_source": "mms-interface",
       "summary_output": "mms-interface.summary",
       "supports_baselines": true,
       "supports_incremental": false,
@@ -167,9 +237,14 @@
     },
     {
       "acceptance_tests": [
-        "tests/test_sfc.py",
-        "tests/test_analyzers.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sfc.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/analyzers/test_sattline_semantics.py"
       ],
       "cli_exposed": true,
       "depends_on_analyzers": [
@@ -205,6 +280,8 @@
         "semantic.unreachable-transition"
       ],
       "scope": "single-file",
+      "semantic_mapping_kind": "framework",
+      "semantic_rule_source": "sfc",
       "summary_output": "sfc.summary",
       "supports_baselines": true,
       "supports_incremental": false,
@@ -212,8 +289,9 @@
     },
     {
       "acceptance_tests": [
-        "tests/test_comment_code.py",
-        "tests/test_app.py"
+        "tests/analyzers/test_comment_code.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py"
       ],
       "cli_exposed": true,
       "depends_on_analyzers": [],
@@ -231,6 +309,8 @@
       ],
       "rule_ids": [],
       "scope": "single-file",
+      "semantic_mapping_kind": null,
+      "semantic_rule_source": "comment-code",
       "summary_output": "comment-code.summary",
       "supports_baselines": true,
       "supports_incremental": false,
@@ -238,9 +318,15 @@
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_app.py",
-        "tests/test_pipeline.py"
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "cli_exposed": true,
       "depends_on_analyzers": [],
@@ -263,6 +349,8 @@
         "semantic.shadowing"
       ],
       "scope": "workspace",
+      "semantic_mapping_kind": "variable",
+      "semantic_rule_source": "variables",
       "summary_output": "shadowing.summary",
       "supports_baselines": true,
       "supports_incremental": false,
@@ -270,8 +358,9 @@
     },
     {
       "acceptance_tests": [
-        "tests/test_spec_compliance.py",
-        "tests/test_app.py"
+        "tests/analyzers/test_spec_compliance.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py"
       ],
       "cli_exposed": true,
       "depends_on_analyzers": [],
@@ -301,6 +390,8 @@
         "spec.transition_prefix"
       ],
       "scope": "workspace",
+      "semantic_mapping_kind": "spec",
+      "semantic_rule_source": "spec-compliance",
       "summary_output": "spec-compliance.summary",
       "supports_baselines": true,
       "supports_incremental": false,
@@ -308,8 +399,49 @@
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_sattline_semantics.py"
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py"
+      ],
+      "cli_exposed": true,
+      "depends_on_analyzers": [],
+      "depends_on_artifacts": [],
+      "description": "Detect dependency loops across sorted equation blocks and active step code",
+      "enabled": true,
+      "exposed_via": [],
+      "implementation_bucket": "engineering-rules",
+      "key": "loop-output-refactor",
+      "lsp_exposed": false,
+      "min_fixture_set": [
+        "tests/fixtures/sample_sattline_files"
+      ],
+      "name": "Loop output refactor",
+      "output_artifacts": [
+        "loop-output-refactor.summary"
+      ],
+      "rule_ids": [],
+      "scope": "single-file",
+      "semantic_mapping_kind": null,
+      "semantic_rule_source": "loop-output-refactor",
+      "summary_output": "loop-output-refactor.summary",
+      "supports_baselines": true,
+      "supports_incremental": false,
+      "supports_live_diagnostics": false
+    },
+    {
+      "acceptance_tests": [
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/analyzers/test_sattline_semantics.py"
       ],
       "cli_exposed": false,
       "depends_on_analyzers": [
@@ -339,6 +471,8 @@
         "semantic.never-cleared-alarm"
       ],
       "scope": "cross-module",
+      "semantic_mapping_kind": "framework",
+      "semantic_rule_source": "alarm-integrity",
       "summary_output": "alarm-integrity.summary",
       "supports_baselines": true,
       "supports_incremental": false,
@@ -346,7 +480,12 @@
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py"
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py"
       ],
       "cli_exposed": false,
       "depends_on_analyzers": [],
@@ -369,6 +508,8 @@
         "semantic.missing-parameter-initial-value"
       ],
       "scope": "workspace",
+      "semantic_mapping_kind": "framework",
+      "semantic_rule_source": "initial-values",
       "summary_output": "initial-values.summary",
       "supports_baselines": true,
       "supports_incremental": false,
@@ -376,14 +517,94 @@
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py"
+        "tests/analyzers/test_interface_contracts.py"
+      ],
+      "cli_exposed": false,
+      "depends_on_analyzers": [],
+      "depends_on_artifacts": [],
+      "description": "Detect missing required parameter mappings, unknown targets, and cross-module contract mismatches",
+      "enabled": true,
+      "exposed_via": [
+        "pipeline"
+      ],
+      "implementation_bucket": "interface-mapping",
+      "key": "interface-contracts",
+      "lsp_exposed": false,
+      "min_fixture_set": [
+        "tests/fixtures/sample_sattline_files"
+      ],
+      "name": "Interface contracts",
+      "output_artifacts": [
+        "interface-contracts.summary",
+        "sattline-semantics.summary"
+      ],
+      "rule_ids": [
+        "semantic.cross-module-contract-mismatch",
+        "semantic.required-parameter-connection",
+        "semantic.string-mapping-mismatch",
+        "semantic.unknown-parameter-target"
+      ],
+      "scope": "workspace",
+      "semantic_mapping_kind": null,
+      "semantic_rule_source": null,
+      "summary_output": "interface-contracts.summary",
+      "supports_baselines": true,
+      "supports_incremental": false,
+      "supports_live_diagnostics": false
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_powerup.py"
+      ],
+      "cli_exposed": true,
+      "depends_on_analyzers": [],
+      "depends_on_artifacts": [],
+      "description": "Detect startup-value gaps and unsafe startup defaults that affect power-up behavior",
+      "enabled": true,
+      "exposed_via": [
+        "cli",
+        "pipeline"
+      ],
+      "implementation_bucket": "engineering-rules",
+      "key": "powerup",
+      "lsp_exposed": false,
+      "min_fixture_set": [
+        "tests/fixtures/sample_sattline_files"
+      ],
+      "name": "Power-up",
+      "output_artifacts": [
+        "powerup.summary",
+        "sattline-semantics.summary"
+      ],
+      "rule_ids": [
+        "semantic.missing-parameter-initial-value",
+        "semantic.unsafe-default-true"
+      ],
+      "scope": "workspace",
+      "semantic_mapping_kind": null,
+      "semantic_rule_source": null,
+      "summary_output": "powerup.summary",
+      "supports_baselines": true,
+      "supports_incremental": false,
+      "supports_live_diagnostics": false
+    },
+    {
+      "acceptance_tests": [
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py"
       ],
       "cli_exposed": false,
       "depends_on_analyzers": [],
       "depends_on_artifacts": [],
       "description": "Detect inconsistent naming styles for variables, modules, and instances across the analyzed target",
       "enabled": true,
-      "exposed_via": [],
+      "exposed_via": [
+        "pipeline"
+      ],
       "implementation_bucket": "engineering-rules",
       "key": "naming-consistency",
       "lsp_exposed": false,
@@ -396,6 +617,8 @@
       ],
       "rule_ids": [],
       "scope": "workspace",
+      "semantic_mapping_kind": null,
+      "semantic_rule_source": null,
       "summary_output": "naming-consistency.summary",
       "supports_baselines": true,
       "supports_incremental": false,
@@ -403,8 +626,500 @@
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_docgen.py"
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py"
+      ],
+      "cli_exposed": false,
+      "depends_on_analyzers": [],
+      "depends_on_artifacts": [],
+      "description": "Detect modules and SFC steps whose control-flow complexity exceeds default thresholds",
+      "enabled": true,
+      "exposed_via": [
+        "pipeline"
+      ],
+      "implementation_bucket": "engineering-rules",
+      "key": "cyclomatic-complexity",
+      "lsp_exposed": false,
+      "min_fixture_set": [
+        "tests/fixtures/sample_sattline_files"
+      ],
+      "name": "Cyclomatic complexity",
+      "output_artifacts": [
+        "cyclomatic-complexity.summary"
+      ],
+      "rule_ids": [],
+      "scope": "single-file",
+      "semantic_mapping_kind": null,
+      "semantic_rule_source": null,
+      "summary_output": "cyclomatic-complexity.summary",
+      "supports_baselines": true,
+      "supports_incremental": false,
+      "supports_live_diagnostics": false
+    },
+    {
+      "acceptance_tests": [
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py"
+      ],
+      "cli_exposed": false,
+      "depends_on_analyzers": [],
+      "depends_on_artifacts": [],
+      "description": "Detect moduletype instances whose resolved literal parameter values drift across the analyzed target",
+      "enabled": true,
+      "exposed_via": [
+        "pipeline"
+      ],
+      "implementation_bucket": "engineering-rules",
+      "key": "parameter-drift",
+      "lsp_exposed": false,
+      "min_fixture_set": [
+        "tests/fixtures/sample_sattline_files"
+      ],
+      "name": "Parameter drift",
+      "output_artifacts": [
+        "parameter-drift.summary"
+      ],
+      "rule_ids": [],
+      "scope": "cross-module",
+      "semantic_mapping_kind": null,
+      "semantic_rule_source": null,
+      "summary_output": "parameter-drift.summary",
+      "supports_baselines": true,
+      "supports_incremental": false,
+      "supports_live_diagnostics": false
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_signal_lifecycle.py"
+      ],
+      "cli_exposed": false,
+      "depends_on_analyzers": [],
+      "depends_on_artifacts": [],
+      "description": "Track reads before writes and signals that are written but never consumed",
+      "enabled": true,
+      "exposed_via": [
+        "cli"
+      ],
+      "implementation_bucket": "engineering-rules",
+      "key": "signal-lifecycle",
+      "lsp_exposed": true,
+      "min_fixture_set": [
+        "tests/fixtures/sample_sattline_files"
+      ],
+      "name": "Signal lifecycle",
+      "output_artifacts": [
+        "signal-lifecycle.summary",
+        "sattline-semantics.summary"
+      ],
+      "rule_ids": [
+        "semantic.signal-lifecycle-read-before-write",
+        "semantic.signal-lifecycle-unconsumed-write"
+      ],
+      "scope": "workspace",
+      "semantic_mapping_kind": "framework",
+      "semantic_rule_source": "signal-lifecycle",
+      "summary_output": "signal-lifecycle.summary",
+      "supports_baselines": true,
+      "supports_incremental": false,
+      "supports_live_diagnostics": false
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_loop_stability.py"
+      ],
+      "cli_exposed": false,
+      "depends_on_analyzers": [],
+      "depends_on_artifacts": [],
+      "description": "Detect contradictory literal setpoint writes that can destabilize scan-loop behavior",
+      "enabled": true,
+      "exposed_via": [
+        "cli"
+      ],
+      "implementation_bucket": "engineering-rules",
+      "key": "loop-stability",
+      "lsp_exposed": true,
+      "min_fixture_set": [
+        "tests/fixtures/sample_sattline_files"
+      ],
+      "name": "Loop stability",
+      "output_artifacts": [
+        "loop-stability.summary",
+        "sattline-semantics.summary"
+      ],
+      "rule_ids": [
+        "semantic.loop-conflicting-setpoint"
+      ],
+      "scope": "single-file",
+      "semantic_mapping_kind": "framework",
+      "semantic_rule_source": "loop-stability",
+      "summary_output": "loop-stability.summary",
+      "supports_baselines": true,
+      "supports_incremental": false,
+      "supports_live_diagnostics": false
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_fault_handling.py"
+      ],
+      "cli_exposed": false,
+      "depends_on_analyzers": [],
+      "depends_on_artifacts": [],
+      "description": "Detect raised alarm or fault paths that are never cleared or never consumed",
+      "enabled": true,
+      "exposed_via": [
+        "cli"
+      ],
+      "implementation_bucket": "engineering-rules",
+      "key": "fault-handling",
+      "lsp_exposed": true,
+      "min_fixture_set": [
+        "tests/fixtures/sample_sattline_files"
+      ],
+      "name": "Fault handling",
+      "output_artifacts": [
+        "fault-handling.summary",
+        "sattline-semantics.summary"
+      ],
+      "rule_ids": [
+        "semantic.fault-missing-recovery",
+        "semantic.fault-unhandled-path"
+      ],
+      "scope": "workspace",
+      "semantic_mapping_kind": "framework",
+      "semantic_rule_source": "fault-handling",
+      "summary_output": "fault-handling.summary",
+      "supports_baselines": true,
+      "supports_incremental": false,
+      "supports_live_diagnostics": false
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_numeric_constraints.py"
+      ],
+      "cli_exposed": false,
+      "depends_on_analyzers": [],
+      "depends_on_artifacts": [],
+      "description": "Validate literal assignments against visible Min/Max style bounds",
+      "enabled": true,
+      "exposed_via": [
+        "cli"
+      ],
+      "implementation_bucket": "engineering-rules",
+      "key": "numeric-constraints",
+      "lsp_exposed": true,
+      "min_fixture_set": [
+        "tests/fixtures/sample_sattline_files"
+      ],
+      "name": "Numeric constraints",
+      "output_artifacts": [
+        "numeric-constraints.summary",
+        "sattline-semantics.summary"
+      ],
+      "rule_ids": [
+        "semantic.numeric-limit-violation"
+      ],
+      "scope": "workspace",
+      "semantic_mapping_kind": "framework",
+      "semantic_rule_source": "numeric-constraints",
+      "summary_output": "numeric-constraints.summary",
+      "supports_baselines": true,
+      "supports_incremental": false,
+      "supports_live_diagnostics": false
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_data_dependency.py"
+      ],
+      "cli_exposed": false,
+      "depends_on_analyzers": [],
+      "depends_on_artifacts": [],
+      "description": "Report deterministic dependency chains and initialization-order hazards",
+      "enabled": true,
+      "exposed_via": [
+        "cli"
+      ],
+      "implementation_bucket": "shared-semantic-core",
+      "key": "data-dependency",
+      "lsp_exposed": false,
+      "min_fixture_set": [
+        "tests/fixtures/sample_sattline_files"
+      ],
+      "name": "Data dependency",
+      "output_artifacts": [
+        "data-dependency.summary"
+      ],
+      "rule_ids": [],
+      "scope": "workspace",
+      "semantic_mapping_kind": null,
+      "semantic_rule_source": "data-dependency",
+      "summary_output": "data-dependency.summary",
+      "supports_baselines": true,
+      "supports_incremental": false,
+      "supports_live_diagnostics": false
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_config_drift.py"
+      ],
+      "cli_exposed": false,
+      "depends_on_analyzers": [],
+      "depends_on_artifacts": [],
+      "description": "Detect moduletype instances whose visible configuration signatures drift across the analyzed target",
+      "enabled": true,
+      "exposed_via": [
+        "cli"
+      ],
+      "implementation_bucket": "engineering-rules",
+      "key": "config-drift",
+      "lsp_exposed": true,
+      "min_fixture_set": [
+        "tests/fixtures/sample_sattline_files"
+      ],
+      "name": "Config drift",
+      "output_artifacts": [
+        "config-drift.summary",
+        "sattline-semantics.summary"
+      ],
+      "rule_ids": [
+        "semantic.instance-configuration-drift"
+      ],
+      "scope": "cross-module",
+      "semantic_mapping_kind": "framework",
+      "semantic_rule_source": "config-drift",
+      "summary_output": "config-drift.summary",
+      "supports_baselines": true,
+      "supports_incremental": false,
+      "supports_live_diagnostics": false
+    },
+    {
+      "acceptance_tests": [
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py"
+      ],
+      "cli_exposed": false,
+      "depends_on_analyzers": [],
+      "depends_on_artifacts": [],
+      "description": "Detect non precision-scan-safe builtin calls inside equation blocks and SFC active code",
+      "enabled": true,
+      "exposed_via": [
+        "pipeline"
+      ],
+      "implementation_bucket": "engineering-rules",
+      "key": "scan-loop-resource-usage",
+      "lsp_exposed": false,
+      "min_fixture_set": [
+        "tests/fixtures/sample_sattline_files"
+      ],
+      "name": "Scan-loop resource usage",
+      "output_artifacts": [
+        "scan-loop-resource-usage.summary"
+      ],
+      "rule_ids": [],
+      "scope": "single-file",
+      "semantic_mapping_kind": null,
+      "semantic_rule_source": null,
+      "summary_output": "scan-loop-resource-usage.summary",
+      "supports_baselines": true,
+      "supports_incremental": false,
+      "supports_live_diagnostics": false
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_resource_usage.py"
+      ],
+      "cli_exposed": false,
+      "depends_on_analyzers": [],
+      "depends_on_artifacts": [],
+      "description": "Detect unreleased or prematurely released resource handles and scan-loop resource hazards",
+      "enabled": true,
+      "exposed_via": [
+        "cli"
+      ],
+      "implementation_bucket": "shared-semantic-core",
+      "key": "resource-usage",
+      "lsp_exposed": false,
+      "min_fixture_set": [
+        "tests/fixtures/sample_sattline_files"
+      ],
+      "name": "Resource usage",
+      "output_artifacts": [
+        "resource-usage.summary"
+      ],
+      "rule_ids": [],
+      "scope": "workspace",
+      "semantic_mapping_kind": null,
+      "semantic_rule_source": "resource-usage",
+      "summary_output": "resource-usage.summary",
+      "supports_baselines": true,
+      "supports_incremental": false,
+      "supports_live_diagnostics": false
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_scan_concurrency.py"
+      ],
+      "cli_exposed": false,
+      "depends_on_analyzers": [],
+      "depends_on_artifacts": [],
+      "description": "Detect parallel scan or sequence branches that write the same variable without arbitration",
+      "enabled": true,
+      "exposed_via": [
+        "pipeline"
+      ],
+      "implementation_bucket": "shared-semantic-core",
+      "key": "scan-concurrency",
+      "lsp_exposed": false,
+      "min_fixture_set": [
+        "tests/fixtures/sample_sattline_files"
+      ],
+      "name": "Scan concurrency",
+      "output_artifacts": [
+        "scan-concurrency.summary",
+        "sattline-semantics.summary"
+      ],
+      "rule_ids": [
+        "semantic.parallel-write-race"
+      ],
+      "scope": "single-file",
+      "semantic_mapping_kind": null,
+      "semantic_rule_source": null,
+      "summary_output": "scan-concurrency.summary",
+      "supports_baselines": true,
+      "supports_incremental": false,
+      "supports_live_diagnostics": false
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_scan_shared_access.py"
+      ],
+      "cli_exposed": false,
+      "depends_on_analyzers": [],
+      "depends_on_artifacts": [],
+      "description": "Detect non-STATE variables that are read and written across multiple continuous scan sites",
+      "enabled": true,
+      "exposed_via": [
+        "pipeline"
+      ],
+      "implementation_bucket": "shared-semantic-core",
+      "key": "scan-shared-access",
+      "lsp_exposed": false,
+      "min_fixture_set": [
+        "tests/fixtures/sample_sattline_files"
+      ],
+      "name": "Scan shared access",
+      "output_artifacts": [
+        "scan-shared-access.summary",
+        "sattline-semantics.summary"
+      ],
+      "rule_ids": [
+        "semantic.same-cycle-non-state-multi-site"
+      ],
+      "scope": "single-file",
+      "semantic_mapping_kind": null,
+      "semantic_rule_source": null,
+      "summary_output": "scan-shared-access.summary",
+      "supports_baselines": true,
+      "supports_incremental": false,
+      "supports_live_diagnostics": false
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_same_cycle.py",
+        "tests/analyzers/test_sattline_semantics.py"
+      ],
+      "cli_exposed": false,
+      "depends_on_analyzers": [
+        "sattline-semantics"
+      ],
+      "depends_on_artifacts": [],
+      "description": "Detect same-scan shared-variable hazards across modules and parallel SFC branches",
+      "enabled": true,
+      "exposed_via": [
+        "sattline-semantics"
+      ],
+      "implementation_bucket": "shared-semantic-core",
+      "key": "same-cycle",
+      "lsp_exposed": true,
+      "min_fixture_set": [
+        "tests/fixtures/sample_sattline_files"
+      ],
+      "name": "Same-cycle hazards",
+      "output_artifacts": [
+        "same-cycle.summary",
+        "sattline-semantics.summary"
+      ],
+      "rule_ids": [
+        "semantic.parallel-read-write-hazard",
+        "semantic.parallel-write-race",
+        "semantic.same-cycle-non-state-multi-site",
+        "semantic.same-cycle-shared-access"
+      ],
+      "scope": "cross-module",
+      "semantic_mapping_kind": "framework",
+      "semantic_rule_source": "same-cycle",
+      "summary_output": "same-cycle.summary",
+      "supports_baselines": true,
+      "supports_incremental": false,
+      "supports_live_diagnostics": true
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_timing.py"
+      ],
+      "cli_exposed": true,
+      "depends_on_analyzers": [],
+      "depends_on_artifacts": [],
+      "description": "Detect scan-cycle temporal hazards and non precision-scan-safe resource usage",
+      "enabled": true,
+      "exposed_via": [
+        "cli",
+        "pipeline"
+      ],
+      "implementation_bucket": "shared-semantic-core",
+      "key": "timing",
+      "lsp_exposed": false,
+      "min_fixture_set": [
+        "tests/fixtures/sample_sattline_files"
+      ],
+      "name": "Timing",
+      "output_artifacts": [
+        "timing.summary",
+        "sattline-semantics.summary"
+      ],
+      "rule_ids": [
+        "semantic.scan-cycle-implicit-new",
+        "semantic.scan-cycle-stale-read",
+        "semantic.scan-cycle-temporal-misuse"
+      ],
+      "scope": "single-file",
+      "semantic_mapping_kind": null,
+      "semantic_rule_source": null,
+      "summary_output": "timing.summary",
+      "supports_baselines": true,
+      "supports_incremental": false,
+      "supports_live_diagnostics": false
+    },
+    {
+      "acceptance_tests": [
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_docgen_part1.py"
       ],
       "cli_exposed": false,
       "depends_on_analyzers": [],
@@ -426,6 +1141,8 @@
       ],
       "rule_ids": [],
       "scope": "workspace",
+      "semantic_mapping_kind": null,
+      "semantic_rule_source": "version-drift",
       "summary_output": "version-drift.summary",
       "supports_baselines": true,
       "supports_incremental": false,
@@ -433,8 +1150,13 @@
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/analyzers/test_sattline_semantics.py",
         "tests/test_editor_api.py"
       ],
       "cli_exposed": false,
@@ -463,6 +1185,8 @@
         "semantic.unconsumed-safety-signal"
       ],
       "scope": "cross-module",
+      "semantic_mapping_kind": "framework",
+      "semantic_rule_source": "safety-paths",
       "summary_output": "safety-paths.summary",
       "supports_baselines": true,
       "supports_incremental": false,
@@ -470,7 +1194,12 @@
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
         "tests/test_editor_api.py"
       ],
       "cli_exposed": false,
@@ -497,6 +1226,8 @@
         "semantic.external-input-to-critical-sink"
       ],
       "scope": "cross-module",
+      "semantic_mapping_kind": "framework",
+      "semantic_rule_source": "taint-paths",
       "summary_output": "taint-paths.summary",
       "supports_baselines": true,
       "supports_incremental": false,
@@ -504,8 +1235,8 @@
     },
     {
       "acceptance_tests": [
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/test_pipeline_phase2.py",
+        "tests/analyzers/test_sattline_semantics.py"
       ],
       "cli_exposed": false,
       "depends_on_analyzers": [
@@ -532,6 +1263,8 @@
         "semantic.unsafe-default-true"
       ],
       "scope": "single-file",
+      "semantic_mapping_kind": "framework",
+      "semantic_rule_source": "unsafe-defaults",
       "summary_output": "unsafe-defaults.summary",
       "supports_baselines": true,
       "supports_incremental": false,
@@ -539,9 +1272,14 @@
     },
     {
       "acceptance_tests": [
-        "tests/test_dataflow.py",
-        "tests/test_analyzers.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_dataflow.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/analyzers/test_sattline_semantics.py"
       ],
       "cli_exposed": false,
       "depends_on_analyzers": [
@@ -568,6 +1306,7 @@
         "semantic.condition-always-false",
         "semantic.condition-always-true",
         "semantic.dead-overwrite",
+        "semantic.invalid-state-access",
         "semantic.read-before-write",
         "semantic.scan-cycle-implicit-new",
         "semantic.scan-cycle-stale-read",
@@ -577,20 +1316,75 @@
         "semantic.unreachable-sequence-node-dataflow"
       ],
       "scope": "workspace",
+      "semantic_mapping_kind": "framework",
+      "semantic_rule_source": "dataflow",
       "summary_output": "dataflow.summary",
+      "supports_baselines": true,
+      "supports_incremental": false,
+      "supports_live_diagnostics": false
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_state_inference.py",
+        "tests/analyzers/test_dataflow.py",
+        "tests/test_cli.py"
+      ],
+      "cli_exposed": false,
+      "depends_on_analyzers": [
+        "sattline-semantics",
+        "dataflow"
+      ],
+      "depends_on_artifacts": [],
+      "description": "Infer stable boolean and numeric state and report contradictory control flow",
+      "enabled": true,
+      "exposed_via": [
+        "cli"
+      ],
+      "implementation_bucket": "shared-semantic-core",
+      "key": "state-inference",
+      "lsp_exposed": false,
+      "min_fixture_set": [
+        "tests/fixtures/sample_sattline_files"
+      ],
+      "name": "State inference",
+      "output_artifacts": [
+        "state-inference.summary"
+      ],
+      "rule_ids": [],
+      "scope": "workspace",
+      "semantic_mapping_kind": null,
+      "semantic_rule_source": null,
+      "summary_output": "state-inference.summary",
       "supports_baselines": true,
       "supports_incremental": false,
       "supports_live_diagnostics": false
     }
   ],
   "generated_by": "sattlint.devtools.pipeline",
+  "rule_profiles": {
+    "active": "default",
+    "profiles": [
+      {
+        "confidence_overrides": {},
+        "description": "Balanced default analyzer profile.",
+        "disabled_rules": [],
+        "name": "default",
+        "severity_overrides": {}
+      }
+    ]
+  },
   "rules": [
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_dataflow.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_dataflow.py",
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -598,8 +1392,25 @@
       ],
       "applies_to": "condition",
       "category": "control-flow",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "edge-comment-inside-equation",
+        "edge-elsif-expression",
+        "edge-empty-code-blocks",
+        "edge-legacy-sequence-no-init-step",
+        "edge-minimal-sequence",
+        "edge-op-save-and-state-combined",
+        "edge-seq-break",
+        "edge-sequence-alternative",
+        "edge-sequence-parallel",
+        "edge-sub-sequence-definition",
+        "edge-sub-sequence-transition",
+        "semantic-code-quality",
+        "semantic-unreachable-sequence-dataflow",
+        "workspace-common-quality-issues"
+      ],
       "description": "Conditions that always evaluate to false at a particular program point.",
+      "explanation": "Conditions that always evaluate to false at a particular program point.",
       "id": "semantic.condition-always-false",
       "incremental_safe": false,
       "mutation_applicability": "required",
@@ -609,16 +1420,22 @@
       ],
       "severity": "warning",
       "source": "dataflow",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_dataflow.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_dataflow.py",
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -626,8 +1443,21 @@
       ],
       "applies_to": "condition",
       "category": "control-flow",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "edge-empty-code-blocks",
+        "edge-keyword-prefixed-identifiers",
+        "edge-seq-break",
+        "edge-seq-fork-multiple-targets",
+        "edge-sequence-alternative",
+        "edge-sequence-parallel",
+        "edge-sub-sequence-definition",
+        "edge-terminal-seq-step",
+        "semantic-code-quality",
+        "workspace-common-quality-issues"
+      ],
       "description": "Conditions that always evaluate to true at a particular program point.",
+      "explanation": "Conditions that always evaluate to true at a particular program point.",
       "id": "semantic.condition-always-true",
       "incremental_safe": false,
       "mutation_applicability": "required",
@@ -637,15 +1467,21 @@
       ],
       "severity": "warning",
       "source": "dataflow",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -653,8 +1489,14 @@
       ],
       "applies_to": "alarm-source",
       "category": "interface-contracts",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-alarm-integrity",
+        "semantic-alarm-integrity",
+        "workspace-common-quality-issues"
+      ],
       "description": "The same alarm tag or condition should not be configured with conflicting priorities or severities.",
+      "explanation": "The same alarm tag or condition should not be configured with conflicting priorities or severities.",
       "id": "semantic.conflicting-alarm-priority",
       "incremental_safe": false,
       "mutation_applicability": "required",
@@ -664,44 +1506,65 @@
       ],
       "severity": "warning",
       "source": "alarm-integrity",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_editor_api.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
-        "variables"
+        "variables",
+        "interface-contracts"
       ],
       "applies_to": "parameter-mapping",
       "category": "interface-contracts",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "invalid-cross-module-contract-mismatch",
+        "workspace-common-quality-issues"
+      ],
       "description": "Parameter mappings whose connected datatypes are incompatible across module boundaries.",
+      "explanation": "Parameter mappings whose connected datatypes are incompatible across module boundaries.",
       "id": "semantic.cross-module-contract-mismatch",
       "incremental_safe": true,
       "mutation_applicability": "required",
       "outputs": [
         "sattline-semantics.summary",
-        "variables.summary"
+        "variables.summary",
+        "interface-contracts.summary"
       ],
       "severity": "error",
       "source": "variables",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_dataflow.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_dataflow.py",
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -709,8 +1572,15 @@
       ],
       "applies_to": "variable",
       "category": "variable-lifecycle",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "edge-const-string-set-get-pos",
+        "edge-empty-code-blocks",
+        "semantic-dead-overwrite",
+        "workspace-common-quality-issues"
+      ],
       "description": "Writes whose value is overwritten before any later read can observe it.",
+      "explanation": "Writes whose value is overwritten before any later read can observe it.",
       "id": "semantic.dead-overwrite",
       "incremental_safe": false,
       "mutation_applicability": "required",
@@ -720,15 +1590,21 @@
       ],
       "severity": "warning",
       "source": "dataflow",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -736,8 +1612,14 @@
       ],
       "applies_to": "alarm-source",
       "category": "control-flow",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-alarm-integrity",
+        "semantic-alarm-integrity",
+        "workspace-common-quality-issues"
+      ],
       "description": "Alarm sources should not reuse the same condition without deliberate deduplication.",
+      "explanation": "Alarm sources should not reuse the same condition without deliberate deduplication.",
       "id": "semantic.duplicate-alarm-condition",
       "incremental_safe": false,
       "mutation_applicability": "required",
@@ -747,15 +1629,21 @@
       ],
       "severity": "warning",
       "source": "alarm-integrity",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -763,8 +1651,14 @@
       ],
       "applies_to": "alarm-source",
       "category": "interface-contracts",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-alarm-integrity",
+        "semantic-alarm-integrity",
+        "workspace-common-quality-issues"
+      ],
       "description": "Alarm sources should not reuse the same tag across the analyzed target.",
+      "explanation": "Alarm sources should not reuse the same tag across the analyzed target.",
       "id": "semantic.duplicate-alarm-tag",
       "incremental_safe": false,
       "mutation_applicability": "required",
@@ -774,22 +1668,27 @@
       ],
       "severity": "error",
       "source": "alarm-integrity",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics"
       ],
       "applies_to": "module",
       "category": "module-structure",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "semantic-duplicate-sibling-name"
+      ],
       "description": "Sibling modules with the same case-insensitive name.",
+      "explanation": "Sibling modules with the same case-insensitive name.",
       "id": "semantic.duplicate-sibling-name",
       "incremental_safe": false,
       "mutation_applicability": "not_applicable",
@@ -798,16 +1697,22 @@
       ],
       "severity": "error",
       "source": "tracing",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py",
-        "tests/test_sfc.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/analyzers/test_sfc.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -815,8 +1720,15 @@
       ],
       "applies_to": "transition",
       "category": "control-flow",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "edge-seq-fork-multiple-targets",
+        "edge-sub-sequence-transition",
+        "semantic-sequence-unreachable",
+        "workspace-common-quality-issues"
+      ],
       "description": "Transitions in the same sequence branch that normalize to the same guard logic.",
+      "explanation": "Transitions in the same sequence branch that normalize to the same guard logic.",
       "id": "semantic.duplicate-transition-guard",
       "incremental_safe": false,
       "mutation_applicability": "required",
@@ -826,16 +1738,24 @@
       ],
       "severity": "warning",
       "source": "sfc",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_editor_api.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -843,8 +1763,13 @@
       ],
       "applies_to": "datatype",
       "category": "module-structure",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-variables-structure-coverage",
+        "workspace-common-quality-issues"
+      ],
       "description": "Complex datatypes that appear duplicated by structure.",
+      "explanation": "Complex datatypes that appear duplicated by structure.",
       "id": "semantic.duplicated-datatype-layout",
       "incremental_safe": true,
       "mutation_applicability": "required",
@@ -854,16 +1779,22 @@
       ],
       "severity": "warning",
       "source": "variables",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
         "tests/test_editor_api.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -871,8 +1802,14 @@
       ],
       "applies_to": "flow-path",
       "category": "interface-contracts",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-taint-paths",
+        "semantic-safety-signal",
+        "workspace-common-quality-issues"
+      ],
       "description": "External MES, operator, or sensor inputs that propagate into safety-critical sinks across modules.",
+      "explanation": "External MES, operator, or sensor inputs that propagate into safety-critical sinks across modules.",
       "id": "semantic.external-input-to-critical-sink",
       "incremental_safe": false,
       "mutation_applicability": "required",
@@ -882,16 +1819,92 @@
       ],
       "severity": "warning",
       "source": "taint-paths",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_fault_handling.py",
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_pipeline_phase2.py"
+      ],
+      "analyzers": [
+        "sattline-semantics",
+        "fault-handling"
+      ],
+      "applies_to": "fault-path",
+      "category": "control-flow",
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-fault-handling",
+        "semantic-fault-and-config",
+        "semantic-fault-handling"
+      ],
+      "description": "Fault paths that are raised should also be explicitly cleared or acknowledged in the same scope.",
+      "explanation": "Fault paths that are raised should also be explicitly cleared or acknowledged in the same scope.",
+      "id": "semantic.fault-missing-recovery",
+      "incremental_safe": false,
+      "mutation_applicability": "required",
+      "outputs": [
+        "sattline-semantics.summary",
+        "fault-handling.summary"
+      ],
+      "severity": "warning",
+      "source": "fault-handling",
+      "suggestion": null,
+      "suppression_modes": [
+        "baseline"
+      ]
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_fault_handling.py",
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_pipeline_phase2.py"
+      ],
+      "analyzers": [
+        "sattline-semantics",
+        "fault-handling"
+      ],
+      "applies_to": "fault-path",
+      "category": "control-flow",
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-fault-handling",
+        "semantic-fault-and-config",
+        "semantic-fault-handling"
+      ],
+      "description": "Fault paths that are raised should be consumed by reachable handling logic in the same scope.",
+      "explanation": "Fault paths that are raised should be consumed by reachable handling logic in the same scope.",
+      "id": "semantic.fault-unhandled-path",
+      "incremental_safe": false,
+      "mutation_applicability": "required",
+      "outputs": [
+        "sattline-semantics.summary",
+        "fault-handling.summary"
+      ],
+      "severity": "warning",
+      "source": "fault-handling",
+      "suggestion": null,
+      "suppression_modes": [
+        "baseline"
+      ]
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_editor_api.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -899,8 +1912,14 @@
       ],
       "applies_to": "global-variable",
       "category": "interface-contracts",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "edge-global-parameter-mapping",
+        "edge-simple-module-type-invocation",
+        "workspace-common-quality-issues"
+      ],
       "description": "Root globals whose access never escapes a single module subtree and can be localized.",
+      "explanation": "Root globals whose access never escapes a single module subtree and can be localized.",
       "id": "semantic.global-scope-minimization",
       "incremental_safe": true,
       "mutation_applicability": "required",
@@ -910,16 +1929,24 @@
       ],
       "severity": "warning",
       "source": "variables",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_editor_api.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -927,8 +1954,13 @@
       ],
       "applies_to": "global-variable",
       "category": "interface-contracts",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-variables-structure-coverage",
+        "workspace-common-quality-issues"
+      ],
       "description": "Root globals that act as implicit interfaces across multiple module paths.",
+      "explanation": "Root globals that act as implicit interfaces across multiple module paths.",
       "id": "semantic.hidden-global-coupling",
       "incremental_safe": true,
       "mutation_applicability": "required",
@@ -938,16 +1970,24 @@
       ],
       "severity": "warning",
       "source": "variables",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_editor_api.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -955,8 +1995,13 @@
       ],
       "applies_to": "global-variable",
       "category": "interface-contracts",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-variables-structure-coverage",
+        "workspace-common-quality-issues"
+      ],
       "description": "Root globals that are read or written by many distinct module paths and become highly shared coordination points.",
+      "explanation": "Root globals that are read or written by many distinct module paths and become highly shared coordination points.",
       "id": "semantic.high-fan-in-out-variable",
       "incremental_safe": true,
       "mutation_applicability": "required",
@@ -966,16 +2011,22 @@
       ],
       "severity": "warning",
       "source": "variables",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py",
-        "tests/test_sfc.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/analyzers/test_sfc.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -983,8 +2034,13 @@
       ],
       "applies_to": "sequence",
       "category": "control-flow",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "semantic-illegal-state-combination",
+        "workspace-common-quality-issues"
+      ],
       "description": "Configured mutually exclusive SFC steps can become active at the same time.",
+      "explanation": "Configured mutually exclusive SFC steps can become active at the same time.",
       "id": "semantic.illegal-state-combination",
       "incremental_safe": false,
       "mutation_applicability": "required",
@@ -994,16 +2050,24 @@
       ],
       "severity": "error",
       "source": "sfc",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_editor_api.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1011,8 +2075,13 @@
       ],
       "applies_to": "boolean-variable",
       "category": "control-flow",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "semantic-implicit-latch",
+        "workspace-common-quality-issues"
+      ],
       "description": "Boolean values that are set on some branches or steps without a matching False write on the complementary path.",
+      "explanation": "Boolean values that are set on some branches or steps without a matching False write on the complementary path.",
       "id": "semantic.implicit-latch",
       "incremental_safe": true,
       "mutation_applicability": "required",
@@ -1022,16 +2091,174 @@
       ],
       "severity": "warning",
       "source": "variables",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_config_drift.py",
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_pipeline_phase2.py"
+      ],
+      "analyzers": [
+        "sattline-semantics",
+        "config-drift"
+      ],
+      "applies_to": "module-instance-group",
+      "category": "interface-contracts",
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-config-drift",
+        "edge-duration-in-parameter-mapping",
+        "semantic-config-drift",
+        "semantic-fault-and-config"
+      ],
+      "description": "Instances of the same moduletype should not drift on mapped configuration parameter values without intent.",
+      "explanation": "Instances of the same moduletype should not drift on mapped configuration parameter values without intent.",
+      "id": "semantic.instance-configuration-drift",
+      "incremental_safe": false,
+      "mutation_applicability": "required",
+      "outputs": [
+        "sattline-semantics.summary",
+        "config-drift.summary"
+      ],
+      "severity": "warning",
+      "source": "config-drift",
+      "suggestion": null,
+      "suppression_modes": [
+        "baseline"
+      ]
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_dataflow.py",
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
+      ],
+      "analyzers": [
+        "sattline-semantics",
+        "dataflow"
+      ],
+      "applies_to": "state-variable",
+      "category": "control-flow",
+      "confidence": "likely",
+      "corpus_cases": [
+        "semantic-invalid-state-access",
+        "workspace-common-quality-issues"
+      ],
+      "description": ":OLD and :NEW access is only valid on variables or leaf fields declared State.",
+      "explanation": ":OLD and :NEW access is only valid on variables or leaf fields declared State.",
+      "id": "semantic.invalid-state-access",
+      "incremental_safe": false,
+      "mutation_applicability": "required",
+      "outputs": [
+        "sattline-semantics.summary",
+        "dataflow.summary"
+      ],
+      "severity": "error",
+      "source": "dataflow",
+      "suggestion": null,
+      "suppression_modes": [
+        "baseline"
+      ]
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_editor_api.py",
+        "tests/test_pipeline_phase2.py"
+      ],
+      "analyzers": [
+        "sattline-semantics",
+        "variables"
+      ],
+      "applies_to": "layout",
+      "category": "module-structure",
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-variables-layout-overlap",
+        "workspace-common-quality-issues"
+      ],
+      "description": "Sibling module invocations and rectangular graph or interact objects should not overlap in the same layout scope.",
+      "explanation": "Sibling module invocations and rectangular graph or interact objects should not overlap in the same layout scope.",
+      "id": "semantic.layout-overlap",
+      "incremental_safe": true,
+      "mutation_applicability": "required",
+      "outputs": [
+        "sattline-semantics.summary",
+        "variables.summary"
+      ],
+      "severity": "warning",
+      "source": "variables",
+      "suggestion": null,
+      "suppression_modes": [
+        "baseline"
+      ]
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_loop_stability.py",
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_pipeline_phase2.py"
+      ],
+      "analyzers": [
+        "sattline-semantics",
+        "loop-stability"
+      ],
+      "applies_to": "setpoint",
+      "category": "control-flow",
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-loop-stability",
+        "edge-elsif-expression",
+        "edge-empty-code-blocks",
+        "semantic-loop-stability"
+      ],
+      "description": "The same setpoint should not receive conflicting literal assignments in one scope.",
+      "explanation": "The same setpoint should not receive conflicting literal assignments in one scope.",
+      "id": "semantic.loop-conflicting-setpoint",
+      "incremental_safe": false,
+      "mutation_applicability": "required",
+      "outputs": [
+        "sattline-semantics.summary",
+        "loop-stability.summary"
+      ],
+      "severity": "warning",
+      "source": "loop-stability",
+      "suggestion": null,
+      "suppression_modes": [
+        "baseline"
+      ]
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_editor_api.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1039,8 +2266,13 @@
       ],
       "applies_to": "parameter-mapping",
       "category": "interface-contracts",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-variables-minmax-string",
+        "workspace-common-quality-issues"
+      ],
       "description": "Min_/Max_ parameter mappings that do not line up by base name.",
+      "explanation": "Min_/Max_ parameter mappings that do not line up by base name.",
       "id": "semantic.min-max-mapping-mismatch",
       "incremental_safe": true,
       "mutation_applicability": "required",
@@ -1050,43 +2282,62 @@
       ],
       "severity": "warning",
       "source": "variables",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
-        "initial-values"
+        "initial-values",
+        "powerup"
       ],
       "applies_to": "parameter-module",
       "category": "interface-contracts",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-initial-values-missing-default",
+        "workspace-common-quality-issues"
+      ],
       "description": "Recipe and engineering parameter modules should resolve a startup value through a default or an explicitly initialized mapping.",
+      "explanation": "Recipe and engineering parameter modules should resolve a startup value through a default or an explicitly initialized mapping.",
       "id": "semantic.missing-parameter-initial-value",
       "incremental_safe": false,
       "mutation_applicability": "required",
       "outputs": [
         "sattline-semantics.summary",
-        "initial-values.summary"
+        "initial-values.summary",
+        "powerup.summary"
       ],
       "severity": "warning",
       "source": "initial-values",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py",
-        "tests/test_sfc.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/analyzers/test_sfc.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1094,8 +2345,13 @@
       ],
       "applies_to": "step",
       "category": "control-flow",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "semantic-step-contract",
+        "workspace-common-quality-issues"
+      ],
       "description": "Configured SFC steps should initialize their required state in the enter block.",
+      "explanation": "Configured SFC steps should initialize their required state in the enter block.",
       "id": "semantic.missing-step-enter-contract",
       "incremental_safe": false,
       "mutation_applicability": "required",
@@ -1105,16 +2361,22 @@
       ],
       "severity": "warning",
       "source": "sfc",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py",
-        "tests/test_sfc.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/analyzers/test_sfc.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1122,8 +2384,13 @@
       ],
       "applies_to": "step",
       "category": "control-flow",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "semantic-step-contract",
+        "workspace-common-quality-issues"
+      ],
       "description": "Configured SFC steps should clean up their required state in the exit block.",
+      "explanation": "Configured SFC steps should clean up their required state in the exit block.",
       "id": "semantic.missing-step-exit-contract",
       "incremental_safe": false,
       "mutation_applicability": "required",
@@ -1133,16 +2400,24 @@
       ],
       "severity": "warning",
       "source": "sfc",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_editor_api.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1150,8 +2425,13 @@
       ],
       "applies_to": "scope",
       "category": "module-structure",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-variables-structure-coverage",
+        "workspace-common-quality-issues"
+      ],
       "description": "Case-insensitive declaration name collisions within a scope.",
+      "explanation": "Case-insensitive declaration name collisions within a scope.",
       "id": "semantic.name-collision",
       "incremental_safe": true,
       "mutation_applicability": "required",
@@ -1161,15 +2441,62 @@
       ],
       "severity": "warning",
       "source": "variables",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_editor_api.py",
+        "tests/test_pipeline_phase2.py"
+      ],
+      "analyzers": [
+        "sattline-semantics",
+        "variables"
+      ],
+      "applies_to": "variable",
+      "category": "engineering-spec",
+      "confidence": "likely",
+      "corpus_cases": [
+        "edge-empty-code-blocks",
+        "workspace-common-quality-issues"
+      ],
+      "description": "Role-bearing variable prefixes or suffixes such as Cmd, Status, and Alarm should align with observed read and write behavior.",
+      "explanation": "Role-bearing variable prefixes or suffixes such as Cmd, Status, and Alarm should align with observed read and write behavior.",
+      "id": "semantic.naming-role-mismatch",
+      "incremental_safe": true,
+      "mutation_applicability": "required",
+      "outputs": [
+        "sattline-semantics.summary",
+        "variables.summary"
+      ],
+      "severity": "warning",
+      "source": "variables",
+      "suggestion": null,
+      "suppression_modes": [
+        "baseline"
+      ]
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1177,8 +2504,13 @@
       ],
       "applies_to": "alarm-variable",
       "category": "control-flow",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-alarm-integrity-never-cleared",
+        "workspace-common-quality-issues"
+      ],
       "description": "Alarm variables that are only forced true and never explicitly cleared can latch unexpectedly.",
+      "explanation": "Alarm variables that are only forced true and never explicitly cleared can latch unexpectedly.",
       "id": "semantic.never-cleared-alarm",
       "incremental_safe": false,
       "mutation_applicability": "required",
@@ -1188,16 +2520,65 @@
       ],
       "severity": "warning",
       "source": "alarm-integrity",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_editor_api.py",
+        "tests/test_pipeline_phase2.py"
+      ],
+      "analyzers": [
+        "sattline-semantics",
+        "variables"
+      ],
+      "applies_to": "datatype-field",
+      "category": "variable-lifecycle",
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-variables-never-read-datatype-field",
+        "workspace-common-quality-issues"
+      ],
+      "description": "Datatype fields that are written but never subsequently read for a specific variable instance.",
+      "explanation": "Datatype fields that are written but never subsequently read for a specific variable instance.",
+      "id": "semantic.never-read-datatype-field",
+      "incremental_safe": true,
+      "mutation_applicability": "required",
+      "outputs": [
+        "sattline-semantics.summary",
+        "variables.summary"
+      ],
+      "severity": "warning",
+      "source": "variables",
+      "suggestion": null,
+      "suppression_modes": [
+        "baseline"
+      ]
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_editor_api.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1205,8 +2586,28 @@
       ],
       "applies_to": "variable",
       "category": "variable-lifecycle",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "edge-arithmetic-precedence",
+        "edge-bare-duration-zero",
+        "edge-case-insensitive-identifiers",
+        "edge-comment-inside-equation",
+        "edge-coordinate-invar-tail",
+        "edge-duration-various-formats",
+        "edge-elsif-expression",
+        "edge-empty-code-blocks",
+        "edge-keyword-prefixed-identifiers",
+        "edge-negative-duration-value",
+        "edge-old-new-on-dotted-state-field",
+        "edge-quoted-identifier-max-length",
+        "edge-scan-group-clause",
+        "edge-unicode-identifiers",
+        "semantic-never-read-variable",
+        "semantic-timing",
+        "workspace-common-quality-issues"
+      ],
       "description": "Variables that are written but never subsequently read.",
+      "explanation": "Variables that are written but never subsequently read.",
       "id": "semantic.never-read-write",
       "incremental_safe": true,
       "mutation_applicability": "required",
@@ -1216,44 +2617,134 @@
       ],
       "severity": "warning",
       "source": "variables",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py",
-        "tests/test_sfc.py"
+        "tests/analyzers/test_numeric_constraints.py",
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
-        "sfc"
+        "numeric-constraints"
+      ],
+      "applies_to": "numeric-variable",
+      "category": "engineering-spec",
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-numeric-constraints",
+        "semantic-numeric-constraints"
+      ],
+      "description": "Assignments should stay within the visible Min_/Max_ bounds declared for the target variable.",
+      "explanation": "Assignments should stay within the visible Min_/Max_ bounds declared for the target variable.",
+      "id": "semantic.numeric-limit-violation",
+      "incremental_safe": false,
+      "mutation_applicability": "required",
+      "outputs": [
+        "sattline-semantics.summary",
+        "numeric-constraints.summary"
+      ],
+      "severity": "warning",
+      "source": "numeric-constraints",
+      "suggestion": null,
+      "suppression_modes": [
+        "baseline"
+      ]
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_same_cycle.py",
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/analyzers/test_scan_shared_access.py",
+        "tests/test_pipeline_phase2.py"
+      ],
+      "analyzers": [
+        "sattline-semantics",
+        "same-cycle"
       ],
       "applies_to": "sequence",
       "category": "control-flow",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-same-cycle-parallel-read-write",
+        "workspace-common-quality-issues"
+      ],
+      "description": "Parallel SFC branches that both read and write the same variable within one scan.",
+      "explanation": "Parallel SFC branches that both read and write the same variable within one scan.",
+      "id": "semantic.parallel-read-write-hazard",
+      "incremental_safe": false,
+      "mutation_applicability": "required",
+      "outputs": [
+        "sattline-semantics.summary",
+        "same-cycle.summary"
+      ],
+      "severity": "warning",
+      "source": "same-cycle",
+      "suggestion": null,
+      "suppression_modes": [
+        "baseline"
+      ]
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/analyzers/test_sfc.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
+      ],
+      "analyzers": [
+        "sattline-semantics",
+        "sfc",
+        "scan-concurrency",
+        "same-cycle"
+      ],
+      "applies_to": "sequence",
+      "category": "control-flow",
+      "confidence": "likely",
+      "corpus_cases": [
+        "semantic-parallel-write-race",
+        "workspace-common-quality-issues"
+      ],
       "description": "Parallel SFC branches that write to the same variable or field.",
+      "explanation": "Parallel SFC branches that write to the same variable or field.",
       "id": "semantic.parallel-write-race",
       "incremental_safe": false,
       "mutation_applicability": "required",
       "outputs": [
         "sattline-semantics.summary",
-        "sfc.summary"
+        "sfc.summary",
+        "scan-concurrency.summary",
+        "same-cycle.summary"
       ],
       "severity": "error",
       "source": "sfc",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_editor_api.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1261,8 +2752,13 @@
       ],
       "applies_to": "procedure-status",
       "category": "control-flow",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "edge-const-string-set-get-pos",
+        "workspace-common-quality-issues"
+      ],
       "description": "Procedure status outputs should be checked in control logic instead of being ignored or shown only in UI.",
+      "explanation": "Procedure status outputs should be checked in control logic instead of being ignored or shown only in UI.",
       "id": "semantic.procedure-status-handling",
       "incremental_safe": true,
       "mutation_applicability": "required",
@@ -1272,16 +2768,22 @@
       ],
       "severity": "warning",
       "source": "variables",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_dataflow.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_dataflow.py",
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1289,10 +2791,14 @@
       ],
       "applies_to": "variable",
       "category": "variable-lifecycle",
+      "confidence": "likely",
       "corpus_cases": [
+        "edge-old-new-on-dotted-state-field",
+        "semantic-read-before-write",
         "workspace-common-quality-issues"
       ],
       "description": "Variable reads that can occur before any definite assignment on the current path.",
+      "explanation": "Variable reads that can occur before any definite assignment on the current path.",
       "id": "semantic.read-before-write",
       "incremental_safe": false,
       "mutation_applicability": "required",
@@ -1302,16 +2808,65 @@
       ],
       "severity": "warning",
       "source": "dataflow",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_editor_api.py",
+        "tests/test_pipeline_phase2.py"
+      ],
+      "analyzers": [
+        "sattline-semantics",
+        "variables"
+      ],
+      "applies_to": "datatype-field",
+      "category": "variable-lifecycle",
+      "confidence": "likely",
+      "corpus_cases": [
+        "edge-old-new-on-dotted-state-field",
+        "workspace-common-quality-issues"
+      ],
+      "description": "Datatype fields that are read but never written for a specific variable instance.",
+      "explanation": "Datatype fields that are read but never written for a specific variable instance.",
+      "id": "semantic.read-only-datatype-field",
+      "incremental_safe": true,
+      "mutation_applicability": "required",
+      "outputs": [
+        "sattline-semantics.summary",
+        "variables.summary"
+      ],
+      "severity": "warning",
+      "source": "variables",
+      "suggestion": null,
+      "suppression_modes": [
+        "baseline"
+      ]
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_editor_api.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1319,8 +2874,29 @@
       ],
       "applies_to": "variable",
       "category": "variable-lifecycle",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "edge-arithmetic-precedence",
+        "edge-comment-inside-equation",
+        "edge-const-string-set-get-pos",
+        "edge-coordinate-invar-tail",
+        "edge-elsif-expression",
+        "edge-global-parameter-mapping",
+        "edge-keyword-prefixed-identifiers",
+        "edge-legacy-sequence-no-init-step",
+        "edge-scan-group-clause",
+        "edge-sequence-alternative",
+        "edge-sequence-parallel",
+        "edge-simple-module-type-invocation",
+        "edge-sub-sequence-definition",
+        "edge-unicode-identifiers",
+        "semantic-read-only-non-const",
+        "semantic-timing",
+        "semantic-unreachable-sequence-dataflow",
+        "workspace-common-quality-issues"
+      ],
       "description": "Writable declarations that are only ever read.",
+      "explanation": "Writable declarations that are only ever read.",
       "id": "semantic.read-only-non-const",
       "incremental_safe": true,
       "mutation_applicability": "required",
@@ -1330,16 +2906,67 @@
       ],
       "severity": "warning",
       "source": "variables",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_editor_api.py",
+        "tests/test_pipeline_phase2.py"
+      ],
+      "analyzers": [
+        "sattline-semantics",
+        "variables",
+        "interface-contracts"
+      ],
+      "applies_to": "parameter-mapping",
+      "category": "interface-contracts",
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-variables-parameter-mapping-extra",
+        "workspace-common-quality-issues"
+      ],
+      "description": "Module instances that leave internally used moduletype parameters unmapped.",
+      "explanation": "Module instances that leave internally used moduletype parameters unmapped.",
+      "id": "semantic.required-parameter-connection",
+      "incremental_safe": true,
+      "mutation_applicability": "required",
+      "outputs": [
+        "sattline-semantics.summary",
+        "variables.summary",
+        "interface-contracts.summary"
+      ],
+      "severity": "error",
+      "source": "variables",
+      "suggestion": null,
+      "suppression_modes": [
+        "baseline"
+      ]
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_editor_api.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1347,8 +2974,13 @@
       ],
       "applies_to": "sequence",
       "category": "control-flow",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-variables-reset-contamination",
+        "workspace-common-quality-issues"
+      ],
       "description": "Reset-state writes that are missing or incomplete across sequence flow.",
+      "explanation": "Reset-state writes that are missing or incomplete across sequence flow.",
       "id": "semantic.reset-contamination",
       "incremental_safe": true,
       "mutation_applicability": "required",
@@ -1358,100 +2990,222 @@
       ],
       "severity": "warning",
       "source": "variables",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_dataflow.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_same_cycle.py",
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/analyzers/test_scan_shared_access.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
-        "dataflow"
+        "same-cycle",
+        "scan-shared-access"
+      ],
+      "applies_to": "variable",
+      "category": "interface-contracts",
+      "confidence": "likely",
+      "corpus_cases": [
+        "edge-comment-inside-equation",
+        "edge-empty-code-blocks",
+        "edge-legacy-sequence-no-init-step",
+        "edge-minimal-sequence",
+        "edge-sub-sequence-transition",
+        "workspace-common-quality-issues"
+      ],
+      "description": "Non-STATE variables that are read and written across multiple continuous scan sites within the same scan.",
+      "explanation": "Non-STATE variables that are read and written across multiple continuous scan sites within the same scan.",
+      "id": "semantic.same-cycle-non-state-multi-site",
+      "incremental_safe": false,
+      "mutation_applicability": "required",
+      "outputs": [
+        "sattline-semantics.summary",
+        "same-cycle.summary",
+        "scan-shared-access.summary"
+      ],
+      "severity": "warning",
+      "source": "same-cycle",
+      "suggestion": null,
+      "suppression_modes": [
+        "baseline"
+      ]
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_same_cycle.py",
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/analyzers/test_scan_shared_access.py",
+        "tests/test_pipeline_phase2.py"
+      ],
+      "analyzers": [
+        "sattline-semantics",
+        "same-cycle"
+      ],
+      "applies_to": "variable",
+      "category": "interface-contracts",
+      "confidence": "likely",
+      "corpus_cases": [
+        "edge-global-parameter-mapping",
+        "semantic-parallel-hazard",
+        "workspace-common-quality-issues"
+      ],
+      "description": "Shared variables that are read and written across multiple module paths within the same scan.",
+      "explanation": "Shared variables that are read and written across multiple module paths within the same scan.",
+      "id": "semantic.same-cycle-shared-access",
+      "incremental_safe": false,
+      "mutation_applicability": "required",
+      "outputs": [
+        "sattline-semantics.summary",
+        "same-cycle.summary"
+      ],
+      "severity": "warning",
+      "source": "same-cycle",
+      "suggestion": null,
+      "suppression_modes": [
+        "baseline"
+      ]
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_dataflow.py",
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
+      ],
+      "analyzers": [
+        "sattline-semantics",
+        "dataflow",
+        "timing"
       ],
       "applies_to": "state-variable",
       "category": "control-flow",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "semantic-scan-cycle",
+        "semantic-timing",
+        "workspace-common-quality-issues"
+      ],
       "description": "Implicit same-scan reads of a state variable after a write should use :NEW when they rely on the updated value.",
+      "explanation": "Implicit same-scan reads of a state variable after a write should use :NEW when they rely on the updated value.",
       "id": "semantic.scan-cycle-implicit-new",
       "incremental_safe": false,
       "mutation_applicability": "required",
       "outputs": [
         "sattline-semantics.summary",
-        "dataflow.summary"
+        "dataflow.summary",
+        "timing.summary"
       ],
       "severity": "warning",
       "source": "dataflow",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_dataflow.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_dataflow.py",
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
-        "dataflow"
+        "dataflow",
+        "timing"
       ],
       "applies_to": "state-variable",
       "category": "control-flow",
-      "corpus_cases": [],
-      "description": "Reads of :OLD after a same-scan write where the expression still relies on the previous-scan snapshot.",
+      "confidence": "likely",
+      "corpus_cases": [
+        "semantic-scan-cycle",
+        "semantic-timing",
+        "workspace-common-quality-issues"
+      ],
+      "description": ":OLD reads after a same-scan write where the expression still relies on the previous-scan snapshot.",
+      "explanation": ":OLD reads after a same-scan write where the expression still relies on the previous-scan snapshot.",
       "id": "semantic.scan-cycle-stale-read",
       "incremental_safe": false,
       "mutation_applicability": "required",
       "outputs": [
         "sattline-semantics.summary",
-        "dataflow.summary"
+        "dataflow.summary",
+        "timing.summary"
       ],
       "severity": "warning",
       "source": "dataflow",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_dataflow.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_dataflow.py",
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
-        "dataflow"
+        "dataflow",
+        "timing"
       ],
       "applies_to": "state-variable",
       "category": "control-flow",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-dataflow-temporal-misuse",
+        "workspace-common-quality-issues"
+      ],
       "description": ":OLD references are read-only and cannot be used as write targets or out-parameters.",
+      "explanation": ":OLD references are read-only and cannot be used as write targets or out-parameters.",
       "id": "semantic.scan-cycle-temporal-misuse",
       "incremental_safe": false,
       "mutation_applicability": "required",
       "outputs": [
         "sattline-semantics.summary",
-        "dataflow.summary"
+        "dataflow.summary",
+        "timing.summary"
       ],
       "severity": "error",
       "source": "dataflow",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_dataflow.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_dataflow.py",
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1459,8 +3213,13 @@
       ],
       "applies_to": "condition",
       "category": "control-flow",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "semantic-code-quality",
+        "workspace-common-quality-issues"
+      ],
       "description": "Conditions that compare a symbol to itself and collapse to a constant result.",
+      "explanation": "Conditions that compare a symbol to itself and collapse to a constant result.",
       "id": "semantic.self-compare-condition",
       "incremental_safe": false,
       "mutation_applicability": "required",
@@ -1470,16 +3229,23 @@
       ],
       "severity": "warning",
       "source": "dataflow",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1487,8 +3253,13 @@
       ],
       "applies_to": "scope",
       "category": "module-structure",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "semantic-shadowing-variable",
+        "workspace-common-quality-issues"
+      ],
       "description": "Local declarations that shadow outer or global names.",
+      "explanation": "Local declarations that shadow outer or global names.",
       "id": "semantic.shadowing",
       "incremental_safe": false,
       "mutation_applicability": "required",
@@ -1498,16 +3269,112 @@
       ],
       "severity": "warning",
       "source": "shadowing",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py",
-        "tests/test_sfc.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/analyzers/test_signal_lifecycle.py",
+        "tests/test_pipeline_phase2.py"
+      ],
+      "analyzers": [
+        "sattline-semantics",
+        "signal-lifecycle"
+      ],
+      "applies_to": "signal",
+      "category": "variable-lifecycle",
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-signal-lifecycle",
+        "edge-old-new-on-dotted-state-field",
+        "edge-simple-module-type-invocation",
+        "semantic-signal-lifecycle",
+        "workspace-common-quality-issues"
+      ],
+      "description": "Signals should not be consumed before any definite write in the current scope.",
+      "explanation": "Signals should not be consumed before any definite write in the current scope.",
+      "id": "semantic.signal-lifecycle-read-before-write",
+      "incremental_safe": false,
+      "mutation_applicability": "required",
+      "outputs": [
+        "sattline-semantics.summary",
+        "signal-lifecycle.summary"
+      ],
+      "severity": "warning",
+      "source": "signal-lifecycle",
+      "suggestion": null,
+      "suppression_modes": [
+        "baseline"
+      ]
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/analyzers/test_signal_lifecycle.py",
+        "tests/test_pipeline_phase2.py"
+      ],
+      "analyzers": [
+        "sattline-semantics",
+        "signal-lifecycle"
+      ],
+      "applies_to": "signal",
+      "category": "variable-lifecycle",
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-signal-lifecycle",
+        "edge-arithmetic-precedence",
+        "edge-bare-duration-zero",
+        "edge-case-insensitive-identifiers",
+        "edge-comment-inside-equation",
+        "edge-const-string-set-get-pos",
+        "edge-coordinate-invar-tail",
+        "edge-duration-in-parameter-mapping",
+        "edge-duration-various-formats",
+        "edge-elsif-expression",
+        "edge-empty-code-blocks",
+        "edge-global-parameter-mapping",
+        "edge-keyword-prefixed-identifiers",
+        "edge-negative-duration-value",
+        "edge-old-new-on-dotted-state-field",
+        "edge-op-save-and-state-combined",
+        "edge-quoted-identifier-max-length",
+        "edge-scan-group-clause",
+        "edge-simple-module-type-invocation",
+        "edge-unicode-identifiers",
+        "semantic-signal-lifecycle",
+        "semantic-timing",
+        "workspace-common-quality-issues"
+      ],
+      "description": "Signals that are written in a scope should be consumed later in that same scope.",
+      "explanation": "Signals that are written in a scope should be consumed later in that same scope.",
+      "id": "semantic.signal-lifecycle-unconsumed-write",
+      "incremental_safe": false,
+      "mutation_applicability": "required",
+      "outputs": [
+        "sattline-semantics.summary",
+        "signal-lifecycle.summary"
+      ],
+      "severity": "warning",
+      "source": "signal-lifecycle",
+      "suggestion": null,
+      "suppression_modes": [
+        "baseline"
+      ]
+    },
+    {
+      "acceptance_tests": [
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/analyzers/test_sfc.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1515,8 +3382,13 @@
       ],
       "applies_to": "step",
       "category": "control-flow",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "semantic-step-contract",
+        "workspace-common-quality-issues"
+      ],
       "description": "Configured SFC steps can inherit stale state from earlier steps when required enter writes are missing.",
+      "explanation": "Configured SFC steps can inherit stale state from earlier steps when required enter writes are missing.",
       "id": "semantic.step-state-leakage",
       "incremental_safe": false,
       "mutation_applicability": "required",
@@ -1526,44 +3398,65 @@
       ],
       "severity": "warning",
       "source": "sfc",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_editor_api.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
-        "variables"
+        "variables",
+        "interface-contracts"
       ],
       "applies_to": "parameter-mapping",
       "category": "interface-contracts",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-variables-minmax-string",
+        "workspace-common-quality-issues"
+      ],
       "description": "Parameter mappings whose string-like datatypes are incompatible.",
+      "explanation": "Parameter mappings whose string-like datatypes are incompatible.",
       "id": "semantic.string-mapping-mismatch",
       "incremental_safe": true,
       "mutation_applicability": "required",
       "outputs": [
         "sattline-semantics.summary",
-        "variables.summary"
+        "variables.summary",
+        "interface-contracts.summary"
       ],
       "severity": "error",
       "source": "variables",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py",
-        "tests/test_sfc.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/analyzers/test_sfc.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1571,8 +3464,13 @@
       ],
       "applies_to": "transition",
       "category": "control-flow",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "semantic-sequence-unreachable",
+        "workspace-common-quality-issues"
+      ],
       "description": "Transitions with guards that simplify to false and therefore can never fire.",
+      "explanation": "Transitions with guards that simplify to false and therefore can never fire.",
       "id": "semantic.transition-always-false",
       "incremental_safe": false,
       "mutation_applicability": "required",
@@ -1582,16 +3480,22 @@
       ],
       "severity": "warning",
       "source": "sfc",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py",
-        "tests/test_sfc.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/analyzers/test_sfc.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1599,8 +3503,20 @@
       ],
       "applies_to": "transition",
       "category": "control-flow",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "edge-empty-code-blocks",
+        "edge-seq-break",
+        "edge-seq-fork-multiple-targets",
+        "edge-sequence-alternative",
+        "edge-sequence-parallel",
+        "edge-sub-sequence-definition",
+        "edge-terminal-seq-step",
+        "semantic-sequence-unreachable",
+        "workspace-common-quality-issues"
+      ],
       "description": "Transitions with guards that simplify to true and therefore always fire when reached.",
+      "explanation": "Transitions with guards that simplify to true and therefore always fire when reached.",
       "id": "semantic.transition-always-true",
       "incremental_safe": false,
       "mutation_applicability": "required",
@@ -1610,16 +3526,24 @@
       ],
       "severity": "warning",
       "source": "sfc",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_editor_api.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1627,8 +3551,13 @@
       ],
       "applies_to": "variable",
       "category": "variable-lifecycle",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-variables-ui-only",
+        "workspace-common-quality-issues"
+      ],
       "description": "Variables that are only consumed through graphics or interact display wiring.",
+      "explanation": "Variables that are only consumed through graphics or interact display wiring.",
       "id": "semantic.ui-only-variable",
       "incremental_safe": true,
       "mutation_applicability": "required",
@@ -1638,16 +3567,22 @@
       ],
       "severity": "warning",
       "source": "variables",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
         "tests/test_editor_api.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1655,8 +3590,14 @@
       ],
       "applies_to": "signal",
       "category": "control-flow",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-safety-paths",
+        "semantic-safety-signal",
+        "workspace-common-quality-issues"
+      ],
       "description": "Safety-critical signals that are written but never consumed across the analyzed target.",
+      "explanation": "Safety-critical signals that are written but never consumed across the analyzed target.",
       "id": "semantic.unconsumed-safety-signal",
       "incremental_safe": false,
       "mutation_applicability": "required",
@@ -1666,22 +3607,27 @@
       ],
       "severity": "warning",
       "source": "safety-paths",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics"
       ],
       "applies_to": "module",
       "category": "module-structure",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "semantic-unexpected-submodule-type"
+      ],
       "description": "Unexpected non-module nodes under the submodule tree.",
+      "explanation": "Unexpected non-module nodes under the submodule tree.",
       "id": "semantic.unexpected-submodule-type",
       "incremental_safe": false,
       "mutation_applicability": "not_applicable",
@@ -1690,44 +3636,65 @@
       ],
       "severity": "error",
       "source": "tracing",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_editor_api.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
-        "variables"
+        "variables",
+        "interface-contracts"
       ],
       "applies_to": "parameter-mapping",
       "category": "interface-contracts",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-variables-module-structure-extra",
+        "workspace-common-quality-issues"
+      ],
       "description": "Parameter mappings that target undeclared module parameters.",
+      "explanation": "Parameter mappings that target undeclared module parameters.",
       "id": "semantic.unknown-parameter-target",
       "incremental_safe": true,
       "mutation_applicability": "required",
       "outputs": [
         "sattline-semantics.summary",
-        "variables.summary"
+        "variables.summary",
+        "interface-contracts.summary"
       ],
       "severity": "error",
       "source": "variables",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_dataflow.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_dataflow.py",
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1735,8 +3702,15 @@
       ],
       "applies_to": "branch",
       "category": "control-flow",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "edge-elsif-expression",
+        "edge-op-save-and-state-combined",
+        "semantic-code-quality",
+        "workspace-common-quality-issues"
+      ],
       "description": "Branches that cannot execute because control-flow facts make them impossible.",
+      "explanation": "Branches that cannot execute because control-flow facts make them impossible.",
       "id": "semantic.unreachable-branch",
       "incremental_safe": false,
       "mutation_applicability": "required",
@@ -1746,16 +3720,22 @@
       ],
       "severity": "warning",
       "source": "dataflow",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py",
-        "tests/test_sfc.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/analyzers/test_sfc.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1763,8 +3743,14 @@
       ],
       "applies_to": "sequence-node",
       "category": "control-flow",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "edge-seq-break",
+        "semantic-unreachable-sequence-dataflow",
+        "workspace-common-quality-issues"
+      ],
       "description": "Sequence nodes that cannot execute because an earlier node terminates the branch.",
+      "explanation": "Sequence nodes that cannot execute because an earlier node terminates the branch.",
       "id": "semantic.unreachable-sequence-node",
       "incremental_safe": false,
       "mutation_applicability": "required",
@@ -1774,16 +3760,22 @@
       ],
       "severity": "warning",
       "source": "sfc",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_dataflow.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_dataflow.py",
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1791,8 +3783,14 @@
       ],
       "applies_to": "sequence-node",
       "category": "control-flow",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "edge-seq-break",
+        "semantic-unreachable-sequence-dataflow",
+        "workspace-common-quality-issues"
+      ],
       "description": "Sequence nodes that cannot execute after an earlier terminating node in the same branch.",
+      "explanation": "Sequence nodes that cannot execute after an earlier terminating node in the same branch.",
       "id": "semantic.unreachable-sequence-node-dataflow",
       "incremental_safe": false,
       "mutation_applicability": "required",
@@ -1802,16 +3800,22 @@
       ],
       "severity": "warning",
       "source": "dataflow",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py",
-        "tests/test_sfc.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/analyzers/test_sfc.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1819,8 +3823,14 @@
       ],
       "applies_to": "transition",
       "category": "control-flow",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "edge-seq-break",
+        "semantic-unreachable-sequence-dataflow",
+        "workspace-common-quality-issues"
+      ],
       "description": "Transitions that can never fire because an earlier node structurally terminates the branch.",
+      "explanation": "Transitions that can never fire because an earlier node structurally terminates the branch.",
       "id": "semantic.unreachable-transition",
       "incremental_safe": false,
       "mutation_applicability": "required",
@@ -1830,42 +3840,59 @@
       ],
       "severity": "warning",
       "source": "sfc",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
-        "unsafe-defaults"
+        "unsafe-defaults",
+        "powerup"
       ],
       "applies_to": "variable",
       "category": "engineering-spec",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "edge-global-parameter-mapping",
+        "semantic-power-up",
+        "workspace-common-quality-issues"
+      ],
       "description": "Boolean defaults that enable logic or bypass safeguards from startup.",
+      "explanation": "Boolean defaults that enable logic or bypass safeguards from startup.",
       "id": "semantic.unsafe-default-true",
       "incremental_safe": false,
       "mutation_applicability": "required",
       "outputs": [
         "sattline-semantics.summary",
-        "unsafe-defaults.summary"
+        "unsafe-defaults.summary",
+        "powerup.summary"
       ],
       "severity": "warning",
       "source": "unsafe-defaults",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_editor_api.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1873,8 +3900,13 @@
       ],
       "applies_to": "datatype-field",
       "category": "variable-lifecycle",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "semantic-unused-datatype-field",
+        "workspace-common-quality-issues"
+      ],
       "description": "Datatype fields that are never used across the analyzed target.",
+      "explanation": "Datatype fields that are never used across the analyzed target.",
       "id": "semantic.unused-datatype-field",
       "incremental_safe": true,
       "mutation_applicability": "required",
@@ -1884,16 +3916,24 @@
       ],
       "severity": "warning",
       "source": "variables",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_editor_api.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1901,10 +3941,16 @@
       ],
       "applies_to": "variable",
       "category": "variable-lifecycle",
+      "confidence": "likely",
       "corpus_cases": [
+        "edge-empty-record-type",
+        "edge-terminal-seq-step",
+        "edge-time-value-init",
+        "semantic-unused-variable",
         "workspace-common-quality-issues"
       ],
       "description": "Declared variables that are never read or written.",
+      "explanation": "Declared variables that are never read or written.",
       "id": "semantic.unused-variable",
       "incremental_safe": true,
       "mutation_applicability": "required",
@@ -1914,16 +3960,24 @@
       ],
       "severity": "warning",
       "source": "variables",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_analyzers.py",
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/test_analyzers_suites_part1.py",
+        "tests/test_analyzers_suites_part2.py",
+        "tests/test_analyzers_suites_part3.py",
+        "tests/test_analyzers_suites_part4.py",
+        "tests/test_analyzers_suites_part5.py",
+        "tests/test_analyzers_suites_part6.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_editor_api.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1931,8 +3985,13 @@
       ],
       "applies_to": "variable",
       "category": "variable-lifecycle",
-      "corpus_cases": [],
+      "confidence": "likely",
+      "corpus_cases": [
+        "analyzer-variables-module-structure-extra",
+        "workspace-common-quality-issues"
+      ],
       "description": "Variables whose written values are read internally but never reach a root-visible output.",
+      "explanation": "Variables whose written values are read internally but never reach a root-visible output.",
       "id": "semantic.write-without-effect",
       "incremental_safe": true,
       "mutation_applicability": "required",
@@ -1942,16 +4001,18 @@
       ],
       "severity": "warning",
       "source": "variables",
+      "suggestion": null,
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py",
-        "tests/test_spec_compliance.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/analyzers/test_spec_compliance.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1959,8 +4020,42 @@
       ],
       "applies_to": "sattline-construct",
       "category": "engineering-spec",
-      "corpus_cases": [],
+      "confidence": "style",
+      "corpus_cases": [
+        "analyzer-spec-compliance",
+        "edge-arithmetic-precedence",
+        "edge-bare-duration-zero",
+        "edge-case-insensitive-identifiers",
+        "edge-comment-inside-equation",
+        "edge-const-string-set-get-pos",
+        "edge-coordinate-invar-tail",
+        "edge-duration-various-formats",
+        "edge-elsif-expression",
+        "edge-empty-code-blocks",
+        "edge-global-parameter-mapping",
+        "edge-keyword-prefixed-identifiers",
+        "edge-legacy-sequence-no-init-step",
+        "edge-minimal-sequence",
+        "edge-negative-duration-value",
+        "edge-old-new-on-dotted-state-field",
+        "edge-op-save-and-state-combined",
+        "edge-quoted-identifier-max-length",
+        "edge-scan-group-clause",
+        "edge-seq-break",
+        "edge-seq-fork-multiple-targets",
+        "edge-sequence-alternative",
+        "edge-sequence-parallel",
+        "edge-sub-sequence-definition",
+        "edge-sub-sequence-transition",
+        "edge-terminal-seq-step",
+        "edge-unicode-identifiers",
+        "semantic-spec-compliance",
+        "semantic-timing",
+        "semantic-unreachable-sequence-dataflow",
+        "workspace-common-quality-issues"
+      ],
       "description": "BasePicture code must stay inside frame modules.",
+      "explanation": "BasePicture code must stay inside frame modules.",
       "id": "spec.basepicture_direct_code",
       "incremental_safe": false,
       "mutation_applicability": "optional",
@@ -1970,16 +4065,18 @@
       ],
       "severity": "warning",
       "source": "spec-compliance",
+      "suggestion": "Rename, reconnect, or restructure the affected construct so it matches the engineering specification.",
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py",
-        "tests/test_spec_compliance.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/analyzers/test_spec_compliance.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -1987,8 +4084,14 @@
       ],
       "applies_to": "sattline-construct",
       "category": "engineering-spec",
-      "corpus_cases": [],
+      "confidence": "style",
+      "corpus_cases": [
+        "analyzer-spec-compliance",
+        "semantic-spec-compliance",
+        "workspace-common-quality-issues"
+      ],
       "description": "MES_BatchControl Max_TRY must resolve to the required value.",
+      "explanation": "MES_BatchControl Max_TRY must resolve to the required value.",
       "id": "spec.mes_batch_control_max_try",
       "incremental_safe": false,
       "mutation_applicability": "optional",
@@ -1998,16 +4101,18 @@
       ],
       "severity": "warning",
       "source": "spec-compliance",
+      "suggestion": "Rename, reconnect, or restructure the affected construct so it matches the engineering specification.",
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py",
-        "tests/test_spec_compliance.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/analyzers/test_spec_compliance.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -2015,8 +4120,14 @@
       ],
       "applies_to": "sattline-construct",
       "category": "engineering-spec",
-      "corpus_cases": [],
+      "confidence": "style",
+      "corpus_cases": [
+        "analyzer-spec-compliance",
+        "semantic-spec-compliance",
+        "workspace-common-quality-issues"
+      ],
       "description": "MES_BatchControl instances must use the required instance name.",
+      "explanation": "MES_BatchControl instances must use the required instance name.",
       "id": "spec.mes_batch_control_name",
       "incremental_safe": false,
       "mutation_applicability": "optional",
@@ -2026,16 +4137,18 @@
       ],
       "severity": "warning",
       "source": "spec-compliance",
+      "suggestion": "Rename, reconnect, or restructure the affected construct so it matches the engineering specification.",
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py",
-        "tests/test_spec_compliance.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/analyzers/test_spec_compliance.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -2043,8 +4156,14 @@
       ],
       "applies_to": "sattline-construct",
       "category": "engineering-spec",
-      "corpus_cases": [],
+      "confidence": "style",
+      "corpus_cases": [
+        "analyzer-spec-compliance",
+        "semantic-spec-compliance",
+        "workspace-common-quality-issues"
+      ],
       "description": "MES_BatchControl Repeat_TRY must resolve to the required value.",
+      "explanation": "MES_BatchControl Repeat_TRY must resolve to the required value.",
       "id": "spec.mes_batch_control_repeat_try",
       "incremental_safe": false,
       "mutation_applicability": "optional",
@@ -2054,16 +4173,18 @@
       ],
       "severity": "warning",
       "source": "spec-compliance",
+      "suggestion": "Rename, reconnect, or restructure the affected construct so it matches the engineering specification.",
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py",
-        "tests/test_spec_compliance.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/analyzers/test_spec_compliance.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -2071,8 +4192,13 @@
       ],
       "applies_to": "sattline-construct",
       "category": "engineering-spec",
-      "corpus_cases": [],
+      "confidence": "style",
+      "corpus_cases": [
+        "analyzer-spec-compliance-opmessage-use-signature",
+        "workspace-common-quality-issues"
+      ],
       "description": "OPMessage instances must not enable UseSignature=True.",
+      "explanation": "OPMessage instances must not enable UseSignature=True.",
       "id": "spec.opmessage_use_signature",
       "incremental_safe": false,
       "mutation_applicability": "optional",
@@ -2082,16 +4208,18 @@
       ],
       "severity": "warning",
       "source": "spec-compliance",
+      "suggestion": "Rename, reconnect, or restructure the affected construct so it matches the engineering specification.",
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py",
-        "tests/test_spec_compliance.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/analyzers/test_spec_compliance.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -2099,8 +4227,26 @@
       ],
       "applies_to": "sattline-construct",
       "category": "engineering-spec",
-      "corpus_cases": [],
+      "confidence": "style",
+      "corpus_cases": [
+        "analyzer-spec-compliance",
+        "edge-comment-inside-equation",
+        "edge-empty-code-blocks",
+        "edge-legacy-sequence-no-init-step",
+        "edge-minimal-sequence",
+        "edge-seq-break",
+        "edge-seq-fork-multiple-targets",
+        "edge-sequence-alternative",
+        "edge-sequence-parallel",
+        "edge-sub-sequence-definition",
+        "edge-sub-sequence-transition",
+        "edge-terminal-seq-step",
+        "semantic-spec-compliance",
+        "semantic-unreachable-sequence-dataflow",
+        "workspace-common-quality-issues"
+      ],
       "description": "Sequence steps must use the required engineering-spec naming prefix.",
+      "explanation": "Sequence steps must use the required engineering-spec naming prefix.",
       "id": "spec.sequence_step_prefix",
       "incremental_safe": false,
       "mutation_applicability": "optional",
@@ -2110,16 +4256,18 @@
       ],
       "severity": "warning",
       "source": "spec-compliance",
+      "suggestion": "Rename, reconnect, or restructure the affected construct so it matches the engineering specification.",
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py",
-        "tests/test_spec_compliance.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/analyzers/test_spec_compliance.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -2127,8 +4275,14 @@
       ],
       "applies_to": "sattline-construct",
       "category": "engineering-spec",
-      "corpus_cases": [],
+      "confidence": "style",
+      "corpus_cases": [
+        "analyzer-spec-compliance",
+        "semantic-spec-compliance",
+        "workspace-common-quality-issues"
+      ],
       "description": "All transitions must be named.",
+      "explanation": "All transitions must be named.",
       "id": "spec.transition_name_missing",
       "incremental_safe": false,
       "mutation_applicability": "optional",
@@ -2138,16 +4292,18 @@
       ],
       "severity": "warning",
       "source": "spec-compliance",
+      "suggestion": "Rename, reconnect, or restructure the affected construct so it matches the engineering specification.",
       "suppression_modes": [
         "baseline"
       ]
     },
     {
       "acceptance_tests": [
-        "tests/test_app.py",
-        "tests/test_pipeline.py",
-        "tests/test_sattline_semantics.py",
-        "tests/test_spec_compliance.py"
+        "tests/analyzers/test_sattline_semantics.py",
+        "tests/analyzers/test_spec_compliance.py",
+        "tests/test_app_cli_commands.py",
+        "tests/test_app_menus.py",
+        "tests/test_pipeline_phase2.py"
       ],
       "analyzers": [
         "sattline-semantics",
@@ -2155,8 +4311,26 @@
       ],
       "applies_to": "sattline-construct",
       "category": "engineering-spec",
-      "corpus_cases": [],
+      "confidence": "style",
+      "corpus_cases": [
+        "analyzer-spec-compliance",
+        "edge-comment-inside-equation",
+        "edge-empty-code-blocks",
+        "edge-legacy-sequence-no-init-step",
+        "edge-minimal-sequence",
+        "edge-seq-break",
+        "edge-seq-fork-multiple-targets",
+        "edge-sequence-alternative",
+        "edge-sequence-parallel",
+        "edge-sub-sequence-definition",
+        "edge-sub-sequence-transition",
+        "edge-terminal-seq-step",
+        "semantic-spec-compliance",
+        "semantic-unreachable-sequence-dataflow",
+        "workspace-common-quality-issues"
+      ],
       "description": "Transitions must use the required engineering-spec naming prefix.",
+      "explanation": "Transitions must use the required engineering-spec naming prefix.",
       "id": "spec.transition_prefix",
       "incremental_safe": false,
       "mutation_applicability": "optional",
@@ -2166,6 +4340,7 @@
       ],
       "severity": "warning",
       "source": "spec-compliance",
+      "suggestion": "Rename, reconnect, or restructure the affected construct so it matches the engineering specification.",
       "suppression_modes": [
         "baseline"
       ]
@@ -2175,15 +4350,21 @@
     "analyzer_key": "sattline-semantics",
     "source_rule_counts": {
       "alarm-integrity": 4,
-      "dataflow": 10,
+      "config-drift": 1,
+      "dataflow": 11,
+      "fault-handling": 2,
       "initial-values": 1,
+      "loop-stability": 1,
+      "numeric-constraints": 1,
       "safety-paths": 1,
+      "same-cycle": 3,
       "sfc": 10,
+      "signal-lifecycle": 2,
       "spec-compliance": 8,
       "taint-paths": 1,
       "tracing": 2,
       "unsafe-defaults": 1,
-      "variables": 19
+      "variables": 24
     },
     "sources": [
       "variables",
@@ -2194,6 +4375,12 @@
       "taint-paths",
       "tracing",
       "dataflow",
+      "same-cycle",
+      "signal-lifecycle",
+      "loop-stability",
+      "fault-handling",
+      "numeric-constraints",
+      "config-drift",
       "unsafe-defaults",
       "spec-compliance"
     ]

@@ -12,40 +12,47 @@
   "progress_report": "artifacts/analysis/progress.json",
   "selected_checks": [
     "ruff",
-    "pyright"
+    "pyright",
+    "vulture",
+    "bandit",
+    "structural-reports",
+    "trace",
+    "corpus"
   ],
   "status_report": "artifacts/analysis/status.json",
   "summary_report": "artifacts/analysis/summary.json",
   "timing": {
     "check_durations_seconds": {
-      "pyright": 30.647,
-      "ruff": 0.039,
-      "structural-reports": 0.0,
-      "trace": 0.0
+      "bandit": 9.503,
+      "pyright": 24.176,
+      "ruff": 0.095,
+      "structural-reports": 27.649,
+      "trace": 0.175,
+      "vulture": 2.453
     },
     "stage_durations_seconds": {
-      "bandit": 0.0,
+      "bandit": 9.503,
       "corpus": 0.0,
-      "environment": 0.022,
+      "environment": 0.052,
       "findings": 0.001,
-      "pyright": 30.647,
+      "pyright": 24.176,
       "pytest": 0.0,
-      "ruff": 0.039,
-      "structural_reports": 0.0,
-      "trace": 0.0,
-      "vulture": 0.0,
-      "write_artifacts": 0.006
+      "ruff": 0.095,
+      "structural_reports": 27.649,
+      "trace": 0.175,
+      "vulture": 2.453,
+      "write_artifacts": 0.104
     },
-    "total_duration_seconds": 30.715
+    "total_duration_seconds": 64.208
   },
   "tool_statuses": {
     "bandit": {
-      "detail": "skipped by profile",
+      "detail": "0 findings",
       "finding_count": 0,
       "normalized_exit_code": 0,
-      "raw_exit_code": null,
-      "report": null,
-      "status": "skipped"
+      "raw_exit_code": 0,
+      "report": "bandit.json",
+      "status": "pass"
     },
     "baseline_drift": {
       "detail": "skipped: no baseline supplied",
@@ -64,12 +71,12 @@
       "status": "skipped"
     },
     "performance_budget": {
-      "detail": "skipped because trace profiling is unavailable",
+      "detail": "0 budget violations",
       "finding_count": 0,
-      "normalized_exit_code": null,
+      "normalized_exit_code": 0,
       "raw_exit_code": null,
-      "report": null,
-      "status": "skipped"
+      "report": "performance_budget.json",
+      "status": "pass"
     },
     "pyright": {
       "detail": "0 errors, 0 warnings",
@@ -96,20 +103,19 @@
       "status": "pass"
     },
     "rule_metadata": {
-      "detail": "skipped by profile",
-      "finding_count": 0,
-      "normalized_exit_code": null,
-      "raw_exit_code": null,
-      "report": null,
-      "status": "skipped"
-    },
-    "vulture": {
-      "detail": "skipped by profile",
       "finding_count": 0,
       "normalized_exit_code": 0,
       "raw_exit_code": null,
-      "report": null,
-      "status": "skipped"
+      "report": "architecture.json",
+      "status": "pass"
+    },
+    "vulture": {
+      "detail": "0 findings",
+      "finding_count": 0,
+      "normalized_exit_code": 0,
+      "raw_exit_code": 0,
+      "report": "vulture.json",
+      "status": "pass"
     }
   }
 }

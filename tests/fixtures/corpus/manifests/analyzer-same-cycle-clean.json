@@ -1,0 +1,29 @@
+{
+    "case_id": "analyzer-same-cycle-clean",
+    "target_file": "../valid/MinimalProgram.s",
+    "mode": "analyzer-same-cycle",
+    "expectation": {
+        "expected_finding_ids": [],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "same-cycle"
+            },
+            "summary.json": {
+                "analyzer_key": "same-cycle",
+                "finding_count": 0,
+                "rule_counts": {}
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}
