@@ -1,0 +1,27 @@
+{
+    "case_id": "analyzer-spec-compliance-opmessage-use-signature",
+    "target_file": "../semantic/analyzer/SpecOpSig.s",
+    "mode": "analyzer-spec-compliance",
+    "program_dir": "../semantic/analyzer",
+    "abb_lib_dir": "../semantic/analyzer",
+    "other_lib_dirs": [
+        "../semantic/shared/NNESystem"
+    ],
+    "expectation": {
+        "expected_finding_ids": [
+            "spec.opmessage_use_signature"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "spec-compliance"
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": ["findings.json", "status.json", "summary.json"]
+}

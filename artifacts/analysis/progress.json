@@ -1,40 +1,40 @@
 {
   "active_stage": null,
-  "canonical_command": "sattlint-analysis-pipeline --profile full --output-dir artifacts/analysis --check ruff --check pyright",
-  "completed_at": 1780646695.0533133,
-  "completed_stage_count": 5,
-  "created_at": 1780646664.3275838,
+  "canonical_command": "sattlint-analysis-pipeline --profile full --output-dir artifacts/analysis --check ruff --check pyright --check vulture --check bandit --check structural-reports --check trace --check corpus",
+  "completed_at": 1782464304.9456446,
+  "completed_stage_count": 9,
+  "created_at": 1782464240.5984607,
   "failed_stage_count": 0,
   "kind": "sattlint.pipeline.progress",
   "overall_status": "pass",
-  "skipped_stage_count": 3,
+  "skipped_stage_count": 1,
   "stage_count": 11,
   "stages": [
     {
       "detail": null,
-      "duration_seconds": 0.022,
-      "ended_at": 1780646664.3501344,
+      "duration_seconds": 0.052,
+      "ended_at": 1782464240.6517274,
       "key": "environment",
       "label": "Collect environment",
-      "started_at": 1780646664.3283005,
+      "started_at": 1782464240.5997086,
       "status": "completed"
     },
     {
       "detail": "0 findings",
-      "duration_seconds": 0.039,
-      "ended_at": 1780646664.3897114,
+      "duration_seconds": 0.095,
+      "ended_at": 1782464240.746925,
       "key": "ruff",
       "label": "Run Ruff",
-      "started_at": 1780646664.3507135,
+      "started_at": 1782464240.6524198,
       "status": "completed"
     },
     {
       "detail": "0 errors, 0 warnings",
-      "duration_seconds": 30.647,
-      "ended_at": 1780646695.037254,
+      "duration_seconds": 24.176,
+      "ended_at": 1782464264.924074,
       "key": "pyright",
       "label": "Run pyright",
-      "started_at": 1780646664.3903255,
+      "started_at": 1782464240.7477741,
       "status": "completed"
     },
     {
@@ -47,40 +47,40 @@
       "status": "pending"
     },
     {
-      "detail": null,
-      "duration_seconds": null,
-      "ended_at": null,
+      "detail": "0 findings",
+      "duration_seconds": 2.453,
+      "ended_at": 1782464267.378103,
       "key": "vulture",
       "label": "Run Vulture",
-      "started_at": null,
-      "status": "pending"
+      "started_at": 1782464264.9249372,
+      "status": "completed"
     },
     {
-      "detail": null,
-      "duration_seconds": null,
-      "ended_at": null,
+      "detail": "0 findings",
+      "duration_seconds": 9.503,
+      "ended_at": 1782464276.8817244,
       "key": "bandit",
       "label": "Run Bandit",
-      "started_at": null,
-      "status": "pending"
+      "started_at": 1782464267.3785632,
+      "status": "completed"
     },
     {
-      "detail": "skipped by profile",
-      "duration_seconds": null,
-      "ended_at": null,
+      "detail": "0 dependency edges, 39 call edges",
+      "duration_seconds": 27.649,
+      "ended_at": 1782464304.5313425,
       "key": "structural_reports",
       "label": "Collect structural reports",
-      "started_at": null,
-      "status": "skipped"
+      "started_at": 1782464276.8823273,
+      "status": "completed"
     },
     {
-      "detail": "skipped by profile",
-      "duration_seconds": null,
-      "ended_at": null,
+      "detail": "tests/fixtures/sample_sattline_files/LinterTestProgram.s",
+      "duration_seconds": 0.175,
+      "ended_at": 1782464304.7066057,
       "key": "trace",
       "label": "Collect trace report",
-      "started_at": null,
-      "status": "skipped"
+      "started_at": 1782464304.5319734,
+      "status": "completed"
     },
     {
       "detail": "no manifest directory",
@@ -92,24 +92,24 @@
       "status": "skipped"
     },
     {
-      "detail": "0 normalized findings",
+      "detail": "4 normalized findings",
       "duration_seconds": 0.001,
-      "ended_at": 1780646695.04563,
+      "ended_at": 1782464304.838954,
       "key": "findings",
       "label": "Normalize findings",
-      "started_at": 1780646695.0447898,
+      "started_at": 1782464304.8383808,
       "status": "completed"
     },
     {
       "detail": null,
-      "duration_seconds": 0.006,
-      "ended_at": 1780646695.0527716,
+      "duration_seconds": 0.104,
+      "ended_at": 1782464304.9453375,
       "key": "write_artifacts",
       "label": "Write artifacts",
-      "started_at": 1780646695.0466073,
+      "started_at": 1782464304.8410518,
       "status": "completed"
     }
   ],
   "title": "Pipeline",
-  "updated_at": 1780646695.0533152
+  "updated_at": 1782464304.945646
 }

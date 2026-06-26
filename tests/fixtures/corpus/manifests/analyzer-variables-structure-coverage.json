@@ -1,0 +1,25 @@
+{
+    "case_id": "analyzer-variables-structure-coverage",
+    "target_file": "../semantic/analyzer/VarStructCover.s",
+    "mode": "analyzer-variables",
+    "expectation": {
+        "expected_finding_ids": [
+            "semantic.duplicated-datatype-layout",
+            "semantic.hidden-global-coupling",
+            "semantic.high-fan-in-out-variable",
+            "semantic.name-collision"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "variables"
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": ["findings.json", "status.json", "summary.json"]
+}

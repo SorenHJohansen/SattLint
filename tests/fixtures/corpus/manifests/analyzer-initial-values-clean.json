@@ -1,0 +1,29 @@
+{
+    "case_id": "analyzer-initial-values-clean",
+    "target_file": "../valid/MinimalProgram.s",
+    "mode": "analyzer-initial-values",
+    "expectation": {
+        "expected_finding_ids": [],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "initial-values"
+            },
+            "summary.json": {
+                "analyzer_key": "initial-values",
+                "finding_count": 0,
+                "rule_counts": {}
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}
