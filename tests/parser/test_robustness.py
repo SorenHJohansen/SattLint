@@ -6,12 +6,49 @@ from pathlib import Path
 import pytest
 
 from sattlint import engine as engine_module
-from sattlint.devtools.corpus import execute_corpus_case, run_corpus_suite
+from sattlint.devtools import structural_reports
+from sattlint.devtools.corpus import (
+    discover_corpus_manifests,
+    execute_corpus_case,
+    load_corpus_manifest,
+    run_corpus_suite,
+)
 from sattlint.engine import validate_single_file_syntax
 
 
 def _repo_path(*parts: str) -> Path:
     return Path(__file__).resolve().parents[2].joinpath(*parts)
+
+
+def _manifest_dir() -> Path:
+    return _repo_path("tests", "fixtures", "corpus", "manifests")
+
+
+def _coverage_contract_data() -> tuple[dict[str, dict[str, list[str]]], dict[str, list[str]]]:
+    analyzer_coverage: dict[str, dict[str, list[str]]] = {}
+    for analyzer in structural_reports.get_default_analyzer_catalog().analyzers:
+        if analyzer.spec.enabled:
+            analyzer_coverage[analyzer.spec.key.casefold()] = {"positive": [], "clean": []}
+
+    rule_expectations: dict[str, list[str]] = {}
+    for rule in structural_reports.get_default_analyzer_catalog().rules:
+        rule_expectations[rule.id] = []
+
+    for manifest_path in discover_corpus_manifests(_manifest_dir()):
+        manifest = load_corpus_manifest(manifest_path)
+        normalized_mode = manifest.mode.casefold()
+        if normalized_mode.startswith("analyzer-"):
+            analyzer_key = normalized_mode[len("analyzer-") :]
+            coverage = analyzer_coverage.get(analyzer_key)
+            if coverage is not None:
+                bucket = "positive" if manifest.expectation.expected_finding_ids else "clean"
+                coverage[bucket].append(manifest.case_id)
+
+        for finding_id in manifest.expectation.expected_finding_ids:
+            if finding_id in rule_expectations:
+                rule_expectations[finding_id].append(manifest.case_id)
+
+    return analyzer_coverage, rule_expectations
 
 
 class TestMalformedInput:
@@ -79,7 +116,7 @@ class TestMalformedInput:
 
     def test_strict_corpus_cases_all_pass(self, tmp_path):
         repo_root = _repo_path()
-        manifest_dir = repo_root / "tests" / "fixtures" / "corpus" / "manifests"
+        manifest_dir = _manifest_dir()
         strict_manifests = [
             m for m in manifest_dir.glob("strict-*.json") if m.is_file() and m.name.startswith("strict-")
         ]
@@ -95,6 +132,29 @@ class TestMalformedInput:
 
         failed = [c.manifest.case_id for c in suite.cases if not c.passed]
         assert suite.passed is True, f"Failed strict cases: {failed}"
+
+    def test_corpus_contract_covers_all_analyzers_and_rules(self):
+        analyzer_coverage, rule_expectations = _coverage_contract_data()
+
+        analyzers_missing_positive = {
+            key: coverage for key, coverage in analyzer_coverage.items() if not coverage["positive"]
+        }
+        analyzers_missing_clean = {
+            key: coverage for key, coverage in analyzer_coverage.items() if not coverage["clean"]
+        }
+        rules_missing_expected_findings = {
+            rule_id: case_ids for rule_id, case_ids in rule_expectations.items() if not case_ids
+        }
+
+        assert not analyzers_missing_positive, (
+            f"Analyzers missing positive analyzer-mode corpus coverage: {sorted(analyzers_missing_positive)}"
+        )
+        assert not analyzers_missing_clean, (
+            f"Analyzers missing clean analyzer-mode corpus coverage: {sorted(analyzers_missing_clean)}"
+        )
+        assert not rules_missing_expected_findings, (
+            f"Semantic rules missing expected_finding_ids corpus coverage: {sorted(rules_missing_expected_findings)}"
+        )
 
 
 class TestEncodingStress:
