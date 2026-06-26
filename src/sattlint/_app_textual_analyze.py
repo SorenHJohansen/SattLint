@@ -6,13 +6,11 @@ from typing import TYPE_CHECKING, Any, cast
 
 try:
     from rich import box as _rich_box  # type: ignore[import-untyped]
-    from rich.console import Group as _RichGroup  # type: ignore[import-untyped]
     from rich.panel import Panel as _RichPanel  # type: ignore[import-untyped]
     from rich.table import Table as _RichTable  # type: ignore[import-untyped]
     from rich.text import Text as _RichText  # type: ignore[import-untyped]
 except ImportError:  # pragma: no cover - optional dependency path
     _rich_box = None
-    _RichGroup = None
     _RichPanel = None
     _RichTable = None
     _RichText = None
@@ -357,8 +355,8 @@ def _planner_entry_how(self: Any, entry: analysis_catalog.AnalysisCatalogEntry |
 
 
 def _refresh_analyze_planner_summary_widgets(self: Any) -> None:
-    _query_required(self, "#view-note", _TEXTUAL_STATIC).update(self._analyze_note_text())
-    _query_required(self, "#analyze-browser-right", _TEXTUAL_STATIC).update(self._analyze_browser_detail_renderable())
+    _query_required(self, "#view-note", _TEXTUAL_STATIC).update("")
+    _query_required(self, "#analyze-planner-detail", _TEXTUAL_STATIC).update(self._analyze_browser_detail_renderable())
 
 
 def _analyze_browser_detail_text(self: Any) -> str:
@@ -390,28 +388,6 @@ def _analyze_browser_detail_text(self: Any) -> str:
     return "\n".join(lines)
 
 
-def _detail_status_styles(status_line: str) -> tuple[str, str]:
-    if "Stop requested" in status_line:
-        return _DETAIL_DANGER_STYLE, "#8a3b12"
-    if "Queue blocked" in status_line:
-        return _DETAIL_WARNING_STYLE, "#8a5a00"
-    if "Ready to run" in status_line:
-        return _DETAIL_SUCCESS_STYLE, "#236d36"
-    return _DETAIL_VALUE_STYLE, _DETAIL_PANEL_ACCENT
-
-
-def _detail_status_hint(self: Any, plan: analysis_planner.AnalysisPlan) -> str:
-    if self._busy and self._active_job_action_id == "action-analyze":
-        return "Live output continues below while the current queue is running."
-    if not self._setup_has_targets():
-        return "Open Setup and add a target to unlock the planner queue."
-    if not self._ordered_selected_analyze_entry_ids():
-        return "Pick one or more analyses from the left to build a runnable queue."
-    if plan.missing_handlers:
-        return "Remove the blocked entries or enable the missing handlers before running the queue."
-    return "The queue is normalized and ready to run in catalog order."
-
-
 def _detail_panel_title(rich_text_cls: Any, title: str) -> Any:
     panel_title = rich_text_cls(title)
     panel_title.stylize(_DETAIL_HEADING_STYLE)
@@ -422,64 +398,6 @@ def _detail_row_text(rich_text_cls: Any, value: str, *, style: str = _DETAIL_VAL
     table_text = rich_text_cls(value)
     table_text.stylize(style)
     return table_text
-
-
-def _build_detail_status_panel(
-    *,
-    rich_text_cls: Any,
-    rich_panel_cls: Any,
-    rich_box: Any,
-    status_line: str,
-    status_hint: str,
-) -> Any:
-    status_style, status_border_style = _detail_status_styles(status_line)
-    status_value = status_line.partition(":")[2].strip()
-    status_body = rich_text_cls()
-    status_body.append("Status: ", style=_DETAIL_LABEL_STYLE)
-    status_body.append(status_value, style=status_style)
-    status_body.append("\n")
-    status_body.append(status_hint, style=_DETAIL_MUTED_STYLE)
-    return rich_panel_cls(
-        status_body,
-        title=_detail_panel_title(rich_text_cls, "Planner status"),
-        border_style=status_border_style,
-        box=rich_box.ROUNDED,
-        padding=(1, 2),
-    )
-
-
-def _build_detail_summary_panel(
-    *,
-    rich_text_cls: Any,
-    rich_panel_cls: Any,
-    rich_table_cls: Any,
-    rich_box: Any,
-    selected_line: str,
-    focused_line: str,
-    plan: analysis_planner.AnalysisPlan,
-) -> Any:
-    summary_table = rich_table_cls.grid(expand=True, padding=(0, 1))
-    summary_table.add_column(style=_DETAIL_LABEL_STYLE, no_wrap=True, width=17)
-    summary_table.add_column(ratio=1)
-    summary_table.add_row("Selected entries:", _detail_row_text(rich_text_cls, selected_line.partition(":")[2].strip()))
-    summary_table.add_row("Planned steps:", _detail_row_text(rich_text_cls, str(len(plan.executable_steps))))
-    summary_table.add_row("Focused entry:", _detail_row_text(rich_text_cls, focused_line.partition(":")[2].strip()))
-    if plan.missing_handlers:
-        summary_table.add_row(
-            "Missing handlers:",
-            _detail_row_text(
-                rich_text_cls,
-                ", ".join(_stringify_value(handler) for handler in plan.missing_handlers),
-                style=_DETAIL_WARNING_STYLE,
-            ),
-        )
-    return rich_panel_cls(
-        summary_table,
-        title=_detail_panel_title(rich_text_cls, "Queue summary"),
-        border_style=_DETAIL_PANEL_BORDER,
-        box=rich_box.ROUNDED,
-        padding=(0, 1),
-    )
 
 
 def _build_detail_analysis_panel(
@@ -549,35 +467,18 @@ def _prompt_analyze_filter(self: Any) -> None:
 
 def _analyze_browser_detail_renderable(self: Any) -> object:
     detail_text = self._analyze_browser_detail_text()
-    if _RichText is None or _RichGroup is None or _RichPanel is None or _RichTable is None or _rich_box is None:
+    if _RichText is None or _RichPanel is None or _RichTable is None or _rich_box is None:
         return detail_text
 
     rich_text_cls = _RichText
-    rich_group_cls = _RichGroup
     rich_panel_cls = _RichPanel
     rich_table_cls = _RichTable
     rich_box = _rich_box
 
-    status_line, selected_line, focused_line, description_line, detection_line, how_line = detail_text.split("\n", 5)
+    _status_line, _selected_line, _focused_line, description_line, detection_line, how_line = detail_text.split("\n", 5)
     focused_entry = self._planner_entry(self._analyze_focused_entry_id)
-    plan = self._analyze_plan()
-    status_panel = _build_detail_status_panel(
-        rich_text_cls=rich_text_cls,
-        rich_panel_cls=rich_panel_cls,
-        rich_box=rich_box,
-        status_line=status_line,
-        status_hint=_detail_status_hint(self, plan),
-    )
-    summary_panel = _build_detail_summary_panel(
-        rich_text_cls=rich_text_cls,
-        rich_panel_cls=rich_panel_cls,
-        rich_table_cls=rich_table_cls,
-        rich_box=rich_box,
-        selected_line=selected_line,
-        focused_line=focused_line,
-        plan=plan,
-    )
-    analysis_panel = _build_detail_analysis_panel(
+
+    return _build_detail_analysis_panel(
         rich_text_cls=rich_text_cls,
         rich_panel_cls=rich_panel_cls,
         rich_table_cls=rich_table_cls,
@@ -587,8 +488,6 @@ def _analyze_browser_detail_renderable(self: Any) -> object:
         how_line=how_line,
         focused_entry=focused_entry,
     )
-
-    return rich_group_cls(status_panel, summary_panel, analysis_panel)
 
 
 def _execute_planned_analysis_step(self: Any, step: analysis_planner.PlannedAnalysisStep) -> None:

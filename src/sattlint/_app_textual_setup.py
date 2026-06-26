@@ -271,10 +271,7 @@ def _analyze_note_text(self: Any) -> str:
         return f'No analyses match "{filter_text}". Press / to change or clear the filter.'
     plan = self._analyze_plan()
     if not self._ordered_selected_analyze_entry_ids():
-        return (
-            "Select one or more analyses below. Suites collapse overlapping leaf checks when the queue is planned."
-            f"{filter_suffix}"
-        )
+        return f"{filter_suffix.lstrip()}" if filter_text else ""
     if plan.missing_handlers:
         return (
             "Some selected analyses are unavailable in the current Textual session. Review the queue summary before running anything."

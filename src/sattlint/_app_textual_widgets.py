@@ -228,6 +228,12 @@ if _TEXTUAL_APP is not None:
                 self._submit_response(event.value)
 
     class _HelpScreenImpl(_TEXTUAL_MODAL_SCREEN):
+        CSS = """
+        Screen {
+            background: transparent !important;
+        }
+        """
+
         BINDINGS: ClassVar[list[tuple[str, str, str]]] = [("escape", "dismiss_help", "Close")]
 
         def __init__(self, *, help_text: str) -> None:

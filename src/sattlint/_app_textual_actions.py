@@ -604,6 +604,8 @@ def _start_action(
     self._refresh_summary()
     self._refresh_shell_state()
     self._refresh_view()
+    if action_id in ("action-analyze",):
+        self._clear_session_output()
     self._write_output(f"Starting {label}... Live output is shown in this panel.")
 
     def _run() -> None:
@@ -644,8 +646,8 @@ def _refresh_view(self: Any) -> None:  # noqa: PLR0915
     view_actions = _query_required(self, "#view-actions", _TEXTUAL_HORIZONTAL)
     launch_button = _query_required(self, "#view-primary-action", _TEXTUAL_BUTTON)
     analyze_actions_primary = _query_required(self, "#analyze-actions-primary", _TEXTUAL_HORIZONTAL)
-    analyze_browser = _query_required(self, "#analyze-browser", _TEXTUAL_HORIZONTAL)
-    analyze_right_widget = _query_required(self, "#analyze-browser-right", _TEXTUAL_STATIC)
+    analyze_browser = _query_required(self, "#analyze-browser", _TEXTUAL_VERTICAL)
+    analyze_right_widget = _query_required(self, "#analyze-planner-detail", _TEXTUAL_STATIC)
     documentation_actions = _query_required(self, "#documentation-actions", _TEXTUAL_HORIZONTAL)
     setup_browser = _query_required(self, "#setup-browser", _TEXTUAL_HORIZONTAL)
     tools_actions = _query_required(self, "#tools-actions", _TEXTUAL_HORIZONTAL)
@@ -660,7 +662,7 @@ def _refresh_view(self: Any) -> None:  # noqa: PLR0915
     title_widget.update(view.title)
     description_widget.update(view.description)
     if analyze_view:
-        note_widget.update(self._analyze_note_text())
+        note_widget.update("")
     elif documentation_view:
         note_widget.update(self._documentation_note_text())
     elif setup_view:
