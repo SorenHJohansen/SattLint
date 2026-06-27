@@ -1142,7 +1142,7 @@ def test_ensure_ast_cache_handles_valid_fast_path_rebuilds_and_failures(monkeypa
         def has_cache_artifact(self, key):
             return key == "key:Fresh"
 
-    def fake_load_project(_cfg, target_name=None, use_cache=True, use_file_ast_cache=True):
+    def fake_load_project(_cfg, target_name=None, use_cache=True, use_file_ast_cache=True, **kwargs):
         resolved_target = target_name or ""
         load_calls.append(resolved_target)
         if target_name == "Broken":
@@ -1286,3 +1286,97 @@ def test_ensure_ast_cache_rebuilds_when_has_cache_artifact_fails(monkeypatch):
     assert artifact_check_calls == ["key:Ok"]
     assert rebuild_calls == ["Ok"]
     assert any("AST cache stale; rebuilding" in line for line in lines)
+
+
+LIBRARY_WITH_UNUSED_SOURCE = """
+"Syntax version 2.23, date: 2026-04-23-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-04-23-12:00:00.000, name: MyLib"
+
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION MyModule_ 1
+
+LOCALVARIABLES
+    UsedLocal: integer := 0;
+    UnusedLocal: integer := 0;
+
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        UsedLocal = 1;
+ENDDEF (*BasePicture*);
+"""
+
+DEP_SOURCE = """
+"Syntax version 2.23, date: 2026-04-23-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-04-23-12:00:00.000, name: DepA"
+
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DepModule_ 1
+
+LOCALVARIABLES
+    DepLocal: integer := 0;
+
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        DepLocal = 1;
+ENDDEF (*BasePicture*);
+"""
+
+
+def test_load_project_library_target_resolves_origin_and_finds_unused(tmp_path):
+    program_dir = tmp_path / "programs"
+    lib_dir = tmp_path / "projectlib"
+    abb_dir = tmp_path / "abb_lib"
+    program_dir.mkdir(parents=True, exist_ok=True)
+    lib_dir.mkdir(parents=True, exist_ok=True)
+    abb_dir.mkdir(parents=True, exist_ok=True)
+
+    target_name = "MyLib"
+    target_file = lib_dir / f"{target_name}.s"
+    dep_file = lib_dir / f"{target_name}.l"
+    dep_src_file = lib_dir / "DepA.s"
+    dep_dep_file = lib_dir / "DepA.l"
+
+    target_file.write_text(LIBRARY_WITH_UNUSED_SOURCE, encoding="utf-8")
+    dep_file.write_text("DepA\n", encoding="utf-8")
+    dep_src_file.write_text(DEP_SOURCE, encoding="utf-8")
+    dep_dep_file.write_text("", encoding="utf-8")
+
+    cfg = {
+        "program_dir": str(program_dir),
+        "ABB_lib_dir": str(abb_dir),
+        "other_lib_dirs": [str(lib_dir)],
+        "analyzed_programs_and_libraries": [target_name],
+        "mode": "draft",
+        "scan_root_only": False,
+        "use_cache": False,
+        "debug": False,
+    }
+
+    project_bp, graph = app_analysis.load_project(
+        cfg,
+        use_cache=False,
+        get_cache_dir_fn=lambda: tmp_path / "cache-dir",
+    )
+
+    assert getattr(project_bp, "origin_file", None) == f"{target_name}.s"
+    assert getattr(project_bp, "origin_lib", None) == "projectlib"
+    assert target_name in graph.ast_by_name
+    assert "DepA" in graph.ast_by_name
+
+    report = analyze_variables(
+        project_bp,
+        config=cfg,
+        debug=False,
+        unavailable_libraries=set(),
+        analyzed_target_is_library=True,
+        selected_issue_kinds={IssueKind.UNUSED},
+    )
+
+    unused_names = {v.name for issue in report.unused for v in [issue.variable]}
+    assert "UnusedLocal" in unused_names, f"Expected UnusedLocal in unused variables, got: {unused_names}"
+    assert "UsedLocal" not in unused_names
+    assert "DepLocal" not in unused_names

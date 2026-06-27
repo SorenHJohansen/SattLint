@@ -356,7 +356,6 @@ def test_engine_wrapper_helpers_cover_file_parsing_and_ok_validation(
         "parser": parser,
         "transformer": transformer,
         "debug": debug_messages.append,
-        "validated": basepicture,
     }
     assert engine.is_within_directory(tmp_path / "nested" / "Program.s", tmp_path) is True
     assert engine.is_within_directory(tmp_path.parent / "Elsewhere.s", tmp_path) is False
@@ -912,7 +911,7 @@ def test_load_or_parse_marks_local_validation_and_upgrades_cached_entries(
     assert parsed_result is parsed
     assert local_validation_calls == [cached]
     assert getattr(cached, engine._LOCAL_VALIDATION_MARKER_ATTR) == engine.LOCAL_STRUCTURE_VALIDATION_SCHEMA_VERSION
-    assert getattr(parsed, engine._LOCAL_VALIDATION_MARKER_ATTR, None) is None
+    assert getattr(parsed, engine._LOCAL_VALIDATION_MARKER_ATTR) == engine.LOCAL_STRUCTURE_VALIDATION_SCHEMA_VERSION
     assert save_calls == [
         (code_path, "draft", cached),
         (code_path, "draft", parsed),

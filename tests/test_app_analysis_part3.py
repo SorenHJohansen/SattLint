@@ -186,7 +186,7 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
     app_analysis.analysis_loading_module._include_reverse_library_consumers(
         cfg,
         selected_target="Selected",
-        root_bp=cast(Any, "bp"),
+        root_bp=cast(Any, SimpleNamespace(header=SimpleNamespace(name="BasePicture"))),
         graph=cast(Any, "graph"),
         loader=loader,
         require_analyzed_targets_fn=lambda _cfg: ["Selected", "CandidateA", "NoDeps", "NoPath", "DupLocal"],
@@ -212,7 +212,7 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
     app_analysis.analysis_loading_module._include_reverse_library_consumers(
         cfg,
         selected_target="Selected",
-        root_bp=cast(Any, "bp"),
+        root_bp=cast(Any, SimpleNamespace(header=SimpleNamespace(name="BasePicture"))),
         graph=cast(Any, "graph"),
         loader=loader,
         require_analyzed_targets_fn=lambda _cfg: ["Selected", "CandidateA", "NoDeps", "NoPath", "DupLocal"],

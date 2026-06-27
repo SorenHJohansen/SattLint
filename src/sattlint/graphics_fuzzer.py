@@ -10,7 +10,7 @@ from sattlint.graphics_validation import validate_graphics_text
 
 def test_one_input(data: bytes) -> None:
     source = data.decode("utf-8", errors="replace")
-    validate_graphics_text(source, Path("/tmp"))
+    validate_graphics_text(source, Path("/tmp"))  # nosec
 
 
 if __name__ == "__main__":
