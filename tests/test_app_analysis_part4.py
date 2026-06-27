@@ -543,7 +543,7 @@ def test_ensure_ast_cache_covers_cache_hit_stale_missing_and_failure(monkeypatch
         def has_cache_artifact(self, key):
             return cache_state[key][2]
 
-    def fake_load_project(_cfg, *, target_name, use_cache):
+    def fake_load_project(_cfg, *, target_name, use_cache, **kwargs):
         load_calls.append((target_name, use_cache))
         if target_name == "TargetE":
             raise RuntimeError("boom")

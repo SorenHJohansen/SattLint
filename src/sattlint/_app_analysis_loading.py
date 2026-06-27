@@ -4,6 +4,7 @@ import inspect
 import logging
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sized
+from dataclasses import replace
 from pathlib import Path
 from time import perf_counter
 from typing import Any, cast
@@ -15,7 +16,7 @@ from . import cache as cache_module
 from ._app_debug import debug_enabled, log_debug_exception
 from .casefolding import casefold_equal, casefold_key
 from .config_types import ConfigDict
-from .models.project_graph import ProjectGraph
+from .models.project_graph import ProjectGraph, RootOrigin
 
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
 _STAGE_ORDER = ("load_or_parse", "validate", "attach_graphics", "index", "ast_cache_save")
@@ -239,6 +240,10 @@ def _include_reverse_library_consumers(
     ):
         return
 
+    root_origin_key = root_bp.header.name.casefold()
+    root_origins = cast("dict[str, RootOrigin] | None", getattr(graph, "root_origins", None))
+    saved_root_origin: RootOrigin | None = root_origins.get(root_origin_key) if root_origins is not None else None
+
     selected_key = selected_target.casefold()
     requester_dir = Path(cfg["program_dir"])
     queued_targets: set[tuple[str, str]] = set()
@@ -280,6 +285,9 @@ def _include_reverse_library_consumers(
             continue
 
         _queue_reverse_consumer(candidate, deps_path)
+
+    if saved_root_origin is not None and isinstance(root_origins, dict):
+        root_origins[root_origin_key] = saved_root_origin
 
 
 def get_analyzed_targets(cfg: ConfigDict, *, app_support: Any) -> list[str]:
@@ -442,7 +450,16 @@ def load_project(  # noqa: PLR0915
     def build_project_view(root_bp: BasePicture, graph: ProjectGraph) -> BasePicture:
         if refresh_mode == "ast-only":
             return root_bp
-        return cast(BasePicture, engine_module.merge_project_basepicture(root_bp, graph))
+        project_bp = cast(BasePicture, engine_module.merge_project_basepicture(root_bp, graph))
+        root_origin_for_basepicture = getattr(graph, "root_origin_for_basepicture", None)
+        if callable(root_origin_for_basepicture):
+            root_origin = cast(RootOrigin | None, root_origin_for_basepicture(project_bp))
+            if root_origin is not None:
+                origin_file = root_origin.origin_file
+                origin_lib = root_origin.library_name
+                if origin_file and origin_file != getattr(project_bp, "origin_file", None):
+                    project_bp = replace(project_bp, origin_file=origin_file, origin_lib=origin_lib)
+        return project_bp
 
     key = cache_key_for_target_fn(cfg, selected_target)
     if use_cache:
