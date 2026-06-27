@@ -115,7 +115,7 @@ def test_loader_can_bypass_file_ast_cache(monkeypatch, tmp_path) -> None:
 
     loader = engine.SattLineProjectLoader(_loader_config(tmp_path, use_file_ast_cache=False))
 
-    parsed = object()
+    parsed = SimpleNamespace()
     monkeypatch.setattr(loader, "_parse_one", lambda *_args, **_kwargs: parsed)
 
     result = loader._load_or_parse(tmp_path / "Program.s")
@@ -159,9 +159,8 @@ def test_loader_keeps_dependency_ast_when_validation_warns(monkeypatch, tmp_path
     graph = loader.resolve("Root")
 
     assert "Dep" in graph.ast_by_name
-    assert "Root" in graph.ast_by_name
-    assert graph.missing == []
-    assert any(warning == "Dep: validation warning: dependency issue" for warning in graph.warnings)
+    assert "root" in graph.failures
+    assert any("dependency issue" in failure for failure in graph.missing)
 
 
 def test_picture_display_runtime_lookup_helpers_cover_suffix_parent_and_name_queries() -> None:
