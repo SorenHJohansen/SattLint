@@ -241,16 +241,14 @@ if _TEXTUAL_APP is not None:
         BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
             ("1", "show_analyze", "Analyze"),
             ("2", "show_documentation", "Docs"),
-            ("3", "show_setup", "Setup"),
-            ("4", "show_tools", "Tools"),
-            ("5", "show_help", "Help"),
+            ("3", "show_tools", "Tools"),
+            ("4", "show_setup", "Setup"),
             ("slash", "prompt_view_filter", "Filter"),
             ("question_mark", "show_help", "Help"),
             ("ctrl+h", "show_help", "Help"),
             ("ctrl+c", "copy_output", "Copy Output"),
             ("ctrl+g", "cancel_running_analysis", "Cancel Analysis"),
             ("ctrl+l", "clear_output", "Clear Output"),
-            ("escape", "back", "Back"),
             ("q", "quit_shell", "Quit"),
             ("tab", "focus_next_control", "Next"),
             ("shift+tab", "focus_previous_control", "Prev"),
@@ -409,11 +407,6 @@ if _TEXTUAL_APP is not None:
                                         )
                                     with _TEXTUAL_HORIZONTAL(id="tools-actions", classes="is-hidden"):
                                         yield _TEXTUAL_BUTTON(
-                                            "Self-check diagnostics",
-                                            id="tools-self-check",
-                                            classes="raised-button toolbar-button",
-                                        )
-                                        yield _TEXTUAL_BUTTON(
                                             "Diagnostics & dumps",
                                             id="tools-dumps",
                                             classes="raised-button toolbar-button",
@@ -446,8 +439,7 @@ if _TEXTUAL_APP is not None:
                                 with _TEXTUAL_VERTICAL(id="view-copy"):
                                     yield _TEXTUAL_STATIC("", id="view-description")
                                     yield _TEXTUAL_STATIC("", id="view-note")
-                            with _TEXTUAL_VERTICAL(id="analyze-browser", classes="is-hidden"):
-                                yield _TEXTUAL_STATIC("", id="analyze-planner-detail")
+                            with _TEXTUAL_VERTICAL(id="analyze-browser", classes="is-hidden"):  # noqa: SIM117
                                 with _TEXTUAL_VERTICAL(id="analyze-browser-left"):
                                     pass
                             with _TEXTUAL_HORIZONTAL(id="setup-browser", classes="is-hidden"):
@@ -538,6 +530,12 @@ if _TEXTUAL_APP is not None:
                                     yield _TEXTUAL_STATIC("Save", classes="setup-group-title")
                                     yield _TEXTUAL_BUTTON(
                                         "Save config", id="setup-save", classes="raised-button setup-row-button"
+                                    )
+                                    yield _TEXTUAL_STATIC("Diagnostics", classes="setup-group-title")
+                                    yield _TEXTUAL_BUTTON(
+                                        "Self-check diagnostics",
+                                        id="setup-self-check",
+                                        classes="raised-button setup-row-button",
                                     )
                     with _TEXTUAL_VERTICAL(id="output-pane"):
                         yield _TEXTUAL_STATIC("Session output", id="output-title")

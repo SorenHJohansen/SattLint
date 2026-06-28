@@ -25,7 +25,7 @@ from ._app_textual_shared import (
 from ._app_textual_widgets import _FileBrowserScreen, _HelpScreen
 
 _OUTPUT_TITLE_SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
-_OUTPUT_TITLE_SPINNER_INTERVAL_SECONDS = 1.0 / 60.0
+_OUTPUT_TITLE_SPINNER_INTERVAL_SECONDS = 1.0 / 10.0
 
 
 def _output_title_spinner_timestamp() -> float:
@@ -615,7 +615,7 @@ def _open_help_popup(self: Any) -> None:
     help_text = str(get_help_text_fn(self._cfg)).strip() or "No help content available."
     help_text = (
         f"{help_text}\n\nKeyboard shortcuts\n"
-        "1-5 switch views\n"
+        "1-4 switch views\n"
         "/ filters Analyze and Setup lists\n"
         "? / Ctrl+H open help\n"
         "Esc goes back to Analyze from other views\n"

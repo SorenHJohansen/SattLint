@@ -634,7 +634,7 @@ def _start_action(
     self._active_job_worker = self._start_managed_action_worker(_run, label=label, action_id=action_id)
 
 
-def _refresh_view(self: Any) -> None:  # noqa: PLR0915
+def _refresh_view(self: Any) -> None:
     if not tuple(getattr(self, "children", ())):
         return
     workspace_host = _query_required(self, "#workspace-host", _TEXTUAL_VERTICAL)
@@ -647,7 +647,6 @@ def _refresh_view(self: Any) -> None:  # noqa: PLR0915
     launch_button = _query_required(self, "#view-primary-action", _TEXTUAL_BUTTON)
     analyze_actions_primary = _query_required(self, "#analyze-actions-primary", _TEXTUAL_HORIZONTAL)
     analyze_browser = _query_required(self, "#analyze-browser", _TEXTUAL_VERTICAL)
-    analyze_right_widget = _query_required(self, "#analyze-planner-detail", _TEXTUAL_STATIC)
     documentation_actions = _query_required(self, "#documentation-actions", _TEXTUAL_HORIZONTAL)
     setup_browser = _query_required(self, "#setup-browser", _TEXTUAL_HORIZONTAL)
     tools_actions = _query_required(self, "#tools-actions", _TEXTUAL_HORIZONTAL)
@@ -686,9 +685,6 @@ def _refresh_view(self: Any) -> None:  # noqa: PLR0915
 
     if analyze_view:
         self._refresh_analyze_planner()
-        analyze_right_widget.update(self._analyze_browser_detail_renderable())
-    else:
-        analyze_right_widget.update("")
 
     if setup_view:
         self._refresh_setup_target_list()
@@ -731,7 +727,6 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
     documentation_scope_all_button = _query_required(self, "#documentation-scope-all", _TEXTUAL_BUTTON)
     documentation_scope_moduletype_button = _query_required(self, "#documentation-scope-moduletype", _TEXTUAL_BUTTON)
     documentation_scope_instance_button = _query_required(self, "#documentation-scope-instance-path", _TEXTUAL_BUTTON)
-    tools_self_check_button = _query_required(self, "#tools-self-check", _TEXTUAL_BUTTON)
     tools_dumps_button = _query_required(self, "#tools-dumps", _TEXTUAL_BUTTON)
     tools_source_diff_button = _query_required(self, "#tools-source-diff", _TEXTUAL_BUTTON)
     tools_refresh_ast_button = _query_required(self, "#tools-refresh-ast", _TEXTUAL_BUTTON)
@@ -808,7 +803,8 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
     )
     if setup_view:
         self._refresh_setup_settings_labels()
-    tools_self_check_button.disabled = toolbar_disabled or not tools_view
+    setup_self_check_button = _query_required(self, "#setup-self-check", _TEXTUAL_BUTTON)
+    setup_self_check_button.disabled = toolbar_disabled or not setup_view
     tools_dumps_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
     tools_source_diff_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
     tools_refresh_ast_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
@@ -844,7 +840,7 @@ def on_button_pressed(self: Any, event: Any) -> None:
         "setup-edit-icf-dir": lambda: self._queue_setup_value_prompt("icf_dir", label="icf_dir"),
         "setup-toggle-debug": lambda: self._toggle_setup_flag("debug", label="debug"),
         "setup-toggle-telemetry": self._toggle_setup_telemetry,
-        "tools-self-check": self._run_tool_self_check,
+        "setup-self-check": self._run_tool_self_check,
         "tools-dumps": self._run_tool_dumps,
         "tools-source-diff": self._run_tool_source_diff,
         "tools-refresh-ast": self._run_tool_refresh_ast,
