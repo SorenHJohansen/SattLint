@@ -196,14 +196,6 @@
             margin-top: 1;
         }
 
-        #analyze-planner-detail {
-            width: 100%;
-            height: 5;
-            padding: 0 1;
-            margin-bottom: 1;
-            overflow-y: auto;
-        }
-
         #analyze-browser-left {
             width: 100%;
             height: 1fr;
@@ -372,6 +364,18 @@
             margin-top: 0;
         }
 
+#analyze-actions-primary {
+    overflow-x: auto;
+    scrollbar-background: #b9d9df;
+    scrollbar-background-hover: #c2c2c2;
+    scrollbar-background-active: #ebebeb;
+    scrollbar-color: #58787e;
+    scrollbar-color-hover: #0077b3;
+    scrollbar-color-active: #0077b3;
+    scrollbar-corner-color: #b9d9df;
+    scrollbar-size-horizontal: 1;
+}
+
         #workspace-host.docs-tools-split #documentation-actions,
         #workspace-host.docs-tools-split #tools-actions {
             layout: vertical;
@@ -469,7 +473,7 @@
             width: 1fr;
             min-width: 0;
             height: 2;
-            margin: 0;
+            margin: 0 0 1 0;
             padding: 0 1;
             content-align: left middle;
         }
@@ -702,8 +706,8 @@
             padding: 0 2 1 2;
         }
 
-        _HelpScreen {
-            background: transparent;
+        _HelpScreenImpl {
+            background: transparent !important;
         }
 
         #help-overlay {

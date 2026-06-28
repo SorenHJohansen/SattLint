@@ -511,7 +511,6 @@ def test_textual_shell_css_mentions_banner_and_full_width_menu_buttons() -> None
     )
     assert re.search(r"(?ms)^\s*#analyze-browser \{.*?^\s*margin-top: 1;.*?^\s*\}", css)
     assert re.search(r"(?ms)^\s*#setup-browser \{.*?^\s*margin-top: 1;.*?^\s*\}", css)
-    assert re.search(r"(?ms)^\s*#analyze-planner-detail \{.*?^\s*padding: 1 2;.*?^\s*\}", css)
     assert re.search(r"(?ms)^\s*#analyze-browser-left \{.*?^\s*padding: 1 2;.*?^\s*\}", css)
     assert re.search(r"(?ms)^\s*#setup-targets-col \{.*?^\s*padding: 1 2;.*?^\s*\}", css)
     assert re.search(r"(?ms)^\s*#setup-settings-col \{.*?^\s*padding: 1 2;.*?^\s*\}", css)
@@ -776,7 +775,7 @@ def test_textual_slash_binding_filters_setup_targets() -> None:
         app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": ["Alpha", "Beta", "Gamma"]})
 
         async with app_instance.run_test() as pilot:
-            await pilot.press("3")
+            await pilot.press("4")
             await pilot.pause()
 
             await pilot.press("/")
@@ -1025,7 +1024,6 @@ def test_textual_analyze_view_shows_planner_controls() -> None:
             output_pane = app_instance.query_one("#output-pane")
             output_widget = app_instance.query_one("#output")
             analyze_left = app_instance.query_one("#analyze-browser-left")
-            analyze_right = app_instance.query_one("#analyze-planner-detail")
 
             assert app_instance._active_view == "analyze"
             assert workspace_host.has_class("analyze-split")
@@ -1036,7 +1034,6 @@ def test_textual_analyze_view_shows_planner_controls() -> None:
             assert output_pane.size.height > 0
             assert output_widget.size.height > 0
             assert analyze_left.size.height > 0
-            assert analyze_right.size.height > 0
             assert output_pane.size.width > view_host.size.width
             assert getattr(output_widget, "read_only", False) is True
             assert getattr(output_widget, "show_line_numbers", True) is False
@@ -1052,12 +1049,7 @@ def test_textual_analyze_view_shows_planner_controls() -> None:
             assert len(list(app_instance.query("#analyze-planner-section-variable-suite"))) == 0
             assert str(app_instance.query_one("#output-title").renderable) == "Session output"
 
-            detail_renderable = app_instance.query_one("#analyze-planner-detail").renderable
-            detail_text = _renderable_text(detail_renderable)
-            assert "Focused analysis" in detail_text
-            assert "Focused entry: Unused variables" in detail_text
-            assert "Description:" in detail_text
-            assert "Session output" not in detail_text
+            assert len(list(app_instance.query("#analyze-planner-detail"))) == 0
 
     asyncio.run(_run())
 
@@ -1073,11 +1065,9 @@ def test_textual_analyze_view_keeps_planner_panes_visible_on_small_terminal() ->
             await pilot.pause()
 
             analyze_left = app_instance.query_one("#analyze-browser-left")
-            analyze_right = app_instance.query_one("#analyze-planner-detail")
             output_widget = app_instance.query_one("#output")
 
             assert analyze_left.size.height >= 2
-            assert analyze_right.size.height >= 2
             assert output_widget.size.height > 0
 
     asyncio.run(_run())
@@ -1177,11 +1167,6 @@ def test_textual_analyze_planner_renders_grouped_sections_and_detail() -> None:
             app_module=SimpleNamespace(
                 _get_enabled_analyzers=lambda: [
                     SimpleNamespace(
-                        key="comment-code",
-                        name="Commented-out code",
-                        description="Scan comments for code-like content",
-                    ),
-                    SimpleNamespace(
                         key="timing",
                         name="Timing",
                         description="Scan-cycle timing hazards",
@@ -1196,36 +1181,27 @@ def test_textual_analyze_planner_renders_grouped_sections_and_detail() -> None:
 
             assert len(list(app_instance.query("#analyze-planner-section-top-level"))) == 0
             assert len(list(app_instance.query("#analyze-planner-section-variable-suite"))) == 0
-            assert app_instance.query_one("#analyze-planner-section-investigation") is not None
+            assert len(list(app_instance.query("#analyze-planner-section-investigation"))) == 0
             assert app_instance.query_one("#analyze-planner-section-variable-high-confidence") is not None
-            assert app_instance.query_one("#analyze-planner-section-catalog-issue-checks") is not None
-            assert app_instance.query_one("#analyze-planner-section-catalog-analyzers") is not None
+            assert len(list(app_instance.query("#analyze-planner-section-catalog-issue-checks"))) == 0
+            assert len(list(app_instance.query("#analyze-planner-section-catalog-analyzers"))) == 0
             assert "catalog.analyzer.comment-code" not in app_instance._planner_entry_ids()
-            assert "catalog.issue.comment_code" in app_instance._planner_entry_ids()
-            assert "catalog.analyzer.timing" in app_instance._planner_entry_ids()
-            assert app_textual.analysis_catalog.ENTRY_DATATYPE_USAGE in app_instance._planner_entry_ids()
+            assert "catalog.issue.comment_code" not in app_instance._planner_entry_ids()
+            assert app_textual.analysis_catalog.ENTRY_DATATYPE_USAGE not in app_instance._planner_entry_ids()
 
-            detail_text = _renderable_text(app_instance.query_one("#analyze-planner-detail").renderable)
-            assert "Focused entry: Unused variables" in detail_text
-            assert (
-                "Detection: Variables declared but never read or written anywhere in the analyzed target."
-                in detail_text
-            )
-            assert (
-                "How: Tracks per-variable read and write flags and reports declarations with neither flag set."
-                in detail_text
-            )
-            app_instance._analyze_focused_entry_id = "catalog.issue.comment_code"
-            app_instance._refresh_analyze_planner_summary_widgets()
+            app_instance._write_focused_entry_to_output()
+            await pilot.pause()
+            output_text = getattr(app_instance.query_one("#output"), "text", "")
+            assert "Analysis: Unused variables" in output_text
+            assert "Description:" in output_text
+
+            app_instance._analyze_focused_entry_id = app_textual.analysis_catalog.ENTRY_COMMENTED_OUT_CODE
+            app_instance._write_focused_entry_to_output()
             await pilot.pause()
 
-            issue_detail_text = _renderable_text(app_instance.query_one("#analyze-planner-detail").renderable)
-            assert "Focused entry: Commented-out code: Code-like comments" in issue_detail_text
-            assert "Detection: Comment blocks that look like inactive code fragments." in issue_detail_text
-            assert (
-                "How: Reads the source files for the selected target and applies the comment-code heuristics to each comment block."
-                in issue_detail_text
-            )
+            output_text = getattr(app_instance.query_one("#output"), "text", "")
+            assert "Analysis: Commented-out code" in output_text
+            assert "Description:" in output_text
 
     asyncio.run(_run())
 
@@ -1249,13 +1225,13 @@ def test_textual_analyze_planner_selection_updates_summary_and_enables_run() -> 
             high_list.select("variables.issue.2")
             high_list.select("variables.issue.6")
             app_instance._sync_analyze_selection_from_selection_list(high_list)
-            app_instance._refresh_analyze_planner_summary_widgets()
+            app_instance._write_focused_entry_to_output()
             app_instance._refresh_shell_state()
             await pilot.pause()
 
-            detail_text = _renderable_text(app_instance.query_one("#analyze-planner-detail").renderable)
-            assert "Focused entry: Unused variables" in detail_text
-            assert "Description:" in detail_text
+            output_text = getattr(app_instance.query_one("#output"), "text", "")
+            assert "Analysis: Unused variables" in output_text
+            assert "Description:" in output_text
             assert getattr(app_instance.query_one("#analyze-run-selected"), "disabled", True) is False
 
     asyncio.run(_run())
@@ -1310,6 +1286,7 @@ def test_textual_analyze_run_selected_executes_planned_steps_in_catalog_order(
 def test_textual_analyze_run_selected_passes_catalog_issue_kind_subsets(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    pytest.skip("Catalog issue entries removed from planner")
     calls: list[object] = []
     launched: list[tuple[str, str]] = []
 
@@ -1393,7 +1370,7 @@ def test_textual_analyze_run_selected_surfaces_variable_issue_output_from_real_a
                 high_list = app_instance.query_one("#analyze-planner-section-variable-high-confidence")
                 high_list.select("variables.issue.2")
                 app_instance._sync_analyze_selection_from_selection_list(high_list)
-                app_instance._refresh_analyze_planner_summary_widgets()
+                app_instance._write_focused_entry_to_output()
                 app_instance._refresh_shell_state()
                 await pilot.pause()
 
@@ -1433,14 +1410,14 @@ def test_textual_analyze_running_state_calls_out_output_location(monkeypatch: py
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
-            quality_list = app_instance.query_one("#analyze-planner-section-code-quality-actions")
+            quality_list = app_instance.query_one("#analyze-planner-section-variable-low-confidence")
             quality_list.select(app_textual.analysis_catalog.ENTRY_COMMENTED_OUT_CODE)
             app_instance._sync_analyze_selection_from_selection_list(quality_list)
             app_instance._busy = True
             app_instance._active_job_action_id = "action-analyze"
             app_instance._active_job_label = "Run selected analyses"
             app_instance._refresh_summary()
-            app_instance._refresh_analyze_planner_summary_widgets()
+            app_instance._write_focused_entry_to_output()
             app_instance._refresh_shell_state()
 
             assert str(app_instance.query_one("#view-note").renderable) == ""
@@ -1448,15 +1425,15 @@ def test_textual_analyze_running_state_calls_out_output_location(monkeypatch: py
                 "Session output ⠋ - Run selected analyses in progress"
             )
 
-            current_time += (1.0 / 60.0) + 0.001
+            current_time += (1.0 / 10.0) + 0.001
             app_instance._advance_output_title_spinner()
             assert str(app_instance.query_one("#output-title").renderable) == (
                 "Session output ⠙ - Run selected analyses in progress"
             )
 
-            detail_text = _renderable_text(app_instance.query_one("#analyze-planner-detail").renderable)
-            assert "Focused analysis" in detail_text
-            assert "Description:" in detail_text
+            output_text = getattr(app_instance.query_one("#output"), "text", "")
+            assert "Analysis:" in output_text
+            assert "Description:" in output_text
 
     asyncio.run(_run())
 
@@ -1490,7 +1467,7 @@ def test_textual_analyze_running_state_uses_60fps_output_title_spinner(monkeypat
 
     app_instance._sync_output_title_spinner()
 
-    assert captured["interval"] == pytest.approx(1.0 / 60.0)
+    assert captured["interval"] == pytest.approx(1.0 / 10.0)
     assert captured["callback"] == app_instance._advance_output_title_spinner
     assert captured["pause"] is False
     assert timer_calls == {"resume": 0, "pause": 0}
@@ -1522,10 +1499,10 @@ def test_textual_analyze_buttons_unlock_after_finish_action() -> None:
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
-            quality_list = app_instance.query_one("#analyze-planner-section-code-quality-actions")
+            quality_list = app_instance.query_one("#analyze-planner-section-variable-low-confidence")
             quality_list.select(app_textual.analysis_catalog.ENTRY_COMMENTED_OUT_CODE)
             app_instance._sync_analyze_selection_from_selection_list(quality_list)
-            app_instance._refresh_analyze_planner_summary_widgets()
+            app_instance._write_focused_entry_to_output()
             app_instance._refresh_shell_state()
             await pilot.pause()
 
@@ -1536,7 +1513,7 @@ def test_textual_analyze_buttons_unlock_after_finish_action() -> None:
             app_instance._active_job_action_id = "action-analyze"
             app_instance._active_job_label = "Run selected analyses"
             app_instance._refresh_summary()
-            app_instance._refresh_analyze_planner_summary_widgets()
+            app_instance._write_focused_entry_to_output()
             app_instance._refresh_shell_state()
             await pilot.pause()
 
@@ -1834,10 +1811,10 @@ def test_textual_ctrl_g_cancel_binding_requests_stop_for_running_analysis(monkey
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
-            quality_list = app_instance.query_one("#analyze-planner-section-code-quality-actions")
+            quality_list = app_instance.query_one("#analyze-planner-section-variable-low-confidence")
             quality_list.select(app_textual.analysis_catalog.ENTRY_COMMENTED_OUT_CODE)
             app_instance._sync_analyze_selection_from_selection_list(quality_list)
-            app_instance._refresh_analyze_planner_summary_widgets()
+            app_instance._write_focused_entry_to_output()
             app_instance._busy = True
             app_instance._active_job_action_id = "action-analyze"
             app_instance._active_job_label = "Run selected analyses"
@@ -1854,7 +1831,6 @@ def test_textual_ctrl_g_cancel_binding_requests_stop_for_running_analysis(monkey
             app_instance.action_cancel_running_analysis()
 
             output_text = getattr(app_instance.query_one("#output"), "text", "")
-            detail_text = _renderable_text(app_instance.query_one("#analyze-planner-detail").renderable)
 
             assert app_instance._active_job_cancel_requested is True
             assert app_instance._active_job_cancel_event is not None
@@ -1862,7 +1838,7 @@ def test_textual_ctrl_g_cancel_binding_requests_stop_for_running_analysis(monkey
             assert interrupted == [(fake_thread, KeyboardInterrupt)]
             assert "Cancellation requested. Interrupting the running analysis immediately." in output_text
             assert str(app_instance.query_one("#view-note").renderable) == ""
-            assert "Focused analysis" in detail_text
+            assert "Analysis:" in output_text
 
     asyncio.run(_run())
 
@@ -1881,10 +1857,10 @@ def test_textual_analyze_clear_selection_resets_planner_state() -> None:
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
-            quality_list = app_instance.query_one("#analyze-planner-section-code-quality-actions")
+            quality_list = app_instance.query_one("#analyze-planner-section-variable-low-confidence")
             quality_list.select(app_textual.analysis_catalog.ENTRY_COMMENTED_OUT_CODE)
             app_instance._sync_analyze_selection_from_selection_list(quality_list)
-            app_instance._refresh_analyze_planner_summary_widgets()
+            app_instance._write_focused_entry_to_output()
             app_instance._refresh_shell_state()
             await pilot.pause()
 
@@ -1914,16 +1890,16 @@ def test_textual_analyze_clear_output_clears_session_log_only() -> None:
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
-            quality_list = app_instance.query_one("#analyze-planner-section-code-quality-actions")
+            quality_list = app_instance.query_one("#analyze-planner-section-variable-low-confidence")
             quality_list.select(app_textual.analysis_catalog.ENTRY_COMMENTED_OUT_CODE)
             app_instance._sync_analyze_selection_from_selection_list(quality_list)
-            app_instance._refresh_analyze_planner_summary_widgets()
+            app_instance._write_focused_entry_to_output()
             app_instance._refresh_shell_state()
             app_instance._write_output("extra output")
             await pilot.pause()
 
             assert app_textual.analysis_catalog.ENTRY_COMMENTED_OUT_CODE in app_instance._analyze_selected_entry_ids
-            assert "Welcome to SattLint Analyze." in getattr(app_instance.query_one("#output"), "text", "")
+            assert "Analysis: Unused variables" in getattr(app_instance.query_one("#output"), "text", "")
 
             app_instance.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id="analyze-clear-output")))
             await pilot.pause()
@@ -1956,7 +1932,7 @@ def test_textual_toolbar_key_switches_routed_view() -> None:
         async with app_instance.run_test() as pilot:
             assert str(app_instance.query_one("#view-title").renderable) == "Analyze"
 
-            await pilot.press("3")
+            await pilot.press("4")
             await pilot.pause()
 
             assert app_instance._active_view == "setup"
@@ -1996,8 +1972,8 @@ def test_textual_toolbar_keys_respect_busy_guard() -> None:
             app_instance._refresh_shell_state()
             await pilot.pause()
 
-            await pilot.press("5")
-            await pilot.press("3")
+            await pilot.press("2")
+            await pilot.press("4")
             await pilot.pause()
 
             output_text = getattr(app_instance.query_one("#output"), "text", "")
@@ -2058,7 +2034,7 @@ def test_textual_setup_view_shows_selected_target_preview(tmp_path: Path) -> Non
         )
 
         async with app_instance.run_test() as pilot:
-            await pilot.press("3")
+            await pilot.press("4")
             await pilot.pause()
 
             workspace_host = app_instance.query_one("#workspace-host")
@@ -2144,7 +2120,7 @@ def test_textual_setup_browse_shows_discovered_targets_once(tmp_path: Path) -> N
         )
 
         async with app_instance.run_test() as pilot:
-            await pilot.press("3")
+            await pilot.press("4")
             await pilot.pause()
 
             browse_button = app_instance.query_one("#setup-target-browse")
@@ -2267,7 +2243,7 @@ def test_textual_documentation_view_shows_direct_actions() -> None:
         ("documentation-scope-all", "_run_documentation_scope_all", "scope-all"),
         ("documentation-scope-moduletype", "_run_documentation_scope_moduletype", "scope-moduletype"),
         ("documentation-scope-instance-path", "_run_documentation_scope_instance_path", "scope-instance"),
-        ("tools-self-check", "_run_tool_self_check", "self-check"),
+        ("setup-self-check", "_run_tool_self_check", "self-check"),
         ("tools-dumps", "_run_tool_dumps", "dumps"),
         ("tools-source-diff", "_run_tool_source_diff", "source-diff"),
         ("tools-refresh-ast", "_run_tool_refresh_ast", "refresh-ast"),
@@ -2322,7 +2298,7 @@ def test_textual_tools_dumps_button_opens_menu_without_ansi_clear() -> None:
         app.set_textual_menu_interaction(bridge.as_menu_interaction())
         try:
             async with app_instance.run_test(size=(80, 28)) as pilot:
-                await pilot.press("4")
+                await pilot.press("3")
                 await pilot.pause()
 
                 app_instance.on_button_pressed(SimpleNamespace(button=app_instance.query_one("#tools-dumps")))
@@ -2376,7 +2352,7 @@ def test_textual_setup_target_button_click_adds_and_removes_target(tmp_path: Pat
         )
 
         async with app_instance.run_test() as pilot:
-            await pilot.press("3")
+            await pilot.press("4")
             await pilot.pause()
 
             # Add target programmatically (file browser not testable in headless mode)
@@ -2421,7 +2397,7 @@ def test_textual_tools_view_shows_direct_actions() -> None:
         )
 
         async with app_instance.run_test(size=(80, 28)) as pilot:
-            await pilot.press("4")
+            await pilot.press("3")
             await pilot.pause()
 
             workspace_host = app_instance.query_one("#workspace-host")
@@ -2430,7 +2406,6 @@ def test_textual_tools_view_shows_direct_actions() -> None:
             view_title = app_instance.query_one("#view-title")
             view_host = app_instance.query_one("#view-host")
             output_pane = app_instance.query_one("#output-pane")
-            self_check_button = app_instance.query_one("#tools-self-check")
             dumps_button = app_instance.query_one("#tools-dumps")
             source_diff_button = app_instance.query_one("#tools-source-diff")
             refresh_ast_button = app_instance.query_one("#tools-refresh-ast")
@@ -2446,7 +2421,6 @@ def test_textual_tools_view_shows_direct_actions() -> None:
             assert output_pane.size.width > view_host.size.width
             assert app_instance.query_one("#view-actions").has_class("is-hidden") is True
             assert app_instance.query_one("#tools-actions").has_class("is-hidden") is False
-            assert getattr(self_check_button, "disabled", True) is False
             assert getattr(dumps_button, "disabled", False) is True
             assert getattr(source_diff_button, "disabled", False) is True
             assert getattr(refresh_ast_button, "disabled", False) is True
@@ -2457,7 +2431,6 @@ def test_textual_tools_view_shows_direct_actions() -> None:
             assert workspace_host.has_class("wide-output-split") is False
             assert view_side_actions.size.height > 0
             for button in (
-                self_check_button,
                 dumps_button,
                 source_diff_button,
                 refresh_ast_button,
@@ -2468,7 +2441,6 @@ def test_textual_tools_view_shows_direct_actions() -> None:
                 assert button.size.width > 0
                 assert button.region.x >= tools_actions.region.x
                 assert button.region.right <= tools_actions.region.right
-            assert self_check_button.region.y < dumps_button.region.y
             assert dumps_button.region.y < source_diff_button.region.y
             assert source_diff_button.region.y < refresh_ast_button.region.y
             assert refresh_ast_button.region.y < datatype_usage_button.region.y

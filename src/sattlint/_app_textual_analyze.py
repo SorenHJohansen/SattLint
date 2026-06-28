@@ -4,20 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
 
-try:
-    from rich import box as _rich_box  # type: ignore[import-untyped]
-    from rich.panel import Panel as _RichPanel  # type: ignore[import-untyped]
-    from rich.table import Table as _RichTable  # type: ignore[import-untyped]
-    from rich.text import Text as _RichText  # type: ignore[import-untyped]
-except ImportError:  # pragma: no cover - optional dependency path
-    _rich_box = None
-    _RichPanel = None
-    _RichTable = None
-    _RichText = None
-
 from . import _app_analysis_catalog as analysis_catalog
 from . import _app_analysis_catalog_metadata as analysis_catalog_metadata
 from . import _app_analysis_planner as analysis_planner
+from ._app_textual_actions import _label_value_renderable
 from ._app_textual_shared import (
     _ANALYZE_PLANNER_LIST_ID_PREFIX,
     _TEXTUAL_OPTION_LIST_ERRORS,
@@ -28,16 +18,6 @@ from ._app_textual_shared import (
     _query_required,
     _stringify_value,
 )
-
-_DETAIL_HEADING_STYLE = "bold #16323b"
-_DETAIL_LABEL_STYLE = "bold #24505f"
-_DETAIL_VALUE_STYLE = "#001ba3"
-_DETAIL_MUTED_STYLE = "#58787e"
-_DETAIL_SUCCESS_STYLE = "bold #236d36"
-_DETAIL_WARNING_STYLE = "bold #8a5a00"
-_DETAIL_DANGER_STYLE = "bold #8a3b12"
-_DETAIL_PANEL_BORDER = "#8fb6bf"
-_DETAIL_PANEL_ACCENT = "#0077b3"
 
 
 def on_selection_list_selection_toggled(self: Any, event: Any) -> None:
@@ -51,7 +31,7 @@ def on_selection_list_selection_toggled(self: Any, event: Any) -> None:
     highlighted_entry_id = self._selection_list_highlighted_entry_id(selection_list)
     if highlighted_entry_id is not None:
         self._analyze_focused_entry_id = highlighted_entry_id
-    self._refresh_analyze_planner_summary_widgets()
+    self._write_focused_entry_to_output()
     self._refresh_shell_state()
 
 
@@ -67,7 +47,7 @@ def on_selection_list_selection_highlighted(self: Any, event: Any) -> None:
     if highlighted_entry_id is None or highlighted_entry_id == self._analyze_focused_entry_id:
         return
     self._analyze_focused_entry_id = highlighted_entry_id
-    self._refresh_analyze_planner_summary_widgets()
+    self._write_focused_entry_to_output()
     self._refresh_shell_state()
 
 
@@ -104,6 +84,13 @@ def _planner_base_entries_for_section(
     removed_entry_ids = {
         analysis_catalog.ENTRY_ANALYZE_FULL_SUITE,
         analysis_catalog.ENTRY_VARIABLE_HIGH_CONFIDENCE_SUITE,
+        analysis_catalog.ENTRY_DATATYPE_USAGE,
+        analysis_catalog.ENTRY_VARIABLE_USAGE_TRACE,
+        analysis_catalog.ENTRY_MODULE_LOCAL_VARIABLES,
+        "structure.compare-module-variants",
+        "structure.find-module-instances",
+        "structure.inspect-module-tree",
+        "interfaces.format-icf-files",
     }
     planner_hidden_analyzer_keys = {"comment-code", "mms-interface", "shadowing", "variables"}
     return tuple(
@@ -114,8 +101,7 @@ def _planner_base_entries_for_section(
         )
         if entry.entry_id not in removed_entry_ids
         and not (
-            section_id == analysis_catalog.SECTION_CATALOG_ANALYZERS
-            and entry.execution.selected_analyzer_keys is not None
+            entry.execution.selected_analyzer_keys is not None
             and any(key in planner_hidden_analyzer_keys for key in entry.execution.selected_analyzer_keys)
         )
     )
@@ -132,15 +118,38 @@ def _planner_entries_for_section(
     )
 
 
+def _high_section_spec() -> analysis_catalog.AnalysisSectionSpec:
+    return analysis_catalog.AnalysisSectionSpec(
+        section_id=analysis_catalog.SECTION_VARIABLE_HIGH_CONFIDENCE,
+        label="High confidence",
+        description="Focused reports with a low expected false-positive rate.",
+        sort_order=300,
+    )
+
+
+def _other_section_spec() -> analysis_catalog.AnalysisSectionSpec:
+    return analysis_catalog.AnalysisSectionSpec(
+        section_id=analysis_catalog.SECTION_VARIABLE_LOW_CONFIDENCE,
+        label="Other",
+        description="Additional reports that may need manual review before action.",
+        sort_order=400,
+    )
+
+
 def _planner_section_groups(
     self: Any,
 ) -> tuple[tuple[analysis_catalog.AnalysisSectionSpec, tuple[analysis_catalog.AnalysisCatalogEntry, ...]], ...]:
-    groups: list[tuple[analysis_catalog.AnalysisSectionSpec, tuple[analysis_catalog.AnalysisCatalogEntry, ...]]] = []
     filter_active = bool(self._analyze_filter_value())
+    skipped_sections = {
+        analysis_catalog.SECTION_CATALOG_SUITE,
+        analysis_catalog.SECTION_CATALOG_ISSUE_CHECKS,
+        analysis_catalog.SECTION_CATALOG_ANALYZERS,
+    }
+    high_entries: list[analysis_catalog.AnalysisCatalogEntry] = []
+    other_entries: list[analysis_catalog.AnalysisCatalogEntry] = []
+
     for section in analysis_catalog.analysis_section_specs():
-        if section.section_id in {
-            analysis_catalog.SECTION_CATALOG_SUITE,
-        }:
+        if section.section_id in skipped_sections:
             continue
         base_entries = self._planner_base_entries_for_section(section.section_id)
         if not base_entries:
@@ -148,8 +157,19 @@ def _planner_section_groups(
         entries = self._planner_entries_for_section(section.section_id)
         if not entries and not filter_active:
             continue
-        groups.append((section, entries))
-    return tuple(groups)
+        if section.section_id == analysis_catalog.SECTION_VARIABLE_HIGH_CONFIDENCE:
+            high_entries.extend(entries)
+        else:
+            other_entries.extend(entries)
+
+    return tuple(
+        (section_spec, tuple(entries))
+        for section_spec, entries in [
+            (_high_section_spec(), high_entries),
+            (_other_section_spec(), other_entries),
+        ]
+        if entries or filter_active
+    )
 
 
 def _planner_entry_ids(self: Any) -> tuple[str, ...]:
@@ -354,88 +374,45 @@ def _planner_entry_how(self: Any, entry: analysis_catalog.AnalysisCatalogEntry |
     )
 
 
-def _refresh_analyze_planner_summary_widgets(self: Any) -> None:
-    _query_required(self, "#view-note", _TEXTUAL_STATIC).update("")
-    _query_required(self, "#analyze-planner-detail", _TEXTUAL_STATIC).update(self._analyze_browser_detail_renderable())
-
-
-def _analyze_browser_detail_text(self: Any) -> str:
+def _write_focused_entry_to_output(self: Any) -> None:
     self._normalize_analyze_planner_state()
     focused_entry = self._planner_entry(self._analyze_focused_entry_id)
-    plan = self._analyze_plan()
-    selected_entry_count = len(self._ordered_selected_analyze_entry_ids())
-    if self._busy and self._active_job_action_id == "action-analyze":
-        if self._active_job_cancel_requested:
-            status_text = "Status: Stop requested. Interrupting the running analysis now."
-        else:
-            status_text = "Status: Running selected analyses. Live output is shown in Session output below. Use Cancel running or Ctrl+G to stop."
-    elif not self._setup_has_targets():
-        status_text = "Status: Configure a target in Setup to enable the planner runner."
-    elif not selected_entry_count:
-        status_text = "Status: Select one or more analyses to build a queue."
-    elif plan.missing_handlers:
-        status_text = "Status: Queue blocked by unavailable handlers in the current Textual session."
-    else:
-        status_text = "Status: Ready to run."
-    lines = [
-        status_text,
-        f"Selected entries: {selected_entry_count}",
-        "Focused entry: " + (focused_entry.label if focused_entry is not None else "None"),
-        f"Description: {self._planner_entry_description(focused_entry)}",
-        f"Detection: {self._planner_entry_detection(focused_entry)}",
-        f"How: {self._planner_entry_how(focused_entry)}",
+    self._analyze_help_shown = True
+    self._clear_session_output()
+    if focused_entry is None:
+        self._write_output("Select an analysis on the left to see what the report covers.")
+        return
+    description = self._planner_entry_description(focused_entry)
+    segments: list[tuple[str, str]] = [
+        ("Analysis", focused_entry.label),
     ]
-    return "\n".join(lines)
-
-
-def _detail_panel_title(rich_text_cls: Any, title: str) -> Any:
-    panel_title = rich_text_cls(title)
-    panel_title.stylize(_DETAIL_HEADING_STYLE)
-    return panel_title
-
-
-def _detail_row_text(rich_text_cls: Any, value: str, *, style: str = _DETAIL_VALUE_STYLE) -> Any:
-    table_text = rich_text_cls(value)
-    table_text.stylize(style)
-    return table_text
-
-
-def _build_detail_analysis_panel(
-    *,
-    rich_text_cls: Any,
-    rich_panel_cls: Any,
-    rich_table_cls: Any,
-    rich_box: Any,
-    description_line: str,
-    detection_line: str,
-    how_line: str,
-    focused_entry: analysis_catalog.AnalysisCatalogEntry | None,
-) -> Any:
-    analysis_body = rich_table_cls.grid(expand=True, padding=(0, 0))
-    analysis_body.add_column(ratio=1)
-    for label, line, value_style in (
-        ("Description", description_line, _DETAIL_MUTED_STYLE),
-        ("Detection", detection_line, _DETAIL_VALUE_STYLE),
-        ("How", how_line, _DETAIL_MUTED_STYLE),
-    ):
-        body_text = rich_text_cls()
-        body_text.append(f"{label}: ", style=_DETAIL_LABEL_STYLE)
-        body_text.append(line.partition(":")[2].strip(), style=value_style)
-        analysis_body.add_row(body_text)
-        if label != "How":
-            analysis_body.add_row(rich_text_cls(""))
-    focused_entry_label = focused_entry.label if focused_entry is not None else "None"
-    focused_subtitle = rich_text_cls(f"Focused entry: {focused_entry_label}")
-    focused_subtitle.stylize(_DETAIL_VALUE_STYLE)
-    return rich_panel_cls(
-        analysis_body,
-        title=_detail_panel_title(rich_text_cls, "Focused analysis"),
-        subtitle=focused_subtitle,
-        subtitle_align="left",
-        border_style=_DETAIL_PANEL_ACCENT,
-        box=rich_box.ROUNDED,
-        padding=(1, 2),
-    )
+    if description:
+        segments.append(("", ""))
+        segments.append(("Description", description))
+    plain_lines = []
+    for label, value in segments:
+        if label:
+            plain_lines.append(f"{label}: {value}")
+        else:
+            plain_lines.append("")
+    self._session_output_lines.extend(plain_lines)
+    output_widget = self.query_one("#output")
+    rich_output = hasattr(output_widget, "write") and hasattr(output_widget, "scroll_end")
+    if rich_output:
+        for label, value in segments:
+            if not label:
+                if hasattr(output_widget, "append_plain_text"):
+                    output_widget.append_plain_text("\n")
+                output_widget.write("", scroll_end=False)
+                continue
+            if hasattr(output_widget, "append_plain_text"):
+                output_widget.append_plain_text(f"{label}: {value}\n")
+            output_widget.write(
+                _label_value_renderable(label, value),
+                scroll_end=False,
+            )
+    else:
+        self._write_output("\n".join(plain_lines))
 
 
 def _set_analyze_filter_text(self: Any, raw_text: object) -> None:
@@ -463,31 +440,6 @@ def _prompt_analyze_filter(self: Any) -> None:
         default=self._analyze_filter_value(),
     )
     self.present_request(request, on_response_fn=self._set_analyze_filter_text)
-
-
-def _analyze_browser_detail_renderable(self: Any) -> object:
-    detail_text = self._analyze_browser_detail_text()
-    if _RichText is None or _RichPanel is None or _RichTable is None or _rich_box is None:
-        return detail_text
-
-    rich_text_cls = _RichText
-    rich_panel_cls = _RichPanel
-    rich_table_cls = _RichTable
-    rich_box = _rich_box
-
-    _status_line, _selected_line, _focused_line, description_line, detection_line, how_line = detail_text.split("\n", 5)
-    focused_entry = self._planner_entry(self._analyze_focused_entry_id)
-
-    return _build_detail_analysis_panel(
-        rich_text_cls=rich_text_cls,
-        rich_panel_cls=rich_panel_cls,
-        rich_table_cls=rich_table_cls,
-        rich_box=rich_box,
-        description_line=description_line,
-        detection_line=detection_line,
-        how_line=how_line,
-        focused_entry=focused_entry,
-    )
 
 
 def _execute_planned_analysis_step(self: Any, step: analysis_planner.PlannedAnalysisStep) -> None:
@@ -597,11 +549,9 @@ if TYPE_CHECKING:
         def _planner_entry_analyzer_key(self, entry: analysis_catalog.AnalysisCatalogEntry | None) -> str | None: ...
         def _planner_entry_detection(self, entry: analysis_catalog.AnalysisCatalogEntry | None) -> str: ...
         def _planner_entry_how(self, entry: analysis_catalog.AnalysisCatalogEntry | None) -> str: ...
-        def _refresh_analyze_planner_summary_widgets(self) -> None: ...
-        def _analyze_browser_detail_text(self) -> str: ...
+        def _write_focused_entry_to_output(self) -> None: ...
         def _set_analyze_filter_text(self, raw_text: object) -> None: ...
         def _prompt_analyze_filter(self) -> None: ...
-        def _analyze_browser_detail_renderable(self) -> object: ...
         def _execute_planned_analysis_step(self, step: Any) -> None: ...
         def _execute_analyze_plan(self, plan: analysis_planner.AnalysisPlan) -> None: ...
         def _run_selected_analysis_plan(self) -> None: ...
@@ -634,11 +584,9 @@ else:
         _planner_entry_analyzer_key = _planner_entry_analyzer_key
         _planner_entry_detection = _planner_entry_detection
         _planner_entry_how = _planner_entry_how
-        _refresh_analyze_planner_summary_widgets = _refresh_analyze_planner_summary_widgets
-        _analyze_browser_detail_text = _analyze_browser_detail_text
+        _write_focused_entry_to_output = _write_focused_entry_to_output
         _set_analyze_filter_text = _set_analyze_filter_text
         _prompt_analyze_filter = _prompt_analyze_filter
-        _analyze_browser_detail_renderable = _analyze_browser_detail_renderable
         _execute_planned_analysis_step = _execute_planned_analysis_step
         _execute_analyze_plan = _execute_analyze_plan
         _run_selected_analysis_plan = _run_selected_analysis_plan
