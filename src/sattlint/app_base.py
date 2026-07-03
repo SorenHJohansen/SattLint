@@ -25,6 +25,7 @@ DEFAULT_CONFIG = config_module.DEFAULT_CONFIG
 # Configure logging so normal runs stay quiet unless debug mode is enabled.
 logging.basicConfig(format="%(message)s", level=logging.INFO)
 logging.getLogger().setLevel(logging.INFO)
+logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 log = logging.getLogger("SattLint")
 

@@ -442,10 +442,12 @@ if _TEXTUAL_APP is not None:
                             with _TEXTUAL_VERTICAL(id="analyze-browser", classes="is-hidden"):  # noqa: SIM117
                                 with _TEXTUAL_VERTICAL(id="analyze-browser-left"):
                                     pass
-                            with _TEXTUAL_HORIZONTAL(id="setup-browser", classes="is-hidden"):
+                        with _TEXTUAL_HORIZONTAL(id="setup-browser", classes="is-hidden"):
+                            with _TEXTUAL_VERTICAL(id="setup-targets-section"):
+                                yield _TEXTUAL_STATIC("Analysis Targets", id="setup-targets-title")
                                 with _TEXTUAL_VERTICAL(id="setup-targets-col"):
-                                    yield _TEXTUAL_STATIC("Analysis Targets", classes="setup-section-title")
-                                    yield _TEXTUAL_LIST_VIEW(id="setup-target-listview")
+                                    with _TEXTUAL_VERTICAL(id="setup-target-inner"):
+                                        yield _TEXTUAL_LIST_VIEW(id="setup-target-listview")
                                     with _TEXTUAL_HORIZONTAL(id="setup-target-actions"):
                                         yield _TEXTUAL_BUTTON(
                                             "Remove", id="setup-target-remove", classes="raised-button", disabled=True
@@ -453,90 +455,88 @@ if _TEXTUAL_APP is not None:
                                         yield _TEXTUAL_BUTTON(
                                             "Add from file...", id="setup-target-browse", classes="raised-button"
                                         )
+                            with _TEXTUAL_VERTICAL(id="setup-settings-section"):
+                                yield _TEXTUAL_STATIC("Configuration", id="setup-config-title")
                                 with _TEXTUAL_VERTICAL(id="setup-settings-col"):
-                                    yield _TEXTUAL_STATIC("Configuration", classes="setup-section-title")
-                                    yield _TEXTUAL_STATIC("Directories", classes="setup-group-title")
-                                    with _TEXTUAL_HORIZONTAL(classes="setup-row"):
+                                    with _TEXTUAL_VERTICAL(id="setup-group-dirs", classes="setup-group-box"):
+                                        yield _TEXTUAL_STATIC("Directories", classes="setup-group-title")
+                                        with _TEXTUAL_HORIZONTAL(classes="setup-row"):
+                                            yield _TEXTUAL_BUTTON(
+                                                "Program folder",
+                                                id="setup-edit-program-dir",
+                                                classes="raised-button setup-row-button",
+                                            )
+                                            yield _TEXTUAL_STATIC(
+                                                "", id="setup-label-program-dir", classes="setup-row-label"
+                                            )
+                                        with _TEXTUAL_HORIZONTAL(classes="setup-row"):
+                                            yield _TEXTUAL_BUTTON(
+                                                "ABB library",
+                                                id="setup-edit-abb-dir",
+                                                classes="raised-button setup-row-button",
+                                            )
+                                            yield _TEXTUAL_STATIC(
+                                                "", id="setup-label-abb-dir", classes="setup-row-label"
+                                            )
+                                        with _TEXTUAL_HORIZONTAL(classes="setup-row"):
+                                            yield _TEXTUAL_BUTTON(
+                                                "Other libraries",
+                                                id="setup-edit-other-lib-dirs",
+                                                classes="raised-button setup-row-button",
+                                            )
+                                            yield _TEXTUAL_STATIC(
+                                                "", id="setup-label-other-dirs", classes="setup-row-label"
+                                            )
+                                        with _TEXTUAL_HORIZONTAL(classes="setup-row"):
+                                            yield _TEXTUAL_BUTTON(
+                                                "ICF folder",
+                                                id="setup-edit-icf-dir",
+                                                classes="raised-button setup-row-button",
+                                            )
+                                            yield _TEXTUAL_STATIC(
+                                                "", id="setup-label-icf-dir", classes="setup-row-label"
+                                            )
+                                    with _TEXTUAL_VERTICAL(id="setup-group-mode", classes="setup-group-box"):
+                                        yield _TEXTUAL_STATIC("Mode & Config", classes="setup-group-title")
+                                        with _TEXTUAL_HORIZONTAL(classes="setup-row"):
+                                            yield _TEXTUAL_BUTTON(
+                                                "Mode", id="setup-toggle-mode", classes="raised-button setup-row-button"
+                                            )
+                                            yield _TEXTUAL_STATIC("", id="setup-label-mode", classes="setup-row-label")
+                                        with _TEXTUAL_HORIZONTAL(classes="setup-row"):
+                                            yield _TEXTUAL_BUTTON(
+                                                "Scan root only",
+                                                id="setup-toggle-scan-root-only",
+                                                classes="raised-button setup-row-button",
+                                            )
+                                            yield _TEXTUAL_STATIC(
+                                                "", id="setup-label-scan-root-only", classes="setup-row-label"
+                                            )
+                                        with _TEXTUAL_HORIZONTAL(classes="setup-row"):
+                                            yield _TEXTUAL_BUTTON(
+                                                "Fast cache",
+                                                id="setup-toggle-fast-cache-validation",
+                                                classes="raised-button setup-row-button",
+                                            )
+                                            yield _TEXTUAL_STATIC(
+                                                "", id="setup-label-fast-cache", classes="setup-row-label"
+                                            )
+                                    with _TEXTUAL_VERTICAL(id="setup-group-runtime", classes="setup-group-box"):
+                                        yield _TEXTUAL_STATIC("Runtime", classes="setup-group-title")
+                                        with _TEXTUAL_HORIZONTAL(classes="setup-row"):
+                                            yield _TEXTUAL_BUTTON(
+                                                "Debug logging",
+                                                id="setup-toggle-debug",
+                                                classes="raised-button setup-row-button",
+                                            )
+                                            yield _TEXTUAL_STATIC("", id="setup-label-debug", classes="setup-row-label")
+                                    with _TEXTUAL_VERTICAL(id="setup-group-diagnostics", classes="setup-group-box"):
+                                        yield _TEXTUAL_STATIC("Diagnostics", classes="setup-group-title")
                                         yield _TEXTUAL_BUTTON(
-                                            "Program folder",
-                                            id="setup-edit-program-dir",
+                                            "Self-check diagnostics",
+                                            id="setup-self-check",
                                             classes="raised-button setup-row-button",
                                         )
-                                        yield _TEXTUAL_STATIC(
-                                            "", id="setup-label-program-dir", classes="setup-row-label"
-                                        )
-                                    with _TEXTUAL_HORIZONTAL(classes="setup-row"):
-                                        yield _TEXTUAL_BUTTON(
-                                            "ABB library",
-                                            id="setup-edit-abb-dir",
-                                            classes="raised-button setup-row-button",
-                                        )
-                                        yield _TEXTUAL_STATIC("", id="setup-label-abb-dir", classes="setup-row-label")
-                                    with _TEXTUAL_HORIZONTAL(classes="setup-row"):
-                                        yield _TEXTUAL_BUTTON(
-                                            "Other libraries",
-                                            id="setup-edit-other-lib-dirs",
-                                            classes="raised-button setup-row-button",
-                                        )
-                                        yield _TEXTUAL_STATIC(
-                                            "", id="setup-label-other-dirs", classes="setup-row-label"
-                                        )
-                                    with _TEXTUAL_HORIZONTAL(classes="setup-row"):
-                                        yield _TEXTUAL_BUTTON(
-                                            "ICF folder",
-                                            id="setup-edit-icf-dir",
-                                            classes="raised-button setup-row-button",
-                                        )
-                                        yield _TEXTUAL_STATIC("", id="setup-label-icf-dir", classes="setup-row-label")
-                                    yield _TEXTUAL_STATIC("Mode & Config", classes="setup-group-title")
-                                    with _TEXTUAL_HORIZONTAL(classes="setup-row"):
-                                        yield _TEXTUAL_BUTTON(
-                                            "Mode", id="setup-toggle-mode", classes="raised-button setup-row-button"
-                                        )
-                                        yield _TEXTUAL_STATIC("", id="setup-label-mode", classes="setup-row-label")
-                                    with _TEXTUAL_HORIZONTAL(classes="setup-row"):
-                                        yield _TEXTUAL_BUTTON(
-                                            "Scan root only",
-                                            id="setup-toggle-scan-root-only",
-                                            classes="raised-button setup-row-button",
-                                        )
-                                        yield _TEXTUAL_STATIC(
-                                            "", id="setup-label-scan-root-only", classes="setup-row-label"
-                                        )
-                                    with _TEXTUAL_HORIZONTAL(classes="setup-row"):
-                                        yield _TEXTUAL_BUTTON(
-                                            "Fast cache",
-                                            id="setup-toggle-fast-cache-validation",
-                                            classes="raised-button setup-row-button",
-                                        )
-                                        yield _TEXTUAL_STATIC(
-                                            "", id="setup-label-fast-cache", classes="setup-row-label"
-                                        )
-                                    yield _TEXTUAL_STATIC("Runtime", classes="setup-group-title")
-                                    with _TEXTUAL_HORIZONTAL(classes="setup-row"):
-                                        yield _TEXTUAL_BUTTON(
-                                            "Debug logging",
-                                            id="setup-toggle-debug",
-                                            classes="raised-button setup-row-button",
-                                        )
-                                        yield _TEXTUAL_STATIC("", id="setup-label-debug", classes="setup-row-label")
-                                    with _TEXTUAL_HORIZONTAL(classes="setup-row"):
-                                        yield _TEXTUAL_BUTTON(
-                                            "Telemetry",
-                                            id="setup-toggle-telemetry",
-                                            classes="raised-button setup-row-button",
-                                        )
-                                        yield _TEXTUAL_STATIC("", id="setup-label-telemetry", classes="setup-row-label")
-                                    yield _TEXTUAL_STATIC("Save", classes="setup-group-title")
-                                    yield _TEXTUAL_BUTTON(
-                                        "Save config", id="setup-save", classes="raised-button setup-row-button"
-                                    )
-                                    yield _TEXTUAL_STATIC("Diagnostics", classes="setup-group-title")
-                                    yield _TEXTUAL_BUTTON(
-                                        "Self-check diagnostics",
-                                        id="setup-self-check",
-                                        classes="raised-button setup-row-button",
-                                    )
                     with _TEXTUAL_VERTICAL(id="output-pane"):
                         yield _TEXTUAL_STATIC("Session output", id="output-title")
                         if _SessionOutputWidget is None:
