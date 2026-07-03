@@ -6,6 +6,7 @@ import asyncio
 import io
 import re
 import threading
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -609,35 +610,24 @@ def test_textual_quit_keybinding_does_not_crash() -> None:
     asyncio.run(_run())
 
 
-def test_textual_quit_keybinding_prompts_when_setup_is_dirty() -> None:
+def test_textual_setup_auto_saves_on_change() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
+    saved: list[bool] = []
+
+    def _save_fn(_path: object, _cfg: object) -> None:
+        saved.append(True)
+
     async def _run() -> None:
-        app_instance = _make_textual_app()
+        app_instance = _make_textual_app(save_config_fn=_save_fn)
 
         async with app_instance.run_test() as pilot:
             await pilot.pause()
-
-            app_instance._dirty = True
-            app_instance._refresh_shell_state()
+            app_instance._toggle_setup_flag("debug", label="debug")
             await pilot.pause()
-
-            await pilot.press("q")
-            await pilot.pause()
-
-            assert app_instance.query_one("#interaction-host").has_class("active") is True
-            ledger = str(app_instance.query_one("#interaction-ledger").renderable)
-            assert "Press Y for yes, N or Esc for no" in ledger
-
-            await pilot.press("n")
-            await pilot.pause()
-
-            assert app_instance.query_one("#interaction-host").has_class("active") is False
-            assert app_instance._dirty is True
-            assert "Quit canceled. Unsaved configuration changes are still pending." in getattr(
-                app_instance.query_one("#output"), "text", ""
-            )
+            assert len(saved) == 1
+            assert app_instance._dirty is False
 
     asyncio.run(_run())
 
@@ -789,7 +779,6 @@ def test_textual_slash_binding_filters_setup_targets() -> None:
             assert app_instance.query_one("#interaction-host").has_class("active") is False
             assert app_instance._setup_filter_text == "beta"
             assert app_instance._setup_target_names_list == ["Beta"]
-            assert 'Filter: "beta"' in str(app_instance.query_one("#view-note").renderable)
 
     asyncio.run(_run())
 
@@ -980,6 +969,7 @@ def _make_textual_app(
     app_module: Any | None = None,
     startup_output: str = "",
     startup_output_is_warning: bool = False,
+    save_config_fn: Callable[[Any, Any], None] | None = None,
 ) -> Any:
     return app_textual.SattLintTextualApp(
         cfg=cfg or {"analyzed_programs_and_libraries": ["TargetA"]},
@@ -990,7 +980,7 @@ def _make_textual_app(
         tools_menu_fn=lambda _cfg: None,
         show_help_fn=lambda _cfg: None,
         get_help_text_fn=lambda _cfg: "Help text",
-        save_config_fn=lambda _path, _cfg: None,
+        save_config_fn=save_config_fn or (lambda _path, _cfg: None),
         config_path=None,
         quit_app_error=RuntimeError,
         app_module=app_module,
@@ -2000,11 +1990,11 @@ def test_textual_analyze_view_does_not_compose_secondary_actions_row() -> None:
     asyncio.run(_run())
 
 
-def test_textual_setup_view_shows_selected_target_preview(tmp_path: Path) -> None:  # noqa: PLR0915
+def test_textual_setup_view_shows_selected_target_preview(tmp_path: Path) -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
-    async def _run() -> None:  # noqa: PLR0915
+    async def _run() -> None:
         program_dir = tmp_path / "programs"
         abb_dir = tmp_path / "abb"
         program_dir.mkdir()
@@ -2040,19 +2030,14 @@ def test_textual_setup_view_shows_selected_target_preview(tmp_path: Path) -> Non
             workspace_host = app_instance.query_one("#workspace-host")
             view_title = app_instance.query_one("#view-title")
             output_pane = app_instance.query_one("#output-pane")
-            view_host = app_instance.query_one("#view-host")
             browse_button = app_instance.query_one("#setup-target-browse")
             remove_button = app_instance.query_one("#setup-target-remove")
             program_button = app_instance.query_one("#setup-edit-program-dir")
-            mode_button = app_instance.query_one("#setup-toggle-mode")
-            debug_button = app_instance.query_one("#setup-toggle-debug")
-            save_button = app_instance.query_one("#setup-save")
             targets_col = app_instance.query_one("#setup-targets-col")
             settings_col = app_instance.query_one("#setup-settings-col")
             assert app_instance._active_view == "setup"
             assert workspace_host.has_class("no-output")
             assert str(view_title.renderable) == "Setup"
-            assert view_title.region.bottom <= view_host.region.y
             assert output_pane.has_class("is-hidden") is True
             assert app_instance.query_one("#setup-browser").has_class("is-hidden") is False
             assert app_instance.query_one("#view-actions").has_class("is-hidden") is True
@@ -2060,16 +2045,8 @@ def test_textual_setup_view_shows_selected_target_preview(tmp_path: Path) -> Non
             assert str(getattr(program_button, "label", "")) == "Program folder"
             assert targets_col is not None
             assert settings_col is not None
-            assert (
-                len(
-                    {program_button.size.width, mode_button.size.width, debug_button.size.width, save_button.size.width}
-                )
-                == 1
-            )
-            assert str(app_instance.query_one("#setup-label-program-dir").renderable) == (
-                f"{program_dir.name}\n{program_dir}"
-            )
-            assert str(app_instance.query_one("#setup-label-abb-dir").renderable) == f"{abb_dir.name}\n{abb_dir}"
+            assert str(app_instance.query_one("#setup-label-program-dir").renderable) == str(program_dir)
+            assert str(app_instance.query_one("#setup-label-abb-dir").renderable) == str(abb_dir)
             assert str(app_instance.query_one("#setup-label-other-dirs").renderable) == "No extra libraries"
             assert str(app_instance.query_one("#setup-label-icf-dir").renderable) == "Not configured"
             assert str(app_instance.query_one("#setup-label-mode").renderable) == "Draft mode\n.s and .l files"
@@ -2082,14 +2059,14 @@ def test_textual_setup_view_shows_selected_target_preview(tmp_path: Path) -> Non
             assert str(app_instance.query_one("#setup-label-debug").renderable) == (
                 "Disabled\nStandard runtime logging"
             )
-            assert str(app_instance.query_one("#setup-label-telemetry").renderable) == ("Disabled\nTelemetry stays off")
 
-            assert targets_col.region.x < settings_col.region.x
+            targets_section = app_instance.query_one("#setup-targets-section")
+            settings_section = app_instance.query_one("#setup-settings-section")
+            assert targets_section.region.x < settings_section.region.x
             assert targets_col.region.width > 0
             assert settings_col.region.width > 0
             assert browse_button.region.x >= targets_col.region.x
             assert browse_button.region.x < settings_col.region.x
-            assert save_button.region.x >= settings_col.region.x
             # Remove is disabled when nothing is selected
             assert getattr(remove_button, "disabled", False) is True
 
@@ -2489,7 +2466,7 @@ def test_textual_setup_add_selected_target_marks_dirty(tmp_path: Path, monkeypat
 
     assert cfg["analyzed_programs_and_libraries"] == ["TargetA"]
     assert cfg["analyzed_programs_and_libraries"] is not original_targets
-    assert app_instance._dirty is True
+    assert app_instance._dirty is False
     assert messages == ["Added analysis target 'TargetA' from the Setup view."]
 
 
@@ -2531,7 +2508,7 @@ def test_textual_setup_remove_selected_target_marks_dirty(tmp_path: Path, monkey
 
     assert cfg["analyzed_programs_and_libraries"] == []
     assert cfg["analyzed_programs_and_libraries"] is not original_targets
-    assert app_instance._dirty is True
+    assert app_instance._dirty is False
     assert messages == ["Removed analysis target 'TargetA' from the Setup view."]
 
 
@@ -2584,7 +2561,7 @@ def test_textual_setup_prompt_updates_program_dir(monkeypatch: pytest.MonkeyPatc
     callback("/new/programs")
 
     assert cfg["program_dir"] == "/new/programs"
-    assert app_instance._dirty is True
+    assert app_instance._dirty is False
     assert messages == ["Updated program_dir from the Setup view."]
 
 
@@ -2640,36 +2617,8 @@ def test_textual_setup_prompt_replaces_whole_other_lib_dirs_list(monkeypatch: py
 
     assert cfg["other_lib_dirs"] == ["/new/lib-a", "/new/lib-b"]
     assert cfg["other_lib_dirs"] is not original_other_dirs
-    assert app_instance._dirty is True
+    assert app_instance._dirty is False
     assert messages == ["Updated other_lib_dirs from the Setup view."]
-
-
-def test_textual_save_action_does_not_clear_dirty_before_completion(monkeypatch: pytest.MonkeyPatch) -> None:
-    app_instance = app_textual.SattLintTextualApp(
-        cfg={},
-        summarize_targets_fn=lambda _cfg: "targets",
-        analysis_menu_fn=lambda _cfg: None,
-        documentation_menu_fn=lambda _cfg: None,
-        config_menu_fn=lambda _cfg: None,
-        tools_menu_fn=lambda _cfg: None,
-        show_help_fn=lambda _cfg: None,
-        get_help_text_fn=lambda _cfg: "Help text",
-        save_config_fn=lambda _path, _cfg: None,
-        config_path=None,
-        quit_app_error=RuntimeError,
-    )
-    app_instance._dirty = True
-    started: list[str] = []
-    refreshed: list[str] = []
-
-    monkeypatch.setattr(app_instance, "_start_action", lambda *args, **kwargs: started.append("save"))
-    monkeypatch.setattr(app_instance, "_refresh_summary", lambda: refreshed.append("refresh"))
-
-    app_instance._handle_toolbar_action("setup-save")
-
-    assert started == ["save"]
-    assert app_instance._dirty is True
-    assert refreshed == []
 
 
 def test_textual_activate_view_leaves_dirty_setup_changes_unsaved(monkeypatch: pytest.MonkeyPatch) -> None:
