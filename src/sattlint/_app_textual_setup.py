@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import time
 from contextlib import suppress
 from pathlib import Path
@@ -44,17 +43,14 @@ def _setup_path_text(value: str, *, empty_label: str = "Not configured") -> str:
     stripped = value.strip()
     if not stripped:
         return empty_label
-    normalized = stripped.rstrip("\\/")
-    folder_name = re.split(r"[\\/]", normalized)[-1] if normalized else stripped
-    return _setup_value_text(folder_name or stripped, stripped)
+    return stripped.rstrip("\\/")
 
 
 def _setup_other_dirs_text(values: object) -> str:
     entries = _stringify_list_values(values)
     if not entries:
         return "No extra libraries"
-    folder_word = "folder" if len(entries) == 1 else "folders"
-    return _setup_value_text(f"{len(entries)} {folder_word} configured", ", ".join(entries))
+    return "\n".join(f"{i}. {e}" for i, e in enumerate(entries, 1))
 
 
 def _setup_mode_text(mode: str) -> str:
@@ -305,7 +301,8 @@ def _set_setup_candidate_by_name(self: Any, target_name: str) -> None:
 
 
 def _mark_setup_changed(self: Any, message: str, *, reset_candidate_selection: bool = False) -> None:
-    self._dirty = True
+    self._save_config_fn(self._config_path, self._cfg)
+    self._dirty = False
     if reset_candidate_selection:
         self._setup_candidate_index = 0
     self._refresh_summary()
@@ -355,6 +352,14 @@ def _refresh_setup_target_list(self: Any) -> None:
     ):
         self._selected_configured_target = None
 
+    if self._setup_target_names_list == configured_targets:
+        if self._selected_configured_target is not None:
+            for i, name in enumerate(configured_targets):
+                if name.casefold() == self._selected_configured_target.casefold():
+                    lv.index = i
+                    break
+        return
+
     self._setup_target_names_list = configured_targets
     lv.clear()
     for target in configured_targets:
@@ -380,10 +385,6 @@ def _refresh_setup_settings_labels(self: Any) -> None:
     scan_root_only = bool(self._cfg.get("scan_root_only", False))
     fast_cache_validation = bool(self._cfg.get("use_file_ast_cache", False))
     debug = bool(self._cfg.get("debug", False))
-    telemetry = self._cfg.get("telemetry")
-    telemetry_enabled = (
-        bool(cast(object | None, telemetry.get("enabled", False))) if isinstance(telemetry, dict) else False
-    )
 
     def _safe_update(widget_id: str, text: object) -> None:
         with suppress(*_TEXTUAL_QUERY_ERRORS):
@@ -416,14 +417,6 @@ def _refresh_setup_settings_labels(self: Any) -> None:
             debug,
             enabled_detail="Verbose runtime logging",
             disabled_detail="Standard runtime logging",
-        ),
-    )
-    _safe_update(
-        "setup-label-telemetry",
-        _setup_toggle_text(
-            telemetry_enabled,
-            enabled_detail="Anonymous telemetry is allowed",
-            disabled_detail="Telemetry stays off",
         ),
     )
 
@@ -466,14 +459,9 @@ def _setup_browser_detail_text(self: Any) -> str:
         lines.extend(f"- {path}" for path in directories)
     else:
         lines.append("(none configured)")
-    telemetry = self._cfg.get("telemetry")
-    telemetry_enabled = (
-        bool(cast(object | None, telemetry.get("enabled", False))) if isinstance(telemetry, dict) else False
-    )
     lines.append("")
     lines.append("Runtime")
     lines.append(f"debug: {bool(self._cfg.get('debug', False))}")
-    lines.append(f"telemetry: {telemetry_enabled}")
     return "\n".join(lines)
 
 
@@ -641,15 +629,6 @@ def _toggle_setup_mode(self: Any) -> None:
     current_mode = _stringify_value(cast(object | None, self._cfg.get("mode", "official"))).strip().casefold()
     self._cfg["mode"] = "draft" if current_mode == "official" else "official"
     self._mark_setup_changed("Updated mode from the Setup view.", reset_candidate_selection=True)
-
-
-def _toggle_setup_telemetry(self: Any) -> None:
-    telemetry = self._cfg.get("telemetry")
-    if not isinstance(telemetry, dict):
-        telemetry = {"enabled": False}
-        self._cfg["telemetry"] = telemetry
-    telemetry["enabled"] = not bool(cast(object | None, telemetry.get("enabled", False)))
-    self._mark_setup_changed("Updated telemetry from the Setup view.")
 
 
 def _setup_has_targets(self: Any) -> bool:
@@ -834,13 +813,7 @@ def _prompt_setup_value(self: Any, field_key: str, *, label: str, is_list: bool 
             if self._cfg.get(field_key) == new_value:
                 return
             self._cfg[field_key] = new_value
-        self._dirty = True
-        self._setup_candidate_index = 0
-        self._refresh_summary()
-        self._refresh_view()
-        self._set_active_action(None)
-        self._refresh_shell_state()
-        self._write_output(f"Updated {label} from the Setup view.")
+        self._mark_setup_changed(f"Updated {label} from the Setup view.", reset_candidate_selection=True)
 
     self.present_request(request, on_response_fn=_apply_response)
 
@@ -876,13 +849,7 @@ async def _prompt_setup_value_async(self: Any, field_key: str, *, label: str, is
         if self._cfg.get(field_key) == new_value:
             return
         self._cfg[field_key] = new_value
-    self._dirty = True
-    self._setup_candidate_index = 0
-    self._refresh_summary()
-    self._refresh_view()
-    self._set_active_action(None)
-    self._refresh_shell_state()
-    self._write_output(f"Updated {label} from the Setup view.")
+    self._mark_setup_changed(f"Updated {label} from the Setup view.", reset_candidate_selection=True)
 
 
 def _queue_setup_value_prompt(self: Any, field_key: str, *, label: str, is_list: bool = False) -> None:
@@ -973,7 +940,6 @@ if TYPE_CHECKING:
         def _show_help_modal(self) -> None: ...
         def _toggle_setup_flag(self, field_key: str, *, label: str) -> None: ...
         def _toggle_setup_mode(self) -> None: ...
-        def _toggle_setup_telemetry(self) -> None: ...
         def _setup_has_targets(self) -> bool: ...
         def _targets_action_allowed(self, _action_text: str) -> bool: ...
         def _run_app_module_cfg_action(
@@ -1047,7 +1013,6 @@ else:
         _show_help_modal = _show_help_modal
         _toggle_setup_flag = _toggle_setup_flag
         _toggle_setup_mode = _toggle_setup_mode
-        _toggle_setup_telemetry = _toggle_setup_telemetry
         _setup_has_targets = _setup_has_targets
         _targets_action_allowed = _targets_action_allowed
         _run_app_module_cfg_action = _run_app_module_cfg_action

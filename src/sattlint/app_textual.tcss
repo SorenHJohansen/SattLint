@@ -130,11 +130,11 @@
 
         #workspace-host.no-output #view-host {
             width: 100%;
+            border: none;
         }
 
-        #view-host.config-mode {
-            background: #7e5858;
-            color: #fbfbee;
+        #workspace-host.no-output #setup-browser {
+            margin-top: 0;
         }
 
         #output-pane {
@@ -166,10 +166,6 @@
         #view-note {
             margin-top: 1;
             color: #58787e;
-        }
-
-        #view-host.config-mode #view-note {
-            color: #ebebeb;
         }
 
         #view-actions {
@@ -217,23 +213,54 @@
             content-align: left middle;
         }
 
+        #setup-targets-section {
+            width: 36;
+            height: 1fr;
+        }
+
+        #setup-settings-section {
+            width: 1fr;
+            height: 1fr;
+            margin-left: 1;
+        }
+
+        #setup-targets-title,
+        #setup-config-title {
+            text-style: bold;
+        }
+
         #setup-targets-col {
-            width: 32;
+            width: 1fr;
             height: 1fr;
             padding: 1 2;
-            background: #b9d9df;
             color: #001ba3;
+            background: #b9d9df;
             border: tall #0077b3;
+        }
+
+        #setup-target-inner {
+            height: 1fr;
+            background: #b9d9df;
+            border: none;
+            overflow: hidden;
+        }
+
+        .setup-group-box {
+            height: auto;
+            background: #f4efde;
+            border: tall #0077b3;
+            padding: 1 2;
+            margin-bottom: 1;
+            overflow: hidden;
+        }
+
+        .setup-group-box .setup-group-title {
+            margin-top: 0;
         }
 
         #setup-settings-col {
             width: 1fr;
             height: 1fr;
-            margin-left: 1;
-            padding: 1 2;
-            background: #b9d9df;
-            color: #001ba3;
-            border: tall #0077b3;
             overflow-y: auto;
             scrollbar-background: #b9d9df;
             scrollbar-background-hover: #c2c2c2;
@@ -244,18 +271,12 @@
             scrollbar-corner-color: #b9d9df;
         }
 
-        #view-host.config-mode #setup-targets-col,
-        #view-host.config-mode #setup-settings-col {
-            background: #b26d6d;
-            color: #fbfbee;
-        }
-
         #setup-target-listview {
             height: 1fr;
-            background: #f4efde;
+            background: transparent;
             color: #001ba3;
-            border: tall #0077b3;
-            margin: 1 0;
+            border: none;
+            margin: 0;
             scrollbar-background: #b9d9df;
             scrollbar-background-hover: #c2c2c2;
             scrollbar-background-active: #ebebeb;
@@ -266,7 +287,7 @@
         }
 
         #setup-target-listview > ListItem {
-            background: #f4efde;
+            background: transparent;
             color: #001ba3;
         }
 
@@ -278,6 +299,7 @@
         #setup-target-actions {
             height: auto;
             margin-top: 1;
+            background: #b9d9df;
         }
 
         #setup-target-actions Button.raised-button {
@@ -310,9 +332,9 @@
             content-align: left middle;
             padding: 1 2;
             margin-left: 1;
-            background: #f4efde;
-            border: round #8fb6bf;
-            color: #58787e;
+            background: #b9d9df;
+            border: round #0077b3;
+            color: #001ba3;
         }
 
         .setup-row-button {
@@ -320,16 +342,6 @@
             min-width: 15;
             max-width: 15;
             content-align: center middle;
-        }
-
-        #view-host.config-mode .setup-row-label {
-            background: #f4efde;
-            border: round #d09f9f;
-            color: #58787e;
-        }
-
-        #view-host.config-mode .setup-group-title {
-            color: #ebebeb;
         }
 
         .browser-section-title {
@@ -446,13 +458,6 @@
             border: none;
         }
 
-        Button.raised-button.config-active {
-            background: #888888;
-            color: #000000;
-            outline: none;
-            border: none;
-        }
-
         #actions Button.raised-button,
         #view-actions Button.raised-button,
         #analyze-actions-primary Button.raised-button,
@@ -548,12 +553,6 @@
             scrollbar-color-hover: #0077b3;
             scrollbar-color-active: #0077b3;
             scrollbar-corner-color: #b9d9df;
-        }
-
-        #output.config-mode {
-            background: #7e5858;
-            color: #fbfbee;
-            border: tall #0077b3;
         }
 
         #output-title {

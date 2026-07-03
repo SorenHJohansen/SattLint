@@ -254,31 +254,23 @@ def _refresh_summary(self: Any) -> None:
     summary = self._summary_text()
     active_job_text = self._active_job_text()
     running_suffix = f"\n\nRunning: {active_job_text}" if active_job_text is not None else ""
-    dirty_suffix = "\n\nUnsaved configuration changes pending." if self._dirty else ""
     try:
         summary_widget = self.query_one("#summary", _TEXTUAL_STATIC)
     except _TEXTUAL_QUERY_ERRORS:
         return
-    summary_widget.update(f"{summary}{running_suffix}{dirty_suffix}")
-    summary_widget.set_class(self._dirty, "attention")
+    summary_widget.update(f"{summary}{running_suffix}")
 
 
 def _set_active_action(self: Any, action_id: str | None) -> None:
     self._active_job_action_id = action_id
     if not tuple(getattr(self, "children", ())):
         return
-    output_widget = _query_required(self, "#output")
 
     active_view = self._view_state(self._active_view)
     highlighted_action_id = self._active_job_action_id or active_view.action_id
-    config_mode = active_view.action_id == "action-setup"
-    with suppress(*_TEXTUAL_QUERY_ERRORS):
-        self.query_one("#summary", _TEXTUAL_STATIC).set_class(config_mode, "config-mode")
-    output_widget.set_class(config_mode, "config-mode")
     for button_id in self._ACTION_IDS:
         button = _query_required(self, f"#{button_id}", _TEXTUAL_BUTTON)
         button.set_class(button_id == highlighted_action_id, "action-active")
-        button.set_class(config_mode and button_id == active_view.action_id, "config-active")
 
 
 def _clear_output_widget(self: Any, output_widget: Any) -> None:
@@ -403,13 +395,6 @@ def _handle_toolbar_action(self: Any, button_id: str) -> None:
     view_name = self._VIEW_ACTIONS.get(button_id)
     if view_name is not None:
         self._activate_view(view_name)
-    elif button_id == "setup-save":
-        self._start_action(
-            "Save configuration",
-            lambda: self._save_config_fn(self._config_path, self._cfg),
-            action_id="action-setup",
-            clear_dirty_on_success=True,
-        )
     elif button_id == "action-help":
         self._open_help_popup()
     elif button_id == "action-quit":
@@ -658,24 +643,24 @@ def _refresh_view(self: Any) -> None:
     tools_view = self._active_view == "tools"
     docs_tools_split_view = documentation_view or tools_view
 
+    title_widget.set_class(setup_view, "is-hidden")
+    description_widget.set_class(setup_view, "is-hidden")
+    note_widget.set_class(setup_view, "is-hidden")
     title_widget.update(view.title)
     description_widget.update(view.description)
-    if analyze_view:
+    if analyze_view or setup_view:
         note_widget.update("")
     elif documentation_view:
         note_widget.update(self._documentation_note_text())
-    elif setup_view:
-        note_widget.update(self._setup_note_text())
     else:
         note_widget.update(view.note)
     launch_button.label = view.launch_label
     workspace_host.set_class(analyze_view, "analyze-split")
     workspace_host.set_class(docs_tools_split_view, "docs-tools-split")
     workspace_host.set_class(setup_view, "no-output")
-    view_host.set_class(view.action_id == "action-setup", "config-mode")
+    setup_browser.set_class(self._dirty, "config-mode")
+    view_host.set_class(setup_view, "is-hidden")
     output_pane.set_class(setup_view, "is-hidden")
-    description_widget.set_class(False, "is-hidden")
-    note_widget.set_class(False, "is-hidden")
     view_actions.set_class(self._active_view not in ("help",), "is-hidden")
     analyze_actions_primary.set_class(not analyze_view, "is-hidden")
     analyze_browser.set_class(not analyze_view, "is-hidden")
@@ -788,13 +773,9 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
         "setup-toggle-scan-root-only",
         "setup-toggle-fast-cache-validation",
         "setup-toggle-debug",
-        "setup-toggle-telemetry",
         "setup-target-browse",
     ):
         _query_required(self, f"#{btn_id}", _TEXTUAL_BUTTON).disabled = toolbar_disabled or not setup_view
-    _query_required(self, "#setup-save", _TEXTUAL_BUTTON).disabled = (
-        toolbar_disabled or not setup_view or not self._dirty
-    )
     _query_required(self, "#setup-target-remove", _TEXTUAL_BUTTON).disabled = (
         toolbar_disabled
         or not setup_view
@@ -839,7 +820,6 @@ def on_button_pressed(self: Any, event: Any) -> None:
         "setup-toggle-scan-root-only": lambda: self._toggle_setup_flag("scan_root_only", label="scan_root_only"),
         "setup-edit-icf-dir": lambda: self._queue_setup_value_prompt("icf_dir", label="icf_dir"),
         "setup-toggle-debug": lambda: self._toggle_setup_flag("debug", label="debug"),
-        "setup-toggle-telemetry": self._toggle_setup_telemetry,
         "setup-self-check": self._run_tool_self_check,
         "tools-dumps": self._run_tool_dumps,
         "tools-source-diff": self._run_tool_source_diff,
