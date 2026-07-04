@@ -1075,7 +1075,6 @@ def test_lsp_helper_request_settings_and_merge_helpers_cover_optional_branches(t
     )
     assert settings.entry_file == "Program/Main.s"
     assert settings.mode == "release"
-    assert settings.scan_root_only is True
     assert settings.enable_variable_diagnostics is False
     assert settings.workspace_diagnostics_mode == "off"
     assert settings.max_cached_entry_snapshots == 1

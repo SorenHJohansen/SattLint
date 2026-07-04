@@ -534,7 +534,6 @@ def test_show_config_uses_sectioned_layout(capsys, monkeypatch, tmp_path):
         {
             "analyzed_programs_and_libraries": ["KaHAApplSupportLib"],
             "mode": "draft",
-            "scan_root_only": False,
             "debug": True,
             "program_dir": r"Projects\Program",
             "ABB_lib_dir": r"Projects\ABB",
@@ -580,7 +579,6 @@ def test_show_config_uses_sectioned_layout(capsys, monkeypatch, tmp_path):
     assert "Analyzed Programs" in out and "Libraries" in out
     assert "KaHAApplSupportLib" in out
     assert "General" in out
-    assert "scan_root_only" in out
     assert "Telemetry" in out
     assert "enabled" in out
     assert "path" in out

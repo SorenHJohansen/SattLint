@@ -264,7 +264,6 @@ ENDDEF (*Broken_);
                 other_lib_dirs=[],
                 abb_lib_dir=tmp_path,
                 mode=engine_module.CodeMode.DRAFT,
-                scan_root_only=False,
                 debug=False,
             )
         )
@@ -306,7 +305,6 @@ ENDDEF (*Dep*);
                 other_lib_dirs=[],
                 abb_lib_dir=tmp_path,
                 mode=engine_module.CodeMode.DRAFT,
-                scan_root_only=False,
                 debug=False,
             )
         )
@@ -335,7 +333,6 @@ ENDDEF (*Root*);
                 other_lib_dirs=[],
                 abb_lib_dir=tmp_path,
                 mode=engine_module.CodeMode.DRAFT,
-                scan_root_only=False,
                 debug=False,
             )
         )
@@ -459,7 +456,6 @@ ENDDEF (*Root*);
                 other_lib_dirs=[],
                 abb_lib_dir=tmp_path,
                 mode=engine_module.CodeMode.DRAFT,
-                scan_root_only=False,
                 debug=False,
             )
         )

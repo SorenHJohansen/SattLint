@@ -18,16 +18,16 @@ from ._app_textual_shared import (
     _TEXTUAL_FOOTER,
     _TEXTUAL_HORIZONTAL,
     _TEXTUAL_LIST_VIEW,
-    _TEXTUAL_RICH_LOG,
     _TEXTUAL_STATIC,
-    _TEXTUAL_TEXT_AREA,
     _TEXTUAL_VERTICAL,
     DEFAULT_SHELL_TITLE,
+    MENU_DEFINITIONS,
     TEXTUAL_SHELL_CSS,
     TextualInteractionBridge,
     _SessionOutputLog,
     _ShellViewState,
 )
+from ._app_textual_widgets import _MenubarWidget
 from .config_types import ConfigDict
 
 
@@ -83,7 +83,7 @@ _DEFAULT_VIEW_REGISTRY: dict[str, _ShellViewState] = {
 
 
 if _TEXTUAL_APP is not None:
-    _SessionOutputWidget: Any = _SessionOutputLog if _TEXTUAL_RICH_LOG is not None else None
+    _SessionOutputWidget: Any = _SessionOutputLog
 
     class _AstRefreshTextualAppImpl(_TEXTUAL_APP):
         """Shows startup AST-cache progress before the main Textual shell opens."""
@@ -239,29 +239,21 @@ if _TEXTUAL_APP is not None:
         TITLE = DEFAULT_SHELL_TITLE
 
         BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
-            ("1", "show_analyze", "Analyze"),
-            ("2", "show_documentation", "Docs"),
-            ("3", "show_tools", "Tools"),
-            ("4", "show_setup", "Setup"),
+            ("ctrl+1", "show_analyze", "Analyze"),
+            ("ctrl+2", "show_documentation", "Docs"),
+            ("ctrl+3", "show_tools", "Tools"),
+            ("ctrl+4", "show_setup", "Setup"),
             ("slash", "prompt_view_filter", "Filter"),
             ("question_mark", "show_help", "Help"),
             ("ctrl+h", "show_help", "Help"),
             ("ctrl+c", "copy_output", "Copy Output"),
             ("ctrl+g", "cancel_running_analysis", "Cancel Analysis"),
             ("ctrl+l", "clear_output", "Clear Output"),
-            ("q", "quit_shell", "Quit"),
+            ("ctrl+q", "quit_shell", "Quit"),
+            ("ctrl+s", "save_config", "Save Config"),
             ("tab", "focus_next_control", "Next"),
             ("shift+tab", "focus_previous_control", "Prev"),
         ]
-
-        _ACTION_IDS = (
-            "action-analyze",
-            "action-documentation",
-            "action-setup",
-            "action-tools",
-            "action-help",
-            "action-quit",
-        )
 
         _VIEW_REGISTRY: ClassVar[dict[str, _ShellViewState]] = _DEFAULT_VIEW_REGISTRY
         _VIEW_ACTIONS: ClassVar[dict[str, str]] = {
@@ -334,19 +326,13 @@ if _TEXTUAL_APP is not None:
             self._force_refresh_ast_fn = force_refresh_ast_fn or (lambda _cfg: None)
             self._startup_output = startup_output.strip("\n")
             self._startup_output_is_warning = startup_output_is_warning
+            self._welcome_shown = False
             self._last_output_line: str | None = None
             self._session_output_lines: list[str] = []
             self._session_output_dropped_line_count = 0
 
         def compose(self) -> _TEXTUAL_COMPOSE_RESULT:  # noqa: PLR0915
-            with _TEXTUAL_HORIZONTAL(id="actions"):
-                yield _TEXTUAL_BUTTON("Analyze", id="action-analyze", classes="raised-button toolbar-button")
-                yield _TEXTUAL_BUTTON("Docs", id="action-documentation", classes="raised-button toolbar-button")
-                yield _TEXTUAL_BUTTON("Tools", id="action-tools", classes="raised-button toolbar-button")
-                yield _TEXTUAL_STATIC("", id="actions-spacer")
-                yield _TEXTUAL_BUTTON("Setup", id="action-setup", classes="raised-button toolbar-button")
-                yield _TEXTUAL_BUTTON("Help & Guide", id="action-help", classes="raised-button toolbar-button")
-                yield _TEXTUAL_BUTTON("Quit", id="action-quit", classes="raised-button toolbar-button")
+            yield _MenubarWidget(menus=MENU_DEFINITIONS)
             with _TEXTUAL_VERTICAL(id="content-host"):
                 with _TEXTUAL_VERTICAL(id="workspace-host"):
                     with _TEXTUAL_VERTICAL(id="view-pane"):
@@ -503,24 +489,6 @@ if _TEXTUAL_APP is not None:
                                                 "Mode", id="setup-toggle-mode", classes="raised-button setup-row-button"
                                             )
                                             yield _TEXTUAL_STATIC("", id="setup-label-mode", classes="setup-row-label")
-                                        with _TEXTUAL_HORIZONTAL(classes="setup-row"):
-                                            yield _TEXTUAL_BUTTON(
-                                                "Scan root only",
-                                                id="setup-toggle-scan-root-only",
-                                                classes="raised-button setup-row-button",
-                                            )
-                                            yield _TEXTUAL_STATIC(
-                                                "", id="setup-label-scan-root-only", classes="setup-row-label"
-                                            )
-                                        with _TEXTUAL_HORIZONTAL(classes="setup-row"):
-                                            yield _TEXTUAL_BUTTON(
-                                                "Fast cache",
-                                                id="setup-toggle-fast-cache-validation",
-                                                classes="raised-button setup-row-button",
-                                            )
-                                            yield _TEXTUAL_STATIC(
-                                                "", id="setup-label-fast-cache", classes="setup-row-label"
-                                            )
                                     with _TEXTUAL_VERTICAL(id="setup-group-runtime", classes="setup-group-box"):
                                         yield _TEXTUAL_STATIC("Runtime", classes="setup-group-title")
                                         with _TEXTUAL_HORIZONTAL(classes="setup-row"):
@@ -530,25 +498,9 @@ if _TEXTUAL_APP is not None:
                                                 classes="raised-button setup-row-button",
                                             )
                                             yield _TEXTUAL_STATIC("", id="setup-label-debug", classes="setup-row-label")
-                                    with _TEXTUAL_VERTICAL(id="setup-group-diagnostics", classes="setup-group-box"):
-                                        yield _TEXTUAL_STATIC("Diagnostics", classes="setup-group-title")
-                                        yield _TEXTUAL_BUTTON(
-                                            "Self-check diagnostics",
-                                            id="setup-self-check",
-                                            classes="raised-button setup-row-button",
-                                        )
                     with _TEXTUAL_VERTICAL(id="output-pane"):
                         yield _TEXTUAL_STATIC("Session output", id="output-title")
-                        if _SessionOutputWidget is None:
-                            yield _TEXTUAL_TEXT_AREA(
-                                "",
-                                id="output",
-                                read_only=True,
-                                soft_wrap=True,
-                                show_line_numbers=False,
-                            )
-                        else:
-                            yield _SessionOutputWidget(id="output")
+                        yield _SessionOutputWidget(id="output")
                 with _TEXTUAL_VERTICAL(id="interaction-host"):
                     pass
             yield _TEXTUAL_FOOTER()
@@ -556,20 +508,30 @@ if _TEXTUAL_APP is not None:
         def on_mount(self) -> None:
             self._refresh_summary()
             self._refresh_view()
-            self._set_active_action(None)
             self._refresh_shell_state()
-            self.query_one("#action-analyze", _TEXTUAL_BUTTON).focus()
             self._clear_session_output()
             self._write_output(
                 "Welcome to SattLint Analyze.\n\n"
                 "Select one or more analysis entries from the Available analyses list below, "
                 'then press "Run selected analyses" to execute. '
-                "Press / to filter entries, 1-5 to switch views, Esc to go back, ? or Ctrl+H for help."
+                "Press / to filter entries, Ctrl+1-4 to switch views, Esc to go back, ? or Ctrl+H for help."
             )
             self._analyze_help_shown = True
 
         def _view_state(self, view_name: str) -> _ShellViewState:
             return self._VIEW_REGISTRY.get(view_name, self._VIEW_REGISTRY["analyze"])
+
+        def _show_welcome(self) -> None:
+            welcome = (
+                "Welcome to SattLint!\n\n"
+                "This is your first session. Here is a quick orientation:\n\n"
+                "1. Setup — Add analysis targets in the Setup view (Ctrl+4).\n"
+                "2. Analyze — Select analyses to run in the Analyze view (Ctrl+1).\n"
+                "3. Documentation — Generate DOCX output in the Docs view (Ctrl+2).\n"
+                "4. Tools — Use diagnostics, traces, and cache tools (Ctrl+3).\n\n"
+                "Tip: Press Ctrl+S to save your configuration at any time."
+            )
+            self._show_help_modal(welcome)
 
     _AstRefreshTextualAppImpl.__name__ = "_AstRefreshTextualApp"
     _AstRefreshTextualAppImpl.__qualname__ = "_AstRefreshTextualApp"

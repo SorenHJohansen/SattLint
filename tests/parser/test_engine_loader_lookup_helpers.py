@@ -471,7 +471,7 @@ def test_loader_base_index_helpers_cover_missing_dirs_and_added_entries(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    loader = _make_loader(monkeypatch, tmp_path, scan_root_only=False)
+    loader = _make_loader(monkeypatch, tmp_path)
     base = tmp_path / "Lib"
     base.mkdir()
     code_path = base / "Program.s"
@@ -501,7 +501,7 @@ def test_loader_base_and_vendor_helpers_cover_resolve_fallbacks(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    loader = _make_loader(monkeypatch, tmp_path, scan_root_only=False)
+    loader = _make_loader(monkeypatch, tmp_path)
     ignored_base = tmp_path / "IgnoredLib"
     allowed_base = tmp_path / "AllowedLib"
     ignored_base.mkdir()
@@ -532,7 +532,7 @@ def test_loader_find_in_cached_base_handles_ignored_disallowed_and_existing_path
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    loader = _make_loader(monkeypatch, tmp_path, scan_root_only=False)
+    loader = _make_loader(monkeypatch, tmp_path)
     ignored_base = tmp_path / "IgnoredLib"
     ignored_base.mkdir()
     loader._ignored_dirs = {ignored_base}
@@ -582,7 +582,7 @@ def test_loader_code_and_deps_lookup_cover_contextual_indexed_disk_and_miss(
         def forget(self, *_args, **_kwargs):
             return None
 
-    loader = _make_loader(monkeypatch, tmp_path, scan_root_only=False)
+    loader = _make_loader(monkeypatch, tmp_path)
     loader_any = cast(Any, loader)
     loader_any._lookup_cache = _Cache()
     contextual_code = tmp_path / "Ctx.s"
@@ -645,7 +645,7 @@ def test_loader_lookup_prefers_requester_branch_without_contextual_callback(
     ):
         path.write_text(text, encoding="utf-8")
 
-    loader = _make_loader(monkeypatch, program_dir, scan_root_only=False)
+    loader = _make_loader(monkeypatch, program_dir)
     loader.other_lib_dirs = [other_branch_lib, same_branch_lib]
     loader.abb_lib_dir = abb_lib
     loader.contextual_lookup = None
@@ -675,7 +675,7 @@ def test_loader_resolve_flushes_lookup_cache_once_per_run(
         def flush(self):
             self.flush_calls += 1
 
-    loader = _make_loader(monkeypatch, tmp_path, scan_root_only=False)
+    loader = _make_loader(monkeypatch, tmp_path)
     loader_any = cast(Any, loader)
     loader_any._lookup_cache = _Cache()
 

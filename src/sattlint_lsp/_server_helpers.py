@@ -215,7 +215,6 @@ def _validated_rename_request(params: Any) -> tuple[str, int, int, str] | None:
 class LspSettings:
     entry_file: str | None = None
     mode: str = CodeMode.DRAFT.value
-    scan_root_only: bool = False
     enable_variable_diagnostics: bool = True
     workspace_diagnostics_mode: str = "off"
     max_cached_entry_snapshots: int = 2
@@ -244,7 +243,6 @@ class LspSettings:
         return cls(
             entry_file=raw_entry or None,
             mode=raw_mode,
-            scan_root_only=bool(settings_data.get("scanRootOnly", False)),
             enable_variable_diagnostics=bool(settings_data.get("enableVariableDiagnostics", True)),
             workspace_diagnostics_mode=_normalize_workspace_diagnostics_mode(
                 settings_data.get("workspaceDiagnosticsMode", "off")

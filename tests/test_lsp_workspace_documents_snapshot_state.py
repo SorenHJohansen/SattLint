@@ -348,7 +348,7 @@ def test_workspace_snapshot_store_cache_submit_build_and_finalize_edges(tmp_path
 
     submit_store = lsp_workspace_store.WorkspaceSnapshotStore()
     submit_store._workspace_root = workspace_root
-    submit_store._settings = SimpleNamespace(mode="official", scan_root_only=True, enable_variable_diagnostics=False)
+    submit_store._settings = SimpleNamespace(mode="official", enable_variable_diagnostics=False)
     submit_store._discovery = discovery
     submit_store._config_version = 3
     submit_state = submit_store._state_for_entry_locked(entry)
@@ -379,25 +379,23 @@ def test_workspace_snapshot_store_cache_submit_build_and_finalize_edges(tmp_path
     monkeypatch.setattr(
         lsp_workspace_store,
         "load_workspace_snapshot",
-        lambda entry_file, *, workspace_root, mode, scan_root_only, collect_variable_diagnostics, discovery, _analysis_provider: (
-            load_calls.append(
-                (entry_file, workspace_root, mode, scan_root_only, collect_variable_diagnostics, _analysis_provider)
-            )
+        lambda entry_file, *, workspace_root, mode, collect_variable_diagnostics, discovery, _analysis_provider: (
+            load_calls.append((entry_file, workspace_root, mode, collect_variable_diagnostics, _analysis_provider))
             or snapshot
         ),
     )
     built_bundle = build_store._build_bundle(
         entry,
         workspace_root,
-        SimpleNamespace(mode="official", scan_root_only=True, enable_variable_diagnostics=False),
+        SimpleNamespace(mode="official", enable_variable_diagnostics=False),
         discovery,
     )
     assert built_bundle.entry_file == entry
     assert built_bundle.source_files == tuple(sorted((dependency, entry), key=lambda path: path.as_posix().casefold()))
     assert built_bundle.source_paths_by_key[("main.s", "programs")] == entry
     assert len(load_calls) == 1
-    assert load_calls[0][:5] == (entry, workspace_root, "official", True, False)
-    analysis_provider = load_calls[0][5]
+    assert load_calls[0][:4] == (entry, workspace_root, "official", False)
+    analysis_provider = load_calls[0][4]
     assert isinstance(analysis_provider, partial)
     assert analysis_provider.func is lsp_workspace_store.build_variable_semantic_artifacts
     assert analysis_provider.keywords == {
@@ -405,7 +403,6 @@ def test_workspace_snapshot_store_cache_submit_build_and_finalize_edges(tmp_path
             "enable_variable_diagnostics": False,
             "entry_file": str(entry),
             "mode": "official",
-            "scan_root_only": True,
             "workspace_root": str(workspace_root),
         },
         "target_is_library": False,

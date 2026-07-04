@@ -518,7 +518,6 @@ def test_run_icf_validation_forces_dependency_aware_ast_loading(tmp_path, monkey
             "program_dir": str(tmp_path),
             "ABB_lib_dir": str(tmp_path),
             "other_lib_dirs": [],
-            "scan_root_only": True,
             "debug": False,
         }
     )
