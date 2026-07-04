@@ -43,7 +43,6 @@ def _analysis_context_config(entry_file: Path, workspace_root: Path, settings: A
         "enable_variable_diagnostics": bool(getattr(settings, "enable_variable_diagnostics", True)),
         "entry_file": str(entry_file.resolve()),
         "mode": str(getattr(settings, "mode", "draft") or "draft"),
-        "scan_root_only": bool(getattr(settings, "scan_root_only", False)),
         "workspace_root": str(workspace_root.resolve()),
     }
     workspace_diagnostics_mode = getattr(settings, "workspace_diagnostics_mode", None)
@@ -448,7 +447,6 @@ class WorkspaceSnapshotStore:
             entry_file,
             workspace_root=workspace_root,
             mode=getattr(settings, "mode", "draft"),
-            scan_root_only=bool(getattr(settings, "scan_root_only", False)),
             collect_variable_diagnostics=bool(getattr(settings, "enable_variable_diagnostics", True)),
             discovery=discovery,
             _analysis_provider=analysis_provider,

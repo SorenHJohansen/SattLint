@@ -28,7 +28,7 @@
         }
 
         #view-pane {
-            height: 3fr;
+            height: 2fr;
             layout: vertical;
             margin: 0 1 1 1;
             background: #f4efde;
@@ -65,8 +65,8 @@
         }
 
         #view-host {
-            height: 1fr;
-            min-height: 18;
+            height: auto;
+            min-height: 8;
             margin: 0;
             padding: 1 2;
             background: #e6decb;
@@ -138,7 +138,7 @@
         }
 
         #output-pane {
-            height: 4fr;
+            height: 3fr;
             min-height: 10;
             margin: 0 1 1 1;
             layout: vertical;
@@ -214,7 +214,8 @@
         }
 
         #setup-targets-section {
-            width: 36;
+            width: 1fr;
+            min-width: 36;
             height: 1fr;
         }
 
@@ -376,17 +377,17 @@
             margin-top: 0;
         }
 
-#analyze-actions-primary {
-    overflow-x: auto;
-    scrollbar-background: #b9d9df;
-    scrollbar-background-hover: #c2c2c2;
-    scrollbar-background-active: #ebebeb;
-    scrollbar-color: #58787e;
-    scrollbar-color-hover: #0077b3;
-    scrollbar-color-active: #0077b3;
-    scrollbar-corner-color: #b9d9df;
-    scrollbar-size-horizontal: 1;
-}
+        #analyze-actions-primary {
+            overflow-x: auto;
+            scrollbar-background: #b9d9df;
+            scrollbar-background-hover: #c2c2c2;
+            scrollbar-background-active: #ebebeb;
+            scrollbar-color: #58787e;
+            scrollbar-color-hover: #0077b3;
+            scrollbar-color-active: #0077b3;
+            scrollbar-corner-color: #b9d9df;
+            scrollbar-size-horizontal: 1;
+        }
 
         #workspace-host.docs-tools-split #documentation-actions,
         #workspace-host.docs-tools-split #tools-actions {
@@ -416,15 +417,59 @@
             background: #f4efde;
         }
 
-        #actions {
+        #menubar {
             height: auto;
-            margin: 1 1 0 1;
-            padding: 0 1 0 1;
-            background: #f4efde;
+            dock: top;
+            background: #e6decb;
         }
 
-        #actions-spacer {
-            width: 1fr;
+        #menubar-headers {
+            height: 3;
+            align: left middle;
+        }
+
+        .menubar-header {
+            width: auto;
+            padding: 0 1;
+            color: #373737;
+            background: #e6decb;
+            text-style: bold;
+        }
+
+        .menubar-header:hover {
+            background: #d5cdb8;
+        }
+
+        .menubar-header.menu-active {
+            background: #bfb7a2;
+        }
+
+        #menubar-dropdown {
+            height: auto;
+            background: #f4efde;
+            border: solid #bfb7a2;
+            margin: 0 1;
+            padding: 0;
+        }
+
+        .menubar-item {
+            width: 100%;
+            height: 3;
+            padding: 0 2;
+            background: #f4efde;
+            color: #000000;
+            text-align: left;
+        }
+
+        .menubar-item:hover,
+        .menubar-item:focus {
+            background: #d5cdb8;
+            color: #000000;
+        }
+
+        .menubar-separator {
+            height: 1;
+            color: #bfb7a2;
         }
 
         Button.raised-button {
@@ -451,14 +496,6 @@
             border: none;
         }
 
-        Button.raised-button.action-active {
-            background: #888888;
-            color: #000000;
-            outline: none;
-            border: none;
-        }
-
-        #actions Button.raised-button,
         #view-actions Button.raised-button,
         #analyze-actions-primary Button.raised-button,
         #documentation-actions Button.raised-button,
@@ -485,13 +522,6 @@
 
         #analyze-clear-output {
             margin-right: 0;
-        }
-
-        #actions Button.toolbar-button {
-            width: auto;
-            min-width: 7;
-            padding: 0 1;
-            margin-right: 1;
         }
 
         #interaction-options {
@@ -564,7 +594,6 @@
 
         #interaction-dialog {
             width: 1fr;
-            max-width: 1fr;
             height: auto;
             margin: 1 0 0 0;
             padding: 1 2;

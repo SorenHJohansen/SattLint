@@ -11,9 +11,20 @@
 **Communication:** terse and concrete.
 **Health checks:** `python scripts/context_health.py --check`; `python scripts/repo_health.py --check --audit-dir artifacts/audit`.
 
+## Project system
+
+`.slproj` is the central concept. A project file captures all analysis settings — targets, directories, mode, documentation, output/cache paths — in a single checked-in file. Paths in `.slproj` are relative to the file itself, making projects portable.
+
+- `sattlint init` scaffolds a new `.slproj` in the current directory
+- `sattlint --project PATH <command>` uses an explicit project file
+- Auto-discovery walks up from CWD when no `--project` or `--config` is given
+- Project settings are merged over `~/.config/sattlint/config.toml` defaults
+- See `src/sattlint/project/` for the implementation: `types.py`, `io.py`, `models.py`
+
 ## Repo Map
 
 - Start from the owning file, symbol, failing command, or failing test.
+- Prefer `.slproj` project files over editing `~/.config/sattlint/config.toml` directly.
 - For real-target debugging, check `~/.config/sattlint/config.toml` before assuming the repo contains the source file; follow `program_dir`, `ABB_lib_dir`, `icf_dir`, and `other_lib_dirs` to the actual external SattLine libraries.
 - Treat SattLine source files discovered outside this repository root as read-only evidence; inspect them when needed, but do not edit them unless the user explicitly asks to work in that external repository.
 - Read only the matching `.github/instructions/*.md` files for the touched surface.

@@ -626,7 +626,7 @@ def test_loader_status_and_lookup_wrappers_cover_blank_duplicate_and_forget(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    loader = _make_loader(monkeypatch, tmp_path, scan_root_only=False)
+    loader = _make_loader(monkeypatch, tmp_path)
     status_messages: list[str] = []
     loader_any = cast(Any, loader)
     loader_any._status_update_fn = status_messages.append
@@ -693,7 +693,7 @@ def test_loader_lookup_returns_cached_code_and_deps_paths(monkeypatch: pytest.Mo
         def forget(self, *_args, **_kwargs):
             return None
 
-    loader = _make_loader(monkeypatch, tmp_path, scan_root_only=False)
+    loader = _make_loader(monkeypatch, tmp_path)
     cast(Any, loader)._lookup_cache = _Cache()
     code_path = tmp_path / "Program.s"
     deps_path = tmp_path / "Program.l"
@@ -718,7 +718,6 @@ def test_loader_library_name_for_path_falls_back_when_base_resolve_raises(
             other_lib_dirs=[other_lib],
             abb_lib_dir=abb_lib,
             mode=engine.CodeMode.DRAFT,
-            scan_root_only=False,
             debug=False,
         )
     )
@@ -735,88 +734,6 @@ def test_loader_library_name_for_path_falls_back_when_base_resolve_raises(
     assert loader._library_name_for_path(tmp_path / "Program.s") == tmp_path.name
     assert loader._library_name_for_path(other_lib / "Program.s") == other_lib.name
     assert loader._library_name_for_path(abb_lib / "Program.s") == abb_lib.name
-
-
-def test_root_only_loader_success_records_warnings_and_indexes_definitions(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    loader = _make_loader(monkeypatch, tmp_path)
-    code_path = tmp_path / "Root.s"
-    basepicture = _make_basepicture(origin_file=code_path.name, origin_lib=tmp_path.name)
-    save_calls: list[tuple[Path, str, object]] = []
-
-    class _AstCache:
-        def load(self, *_args, **_kwargs):
-            return None
-
-        def save(self, code_path, mode, bp):
-            save_calls.append((code_path, mode, bp))
-
-    cast(Any, loader)._ast_cache = _AstCache()
-    monkeypatch.setattr(loader, "_find_code", lambda _name: code_path)
-    monkeypatch.setattr(loader, "_load_or_parse", lambda _path, owner_name=None: basepicture)
-    monkeypatch.setattr(
-        engine,
-        "validate_transformed_basepicture",
-        lambda _bp, warning_sink, **_kwargs: warning_sink("warning-a"),
-    )
-    monkeypatch.setattr(engine, "_graphics_companion_needs_refresh", lambda *_args, **_kwargs: True)
-    monkeypatch.setattr(engine, "_attach_graphics_companion", lambda *_args, **_kwargs: True)
-
-    graph = loader.resolve("Root")
-
-    assert graph.ast_by_name["Root"] is basepicture
-    assert graph.warnings == ["Root: warning-a"]
-    assert graph.warning_notices == [("Root", engine.ValidationNotice(message="warning-a"))]
-    assert save_calls == [(code_path, "draft", basepicture)]
-
-
-def test_root_only_loader_strict_none_basepicture_reraises(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    loader = _make_loader(monkeypatch, tmp_path)
-    code_path = tmp_path / "Root.s"
-
-    monkeypatch.setattr(loader, "_find_code", lambda _name: code_path)
-    monkeypatch.setattr(loader, "_load_or_parse", lambda _path, owner_name=None: None)
-
-    with pytest.raises(RuntimeError, match="transformed to no BasePicture"):
-        loader.resolve("Root", strict=True)
-
-
-def test_root_only_loader_full_mode_records_stage_timings(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    timings: list[tuple[str, str, float]] = []
-    loader = _make_loader(monkeypatch, tmp_path)
-    cast(Any, loader)._stage_timing_sink = lambda owner, stage, duration: timings.append((owner, stage, duration))
-    code_path = tmp_path / "Root.s"
-    basepicture = _make_basepicture(origin_file=code_path.name, origin_lib=tmp_path.name)
-
-    class _AstCache:
-        def load(self, *_args, **_kwargs):
-            return None
-
-        def save(self, *_args, **_kwargs):
-            return None
-
-    cast(Any, loader)._ast_cache = _AstCache()
-    monkeypatch.setattr(loader, "_find_code", lambda _name: code_path)
-    monkeypatch.setattr(loader, "_parse_one", lambda _path: basepicture)
-    monkeypatch.setattr(engine, "validate_transformed_basepicture", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(engine, "_graphics_companion_needs_refresh", lambda *_args, **_kwargs: True)
-    monkeypatch.setattr(engine, "_attach_graphics_companion", lambda *_args, **_kwargs: False)
-
-    graph = loader.resolve("Root")
-
-    assert graph.ast_by_name["Root"] is basepicture
-    assert {stage for _owner, stage, _duration in timings} == {
-        "load_or_parse",
-        "validate",
-        "attach_graphics",
-        "index",
-        "ast_cache_save",
-    }
 
 
 def test_ensure_local_validation_ignores_incompatible_parameter_mapping() -> None:
@@ -922,7 +839,7 @@ def test_prefetch_dependency_candidates_populates_prefetched_paths_and_asts(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    loader = _make_loader(monkeypatch, tmp_path, scan_root_only=False)
+    loader = _make_loader(monkeypatch, tmp_path)
     dep_a_path = tmp_path / "DepA.s"
     dep_b_path = tmp_path / "DepB.s"
     dep_a_path.write_text('"a"\n"b"\n"c"\n', encoding="utf-8")
@@ -985,51 +902,6 @@ def test_load_or_parse_uses_prefetched_duration_and_saves_cache_when_requested(
     assert ("Root", "load_or_parse", 0.125) in timings
 
 
-def test_root_only_loader_ast_only_refresh_skips_enrichment_but_records_core_stage_timings(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    timings: list[tuple[str, str, float]] = []
-    loader = _make_loader(monkeypatch, tmp_path)
-    loader.refresh_mode = "ast-only"
-    cast(Any, loader)._stage_timing_sink = lambda owner, stage, duration: timings.append((owner, stage, duration))
-    code_path = tmp_path / "Root.s"
-    basepicture = _make_basepicture(origin_file=code_path.name, origin_lib=tmp_path.name)
-
-    class _AstCache:
-        def load(self, *_args, **_kwargs):
-            return None
-
-        def save(self, *_args, **_kwargs):
-            return None
-
-    cast(Any, loader)._ast_cache = _AstCache()
-    monkeypatch.setattr(loader, "_find_code", lambda _name: code_path)
-    monkeypatch.setattr(loader, "_parse_one", lambda _path: basepicture)
-    monkeypatch.setattr(engine, "validate_transformed_basepicture", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(
-        engine,
-        "_graphics_companion_needs_refresh",
-        lambda *_args, **_kwargs: pytest.fail("graphics companion checks should be skipped during ast-only refresh"),
-    )
-    monkeypatch.setattr(
-        engine,
-        "_attach_graphics_companion",
-        lambda *_args, **_kwargs: pytest.fail(
-            "graphics companion attachment should be skipped during ast-only refresh"
-        ),
-    )
-
-    graph = loader.resolve("Root")
-
-    assert graph.ast_by_name["Root"] is basepicture
-    assert {stage for _owner, stage, _duration in timings} == {
-        "load_or_parse",
-        "validate",
-        "ast_cache_save",
-    }
-
-
 def test_loader_lookup_skips_ignored_base_before_finding_other_matches(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1044,7 +916,7 @@ def test_loader_lookup_skips_ignored_base_before_finding_other_matches(
         def forget(self, *_args, **_kwargs):
             return None
 
-    loader = _make_loader(monkeypatch, tmp_path, scan_root_only=False)
+    loader = _make_loader(monkeypatch, tmp_path)
     other_lib = tmp_path.parent / "OtherLib"
     other_lib.mkdir(exist_ok=True)
     (other_lib / "Program.s").write_text("code", encoding="utf-8")
@@ -1061,7 +933,7 @@ def test_loader_visit_short_circuits_and_reraises_strict_none_basepicture(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    loader = _make_loader(monkeypatch, tmp_path, scan_root_only=False)
+    loader = _make_loader(monkeypatch, tmp_path)
     graph = engine.ProjectGraph()
     loader._visited.add("root")
     loader._visit("Root", graph, strict=False, requester_dir=tmp_path)
@@ -1091,7 +963,6 @@ def test_loader_read_and_library_helpers_cover_all_library_roots(
             other_lib_dirs=[other_lib],
             abb_lib_dir=abb_lib,
             mode=engine.CodeMode.DRAFT,
-            scan_root_only=False,
             debug=False,
         )
     )
@@ -1113,7 +984,7 @@ def test_loader_parse_and_cache_helpers_delegate_and_reuse_cached_ast(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    loader = _make_loader(monkeypatch, tmp_path, scan_root_only=False)
+    loader = _make_loader(monkeypatch, tmp_path)
     basepicture = _make_basepicture()
     seen: dict[str, object] = {}
 
@@ -1160,65 +1031,3 @@ def test_loader_parse_and_cache_helpers_delegate_and_reuse_cached_ast(
     assert cached_cache.save_calls == [(tmp_path / "Program.s", "draft", basepicture)]
     assert uncached is basepicture
     assert parsed_cache.save_calls == [(tmp_path / "Program.s", "draft", basepicture)]
-
-
-def test_root_only_loader_records_missing_root_library(monkeypatch, tmp_path) -> None:
-    loader = _make_loader(monkeypatch, tmp_path)
-    monkeypatch.setattr(loader, "_find_code", lambda _name: None)
-
-    graph = loader.resolve("MissingRoot")
-
-    assert graph.missing == ["Missing code file for 'MissingRoot' (mode=draft)"]
-    assert graph.unavailable_libraries == {"missingroot"}
-
-
-def test_root_only_loader_records_none_basepicture_without_raising(monkeypatch, tmp_path) -> None:
-    loader = _make_loader(monkeypatch, tmp_path)
-    code_path = tmp_path / "Root.s"
-
-    monkeypatch.setattr(loader, "_find_code", lambda _name: code_path)
-    monkeypatch.setattr(loader, "_load_or_parse", lambda _path, owner_name=None: None)
-
-    graph = loader.resolve("Root")
-
-    assert graph.missing == ["Root transformed to no BasePicture (parse/transform issue?)"]
-    assert graph.ast_by_name == {}
-
-
-def test_root_only_loader_reraises_source_lookup_errors_and_flushes_cache(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    loader = _make_loader(monkeypatch, tmp_path)
-    seen: dict[str, bool] = {"flushed": False}
-
-    monkeypatch.setattr(loader, "_find_code", lambda _name: (_ for _ in ()).throw(ValueError("bad lookup")))
-    monkeypatch.setattr(loader, "_flush_lookup_cache", lambda: seen.__setitem__("flushed", True))
-
-    with pytest.raises(ValueError, match="bad lookup"):
-        loader.resolve("Root")
-
-    assert seen["flushed"] is True
-
-
-def test_root_only_loader_records_validation_warning_before_failure(monkeypatch, tmp_path) -> None:
-    loader = _make_loader(monkeypatch, tmp_path)
-    code_path = tmp_path / "Root.s"
-
-    monkeypatch.setattr(loader, "_find_code", lambda _name: code_path)
-    monkeypatch.setattr(loader, "_load_or_parse", lambda _path, owner_name=None: object())
-    monkeypatch.setattr(loader, "_library_name_for_path", lambda _path: "RootLib")
-    monkeypatch.setattr(
-        engine,
-        "validate_transformed_basepicture",
-        lambda _bp, warning_sink, **_kwargs: (
-            warning_sink("warning-a") or (_ for _ in ()).throw(engine.StructuralValidationError("bad root"))
-        ),
-    )
-
-    graph = loader.resolve("Root")
-
-    assert graph.warnings == ["Root: warning-a"]
-    assert graph.warning_notices == [("Root", engine.ValidationNotice(message="warning-a"))]
-    assert graph.missing == ["Root parse/transform error: bad root"]
-    assert graph.failures["root"].line is None

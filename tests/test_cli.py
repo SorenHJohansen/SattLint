@@ -787,7 +787,6 @@ def test_package_root_exports_forward_workspace_helpers(monkeypatch):
         mode="strict",
         other_lib_dirs=[Path("lib")],
         abb_lib_dir=Path("abb"),
-        scan_root_only=True,
         debug=True,
         collect_variable_diagnostics=False,
     )
@@ -801,7 +800,6 @@ def test_package_root_exports_forward_workspace_helpers(monkeypatch):
     assert seen["kwargs"]["mode"] == "strict"
     assert seen["kwargs"]["other_lib_dirs"] == [Path("lib")]
     assert seen["kwargs"]["abb_lib_dir"] == Path("abb")
-    assert seen["kwargs"]["scan_root_only"] is True
     assert seen["kwargs"]["debug"] is True
     assert seen["kwargs"]["collect_variable_diagnostics"] is False
     assert seen["kwargs"]["_analysis_provider"] is sattlint.build_variable_semantic_artifacts

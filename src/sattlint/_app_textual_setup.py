@@ -382,8 +382,6 @@ def _refresh_setup_settings_labels(self: Any) -> None:
     other_dirs = self._cfg.get("other_lib_dirs", [])
     icf_dir = _stringify_value(cast(object | None, self._cfg.get("icf_dir", "")))
     mode = _stringify_value(cast(object | None, self._cfg.get("mode", "official"))) or "official"
-    scan_root_only = bool(self._cfg.get("scan_root_only", False))
-    fast_cache_validation = bool(self._cfg.get("use_file_ast_cache", False))
     debug = bool(self._cfg.get("debug", False))
 
     def _safe_update(widget_id: str, text: object) -> None:
@@ -395,22 +393,6 @@ def _refresh_setup_settings_labels(self: Any) -> None:
     _safe_update("setup-label-other-dirs", _setup_other_dirs_text(other_dirs))
     _safe_update("setup-label-icf-dir", _setup_path_text(icf_dir))
     _safe_update("setup-label-mode", _setup_mode_text(mode))
-    _safe_update(
-        "setup-label-scan-root-only",
-        _setup_toggle_text(
-            scan_root_only,
-            enabled_detail="Only configured roots are scanned",
-            disabled_detail="Nested folders are also scanned",
-        ),
-    )
-    _safe_update(
-        "setup-label-fast-cache",
-        _setup_toggle_text(
-            fast_cache_validation,
-            enabled_detail="Fast cache validation is active",
-            disabled_detail="Full cache validation is active",
-        ),
-    )
     _safe_update(
         "setup-label-debug",
         _setup_toggle_text(
@@ -443,7 +425,6 @@ def _setup_browser_detail_text(self: Any) -> str:
     lines = [
         "Selected Target Detail",
         f"Mode: {self._cfg.get('mode', 'official')}",
-        f"scan_root_only: {bool(self._cfg.get('scan_root_only', False))}",
     ]
     if candidate is None:
         lines.append("Target: none")
@@ -603,15 +584,16 @@ def _open_help_popup(self: Any) -> None:
     help_text = str(get_help_text_fn(self._cfg)).strip() or "No help content available."
     help_text = (
         f"{help_text}\n\nKeyboard shortcuts\n"
-        "1-4 switch views\n"
+        "Ctrl+1-4 switch between views\n"
         "/ filters Analyze and Setup lists\n"
         "? / Ctrl+H open help\n"
         "Esc goes back to Analyze from other views\n"
         "Ctrl+C copies Session output\n"
         "Ctrl+G cancels a running analysis\n"
         "Ctrl+L clears Session output\n"
-        "Tab / Shift+Tab move focus\n"
-        "Q quits the shell"
+        "Ctrl+S saves the current configuration\n"
+        "Ctrl+Q quits the shell\n"
+        "Tab / Shift+Tab move focus"
     )
     self._show_help_modal(help_text)
 
@@ -725,10 +707,6 @@ def _run_documentation_scope_instance_path(self: Any) -> None:
         action_text="documentation instance-path scoping",
         marks_dirty=True,
     )
-
-
-def _run_tool_self_check(self: Any) -> None:
-    self._start_action("Self-check diagnostics", lambda: self._self_check_fn(self._cfg), action_id="action-tools")
 
 
 def _run_tool_dumps(self: Any) -> None:
@@ -937,7 +915,7 @@ if TYPE_CHECKING:
         def _open_file_browser(self) -> None: ...
         def _open_raw_file_browser(self) -> None: ...
         def _open_help_popup(self) -> None: ...
-        def _show_help_modal(self) -> None: ...
+        def _show_help_modal(self, help_text: str) -> None: ...
         def _toggle_setup_flag(self, field_key: str, *, label: str) -> None: ...
         def _toggle_setup_mode(self) -> None: ...
         def _setup_has_targets(self) -> bool: ...
@@ -958,7 +936,6 @@ if TYPE_CHECKING:
         def _run_documentation_scope_all(self) -> None: ...
         def _run_documentation_scope_moduletype(self) -> None: ...
         def _run_documentation_scope_instance_path(self) -> None: ...
-        def _run_tool_self_check(self) -> None: ...
         def _run_tool_dumps(self) -> None: ...
         def _run_tool_source_diff(self) -> None: ...
         def _run_tool_refresh_ast(self) -> None: ...
@@ -1022,7 +999,6 @@ else:
         _run_documentation_scope_all = _run_documentation_scope_all
         _run_documentation_scope_moduletype = _run_documentation_scope_moduletype
         _run_documentation_scope_instance_path = _run_documentation_scope_instance_path
-        _run_tool_self_check = _run_tool_self_check
         _run_tool_dumps = _run_tool_dumps
         _run_tool_source_diff = _run_tool_source_diff
         _run_tool_refresh_ast = _run_tool_refresh_ast

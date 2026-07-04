@@ -304,7 +304,6 @@ def test_cache_helpers_cover_persistence_and_hash_edge_paths(tmp_path: Path, mon
         "analysis_target": "main",
         "analyzed_programs_and_libraries": ["Main"],
         "mode": "draft",
-        "scan_root_only": False,
         "program_dir": "Programs",
         "ABB_lib_dir": "ABB",
         "icf_dir": "ICF",

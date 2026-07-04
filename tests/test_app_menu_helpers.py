@@ -104,15 +104,13 @@ def test_analysis_target_helpers_cover_rejection_paths() -> None:
 
 def test_config_value_helpers_cover_false_and_remove_paths(tmp_path: Path) -> None:
     cfg = {
-        "scan_root_only": False,
         "program_dir": "old",
         "other_lib_dirs": ["/one", "/two"],
+        "debug": False,
     }
 
-    assert (
-        app_menus._toggle_config_value(cfg, "scan_root_only", confirm_message="x", confirm_fn=lambda *_: False) is False
-    )
-    assert cfg["scan_root_only"] is False
+    assert app_menus._toggle_config_value(cfg, "debug", confirm_message="x", confirm_fn=lambda *_: False) is False
+    assert cfg["debug"] is False
     assert (
         app_menus._update_config_value(
             cfg,
@@ -291,7 +289,7 @@ def test_dump_menu_tools_menu_and_main_loop_cover_invalid_and_quit_paths(monkeyp
     monkeypatch.setattr(
         builtins,
         "input",
-        make_input(["11", "y", "5", "new-dir", "y", "12", "2", "1", "n", "q", "y"]),
+        make_input(["10", "y", "4", "new-dir", "y", "11", "2", "1", "n", "q", "y"]),
     )
     saves: list[tuple[Path, dict[str, object]]] = []
     graphics_calls: list[dict[str, object]] = []
@@ -300,7 +298,6 @@ def test_dump_menu_tools_menu_and_main_loop_cover_invalid_and_quit_paths(monkeyp
             {
                 "analyzed_programs_and_libraries": ["Demo"],
                 "mode": "official",
-                "scan_root_only": False,
                 "program_dir": "old-dir",
                 "ABB_lib_dir": "abb",
                 "other_lib_dirs": [],

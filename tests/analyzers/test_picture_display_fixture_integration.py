@@ -49,7 +49,6 @@ def _load_fixture_base_picture(stem: str) -> BasePicture:
             other_lib_dirs=[],
             abb_lib_dir=fixture.parent,
             mode=CodeMode.DRAFT,
-            scan_root_only=True,
             debug=False,
             use_file_ast_cache=False,
         )

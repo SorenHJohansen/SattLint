@@ -106,7 +106,6 @@ def build_project_loader(
     refresh_mode: str = "full",
     stage_timing_sink: LoadStageTimingSink | None = None,
     graphics_timing_sink: GraphicsLoadTimingSink | None = None,
-    scan_root_only: bool | None = None,
     dependencies: SattLineProjectLoaderDependencies | None = None,
 ) -> SattLineProjectLoader:
     return build_project_loader_from_type(
@@ -118,7 +117,6 @@ def build_project_loader(
         refresh_mode=refresh_mode,
         stage_timing_sink=stage_timing_sink,
         graphics_timing_sink=graphics_timing_sink,
-        scan_root_only=scan_root_only,
         dependencies=dependencies,
     )
 
@@ -133,7 +131,6 @@ def load_project_graph(
     refresh_mode: str = "full",
     stage_timing_sink: LoadStageTimingSink | None = None,
     graphics_timing_sink: GraphicsLoadTimingSink | None = None,
-    scan_root_only: bool | None = None,
     dependencies: SattLineProjectLoaderDependencies | None = None,
     strict: bool = False,
 ) -> tuple[SattLineProjectLoader, BasePicture | None, ProjectGraph]:
@@ -145,7 +142,6 @@ def load_project_graph(
         refresh_mode=refresh_mode,
         stage_timing_sink=stage_timing_sink,
         graphics_timing_sink=graphics_timing_sink,
-        scan_root_only=scan_root_only,
         dependencies=dependencies,
     )
     graph = loader.resolve(target_name, strict=strict)

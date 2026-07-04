@@ -603,7 +603,6 @@ def test_graphics_reports_formatting_and_show_config_without_rules(monkeypatch, 
 
     cfg = {
         "mode": "single",
-        "scan_root_only": True,
         "debug": True,
         "telemetry": {"enabled": True},
         "program_dir": tmp_path / "programs",
@@ -688,7 +687,6 @@ def test_graphics_reports_show_config_covers_invalid_and_configured_rules(tmp_pa
     reports = app.app_graphics_module.graphics_reports_module
     cfg = {
         "mode": "single",
-        "scan_root_only": False,
         "debug": False,
         "telemetry": {},
         "program_dir": tmp_path / "programs",

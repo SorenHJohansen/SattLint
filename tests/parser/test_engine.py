@@ -18,7 +18,6 @@ def _make_loader(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     *,
-    scan_root_only: bool = True,
     debug: bool = False,
     use_file_ast_cache: bool = True,
 ) -> engine.SattLineProjectLoader:
@@ -45,7 +44,6 @@ def _make_loader(
     return engine.SattLineProjectLoader(
         _loader_config(
             tmp_path,
-            scan_root_only=scan_root_only,
             debug=debug,
             use_file_ast_cache=use_file_ast_cache,
         )
@@ -55,7 +53,6 @@ def _make_loader(
 def _loader_config(
     tmp_path: Path,
     *,
-    scan_root_only: bool = False,
     debug: bool = False,
     use_file_ast_cache: bool = True,
 ) -> engine.SattLineProjectLoaderConfig:
@@ -64,7 +61,6 @@ def _loader_config(
         other_lib_dirs=[],
         abb_lib_dir=tmp_path,
         mode=engine.CodeMode.DRAFT,
-        scan_root_only=scan_root_only,
         debug=debug,
         use_file_ast_cache=use_file_ast_cache,
     )
@@ -93,8 +89,8 @@ def test_loader_reuses_shared_cache_instances_for_same_directory(monkeypatch, tm
     monkeypatch.setattr(engine, "SLTransformer", lambda: object())
     monkeypatch.setattr(engine, "get_cache_dir", lambda: tmp_path)
 
-    first_loader = engine.SattLineProjectLoader(_loader_config(tmp_path, scan_root_only=True))
-    second_loader = engine.SattLineProjectLoader(_loader_config(tmp_path, scan_root_only=True))
+    first_loader = engine.SattLineProjectLoader(_loader_config(tmp_path))
+    second_loader = engine.SattLineProjectLoader(_loader_config(tmp_path))
 
     assert first_loader._lookup_cache is second_loader._lookup_cache
     assert first_loader._ast_cache is second_loader._ast_cache
@@ -797,7 +793,7 @@ def test_loader_visit_uses_cached_dependency_library_and_warns_on_non_strict_con
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    loader = _make_loader(monkeypatch, tmp_path, scan_root_only=False)
+    loader = _make_loader(monkeypatch, tmp_path)
     code_path = tmp_path / "Root.s"
     dep_code_path = tmp_path / "Dep.s"
     deps_path = tmp_path / "Root.l"
@@ -863,7 +859,7 @@ def test_loader_visit_records_missing_when_transform_returns_none(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    loader = _make_loader(monkeypatch, tmp_path, scan_root_only=False)
+    loader = _make_loader(monkeypatch, tmp_path)
     graph = cast(
         Any,
         SimpleNamespace(
@@ -894,7 +890,7 @@ def test_loader_visit_records_validation_warning_before_non_strict_failure(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    loader = _make_loader(monkeypatch, tmp_path, scan_root_only=False)
+    loader = _make_loader(monkeypatch, tmp_path)
     basepicture = _make_basepicture()
     graph = cast(
         Any,
@@ -939,7 +935,7 @@ def test_loader_visit_uses_dependency_context_validation_when_local_validation_m
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    loader = _make_loader(monkeypatch, tmp_path, scan_root_only=False)
+    loader = _make_loader(monkeypatch, tmp_path)
     basepicture = _make_basepicture()
     setattr(basepicture, engine._LOCAL_VALIDATION_MARKER_ATTR, engine.LOCAL_STRUCTURE_VALIDATION_SCHEMA_VERSION)
     graph = cast(
@@ -986,7 +982,7 @@ def test_loader_visit_marks_vendor_only_dependency_as_ignored(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    loader = _make_loader(monkeypatch, tmp_path, scan_root_only=False)
+    loader = _make_loader(monkeypatch, tmp_path)
     vendor_code = tmp_path / "vendor" / "VendorOnly.s"
     graph = cast(
         Any,
@@ -1019,7 +1015,7 @@ def test_loader_visit_records_missing_dependency_with_requester_from_visit_stack
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    loader = _make_loader(monkeypatch, tmp_path, scan_root_only=False)
+    loader = _make_loader(monkeypatch, tmp_path)
     graph = cast(
         Any,
         SimpleNamespace(

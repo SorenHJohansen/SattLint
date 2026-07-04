@@ -611,7 +611,6 @@ def load_program_ast(
     loader = engine_module.build_project_loader(
         cfg,
         status_update_fn=status_update_fn,
-        scan_root_only=False if force_dependency_resolution else cfg["scan_root_only"],
     )
 
     graph = loader.resolve(program_name, strict=False)

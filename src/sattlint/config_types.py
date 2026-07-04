@@ -164,7 +164,6 @@ class ConfigDict(TypedDict):
     analyzed_programs_and_libraries: list[str]
     include_reverse_library_consumers: bool
     mode: ConfigMode
-    scan_root_only: bool
     debug: bool
     program_dir: ConfigPathValue
     ABB_lib_dir: ConfigPathValue
@@ -179,7 +178,6 @@ class ConfigOverrideDict(TypedDict, total=False):
     analyzed_programs_and_libraries: list[str]
     include_reverse_library_consumers: bool
     mode: str
-    scan_root_only: bool
     debug: bool
     program_dir: ConfigPathValue
     ABB_lib_dir: ConfigPathValue
