@@ -13,6 +13,7 @@ from . import console as console_module
 from .cli_output import emit_text_or_json
 from .config_types import ConfigDict
 from .models.project_graph import ProjectGraph
+from .project import discover_project, load_project, project_status
 
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
 
@@ -313,7 +314,27 @@ def main(
         if interactive_cli_overrides is not None:
             effective_config_path = interactive_cli_overrides.config_path
 
-        cfg, default_used = load_config_fn(effective_config_path)
+        # Try to discover a .slproj project; if found, use it as the config source.
+        active_project: object = None
+        project_config_override: ConfigDict | None = None
+
+        # Only auto-discover when using the default config path (not an explicit --config).
+        if effective_config_path == config_path:
+            discovered_slproj = discover_project()
+            if discovered_slproj is not None:
+                try:
+                    active_project = load_project(discovered_slproj)
+                    project_config_override = active_project.to_default_merged_config_dict()
+                    emit_output_fn(f"Using project: {project_status(active_project)}")
+                except (FileNotFoundError, ValueError) as exc:
+                    emit_output_fn(f"Warning: Could not load project: {exc}")
+
+        if project_config_override is not None:
+            cfg = project_config_override
+            default_used = False
+        else:
+            cfg, default_used = load_config_fn(effective_config_path)
+
         if interactive_cli_overrides is not None and interactive_cli_overrides.debug:
             cfg["debug"] = True
         apply_debug_fn(cfg)

@@ -81,7 +81,6 @@ def show_config(
             graphics_rule_count = len(graphics_rules.get("rules", []))
     general_rows = [
         ("mode", cfg["mode"]),
-        ("scan_root_only", cfg["scan_root_only"]),
         ("debug", cfg["debug"]),
     ]
     telemetry_cfg = cast(dict[str, object], cfg.get("telemetry", {}))

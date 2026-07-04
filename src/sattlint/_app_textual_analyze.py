@@ -399,35 +399,31 @@ def _write_focused_entry_to_output(self: Any) -> None:
             plain_lines.extend(f"  {line}" for line in lines[1:])
     self._session_output_lines.extend(plain_lines)
     output_widget = self.query_one("#output")
-    rich_output = hasattr(output_widget, "write") and hasattr(output_widget, "scroll_end")
-    if rich_output:
-        for label, value in segments:
-            if not label:
+    for label, value in segments:
+        if not label:
+            if hasattr(output_widget, "append_plain_text"):
+                output_widget.append_plain_text("\n")
+            output_widget.write("", scroll_end=False)
+            continue
+        if "\n" not in value:
+            if hasattr(output_widget, "append_plain_text"):
+                output_widget.append_plain_text(f"{label}: {value}\n")
+            output_widget.write(
+                _label_value_renderable(label, value),
+                scroll_end=False,
+            )
+        else:
+            lines = value.split("\n")
+            if hasattr(output_widget, "append_plain_text"):
+                output_widget.append_plain_text(f"{label}: {lines[0]}\n")
+            output_widget.write(
+                _label_value_renderable(label, lines[0]),
+                scroll_end=False,
+            )
+            for line in lines[1:]:
                 if hasattr(output_widget, "append_plain_text"):
-                    output_widget.append_plain_text("\n")
-                output_widget.write("", scroll_end=False)
-                continue
-            if "\n" not in value:
-                if hasattr(output_widget, "append_plain_text"):
-                    output_widget.append_plain_text(f"{label}: {value}\n")
-                output_widget.write(
-                    _label_value_renderable(label, value),
-                    scroll_end=False,
-                )
-            else:
-                lines = value.split("\n")
-                if hasattr(output_widget, "append_plain_text"):
-                    output_widget.append_plain_text(f"{label}: {lines[0]}\n")
-                output_widget.write(
-                    _label_value_renderable(label, lines[0]),
-                    scroll_end=False,
-                )
-                for line in lines[1:]:
-                    if hasattr(output_widget, "append_plain_text"):
-                        output_widget.append_plain_text(f"  {line}\n")
-                    output_widget.write(f"  {line}", scroll_end=False)
-    else:
-        self._write_output("\n".join(plain_lines))
+                    output_widget.append_plain_text(f"  {line}\n")
+                output_widget.write(f"  {line}", scroll_end=False)
 
 
 def _set_analyze_filter_text(self: Any, raw_text: object) -> None:

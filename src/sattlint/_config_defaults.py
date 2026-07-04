@@ -77,11 +77,6 @@ TOP_LEVEL_CONFIG_FIELDS: dict[str, TopLevelConfigField] = {
     "mode": TopLevelConfigField(
         "official", "Controls whether official or draft file extensions are resolved.", affects_project_cache=True
     ),
-    "scan_root_only": TopLevelConfigField(
-        False,
-        "Limits discovery to the configured program root instead of scanning dependency roots recursively.",
-        affects_project_cache=True,
-    ),
     "debug": TopLevelConfigField(False, "Enables verbose CLI diagnostics and debugging behavior."),
     "program_dir": TopLevelConfigField("", "Primary directory for program source files.", affects_project_cache=True),
     "ABB_lib_dir": TopLevelConfigField(

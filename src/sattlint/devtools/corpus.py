@@ -721,7 +721,6 @@ def _load_corpus_workspace(
             "other_lib_dirs": other_lib_dirs,
             "ABB_lib_dir": abb_lib_dir,
             "mode": _infer_code_mode(target_path),
-            "scan_root_only": False,
             "debug": False,
         },
         target_path.stem,

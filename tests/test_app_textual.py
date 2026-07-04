@@ -604,7 +604,7 @@ def test_textual_quit_keybinding_does_not_crash() -> None:
         )
 
         async with app_instance.run_test() as pilot:
-            await pilot.press("q")
+            await pilot.press("ctrl+q")
             await pilot.pause()
 
     asyncio.run(_run())
@@ -765,7 +765,7 @@ def test_textual_slash_binding_filters_setup_targets() -> None:
         app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": ["Alpha", "Beta", "Gamma"]})
 
         async with app_instance.run_test() as pilot:
-            await pilot.press("4")
+            await pilot.press("ctrl+4")
             await pilot.pause()
 
             await pilot.press("/")
@@ -1778,24 +1778,16 @@ def test_textual_open_help_popup_propagates_type_errors(monkeypatch: pytest.Monk
     assert shown_help == []
 
 
-def test_textual_ctrl_g_cancel_binding_requests_stop_for_running_analysis(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_textual_ctrl_g_cancel_binding_requests_stop_for_running_analysis() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
     async def _run() -> None:
-        interrupted: list[tuple[object, object]] = []
-        fake_thread = SimpleNamespace(ident=321, is_alive=lambda: True)
         app_instance = _make_textual_app(
             cfg={"analyzed_programs_and_libraries": ["DemoTarget.s"]},
             app_module=SimpleNamespace(
                 run_comment_code_analysis=lambda _cfg: None,
             ),
-        )
-
-        monkeypatch.setattr(
-            app_textual_actions_module,
-            "_interrupt_worker_thread",
-            lambda thread, exception_type: interrupted.append((thread, exception_type)) or True,
         )
 
         async with app_instance.run_test() as pilot:
@@ -1811,7 +1803,6 @@ def test_textual_ctrl_g_cancel_binding_requests_stop_for_running_analysis(monkey
             app_instance._active_job_cancel_event = threading.Event()
             app_instance._active_job_cancel_requested = False
             app_instance._active_job_worker = SimpleNamespace(cancel=lambda: None)
-            app_instance._active_job_thread = fake_thread
             app_instance._refresh_summary()
             app_instance._refresh_shell_state()
             app_instance._refresh_view()
@@ -1825,8 +1816,7 @@ def test_textual_ctrl_g_cancel_binding_requests_stop_for_running_analysis(monkey
             assert app_instance._active_job_cancel_requested is True
             assert app_instance._active_job_cancel_event is not None
             assert app_instance._active_job_cancel_event.is_set() is True
-            assert interrupted == [(fake_thread, KeyboardInterrupt)]
-            assert "Cancellation requested. Interrupting the running analysis immediately." in output_text
+            assert "Cancellation requested. The running analysis will stop at the next checkpoint." in output_text
             assert str(app_instance.query_one("#view-note").renderable) == ""
             assert "Analysis:" in output_text
 
@@ -1922,7 +1912,7 @@ def test_textual_toolbar_key_switches_routed_view() -> None:
         async with app_instance.run_test() as pilot:
             assert str(app_instance.query_one("#view-title").renderable) == "Analyze"
 
-            await pilot.press("4")
+            await pilot.press("ctrl+4")
             await pilot.pause()
 
             assert app_instance._active_view == "setup"
@@ -1962,8 +1952,8 @@ def test_textual_toolbar_keys_respect_busy_guard() -> None:
             app_instance._refresh_shell_state()
             await pilot.pause()
 
-            await pilot.press("2")
-            await pilot.press("4")
+            await pilot.press("ctrl+2")
+            await pilot.press("ctrl+4")
             await pilot.pause()
 
             output_text = getattr(app_instance.query_one("#output"), "text", "")
@@ -2024,7 +2014,7 @@ def test_textual_setup_view_shows_selected_target_preview(tmp_path: Path) -> Non
         )
 
         async with app_instance.run_test() as pilot:
-            await pilot.press("4")
+            await pilot.press("ctrl+4")
             await pilot.pause()
 
             workspace_host = app_instance.query_one("#workspace-host")
@@ -2050,12 +2040,6 @@ def test_textual_setup_view_shows_selected_target_preview(tmp_path: Path) -> Non
             assert str(app_instance.query_one("#setup-label-other-dirs").renderable) == "No extra libraries"
             assert str(app_instance.query_one("#setup-label-icf-dir").renderable) == "Not configured"
             assert str(app_instance.query_one("#setup-label-mode").renderable) == "Draft mode\n.s and .l files"
-            assert str(app_instance.query_one("#setup-label-scan-root-only").renderable) == (
-                "Disabled\nNested folders are also scanned"
-            )
-            assert str(app_instance.query_one("#setup-label-fast-cache").renderable) == (
-                "Disabled\nFull cache validation is active"
-            )
             assert str(app_instance.query_one("#setup-label-debug").renderable) == (
                 "Disabled\nStandard runtime logging"
             )
@@ -2097,7 +2081,7 @@ def test_textual_setup_browse_shows_discovered_targets_once(tmp_path: Path) -> N
         )
 
         async with app_instance.run_test() as pilot:
-            await pilot.press("4")
+            await pilot.press("ctrl+4")
             await pilot.pause()
 
             browse_button = app_instance.query_one("#setup-target-browse")
@@ -2167,7 +2151,7 @@ def test_textual_documentation_view_shows_direct_actions() -> None:
         )
 
         async with app_instance.run_test(size=(80, 28)) as pilot:
-            await pilot.press("2")
+            await pilot.press("ctrl+2")
             await pilot.pause()
 
             workspace_host = app_instance.query_one("#workspace-host")
@@ -2220,7 +2204,6 @@ def test_textual_documentation_view_shows_direct_actions() -> None:
         ("documentation-scope-all", "_run_documentation_scope_all", "scope-all"),
         ("documentation-scope-moduletype", "_run_documentation_scope_moduletype", "scope-moduletype"),
         ("documentation-scope-instance-path", "_run_documentation_scope_instance_path", "scope-instance"),
-        ("setup-self-check", "_run_tool_self_check", "self-check"),
         ("tools-dumps", "_run_tool_dumps", "dumps"),
         ("tools-source-diff", "_run_tool_source_diff", "source-diff"),
         ("tools-refresh-ast", "_run_tool_refresh_ast", "refresh-ast"),
@@ -2275,7 +2258,7 @@ def test_textual_tools_dumps_button_opens_menu_without_ansi_clear() -> None:
         app.set_textual_menu_interaction(bridge.as_menu_interaction())
         try:
             async with app_instance.run_test(size=(80, 28)) as pilot:
-                await pilot.press("3")
+                await pilot.press("ctrl+3")
                 await pilot.pause()
 
                 app_instance.on_button_pressed(SimpleNamespace(button=app_instance.query_one("#tools-dumps")))
@@ -2329,7 +2312,7 @@ def test_textual_setup_target_button_click_adds_and_removes_target(tmp_path: Pat
         )
 
         async with app_instance.run_test() as pilot:
-            await pilot.press("4")
+            await pilot.press("ctrl+4")
             await pilot.pause()
 
             # Add target programmatically (file browser not testable in headless mode)
@@ -2374,7 +2357,7 @@ def test_textual_tools_view_shows_direct_actions() -> None:
         )
 
         async with app_instance.run_test(size=(80, 28)) as pilot:
-            await pilot.press("3")
+            await pilot.press("ctrl+3")
             await pilot.pause()
 
             workspace_host = app_instance.query_one("#workspace-host")
@@ -2700,19 +2683,28 @@ def test_textual_write_output_preserves_blank_lines(monkeypatch: pytest.MonkeyPa
         config_path=None,
         quit_app_error=RuntimeError,
     )
-    inserted: list[str] = []
+    written: list[object] = []
     scrolled: list[bool] = []
-    fake_widget = SimpleNamespace(
-        document=SimpleNamespace(end=object()),
-        insert=lambda text, *_args, **_kwargs: inserted.append(text),
-        scroll_cursor_visible=lambda animate=False: scrolled.append(bool(animate)),
-    )
+
+    class FakeRichOutput:
+        text = ""
+
+        def append_plain_text(self, text: str) -> None:
+            self.text += text
+
+        def write(self, renderable: object, **_kwargs: Any) -> None:
+            written.append(renderable)
+
+        def scroll_end(self, animate: bool = False) -> None:
+            scrolled.append(bool(animate))
+
+    fake_widget = FakeRichOutput()
 
     monkeypatch.setattr(app_instance, "query_one", lambda *_args, **_kwargs: fake_widget)
 
     app_instance._write_output("Summary\n\nDetails")
 
-    assert "".join(inserted) == "Summary\n\nDetails\n"
+    assert fake_widget.text == "Summary\n\nDetails\n"
     assert scrolled == [False]
 
 

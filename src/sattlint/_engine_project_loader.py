@@ -46,8 +46,6 @@ class SattLineProjectLoader(SattLineProjectLoaderLookupMixin):
         self._flush_lookup_cache()
 
     def resolve(self, root_name: str, strict: bool = False, *, syntax_check: bool = False) -> ProjectGraph:
-        if self.scan_root_only:
-            return self._resolve_root_only(root_name, strict)
         self._update_status(f"Loading {root_name}: resolving dependency graph")
         self.dbg(f"Resolving root: {root_name}")
         graph = ProjectGraph()
@@ -62,93 +60,6 @@ class SattLineProjectLoader(SattLineProjectLoaderLookupMixin):
         if graph.missing:
             self.dbg(_format_debug_missing_entries(graph.missing))
         return graph
-
-    def _resolve_root_only(self, root_name: str, strict: bool) -> ProjectGraph:
-        graph = ProjectGraph()
-        validation_warnings: list[ValidationWarning] = []
-
-        def record_validation_warnings() -> None:
-            for warning in validation_warnings:
-                _record_project_warning(graph, root_name, warning)
-            validation_warnings.clear()
-
-        try:
-            engine_module = _engine_module()
-            attach_graphics_companion = engine_module._attach_graphics_companion
-
-            self._update_status(f"Loading {root_name}: locating source file")
-            code_path = self._find_code(root_name)
-
-            if not code_path:
-                record_missing_library(
-                    graph,
-                    name=root_name,
-                    mode=f"mode={self.mode.value}",
-                    strict=strict,
-                )
-                return graph
-
-            try:
-                basepicture = self._load_or_parse_for_owner(code_path, owner_name=root_name)
-            except Exception as ex:
-                if strict:
-                    raise
-                _record_project_failure(graph, root_name, ex)
-                return graph
-
-            try:
-                if basepicture is None:
-                    message = f"{root_name} transformed to no BasePicture (parse/transform issue?)"
-                    if strict:
-                        raise RuntimeError(message)
-                    graph.missing.append(message)
-                    return graph
-                self._update_status(f"Loading {root_name}: validating {code_path.name}")
-                validation_started_at = perf_counter()
-                engine_module.validate_transformed_basepicture(
-                    basepicture,
-                    allow_unresolved_external_datatypes=True if self.refresh_mode == "ast-only" else not strict,
-                    enforce_unique_submodule_names=False,
-                    allow_parameterless_module_mappings=True,
-                    warn_unknown_parameter_targets=self.refresh_mode != "ast-only",
-                    warn_incompatible_parameter_mappings=self.refresh_mode != "ast-only",
-                    warning_sink=validation_warnings.append,
-                )
-                self._record_stage_timing(root_name, "validate", validation_started_at)
-                record_validation_warnings()
-                graph.ast_by_name[root_name] = basepicture
-                if self.refresh_mode == "ast-only":
-                    return graph
-                graphics_started_at = perf_counter()
-
-                def _root_status_cb(msg: str) -> None:
-                    self._update_status(f"Loading {root_name}: {msg}")
-
-                if attach_graphics_companion(
-                    basepicture,
-                    code_path=code_path,
-                    mode=self.mode,
-                    graph=graph,
-                    owner_name=root_name,
-                    timing_sink=self._graphics_timing_sink,
-                    status_callback=_root_status_cb,
-                ):
-                    self._ast_cache.save(code_path, self.mode.value, basepicture)
-                self._record_stage_timing(root_name, "attach_graphics", graphics_started_at)
-                library_name = self._record_library_name(root_name, code_path)
-                self._update_status(f"Loading {root_name}: indexing definitions")
-                index_started_at = perf_counter()
-                graph.index_from_basepic(basepicture, source_path=code_path, library_name=library_name)
-                self._record_stage_timing(root_name, "index", index_started_at)
-                return graph
-            except Exception as ex:
-                record_validation_warnings()
-                if strict:
-                    raise
-                _record_project_failure(graph, root_name, ex)
-                return graph
-        finally:
-            self._flush_lookup_cache()
 
     def _visit(  # noqa: PLR0915
         self,
