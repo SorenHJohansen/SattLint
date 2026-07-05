@@ -17,6 +17,7 @@ from .config_validation import (
     deep_merge_dict,
     load_time_config_warnings,
     normalize_documentation_rule_keys,
+    strip_unknown_keys,
     validate_effective_config,
 )
 
@@ -25,7 +26,6 @@ emit_output = console_module.print_output
 
 def _merged_effective_config(cfg: ConfigDict | ConfigOverrideDict) -> ConfigDict:
     merged = deep_merge_dict(cast(ConfigObjectMap, deepcopy(DEFAULT_CONFIG)), cast(ConfigObjectMap, cfg))
-    merged.pop("ignore_ABB_lib", None)
     return cast(ConfigDict, merged)
 
 
@@ -63,6 +63,8 @@ def load_config(path: Path) -> tuple[ConfigDict, bool]:
 
     with path.open("rb") as file_handle:
         cfg = cast(ConfigOverrideDict, tomllib.load(file_handle))
+
+    strip_unknown_keys(cfg)
 
     for warning in load_time_config_warnings(cfg):
         emit_output(f"⚠ Config warning [{warning.key_path}]: {warning.message}")

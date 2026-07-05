@@ -106,16 +106,70 @@ def _deep_merge_dict(base: ConfigObjectMap, override: ConfigObjectMap) -> Config
     return merged
 
 
+_SECTION_SFC_KEYS = frozenset({"mutually_exclusive_steps", "step_contracts"})
+_SECTION_NAMING_RULE_KEYS = frozenset({"style", "allow"})
+_SECTION_RULE_PROFILES_KEYS = frozenset({"active", "profiles"})
+_SECTION_RULE_PROFILE_ENTRY_KEYS = frozenset(
+    {"description", "disabled_rules", "severity_overrides", "confidence_overrides"}
+)
+_SECTION_DOCUMENTATION_KEYS = frozenset({"classifications"})
+_SECTION_DOCUMENTATION_RULE_KEYS = frozenset(_DOCUMENTATION_RULE_LIST_KEYS) | frozenset(_DOCUMENTATION_LEGACY_RULE_KEYS)
+
+
+def _strip_section_keys(cfg: ConfigObjectMap, valid_keys: frozenset[str]) -> None:
+    for key in list(cfg):
+        if key not in valid_keys:
+            del cfg[key]
+
+
+def _strip_unknown_keys(cfg: ConfigOverrideDict) -> None:
+    cfg_map = cast(ConfigObjectMap, cfg)
+
+    _strip_section_keys(cfg_map, VALID_TOP_LEVEL_CONFIG_KEYS)
+
+    analysis = _config_dict(cfg_map.get("analysis"))
+    if analysis is not None:
+        _strip_section_keys(analysis, VALID_ANALYSIS_KEYS)
+
+        sfc = _config_dict(analysis.get("sfc"))
+        if sfc is not None:
+            _strip_section_keys(sfc, _SECTION_SFC_KEYS)
+
+        naming = _config_dict(analysis.get("naming"))
+        if naming is not None:
+            for key in list(naming):
+                if key not in VALID_NAMING_TARGETS:
+                    del naming[key]
+                else:
+                    target_rule = _config_dict(naming[key])
+                    if target_rule is not None:
+                        _strip_section_keys(target_rule, _SECTION_NAMING_RULE_KEYS)
+
+        rule_profiles = _config_dict(analysis.get("rule_profiles"))
+        if rule_profiles is not None:
+            _strip_section_keys(rule_profiles, _SECTION_RULE_PROFILES_KEYS)
+
+            profiles = _config_dict(rule_profiles.get("profiles"))
+            if profiles is not None:
+                for profile in profiles.values():
+                    profile_cfg = _config_dict(profile)
+                    if profile_cfg is not None:
+                        _strip_section_keys(profile_cfg, _SECTION_RULE_PROFILE_ENTRY_KEYS)
+
+    documentation = _config_dict(cfg_map.get("documentation"))
+    if documentation is not None:
+        _strip_section_keys(documentation, _SECTION_DOCUMENTATION_KEYS)
+
+        classifications = _config_dict(documentation.get("classifications"))
+        if classifications is not None:
+            for rule in classifications.values():
+                typed_rule = _config_dict(rule)
+                if typed_rule is not None:
+                    _strip_section_keys(typed_rule, _SECTION_DOCUMENTATION_RULE_KEYS)
+
+
 def _load_time_config_warnings(cfg: ConfigOverrideDict) -> tuple[ConfigValidationError, ...]:
     warnings: list[ConfigValidationError] = []
-
-    if "ignore_ABB_lib" in cfg:
-        warnings.append(
-            ConfigValidationError(
-                key_path="ignore_ABB_lib",
-                message="ignore_ABB_lib is no longer supported and has no effect.",
-            )
-        )
 
     telemetry = _config_dict(cfg.get("telemetry"))
     if telemetry is not None and "path" in telemetry:
@@ -250,6 +304,7 @@ configured_targets = _configured_targets
 validation_errors_by_key = _validation_errors_by_key
 deep_merge_dict = _deep_merge_dict
 load_time_config_warnings = _load_time_config_warnings
+strip_unknown_keys = _strip_unknown_keys
 
 
 def _none_value_errors(value: object, *, key_path: str) -> list[ConfigValidationError]:
