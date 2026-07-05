@@ -31,6 +31,8 @@ from ._app_textual_shared import (
 )
 from ._app_textual_widgets import _FileBrowserScreen, _InteractionPane, _MenubarWidget
 from .project import load_project as _load_project_fn
+from .project.io import save_project as _save_slproj
+from .project.types import ProjectDict
 
 _TARGET_HEADER_RE = re.compile(r"^===\s*Target:\s*(?P<name>.+?)\s*===\s*$")
 _PHASE_HEADER_RE = re.compile(r"^\[(?P<index>\d+)/(?P<total>\d+)\]\s+(?P<label>.+)$")
@@ -441,7 +443,48 @@ def action_clear_output(self: Any) -> None:
     self._clear_session_output()
 
 
+def _make_project_relative(path: str, anchor: Path) -> str:
+    p = Path(path)
+    if not p.is_absolute():
+        return str(p)
+    try:
+        return str(p.relative_to(anchor))
+    except ValueError:
+        return str(p)
+
+
 def action_save_config(self: Any) -> None:
+    raw_path = self._config_path
+    if raw_path is None:
+        return
+    config_path = Path(raw_path)
+    if config_path.suffix == ".slproj":
+        root = config_path.parent.resolve()
+        cfg_raw: dict[str, object] = self._cfg
+        project_data: dict[str, object] = {
+            "slproj_version": 1,
+            "analyzed_programs_and_libraries": list(
+                cast(list[str], cfg_raw.get("analyzed_programs_and_libraries") or [])
+            ),
+            "include_reverse_library_consumers": bool(cfg_raw.get("include_reverse_library_consumers", False)),
+            "mode": str(cfg_raw.get("mode", "official")),
+            "debug": bool(cfg_raw.get("debug", False)),
+            "program_dir": _make_project_relative(str(cfg_raw.get("program_dir", "")), root),
+            "ABB_lib_dir": _make_project_relative(str(cfg_raw.get("ABB_lib_dir", "")), root),
+            "icf_dir": _make_project_relative(str(cfg_raw.get("icf_dir", "")), root),
+            "other_lib_dirs": [
+                _make_project_relative(str(p), root) for p in cast(list[str], cfg_raw.get("other_lib_dirs") or [])
+            ],
+            "output_dir": "output",
+            "cache_dir": ".sattlint-cache",
+            "telemetry": dict(cast(dict[str, object], cfg_raw.get("telemetry") or {"enabled": False})),
+            "analysis": dict(cast(dict[str, object], cfg_raw.get("analysis") or {})),
+            "documentation": dict(cast(dict[str, object], cfg_raw.get("documentation") or {})),
+        }
+        _save_slproj(config_path, cast(ProjectDict, project_data))
+        self._dirty = False
+        self._write_output("Configuration saved.")
+        return
     try:
         self._save_config_fn(self._config_path, self._cfg)
     except ValueError as exc:
@@ -575,7 +618,7 @@ def _start_action(
     self._active_job_worker = self._start_managed_action_worker(_run, label=label, action_id=action_id)
 
 
-def _refresh_view(self: Any) -> None:
+def _refresh_view(self: Any) -> None:  # noqa: PLR0915
     if not tuple(getattr(self, "children", ())):
         return
     workspace_host = _query_required(self, "#workspace-host", _TEXTUAL_VERTICAL)
@@ -623,6 +666,11 @@ def _refresh_view(self: Any) -> None:
     documentation_actions.set_class(not documentation_view, "is-hidden")
     setup_browser.set_class(not setup_view, "is-hidden")
     tools_actions.set_class(not tools_view, "is-hidden")
+
+    for tab in self.query(".nav-tab"):
+        tab_id = str(getattr(tab, "id", "") or "")
+        tab_view = tab_id.removeprefix("nav-tab-")
+        tab.set_class(tab_view == self._active_view, "nav-tab-active")
 
     if analyze_view:
         self._refresh_analyze_planner()
@@ -803,7 +851,22 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
 
 
 def on_click(self: Any, event: Any) -> None:
+    _on_nav_tab_click(self, event)
     _menubar_click_outside(self, event)
+
+
+def _on_nav_tab_click(self: Any, event: Any) -> None:
+    if self._interaction_screen_active():
+        return
+    if self._busy:
+        return
+    widget = getattr(event, "widget", None)
+    if widget is None:
+        return
+    widget_id = str(getattr(widget, "id", "") or "")
+    if widget_id.startswith("nav-tab-"):
+        view_name = widget_id.removeprefix("nav-tab-")
+        self._activate_view(view_name)
 
 
 def _menubar_click_outside(self: Any, event: Any) -> None:

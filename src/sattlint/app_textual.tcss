@@ -417,10 +417,38 @@
             background: #f4efde;
         }
 
+        #top-bar {
+            dock: top;
+            height: auto;
+        }
+
         #menubar {
             height: auto;
-            dock: top;
             background: #e6decb;
+        }
+
+        #nav-tabs {
+            height: 3;
+            background: #d5cdb8;
+            align: left middle;
+        }
+
+        .nav-tab {
+            width: auto;
+            height: 3;
+            padding: 0 2;
+            color: #373737;
+            background: #d5cdb8;
+            text-style: bold;
+        }
+
+        .nav-tab:hover {
+            background: #bfb7a2;
+        }
+
+        .nav-tab.nav-tab-active {
+            background: #f4efde;
+            color: #001ba3;
         }
 
         #menubar-headers {

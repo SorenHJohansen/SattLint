@@ -332,7 +332,13 @@ if _TEXTUAL_APP is not None:
             self._session_output_dropped_line_count = 0
 
         def compose(self) -> _TEXTUAL_COMPOSE_RESULT:  # noqa: PLR0915
-            yield _MenubarWidget(menus=MENU_DEFINITIONS)
+            with _TEXTUAL_VERTICAL(id="top-bar"):
+                yield _MenubarWidget(menus=MENU_DEFINITIONS)
+                with _TEXTUAL_HORIZONTAL(id="nav-tabs"):
+                    yield _TEXTUAL_STATIC("  Analyze  ", id="nav-tab-analyze", classes="nav-tab")
+                    yield _TEXTUAL_STATIC("  Documentation  ", id="nav-tab-documentation", classes="nav-tab")
+                    yield _TEXTUAL_STATIC("  Tools  ", id="nav-tab-tools", classes="nav-tab")
+                    yield _TEXTUAL_STATIC("  Setup  ", id="nav-tab-setup", classes="nav-tab")
             with _TEXTUAL_VERTICAL(id="content-host"):
                 with _TEXTUAL_VERTICAL(id="workspace-host"):
                     with _TEXTUAL_VERTICAL(id="view-pane"):

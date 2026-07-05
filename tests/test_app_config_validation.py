@@ -146,12 +146,13 @@ def test_load_config_warns_on_invalid_keys_and_normalizes_legacy_documentation_k
 
     out = capsys.readouterr().out
     assert created is False
-    assert "Config warning [bad_key]" in out
-    assert "Config warning [ignore_ABB_lib]: ignore_ABB_lib is no longer supported and has no effect." in out
+    assert "Config warning [bad_key]" not in out
+    assert "bad_key" not in loaded
+    assert "Config warning [ignore_ABB_lib]" not in out
+    assert "ignore_ABB_lib" not in loaded
     assert "Config warning [documentation.classifications.equipment_modules]" in out
     assert "Config warning [documentation.classifications.equipment_modules.moduletype_name_contains]" in out
     assert "Config warning [documentation.classifications.equipment_modules.descendant_moduletype_label_equals]" in out
-    assert "ignore_ABB_lib" not in loaded
     assert loaded["documentation"]["classifications"]["em"]["name_contains"] == ["Tank"]
     assert loaded["documentation"]["classifications"]["em"]["desc_label_equals"] == ["nnestruct:EquipModCoordinate"]
     assert "equipment_modules" not in loaded["documentation"]["classifications"]
