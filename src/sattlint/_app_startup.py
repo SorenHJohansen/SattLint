@@ -325,6 +325,7 @@ def main(
                 try:
                     active_project = load_project(discovered_slproj)
                     project_config_override = active_project.to_default_merged_config_dict()
+                    effective_config_path = discovered_slproj
                     emit_output_fn(f"Using project: {project_status(active_project)}")
                 except (FileNotFoundError, ValueError) as exc:
                     emit_output_fn(f"Warning: Could not load project: {exc}")

@@ -548,7 +548,7 @@ def test_textual_top_chrome_removes_banner_and_summary_boxes() -> None:
 
             assert len(list(app_instance.query("#shell-banner"))) == 0
             assert len(list(app_instance.query("#summary"))) == 0
-            assert app_instance.query_one("#action-analyze") is not None
+            assert app_instance.query_one("#nav-tab-analyze") is not None
 
     asyncio.run(_run())
 
@@ -575,11 +575,10 @@ def test_textual_toolbar_is_available_without_summary_box() -> None:
             await pilot.pause()
 
             assert len(list(app_instance.query("#summary"))) == 0
-            assert app_instance.query_one("#actions") is not None
-            quit_button = app_instance.query_one("#action-quit")
+            assert app_instance.query_one("#nav-tabs") is not None
+            assert app_instance.query_one("#nav-tab-analyze") is not None
             output_pane = app_instance.query_one("#output-pane")
 
-            assert output_pane.region.right > quit_button.region.x
             assert output_pane.size.width >= 40
 
     asyncio.run(_run())
@@ -893,7 +892,7 @@ def test_textual_present_request_uses_inline_host_and_preserves_shell_chrome() -
             assert len(list(app_instance.query("#summary"))) == 0
             assert app_instance.query_one("#interaction-host").has_class("active")
             assert app_instance.query_one("#output").has_class("interaction-active")
-            assert getattr(app_instance.query_one("#action-analyze"), "disabled", False) is True
+            assert getattr(app_instance.query_one("#view-primary-action"), "disabled", False) is True
 
             await pilot.press("escape")
             await pilot.pause()
@@ -903,7 +902,7 @@ def test_textual_present_request_uses_inline_host_and_preserves_shell_chrome() -
             assert request.response == "b"
             assert app_instance.query_one("#interaction-host").has_class("active") is False
             assert app_instance.query_one("#output").has_class("interaction-active") is False
-            assert getattr(app_instance.query_one("#action-analyze"), "disabled", True) is False
+            assert getattr(app_instance.query_one("#view-primary-action"), "disabled", True) is False
 
     asyncio.run(_run())
 
@@ -1918,7 +1917,7 @@ def test_textual_toolbar_key_switches_routed_view() -> None:
             assert app_instance._active_view == "setup"
             assert str(app_instance.query_one("#view-title").renderable) == "Setup"
             assert app_instance.query_one("#view-actions").has_class("is-hidden") is True
-            assert getattr(app_instance.query_one("#action-setup"), "disabled", True) is False
+            assert app_instance.query_one("#nav-tab-setup").has_class("nav-tab-active") is True
 
     asyncio.run(_run())
 
