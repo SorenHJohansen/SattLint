@@ -449,28 +449,22 @@ def test_config_menu_all_options(noop_screen, monkeypatch, tmp_path):
         "3",
         "y",
         "4",
-        "y",
-        "5",
         str(tmp_path / "prog"),
         "y",
-        "6",
+        "5",
         str(tmp_path / "abb_new"),
         "y",
-        "7",
+        "6",
         "y",
         str(tmp_path / "lib1"),
-        "7",
-        "n",
-        "y",
-        "1",
-        "9",
+        "8",
         str(tmp_path / "icf"),
+        "y",
+        "9",
         "y",
         "10",
         "y",
-        "11",
-        "y",
-        "8",
+        "7",
         "y",
         "b",
     ]
@@ -492,7 +486,7 @@ def test_config_menu_can_update_telemetry_without_touching_other_settings(noop_s
         "input",
         make_input(
             [
-                "11",
+                "10",
                 "y",
                 "b",
             ]
@@ -508,7 +502,7 @@ def test_config_menu_can_update_telemetry_without_touching_other_settings(noop_s
 
 def test_config_menu_can_use_injected_choice_handler(noop_screen, monkeypatch):
     cfg = deepcopy(app.DEFAULT_CONFIG)
-    choices = iter(["11", "b"])
+    choices = iter(["10", "b"])
     seen: dict[str, object] = {}
 
     monkeypatch.setattr(app, "confirm", lambda *_args, **_kwargs: True)
@@ -525,7 +519,7 @@ def test_config_menu_can_use_injected_choice_handler(noop_screen, monkeypatch):
     assert dirty is True
     assert cfg["telemetry"] == {"enabled": True}
     assert seen["title"] == "Setup"
-    assert seen["option_count"] == 14
+    assert seen["option_count"] == 13
 
 
 def test_show_config_uses_sectioned_layout(capsys, monkeypatch, tmp_path):

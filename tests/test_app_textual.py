@@ -453,7 +453,7 @@ def test_resolve_shell_title_falls_back_to_default_banner_title() -> None:
 def test_textual_shell_css_mentions_banner_and_full_width_menu_buttons() -> None:
     css = app_textual.TEXTUAL_SHELL_CSS
 
-    assert "#actions" in app_textual.TEXTUAL_SHELL_CSS
+    assert "#view-actions" in app_textual.TEXTUAL_SHELL_CSS
     assert "#view-header" in app_textual.TEXTUAL_SHELL_CSS
     assert "#view-copy" in app_textual.TEXTUAL_SHELL_CSS
     assert "#view-side-actions" in app_textual.TEXTUAL_SHELL_CSS
@@ -471,7 +471,7 @@ def test_textual_shell_css_mentions_banner_and_full_width_menu_buttons() -> None
     assert "#interaction-screen" in app_textual.TEXTUAL_SHELL_CSS
     assert "Button.raised-button" in app_textual.TEXTUAL_SHELL_CSS
     assert "#interaction-options Button.raised-button" in app_textual.TEXTUAL_SHELL_CSS
-    assert "#actions Button.toolbar-button" in app_textual.TEXTUAL_SHELL_CSS
+    assert "#view-actions Button.raised-button" in app_textual.TEXTUAL_SHELL_CSS
     assert ".selection-list--button-selected" in app_textual.TEXTUAL_SHELL_CSS
     assert "outline: none;" in app_textual.TEXTUAL_SHELL_CSS
     assert "width: 100%;" in app_textual.TEXTUAL_SHELL_CSS
