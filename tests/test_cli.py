@@ -39,10 +39,12 @@ def _command_handlers(**overrides: Any) -> dict[str, Any]:
                             app_base.EXIT_SUCCESS
                         )
                     ),
-                    "docgen": lambda cfg, *, use_cache, output_dir, output_path: app_base.EXIT_SUCCESS,
-                    "cache_prune": lambda *, cache_dir: app_base.EXIT_SUCCESS,
+                    "docgen": lambda cfg, *, use_cache, output_format="text", output_dir, output_path: (
+                        app_base.EXIT_SUCCESS
+                    ),
+                    "cache_prune": lambda *, cache_dir, output_format="text": app_base.EXIT_SUCCESS,
                     "telemetry_summary": lambda cfg, *, config_path, output_format, output_path: app_base.EXIT_SUCCESS,
-                    "format_icf": lambda cfg, *, check: app_base.EXIT_SUCCESS,
+                    "format_icf": lambda cfg, *, check, output_format="text": app_base.EXIT_SUCCESS,
                     "trace": lambda args: app_base.EXIT_SUCCESS,
                 }
                 | overrides,
@@ -97,7 +99,7 @@ def test_build_cli_parser_syntax_check_includes_output_format():
         option for parser_action in syntax_parser._actions for option in getattr(parser_action, "option_strings", [])
     }
 
-    assert "--format" in option_strings
+    assert {"--format", "--output-format"} <= option_strings
 
 
 def test_build_cli_parser_validate_config_includes_output_format():
@@ -110,7 +112,7 @@ def test_build_cli_parser_validate_config_includes_output_format():
         option for parser_action in validate_parser._actions for option in getattr(parser_action, "option_strings", [])
     }
 
-    assert "--format" in option_strings
+    assert {"--format", "--output-format"} <= option_strings
 
 
 def test_build_cli_parser_analyze_includes_output_format():
@@ -123,7 +125,32 @@ def test_build_cli_parser_analyze_includes_output_format():
         option for parser_action in analyze_parser._actions for option in getattr(parser_action, "option_strings", [])
     }
 
-    assert "--format" in option_strings
+    assert {"--format", "--output-format"} <= option_strings
+
+
+@pytest.mark.parametrize(
+    ("command_name", "expected_options"),
+    [
+        ("simulate", {"--format", "--output-format"}),
+        ("docgen", {"--format", "--output-format"}),
+        ("cache-prune", {"--format", "--output-format"}),
+        ("format-icf", {"--format", "--output-format"}),
+        ("telemetry-summary", {"--format", "--output-format"}),
+        ("source-diff", {"--format", "--output-format"}),
+        ("trace", {"--format", "--output-format"}),
+    ],
+)
+def test_build_cli_parser_commands_include_output_format_aliases(command_name: str, expected_options: set[str]):
+    parser = app_base.build_cli_parser()
+
+    action = next(action for action in parser._actions if isinstance(getattr(action, "choices", None), Mapping))
+    choices = cast(dict[str, object], action.choices)
+    command_parser = cast(Any, choices[command_name])
+    option_strings = {
+        option for parser_action in command_parser._actions for option in getattr(parser_action, "option_strings", [])
+    }
+
+    assert expected_options <= option_strings
 
 
 def test_build_cli_parser_repo_audit_includes_dedicated_options():
@@ -1119,27 +1146,31 @@ def test_run_cli_format_icf_passes_check_flag():
         load_config_fn=lambda path: ({"debug": False, "icf_dir": "icf"}, False),
         apply_debug_fn=lambda _cfg: None,
         command_handlers={
-            "format_icf": lambda cfg, *, check: seen.update({"cfg": cfg, "check": check}) or app_base.EXIT_SUCCESS
+            "format_icf": lambda cfg, *, check, output_format="text": (
+                seen.update({"cfg": cfg, "check": check, "output_format": output_format}) or app_base.EXIT_SUCCESS
+            )
         },
     )
 
     assert exit_code == app_base.EXIT_SUCCESS
     assert seen["check"] is True
+    assert seen["output_format"] == "text"
 
 
 def test_run_cli_docgen_passes_output_flags():
     seen = {}
 
     exit_code = _run_base_cli(
-        ["docgen", "--output-dir", "docs-out", "--output-path", "report.docx"],
+        ["docgen", "--output-format", "json", "--output-dir", "docs-out", "--output-path", "report.docx"],
         load_config_fn=lambda path: ({"debug": False}, False),
         apply_debug_fn=lambda _cfg: None,
         command_handlers={
-            "docgen": lambda cfg, *, use_cache, output_dir, output_path: (
+            "docgen": lambda cfg, *, use_cache, output_format="text", output_dir, output_path: (
                 seen.update(
                     {
                         "cfg": cfg,
                         "use_cache": use_cache,
+                        "output_format": output_format,
                         "output_dir": output_dir,
                         "output_path": output_path,
                     }
@@ -1151,6 +1182,7 @@ def test_run_cli_docgen_passes_output_flags():
 
     assert exit_code == app_base.EXIT_SUCCESS
     assert seen["use_cache"] is True
+    assert seen["output_format"] == "json"
     assert seen["output_dir"] == "docs-out"
     assert seen["output_path"] == "report.docx"
 
@@ -1187,17 +1219,19 @@ def test_run_cli_cache_prune_passes_cache_dir_without_loading_config():
     seen = {}
 
     exit_code = cli_entry.run_cli(
-        ["cache-prune", "--cache-dir", "custom-cache"],
+        ["cache-prune", "--output-format", "json", "--cache-dir", "custom-cache"],
         config_path=Path("config.toml"),
         load_config_fn=lambda _path: (_ for _ in ()).throw(AssertionError("config should not be loaded")),
         apply_debug_fn=lambda _cfg: (_ for _ in ()).throw(AssertionError("debug should not be applied")),
         command_handlers={
-            "cache_prune": lambda *, cache_dir: seen.update({"cache_dir": cache_dir}) or app_base.EXIT_SUCCESS
+            "cache_prune": lambda *, cache_dir, output_format="text": (
+                seen.update({"cache_dir": cache_dir, "output_format": output_format}) or app_base.EXIT_SUCCESS
+            )
         },
     )
 
     assert exit_code == app_base.EXIT_SUCCESS
-    assert seen == {"cache_dir": "custom-cache"}
+    assert seen == {"cache_dir": "custom-cache", "output_format": "json"}
 
 
 def test_run_cli_repo_audit_uses_parsed_handler():

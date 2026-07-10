@@ -8,12 +8,13 @@ from pathlib import Path
 from typing import Any
 
 from sattlint.contracts import FindingCollection
-from sattlint.devtools import pipeline as pipeline_module
 from sattlint.devtools.artifact_registry import AUDIT_ARTIFACTS, artifact_reports_map
 from sattlint.devtools.json_helpers import json_mapping as _json_mapping
 from sattlint.devtools.progress_reporting import ProgressReporter
 from sattlint.devtools.shared.pipeline_artifacts import write_json_artifact
 from sattlint.path_sanitizer import sanitize_path_for_report
+
+from .. import pipeline as pipeline_module
 
 RECOMMENDED_REPO_AUDIT_MAX_WORKERS = 2
 

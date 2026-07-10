@@ -138,10 +138,13 @@ from ._server_workspace import (
 from .document_state import DocumentState
 from .workspace_store import SnapshotBundle, WorkspaceSnapshotStore
 
+SERVER_NAME = "sattline-lsp"
+SERVER_VERSION = "0.1.0"
+
 
 class SattLineLanguageServer(LanguageServer):
     def __init__(self) -> None:
-        super().__init__(name="sattline-lsp", version="0.1.0")  # pyright: ignore[reportUnknownMemberType]
+        super().__init__(name=SERVER_NAME, version=SERVER_VERSION)  # pyright: ignore[reportUnknownMemberType]
         self.settings = LspSettings()
         self.workspace_root: Path | None = None
         self.snapshot_store = WorkspaceSnapshotStore()
@@ -209,6 +212,28 @@ def _clear_workspace_entries(ls: SattLineLanguageServer, entry_files: tuple[Path
         _publish_workspace_diagnostics_for_paths(ls, affected_paths)
 
 
+def _health_payload(ls: SattLineLanguageServer) -> dict[str, object]:
+    workspace_root = getattr(ls, "workspace_root", None)
+    with ls.workspace_scan_condition:
+        return {
+            "healthy": True,
+            "status": "ok",
+            "serverName": SERVER_NAME,
+            "serverVersion": SERVER_VERSION,
+            "workspaceRoot": None if workspace_root is None else str(workspace_root),
+            "workspaceDiagnosticsMode": ls.settings.workspace_diagnostics_mode,
+            "openDocumentCount": len(ls.document_states),
+            "trackedDocumentPathCount": len(ls.document_paths),
+            "entryDiagnosticCount": len(ls.entry_diagnostics),
+            "publishedWorkspaceDiagnosticCount": len(ls.published_workspace_diagnostics),
+            "pendingWorkspaceScanCount": len(ls.workspace_scan_pending),
+            "workspaceScanGeneration": ls.workspace_scan_generation,
+            "workspaceScanThreadAlive": bool(
+                ls.workspace_scan_thread is not None and ls.workspace_scan_thread.is_alive()
+            ),
+        }
+
+
 @server.feature("initialize")
 def on_initialize(ls: SattLineLanguageServer, params: InitializeParams) -> None:
     ls.settings = LspSettings.from_initialization_options(getattr(params, "initialization_options", None))
@@ -238,6 +263,18 @@ def on_initialize(ls: SattLineLanguageServer, params: InitializeParams) -> None:
         ls.workspace_scan_thread = None
     _ensure_snapshot_store_configured(ls)
     _schedule_workspace_scan(ls)
+
+
+@server.feature("sattline/health")
+def on_health(ls: SattLineLanguageServer, params: object | None = None) -> dict[str, object]:
+    del params
+    return _health_payload(ls)
+
+
+@server.feature("sattline/status")
+def on_status(ls: SattLineLanguageServer, params: object | None = None) -> dict[str, object]:
+    del params
+    return _health_payload(ls)
 
 
 @server.feature("workspace/didChangeConfiguration")

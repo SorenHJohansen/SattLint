@@ -295,9 +295,16 @@ def test_cache_helpers_cover_persistence_and_hash_edge_paths(tmp_path: Path, mon
 
     source_path.write_text('"a"\n"b"\n"c"\n', encoding="utf-8")
     file_ast_cache.save(source_path, "draft", "ast")
-    payload = pickle.loads(cache_file.read_bytes())
+    tampered_bytes = bytearray(cache_file.read_bytes())
+    tampered_bytes[-1] ^= 0x01
+    cache_file.write_bytes(bytes(tampered_bytes))
+    assert file_ast_cache.load(source_path, "draft") is None
+
+    file_ast_cache.save(source_path, "draft", "ast")
+    payload = cache_mod._load_pickle_payload(cache_file)
+    assert isinstance(payload, dict)
     payload["meta"]["size"] = payload["meta"]["size"] + 1
-    cache_file.write_bytes(pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL))
+    cache_mod._save_pickle_payload(cache_file, payload)
     assert file_ast_cache.load(source_path, "draft") is None
 
     cfg = {

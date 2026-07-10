@@ -7,6 +7,7 @@ from typing import Any, TypeGuard, cast
 
 from .analyzers.icf import format_icf_file
 from .casefolding import casefold_equal, casefold_key, dedupe_casefolded_strings
+from .cli_output import render_json_output
 from .config_types import ConfigDict
 from .engine import expected_unavailable_library_reason
 from .models.project_graph import ProjectFailure
@@ -271,42 +272,88 @@ def run_format_icf_command(
     cfg: ConfigDict,
     *,
     check: bool,
+    output_format: str = "text",
     print_fn: Callable[..., None],
     exit_success: int,
     exit_usage_error: int,
 ) -> int:
     icf_dir, icf_files = configured_icf_files(cfg)
     if icf_dir is None:
-        print_fn("❌ icf_dir is not set in the config. Set it before running ICF formatting.")
+        if output_format == "json":
+            print_fn(render_json_output({"status": "error", "message": "icf_dir is not set in the config."}))
+        else:
+            print_fn("❌ icf_dir is not set in the config. Set it before running ICF formatting.")
         return exit_usage_error
 
     if not icf_dir.exists() or not icf_dir.is_dir():
-        print_fn(f"❌ icf_dir does not exist or is not a directory: {icf_dir}")
+        if output_format == "json":
+            print_fn(
+                render_json_output(
+                    {
+                        "status": "error",
+                        "message": f"icf_dir does not exist or is not a directory: {icf_dir}",
+                        "icf_dir": str(icf_dir),
+                    }
+                )
+            )
+        else:
+            print_fn(f"❌ icf_dir does not exist or is not a directory: {icf_dir}")
         return exit_usage_error
 
     if not icf_files:
-        print_fn(f"⚠ No .icf files found in {icf_dir}")
+        if output_format == "json":
+            print_fn(
+                render_json_output(
+                    {
+                        "status": "error",
+                        "message": f"No .icf files found in {icf_dir}",
+                        "icf_dir": str(icf_dir),
+                    }
+                )
+            )
+        else:
+            print_fn(f"⚠ No .icf files found in {icf_dir}")
         return exit_usage_error
 
     changed_count = 0
     unchanged_count = 0
     action = "Would change" if check else "Changed"
     verb = "would change" if check else "changed"
+    file_results: list[dict[str, Any]] = []
 
-    print_fn("\n--- ICF Formatting ---")
+    if output_format != "json":
+        print_fn("\n--- ICF Formatting ---")
     for icf_file in icf_files:
         result = format_icf_file(icf_file, check=check)
+        file_results.append({"path": str(icf_file), "name": icf_file.name, "changed": result.changed})
         if result.changed:
-            print_fn(f"  {icf_file.name}: {verb}")
+            if output_format != "json":
+                print_fn(f"  {icf_file.name}: {verb}")
             changed_count += 1
         else:
-            print_fn(f"  {icf_file.name}: unchanged")
+            if output_format != "json":
+                print_fn(f"  {icf_file.name}: unchanged")
             unchanged_count += 1
 
-    print_fn("Summary:")
-    print_fn(f"  Files processed: {len(icf_files)}")
-    print_fn(f"  {action}: {changed_count}")
-    print_fn(f"  Unchanged: {unchanged_count}")
+    if output_format == "json":
+        print_fn(
+            render_json_output(
+                {
+                    "status": "ok",
+                    "check": check,
+                    "icf_dir": str(icf_dir),
+                    "files_processed": len(icf_files),
+                    "changed_count": changed_count,
+                    "unchanged_count": unchanged_count,
+                    "files": file_results,
+                }
+            )
+        )
+    else:
+        print_fn("Summary:")
+        print_fn(f"  Files processed: {len(icf_files)}")
+        print_fn(f"  {action}: {changed_count}")
+        print_fn(f"  Unchanged: {unchanged_count}")
 
     if check and changed_count:
         return 1

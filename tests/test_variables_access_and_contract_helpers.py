@@ -1,7 +1,6 @@
 # pyright: reportPrivateUsage=false
 from __future__ import annotations
 
-from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -24,37 +23,15 @@ from sattlint.analyzers.variables import _variables_access as variables_access_m
 from sattlint.analyzers.variables import _variables_contracts as variables_contracts_module
 from sattlint.reporting.variables_report import IssueKind
 from sattlint.resolution import AccessKind, CanonicalPath
+from tests.helpers.variable_access_contract_support import (
+    DataflowAnalyzerType,
+    dependency_scope_mixin_impl,
+    make_strict_access_helper,
+    variables_access_impl,
+    variables_contracts_impl,
+)
 from tests.helpers.variable_test_support import UsageStub as _UsageStub
 from tests.helpers.variable_test_support import ns as _ns
-
-RecordResolver = Callable[[str], object | None]
-
-variables_access_impl: Any = variables_access_module
-variables_contracts_impl: Any = variables_contracts_module
-dependency_scope_mixin_impl: Any = dependency_scope_module.DependencyUsageScopeSupportMixin
-DataflowAnalyzerType: Any = DataflowAnalyzer
-
-
-def _resolve_no_record(_name: str) -> None:
-    return None
-
-
-def _make_strict_access_helper(
-    *,
-    fail_loudly: bool = False,
-    unavailable_libraries: set[str] | None = None,
-    opaque_builtin_types: set[str] | None = None,
-    record_resolver: RecordResolver | None = None,
-    warnings: list[str] | None = None,
-) -> Any:
-    return SimpleNamespace(
-        fail_loudly=fail_loudly,
-        unavailable_libraries=unavailable_libraries or {"Lib"},
-        opaque_builtin_types=opaque_builtin_types or {"opaque"},
-        type_graph=_ns(record=record_resolver or _resolve_no_record),
-        site_stack=["site"],
-        warn=(warnings if warnings is not None else []).append,
-    )
 
 
 def test_variables_access_wrapper_helpers_delegate_and_parse_fields() -> None:
@@ -240,7 +217,7 @@ def test_variables_access_strict_datatype_helper_covers_warning_and_error_paths(
             return None
         return record_with_known_field
 
-    helper = _make_strict_access_helper(
+    helper = make_strict_access_helper(
         record_resolver=_resolve_record,
         warnings=warnings,
     )
@@ -341,7 +318,7 @@ def test_variables_access_leaf_helper_covers_unknown_and_builtin_paths() -> None
             return None
         return record_with_known_field
 
-    helper = _make_strict_access_helper(
+    helper = make_strict_access_helper(
         record_resolver=_resolve_record,
         warnings=warnings,
     )
@@ -405,7 +382,7 @@ def test_variables_access_leaf_helper_covers_unknown_and_builtin_paths() -> None
 
 def test_variables_access_leaf_helper_covers_record_and_cycle_paths() -> None:
     warnings: list[str] = []
-    helper = _make_strict_access_helper(warnings=warnings)
+    helper = make_strict_access_helper(warnings=warnings)
 
     def _resolve_record(name: str) -> object | None:
         if name == "RecordType":
@@ -443,7 +420,7 @@ def test_variables_access_leaf_helper_covers_record_and_cycle_paths() -> None:
 
 def test_variables_access_strict_and_leaf_helpers_cover_remaining_branches() -> None:
     warnings: list[str] = []
-    helper = _make_strict_access_helper(warnings=warnings)
+    helper = make_strict_access_helper(warnings=warnings)
     helper.fail_loudly = True
     helper.unavailable_libraries = set()
 

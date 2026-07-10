@@ -16,15 +16,15 @@ from typing import Any
 from unittest.mock import patch
 
 from sattlint import app as app_module
-from sattlint.devtools import artifact_registry as _artifact_registry_module
-from sattlint.devtools import audit_core as _audit_core_module
-from sattlint.devtools import audit_core_discovery as _audit_core_discovery_module
-from sattlint.devtools import leak_detection as _leak_detection_module
-from sattlint.devtools import leak_detection_scan_paths as _leak_detection_scan_paths_module
-from sattlint.devtools import ledger as _ledger_module
 from sattlint.devtools.ai import ai_gc as _ai_gc_module
 from sattlint.repo_paths import repo_root_from
 
+from .. import artifact_registry as _artifact_registry_module
+from .. import audit_core as _audit_core_module
+from .. import audit_core_discovery as _audit_core_discovery_module
+from .. import leak_detection as _leak_detection_module
+from .. import leak_detection_scan_paths as _leak_detection_scan_paths_module
+from .. import ledger as _ledger_module
 from . import _repo_audit_reporting as _reporting_module
 from . import repo_audit_shared as _shared
 
