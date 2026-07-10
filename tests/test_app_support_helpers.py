@@ -1,6 +1,7 @@
 # pyright: reportArgumentType=false
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -162,3 +163,45 @@ def test_configured_icf_files_and_run_format_icf_command_cover_error_paths(tmp_p
     assert exit_code == 1
     assert any("Would change: 1" in line for line in printed)
     assert any("Unchanged: 1" in line for line in printed)
+
+
+def test_run_format_icf_command_prints_json_output(tmp_path: Path) -> None:
+    real_dir = tmp_path / "icf"
+    real_dir.mkdir()
+    changed_file = real_dir / "a.icf"
+    unchanged_file = real_dir / "b.icf"
+    changed_file.write_text("x", encoding="utf-8")
+    unchanged_file.write_text("y", encoding="utf-8")
+
+    def fake_format_icf_file(path: Path, check: bool) -> _FormatResult:
+        del check
+        return _FormatResult(changed=path.name == "a.icf")
+
+    original = app_support.format_icf_file
+    app_support.format_icf_file = fake_format_icf_file
+    printed: list[str] = []
+    try:
+        exit_code = app_support.run_format_icf_command(
+            {"icf_dir": str(real_dir)},
+            check=True,
+            output_format="json",
+            print_fn=printed.append,
+            exit_success=0,
+            exit_usage_error=2,
+        )
+    finally:
+        app_support.format_icf_file = original
+
+    assert exit_code == 1
+    assert json.loads(printed[0]) == {
+        "status": "ok",
+        "check": True,
+        "icf_dir": str(real_dir),
+        "files_processed": 2,
+        "changed_count": 1,
+        "unchanged_count": 1,
+        "files": [
+            {"path": str(changed_file), "name": "a.icf", "changed": True},
+            {"path": str(unchanged_file), "name": "b.icf", "changed": False},
+        ],
+    }

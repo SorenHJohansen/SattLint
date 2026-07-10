@@ -120,6 +120,7 @@ def run_telemetry_summary_command(
 def run_cache_prune_command(
     *,
     cache_dir: str | None,
+    output_format: str = "text",
     run_cache_prune_command_fn: Callable[..., int],
     prune_cache_dir_fn: Callable[[Path | None], Any],
     get_cache_dir_fn: Callable[[], Path],
@@ -128,6 +129,7 @@ def run_cache_prune_command(
 ) -> int:
     return run_cache_prune_command_fn(
         cache_dir=cache_dir,
+        output_format=output_format,
         prune_cache_dir_fn=prune_cache_dir_fn,
         get_cache_dir_fn=get_cache_dir_fn,
         exit_success=exit_success,
@@ -244,6 +246,7 @@ def run_docgen_command(
     cfg: ConfigDict,
     *,
     use_cache: bool,
+    output_format: str = "text",
     output_dir: str | None,
     output_path: str | None,
     run_docgen_command_fn: Callable[..., int],
@@ -258,6 +261,7 @@ def run_docgen_command(
     return run_docgen_command_fn(
         cfg,
         use_cache=use_cache,
+        output_format=output_format,
         output_dir=output_dir,
         output_path=output_path,
         iter_loaded_projects_fn=_iter_projects,

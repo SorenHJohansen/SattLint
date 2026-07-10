@@ -14,10 +14,6 @@ from pathlib import Path
 from typing import Any, cast
 
 from sattlint.contracts import FindingCollection
-from sattlint.devtools import audit_core as _audit_core_module
-from sattlint.devtools import audit_orchestration as _audit_orchestration_module
-from sattlint.devtools import ledger as _ledger_module
-from sattlint.devtools import pipeline as pipeline_module
 from sattlint.devtools.ai import ai_gc as _ai_gc_module
 from sattlint.devtools.artifact_registry import (
     AUDIT_ARTIFACTS,
@@ -31,6 +27,10 @@ from sattlint.devtools.shared.pipeline_artifacts import write_json_artifact
 from sattlint.path_sanitizer import sanitize_path_for_report
 from sattlint.repo_paths import repo_root_from
 
+from .. import audit_core as _audit_core_module
+from .. import audit_orchestration as _audit_orchestration_module
+from .. import ledger as _ledger_module
+from .. import pipeline as pipeline_module
 from . import _repo_audit_check_runners as _repo_audit_check_runners_module
 from . import repo_audit_cli as _repo_audit_cli_module
 from . import repo_audit_compat as _repo_audit_compat_module

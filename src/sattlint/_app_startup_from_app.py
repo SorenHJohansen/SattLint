@@ -115,26 +115,30 @@ def run_docgen_command_from_app(
     cfg: ConfigDict,
     *,
     use_cache: bool,
+    output_format: str = "text",
     output_dir: str | None,
     output_path: str | None,
     app_module: Any,
 ) -> int:
-    return startup_core.run_docgen_command(
-        cfg,
-        use_cache=use_cache,
-        output_dir=output_dir,
-        output_path=output_path,
-        run_docgen_command_fn=app_module.app_cli_commands.run_docgen_command,
-        iter_loaded_projects_fn=app_module._iter_loaded_projects,
-        documentation_unit_selection_fn=app_module._get_documentation_unit_selection,
-        exit_success=app_module.EXIT_SUCCESS,
-        exit_usage_error=app_module.EXIT_USAGE_ERROR,
-    )
+    kwargs: dict[str, object] = {
+        "use_cache": use_cache,
+        "output_dir": output_dir,
+        "output_path": output_path,
+        "run_docgen_command_fn": app_module.app_cli_commands.run_docgen_command,
+        "iter_loaded_projects_fn": app_module._iter_loaded_projects,
+        "documentation_unit_selection_fn": app_module._get_documentation_unit_selection,
+        "exit_success": app_module.EXIT_SUCCESS,
+        "exit_usage_error": app_module.EXIT_USAGE_ERROR,
+    }
+    if output_format != "text":
+        kwargs["output_format"] = output_format
+    return startup_core.run_docgen_command(cfg, **kwargs)
 
 
-def run_cache_prune_command_from_app(*, cache_dir: str | None, app_module: Any) -> int:
+def run_cache_prune_command_from_app(*, cache_dir: str | None, output_format: str = "text", app_module: Any) -> int:
     return startup_core.run_cache_prune_command(
         cache_dir=cache_dir,
+        output_format=output_format,
         run_cache_prune_command_fn=app_module.app_cli_commands.run_cache_prune_command,
         prune_cache_dir_fn=app_module.cache.prune_cache_dir,
         get_cache_dir_fn=app_module.get_cache_dir,

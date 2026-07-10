@@ -15,46 +15,20 @@ from ._dataflow_common import (
     invert_compare_operator,
     is_scalar_value,
 )
-
-type ExprNode = Any
-type ComparePair = tuple[str, ExprNode]
-type CompareTuple = tuple[str, ExprNode, list[ComparePair] | None]
-type TernaryBranch = tuple[ExprNode, ExprNode]
-type TernaryTuple = tuple[str, list[TernaryBranch] | None, ExprNode | None]
-type FunctionCallTuple = tuple[str, str | None, list[ExprNode] | None]
-type LogicalTuple = tuple[str, list[ExprNode] | None]
-type BinaryOpPart = tuple[str, ExprNode]
-type BinaryOpTuple = tuple[str, ExprNode, list[BinaryOpPart] | None]
-
-type ExprTuple = tuple[object, ...]
-type ExprList = list[object]
+from ._dataflow_condition_expr import (
+    BinaryOpTuple,
+    CompareTuple,
+    FunctionCallTuple,
+    LogicalTuple,
+    TernaryTuple,
+    _expr_items,
+    _expr_tuple,
+    _statement_children,
+)
+from ._dataflow_condition_facts import _DataflowConditionFactsMixin
 
 
-def _expr_tuple(value: object) -> ExprTuple | None:
-    return cast(ExprTuple, value) if isinstance(value, tuple) else None
-
-
-def _expr_list(value: object) -> ExprList | None:
-    return cast(ExprList, value) if isinstance(value, list) else None
-
-
-def _expr_items(value: object) -> list[object]:
-    tuple_value = _expr_tuple(value)
-    if tuple_value is not None:
-        return list(tuple_value)
-    list_value = _expr_list(value)
-    if list_value is not None:
-        return list_value
-    return []
-
-
-def _statement_children(value: object) -> list[object] | None:
-    if getattr(value, "data", None) != const.KEY_STATEMENT:
-        return None
-    return _expr_list(getattr(value, "children", None))
-
-
-class _DataflowConditionMixin:
+class _DataflowConditionMixin(_DataflowConditionFactsMixin):
     def _report_condition(
         self: Any,
         condition: Any,
@@ -226,90 +200,6 @@ class _DataflowConditionMixin:
         if operator in {"==", "<>"}:
             return ("compare", resolved.key, (operator, cast(ScalarValue, literal)))
 
-        return None
-
-    def _facts_contradict(self: Any, facts: list[ConditionFact]) -> bool | None:
-        if not facts:
-            return None
-
-        bool_truths: dict[tuple[str, ...], set[bool]] = {}
-        equals: dict[tuple[str, ...], set[ScalarValue]] = {}
-        not_equals: dict[tuple[str, ...], set[ScalarValue]] = {}
-
-        for fact in facts:
-            kind = fact[0]
-            key = fact[1]
-            if kind == "bool":
-                bool_truths.setdefault(key, set()).add(cast(bool, fact[2]))
-                continue
-
-            operator, literal = cast(tuple[str, ScalarValue], fact[2])
-            if operator == "==":
-                equals.setdefault(key, set()).add(literal)
-            elif operator == "<>":
-                not_equals.setdefault(key, set()).add(literal)
-
-        if any(len(values) > 1 for values in bool_truths.values()):
-            return False
-
-        for key, equal_values in equals.items():
-            if len(equal_values) > 1:
-                return False
-            if any(value in not_equals.get(key, set()) for value in equal_values):
-                return False
-
-        return None
-
-    def _facts_form_tautology(self: Any, facts: list[ConditionFact]) -> bool | None:
-        if not facts:
-            return None
-
-        bool_truths: dict[tuple[str, ...], set[bool]] = {}
-        equals: dict[tuple[str, ...], set[ScalarValue]] = {}
-        not_equals: dict[tuple[str, ...], set[ScalarValue]] = {}
-
-        for fact in facts:
-            kind = fact[0]
-            key = fact[1]
-            if kind == "bool":
-                bool_truths.setdefault(key, set()).add(cast(bool, fact[2]))
-                continue
-
-            operator, literal = cast(tuple[str, ScalarValue], fact[2])
-            if operator == "==":
-                equals.setdefault(key, set()).add(literal)
-            elif operator == "<>":
-                not_equals.setdefault(key, set()).add(literal)
-
-        if any(len(values) > 1 for values in bool_truths.values()):
-            return True
-
-        for key, equal_values in equals.items():
-            if any(value in not_equals.get(key, set()) for value in equal_values):
-                return True
-
-        return None
-
-    def _self_compare_truth(
-        self: Any,
-        condition: object,
-        context: ScopeContext,
-    ) -> bool | None:
-        condition_tuple = _expr_tuple(condition)
-        if condition_tuple is None or not condition_tuple or condition_tuple[0] not in (const.KEY_COMPARE, "compare"):
-            return None
-        _, left, pairs = cast(CompareTuple, condition_tuple)
-        if pairs is None or len(pairs) != 1:
-            return None
-        operator, right = pairs[0]
-        left_ref = self._resolve_ref(left, context)
-        right_ref = self._resolve_ref(right, context)
-        if left_ref is None or right_ref is None or left_ref.key != right_ref.key:
-            return None
-        if operator in ("==", "<=", ">="):
-            return True
-        if operator in ("<>", "<", ">"):
-            return False
         return None
 
     def _evaluate_expression(  # noqa: PLR0915

@@ -22,8 +22,8 @@ def build_pipeline_check_recommendations(
     changed_files: Iterable[str] | None,
     pytest_workers: str | None = None,
 ) -> dict[str, Any]:
-    from sattlint.devtools import pipeline as pipeline_module  # noqa: PLC0415
-    from sattlint.devtools.shared import pipeline_checks  # noqa: PLC0415
+    from .. import pipeline as pipeline_module  # noqa: PLC0415
+    from ..shared import pipeline_checks  # noqa: PLC0415
 
     owner_module = _pipeline_cli_owner_module()
     resolved_output_dir = (output_dir or pipeline_module.DEFAULT_OUTPUT_DIR).resolve()

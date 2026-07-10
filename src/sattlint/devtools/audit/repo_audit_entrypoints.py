@@ -9,10 +9,10 @@ from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
-from sattlint.devtools import pipeline as pipeline_module
 from sattlint.devtools.shared import pipeline_checks as pipeline_checks_module
 from sattlint.devtools.shared.pipeline_checks import matching_changed_files, normalize_changed_files
 
+from .. import pipeline as pipeline_module
 from . import _repo_audit_check_catalog as repo_audit_check_catalog_helpers
 from . import _repo_audit_check_runners as _repo_audit_check_runners_module
 from . import _repo_audit_entrypoint_helpers as repo_audit_entrypoint_helpers
@@ -346,7 +346,7 @@ def build_check_my_changes_planning_report(
     fail_on: str = "high",
     changed_files: Iterable[str] | None = None,
 ) -> dict[str, Any]:
-    from sattlint.devtools.ai import ai_work_map as ai_work_map_module  # noqa: PLC0415
+    from ..ai import ai_work_map as ai_work_map_module  # noqa: PLC0415
 
     return repo_audit_planning_helpers.build_check_my_changes_planning_report(
         profile=profile,

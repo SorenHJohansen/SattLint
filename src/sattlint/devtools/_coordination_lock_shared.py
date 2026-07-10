@@ -7,8 +7,9 @@ from functools import partial
 from pathlib import Path
 from typing import Any, TypedDict, cast
 
-from sattlint.devtools import _coordination_lock_paths as lock_paths
 from sattlint.devtools.json_helpers import json_mapping as _json_mapping
+
+from . import _coordination_lock_paths as lock_paths
 
 LEDGER_FILE_NAME = "current-work.md"
 LEDGER_TEMPLATE_NAME = "current-work.template.md"

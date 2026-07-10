@@ -119,6 +119,21 @@ def _format_cache_prune_result(result: CachePruneResult) -> str:
     return ", ".join(parts) if parts else "no stale entries"
 
 
+def _cache_prune_json_payload(target_dir: Path, result: CachePruneResult) -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "cache_dir": str(target_dir),
+        "removed_entries": result.removed_entries,
+        "details": {
+            "lookup": result.file_lookup_entries,
+            "file_ast": result.file_ast_entries,
+            "ast_payload": result.ast_payload_entries,
+            "ast_manifest": result.ast_manifest_entries,
+            "analysis_report": result.analysis_report_entries,
+        },
+    }
+
+
 def run_analyze_command(
     cfg: ConfigDict,
     *,
@@ -213,6 +228,7 @@ def run_docgen_command(
     cfg: ConfigDict,
     *,
     use_cache: bool,
+    output_format: str = "text",
     output_dir: str | None,
     output_path: str | None,
     iter_loaded_projects_fn: Callable[[ConfigDict, bool], Iterator[LoadedProject]],
@@ -222,11 +238,21 @@ def run_docgen_command(
 ) -> int:
     projects = list(iter_loaded_projects_fn(cfg, use_cache))
     if not projects:
-        console_module.print_output("No analyzed targets configured")
+        if output_format == "json":
+            console_module.print_output(
+                render_json_output({"status": "error", "message": "No analyzed targets configured"})
+            )
+        else:
+            console_module.print_output("No analyzed targets configured")
         return exit_usage_error
 
     if output_path and len(projects) > 1:
-        console_module.print_output("output_path requires exactly one configured target")
+        if output_format == "json":
+            console_module.print_output(
+                render_json_output({"status": "error", "message": "output_path requires exactly one configured target"})
+            )
+        else:
+            console_module.print_output("output_path requires exactly one configured target")
         return exit_usage_error
 
     base_output_dir: Path | None = None
@@ -238,6 +264,7 @@ def run_docgen_command(
         "classifications": config_module.get_documentation_config(cfg)["classifications"],
         "units": documentation_unit_selection_fn(),
     }
+    generated_targets: list[dict[str, Any]] = []
 
     for target_name, project_bp, graph in projects:
         if output_path:
@@ -266,9 +293,42 @@ def run_docgen_command(
             log_debug_exception(
                 cfg, f"Documentation generation failed for target {target_name!r} to {destination}", logger=log
             )
-            console_module.print_output(f"Documentation generation failed for {destination}: {exc}")
+            if output_format == "json":
+                console_module.print_output(
+                    render_json_output(
+                        {
+                            "status": "error",
+                            "message": f"Documentation generation failed for {destination}: {exc}",
+                            "target_name": target_name,
+                            "output_path": str(destination),
+                        }
+                    )
+                )
+            else:
+                console_module.print_output(f"Documentation generation failed for {destination}: {exc}")
             return exit_usage_error
-        console_module.print_output(f"Generated {destination}")
+        generated_targets.append(
+            {
+                "target_name": target_name,
+                "output_path": str(destination),
+                "unavailable_libraries": sorted(
+                    cast(set[str], getattr(graph, "unavailable_libraries", cast(set[str], set())))
+                ),
+            }
+        )
+        if output_format != "json":
+            console_module.print_output(f"Generated {destination}")
+
+    if output_format == "json":
+        console_module.print_output(
+            render_json_output(
+                {
+                    "status": "ok",
+                    "generated_count": len(generated_targets),
+                    "generated": generated_targets,
+                }
+            )
+        )
 
     return exit_success
 
@@ -309,6 +369,7 @@ def run_telemetry_summary_command(
 def run_cache_prune_command(
     *,
     cache_dir: str | None,
+    output_format: str = "text",
     prune_cache_dir_fn: Callable[[Path | None], CachePruneResult],
     get_cache_dir_fn: Callable[[], Path],
     exit_success: int,
@@ -318,8 +379,23 @@ def run_cache_prune_command(
     try:
         result = prune_cache_dir_fn(target_dir)
     except OSError as exc:
-        console_module.print_output(f"Cache prune failed for {target_dir}: {exc}")
+        if output_format == "json":
+            console_module.print_output(
+                render_json_output(
+                    {
+                        "status": "error",
+                        "message": f"Cache prune failed for {target_dir}: {exc}",
+                        "cache_dir": str(target_dir),
+                    }
+                )
+            )
+        else:
+            console_module.print_output(f"Cache prune failed for {target_dir}: {exc}")
         return exit_usage_error
+
+    if output_format == "json":
+        console_module.print_output(render_json_output(_cache_prune_json_payload(target_dir, result)))
+        return exit_success
 
     if result.removed_entries == 0:
         console_module.print_output(f"Cache directory already clean: {target_dir}")

@@ -6,10 +6,11 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, cast
 
-from sattlint.devtools import pipeline as pipeline_module
 from sattlint.devtools.pipeline._pipeline_finish_gate import execute_finish_gate_steps, summarize_finish_gate_timing
 from sattlint.devtools.shared.pipeline_artifacts import write_json_artifact
 from sattlint.path_sanitizer import sanitize_path_for_report
+
+from .. import pipeline as pipeline_module
 
 
 def _entrypoints_module() -> Any:

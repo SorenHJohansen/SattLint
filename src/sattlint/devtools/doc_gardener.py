@@ -20,11 +20,11 @@ from pathlib import Path
 from typing import Any, NamedTuple, cast
 
 from sattlint import cli_output
-from sattlint.devtools import coordination_lock_state
 from sattlint.repo_paths import repo_root_from
 
 from . import _doc_gardener_scan as doc_gardener_scan_module
 from . import _doc_gardener_updates as doc_gardener_updates_module
+from . import coordination_lock_state
 
 # Constants
 REPO_ROOT = repo_root_from(Path(__file__))

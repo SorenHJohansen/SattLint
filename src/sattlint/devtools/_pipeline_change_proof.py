@@ -20,8 +20,8 @@ _STRUCTURAL_SURFACE_METRICS = {
 
 
 def _mutation_guidance(changed_files: Iterable[str]) -> dict[str, Any]:
-    from sattlint.devtools import pipeline as pipeline_module  # noqa: PLC0415
-    from sattlint.devtools._portable_command_text import pytest_command  # noqa: PLC0415
+    from . import pipeline as pipeline_module  # noqa: PLC0415
+    from ._portable_command_text import pytest_command  # noqa: PLC0415
 
     normalized_changed_files = pipeline_module.normalize_changed_files(changed_files)
     matched_surfaces: list[str] = []
@@ -132,8 +132,8 @@ def build_change_proof_requirements(
     changed_files: Iterable[str],
     recommended_checks: Iterable[dict[str, Any]],
 ) -> dict[str, Any]:
-    from sattlint.devtools import _pipeline_finish_gate as finish_gate_module  # noqa: PLC0415
-    from sattlint.devtools import pipeline as pipeline_module  # noqa: PLC0415
+    from . import pipeline as pipeline_module  # noqa: PLC0415
+    from .pipeline import _pipeline_finish_gate as finish_gate_module  # noqa: PLC0415
 
     normalized_changed_files = pipeline_module.normalize_changed_files(changed_files)
     owner_test_targets = finish_gate_module.owner_test_targets_for_checks(
@@ -177,7 +177,7 @@ def evaluate_change_scoped_coverage_proof(
     coverage_output_path: Path,
     changed_files: Iterable[str],
 ) -> dict[str, Any]:
-    from sattlint.devtools import pipeline as pipeline_module  # noqa: PLC0415
+    from . import pipeline as pipeline_module  # noqa: PLC0415
 
     report = pipeline_module.build_coverage_summary_report(
         repo_root,
@@ -197,9 +197,9 @@ def evaluate_change_scoped_structural_surface_proof(
     repo_root: Path,
     changed_files: Iterable[str],
 ) -> dict[str, Any]:
-    from sattlint.devtools import pipeline as pipeline_module  # noqa: PLC0415
-    from sattlint.devtools.structural import structural_reports as structural_reports_module  # noqa: PLC0415
-    from sattlint.devtools.structural._structural_report_budget_support import (  # noqa: PLC0415
+    from . import pipeline as pipeline_module  # noqa: PLC0415
+    from .structural import structural_reports as structural_reports_module  # noqa: PLC0415
+    from .structural._structural_report_budget_support import (  # noqa: PLC0415
         build_known_structural_modules,
         collect_python_structural_surface_metrics,
     )

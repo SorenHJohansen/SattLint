@@ -3,77 +3,140 @@
 
 from __future__ import annotations
 
-from importlib import import_module
-from types import ModuleType
-from typing import Any
-
-_SUBMODULE_PREFIXES = (
-    ".",
-    ".ai.",
-    ".audit.",
-    ".sandbox.",
-    ".shared.",
-    ".structural.",
-    ".pipeline.",
+from . import (
+    _ai_chat_grounding,
+    _ai_chat_transcripts,
+    _portable_command_text,
+    _semble_adapter,
+    accuracy_metrics,
+    ai,
+    ai_chat_observability,
+    ai_templates,
+    ai_work_map,
+    artifact_readiness,
+    artifact_registry,
+    audit,
+    audit_core,
+    audit_core_discovery,
+    audit_orchestration,
+    baselines,
+    compare_audit_findings,
+    coordination_lock_state,
+    corpus,
+    coverage_reports,
+    derived_reports,
+    differential,
+    doc_gardener,
+    fault_injection,
+    finding_exports,
+    layer_linter,
+    leak_detection,
+    leak_detection_scan_paths,
+    ledger,
+    mutation_engine,
+    observability,
+    parser_properties,
+    pipeline,
+    production_summary,
+    profiler,
+    property_tests,
+    refactoring,
+    release_smoke,
+    repo_audit,
+    repo_audit_cli,
+    repo_audit_entrypoints,
+    review_tool,
+    sandbox,
+    source_diff_report,
+    structural_reports,
+    trace_reports,
 )
-
-_EXPORT_PROVIDER_MODULES = (
-    ".accuracy_metrics",
-    ".artifact_registry",
-    ".baselines",
-    ".corpus",
-    ".doc_gardener",
-    ".fault_injection",
-    ".observability",
-    ".property_tests",
-    ".review_tool",
-    ".sandbox",
-    ".sandbox.fuzzer",
-    ".structural",
-    ".audit",
+from .accuracy_metrics import (
+    VALIDATION_ANNOTATIONS_FILENAME,
+    AccuracyMetrics,
+    ValidationAnnotation,
+    build_accuracy_metrics,
+    load_annotations,
+    write_accuracy_metrics,
 )
-
-
-def _is_missing_target(exc: ModuleNotFoundError, target_name: str) -> bool:
-    return exc.name == target_name
-
-
-def _load_submodule(name: str) -> ModuleType | None:
-    for prefix in _SUBMODULE_PREFIXES:
-        relative_name = f"{prefix}{name}" if prefix != "." else f".{name}"
-        target_name = f"{__name__}{relative_name}"
-        try:
-            module = import_module(relative_name, __name__)
-        except ModuleNotFoundError as exc:
-            if _is_missing_target(exc, target_name):
-                continue
-            raise
-        globals()[name] = module
-        return module
-    return None
-
-
-def _load_reexport(name: str) -> Any:
-    for provider_name in _EXPORT_PROVIDER_MODULES:
-        provider = import_module(provider_name, __name__)
-        if not hasattr(provider, name):
-            continue
-        value = getattr(provider, name)
-        globals()[name] = value
-        return value
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
-def __getattr__(name: str) -> Any:
-    module = _load_submodule(name)
-    if module is not None:
-        return module
-    return _load_reexport(name)
-
-
-def __dir__() -> list[str]:
-    return sorted(set(globals()) | set(_EXPORTED_NAMES))
-
+from .ai import ai_gc
+from .artifact_registry import (
+    ACCURACY_METRICS_FILENAME,
+    ACCURACY_SCHEMA_KIND,
+    ACCURACY_SCHEMA_VERSION,
+    ANALYSIS_DIFF_SCHEMA_KIND,
+    ANALYSIS_DIFF_SCHEMA_VERSION,
+    AUDIT_ARTIFACTS,
+    CORPUS_RESULTS_FILENAME,
+    CORPUS_RESULTS_SCHEMA_KIND,
+    CORPUS_RESULTS_SCHEMA_VERSION,
+    FAULT_INJECTION_RESULTS_FILENAME,
+    FAULT_INJECTION_SCHEMA_KIND,
+    FAULT_INJECTION_SCHEMA_VERSION,
+    FUZZER_REPORT_FILENAME,
+    FUZZER_REPORT_SCHEMA_KIND,
+    FUZZER_REPORT_SCHEMA_VERSION,
+    PIPELINE_ARTIFACTS,
+    PROPERTY_TEST_RESULTS_FILENAME,
+    PROPERTY_TEST_SCHEMA_KIND,
+    PROPERTY_TEST_SCHEMA_VERSION,
+    ArtifactDefinition,
+)
+from .audit import _repo_audit_full_run, repo_audit_cli_reporting, repo_audit_compat, repo_audit_runs, repo_audit_shared
+from .baselines import build_analysis_diff_report, load_finding_collection
+from .corpus import (
+    CorpusCaseManifest,
+    CorpusEvaluation,
+    CorpusExpectation,
+    CorpusRunResult,
+    CorpusSuiteResult,
+    execute_corpus_case,
+    run_corpus_case,
+    run_corpus_suite,
+)
+from .doc_gardener import DocFinding, run_scan
+from .fault_injection import (
+    FaultInjectionResults,
+    FaultInjector,
+    FaultRunRecord,
+    FaultSpec,
+    run_fault_injection_campaign,
+    write_fault_injection_results,
+)
+from .observability import collect_all_metrics, read_metrics, write_metrics
+from .pipeline import (
+    _pipeline_cli,
+    _pipeline_execution,
+    _pipeline_failure_outputs,
+    _pipeline_finish_gate,
+    _pipeline_optional_reports_helpers,
+    _pipeline_parsing_helpers,
+    _pipeline_status_assembly,
+)
+from .property_tests import (
+    PropertyCheckRecord,
+    PropertyTestResults,
+    generate_seeded_property_inputs,
+    run_property_tests,
+    write_property_test_results,
+)
+from .review_tool import print_review, run_full_review
+from .sandbox import FUZZER_DEFAULT_TIMEOUT_SECONDS, fuzzer
+from .sandbox.fuzzer import (
+    FuzzerReport,
+    FuzzExecutionRecord,
+    FuzzTarget,
+    build_seed_corpus,
+    parser_fuzz_target,
+    run_fuzz_target,
+    run_parser_fuzzer,
+    write_fuzzer_report,
+)
+from .sandbox.fuzzer import (
+    analyze_fuzz_crashes as analyze_crashes,
+)
+from .shared import pipeline_artifacts, pipeline_checks
+from .structural import _structural_budget_inventory, impact_analyzer, metrics_dashboard
 
 __all__ = (
     "ACCURACY_METRICS_FILENAME",
@@ -190,6 +253,3 @@ __all__ = (
     "write_metrics",
     "write_property_test_results",
 )
-
-
-_EXPORTED_NAMES = __all__
