@@ -7,7 +7,7 @@ import argparse
 import importlib
 import os
 import sys
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -17,11 +17,9 @@ from sattline_parser.models.ast_model import BasePicture
 
 from . import _app_analysis_checks as app_analysis_checks_module
 from . import _app_analysis_commands as app_analysis_commands_module
-from . import _app_analysis_from_app as app_analysis_from_app_module
-from . import _app_docs_from_app as app_docs_from_app_module
-from . import _app_graphics_from_app as app_graphics_from_app_module
-from . import _app_menus_from_app as app_menus_from_app_module
-from . import _app_source_diff as app_source_diff_module
+from . import _app_facade_analysis as app_facade_analysis_module
+from . import _app_facade_commands as app_facade_commands_module
+from . import _app_facade_project as app_facade_project_module
 from . import _app_startup_from_app as app_startup_module
 from . import analysis_catalog as analysis_catalog_module
 from . import app_analysis as app_analysis_module
@@ -38,14 +36,9 @@ from . import config as _config_module
 from . import console as console_module
 from . import engine as engine_module_impl
 from . import telemetry_summary as telemetry_summary_module
-from .analyzers.shadowing import analyze_shadowing
 from .analyzers.variables import (
     IssueKind,
-    analyze_variables,
-    filter_variable_report,
 )
-from .cache import ASTCache
-from .core.semantic import load_workspace_snapshot
 from .models.project_graph import ProjectGraph
 
 ConfigDict = _config_module.ConfigDict
@@ -201,156 +194,19 @@ def run_syntax_check_command(file_path: str, *, output_format: str = "text") -> 
     return cast(int, app_base.run_syntax_check_command(file_path, output_format=output_format))
 
 
-def run_cli(argv: list[str]) -> int:
-    return app_startup_module.run_cli_from_app(argv, app_module=_APP_MODULE)
-
-
-def run_validate_config_command(
-    cfg: ConfigDict,
-    *,
-    config_path: Path,
-    default_used: bool,
-    output_format: str = "text",
-) -> int:
-    return app_startup_module.run_validate_config_command_from_app(
-        cfg,
-        config_path=config_path,
-        default_used=default_used,
-        output_format=output_format,
-        app_module=_APP_MODULE,
-    )
-
-
-def run_analyze_command(
-    cfg: ConfigDict,
-    *,
-    selected_keys: list[str] | None,
-    selected_issue_kinds: frozenset[str] | None = None,
-    use_cache: bool,
-    output_format: str = "text",
-) -> int:
-    return app_startup_module.run_analyze_command_from_app(
-        cfg,
-        selected_keys=selected_keys,
-        selected_issue_kinds=selected_issue_kinds,
-        use_cache=use_cache,
-        output_format=output_format,
-        app_module=_APP_MODULE,
-    )
-
-
-def _simulate_target(
-    cfg: ConfigDict,
-    *,
-    target_path: str,
-    module_name: str,
-    mode: str,
-    max_scans: int,
-    use_cache: bool,
-) -> Any:
-    from .simulation import simulate_snapshot_target  # noqa: PLC0415
-
-    del cfg, use_cache
-    snapshot = load_workspace_snapshot(
-        Path(target_path),
-        collect_variable_diagnostics=False,
-    )
-    return simulate_snapshot_target(
-        snapshot,
-        module_name=module_name,
-        mode=mode,
-        max_scans=max_scans,
-    )
-
-
-def run_simulate_command(
-    cfg: ConfigDict,
-    *,
-    target_path: str,
-    module_name: str,
-    mode: str,
-    max_scans: int,
-    output_format: str,
-    output_path: str | None,
-    use_cache: bool,
-) -> int:
-    return app_startup_module.run_simulate_command_from_app(
-        cfg,
-        target_path=target_path,
-        module_name=module_name,
-        mode=mode,
-        max_scans=max_scans,
-        output_format=output_format,
-        output_path=output_path,
-        use_cache=use_cache,
-        app_module=_APP_MODULE,
-    )
-
-
-def run_docgen_command(
-    cfg: ConfigDict,
-    *,
-    use_cache: bool = True,
-    output_dir: str | None = None,
-    output_path: str | None = None,
-) -> int:
-    return app_startup_module.run_docgen_command_from_app(
-        cfg,
-        use_cache=use_cache,
-        output_dir=output_dir,
-        output_path=output_path,
-        app_module=_APP_MODULE,
-    )
-
-
-def run_cache_prune_command(*, cache_dir: str | None = None) -> int:
-    return app_startup_module.run_cache_prune_command_from_app(cache_dir=cache_dir, app_module=_APP_MODULE)
-
-
-def run_telemetry_summary_command(
-    cfg: ConfigDict,
-    *,
-    config_path: Path,
-    output_format: str,
-    output_path: str | None,
-) -> int:
-    return app_startup_module.run_telemetry_summary_command_from_app(
-        cfg,
-        config_path=config_path,
-        output_format=output_format,
-        output_path=output_path,
-        app_module=_APP_MODULE,
-    )
-
-
-def _configured_icf_files(cfg: ConfigDict) -> tuple[Path | None, list[Path]]:
-    return cast(tuple[Path | None, list[Path]], app_support.configured_icf_files(cfg))
-
-
-def run_format_icf_command(cfg: ConfigDict, *, check: bool = False) -> int:
-    return cast(
-        int,
-        app_support.run_format_icf_command(
-            cfg,
-            check=check,
-            print_fn=print,
-            exit_success=EXIT_SUCCESS,
-            exit_usage_error=EXIT_USAGE_ERROR,
-        ),
-    )
-
-
-def run_trace_command(args: argparse.Namespace) -> int:
-    tracing_module = importlib.import_module("sattlint.tracing")
-    return cast(int, tracing_module.run_parsed_args(args))
-
-
-def run_icf_formatter(cfg: ConfigDict) -> None:
-    app_startup_module.run_icf_formatter_from_app(cfg, app_module=_APP_MODULE)
-
-
-def show_config(cfg: ConfigDict) -> None:
-    app_startup_module.show_config_from_app(cfg, app_module=_APP_MODULE)
+run_cli = app_facade_commands_module.run_cli
+run_validate_config_command = app_facade_commands_module.run_validate_config_command
+run_analyze_command = app_facade_commands_module.run_analyze_command
+_simulate_target = app_facade_commands_module._simulate_target
+run_simulate_command = app_facade_commands_module.run_simulate_command
+run_docgen_command = app_facade_commands_module.run_docgen_command
+run_cache_prune_command = app_facade_commands_module.run_cache_prune_command
+run_telemetry_summary_command = app_facade_commands_module.run_telemetry_summary_command
+_configured_icf_files = app_facade_commands_module._configured_icf_files
+run_format_icf_command = app_facade_commands_module.run_format_icf_command
+run_trace_command = app_facade_commands_module.run_trace_command
+run_icf_formatter = app_facade_commands_module.run_icf_formatter
+show_config = app_facade_commands_module.show_config
 
 
 def _print_menu(
@@ -445,50 +301,15 @@ def _menu_option(key: str, label: str, description: str) -> MenuOption:
     return MenuOption(key, label, description)
 
 
-def _summarize_targets(cfg: ConfigDict) -> str:
-    return app_startup_module.summarize_targets_from_app(cfg, app_module=_APP_MODULE)
-
-
-def show_help(cfg: ConfigDict) -> None:
-    app_startup_module.show_help_from_app(cfg, app_module=_APP_MODULE)
-
-
-def get_help_text(cfg: ConfigDict) -> str:
-    return app_startup_module.get_help_text_from_app(cfg, app_module=_APP_MODULE)
-
-
-def _get_analyzed_targets(cfg: ConfigDict) -> list[str]:
-    return cast(list[str], app_support.get_analyzed_targets(cfg))
-
-
-def _require_analyzed_targets(cfg: ConfigDict) -> list[str]:
-    return cast(list[str], app_support.require_analyzed_targets(cfg))
-
-
-def _has_analyzed_targets(cfg: ConfigDict) -> bool:
-    return cast(bool, app_support.has_analyzed_targets(cfg, get_analyzed_targets_fn=_get_analyzed_targets))
-
-
-def _require_targets_for_menu_action(cfg: ConfigDict, action: str) -> bool:
-    return cast(
-        bool,
-        app_support.require_targets_for_menu_action(
-            cfg,
-            action,
-            has_analyzed_targets_fn=_has_analyzed_targets,
-            print_fn=print,
-            pause_fn=pause,
-        ),
-    )
-
-
-def _cache_key_for_target(cfg: ConfigDict, target_name: str) -> str:
-    compute_cache_key_fn = cast(Callable[[Mapping[str, object]], str], cache.compute_cache_key)
-    return cast(str, app_support.cache_key_for_target(cfg, target_name, compute_cache_key_fn=compute_cache_key_fn))
-
-
-def _split_csv_values(raw: str) -> list[str]:
-    return cast(list[str], app_support.split_csv_values(raw))
+_summarize_targets = app_facade_project_module._summarize_targets
+show_help = app_facade_project_module.show_help
+get_help_text = app_facade_project_module.get_help_text
+_get_analyzed_targets = app_facade_project_module._get_analyzed_targets
+_require_analyzed_targets = app_facade_project_module._require_analyzed_targets
+_has_analyzed_targets = app_facade_project_module._has_analyzed_targets
+_require_targets_for_menu_action = app_facade_project_module._require_targets_for_menu_action
+_cache_key_for_target = app_facade_project_module._cache_key_for_target
+_split_csv_values = app_facade_project_module._split_csv_values
 
 
 _graphics_rule_label: Callable[[dict[str, Any]], str] = app_graphics.graphics_rule_label
@@ -500,418 +321,60 @@ discover_documentation_unit_candidates: Callable[..., list[Any]] = app_docs.disc
 validate_icf_entries_against_program: Callable[..., Any] = app_analysis.validate_icf_entries_against_program
 
 
-def _discover_graphics_rule_selector_options(
-    cfg: ConfigDict | None,
-    *,
-    selector_field: str,
-    module_kind: str,
-) -> list[dict[str, Any]]:
-    return app_graphics_from_app_module.discover_graphics_rule_selector_options_from_app(
-        cfg,
-        selector_field=selector_field,
-        module_kind=module_kind,
-        app_module=_APP_MODULE,
-    )
-
-
-def _pick_or_prompt_graphics_rule_selector_value(
-    selector_field: str,
-    module_kind: str,
-    *,
-    cfg: ConfigDict | None = None,
-) -> str:
-    return app_graphics_from_app_module.pick_or_prompt_graphics_rule_selector_value_from_app(
-        selector_field,
-        module_kind,
-        cfg=cfg,
-        app_module=_APP_MODULE,
-    )
-
-
-def _annotate_graphics_entries_with_structure_paths(
-    entries: list[dict[str, Any]],
-    project_bp: BasePicture,
-    graph: ProjectGraph,
-) -> list[dict[str, Any]]:
-    return app_graphics_from_app_module.annotate_graphics_entries_with_structure_paths_from_app(
-        entries,
-        project_bp,
-        graph,
-        app_module=_APP_MODULE,
-    )
-
-
-def graphics_rules_menu(cfg: ConfigDict | None = None) -> None:
-    app_graphics_from_app_module.graphics_rules_menu_from_app(cfg, app_module=_APP_MODULE)
-
-
-def _prompt_graphics_rule_definition_with_config(cfg: ConfigDict | None) -> dict[str, Any] | None:
-    return app_graphics_from_app_module.prompt_graphics_rule_definition_with_config_from_app(
-        cfg,
-        app_module=_APP_MODULE,
-    )
-
-
-def _collect_graphics_layout_entries_for_target(
-    target_name: str,
-    project_bp: BasePicture,
-    graph: ProjectGraph,
-) -> list[dict[str, Any]]:
-    return app_graphics_from_app_module.collect_graphics_layout_entries_for_target_from_app(
-        target_name,
-        project_bp,
-        graph,
-        app_module=_APP_MODULE,
-    )
-
-
-def run_graphics_rules_validation(cfg: ConfigDict) -> None:
-    app_graphics_from_app_module.run_graphics_rules_validation_from_app(cfg, app_module=_APP_MODULE)
-
-
-def _get_documentation_unit_selection() -> DocumentationSelection:
-    return app_docs_from_app_module.get_documentation_unit_selection_from_app(app_module=_APP_MODULE)
-
-
-def preview_documentation_unit_candidates(cfg: ConfigDict) -> None:
-    app_docs_from_app_module.preview_documentation_unit_candidates_from_app(cfg, app_module=_APP_MODULE)
-
-
-def configure_documentation_scope_by_moduletype(cfg: ConfigDict) -> bool:
-    del cfg
-    return app_docs_from_app_module.configure_documentation_scope_by_moduletype_from_app(app_module=_APP_MODULE)
-
-
-def configure_documentation_scope_by_instance_path(cfg: ConfigDict) -> bool:
-    del cfg
-    return app_docs_from_app_module.configure_documentation_scope_by_instance_path_from_app(app_module=_APP_MODULE)
-
-
-def reset_documentation_scope(cfg: ConfigDict) -> bool:
-    del cfg
-    return app_docs_from_app_module.reset_documentation_scope_from_app(app_module=_APP_MODULE)
-
-
-def run_generate_documentation(cfg: ConfigDict) -> None:
-    app_docs_from_app_module.run_generate_documentation_from_app(cfg, app_module=_APP_MODULE)
-
-
-def documentation_menu(cfg: ConfigDict) -> bool:
-    return app_docs_from_app_module.documentation_menu_from_app(cfg, app_module=_APP_MODULE)
-
-
-def _iter_loaded_projects(
-    cfg: ConfigDict,
-    *,
-    use_cache: bool = True,
-) -> Iterator[LoadedProject]:
-    return cast(
-        Iterator[LoadedProject],
-        app_analysis.iter_loaded_projects(
-            cfg,
-            use_cache=use_cache,
-            require_analyzed_targets_fn=_require_analyzed_targets,
-            load_project_fn=load_project,
-        ),
-    )
-
-
-def _source_paths_for_current_target(project_bp: BasePicture, graph: ProjectGraph) -> set[Path]:
-    return cast(set[Path], app_analysis.source_paths_for_current_target(project_bp, graph))
-
-
-def _target_is_library(cfg: ConfigDict, project_bp: BasePicture, graph: ProjectGraph) -> bool:
-    return cast(bool, app_analysis.target_is_library(cfg, project_bp, graph))
-
-
-def load_project(
-    cfg: ConfigDict,
-    target_name: str | None = None,
-    *,
-    use_cache: bool = True,
-    use_file_ast_cache: bool = True,
-    refresh_mode: str = "full",
-    collect_stage_timings: bool = False,
-    status_update_fn: Callable[[str], None] | None = None,
-) -> tuple[BasePicture, ProjectGraph]:
-    return cast(
-        tuple[BasePicture, ProjectGraph],
-        app_analysis.load_project(
-            cfg,
-            target_name=target_name,
-            use_cache=use_cache,
-            use_file_ast_cache=use_file_ast_cache,
-            refresh_mode=refresh_mode,
-            collect_stage_timings=collect_stage_timings,
-            require_analyzed_targets_fn=_require_analyzed_targets,
-            cache_key_for_target_fn=_cache_key_for_target,
-            target_load_error_factory=TargetLoadError,
-            get_cache_dir_fn=get_cache_dir,
-            status_update_fn=status_update_fn,
-        ),
-    )
-
-
-def load_program_ast(
-    cfg: ConfigDict,
-    program_name: str,
-    *,
-    force_dependency_resolution: bool = False,
-) -> tuple[BasePicture, ProjectGraph]:
-    return cast(
-        tuple[BasePicture, ProjectGraph],
-        app_analysis.load_program_ast(
-            cfg,
-            program_name,
-            force_dependency_resolution=force_dependency_resolution,
-        ),
-    )
-
-
-def force_refresh_ast(cfg: ConfigDict) -> tuple[BasePicture, ProjectGraph] | None:
-    return cast(
-        tuple[BasePicture, ProjectGraph] | None,
-        app_analysis.force_refresh_ast(
-            cfg,
-            get_analyzed_targets_fn=_get_analyzed_targets,
-            cache_key_for_target_fn=_cache_key_for_target,
-            load_project_fn=load_project,
-            ast_cache_cls=ASTCache,
-            get_cache_dir_fn=get_cache_dir,
-        ),
-    )
-
-
-def ensure_ast_cache(cfg: ConfigDict, *, emit_output_fn: Callable[..., None] | None = None) -> bool:
-    return cast(
-        bool,
-        app_analysis.ensure_ast_cache(
-            cfg,
-            get_analyzed_targets_fn=_get_analyzed_targets,
-            cache_key_for_target_fn=_cache_key_for_target,
-            load_project_fn=load_project,
-            ast_cache_cls=ASTCache,
-            get_cache_dir_fn=get_cache_dir,
-            emit_output_fn=emit_output if emit_output_fn is None else emit_output_fn,
-        ),
-    )
-
-
-def refresh_analysis_caches(cfg: ConfigDict) -> tuple[BasePicture, ProjectGraph] | None:
-    return cast(
-        tuple[BasePicture, ProjectGraph] | None,
-        app_analysis.refresh_analysis_caches(
-            cfg,
-            force_refresh_ast_fn=force_refresh_ast,
-            get_cache_dir_fn=get_cache_dir,
-            get_cache_manager_fn=cache_module.get_cache_manager,
-            emit_output_fn=emit_output,
-        ),
-    )
-
-
-def run_variable_analysis(cfg: ConfigDict, kinds: set[IssueKind] | None) -> None:
-    app_analysis.run_variable_analysis(
-        cfg,
-        kinds,
-        iter_loaded_projects_fn=_iter_loaded_projects,
-        target_is_library_fn=_target_is_library,
-        analyze_variables_fn=analyze_variables,
-        analyze_shadowing_fn=analyze_shadowing,
-        filter_variable_report_fn=filter_variable_report,
-        print_validation_warnings_fn=_print_validation_warnings,
-        target_validation_warnings_fn=_target_validation_warnings,
-        pause_fn=pause,
-    )
-
-
-def run_datatype_usage_analysis(cfg: ConfigDict) -> None:
-    app_analysis.run_datatype_usage_analysis(
-        cfg,
-        iter_loaded_projects_fn=_iter_loaded_projects,
-        pause_fn=pause,
-        interaction=build_menu_interaction(),
-    )
-
-
-def variable_usage_submenu(cfg: ConfigDict) -> None:
-    app_analysis_from_app_module.variable_usage_submenu_from_app(cfg, app_module=_APP_MODULE)
-
-
-def module_analysis_submenu(cfg: ConfigDict) -> None:
-    app_analysis_from_app_module.module_analysis_submenu_from_app(cfg, app_module=_APP_MODULE)
-
-
-def interface_communication_submenu(cfg: ConfigDict) -> None:
-    app_analysis_from_app_module.interface_communication_submenu_from_app(cfg, app_module=_APP_MODULE)
-
-
-def code_quality_submenu(cfg: ConfigDict) -> None:
-    app_analysis_from_app_module.code_quality_submenu_from_app(cfg, app_module=_APP_MODULE)
-
-
-def analyzer_catalog_menu(cfg: ConfigDict) -> None:
-    app_analysis_from_app_module.analyzer_catalog_menu_from_app(cfg, app_module=_APP_MODULE)
-
-
-def advanced_analysis_menu(cfg: ConfigDict) -> None:
-    app_analysis_from_app_module.advanced_analysis_menu_from_app(cfg, app_module=_APP_MODULE)
-
-
-def analysis_menu(cfg: ConfigDict) -> None:
-    app_analysis_from_app_module.analysis_menu_from_app(cfg, app_module=_APP_MODULE)
-
-
-def run_module_duplicates_analysis(cfg: ConfigDict) -> None:
-    app_analysis.run_module_duplicates_analysis(
-        cfg,
-        iter_loaded_projects_fn=_iter_loaded_projects,
-        pause_fn=pause,
-        interaction=build_menu_interaction(),
-    )
-
-
-def run_module_find_by_name(cfg: ConfigDict) -> None:
-    app_analysis.run_module_find_by_name(
-        cfg,
-        iter_loaded_projects_fn=_iter_loaded_projects,
-        pause_fn=pause,
-        interaction=build_menu_interaction(),
-    )
-
-
-def run_module_tree_debug(cfg: ConfigDict) -> None:
-    app_analysis.run_module_tree_debug(
-        cfg,
-        prompt_fn=prompt,
-        iter_loaded_projects_fn=_iter_loaded_projects,
-        pause_fn=pause,
-    )
-
-
-def run_analysis_menu(cfg: ConfigDict) -> None:
-    app_analysis.run_analysis_menu(cfg, analysis_menu_fn=analysis_menu)
-
-
-def variable_analysis_menu(cfg: ConfigDict) -> None:
-    app_analysis.variable_analysis_menu(cfg, analysis_menu_fn=analysis_menu)
-
-
-def run_module_localvar_analysis(cfg: ConfigDict) -> None:
-    app_analysis.run_module_localvar_analysis(
-        cfg,
-        load_project_fn=load_project,
-        iter_loaded_projects_fn=_iter_loaded_projects,
-        pause_fn=pause,
-        interaction=build_menu_interaction(),
-    )
-
-
-def _get_enabled_analyzers() -> list[Any]:
-    return cast(list[Any], get_default_cli_analyzers())
-
-
-def _get_selectable_analyzers() -> list[Any]:
-    return cast(list[Any], get_selectable_analyzers())
-
-
-def _run_checks(
-    cfg: ConfigDict,
-    selected_keys: list[str] | None,
-    *,
-    selected_issue_kinds: set[str] | frozenset[str] | None = None,
-) -> None:
-    app_analysis.run_checks(
-        cfg,
-        selected_keys,
-        selected_issue_kinds=selected_issue_kinds,
-        iter_loaded_projects_fn=_iter_loaded_projects,
-        get_enabled_analyzers_fn=_get_selectable_analyzers if selected_keys else _get_enabled_analyzers,
-        target_is_library_fn=_target_is_library,
-        pause_fn=pause,
-    )
-
-
-def run_checks_menu(cfg: ConfigDict) -> None:
-    app_analysis.run_checks_menu(cfg, run_checks_fn=_run_checks)
-
-
-def run_mms_interface_analysis(cfg: ConfigDict) -> None:
-    app_analysis.run_mms_interface_analysis(
-        cfg,
-        iter_loaded_projects_fn=_iter_loaded_projects,
-        pause_fn=pause,
-    )
-
-
-def run_icf_validation(cfg: ConfigDict) -> None:
-    def _load_program_ast(local_cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
-        return load_program_ast(local_cfg, program_name, force_dependency_resolution=True)
-
-    app_analysis.run_icf_validation(
-        cfg,
-        configured_icf_files_fn=_configured_icf_files,
-        load_program_ast_fn=_load_program_ast,
-        validate_icf_entries_against_program_fn=validate_icf_entries_against_program,
-        pause_fn=pause,
-    )
-
-
-def run_debug_variable_usage(cfg: ConfigDict) -> None:
-    app_analysis.run_debug_variable_usage(
-        cfg,
-        iter_loaded_projects_fn=_iter_loaded_projects,
-        pause_fn=pause,
-        interaction=build_menu_interaction(),
-    )
-
-
-def run_comment_code_analysis(cfg: ConfigDict) -> None:
-    app_analysis.run_comment_code_analysis(
-        cfg,
-        iter_loaded_projects_fn=_iter_loaded_projects,
-        source_paths_for_current_target_fn=_source_paths_for_current_target,
-        pause_fn=pause,
-    )
-
-
-def run_advanced_datatype_analysis(cfg: ConfigDict) -> None:
-    app_analysis.run_advanced_datatype_analysis(
-        cfg,
-        iter_loaded_projects_fn=_iter_loaded_projects,
-        pause_fn=pause,
-        interaction=build_menu_interaction(),
-    )
-
-
-def dump_menu(cfg: ConfigDict) -> None:
-    app_menus_from_app_module.dump_menu_from_app(cfg, app_module=_APP_MODULE)
-
-
-def run_source_diff_report(cfg: ConfigDict, *, _pause_fn: Callable[[], None] | None = None) -> None:
-    app_source_diff_module.run_source_diff_report(
-        cfg,
-        iter_loaded_projects_fn=_iter_loaded_projects,
-        source_paths_for_current_target_fn=_source_paths_for_current_target,
-        live_status_line_factory=console_module.live_status_line,
-        build_pair_report_fn=source_diff_report_module.build_pair_report,
-        render_markdown_fn=source_diff_report_module.render_markdown,
-        emit_output_fn=emit_output,
-        pause_fn=_pause_fn if _pause_fn is not None else pause,
-    )
-
-
-# ----------------------------
-# Config submenu
-# ----------------------------
-
-
-def config_menu(cfg: ConfigDict) -> bool:
-    return app_menus_from_app_module.config_menu_from_app(cfg, app_module=_APP_MODULE)
-
-
-def tools_menu(cfg: ConfigDict) -> None:
-    app_menus_from_app_module.tools_menu_from_app(cfg, app_module=_APP_MODULE)
+_discover_graphics_rule_selector_options = app_facade_project_module._discover_graphics_rule_selector_options
+_pick_or_prompt_graphics_rule_selector_value = app_facade_project_module._pick_or_prompt_graphics_rule_selector_value
+_annotate_graphics_entries_with_structure_paths = (
+    app_facade_project_module._annotate_graphics_entries_with_structure_paths
+)
+graphics_rules_menu = app_facade_project_module.graphics_rules_menu
+_prompt_graphics_rule_definition_with_config = app_facade_project_module._prompt_graphics_rule_definition_with_config
+_collect_graphics_layout_entries_for_target = app_facade_project_module._collect_graphics_layout_entries_for_target
+run_graphics_rules_validation = app_facade_project_module.run_graphics_rules_validation
+_get_documentation_unit_selection = app_facade_project_module._get_documentation_unit_selection
+preview_documentation_unit_candidates = app_facade_project_module.preview_documentation_unit_candidates
+configure_documentation_scope_by_moduletype = app_facade_project_module.configure_documentation_scope_by_moduletype
+configure_documentation_scope_by_instance_path = (
+    app_facade_project_module.configure_documentation_scope_by_instance_path
+)
+reset_documentation_scope = app_facade_project_module.reset_documentation_scope
+run_generate_documentation = app_facade_project_module.run_generate_documentation
+documentation_menu = app_facade_project_module.documentation_menu
+_iter_loaded_projects = app_facade_project_module._iter_loaded_projects
+_source_paths_for_current_target = app_facade_project_module._source_paths_for_current_target
+_target_is_library = app_facade_project_module._target_is_library
+load_project = app_facade_project_module.load_project
+load_program_ast = app_facade_project_module.load_program_ast
+force_refresh_ast = app_facade_project_module.force_refresh_ast
+ensure_ast_cache = app_facade_project_module.ensure_ast_cache
+refresh_analysis_caches = app_facade_project_module.refresh_analysis_caches
+run_variable_analysis = app_facade_analysis_module.run_variable_analysis
+run_datatype_usage_analysis = app_facade_analysis_module.run_datatype_usage_analysis
+variable_usage_submenu = app_facade_analysis_module.variable_usage_submenu
+module_analysis_submenu = app_facade_analysis_module.module_analysis_submenu
+interface_communication_submenu = app_facade_analysis_module.interface_communication_submenu
+code_quality_submenu = app_facade_analysis_module.code_quality_submenu
+analyzer_catalog_menu = app_facade_analysis_module.analyzer_catalog_menu
+advanced_analysis_menu = app_facade_analysis_module.advanced_analysis_menu
+analysis_menu = app_facade_analysis_module.analysis_menu
+run_module_duplicates_analysis = app_facade_analysis_module.run_module_duplicates_analysis
+run_module_find_by_name = app_facade_analysis_module.run_module_find_by_name
+run_module_tree_debug = app_facade_analysis_module.run_module_tree_debug
+run_analysis_menu = app_facade_analysis_module.run_analysis_menu
+variable_analysis_menu = app_facade_analysis_module.variable_analysis_menu
+run_module_localvar_analysis = app_facade_analysis_module.run_module_localvar_analysis
+_get_enabled_analyzers = app_facade_analysis_module._get_enabled_analyzers
+_get_selectable_analyzers = app_facade_analysis_module._get_selectable_analyzers
+_run_checks = app_facade_analysis_module._run_checks
+run_checks_menu = app_facade_analysis_module.run_checks_menu
+run_mms_interface_analysis = app_facade_analysis_module.run_mms_interface_analysis
+run_icf_validation = app_facade_analysis_module.run_icf_validation
+run_debug_variable_usage = app_facade_analysis_module.run_debug_variable_usage
+run_comment_code_analysis = app_facade_analysis_module.run_comment_code_analysis
+run_advanced_datatype_analysis = app_facade_analysis_module.run_advanced_datatype_analysis
+dump_menu = app_facade_analysis_module.dump_menu
+run_source_diff_report = app_facade_analysis_module.run_source_diff_report
+config_menu = app_facade_analysis_module.config_menu
+tools_menu = app_facade_analysis_module.tools_menu
 
 
 # ----------------------------

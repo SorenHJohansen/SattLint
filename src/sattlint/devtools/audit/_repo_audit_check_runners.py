@@ -15,13 +15,13 @@ from pathlib import Path
 from typing import Any
 
 from sattlint import config as config_module
-from sattlint.devtools import ai_work_map as _ai_work_map_module
-from sattlint.devtools import audit_core as _audit_core_module
-from sattlint.devtools import audit_orchestration as _audit_orchestration_module
-from sattlint.devtools import doc_gardener as _doc_gardener_module
-from sattlint.devtools import layer_linter as _layer_linter_module
 from sattlint.repo_paths import repo_root_from
 
+from .. import ai_work_map as _ai_work_map_module
+from .. import audit_core as _audit_core_module
+from .. import audit_orchestration as _audit_orchestration_module
+from .. import doc_gardener as _doc_gardener_module
+from .. import layer_linter as _layer_linter_module
 from . import repo_audit_compat as _repo_audit_compat_module
 from . import repo_audit_shared as _repo_audit_shared_module
 

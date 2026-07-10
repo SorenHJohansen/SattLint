@@ -16,7 +16,9 @@ def add_output_format_argument(
     help_text: str = "Output format",
 ) -> None:
     parser.add_argument(
+        "--output-format",
         "--format",
+        dest="format",
         choices=["text", "json"],
         default=default,
         help=help_text,

@@ -41,8 +41,8 @@ __all__ = [
 
 
 def build_pipeline_check_catalog(*, profile: str, output_dir: Path | None) -> dict[str, Any]:
-    from sattlint.devtools import pipeline as pipeline_module  # noqa: PLC0415
-    from sattlint.devtools.shared import pipeline_checks  # noqa: PLC0415
+    from .. import pipeline as pipeline_module  # noqa: PLC0415
+    from ..shared import pipeline_checks  # noqa: PLC0415
 
     return pipeline_checks.build_pipeline_check_catalog(
         profile=profile,
@@ -58,8 +58,8 @@ def _build_recommendation_why_this_gate(
     recommended_checks: Iterable[dict[str, Any]],
     skipped_checks: Iterable[dict[str, Any]],
 ) -> dict[str, Any]:
-    from sattlint.devtools import pipeline as pipeline_module  # noqa: PLC0415
-    from sattlint.devtools.shared import pipeline_checks  # noqa: PLC0415
+    from .. import pipeline as pipeline_module  # noqa: PLC0415
+    from ..shared import pipeline_checks  # noqa: PLC0415
 
     normalized_changed_files = pipeline_module.normalize_changed_files(changed_files)
     matched_routes: list[dict[str, Any]] = []
@@ -88,7 +88,7 @@ def _build_recommendation_drift_report(
     recommended_check_ids: Iterable[str],
     tool_statuses: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
-    from sattlint.devtools import pipeline as pipeline_module  # noqa: PLC0415
+    from .. import pipeline as pipeline_module  # noqa: PLC0415
 
     recommended_ids = list(dict.fromkeys(recommended_check_ids))
     observed_nonpassing_check_ids = [

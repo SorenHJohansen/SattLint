@@ -4,13 +4,13 @@
 
 import json
 import logging
-import pickle
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
 
+import sattlint.cache as cache_mod
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -273,8 +273,7 @@ def test_analysis_report_cache_rejects_legacy_payload(tmp_path):
         "files": {str(source_path): (stat_result.st_mtime_ns, stat_result.st_size)},
     }
 
-    with (report_cache.cache_dir / f"{key}.pickle").open("wb") as f:
-        pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
+    cache_mod._save_pickle_payload(report_cache.cache_dir / f"{key}.pickle", payload)
 
     loaded = report_cache.load(key)
 

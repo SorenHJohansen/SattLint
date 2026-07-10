@@ -202,6 +202,7 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser: 
         default=None,
         help="Optional cache directory to prune instead of the default SattLint cache location",
     )
+    add_output_format_argument(cache_prune_parser)
 
     analyze_parser = subparsers.add_parser(
         "analyze",
@@ -261,16 +262,11 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser: 
         help="Maximum number of scans to execute before stopping",
     )
     simulate_parser.add_argument(
-        "--format",
-        default="text",
-        choices=["text", "json"],
-        help="Output format",
-    )
-    simulate_parser.add_argument(
         "--output",
         default=None,
         help="Optional path to write the simulation output",
     )
+    add_output_format_argument(simulate_parser)
 
     docgen_parser = subparsers.add_parser(
         "docgen",
@@ -287,6 +283,7 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser: 
         default=None,
         help="Explicit DOCX file path for single-target generation",
     )
+    add_output_format_argument(docgen_parser)
 
     format_icf_parser = subparsers.add_parser(
         "format-icf",
@@ -301,18 +298,14 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser: 
         action="store_true",
         help="Report whether configured .icf files would change without rewriting them.",
     )
+    add_output_format_argument(format_icf_parser)
 
     telemetry_summary_parser = subparsers.add_parser(
         "telemetry-summary",
         help="Summarize local app telemetry bottlenecks",
         description="Read local app telemetry and summarize slowest operations, stages, analyzers, and nested phases.",
     )
-    telemetry_summary_parser.add_argument(
-        "--format",
-        default="text",
-        choices=["text", "json"],
-        help="Output format",
-    )
+    add_output_format_argument(telemetry_summary_parser)
     telemetry_summary_parser.add_argument(
         "--output",
         default=None,
@@ -450,7 +443,7 @@ def run_cli(  # noqa: PLR0915
             raise RuntimeError("syntax-check handler is required")
         context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
         with context:
-            if getattr(args, "format", "text") == "json":
+            if cli_output.resolve_output_format(args) == "json":
                 return syntax_check_handler(args.file, output_format="json")
             return syntax_check_handler(args.file)
 
@@ -531,7 +524,7 @@ def run_cli(  # noqa: PLR0915
             telemetry_summary_handler(
                 {},
                 config_path=resolved_config_path,
-                output_format=getattr(args, "format", "text"),
+                output_format=cli_output.resolve_output_format(args),
                 output_path=getattr(args, "output", None),
             ),
             fallback=exit_success,
@@ -542,7 +535,10 @@ def run_cli(  # noqa: PLR0915
         if cache_prune_handler is None:
             raise RuntimeError("cache-prune handler is required")
         return _exit_code(
-            cache_prune_handler(cache_dir=getattr(args, "cache_dir", None)),
+            cache_prune_handler(
+                cache_dir=getattr(args, "cache_dir", None),
+                output_format=cli_output.resolve_output_format(args),
+            ),
             fallback=exit_success,
         )
 
@@ -577,7 +573,7 @@ def run_cli(  # noqa: PLR0915
                 "config_path": effective_config_path,
                 "default_used": default_used,
             }
-            if getattr(args, "format", "text") == "json":
+            if cli_output.resolve_output_format(args) == "json":
                 validate_config_kwargs["output_format"] = "json"
             return _exit_code(validate_config_handler(cfg, **validate_config_kwargs), fallback=exit_success)
 
@@ -609,7 +605,7 @@ def run_cli(  # noqa: PLR0915
                     module_name=args.module,
                     mode=args.mode,
                     max_scans=args.max_scans,
-                    output_format=args.format,
+                    output_format=cli_output.resolve_output_format(args),
                     output_path=args.output,
                     use_cache=use_cache,
                 ),
@@ -624,6 +620,7 @@ def run_cli(  # noqa: PLR0915
                 docgen_handler(
                     cfg,
                     use_cache=use_cache,
+                    output_format=cli_output.resolve_output_format(args),
                     output_dir=getattr(args, "output_dir", None),
                     output_path=getattr(args, "output_path", None),
                 ),
@@ -633,7 +630,14 @@ def run_cli(  # noqa: PLR0915
         format_icf_handler = None if command_handlers is None else command_handlers.get("format_icf")
         if format_icf_handler is None:
             raise RuntimeError("format-icf handler is required")
-        return _exit_code(format_icf_handler(cfg, check=args.check), fallback=exit_success)
+        return _exit_code(
+            format_icf_handler(
+                cfg,
+                check=args.check,
+                output_format=cli_output.resolve_output_format(args),
+            ),
+            fallback=exit_success,
+        )
 
     parser.print_usage(sys.stderr)
     return exit_usage_error

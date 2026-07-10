@@ -171,6 +171,7 @@ def test_run_docgen_command_delegates_to_cli_owner(monkeypatch):
         cfg: dict,
         *,
         use_cache: bool,
+        output_format: str,
         output_dir: str | None,
         output_path: str | None,
         iter_loaded_projects_fn,
@@ -180,6 +181,7 @@ def test_run_docgen_command_delegates_to_cli_owner(monkeypatch):
     ) -> int:
         seen["cfg"] = cfg
         seen["use_cache"] = use_cache
+        seen["output_format"] = output_format
         seen["output_dir"] = output_dir
         seen["output_path"] = output_path
         seen["iter_loaded_projects_fn"] = iter_loaded_projects_fn
@@ -198,6 +200,7 @@ def test_run_docgen_command_delegates_to_cli_owner(monkeypatch):
     result = app.run_docgen_command(
         cfg,
         use_cache=False,
+        output_format="json",
         output_dir="docs-out",
         output_path=None,
     )
@@ -205,6 +208,7 @@ def test_run_docgen_command_delegates_to_cli_owner(monkeypatch):
     assert result == 79
     assert seen["cfg"] is cfg
     assert seen["use_cache"] is False
+    assert seen["output_format"] == "json"
     assert seen["output_dir"] == "docs-out"
     assert seen["output_path"] is None
     assert callable(seen["iter_loaded_projects_fn"])
@@ -219,12 +223,14 @@ def test_run_cache_prune_command_delegates_to_cli_owner(monkeypatch):
     def fake_run_cache_prune_command(
         *,
         cache_dir: str | None,
+        output_format: str,
         prune_cache_dir_fn,
         get_cache_dir_fn,
         exit_success: int,
         exit_usage_error: int,
     ) -> int:
         seen["cache_dir"] = cache_dir
+        seen["output_format"] = output_format
         seen["prune_cache_dir_fn"] = prune_cache_dir_fn
         seen["get_cache_dir_fn"] = get_cache_dir_fn
         seen["exit_success"] = exit_success
@@ -233,14 +239,90 @@ def test_run_cache_prune_command_delegates_to_cli_owner(monkeypatch):
 
     monkeypatch.setattr(app.app_cli_commands_module, "run_cache_prune_command", fake_run_cache_prune_command)
 
-    result = app.run_cache_prune_command(cache_dir="custom-cache")
+    result = app.run_cache_prune_command(cache_dir="custom-cache", output_format="json")
 
     assert result == 80
     assert seen["cache_dir"] == "custom-cache"
+    assert seen["output_format"] == "json"
     assert seen["prune_cache_dir_fn"] is app.cache.prune_cache_dir
     assert seen["get_cache_dir_fn"] is app.get_cache_dir
     assert seen["exit_success"] == app.EXIT_SUCCESS
     assert seen["exit_usage_error"] == app.EXIT_USAGE_ERROR
+
+
+def test_cli_owner_run_cache_prune_command_prints_json_output(capsys):
+    exit_code = app.app_cli_commands_module.run_cache_prune_command(
+        cache_dir="custom-cache",
+        output_format="json",
+        prune_cache_dir_fn=lambda _path: app.cache.CachePruneResult(
+            file_lookup_entries=1,
+            file_ast_entries=1,
+            ast_payload_entries=0,
+            ast_manifest_entries=0,
+            analysis_report_entries=0,
+        ),
+        get_cache_dir_fn=lambda: Path("unused"),
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    out = capsys.readouterr().out
+    assert exit_code == app.EXIT_SUCCESS
+    assert json.loads(out) == {
+        "status": "ok",
+        "cache_dir": "custom-cache",
+        "removed_entries": 2,
+        "details": {
+            "lookup": 1,
+            "file_ast": 1,
+            "ast_payload": 0,
+            "ast_manifest": 0,
+            "analysis_report": 0,
+        },
+    }
+
+
+def test_cli_owner_run_docgen_command_prints_json_output(monkeypatch, capsys):
+    monkeypatch.setattr(
+        app.app_cli_commands_module,
+        "generate_docx",
+        lambda _bp, out_name, documentation_config, unavailable_libraries: None,
+    )
+
+    cfg = {"documentation": {"classifications": {}}}
+    target_bp: BasePicture = cast(Any, object())
+    target_graph = ProjectGraph()
+    target_graph.unavailable_libraries = {"ControlLib"}
+    projects: list[tuple[str, BasePicture, ProjectGraph]] = [("TargetA", target_bp, target_graph)]
+
+    def iter_projects(_cfg: dict[Any, Any], _use_cache: bool) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
+        return iter(projects)
+
+    exit_code = app.app_cli_commands_module.run_docgen_command(
+        cfg,
+        use_cache=True,
+        output_format="json",
+        output_dir=None,
+        output_path="custom.docx",
+        iter_loaded_projects_fn=cast(Any, iter_projects),
+        documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    out = capsys.readouterr().out
+    assert exit_code == app.EXIT_SUCCESS
+    assert json.loads(out) == {
+        "status": "ok",
+        "generated_count": 1,
+        "generated": [
+            {
+                "target_name": "TargetA",
+                "output_path": "custom.docx",
+                "unavailable_libraries": ["ControlLib"],
+            }
+        ],
+    }
 
 
 def test_run_telemetry_summary_command_delegates_to_cli_owner(monkeypatch):

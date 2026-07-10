@@ -2,20 +2,31 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from . import ai_gc, ai_work_map
-
-
-def __getattr__(name: str) -> Any:
-    return getattr(ai_work_map, name)
-
-
-def __dir__() -> list[str]:
-    return sorted(set(globals()) | set(dir(ai_gc)) | set(dir(ai_work_map)))
-
+from .ai_work_map import (
+    DEFAULT_CHECK_CATALOG_OUTPUT_PATH,
+    DEFAULT_OUTPUT_PATH,
+    DEFAULT_SESSION_CONTEXT_OUTPUT_PATH,
+    build_ai_work_map,
+    build_planning_context,
+    build_session_context_map,
+    main,
+    render_ai_check_catalog,
+    render_ai_work_map,
+    render_session_context_map,
+)
 
 __all__ = [
+    "DEFAULT_CHECK_CATALOG_OUTPUT_PATH",
+    "DEFAULT_OUTPUT_PATH",
+    "DEFAULT_SESSION_CONTEXT_OUTPUT_PATH",
     "ai_gc",
     "ai_work_map",
+    "build_ai_work_map",
+    "build_planning_context",
+    "build_session_context_map",
+    "main",
+    "render_ai_check_catalog",
+    "render_ai_work_map",
+    "render_session_context_map",
 ]
