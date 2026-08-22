@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import cast
 
+from sattline_parser.models.expressions import Assignment, FuncCallStmt, IfStmt, VarRef
+
 from ...grammar import constants as const
 
 NodeTuple = tuple[object, ...]
@@ -66,3 +68,44 @@ def object_dict_values(node: object) -> list[object]:
     if not isinstance(node_dict, dict):
         return []
     return list(cast(NodeDict, node_dict).values())
+
+
+def is_statement_node(node: object) -> bool:
+    """True when node is a statement-level AST node (new dataclass shape)."""
+    return isinstance(node, Assignment | FuncCallStmt | IfStmt)
+
+
+def assignment_target(node: object) -> object:
+    if isinstance(node, Assignment):
+        return node.target
+    return None
+
+
+def assignment_value(node: object) -> object:
+    if isinstance(node, Assignment):
+        return node.value
+    return None
+
+
+def if_branches(node: object) -> list[tuple[object, NodeList]]:
+    if isinstance(node, IfStmt):
+        return [(cast(object, cond), list(body)) for cond, body in node.branches]
+    return []
+
+
+def if_else_block(node: object) -> NodeList | None:
+    if isinstance(node, IfStmt):
+        return list(node.else_block) if node.else_block is not None else None
+    return None
+
+
+def varref_name(node: object) -> str | None:
+    if isinstance(node, VarRef):
+        return node.name
+    return None
+
+
+def varref_state(node: object) -> str | None:
+    if isinstance(node, VarRef):
+        return node.state
+    return None

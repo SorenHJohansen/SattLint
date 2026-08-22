@@ -132,6 +132,8 @@ def _detect_changed_files(*, repo_root: Path = REPO_ROOT) -> list[str]:
     for raw_line in completed.stdout.splitlines():
         if len(raw_line) < 4:
             continue
+        if "D" in raw_line[:2]:
+            continue
         path_text = raw_line[3:].strip()
         if not path_text:
             continue

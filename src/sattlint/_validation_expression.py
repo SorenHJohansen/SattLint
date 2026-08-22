@@ -6,12 +6,21 @@ from collections.abc import Sequence
 from typing import TypeGuard, cast
 
 from lark import Tree
-
 from sattline_parser.models.ast_model import (
     FloatLiteral,
     IntLiteral,
     Simple_DataType,
     Variable,
+)
+from sattline_parser.models.expressions import (
+    BinOp,
+    BoolOp,
+    Compare,
+    FuncCall,
+    NotOp,
+    TernaryOp,
+    UnaryOp,
+    VarRef,
 )
 
 from ._validation_shared import StructuralValidationError, ref_span, span_kwargs
@@ -58,8 +67,17 @@ type _ExpressionTuple = tuple[object, ...]
 type _ExpressionPair = tuple[object, object]
 
 
-def _is_variable_ref_node(node: object) -> TypeGuard[dict[str, object]]:
-    return isinstance(node, dict) and const.KEY_VAR_NAME in node
+def _is_variable_ref_node(node: object) -> TypeGuard[dict[str, object] | VarRef]:
+    return isinstance(node, VarRef) or (isinstance(node, dict) and const.KEY_VAR_NAME in node)
+
+
+def _variable_ref_name(node: object) -> str | None:
+    if isinstance(node, VarRef):
+        return node.name or None
+    if isinstance(node, dict) and const.KEY_VAR_NAME in node:
+        value = cast(dict[str, object], node)[const.KEY_VAR_NAME]
+        return value if isinstance(value, str) and value else None
+    return None
 
 
 def _as_expression_tuple(node: object) -> _ExpressionTuple | None:
@@ -95,6 +113,23 @@ def _iter_expression_pairs(node: object) -> tuple[_ExpressionPair, ...]:
     return tuple(pairs)
 
 
+def _iter_operands(node: object) -> tuple[object, ...]:
+    """Yield child expression nodes for a dataclass expression node."""
+    if isinstance(node, BoolOp):
+        return tuple(node.operands)
+    if isinstance(node, NotOp):
+        return (node.operand,)
+    if isinstance(node, Compare):
+        return (node.left, node.right)
+    if isinstance(node, BinOp):
+        return (node.left, node.right)
+    if isinstance(node, UnaryOp):
+        return (node.operand,)
+    if isinstance(node, FuncCall):
+        return tuple(node.args)
+    return ()
+
+
 def _validate_expression_semantics(  # noqa: PLR0915
     node: object,
     env: dict[str, Variable],
@@ -114,6 +149,113 @@ def _validate_expression_semantics(  # noqa: PLR0915
     if isinstance(node, dict):
         for value in _iter_mapping_values(cast(object, node)):
             _validate_expression_semantics(value, env, type_graph, context)
+        return
+
+    if _is_variable_ref_node(node):
+        return
+
+    if isinstance(node, VarRef):
+        return
+
+    if isinstance(node, BoolOp):
+        operand_types = [_infer_expression_datatype(operand, env, type_graph) for operand in node.operands]
+        for operand, operand_type in zip(node.operands, operand_types, strict=True):
+            if operand_type is not None and not _is_boolean_datatype(operand_type):
+                raise StructuralValidationError(
+                    f"{context} logical operator {node.op!r} expects boolean operands but got {_format_datatype(operand_type)!r}"
+                )
+            _validate_expression_semantics(operand, env, type_graph, context)
+        return
+
+    if isinstance(node, NotOp):
+        operand_type = _infer_expression_datatype(node.operand, env, type_graph)
+        if operand_type is not None and not _is_boolean_datatype(operand_type):
+            raise StructuralValidationError(
+                f"{context} logical operator {const.GRAMMAR_VALUE_NOT!r} expects a boolean operand but got {_format_datatype(operand_type)!r}"
+            )
+        _validate_expression_semantics(node.operand, env, type_graph, context)
+        return
+
+    if isinstance(node, Compare):
+        left_type = _infer_expression_datatype(node.left, env, type_graph)
+        _validate_expression_semantics(node.left, env, type_graph, context)
+        operator = node.op
+        right_type = _infer_expression_datatype(node.right, env, type_graph)
+        if operator in _EQUALITY_COMPARISON_OPERATORS:
+            if (
+                left_type is not None
+                and right_type is not None
+                and not _is_anytype_datatype(left_type)
+                and not _is_anytype_datatype(right_type)
+                and _merge_compatible_types((left_type, right_type)) is None
+            ):
+                raise StructuralValidationError(
+                    f"{context} comparison operator {operator!r} expects compatible operands but got "
+                    f"{_format_datatype(left_type)!r} and {_format_datatype(right_type)!r}"
+                )
+        else:
+            if left_type is not None and not _is_anytype_datatype(left_type) and not _is_numeric_datatype(left_type):
+                raise StructuralValidationError(
+                    f"{context} comparison expects numeric operands but left side has datatype {_format_datatype(left_type)!r}"
+                )
+            if right_type is not None and not _is_anytype_datatype(right_type) and not _is_numeric_datatype(right_type):
+                raise StructuralValidationError(
+                    f"{context} comparison expects numeric operands but right side has datatype {_format_datatype(right_type)!r}"
+                )
+        _validate_expression_semantics(node.right, env, type_graph, context)
+        return
+
+    if isinstance(node, BinOp):
+        base_type = _infer_expression_datatype(node.left, env, type_graph)
+        if base_type is not None and not _is_anytype_datatype(base_type) and not _is_numeric_datatype(base_type):
+            raise StructuralValidationError(
+                f"{context} arithmetic expression expects numeric operands but got {_format_datatype(base_type)!r}"
+            )
+        _validate_expression_semantics(node.left, env, type_graph, context)
+        rhs_type = _infer_expression_datatype(node.right, env, type_graph)
+        if rhs_type is not None and not _is_anytype_datatype(rhs_type) and not _is_numeric_datatype(rhs_type):
+            raise StructuralValidationError(
+                f"{context} arithmetic operator {node.op!r} expects numeric operands but got {_format_datatype(rhs_type)!r}"
+            )
+        if node.op == "/" and _expression_is_zero_literal(node.right):
+            raise StructuralValidationError(f"{context} division by zero is not allowed")
+        _validate_expression_semantics(node.right, env, type_graph, context)
+        return
+
+    if isinstance(node, UnaryOp):
+        operand_type = _infer_expression_datatype(node.operand, env, type_graph)
+        if (
+            operand_type is not None
+            and not _is_anytype_datatype(operand_type)
+            and not _is_numeric_datatype(operand_type)
+        ):
+            raise StructuralValidationError(
+                f"{context} unary operator {node.op!r} expects a numeric operand but got {_format_datatype(operand_type)!r}"
+            )
+        _validate_expression_semantics(node.operand, env, type_graph, context)
+        return
+
+    if isinstance(node, TernaryOp):
+        branch_types: list[Simple_DataType | str | None] = []
+        for condition, branch_value in node.branches:
+            _validate_expression_semantics(condition, env, type_graph, context)
+            _validate_expression_semantics(branch_value, env, type_graph, context)
+            branch_types.append(_infer_expression_datatype(branch_value, env, type_graph))
+        if node.else_expr is not None:
+            _validate_expression_semantics(node.else_expr, env, type_graph, context)
+            branch_types.append(_infer_expression_datatype(node.else_expr, env, type_graph))
+
+        known_types = [datatype for datatype in branch_types if datatype is not None]
+        if len(known_types) >= 2 and _merge_compatible_types(known_types) is None:
+            joined = ", ".join(sorted({_format_datatype(datatype) for datatype in known_types}))
+            raise StructuralValidationError(
+                f"{context} IF-expression branches must have compatible datatypes; got {joined}"
+            )
+        return
+
+    if isinstance(node, FuncCall):
+        for argument in node.args:
+            _validate_expression_semantics(argument, env, type_graph, context)
         return
 
     node_items = _as_expression_tuple(node)
@@ -228,7 +370,7 @@ def _validate_expression_semantics(  # noqa: PLR0915
         return
 
     if tag == const.KEY_TERNARY and len(node_items) == 3:
-        branch_types: list[Simple_DataType | str | None] = []
+        branch_types = []
         for condition, branch_value in _iter_expression_pairs(node_items[1]):
             _validate_expression_semantics(condition, env, type_graph, context)
             _validate_expression_semantics(branch_value, env, type_graph, context)
@@ -267,6 +409,35 @@ def _infer_expression_datatype(
         if _is_variable_ref_node(mapping):
             return _resolve_ref_datatype(mapping, env, type_graph)
         return None
+
+    if isinstance(node, VarRef):
+        return _resolve_ref_datatype(node, env, type_graph)
+
+    if isinstance(node, FuncCall):
+        builtin = SATTLINE_BUILTINS.get(node.name.casefold())
+        if builtin is None or builtin.return_type is None:
+            return None
+        return _normalize_builtin_datatype(builtin.return_type)
+
+    if isinstance(node, (Compare, BoolOp, NotOp)):
+        return Simple_DataType.BOOLEAN
+
+    if isinstance(node, BinOp):
+        datatypes = [_infer_expression_datatype(node.left, env, type_graph)]
+        datatypes.append(_infer_expression_datatype(node.right, env, type_graph))
+        return _merge_numeric_types(datatypes)
+
+    if isinstance(node, UnaryOp):
+        dtype = _infer_expression_datatype(node.operand, env, type_graph)
+        return _merge_numeric_types([dtype])
+
+    if isinstance(node, TernaryOp):
+        branch_types = [
+            _infer_expression_datatype(branch_value, env, type_graph) for _condition, branch_value in node.branches
+        ]
+        if node.else_expr is not None:
+            branch_types.append(_infer_expression_datatype(node.else_expr, env, type_graph))
+        return _merge_compatible_types(branch_types)
 
     node_items = _as_expression_tuple(node)
     if node_items is None:
@@ -382,6 +553,16 @@ def _validate_call_arg_node(node: object, context: str) -> None:
             _validate_call_arg_node(value, context)
         return
 
+    if isinstance(node, VarRef):
+        return
+
+    for child in _iter_operands(node):
+        _validate_call_arg_node(child, context)
+    if isinstance(node, FuncCall):
+        for index, arg in enumerate(node.args, start=1):
+            _validate_call_arg_node(arg, f"{context} call {node.name!r} argument {index}")
+        return
+
     if isinstance(node, tuple):
         node_items = cast(_ExpressionTuple, node)
         if len(node_items) == 3 and node_items[0] == const.KEY_FUNCTION_CALL:
@@ -417,6 +598,19 @@ def _validate_no_string_literals_in_calls(node: object, context: str) -> None:
 
         for value in _iter_mapping_values(mapping):
             _validate_no_string_literals_in_calls(value, context)
+        return
+
+    if isinstance(node, VarRef):
+        return
+
+    for child in _iter_operands(node):
+        _validate_no_string_literals_in_calls(child, context)
+    if isinstance(node, FuncCall):
+        for index, arg in enumerate(node.args, start=1):
+            _validate_call_arg_node(
+                arg,
+                f"{context} call {node.name!r} argument {index}",
+            )
         return
 
     if isinstance(node, tuple):
@@ -460,6 +654,18 @@ def _validate_builtin_call_types(
             _validate_builtin_call_types(value, env, type_graph, context)
         return
 
+    if isinstance(node, VarRef):
+        return
+
+    if isinstance(node, FuncCall):
+        _validate_builtin_call_signature(node.name, node.args, env, type_graph, context)
+        for arg in node.args:
+            _validate_builtin_call_types(arg, env, type_graph, context)
+        return
+
+    for child in _iter_operands(node):
+        _validate_builtin_call_types(child, env, type_graph, context)
+
     if isinstance(node, tuple):
         node_items = cast(_ExpressionTuple, node)
         if len(node_items) == 3 and node_items[0] == const.KEY_FUNCTION_CALL:
@@ -479,3 +685,4 @@ is_variable_ref_node = _is_variable_ref_node
 validate_builtin_call_types = _validate_builtin_call_types
 validate_expression_semantics = _validate_expression_semantics
 validate_no_string_literals_in_calls = _validate_no_string_literals_in_calls
+variable_ref_name = _variable_ref_name

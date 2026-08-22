@@ -7,10 +7,8 @@ This matrix defines the current public support contract for SattLint. `Stable` m
 | `sattlint --version` and installed CLI bootstrap | Stable | Windows, Linux | Confirms the installed package boots and reports a version | Part of release smoke validation |
 | `sattlint syntax-check` | Stable | Windows, Linux | Strict single-file syntax validation for SattLine source and graphics sidecars | Release smoke uses the checked-in grammar sample |
 | `sattlint repo-audit` | Stable | Windows, Linux | Repository audit CLI, check catalog, and public-readiness checks | Full profile is supported but can be slower on larger repos |
-| `sattlint-lsp` | Stable | Windows, Linux | Standalone Python language-server entrypoint | Editor clients may add preview behavior on top |
-| `sattlint analyze`, `sattlint validate-config`, `sattlint format-icf`, and `sattlint docgen` | Preview | Windows, Linux | Richer config-driven analysis, formatting, and documentation workflows | Useful today, but not yet part of the smallest stable release contract |
+| `sattlint analyze`, `sattlint validate-config`, and `sattlint format-icf` | Preview | Windows, Linux | Richer config-driven analysis and formatting workflows | Useful today, but not yet part of the smallest stable release contract |
 | Interactive `sattlint` menu | Preview | Windows, Linux | Guided setup and menu-driven workflows | Menu layout and wording may still evolve |
-| `vscode/sattline-vscode/` | Preview | Local preview use | Repository-local VS Code client for the Python LSP | Not yet published under a public marketplace publisher |
 | `artifacts/`, `metrics/`, repo helper scripts, and GitHub automation internals | Internal-only | Maintainer-only | Generated artifacts, release plumbing, optional chat customizations, and internal tooling | May change without compatibility notice |
 
 ## Notes

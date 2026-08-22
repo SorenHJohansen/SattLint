@@ -18,6 +18,7 @@ from sattline_parser.models.ast_model import (
     SFCTransitionSub,
     SingleModule,
 )
+from sattline_parser.models.expressions import Assignment, FuncCallStmt, IfStmt
 
 from ...grammar import constants as const
 from ...resolution.common import resolve_moduletype_def_strict
@@ -370,6 +371,24 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
                 current_state = self._analyze_stmt_or_expr(child, context, module_path, current_state)
             return current_state
 
+        if isinstance(obj, IfStmt):
+            return self._analyze_if_statement(obj, context, module_path, state)
+
+        if isinstance(obj, Assignment):
+            current_state = state
+            self._report_expression_temporal_hazards(obj.value, context, module_path, current_state)
+            value = self._evaluate_expression(obj.value, context, module_path, current_state)
+            return self._write_target(obj.target, value, context, current_state)
+
+        if isinstance(obj, FuncCallStmt):
+            current_state = state
+            self._report_expression_temporal_hazards(obj.call, context, module_path, current_state)
+            self._evaluate_expression(obj.call, context, module_path, current_state)
+            function_name = obj.call.name
+            args = _sequence_as_list(obj.call.args)
+            return self._apply_call_side_effects(function_name, args, context, current_state)
+            return current_state
+
         tuple_node = _object_tuple(obj)
         if tuple_node is not None and tuple_node and tuple_node[0] == const.GRAMMAR_VALUE_IF:
             return self._analyze_if_statement(cast(tuple[Any, ...], tuple_node), context, module_path, state)
@@ -397,12 +416,17 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
 
     def _analyze_if_statement(
         self: Any,
-        statement: tuple[Any, ...],
+        statement: IfStmt | tuple[Any, ...],
         context: ScopeContext,
         module_path: list[str],
         state: StateMap,
     ) -> StateMap:
-        _if_tag, branches, else_block = statement
+        if isinstance(statement, IfStmt):
+            branches = list(statement.branches)
+            else_block = statement.else_block
+        else:
+            _if_tag, branches_raw, else_block = statement
+            branches = cast(list[tuple[object, object]] | None, branches_raw) or []
         reachable_states: list[StateMap] = []
         fallthrough_state = state
 

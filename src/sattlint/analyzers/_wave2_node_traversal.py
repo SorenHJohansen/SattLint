@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
     ModuleCode,
@@ -13,6 +13,7 @@ from sattline_parser.models.ast_model import (
     SFCSubsequence,
     SFCTransition,
     SFCTransitionSub,
+    SLExpression,
 )
 
 from ..grammar import constants as const
@@ -83,7 +84,7 @@ def _iter_sequence_node_statement_sites(sequence_name: str, node: Any) -> list[S
         return sites
 
     if isinstance(node, SFCTransition):
-        if node.condition is None:
+        if cast(SLExpression | None, node.condition) is None:
             return []
         return [
             StatementSite(

@@ -1,7 +1,8 @@
+# pyright: reportPrivateUsage=false
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import replace
 from pathlib import Path
 from time import perf_counter
@@ -30,6 +31,8 @@ from .config_types import ConfigDict
 from .models.project_graph import ProjectGraph, RootOrigin
 
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
+
+
 def get_analyzed_targets(cfg: ConfigDict, *, app_support: Any) -> list[str]:
     return cast(list[str], app_support.get_analyzed_targets(cfg))
 

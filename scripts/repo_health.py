@@ -26,16 +26,11 @@ from sattlint.devtools.artifact_readiness import ReadinessError, assert_artifact
 
 REPO_ROOT = repo_root_from(Path(__file__))
 DEFAULT_AUDIT_DIR = REPO_ROOT / "artifacts" / "audit"
-DEFAULT_COVERAGE_RATCHET = REPO_ROOT / "artifacts" / "analysis" / "coverage_ratchet.json"
 DEFAULT_STRUCTURAL_RATCHET = REPO_ROOT / "artifacts" / "analysis" / "structural_budget_ratchet.json"
-DEFAULT_FILE_DEBT_RATCHET = REPO_ROOT / "artifacts" / "analysis" / "file_debt_ratchet.json"
 DEFAULT_HISTORY_DIR = REPO_ROOT / "metrics" / "history"
 REFRESH_DASHBOARD_TASK = "Metrics: Refresh Repo Health Dashboard"
 _read_json = repo_health_metrics.read_json
 _read_json_optional = repo_health_metrics.read_json_optional
-_read_toml_optional = repo_health_metrics.read_toml_optional
-_build_ratchet_status = repo_health_metrics.build_ratchet_status
-_build_ratchet_inventory = repo_health_metrics.build_ratchet_inventory
 _render_markdown = repo_health_markdown.render_markdown
 _write_text = repo_health_metrics.write_text
 
@@ -112,10 +107,8 @@ def build_report(audit_dir: Path) -> dict[str, Any]:
     ruff_report = _read_json_optional(audit_dir / "pipeline" / "ruff.json") or {}
     pyright_report = _read_json_optional(audit_dir / "pipeline" / "pyright.json") or {}
     pytest_report = _read_json_optional(audit_dir / "pipeline" / "pytest.json") or {}
-    coverage_ratchet = _read_json_optional(DEFAULT_COVERAGE_RATCHET)
+    coverage_summary = _read_json_optional(audit_dir / "pipeline" / "coverage_summary.json")
     structural_ratchet = _read_json_optional(DEFAULT_STRUCTURAL_RATCHET)
-    file_debt_ratchet = _read_json_optional(DEFAULT_FILE_DEBT_RATCHET)
-    pyproject_payload = _read_toml_optional(REPO_ROOT / "pyproject.toml")
     context_report = context_health.build_report()
 
     largest_files = _largest_files()
@@ -142,15 +135,15 @@ def build_report(audit_dir: Path) -> dict[str, Any]:
     if status == "pass" and (int(audit_status.get("finding_count", 0)) > 0 or warnings):
         status = "pass_with_findings"
 
-    coverage_summary = coverage_ratchet.get("summary", {})
+    coverage_summary_payload = (
+        coverage_summary.get("summary", {}) if isinstance(coverage_summary.get("summary"), dict) else {}
+    )
     structural_metrics = structural_ratchet.get("metrics", {})
     metrics = {
         "finding_count": int(audit_status.get("finding_count", 0)),
         "blocking_finding_count": int(audit_status.get("blocking_finding_count", 0)),
-        "coverage_total_line_rate": round(repo_health_metrics.safe_float(coverage_summary.get("total_line_rate")), 4),
-        "coverage_min_line_rate": round(
-            repo_health_metrics.safe_float(coverage_ratchet.get("metrics", {}).get("min_line_rate_basis_points", 0))
-            / 10000,
+        "coverage_total_line_rate": round(
+            repo_health_metrics.safe_float(coverage_summary_payload.get("total_line_rate")),
             4,
         ),
         "ruff_issue_count": int(ruff_report.get("finding_count", 0)),
@@ -174,16 +167,6 @@ def build_report(audit_dir: Path) -> dict[str, Any]:
 
     history = _history_snapshots()
     trend_summary = _trend_metrics(metrics, history)
-    ratchet_status = _build_ratchet_status(
-        coverage_ratchet=coverage_ratchet,
-        structural_ratchet=structural_ratchet,
-        audit_summary=audit_summary,
-    )
-    ratchet_inventory = _build_ratchet_inventory(
-        file_debt_ratchet=file_debt_ratchet,
-        structural_ratchet=structural_ratchet,
-        pyproject_payload=pyproject_payload,
-    )
 
     return {
         "kind": "sattlint.repo_health",
@@ -205,42 +188,17 @@ def build_report(audit_dir: Path) -> dict[str, Any]:
         "branch_health": branch_health,
         "handoffs": handoffs,
         "trend_summary": trend_summary,
-        "ratchet_status": ratchet_status,
-        "ratchet_inventory": ratchet_inventory,
         "warnings": warnings,
         "top_findings": audit_summary.get("findings", [])[:10],
         "largest_files": largest_files,
         "slowest_tests": slowest_tests,
-        "technical_debt_indicators": {
-            "structural_budget_regression": ratchet_status["structural"]["structural_budget_regression"],
-            "medium_or_higher_findings": int(audit_status.get("finding_count", 0)),
-            "file_exception_count": ratchet_status["structural"]["file_exception_count"],
-        },
     }
 
 
-def _ratchet_inventory_path(main_html_path: Path) -> Path:
-    return repo_health_html_pages.ratchet_inventory_path(main_html_path)
-
-
-def _render_html(
-    report: dict[str, Any], *, current_page_path: str = "repo-health.html", ratchet_page_path: str | None = None
-) -> str:
+def _render_html(report: dict[str, Any], *, current_page_path: str = "repo-health.html") -> str:
     return repo_health_html_pages.render_html(
         report,
         current_page_path=current_page_path,
-        ratchet_page_path=ratchet_page_path,
-        refresh_dashboard_task=REFRESH_DASHBOARD_TASK,
-    )
-
-
-def _render_ratchet_html(
-    report: dict[str, Any], *, current_page_path: str = "repo-health-ratchets.html", main_page_path: str
-) -> str:
-    return repo_health_html_pages.render_ratchet_html(
-        report,
-        current_page_path=current_page_path,
-        main_page_path=main_page_path,
         refresh_dashboard_task=REFRESH_DASHBOARD_TASK,
     )
 
@@ -279,19 +237,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             _write_text(markdown_path, _render_markdown(report))
         if args.html_output is not None:
             html_path = args.html_output if args.html_output.is_absolute() else REPO_ROOT / args.html_output
-            ratchet_html_path = _ratchet_inventory_path(html_path)
-            _write_text(
-                html_path,
-                _render_html(report, current_page_path=html_path.name, ratchet_page_path=ratchet_html_path.name),
-            )
-            _write_text(
-                ratchet_html_path,
-                _render_ratchet_html(
-                    report,
-                    current_page_path=ratchet_html_path.name,
-                    main_page_path=html_path.name,
-                ),
-            )
+            _write_text(html_path, _render_html(report, current_page_path=html_path.name))
         if args.history_output is not None:
             history_path = args.history_output if args.history_output.is_absolute() else REPO_ROOT / args.history_output
             _write_text(history_path, json.dumps(report, indent=2, sort_keys=True) + "\n")

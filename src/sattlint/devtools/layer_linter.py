@@ -23,9 +23,7 @@ from .artifact_registry import LAYER_LINT_POLICY_FILENAME, POLICY_KIND, POLICY_S
 #                                    reporting, and shared helpers
 # Layer 5: reserved
 # Layer 6: reserved
-# Layer 7: sattlint_lsp        - language server
-# Layer 8: vscode              - VS Code extension client
-# Layer 9: sattlint.devtools   - tooling-only; must not be imported by layers 0-7
+# Layer 9: sattlint.devtools   - tooling-only; must not be imported by layers 0-4
 
 LAYER_MAP = {
     "sattline_parser": 0,
@@ -36,8 +34,6 @@ LAYER_MAP = {
     "sattlint.analyzers": 4,
     "sattlint.reporting": 4,
     "sattlint": 4,
-    "sattlint_lsp": 7,
-    "vscode": 8,
     "sattlint.devtools": 9,
 }
 

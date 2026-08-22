@@ -1,21 +1,19 @@
 ---
 description: "Use when routing work to the owning SattLint surface or choosing the closest repo area for a change. Provides the condensed repo map that was removed from AGENTS.md for context efficiency."
 name: "Repo Map Instructions"
-applyTo: ["src/**", "tests/**", "scripts/**", ".github/**", "docs/**", "vscode/**", "metrics/**"]
+applyTo: ["src/**", "tests/**", "scripts/**", ".github/**", "docs/**", "metrics/**"]
 ---
 # Repo Map
 
 | Path | Purpose |
 | --- | --- |
-| `src/sattline_parser/` | Parser core: grammar, transformer, AST models |
-| `src/sattlint/` | CLI, analyzers, reporting, config, doc generation |
+| `sattline-parser` (external) | Parser core: grammar, transformer, AST models; installed from PyPI and owned by the `sattline-parser` repo |
+| `src/sattlint/` | CLI, analyzers, reporting, config |
 | `src/sattlint/core/` | Shared semantic and document helpers |
-| `src/sattlint/devtools/` | Repo audit, pipeline, ratchets, health reporting |
-| `src/sattlint_lsp/` | Language server and workspace loading |
-| `vscode/sattline-vscode/` | No-build VS Code client for SattLine editing in external workspaces; not the default owner for this repo's Python-side health or audit UX |
+| `src/sattlint/devtools/` | Repo audit, pipeline, health and structural reporting |
 | `tests/` | Owner suites and regression coverage |
 | `.github/` | CI, instructions, hooks, and optional chat customizations |
-| `metrics/` | Ratchets and curated health history |
+| `metrics/` | Maintainer operating thresholds and curated health history |
 | `artifacts/` | Machine-readable audit outputs |
 
 ## Search Routing

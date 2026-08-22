@@ -122,17 +122,14 @@ PIPELINE_CHECK_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "owner_surface": "trace",
         "estimated_cost": "medium",
         "path_globs": (
-            "src/sattline_parser/**",
             "src/sattlint/analyzers/**",
             "src/sattlint/core/**",
-            "src/sattlint_lsp/**",
             "tests/fixtures/sample_sattline_files/**",
         ),
         "owner_test_targets": ("tests/test_pipeline_phase2.py",),
         **_ai_metadata(
             "Use when parser, analyzer, or workspace-loading edits need trace or profiling artifacts.",
             ".github/instructions/parser-analysis.instructions.md",
-            ".github/instructions/workspace-lsp.instructions.md",
         ),
     },
     {
@@ -143,12 +140,10 @@ PIPELINE_CHECK_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "owner_surface": "corpus",
         "estimated_cost": "high",
         "path_globs": (
-            "src/sattline_parser/**",
             "src/sattlint/analyzers/**",
             "tests/fixtures/corpus/**",
-            "tests/parser/test_corpus.py",
         ),
-        "owner_test_targets": ("tests/parser/test_corpus.py",),
+        "owner_test_targets": ("tests/test_pipeline_run.py",),
         **_ai_metadata(
             "Use when parser or analyzer changes need corpus-level regression proof.",
             ".github/instructions/parser-analysis.instructions.md",

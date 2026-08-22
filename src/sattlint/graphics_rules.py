@@ -24,11 +24,7 @@ _MODULE_KIND_ALIASES = {
     "moduletype": "moduletype",
     "moduletype-instance": "moduletype",
 }
-_PATH_SELECTOR_FIELDS = (
-    "relative_module_path",
-    "unit_structure_path",
-    "equipment_module_structure_path",
-)
+_PATH_SELECTOR_FIELDS = ("relative_module_path",)
 
 DEFAULT_GRAPHICS_RULES: dict[str, Any] = {
     "schema_version": _SCHEMA_VERSION,
@@ -94,15 +90,7 @@ def _normalize_module_kind(value: Any) -> str:
 
 
 def _normalized_rule_name(rule: dict[str, Any]) -> str:
-    selector_text = ""
-    if rule.get("unit_structure_path"):
-        selector_text = f"unit:{rule['unit_structure_path']}"
-    elif rule.get("equipment_module_structure_path"):
-        selector_text = f"equipment:{rule['equipment_module_structure_path']}"
-    elif rule.get("relative_module_path"):
-        selector_text = f"path:{rule['relative_module_path']}"
-    else:
-        selector_text = rule["module_name"]
+    selector_text = f"path:{rule['relative_module_path']}" if rule.get("relative_module_path") else rule["module_name"]
 
     if rule["module_kind"] == "moduletype":
         return f"moduletype:{rule['moduletype_name']}@{selector_text}"
@@ -130,13 +118,11 @@ def _populated_path_selectors(rule: dict[str, Any]) -> list[tuple[str, str]]:
     return selectors
 
 
-def _rule_selector_key(rule: dict[str, Any]) -> tuple[str, str, str, str, str, str]:
+def _rule_selector_key(rule: dict[str, Any]) -> tuple[str, str, str, str]:
     return (
         str(rule.get("module_kind") or "").casefold(),
         str(rule.get("moduletype_name") or "").casefold(),
         str(rule.get("relative_module_path") or "").casefold(),
-        str(rule.get("unit_structure_path") or "").casefold(),
-        str(rule.get("equipment_module_structure_path") or "").casefold(),
         str(rule.get("module_name") or "").casefold(),
     )
 
@@ -149,15 +135,11 @@ def _normalize_rule(rule: Any) -> dict[str, Any]:
 
     module_name = str(rule_obj.get("module_name") or rule_obj.get("name") or "").strip()
     relative_module_path = str(rule_obj.get("relative_module_path") or "").strip()
-    unit_structure_path = str(rule_obj.get("unit_structure_path") or "").strip()
-    equipment_module_structure_path = str(rule_obj.get("equipment_module_structure_path") or "").strip()
     moduletype_name = str(rule_obj.get("moduletype_name") or "").strip()
     module_kind = _normalize_module_kind(rule_obj.get("module_kind") or "any")
     populated_selectors = _populated_path_selectors(
         {
             "relative_module_path": relative_module_path,
-            "unit_structure_path": unit_structure_path,
-            "equipment_module_structure_path": equipment_module_structure_path,
         }
     )
     if len(populated_selectors) > 1:
@@ -185,8 +167,6 @@ def _normalize_rule(rule: Any) -> dict[str, Any]:
         "module_name": module_name,
         "module_kind": module_kind,
         "relative_module_path": relative_module_path,
-        "unit_structure_path": unit_structure_path,
-        "equipment_module_structure_path": equipment_module_structure_path,
         "moduletype_name": moduletype_name,
         "description": description,
         "expected": expected_obj,
@@ -280,16 +260,6 @@ def _rule_matches_entry(rule: dict[str, Any], entry: dict[str, Any]) -> bool:
 
     relative_module_path = str(rule.get("relative_module_path") or "").strip()
     if relative_module_path and entry.get("relative_module_path", "").casefold() != relative_module_path.casefold():
-        return False
-
-    unit_structure_path = str(rule.get("unit_structure_path") or "").strip()
-    if unit_structure_path and entry.get("unit_structure_path", "").casefold() != unit_structure_path.casefold():
-        return False
-
-    equipment_module_structure_path = str(rule.get("equipment_module_structure_path") or "").strip()
-    if equipment_module_structure_path and (
-        entry.get("equipment_module_structure_path", "").casefold() != equipment_module_structure_path.casefold()
-    ):
         return False
 
     if module_kind == "moduletype":

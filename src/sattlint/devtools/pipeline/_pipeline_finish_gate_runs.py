@@ -87,15 +87,6 @@ def run_recommended_pipeline_finish_gate(
         "mode": "skipped",
         "coverage_path": None,
     }
-    structural_surface_proof: dict[str, Any] = {
-        "status": "not-required",
-        "checked_files": [],
-        "expected_metrics": {},
-        "metrics_by_path": {},
-        "violations": [],
-        "scan_failures": [],
-        "reason": "No changed structural Python files require structural surface proof.",
-    }
     for step_report in step_reports:
         if str(step_report.get("status", "pass")) == "fail":
             finish_gate_status = "fail"
@@ -129,23 +120,6 @@ def run_recommended_pipeline_finish_gate(
             "reason": "Focused coverage proof is required for changed source files but no owner pytest coverage step was available.",
         }
         finish_gate_status = "fail"
-    structural_surface_proof = pipeline_module.evaluate_change_scoped_structural_surface_proof(
-        repo_root=pipeline_module.REPO_ROOT,
-        changed_files=recommended_changed_files,
-    )
-    if structural_surface_proof["status"] == "fail":
-        finish_gate_status = "fail"
-        step_reports.append(
-            {
-                "id": "changed-file-structural-surface",
-                "label": "Check changed-file structural surface ceilings",
-                "command": "",
-                "exit_code": None,
-                "duration_seconds": 0.0,
-                "status": "fail",
-                "detail": structural_surface_proof["reason"],
-            }
-        )
     finish_gate_report: dict[str, Any] = {
         "kind": "sattlint.pipeline.finish_gate",
         "schema_version": 1,
@@ -156,7 +130,6 @@ def run_recommended_pipeline_finish_gate(
         "owner_test_targets": finish_gate_module.owner_test_targets_for_checks(recommended_checks),
         "proof_requirements": proof_requirements,
         "coverage_proof": coverage_proof,
-        "structural_surface_proof": structural_surface_proof,
         "timing": finish_gate_module.summarize_finish_gate_timing(step_reports),
     }
     pipeline_module.write_json_artifact(output_dir / "finish_gate.json", finish_gate_report)

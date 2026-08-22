@@ -66,7 +66,6 @@ P4–P6 are independent of each other and of the release track.
 |----------|-------|
 | `pyproject.toml` | (none remaining) |
 | `src/sattlint/` (source splits) | P4.1–P4.9 |
-| `src/sattlint_lsp/` | P6.5 |
 | `src/sattlint/__init__.py` + subpackages | (none remaining) |
 | `.github/workflows/` | (none remaining) |
 | `.pre-commit-config.yaml` | (none remaining) |

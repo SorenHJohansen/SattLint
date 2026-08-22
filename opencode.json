@@ -3,7 +3,17 @@
   "permission": {
     "bash": {
       "*": "allow",
-      "rm *": "deny"
+      "rm *": "deny",
+      "git": "deny",
+      "git *": "deny",
+      "git*": "deny",
+      "cd * && git*": "deny",
+      "cd *; git*": "deny",
+      "* && git*": "deny",
+      "*; git*": "deny",
+      "gh repo create*": "deny",
+      "gh repo rename*": "deny",
+      "gh repo transfer*": "deny"
     },
     "edit": "allow",
     "read": "allow",
@@ -20,6 +30,12 @@
     "semble": {
       "type": "local",
       "command": ["uvx", "--from", "semble[mcp]", "semble"]
+    }
+  },
+  "lsp": {
+    "pyright": {
+      "command": [".venv/bin/pyright-langserver", "--stdio"],
+      "extensions": [".py"]
     }
   }
 }

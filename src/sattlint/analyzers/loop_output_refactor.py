@@ -17,6 +17,7 @@ from sattline_parser.models.ast_model import (
     SFCTransitionSub,
     SingleModule,
 )
+from sattline_parser.models.expressions import VarRef
 
 from .. import constants as const
 from ..core.ast_tools import iter_variable_refs
@@ -157,7 +158,7 @@ class LoopOutputRefactorAnalyzer:
         self,
         module_path: list[str],
         sequence_name: str,
-        nodes: list[object],
+        nodes: Sequence[object],
         blocks: list[_ExecutionBlock],
     ) -> None:
         for node in nodes:
@@ -198,7 +199,7 @@ class LoopOutputRefactorAnalyzer:
         self,
         module_path: list[str],
         label: str,
-        statements: list[object],
+        statements: Sequence[object],
     ) -> _ExecutionBlock:
         reads: set[str] = set()
         writes: set[str] = set()
@@ -250,14 +251,14 @@ class LoopOutputRefactorAnalyzer:
 
     def _collect_expression_reads(self, node: object, reads: set[str]) -> None:
         for ref in iter_variable_refs(node, key_name=const.KEY_VAR_NAME):
-            name = ref.get(const.KEY_VAR_NAME)
+            name = ref.name if isinstance(ref, VarRef) else ref.get(const.KEY_VAR_NAME)
             key = _root_variable_key(name)
             if key is not None:
                 reads.add(key)
 
     def _collect_target_writes(self, target: object, writes: set[str]) -> None:
         for ref in iter_variable_refs(target, key_name=const.KEY_VAR_NAME):
-            name = ref.get(const.KEY_VAR_NAME)
+            name = ref.name if isinstance(ref, VarRef) else ref.get(const.KEY_VAR_NAME)
             key = _root_variable_key(name)
             if key is not None:
                 writes.add(key)

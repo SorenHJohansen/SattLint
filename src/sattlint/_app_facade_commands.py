@@ -1,3 +1,4 @@
+# pyright: reportUnusedFunction=false
 from __future__ import annotations
 
 import argparse
@@ -7,7 +8,7 @@ from typing import Any, cast
 
 
 def _app() -> Any:
-    from . import app as app_module
+    from . import app as app_module  # noqa: PLC0415
 
     return app_module
 
@@ -99,25 +100,6 @@ def run_simulate_command(
         output_format=output_format,
         output_path=output_path,
         use_cache=use_cache,
-        app_module=app,
-    )
-
-
-def run_docgen_command(
-    cfg: dict[str, object],
-    *,
-    use_cache: bool = True,
-    output_format: str = "text",
-    output_dir: str | None = None,
-    output_path: str | None = None,
-) -> int:
-    app = _app()
-    return app.app_startup_module.run_docgen_command_from_app(
-        cfg,
-        use_cache=use_cache,
-        output_format=output_format,
-        output_dir=output_dir,
-        output_path=output_path,
         app_module=app,
     )
 

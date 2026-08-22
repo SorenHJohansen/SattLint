@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from collections.abc import Sequence as SequenceABC
 from dataclasses import dataclass
 
 from sattline_parser.models.ast_model import (
@@ -218,7 +219,7 @@ class SpecComplianceAnalyzer:
                         )
                     )
 
-    def _iter_sequence_nodes(self, nodes: list[object]) -> Iterator[object]:
+    def _iter_sequence_nodes(self, nodes: SequenceABC[object]) -> Iterator[object]:
         for node in nodes:
             yield node
             if isinstance(node, SFCAlternative | SFCParallel):

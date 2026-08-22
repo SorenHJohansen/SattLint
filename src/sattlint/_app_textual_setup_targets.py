@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false, reportUnusedFunction=false
 from __future__ import annotations
 
 from contextlib import suppress
@@ -115,7 +116,7 @@ def _refresh_setup_settings_labels(self: Any) -> None:
     scan_root_only = bool(self._cfg.get("scan_root_only", False))
     fast_cache_validation = bool(self._cfg.get("use_file_ast_cache", False))
     debug = bool(self._cfg.get("debug", False))
-    telemetry = self._cfg.get("telemetry")
+    telemetry = cast(dict[str, object] | None, self._cfg.get("telemetry"))
     telemetry_enabled = (
         bool(cast(object | None, telemetry.get("enabled", False))) if isinstance(telemetry, dict) else False
     )
@@ -201,7 +202,7 @@ def _setup_browser_detail_text(self: Any) -> str:
         lines.extend(f"- {path}" for path in directories)
     else:
         lines.append("(none configured)")
-    telemetry = self._cfg.get("telemetry")
+    telemetry = cast(dict[str, object] | None, self._cfg.get("telemetry"))
     telemetry_enabled = (
         bool(cast(object | None, telemetry.get("enabled", False))) if isinstance(telemetry, dict) else False
     )
@@ -378,7 +379,7 @@ def _toggle_setup_mode(self: Any) -> None:
 
 
 def _toggle_setup_telemetry(self: Any) -> None:
-    telemetry = self._cfg.get("telemetry")
+    telemetry = cast(dict[str, object] | None, self._cfg.get("telemetry"))
     if not isinstance(telemetry, dict):
         telemetry = {"enabled": False}
         self._cfg["telemetry"] = telemetry

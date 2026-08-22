@@ -7,6 +7,7 @@ from __future__ import annotations
 from collections.abc import Sequence as SequenceABC
 from typing import TypedDict, cast
 
+from sattline_parser.formatting.formatter import format_expr
 from sattline_parser.models.ast_model import (
     BasePicture,
     SFCAlternative,
@@ -15,7 +16,6 @@ from sattline_parser.models.ast_model import (
     SFCTransition,
     SFCTransitionSub,
 )
-from sattline_parser.utils.formatter import format_expr
 
 from ...grammar import constants as const
 from ...resolution.paths import CanonicalPath

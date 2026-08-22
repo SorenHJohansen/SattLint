@@ -1,16 +1,16 @@
+# pyright: reportPrivateUsage=false, reportUnusedFunction=false
 from __future__ import annotations
 
 import re
 import time
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from ._app_textual_shared import (
     _TEXTUAL_QUERY_ERRORS,
     _TEXTUAL_STATIC,
     _SetupTargetCandidate,
     _stringify_list_values,
-    _stringify_value,
     discover_setup_target_candidates,
 )
 
@@ -119,33 +119,6 @@ def _summary_text(self: Any) -> str:
     if not configured_targets:
         return str(self._summarize_targets_fn(self._cfg))
     return "\n".join(configured_targets)
-
-
-def _documentation_selection(self: Any) -> dict[str, Any]:
-    app_module = self._app_module
-    if app_module is None:
-        return {"mode": "all", "instance_paths": [], "moduletype_names": []}
-    selection_fn = getattr(app_module, "_get_documentation_unit_selection", None)
-    if not callable(selection_fn):
-        return {"mode": "all", "instance_paths": [], "moduletype_names": []}
-    selection = selection_fn()
-    if not isinstance(selection, dict):
-        return {"mode": "all", "instance_paths": [], "moduletype_names": []}
-    return cast(dict[str, Any], selection)
-
-
-def _documentation_scope_summary_text(self: Any) -> str:
-    selection = self._documentation_selection()
-    mode = _stringify_value(cast(object | None, selection.get("mode", "all"))).strip().casefold() or "all"
-    if mode == "all":
-        return "all units"
-    if mode == "moduletype_names":
-        values = _stringify_list_values(selection.get("moduletype_names"))
-        return "moduletype: " + ", ".join(values) if values else "moduletype filter not set"
-    if mode == "instance_paths":
-        values = _stringify_list_values(selection.get("instance_paths"))
-        return "instance path: " + ", ".join(values) if values else "instance-path filter not set"
-    return mode
 
 
 def _active_job_text(self: Any) -> str | None:
@@ -274,13 +247,4 @@ def _analyze_note_text(self: Any) -> str:
         f"{len(plan.executable_steps)} queued step(s) are ready to run. "
         "Use Run selected analyses to execute the normalized plan in catalog order."
         f"{filter_suffix}"
-    )
-
-
-def _documentation_note_text(self: Any) -> str:
-    scope_summary = self._documentation_scope_summary_text()
-    if not self._setup_has_targets():
-        return "No analysis targets are configured yet. Add one in Setup before previewing units or generating documentation."
-    return (
-        f"Current scope: {scope_summary}. Preview candidates before narrowing scope if you need a smaller DOCX output."
     )

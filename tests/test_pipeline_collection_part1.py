@@ -1,5 +1,4 @@
 # pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
-# ruff: noqa: F403, F405
 from ._pipeline_collection_test_support import *
 
 
@@ -229,7 +228,7 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():  # 
     assert read_before_write["source"] == "dataflow"
     assert {"sattline-semantics", "dataflow"} <= set(read_before_write["analyzers"])
     assert "sattline-semantics.summary" in read_before_write["outputs"]
-    assert "tests/analyzers/test_dataflow.py" in read_before_write["acceptance_tests"]
+    assert "tests/test_analyzers_suites_part1.py" in read_before_write["acceptance_tests"]
     assert {"semantic-read-before-write", "workspace-common-quality-issues"} <= set(read_before_write["corpus_cases"])
     assert read_before_write["mutation_applicability"] == "required"
     assert dead_overwrite["source"] == "dataflow"

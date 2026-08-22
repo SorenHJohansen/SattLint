@@ -1,3 +1,4 @@
+# pyright: reportUnusedFunction=false
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Mapping
@@ -6,11 +7,12 @@ from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
+from .config_types import ConfigDict
 from .models.project_graph import ProjectGraph
 
 
 def _app() -> Any:
-    from . import app as app_module
+    from . import app as app_module  # noqa: PLC0415
 
     return app_module
 
@@ -100,20 +102,6 @@ def _pick_or_prompt_graphics_rule_selector_value(
     )
 
 
-def _annotate_graphics_entries_with_structure_paths(
-    entries: list[dict[str, Any]],
-    project_bp: BasePicture,
-    graph: ProjectGraph,
-) -> list[dict[str, Any]]:
-    app = _app()
-    return app.app_graphics_from_app_module.annotate_graphics_entries_with_structure_paths_from_app(
-        entries,
-        project_bp,
-        graph,
-        app_module=app,
-    )
-
-
 def graphics_rules_menu(cfg: dict[str, object] | None = None) -> None:
     app = _app()
     app.app_graphics_from_app_module.graphics_rules_menu_from_app(cfg, app_module=app)
@@ -146,44 +134,6 @@ def run_graphics_rules_validation(cfg: dict[str, object]) -> None:
     app.app_graphics_from_app_module.run_graphics_rules_validation_from_app(cfg, app_module=app)
 
 
-def _get_documentation_unit_selection() -> dict[str, Any]:
-    app = _app()
-    return app.app_docs_from_app_module.get_documentation_unit_selection_from_app(app_module=app)
-
-
-def preview_documentation_unit_candidates(cfg: dict[str, object]) -> None:
-    app = _app()
-    app.app_docs_from_app_module.preview_documentation_unit_candidates_from_app(cfg, app_module=app)
-
-
-def configure_documentation_scope_by_moduletype(cfg: dict[str, object]) -> bool:
-    del cfg
-    app = _app()
-    return app.app_docs_from_app_module.configure_documentation_scope_by_moduletype_from_app(app_module=app)
-
-
-def configure_documentation_scope_by_instance_path(cfg: dict[str, object]) -> bool:
-    del cfg
-    app = _app()
-    return app.app_docs_from_app_module.configure_documentation_scope_by_instance_path_from_app(app_module=app)
-
-
-def reset_documentation_scope(cfg: dict[str, object]) -> bool:
-    del cfg
-    app = _app()
-    return app.app_docs_from_app_module.reset_documentation_scope_from_app(app_module=app)
-
-
-def run_generate_documentation(cfg: dict[str, object]) -> None:
-    app = _app()
-    app.app_docs_from_app_module.run_generate_documentation_from_app(cfg, app_module=app)
-
-
-def documentation_menu(cfg: dict[str, object]) -> bool:
-    app = _app()
-    return app.app_docs_from_app_module.documentation_menu_from_app(cfg, app_module=app)
-
-
 def _iter_loaded_projects(
     cfg: dict[str, object],
     *,
@@ -212,7 +162,7 @@ def _target_is_library(cfg: dict[str, object], project_bp: BasePicture, graph: P
 
 
 def load_project(
-    cfg: dict[str, object],
+    cfg: ConfigDict,
     target_name: str | None = None,
     *,
     use_cache: bool = True,

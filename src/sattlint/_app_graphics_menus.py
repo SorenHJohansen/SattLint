@@ -15,8 +15,6 @@ GraphicsRule = dict[str, Any]
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
 LoadedProjectIterator = Callable[[ConfigDict], Sequence[LoadedProject] | Any]
 CollectGraphicsLayoutEntriesForTargetFn = Callable[[str, BasePicture, ProjectGraph], list[GraphicsRule]]
-ClassifyDocumentationStructureFn = Callable[..., Any]
-DiscoverDocumentationUnitCandidatesFn = Callable[[Any], Sequence[Any]]
 
 
 class PrintGraphicsRulesSummaryFn(Protocol):
@@ -69,10 +67,6 @@ def prompt_graphics_rule_kind(
 def selector_prompt_text(selector_field: str) -> str:
     if selector_field == "relative_module_path":
         return "Relative module path"
-    if selector_field == "unit_structure_path":
-        return "Unit structure path"
-    if selector_field == "equipment_module_structure_path":
-        return "Equipment module structure path"
     return "Selector path"
 
 
@@ -115,8 +109,6 @@ def discover_graphics_rule_selector_options(
                 continue
             selector_value = str(entry.get(selector_field) or "").strip()
             if not selector_value:
-                continue
-            if not str(entry.get("unit_root_path") or "").strip():
                 continue
 
             key = selector_value.casefold()
@@ -222,94 +214,14 @@ def pick_or_prompt_graphics_rule_selector_value(
     return selector_value
 
 
-def prompt_graphics_rule_selector(  # noqa: PLR0915
+def prompt_graphics_rule_selector(
     module_kind: str,
     *,
     cfg: ConfigDict | None,
     pick_or_prompt_graphics_rule_selector_value_fn: Callable[..., str],
-    emit_output_fn: Callable[..., None],
     interaction: MenuInteraction | None = None,
 ) -> tuple[str, str]:
-    if module_kind == "frame":
-        selector_field = "relative_module_path"
-    elif module_kind == "single":
-        if interaction is not None:
-            while True:
-                choice = interaction.choose_menu_option(
-                    "Selector Scope",
-                    [
-                        _graphics_prompt_option("1", "Relative module path"),
-                        _graphics_prompt_option("2", "Unit structure path"),
-                        _graphics_prompt_option("3", "Equipment module structure path"),
-                    ],
-                    intro="Choose selector scope:",
-                )
-                if choice == "1":
-                    selector_field = "relative_module_path"
-                    break
-                if choice == "2":
-                    selector_field = "unit_structure_path"
-                    break
-                if choice == "3":
-                    selector_field = "equipment_module_structure_path"
-                    break
-                emit_output_fn("? Choose 1, 2, or 3")
-        else:
-            emit_output_fn("\nChoose selector scope:")
-            emit_output_fn("  1) Relative module path")
-            emit_output_fn("  2) Unit structure path")
-            emit_output_fn("  3) Equipment module structure path")
-            while True:
-                choice = input("> ").strip().lower()
-                if choice == "1":
-                    selector_field = "relative_module_path"
-                    break
-                if choice == "2":
-                    selector_field = "unit_structure_path"
-                    break
-                if choice == "3":
-                    selector_field = "equipment_module_structure_path"
-                    break
-                emit_output_fn("? Choose 1, 2, or 3")
-    else:
-        if interaction is not None:
-            while True:
-                choice = interaction.choose_menu_option(
-                    "ModuleType Selector Scope",
-                    [
-                        _graphics_prompt_option("1", "Relative module path"),
-                        _graphics_prompt_option("2", "Unit structure path"),
-                        _graphics_prompt_option("3", "Equipment module structure path"),
-                    ],
-                    intro="Choose ModuleType selector scope:",
-                )
-                if choice == "1":
-                    selector_field = "relative_module_path"
-                    break
-                if choice == "2":
-                    selector_field = "unit_structure_path"
-                    break
-                if choice == "3":
-                    selector_field = "equipment_module_structure_path"
-                    break
-                emit_output_fn("? Choose 1, 2, or 3")
-        else:
-            emit_output_fn("\nChoose ModuleType selector scope:")
-            emit_output_fn("  1) Relative module path")
-            emit_output_fn("  2) Unit structure path")
-            emit_output_fn("  3) Equipment module structure path")
-            while True:
-                choice = input("> ").strip().lower()
-                if choice == "1":
-                    selector_field = "relative_module_path"
-                    break
-                if choice == "2":
-                    selector_field = "unit_structure_path"
-                    break
-                if choice == "3":
-                    selector_field = "equipment_module_structure_path"
-                    break
-                emit_output_fn("? Choose 1, 2, or 3")
+    selector_field = "relative_module_path"
 
     if interaction is not None:
         try:
@@ -334,106 +246,6 @@ def prompt_graphics_rule_selector(  # noqa: PLR0915
             cfg=cfg,
         )
     return selector_field, selector_value
-
-
-def path_startswith_casefold(path: Sequence[str], prefix: Sequence[str]) -> bool:
-    if len(prefix) > len(path):
-        return False
-    return all(part.casefold() == other.casefold() for part, other in zip(path, prefix, strict=False))
-
-
-def graphics_entry_canonical_segment(entry: dict[str, Any]) -> str:
-    moduletype_name = str(
-        entry.get("moduletype_name") or entry.get("resolved_moduletype", {}).get("name") or ""
-    ).strip()
-    if moduletype_name:
-        return moduletype_name
-    return str(entry.get("module_name") or "").strip()
-
-
-def looks_like_graphics_unit_root(
-    candidate_path: Sequence[str],
-    entries: Sequence[dict[str, Any]],
-) -> bool:
-    for entry in entries:
-        module_path = tuple(
-            segment.strip() for segment in str(entry.get("module_path") or "").split(".") if segment.strip()
-        )
-        if not module_path or not path_startswith_casefold(module_path, candidate_path):
-            continue
-        relative_segments = module_path[len(candidate_path) :]
-        if len(relative_segments) < 3:
-            continue
-        if (
-            relative_segments[0].casefold() == "l1"
-            and relative_segments[1].casefold() == "l2"
-            and relative_segments[2].casefold() == "unitcontrol"
-        ):
-            return True
-    return False
-
-
-def annotate_graphics_entries_with_structure_paths(
-    entries: list[GraphicsRule],
-    project_bp: BasePicture,
-    graph: ProjectGraph,
-    *,
-    classify_documentation_structure_fn: ClassifyDocumentationStructureFn,
-    discover_documentation_unit_candidates_fn: DiscoverDocumentationUnitCandidatesFn,
-) -> list[GraphicsRule]:
-    unavailable_libraries = cast(set[str], getattr(graph, "unavailable_libraries", cast(set[str], set())))
-    classification = classify_documentation_structure_fn(
-        project_bp,
-        unavailable_libraries=unavailable_libraries,
-    )
-    unit_candidates = sorted(
-        discover_documentation_unit_candidates_fn(classification),
-        key=lambda entry: len(entry.path),
-        reverse=True,
-    )
-    candidate_paths = [
-        tuple(candidate.path)
-        for candidate in unit_candidates
-        if looks_like_graphics_unit_root(tuple(candidate.path), entries)
-    ]
-
-    for entry in entries:
-        module_path = tuple(
-            segment.strip() for segment in str(entry.get("module_path") or "").split(".") if segment.strip()
-        )
-        if not module_path:
-            continue
-
-        unit_root_path = next(
-            (
-                candidate_path
-                for candidate_path in candidate_paths
-                if path_startswith_casefold(module_path, candidate_path)
-            ),
-            None,
-        )
-        if unit_root_path is None:
-            continue
-
-        unit_segments = list(module_path[len(unit_root_path) :])
-        if not unit_segments:
-            continue
-
-        canonical_segments = [*unit_segments[:-1], graphics_entry_canonical_segment(entry)]
-        entry["unit_root_path"] = ".".join(unit_root_path)
-        entry["unit_structure_path"] = ".".join(canonical_segments)
-
-        if (
-            len(canonical_segments) >= 5
-            and canonical_segments[0].casefold() == "l1"
-            and canonical_segments[1].casefold() == "l2"
-            and canonical_segments[3].casefold() == "l1"
-            and canonical_segments[4].casefold() == "l2"
-        ):
-            entry["equipment_module_name"] = unit_segments[2]
-            entry["equipment_module_structure_path"] = ".".join(canonical_segments[3:])
-
-    return entries
 
 
 def prompt_graphics_rule_definition(
@@ -481,8 +293,6 @@ def prompt_graphics_rule_definition_with_config(  # noqa: PLR0915
 
     module_name = ""
     relative_module_path = ""
-    unit_structure_path = ""
-    equipment_module_structure_path = ""
     moduletype_name = ""
 
     if module_kind == "moduletype":
@@ -547,12 +357,8 @@ def prompt_graphics_rule_definition_with_config(  # noqa: PLR0915
 
     if selector_field == "relative_module_path":
         relative_module_path = selector_value
-    elif selector_field == "unit_structure_path":
-        unit_structure_path = selector_value
-    elif selector_field == "equipment_module_structure_path":
-        equipment_module_structure_path = selector_value
 
-    selector_name = relative_module_path or unit_structure_path or equipment_module_structure_path
+    selector_name = relative_module_path
     if selector_name:
         module_name = selector_name.split(".")[-1].strip()
 
@@ -670,8 +476,6 @@ def prompt_graphics_rule_definition_with_config(  # noqa: PLR0915
         "module_name": module_name,
         "module_kind": module_kind,
         "relative_module_path": relative_module_path,
-        "unit_structure_path": unit_structure_path,
-        "equipment_module_structure_path": equipment_module_structure_path,
         "moduletype_name": moduletype_name,
         "description": description,
         "expected": expected,

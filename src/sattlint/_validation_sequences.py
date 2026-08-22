@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 from lark import Tree
-
 from sattline_parser.models.ast_model import (
     Equation,
     ModuleCode,
@@ -23,12 +22,24 @@ from sattline_parser.models.ast_model import (
     SFCTransitionSub,
     Variable,
 )
+from sattline_parser.models.expressions import (
+    Assignment,
+    BinOp,
+    BoolOp,
+    Compare,
+    FuncCall,
+    NotOp,
+    TernaryOp,
+    UnaryOp,
+    VarRef,
+)
 
 from ._validation_expression import infer_expression_datatype as _infer_expression_datatype
 from ._validation_expression import is_variable_ref_node as _is_variable_ref_node
 from ._validation_expression import validate_builtin_call_types as _validate_builtin_call_types
 from ._validation_expression import validate_expression_semantics as _validate_expression_semantics
 from ._validation_expression import validate_no_string_literals_in_calls as _validate_no_string_literals_in_calls
+from ._validation_expression import variable_ref_name as _variable_ref_name
 from ._validation_shared import (
     StructuralValidationError,
     ValidationNotice,
@@ -57,7 +68,6 @@ from ._validation_type_helpers import (
 )
 from .grammar import constants as const
 from .resolution.type_graph import TypeGraph
-from .types import VariableRef
 
 _SUPPRESSED_SEMANTIC_ERROR_PREFIX = (
     "Module-code semantic validation downgraded from error to warning by active policy: "
@@ -166,8 +176,8 @@ def collect_sequence_scope_features(
         features.add("reset")
 
 
-def iter_sequence_node_refs(nodes: list[object]) -> AbcSequence[dict[str, object]]:
-    refs: list[dict[str, object]] = []
+def iter_sequence_node_refs(nodes: list[object]) -> AbcSequence[dict[str, object] | VarRef]:
+    refs: list[dict[str, object] | VarRef] = []
     for node in iter_nested_sequence_nodes(nodes):
         if isinstance(node, SFCStep):
             for statements in (node.code.enter, node.code.active, node.code.exit):
@@ -205,7 +215,7 @@ def validate_step_auto_variable_refs(  # noqa: PLR0915
             available_sequence_features=available_sequence_features,
         )
         collect_sequence_step_features(
-            sequence.code or [],
+            cast(list[object], sequence.code or []),
             seqcontrol=bool(sequence.seqcontrol),
             seqtimer=bool(sequence.seqtimer),
             known_steps=known_steps,
@@ -215,7 +225,7 @@ def validate_step_auto_variable_refs(  # noqa: PLR0915
     if not known_steps and not known_sequences:
         return
 
-    refs: list[dict[str, object]] = []
+    refs: list[dict[str, object] | VarRef] = []
     for equation in cast(list[object], modulecode.equations or []):
         if not isinstance(equation, Equation):
             continue
@@ -225,10 +235,10 @@ def validate_step_auto_variable_refs(  # noqa: PLR0915
     for sequence in cast(list[object], modulecode.sequences or []):
         if not isinstance(sequence, Sequence):
             continue
-        refs.extend(iter_sequence_node_refs(sequence.code or []))
+        refs.extend(iter_sequence_node_refs(cast(list[object], sequence.code or [])))
 
     for ref in refs:
-        full_name = ref.get(const.KEY_VAR_NAME)
+        full_name = ref.get(const.KEY_VAR_NAME) if isinstance(ref, dict) else getattr(ref, "name", None)
         if not isinstance(full_name, str):
             continue
 
@@ -305,7 +315,31 @@ def parallel_branch_trailer(node: object) -> str | None:
     return None
 
 
-def iter_variable_refs(node: object) -> Iterator[VariableRef]:
+def _iter_expression_children(node: object) -> tuple[object, ...]:
+    if isinstance(node, BoolOp):
+        return tuple(node.operands)
+    if isinstance(node, NotOp):
+        return (node.operand,)
+    if isinstance(node, Compare):
+        return (node.left, node.right)
+    if isinstance(node, BinOp):
+        return (node.left, node.right)
+    if isinstance(node, UnaryOp):
+        return (node.operand,)
+    if isinstance(node, TernaryOp):
+        children: list[object] = []
+        for condition, branch_value in node.branches:
+            children.append(condition)
+            children.append(branch_value)
+        if node.else_expr is not None:
+            children.append(node.else_expr)
+        return tuple(children)
+    if isinstance(node, FuncCall):
+        return tuple(node.args)
+    return ()
+
+
+def iter_variable_refs(node: object) -> Iterator[dict[str, object] | VarRef]:
     if _is_variable_ref_node(node):
         yield node
         return
@@ -325,6 +359,10 @@ def iter_variable_refs(node: object) -> Iterator[VariableRef]:
     if isinstance(node, list):
         for item in cast(list[object], node):
             yield from iter_variable_refs(item)
+        return
+
+    for child in _iter_expression_children(node):
+        yield from iter_variable_refs(child)
 
 
 def validate_variable_refs(
@@ -334,11 +372,11 @@ def validate_variable_refs(
     context: str,
 ) -> None:
     for ref in iter_variable_refs(node):
-        state = ref.get("state")
+        state = ref.get("state") if isinstance(ref, dict) else getattr(ref, "state", None)
         if not isinstance(state, str) or not state:
             continue
 
-        full_name = ref[const.KEY_VAR_NAME]
+        full_name = ref[const.KEY_VAR_NAME] if isinstance(ref, dict) else ref.name
         base_name, field_path = _split_dotted_name(str(full_name))
         variable = env.get(base_name.casefold())
         if variable is None:
@@ -366,6 +404,73 @@ def validate_variable_refs(
             )
 
 
+def _validate_assignment_statement(
+    statement: object,
+    env: dict[str, Variable],
+    type_graph: TypeGraph,
+    context: str,
+    *,
+    policy: ModuleCodeValidationPolicy,
+) -> bool:
+    if isinstance(statement, Assignment):
+        target_ref = statement.target
+        target_name = str(_variable_ref_name(target_ref) or "<unknown>")
+        value = statement.value
+    elif isinstance(statement, tuple):
+        tuple_statement = cast(tuple[object, ...], statement)
+        if (
+            len(tuple_statement) != 3
+            or tuple_statement[0] != const.KEY_ASSIGN
+            or not _is_variable_ref_node(tuple_statement[1])
+        ):
+            return False
+        target_ref = tuple_statement[1]
+        target_name = str(_variable_ref_name(target_ref) or "<unknown>")
+        value = tuple_statement[2]
+    else:
+        return False
+
+    target_state = target_ref.get("state") if isinstance(target_ref, dict) else getattr(target_ref, "state", None)
+    if (
+        not policy.allow_old_state_assignment
+        and isinstance(target_state, str)
+        and target_state.casefold() == const.GRAMMAR_VALUE_OLD.casefold()
+    ):
+        raise StructuralValidationError(
+            f"{context} assignment target {target_name!r} must not use OLD state access",
+            **span_kwargs(ref_span(target_ref)),
+            length=max(len(target_name), 1),
+        )
+    variable = _resolve_root_variable(target_ref, env)
+    if variable is not None and variable.const:
+        raise StructuralValidationError(
+            f"{context} assignment writes to CONST variable {variable.name!r}",
+            **span_kwargs(ref_span(target_ref)),
+        )
+    if variable is not None and _is_string_simple_type(variable.datatype):
+        raise StructuralValidationError(
+            f"{context} assignment to string variable {variable.name!r} is not allowed;"
+            " use CopyString() or CopyVar() to copy strings",
+            **span_kwargs(ref_span(target_ref)),
+        )
+    target_datatype = _resolve_ref_datatype(target_ref, env, type_graph)
+    actual_datatype = _infer_expression_datatype(value, env, type_graph)
+    if (
+        target_datatype is not None
+        and actual_datatype is not None
+        and not _assignment_type_matches(actual_datatype, target_datatype)
+    ):
+        source_description = "expression"
+        if _is_variable_ref_node(value):
+            source_description = str(_variable_ref_name(value))
+        raise StructuralValidationError(
+            f"{context} assigns {source_description!r} with datatype {_format_datatype(actual_datatype)!r} "
+            f"to target {target_name!r} with datatype {_format_datatype(target_datatype)!r}",
+            **span_kwargs(ref_span(target_ref)),
+        )
+    return True
+
+
 def validate_statement_list(
     statements: list[object],
     env: dict[str, Variable],
@@ -377,58 +482,10 @@ def validate_statement_list(
     for statement in statements:
         try:
             _validate_expression_semantics(statement, env, type_graph, context)
-            if isinstance(statement, tuple):
-                tuple_statement = cast(tuple[object, ...], statement)
-                if (
-                    len(tuple_statement) == 3
-                    and tuple_statement[0] == const.KEY_ASSIGN
-                    and _is_variable_ref_node(tuple_statement[1])
-                ):
-                    assign_statement = cast(tuple[str, VariableRef, object], tuple_statement)
-                    target_ref = assign_statement[1]
-                    target_name = str(target_ref.get(const.KEY_VAR_NAME, "<unknown>"))
-                    target_state = target_ref.get("state")
-                    if (
-                        not policy.allow_old_state_assignment
-                        and isinstance(target_state, str)
-                        and target_state.casefold() == const.GRAMMAR_VALUE_OLD.casefold()
-                    ):
-                        raise StructuralValidationError(
-                            f"{context} assignment target {target_name!r} must not use OLD state access",
-                            **span_kwargs(ref_span(target_ref)),
-                            length=max(len(target_name), 1),
-                        )
-                    variable = _resolve_root_variable(target_ref, env)
-                    if variable is not None and variable.const:
-                        raise StructuralValidationError(
-                            f"{context} assignment writes to CONST variable {variable.name!r}",
-                            **span_kwargs(ref_span(target_ref)),
-                        )
-                    if variable is not None and _is_string_simple_type(variable.datatype):
-                        raise StructuralValidationError(
-                            f"{context} assignment to string variable {variable.name!r} is not allowed;"
-                            " use CopyString() or CopyVar() to copy strings",
-                            **span_kwargs(ref_span(target_ref)),
-                        )
-                    target_datatype = _resolve_ref_datatype(target_ref, env, type_graph)
-                    actual_datatype = _infer_expression_datatype(assign_statement[2], env, type_graph)
-                    if (
-                        target_datatype is not None
-                        and actual_datatype is not None
-                        and not _assignment_type_matches(actual_datatype, target_datatype)
-                    ):
-                        source_description = "expression"
-                        if _is_variable_ref_node(assign_statement[2]):
-                            source_description = str(assign_statement[2][const.KEY_VAR_NAME])
-                        raise StructuralValidationError(
-                            f"{context} assigns {source_description!r} with datatype {_format_datatype(actual_datatype)!r} "
-                            f"to target {str(target_ref[const.KEY_VAR_NAME])!r} with datatype {_format_datatype(target_datatype)!r}",
-                            **span_kwargs(ref_span(target_ref)),
-                        )
-            statement_node = cast(object, statement)
-            validate_variable_refs(statement_node, env, type_graph, context)
-            _validate_no_string_literals_in_calls(statement_node, context)
-            _validate_builtin_call_types(statement_node, env, type_graph, context)
+            _validate_assignment_statement(statement, env, type_graph, context, policy=policy)
+            validate_variable_refs(statement, env, type_graph, context)
+            _validate_no_string_literals_in_calls(statement, context)
+            _validate_builtin_call_types(statement, env, type_graph, context)
         except StructuralValidationError as exc:
             _handle_statement_validation_error(exc, policy=policy)
 
@@ -635,7 +692,7 @@ def validate_module_code(
             continue
         validate_identifier(equation.name, f"{context} equation")
         validate_statement_list(
-            equation.code or [],
+            cast(list[object], equation.code or []),
             env,
             type_graph,
             f"{context} equation {equation.name!r}",
@@ -647,8 +704,8 @@ def validate_module_code(
     for sequence in cast(list[object], modulecode.sequences or []):
         if not isinstance(sequence, Sequence):
             continue
-        collect_label_names(sequence.code or [], module_label_set)
-        collect_sequence_label_counts(sequence.code or [], module_label_counts)
+        collect_label_names(cast(list[object], sequence.code or []), module_label_set)
+        collect_sequence_label_counts(cast(list[object], sequence.code or []), module_label_counts)
     module_labels = frozenset(module_label_set)
 
     for sequence in cast(list[object], modulecode.sequences or []):
@@ -657,10 +714,12 @@ def validate_module_code(
         validate_identifier(sequence.name, f"{context} sequence")
         labels: dict[str, str] = {}
         label_counts: dict[str, int] = {}
-        collect_sequence_labels(sequence.code or [], labels, f"{context} sequence {sequence.name!r}")
-        collect_sequence_label_counts(sequence.code or [], label_counts)
+        collect_sequence_labels(
+            cast(list[object], sequence.code or []), labels, f"{context} sequence {sequence.name!r}"
+        )
+        collect_sequence_label_counts(cast(list[object], sequence.code or []), label_counts)
         validate_sequence_nodes(
-            sequence.code or [],
+            cast(list[object], sequence.code or []),
             f"{context} sequence {sequence.name!r}",
             validate_identifier=validate_identifier,
             labels=labels,

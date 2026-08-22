@@ -30,7 +30,6 @@ DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "release-smoke"
 STATUS_SCHEMA_KIND = RELEASE_SMOKE_STATUS_SCHEMA_KIND
 SUMMARY_SCHEMA_KIND = RELEASE_SMOKE_SUMMARY_SCHEMA_KIND
 SCHEMA_VERSION = RELEASE_SMOKE_SCHEMA_VERSION
-LSP_RUNTIME_DEPENDENCIES = ("pygls>=1.3.1",)
 
 
 class _CommandRunner(Protocol):
@@ -142,17 +141,11 @@ def _venv_script(venv_dir: Path, name: str) -> Path:
 def _build_step_definitions(venv_dir: Path, *, wheel: Path, sample_file: Path) -> tuple[_SmokeStepDefinition, ...]:
     python_executable = _venv_python(venv_dir)
     sattlint_executable = _venv_script(venv_dir, "sattlint")
-    lsp_executable = _venv_script(venv_dir, "sattlint-lsp")
     return (
         _SmokeStepDefinition(
             step_id="install_wheel",
             display_name="Install built wheel",
             command=(str(python_executable), "-m", "pip", "install", str(wheel)),
-        ),
-        _SmokeStepDefinition(
-            step_id="install_lsp_runtime_dependencies",
-            display_name="Install stable LSP runtime dependencies",
-            command=(str(python_executable), "-m", "pip", "install", *LSP_RUNTIME_DEPENDENCIES),
         ),
         _SmokeStepDefinition(
             step_id="cli_version",
@@ -168,13 +161,6 @@ def _build_step_definitions(venv_dir: Path, *, wheel: Path, sample_file: Path) -
             step_id="repo_audit_boot",
             display_name="Boot stable repo-audit subcommand",
             command=(str(sattlint_executable), "repo-audit", "--profile", "full", "--list-checks"),
-        ),
-        _SmokeStepDefinition(
-            step_id="lsp_boot",
-            display_name="Boot stable LSP entrypoint",
-            command=(str(lsp_executable),),
-            timeout_seconds=1.0,
-            timeout_is_success=True,
         ),
     )
 

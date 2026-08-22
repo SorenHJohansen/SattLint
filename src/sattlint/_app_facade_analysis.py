@@ -1,5 +1,7 @@
+# pyright: reportUnusedFunction=false
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, cast
 
 from .analyzers.shadowing import analyze_shadowing
@@ -7,7 +9,7 @@ from .analyzers.variables import IssueKind, analyze_variables, filter_variable_r
 
 
 def _app() -> Any:
-    from . import app as app_module
+    from . import app as app_module  # noqa: PLC0415
 
     return app_module
 
@@ -216,7 +218,7 @@ def dump_menu(cfg: dict[str, object]) -> None:
     app.app_menus_from_app_module.dump_menu_from_app(cfg, app_module=app)
 
 
-def run_source_diff_report(cfg: dict[str, object], *, _pause_fn=None) -> None:
+def run_source_diff_report(cfg: dict[str, object], *, _pause_fn: Callable[[], None] | None = None) -> None:
     app = _app()
     app.app_source_diff_module.run_source_diff_report(
         cfg,

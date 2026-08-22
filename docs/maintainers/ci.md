@@ -15,13 +15,12 @@ Keep CI small and predictable.
 - `nightly.yml` is where the heavier recurring health snapshot lives.
 - `publish.yml` stays release-focused and avoids duplicating normal validation.
 
-AI-touched files are blocked locally through `.github/hooks/ai-edit-gate.json` and `scripts/run_ai_edit_gate.py`, which reuses `scripts/check_ratchet_policy.py` for touched-file policy checks.
+AI-touched files are blocked locally through `.github/hooks/ai-edit-gate.json` and `scripts/run_ai_edit_gate.py`.
 
 ## Required Script Entrypoints
 
 - `scripts/context_health.py`
 - `scripts/repo_health.py`
-- `scripts/check_ratchet_policy.py`
 - `scripts/install_actionlint.py`
 - `scripts/run_repo_python.py`
 

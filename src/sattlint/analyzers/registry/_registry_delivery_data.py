@@ -12,10 +12,7 @@ _ANALYZER_SUITE_ACCEPTANCE_TESTS = (
     "tests/test_analyzers_suites_part5.py",
     "tests/test_analyzers_suites_part6.py",
 )
-_APP_ACCEPTANCE_TESTS = (
-    "tests/test_app_cli_commands.py",
-    "tests/test_app_menus.py",
-)
+_APP_ACCEPTANCE_TESTS = ("tests/test_app_cli_commands.py",)
 
 
 @dataclass(frozen=True)
@@ -54,10 +51,7 @@ def default_delivery_templates(
             key="symbolic_lite",
             scope="cross-module",
             implementation_bucket="shared-semantic-core",
-            acceptance_tests=(
-                "tests/analyzers/test_dataflow.py",
-                "tests/analyzers/test_sattline_semantics.py",
-            ),
+            acceptance_tests=("tests/analyzers/test_sattline_semantics.py",),
             depends_on_analyzers=(semantic_layer_analyzer_key,),
             min_fixture_set=shared_fixtures,
             exposed_via=(semantic_layer_analyzer_key,),
@@ -319,10 +313,10 @@ def default_delivery_templates(
             implementation_bucket="engineering-rules",
             acceptance_tests=(
                 *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
-                "tests/test_docgen_part1.py",
+                "tests/test_analyzers_version_drift.py",
             ),
             min_fixture_set=shared_fixtures,
-            exposed_via=("docgen",),
+            exposed_via=("pipeline",),
         ),
         AnalyzerDeliveryTemplate(
             key="safety-paths",
@@ -369,7 +363,6 @@ def default_delivery_templates(
             implementation_bucket="shared-semantic-core",
             lsp_exposed=True,
             acceptance_tests=(
-                "tests/analyzers/test_dataflow.py",
                 *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
                 "tests/analyzers/test_sattline_semantics.py",
             ),
@@ -381,11 +374,7 @@ def default_delivery_templates(
             key="state-inference",
             scope="workspace",
             implementation_bucket="shared-semantic-core",
-            acceptance_tests=(
-                "tests/analyzers/test_state_inference.py",
-                "tests/analyzers/test_dataflow.py",
-                "tests/test_cli.py",
-            ),
+            acceptance_tests=("tests/test_cli.py",),
             depends_on_analyzers=(semantic_layer_analyzer_key, "dataflow"),
             min_fixture_set=shared_fixtures,
             exposed_via=("cli",),

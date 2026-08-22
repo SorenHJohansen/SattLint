@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from sattline_parser.models.ast_model import FrameModule, ModuleTypeDef, ModuleTypeInstance, SingleModule, SourceSpan
+from sattline_parser.models.expressions import VarRef
 
 from ..call_signatures import CallSignatureOccurrence, resolve_call_signature
 from ..grammar import constants as const
@@ -30,8 +31,12 @@ class SemanticIndexReferenceSupportMixin:
         source_file_name = Path(str(source_file)).name if source_file is not None else None
 
         for ref in iter_variable_refs(node, key_name=const.KEY_VAR_NAME):
-            full_name = ref.get(const.KEY_VAR_NAME)
-            span = ref.get("span")
+            if isinstance(ref, VarRef):
+                full_name = ref.name
+                span = ref.span
+            else:
+                full_name = ref.get(const.KEY_VAR_NAME)
+                span = ref.get("span")
             if not isinstance(full_name, str) or not isinstance(span, SourceSpan):
                 continue
 
@@ -52,7 +57,7 @@ class SemanticIndexReferenceSupportMixin:
             if len(definition_keys) < len(reference_segments):
                 definition_keys.extend([definition_keys[-1]] * (len(reference_segments) - len(definition_keys)))
 
-            state = ref.get("state")
+            state = ref.state if isinstance(ref, VarRef) else ref.get("state")
             text = full_name if not state else f"{full_name}:{state}"
             occurrence = ReferenceOccurrence(
                 line=span.line,

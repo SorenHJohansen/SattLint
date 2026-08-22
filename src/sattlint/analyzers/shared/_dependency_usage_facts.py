@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import cast
 
@@ -13,6 +14,7 @@ from sattline_parser.models.ast_model import (
     SFCSubsequence,
     SFCTransition,
     SFCTransitionSub,
+    SLExpression,
 )
 
 from ...grammar import constants as const
@@ -149,7 +151,7 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
 
     def _walk_sequence_nodes(
         self,
-        nodes: list[object],
+        nodes: Sequence[object],
         context: ScopeContext,
         module_path: list[str],
         sequence_name: str,
@@ -165,7 +167,7 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
                     for statement in statements:
                         self._append_statement_fact(statement, context, module_path, site)
                 continue
-            if isinstance(node, SFCTransition) and node.condition is not None:
+            if isinstance(node, SFCTransition) and cast(SLExpression | None, node.condition) is not None:
                 site = f"sequence {sequence_name!r} transition {node.name!r} condition"
                 self._append_statement_fact(node.condition, context, module_path, site)
                 continue

@@ -25,6 +25,7 @@ dependencies = [
     "lark>=1.3.1,<2",
     "python-docx>=0.8.11",
     "regex>=2024.0.0",
+    "sattline-parser>=2026.8.1,<2027",
     "tomli_w>=1.2.0",
     "openpyxl>=3.1.2",
     "defusedxml>=0.7.1",
@@ -42,10 +43,6 @@ Changelog = "https://github.com/SorenHJohansen/SattLint/blob/main/CHANGELOG.md"
 Security = "https://github.com/SorenHJohansen/SattLint/security/policy"
 
 [project.optional-dependencies]
-lsp = [
-    "pygls>=1.3.1",
-]
-
 tui = []
 
 telemetry = []
@@ -61,7 +58,7 @@ test = [
 ]
 
 dev = [
-    "sattlint[test,lsp,tui,telemetry]",
+    "sattlint[test,tui,telemetry]",
     "ruff==0.15.20",    # Match pre-commit Ruff to avoid formatter drift
     "pyright>=1.1.380", # Type checking
     "build>=1.2.2",    # Build frontend for release validation
@@ -105,7 +102,6 @@ precision = 2
 
 [project.scripts]
 sattlint = "sattlint.app:cli"
-sattlint-lsp = "sattlint_lsp.server:cli"
 sattlint-analysis-pipeline = "sattlint.devtools.pipeline:main"
 sattlint-corpus-runner = "sattlint.devtools.corpus:main"
 sattlint-repo-audit = "sattlint.devtools.audit:main"
@@ -144,12 +140,8 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "src/sattlint/config.py" = ["RUF034"]
-"src/sattline_parser/models/ast_model.py" = ["N801"]
-"src/sattline_parser/transformer/sl_transformer.py" = ["N802"]
-"src/sattline_parser/transformer/_modules_mixin.py" = ["N802"]
-"src/sattline_parser/transformer/_tokens_mixin.py" = ["N802"]
-"tests/*.py" = ["S101"]
-"tests/**/*.py" = ["S101"]
+"tests/*.py" = ["S101", "F403", "F405"]
+"tests/**/*.py" = ["S101", "F403", "F405"]
 
 [tool.ruff.lint.pylint]
 max-statements = 50
@@ -167,14 +159,8 @@ reportMissingTypeStubs = false
 exclude_dirs = ["tests"]
 skips = ["B404", "B603"]
 
-[tool.sattlint.typing_ratchet]
-debt_allowlist = []
-
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.dynamic]
 version = { attr = "sattlint.__version__.__version__" }
-
-[tool.setuptools.package-data]
-sattline_parser = ["grammar/*.lark"]

@@ -97,7 +97,6 @@ DEFAULT_QUICK_PYTEST_TARGETS = (
     "tests/test_repo_audit_part7.py",
     "tests/test_repo_audit_part8.py",
     "tests/test_recommendation_routing.py",
-    "tests/parser/test_corpus.py",
 )
 _VULTURE_LINE_RE = re.compile(r"^(?P<file>.*?):(?P<line>\d+): (?P<message>.*) \((?P<confidence>\d+)% confidence\)$")
 
@@ -178,7 +177,6 @@ owner_test_targets_for_checks = pipeline_cli_helpers.owner_test_targets_for_chec
 build_change_proof_requirements = pipeline_cli_helpers.build_change_proof_requirements
 build_owner_pytest_step = pipeline_cli_helpers.build_owner_pytest_step
 evaluate_change_scoped_coverage_proof = pipeline_cli_helpers.evaluate_change_scoped_coverage_proof
-evaluate_change_scoped_structural_surface_proof = pipeline_cli_helpers.evaluate_change_scoped_structural_surface_proof
 build_finish_gate_commands = pipeline_cli_helpers.build_finish_gate_commands
 _build_recommendation_why_this_gate = pipeline_cli_helpers._build_recommendation_why_this_gate
 _build_recommendation_drift_report = pipeline_cli_helpers._build_recommendation_drift_report
@@ -1278,7 +1276,6 @@ __all__ = [
     "build_pipeline_check_recommendations",
     "detect_changed_files",
     "evaluate_change_scoped_coverage_proof",
-    "evaluate_change_scoped_structural_surface_proof",
     "main",
     "pipeline_cli_helpers",
     "pipeline_execution_helpers",

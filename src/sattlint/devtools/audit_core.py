@@ -203,7 +203,7 @@ def build_repo_audit_scan_context(
 ) -> Any:
     suspicious_set = frozenset(identifier.strip() for identifier in suspicious_identifiers if identifier.strip())
     tracked_paths = list_tracked_repo_paths_fn(root) if tracked_only else None
-    docs_to_scan = [root / "README.md", root / "CONTRIBUTING.md", root / "vscode" / "sattline-vscode" / "README.md"]
+    docs_to_scan = [root / "README.md", root / "CONTRIBUTING.md"]
     source_context = build_python_source_scan_context_fn(root / "src", root=root, tracked_paths=tracked_paths)
     test_context = build_python_source_scan_context_fn(root / "tests", root=root, tracked_paths=tracked_paths)
     scripts_context = build_python_source_scan_context_fn(root / "scripts", root=root, tracked_paths=tracked_paths)

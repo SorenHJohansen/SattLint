@@ -10,33 +10,18 @@ from typing import Any, TypeGuard, cast
 
 from . import _config_paths as _config_paths_module
 from ._config_defaults import (
-    DEFAULT_CONFIG,
-    VALID_TOP_LEVEL_CONFIG_KEYS,
-)
-from ._config_defaults import (
-    DOCUMENTATION_CATEGORY_KEYS as _DOCUMENTATION_CATEGORY_KEYS,
-)
-from ._config_defaults import (
-    DOCUMENTATION_LEGACY_CATEGORY_KEYS as _DOCUMENTATION_LEGACY_CATEGORY_KEYS,
-)
-from ._config_defaults import (
-    DOCUMENTATION_LEGACY_RULE_KEYS as _DOCUMENTATION_LEGACY_RULE_KEYS,
-)
-from ._config_defaults import (
-    DOCUMENTATION_RULE_LIST_KEYS as _DOCUMENTATION_RULE_LIST_KEYS,
-)
-from ._config_defaults import (
     NAMING_RULE_TARGETS as _NAMING_RULE_TARGETS,
 )
 from ._config_defaults import (
     NAMING_STYLE_KEYS as _NAMING_STYLE_KEYS,
 )
+from ._config_defaults import (
+    VALID_TOP_LEVEL_CONFIG_KEYS,
+)
 from .config_types import (
     ConfigDict,
     ConfigObjectMap,
     ConfigOverrideDict,
-    DocumentationConfig,
-    DocumentationConfigOverride,
 )
 from .types import TargetName
 
@@ -112,8 +97,6 @@ _SECTION_RULE_PROFILES_KEYS = frozenset({"active", "profiles"})
 _SECTION_RULE_PROFILE_ENTRY_KEYS = frozenset(
     {"description", "disabled_rules", "severity_overrides", "confidence_overrides"}
 )
-_SECTION_DOCUMENTATION_KEYS = frozenset({"classifications"})
-_SECTION_DOCUMENTATION_RULE_KEYS = frozenset(_DOCUMENTATION_RULE_LIST_KEYS) | frozenset(_DOCUMENTATION_LEGACY_RULE_KEYS)
 
 
 def _strip_section_keys(cfg: ConfigObjectMap, valid_keys: frozenset[str]) -> None:
@@ -156,17 +139,6 @@ def _strip_unknown_keys(cfg: ConfigOverrideDict) -> None:
                     if profile_cfg is not None:
                         _strip_section_keys(profile_cfg, _SECTION_RULE_PROFILE_ENTRY_KEYS)
 
-    documentation = _config_dict(cfg_map.get("documentation"))
-    if documentation is not None:
-        _strip_section_keys(documentation, _SECTION_DOCUMENTATION_KEYS)
-
-        classifications = _config_dict(documentation.get("classifications"))
-        if classifications is not None:
-            for rule in classifications.values():
-                typed_rule = _config_dict(rule)
-                if typed_rule is not None:
-                    _strip_section_keys(typed_rule, _SECTION_DOCUMENTATION_RULE_KEYS)
-
 
 def _load_time_config_warnings(cfg: ConfigOverrideDict) -> tuple[ConfigValidationError, ...]:
     warnings: list[ConfigValidationError] = []
@@ -180,88 +152,7 @@ def _load_time_config_warnings(cfg: ConfigOverrideDict) -> tuple[ConfigValidatio
             )
         )
 
-    documentation = _config_dict(cfg.get("documentation"))
-    classifications = None if documentation is None else _config_dict(documentation.get("classifications"))
-    if classifications is None:
-        return tuple(warnings)
-
-    for legacy_key, short_key in _DOCUMENTATION_LEGACY_CATEGORY_KEYS.items():
-        if legacy_key not in classifications:
-            continue
-        warnings.append(
-            ConfigValidationError(
-                key_path=f"documentation.classifications.{legacy_key}",
-                message=(f"Legacy documentation category '{legacy_key}' is deprecated; use '{short_key}' instead."),
-            )
-        )
-
-    for category, rule_value in classifications.items():
-        rule = _config_dict(rule_value)
-        if rule is None:
-            continue
-        for legacy_key, short_key in _DOCUMENTATION_LEGACY_RULE_KEYS.items():
-            if legacy_key not in rule:
-                continue
-            warnings.append(
-                ConfigValidationError(
-                    key_path=f"documentation.classifications.{category}.{legacy_key}",
-                    message=f"Legacy documentation rule '{legacy_key}' is deprecated; use '{short_key}' instead.",
-                )
-            )
-
     return tuple(warnings)
-
-
-def _normalize_documentation_rule_keys(config: ConfigOverrideDict) -> ConfigOverrideDict:
-    normalized = deepcopy(cast(ConfigObjectMap, config))
-    documentation = _config_dict(normalized.get("documentation"))
-    if documentation is None:
-        return cast(ConfigOverrideDict, normalized)
-
-    classifications = _config_dict(documentation.get("classifications"))
-    if classifications is None:
-        return cast(ConfigOverrideDict, normalized)
-
-    for legacy_key, short_key in _DOCUMENTATION_LEGACY_CATEGORY_KEYS.items():
-        if legacy_key not in classifications:
-            continue
-        legacy_rule = classifications.pop(legacy_key)
-        if short_key in classifications:
-            continue
-        classifications[short_key] = legacy_rule
-
-    for rule_value in list(classifications.values()):
-        rule = _config_dict(rule_value)
-        if rule is None:
-            continue
-        for legacy_key, short_key in _DOCUMENTATION_LEGACY_RULE_KEYS.items():
-            if legacy_key not in rule:
-                continue
-            legacy_values = rule.pop(legacy_key)
-            if short_key in rule:
-                continue
-            rule[short_key] = legacy_values
-
-    return cast(ConfigOverrideDict, normalized)
-
-
-def get_documentation_config(
-    cfg: ConfigDict
-    | ConfigOverrideDict
-    | DocumentationConfig
-    | DocumentationConfigOverride
-    | ConfigObjectMap
-    | None = None,
-) -> DocumentationConfig:
-    documentation_defaults = deepcopy(DEFAULT_CONFIG["documentation"])
-    if not cfg:
-        return documentation_defaults
-
-    normalized_cfg = _normalize_documentation_rule_keys(cast(ConfigOverrideDict, cfg))
-
-    documentation_override = _config_dict(normalized_cfg.get("documentation"))
-    override = documentation_override if documentation_override is not None else cast(ConfigObjectMap, normalized_cfg)
-    return cast(DocumentationConfig, _deep_merge_dict(cast(ConfigObjectMap, documentation_defaults), override))
 
 
 def _build_validation_result(errors: list[ConfigValidationError]) -> ConfigValidationResult:
@@ -299,7 +190,6 @@ def _validation_errors_by_key(validation: ConfigValidationResult) -> dict[str, t
     return {key: tuple(messages) for key, messages in errors_by_key.items()}
 
 
-normalize_documentation_rule_keys = _normalize_documentation_rule_keys
 configured_targets = _configured_targets
 validation_errors_by_key = _validation_errors_by_key
 deep_merge_dict = _deep_merge_dict
@@ -503,53 +393,6 @@ def validate_config(cfg: ConfigDict | ConfigOverrideDict) -> ConfigValidationRes
                     message="analysis.naming must be a table/object",
                 )
             )
-
-    documentation_value = cfg.get("documentation")
-    documentation = _config_dict(documentation_value)
-    if documentation_value is not None and documentation is None:
-        errors.append(
-            ConfigValidationError(
-                key_path="documentation",
-                message="documentation must be a table/object.",
-            )
-        )
-    elif documentation is not None:
-        classifications = _config_dict(documentation.get("classifications", {}))
-        if classifications is None or not classifications:
-            errors.append(
-                ConfigValidationError(
-                    key_path="documentation.classifications",
-                    message="documentation.classifications must be a non-empty table/object",
-                )
-            )
-        else:
-            for category, rule in classifications.items():
-                if category not in _DOCUMENTATION_CATEGORY_KEYS:
-                    errors.append(
-                        ConfigValidationError(
-                            key_path=f"documentation.classifications.{category}",
-                            message=(f"documentation.classifications.{category} is not a supported category"),
-                        )
-                    )
-                    continue
-                typed_rule = _config_dict(rule)
-                if typed_rule is None:
-                    errors.append(
-                        ConfigValidationError(
-                            key_path=f"documentation.classifications.{category}",
-                            message=f"documentation.classifications.{category} must be a table/object",
-                        )
-                    )
-                    continue
-                for key in _DOCUMENTATION_RULE_LIST_KEYS:
-                    values = _string_list(typed_rule.get(key, []))
-                    if values is None:
-                        errors.append(
-                            ConfigValidationError(
-                                key_path=f"documentation.classifications.{category}.{key}",
-                                message=f"documentation.classifications.{category}.{key} must be a list of strings",
-                            )
-                        )
 
     return _build_validation_result(errors)
 

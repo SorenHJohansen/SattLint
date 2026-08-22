@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Sequence as SequenceABC
 from collections.abc import Set
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -417,7 +418,7 @@ class SameCycleAnalyzer(VariablesAnalyzer):
         self._dependency_param_usage_cache[cache_key] = usage
         return usage
 
-    def _collect_entry_step_names(self, nodes: list[object]) -> set[str]:
+    def _collect_entry_step_names(self, nodes: SequenceABC[object]) -> set[str]:
         for node in nodes:
             if isinstance(node, SFCStep):
                 return {node.name.casefold()}
@@ -434,7 +435,7 @@ class SameCycleAnalyzer(VariablesAnalyzer):
                     return active
         return set()
 
-    def _step_has_direct_self_loop(self, nodes: list[object], index: int) -> bool:
+    def _step_has_direct_self_loop(self, nodes: SequenceABC[object], index: int) -> bool:
         node = nodes[index]
         if not isinstance(node, SFCStep) or index + 1 >= len(nodes):
             return False
@@ -454,7 +455,7 @@ class SameCycleAnalyzer(VariablesAnalyzer):
             return any(target.casefold() == step_key for target in first_tail.targets)
         return not self._collect_entry_step_names(tail)
 
-    def _transition_loop_step_name(self, nodes: list[object], index: int) -> str | None:
+    def _transition_loop_step_name(self, nodes: SequenceABC[object], index: int) -> str | None:
         if index == 0 or not isinstance(nodes[index], SFCTransition):
             return None
         previous_node = nodes[index - 1]
@@ -501,7 +502,7 @@ class SameCycleAnalyzer(VariablesAnalyzer):
 
     def _walk_sequence_nodes(
         self,
-        nodes: list[object],
+        nodes: SequenceABC[object],
         context: ScopeContext,
         path: list[str],
     ) -> None:

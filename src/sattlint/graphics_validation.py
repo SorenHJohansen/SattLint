@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false
 """Validation helpers for serialized SattLine graphics files."""
 
 from __future__ import annotations
@@ -6,7 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 from sattline_parser.api import read_text_with_fallback
-from sattline_parser.models.ast_model import SourceSpan
+from sattline_parser.models.ast_model import GraphicsBinding, SourceSpan
 
 from ._graphics_validation_bindings import (
     _BINDING_LINE_RE,

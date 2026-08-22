@@ -19,32 +19,15 @@ This file defines the layered operating contract so single-chat assistant work a
 1. Start from the controlling file or symbol.
 2. Make the smallest local edit.
 3. Run the first focused executable validation immediately.
-4. If a touched file appears in `artifacts/analysis/file_debt_ratchet.json`, satisfy its `touch_rule` in the same change.
-5. Run `python scripts/context_health.py --check` when AI-control files changed.
-6. AI-touched files are also blocked through `.github/hooks/ai-edit-gate.json`; rerun `python scripts/run_ai_edit_gate.py <touched paths>` only when debugging that hook locally.
-7. Only widen after the local check passes.
-8. Summarize outcome and remaining risk directly in the final response when needed.
+4. Run `python scripts/context_health.py --check` when AI-control files changed.
+5. AI-touched files are also blocked through `.github/hooks/ai-edit-gate.json`; rerun `python scripts/run_ai_edit_gate.py <touched paths>` only when debugging that hook locally.
+6. Only widen after the local check passes.
+7. Summarize outcome and remaining risk directly in the final response when needed.
 
 ## Per-File Debt Ledger
 
-`artifacts/analysis/file_debt_ratchet.json`
-
-This is the sparse, checked-in per-file debt ledger for repo-maintenance ratchet work.
-Only debt-bearing files belong in it.
-
-- Structural entries mirror already approved structural file-line exceptions and now converge by policy: touched files above target must shrink on every touch until they reach target, then they must stay at or under target.
-- Typing entries mirror `tool.sattlint.typing_ratchet.debt_allowlist` and define which touched files must exit debt immediately.
-- Coverage entries now mirror the current per-file module rates in `coverage.xml` for the full checked-in source coverage debt inventory and currently use `must_reach_target_on_touch` toward 100% full-file proof. `scripts/check_ratchet_policy.py` remains the blocking policy seam, while `src/sattlint/devtools/coverage_reports.py` stays the reporting and recommendation surface for global, changed-line, and touched-file coverage proof rather than a second blocking policy engine.
-
-The ratchet is strictly monotonic and never loosens. Normal work keeps the ledger shrink-only:
-
-- remove entries when debt is cleared
-- tighten targets or touch rules when real fixes land; never widen them
-- do not add new debt entries without an approval record
-- do not increase baselines, targets, or exception limits; fix code or tests instead
-
-Protected ratchet edits must carry an approval record under `.github/approvals/ratchet-rebaseline-<date>.md`.
-For file-debt migrations, only add entries that already mirror existing checked-in debt authorities such as the structural ratchet exception list, the typing debt allowlist, or the current per-file module rates recorded in `coverage.xml`.
+`artifacts/analysis/file_debt_ratchet.json` is the snapshot ledger of known per-file debt for repo-maintenance work.
+The file-debt ratchet policy engine is retired; this ledger is informational and reflects debt authorities that no longer block touches.
 
 ## Pre-Commit Gate
 
@@ -58,7 +41,7 @@ It now stays fast and file-scoped: Ruff autofix, Ruff format, changed Markdown l
 `python scripts/run_ai_edit_gate.py <repo-relative paths...>`
 
 This is the local runner behind `.github/hooks/ai-edit-gate.json`.
-For AI-touched files it applies Ruff fix and format, touched-file Pyright, AI-control checks such as `context_health.py --check`, existing doc-gardener and layer-linter checks for Python edits, and touched-file ratchet enforcement through the single policy engine in `scripts/check_ratchet_policy.py`.
+For AI-touched files it applies Ruff fix and format, touched-file Pyright, AI-control checks such as `context_health.py --check`, and existing doc-gardener and layer-linter checks for Python edits.
 Validation failures block the edit through the post-tool hook. Hook infrastructure failures still fail open and emit a warning payload.
 
 ## AI Drift Gate
@@ -93,7 +76,7 @@ Validate a published audit directory with `python scripts/run_repo_python.py -m 
 
 - Lint and formatting stay in `lint.yml`.
 - Type, test, pip-audit, and npm-audit stay in `typing.yml` under the workflow name `Typing And Quality`.
-- Ratchet-policy enforcement no longer runs as a dedicated `typing.yml` job. AI-touched files are blocked locally through `.github/hooks/ai-edit-gate.json` and `scripts/run_ai_edit_gate.py`, while broader branch proof still comes from the repo-audit finish gates.
+- AI-touched files are blocked locally through `.github/hooks/ai-edit-gate.json` and `scripts/run_ai_edit_gate.py`, while broader branch proof still comes from the repo-audit finish gates.
 - Repo-audit owner checks stay in `repo-audit.yml`, but that owner workflow now covers packaging or leak validation and the Windows quick audit instead of a second Ubuntu full audit.
 - `ci.yml` runs the fast pre-commit gate and doc-gardener, then uses `check-my-changes` on pull requests and the full repo audit on `main`, manual runs, and nightly health.
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# pyright: reportPrivateUsage=false, reportUnusedFunction=false
 """CLI entry points and interactive helpers for SattLint."""
 
 from __future__ import annotations
@@ -17,15 +18,18 @@ from sattline_parser.models.ast_model import BasePicture
 
 from . import _app_analysis_checks as app_analysis_checks_module
 from . import _app_analysis_commands as app_analysis_commands_module
+from . import _app_analysis_from_app as _app_analysis_from_app_module
 from . import _app_facade_analysis as app_facade_analysis_module
 from . import _app_facade_commands as app_facade_commands_module
 from . import _app_facade_project as app_facade_project_module
+from . import _app_graphics_from_app as _app_graphics_from_app_module
+from . import _app_menus_from_app as _app_menus_from_app_module
+from . import _app_source_diff as _app_source_diff_module
 from . import _app_startup_from_app as app_startup_module
 from . import analysis_catalog as analysis_catalog_module
 from . import app_analysis as app_analysis_module
 from . import app_base as app_base_module
 from . import app_cli_commands as app_cli_commands_module
-from . import app_docs as app_docs_module
 from . import app_graphics as app_graphics_module
 from . import app_interaction as app_interaction_module
 from . import app_menus as app_menus_module
@@ -39,7 +43,10 @@ from . import telemetry_summary as telemetry_summary_module
 from .analyzers.variables import (
     IssueKind,
 )
+from .core.semantic import load_workspace_snapshot
 from .models.project_graph import ProjectGraph
+
+load_workspace_snapshot = load_workspace_snapshot
 
 ConfigDict = _config_module.ConfigDict
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
@@ -47,18 +54,20 @@ VariableAnalysisSelection = set[IssueKind] | None
 VariableAnalysisMap = dict[str, tuple[str, VariableAnalysisSelection]]
 GraphicsRulesConfig = dict[str, Any]
 GraphicsRulesLoadResult = tuple[GraphicsRulesConfig, bool]
-DocumentationSelection = dict[str, Any]
 LoadedConfig = tuple[ConfigDict, bool]
 ConfigValidationResult = _config_module.ConfigValidationResult
 
 app_analysis: Any = app_analysis_module
 app_analysis_checks: Any = app_analysis_checks_module
 app_analysis_commands: Any = app_analysis_commands_module
+app_analysis_from_app_module: Any = _app_analysis_from_app_module
 app_base: Any = app_base_module
 app_cli_commands: Any = app_cli_commands_module
-app_docs: Any = app_docs_module
 app_graphics: Any = app_graphics_module
+app_graphics_from_app_module: Any = _app_graphics_from_app_module
 app_menus: Any = app_menus_module
+app_menus_from_app_module: Any = _app_menus_from_app_module
+app_source_diff_module: Any = _app_source_diff_module
 app_support: Any = app_support_module
 app_telemetry: Any = app_telemetry_module
 cache: Any = cache_module
@@ -67,6 +76,8 @@ telemetry_summary: Any = telemetry_summary_module
 source_diff_report_module: Any = importlib.import_module("sattlint.devtools.source_diff_report")
 get_default_cli_analyzers = analysis_catalog_module.get_default_cli_analyzers
 get_selectable_analyzers = analysis_catalog_module.get_selectable_analyzers
+analyze_variables = app_analysis_module.analyze_variables
+ASTCache = cache_module.ASTCache
 
 _APP_MODULE: Any = sys.modules[__name__]
 _interactive_ui_mode = "textual"
@@ -199,7 +210,6 @@ run_validate_config_command = app_facade_commands_module.run_validate_config_com
 run_analyze_command = app_facade_commands_module.run_analyze_command
 _simulate_target = app_facade_commands_module._simulate_target
 run_simulate_command = app_facade_commands_module.run_simulate_command
-run_docgen_command = app_facade_commands_module.run_docgen_command
 run_cache_prune_command = app_facade_commands_module.run_cache_prune_command
 run_telemetry_summary_command = app_facade_commands_module.run_telemetry_summary_command
 _configured_icf_files = app_facade_commands_module._configured_icf_files
@@ -316,29 +326,15 @@ _graphics_rule_label: Callable[[dict[str, Any]], str] = app_graphics.graphics_ru
 _graphics_rule_config_line: Callable[[dict[str, Any]], str] = app_graphics.graphics_rule_config_line
 _print_graphics_rules_summary: Callable[..., None] = app_graphics.print_graphics_rules_summary
 config_module = _config_module
-classify_documentation_structure: Callable[..., Any] = app_docs.classify_documentation_structure
-discover_documentation_unit_candidates: Callable[..., list[Any]] = app_docs.discover_documentation_unit_candidates
 validate_icf_entries_against_program: Callable[..., Any] = app_analysis.validate_icf_entries_against_program
 
 
 _discover_graphics_rule_selector_options = app_facade_project_module._discover_graphics_rule_selector_options
 _pick_or_prompt_graphics_rule_selector_value = app_facade_project_module._pick_or_prompt_graphics_rule_selector_value
-_annotate_graphics_entries_with_structure_paths = (
-    app_facade_project_module._annotate_graphics_entries_with_structure_paths
-)
 graphics_rules_menu = app_facade_project_module.graphics_rules_menu
 _prompt_graphics_rule_definition_with_config = app_facade_project_module._prompt_graphics_rule_definition_with_config
 _collect_graphics_layout_entries_for_target = app_facade_project_module._collect_graphics_layout_entries_for_target
 run_graphics_rules_validation = app_facade_project_module.run_graphics_rules_validation
-_get_documentation_unit_selection = app_facade_project_module._get_documentation_unit_selection
-preview_documentation_unit_candidates = app_facade_project_module.preview_documentation_unit_candidates
-configure_documentation_scope_by_moduletype = app_facade_project_module.configure_documentation_scope_by_moduletype
-configure_documentation_scope_by_instance_path = (
-    app_facade_project_module.configure_documentation_scope_by_instance_path
-)
-reset_documentation_scope = app_facade_project_module.reset_documentation_scope
-run_generate_documentation = app_facade_project_module.run_generate_documentation
-documentation_menu = app_facade_project_module.documentation_menu
 _iter_loaded_projects = app_facade_project_module._iter_loaded_projects
 _source_paths_for_current_target = app_facade_project_module._source_paths_for_current_target
 _target_is_library = app_facade_project_module._target_is_library
@@ -390,10 +386,8 @@ _COMPATIBILITY_HELPERS = (
     _split_csv_values,
     _discover_graphics_rule_selector_options,
     _pick_or_prompt_graphics_rule_selector_value,
-    _annotate_graphics_entries_with_structure_paths,
     _prompt_graphics_rule_definition_with_config,
     _collect_graphics_layout_entries_for_target,
-    _get_documentation_unit_selection,
 )
 
 

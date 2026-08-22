@@ -155,7 +155,7 @@ def append_structural_budget_findings(findings: list[dict[str, Any]], structural
 def collect_phase2_rule_metadata_gate(
     architecture_report: dict[str, Any],
 ) -> dict[str, Any]:
-    from .. import structural_reports as structural_reports_module  # noqa: PLC0415
+    from . import structural_reports as structural_reports_module  # noqa: PLC0415
 
     findings = _finding_entries(architecture_report.get("findings"))
     blocking_findings = [
@@ -190,7 +190,7 @@ def collect_architecture_report(
     *,
     ratchet_path: Path | None = None,
 ) -> dict[str, Any]:
-    from .. import structural_reports as structural_reports_module  # noqa: PLC0415
+    from . import structural_reports as structural_reports_module  # noqa: PLC0415
 
     structural_budgets = structural_reports_module.collect_structural_budget_report(
         repo_root, ratchet_path=ratchet_path
@@ -467,7 +467,7 @@ def collect_architecture_report(
 
 
 def collect_analyzer_registry_report() -> dict[str, Any]:
-    from .. import structural_reports as structural_reports_module  # noqa: PLC0415
+    from . import structural_reports as structural_reports_module  # noqa: PLC0415
 
     catalog = structural_reports_module.get_default_analyzer_catalog()
     return catalog.to_report(generated_by="sattlint.devtools.pipeline")

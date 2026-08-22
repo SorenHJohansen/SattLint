@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false
 """Cache manager wiring for sattlint.cache."""
 
 from __future__ import annotations

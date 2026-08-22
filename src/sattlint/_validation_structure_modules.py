@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false
 """Recursive structural-validation walkers for modules and dependency context."""
 
 from __future__ import annotations

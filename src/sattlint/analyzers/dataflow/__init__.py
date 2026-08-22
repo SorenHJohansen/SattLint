@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, cast
 
+from sattline_parser.formatting import formatter as formatter_module
 from sattline_parser.models.ast_model import (
     BasePicture,
     FloatLiteral,
@@ -13,7 +14,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
-from sattline_parser.utils import formatter as formatter_module
+from sattline_parser.models.expressions import VarRef
 
 from ...grammar import constants as const
 from ...resolution.scope import ScopeContext
@@ -244,17 +245,25 @@ class DataflowAnalyzer(
         return value
 
     def _resolve_ref(self, expr: Any, context: ScopeContext) -> ResolvedRef | None:
-        if not (isinstance(expr, dict) and const.KEY_VAR_NAME in expr):
-            return None
-        expr_map = cast(dict[str, object], expr)
-        full_name = expr_map.get(const.KEY_VAR_NAME)
-        if not isinstance(full_name, str):
+        if isinstance(expr, VarRef):
+            full_name = expr.name
+            raw_state_access = expr.state
+            requested_state_access = raw_state_access if isinstance(raw_state_access, str) else None
+        elif isinstance(expr, dict) and const.KEY_VAR_NAME in expr:
+            expr_map = cast(dict[str, object], expr)
+            full_name = expr_map.get(const.KEY_VAR_NAME)
+            if not isinstance(full_name, str):
+                return None
+            raw_state_access = expr_map.get("state")
+            requested_state_access = raw_state_access if isinstance(raw_state_access, str) else None
+        elif isinstance(expr, str):
+            full_name = expr
+            requested_state_access = None
+        else:
             return None
         variable, field_path, decl_path, _decl_display_path = context.resolve_variable(full_name)
         if variable is None:
             return None
-        raw_state_access = expr_map.get("state")
-        requested_state_access = raw_state_access if isinstance(raw_state_access, str) else None
         resolved_state = self._resolve_state_flag(variable, field_path)
         display_name = full_name if not requested_state_access else f"{full_name}:{requested_state_access.title()}"
         state_access = requested_state_access

@@ -17,6 +17,7 @@ from typing import Any, TypeGuard, cast
 
 from sattline_parser import parse_source_file
 from sattline_parser.models.ast_model import BasePicture
+
 from sattlint import cli_output
 from sattlint import engine as engine_module
 from sattlint.analysis_catalog import canonicalize_analyzer_key, get_default_analyzer_catalog

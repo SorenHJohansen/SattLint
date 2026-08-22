@@ -126,7 +126,6 @@ def init_project(
         data["other_lib_dirs"] = list(other_lib_dirs)
 
     data["analysis"] = deepcopy(DEFAULT_PROJECT_DICT["analysis"])
-    data["documentation"] = deepcopy(DEFAULT_PROJECT_DICT["documentation"])
 
     save_project(path, cast(ProjectDict, data))
     return SattLineProject(path=path, data=cast(ProjectDict, data))

@@ -16,9 +16,6 @@ from ._pipeline_change_proof import (
     build_change_proof_requirements,
     evaluate_change_scoped_coverage_proof,
 )
-from ._pipeline_change_proof import (
-    evaluate_change_scoped_structural_surface_proof as _evaluate_change_scoped_structural_surface_proof,
-)
 from ._pipeline_finish_gate import (
     build_finish_gate_commands,
     build_owner_pytest_step,
@@ -31,11 +28,9 @@ from ._pipeline_finish_gate_runs import (
     run_recommended_pipeline_finish_gate as _run_recommended_pipeline_finish_gate,
 )
 
-evaluate_change_scoped_structural_surface_proof = _evaluate_change_scoped_structural_surface_proof
 run_recommended_pipeline_finish_gate = _run_recommended_pipeline_finish_gate
 
 __all__ = [
-    "evaluate_change_scoped_structural_surface_proof",
     "run_recommended_pipeline_finish_gate",
 ]
 

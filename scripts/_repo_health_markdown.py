@@ -3,20 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 
-def _format_percent(value: Any) -> str:
-    try:
-        return f"{float(value):.2%}"
-    except (TypeError, ValueError):
-        return "n/a"
-
-
-def _format_number(value: Any) -> str:
-    try:
-        return f"{int(value):,}"
-    except (TypeError, ValueError):
-        return "n/a"
-
-
 def render_markdown(report: dict[str, Any]) -> str:
     metrics = report["metrics"]
     lines = [
@@ -26,7 +12,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"- Generated: {report['generated_at']}",
         f"- Audit dir: {report['audit_dir']}",
         f"- Audit findings: {metrics['finding_count']} (blocking: {metrics['blocking_finding_count']})",
-        f"- Coverage: {metrics['coverage_total_line_rate']:.2%} minimum {metrics['coverage_min_line_rate']:.2%}",
+        f"- Coverage: {metrics['coverage_total_line_rate']:.2%}",
         f"- Context: {metrics['auto_loaded_context_lines']}/{metrics['context_auto_loaded_budget']} auto-loaded lines",
         f"- AI throughput: {metrics['ai_task_throughput']}",
         (
@@ -66,23 +52,5 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append(f"- Finding delta: {trend['finding_delta']}")
     lines.append(f"- Context delta: {trend['context_delta']}")
     lines.append(f"- Largest file delta: {trend['largest_file_delta']}")
-    ratchet_status = report.get("ratchet_status", {}) if isinstance(report.get("ratchet_status"), dict) else {}
-    coverage_ratchet = ratchet_status.get("coverage", {}) if isinstance(ratchet_status.get("coverage"), dict) else {}
-    structural_ratchet = (
-        ratchet_status.get("structural", {}) if isinstance(ratchet_status.get("structural"), dict) else {}
-    )
-    lines.extend(["", "## Ratchets", ""])
-    lines.append(f"- Overall: {ratchet_status.get('overall_status', 'unknown')}")
-    lines.append(
-        "- Coverage ratchet: "
-        f"{coverage_ratchet.get('status', 'unknown')} at {_format_percent(coverage_ratchet.get('current_line_rate'))} "
-        f"against floor {_format_percent(coverage_ratchet.get('minimum_line_rate'))}"
-    )
-    lines.append(
-        "- Structural ratchet: "
-        f"{structural_ratchet.get('status', 'unknown')} with "
-        f"{_format_number(structural_ratchet.get('function_over_budget_count'))} functions and "
-        f"{_format_number(structural_ratchet.get('class_over_budget_count'))} classes over budget"
-    )
     lines.append("")
     return "\n".join(lines)

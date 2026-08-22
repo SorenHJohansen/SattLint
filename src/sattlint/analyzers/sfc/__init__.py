@@ -261,7 +261,7 @@ def collect_sfc_reachability_findings(
     return findings
 
 
-def _collect_active_step_sets(nodes: list[object] | None) -> set[StepSet]:
+def _collect_active_step_sets(nodes: SequenceABC[object] | None) -> set[StepSet]:
     active_sets: set[StepSet] = set()
 
     for node in nodes or []:

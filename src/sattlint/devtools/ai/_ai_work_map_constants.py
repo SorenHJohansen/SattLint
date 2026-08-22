@@ -92,18 +92,6 @@ BLOCKING_INVARIANT_RULES: tuple[dict[str, Any], ...] = (
         "selected_surfaces": ("session-start", "pipeline", "repo-audit"),
         "path_globs": ("src/sattlint/app.py",),
     },
-    {
-        "id": "restart-lsp-after-editor-surface-edits",
-        "summary": "Restart the language server after semantic core, LSP, editor_api, or VS Code client edits.",
-        "details": "Run sattlineLsp.restartServer after changes under the editor or workspace loading surfaces.",
-        "selected_surfaces": ("session-start", "pipeline", "repo-audit"),
-        "path_globs": (
-            "src/sattlint/core/**",
-            "src/sattlint_lsp/**",
-            "src/sattlint/editor_api.py",
-            "vscode/sattline-vscode/**",
-        ),
-    },
 )
 
 __all__ = [

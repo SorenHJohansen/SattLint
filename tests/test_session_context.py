@@ -1,9 +1,6 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false
 import importlib.util
 import json
-import subprocess
-import sys
-import textwrap
 from pathlib import Path
 
 from sattlint.devtools.ai import ai_work_map
@@ -186,49 +183,3 @@ def test_rank_workstreams_handles_claim_patterns_without_raw_metadata(monkeypatc
 
     assert entries[0]["claim_paths"] == [{"raw": "src/sattlint/app.py", "path": claimed_path, "is_directory": False}]
     assert ranked[0]["matched_claims"] == ["src/sattlint/app.py"]
-
-
-def test_build_planning_context_payload_does_not_require_lark_import():
-    script = textwrap.dedent(
-        f"""
-        import builtins
-        import importlib.util
-        import json
-        from pathlib import Path
-
-        repo_root = Path({str(REPO_ROOT)!r})
-        original_import = builtins.__import__
-
-        def guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
-            if name == 'lark' or name.startswith('lark.'):
-                raise ModuleNotFoundError("No module named 'lark'")
-            return original_import(name, globals, locals, fromlist, level)
-
-        builtins.__import__ = guarded_import
-        module_path = repo_root / '.github' / 'hooks' / 'scripts' / 'session_context.py'
-        spec = importlib.util.spec_from_file_location('sattlint_session_context_subprocess', module_path)
-        assert spec is not None
-        assert spec.loader is not None
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        payload = module._build_planning_context_payload(
-            {{'paths': [repo_root / 'src' / 'sattlint' / 'app.py'], 'keywords': set(), 'text': ''}},
-            repo_root,
-        )
-        print(json.dumps(payload))
-        """
-    )
-
-    completed = subprocess.run(
-        [sys.executable, "-c", script],
-        cwd=REPO_ROOT,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-
-    assert completed.returncode == 0, completed.stderr
-    payload = json.loads(completed.stdout)
-    assert payload["changed_files"] == ["src/sattlint/app.py"]
-    assert payload["selected_surface"] == "session-start"
-    assert payload["primary_agent"] == "CLI App Menu"

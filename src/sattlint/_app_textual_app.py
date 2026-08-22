@@ -45,13 +45,6 @@ _DEFAULT_VIEW_REGISTRY: dict[str, _ShellViewState] = {
         note="",
         launch_label="Open Analyze Planner",
     ),
-    "documentation": _ShellViewState(
-        action_id="action-documentation",
-        title="Documentation",
-        description="Preview unit candidates, adjust scope, and generate DOCX output directly from this screen.",
-        note="Documentation actions are available directly in this view.",
-        launch_label="Open Documentation Flow",
-    ),
     "setup": _ShellViewState(
         action_id="action-setup",
         title="Setup",
@@ -75,8 +68,8 @@ _DEFAULT_VIEW_REGISTRY: dict[str, _ShellViewState] = {
     "help": _ShellViewState(
         action_id="action-help",
         title="Help",
-        description="See first-run guidance and the recommended workflow for setup, analysis, and documentation.",
-        note="Open the guide to review the recommended setup, analysis, and documentation workflow.",
+        description="See first-run guidance and the recommended workflow for setup and analysis.",
+        note="Open the guide to review the recommended setup and analysis workflow.",
         launch_label="Open Help Guide",
     ),
 }
@@ -240,7 +233,6 @@ if _TEXTUAL_APP is not None:
 
         BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
             ("ctrl+1", "show_analyze", "Analyze"),
-            ("ctrl+2", "show_documentation", "Docs"),
             ("ctrl+3", "show_tools", "Tools"),
             ("ctrl+4", "show_setup", "Setup"),
             ("slash", "prompt_view_filter", "Filter"),
@@ -268,7 +260,6 @@ if _TEXTUAL_APP is not None:
             cfg: ConfigDict,
             summarize_targets_fn: Any,
             analysis_menu_fn: Any,
-            documentation_menu_fn: Any,
             config_menu_fn: Any,
             tools_menu_fn: Any,
             show_help_fn: Any,
@@ -289,7 +280,6 @@ if _TEXTUAL_APP is not None:
             self._cfg = cfg
             self._summarize_targets_fn = summarize_targets_fn
             self._analysis_menu_fn = analysis_menu_fn
-            self._documentation_menu_fn = documentation_menu_fn
             self._config_menu_fn = config_menu_fn
             self._tools_menu_fn = tools_menu_fn
             self._show_help_fn = show_help_fn
@@ -336,7 +326,6 @@ if _TEXTUAL_APP is not None:
                 yield _MenubarWidget(menus=MENU_DEFINITIONS)
                 with _TEXTUAL_HORIZONTAL(id="nav-tabs"):
                     yield _TEXTUAL_STATIC("  Analyze  ", id="nav-tab-analyze", classes="nav-tab")
-                    yield _TEXTUAL_STATIC("  Documentation  ", id="nav-tab-documentation", classes="nav-tab")
                     yield _TEXTUAL_STATIC("  Tools  ", id="nav-tab-tools", classes="nav-tab")
                     yield _TEXTUAL_STATIC("  Setup  ", id="nav-tab-setup", classes="nav-tab")
             with _TEXTUAL_VERTICAL(id="content-host"):
@@ -369,32 +358,6 @@ if _TEXTUAL_APP is not None:
                                         yield _TEXTUAL_BUTTON(
                                             "Clear output",
                                             id="analyze-clear-output",
-                                            classes="raised-button toolbar-button",
-                                        )
-                                    with _TEXTUAL_HORIZONTAL(id="documentation-actions", classes="is-hidden"):
-                                        yield _TEXTUAL_BUTTON(
-                                            "Generate DOCX",
-                                            id="documentation-generate",
-                                            classes="raised-button toolbar-button",
-                                        )
-                                        yield _TEXTUAL_BUTTON(
-                                            "Preview candidates",
-                                            id="documentation-preview-candidates",
-                                            classes="raised-button toolbar-button",
-                                        )
-                                        yield _TEXTUAL_BUTTON(
-                                            "Use all detected units",
-                                            id="documentation-scope-all",
-                                            classes="raised-button toolbar-button",
-                                        )
-                                        yield _TEXTUAL_BUTTON(
-                                            "Scope by moduletype",
-                                            id="documentation-scope-moduletype",
-                                            classes="raised-button toolbar-button",
-                                        )
-                                        yield _TEXTUAL_BUTTON(
-                                            "Scope by instance path",
-                                            id="documentation-scope-instance-path",
                                             classes="raised-button toolbar-button",
                                         )
                                     with _TEXTUAL_HORIZONTAL(id="tools-actions", classes="is-hidden"):
@@ -533,8 +496,7 @@ if _TEXTUAL_APP is not None:
                 "This is your first session. Here is a quick orientation:\n\n"
                 "1. Setup — Add analysis targets in the Setup view (Ctrl+4).\n"
                 "2. Analyze — Select analyses to run in the Analyze view (Ctrl+1).\n"
-                "3. Documentation — Generate DOCX output in the Docs view (Ctrl+2).\n"
-                "4. Tools — Use diagnostics, traces, and cache tools (Ctrl+3).\n\n"
+                "3. Tools — Use diagnostics, traces, and cache tools (Ctrl+3).\n\n"
                 "Tip: Press Ctrl+S to save your configuration at any time."
             )
             self._show_help_modal(welcome)
@@ -574,7 +536,6 @@ def run_textual_shell(
     app_module: Any,
     summarize_targets_fn: Any,
     analysis_menu_fn: Any | None = None,
-    documentation_menu_fn: Any | None = None,
     config_menu_fn: Any | None = None,
     tools_menu_fn: Any | None = None,
     show_help_fn: Any,
@@ -596,7 +557,6 @@ def run_textual_shell(
         cfg=cfg,
         summarize_targets_fn=summarize_targets_fn,
         analysis_menu_fn=analysis_menu_fn or _noop_menu_action,
-        documentation_menu_fn=documentation_menu_fn or _noop_menu_action,
         config_menu_fn=config_menu_fn or _noop_menu_action,
         tools_menu_fn=tools_menu_fn or _noop_menu_action,
         app_module=app_module,

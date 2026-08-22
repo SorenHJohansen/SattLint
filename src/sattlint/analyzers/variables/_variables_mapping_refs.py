@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Protocol, cast
 
 from sattline_parser.models.ast_model import ParameterMapping
+from sattline_parser.models.expressions import VarRef
 
 from ...grammar import constants as const
 
@@ -15,6 +16,8 @@ class _ParameterMappingPayloads(Protocol):
 
 
 def var_ref_text(value: object) -> str | None:
+    if isinstance(value, VarRef):
+        return value.name or None
     if isinstance(value, str):
         return value
     if isinstance(value, dict):

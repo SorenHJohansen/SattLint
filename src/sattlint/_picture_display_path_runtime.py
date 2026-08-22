@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false
 """PictureDisplay runtime-tree construction and placeholder correlation."""
 
 from __future__ import annotations
@@ -12,14 +13,46 @@ from ._picture_display_path_runtime_helpers import (
     CompositeRecordOccurrence,
     RuntimeModuleNode,
     RuntimeTree,
+    _candidate_moduletype_defs,
     _candidate_moduletype_index,
+    _common_suffix_length,
     _CompositePlaceholder,
     _index_runtime_tree,
     _is_local_moduletype_def,
     _local_moduletype_defs,
+    _same_origin_file_stem,
+    consume_name,
+    find_best_suffix_node,
+    find_nearest_descendant,
+    find_node,
+    find_parent_node,
+    find_suffix_nodes,
 )
 from .graphics_validation import GraphicsCompositeRecord
 from .resolution.common import select_moduletype_def_strict
+
+__all__ = [
+    "CompositeRecordOccurrence",
+    "RuntimeModuleNode",
+    "RuntimeTree",
+    "_candidate_moduletype_defs",
+    "_candidate_moduletype_index",
+    "_common_suffix_length",
+    "_file_stem_casefold",
+    "_index_runtime_tree",
+    "_is_local_moduletype_def",
+    "_local_moduletype_defs",
+    "_same_origin_file_stem",
+    "build_runtime_tree",
+    "collect_concrete_composite_placeholders",
+    "consume_name",
+    "correlate_composite_records",
+    "find_best_suffix_node",
+    "find_nearest_descendant",
+    "find_node",
+    "find_parent_node",
+    "find_suffix_nodes",
+]
 
 if TYPE_CHECKING:
     from .models.project_graph import ProjectGraph

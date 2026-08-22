@@ -111,30 +111,6 @@ def run_simulate_command_from_app(
     )
 
 
-def run_docgen_command_from_app(
-    cfg: ConfigDict,
-    *,
-    use_cache: bool,
-    output_format: str = "text",
-    output_dir: str | None,
-    output_path: str | None,
-    app_module: Any,
-) -> int:
-    kwargs: dict[str, object] = {
-        "use_cache": use_cache,
-        "output_dir": output_dir,
-        "output_path": output_path,
-        "run_docgen_command_fn": app_module.app_cli_commands.run_docgen_command,
-        "iter_loaded_projects_fn": app_module._iter_loaded_projects,
-        "documentation_unit_selection_fn": app_module._get_documentation_unit_selection,
-        "exit_success": app_module.EXIT_SUCCESS,
-        "exit_usage_error": app_module.EXIT_USAGE_ERROR,
-    }
-    if output_format != "text":
-        kwargs["output_format"] = output_format
-    return startup_core.run_docgen_command(cfg, **kwargs)
-
-
 def run_cache_prune_command_from_app(*, cache_dir: str | None, output_format: str = "text", app_module: Any) -> int:
     return startup_core.run_cache_prune_command(
         cache_dir=cache_dir,
@@ -268,23 +244,6 @@ def pick_or_prompt_graphics_rule_selector_value_from_app(
     )
 
 
-def annotate_graphics_entries_with_structure_paths_from_app(
-    entries: list[dict[str, Any]],
-    project_bp: BasePicture,
-    graph: ProjectGraph,
-    *,
-    app_module: Any,
-) -> list[dict[str, Any]]:
-    return startup_core.annotate_graphics_entries_with_structure_paths(
-        entries,
-        project_bp,
-        graph,
-        annotate_graphics_entries_with_structure_paths_fn=app_module.app_graphics.annotate_graphics_entries_with_structure_paths,
-        classify_documentation_structure_fn=app_module.classify_documentation_structure,
-        discover_documentation_unit_candidates_fn=app_module.discover_documentation_unit_candidates,
-    )
-
-
 def graphics_rules_menu_from_app(cfg: ConfigDict | None, *, app_module: Any) -> None:
     startup_core.graphics_rules_menu(
         cfg,
@@ -331,7 +290,6 @@ def collect_graphics_layout_entries_for_target_from_app(
         project_bp,
         graph,
         collect_graphics_layout_entries_for_target_fn=app_module.app_graphics.collect_graphics_layout_entries_for_target,
-        annotate_graphics_entries_with_structure_paths_fn=app_module._annotate_graphics_entries_with_structure_paths,
     )
 
 
@@ -344,69 +302,6 @@ def run_graphics_rules_validation_from_app(cfg: ConfigDict, *, app_module: Any) 
         iter_loaded_projects_fn=app_module._iter_loaded_projects,
         collect_graphics_layout_entries_for_target_fn=app_module._collect_graphics_layout_entries_for_target,
         pause_fn=app_module.pause,
-    )
-
-
-def get_documentation_unit_selection_from_app(*, app_module: Any) -> dict[str, Any]:
-    return startup_core.get_documentation_unit_selection(
-        get_documentation_unit_selection_fn=app_module.app_docs.get_documentation_unit_selection,
-    )
-
-
-def preview_documentation_unit_candidates_from_app(cfg: ConfigDict, *, app_module: Any) -> None:
-    startup_core.preview_documentation_unit_candidates(
-        cfg,
-        preview_documentation_unit_candidates_fn=app_module.app_docs.preview_documentation_unit_candidates,
-        iter_loaded_projects_fn=app_module._iter_loaded_projects,
-        pause_fn=app_module.pause,
-    )
-
-
-def configure_documentation_scope_by_moduletype_from_app(*, app_module: Any) -> bool:
-    return startup_core.configure_documentation_scope_by_moduletype(
-        configure_documentation_scope_by_moduletype_fn=app_module.app_docs.configure_documentation_scope_by_moduletype,
-        split_csv_values_fn=app_module._split_csv_values,
-        pause_fn=app_module.pause,
-    )
-
-
-def configure_documentation_scope_by_instance_path_from_app(*, app_module: Any) -> bool:
-    return startup_core.configure_documentation_scope_by_instance_path(
-        configure_documentation_scope_by_instance_path_fn=app_module.app_docs.configure_documentation_scope_by_instance_path,
-        split_csv_values_fn=app_module._split_csv_values,
-        pause_fn=app_module.pause,
-    )
-
-
-def reset_documentation_scope_from_app(*, app_module: Any) -> bool:
-    return startup_core.reset_documentation_scope(
-        reset_documentation_scope_fn=app_module.app_docs.reset_documentation_scope,
-        pause_fn=app_module.pause,
-    )
-
-
-def run_generate_documentation_from_app(cfg: ConfigDict, *, app_module: Any) -> None:
-    startup_core.run_generate_documentation(
-        cfg,
-        run_generate_documentation_fn=app_module.app_docs.run_generate_documentation,
-        iter_loaded_projects_fn=app_module._iter_loaded_projects,
-        prompt_fn=app_module.prompt,
-        pause_fn=app_module.pause,
-    )
-
-
-def documentation_menu_from_app(cfg: ConfigDict, *, app_module: Any) -> bool:
-    return startup_core.documentation_menu(
-        cfg,
-        documentation_menu_fn=app_module.app_docs.documentation_menu,
-        clear_screen_fn=app_module.clear_screen,
-        print_menu_fn=app_module._print_menu,
-        menu_option_factory=app_module._menu_option,
-        quit_app_fn=app_module.quit_app,
-        pause_fn=app_module.pause,
-        split_csv_values_fn=app_module._split_csv_values,
-        iter_loaded_projects_fn=app_module._iter_loaded_projects,
-        prompt_fn=app_module.prompt,
     )
 
 
@@ -488,7 +383,6 @@ def main_from_app(argv: list[str] | None, *, app_module: Any) -> int:
         summarize_targets_fn=app_module._summarize_targets,
         require_targets_for_menu_action_fn=app_module._require_targets_for_menu_action,
         analysis_menu_fn=app_module.analysis_menu,
-        documentation_menu_fn=app_module.documentation_menu,
         config_menu_fn=app_module.config_menu,
         tools_menu_fn=app_module.tools_menu,
         show_help_fn=app_module.show_help,
