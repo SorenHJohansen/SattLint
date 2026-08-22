@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import subprocess
-import tomllib
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -32,37 +31,11 @@ def read_json_optional(path: Path) -> dict[str, Any]:
         return {}
 
 
-def read_toml_optional(path: Path) -> dict[str, Any]:
-    try:
-        return tomllib.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {}
-
-
-def typing_debt_allowlist(pyproject_payload: dict[str, Any]) -> list[str]:
-    tool = pyproject_payload.get("tool", {}) if isinstance(pyproject_payload.get("tool"), dict) else {}
-    sattlint_tool = tool.get("sattlint", {}) if isinstance(tool.get("sattlint"), dict) else {}
-    typing_ratchet = (
-        sattlint_tool.get("typing_ratchet", {}) if isinstance(sattlint_tool.get("typing_ratchet"), dict) else {}
-    )
-    raw_allowlist = typing_ratchet.get("debt_allowlist", [])
-    if not isinstance(raw_allowlist, list):
-        return []
-    return sorted(str(path).strip() for path in raw_allowlist if isinstance(path, str) and str(path).strip())
-
-
 def safe_float(value: Any) -> float:
     try:
         return float(value)
     except (TypeError, ValueError):
         return 0.0
-
-
-def format_basis_points_percent(value: Any) -> str:
-    try:
-        return f"{float(value) / 100:.2f}%"
-    except (TypeError, ValueError):
-        return "n/a"
 
 
 def root_git_status_map(repo_root: Path, git: GitRunner) -> dict[str, str]:
@@ -272,158 +245,6 @@ def trend_metrics(current_metrics: dict[str, Any], history: list[dict[str, Any]]
         "finding_delta": current_findings - previous_findings,
         "context_delta": current_context - previous_context,
         "largest_file_delta": current_largest - previous_largest,
-    }
-
-
-def build_ratchet_status(
-    *,
-    coverage_ratchet: dict[str, Any],
-    structural_ratchet: dict[str, Any],
-    audit_summary: dict[str, Any],
-) -> dict[str, Any]:
-    coverage_metrics = coverage_ratchet.get("metrics", {}) if isinstance(coverage_ratchet.get("metrics"), dict) else {}
-    coverage_summary = coverage_ratchet.get("summary", {}) if isinstance(coverage_ratchet.get("summary"), dict) else {}
-    structural_metrics = (
-        structural_ratchet.get("metrics", {}) if isinstance(structural_ratchet.get("metrics"), dict) else {}
-    )
-    findings = audit_summary.get("findings", []) if isinstance(audit_summary.get("findings"), list) else []
-
-    current_line_rate = round(safe_float(coverage_summary.get("total_line_rate")), 4)
-    minimum_line_rate = round(safe_float(coverage_metrics.get("min_line_rate_basis_points", 0)) / 10000, 4)
-    coverage_status = "pass" if current_line_rate >= minimum_line_rate else "fail"
-
-    function_over_budget_count = int(structural_metrics.get("function_over_budget_count", 0))
-    class_over_budget_count = int(structural_metrics.get("class_over_budget_count", 0))
-    file_exception_count = len(structural_ratchet.get("file_line_exceptions", {}))
-    structural_budget_regression = any(
-        isinstance(finding, dict) and finding.get("id") == "structural-budget-ratchet-regression"
-        for finding in findings
-    )
-
-    if structural_budget_regression:
-        structural_status = "fail"
-    elif function_over_budget_count or class_over_budget_count or file_exception_count:
-        structural_status = "pass_with_findings"
-    else:
-        structural_status = "pass"
-
-    if coverage_status == "fail" or structural_status == "fail":
-        overall_status = "fail"
-    elif structural_status == "pass_with_findings":
-        overall_status = "pass_with_findings"
-    else:
-        overall_status = "pass"
-
-    return {
-        "overall_status": overall_status,
-        "coverage": {
-            "status": coverage_status,
-            "current_line_rate": current_line_rate,
-            "minimum_line_rate": minimum_line_rate,
-            "minimum_changed_line_rate": round(
-                safe_float(coverage_metrics.get("min_changed_line_rate_basis_points", 0)) / 10000,
-                4,
-            ),
-            "minimum_touched_file_line_rate": round(
-                safe_float(coverage_metrics.get("min_touched_file_line_rate_basis_points", 0)) / 10000,
-                4,
-            ),
-        },
-        "structural": {
-            "status": structural_status,
-            "structural_budget_regression": structural_budget_regression,
-            "function_over_budget_count": function_over_budget_count,
-            "class_over_budget_count": class_over_budget_count,
-            "file_exception_count": file_exception_count,
-        },
-    }
-
-
-def build_ratchet_inventory(
-    *,
-    file_debt_ratchet: dict[str, Any],
-    structural_ratchet: dict[str, Any],
-    pyproject_payload: dict[str, Any],
-) -> dict[str, Any]:
-    typing_paths = set(typing_debt_allowlist(pyproject_payload))
-    structural_exceptions_raw = (
-        structural_ratchet.get("file_line_exceptions", {})
-        if isinstance(structural_ratchet.get("file_line_exceptions"), dict)
-        else {}
-    )
-    structural_file_exceptions = [
-        {
-            "path": path,
-            "max_lines": int(payload.get("max_lines", 0)) if isinstance(payload, dict) else 0,
-            "reason": str(payload.get("reason", "")) if isinstance(payload, dict) else "",
-        }
-        for path, payload in sorted(structural_exceptions_raw.items())
-        if isinstance(path, str) and path.strip()
-    ]
-
-    ratcheted_file_statuses: list[dict[str, Any]] = []
-    files_payload = file_debt_ratchet.get("files", {}) if isinstance(file_debt_ratchet.get("files"), dict) else {}
-    for path, file_payload in sorted(files_payload.items()):
-        if not isinstance(path, str) or not isinstance(file_payload, dict):
-            continue
-        for kind in ("coverage", "structural", "typing"):
-            ratchet_payload = file_payload.get(kind)
-            if not isinstance(ratchet_payload, dict):
-                continue
-            row: dict[str, Any] = {
-                "path": path,
-                "kind": kind,
-                "touch_rule": str(ratchet_payload.get("touch_rule", "n/a")),
-                "allow_rebaseline": bool(ratchet_payload.get("allow_rebaseline", False)),
-                "reason": str(ratchet_payload.get("reason", "")),
-            }
-            if kind == "coverage":
-                current_baseline = int(ratchet_payload.get("current_baseline", 0))
-                target = int(ratchet_payload.get("target", 0))
-                gap = max(target - current_baseline, 0)
-                row.update(
-                    {
-                        "status": "at_target" if gap == 0 else "below_target",
-                        "current_baseline": current_baseline,
-                        "target": target,
-                        "current_display": format_basis_points_percent(current_baseline),
-                        "target_display": format_basis_points_percent(target),
-                        "gap_display": "at target" if gap == 0 else f"{gap / 100:.2f} pp short",
-                    }
-                )
-            elif kind == "structural":
-                current_baseline = int(ratchet_payload.get("current_baseline", 0))
-                target = int(ratchet_payload.get("target", 0))
-                gap = max(current_baseline - target, 0)
-                row.update(
-                    {
-                        "status": "at_target" if gap == 0 else "over_target",
-                        "current_baseline": current_baseline,
-                        "target": target,
-                        "current_display": str(current_baseline),
-                        "target_display": str(target),
-                        "gap_display": "at target" if gap == 0 else f"{gap} over target",
-                    }
-                )
-            else:
-                row.update(
-                    {
-                        "status": "allowlisted" if path in typing_paths else "tracked",
-                        "current_baseline": None,
-                        "target": None,
-                        "current_display": "n/a",
-                        "target_display": "n/a",
-                        "gap_display": "allowlisted typing debt" if path in typing_paths else "tracked typing debt",
-                    }
-                )
-            ratcheted_file_statuses.append(row)
-
-    return {
-        "allow_lists": {
-            "typing_debt_allowlist": [{"path": path} for path in sorted(typing_paths)],
-            "structural_file_exceptions": structural_file_exceptions,
-        },
-        "ratcheted_file_statuses": ratcheted_file_statuses,
     }
 
 

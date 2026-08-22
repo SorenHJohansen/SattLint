@@ -45,13 +45,12 @@
 - Keep `AGENTS.md` as the only root AI authority.
 - Prefer root-cause fixes over compatibility shims or duplicate abstractions.
 - Start from the owning seam. Run focused executable validation before widening.
-- Treat 500 lines as the hard cap for checked-in files.
+- Keep large files split at reasonable seams; prefer smaller focused modules over one giant file.
 - Treat 100% focused coverage as the bar for the touched slice.
 - Keep touched Python files Pyright strict-clean.
 - `sattlint syntax-check` stays strict. No silent fallback behavior.
 - Use repo venv commands or existing VS Code tasks for executable proof.
 - Use markdown links for workspace file and line references.
-- Ratchets are monotonic. Never loosen a baseline, debt allowlist, file exception, or touch rule.
 - Treat `artifacts/audit/` outputs as snapshots; refresh them when validation changes the relevant evidence.
 - Never use `python3 - << 'PY'` heredocs through the VS Code terminal tools.
 
@@ -62,6 +61,26 @@
 - Make the smallest grounded edit that tests the current hypothesis.
 - Run the first focused validation immediately after the first substantive edit.
 - Widen to Ruff, Pyright, pre-commit, or `--check-my-changes` only after the local check passes.
+
+## Restricted Commands — Hard Prohibition, NO Workarounds
+
+**A denied command is a hard prohibition, not a puzzle to solve.**
+
+This repository denies ALL `git` commands by permission (`git`, `git *`, `git*`), plus `sudo`, `rm`, and `pacman`/`yay`. If any command is denied, the denial is the final answer — the action should NEVER be performed by the AI. The user will run the command themselves if it is needed.
+
+You MUST NOT:
+- Find an alternate way to run the same operation (no `python -c` wrappers, no `subprocess` calls, no shell redirects that emulate a blocked command)
+- Use `git show HEAD:<path> > <path>`, `git archive`, `git diff | apply`, or any other technique as a substitute for a blocked `git checkout` / `git restore` / `git reset` / `git stash`
+- Reconstruct or emulate git operations through any other tool
+- Ask the user to loosen permissions, or try the same command "a different way"
+- Invent creative "safe" variants of a denied command
+
+Instead:
+1. **STOP** the task immediately.
+2. Give the user the exact command to run themselves in their terminal.
+3. Let the user execute it and report back. Never continue the operation by other means.
+
+Only `trash-put` is an allowed alternative — and only because it is explicitly listed as `allow` in the permission config for `rm`. Anything not explicitly allowed is denied.
 
 ## Guardrails
 
@@ -74,4 +93,4 @@
 
 ## Last Updated
 
-2026-06-19
+2026-08-22

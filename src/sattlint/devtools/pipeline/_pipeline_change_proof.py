@@ -2,20 +2,12 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
 from sattlint.devtools.json_helpers import json_mapping as _json_mapping
 from sattlint.path_sanitizer import sanitize_path_for_report
-
-_STRUCTURAL_SURFACE_METRICS = {
-    "import_max_count": "imports",
-    "dependency_max_count": "dependencies",
-    "public_symbol_max_count": "public symbols",
-    "nesting_max_depth": "nesting",
-}
 
 
 def _mutation_guidance(changed_files: Iterable[str]) -> dict[str, Any]:
@@ -29,11 +21,11 @@ def _mutation_guidance(changed_files: Iterable[str]) -> dict[str, Any]:
     rules = (
         (
             "parser",
-            ("src/sattline_parser/", "tests/parser/", "src/sattlint/grammar/"),
+            ("src/sattlint/grammar/", "src/sattlint/transformer/", "src/sattlint/models/ast_model.py"),
             pytest_command(
                 "--no-cov",
-                "tests/parser/test_parser_core.py",
-                "tests/parser/test_parser_validation.py",
+                "tests/test_ast_tools.py",
+                "tests/analyzers/test_cyclomatic_complexity.py",
                 "-x",
                 "-q",
                 "--tb=short",
@@ -44,9 +36,8 @@ def _mutation_guidance(changed_files: Iterable[str]) -> dict[str, Any]:
             (
                 "src/sattlint/validation.py",
                 "src/sattlint/_validation",
-                "tests/parser/test_parser_validation.py",
             ),
-            pytest_command("--no-cov", "tests/parser/test_parser_validation.py", "-x", "-q", "--tb=short"),
+            pytest_command("--no-cov", "tests/test_cli.py", "-x", "-q", "--tb=short"),
         ),
         (
             "routing",
@@ -97,34 +88,6 @@ def _mutation_guidance(changed_files: Iterable[str]) -> dict[str, Any]:
 
 def _changed_source_python_files(changed_files: Iterable[str]) -> list[str]:
     return [path_text for path_text in changed_files if path_text.endswith(".py") and path_text.startswith("src/")]
-
-
-def _is_structural_budget_python_path(path_text: str) -> bool:
-    return path_text.endswith(".py") and path_text.startswith(("src/", "tests/"))
-
-
-def _load_structural_budget_ratchet(repo_root: Path, *, ratchet_path: Path) -> dict[str, Any]:
-    if not ratchet_path.exists():
-        return {"status": "missing", "path": ratchet_path.as_posix(), "metrics": {}}
-    try:
-        payload = _json_mapping(json.loads(ratchet_path.read_text(encoding="utf-8")))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        return {
-            "status": "invalid",
-            "path": ratchet_path.as_posix(),
-            "metrics": {},
-            "error": str(exc),
-            "error_type": type(exc).__name__,
-        }
-    if payload is None:
-        return {
-            "status": "invalid",
-            "path": ratchet_path.as_posix(),
-            "metrics": {},
-            "error": "ratchet payload must be a JSON object",
-            "error_type": "ValueError",
-        }
-    return dict(payload)
 
 
 def build_change_proof_requirements(
@@ -189,125 +152,6 @@ def evaluate_change_scoped_coverage_proof(
     return change_scoped
 
 
-def evaluate_change_scoped_structural_surface_proof(
-    *,
-    repo_root: Path,
-    changed_files: Iterable[str],
-) -> dict[str, Any]:
-    from sattlint.devtools.structural import structural_reports as structural_reports_module  # noqa: PLC0415
-    from sattlint.devtools.structural._structural_report_budget_support import (  # noqa: PLC0415
-        build_known_structural_modules,
-        collect_python_structural_surface_metrics,
-    )
-
-    from .. import pipeline as pipeline_module  # noqa: PLC0415
-
-    normalized_changed_files = pipeline_module.normalize_changed_files(changed_files)
-    structural_files = [
-        path_text for path_text in normalized_changed_files if _is_structural_budget_python_path(path_text)
-    ]
-    if not structural_files:
-        return {
-            "status": "not-required",
-            "checked_files": [],
-            "expected_metrics": {},
-            "metrics_by_path": {},
-            "violations": [],
-            "scan_failures": [],
-            "reason": "No changed structural Python files require structural surface proof.",
-        }
-
-    ratchet_state = _load_structural_budget_ratchet(
-        repo_root,
-        ratchet_path=repo_root / structural_reports_module.STRUCTURAL_BUDGET_RATCHET_PATH,
-    )
-    expected_metrics = {
-        metric: int(value)
-        for metric, value in ratchet_state.get("metrics", {}).items()
-        if metric in _STRUCTURAL_SURFACE_METRICS and isinstance(value, int)
-    }
-    if not expected_metrics:
-        return {
-            "status": "not-required",
-            "checked_files": structural_files,
-            "expected_metrics": {},
-            "metrics_by_path": {},
-            "violations": [],
-            "scan_failures": [],
-            "reason": "Structural ratchet does not yet record structural surface ceilings.",
-        }
-
-    known_modules = build_known_structural_modules(repo_root)
-    metrics_by_path: dict[str, dict[str, int]] = {}
-    violations: list[dict[str, Any]] = []
-    scan_failures: list[dict[str, Any]] = []
-
-    for rel_path in structural_files:
-        path = repo_root / rel_path
-        if not path.is_file():
-            continue
-        text, _line_count, scan_failure = structural_reports_module.read_structural_text(path)
-        if scan_failure is not None or text is None:
-            scan_failures.append({"path": rel_path, **(scan_failure or {"error": "file could not be read"})})
-            continue
-        try:
-            tree = structural_reports_module.ast.parse(text, filename=rel_path)
-        except SyntaxError as exc:
-            scan_failures.append(
-                {
-                    "path": rel_path,
-                    "error": exc.msg,
-                    "error_type": type(exc).__name__,
-                    "line": exc.lineno,
-                }
-            )
-            continue
-
-        surface_metrics = collect_python_structural_surface_metrics(
-            tree,
-            relative_path=rel_path,
-            repo_root=repo_root,
-            known_modules=known_modules,
-        )
-        actual_metrics = {
-            "import_max_count": int(surface_metrics["import_count"]),
-            "dependency_max_count": int(surface_metrics["dependency_count"]),
-            "public_symbol_max_count": int(surface_metrics["public_symbol_count"]),
-            "nesting_max_depth": max(
-                (int(entry["nesting_depth"]) for entry in surface_metrics["function_nesting_depths"]),
-                default=0,
-            ),
-        }
-        metrics_by_path[rel_path] = actual_metrics
-        for metric, expected_max in expected_metrics.items():
-            actual = actual_metrics[metric]
-            if actual > expected_max:
-                violations.append(
-                    {
-                        "path": rel_path,
-                        "metric": metric,
-                        "label": _STRUCTURAL_SURFACE_METRICS[metric],
-                        "actual": actual,
-                        "expected_max": expected_max,
-                    }
-                )
-
-    status = "fail" if violations or scan_failures else "pass"
-    return {
-        "status": status,
-        "checked_files": structural_files,
-        "expected_metrics": expected_metrics,
-        "metrics_by_path": metrics_by_path,
-        "violations": violations,
-        "scan_failures": scan_failures,
-        "reason": (
-            "Changed structural Python files stay within the recorded surface ceilings."
-            if status == "pass"
-            else "Changed structural Python files would raise a recorded structural surface ceiling."
-        ),
-    }
-
-
 def compact_pipeline_summary_timing(pipeline_summary: dict[str, Any] | None) -> dict[str, Any]:
     if pipeline_summary is None:
         return {}
@@ -321,5 +165,4 @@ __all__ = [
     "build_change_proof_requirements",
     "compact_pipeline_summary_timing",
     "evaluate_change_scoped_coverage_proof",
-    "evaluate_change_scoped_structural_surface_proof",
 ]

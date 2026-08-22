@@ -7,12 +7,11 @@ from dataclasses import replace
 from pathlib import Path
 
 from lark import Lark
-
 from sattline_parser import parse_source_file as parser_core_parse_source_file
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.api import describe_parse_error, read_text_with_fallback
-from sattline_parser.grammar.parser_decode import is_compressed, preprocess_sl_text
 from sattline_parser.models.ast_model import BasePicture, DataType, ModuleTypeDef
+from sattline_parser.preprocessing import is_compressed, preprocess_sl_text
 from sattline_parser.transformer.sl_transformer import SLTransformer
 
 from . import _engine_syntax_helpers as engine_syntax_helpers

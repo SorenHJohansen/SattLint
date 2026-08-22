@@ -1,5 +1,8 @@
+# pyright: reportPrivateUsage=false, reportUnusedFunction=false
 from __future__ import annotations
 
+from collections.abc import Callable
+from functools import partial
 from typing import Any, cast
 
 from ._app_textual_shared import InteractionRequest, _stringify_list_values, _stringify_value
@@ -23,7 +26,10 @@ def _run_app_module_cfg_action(
         self._write_output(f"{label} is unavailable in the current Textual session.")
         return
     self._start_action(
-        label, lambda action_fn=action_fn: action_fn(self._cfg), action_id=action_id, marks_dirty=marks_dirty
+        label,
+        partial(cast(Callable[[Any], Any], action_fn), self._cfg),
+        action_id=action_id,
+        marks_dirty=marks_dirty,
     )
 
 
@@ -34,59 +40,6 @@ def _run_analyze_checks(self: Any) -> None:
         action_id="action-analyze",
         require_targets=True,
         action_text="analysis checks",
-    )
-
-
-def _run_documentation_generate(self: Any) -> None:
-    self._run_app_module_cfg_action(
-        "run_generate_documentation",
-        "Generate DOCX",
-        action_id="action-documentation",
-        require_targets=True,
-        action_text="documentation generation",
-    )
-
-
-def _run_documentation_preview_candidates(self: Any) -> None:
-    self._run_app_module_cfg_action(
-        "preview_documentation_unit_candidates",
-        "Preview candidates",
-        action_id="action-documentation",
-        require_targets=True,
-        action_text="documentation preview",
-    )
-
-
-def _run_documentation_scope_all(self: Any) -> None:
-    self._run_app_module_cfg_action(
-        "reset_documentation_scope",
-        "Use all detected units",
-        action_id="action-documentation",
-        require_targets=True,
-        action_text="documentation scope reset",
-        marks_dirty=True,
-    )
-
-
-def _run_documentation_scope_moduletype(self: Any) -> None:
-    self._run_app_module_cfg_action(
-        "configure_documentation_scope_by_moduletype",
-        "Scope by moduletype",
-        action_id="action-documentation",
-        require_targets=True,
-        action_text="documentation moduletype scoping",
-        marks_dirty=True,
-    )
-
-
-def _run_documentation_scope_instance_path(self: Any) -> None:
-    self._run_app_module_cfg_action(
-        "configure_documentation_scope_by_instance_path",
-        "Scope by instance path",
-        action_id="action-documentation",
-        require_targets=True,
-        action_text="documentation instance-path scoping",
-        marks_dirty=True,
     )
 
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from pathlib import Path
 
-from sattline_parser.grammar.parser_decode import is_compressed, preprocess_sl_text
+from sattline_parser.preprocessing import is_compressed, preprocess_sl_text
 
 from ..analyzers.framework import AnalysisContext, Issue
 from ..reporting.comment_code_report import CommentCodeHit, CommentCodeReport

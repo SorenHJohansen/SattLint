@@ -361,10 +361,6 @@ def action_show_analyze(self: Any) -> None:
     self._handle_toolbar_action("action-analyze")
 
 
-def action_show_documentation(self: Any) -> None:
-    self._handle_toolbar_action("action-documentation")
-
-
 def action_show_setup(self: Any) -> None:
     self._handle_toolbar_action("action-setup")
 
@@ -479,7 +475,6 @@ def action_save_config(self: Any) -> None:
             "cache_dir": ".sattlint-cache",
             "telemetry": dict(cast(dict[str, object], cfg_raw.get("telemetry") or {"enabled": False})),
             "analysis": dict(cast(dict[str, object], cfg_raw.get("analysis") or {})),
-            "documentation": dict(cast(dict[str, object], cfg_raw.get("documentation") or {})),
         }
         _save_slproj(config_path, cast(ProjectDict, project_data))
         self._dirty = False
@@ -618,7 +613,7 @@ def _start_action(
     self._active_job_worker = self._start_managed_action_worker(_run, label=label, action_id=action_id)
 
 
-def _refresh_view(self: Any) -> None:  # noqa: PLR0915
+def _refresh_view(self: Any) -> None:
     if not tuple(getattr(self, "children", ())):
         return
     workspace_host = _query_required(self, "#workspace-host", _TEXTUAL_VERTICAL)
@@ -631,16 +626,13 @@ def _refresh_view(self: Any) -> None:  # noqa: PLR0915
     launch_button = _query_required(self, "#view-primary-action", _TEXTUAL_BUTTON)
     analyze_actions_primary = _query_required(self, "#analyze-actions-primary", _TEXTUAL_HORIZONTAL)
     analyze_browser = _query_required(self, "#analyze-browser", _TEXTUAL_VERTICAL)
-    documentation_actions = _query_required(self, "#documentation-actions", _TEXTUAL_HORIZONTAL)
     setup_browser = _query_required(self, "#setup-browser", _TEXTUAL_HORIZONTAL)
     tools_actions = _query_required(self, "#tools-actions", _TEXTUAL_HORIZONTAL)
 
     view = self._view_state(self._active_view)
     analyze_view = self._active_view == "analyze"
-    documentation_view = self._active_view == "documentation"
     setup_view = self._active_view == "setup"
     tools_view = self._active_view == "tools"
-    docs_tools_split_view = documentation_view or tools_view
 
     title_widget.set_class(setup_view, "is-hidden")
     description_widget.set_class(setup_view, "is-hidden")
@@ -649,13 +641,11 @@ def _refresh_view(self: Any) -> None:  # noqa: PLR0915
     description_widget.update(view.description)
     if analyze_view or setup_view:
         note_widget.update("")
-    elif documentation_view:
-        note_widget.update(self._documentation_note_text())
     else:
         note_widget.update(view.note)
     launch_button.label = view.launch_label
     workspace_host.set_class(analyze_view, "analyze-split")
-    workspace_host.set_class(docs_tools_split_view, "docs-tools-split")
+    workspace_host.set_class(tools_view, "docs-tools-split")
     workspace_host.set_class(setup_view, "no-output")
     setup_browser.set_class(self._dirty, "config-mode")
     view_host.set_class(setup_view, "is-hidden")
@@ -663,7 +653,6 @@ def _refresh_view(self: Any) -> None:  # noqa: PLR0915
     view_actions.set_class(self._active_view not in ("help",), "is-hidden")
     analyze_actions_primary.set_class(not analyze_view, "is-hidden")
     analyze_browser.set_class(not analyze_view, "is-hidden")
-    documentation_actions.set_class(not documentation_view, "is-hidden")
     setup_browser.set_class(not setup_view, "is-hidden")
     tools_actions.set_class(not tools_view, "is-hidden")
 
@@ -697,8 +686,8 @@ def _show_about(self: Any) -> None:
         "About SattLint",
         "=" * 14,
         "",
-        "SattLint — parser, analyzer, editor-facade, documentation,",
-        "LSP, and repo-audit toolchain for the SattLine language.",
+        "SattLint — parser, analyzer, editor-facade, and repo-audit",
+        "toolchain for the SattLine language.",
         "",
         "Version: see pyproject.toml",
         "",
@@ -738,9 +727,6 @@ def _open_project_browser(self: Any) -> None:
 
 def _launch_active_view(self: Any) -> None:
     view = self._view_state(self._active_view)
-    if view.action_id == "action-documentation":
-        self._write_output("Documentation actions are available directly in the Documentation view.")
-        return
     if view.action_id == "action-analyze":
         self._write_output("The analyze planner is available directly in the Analyze view.")
         return
@@ -756,7 +742,7 @@ def _launch_active_view(self: Any) -> None:
     self._write_output(f"{view.title} is not available as a standalone action in the Textual shell.")
 
 
-def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
+def _refresh_shell_state(self: Any) -> None:
     if not tuple(getattr(self, "children", ())):
         return
     output_title_widget = _query_required(self, "#output-title", _TEXTUAL_STATIC)
@@ -767,11 +753,6 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
     analyze_cancel_running_button = _query_required(self, "#analyze-cancel-running", _TEXTUAL_BUTTON)
     analyze_clear_selection_button = _query_required(self, "#analyze-clear-selection", _TEXTUAL_BUTTON)
     analyze_clear_output_button = _query_required(self, "#analyze-clear-output", _TEXTUAL_BUTTON)
-    documentation_generate_button = _query_required(self, "#documentation-generate", _TEXTUAL_BUTTON)
-    documentation_preview_button = _query_required(self, "#documentation-preview-candidates", _TEXTUAL_BUTTON)
-    documentation_scope_all_button = _query_required(self, "#documentation-scope-all", _TEXTUAL_BUTTON)
-    documentation_scope_moduletype_button = _query_required(self, "#documentation-scope-moduletype", _TEXTUAL_BUTTON)
-    documentation_scope_instance_button = _query_required(self, "#documentation-scope-instance-path", _TEXTUAL_BUTTON)
     tools_dumps_button = _query_required(self, "#tools-dumps", _TEXTUAL_BUTTON)
     tools_source_diff_button = _query_required(self, "#tools-source-diff", _TEXTUAL_BUTTON)
     tools_refresh_ast_button = _query_required(self, "#tools-refresh-ast", _TEXTUAL_BUTTON)
@@ -787,7 +768,6 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
     toolbar_disabled = self._busy or interaction_active
     launch_button.disabled = toolbar_disabled
     analyze_view = self._active_view == "analyze"
-    documentation_view = self._active_view == "documentation"
     setup_view = self._active_view == "setup"
     tools_view = self._active_view == "tools"
     analyze_plan = self._analyze_plan()
@@ -815,18 +795,8 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
     ):
         analyze_cancel_running_button.focus()
 
-    documentation_buttons = (
-        documentation_generate_button,
-        documentation_preview_button,
-        documentation_scope_all_button,
-        documentation_scope_moduletype_button,
-        documentation_scope_instance_button,
-    )
-    for button in documentation_buttons:
-        button.disabled = toolbar_disabled or not documentation_view or not self._setup_has_targets()
     for btn_id in (
         "setup-edit-program-dir",
-        "setup-edit-abb-dir",
         "setup-edit-other-lib-dirs",
         "setup-edit-icf-dir",
         "setup-toggle-mode",
@@ -899,11 +869,6 @@ def on_button_pressed(self: Any, event: Any) -> None:
         "analyze-cancel-running": self.action_cancel_running_analysis,
         "analyze-clear-selection": self._clear_selected_analysis_plan,
         "analyze-clear-output": self._clear_session_output,
-        "documentation-generate": self._run_documentation_generate,
-        "documentation-preview-candidates": self._run_documentation_preview_candidates,
-        "documentation-scope-all": self._run_documentation_scope_all,
-        "documentation-scope-moduletype": self._run_documentation_scope_moduletype,
-        "documentation-scope-instance-path": self._run_documentation_scope_instance_path,
         "setup-edit-program-dir": lambda: self._queue_setup_value_prompt("program_dir", label="program_dir"),
         "setup-edit-abb-dir": lambda: self._queue_setup_value_prompt("ABB_lib_dir", label="ABB_lib_dir"),
         "setup-edit-other-lib-dirs": lambda: self._queue_setup_value_prompt(
@@ -924,7 +889,6 @@ def on_button_pressed(self: Any, event: Any) -> None:
         "action-quit": self._request_quit_shell,
         "menu-analyze-run-selected": self._run_selected_analysis_plan,
         "menu-analyze-cancel": self.action_cancel_running_analysis,
-        "menu-reports-generate-docx": self._run_documentation_generate,
         "menu-reports-source-diff": self._run_tool_source_diff,
         "menu-reports-export": lambda: self._write_output("Export not yet implemented."),
         "menu-tools-refresh-cache": self._run_tool_refresh_ast,
@@ -972,7 +936,6 @@ if TYPE_CHECKING:
         def _show_about(self) -> None: ...
         def _open_project_browser(self) -> None: ...
         def action_show_analyze(self) -> None: ...
-        def action_show_documentation(self) -> None: ...
         def action_show_setup(self) -> None: ...
         def action_show_tools(self) -> None: ...
         def action_show_help(self) -> None: ...
@@ -1029,7 +992,6 @@ else:
         _show_about = _show_about
         _open_project_browser = _open_project_browser
         action_show_analyze = action_show_analyze
-        action_show_documentation = action_show_documentation
         action_show_setup = action_show_setup
         action_show_tools = action_show_tools
         action_show_help = action_show_help

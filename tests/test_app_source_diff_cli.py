@@ -299,11 +299,6 @@ def test_main_blocks_target_dependent_menu_actions_without_targets(noop_screen, 
     )
     monkeypatch.setattr(
         app,
-        "documentation_menu",
-        lambda *_: pytest.fail("legacy documentation menu should not run during textual startup"),
-    )
-    monkeypatch.setattr(
-        app,
         "force_refresh_ast",
         lambda *_: pytest.fail("legacy refresh action should not run during textual startup"),
     )

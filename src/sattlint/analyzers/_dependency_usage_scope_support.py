@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # pyright: reportPrivateUsage=false
-from typing import Protocol
+from typing import Protocol, cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -126,7 +126,7 @@ class DependencyUsageScopeSupportMixin:
             if not target_name:
                 continue
             if isinstance(mapping.source, dict) and const.KEY_VAR_NAME in mapping.source:
-                full_source = mapping.source[const.KEY_VAR_NAME]
+                full_source = cast(dict[str, object], mapping.source)[const.KEY_VAR_NAME]
             elif isinstance(mapping.source, str):
                 full_source = mapping.source
             else:

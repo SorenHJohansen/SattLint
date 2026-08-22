@@ -6,6 +6,7 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Any, cast
 
+from sattline_parser.formatting.formatter import format_expr, format_seq_nodes
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -17,7 +18,6 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
-from sattline_parser.utils.formatter import format_expr, format_seq_nodes
 
 
 def stable_signature_text(value: object) -> str:

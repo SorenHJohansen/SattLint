@@ -11,12 +11,11 @@ import tomli_w
 
 from . import _config_paths as _config_paths_module
 from . import console as console_module
+from ._config_defaults import DEFAULT_CONFIG
 from .config_types import ConfigDict, ConfigObjectMap, ConfigOverrideDict
 from .config_validation import (
-    DEFAULT_CONFIG,
     deep_merge_dict,
     load_time_config_warnings,
-    normalize_documentation_rule_keys,
     strip_unknown_keys,
     validate_effective_config,
 )
@@ -69,14 +68,13 @@ def load_config(path: Path) -> tuple[ConfigDict, bool]:
     for warning in load_time_config_warnings(cfg):
         emit_output(f"⚠ Config warning [{warning.key_path}]: {warning.message}")
 
-    cfg = normalize_documentation_rule_keys(cfg)
-    normalized_cfg = _normalize_telemetry_section(cfg)
+    cfg = _normalize_telemetry_section(cfg)
 
-    for message in _validation_messages(normalized_cfg):
+    for message in _validation_messages(cfg):
         key_path, error_message = message.split("] ", maxsplit=1)
         emit_output(f"⚠ Config warning {key_path}]: {error_message}")
 
-    return _merged_effective_config(normalized_cfg), False
+    return _merged_effective_config(cfg), False
 
 
 def save_config(path: Path, cfg: ConfigDict | ConfigOverrideDict) -> None:
@@ -88,7 +86,7 @@ def save_config(path: Path, cfg: ConfigDict | ConfigOverrideDict) -> None:
     if isinstance(telemetry, dict):
         cast(dict[str, Any], telemetry).pop("path", None)
 
-    normalized_cfg = normalize_documentation_rule_keys(cast(ConfigOverrideDict, sanitized_cfg))
+    normalized_cfg = _normalize_telemetry_section(cast(ConfigOverrideDict, sanitized_cfg))
     validation_messages = _validation_messages(normalized_cfg)
     if validation_messages:
         raise ValueError("Config validation failed: " + "; ".join(validation_messages))

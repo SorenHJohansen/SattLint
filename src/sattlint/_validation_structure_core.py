@@ -1,4 +1,5 @@
 """Internal structural-validation helper functions shared by validation entry points."""
+# pyright: reportUnusedFunction=false
 
 from __future__ import annotations
 
@@ -9,14 +10,18 @@ from typing import cast
 
 from sattline_parser.models.ast_model import (
     DataType,
+    FrameModule,
     ModuleCode,
+    ModuleTypeInstance,
     ParameterMapping,
     Simple_DataType,
+    SingleModule,
     Variable,
 )
 
 from . import _validation_sequences as validation_sequences_module
 from ._validation_expression import is_variable_ref_node as _is_variable_ref_node
+from ._validation_expression import variable_ref_name as _variable_ref_name
 from ._validation_shared import (
     StructuralValidationError,
     ValidationWarning,
@@ -308,7 +313,7 @@ def _validate_datatypes(
 
 
 def _validate_unique_submodule_names(
-    modules: list[object] | None,
+    modules: list[SingleModule | FrameModule | ModuleTypeInstance] | None,
     context: str,
     *,
     enforce_unique_names: bool = True,
@@ -318,8 +323,8 @@ def _validate_unique_submodule_names(
 
     seen: dict[tuple[str, str | None], str] = {}
     for module in modules or []:
-        name = cast(str, module.header.name)
-        moduletype_name = module.moduletype_name if hasattr(module, "moduletype_name") else None
+        name = module.header.name
+        moduletype_name = module.moduletype_name if isinstance(module, ModuleTypeInstance) else None
         key = (name.casefold(), moduletype_name.casefold() if isinstance(moduletype_name, str) else None)
         if key in seen:
             raise StructuralValidationError(
@@ -366,12 +371,14 @@ def _validate_parameter_mappings(
         target_ref = cast(VariableRef | None, getattr(mapping, "target", None))
         if not _is_variable_ref_node(target_ref):
             continue
-        target_name, target_span = str(target_ref.get(const.KEY_VAR_NAME)), ref_span(target_ref)
+        target_name = _variable_ref_name(target_ref)
+        if target_name is None:
+            continue
         target_key = target_name.casefold()
         if target_key in seen:
             raise StructuralValidationError(
                 f"{context} has duplicate parameter mapping targets {seen[target_key]!r} and {target_name!r}",
-                **span_kwargs(target_span),
+                **span_kwargs(ref_span(target_ref)),
                 length=max(len(target_name), 1),
             )
         seen[target_key] = target_name
@@ -382,8 +389,6 @@ def _validate_parameter_mappings(
         base_name, field_path = _split_dotted_name(target_name)
         target_variable = expected_parameters.get(base_name.casefold())
         if target_variable is None:
-            if policy.allow_parameterless_module_mappings and not expected_parameters:
-                continue
             continue
 
         target_datatype = _resolve_variable_field_datatype(target_variable, field_path, type_graph)
@@ -391,13 +396,13 @@ def _validate_parameter_mappings(
             if isinstance(target_variable.datatype, Simple_DataType):
                 raise StructuralValidationError(
                     f"{context} parameter mapping target {target_name!r} uses field access on non-record parameter {target_variable.name!r}",
-                    **span_kwargs(target_span),
+                    **span_kwargs(ref_span(target_ref)),
                     length=max(len(target_name), 1),
                 )
             if type_graph.has_record(str(target_variable.datatype)):
                 raise StructuralValidationError(
                     f"{context} parameter mapping target {target_name!r} does not exist",
-                    **span_kwargs(target_span),
+                    **span_kwargs(ref_span(target_ref)),
                     length=max(len(target_name), 1),
                 )
             continue
@@ -413,14 +418,14 @@ def _validate_parameter_mappings(
             if bool(getattr(mapping, "is_duration", False)) and not _is_valid_duration_literal(source_literal):
                 raise StructuralValidationError(
                     f"{context} maps invalid duration literal {source_literal!r} to parameter target {target_name!r}",
-                    **span_kwargs(target_span),
+                    **span_kwargs(ref_span(target_ref)),
                 )
             if _has_time_literal_marker(source_literal) and not _is_valid_time_literal(
                 _extract_time_literal(source_literal)
             ):
                 raise StructuralValidationError(
                     f"{context} maps invalid time literal {_extract_time_literal(source_literal)!r} to parameter target {target_name!r}",
-                    **span_kwargs(target_span),
+                    **span_kwargs(ref_span(target_ref)),
                 )
             actual_datatype = _infer_literal_datatype(
                 source_literal,
@@ -429,7 +434,7 @@ def _validate_parameter_mappings(
             source_description = repr(source_literal)
         elif _is_variable_ref_node(source) and source_env is not None:
             actual_datatype = _resolve_ref_datatype(source, source_env, type_graph)
-            source_description = str(source.get(const.KEY_VAR_NAME))
+            source_description = _variable_ref_name(source)
 
         if actual_datatype is None:
             continue
@@ -448,7 +453,7 @@ def _validate_parameter_mappings(
             f"{context} maps {source_description or 'value'!r} with datatype {_format_datatype(actual_datatype)!r} "
             f"to parameter target {target_name!r} with datatype {_format_datatype(target_datatype)!r}",
             warning_sink=policy.warning_sink if policy.warn_incompatible_parameter_mappings else None,
-            **span_kwargs(target_span),
+            **span_kwargs(ref_span(target_ref)),
         )
 
 

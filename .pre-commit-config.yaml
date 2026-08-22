@@ -12,7 +12,7 @@ repos:
         name: Pyright
         language: system
         entry: python scripts/run_repo_python.py
-        args: [-m, pyright, src/sattlint, src/sattline_parser]
+        args: [-m, pyright, src/sattlint]
         files: ^src/.*\.py$
         pass_filenames: false
       - id: actionlint
@@ -26,7 +26,7 @@ repos:
         language: system
         entry: python scripts/run_markdownlint.py
         args: [--config, .markdownlint-cli2.jsonc]
-        files: ^([^/]+\.md|docs/.*\.md|tests/fixtures/.*\.md|vscode/.*\.md)$
+        files: ^([^/]+\.md|docs/.*\.md|tests/fixtures/.*\.md)$
         pass_filenames: true
       - id: context-health
         name: Context health gate

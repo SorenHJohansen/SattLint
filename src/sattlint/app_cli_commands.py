@@ -2,26 +2,23 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
-from . import config as config_module
 from . import console as console_module
 from ._app_debug import log_debug_exception
 from .cache import CachePruneResult
 from .cli_output import render_json_output
 from .config_types import ConfigDict
-from .docgenerator import generate_docx
 from .models.project_graph import ProjectGraph
 
 log = logging.getLogger("SattLint")
 emit_output: Callable[..., None] = console_module.print_output  # type: ignore[assignment]
 
-DocumentationSelection = dict[str, Any]
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
 
 
@@ -221,115 +218,6 @@ def run_simulate_command(
             return exit_usage_error
     else:
         console_module.print_output(summary)
-    return exit_success
-
-
-def run_docgen_command(
-    cfg: ConfigDict,
-    *,
-    use_cache: bool,
-    output_format: str = "text",
-    output_dir: str | None,
-    output_path: str | None,
-    iter_loaded_projects_fn: Callable[[ConfigDict, bool], Iterator[LoadedProject]],
-    documentation_unit_selection_fn: Callable[[], DocumentationSelection],
-    exit_success: int,
-    exit_usage_error: int,
-) -> int:
-    projects = list(iter_loaded_projects_fn(cfg, use_cache))
-    if not projects:
-        if output_format == "json":
-            console_module.print_output(
-                render_json_output({"status": "error", "message": "No analyzed targets configured"})
-            )
-        else:
-            console_module.print_output("No analyzed targets configured")
-        return exit_usage_error
-
-    if output_path and len(projects) > 1:
-        if output_format == "json":
-            console_module.print_output(
-                render_json_output({"status": "error", "message": "output_path requires exactly one configured target"})
-            )
-        else:
-            console_module.print_output("output_path requires exactly one configured target")
-        return exit_usage_error
-
-    base_output_dir: Path | None = None
-    if output_dir:
-        base_output_dir = Path(output_dir)
-        base_output_dir.mkdir(parents=True, exist_ok=True)
-
-    documentation_cfg = {
-        "classifications": config_module.get_documentation_config(cfg)["classifications"],
-        "units": documentation_unit_selection_fn(),
-    }
-    generated_targets: list[dict[str, Any]] = []
-
-    for target_name, project_bp, graph in projects:
-        if output_path:
-            destination = Path(output_path)
-        elif base_output_dir is not None:
-            destination = base_output_dir / f"{target_name}_FS.docx"
-        else:
-            destination = Path(f"{target_name}_FS.docx")
-
-        destination.parent.mkdir(parents=True, exist_ok=True)
-
-        try:
-            _run_with_live_status(
-                f"Generating documentation for {target_name}",
-                lambda project_bp=project_bp, destination=destination, graph=graph: generate_docx(
-                    project_bp,
-                    str(destination),
-                    documentation_config=documentation_cfg,
-                    unavailable_libraries=cast(
-                        set[str],
-                        getattr(graph, "unavailable_libraries", cast(set[str], set())),
-                    ),
-                ),
-            )
-        except OSError as exc:
-            log_debug_exception(
-                cfg, f"Documentation generation failed for target {target_name!r} to {destination}", logger=log
-            )
-            if output_format == "json":
-                console_module.print_output(
-                    render_json_output(
-                        {
-                            "status": "error",
-                            "message": f"Documentation generation failed for {destination}: {exc}",
-                            "target_name": target_name,
-                            "output_path": str(destination),
-                        }
-                    )
-                )
-            else:
-                console_module.print_output(f"Documentation generation failed for {destination}: {exc}")
-            return exit_usage_error
-        generated_targets.append(
-            {
-                "target_name": target_name,
-                "output_path": str(destination),
-                "unavailable_libraries": sorted(
-                    cast(set[str], getattr(graph, "unavailable_libraries", cast(set[str], set())))
-                ),
-            }
-        )
-        if output_format != "json":
-            console_module.print_output(f"Generated {destination}")
-
-    if output_format == "json":
-        console_module.print_output(
-            render_json_output(
-                {
-                    "status": "ok",
-                    "generated_count": len(generated_targets),
-                    "generated": generated_targets,
-                }
-            )
-        )
-
     return exit_success
 
 

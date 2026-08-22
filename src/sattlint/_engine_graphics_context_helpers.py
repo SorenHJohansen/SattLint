@@ -7,11 +7,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, TypeGuard
 
 from lark.exceptions import UnexpectedInput
-
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.api import read_text_with_fallback
-from sattline_parser.grammar.parser_decode import is_compressed, preprocess_sl_text
 from sattline_parser.models.ast_model import BasePicture
+from sattline_parser.preprocessing import is_compressed, preprocess_sl_text
 
 from ._validation_shared import ValidationNotice
 from .models.project_graph import ProjectGraph

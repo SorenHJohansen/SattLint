@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import Any
 
 from sattline_parser.api import read_text_with_fallback
-from sattline_parser.grammar.parser_decode import is_compressed, preprocess_sl_text
+from sattline_parser.preprocessing import is_compressed, preprocess_sl_text
+
 from sattlint import cli_output
 from sattlint.devtools._diff_rendering import (
     build_unified_diff_lines,

@@ -25,11 +25,10 @@ Recommended first run:
 2. Add one or more analysis targets without file extensions.
 3. Save the configuration.
 4. Open Tools and run Self-check diagnostics.
-5. Open Analyze to run checks, or Documentation to build DOCX output.
+5. Open Analyze to run checks.
 
 Main areas:
 - Analyze: run curated reports, the full analyzer suite, or registry-backed checks.
-- Documentation: preview unit candidates, choose scope, and generate DOCX output.
 - Setup: edit directories, targets, mode, caching, and debug settings.
 - Tools: self-check, dumps, source diff reports across configured targets, and AST cache refresh.
 

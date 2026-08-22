@@ -10,7 +10,7 @@ assignees: ''
 Use [SUPPORT.md](../../SUPPORT.md) for issue-routing guidance and [SECURITY.md](../../SECURITY.md) if the report might involve a vulnerability, secret, or private-path exposure.
 
 **What happened?**
-Describe the bug clearly and include the affected surface, for example `sattlint syntax-check`, `sattlint repo-audit`, `sattlint-lsp`, the interactive menu, or the GUI.
+Describe the bug clearly and include the affected surface, for example `sattlint syntax-check`, `sattlint repo-audit`, the interactive menu, or `sattlint analyze`.
 
 **How do we reproduce it?**
 List the smallest steps or commands that reproduce the problem.

@@ -88,7 +88,6 @@ Regenerate with `python -m sattlint.devtools.ai --write`.
 - AI summary: Use when parser, analyzer, or workspace-loading edits need trace or profiling artifacts.
 - AI instruction files:
   - `.github/instructions/parser-analysis.instructions.md`
-  - `.github/instructions/workspace-lsp.instructions.md`
 - Owner tests:
   - `tests/test_pipeline_phase2.py`
 - Command: `sattlint-analysis-pipeline --profile full --check trace --output-dir artifacts/generated/ai-work-map/pipeline`
@@ -103,7 +102,7 @@ Regenerate with `python -m sattlint.devtools.ai --write`.
   - `.github/instructions/parser-analysis.instructions.md`
   - `.github/instructions/test-fixtures.instructions.md`
 - Owner tests:
-  - `tests/parser/test_corpus.py`
+  - `tests/test_pipeline_run.py`
 - Command: `sattlint-analysis-pipeline --profile full --check corpus --output-dir artifacts/generated/ai-work-map/pipeline`
 
 ## Repo Audit Checks

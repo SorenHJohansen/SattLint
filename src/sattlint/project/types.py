@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TypedDict
 
-from ..config_types import AnalysisConfig, ConfigMode, DocumentationConfig, TelemetryConfig
+from ..config_types import AnalysisConfig, ConfigMode, TelemetryConfig
 
 
 class ProjectDict(TypedDict):
@@ -21,7 +21,6 @@ class ProjectDict(TypedDict):
     cache_dir: str
     telemetry: TelemetryConfig
     analysis: AnalysisConfig
-    documentation: DocumentationConfig
 
 
 DEFAULT_PROJECT_DICT: ProjectDict = {
@@ -56,40 +55,6 @@ DEFAULT_PROJECT_DICT: ProjectDict = {
                     "severity_overrides": {},
                     "confidence_overrides": {},
                 },
-            },
-        },
-    },
-    "documentation": {
-        "classifications": {
-            "em": {
-                "name_contains": [],
-                "label_equals": [],
-                "desc_name_contains": [],
-                "desc_label_equals": ["nnestruct:EquipModCoordinate"],
-            },
-            "ops": {
-                "name_contains": [],
-                "label_equals": [],
-                "desc_name_contains": [],
-                "desc_label_equals": ["NNEMESIFLib:MES_StateControl"],
-            },
-            "rp": {
-                "name_contains": ["RecPar"],
-                "label_equals": [],
-                "desc_name_contains": [],
-                "desc_label_equals": [],
-            },
-            "ep": {
-                "name_contains": ["EngPar"],
-                "label_equals": [],
-                "desc_name_contains": [],
-                "desc_label_equals": [],
-            },
-            "up": {
-                "name_contains": ["UsrPar"],
-                "label_equals": [],
-                "desc_name_contains": [],
-                "desc_label_equals": [],
             },
         },
     },

@@ -672,7 +672,6 @@ def run_main_loop(
     summarize_targets_fn: Callable[[ConfigDict], str],
     require_targets_for_menu_action_fn: Callable[[ConfigDict, str], bool],
     analysis_menu_fn: Callable[[ConfigDict], None],
-    documentation_menu_fn: Callable[[ConfigDict], bool],
     config_menu_fn: Callable[[ConfigDict], bool],
     tools_menu_fn: Callable[[ConfigDict], None],
     show_help_fn: Callable[[ConfigDict], None],
@@ -698,15 +697,13 @@ def run_main_loop(
             "SattLint",
             [
                 menu_option_factory("1", "Analyze", "Run checks and reports for configured targets"),
-                menu_option_factory("2", "Documentation", "Preview unit scope and generate DOCX output"),
-                menu_option_factory("3", "Setup", "Configure directories, targets, mode, and cache settings"),
-                menu_option_factory("4", "Tools", "Diagnostics, dumps, and cache refresh"),
-                menu_option_factory("5", "Help", "First-time guidance and workflow explanations"),
+                menu_option_factory("2", "Setup", "Configure directories, targets, mode, and cache settings"),
+                menu_option_factory("3", "Tools", "Diagnostics, dumps, and cache refresh"),
+                menu_option_factory("4", "Help", "First-time guidance and workflow explanations"),
                 menu_option_factory("q", "Quit", ""),
             ],
             intro=(
-                "Analyze SattLine targets, generate documentation, and troubleshoot parser state from one place. "
-                "Start with Setup on first run."
+                "Analyze SattLine targets and troubleshoot parser state from one place. Start with Setup on first run."
             ),
             note=(summarize_targets_fn(cfg) + "\nChanges are not saved until you choose Save configuration in Setup."),
         )
@@ -716,26 +713,15 @@ def run_main_loop(
                 _run_menu_action(lambda: analysis_menu_fn(cfg), pause_fn=menu_interaction.pause)
 
         elif choice == "2":
-            if require_targets_for_menu_action_fn(cfg, "using documentation tools"):
-                dirty |= cast(
-                    bool,
-                    _run_menu_action(
-                        lambda: documentation_menu_fn(cfg),
-                        pause_fn=menu_interaction.pause,
-                        default=False,
-                    ),
-                )
-
-        elif choice == "3":
             dirty |= cast(
                 bool,
                 _run_menu_action(lambda: config_menu_fn(cfg), pause_fn=menu_interaction.pause, default=False),
             )
 
-        elif choice == "4":
+        elif choice == "3":
             _run_menu_action(lambda: tools_menu_fn(cfg), pause_fn=menu_interaction.pause)
 
-        elif choice == "5":
+        elif choice == "4":
             _run_menu_action(lambda: show_help_fn(cfg), pause_fn=menu_interaction.pause)
 
         elif choice == "q":

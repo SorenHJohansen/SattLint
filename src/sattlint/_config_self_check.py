@@ -105,7 +105,6 @@ def self_check(cfg: ConfigDict) -> bool:
 
     ok = _self_check_directories(cfg, errors_by_key=errors_by_key) and ok
     ok = _self_check_targets(cfg, errors_by_key=errors_by_key) and ok
-    ok = _report_validation_namespace(cfg, "documentation") and ok
     ok = _report_validation_namespace(cfg, "analysis") and ok
     ok = _self_check_graphics_rules() and ok
 

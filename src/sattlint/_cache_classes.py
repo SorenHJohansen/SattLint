@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false
 """Cache class implementations shared by sattlint.cache."""
 
 from __future__ import annotations
@@ -12,13 +13,15 @@ from typing import cast
 
 from . import cache as cache_module
 
+DEFAULT_LOOKUP_CACHE_FLUSH_INTERVAL = 25
+
 
 class FileLookupCache:
     def __init__(
         self,
         cache_dir: Path,
         *,
-        flush_interval: int | None = cache_module.DEFAULT_LOOKUP_CACHE_FLUSH_INTERVAL,
+        flush_interval: int | None = DEFAULT_LOOKUP_CACHE_FLUSH_INTERVAL,
         write_through: bool = False,
     ):
         if flush_interval is not None and flush_interval <= 0:
@@ -29,7 +32,7 @@ class FileLookupCache:
         self._flush_interval = flush_interval
         self._write_through = write_through
         self._pending_mutations = 0
-        self._data = {"version": cache_module.LOOKUP_CACHE_VERSION, "entries": {}}
+        self._data: dict[str, object] = {"version": cache_module.LOOKUP_CACHE_VERSION, "entries": {}}
         self._dirty = False
         self._startup_pruned_entries = self.prune_stale_entries()
         self._load()
@@ -104,7 +107,7 @@ class FileLookupCache:
 
     def set(self, kind: str, name: str, mode: str, base_dir: Path, ext: str) -> None:
         key = self._key(kind, name, mode)
-        entries = cast(object, self._data.setdefault("entries", {}))
+        entries = self._data.setdefault("entries", {})
         if not isinstance(entries, dict):
             return
         entry_map = cast(dict[str, dict[str, str]], entries)

@@ -44,7 +44,6 @@ class CommandHandlers(TypedDict, total=False):
     validate_config: AppCommandFn
     analyze: AppCommandFn
     simulate: AppCommandFn
-    docgen: AppCommandFn
     cache_prune: AppCommandFn
     telemetry_summary: AppCommandFn
     format_icf: AppCommandFn
@@ -132,7 +131,7 @@ def _is_version_request(argv: list[str]) -> bool:
     return "--version" in argv
 
 
-def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:  # noqa: PLR0915
+def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sattlint",
         description="Interactive SattLine analysis app with non-interactive syntax-check, analysis, documentation, simulation, source-diff, and repo-audit commands.",
@@ -267,23 +266,6 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser: 
         help="Optional path to write the simulation output",
     )
     add_output_format_argument(simulate_parser)
-
-    docgen_parser = subparsers.add_parser(
-        "docgen",
-        help="Generate DOCX documentation",
-        description="Generate FS-style DOCX documentation for configured targets.",
-    )
-    docgen_parser.add_argument(
-        "--output-dir",
-        default=None,
-        help="Directory to write generated DOCX files into",
-    )
-    docgen_parser.add_argument(
-        "--output-path",
-        default=None,
-        help="Explicit DOCX file path for single-target generation",
-    )
-    add_output_format_argument(docgen_parser)
 
     format_icf_parser = subparsers.add_parser(
         "format-icf",
@@ -542,7 +524,7 @@ def run_cli(  # noqa: PLR0915
             fallback=exit_success,
         )
 
-    if command in ("validate-config", "analyze", "simulate", "docgen", "format-icf"):
+    if command in ("validate-config", "analyze", "simulate", "format-icf"):
         debug_requested = bool(getattr(args, "debug", False))
 
         if project_config is not None:
@@ -608,21 +590,6 @@ def run_cli(  # noqa: PLR0915
                     output_format=cli_output.resolve_output_format(args),
                     output_path=args.output,
                     use_cache=use_cache,
-                ),
-                fallback=exit_success,
-            )
-
-        if command == "docgen":
-            docgen_handler = None if command_handlers is None else command_handlers.get("docgen")
-            if docgen_handler is None:
-                raise RuntimeError("docgen handler is required")
-            return _exit_code(
-                docgen_handler(
-                    cfg,
-                    use_cache=use_cache,
-                    output_format=cli_output.resolve_output_format(args),
-                    output_dir=getattr(args, "output_dir", None),
-                    output_path=getattr(args, "output_path", None),
                 ),
                 fallback=exit_success,
             )

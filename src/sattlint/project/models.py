@@ -64,15 +64,6 @@ class SattLineProject:
                         "profiles": dict(d["analysis"]["rule_profiles"]["profiles"]),
                     },
                 },
-                "documentation": {
-                    "classifications": {
-                        cat: {
-                            k: list(cast("dict[str, list[str]]", v).get(k, []))
-                            for k in ("name_contains", "label_equals", "desc_name_contains", "desc_label_equals")
-                        }
-                        for cat, v in d["documentation"]["classifications"].items()
-                    },
-                },
             },
         )
         return cfg

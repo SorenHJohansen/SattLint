@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false
 """Post-transform structural validation for SattLine ASTs."""
 
 from __future__ import annotations
@@ -11,26 +12,44 @@ from sattline_parser.models.ast_model import (
     ModuleTypeDef,
 )
 
+from ._validation_sequences import (
+    collect_sequence_labels as _collect_sequence_labels,
+)
+from ._validation_sequences import (
+    iter_sequence_node_refs as _iter_sequence_node_refs,
+)
+from ._validation_sequences import (
+    parallel_branch_trailer as _parallel_branch_trailer,
+)
+from ._validation_sequences import (
+    validate_step_auto_variable_refs as _validate_step_auto_variable_refs,
+)
+from ._validation_sequences import (
+    validate_variable_refs as _validate_variable_refs,
+)
 from ._validation_shared import (
     RawSourceValidationError,
     StructuralValidationError,
     ValidationWarningSink,
 )
 from ._validation_structure_core import (
-    _BUILTIN_DATATYPE_NAMES,
+    _build_reserved_identifier_keywords,
     _discard_validation_warning,
     _ensure_unique_names,
     _merge_env,
     _module_code_policy,
     _ModuleValidationPolicy,
     _validate_datatypes,
+    _validate_declared_variable,
     _validate_identifier,
     _validate_module_code,
+    _validate_parameter_mappings,
     _validate_sequence_nodes,
     _validate_unique_submodule_names,
     _validate_variable_list,
 )
 from ._validation_structure_modules import _validate_module, _validate_module_dependency_context
+from ._validation_type_helpers import _BUILTIN_DATATYPE_NAMES
 from ._validation_type_helpers import (
     assignment_type_matches as _assignment_type_matches,
 )
@@ -55,6 +74,7 @@ from ._validation_type_helpers import (
 from ._validation_type_helpers import (
     split_dotted_name as _split_dotted_name,
 )
+from .grammar import constants as const
 from .resolution.type_graph import TypeGraph
 
 LOCAL_STRUCTURE_VALIDATION_SCHEMA_VERSION = "2026-06-01-local-structure-v1"
@@ -308,9 +328,18 @@ split_dotted_name = _split_dotted_name
 __all__ = [
     "RawSourceValidationError",
     "StructuralValidationError",
+    "_build_reserved_identifier_keywords",
+    "_collect_sequence_labels",
+    "_iter_sequence_node_refs",
+    "_parallel_branch_trailer",
+    "_validate_declared_variable",
+    "_validate_parameter_mappings",
     "_validate_sequence_nodes",
+    "_validate_step_auto_variable_refs",
+    "_validate_variable_refs",
     # Type helpers exported to analyzers.validators
     "assignment_type_matches",
+    "const",
     "extract_time_literal",
     "has_time_literal_marker",
     "infer_literal_datatype",

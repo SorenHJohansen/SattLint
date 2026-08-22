@@ -371,7 +371,6 @@
         }
 
         #analyze-actions-primary,
-        #documentation-actions,
         #tools-actions {
             height: auto;
             margin-top: 0;
@@ -389,7 +388,6 @@
             scrollbar-size-horizontal: 1;
         }
 
-        #workspace-host.docs-tools-split #documentation-actions,
         #workspace-host.docs-tools-split #tools-actions {
             layout: vertical;
             width: 1fr;
@@ -526,7 +524,6 @@
 
         #view-actions Button.raised-button,
         #analyze-actions-primary Button.raised-button,
-        #documentation-actions Button.raised-button,
         #tools-actions Button.raised-button,
         #interaction-actions Button.raised-button {
             width: auto;
@@ -538,7 +535,6 @@
             padding: 0 0;
         }
 
-        #workspace-host.docs-tools-split #documentation-actions Button.raised-button,
         #workspace-host.docs-tools-split #tools-actions Button.raised-button {
             width: 1fr;
             min-width: 0;

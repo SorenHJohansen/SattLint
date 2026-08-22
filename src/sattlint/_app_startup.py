@@ -35,23 +35,11 @@ def _build_interactive_override_parser() -> argparse.ArgumentParser:
     return parser
 
 
-annotate_graphics_entries_with_structure_paths = (
-    _app_startup_docs_graphics.annotate_graphics_entries_with_structure_paths
-)
 collect_graphics_layout_entries_for_target = _app_startup_docs_graphics.collect_graphics_layout_entries_for_target
-configure_documentation_scope_by_instance_path = (
-    _app_startup_docs_graphics.configure_documentation_scope_by_instance_path
-)
-configure_documentation_scope_by_moduletype = _app_startup_docs_graphics.configure_documentation_scope_by_moduletype
 discover_graphics_rule_selector_options = _app_startup_docs_graphics.discover_graphics_rule_selector_options
-documentation_menu = _app_startup_docs_graphics.documentation_menu
-get_documentation_unit_selection = _app_startup_docs_graphics.get_documentation_unit_selection
 graphics_rules_menu = _app_startup_docs_graphics.graphics_rules_menu
 pick_or_prompt_graphics_rule_selector_value = _app_startup_docs_graphics.pick_or_prompt_graphics_rule_selector_value
-preview_documentation_unit_candidates = _app_startup_docs_graphics.preview_documentation_unit_candidates
 prompt_graphics_rule_definition_with_config = _app_startup_docs_graphics.prompt_graphics_rule_definition_with_config
-reset_documentation_scope = _app_startup_docs_graphics.reset_documentation_scope
-run_generate_documentation = _app_startup_docs_graphics.run_generate_documentation
 run_graphics_rules_validation = _app_startup_docs_graphics.run_graphics_rules_validation
 
 
@@ -242,35 +230,6 @@ def run_simulate_command(
     )
 
 
-def run_docgen_command(
-    cfg: ConfigDict,
-    *,
-    use_cache: bool,
-    output_format: str = "text",
-    output_dir: str | None,
-    output_path: str | None,
-    run_docgen_command_fn: Callable[..., int],
-    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]],
-    documentation_unit_selection_fn: Callable[[], dict[str, Any]],
-    exit_success: int,
-    exit_usage_error: int,
-) -> int:
-    def _iter_projects(local_cfg: ConfigDict, local_use_cache: bool) -> Iterator[LoadedProject]:
-        return iter_loaded_projects_fn(local_cfg, use_cache=local_use_cache)
-
-    return run_docgen_command_fn(
-        cfg,
-        use_cache=use_cache,
-        output_format=output_format,
-        output_dir=output_dir,
-        output_path=output_path,
-        iter_loaded_projects_fn=_iter_projects,
-        documentation_unit_selection_fn=documentation_unit_selection_fn,
-        exit_success=exit_success,
-        exit_usage_error=exit_usage_error,
-    )
-
-
 def main(
     argv: list[str] | None,
     *,
@@ -297,7 +256,6 @@ def main(
     summarize_targets_fn: Callable[[ConfigDict], str],
     require_targets_for_menu_action_fn: Callable[[ConfigDict, str], bool],
     analysis_menu_fn: Callable[[ConfigDict], None],
-    documentation_menu_fn: Callable[[ConfigDict], bool],
     config_menu_fn: Callable[[ConfigDict], bool],
     tools_menu_fn: Callable[[ConfigDict], None],
     show_help_fn: Callable[[ConfigDict], None],

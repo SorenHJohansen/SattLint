@@ -15,6 +15,7 @@ from sattline_parser.models.ast_model import (
     ModuleTypeInstance,
     SingleModule,
 )
+
 from sattlint.analyzers.registry import (
     get_actual_cli_analyzer_keys,
     get_actual_lsp_analyzer_keys,
@@ -27,7 +28,7 @@ from sattlint.analyzers.sattline_semantics import (
     SemanticRule,
 )
 from sattlint.contracts import FindingCollection, FindingRecord
-from sattlint.devtools import corpus, pipeline, structural_reports
+from sattlint.devtools import corpus, pipeline
 from sattlint.devtools.artifact_registry import ArtifactDefinition
 from sattlint.devtools.baselines import build_analysis_diff_report
 from sattlint.devtools.finding_exports import build_pipeline_finding_collection

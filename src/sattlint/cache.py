@@ -1,4 +1,5 @@
 """Cache helpers for parsed ASTs and file manifests."""
+# pyright: reportUnusedFunction=false
 
 from __future__ import annotations
 
@@ -14,12 +15,36 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict, cast
 
+from ._cache_classes import AnalysisReportCache, ASTCache, FileASTCache, FileLookupCache
+from ._cache_manager import (
+    CacheManager,
+    build_analysis_report_cache,
+    build_ast_cache,
+    get_cache_manager,
+    prune_cache_dir,
+)
 from ._config_defaults import PROJECT_CACHE_CONFIG_KEYS
+
+__all__ = [
+    "ANALYSIS_REPORT_CACHE_VERSION",
+    "CACHE_VERSION",
+    "LOOKUP_CACHE_VERSION",
+    "ASTCache",
+    "AnalysisReportCache",
+    "CacheManager",
+    "CachePruneResult",
+    "FileASTCache",
+    "FileLookupCache",
+    "build_analysis_report_cache",
+    "build_ast_cache",
+    "get_cache_dir",
+    "get_cache_manager",
+    "prune_cache_dir",
+]
 
 CACHE_VERSION = 15  # Bump when cached AST semantics or attached graphics companion record shapes change.
 ANALYSIS_REPORT_CACHE_VERSION = 3
 LOOKUP_CACHE_VERSION = 1
-DEFAULT_LOOKUP_CACHE_FLUSH_INTERVAL = 25
 _PICKLE_CACHE_MAGIC = b"SATTLINT-PICKLE-V1\n"
 _PICKLE_HMAC_KEY_NAME = ".pickle-hmac-key"
 _PICKLE_HMAC_SIZE = 32
@@ -28,11 +53,6 @@ _PICKLE_HMAC_SIZE = 32
 class _FileLookupEntry(TypedDict):
     base_dir: str
     ext: str
-
-
-class _FileLookupCacheData(TypedDict):
-    version: int
-    entries: dict[str, _FileLookupEntry]
 
 
 @dataclass(frozen=True)

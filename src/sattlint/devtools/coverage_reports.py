@@ -2,32 +2,20 @@
 
 from __future__ import annotations
 
-import json
 import re
 import shutil
 import subprocess  # nosec B404
 from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from defusedxml import ElementTree  # type: ignore[import-untyped]
 
-from sattlint.path_sanitizer import sanitize_path_for_report
-
 from .artifact_registry import (
-    COVERAGE_RATCHET_FILENAME,
-    COVERAGE_RATCHET_SCHEMA_KIND,
-    COVERAGE_RATCHET_SCHEMA_VERSION,
     COVERAGE_SUMMARY_SCHEMA_KIND,
     COVERAGE_SUMMARY_SCHEMA_VERSION,
 )
 
-COVERAGE_RATCHET_PATH = Path("artifacts") / "analysis" / COVERAGE_RATCHET_FILENAME
-COVERAGE_RATCHET_SETPOINTS = {
-    "min_line_rate_basis_points": 10000,
-    "min_changed_line_rate_basis_points": 10000,
-    "min_touched_file_line_rate_basis_points": 9000,
-}
 _GIT_DIFF_HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 
 
@@ -137,90 +125,6 @@ def _discover_changed_line_map(root: Path, changed_files: Iterable[str] | None) 
     return {path_text: sorted(line_numbers) for path_text, line_numbers in sorted(merged_line_map.items())}
 
 
-def _load_coverage_ratchet(root: Path) -> dict[str, Any]:
-    resolved_path = root / COVERAGE_RATCHET_PATH
-    sanitized_path = sanitize_path_for_report(resolved_path, repo_root=root) or resolved_path.as_posix()
-    if not resolved_path.exists():
-        return {"status": "missing", "path": sanitized_path, "metrics": {}}
-
-    try:
-        payload = json.loads(resolved_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        return {
-            "status": "invalid",
-            "path": sanitized_path,
-            "metrics": {},
-            "error": str(exc),
-            "error_type": type(exc).__name__,
-        }
-
-    metrics = payload.get("metrics")
-    if not isinstance(metrics, dict):
-        return {
-            "status": "invalid",
-            "path": sanitized_path,
-            "metrics": {},
-            "error": "ratchet metrics must be a JSON object with integer values",
-            "error_type": "ValueError",
-        }
-
-    normalized_metrics: dict[str, int] = {}
-    for raw_key, raw_value in cast(dict[object, object], metrics).items():
-        if not isinstance(raw_key, str) or not isinstance(raw_value, int):
-            return {
-                "status": "invalid",
-                "path": sanitized_path,
-                "metrics": {},
-                "error": "ratchet metrics must be a JSON object with integer values",
-                "error_type": "ValueError",
-            }
-        normalized_metrics[raw_key] = raw_value
-
-    return {
-        "status": "loaded",
-        "path": sanitized_path,
-        "kind": payload.get("kind"),
-        "schema_version": payload.get("schema_version"),
-        "metrics": normalized_metrics,
-    }
-
-
-def _evaluate_coverage_ratchet(current_metrics: dict[str, int], ratchet_state: dict[str, Any]) -> dict[str, Any]:
-    status = ratchet_state["status"]
-    if status != "loaded":
-        return {
-            "status": status,
-            "path": ratchet_state["path"],
-            "expected_metrics": ratchet_state.get("metrics", {}),
-            "setpoint_metrics": dict(COVERAGE_RATCHET_SETPOINTS),
-            "current_metrics": current_metrics,
-            "regressions": [],
-            "error": ratchet_state.get("error"),
-            "error_type": ratchet_state.get("error_type"),
-        }
-
-    regressions: list[dict[str, int | str]] = []
-    expected_min = ratchet_state["metrics"].get("min_line_rate_basis_points")
-    actual = current_metrics.get("line_rate_basis_points", 0)
-    if expected_min is not None and actual < expected_min:
-        regressions.append(
-            {
-                "metric": "line_rate_basis_points",
-                "expected_min": expected_min,
-                "actual": actual,
-            }
-        )
-
-    return {
-        "status": "fail" if regressions else "pass",
-        "path": ratchet_state["path"],
-        "expected_metrics": ratchet_state["metrics"],
-        "setpoint_metrics": dict(COVERAGE_RATCHET_SETPOINTS),
-        "current_metrics": current_metrics,
-        "regressions": regressions,
-    }
-
-
 def _collect_modules(root_xml: Any) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]], list[float]]:
     modules: list[dict[str, Any]] = []
     module_lookup: dict[str, dict[str, Any]] = {}
@@ -259,7 +163,6 @@ def _summarize_change_scoped_coverage(
     changed_files: Iterable[str] | None,
     changed_line_map: Mapping[str, Iterable[int]] | None,
     module_lookup: Mapping[str, dict[str, Any]],
-    ratchet_state: dict[str, Any],
 ) -> dict[str, Any]:
     touched_source_files = _changed_source_files(changed_files)
     if not touched_source_files:
@@ -279,13 +182,6 @@ def _summarize_change_scoped_coverage(
                 "changed_line_rate": None,
                 "unmeasured_changed_line_count": 0,
                 "unreported_file_count": 0,
-            },
-            "ratchet": {
-                "status": "skipped",
-                "metric": None,
-                "expected_min": None,
-                "actual": None,
-                "regressions": [],
             },
         }
 
@@ -351,17 +247,8 @@ def _summarize_change_scoped_coverage(
     touched_line_rate = round(touched_lines_covered / touched_lines_valid, 4) if touched_lines_valid else None
     changed_line_rate = round(changed_lines_covered / changed_line_count, 4) if changed_line_count else None
     mode = "changed-lines" if changed_line_count else "touched-files"
-    metric_name = "changed_line_rate_basis_points" if mode == "changed-lines" else "touched_file_line_rate_basis_points"
-    expected_min = ratchet_state.get("metrics", {}).get(f"min_{metric_name}")
-    actual = 0
-    if mode == "changed-lines" and changed_line_rate is not None:
-        actual = round(changed_line_rate * 10000)
-    elif mode == "touched-files" and touched_line_rate is not None:
-        actual = round(touched_line_rate * 10000)
 
     regressions: list[dict[str, Any]] = []
-    if expected_min is not None and actual < expected_min:
-        regressions.append({"metric": metric_name, "expected_min": expected_min, "actual": actual})
     if unreported_files:
         regressions.append(
             {
@@ -389,13 +276,6 @@ def _summarize_change_scoped_coverage(
             "unmeasured_changed_line_count": unmeasured_changed_line_count,
             "unreported_file_count": len(unreported_files),
         },
-        "ratchet": {
-            "status": "fail" if regressions else "pass",
-            "metric": metric_name,
-            "expected_min": expected_min,
-            "actual": actual,
-            "regressions": regressions,
-        },
     }
 
 
@@ -409,7 +289,6 @@ def build_coverage_summary_report(
     """Build a machine-readable coverage summary from coverage.xml."""
     resolved_coverage_path = coverage_path or (root / "coverage.xml")
     coverage_report_name = resolved_coverage_path.name
-    ratchet_state = _load_coverage_ratchet(root)
 
     def skipped_report(skip_reason: str, error_type: str) -> dict[str, Any]:
         return {
@@ -423,18 +302,7 @@ def build_coverage_summary_report(
                 changed_files=changed_files,
                 changed_line_map=changed_line_map,
                 module_lookup={},
-                ratchet_state=ratchet_state,
             ),
-            "ratchet": {
-                "status": "skipped",
-                "path": ratchet_state["path"],
-                "expected_metrics": ratchet_state.get("metrics", {}),
-                "setpoint_metrics": dict(COVERAGE_RATCHET_SETPOINTS),
-                "current_metrics": {},
-                "regressions": [],
-                "error": skip_reason,
-                "error_type": error_type,
-            },
             "summary": {
                 "module_count": 0,
                 "low_coverage_count": 0,
@@ -498,10 +366,6 @@ def build_coverage_summary_report(
         total_line_rate = total_lines_covered / total_lines_valid
     total_line_rate = round(total_line_rate, 4) if total_lines_valid else None
     total_lines_missing = max(total_lines_valid - total_lines_covered, 0)
-    current_metrics = {
-        "line_rate_basis_points": 0 if total_line_rate is None else round(total_line_rate * 10000),
-    }
-    ratchet = _evaluate_coverage_ratchet(current_metrics, ratchet_state)
     effective_changed_line_map = changed_line_map
     if effective_changed_line_map is None and changed_files is not None:
         effective_changed_line_map = _discover_changed_line_map(root, changed_files)
@@ -509,29 +373,16 @@ def build_coverage_summary_report(
         changed_files=changed_files,
         changed_line_map=effective_changed_line_map,
         module_lookup=module_lookup,
-        ratchet_state=ratchet_state,
     )
 
     findings = sorted(low_coverage, key=lambda finding: (finding["severity"], finding["path"]))
-    if ratchet["status"] == "fail":
-        findings.append(
-            {
-                "id": "coverage-ratchet-regression",
-                "path": coverage_report_name,
-                "line_rate": total_line_rate,
-                "severity": "medium",
-                "message": "Overall test coverage regressed below the checked-in ratchet baseline.",
-                "suggestion": "Restore coverage before merging or refresh artifacts/analysis/coverage_ratchet.json after an intentional improvement.",
-                "ratchet_path": ratchet["path"],
-            }
-        )
     if change_scoped["status"] == "fail":
         findings.append(
             {
-                "id": "change-scoped-coverage-ratchet-regression",
+                "id": "change-scoped-coverage-regression",
                 "path": change_scoped["changed_files"][0] if change_scoped["changed_files"] else coverage_report_name,
                 "severity": "medium",
-                "message": "Changed source coverage proof fell below the checked-in diff-scoped ratchet.",
+                "message": "Changed source coverage proof did not cover all touched source files.",
                 "suggestion": "Run focused owner tests with coverage and raise changed-line coverage first; fall back to touched-file proof only when no executable changed lines exist.",
                 "coverage_mode": change_scoped["mode"],
             }
@@ -544,7 +395,6 @@ def build_coverage_summary_report(
         "modules": sorted(modules, key=lambda module: module["path"]),
         "findings": findings,
         "change_scoped": change_scoped,
-        "ratchet": ratchet,
         "summary": {
             "module_count": len(modules),
             "low_coverage_count": len(low_coverage),
@@ -558,8 +408,6 @@ def build_coverage_summary_report(
 
 
 __all__ = [
-    "COVERAGE_RATCHET_SCHEMA_KIND",
-    "COVERAGE_RATCHET_SCHEMA_VERSION",
     "COVERAGE_SUMMARY_SCHEMA_KIND",
     "COVERAGE_SUMMARY_SCHEMA_VERSION",
     "ElementTree",

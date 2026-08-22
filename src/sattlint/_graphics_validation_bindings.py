@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import re
 from dataclasses import dataclass
 from functools import lru_cache
@@ -9,7 +10,6 @@ from typing import Any, Literal, cast
 
 from lark import Tree
 from lark.exceptions import LarkError
-
 from sattline_parser.api import build_lark_parser
 from sattline_parser.models.ast_model import GraphicsBinding, SourceSpan
 from sattline_parser.transformer.sl_transformer import SLTransformer
@@ -106,68 +106,86 @@ def _unwrap_expression_root(node: object) -> object:
     return node
 
 
-def _offset_source_spans(node: object, *, line_offset: int, column_offset: int) -> None:
+def _offset_source_spans(node: object, *, line_offset: int, column_offset: int) -> object:
     seen: set[int] = set()
 
-    def visit(current: object) -> None:
-        current_id = id(current)
+    def offset_span(span: object) -> object:
+        if not isinstance(span, SourceSpan):
+            return span
+        return SourceSpan(
+            line=line_offset + span.line - 1,
+            column=(column_offset + span.column - 1) if span.line == 1 else span.column,
+        )
 
+    def visit(current: Any) -> Any:
+        current_id = id(current)
+        if current_id in seen:
+            return current
+        seen.add(current_id)
+        return _offset_source_spans_inner(current, line_offset=line_offset, column_offset=column_offset)
+
+    def _offset_source_spans_inner(current: Any, *, line_offset: int, column_offset: int) -> Any:
         if isinstance(current, dict):
-            if current_id in seen:
-                return
-            seen.add(current_id)
-            mapping = cast(dict[str, object], current)
-            span = mapping.get("span")
-            if isinstance(span, SourceSpan):
-                mapping["span"] = SourceSpan(
-                    line=line_offset + span.line - 1,
-                    column=(column_offset + span.column - 1) if span.line == 1 else span.column,
-                )
-            for value in mapping.values():
-                visit(value)
-            return
+            mapping = cast(dict[str, Any], current)
+            raw_span = mapping.get("span")
+            if isinstance(raw_span, SourceSpan):
+                mapping["span"] = offset_span(raw_span)
+            for key, value in mapping.items():
+                if key != "span":
+                    mapping[key] = visit(value)
+            return cast(Any, current)
 
         if isinstance(current, list):
-            if current_id in seen:
-                return
-            seen.add(current_id)
-            for value in cast(list[object], current):
-                visit(value)
-            return
+            for index, value in enumerate(cast(list[Any], current)):
+                cast(list[Any], current)[index] = visit(value)
+            return cast(Any, current)
 
         if isinstance(current, tuple):
-            if current_id in seen:
-                return
-            seen.add(current_id)
-            for value in cast(tuple[object, ...], current):
-                visit(value)
-            return
+            return tuple(visit(value) for value in cast(tuple[Any, ...], current))
+
+        if isinstance(current, Tree):
+            tree = cast(Tree[Any], current)
+            for index, value in enumerate(cast(list[Any], tree.children)):
+                cast(list[Any], tree.children)[index] = visit(value)
+            return cast(Any, current)
 
         children = getattr(current, "children", None)
-        if isinstance(children, list):
-            if current_id in seen:
-                return
-            seen.add(current_id)
-            for value in cast(list[object], children):
-                visit(value)
-            return
-        if isinstance(children, tuple):
-            if current_id in seen:
-                return
-            seen.add(current_id)
-            for value in cast(tuple[object, ...], children):
-                visit(value)
-            return
+        if isinstance(children, list | tuple):
+            raw_children = cast(list[Any] | tuple[Any, ...], children)
+            rebuilt_children = [visit(value) for value in raw_children]
+            if all(new is old for new, old in zip(rebuilt_children, raw_children, strict=True)):
+                return current
+            try:
+                current.children = rebuilt_children
+            except (AttributeError, TypeError):
+                return current
+            return current
+
+        if dataclasses.is_dataclass(current) and not isinstance(current, type):
+            field_map: dict[str, Any] = {}
+            changed = False
+            for field in dataclasses.fields(current):
+                value = getattr(current, field.name)
+                offset_value = offset_span(value) if field.name == "span" else visit(value)
+                if offset_value is not value:
+                    changed = True
+                field_map[field.name] = offset_value
+            if not changed:
+                return current
+            try:
+                return dataclasses.replace(current, **field_map)
+            except TypeError:
+                return current
 
         node_dict = getattr(current, "__dict__", None)
         if isinstance(node_dict, dict):
-            if current_id in seen:
-                return
-            seen.add(current_id)
-            for value in cast(dict[str, object], node_dict).values():
-                visit(value)
+            for key, value in cast(dict[str, Any], node_dict).items():
+                cast(dict[str, Any], node_dict)[key] = visit(value)
+            return current
 
-    visit(node)
+        return current
+
+    return visit(node)
 
 
 def _coerce_graphics_literal(payload: str) -> object:
@@ -227,7 +245,7 @@ def _parse_graphics_binding_match(
         parsed = _unwrap_expression_root(
             SLTransformer().transform(_graphics_expression_parser().parse(normalized_payload))
         )
-        _offset_source_spans(parsed, line_offset=line, column_offset=payload_column)
+        parsed = _offset_source_spans(parsed, line_offset=line, column_offset=payload_column)
     except (LarkError, RuntimeError, TypeError, ValueError) as exc:
         return (
             GraphicsBinding(kind=kind, raw_text=payload, value=payload, span=span),
@@ -260,3 +278,17 @@ def _parse_graphics_binding_line(
         messages.extend(binding_messages)
 
     return tuple(bindings), tuple(messages)
+
+
+__all__ = [
+    "GraphicsCompositeRecord",
+    "GraphicsValidationMessage",
+    "GraphicsValidationResult",
+    "PictureDisplayPathRow",
+    "PictureDisplayRecord",
+    "_normalize_graphics_expression",
+    "_offset_source_spans",
+    "_parse_graphics_binding_line",
+    "_parse_graphics_binding_match",
+    "_unwrap_expression_root",
+]

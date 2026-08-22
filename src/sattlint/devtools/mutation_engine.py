@@ -9,11 +9,11 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from lark.exceptions import UnexpectedInput
-
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.models.ast_model import (
     BasePicture,
 )
+
 from sattlint.contracts import FindingCollection
 
 from .artifact_registry import MUTATION_RESULTS_FILENAME, MUTATION_SCHEMA_KIND, MUTATION_SCHEMA_VERSION

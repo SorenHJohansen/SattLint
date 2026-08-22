@@ -137,7 +137,7 @@ Key insight: Parsing subsumes validation. When you parse, you don't need to vali
 
 Centralize invariants in shared code.
 
-- Common patterns → `src/sattlint/core/` or `src/sattline_parser/`
+- Common patterns → `src/sattlint/core/` or the external `sattline-parser` package
 - Don't replicate logic across analyzers
 - When in doubt, refactor to shared utility
 

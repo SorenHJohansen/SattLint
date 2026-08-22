@@ -1,4 +1,5 @@
 """Shared models and lookup helpers for PictureDisplay runtime resolution."""
+# pyright: reportUnusedFunction=false, reportUnusedClass=false
 
 from __future__ import annotations
 

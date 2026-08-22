@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import ModuleTypeDef, ModuleTypeInstance, ParameterMapping, SingleModule, Variable
+from sattline_parser.models.expressions import VarRef
 
 from ...casefolding import casefold_key
 from ...grammar import constants as const
@@ -103,13 +104,16 @@ class DataflowScopeSupportMixin:
             target_name = varname_base(mapping.target)
             if not target_name:
                 continue
-            if isinstance(mapping.source, dict) and const.KEY_VAR_NAME in mapping.source:
-                full_source = mapping.source[const.KEY_VAR_NAME]
-            elif isinstance(mapping.source, str):
-                full_source = mapping.source
+            source = cast(VarRef | dict[str, object] | str | None, mapping.source)
+            if isinstance(source, VarRef):
+                full_source = source.name
+            elif isinstance(source, dict) and const.KEY_VAR_NAME in source:
+                full_source = source[const.KEY_VAR_NAME]
+            elif isinstance(source, str):
+                full_source = source
             else:
                 continue
-            source_var, field_prefix, decl_path, decl_display_path = parent_context.resolve_variable(full_source)
+            source_var, field_prefix, decl_path, decl_display_path = parent_context.resolve_variable(str(full_source))
             if source_var is None:
                 continue
             resolved[target_name.casefold()] = (

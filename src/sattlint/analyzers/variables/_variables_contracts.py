@@ -13,6 +13,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattline_parser.models.expressions import VarRef
 
 from ..._validation_type_helpers import assignment_type_matches as _assignment_type_matches
 from ..._validation_type_helpers import is_string_simple_type as _is_string_simple_type
@@ -87,7 +88,10 @@ def _iter_anytype_typedefs(self: VariablesAnalyzer) -> list[ModuleTypeDef]:
 
 
 def _mapping_source_ref(mapping: ParameterMapping) -> object:
-    return getattr(mapping, "source", None)
+    source = getattr(mapping, "source", None)
+    if isinstance(source, VarRef):
+        return source.name
+    return source
 
 
 def _build_anytype_parameter_contract(

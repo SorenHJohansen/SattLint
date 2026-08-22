@@ -350,14 +350,6 @@ def structural_report_location_detail(finding: dict[str, Any]) -> tuple[str | No
         if entries:
             first_entry = entries[0]
             return first_entry.get("path"), f"calls {first_entry.get('target')} at line {first_entry.get('line')}"
-    if finding_id == "structural-budget-ratchet-regression":
-        regressions = finding.get("regressions", [])
-        if regressions:
-            first_regression = regressions[0]
-            return None, (
-                f"{first_regression.get('metric')}: {first_regression.get('actual')} > "
-                f"{first_regression.get('expected_max')}"
-            )
     return None, None
 
 

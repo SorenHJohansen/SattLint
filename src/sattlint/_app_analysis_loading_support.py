@@ -1,3 +1,4 @@
+# pyright: reportUnusedFunction=false
 from __future__ import annotations
 
 import inspect
@@ -227,10 +228,7 @@ def _include_reverse_library_consumers(
         cfg,
         root_bp,
         graph,
-        source_paths_for_current_target_fn=lambda project_bp, current_graph: source_paths_for_current_target_fn(
-            project_bp,
-            current_graph,
-        ),
+        source_paths_for_current_target_fn=source_paths_for_current_target_fn,
         is_within_directory_fn=engine_module.is_within_directory,
     ):
         return

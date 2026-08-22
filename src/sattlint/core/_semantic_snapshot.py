@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+from ..call_signatures import CallSignatureOccurrence
 from ..resolution.access_graph import AccessEvent
 from ..resolution.common import resolve_module_by_strict_path
 from ._semantic_helpers import (
@@ -16,12 +17,16 @@ from ._semantic_helpers import (
 )
 from ._semantic_snapshot_types import (
     CompletionItem,
+    ReferenceOccurrence,
+    SemanticAnalysisArtifacts,
+    SemanticAnalysisProvider,
     SymbolDefinition,
     SymbolReference,
 )
 from ._semantic_snapshot_types import (
     SemanticSnapshot as _SemanticSnapshotBase,
 )
+from .diagnostics import DroppedDiagnosticIssue, SemanticDiagnostic
 from .safety_paths import (
     DEFAULT_SAFETY_SIGNAL_KEYWORDS,
     SafetyPathTrace,
@@ -30,6 +35,16 @@ from .safety_paths import (
     build_symbol_accesses,
 )
 from .taint_paths import TaintPathTrace, build_taint_path_traces
+
+__all__ = [
+    "CompletionItem",
+    "ReferenceOccurrence",
+    "SemanticAnalysisArtifacts",
+    "SemanticAnalysisProvider",
+    "SemanticSnapshot",
+    "SymbolDefinition",
+    "SymbolReference",
+]
 
 
 class SemanticSnapshot(_SemanticSnapshotBase):
