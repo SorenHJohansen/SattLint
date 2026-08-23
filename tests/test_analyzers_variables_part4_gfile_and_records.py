@@ -1,5 +1,4 @@
 # pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportOptionalMemberAccess=false, reportUnusedImport=false
-# ruff: noqa: F403, F405
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -169,7 +168,6 @@ def test_gfile_var_and_expr_reads_count_as_used_for_unused_analysis():
             other_lib_dirs=[],
             abb_lib_dir=fixture.parent,
             mode=CodeMode.DRAFT,
-            scan_root_only=True,
             debug=False,
             use_file_ast_cache=False,
         )
@@ -232,7 +230,6 @@ ENDDEF (*BasePicture*);
             other_lib_dirs=[],
             abb_lib_dir=tmp_path,
             mode=CodeMode.DRAFT,
-            scan_root_only=True,
             debug=False,
             use_file_ast_cache=False,
         )

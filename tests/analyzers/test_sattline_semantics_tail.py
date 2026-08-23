@@ -19,6 +19,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+
 from sattlint import constants as const
 from sattlint.analyzers.registry import get_default_analyzers, get_enabled_analyzers, get_selectable_analyzers
 from sattlint.analyzers.sattline_semantics import analyze_sattline_semantics, get_sattline_semantic_rule_groups

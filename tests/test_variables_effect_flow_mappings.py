@@ -11,6 +11,7 @@ from sattline_parser.models.ast_model import (
     Simple_DataType,
     Variable,
 )
+
 from sattlint import constants as const
 from sattlint.resolution import AccessKind
 from tests.test_variables_effect_flow import _build_tracker, _context, _hdr, _string_source, _varref

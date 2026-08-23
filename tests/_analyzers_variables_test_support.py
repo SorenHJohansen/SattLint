@@ -28,6 +28,7 @@ from sattline_parser.models.ast_model import (
     SourceSpan,
     Variable,
 )
+
 from sattlint import constants as const
 from sattlint.analyzers.shadowing import analyze_shadowing
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer

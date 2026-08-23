@@ -9,8 +9,8 @@ from typing import Any, cast
 
 import pytest
 from lark.exceptions import VisitError
-
 from sattline_parser.models.ast_model import ModuleDef, ModuleHeader
+
 from sattlint import engine
 
 

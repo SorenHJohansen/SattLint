@@ -8,6 +8,7 @@ from sattline_parser.models.ast_model import (
     Simple_DataType,
     Variable,
 )
+
 from sattlint.string_inference import ExactStringInferenceEngine
 
 

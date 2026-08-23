@@ -5,7 +5,6 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-
 from sattline_parser.models.ast_model import (
     FloatLiteral,
     FrameModule,
@@ -15,6 +14,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+
 from sattlint.analyzers import _dependency_usage_scope_support as dependency_scope_module
 from sattlint.analyzers import dataflow as dataflow_module
 from sattlint.analyzers.dataflow import DataflowAnalyzer

@@ -8,6 +8,7 @@ from sattline_parser.models.ast_model import (
     Simple_DataType,
     Variable,
 )
+
 from sattlint import constants as const
 from sattlint.analyzers.config_drift import analyze_config_drift
 from sattlint.analyzers.registry import get_default_analyzers

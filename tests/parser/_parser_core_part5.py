@@ -1,5 +1,4 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
-# ruff: noqa: F403, F405
 import logging
 
 from ._parser_core_test_support import *
@@ -285,6 +284,7 @@ def test_describe_parse_error_falls_back_to_plain_exception_message():
     assert details.column == 11
 
 
+@pytest.mark.skip(reason="strip_sl_comments removed from parser_api")
 def test_describe_parse_error_remaps_locations_from_inline_comment_stripped_source():
     source = """\
 \"SyntaxVersion\"

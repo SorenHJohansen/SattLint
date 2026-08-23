@@ -69,6 +69,7 @@
 This repository denies ALL `git` commands by permission (`git`, `git *`, `git*`), plus `sudo`, `rm`, and `pacman`/`yay`. If any command is denied, the denial is the final answer — the action should NEVER be performed by the AI. The user will run the command themselves if it is needed.
 
 You MUST NOT:
+
 - Find an alternate way to run the same operation (no `python -c` wrappers, no `subprocess` calls, no shell redirects that emulate a blocked command)
 - Use `git show HEAD:<path> > <path>`, `git archive`, `git diff | apply`, or any other technique as a substitute for a blocked `git checkout` / `git restore` / `git reset` / `git stash`
 - Reconstruct or emulate git operations through any other tool
@@ -76,6 +77,7 @@ You MUST NOT:
 - Invent creative "safe" variants of a denied command
 
 Instead:
+
 1. **STOP** the task immediately.
 2. Give the user the exact command to run themselves in their terminal.
 3. Let the user execute it and report back. Never continue the operation by other means.

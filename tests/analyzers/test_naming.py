@@ -8,6 +8,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+
 from sattlint.analyzers.naming import analyze_naming_consistency, get_configured_naming_rules
 from sattlint.analyzers.registry import get_default_analyzers
 

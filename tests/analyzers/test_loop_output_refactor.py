@@ -18,6 +18,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+
 from sattlint import constants as const
 from sattlint.analyzers import loop_output_refactor as loop_output_module
 from sattlint.analyzers.loop_output_refactor import analyze_loop_output_refactor

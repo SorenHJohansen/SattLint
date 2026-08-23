@@ -9,8 +9,8 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-
 from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef, Simple_DataType, SingleModule, Variable
+
 from sattlint.analyzers import variables as variables_module
 from sattlint.analyzers.variables import IssueKind
 from sattlint.analyzers.variables import _variables_execution as variables_execution_module

@@ -15,6 +15,7 @@ from sattline_parser.models.ast_model import (
     SourceSpan,
     Variable,
 )
+
 from sattlint import constants as const
 from sattlint.editor_api import (
     build_source_snapshot_from_basepicture,

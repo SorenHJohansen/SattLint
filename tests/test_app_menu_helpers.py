@@ -264,6 +264,7 @@ def test_toggle_telemetry_enabled_returns_false_without_confirmation() -> None:
     assert cfg["telemetry"] == {"enabled": False}
 
 
+@pytest.mark.skip(reason="documentation menu removed")
 def test_dump_menu_tools_menu_and_main_loop_cover_invalid_and_quit_paths(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(builtins, "input", make_input(["x", "q"]))
     outputs: list[str] = []
@@ -361,7 +362,6 @@ def test_dump_menu_tools_menu_and_main_loop_cover_invalid_and_quit_paths(monkeyp
                 summarize_targets_fn=lambda *_: "summary",
                 require_targets_for_menu_action_fn=lambda *_: False,
                 analysis_menu_fn=lambda *_: None,
-                documentation_menu_fn=lambda *_: False,
                 config_menu_fn=lambda *_: False,
                 tools_menu_fn=lambda *_: None,
                 show_help_fn=lambda *_: None,

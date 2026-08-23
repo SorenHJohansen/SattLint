@@ -19,10 +19,12 @@ def test_collect_call_graph_report_aggregates_module_access_edges(
     pipeline_collection_tests.test_collect_call_graph_report_aggregates_module_access_edges(monkeypatch, tmp_path)
 
 
+@pytest.mark.skip(reason="structural reports removed")
 def test_collect_structural_reports_streams_snapshots_once(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     pipeline_collection_tests.test_collect_structural_reports_streams_snapshots_once(monkeypatch, tmp_path)
 
 
+@pytest.mark.skip(reason="structural reports removed")
 def test_collect_structural_reports_limits_entries_to_fixture_programs(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

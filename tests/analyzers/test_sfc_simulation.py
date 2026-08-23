@@ -14,6 +14,7 @@ from sattline_parser.models.ast_model import (
     Simple_DataType,
     Variable,
 )
+
 from sattlint import constants as const
 from sattlint.simulation import simulate_module
 

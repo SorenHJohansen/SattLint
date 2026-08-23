@@ -1,4 +1,5 @@
 from sattline_parser.models.ast_model import BasePicture, Equation, ModuleCode, ModuleHeader, Simple_DataType, Variable
+
 from sattlint import constants as const
 from sattlint.analyzers.registry import get_actual_cli_analyzer_keys, get_default_analyzers
 from sattlint.analyzers.resource_usage import analyze_resource_usage

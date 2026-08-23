@@ -6,11 +6,11 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-
 from sattline_parser.models.ast_model import (
     Simple_DataType,
     Variable,
 )
+
 from sattlint.analyzers import variables as variables_module
 from sattlint.analyzers.shared import variable_utils as variable_utils_module
 from sattlint.analyzers.variables import IssueKind, VariableIssue, VariablesAnalyzer

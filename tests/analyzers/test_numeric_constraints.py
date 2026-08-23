@@ -8,6 +8,7 @@ from sattline_parser.models.ast_model import (
     Simple_DataType,
     Variable,
 )
+
 from sattlint import constants as const
 from sattlint.analyzers.numeric_constraints import analyze_numeric_constraints
 from sattlint.analyzers.registry import get_default_analyzers

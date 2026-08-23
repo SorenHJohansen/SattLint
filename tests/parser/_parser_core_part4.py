@@ -1,5 +1,4 @@
 # pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false
-# ruff: noqa: F403, F405
 import shutil
 import subprocess
 

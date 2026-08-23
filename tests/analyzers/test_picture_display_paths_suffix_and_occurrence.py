@@ -8,6 +8,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     SourceSpan,
 )
+
 from sattlint.graphics_validation import PictureDisplayPathRow, PictureDisplayRecord
 from sattlint.picture_display_paths import (
     PictureDisplayOccurrence,

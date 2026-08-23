@@ -3,6 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from sattline_parser.models.ast_model import BasePicture, Equation, ModuleCode, ModuleHeader, Simple_DataType, Variable
+
 from sattlint import constants as const
 from sattlint.analyzers import registry as registry_module
 from sattlint.analyzers import sattline_semantics as semantics_module
@@ -180,6 +181,7 @@ def test_analyzer_order_independence():
 
 def test_transform_invariant_deterministic():
     from sattline_parser import parse_source_file as parser_core_parse_source_file  # noqa: PLC0415
+
     from sattlint.tracing import detect_transform_invariant_violations as check  # noqa: PLC0415
 
     fixture = Path(__file__).resolve().parent.parent / "fixtures" / "sample_sattline_files" / "LinterTestProgram.s"

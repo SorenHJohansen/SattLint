@@ -8,6 +8,7 @@ from sattline_parser.models.ast_model import (
     SFCCodeBlocks,
     SFCStep,
 )
+
 from sattlint import constants as const
 from sattlint.analyzers.registry import get_default_analyzers
 from sattlint.analyzers.scan_loop_resource_usage import analyze_scan_loop_resource_usage

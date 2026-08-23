@@ -1,4 +1,4 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false, reportAttributeAccessIssue=false
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false, reportAttributeAccessIssue=false, reportPrivateUsage=false
 
 """Tests for app analysis project loading and AST cache behavior."""
 
@@ -9,8 +9,6 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-
-import sattlint.cache as cache_mod
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -20,6 +18,8 @@ from sattline_parser.models.ast_model import (
     Simple_DataType,
     Variable,
 )
+
+import sattlint.cache as cache_mod
 from sattlint import app_analysis
 from sattlint import constants as const
 from sattlint.analyzers.variables import IssueKind, analyze_variables
@@ -1365,7 +1365,7 @@ def test_load_project_library_target_resolves_origin_and_finds_unused(tmp_path):
         selected_issue_kinds={IssueKind.UNUSED},
     )
 
-    unused_names = {v.name for issue in report.unused for v in [issue.variable]}
+    unused_names = {v.name for issue in report.unused for v in [issue.variable] if v is not None}
     assert "UnusedLocal" in unused_names, f"Expected UnusedLocal in unused variables, got: {unused_names}"
     assert "UsedLocal" not in unused_names
     assert "DepLocal" not in unused_names
