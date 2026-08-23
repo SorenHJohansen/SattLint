@@ -4,7 +4,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
 from sattline_parser.models.ast_model import (
     BasePicture,
     Equation,
@@ -19,6 +18,7 @@ from sattline_parser.models.ast_model import (
     SourceSpan,
     Variable,
 )
+
 from sattlint import constants as const
 from sattlint import semantic_analysis as semantic_analysis_module
 from sattlint.core import semantic as semantic_core_module

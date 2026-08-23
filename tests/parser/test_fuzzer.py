@@ -4,9 +4,10 @@ from __future__ import annotations
 import json
 
 import sattline_parser.fuzz_harness as fuzz_harness
-import sattlint.devtools.sandbox.fuzzer as fuzzer
 from sattline_parser.fuzz_harness import FuzzResult, TimeoutError
 from sattline_parser.models.ast_model import BasePicture, ModuleHeader
+
+import sattlint.devtools.sandbox.fuzzer as fuzzer
 
 
 def _result(

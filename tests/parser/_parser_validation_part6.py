@@ -6,7 +6,6 @@ from lark import Tree
 from sattlint import _validation_expression as validation_expression_module
 from sattlint import _validation_type_helpers as type_helpers_module
 
-# ruff: noqa: F403, F405
 from ._parser_validation_test_support import *
 
 

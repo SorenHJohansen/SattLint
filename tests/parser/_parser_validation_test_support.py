@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
-
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser import strip_sl_comments
 from sattline_parser.models.ast_model import (
@@ -26,6 +25,7 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 from sattline_parser.transformer.sl_transformer import SLTransformer
+
 from sattlint import validation as validation_module
 from sattlint.engine import (
     StructuralValidationError,

@@ -8,8 +8,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
 from sattline_parser.models.ast_model import FloatLiteral, IntLiteral, SourceSpan
+
 from sattlint.cache import (
     ANALYSIS_REPORT_CACHE_VERSION,
     CACHE_VERSION,

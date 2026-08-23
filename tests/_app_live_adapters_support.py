@@ -8,8 +8,8 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-
 from sattline_parser.models.ast_model import BasePicture
+
 from sattlint import (
     _app_analysis_from_app,
     _app_docs_from_app,

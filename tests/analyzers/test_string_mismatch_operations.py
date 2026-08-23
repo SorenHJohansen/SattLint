@@ -10,6 +10,7 @@ from sattline_parser.models.ast_model import (
     Simple_DataType,
     Variable,
 )
+
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
 from sattlint.engine import parse_source_file
 

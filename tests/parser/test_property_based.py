@@ -7,8 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
 from sattline_parser.fuzz_harness import TimeoutError
+
 from sattlint.devtools import parser_properties, property_tests
 from sattlint.devtools.parser_properties import (
     assert_parser_deterministic,

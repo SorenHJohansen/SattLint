@@ -12,6 +12,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+
 from sattlint import constants as const
 from sattlint.analyzers import alarm_integrity as alarm_integrity_module
 from sattlint.analyzers.alarm_integrity import analyze_alarm_integrity

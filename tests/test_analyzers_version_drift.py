@@ -10,6 +10,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+
 from sattlint import constants as const
 from sattlint.analyzers.modules import analyze_version_drift
 from sattlint.analyzers.registry import get_default_analyzers

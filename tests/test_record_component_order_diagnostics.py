@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import Simple_DataType, SourceSpan, Variable
+
 from sattlint.core.diagnostics import project_variable_issues
 from sattlint.reporting.variables_report import IssueKind, VariableIssue
 

@@ -13,6 +13,7 @@ from sattline_parser.models.ast_model import (
     Simple_DataType,
     Variable,
 )
+
 from sattlint import constants as const
 from sattlint.analyzers import interface_contracts as interface_contracts_module
 from sattlint.analyzers.interface_contracts import analyze_interface_contracts

@@ -6,7 +6,6 @@ from __future__ import annotations
 import pathlib
 
 import pytest
-
 from sattline_parser.fuzz_harness import (
     FuzzResult,
     _is_expected_parse_error,
@@ -109,6 +108,7 @@ class TestCollectCorpusInputs:
         paths = [p for p, _ in inputs]
         assert any("valid" in p for p in paths)
 
+    @pytest.mark.skip(reason="No ICF files remain in the corpus fixtures")
     def test_collects_icf_files(self):
         inputs = collect_corpus_inputs(CORPUS_DIR, include_valid=True, max_files=100)
         paths = [p for p, _ in inputs]

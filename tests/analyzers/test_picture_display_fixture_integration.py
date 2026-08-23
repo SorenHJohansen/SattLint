@@ -10,6 +10,7 @@ from sattline_parser.models.ast_model import (
     SourceSpan,
     Variable,
 )
+
 from sattlint.analyzers.picture_display_paths import analyze_picture_display_paths
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
 from sattlint.engine import (

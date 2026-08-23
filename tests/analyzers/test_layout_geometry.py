@@ -10,6 +10,7 @@ from sattline_parser.models.ast_model import (
     ModuleTypeDef,
     SingleModule,
 )
+
 from sattlint.analyzers import layout_geometry as layout_geometry_module
 from sattlint.analyzers.layout_geometry import collect_layout_overlap_issues
 from sattlint.reporting.variables_report import IssueKind

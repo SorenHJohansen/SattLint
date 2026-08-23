@@ -4,15 +4,14 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
-from sattline_parser.models.ast_model import BasePicture
+import pytest
+
 from sattlint import _app_startup, _app_startup_from_app, app
 from sattlint import config as config_module
-from sattlint.models.project_graph import ProjectGraph
 
 
 def test_run_validate_config_command_delegates_to_startup_core(monkeypatch):
@@ -164,6 +163,7 @@ def test_run_analyze_command_allows_opt_in_analyzer_keys(monkeypatch) -> None:
     assert "timing" in cast(list[str], seen["analyzer_keys"])
 
 
+@pytest.mark.skip(reason="docgen removed")
 def test_run_docgen_command_delegates_to_cli_owner(monkeypatch):
     seen: dict[str, object] = {}
 
@@ -197,7 +197,7 @@ def test_run_docgen_command_delegates_to_cli_owner(monkeypatch):
     )
 
     cfg = {"debug": False}
-    result = app.run_docgen_command(
+    result = app.run_docgen_command(  # type: ignore[reportAttributeAccessIssue]
         cfg,
         use_cache=False,
         output_format="json",
@@ -212,7 +212,7 @@ def test_run_docgen_command_delegates_to_cli_owner(monkeypatch):
     assert seen["output_dir"] == "docs-out"
     assert seen["output_path"] is None
     assert callable(seen["iter_loaded_projects_fn"])
-    assert seen["documentation_unit_selection_fn"] is app._get_documentation_unit_selection
+    assert seen["documentation_unit_selection_fn"] is app._get_documentation_unit_selection  # type: ignore[reportAttributeAccessIssue]
     assert seen["exit_success"] == app.EXIT_SUCCESS
     assert seen["exit_usage_error"] == app.EXIT_USAGE_ERROR
 
@@ -282,47 +282,9 @@ def test_cli_owner_run_cache_prune_command_prints_json_output(capsys):
     }
 
 
+@pytest.mark.skip(reason="docgen removed")
 def test_cli_owner_run_docgen_command_prints_json_output(monkeypatch, capsys):
-    monkeypatch.setattr(
-        app.app_cli_commands_module,
-        "generate_docx",
-        lambda _bp, out_name, documentation_config, unavailable_libraries: None,
-    )
-
-    cfg = {"documentation": {"classifications": {}}}
-    target_bp: BasePicture = cast(Any, object())
-    target_graph = ProjectGraph()
-    target_graph.unavailable_libraries = {"ControlLib"}
-    projects: list[tuple[str, BasePicture, ProjectGraph]] = [("TargetA", target_bp, target_graph)]
-
-    def iter_projects(_cfg: dict[Any, Any], _use_cache: bool) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
-        return iter(projects)
-
-    exit_code = app.app_cli_commands_module.run_docgen_command(
-        cfg,
-        use_cache=True,
-        output_format="json",
-        output_dir=None,
-        output_path="custom.docx",
-        iter_loaded_projects_fn=cast(Any, iter_projects),
-        documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
-        exit_success=app.EXIT_SUCCESS,
-        exit_usage_error=app.EXIT_USAGE_ERROR,
-    )
-
-    out = capsys.readouterr().out
-    assert exit_code == app.EXIT_SUCCESS
-    assert json.loads(out) == {
-        "status": "ok",
-        "generated_count": 1,
-        "generated": [
-            {
-                "target_name": "TargetA",
-                "output_path": "custom.docx",
-                "unavailable_libraries": ["ControlLib"],
-            }
-        ],
-    }
+    pytest.skip("docgen removed")
 
 
 def test_run_telemetry_summary_command_delegates_to_cli_owner(monkeypatch):
@@ -439,27 +401,9 @@ def test_run_simulate_command_delegates_to_cli_owner(monkeypatch):
     assert seen["exit_usage_error"] == app.EXIT_USAGE_ERROR
 
 
+@pytest.mark.skip(reason="docgen removed")
 def test_cli_owner_run_docgen_command_rejects_empty_project_set(capsys):
-    cfg = {"documentation": {}}
-    empty_projects: tuple[tuple[str, BasePicture, ProjectGraph], ...] = ()
-
-    def iter_projects(_cfg: dict[Any, Any], _use_cache: bool) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
-        return iter(empty_projects)
-
-    exit_code = cast(Any, app.app_cli_commands_module.run_docgen_command)(
-        cfg,
-        use_cache=True,
-        output_dir=None,
-        output_path=None,
-        iter_loaded_projects_fn=iter_projects,
-        documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
-        exit_success=app.EXIT_SUCCESS,
-        exit_usage_error=app.EXIT_USAGE_ERROR,
-    )
-
-    out = capsys.readouterr().out
-    assert exit_code == app.EXIT_USAGE_ERROR
-    assert "No analyzed targets configured" in out
+    pytest.skip("docgen removed")
 
 
 def test_startup_run_validate_config_command_warns_on_default_config(capsys):
@@ -760,241 +704,36 @@ def test_cli_owner_run_analyze_command_prints_json_output(capsys) -> None:
     }
 
 
+@pytest.mark.skip(reason="docgen removed")
 def test_cli_owner_run_docgen_command_rejects_output_path_for_multiple_targets(capsys):
-    cfg = {"documentation": {}}
-    target_a_bp: BasePicture = cast(Any, object())
-    target_a_graph = ProjectGraph()
-    target_b_bp: BasePicture = cast(Any, object())
-    target_b_graph = ProjectGraph()
-    projects: list[tuple[str, BasePicture, ProjectGraph]] = [
-        ("TargetA", target_a_bp, target_a_graph),
-        ("TargetB", target_b_bp, target_b_graph),
-    ]
-
-    def iter_projects(_cfg: dict[Any, Any], _use_cache: bool) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
-        return iter(projects)
-
-    exit_code = cast(Any, app.app_cli_commands_module.run_docgen_command)(
-        cfg,
-        use_cache=True,
-        output_dir=None,
-        output_path="single.docx",
-        iter_loaded_projects_fn=cast(Any, iter_projects),
-        documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
-        exit_success=app.EXIT_SUCCESS,
-        exit_usage_error=app.EXIT_USAGE_ERROR,
-    )
-
-    out = capsys.readouterr().out
-    assert exit_code == app.EXIT_USAGE_ERROR
-    assert "output_path requires exactly one configured target" in out
+    pytest.skip("docgen removed")
 
 
+@pytest.mark.skip(reason="docgen removed")
 def test_cli_owner_run_docgen_command_uses_explicit_output_path(monkeypatch):
-    generated: list[str] = []
-
-    monkeypatch.setattr(
-        app.app_cli_commands_module,
-        "generate_docx",
-        lambda _bp, out_name, documentation_config, unavailable_libraries: generated.append(out_name),
-    )
-
-    cfg = {"documentation": {"classifications": {}}}
-    target_bp: BasePicture = cast(Any, object())
-    target_graph = ProjectGraph()
-    projects: list[tuple[str, BasePicture, ProjectGraph]] = [("TargetA", target_bp, target_graph)]
-
-    def iter_projects(_cfg: dict[Any, Any], _use_cache: bool) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
-        return iter(projects)
-
-    exit_code = app.app_cli_commands_module.run_docgen_command(
-        cfg,
-        use_cache=True,
-        output_dir=None,
-        output_path="custom.docx",
-        iter_loaded_projects_fn=cast(Any, iter_projects),
-        documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
-        exit_success=app.EXIT_SUCCESS,
-        exit_usage_error=app.EXIT_USAGE_ERROR,
-    )
-
-    assert exit_code == app.EXIT_SUCCESS
-    assert generated == ["custom.docx"]
+    pytest.skip("docgen removed")
 
 
+@pytest.mark.skip(reason="docgen removed")
 def test_cli_owner_run_docgen_command_creates_parent_dirs_for_output_path(tmp_path, monkeypatch):
-    generated: list[str] = []
-
-    monkeypatch.setattr(
-        app.app_cli_commands_module,
-        "generate_docx",
-        lambda _bp, out_name, documentation_config, unavailable_libraries: generated.append(out_name),
-    )
-
-    cfg = {"documentation": {"classifications": {}}}
-    target_bp: BasePicture = cast(Any, object())
-    target_graph = ProjectGraph()
-    output_path = tmp_path / "nested" / "docs" / "custom.docx"
-    projects: list[tuple[str, BasePicture, ProjectGraph]] = [("TargetA", target_bp, target_graph)]
-
-    def iter_projects(_cfg: dict[Any, Any], _use_cache: bool) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
-        return iter(projects)
-
-    exit_code = app.app_cli_commands_module.run_docgen_command(
-        cfg,
-        use_cache=True,
-        output_dir=None,
-        output_path=str(output_path),
-        iter_loaded_projects_fn=cast(Any, iter_projects),
-        documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
-        exit_success=app.EXIT_SUCCESS,
-        exit_usage_error=app.EXIT_USAGE_ERROR,
-    )
-
-    assert exit_code == app.EXIT_SUCCESS
-    assert output_path.parent.exists()
-    assert generated == [str(output_path)]
+    pytest.skip("docgen removed")
 
 
+@pytest.mark.skip(reason="docgen removed")
 def test_cli_owner_run_docgen_command_writes_output_dir_file(tmp_path, monkeypatch):
-    generated: list[tuple[str, set[str]]] = []
-
-    monkeypatch.setattr(
-        app.app_cli_commands_module,
-        "generate_docx",
-        lambda _bp, out_name, documentation_config, unavailable_libraries: generated.append(
-            (out_name, set(unavailable_libraries))
-        ),
-    )
-
-    cfg = {"documentation": {"classifications": {}}}
-    output_dir = tmp_path / "docs"
-    target_bp: BasePicture = cast(Any, object())
-    target_graph = ProjectGraph()
-    target_graph.unavailable_libraries = {"ControlLib"}
-    projects: list[tuple[str, BasePicture, ProjectGraph]] = [("TargetA", target_bp, target_graph)]
-
-    def iter_projects(_cfg: dict[Any, Any], _use_cache: bool) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
-        return iter(projects)
-
-    exit_code = app.app_cli_commands_module.run_docgen_command(
-        cfg,
-        use_cache=True,
-        output_dir=str(output_dir),
-        output_path=None,
-        iter_loaded_projects_fn=cast(Any, iter_projects),
-        documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
-        exit_success=app.EXIT_SUCCESS,
-        exit_usage_error=app.EXIT_USAGE_ERROR,
-    )
-
-    assert exit_code == app.EXIT_SUCCESS
-    assert output_dir.exists()
-    assert generated == [(str(output_dir / "TargetA_FS.docx"), {"ControlLib"})]
+    pytest.skip("docgen removed")
 
 
 def test_cli_owner_run_docgen_command_uses_default_filename(monkeypatch):
-    generated: list[str] = []
-
-    monkeypatch.setattr(
-        app.app_cli_commands_module,
-        "generate_docx",
-        lambda _bp, out_name, documentation_config, unavailable_libraries: generated.append(out_name),
-    )
-
-    cfg = {"documentation": {"classifications": {}}}
-    target_bp: BasePicture = cast(Any, object())
-    target_graph = ProjectGraph()
-    projects: list[tuple[str, BasePicture, ProjectGraph]] = [("TargetA", target_bp, target_graph)]
-
-    def iter_projects(_cfg: dict[Any, Any], _use_cache: bool) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
-        return iter(projects)
-
-    exit_code = app.app_cli_commands_module.run_docgen_command(
-        cfg,
-        use_cache=True,
-        output_dir=None,
-        output_path=None,
-        iter_loaded_projects_fn=cast(Any, iter_projects),
-        documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
-        exit_success=app.EXIT_SUCCESS,
-        exit_usage_error=app.EXIT_USAGE_ERROR,
-    )
-
-    assert exit_code == app.EXIT_SUCCESS
-    assert generated == ["TargetA_FS.docx"]
+    pytest.skip("docgen removed")
 
 
 def test_cli_owner_run_docgen_command_updates_live_status(monkeypatch):
-    updates: list[str] = []
-
-    class FakeLiveStatusLine:
-        def __enter__(self):
-            return updates.append
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-    monkeypatch.setattr(app.app_cli_commands_module.console_module, "live_status_line", lambda: FakeLiveStatusLine())
-    monkeypatch.setattr(
-        app.app_cli_commands_module,
-        "generate_docx",
-        lambda _bp, out_name, documentation_config, unavailable_libraries: None,
-    )
-
-    cfg = {"documentation": {"classifications": {}}}
-    target_bp: BasePicture = cast(Any, object())
-    target_graph = ProjectGraph()
-    projects: list[tuple[str, BasePicture, ProjectGraph]] = [("TargetA", target_bp, target_graph)]
-
-    def iter_projects(_cfg: dict[Any, Any], _use_cache: bool) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
-        return iter(projects)
-
-    exit_code = app.app_cli_commands_module.run_docgen_command(
-        cfg,
-        use_cache=True,
-        output_dir=None,
-        output_path=None,
-        iter_loaded_projects_fn=cast(Any, iter_projects),
-        documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
-        exit_success=app.EXIT_SUCCESS,
-        exit_usage_error=app.EXIT_USAGE_ERROR,
-    )
-
-    assert exit_code == app.EXIT_SUCCESS
-    assert updates == ["Generating documentation for TargetA"]
+    pytest.skip("docgen removed")
 
 
 def test_cli_owner_run_docgen_command_reports_write_errors(capsys, tmp_path, monkeypatch):
-    def fail_docgen(_bp, out_name, documentation_config, unavailable_libraries):
-        raise PermissionError(f"permission denied: {out_name}")
-
-    monkeypatch.setattr(app.app_cli_commands_module, "generate_docx", fail_docgen)
-
-    cfg = {"documentation": {"classifications": {}}}
-    target_bp: BasePicture = cast(Any, object())
-    target_graph = ProjectGraph()
-    output_path = tmp_path / "protected" / "custom.docx"
-    projects: list[tuple[str, BasePicture, ProjectGraph]] = [("TargetA", target_bp, target_graph)]
-
-    def iter_projects(_cfg: dict[Any, Any], _use_cache: bool) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
-        return iter(projects)
-
-    exit_code = app.app_cli_commands_module.run_docgen_command(
-        cfg,
-        use_cache=True,
-        output_dir=None,
-        output_path=str(output_path),
-        iter_loaded_projects_fn=cast(Any, iter_projects),
-        documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
-        exit_success=app.EXIT_SUCCESS,
-        exit_usage_error=app.EXIT_USAGE_ERROR,
-    )
-
-    out = capsys.readouterr().out
-    assert exit_code == app.EXIT_USAGE_ERROR
-    assert f"Documentation generation failed for {output_path}" in out
-    assert "permission denied" in out
+    pytest.skip("docgen removed")
 
 
 def test_cli_owner_run_simulate_command_writes_json_output(tmp_path):

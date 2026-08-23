@@ -8,7 +8,6 @@ from typing import Any
 
 import pytest
 from pytest import CaptureFixture, MonkeyPatch
-
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -21,6 +20,7 @@ from sattline_parser.models.ast_model import (
     SourceSpan,
     Variable,
 )
+
 from sattlint.devtools import source_diff_report
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "source_diff"

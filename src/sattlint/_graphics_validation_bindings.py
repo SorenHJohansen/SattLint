@@ -133,12 +133,12 @@ def _offset_source_spans(node: object, *, line_offset: int, column_offset: int) 
             for key, value in mapping.items():
                 if key != "span":
                     mapping[key] = visit(value)
-            return cast(Any, current)
+            return current  # pyright: ignore[reportUnknownVariableType]
 
         if isinstance(current, list):
             for index, value in enumerate(cast(list[Any], current)):
                 cast(list[Any], current)[index] = visit(value)
-            return cast(Any, current)
+            return current  # pyright: ignore[reportUnknownVariableType]
 
         if isinstance(current, tuple):
             return tuple(visit(value) for value in cast(tuple[Any, ...], current))
@@ -147,7 +147,7 @@ def _offset_source_spans(node: object, *, line_offset: int, column_offset: int) 
             tree = cast(Tree[Any], current)
             for index, value in enumerate(cast(list[Any], tree.children)):
                 cast(list[Any], tree.children)[index] = visit(value)
-            return cast(Any, current)
+            return current  # pyright: ignore[reportUnknownVariableType]
 
         children = getattr(current, "children", None)
         if isinstance(children, list | tuple):

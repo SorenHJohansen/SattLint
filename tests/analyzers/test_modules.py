@@ -2,7 +2,6 @@ import logging
 from typing import Any, cast
 
 import pytest
-
 from sattline_parser.models.ast_model import (
     BasePicture,
     Equation,
@@ -13,6 +12,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+
 from sattlint import constants as const
 from sattlint.analyzers.modules import (
     CodeDiff,

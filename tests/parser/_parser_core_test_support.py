@@ -14,7 +14,6 @@ from typing import Any, LiteralString, cast
 import pytest
 from lark import Token, Tree
 from lark.exceptions import UnexpectedCharacters, UnexpectedEOF, UnexpectedToken
-
 from sattline_parser import (
     api as parser_api,
 )
@@ -28,7 +27,7 @@ from sattline_parser import (
     strip_sl_comments,
 )
 from sattline_parser.grammar import constants as parser_const
-from sattline_parser.grammar import parser_decode as grammar_parser_decode
+from sattline_parser.grammar import parser_decode as grammar_parser_decode  # type: ignore[reportAttributeAccessIssue]
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -79,8 +78,14 @@ from sattline_parser.transformer.sl_transformer import (
 from sattline_parser.transformer.sl_transformer import (
     meta_span as _sl_meta_span,
 )
-from sattline_parser.utils.formatter import format_expr, format_list, format_optional, format_seq_nodes
-from sattline_parser.utils.text_processing import strip_sl_comments_with_mapping
+from sattline_parser.utils.formatter import (  # type: ignore[reportMissingImports]
+    format_expr,
+    format_list,
+    format_optional,
+    format_seq_nodes,
+)
+from sattline_parser.utils.text_processing import strip_sl_comments_with_mapping  # type: ignore[reportMissingImports]
+
 from sattlint import constants as const
 from sattlint.engine import (
     create_sl_parser,

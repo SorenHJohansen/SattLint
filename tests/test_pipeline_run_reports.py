@@ -3,8 +3,8 @@ import json
 from types import SimpleNamespace
 
 import pytest
-
 from sattline_parser.models.ast_model import BasePicture, ModuleHeader
+
 from sattlint.devtools import pipeline
 from sattlint.devtools.artifact_registry import ArtifactDefinition
 from sattlint.devtools.shared import pipeline_artifacts

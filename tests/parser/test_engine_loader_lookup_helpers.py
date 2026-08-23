@@ -9,7 +9,6 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-
 from sattline_parser.models.ast_model import (
     FrameModule,
     GraphObject,
@@ -19,6 +18,7 @@ from sattline_parser.models.ast_model import (
     ModuleTypeInstance,
     SingleModule,
 )
+
 from sattlint import _picture_display_path_runtime as picture_display_path_runtime
 from sattlint import engine
 from sattlint.graphics_validation import GraphicsCompositeRecord

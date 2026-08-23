@@ -1,4 +1,3 @@
-# ruff: noqa: F403, F405
 from ._analyzers_state_test_support import *
 
 reset_contamination_helpers = cast(Any, reset_contamination_module)
