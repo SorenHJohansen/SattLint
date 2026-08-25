@@ -151,8 +151,9 @@ def collect_sequence_step_features(
 ) -> None:
     for node in iter_nested_sequence_nodes(nodes):
         if isinstance(node, SFCStep):
-            key = node.name.casefold()
-            known_steps.setdefault(key, node.name)
+            name = node.name or ""
+            key = name.casefold()
+            known_steps.setdefault(key, name)
             features = available_features.setdefault(key, set())
             features.add("x")
             if seqcontrol:
@@ -168,8 +169,9 @@ def collect_sequence_scope_features(
     known_sequences: dict[str, str],
     available_sequence_features: dict[str, set[str]],
 ) -> None:
-    key = sequence.name.casefold()
-    known_sequences.setdefault(key, sequence.name)
+    name = sequence.name or ""
+    key = name.casefold()
+    known_sequences.setdefault(key, name)
     features = available_sequence_features.setdefault(key, set())
     if sequence.seqcontrol:
         features.add("hold")
@@ -622,16 +624,16 @@ def validate_sequence_nodes(  # noqa: PLR0915
                     f"{context} transition-sub {node.name!r} must not start with SEQSTEP; "
                     f"SUBSEQTRANSITION bodies must enter through a transition"
                 )
-            recurse(node.body, f"{context} transition-sub {node.name!r}")
+            recurse(cast(list[object], node.body), f"{context} transition-sub {node.name!r}")
         elif isinstance(node, SFCSubsequence):
             validate_identifier(node.name, f"{context} subsequence")
-            recurse(node.body, f"{context} subsequence {node.name!r}")
+            recurse(cast(list[object], node.body), f"{context} subsequence {node.name!r}")
         elif isinstance(node, SFCAlternative):
             for branch_index, branch in enumerate(node.branches, start=1):
-                recurse(branch, f"{context} alternative branch {branch_index}")
+                recurse(cast(list[object], branch), f"{context} alternative branch {branch_index}")
         elif isinstance(node, SFCParallel):
             for branch_index, branch in enumerate(node.branches, start=1):
-                recurse(branch, f"{context} parallel branch {branch_index}")
+                recurse(cast(list[object], branch), f"{context} parallel branch {branch_index}")
                 if branch:
                     trailer = parallel_branch_trailer(branch[-1])
                     if trailer is not None:

@@ -676,10 +676,9 @@ def test_required_parameter_connection_flags_unmapped_used_moduletype_parameter(
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("Mirror"),
-                            _varref("RequiredValue"),
+                        Assignment(
+                            target=_varref("Mirror"),
+                            value=_varref("RequiredValue"),
                         )
                     ],
                 )
@@ -737,10 +736,9 @@ def test_required_parameter_connection_flags_unmapped_used_single_module_paramet
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("Mirror"),
-                            _varref("RequiredValue"),
+                        Assignment(
+                            target=_varref("Mirror"),
+                            value=_varref("RequiredValue"),
                         )
                     ],
                 )
@@ -991,11 +989,11 @@ def test_validator_helper_branches_cover_string_and_minmax_helpers():
     )
 
     blank_mapping = ParameterMapping(
-        target={const.KEY_VAR_NAME: ""},
+        target=_varref(""),
         source_type=const.TREE_TAG_VARIABLE_NAME,
         is_duration=False,
         is_source_global=False,
-        source={const.KEY_VAR_NAME: ""},
+        source=_varref(""),
         source_literal=None,
     )
     assert (

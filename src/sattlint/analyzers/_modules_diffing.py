@@ -258,9 +258,9 @@ def compare_code(fingerprints: list[ModuleFingerprint]) -> CodeDiff:
 
     for fingerprint in fingerprints:
         sequences = {
-            key: (item.name, signature)
+            key: (item.name or "", signature)
             for key, (item, signature) in {
-                normalize_name(sequence.name): (
+                normalize_name(sequence.name or ""): (
                     sequence,
                     normalize_ast_value(sequence),
                 )
@@ -268,9 +268,9 @@ def compare_code(fingerprints: list[ModuleFingerprint]) -> CodeDiff:
             }.items()
         }
         equations = {
-            key: (item.name, signature)
+            key: (item.name or "", signature)
             for key, (item, signature) in {
-                normalize_name(equation.name): (
+                normalize_name(equation.name or ""): (
                     equation,
                     normalize_ast_value(equation),
                 )

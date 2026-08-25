@@ -8,8 +8,8 @@ from sattline_parser.models.ast_model import (
     Simple_DataType,
     Variable,
 )
+from sattline_parser.models.expressions import Assignment, VarRef
 
-from sattlint import constants as const
 from sattlint.analyzers.loop_stability import analyze_loop_stability
 from sattlint.analyzers.registry import get_default_analyzers
 
@@ -18,8 +18,8 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
 def test_loop_stability_detects_conflicting_literal_setpoints():
@@ -34,8 +34,8 @@ def test_loop_stability_detects_conflicting_literal_setpoints():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (const.KEY_ASSIGN, _varref("Setpoint"), IntLiteral(10)),
-                        (const.KEY_ASSIGN, _varref("Setpoint"), IntLiteral(20)),
+                        Assignment(target=_varref("Setpoint"), value=IntLiteral(10)),
+                        Assignment(target=_varref("Setpoint"), value=IntLiteral(20)),
                     ],
                 )
             ]

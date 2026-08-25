@@ -132,7 +132,7 @@ class CyclomaticComplexityAnalyzer:
         for sequence in modulecode.sequences or []:
             complexity += self._count_sequence_nodes(
                 module_path=module_path,
-                sequence_name=sequence.name,
+                sequence_name=sequence.name or "",
                 nodes=cast(list[object], sequence.code or []),
             )
         return complexity
@@ -179,14 +179,14 @@ class CyclomaticComplexityAnalyzer:
                     count += self._count_sequence_nodes(
                         module_path=module_path,
                         sequence_name=sequence_name,
-                        nodes=branch,
+                        nodes=cast(list[object], branch),
                     )
                 continue
             if isinstance(node, SFCSubsequence | SFCTransitionSub):
                 count += self._count_sequence_nodes(
                     module_path=module_path,
                     sequence_name=sequence_name,
-                    nodes=node.body or [],
+                    nodes=cast(list[object], node.body or []),
                 )
         return count
 

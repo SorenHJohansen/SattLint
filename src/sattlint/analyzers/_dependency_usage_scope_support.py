@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # pyright: reportPrivateUsage=false
-from typing import Protocol, cast
+from typing import Protocol
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -13,9 +13,9 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattline_parser.models.expressions import VarRef
 
 from ..casefolding import casefold_key
-from ..grammar import constants as const
 from ..resolution.common import resolve_moduletype_def_strict, varname_base
 from ..resolution.scope import ScopeContext
 from .shared.variable_utils import matches_root_origin
@@ -125,9 +125,9 @@ class DependencyUsageScopeSupportMixin:
             target_name = varname_base(mapping.target)
             if not target_name:
                 continue
-            if isinstance(mapping.source, dict) and const.KEY_VAR_NAME in mapping.source:
-                full_source = cast(dict[str, object], mapping.source)[const.KEY_VAR_NAME]
-            elif isinstance(mapping.source, str):
+            if isinstance(mapping.source, VarRef):
+                full_source = mapping.source.name
+            elif isinstance(mapping.source, str):  # pyright: ignore[reportUnnecessaryIsInstance]
                 full_source = mapping.source
             else:
                 continue

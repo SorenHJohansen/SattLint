@@ -107,7 +107,7 @@ def _parse_picture_display_row(
         if binding is None or binding.kind != "var":
             return None
         column = row_text.find(binding.raw_text)
-        span = SourceSpan(line=line, column=(column + 1) if column >= 0 else 1)
+        span = SourceSpan(start=0, end=0, line=line, column=(column + 1) if column >= 0 else 1)
         return PictureDisplayPathRow(
             record_index=record_index,
             index_token=index_token,
@@ -127,7 +127,7 @@ def _parse_picture_display_row(
         index_value=index_value,
         kind="literal",
         raw_text=literal_path,
-        span=SourceSpan(line=line, column=(column + 1) if column >= 0 else 1),
+        span=SourceSpan(start=0, end=0, line=line, column=(column + 1) if column >= 0 else 1),
     )
 
 

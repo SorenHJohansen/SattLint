@@ -421,7 +421,7 @@ class SameCycleAnalyzer(VariablesAnalyzer):
     def _collect_entry_step_names(self, nodes: SequenceABC[object]) -> set[str]:
         for node in nodes:
             if isinstance(node, SFCStep):
-                return {node.name.casefold()}
+                return {(node.name or "").casefold()}
             if isinstance(node, SFCParallel | SFCAlternative):
                 active: set[str] = set()
                 for branch in node.branches or []:
@@ -440,7 +440,7 @@ class SameCycleAnalyzer(VariablesAnalyzer):
         if not isinstance(node, SFCStep) or index + 1 >= len(nodes):
             return False
 
-        step_key = node.name.casefold()
+        step_key = (node.name or "").casefold()
         next_node = nodes[index + 1]
         if isinstance(next_node, SFCFork):
             return any(target.casefold() == step_key for target in next_node.targets)

@@ -83,7 +83,7 @@ class ScanLoopResourceUsageAnalyzer:
         for sequence in modulecode.sequences or []:
             self._scan_sequence_nodes(
                 module_path=module_path,
-                sequence_name=sequence.name,
+                sequence_name=sequence.name or "",
                 nodes=cast(list[object], sequence.code or []),
             )
 
@@ -105,14 +105,14 @@ class ScanLoopResourceUsageAnalyzer:
                     self._scan_sequence_nodes(
                         module_path=module_path,
                         sequence_name=sequence_name,
-                        nodes=branch,
+                        nodes=cast(list[object], branch),
                     )
                 continue
             if isinstance(node, SFCSubsequence | SFCTransitionSub):
                 self._scan_sequence_nodes(
                     module_path=module_path,
                     sequence_name=sequence_name,
-                    nodes=node.body or [],
+                    nodes=cast(list[object], node.body or []),
                 )
 
     def _scan_function_call(

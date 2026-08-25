@@ -151,7 +151,7 @@ class LoopOutputRefactorAnalyzer:
                 )
             )
         for sequence in modulecode.sequences or []:
-            self._collect_sequence_blocks(module_path, sequence.name, sequence.code or [], blocks)
+            self._collect_sequence_blocks(module_path, sequence.name or "", sequence.code or [], blocks)
         return blocks
 
     def _collect_sequence_blocks(

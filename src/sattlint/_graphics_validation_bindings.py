@@ -113,6 +113,8 @@ def _offset_source_spans(node: object, *, line_offset: int, column_offset: int) 
         if not isinstance(span, SourceSpan):
             return span
         return SourceSpan(
+            start=span.start,
+            end=span.end,
             line=line_offset + span.line - 1,
             column=(column_offset + span.column - 1) if span.line == 1 else span.column,
         )
@@ -226,7 +228,7 @@ def _parse_graphics_binding_match(
         return None, ()
 
     payload_column = match.end() + 1
-    span = SourceSpan(line=line, column=payload_column)
+    span = SourceSpan(start=0, end=0, line=line, column=payload_column)
     if kind == "lit":
         return GraphicsBinding(kind=kind, raw_text=payload, value=_coerce_graphics_literal(payload), span=span), ()
     if kind == "var":

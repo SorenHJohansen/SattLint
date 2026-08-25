@@ -62,7 +62,7 @@ def iter_statement_sites(modulecode: ModuleCode) -> list[StatementSite]:
 def _iter_sequence_statement_sites(sequence: Sequence) -> list[StatementSite]:
     sites: list[StatementSite] = []
     for node in sequence.code or []:
-        sites.extend(_iter_sequence_node_statement_sites(sequence.name, node))
+        sites.extend(_iter_sequence_node_statement_sites(sequence.name or "", node))
     return sites
 
 

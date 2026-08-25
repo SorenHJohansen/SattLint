@@ -377,7 +377,7 @@ def _collect_transition_logic_issues(base_picture: BasePicture) -> list[Issue]:
         if modulecode is None:
             continue
         for sequence in modulecode.sequences or []:
-            inspect_nodes(sequence.code, module_path, sequence.name)
+            inspect_nodes(sequence.code, module_path, sequence.name or "")
 
     return issues
 

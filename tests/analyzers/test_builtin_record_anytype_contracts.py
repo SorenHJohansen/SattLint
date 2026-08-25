@@ -1,5 +1,6 @@
 # pyright: reportPrivateUsage=false
 from sattline_parser.models.ast_model import (
+    Assignment,
     BasePicture,
     DataType,
     Equation,
@@ -12,6 +13,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattline_parser.models.expressions import VarRef
 
 from sattlint import constants as const
 from sattlint.analyzers.variables import VariablesAnalyzer
@@ -22,8 +24,8 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict[str, str]:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
 def _eq(code: list[object]) -> Equation:
@@ -31,7 +33,7 @@ def _eq(code: list[object]) -> Equation:
         name="E1",
         position=(0.0, 0.0),
         size=(1.0, 1.0),
-        code=code,
+        code=code,  # pyright: ignore[reportArgumentType]
     )
 
 
@@ -59,10 +61,9 @@ def test_anytype_contract_accepts_present_nested_required_field() -> None:
             equations=[
                 _eq(
                     [
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("Mirror"),
-                            _varref("Payload.Inner.Value"),
+                        Assignment(
+                            target=_varref("Mirror"),
+                            value=_varref("Payload.Inner.Value"),
                         )
                     ]
                 )
@@ -130,10 +131,9 @@ def test_anytype_contract_builder_handles_typedef_submodules_during_init() -> No
             equations=[
                 _eq(
                     [
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("Mirror"),
-                            _varref("Payload.Inner.Value"),
+                        Assignment(
+                            target=_varref("Mirror"),
+                            value=_varref("Payload.Inner.Value"),
                         )
                     ]
                 )
@@ -183,10 +183,9 @@ def test_anytype_contract_reports_missing_nested_required_field() -> None:
             equations=[
                 _eq(
                     [
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("Mirror"),
-                            _varref("Payload.Inner.Value"),
+                        Assignment(
+                            target=_varref("Mirror"),
+                            value=_varref("Payload.Inner.Value"),
                         )
                     ]
                 )

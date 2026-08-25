@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from sattline_parser.models.ast_model import Variable
+from sattline_parser.models.expressions import Assignment, FuncCallStmt, IfStmt
 
 from ...grammar import constants as const
 from ..shared.ast_node_helpers import (
@@ -353,6 +354,39 @@ def _collect_stmt_paths(
     if statement_children is not None:
         return _collect_paths_from_items(
             list(statement_children),
+            env,
+            reset_ref_cf,
+            reset_old_vars_cf,
+            states,
+            path_debug=path_debug,
+        )
+
+    if isinstance(obj, Assignment):
+        return _collect_assignment_paths(
+            obj.target,
+            obj.value,
+            env,
+            reset_ref_cf,
+            reset_old_vars_cf,
+            states,
+            path_debug=path_debug,
+        )
+
+    if isinstance(obj, FuncCallStmt):
+        return _collect_function_call_paths(
+            obj.call.name,
+            list(obj.call.args),
+            env,
+            reset_ref_cf,
+            reset_old_vars_cf,
+            states,
+            path_debug=path_debug,
+        )
+
+    if isinstance(obj, IfStmt):
+        return _collect_if_stmt_paths(
+            obj.branches,
+            obj.else_block,
             env,
             reset_ref_cf,
             reset_old_vars_cf,
