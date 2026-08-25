@@ -26,6 +26,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattline_parser.models.expressions import VarRef
 
 from ...grammar import constants as const
 from ...reporting.variables_report import IssueKind, VariableIssue
@@ -248,6 +249,10 @@ class ResetContaminationAnalyzer(BasePictureAnalyzer):
         def visit(obj: Any) -> None:
             if obj is None:
                 return
+            if isinstance(obj, VarRef):
+                if obj.name:
+                    refs.add(obj.name.casefold())
+                return
             if isinstance(obj, dict) and const.KEY_VAR_NAME in obj:
                 full = cast(dict[str, object], obj).get(const.KEY_VAR_NAME)
                 if isinstance(full, str) and full:
@@ -308,19 +313,18 @@ class ResetContaminationAnalyzer(BasePictureAnalyzer):
                 return
             if isinstance(obj, tuple) and obj and obj[0] == const.KEY_ASSIGN:
                 _, target, expr = cast(_AssignTuple, obj)
-                if (
-                    (
-                        isinstance(expr, dict)
-                        and const.KEY_VAR_NAME in expr
-                        and isinstance(cast(dict[str, object], expr).get(const.KEY_VAR_NAME), str)
-                        and cast(str, cast(dict[str, object], expr).get(const.KEY_VAR_NAME)).casefold() == reset_ref_cf
-                    )
-                    and isinstance(target, dict)
-                    and const.KEY_VAR_NAME in target
-                ):
-                    target_name = cast(dict[str, object], target).get(const.KEY_VAR_NAME)
-                    if isinstance(target_name, str) and target_name:
-                        reset_old_vars.add(target_name)
+
+                def _varname_from_ref(ref: Any) -> str | None:
+                    if isinstance(ref, VarRef):
+                        return ref.name if ref.name else None
+                    if isinstance(ref, str):
+                        return ref
+                    return None
+
+                expr_name = _varname_from_ref(expr)
+                target_name = _varname_from_ref(target)
+                if expr_name is not None and target_name is not None and expr_name.casefold() == reset_ref_cf:
+                    reset_old_vars.add(target_name)
                 visit(expr)
                 return
             if isinstance(obj, tuple) and obj and obj[0] == const.GRAMMAR_VALUE_IF:

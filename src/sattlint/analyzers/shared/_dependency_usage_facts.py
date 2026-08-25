@@ -147,7 +147,7 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
             for statement in equation.code or []:
                 self._append_statement_fact(statement, context, module_path, site)
         for sequence in modulecode.sequences or []:
-            self._walk_sequence_nodes(sequence.code or [], context, module_path, sequence.name)
+            self._walk_sequence_nodes(sequence.code or [], context, module_path, sequence.name or "")
 
     def _walk_sequence_nodes(
         self,

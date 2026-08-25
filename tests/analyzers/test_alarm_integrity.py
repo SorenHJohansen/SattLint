@@ -3,6 +3,8 @@ from sattline_parser.models.ast_model import (
     BasePicture,
     Equation,
     FrameModule,
+    FuncCall,
+    FuncCallStmt,
     ModuleCode,
     ModuleHeader,
     ModuleTypeDef,
@@ -12,6 +14,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattline_parser.models.expressions import VarRef
 
 from sattlint import constants as const
 from sattlint.analyzers import alarm_integrity as alarm_integrity_module
@@ -24,8 +27,8 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
 def _event_detector_typedef(*, with_default_priority: bool) -> ModuleTypeDef:
@@ -255,7 +258,7 @@ def test_alarm_integrity_detects_never_cleared_alarm_variable() -> None:
                     name="Main",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_FUNCTION_CALL, "SetBooleanValue", [_varref("AlarmTrip"), True])],
+                    code=[FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("AlarmTrip"), True)))],
                 )
             ]
         ),

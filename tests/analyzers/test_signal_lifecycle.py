@@ -1,7 +1,7 @@
 # pyright: reportUnknownVariableType=false, reportUnknownParameterType=false, reportMissingTypeArgument=false
 from sattline_parser.models.ast_model import BasePicture, Equation, ModuleCode, ModuleHeader, Simple_DataType, Variable
+from sattline_parser.models.expressions import Assignment, VarRef
 
-from sattlint import constants as const
 from sattlint.analyzers.registry import get_default_analyzers
 from sattlint.analyzers.signal_lifecycle import analyze_signal_lifecycle
 
@@ -10,8 +10,8 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
 def test_signal_lifecycle_reports_reads_before_writes_and_unconsumed_writes():
@@ -31,10 +31,10 @@ def test_signal_lifecycle_reports_reads_before_writes_and_unconsumed_writes():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (const.KEY_ASSIGN, _varref("OutputSignal"), _varref("InputSignal")),
-                        (const.KEY_ASSIGN, _varref("InputSignal"), True),
-                        (const.KEY_ASSIGN, _varref("ObservedSignal"), _varref("OutputSignal")),
-                        (const.KEY_ASSIGN, _varref("NeverConsumed"), False),
+                        Assignment(target=_varref("OutputSignal"), value=_varref("InputSignal")),
+                        Assignment(target=_varref("InputSignal"), value=True),
+                        Assignment(target=_varref("ObservedSignal"), value=_varref("OutputSignal")),
+                        Assignment(target=_varref("NeverConsumed"), value=False),
                     ],
                 )
             ]

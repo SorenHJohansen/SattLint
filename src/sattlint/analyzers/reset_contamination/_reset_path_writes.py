@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import Variable
+from sattline_parser.models.expressions import VarRef
 
 from ...grammar import constants as const
 from ..sattline_builtins import get_function_signature
@@ -41,11 +42,17 @@ def _split_var_ref(full_ref: str) -> tuple[str, str]:
 
 
 def _record_write(target: Any, env: dict[str, Variable], out: WriteMap) -> None:
-    if not isinstance(target, dict) or const.KEY_VAR_NAME not in target:
+    if isinstance(target, VarRef):
+        full_ref = target.name
+    elif isinstance(target, dict) and const.KEY_VAR_NAME in target:
+        target_map = cast(dict[str, object], target)
+        raw = target_map[const.KEY_VAR_NAME]
+        if not isinstance(raw, str):
+            return
+        full_ref = raw
+    else:
         return
-    target_map = cast(dict[str, object], target)
-    full_ref = target_map[const.KEY_VAR_NAME]
-    if not isinstance(full_ref, str) or not full_ref:
+    if not full_ref:
         return
     base, field_path = _split_var_ref(full_ref)
     if not base:
@@ -72,7 +79,7 @@ def _record_function_call_writes(
         direction = sig.parameters[idx].direction
         if direction not in ("out", "inout"):
             continue
-        if isinstance(arg, dict) and const.KEY_VAR_NAME in arg:
+        if isinstance(arg, VarRef) or (isinstance(arg, dict) and const.KEY_VAR_NAME in arg):
             _record_write(arg, env, out)
 
 

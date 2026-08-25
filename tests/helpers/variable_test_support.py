@@ -11,8 +11,7 @@ from sattline_parser.models.ast_model import (
     Simple_DataType,
     Variable,
 )
-
-from sattlint import constants as const
+from sattline_parser.models.expressions import FuncCall, FuncCallStmt, VarRef
 
 
 def ns(**kwargs: Any) -> Any:
@@ -23,12 +22,12 @@ def hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def varref(name: str) -> dict[str, str]:
-    return {const.KEY_VAR_NAME: name}
+def varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
-def state_ref(name: str, state: str) -> dict[str, str]:
-    return {const.KEY_VAR_NAME: name, "state": state}
+def state_ref(name: str, state: str) -> VarRef:
+    return VarRef(name=name, state=state)
 
 
 def issue_kinds(report: Any) -> set[Any]:
@@ -51,10 +50,11 @@ def status_bridge_typedef() -> ModuleTypeDef:
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "CopyVariable",
-                            [varref("Source"), varref("Destination"), varref("OperationStatus")],
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="CopyVariable",
+                                args=(varref("Source"), varref("Destination"), varref("OperationStatus")),
+                            )
                         )
                     ],
                 )

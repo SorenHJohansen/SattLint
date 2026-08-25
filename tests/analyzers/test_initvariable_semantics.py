@@ -3,6 +3,7 @@
 
 from sattline_parser.models.ast_model import (
     BasePicture,
+    CodeItem,
     DataType,
     Equation,
     ModuleCode,
@@ -11,8 +12,8 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattline_parser.models.expressions import FuncCall, FuncCallStmt, VarRef
 
-from sattlint import constants as const
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
 
 
@@ -20,11 +21,11 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict[str, str]:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
-def _eq(code: list[object]) -> Equation:
+def _eq(code: list[CodeItem]) -> Equation:
     return Equation(
         name="E1",
         position=(0.0, 0.0),
@@ -58,10 +59,11 @@ def _build_initvariable_picture() -> tuple[BasePicture, Variable, Variable]:
             equations=[
                 _eq(
                     [
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "InitVariable",
-                            [_varref("Rec"), _varref("InitRec"), _varref("Status")],
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="InitVariable",
+                                args=(_varref("Rec"), _varref("InitRec"), _varref("Status")),
+                            )
                         )
                     ]
                 )

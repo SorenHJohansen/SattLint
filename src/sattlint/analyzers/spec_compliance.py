@@ -183,7 +183,7 @@ class SpecComplianceAnalyzer:
 
     def _check_sequence(self, sequence: Sequence, module_path: list[str]) -> None:
         for node in self._iter_sequence_nodes(sequence.code or []):
-            if isinstance(node, SFCStep) and not node.name.startswith("ST_"):
+            if isinstance(node, SFCStep) and not (node.name or "").startswith("ST_"):
                 self._issues.append(
                     Issue(
                         kind="spec.sequence_step_prefix",

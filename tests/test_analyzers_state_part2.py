@@ -1,4 +1,5 @@
 from ._analyzers_state_test_support import *
+from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt
 
 reset_contamination_helpers = cast(Any, reset_contamination_module)
 
@@ -42,7 +43,7 @@ def test_reset_contamination_helpers_collect_if_and_nested_sequence_paths():
                 SFCStep(
                     kind="step",
                     name="NestedStep",
-                    code=SFCCodeBlocks(active=[(const.KEY_ASSIGN, _varref("Counter.Nested"), _varref("Source"))]),
+                    code=SFCCodeBlocks(active=[Assignment(target=_varref("Counter.Nested"), value=_varref("Source"))]),
                 )
             ],
         ),
@@ -58,7 +59,7 @@ def test_reset_contamination_helpers_collect_if_and_nested_sequence_paths():
                 SFCStep(
                     kind="step",
                     name="OtherStep",
-                    code=SFCCodeBlocks(active=[(const.KEY_ASSIGN, _varref("Counter.Other"), _varref("Source"))]),
+                    code=SFCCodeBlocks(active=[Assignment(target=_varref("Counter.Other"), value=_varref("Source"))]),
                 )
             ],
         ),
@@ -167,9 +168,9 @@ def test_implicit_latch_helpers_collect_boolean_statement_and_sequence_paths():
             kind="step",
             name="BooleanStep",
             code=SFCCodeBlocks(
-                enter=[(const.KEY_ASSIGN, _varref("StepFlag"), True)],
-                active=[(const.KEY_FUNCTION_CALL, "SetBooleanValue", [_varref("AlarmLatched"), False])],
-                exit=[(const.KEY_ASSIGN, _varref("OtherFlag"), True)],
+                enter=[Assignment(target=_varref("StepFlag"), value=True)],
+                active=[FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("AlarmLatched"), False)))],
+                exit=[Assignment(target=_varref("OtherFlag"), value=True)],
             ),
         ),
         env,
@@ -194,7 +195,7 @@ def test_implicit_latch_helpers_collect_boolean_statement_and_sequence_paths():
                     SFCStep(
                         kind="step",
                         name="AltTrue",
-                        code=SFCCodeBlocks(active=[(const.KEY_ASSIGN, _varref("BranchFlag"), True)]),
+                        code=SFCCodeBlocks(active=[Assignment(target=_varref("BranchFlag"), value=True)]),
                     )
                 ],
                 [
@@ -202,7 +203,7 @@ def test_implicit_latch_helpers_collect_boolean_statement_and_sequence_paths():
                         kind="step",
                         name="AltFalse",
                         code=SFCCodeBlocks(
-                            active=[(const.KEY_FUNCTION_CALL, "SetBooleanValue", [_varref("BranchFlag"), False])]
+                            active=[FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("BranchFlag"), False)))]
                         ),
                     )
                 ],
@@ -223,7 +224,7 @@ def test_implicit_latch_helpers_collect_boolean_statement_and_sequence_paths():
                     SFCStep(
                         kind="step",
                         name="Left",
-                        code=SFCCodeBlocks(active=[(const.KEY_ASSIGN, _varref("ParallelA"), True)]),
+                        code=SFCCodeBlocks(active=[Assignment(target=_varref("ParallelA"), value=True)]),
                     )
                 ],
                 [
@@ -231,7 +232,7 @@ def test_implicit_latch_helpers_collect_boolean_statement_and_sequence_paths():
                         kind="step",
                         name="Right",
                         code=SFCCodeBlocks(
-                            active=[(const.KEY_FUNCTION_CALL, "SetBooleanValue", [_varref("ParallelB"), False])]
+                            active=[FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("ParallelB"), False)))]
                         ),
                     )
                 ],
@@ -253,7 +254,7 @@ def test_implicit_latch_helpers_collect_boolean_statement_and_sequence_paths():
                 SFCStep(
                     kind="step",
                     name="NestedStep",
-                    code=SFCCodeBlocks(active=[(const.KEY_ASSIGN, _varref("NestedFlag"), True)]),
+                    code=SFCCodeBlocks(active=[Assignment(target=_varref("NestedFlag"), value=True)]),
                 )
             ],
         ),
@@ -268,7 +269,7 @@ def test_implicit_latch_helpers_collect_boolean_statement_and_sequence_paths():
                     kind="step",
                     name="GateStep",
                     code=SFCCodeBlocks(
-                        active=[(const.KEY_FUNCTION_CALL, "SetBooleanValue", [_varref("GateFlag"), False])]
+                        active=[FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("GateFlag"), False)))]
                     ),
                 )
             ],
@@ -294,7 +295,7 @@ def test_implicit_latch_helpers_scan_nested_sfc_nodes_and_dedupe_issues():
         SFCStep(
             kind="step",
             name="LatchStep",
-            code=SFCCodeBlocks(active=[(const.KEY_ASSIGN, _varref("AlarmLatched"), True)]),
+            code=SFCCodeBlocks(active=[Assignment(target=_varref("AlarmLatched"), value=True)]),
         ),
         SFCAlternative(
             branches=[
@@ -302,7 +303,7 @@ def test_implicit_latch_helpers_scan_nested_sfc_nodes_and_dedupe_issues():
                     SFCStep(
                         kind="step",
                         name="AltOne",
-                        code=SFCCodeBlocks(active=[(const.KEY_ASSIGN, _varref("StepFlag"), True)]),
+                        code=SFCCodeBlocks(active=[Assignment(target=_varref("StepFlag"), value=True)]),
                     )
                 ],
                 [
@@ -310,7 +311,7 @@ def test_implicit_latch_helpers_scan_nested_sfc_nodes_and_dedupe_issues():
                         kind="step",
                         name="AltTwo",
                         code=SFCCodeBlocks(
-                            active=[(const.KEY_FUNCTION_CALL, "SetBooleanValue", [_varref("StepFlag"), False])]
+                            active=[FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("StepFlag"), False)))]
                         ),
                     )
                 ],
@@ -325,7 +326,7 @@ def test_implicit_latch_helpers_scan_nested_sfc_nodes_and_dedupe_issues():
                             SFCStep(
                                 kind="step",
                                 name="NestedLatch",
-                                code=SFCCodeBlocks(active=[(const.KEY_ASSIGN, _varref("NestedFlag"), True)]),
+                                code=SFCCodeBlocks(active=[Assignment(target=_varref("NestedFlag"), value=True)]),
                             )
                         ],
                     )
@@ -337,7 +338,7 @@ def test_implicit_latch_helpers_scan_nested_sfc_nodes_and_dedupe_issues():
                             SFCStep(
                                 kind="step",
                                 name="TransitionLatch",
-                                code=SFCCodeBlocks(active=[(const.KEY_ASSIGN, _varref("TransitionFlag"), True)]),
+                                code=SFCCodeBlocks(active=[Assignment(target=_varref("TransitionFlag"), value=True)]),
                             )
                         ],
                     )

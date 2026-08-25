@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
 from sattline_parser.models.ast_model import Variable
+from sattline_parser.models.expressions import VarRef
 
 from ...call_signatures import CallParameterSignature, resolve_call_signature
 from ...grammar import constants as const
@@ -154,11 +155,14 @@ def _record_procedure_status_bindings(
         if not parameter.is_status_channel or index >= len(args):
             continue
         argument = args[index]
-        if not (isinstance(argument, dict) and const.KEY_VAR_NAME in argument):
-            continue
-        argument_dict = cast(dict[str, object], argument)
-        full_ref = argument_dict.get(const.KEY_VAR_NAME)
-        if not isinstance(full_ref, str):
+        if isinstance(argument, VarRef):
+            full_ref = argument.name
+        elif isinstance(argument, dict) and const.KEY_VAR_NAME in argument:
+            argument_dict = cast(dict[str, object], argument)
+            full_ref = argument_dict.get(const.KEY_VAR_NAME)
+            if not isinstance(full_ref, str):
+                continue
+        else:
             continue
         self.bind_procedure_status(
             full_ref,
@@ -191,11 +195,14 @@ def _record_ignorable_output_bindings(
             continue
 
         argument = args[index]
-        if not (isinstance(argument, dict) and const.KEY_VAR_NAME in argument):
-            continue
-        argument_dict = cast(dict[str, object], argument)
-        full_ref = argument_dict.get(const.KEY_VAR_NAME)
-        if not isinstance(full_ref, str):
+        if isinstance(argument, VarRef):
+            full_ref = argument.name
+        elif isinstance(argument, dict) and const.KEY_VAR_NAME in argument:
+            argument_dict = cast(dict[str, object], argument)
+            full_ref = argument_dict.get(const.KEY_VAR_NAME)
+            if not isinstance(full_ref, str):
+                continue
+        else:
             continue
         self.bind_ignorable_output(full_ref, context=context)
 

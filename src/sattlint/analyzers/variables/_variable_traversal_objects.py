@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, cast
 
 from sattline_parser.models.ast_model import ModuleDef
+from sattline_parser.models.expressions import VarRef
 
 from ...grammar import constants as const
 from ...resolution import AccessKind
@@ -32,7 +33,24 @@ def _walk_header_invoke_tails(self: VariablesAnalyzer, header: Any, context: Sco
 
 
 def _walk_header_groupconn(self: VariablesAnalyzer, header: Any, context: ScopeContext, path: list[str]) -> None:
-    var_dict = _object_mapping(getattr(header, "groupconn", None))
+    groupconn = getattr(header, "groupconn", None)
+    if isinstance(groupconn, VarRef):
+        base = groupconn.name
+        if not base:
+            return
+        local_var = context.env.get(base.casefold())
+        if local_var is not None:
+            self._get_usage(local_var).mark_read(path)
+            return
+        var, _field_prefix, _decl_path, _decl_display = context.resolve_variable(base)
+        if var is not None:
+            self._mark_ref_access(base, context, path, AccessKind.READ)
+            return
+        var = self._lookup_env_var_from_varname_dict(base, context.env)
+        if var is not None:
+            self._get_usage(var).mark_read(path)
+        return
+    var_dict = _object_mapping(groupconn)
     if var_dict is None:
         return
     base = var_dict.get(const.KEY_VAR_NAME)
@@ -52,7 +70,20 @@ def _walk_header_groupconn(self: VariablesAnalyzer, header: Any, context: ScopeC
 
 
 def _walk_typedef_groupconn(self: VariablesAnalyzer, mt: Any, context: ScopeContext, path: list[str]) -> None:
-    var_dict = _object_mapping(getattr(mt, "groupconn", None))
+    groupconn = getattr(mt, "groupconn", None)
+    if isinstance(groupconn, VarRef):
+        base = groupconn.name
+        if not base:
+            return
+        local_var = context.env.get(base.casefold())
+        if local_var is not None:
+            self._get_usage(local_var).mark_read(path)
+            return
+        var, _field_prefix, _decl_path, _decl_display = context.resolve_variable(base)
+        if var is not None:
+            self._mark_ref_access(base, context, path, AccessKind.READ)
+        return
+    var_dict = _object_mapping(groupconn)
     if var_dict is None:
         return
     base = var_dict.get(const.KEY_VAR_NAME)

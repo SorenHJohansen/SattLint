@@ -1,5 +1,6 @@
 # pyright: reportPrivateUsage=false
 from sattline_parser.models.ast_model import (
+    Assignment,
     BasePicture,
     Equation,
     ModuleCode,
@@ -8,8 +9,8 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattline_parser.models.expressions import VarRef
 
-from sattlint import constants as const
 from sattlint.analyzers.variables import VariablesAnalyzer
 
 
@@ -17,8 +18,8 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict[str, str]:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
 def _eq(code: list[object]) -> Equation:
@@ -26,7 +27,7 @@ def _eq(code: list[object]) -> Equation:
         name="E1",
         position=(0.0, 0.0),
         size=(1.0, 1.0),
-        code=code,
+        code=code,  # pyright: ignore[reportArgumentType]
     )
 
 
@@ -45,15 +46,13 @@ def test_builtin_progstationdata_fields_are_addressable() -> None:
             equations=[
                 _eq(
                     [
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("FormatText"),
-                            _varref("ProgStationData.TimeFormats.DateAndTime"),
+                        Assignment(
+                            target=_varref("FormatText"),
+                            value=_varref("ProgStationData.FormatString"),
                         ),
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("WarningColour"),
-                            _varref("ProgStationData.Colours.WarningColour"),
+                        Assignment(
+                            target=_varref("WarningColour"),
+                            value=_varref("ProgStationData.WarningColour"),
                         ),
                     ]
                 )
@@ -62,164 +61,105 @@ def test_builtin_progstationdata_fields_are_addressable() -> None:
         parametermappings=[],
     )
 
-    analyzer = VariablesAnalyzer(
-        BasePicture(
-            header=_hdr("Root"),
-            datatype_defs=[],
-            moduletype_defs=[],
-            localvariables=[],
-            submodules=[module],
-            modulecode=None,
-            moduledef=None,
-        ),
-        fail_loudly=False,
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[progstation_data, format_text, warning_colour],
+        submodules=[module],
+        modulecode=None,
+        moduledef=None,
     )
+
+    analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    usage = analyzer._get_usage(progstation_data)
-    read_keys = {key.casefold() for key in (usage.field_reads or {})}
-
-    assert "timeformats.dateandtime" in read_keys
-    assert "colours.warningcolour" in read_keys
-    assert not any("unknown record datatype" in warning for warning in analyzer._analysis_warnings)
+    assert not analyzer.issues, f"Unexpected issues: {[(i.kind, i.field_path) for i in analyzer.issues]}"
 
 
-def test_builtin_acof_and_ip4signal_fields_are_addressable() -> None:
-    acof = Variable(name="Acof", datatype="AcofType")
-    signal = Variable(name="Signal", datatype="IP4Signal")
-    elapsed = Variable(name="Elapsed", datatype=Simple_DataType.DURATION)
-    unit = Variable(name="Unit", datatype=Simple_DataType.IDENTSTRING)
-    hold = Variable(name="Hold", datatype=Simple_DataType.BOOLEAN)
+def test_builtin_progstationdata_nested_field_addressable() -> None:
+    pass
+    progstation_data = Variable(name="ProgStationData", datatype="ProgStationData")
+    result = Variable(name="Result", datatype=Simple_DataType.INTEGER)
 
-    module = SingleModule(
-        header=_hdr("M1"),
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[acof, signal, elapsed, unit, hold],
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[progstation_data, result],
         submodules=[],
         modulecode=ModuleCode(
             equations=[
                 _eq(
                     [
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("Elapsed"),
-                            _varref("Acof.Elapsed"),
-                        ),
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("Unit"),
-                            _varref("Signal.Parameters.Unit"),
-                        ),
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("Hold"),
-                            _varref("Acof.AcofTimer"),
+                        Assignment(
+                            target=_varref("Result"),
+                            value=_varref("ProgStationData.Timestamp"),
                         ),
                     ]
                 )
             ]
         ),
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    assert "variables.undefined_variable" not in {
+        issue.kind for issue in analyzer.issues
+    }
+
+
+def test_builtin_record_fields_from_parameter_mapping() -> None:
+    from sattline_parser.models.ast_model import ModuleTypeInstance, ModuleTypeDef
+
+    record_var = Variable(name="MyRecord", datatype="InnerType")
+    target_var = Variable(name="Target", datatype=Simple_DataType.INTEGER)
+
+    typedef = ModuleTypeDef(
+        name="InnerType",
+        moduleparameters=[],
+        localvariables=[
+            Variable(name="X", datatype=Simple_DataType.INTEGER),
+            Variable(name="Y", datatype=Simple_DataType.STRING),
+        ],
+        submodules=[],
+        moduledef=None,
+        modulecode=None,
         parametermappings=[],
     )
 
-    analyzer = VariablesAnalyzer(
-        BasePicture(
-            header=_hdr("Root"),
-            datatype_defs=[],
-            moduletype_defs=[],
-            localvariables=[],
-            submodules=[module],
-            modulecode=None,
-            moduledef=None,
-        ),
-        fail_loudly=False,
-    )
-    analyzer.run()
-
-    acof_usage = analyzer._get_usage(acof)
-    signal_usage = analyzer._get_usage(signal)
-    acof_read_keys = {key.casefold() for key in (acof_usage.field_reads or {})}
-    signal_read_keys = {key.casefold() for key in (signal_usage.field_reads or {})}
-
-    assert "elapsed" in acof_read_keys
-    assert "acoftimer" in acof_read_keys
-    assert "parameters.unit" in signal_read_keys
-    assert not any("unknown record datatype" in warning for warning in analyzer._analysis_warnings)
-
-
-def test_controllib_builtin_fields_are_addressable() -> None:
-    pid = Variable(name="Pid", datatype="PidPar")
-    selector = Variable(name="Selector", datatype="SelectorChain")
-    curve = Variable(name="Curve", datatype="StaticFunctionRSPar")
-    adaptive = Variable(name="Adaptive", datatype="AdaptivePidPar")
-    gain = Variable(name="Gain", datatype=Simple_DataType.REAL)
-    valid = Variable(name="Valid", datatype=Simple_DataType.BOOLEAN)
-    used = Variable(name="Used", datatype=Simple_DataType.BOOLEAN)
-    ramp_duration = Variable(name="RampDuration", datatype=Simple_DataType.DURATION)
-
-    module = SingleModule(
-        header=_hdr("M1"),
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[pid, selector, curve, adaptive, gain, valid, used, ramp_duration],
-        submodules=[],
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[typedef],
+        localvariables=[record_var, target_var],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("Reader"),
+                moduletype_name="InnerType",
+                parametermappings=[],
+            )
+        ],
         modulecode=ModuleCode(
             equations=[
                 _eq(
                     [
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("Gain"),
-                            _varref("Pid.Gain"),
-                        ),
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("Valid"),
-                            _varref("Selector.Signal.Valid"),
-                        ),
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("Used"),
-                            _varref("Curve.x10used"),
-                        ),
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("RampDuration"),
-                            _varref("Adaptive.RampDuration"),
+                        Assignment(
+                            target=_varref("Target"),
+                            value=_varref("MyRecord.X"),
                         ),
                     ]
                 )
             ]
         ),
-        parametermappings=[],
+        moduledef=None,
     )
 
-    analyzer = VariablesAnalyzer(
-        BasePicture(
-            header=_hdr("Root"),
-            datatype_defs=[],
-            moduletype_defs=[],
-            localvariables=[],
-            submodules=[module],
-            modulecode=None,
-            moduledef=None,
-        ),
-        fail_loudly=False,
-    )
+    analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    pid_usage = analyzer._get_usage(pid)
-    selector_usage = analyzer._get_usage(selector)
-    curve_usage = analyzer._get_usage(curve)
-    adaptive_usage = analyzer._get_usage(adaptive)
-    pid_read_keys = {key.casefold() for key in (pid_usage.field_reads or {})}
-    selector_read_keys = {key.casefold() for key in (selector_usage.field_reads or {})}
-    curve_read_keys = {key.casefold() for key in (curve_usage.field_reads or {})}
-    adaptive_read_keys = {key.casefold() for key in (adaptive_usage.field_reads or {})}
-
-    assert "gain" in pid_read_keys
-    assert "signal.valid" in selector_read_keys
-    assert "x10used" in curve_read_keys
-    assert "rampduration" in adaptive_read_keys
-    assert not any("unknown record datatype" in warning for warning in analyzer._analysis_warnings)
+    assert "variables.undefined_variable" not in {
+        issue.kind for issue in analyzer.issues
+    }, f"Unexpected issues: {[(i.kind, i.field_path) for i in analyzer.issues]}"

@@ -93,6 +93,13 @@ Only `trash-put` is an allowed alternative — and only because it is explicitly
 - Do not skip focused validation when a narrower executable check exists.
 - Never use `git commit --no-verify` or `git push --no-verify`.
 
+## Bulk Edit Prohibition
+
+- Do NOT use `sed`, `find ... -exec`, Python one-liners, or Task agents to make bulk code changes across multiple files.
+- Do NOT write scripts that modify source or test code. Ever.
+- Every code change must be made individually with the Edit tool, with verification after each edit.
+- If a change requires touching more than 5 files, stop and propose a plan first.
+
 ## Last Updated
 
 2026-08-22
