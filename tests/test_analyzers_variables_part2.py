@@ -1,5 +1,6 @@
 # pyright: reportPrivateUsage=false
 from ._analyzers_variables_test_support import *
+from sattline_parser.models.expressions import BoolOp, Compare, UnaryOp
 
 
 def test_required_parameter_name_helper_caches_only_runtime_used_parameters():
@@ -18,7 +19,7 @@ def test_required_parameter_name_helper_caches_only_runtime_used_parameters():
                     name="UseParam",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Mirror"), _varref("RequiredValue"))],
+                    code=[Assignment(target=_varref("Mirror"), value=_varref("RequiredValue"))],
                 )
             ]
         ),
@@ -72,7 +73,7 @@ def test_required_parameter_name_helper_handles_cyclic_typedef_instances():
                     name="ReadAParam",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("AMirror"), _varref("AParam"))],
+                    code=[Assignment(target=_varref("AMirror"), value=_varref("AParam"))],
                 )
             ]
         ),
@@ -105,7 +106,7 @@ def test_required_parameter_name_helper_handles_cyclic_typedef_instances():
                     name="ReadBParam",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("BMirror"), _varref("BParam"))],
+                    code=[Assignment(target=_varref("BMirror"), value=_varref("BParam"))],
                 )
             ]
         ),
@@ -149,8 +150,8 @@ def test_anytype_contracts_collect_read_and_write_field_paths():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (const.KEY_ASSIGN, _varref("Mirror"), _varref("Payload.FieldA")),
-                        (const.KEY_ASSIGN, _varref("Payload.FieldB"), _varref("Source")),
+                        Assignment(target=_varref("Mirror"), value=_varref("Payload.FieldA")),
+                        Assignment(target=_varref("Payload.FieldB"), value=_varref("Source")),
                     ],
                 )
             ]
@@ -180,34 +181,18 @@ def test_magic_number_detection_in_equations_and_sfc():
         position=(0.0, 0.0),
         size=(1.0, 1.0),
         code=[
-            (
-                const.KEY_ASSIGN,
-                _varref("Output"),
-                IntLiteral(42, SourceSpan(12, 5)),
-            ),
-            (
-                const.KEY_ASSIGN,
-                _varref("Output"),
-                IntLiteral(0, SourceSpan(13, 5)),
-            ),
-            (
-                const.KEY_ASSIGN,
-                _varref("Output"),
-                (const.KEY_MINUS, IntLiteral(0, SourceSpan(14, 5))),
-            ),
+            Assignment(target=_varref("Output"), value=IntLiteral(42, SourceSpan(start=0, end=0, line=12, column=5))),
+            Assignment(target=_varref("Output"), value=IntLiteral(0, SourceSpan(start=0, end=0, line=13, column=5))),
+            Assignment(target=_varref("Output"), value=UnaryOp(op="-", operand=IntLiteral(0, SourceSpan(start=0, end=0, line=14, column=5)))),
         ],
     )
 
     transition = SFCTransition(
         name="ToNext",
-        condition=(
-            const.KEY_COMPARE,
-            _varref("Output"),
-            [
-                (">", FloatLiteral(2.5, SourceSpan(20, 7))),
-                ("<", FloatLiteral(0.0, SourceSpan(21, 9))),
-            ],
-        ),
+        condition=BoolOp("AND", (
+            Compare(left=_varref("Output"), op=">", right=FloatLiteral(2.5, SourceSpan(start=0, end=0, line=20, column=7))),
+            Compare(left=_varref("Output"), op="<", right=FloatLiteral(0.0, SourceSpan(start=0, end=0, line=21, column=9))),
+        )),
     )
 
     seq = Sequence(

@@ -219,6 +219,8 @@ def _normalize_compare_guard(left: object, operator: str, right: object) -> obje
 
 
 def _normalize_guard_signature(expr: object) -> object:
+    from sattline_parser.models.expressions import BoolOp, NotOp, VarRef
+
     if getattr(expr, "data", None) == const.KEY_STATEMENT:
         children = getattr(expr, "children", None)
         if not isinstance(children, list):
@@ -235,6 +237,25 @@ def _normalize_guard_signature(expr: object) -> object:
         return ("float", float(expr))
     if isinstance(expr, str):
         return ("str", expr)
+
+    if isinstance(expr, VarRef):
+        full_name = expr.name
+        state_access = getattr(expr, "state", None)
+        if full_name:
+            if isinstance(state_access, str) and state_access:
+                return ("var", full_name.casefold(), state_access.casefold())
+            return ("var", full_name.casefold())
+        return ("text", _expr_text(cast(object, expr)).casefold())
+
+    if isinstance(expr, NotOp):
+        return _complement_signature(_normalize_guard_signature(expr.operand))
+
+    if isinstance(expr, BoolOp):
+        logical_kind = "and" if expr.op == "AND" else "or"
+        return _normalize_logical_guard(
+            logical_kind,
+            [_normalize_guard_signature(part) for part in expr.operands],
+        )
 
     if isinstance(expr, dict) and const.KEY_VAR_NAME in expr:
         payload = cast(dict[str, object], expr)

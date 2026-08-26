@@ -1,5 +1,7 @@
 from ._analyzers_state_test_support import *
 
+from sattline_parser.models.expressions import Assignment, IfStmt, NotOp
+
 reset_contamination_helpers = cast(Any, reset_contamination_module)
 
 
@@ -17,36 +19,22 @@ def test_reset_contamination_detected_for_missing_reset_write():
         position=(0.0, 0.0),
         size=(1.0, 1.0),
         code=[
-            (
-                const.GRAMMAR_VALUE_IF,
-                [
+            IfStmt(  # pyright: ignore[reportArgumentType]
+                branches=(
                     (
-                        (const.GRAMMAR_VALUE_NOT, _varref("OperationSequence.Reset")),
-                        [
-                            (
-                                const.KEY_ASSIGN,
-                                _varref("Counter"),
-                                _varref("ResetValue"),
-                            )
-                        ],
+                        NotOp(operand=_varref("OperationSequence.Reset")),
+                        (Assignment(target=_varref("Counter"), value=_varref("ResetValue")),),
                     ),
                     (
-                        (const.GRAMMAR_VALUE_NOT, _varref("OprSeqResetOld")),
-                        [
-                            (
-                                const.KEY_ASSIGN,
-                                _varref("Other"),
-                                _varref("ResetValue"),
-                            )
-                        ],
+                        NotOp(operand=_varref("OprSeqResetOld")),
+                        (Assignment(target=_varref("Other"), value=_varref("ResetValue")),),
                     ),
-                ],
-                [],
+                ),
+                else_block=(),
             ),
-            (
-                const.KEY_ASSIGN,
-                _varref("OprSeqResetOld"),
-                _varref("OperationSequence.Reset"),
+            Assignment(  # pyright: ignore[reportArgumentType]
+                target=_varref("OprSeqResetOld"),
+                value=_varref("OperationSequence.Reset"),
             ),
         ],
     )
@@ -97,36 +85,22 @@ def test_reset_contamination_cleared_when_reset_writes_present():
         position=(0.0, 0.0),
         size=(1.0, 1.0),
         code=[
-            (
-                const.GRAMMAR_VALUE_IF,
-                [
+            IfStmt(  # pyright: ignore[reportArgumentType]
+                branches=(
                     (
-                        (const.GRAMMAR_VALUE_NOT, _varref("OperationSequence.Reset")),
-                        [
-                            (
-                                const.KEY_ASSIGN,
-                                _varref("Counter"),
-                                _varref("ResetValue"),
-                            )
-                        ],
+                        NotOp(operand=_varref("OperationSequence.Reset")),
+                        (Assignment(target=_varref("Counter"), value=_varref("ResetValue")),),
                     ),
                     (
-                        (const.GRAMMAR_VALUE_NOT, _varref("OprSeqResetOld")),
-                        [
-                            (
-                                const.KEY_ASSIGN,
-                                _varref("Counter"),
-                                _varref("ResetValue"),
-                            )
-                        ],
+                        NotOp(operand=_varref("OprSeqResetOld")),
+                        (Assignment(target=_varref("Counter"), value=_varref("ResetValue")),),
                     ),
-                ],
-                [],
+                ),
+                else_block=(),
             ),
-            (
-                const.KEY_ASSIGN,
-                _varref("OprSeqResetOld"),
-                _varref("OperationSequence.Reset"),
+            Assignment(  # pyright: ignore[reportArgumentType]
+                target=_varref("OprSeqResetOld"),
+                value=_varref("OperationSequence.Reset"),
             ),
         ],
     )
@@ -173,27 +147,27 @@ def test_reset_contamination_helpers_collect_refs_and_reset_old_vars_from_nested
                     SFCStep(
                         kind="step",
                         name="Start",
-                        code=SFCCodeBlocks(enter=[(const.KEY_ASSIGN, _varref("SeqResetOld"), _varref("OpSeq.Reset"))]),
+                        code=SFCCodeBlocks(enter=[Assignment(target=_varref("SeqResetOld"), value=_varref("OpSeq.Reset"))]),  # pyright: ignore[reportArgumentType]
                     ),
-                    SFCTransition(name="Gate", condition=(const.GRAMMAR_VALUE_NOT, _varref("OpSeq.Reset"))),
+                    SFCTransition(name="Gate", condition=NotOp(operand=_varref("OpSeq.Reset"))),
                     SFCAlternative(
                         branches=[
-                            [(const.KEY_ASSIGN, _varref("AltResetOld"), _varref("OpSeq.Reset"))],
+                            [Assignment(target=_varref("AltResetOld"), value=_varref("OpSeq.Reset"))],  # pyright: ignore[reportArgumentType]
                             [
                                 SFCSubsequence(
                                     name="Nested",
-                                    body=[(const.KEY_ASSIGN, _varref("SubResetOld"), _varref("OpSeq.Reset"))],
+                                    body=[Assignment(target=_varref("SubResetOld"), value=_varref("OpSeq.Reset"))],  # pyright: ignore[reportArgumentType]
                                 )
                             ],
                         ]
                     ),
                     SFCParallel(
                         branches=[
-                            [(const.KEY_ASSIGN, _varref("ParallelResetOld"), _varref("OpSeq.Reset"))],
+                            [Assignment(target=_varref("ParallelResetOld"), value=_varref("OpSeq.Reset"))],  # pyright: ignore[reportArgumentType]
                             [
                                 SFCTransitionSub(
                                     name="NestedTransition",
-                                    body=[(const.KEY_ASSIGN, _varref("TransResetOld"), _varref("OpSeq.Reset"))],
+                                    body=[Assignment(target=_varref("TransResetOld"), value=_varref("OpSeq.Reset"))],  # pyright: ignore[reportArgumentType]
                                 )
                             ],
                         ]
@@ -206,7 +180,7 @@ def test_reset_contamination_helpers_collect_refs_and_reset_old_vars_from_nested
                 name="Main",
                 position=(0.0, 0.0),
                 size=(1.0, 1.0),
-                code=[(const.KEY_ASSIGN, _varref("EqResetOld"), _varref("OpSeq.Reset"))],
+                code=[Assignment(target=_varref("EqResetOld"), value=_varref("OpSeq.Reset"))],  # pyright: ignore[reportArgumentType]
             )
         ],
     )

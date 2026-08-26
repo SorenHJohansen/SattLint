@@ -18,6 +18,7 @@ from sattline_parser.models.ast_model import (
     SourceSpan,
     Variable,
 )
+from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt, VarRef
 
 from sattlint import constants as const
 from sattlint import semantic_analysis as semantic_analysis_module
@@ -33,8 +34,8 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0))
 
 
-def _varref(name: str) -> dict[str, str]:
-    return {const.KEY_VAR_NAME: name, "span": SourceSpan(1, 1)}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name, span=SourceSpan(start=0, end=0, line=1, column=1))
 
 
 def test_project_lsp_report_diagnostics_skips_non_list_issue_payloads(monkeypatch):
@@ -347,19 +348,19 @@ def test_build_source_snapshot_from_basepicture_exercises_full_semantic_pipeline
                     Variable(
                         name="MappedInput",
                         datatype=Simple_DataType.INTEGER,
-                        declaration_span=SourceSpan(20, 9),
+                        declaration_span=SourceSpan(start=20, end=9, line=20, column=9),
                     )
                 ],
                 localvariables=[
                     Variable(
                         name="TypedOutput",
                         datatype=Simple_DataType.INTEGER,
-                        declaration_span=SourceSpan(21, 9),
+                        declaration_span=SourceSpan(start=21, end=9, line=21, column=9),
                     ),
                     Variable(
                         name="TypedStatus",
                         datatype=Simple_DataType.INTEGER,
-                        declaration_span=SourceSpan(22, 9),
+                        declaration_span=SourceSpan(start=22, end=9, line=22, column=9),
                     ),
                 ],
                 submodules=[],
@@ -371,16 +372,8 @@ def test_build_source_snapshot_from_basepicture_exercises_full_semantic_pipeline
                             position=(0.0, 0.0),
                             size=(1.0, 1.0),
                             code=[
-                                (
-                                    const.KEY_ASSIGN,
-                                    _varref("TypedOutput"),
-                                    _varref("MappedInput"),
-                                ),
-                                (
-                                    const.KEY_FUNCTION_CALL,
-                                    "CopyVariable",
-                                    [_varref("MappedInput"), _varref("TypedOutput"), _varref("TypedStatus")],
-                                ),
+                                Assignment(target=_varref("TypedOutput"), value=_varref("MappedInput")),
+                                FuncCallStmt(call=FuncCall(name="CopyVariable", args=tuple([_varref("MappedInput"), _varref("TypedOutput"), _varref("TypedStatus")]))),
                             ],
                         )
                     ]
@@ -394,12 +387,12 @@ def test_build_source_snapshot_from_basepicture_exercises_full_semantic_pipeline
             Variable(
                 name="SharedInput",
                 datatype=Simple_DataType.INTEGER,
-                declaration_span=SourceSpan(5, 5),
+                declaration_span=SourceSpan(start=5, end=5, line=5, column=5),
             ),
             Variable(
                 name="Orphan",
                 datatype=Simple_DataType.INTEGER,
-                declaration_span=SourceSpan(6, 5),
+                declaration_span=SourceSpan(start=6, end=5, line=6, column=5),
             ),
         ],
         submodules=[
@@ -409,24 +402,24 @@ def test_build_source_snapshot_from_basepicture_exercises_full_semantic_pipeline
                     Variable(
                         name="Input",
                         datatype=Simple_DataType.INTEGER,
-                        declaration_span=SourceSpan(10, 9),
+                        declaration_span=SourceSpan(start=10, end=9, line=10, column=9),
                     )
                 ],
                 localvariables=[
                     Variable(
                         name="SingleOutput",
                         datatype=Simple_DataType.INTEGER,
-                        declaration_span=SourceSpan(11, 9),
+                        declaration_span=SourceSpan(start=11, end=9, line=11, column=9),
                     ),
                     Variable(
                         name="SingleStatus",
                         datatype=Simple_DataType.INTEGER,
-                        declaration_span=SourceSpan(12, 9),
+                        declaration_span=SourceSpan(start=12, end=9, line=12, column=9),
                     ),
                     Variable(
                         name="SingleUnused",
                         datatype=Simple_DataType.INTEGER,
-                        declaration_span=SourceSpan(13, 9),
+                        declaration_span=SourceSpan(start=13, end=9, line=13, column=9),
                     ),
                 ],
                 submodules=[],
@@ -438,16 +431,8 @@ def test_build_source_snapshot_from_basepicture_exercises_full_semantic_pipeline
                             position=(0.0, 0.0),
                             size=(1.0, 1.0),
                             code=[
-                                (
-                                    const.KEY_ASSIGN,
-                                    _varref("SingleOutput"),
-                                    _varref("Input"),
-                                ),
-                                (
-                                    const.KEY_FUNCTION_CALL,
-                                    "CopyVariable",
-                                    [_varref("Input"), _varref("SingleOutput"), _varref("SingleStatus")],
-                                ),
+                                Assignment(target=_varref("SingleOutput"), value=_varref("Input")),
+                                FuncCallStmt(call=FuncCall(name="CopyVariable", args=tuple([_varref("Input"), _varref("SingleOutput"), _varref("SingleStatus")]))),
                             ],
                         )
                     ]

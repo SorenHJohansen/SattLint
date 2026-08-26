@@ -1,3 +1,5 @@
+from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt
+
 from ._analyzers_suites_test_support import *
 
 
@@ -14,14 +16,14 @@ def test_sfc_parallel_write_race_detected_for_same_variable():
                         SFCStep(
                             kind="step",
                             name="Left",
-                            code=SFCCodeBlocks(active=[(const.KEY_ASSIGN, _varref("Output"), 1)]),
+                            code=SFCCodeBlocks(active=[Assignment(target=_varref("Output"), value=1)]),
                         )
                     ],
                     [
                         SFCStep(
                             kind="step",
                             name="Right",
-                            code=SFCCodeBlocks(active=[(const.KEY_ASSIGN, _varref("Output"), 2)]),
+                            code=SFCCodeBlocks(active=[Assignment(target=_varref("Output"), value=2)]),
                         )
                     ],
                 ]
@@ -54,8 +56,8 @@ def test_dataflow_flags_implicit_same_scan_state_read_in_sequence_step():
                 name="Drive",
                 code=SFCCodeBlocks(
                     active=[
-                        (const.KEY_ASSIGN, _state_ref("Flag", "new"), True),
-                        (const.KEY_ASSIGN, _varref("Output"), _varref("Flag")),
+                        Assignment(target=_state_ref("Flag", "new"), value=True),
+                        Assignment(target=_varref("Output"), value=_varref("Flag")),
                     ]
                 ),
             )
@@ -91,11 +93,7 @@ def test_dataflow_flags_old_as_out_parameter_temporal_misuse():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "MaxLim",
-                            [1.0, 2.0, 0.1, _state_ref("Flag", "old")],
-                        )
+                        FuncCallStmt(call=FuncCall(name="MaxLim", args=(1.0, 2.0, 0.1, _state_ref("Flag", "old"))))
                     ],
                 )
             ]
@@ -128,11 +126,7 @@ def test_variables_analyzer_flags_ignored_procedure_status_output():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "CopyVariable",
-                            [_varref("Source"), _varref("Destination"), _varref("Status")],
-                        )
+                        FuncCallStmt(call=FuncCall(name="CopyVariable", args=(_varref("Source"), _varref("Destination"), _varref("Status"))))
                     ],
                 )
             ]
@@ -206,8 +200,8 @@ def test_variables_analyzer_flags_naming_to_behavior_mismatches():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (const.KEY_ASSIGN, _varref("StartCmd"), True),
-                        (const.KEY_ASSIGN, _varref("CmdLatch"), _varref("StartCmd")),
+                        Assignment(target=_varref("StartCmd"), value=True),
+                        Assignment(target=_varref("CmdLatch"), value=_varref("StartCmd")),
                     ],
                 )
             ]
@@ -231,8 +225,8 @@ def test_variables_analyzer_flags_naming_to_behavior_mismatches():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (const.KEY_ASSIGN, _varref("ValveStatus"), IntLiteral(1)),
-                        (const.KEY_ASSIGN, _varref("Shutdown"), _varref("HighAlarm")),
+                        Assignment(target=_varref("ValveStatus"), value=IntLiteral(1)),
+                        Assignment(target=_varref("Shutdown"), value=_varref("HighAlarm")),
                     ],
                 )
             ]
@@ -277,12 +271,8 @@ def test_variables_analyzer_ignores_safe_naming_role_counterexamples():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (const.KEY_ASSIGN, _varref("Output"), _varref("StartCmd")),
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "CopyVariable",
-                            [_varref("Source"), _varref("Destination"), _varref("Status")],
-                        ),
+                        Assignment(target=_varref("Output"), value=_varref("StartCmd")),
+                        FuncCallStmt(call=FuncCall(name="CopyVariable", args=(_varref("Source"), _varref("Destination"), _varref("Status")))),
                     ],
                 )
             ]
@@ -313,9 +303,9 @@ def test_variables_analyzer_supports_configured_naming_role_prefixes():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (const.KEY_ASSIGN, _varref("CmdStart"), True),
-                        (const.KEY_ASSIGN, _varref("Hold"), _varref("CmdStart")),
-                        (const.KEY_ASSIGN, _varref("StatusValve"), IntLiteral(1)),
+                        Assignment(target=_varref("CmdStart"), value=True),
+                        Assignment(target=_varref("Hold"), value=_varref("CmdStart")),
+                        Assignment(target=_varref("StatusValve"), value=IntLiteral(1)),
                     ],
                 )
             ]
@@ -384,7 +374,7 @@ def test_variables_analyzer_treats_dependency_mapped_status_as_handled_when_read
                     name="Main",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Handled"), _varref("StatusSink"))],
+                    code=[Assignment(target=_varref("Handled"), value=_varref("StatusSink"))],
                 )
             ]
         ),

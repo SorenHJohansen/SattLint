@@ -98,8 +98,8 @@ def _stringify_normalized_value(value: object) -> str:
     if value is MISSING_AST_VALUE:
         return "<missing>"
     text = repr(value)
-    if len(text) > 140:
-        return text[:137] + "..."
+    if len(text) > 280:
+        return text[:277] + "..."
     return text
 
 

@@ -17,7 +17,7 @@ from sattline_parser.models.ast_model import (
     SFCTransitionSub,
     SingleModule,
 )
-from sattline_parser.models.expressions import VarRef
+from sattline_parser.models.expressions import Assignment, IfStmt, VarRef
 
 from .. import constants as const
 from ..core.ast_tools import iter_variable_refs
@@ -216,6 +216,21 @@ class LoopOutputRefactorAnalyzer:
         return block
 
     def _collect_statement_io(self, node: object, reads: set[str], writes: set[str]) -> None:
+        if isinstance(node, Assignment):
+            self._collect_target_writes(node.target, writes)
+            self._collect_expression_reads(node.value, reads)
+            return
+
+        if isinstance(node, IfStmt):
+            for cond, body in node.branches:
+                self._collect_expression_reads(cond, reads)
+                for stmt in body:
+                    self._collect_statement_io(stmt, reads, writes)
+            if node.else_block:
+                for stmt in node.else_block:
+                    self._collect_statement_io(stmt, reads, writes)
+            return
+
         if hasattr(node, "data") and getattr(node, "data", None) == const.KEY_STATEMENT:
             for child in getattr(node, "children", []):
                 self._collect_statement_io(child, reads, writes)
