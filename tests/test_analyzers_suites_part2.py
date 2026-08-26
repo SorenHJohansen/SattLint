@@ -1,4 +1,11 @@
 import pytest
+from sattline_parser.models.expressions import (
+    Assignment,
+    BoolOp,
+    Compare,
+    IfStmt,
+    NotOp,
+)
 
 from ._analyzers_suites_test_support import *
 
@@ -17,33 +24,16 @@ def test_dataflow_flags_contradictory_branch_condition_in_analyzer_suite():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.GRAMMAR_VALUE_IF,
-                            [
+                        IfStmt(
+                            branches=(
                                 (
-                                    (
-                                        const.GRAMMAR_VALUE_AND,
-                                        [
-                                            _varref("Flag"),
-                                            (const.GRAMMAR_VALUE_NOT, _varref("Flag")),
-                                        ],
-                                    ),
-                                    [
-                                        (
-                                            const.KEY_ASSIGN,
-                                            _varref("Output"),
-                                            True,
-                                        )
-                                    ],
-                                )
-                            ],
-                            [
-                                (
-                                    const.KEY_ASSIGN,
-                                    _varref("Output"),
-                                    False,
-                                )
-                            ],
+                                    BoolOp(op="AND", operands=(_varref("Flag"), NotOp(operand=_varref("Flag")))),
+                                    (Assignment(target=_varref("Output"), value=True),),
+                                ),
+                            ),
+                            else_block=(
+                                Assignment(target=_varref("Output"), value=False),
+                            ),
                         )
                     ],
                 )
@@ -72,35 +62,17 @@ def test_dataflow_flags_impossible_inferred_compare_condition_in_analyzer_suite(
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.GRAMMAR_VALUE_IF,
-                            [
+                        IfStmt(
+                            branches=(
                                 (
-                                    (
-                                        const.GRAMMAR_VALUE_AND,
-                                        [
-                                            (
-                                                const.KEY_COMPARE,
-                                                _varref("Counter"),
-                                                [("==", 1)],
-                                            ),
-                                            (
-                                                const.KEY_COMPARE,
-                                                _varref("Counter"),
-                                                [("==", 2)],
-                                            ),
-                                        ],
-                                    ),
-                                    [
-                                        (
-                                            const.KEY_ASSIGN,
-                                            _varref("Output"),
-                                            True,
-                                        )
-                                    ],
-                                )
-                            ],
-                            [],
+                                    BoolOp(op="AND", operands=(
+                                        Compare(left=_varref("Counter"), op="==", right=1),
+                                        Compare(left=_varref("Counter"), op="==", right=2),
+                                    )),
+                                    (Assignment(target=_varref("Output"), value=True),),
+                                ),
+                            ),
+                            else_block=None,
                         )
                     ],
                 )
@@ -136,14 +108,14 @@ def test_sfc_parallel_write_race_detected_for_record_field_overlap():
                         SFCStep(
                             kind="step",
                             name="Left",
-                            code=SFCCodeBlocks(active=[(const.KEY_ASSIGN, _varref("Rec"), 1)]),
+                            code=SFCCodeBlocks(active=[Assignment(target=_varref("Rec"), value=1)]),
                         )
                     ],
                     [
                         SFCStep(
                             kind="step",
                             name="Right",
-                            code=SFCCodeBlocks(active=[(const.KEY_ASSIGN, _varref("Rec.Field"), 2)]),
+                            code=SFCCodeBlocks(active=[Assignment(target=_varref("Rec.Field"), value=2)]),
                         )
                     ],
                 ]
@@ -182,10 +154,7 @@ def test_sfc_transition_logic_detects_always_true_guard():
         code=[
             SFCTransition(
                 name="AlwaysOpen",
-                condition=(
-                    const.GRAMMAR_VALUE_OR,
-                    [_varref("Permit"), (const.GRAMMAR_VALUE_NOT, _varref("Permit"))],
-                ),
+                condition=BoolOp(op="OR", operands=(_varref("Permit"), NotOp(operand=_varref("Permit")))),
             )
         ],
     )
@@ -212,10 +181,7 @@ def test_sfc_transition_logic_detects_always_false_guard():
         code=[
             SFCTransition(
                 name="NeverOpen",
-                condition=(
-                    const.GRAMMAR_VALUE_AND,
-                    [_varref("Permit"), (const.GRAMMAR_VALUE_NOT, _varref("Permit"))],
-                ),
+                condition=BoolOp(op="AND", operands=(_varref("Permit"), NotOp(operand=_varref("Permit")))),
             )
         ],
     )
@@ -242,11 +208,11 @@ def test_sfc_transition_logic_detects_duplicate_guards_after_normalization():
         code=[
             SFCTransition(
                 name="OpenPrimary",
-                condition=(const.GRAMMAR_VALUE_AND, [_varref("Permit"), _varref("Ready")]),
+                condition=BoolOp(op="AND", operands=(_varref("Permit"), _varref("Ready"))),
             ),
             SFCTransition(
                 name="OpenBackup",
-                condition=(const.GRAMMAR_VALUE_AND, [_varref("Ready"), _varref("Permit")]),
+                condition=BoolOp(op="AND", operands=(_varref("Ready"), _varref("Permit"))),
             ),
         ],
     )
@@ -281,7 +247,7 @@ def test_version_drift_detects_small_code_delta_between_same_named_modules():
                     name="Logic",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Output"), 1)],
+                    code=[Assignment(target=_varref("Output"), value=1)],
                 )
             ],
             sequences=[],
@@ -301,7 +267,7 @@ def test_version_drift_detects_small_code_delta_between_same_named_modules():
                     name="Logic",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Output"), 2)],
+                    code=[Assignment(target=_varref("Output"), value=2)],
                 )
             ],
             sequences=[],

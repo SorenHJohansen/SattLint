@@ -19,6 +19,8 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
+from sattline_parser.models.expressions import Assignment, VarRef
+
 from sattlint import constants as const
 from sattlint.analyzers import loop_output_refactor as loop_output_module
 from sattlint.analyzers.loop_output_refactor import analyze_loop_output_refactor
@@ -29,8 +31,8 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
 def test_loop_output_refactor_detects_cycle_across_equations_and_active_step() -> None:
@@ -38,13 +40,13 @@ def test_loop_output_refactor_detects_cycle_across_equations_and_active_step() -
         name="Input",
         position=(0.0, 0.0),
         size=(1.0, 1.0),
-        code=[(const.KEY_ASSIGN, _varref("A"), _varref("B"))],
+        code=[Assignment(target=_varref("A"), value=_varref("B"))],
     )
     eq_feedback = Equation(
         name="Feedback",
         position=(1.0, 0.0),
         size=(1.0, 1.0),
-        code=[(const.KEY_ASSIGN, _varref("B"), _varref("C"))],
+        code=[Assignment(target=_varref("B"), value=_varref("C"))],
     )
     seq = Sequence(
         name="MainSeq",
@@ -55,7 +57,7 @@ def test_loop_output_refactor_detects_cycle_across_equations_and_active_step() -
             SFCStep(
                 kind="step",
                 name="Transfer",
-                code=SFCCodeBlocks(active=[(const.KEY_ASSIGN, _varref("C"), _varref("A"))]),
+                code=SFCCodeBlocks(active=[Assignment(target=_varref("C"), value=_varref("A"))]),
             )
         ],
     )
@@ -93,13 +95,13 @@ def test_loop_output_refactor_ignores_acyclic_sorted_blocks() -> None:
         name="Source",
         position=(0.0, 0.0),
         size=(1.0, 1.0),
-        code=[(const.KEY_ASSIGN, _varref("A"), _varref("B"))],
+        code=[Assignment(target=_varref("A"), value=_varref("B"))],
     )
     eq_sink = Equation(
         name="Sink",
         position=(1.0, 0.0),
         size=(1.0, 1.0),
-        code=[(const.KEY_ASSIGN, _varref("C"), _varref("A"))],
+        code=[Assignment(target=_varref("C"), value=_varref("A"))],
     )
     bp = BasePicture(
         header=_hdr("BasePicture"),
@@ -197,20 +199,20 @@ def test_loop_output_statement_and_scc_helpers_cover_ifs_steps_and_components() 
                 kind="step",
                 name="Main",
                 code=SFCCodeBlocks(
-                    enter=[(const.KEY_ASSIGN, _varref("EnterOut"), _varref("EnterIn"))],
-                    active=[(const.KEY_ASSIGN, _varref("ActiveOut"), _varref("ActiveIn"))],
-                    exit=[(const.KEY_ASSIGN, _varref("ExitOut"), _varref("ExitIn"))],
+                    enter=[Assignment(target=_varref("EnterOut"), value=_varref("EnterIn"))],
+                    active=[Assignment(target=_varref("ActiveOut"), value=_varref("ActiveIn"))],
+                    exit=[Assignment(target=_varref("ExitOut"), value=_varref("ExitIn"))],
                 ),
             ),
-            SFCAlternative(branches=[[(const.KEY_ASSIGN, _varref("AltOut"), _varref("AltIn"))]]),
-            SFCParallel(branches=[[(const.KEY_ASSIGN, _varref("ParOut"), _varref("ParIn"))]]),
+            SFCAlternative(branches=[[SFCStep(kind="step", name="AltStep", code=SFCCodeBlocks(active=[Assignment(target=_varref("AltOut"), value=_varref("AltIn"))]))]]),
+            SFCParallel(branches=[[SFCStep(kind="step", name="ParStep", code=SFCCodeBlocks(active=[Assignment(target=_varref("ParOut"), value=_varref("ParIn"))]))]]),
             SFCSubsequence(
                 name="Nested",
                 body=[
                     SFCStep(
                         kind="step",
                         name="NestedStep",
-                        code=SFCCodeBlocks(active=[(const.KEY_ASSIGN, _varref("NestedOut"), _varref("NestedIn"))]),
+                        code=SFCCodeBlocks(active=[Assignment(target=_varref("NestedOut"), value=_varref("NestedIn"))]),
                     )
                 ],
             ),
@@ -221,7 +223,7 @@ def test_loop_output_statement_and_scc_helpers_cover_ifs_steps_and_components() 
                         kind="step",
                         name="TransitionStep",
                         code=SFCCodeBlocks(
-                            active=[(const.KEY_ASSIGN, _varref("TransitionOut"), _varref("TransitionIn"))]
+                            active=[Assignment(target=_varref("TransitionOut"), value=_varref("TransitionIn"))]
                         ),
                     )
                 ],
@@ -233,6 +235,8 @@ def test_loop_output_statement_and_scc_helpers_cover_ifs_steps_and_components() 
         "Sequence 'MainSeq' step 'Main' ENTER",
         "Sequence 'MainSeq' step 'Main' ACTIVE",
         "Sequence 'MainSeq' step 'Main' EXIT",
+        "Sequence 'MainSeq' step 'AltStep' ACTIVE",
+        "Sequence 'MainSeq' step 'ParStep' ACTIVE",
         "Sequence 'MainSeq' step 'NestedStep' ACTIVE",
         "Sequence 'MainSeq' step 'TransitionStep' ACTIVE",
     ]

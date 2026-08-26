@@ -15,6 +15,7 @@ from sattline_parser.models.ast_model import (
     SourceSpan,
     Variable,
 )
+from sattline_parser.models.expressions import Assignment, VarRef
 
 from sattlint import constants as const
 from sattlint.editor_api import (
@@ -179,8 +180,8 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict[str, str]:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
 def _program_with_dependency(record_name: str) -> str:
@@ -721,12 +722,12 @@ def test_load_workspace_snapshot_reports_anytype_required_field_mismatch_from_de
             Variable(
                 name="Other",
                 datatype=Simple_DataType.INTEGER,
-                declaration_span=SourceSpan(6, 9),
+                declaration_span=SourceSpan(start=0, end=0, line=6, column=9),
             )
         ],
         origin_file=library_file.name,
         origin_lib="Libs",
-        declaration_span=SourceSpan(5, 5),
+        declaration_span=SourceSpan(start=0, end=0, line=5, column=5),
     )
     payload_datatype = cast(Any, DataType)(
         name="PayloadShape",
@@ -736,12 +737,12 @@ def test_load_workspace_snapshot_reports_anytype_required_field_mismatch_from_de
             Variable(
                 name="Inner",
                 datatype="InnerPayload",
-                declaration_span=SourceSpan(9, 9),
+                declaration_span=SourceSpan(start=0, end=0, line=9, column=9),
             )
         ],
         origin_file=library_file.name,
         origin_lib="Libs",
-        declaration_span=SourceSpan(8, 5),
+        declaration_span=SourceSpan(start=0, end=0, line=8, column=5),
     )
     consumer = ModuleTypeDef(
         name="GenericConsumer",
@@ -749,14 +750,14 @@ def test_load_workspace_snapshot_reports_anytype_required_field_mismatch_from_de
             Variable(
                 name="Payload",
                 datatype="AnyType",
-                declaration_span=SourceSpan(13, 9),
+                declaration_span=SourceSpan(start=0, end=0, line=13, column=9),
             )
         ],
         localvariables=[
             Variable(
                 name="Mirror",
                 datatype=Simple_DataType.INTEGER,
-                declaration_span=SourceSpan(15, 9),
+                declaration_span=SourceSpan(start=0, end=0, line=15, column=9),
             )
         ],
         submodules=[],
@@ -768,11 +769,7 @@ def test_load_workspace_snapshot_reports_anytype_required_field_mismatch_from_de
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("Mirror"),
-                            _varref("Payload.Inner.Value"),
-                        )
+                        Assignment(target=_varref("Mirror"), value=_varref("Payload.Inner.Value")),
                     ],
                 )
             ]
@@ -789,7 +786,7 @@ def test_load_workspace_snapshot_reports_anytype_required_field_mismatch_from_de
             Variable(
                 name="Source",
                 datatype="PayloadShape",
-                declaration_span=SourceSpan(5, 5),
+                declaration_span=SourceSpan(start=0, end=0, line=5, column=5),
             )
         ],
         submodules=[

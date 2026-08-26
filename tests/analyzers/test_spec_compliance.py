@@ -9,6 +9,7 @@ from sattline_parser.models.ast_model import (
     ParameterMapping,
     Sequence,
     SFCAlternative,
+    SFCBodyItem,
     SFCCodeBlocks,
     SFCParallel,
     SFCStep,
@@ -19,6 +20,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattline_parser.models.expressions import VarRef
 
 from sattlint import constants as const
 from sattlint.analyzers import spec_compliance as spec_compliance_module
@@ -30,11 +32,11 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
-def _sequence(*nodes: object) -> Sequence:
+def _sequence(*nodes: SFCBodyItem) -> Sequence:
     return Sequence(
         name="SeqMain",
         type="sequence",

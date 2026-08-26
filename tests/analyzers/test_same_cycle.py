@@ -1,13 +1,15 @@
 # pyright: reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
-from types import SimpleNamespace
 
 from sattline_parser.models.ast_model import (
     BasePicture,
+    CodeItem,
+    Equation,
     ModuleCode,
     ModuleHeader,
     ModuleTypeDef,
     ModuleTypeInstance,
     ParameterMapping,
+    SFCBodyItem,
     Sequence,
     SFCCodeBlocks,
     SFCFork,
@@ -18,6 +20,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattline_parser.models.expressions import Assignment, SLExpression, VarRef
 
 from sattlint import constants as const
 from sattlint.analyzers.registry import get_actual_cli_analyzer_keys, get_default_analyzers
@@ -28,23 +31,23 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _eq(name: str, code: list[object]) -> SimpleNamespace:
-    return SimpleNamespace(name=name, code=code)
+def _eq(name: str, code: list[CodeItem]) -> Equation:
+    return Equation(name=name, position=(0.0, 0.0), size=(1.0, 1.0), code=code)
 
 
-def _varref(name: str) -> dict[str, str]:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
-def _assign(name: str, value: object) -> tuple[object, object, object]:
-    return (const.KEY_ASSIGN, _varref(name), value)
+def _assign(name: str, value: SLExpression) -> Assignment:
+    return Assignment(target=_varref(name), value=value)
 
 
-def _step(name: str, active_stmts: list[object]) -> SFCStep:
+def _step(name: str, active_stmts: list[CodeItem]) -> SFCStep:
     return SFCStep(kind="step", name=name, code=SFCCodeBlocks(active=active_stmts))
 
 
-def _sequence(nodes: list[object]) -> Sequence:
+def _sequence(nodes: list[SFCBodyItem]) -> Sequence:
     return Sequence(
         name="SeqMain",
         type="sequence",
