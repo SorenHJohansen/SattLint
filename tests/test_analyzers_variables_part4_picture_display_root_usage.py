@@ -47,7 +47,7 @@ def test_library_target_picture_display_variable_rows_count_typedef_moduleparame
                         index_value=None,
                         kind="variable",
                         raw_text="ColumnType",
-                        span=SourceSpan(line=1, column=1),
+                        span=SourceSpan(start=0, end=0, line=1, column=1),
                     ),
                 ),
             ),
@@ -105,7 +105,7 @@ def test_library_target_picture_display_index_variable_counts_typedef_modulepara
                         index_value=None,
                         kind="literal",
                         raw_text="+InletMPC+++Inlet_Z2",
-                        span=SourceSpan(line=1, column=1),
+                        span=SourceSpan(start=0, end=0, line=1, column=1),
                     ),
                 ),
             ),
@@ -153,7 +153,7 @@ def test_library_target_picture_display_record_binding_counts_typedef_modulepara
             kind="var",
             raw_text="ColumnType",
             value=_varref("ColumnType"),
-            span=SourceSpan(line=1, column=1),
+            span=SourceSpan(start=0, end=0, line=1, column=1),
         )
     ]
     bp.graphics_picture_display_occurrences = [
@@ -171,7 +171,7 @@ def test_library_target_picture_display_record_binding_counts_typedef_modulepara
                         index_value=1,
                         kind="literal",
                         raw_text="+InletMPC+++Inlet_Z2",
-                        span=SourceSpan(line=2, column=1),
+                        span=SourceSpan(start=0, end=0, line=2, column=1),
                     ),
                 ),
             ),
@@ -242,7 +242,7 @@ def test_library_target_picture_display_runtime_instance_path_counts_typedef_mod
             kind="var",
             raw_text="ColumnType",
             value=_varref("ColumnType"),
-            span=SourceSpan(line=1, column=1),
+            span=SourceSpan(start=0, end=0, line=1, column=1),
         )
     ]
     bp.graphics_picture_display_occurrences = [
@@ -260,7 +260,7 @@ def test_library_target_picture_display_runtime_instance_path_counts_typedef_mod
                         index_value=1,
                         kind="literal",
                         raw_text="+InletMPC+++Inlet_Z2",
-                        span=SourceSpan(line=2, column=1),
+                        span=SourceSpan(start=0, end=0, line=2, column=1),
                     ),
                 ),
             ),
@@ -327,7 +327,7 @@ def test_library_target_picture_display_variable_rows_count_typedef_moduleparame
                         index_value=None,
                         kind="variable",
                         raw_text="ColumnType",
-                        span=SourceSpan(line=1, column=1),
+                        span=SourceSpan(start=0, end=0, line=1, column=1),
                     ),
                 ),
             ),

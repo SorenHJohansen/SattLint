@@ -126,7 +126,7 @@ PIPELINE_CHECK_DEFINITIONS: tuple[dict[str, Any], ...] = (
             "src/sattlint/core/**",
             "tests/fixtures/sample_sattline_files/**",
         ),
-        "owner_test_targets": ("tests/test_pipeline_phase2.py",),
+        "owner_test_targets": ("tests/analyzers/test_sattline_semantics.py",),
         **_ai_metadata(
             "Use when parser, analyzer, or workspace-loading edits need trace or profiling artifacts.",
             ".github/instructions/parser-analysis.instructions.md",

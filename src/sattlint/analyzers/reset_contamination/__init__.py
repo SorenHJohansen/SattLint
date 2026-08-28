@@ -26,7 +26,19 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
-from sattline_parser.models.expressions import VarRef
+from sattline_parser.models.expressions import (
+    Assignment,
+    BinOp,
+    BoolOp,
+    Compare,
+    FuncCall,
+    FuncCallStmt,
+    IfStmt,
+    NotOp,
+    TernaryOp,
+    UnaryOp,
+    VarRef,
+)
 
 from ...grammar import constants as const
 from ...reporting.variables_report import IssueKind, VariableIssue
@@ -253,6 +265,50 @@ class ResetContaminationAnalyzer(BasePictureAnalyzer):
                 if obj.name:
                     refs.add(obj.name.casefold())
                 return
+            if isinstance(obj, Assignment):
+                visit(obj.target)
+                visit(obj.value)
+                return
+            if isinstance(obj, IfStmt):
+                for cond, stmts in obj.branches or []:
+                    visit(cond)
+                    for stmt in stmts or []:
+                        visit(stmt)
+                for stmt in obj.else_block or []:
+                    visit(stmt)
+                return
+            if isinstance(obj, NotOp):
+                visit(obj.operand)
+                return
+            if isinstance(obj, BoolOp):
+                for operand in obj.operands:
+                    visit(operand)
+                return
+            if isinstance(obj, Compare):
+                visit(obj.left)
+                visit(obj.right)
+                return
+            if isinstance(obj, BinOp):
+                visit(obj.left)
+                visit(obj.right)
+                return
+            if isinstance(obj, UnaryOp):
+                visit(obj.operand)
+                return
+            if isinstance(obj, FuncCall):
+                for arg in obj.args or []:
+                    visit(arg)
+                return
+            if isinstance(obj, FuncCallStmt):
+                visit(obj.call)
+                return
+            if isinstance(obj, TernaryOp):
+                for cond, then_expr in obj.branches or []:
+                    visit(cond)
+                    visit(then_expr)
+                if obj.else_expr is not None:
+                    visit(obj.else_expr)
+                return
             if isinstance(obj, dict) and const.KEY_VAR_NAME in obj:
                 full = cast(dict[str, object], obj).get(const.KEY_VAR_NAME)
                 if isinstance(full, str) and full:
@@ -310,6 +366,29 @@ class ResetContaminationAnalyzer(BasePictureAnalyzer):
             if hasattr(obj, "data") and obj.data == const.KEY_STATEMENT:
                 for child in ResetContaminationAnalyzer._children_of(obj) or []:
                     visit(child)
+                return
+            if isinstance(obj, Assignment):
+
+                def _varname_from_ref_new(ref: Any) -> str | None:
+                    if isinstance(ref, VarRef):
+                        return ref.name if ref.name else None
+                    if isinstance(ref, str):
+                        return ref
+                    return None
+
+                expr_name = _varname_from_ref_new(obj.value)
+                target_name = _varname_from_ref_new(obj.target)
+                if expr_name is not None and target_name is not None and expr_name.casefold() == reset_ref_cf:
+                    reset_old_vars.add(target_name)
+                visit(obj.value)
+                return
+            if isinstance(obj, IfStmt):
+                for cond, stmts in obj.branches or []:
+                    visit(cond)
+                    for stmt in stmts or []:
+                        visit(stmt)
+                for stmt in obj.else_block or []:
+                    visit(stmt)
                 return
             if isinstance(obj, tuple) and obj and obj[0] == const.KEY_ASSIGN:
                 _, target, expr = cast(_AssignTuple, obj)

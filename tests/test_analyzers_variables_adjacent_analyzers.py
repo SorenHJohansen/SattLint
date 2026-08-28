@@ -7,6 +7,7 @@ from pathlib import Path
 
 from sattline_parser.models.ast_model import (
     BasePicture,
+    CodeItem,
     Equation,
     IntLiteral,
     ModuleCode,
@@ -22,7 +23,6 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt, IfStmt
-from sattline_parser.models.ast_model import CodeItem
 
 from sattlint import constants as const
 from sattlint.analyzers.cyclomatic_complexity import analyze_cyclomatic_complexity
@@ -589,9 +589,7 @@ def test_cyclomatic_complexity_flags_high_complexity_program_modulecode():
             branches=(
                 (
                     _varref(f"Cond{index}"),
-                    (
-                        Assignment(target=_varref("Output"), value=IntLiteral(index)),
-                    ),
+                    (Assignment(target=_varref("Output"), value=IntLiteral(index)),),
                 ),
             ),
             else_block=None,

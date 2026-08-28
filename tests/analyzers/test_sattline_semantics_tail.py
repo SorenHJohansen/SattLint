@@ -19,13 +19,12 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattline_parser.models.expressions import Assignment, BoolOp, VarRef
 
 from sattlint import constants as const
 from sattlint.analyzers.registry import get_default_analyzers, get_enabled_analyzers, get_selectable_analyzers
 from sattlint.analyzers.sattline_semantics import analyze_sattline_semantics, get_sattline_semantic_rule_groups
 from sattlint.tracing import detect_unreachable_sequence_logic
-from sattline_parser.models.expressions import Assignment, BoolOp, VarRef
-
 from tests.analyzers.test_sattline_semantics import _hdr, _sequence
 
 

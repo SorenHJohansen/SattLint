@@ -291,13 +291,13 @@ def test_nested_composite_gfile_bindings_use_declaring_module_scope():
             kind="var",
             raw_text="NestedOnly",
             value=_varref("NestedOnly"),
-            span=SourceSpan(line=9, column=1),
+            span=SourceSpan(start=0, end=0, line=9, column=1),
         ),
         GraphicsBinding(
             kind="var",
             raw_text="Shared",
             value=_varref("Shared"),
-            span=SourceSpan(line=10, column=1),
+            span=SourceSpan(start=0, end=0, line=10, column=1),
         ),
     ]
     bp.graphics_composite_records = [SimpleNamespace(record_index=1, record_start_line=8, record_end_line=12)]
@@ -355,7 +355,7 @@ def test_unparsed_gfile_expr_still_counts_named_variables_as_reads():
             kind="expr",
             raw_text="Alpha ??? Beta",
             value="Alpha ??? Beta",
-            span=SourceSpan(line=1, column=1),
+            span=SourceSpan(start=0, end=0, line=1, column=1),
         )
     ]
 

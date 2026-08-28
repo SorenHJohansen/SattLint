@@ -1,9 +1,9 @@
 # pyright: reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
 from types import SimpleNamespace
 
-from sattline_parser.models.ast_model import BasePicture, ModuleCode, ModuleHeader, Simple_DataType, Variable
+from sattline_parser.models.ast_model import BasePicture, Equation, ModuleCode, ModuleHeader, Simple_DataType, Variable
+from sattline_parser.models.expressions import Assignment, VarRef
 
-from sattlint import constants as const
 from sattlint.analyzers import scan_shared_access as scan_shared_access_module
 from sattlint.analyzers.framework import Issue
 from sattlint.analyzers.registry import get_actual_cli_analyzer_keys, get_default_analyzers
@@ -14,12 +14,12 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict[str, str]:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
-def _assign(name: str, value: object) -> tuple[object, object, object]:
-    return (const.KEY_ASSIGN, _varref(name), value)
+def _assign(name: str, value: object) -> Assignment:
+    return Assignment(target=VarRef(name=name), value=value)  # pyright: ignore[reportArgumentType]
 
 
 def test_scan_shared_access_analyzer_is_registered_and_opt_in_for_cli() -> None:
@@ -39,8 +39,10 @@ def test_scan_shared_access_reports_filtered_same_cycle_hazard() -> None:
         ],
         modulecode=ModuleCode(
             equations=[
-                SimpleNamespace(name="ReadEq", code=[_assign("Sink", _varref("SharedValue"))]),
-                SimpleNamespace(name="WriteEq", code=[_assign("SharedValue", 2)]),
+                Equation(
+                    name="ReadEq", position=(0.0, 0.0), size=(1.0, 1.0), code=[_assign("Sink", _varref("SharedValue"))]
+                ),
+                Equation(name="WriteEq", position=(0.0, 0.0), size=(1.0, 1.0), code=[_assign("SharedValue", 2)]),
             ],
             sequences=[],
         ),
@@ -61,7 +63,9 @@ def test_scan_shared_access_reports_clean_program_without_issues() -> None:
         ],
         modulecode=ModuleCode(
             equations=[
-                SimpleNamespace(name="ReadEq", code=[_assign("Sink", _varref("SharedValue"))]),
+                Equation(
+                    name="ReadEq", position=(0.0, 0.0), size=(1.0, 1.0), code=[_assign("Sink", _varref("SharedValue"))]
+                ),
             ],
             sequences=[],
         ),

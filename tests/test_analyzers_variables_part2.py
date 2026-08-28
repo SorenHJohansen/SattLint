@@ -1,6 +1,7 @@
 # pyright: reportPrivateUsage=false
-from ._analyzers_variables_test_support import *
 from sattline_parser.models.expressions import BoolOp, Compare, UnaryOp
+
+from ._analyzers_variables_test_support import *
 
 
 def test_required_parameter_name_helper_caches_only_runtime_used_parameters():
@@ -183,16 +184,30 @@ def test_magic_number_detection_in_equations_and_sfc():
         code=[
             Assignment(target=_varref("Output"), value=IntLiteral(42, SourceSpan(start=0, end=0, line=12, column=5))),
             Assignment(target=_varref("Output"), value=IntLiteral(0, SourceSpan(start=0, end=0, line=13, column=5))),
-            Assignment(target=_varref("Output"), value=UnaryOp(op="-", operand=IntLiteral(0, SourceSpan(start=0, end=0, line=14, column=5)))),
+            Assignment(
+                target=_varref("Output"),
+                value=UnaryOp(op="-", operand=IntLiteral(0, SourceSpan(start=0, end=0, line=14, column=5))),
+            ),
         ],
     )
 
     transition = SFCTransition(
         name="ToNext",
-        condition=BoolOp("AND", (
-            Compare(left=_varref("Output"), op=">", right=FloatLiteral(2.5, SourceSpan(start=0, end=0, line=20, column=7))),
-            Compare(left=_varref("Output"), op="<", right=FloatLiteral(0.0, SourceSpan(start=0, end=0, line=21, column=9))),
-        )),
+        condition=BoolOp(
+            "AND",
+            (
+                Compare(
+                    left=_varref("Output"),
+                    op=">",
+                    right=FloatLiteral(2.5, SourceSpan(start=0, end=0, line=20, column=7)),
+                ),
+                Compare(
+                    left=_varref("Output"),
+                    op="<",
+                    right=FloatLiteral(0.0, SourceSpan(start=0, end=0, line=21, column=9)),
+                ),
+            ),
+        ),
     )
 
     seq = Sequence(
@@ -435,7 +450,7 @@ def test_layout_overlap_ignores_modules_on_different_layers():
                 header=ModuleHeader(
                     name="Layer1",
                     invoke_coord=(0.0, 0.0, 0.0, 0.1, 0.1),
-                    layer_info="1",
+                    layer_info=1,
                 ),
                 moduledef=child_moduledef,
                 moduleparameters=[],
@@ -448,7 +463,7 @@ def test_layout_overlap_ignores_modules_on_different_layers():
                 header=ModuleHeader(
                     name="Layer2",
                     invoke_coord=(0.02, 0.02, 0.0, 0.1, 0.1),
-                    layer_info="2",
+                    layer_info=2,
                 ),
                 moduledef=child_moduledef,
                 moduleparameters=[],

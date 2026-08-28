@@ -258,7 +258,7 @@ def test_program_target_dependency_mapping_marks_external_field_reads() -> None:
                     name="ReadSignal",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[_varref("signal.V991")],
+                    code=[_varref("signal.V991")],  # pyright: ignore[reportArgumentType]
                 )
             ],
             sequences=[],
@@ -294,7 +294,7 @@ def test_program_target_dependency_mapping_marks_external_field_reads() -> None:
                     name="WriteDrain",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("DrainDV.V991"), 1)],
+                    code=[Assignment(target=_varref("DrainDV.V991"), value=1)],
                 )
             ],
             sequences=[],
@@ -457,7 +457,7 @@ def test_field_usage_asymmetry_detects_sibling_miswire_and_treats_whole_record_r
         (IssueKind.FIELD_NEVER_READ, "OutletConfig", "OutletProd_X_Def.Std"),
     }
 
-    usage.usage_locations = [(["Root", "WholeAccess"], "read")]
+    usage.usage_locations = [cast(tuple[object, str], (["Root", "WholeAccess"], "read"))]
     issues.clear()
 
     variable_issue_collection_module._add_field_usage_asymmetry_issues(helper)
@@ -581,7 +581,7 @@ def _mapped_root_variable_read_module(name: str) -> SingleModule:
                     name="Main",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Copy"), _varref("Signal"))],
+                    code=[Assignment(target=_varref("Copy"), value=_varref("Signal"))],
                 )
             ]
         ),

@@ -34,11 +34,8 @@
 
 ## Key Docs
 
-- `docs/maintainers/repo-map.md`
-- `docs/public/architecture.md`
-- `docs/maintainers/quality-gates.md`
-- `docs/design-docs/`
-- `.github/instructions/*.md`
+- `docs/maintainers/repo-map.md`, `docs/public/architecture.md`, `docs/maintainers/quality-gates.md`
+- `docs/design-docs/`, `.github/instructions/*.md`
 
 ## Critical Invariants
 
@@ -87,7 +84,7 @@ Only `trash-put` is an allowed alternative — and only because it is explicitly
 ## Guardrails
 
 - Do not broaden changes aimlessly.
-- Do not modify SattLine source files that live outside this repository as part of SattLint work unless the user explicitly requests that external edit.
+- Do not modify SattLine source files outside this repository unless explicitly requested.
 - Do not preserve temporary compatibility seams unless the phase plan still requires them.
 - Do not keep parallel AI workflow docs with independent rules.
 - Do not skip focused validation when a narrower executable check exists.
@@ -100,6 +97,4 @@ Only `trash-put` is an allowed alternative — and only because it is explicitly
 - Every code change must be made individually with the Edit tool, with verification after each edit.
 - If a change requires touching more than 5 files, stop and propose a plan first.
 
-## Last Updated
-
-2026-08-22
+Last Updated: 2026-08-22

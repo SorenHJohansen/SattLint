@@ -21,8 +21,8 @@ def test_global_scope_minimization_is_suppressed_for_library_targets():
                             position=(0.0, 0.0),
                             size=(1.0, 1.0),
                             code=[
-                                (const.KEY_ASSIGN, _varref("ConfinedValue"), 1),
-                                (const.KEY_ASSIGN, _varref("Observed"), _varref("ConfinedValue")),
+                                Assignment(target=_varref("ConfinedValue"), value=1),
+                                Assignment(target=_varref("Observed"), value=_varref("ConfinedValue")),
                             ],
                         )
                     ],
@@ -58,7 +58,7 @@ def test_high_fan_in_out_is_reported_for_root_global_shared_across_many_modules(
                     name="WriteShared",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("SharedValue"), 1)],
+                    code=[Assignment(target=_varref("SharedValue"), value=1)],
                 )
             ],
             sequences=[],
@@ -77,7 +77,7 @@ def test_high_fan_in_out_is_reported_for_root_global_shared_across_many_modules(
                     name="ReadSharedA",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Observed"), _varref("SharedValue"))],
+                    code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
                 )
             ],
             sequences=[],
@@ -96,7 +96,7 @@ def test_high_fan_in_out_is_reported_for_root_global_shared_across_many_modules(
                     name="ReadSharedB",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Observed"), _varref("SharedValue"))],
+                    code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
                 )
             ],
             sequences=[],
@@ -115,7 +115,7 @@ def test_high_fan_in_out_is_reported_for_root_global_shared_across_many_modules(
                     name="ReadSharedC",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Observed"), _varref("SharedValue"))],
+                    code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
                 )
             ],
             sequences=[],
@@ -164,7 +164,7 @@ def test_high_fan_in_out_is_not_reported_below_threshold():
                             name="WriteShared",
                             position=(0.0, 0.0),
                             size=(1.0, 1.0),
-                            code=[(const.KEY_ASSIGN, _varref("SharedValue"), 1)],
+                            code=[Assignment(target=_varref("SharedValue"), value=1)],
                         )
                     ],
                     sequences=[],
@@ -183,7 +183,7 @@ def test_high_fan_in_out_is_not_reported_below_threshold():
                             name="ReadSharedA",
                             position=(0.0, 0.0),
                             size=(1.0, 1.0),
-                            code=[(const.KEY_ASSIGN, _varref("Observed"), _varref("SharedValue"))],
+                            code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
                         )
                     ],
                     sequences=[],
@@ -202,7 +202,7 @@ def test_high_fan_in_out_is_not_reported_below_threshold():
                             name="ReadSharedB",
                             position=(0.0, 0.0),
                             size=(1.0, 1.0),
-                            code=[(const.KEY_ASSIGN, _varref("Observed"), _varref("SharedValue"))],
+                            code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
                         )
                     ],
                     sequences=[],
@@ -417,7 +417,7 @@ def test_variable_issue_str_formats_datatype_literal_and_role_only_variants():
         module_path=["BasePicture", "UnitA"],
         variable=None,
         literal_value=42,
-        literal_span=SourceSpan(line=9, column=4),
+        literal_span=SourceSpan(start=0, end=0, line=9, column=4),
         site="EquationBlock",
     )
     role_issue = VariableIssue(

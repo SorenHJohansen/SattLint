@@ -1,6 +1,6 @@
 from sattline_parser.models.ast_model import BasePicture, Equation, ModuleCode, ModuleHeader, Simple_DataType, Variable
+from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt, VarRef
 
-from sattlint import constants as const
 from sattlint.analyzers.registry import get_actual_cli_analyzer_keys, get_default_analyzers
 from sattlint.analyzers.timing import analyze_timing
 
@@ -9,12 +9,12 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict[str, str]:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
-def _state_ref(name: str, state: str) -> dict[str, str]:
-    return {const.KEY_VAR_NAME: name, "state": state}
+def _state_ref(name: str, state: str) -> VarRef:
+    return VarRef(name=name, state=state)
 
 
 def test_timing_analyzer_is_registered_and_in_default_cli_subset() -> None:
@@ -39,8 +39,8 @@ def test_timing_reports_same_scan_temporal_hazards() -> None:
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (const.KEY_ASSIGN, _state_ref("Flag", "new"), True),
-                        (const.KEY_ASSIGN, _varref("Output"), _state_ref("Flag", "old")),
+                        Assignment(target=_state_ref("Flag", "new"), value=True),
+                        Assignment(target=_varref("Output"), value=_state_ref("Flag", "old")),
                     ],
                 )
             ]
@@ -67,10 +67,11 @@ def test_timing_reports_non_precision_scan_builtin_usage() -> None:
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "AssignSystemString",
-                            [_varref("SysVarId"), _varref("Value"), _varref("Status")],
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="AssignSystemString",
+                                args=(_varref("SysVarId"), _varref("Value"), _varref("Status")),
+                            )
                         )
                     ],
                 )

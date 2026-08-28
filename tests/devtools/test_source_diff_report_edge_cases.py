@@ -413,9 +413,11 @@ def test_source_diff_helper_misc_branches(monkeypatch: MonkeyPatch, tmp_path: Pa
 
     assert source_diff_report._pair_name(Path("Draft.s"), Path("Official.x")) == "Draft vs Official"
     assert source_diff_report._read_source_text(sample_path) == "expanded:raw:CompressedReview.s"
-    assert source_diff_report._stable_signature_value([1, SimpleNamespace(span=SourceSpan(line=3, column=4))]) == (
+    assert source_diff_report._stable_signature_value(
+        [1, SimpleNamespace(span=SourceSpan(start=0, end=0, line=3, column=4))]
+    ) == (
         1,
-        "namespace(span=SourceSpan())",
+        "namespace(span=SourceSpan(start=0, end=0, line=0, column=0))",
     )
     assert source_diff_report._module_header_signature(None) is None
     assert source_diff_report._moduledef_signature(None) is None

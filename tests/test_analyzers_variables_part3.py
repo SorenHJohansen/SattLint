@@ -543,11 +543,11 @@ def test_frame_nested_dotted_enable_tail_marks_enclosing_moduleparameter_as_used
         modulecode=None,
         parametermappings=[
             ParameterMapping(
-                target={"var_name": "Mapped"},
+                target=_varref("Mapped"),
                 source_type="var_name",
                 is_duration=False,
                 is_source_global=False,
-                source={"var_name": "RootMapped"},
+                source=_varref("RootMapped"),
                 source_literal=None,
             )
         ],
@@ -779,7 +779,7 @@ def test_variable_analysis_counts_external_moduletype_usage_for_program_target()
                     name="E1",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[_varref("Input")],
+                    code=[Assignment(target=_varref("Input"), value=_varref("Input"))],
                 )
             ]
         ),
@@ -838,7 +838,7 @@ def test_variable_analysis_counts_external_dependency_output_writes_for_program_
                     name="E1",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Ready"), _varref("Source"))],
+                    code=[Assignment(target=_varref("Ready"), value=_varref("Source"))],
                 )
             ]
         ),
@@ -875,7 +875,7 @@ def test_variable_analysis_counts_external_dependency_output_writes_for_program_
                     name="UseReady",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[_varref("ES_SignReady")],
+                    code=[Assignment(target=_varref("ES_SignReady"), value=_varref("ES_SignReady"))],
                 )
             ]
         ),
@@ -936,13 +936,13 @@ def test_variable_analysis_counts_known_unresolved_mms_outputs_as_writes():
                     name="UseCycError",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[_varref("Error704X")],
+                    code=[Assignment(target=_varref("Error704X"), value=_varref("Error704X"))],
                 ),
                 Equation(
                     name="UseReadError",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[_varref("MMSError_2")],
+                    code=[Assignment(target=_varref("MMSError_2"), value=_varref("MMSError_2"))],
                 ),
             ]
         ),
@@ -1006,7 +1006,7 @@ def test_variable_analysis_treats_external_moduletype_usage_as_used_for_library_
                     name="E1",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[_varref("Input")],
+                    code=[Assignment(target=_varref("Input"), value=_varref("Input"))],
                 )
             ]
         ),

@@ -560,7 +560,7 @@ def test_moduletype_detail_ignores_nested_source_span_only_header_changes() -> N
                     header=ModuleHeader(
                         name="L1",
                         invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0),
-                        enable_tail={"expr": "Ready", "span": SourceSpan(line=line, column=2)},
+                        enable_tail={"expr": "Ready", "span": SourceSpan(start=0, end=0, line=line, column=2)},
                     ),
                     moduledef=ModuleDef(clipping_bounds=((0.0, 0.0), (1.0, 1.0))),
                 )

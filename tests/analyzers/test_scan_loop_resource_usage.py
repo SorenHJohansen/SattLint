@@ -8,8 +8,8 @@ from sattline_parser.models.ast_model import (
     SFCCodeBlocks,
     SFCStep,
 )
+from sattline_parser.models.expressions import FuncCall, FuncCallStmt, VarRef
 
-from sattlint import constants as const
 from sattlint.analyzers.registry import get_default_analyzers
 from sattlint.analyzers.scan_loop_resource_usage import analyze_scan_loop_resource_usage
 
@@ -18,8 +18,8 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
 def test_scan_loop_resource_usage_flags_non_precision_builtin_in_equation_block() -> None:
@@ -36,10 +36,11 @@ def test_scan_loop_resource_usage_flags_non_precision_builtin_in_equation_block(
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "AssignSystemString",
-                            [_varref("SysVarId"), _varref("Value"), _varref("Status")],
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="AssignSystemString",
+                                args=(_varref("SysVarId"), _varref("Value"), _varref("Status")),
+                            )
                         )
                     ],
                 )
@@ -79,10 +80,11 @@ def test_scan_loop_resource_usage_flags_non_precision_builtin_in_active_step_cod
                             name="Poll",
                             code=SFCCodeBlocks(
                                 active=[
-                                    (
-                                        const.KEY_FUNCTION_CALL,
-                                        "AssignSystemString",
-                                        [_varref("SysVarId"), _varref("Value"), _varref("Status")],
+                                    FuncCallStmt(
+                                        call=FuncCall(
+                                            name="AssignSystemString",
+                                            args=(_varref("SysVarId"), _varref("Value"), _varref("Status")),
+                                        )
                                     )
                                 ]
                             ),
@@ -125,10 +127,11 @@ def test_scan_loop_resource_usage_ignores_non_precision_builtin_outside_active_s
                             name="Setup",
                             code=SFCCodeBlocks(
                                 enter=[
-                                    (
-                                        const.KEY_FUNCTION_CALL,
-                                        "AssignSystemString",
-                                        [_varref("SysVarId"), _varref("Value"), _varref("Status")],
+                                    FuncCallStmt(
+                                        call=FuncCall(
+                                            name="AssignSystemString",
+                                            args=(_varref("SysVarId"), _varref("Value"), _varref("Status")),
+                                        )
                                     )
                                 ]
                             ),

@@ -8,6 +8,7 @@ from sattline_parser.models.ast_model import (
     Simple_DataType,
     Variable,
 )
+from sattline_parser.models.expressions import VarRef
 
 from sattlint import constants as const
 from sattlint.analyzers.initial_values import analyze_initial_values
@@ -18,8 +19,8 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
 def test_initial_value_validation_flags_recipe_parameter_without_value_default() -> None:

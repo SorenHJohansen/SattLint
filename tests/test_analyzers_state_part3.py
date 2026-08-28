@@ -1,3 +1,5 @@
+from sattline_parser.models.expressions import IfStmt
+
 from ._analyzers_state_test_support import *
 
 
@@ -18,21 +20,9 @@ def test_implicit_latch_detected_when_if_branch_sets_true_without_else_clear():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.GRAMMAR_VALUE_IF,
-                            [
-                                (
-                                    _varref("Start"),
-                                    [
-                                        (
-                                            const.KEY_ASSIGN,
-                                            _varref("AlarmLatched"),
-                                            True,
-                                        )
-                                    ],
-                                )
-                            ],
-                            [],
+                        IfStmt(
+                            branches=((_varref("Start"), (Assignment(target=_varref("AlarmLatched"), value=True),)),),
+                            else_block=None,
                         )
                     ],
                 )
@@ -78,27 +68,9 @@ def test_implicit_latch_not_reported_when_else_branch_clears_false():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.GRAMMAR_VALUE_IF,
-                            [
-                                (
-                                    _varref("Start"),
-                                    [
-                                        (
-                                            const.KEY_ASSIGN,
-                                            _varref("AlarmLatched"),
-                                            True,
-                                        )
-                                    ],
-                                )
-                            ],
-                            [
-                                (
-                                    const.KEY_ASSIGN,
-                                    _varref("AlarmLatched"),
-                                    False,
-                                )
-                            ],
+                        IfStmt(
+                            branches=((_varref("Start"), (Assignment(target=_varref("AlarmLatched"), value=True),)),),
+                            else_block=(Assignment(target=_varref("AlarmLatched"), value=False),),
                         )
                     ],
                 )
@@ -140,10 +112,9 @@ def test_implicit_latch_detected_in_root_modulecode():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.GRAMMAR_VALUE_IF,
-                            [(_varref("Start"), [(const.KEY_ASSIGN, _varref("AlarmLatched"), True)])],
-                            [],
+                        IfStmt(
+                            branches=((_varref("Start"), (Assignment(target=_varref("AlarmLatched"), value=True),)),),
+                            else_block=None,
                         )
                     ],
                 )
@@ -178,10 +149,11 @@ def test_limit_to_module_path_restricts_state_integrity_checks_to_matching_subtr
                         position=(0.0, 0.0),
                         size=(1.0, 1.0),
                         code=[
-                            (
-                                const.GRAMMAR_VALUE_IF,
-                                [(_varref("Start"), [(const.KEY_ASSIGN, _varref("AlarmLatched"), True)])],
-                                [],
+                            IfStmt(
+                                branches=(
+                                    (_varref("Start"), (Assignment(target=_varref("AlarmLatched"), value=True),)),
+                                ),
+                                else_block=None,
                             )
                         ],
                     )
@@ -223,10 +195,9 @@ def test_frame_module_children_are_included_in_state_integrity_checks():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.GRAMMAR_VALUE_IF,
-                            [(_varref("Start"), [(const.KEY_ASSIGN, _varref("AlarmLatched"), True)])],
-                            [],
+                        IfStmt(
+                            branches=((_varref("Start"), (Assignment(target=_varref("AlarmLatched"), value=True),)),),
+                            else_block=None,
                         )
                     ],
                 )
@@ -269,11 +240,7 @@ def test_implicit_latch_detected_for_step_without_exit_clear():
                 name="Run",
                 code=SFCCodeBlocks(
                     active=[
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("StepFlag"),
-                            True,
-                        )
+                        Assignment(target=_varref("StepFlag"), value=True),  # pyright: ignore[reportArgumentType]
                     ],
                     exit=[],
                 ),
@@ -324,11 +291,7 @@ def test_sfc_step_contract_detects_missing_enter_initialization():
                 code=SFCCodeBlocks(
                     enter=[],
                     active=[
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("Output"),
-                            _varref("StepValue"),
-                        )
+                        Assignment(target=_varref("Output"), value=_varref("StepValue")),  # pyright: ignore[reportArgumentType]
                     ],
                     exit=[],
                 ),
@@ -370,11 +333,7 @@ def test_sfc_step_contract_detects_missing_exit_cleanup():
                 name="Run",
                 code=SFCCodeBlocks(
                     enter=[
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("StepValue"),
-                            1,
-                        )
+                        Assignment(target=_varref("StepValue"), value=1),  # pyright: ignore[reportArgumentType]
                     ],
                     active=[],
                     exit=[],

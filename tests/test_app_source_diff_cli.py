@@ -84,7 +84,7 @@ def test_run_source_diff_report_aggregates_all_analysis_targets(noop_screen, mon
     outputs: list[str] = []
     monkeypatch.setattr(app, "emit_output", lambda message: outputs.append(message))
 
-    app.run_source_diff_report(cfg)
+    app.run_source_diff_report(cfg)  # pyright: ignore[reportArgumentType]
 
     assert pair_calls == [(target_a_s, target_a_x), (target_b_s, target_b_x)]
     assert rendered_reports[0]["summary"] == {
@@ -143,7 +143,7 @@ def test_run_source_diff_report_updates_live_status(noop_screen, monkeypatch, tm
     monkeypatch.setattr(app, "emit_output", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(app, "pause", lambda: None)
 
-    app.run_source_diff_report(cfg)
+    app.run_source_diff_report(cfg)  # pyright: ignore[reportArgumentType]
 
     assert updates == [
         "Source diff: resolving comparison pairs",
@@ -181,7 +181,7 @@ def test_force_refresh_ast_bypasses_file_ast_cache(monkeypatch):
     monkeypatch.setattr(app, "get_cache_dir", lambda: Path("/tmp/cache"))
     monkeypatch.setattr(app, "load_project", fake_load_project)
 
-    result = app.force_refresh_ast(cfg)
+    result = app.force_refresh_ast(cfg)  # pyright: ignore[reportArgumentType]
 
     assert len(cleared) == 2
     assert load_calls == [
@@ -204,7 +204,7 @@ def test_refresh_analysis_caches_wrapper_passes_cache_manager(monkeypatch):
 
     monkeypatch.setattr(app.app_analysis, "refresh_analysis_caches", fake_refresh_analysis_caches)
 
-    result = app.refresh_analysis_caches(cfg)
+    result = app.refresh_analysis_caches(cfg)  # pyright: ignore[reportArgumentType]
 
     assert seen["force_refresh_ast_fn"] is app.force_refresh_ast
     assert seen["get_cache_dir_fn"] is app.get_cache_dir
@@ -216,7 +216,7 @@ def test_refresh_analysis_caches_wrapper_passes_cache_manager(monkeypatch):
 def test_show_help_mentions_setup_and_syntax_check(noop_screen, capsys):
     cfg = deepcopy(app.DEFAULT_CONFIG)
 
-    app.show_help(cfg)
+    app.show_help(cfg)  # pyright: ignore[reportArgumentType]
 
     out = capsys.readouterr().out
     assert "Open Setup" in out

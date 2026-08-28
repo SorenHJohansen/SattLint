@@ -125,10 +125,15 @@ class DependencyUsageScopeSupportMixin:
             target_name = varname_base(mapping.target)
             if not target_name:
                 continue
-            if isinstance(mapping.source, VarRef):
-                full_source = mapping.source.name
-            elif isinstance(mapping.source, str):  # pyright: ignore[reportUnnecessaryIsInstance]
-                full_source = mapping.source
+            source = mapping.source
+            if source is None:
+                continue
+            if isinstance(source, VarRef):  # type: ignore[reportUnnecessaryIsInstance]
+                full_source = source.name
+            elif isinstance(source, str):  # type: ignore[reportUnnecessaryIsInstance]
+                full_source = source
+            elif isinstance(source, dict) and "var_name" in source:  # type: ignore[reportUnnecessaryIsInstance]
+                full_source = source["var_name"]
             else:
                 continue
             source_var, field_prefix, decl_path, decl_display_path = parent_context.resolve_variable(str(full_source))

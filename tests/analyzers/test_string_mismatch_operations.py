@@ -66,9 +66,7 @@ def test_variables_analyzer_reports_concatenate_overflow_as_string_mismatch() ->
     analyzer = VariablesAnalyzer(base_picture)
     analyzer.run()
 
-    mismatch_issues = [
-        issue for issue in analyzer.issues if issue.kind is IssueKind.STRING_MAPPING_MISMATCH
-    ]
+    mismatch_issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.STRING_MAPPING_MISMATCH]
 
     assert len(mismatch_issues) >= 1
     assert any("concatenate" in (issue.role or "").casefold() for issue in mismatch_issues)
@@ -90,9 +88,7 @@ def test_variables_analyzer_reports_insertstring_overflow_as_string_mismatch() -
     analyzer = VariablesAnalyzer(base_picture)
     analyzer.run()
 
-    mismatch_issues = [
-        issue for issue in analyzer.issues if issue.kind is IssueKind.STRING_MAPPING_MISMATCH
-    ]
+    mismatch_issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.STRING_MAPPING_MISMATCH]
 
     assert len(mismatch_issues) >= 1
     assert any("insertstring" in (issue.role or "").casefold() for issue in mismatch_issues)
@@ -133,8 +129,6 @@ def test_variables_analyzer_reports_mismatch_for_real_parsed_file() -> None:
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    mismatch_issues = [
-        issue for issue in analyzer.issues if issue.kind is IssueKind.STRING_MAPPING_MISMATCH
-    ]
+    mismatch_issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.STRING_MAPPING_MISMATCH]
 
     assert len(mismatch_issues) >= 1

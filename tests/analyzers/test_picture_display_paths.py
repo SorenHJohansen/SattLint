@@ -57,24 +57,28 @@ def _build_operation_path_base_picture() -> BasePicture:
                     size=(1.0, 1.0),
                     code=[
                         FuncCallStmt(call=FuncCall(name="ClearString", args=(_varref("Paths.OperationPath"),))),
-                        FuncCallStmt(call=FuncCall(
-                            name="InsertString",
-                            args=(
-                                _varref("Paths.OperationPath"),
-                                _varref("Prefix"),
-                                _string_length_call("Prefix"),
-                                _varref("BuilderStatus"),
-                            ),
-                        )),
-                        FuncCallStmt(call=FuncCall(
-                            name="InsertString",
-                            args=(
-                                _varref("Paths.OperationPath"),
-                                _varref("Name"),
-                                _string_length_call("Name"),
-                                _varref("BuilderStatus"),
-                            ),
-                        )),
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="InsertString",
+                                args=(
+                                    _varref("Paths.OperationPath"),
+                                    _varref("Prefix"),
+                                    _string_length_call("Prefix"),
+                                    _varref("BuilderStatus"),
+                                ),
+                            )
+                        ),
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="InsertString",
+                                args=(
+                                    _varref("Paths.OperationPath"),
+                                    _varref("Name"),
+                                    _string_length_call("Name"),
+                                    _varref("BuilderStatus"),
+                                ),
+                            )
+                        ),
                     ],
                 )
             ]
@@ -249,24 +253,28 @@ def test_picture_display_path_analyzer_reports_generic_variable_path_candidates(
                     size=(1.0, 1.0),
                     code=[
                         FuncCallStmt(call=FuncCall(name="ClearString", args=(_varref("DisplayPath"),))),
-                        FuncCallStmt(call=FuncCall(
-                            name="InsertString",
-                            args=(
-                                _varref("DisplayPath"),
-                                _varref("Prefix"),
-                                _string_length_call("Prefix"),
-                                _varref("Status"),
-                            ),
-                        )),
-                        FuncCallStmt(call=FuncCall(
-                            name="InsertString",
-                            args=(
-                                _varref("DisplayPath"),
-                                _varref("PanelName"),
-                                _string_length_call("PanelName"),
-                                _varref("Status"),
-                            ),
-                        )),
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="InsertString",
+                                args=(
+                                    _varref("DisplayPath"),
+                                    _varref("Prefix"),
+                                    _string_length_call("Prefix"),
+                                    _varref("Status"),
+                                ),
+                            )
+                        ),
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="InsertString",
+                                args=(
+                                    _varref("DisplayPath"),
+                                    _varref("PanelName"),
+                                    _string_length_call("PanelName"),
+                                    _varref("Status"),
+                                ),
+                            )
+                        ),
                     ],
                 )
             ]
@@ -376,15 +384,17 @@ def test_exact_string_inference_tracks_setstringpos_and_cutstring() -> None:
                     size=(1.0, 1.0),
                     code=[
                         FuncCallStmt(call=FuncCall(name="ClearString", args=(_varref("Tag"),))),
-                        FuncCallStmt(call=FuncCall(
-                            name="InsertString",
-                            args=(
-                                _varref("Tag"),
-                                _varref("Source"),
-                                _string_length_call("Source"),
-                                _varref("Status"),
-                            ),
-                        )),
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="InsertString",
+                                args=(
+                                    _varref("Tag"),
+                                    _varref("Source"),
+                                    _string_length_call("Source"),
+                                    _varref("Status"),
+                                ),
+                            )
+                        ),
                         FuncCallStmt(call=FuncCall(name="SetStringPos", args=(_varref("Tag"), 2, _varref("Status")))),
                         FuncCallStmt(call=FuncCall(name="CutString", args=(_varref("Tag"), 2, _varref("Status")))),
                     ],

@@ -100,7 +100,7 @@ def test_variable_invalid_picture_display_rows_do_not_count_as_usage() -> None:
             kind="var",
             raw_text="PathAIT",
             value=_varref("PathAIT"),
-            span=SourceSpan(line=2, column=5),
+            span=SourceSpan(start=0, end=0, line=2, column=5),
         )
     ]
     base_picture.graphics_picture_display_occurrences = [
@@ -119,7 +119,7 @@ def test_variable_invalid_picture_display_rows_do_not_count_as_usage() -> None:
                         index_value=1,
                         kind="variable_invalid",
                         raw_text="PathAIT",
-                        span=SourceSpan(line=2, column=5),
+                        span=SourceSpan(start=0, end=0, line=2, column=5),
                     ),
                 ),
             ),

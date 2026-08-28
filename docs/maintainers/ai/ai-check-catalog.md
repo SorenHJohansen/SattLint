@@ -89,7 +89,7 @@ Regenerate with `python -m sattlint.devtools.ai --write`.
 - AI instruction files:
   - `.github/instructions/parser-analysis.instructions.md`
 - Owner tests:
-  - `tests/test_pipeline_phase2.py`
+  - `tests/analyzers/test_sattline_semantics.py`
 - Command: `sattlint-analysis-pipeline --profile full --check trace --output-dir artifacts/generated/ai-work-map/pipeline`
 
 ### `corpus`

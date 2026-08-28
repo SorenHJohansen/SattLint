@@ -3,7 +3,8 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from sattline_parser.models.ast_model import BasePicture, ModuleCode, Variable
+from sattline_parser.models.ast_model import Assignment, BasePicture, ModuleCode, Variable
+from sattline_parser.models.expressions import FuncCallStmt
 
 from ..grammar import constants as const
 from ._wave2_support import iter_read_variable_names, iter_statement_sites, root_variable_name, walk_module_scopes
@@ -130,7 +131,7 @@ class SignalLifecycleAnalyzer:
 
         self._written_then_read_count += len(read_after_write)
 
-    def _process_node(
+    def _process_node(  # noqa: PLR0915
         self,
         node: object,
         *,
@@ -157,6 +158,53 @@ class SignalLifecycleAnalyzer:
                     site_label=site_label,
                 )
             return current
+
+        if isinstance(node, FuncCallStmt):
+            args = list(node.call.args) if node.call.args else []
+            for arg in args:
+                self._mark_reads(
+                    arg,
+                    written=written,
+                    env=env,
+                    explicit_writes=explicit_writes,
+                    read_after_write=read_after_write,
+                    read_before_write=read_before_write,
+                    site_label=site_label,
+                )
+            function_name = node.call.name
+            if function_name.casefold() == "setbooleanvalue" and len(args) >= 2:
+                target_name = root_variable_name(args[0])
+                if target_name is not None:
+                    key = target_name.casefold()
+                    if key in env:
+                        next_written = set(written)
+                        next_written.add(key)
+                        explicit_writes.add(key)
+                        write_sites[key].add(site_label)
+                        return next_written
+            return written
+
+        if isinstance(node, Assignment):
+            self._mark_reads(
+                node.value,
+                written=written,
+                env=env,
+                explicit_writes=explicit_writes,
+                read_after_write=read_after_write,
+                read_before_write=read_before_write,
+                site_label=site_label,
+            )
+            target_name = root_variable_name(node.target)
+            if target_name is None:
+                return written
+            key = target_name.casefold()
+            if key not in env:
+                return written
+            next_written = set(written)
+            next_written.add(key)
+            explicit_writes.add(key)
+            write_sites[key].add(site_label)
+            return next_written
 
         tuple_node = _object_tuple(node)
         if tuple_node is not None and tuple_node:

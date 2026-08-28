@@ -18,7 +18,6 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
-
 from sattline_parser.models.expressions import Assignment, VarRef
 
 from sattlint import constants as const
@@ -204,8 +203,28 @@ def test_loop_output_statement_and_scc_helpers_cover_ifs_steps_and_components() 
                     exit=[Assignment(target=_varref("ExitOut"), value=_varref("ExitIn"))],
                 ),
             ),
-            SFCAlternative(branches=[[SFCStep(kind="step", name="AltStep", code=SFCCodeBlocks(active=[Assignment(target=_varref("AltOut"), value=_varref("AltIn"))]))]]),
-            SFCParallel(branches=[[SFCStep(kind="step", name="ParStep", code=SFCCodeBlocks(active=[Assignment(target=_varref("ParOut"), value=_varref("ParIn"))]))]]),
+            SFCAlternative(
+                branches=[
+                    [
+                        SFCStep(
+                            kind="step",
+                            name="AltStep",
+                            code=SFCCodeBlocks(active=[Assignment(target=_varref("AltOut"), value=_varref("AltIn"))]),
+                        )
+                    ]
+                ]
+            ),
+            SFCParallel(
+                branches=[
+                    [
+                        SFCStep(
+                            kind="step",
+                            name="ParStep",
+                            code=SFCCodeBlocks(active=[Assignment(target=_varref("ParOut"), value=_varref("ParIn"))]),
+                        )
+                    ]
+                ]
+            ),
             SFCSubsequence(
                 name="Nested",
                 body=[
