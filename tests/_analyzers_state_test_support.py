@@ -29,6 +29,7 @@ from sattline_parser.models.ast_model import (
     SourceSpan,
     Variable,
 )
+from sattline_parser.models.expressions import Assignment
 
 from sattlint import constants as const
 from sattlint.analyzers.sfc import analyze_sfc
@@ -61,6 +62,7 @@ from tests.helpers.variable_test_support import (
 __all__ = [
     "ALL_VARIABLE_ANALYSIS_KINDS",
     "Any",
+    "Assignment",
     "BasePicture",
     "EffectFlowTracker",
     "Equation",

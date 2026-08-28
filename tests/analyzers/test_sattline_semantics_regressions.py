@@ -3,8 +3,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from sattline_parser.models.ast_model import BasePicture, Equation, ModuleCode, ModuleHeader, Simple_DataType, Variable
+from sattline_parser.models.expressions import Assignment, VarRef
 
-from sattlint import constants as const
 from sattlint.analyzers import registry as registry_module
 from sattlint.analyzers import sattline_semantics as semantics_module
 from sattlint.analyzers.framework import AnalysisContext, AnalysisSharedArtifacts
@@ -15,8 +15,8 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
 def test_sattline_semantics_includes_unsafe_default_true_rule():
@@ -31,7 +31,7 @@ def test_sattline_semantics_includes_unsafe_default_true_rule():
                     name="Main",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("EnableBypass"), False)],
+                    code=[Assignment(target=_varref("EnableBypass"), value=False)],
                 )
             ]
         ),
@@ -56,8 +56,8 @@ def test_sattline_semantics_includes_scan_cycle_stale_read_rule():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (const.KEY_ASSIGN, {const.KEY_VAR_NAME: "Counter", "state": "new"}, 1),
-                        (const.KEY_ASSIGN, _varref("Output"), {const.KEY_VAR_NAME: "Counter", "state": "old"}),
+                        Assignment(target=VarRef(name="Counter", state="new"), value=1),
+                        Assignment(target=_varref("Output"), value=VarRef(name="Counter", state="old")),
                     ],
                 )
             ]

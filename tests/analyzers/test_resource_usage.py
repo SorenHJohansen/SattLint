@@ -1,6 +1,6 @@
 from sattline_parser.models.ast_model import BasePicture, Equation, ModuleCode, ModuleHeader, Simple_DataType, Variable
+from sattline_parser.models.expressions import FuncCall, FuncCallStmt, VarRef
 
-from sattlint import constants as const
 from sattlint.analyzers.registry import get_actual_cli_analyzer_keys, get_default_analyzers
 from sattlint.analyzers.resource_usage import analyze_resource_usage
 
@@ -9,8 +9,8 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict[str, str]:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
 def test_resource_usage_analyzer_is_registered_and_opt_in_for_cli() -> None:
@@ -36,10 +36,10 @@ def test_resource_usage_reports_release_without_acquire() -> None:
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "CloseFile",
-                            [_varref("FileRef"), _varref("AsyncOp"), _varref("Status")],
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="CloseFile", args=(_varref("FileRef"), _varref("AsyncOp"), _varref("Status"))
+                            )
                         )
                     ],
                 )
@@ -67,15 +67,17 @@ def test_resource_usage_reports_reacquire_and_leak() -> None:
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "OpenReadFile",
-                            [_varref("FileRef"), "first.txt", _varref("AsyncOp"), _varref("Status")],
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="OpenReadFile",
+                                args=(_varref("FileRef"), "first.txt", _varref("AsyncOp"), _varref("Status")),
+                            )
                         ),
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "OpenWriteFile",
-                            [_varref("FileRef"), "second.txt", _varref("AsyncOp"), _varref("Status")],
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="OpenWriteFile",
+                                args=(_varref("FileRef"), "second.txt", _varref("AsyncOp"), _varref("Status")),
+                            )
                         ),
                     ],
                 )

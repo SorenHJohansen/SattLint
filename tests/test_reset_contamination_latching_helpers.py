@@ -10,15 +10,15 @@ from sattline_parser.models.ast_model import (
     FrameModule,
     ModuleCode,
     ModuleHeader,
-    SFCBodyItem,
+    Sequence,
     SFCAlternative,
+    SFCBodyItem,
     SFCCodeBlocks,
     SFCParallel,
     SFCStep,
     SFCSubsequence,
     SFCTransition,
     SFCTransitionSub,
-    Sequence,
     Simple_DataType,
     SingleModule,
     Variable,
@@ -71,8 +71,14 @@ def test_detection_walks_frame_submodules_for_reset_and_latching() -> None:
                     [
                         IfStmt(
                             branches=(
-                                (NotOp(operand=_varref("OpSeq.Reset")), (Assignment(target=_varref("Counter"), value=_varref("ResetValue")),)),
-                                (NotOp(operand=_varref("SeqResetOld")), (Assignment(target=_varref("Other"), value=_varref("ResetValue")),)),
+                                (
+                                    NotOp(operand=_varref("OpSeq.Reset")),
+                                    (Assignment(target=_varref("Counter"), value=_varref("ResetValue")),),
+                                ),
+                                (
+                                    NotOp(operand=_varref("SeqResetOld")),
+                                    (Assignment(target=_varref("Other"), value=_varref("ResetValue")),),
+                                ),
                             ),
                             else_block=None,
                         ),
@@ -83,9 +89,7 @@ def test_detection_walks_frame_submodules_for_reset_and_latching() -> None:
                     "LatchEq",
                     [
                         IfStmt(
-                            branches=(
-                                (_varref("Start"), (Assignment(target=_varref("Latch"), value=True),)),
-                            ),
+                            branches=((_varref("Start"), (Assignment(target=_varref("Latch"), value=True),)),),
                             else_block=None,
                         ),
                     ],
@@ -135,8 +139,14 @@ def test_reset_helpers_collect_nested_refs_and_skip_fully_reset_paths() -> None:
                 [
                     IfStmt(
                         branches=(
-                            (NotOp(operand=_varref("OpSeq.Reset")), (Assignment(target=_varref("Counter"), value=_varref("ResetValue")),)),
-                            (NotOp(operand=_varref("SeqResetOld")), (Assignment(target=_varref("Counter"), value=_varref("ResetValue")),)),
+                            (
+                                NotOp(operand=_varref("OpSeq.Reset")),
+                                (Assignment(target=_varref("Counter"), value=_varref("ResetValue")),),
+                            ),
+                            (
+                                NotOp(operand=_varref("SeqResetOld")),
+                                (Assignment(target=_varref("Counter"), value=_varref("ResetValue")),),
+                            ),
                         ),
                         else_block=None,
                     ),
@@ -152,10 +162,10 @@ def test_reset_helpers_collect_nested_refs_and_skip_fully_reset_paths() -> None:
                     SFCAlternative(
                         branches=[
                             [
-                    SFCSubsequence(
-                        name="Sub",
-                        body=[Assignment(target=_varref("SeqResetOld"), value=_varref("OpSeq.Reset"))],  # pyright: ignore[reportArgumentType] — runtime accepts Assignment in SFCBodyItem
-                    )
+                                SFCSubsequence(
+                                    name="Sub",
+                                    body=[Assignment(target=_varref("SeqResetOld"), value=_varref("OpSeq.Reset"))],  # pyright: ignore[reportArgumentType] — runtime accepts Assignment in SFCBodyItem
+                                )
                             ]
                         ]
                     ),
@@ -221,7 +231,12 @@ def test_latching_helpers_cover_boolean_paths_and_sequence_recursion() -> None:
             SFCParallel(
                 branches=[
                     [_bool_step("ParA", [Assignment(target=_varref("Flag"), value=True)])],
-                    [_bool_step("ParB", [FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("OtherFlag"), False)))])],
+                    [
+                        _bool_step(
+                            "ParB",
+                            [FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("OtherFlag"), False)))],
+                        )
+                    ],
                 ]
             ),
             SFCSubsequence(name="Sub", body=[Assignment(target=_varref("Flag"), value=True)]),  # pyright: ignore[reportArgumentType]
@@ -241,9 +256,7 @@ def test_latching_helpers_cover_boolean_paths_and_sequence_recursion() -> None:
     issues: list[VariableIssue] = []
     reset_contamination_module._scan_stmt_for_latching(
         IfStmt(
-            branches=(
-                (True, (Assignment(target=_varref("Flag"), value=True),)),
-            ),
+            branches=((True, (Assignment(target=_varref("Flag"), value=True),)),),
             else_block=(FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("Flag"), False))),),
         ),
         env,
@@ -263,7 +276,9 @@ def test_latching_helpers_cover_boolean_paths_and_sequence_recursion() -> None:
                 ]
             ),
             SFCParallel(branches=[[_bool_step("Parallel", [Assignment(target=_varref("Flag"), value=True)])]]),
-            SFCSubsequence(name="Nested", body=[_bool_step("NestedStep", [Assignment(target=_varref("Flag"), value=True)])]),
+            SFCSubsequence(
+                name="Nested", body=[_bool_step("NestedStep", [Assignment(target=_varref("Flag"), value=True)])]
+            ),
             SFCTransitionSub(
                 name="NestedGate",
                 body=[_bool_step("NestedGateStep", [Assignment(target=_varref("OtherFlag"), value=True)])],

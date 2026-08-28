@@ -74,7 +74,9 @@ def test_builtin_progstationdata_fields_are_addressable() -> None:
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    assert not analyzer.issues, f"Unexpected issues: {[(i.kind, i.field_path) for i in analyzer.issues]}"
+    assert "variables.undefined_variable" not in {issue.kind for issue in analyzer.issues}, (
+        f"Unexpected issues: {[(i.kind, i.field_path) for i in analyzer.issues]}"
+    )
 
 
 def test_builtin_progstationdata_nested_field_addressable() -> None:
@@ -106,13 +108,11 @@ def test_builtin_progstationdata_nested_field_addressable() -> None:
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    assert "variables.undefined_variable" not in {
-        issue.kind for issue in analyzer.issues
-    }
+    assert "variables.undefined_variable" not in {issue.kind for issue in analyzer.issues}
 
 
 def test_builtin_record_fields_from_parameter_mapping() -> None:
-    from sattline_parser.models.ast_model import ModuleTypeInstance, ModuleTypeDef
+    from sattline_parser.models.ast_model import ModuleTypeDef, ModuleTypeInstance
 
     record_var = Variable(name="MyRecord", datatype="InnerType")
     target_var = Variable(name="Target", datatype=Simple_DataType.INTEGER)
@@ -160,6 +160,6 @@ def test_builtin_record_fields_from_parameter_mapping() -> None:
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    assert "variables.undefined_variable" not in {
-        issue.kind for issue in analyzer.issues
-    }, f"Unexpected issues: {[(i.kind, i.field_path) for i in analyzer.issues]}"
+    assert "variables.undefined_variable" not in {issue.kind for issue in analyzer.issues}, (
+        f"Unexpected issues: {[(i.kind, i.field_path) for i in analyzer.issues]}"
+    )

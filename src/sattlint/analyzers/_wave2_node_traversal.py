@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
+    Assignment,
     ModuleCode,
     Sequence,
     SFCAlternative,
@@ -15,6 +16,7 @@ from sattline_parser.models.ast_model import (
     SFCTransitionSub,
     SLExpression,
 )
+from sattline_parser.models.expressions import FuncCallStmt, VarRef
 
 from ..grammar import constants as const
 from ..resolution.common import varname_full
@@ -131,48 +133,29 @@ def iter_assignment_events(node: object) -> Iterator[AssignmentEvent]:
             yield from iter_assignment_events(child)
         return
 
-    tuple_node = object_tuple(node)
-    if tuple_node is not None and tuple_node:
-        tag = tuple_node[0]
-        if tag == const.KEY_ASSIGN and len(tuple_node) >= 3:
-            target = tuple_node[1]
-            expr = tuple_node[2]
-            target_name = root_variable_name(target)
+    if isinstance(node, FuncCallStmt):
+        function_name = node.call.name
+        args = list(node.call.args) if node.call.args else []
+        if function_name.casefold() == "setbooleanvalue" and len(args) >= 2:
+            target_name = root_variable_name(args[0])
             if target_name:
-                yield AssignmentEvent(target_name=target_name, expr=expr)
-            return
-        if tag == const.KEY_FUNCTION_CALL and len(tuple_node) == 3:
-            function_name = tuple_node[1]
-            args = object_sequence(tuple_node[2])
-            function_name_text = function_name if isinstance(function_name, str) else ""
-            if function_name_text.casefold() == "setbooleanvalue" and args is not None and len(args) >= 2:
-                target_name = root_variable_name(args[0])
-                if target_name:
-                    yield AssignmentEvent(target_name=target_name, expr=args[1])
-                for argument in args[1:]:
-                    yield from iter_assignment_events(argument)
-                return
-            for argument in args or ():
+                yield AssignmentEvent(target_name=target_name, expr=args[1])
+            for argument in args[1:]:
                 yield from iter_assignment_events(argument)
             return
-        if tag == const.GRAMMAR_VALUE_IF and len(tuple_node) == 3:
-            branches = tuple_node[1]
-            else_block = tuple_node[2]
-            for _condition, branch_statements in iter_branch_pairs(branches):
-                for statement in _iter_sequence_values(branch_statements):
-                    yield from iter_assignment_events(statement)
-            for statement in _iter_sequence_values(else_block):
-                yield from iter_assignment_events(statement)
-            return
-        if tag == const.KEY_TERNARY and len(tuple_node) == 3:
-            branches = tuple_node[1]
-            else_expr = tuple_node[2]
-            for _condition, then_expr in iter_branch_pairs(branches):
-                yield from iter_assignment_events(then_expr)
-            yield from iter_assignment_events(else_expr)
-            return
-        for child in tuple_node[1:]:
-            yield from iter_assignment_events(child)
+        for argument in args:
+            yield from iter_assignment_events(argument)
+        return
+
+    if isinstance(node, Assignment):
+        target_name = root_variable_name(node.target)
+        if target_name:
+            yield AssignmentEvent(target_name=target_name, expr=node.value)
+        return
+
+    tuple_node = object_tuple(node)
+    if tuple_node is not None and tuple_node:
+        yield from _iter_tuple_assignment_events(tuple_node)
         return
 
     list_node = object_list(node)
@@ -191,8 +174,57 @@ def iter_assignment_events(node: object) -> Iterator[AssignmentEvent]:
         yield from iter_assignment_events(value)
 
 
+def _iter_tuple_assignment_events(tuple_node: tuple[object, ...]) -> Iterator[AssignmentEvent]:
+    tag = tuple_node[0]
+    if tag == const.KEY_ASSIGN and len(tuple_node) >= 3:
+        target = tuple_node[1]
+        expr = tuple_node[2]
+        target_name = root_variable_name(target)
+        if target_name:
+            yield AssignmentEvent(target_name=target_name, expr=expr)
+        return
+    if tag == const.KEY_FUNCTION_CALL and len(tuple_node) == 3:
+        function_name = tuple_node[1]
+        args = object_sequence(tuple_node[2])
+        function_name_text = function_name if isinstance(function_name, str) else ""
+        if function_name_text.casefold() == "setbooleanvalue" and args is not None and len(args) >= 2:
+            target_name = root_variable_name(args[0])
+            if target_name:
+                yield AssignmentEvent(target_name=target_name, expr=args[1])
+            for argument in args[1:]:
+                yield from iter_assignment_events(argument)
+            return
+        for argument in args or ():
+            yield from iter_assignment_events(argument)
+        return
+    if tag == const.GRAMMAR_VALUE_IF and len(tuple_node) == 3:
+        branches = tuple_node[1]
+        else_block = tuple_node[2]
+        for _condition, branch_statements in iter_branch_pairs(branches):
+            for statement in _iter_sequence_values(branch_statements):
+                yield from iter_assignment_events(statement)
+        for statement in _iter_sequence_values(else_block):
+            yield from iter_assignment_events(statement)
+        return
+    if tag == const.KEY_TERNARY and len(tuple_node) == 3:
+        branches = tuple_node[1]
+        else_expr = tuple_node[2]
+        for _condition, then_expr in iter_branch_pairs(branches):
+            yield from iter_assignment_events(then_expr)
+        yield from iter_assignment_events(else_expr)
+        return
+    for child in tuple_node[1:]:
+        yield from iter_assignment_events(child)
+
+
 def iter_read_variable_names(node: object) -> Iterator[str]:
     if node is None:
+        return
+
+    if isinstance(node, VarRef):
+        name = root_variable_name(node)
+        if name is not None:
+            yield name
         return
 
     node_dict = string_key_dict(node)
@@ -206,6 +238,20 @@ def iter_read_variable_names(node: object) -> Iterator[str]:
     if direct_statement_children is not None:
         for child in direct_statement_children:
             yield from iter_read_variable_names(child)
+        return
+
+    if isinstance(node, FuncCallStmt):
+        function_name = node.call.name
+        args = list(node.call.args) if node.call.args else []
+        if function_name.casefold() == "setbooleanvalue" and len(args) >= 2:
+            yield from iter_read_variable_names(args[1])
+            return
+        for argument in args:
+            yield from iter_read_variable_names(argument)
+        return
+
+    if isinstance(node, Assignment):
+        yield from iter_read_variable_names(node.value)
         return
 
     tuple_node = object_tuple(node)

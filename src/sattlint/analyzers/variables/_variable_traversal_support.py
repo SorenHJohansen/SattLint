@@ -573,6 +573,13 @@ def _scan_for_varrefs(
                     self._walk_output_tail(tail, context, path, is_ui_read=is_ui_read)
                 else:
                     self._walk_tail(tail, context, path, is_ui_read=is_ui_read)
+        if (
+            const.KEY_NAME in mapping
+            and const.KEY_TAIL in mapping
+            and mapping[const.KEY_TAIL] is None
+            and isinstance(mapping[const.KEY_NAME], str)
+        ):
+            self._walk_tail(mapping[const.KEY_NAME], context, path, is_ui_read=is_ui_read)
         for value in mapping.values():
             self._scan_for_varrefs(value, context, path, is_ui_read=is_ui_read)
         return

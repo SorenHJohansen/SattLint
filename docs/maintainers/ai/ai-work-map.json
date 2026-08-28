@@ -346,7 +346,7 @@
       "label": "Collect trace report",
       "owner_surface": "trace",
       "owner_test_targets": [
-        "tests/test_pipeline_phase2.py"
+        "tests/analyzers/test_sattline_semantics.py"
       ],
       "path_globs": [
         "src/sattlint/analyzers/**",

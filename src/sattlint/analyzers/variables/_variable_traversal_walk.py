@@ -154,7 +154,18 @@ def _walk_stmt_or_expr(  # noqa: PLR0915
     if isinstance(obj, Assignment):
         full_name = _var_name_of(obj.target)
         if full_name is not None:
-            self._mark_ref_access(full_name, context, path, AccessKind.WRITE, is_ui_read=is_ui_read)
+            value_name = _var_name_of(obj.value)
+            target_base = varname_base(full_name)
+            value_base = varname_base(value_name) if value_name is not None else None
+            is_param_self_assignment = (
+                bool(context.moduleparameter_keys)
+                and target_base is not None
+                and target_base.casefold() in context.moduleparameter_keys
+                and value_base is not None
+                and value_base.casefold() == target_base.casefold()
+            )
+            if not is_param_self_assignment:
+                self._mark_ref_access(full_name, context, path, AccessKind.WRITE, is_ui_read=is_ui_read)
             self._record_assignment_effect_flow(full_name, obj.value, context)
         self._walk_stmt_or_expr(obj.value, context, path, is_ui_read=is_ui_read)
         return
@@ -298,6 +309,13 @@ def _walk_stmt_or_expr(  # noqa: PLR0915
                 self._walk_stmt_or_expr(child, context, path, is_ui_read=is_ui_read)
             return
         if obj.data == const.GRAMMAR_VALUE_INVAR_PREFIX:
+            for child in _children_of(obj) or []:
+                self._walk_stmt_or_expr(child, context, path, is_ui_read=is_ui_read)
+            return
+        if obj.data == const.GRAMMAR_VALUE_OUTVAR_PREFIX:
+            self._walk_output_tail(obj, context, path, is_ui_read=is_ui_read)
+            return
+        if obj.data in {"procedure_args", "proc_atom"}:
             for child in _children_of(obj) or []:
                 self._walk_stmt_or_expr(child, context, path, is_ui_read=is_ui_read)
             return

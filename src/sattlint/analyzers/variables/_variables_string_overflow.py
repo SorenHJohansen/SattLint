@@ -50,12 +50,15 @@ def collect_string_operation_overflow_issues(self: VariablesAnalyzer) -> None:
                 continue
 
             source_name = _overflow_source_name(result)
+            operation_name = (
+                result.overflow_operations[0] if len(result.overflow_operations) == 1 else "string operation"
+            )
             source_variable = Variable(name=source_name, datatype=Simple_DataType.STRING)
             issue = VariableIssue(
                 kind=IssueKind.STRING_MAPPING_MISMATCH,
                 module_path=list(decl_path),
                 variable=resolved_var,
-                role="string operation overflow",
+                role=operation_name,
                 source_variable=source_variable,
                 source_decl_module_path=list(decl_path),
                 source_role="builtin result",

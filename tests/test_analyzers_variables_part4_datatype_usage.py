@@ -309,7 +309,7 @@ def test_picture_display_variable_rows_count_as_field_usage_for_datatype_reporti
                         index_value=0,
                         kind="variable",
                         raw_text="StepTexts.CleanCycle",
-                        span=SourceSpan(line=9, column=1),
+                        span=SourceSpan(start=0, end=0, line=9, column=1),
                     ),
                     PictureDisplayPathRow(
                         record_index=1,
@@ -317,7 +317,7 @@ def test_picture_display_variable_rows_count_as_field_usage_for_datatype_reporti
                         index_value=1,
                         kind="variable",
                         raw_text="StepTexts.WaitCleanCycle",
-                        span=SourceSpan(line=10, column=1),
+                        span=SourceSpan(start=0, end=0, line=10, column=1),
                     ),
                 ),
             ),
@@ -361,7 +361,7 @@ def test_invalid_picture_display_path_rows_do_not_count_as_usage():
             kind="var",
             raw_text="PathAIT",
             value=_varref("PathAIT"),
-            span=SourceSpan(line=2, column=5),
+            span=SourceSpan(start=0, end=0, line=2, column=5),
         )
     ]
     bp.graphics_picture_display_occurrences = [

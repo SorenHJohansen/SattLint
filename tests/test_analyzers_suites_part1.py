@@ -92,9 +92,7 @@ def test_dataflow_flags_old_as_out_parameter_temporal_misuse():
                     name="Main",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[
-                        FuncCallStmt(call=FuncCall(name="MaxLim", args=(1.0, 2.0, 0.1, _state_ref("Flag", "old"))))
-                    ],
+                    code=[FuncCallStmt(call=FuncCall(name="MaxLim", args=(1.0, 2.0, 0.1, _state_ref("Flag", "old"))))],
                 )
             ]
         ),
@@ -126,7 +124,11 @@ def test_variables_analyzer_flags_ignored_procedure_status_output():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        FuncCallStmt(call=FuncCall(name="CopyVariable", args=(_varref("Source"), _varref("Destination"), _varref("Status"))))
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="CopyVariable", args=(_varref("Source"), _varref("Destination"), _varref("Status"))
+                            )
+                        )
                     ],
                 )
             ]
@@ -272,7 +274,11 @@ def test_variables_analyzer_ignores_safe_naming_role_counterexamples():
                     size=(1.0, 1.0),
                     code=[
                         Assignment(target=_varref("Output"), value=_varref("StartCmd")),
-                        FuncCallStmt(call=FuncCall(name="CopyVariable", args=(_varref("Source"), _varref("Destination"), _varref("Status")))),
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="CopyVariable", args=(_varref("Source"), _varref("Destination"), _varref("Status"))
+                            )
+                        ),
                     ],
                 )
             ]

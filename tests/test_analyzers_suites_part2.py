@@ -31,9 +31,7 @@ def test_dataflow_flags_contradictory_branch_condition_in_analyzer_suite():
                                     (Assignment(target=_varref("Output"), value=True),),
                                 ),
                             ),
-                            else_block=(
-                                Assignment(target=_varref("Output"), value=False),
-                            ),
+                            else_block=(Assignment(target=_varref("Output"), value=False),),
                         )
                     ],
                 )
@@ -65,10 +63,13 @@ def test_dataflow_flags_impossible_inferred_compare_condition_in_analyzer_suite(
                         IfStmt(
                             branches=(
                                 (
-                                    BoolOp(op="AND", operands=(
-                                        Compare(left=_varref("Counter"), op="==", right=1),
-                                        Compare(left=_varref("Counter"), op="==", right=2),
-                                    )),
+                                    BoolOp(
+                                        op="AND",
+                                        operands=(
+                                            Compare(left=_varref("Counter"), op="==", right=1),
+                                            Compare(left=_varref("Counter"), op="==", right=2),
+                                        ),
+                                    ),
                                     (Assignment(target=_varref("Output"), value=True),),
                                 ),
                             ),

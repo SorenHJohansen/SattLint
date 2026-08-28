@@ -1,6 +1,6 @@
 from sattline_parser.models.ast_model import BasePicture, Equation, ModuleCode, ModuleHeader, Simple_DataType, Variable
+from sattline_parser.models.expressions import Assignment, VarRef
 
-from sattlint import constants as const
 from sattlint.analyzers.data_dependency import analyze_data_dependency
 from sattlint.analyzers.registry import get_actual_cli_analyzer_keys, get_default_analyzers
 
@@ -9,8 +9,8 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict[str, str]:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
 def test_data_dependency_analyzer_is_registered_and_opt_in_for_cli() -> None:
@@ -36,8 +36,8 @@ def test_data_dependency_reports_transitive_dependency_path() -> None:
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (const.KEY_ASSIGN, _varref("Mid"), _varref("Input")),
-                        (const.KEY_ASSIGN, _varref("Output"), _varref("Mid")),
+                        Assignment(target=_varref("Mid"), value=_varref("Input")),
+                        Assignment(target=_varref("Output"), value=_varref("Mid")),
                     ],
                 )
             ]
@@ -68,8 +68,8 @@ def test_data_dependency_reports_initialization_order_hazard() -> None:
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (const.KEY_ASSIGN, _varref("Output"), _varref("Source")),
-                        (const.KEY_ASSIGN, _varref("Source"), 3),
+                        Assignment(target=_varref("Output"), value=_varref("Source")),
+                        Assignment(target=_varref("Source"), value=3),
                     ],
                 )
             ]

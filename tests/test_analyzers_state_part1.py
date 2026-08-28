@@ -1,6 +1,6 @@
-from ._analyzers_state_test_support import *
-
 from sattline_parser.models.expressions import Assignment, IfStmt, NotOp
+
+from ._analyzers_state_test_support import *
 
 reset_contamination_helpers = cast(Any, reset_contamination_module)
 
@@ -147,7 +147,9 @@ def test_reset_contamination_helpers_collect_refs_and_reset_old_vars_from_nested
                     SFCStep(
                         kind="step",
                         name="Start",
-                        code=SFCCodeBlocks(enter=[Assignment(target=_varref("SeqResetOld"), value=_varref("OpSeq.Reset"))]),  # pyright: ignore[reportArgumentType]
+                        code=SFCCodeBlocks(
+                            enter=[Assignment(target=_varref("SeqResetOld"), value=_varref("OpSeq.Reset"))]
+                        ),  # pyright: ignore[reportArgumentType]
                     ),
                     SFCTransition(name="Gate", condition=NotOp(operand=_varref("OpSeq.Reset"))),
                     SFCAlternative(

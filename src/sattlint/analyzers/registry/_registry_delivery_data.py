@@ -41,10 +41,7 @@ def default_delivery_templates(
             scope="workspace",
             implementation_bucket="shared-semantic-core",
             lsp_exposed=True,
-            acceptance_tests=(
-                "tests/analyzers/test_sattline_semantics.py",
-                "tests/test_pipeline_phase2.py",
-            ),
+            acceptance_tests=("tests/analyzers/test_sattline_semantics.py",),
             min_fixture_set=shared_fixtures,
         ),
         AnalyzerDeliveryTemplate(
@@ -117,7 +114,6 @@ def default_delivery_templates(
             acceptance_tests=(
                 *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
                 *_APP_ACCEPTANCE_TESTS,
-                "tests/test_pipeline_phase2.py",
             ),
             min_fixture_set=shared_fixtures,
         ),
@@ -349,10 +345,7 @@ def default_delivery_templates(
             scope="single-file",
             implementation_bucket="shared-semantic-core",
             lsp_exposed=True,
-            acceptance_tests=(
-                "tests/test_pipeline_phase2.py",
-                "tests/analyzers/test_sattline_semantics.py",
-            ),
+            acceptance_tests=("tests/analyzers/test_sattline_semantics.py",),
             depends_on_analyzers=(semantic_layer_analyzer_key,),
             min_fixture_set=shared_fixtures,
             exposed_via=(semantic_layer_analyzer_key,),

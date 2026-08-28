@@ -24,7 +24,7 @@ def test_module_localvar_field_report_includes_filtered_summary_sections():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (const.KEY_ASSIGN, _varref("Input.Target"), IntLiteral(2)),
+                        Assignment(target=_varref("Input.Target"), value=IntLiteral(2)),
                     ],
                 )
             ]
@@ -63,10 +63,10 @@ def test_module_localvar_field_report_includes_filtered_summary_sections():
                             position=(0.0, 0.0),
                             size=(1.0, 1.0),
                             code=[
-                                (const.KEY_ASSIGN, _varref("Sink"), _varref("Dv.Source")),
-                                (const.KEY_ASSIGN, _varref("Dv.Target"), IntLiteral(1)),
-                                (const.KEY_ASSIGN, _varref("Mirror"), _varref("Dv")),
-                                (const.KEY_ASSIGN, _varref("Dv"), _varref("Mirror")),
+                                Assignment(target=_varref("Sink"), value=_varref("Dv.Source")),
+                                Assignment(target=_varref("Dv.Target"), value=IntLiteral(1)),
+                                Assignment(target=_varref("Mirror"), value=_varref("Dv")),
+                                Assignment(target=_varref("Dv"), value=_varref("Mirror")),
                             ],
                         )
                     ]
@@ -228,7 +228,7 @@ def test_module_comparison_summary_lists_variant_differences():
                     name="MainEq",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("OnlyA"), IntLiteral(1))],
+                    code=[Assignment(target=_varref("OnlyA"), value=IntLiteral(1))],
                 )
             ]
         ),
@@ -246,7 +246,7 @@ def test_module_comparison_summary_lists_variant_differences():
                     name="OtherEq",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("OnlyB"), IntLiteral(2))],
+                    code=[Assignment(target=_varref("OnlyB"), value=IntLiteral(2))],
                 )
             ]
         ),

@@ -17,7 +17,7 @@ def test_record_component_order_diagnostic_message_includes_guidance() -> None:
     definition = SimpleNamespace(
         source_file="/tmp/Main.s",
         source_library="MainLib",
-        declaration_span=SourceSpan(12, 4),
+        declaration_span=SourceSpan(start=12, end=4, line=0, column=0),
         canonical_path="BasePicture.TypeDef:PicklistType.RecipeRecord",
         field_path=None,
     )

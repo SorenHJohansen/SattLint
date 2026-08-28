@@ -14,8 +14,8 @@ from sattline_parser.models.ast_model import (
     Simple_DataType,
     Variable,
 )
+from sattline_parser.models.expressions import Assignment, NotOp, SLExpression, VarRef
 
-from sattlint import constants as const
 from sattlint.simulation import simulate_module
 
 
@@ -23,16 +23,16 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
-def _assign(name: str, value: object) -> tuple:
-    return (const.KEY_ASSIGN, _varref(name), value)
+def _assign(name: str, value: SLExpression) -> Assignment:
+    return Assignment(target=VarRef(name=name), value=value)
 
 
 def _step(name: str, active_stmts: list[object], *, kind: str = "step") -> SFCStep:
-    return SFCStep(kind=kind, name=name, code=SFCCodeBlocks(active=active_stmts))
+    return SFCStep(kind=kind, name=name, code=SFCCodeBlocks(active=active_stmts))  # pyright: ignore[reportArgumentType]
 
 
 def _sequence(nodes: list[object]) -> Sequence:
@@ -41,7 +41,7 @@ def _sequence(nodes: list[object]) -> Sequence:
         type="sequence",
         position=(0.0, 0.0),
         size=(1.0, 1.0),
-        code=nodes,
+        code=nodes,  # pyright: ignore[reportArgumentType]
     )
 
 
@@ -82,7 +82,7 @@ def test_simulate_module_detects_cycle_from_repeated_signature():
             sequences=[
                 _sequence(
                     [
-                        _step("Toggle", [_assign("Flag", (const.GRAMMAR_VALUE_NOT, _varref("Flag")))], kind="init"),
+                        _step("Toggle", [_assign("Flag", NotOp(operand=_varref("Flag")))], kind="init"),
                         SFCTransition(name="Stay", condition=False),
                     ]
                 )

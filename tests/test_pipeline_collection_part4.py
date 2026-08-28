@@ -371,7 +371,7 @@ def test_span_kwargs_returns_line_and_column_from_span():
 
     from sattlint._validation_shared import span_kwargs  # noqa: PLC0415
 
-    span = SourceSpan(line=3, column=7)
+    span = SourceSpan(start=0, end=0, line=3, column=7)
     result = span_kwargs(span)
     assert result == {"line": 3, "column": 7}
 
@@ -390,7 +390,7 @@ def test_ref_span_returns_span_from_dict_with_span():
 
     from sattlint._validation_shared import ref_span  # noqa: PLC0415
 
-    span = SourceSpan(line=1, column=0)
+    span = SourceSpan(start=0, end=0, line=1, column=0)
     result = ref_span({"span": span})
     assert result is span
 

@@ -1,3 +1,5 @@
+from sattline_parser.models.expressions import Assignment
+
 from ._analyzers_suites_test_support import *
 
 
@@ -19,10 +21,9 @@ def test_safety_paths_trace_emergency_signal_across_moduletype_mapping():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("Seen"),
-                            _varref("InSignal"),
+                        Assignment(
+                            target=_varref("Seen"),
+                            value=_varref("InSignal"),
                         )
                     ],
                 )
@@ -60,10 +61,9 @@ def test_safety_paths_trace_emergency_signal_across_moduletype_mapping():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("EmergencyShutdown"),
-                            True,
+                        Assignment(
+                            target=_varref("EmergencyShutdown"),
+                            value=True,
                         )
                     ],
                 )
@@ -95,10 +95,9 @@ def test_safety_paths_reports_unconsumed_shutdown_signal():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("EmergencyShutdown"),
-                            True,
+                        Assignment(
+                            target=_varref("EmergencyShutdown"),
+                            value=True,
                         )
                     ],
                 )
@@ -133,10 +132,9 @@ def test_taint_paths_trace_operator_input_to_shutdown_sink_across_moduletype_map
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("EmergencyShutdown"),
-                            _varref("InCommand"),
+                        Assignment(
+                            target=_varref("EmergencyShutdown"),
+                            value=_varref("InCommand"),
                         )
                     ],
                 )
@@ -174,10 +172,9 @@ def test_taint_paths_trace_operator_input_to_shutdown_sink_across_moduletype_map
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("OperatorCommand"),
-                            True,
+                        Assignment(
+                            target=_varref("OperatorCommand"),
+                            value=True,
                         )
                     ],
                 )
@@ -327,10 +324,10 @@ def test_variable_usage_reports_include_field_and_whole_variable_accesses():
                             position=(0.0, 0.0),
                             size=(1.0, 1.0),
                             code=[
-                                (const.KEY_ASSIGN, _varref("Sink"), _varref("Dv.Source")),
-                                (const.KEY_ASSIGN, _varref("Dv.Target"), IntLiteral(1)),
-                                (const.KEY_ASSIGN, _varref("Mirror"), _varref("Dv")),
-                                (const.KEY_ASSIGN, _varref("Dv"), _varref("Mirror")),
+                                Assignment(target=_varref("Sink"), value=_varref("Dv.Source")),
+                                Assignment(target=_varref("Dv.Target"), value=IntLiteral(1)),
+                                Assignment(target=_varref("Mirror"), value=_varref("Dv")),
+                                Assignment(target=_varref("Dv"), value=_varref("Mirror")),
                             ],
                         )
                     ]

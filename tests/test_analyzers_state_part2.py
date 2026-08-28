@@ -1,5 +1,6 @@
-from ._analyzers_state_test_support import *
 from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt
+
+from ._analyzers_state_test_support import *
 
 reset_contamination_helpers = cast(Any, reset_contamination_module)
 
@@ -203,7 +204,9 @@ def test_implicit_latch_helpers_collect_boolean_statement_and_sequence_paths():
                         kind="step",
                         name="AltFalse",
                         code=SFCCodeBlocks(
-                            active=[FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("BranchFlag"), False)))]
+                            active=[
+                                FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("BranchFlag"), False)))
+                            ]
                         ),
                     )
                 ],
@@ -232,7 +235,9 @@ def test_implicit_latch_helpers_collect_boolean_statement_and_sequence_paths():
                         kind="step",
                         name="Right",
                         code=SFCCodeBlocks(
-                            active=[FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("ParallelB"), False)))]
+                            active=[
+                                FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("ParallelB"), False)))
+                            ]
                         ),
                     )
                 ],
@@ -311,7 +316,9 @@ def test_implicit_latch_helpers_scan_nested_sfc_nodes_and_dedupe_issues():
                         kind="step",
                         name="AltTwo",
                         code=SFCCodeBlocks(
-                            active=[FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("StepFlag"), False)))]
+                            active=[
+                                FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("StepFlag"), False)))
+                            ]
                         ),
                     )
                 ],

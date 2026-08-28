@@ -241,7 +241,7 @@ def test_variables_report_summary_formats_duplication_magic_numbers_and_sequence
                 module_path=["BasePicture", "TypeDef:Soejle", "UnitA"],
                 variable=None,
                 literal_value=42,
-                literal_span=SourceSpan(line=9, column=4),
+                literal_span=SourceSpan(start=0, end=0, line=9, column=4),
                 site="EquationBlock",
             ),
             VariableIssue(
@@ -441,7 +441,7 @@ def test_variables_report_properties_visible_kinds_and_empty_sections_cover_rema
             module_path=["BasePicture", "Magic"],
             variable=None,
             literal_value=7,
-            literal_span=SourceSpan(12, 8),
+            literal_span=SourceSpan(start=0, end=0, line=12, column=8),
             site="EquationBlock",
         ),
         VariableIssue(

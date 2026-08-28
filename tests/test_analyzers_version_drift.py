@@ -10,8 +10,8 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattline_parser.models.expressions import Assignment, VarRef
 
-from sattlint import constants as const
 from sattlint.analyzers.modules import analyze_version_drift
 from sattlint.analyzers.registry import get_default_analyzers
 
@@ -20,8 +20,8 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
 def test_version_drift_detects_small_code_delta_between_same_named_modules():
@@ -38,7 +38,7 @@ def test_version_drift_detects_small_code_delta_between_same_named_modules():
                     name="Logic",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Output"), 1)],
+                    code=[Assignment(target=_varref("Output"), value=1)],
                 )
             ],
             sequences=[],
@@ -58,7 +58,7 @@ def test_version_drift_detects_small_code_delta_between_same_named_modules():
                     name="Logic",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Output"), 2)],
+                    code=[Assignment(target=_varref("Output"), value=2)],
                 )
             ],
             sequences=[],
@@ -154,7 +154,7 @@ def test_version_drift_ignores_datecode_only_differences():
                     name="Logic",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Output"), 1)],
+                    code=[Assignment(target=_varref("Output"), value=1)],
                 )
             ],
             sequences=[],
@@ -174,7 +174,7 @@ def test_version_drift_ignores_datecode_only_differences():
                     name="Logic",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Output"), 1)],
+                    code=[Assignment(target=_varref("Output"), value=1)],
                 )
             ],
             sequences=[],

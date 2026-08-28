@@ -133,6 +133,7 @@ def _walk_interact_object(self: VariablesAnalyzer, io: Any, context: ScopeContex
         else:
             self._walk_tail(tail, context, path, is_ui_read=True)
     self._scan_for_varrefs(props.get(const.KEY_BODY), context, path, is_ui_read=True)
+    self._scan_for_varrefs(props.get("flags"), context, path, is_ui_read=True)
 
     procedure = props.get(const.KEY_PROCEDURE)
     procedure_mapping = _object_mapping(procedure)

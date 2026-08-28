@@ -11,6 +11,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattline_parser.models.expressions import VarRef
 
 from sattlint.reporting.variables_report import IssueKind
 from sattlint.resolution.context_builder import ContextBuilder
@@ -58,7 +59,7 @@ def test_build_for_single_skips_empty_non_global_sources() -> None:
         modulecode=None,
         parametermappings=[
             ParameterMapping(
-                target={"var_name": "Input"},
+                target=VarRef(name="Input"),
                 source_type="value",
                 is_duration=False,
                 is_source_global=False,
@@ -114,7 +115,7 @@ def test_build_for_typedef_reports_name_collisions_and_skips_empty_sources() -> 
         moduletype_name="WorkerType",
         parametermappings=[
             ParameterMapping(
-                target={"var_name": "Shared"},
+                target=VarRef(name="Shared"),
                 source_type="value",
                 is_duration=False,
                 is_source_global=False,
@@ -164,11 +165,11 @@ def test_build_for_typedef_without_parent_context_skips_source_resolution() -> N
         moduletype_name="WorkerType",
         parametermappings=[
             ParameterMapping(
-                target={"var_name": "Input"},
+                target=VarRef(name="Input"),
                 source_type="var_name",
                 is_duration=False,
                 is_source_global=False,
-                source={"var_name": "Outer"},
+                source=VarRef(name="Outer"),
                 source_literal=None,
             )
         ],
@@ -252,11 +253,11 @@ def test_build_for_typedef_reuses_cached_template_for_equivalent_mappings() -> N
         moduletype_name="WorkerType",
         parametermappings=[
             ParameterMapping(
-                target={"var_name": "Input"},
+                target=VarRef(name="Input"),
                 source_type="var_name",
                 is_duration=False,
                 is_source_global=False,
-                source={"var_name": "Outer"},
+                source=VarRef(name="Outer"),
                 source_literal=None,
             )
         ],

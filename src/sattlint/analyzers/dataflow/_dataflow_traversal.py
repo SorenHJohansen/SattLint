@@ -387,7 +387,6 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
             function_name = obj.call.name
             args = _sequence_as_list(obj.call.args)
             return self._apply_call_side_effects(function_name, args, context, current_state)
-            return current_state
 
         tuple_node = _object_tuple(obj)
         if tuple_node is not None and tuple_node and tuple_node[0] == const.GRAMMAR_VALUE_IF:
