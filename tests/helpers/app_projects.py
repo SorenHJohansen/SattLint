@@ -51,7 +51,6 @@ def build_mini_project_context(
             "other_lib_dirs": [],
             "analyzed_programs_and_libraries": [target_name],
             "mode": "draft",
-            "scan_root_only": True,
             "debug": False,
         }
     )

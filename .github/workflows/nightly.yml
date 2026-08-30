@@ -26,7 +26,7 @@ jobs:
       - name: Set up shared CI tooling
         uses: ./.github/actions/setup-ci-tooling
         with:
-          dependency-spec: ".[dev,lsp]"
+          dependency-spec: ".[dev]"
           install-node: "true"
           install-markdownlint: "true"
           install-actionlint: "true"

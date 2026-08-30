@@ -46,10 +46,6 @@ COMPARE_RESULTS_FILENAME = AUDIT_FINDINGS_COMPARISON_FILENAME
 COMPARE_SCHEMA_KIND = AUDIT_FINDINGS_COMPARISON_SCHEMA_KIND
 COMPARE_SCHEMA_VERSION = AUDIT_FINDINGS_COMPARISON_SCHEMA_VERSION
 
-COVERAGE_RATCHET_FILENAME = "coverage_ratchet.json"
-COVERAGE_RATCHET_SCHEMA_KIND = "sattlint.coverage_ratchet"
-COVERAGE_RATCHET_SCHEMA_VERSION = 1
-
 COVERAGE_SUMMARY_FILENAME = "coverage_summary.json"
 COVERAGE_SUMMARY_SCHEMA_KIND = "sattlint.coverage_summary"
 COVERAGE_SUMMARY_SCHEMA_VERSION = 1
@@ -492,14 +488,6 @@ DEVTOOLS_ARTIFACTS: tuple[ArtifactDefinition, ...] = (
         "compare_audit_findings",
         AUDIT_FINDINGS_COMPARISON_SCHEMA_KIND,
         AUDIT_FINDINGS_COMPARISON_SCHEMA_VERSION,
-        optional=True,
-    ),
-    ArtifactDefinition(
-        "coverage_ratchet",
-        COVERAGE_RATCHET_FILENAME,
-        "coverage_reports",
-        COVERAGE_RATCHET_SCHEMA_KIND,
-        COVERAGE_RATCHET_SCHEMA_VERSION,
         optional=True,
     ),
     ArtifactDefinition(

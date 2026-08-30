@@ -45,15 +45,14 @@ def _build_config_menu_options(menu_option_factory: Callable[[str, str, str], An
         menu_option_factory("1", "Add analysis target", "Add a program or library name without file extension"),
         menu_option_factory("2", "Remove analysis target", "Remove one configured analysis target"),
         menu_option_factory("3", "Toggle mode", "Switch between official and draft file mode"),
-        menu_option_factory("4", "Toggle scan_root_only", "Restrict dependency scanning to the root directory"),
-        menu_option_factory("5", "Change program_dir", "Set the main SattLine program directory"),
-        menu_option_factory("6", "Change ABB_lib_dir", "Set the ABB or shared library directory"),
-        menu_option_factory("7", "Edit other_lib_dirs", "Add or remove additional library directories"),
-        menu_option_factory("8", "Save configuration", "Write the current configuration to disk"),
-        menu_option_factory("9", "Change icf_dir", "Set the directory used for ICF validation"),
-        menu_option_factory("10", "Toggle debug", "Show extra debugging output while running"),
-        menu_option_factory("11", "Toggle telemetry", "Enable or disable local telemetry logging"),
-        menu_option_factory("12", "Edit graphics rules", "Manage the JSON graphics rules used by the graphics check"),
+        menu_option_factory("4", "Change program_dir", "Set the main SattLine program directory"),
+        menu_option_factory("5", "Change ABB_lib_dir", "Set the ABB or shared library directory"),
+        menu_option_factory("6", "Edit other_lib_dirs", "Add or remove additional library directories"),
+        menu_option_factory("7", "Save configuration", "Write the current configuration to disk"),
+        menu_option_factory("8", "Change icf_dir", "Set the directory used for ICF validation"),
+        menu_option_factory("9", "Toggle debug", "Show extra debugging output while running"),
+        menu_option_factory("10", "Toggle telemetry", "Enable or disable local telemetry logging"),
+        menu_option_factory("11", "Edit graphics rules", "Manage the JSON graphics rules used by the graphics check"),
         menu_option_factory("b", "Back", ""),
         menu_option_factory("q", "Quit", ""),
     ]
@@ -485,21 +484,6 @@ def config_menu(
         elif choice == "4":
             dirty = _run_menu_action(
                 lambda dirty=dirty: (
-                    _toggle_config_value(
-                        cfg,
-                        "scan_root_only",
-                        confirm_message="Toggle scan_root_only?",
-                        confirm_fn=menu_interaction.confirm,
-                    )
-                    or dirty
-                ),
-                pause_fn=menu_interaction.pause,
-                default=dirty,
-            )
-
-        elif choice == "5":
-            dirty = _run_menu_action(
-                lambda dirty=dirty: (
                     _update_config_value(
                         cfg,
                         "program_dir",
@@ -514,7 +498,7 @@ def config_menu(
                 default=dirty,
             )
 
-        elif choice == "6":
+        elif choice == "5":
             dirty = _run_menu_action(
                 lambda dirty=dirty: (
                     _update_config_value(
@@ -531,7 +515,7 @@ def config_menu(
                 default=dirty,
             )
 
-        elif choice == "7":
+        elif choice == "6":
             dirty = _run_menu_action(
                 lambda dirty=dirty: (
                     _edit_other_lib_dirs(
@@ -545,7 +529,7 @@ def config_menu(
                 pause_fn=menu_interaction.pause,
                 default=dirty,
             )
-        elif choice == "8":
+        elif choice == "7":
             dirty = _run_menu_action(
                 lambda dirty=dirty: _save_configuration(
                     cfg,
@@ -557,7 +541,7 @@ def config_menu(
                 pause_fn=menu_interaction.pause,
                 default=dirty,
             )
-        elif choice == "9":
+        elif choice == "8":
             dirty = _run_menu_action(
                 lambda dirty=dirty: (
                     _update_config_value(
@@ -573,7 +557,7 @@ def config_menu(
                 pause_fn=menu_interaction.pause,
                 default=dirty,
             )
-        elif choice == "10":
+        elif choice == "9":
             dirty = _run_menu_action(
                 lambda dirty=dirty: (
                     _toggle_config_value(
@@ -588,13 +572,13 @@ def config_menu(
                 pause_fn=menu_interaction.pause,
                 default=dirty,
             )
-        elif choice == "11":
+        elif choice == "10":
             dirty = _run_menu_action(
                 lambda dirty=dirty: _toggle_telemetry_enabled(cfg, confirm_fn=menu_interaction.confirm) or dirty,
                 pause_fn=menu_interaction.pause,
                 default=dirty,
             )
-        elif choice == "12":
+        elif choice == "11":
             _run_menu_action(lambda: graphics_rules_menu_fn(cfg), pause_fn=menu_interaction.pause)
         else:
             emit_output("Invalid choice.")
@@ -688,7 +672,6 @@ def run_main_loop(
     summarize_targets_fn: Callable[[ConfigDict], str],
     require_targets_for_menu_action_fn: Callable[[ConfigDict, str], bool],
     analysis_menu_fn: Callable[[ConfigDict], None],
-    documentation_menu_fn: Callable[[ConfigDict], bool],
     config_menu_fn: Callable[[ConfigDict], bool],
     tools_menu_fn: Callable[[ConfigDict], None],
     show_help_fn: Callable[[ConfigDict], None],
@@ -714,15 +697,13 @@ def run_main_loop(
             "SattLint",
             [
                 menu_option_factory("1", "Analyze", "Run checks and reports for configured targets"),
-                menu_option_factory("2", "Documentation", "Preview unit scope and generate DOCX output"),
-                menu_option_factory("3", "Setup", "Configure directories, targets, mode, and cache settings"),
-                menu_option_factory("4", "Tools", "Diagnostics, dumps, and cache refresh"),
-                menu_option_factory("5", "Help", "First-time guidance and workflow explanations"),
+                menu_option_factory("2", "Setup", "Configure directories, targets, mode, and cache settings"),
+                menu_option_factory("3", "Tools", "Diagnostics, dumps, and cache refresh"),
+                menu_option_factory("4", "Help", "First-time guidance and workflow explanations"),
                 menu_option_factory("q", "Quit", ""),
             ],
             intro=(
-                "Analyze SattLine targets, generate documentation, and troubleshoot parser state from one place. "
-                "Start with Setup on first run."
+                "Analyze SattLine targets and troubleshoot parser state from one place. Start with Setup on first run."
             ),
             note=(summarize_targets_fn(cfg) + "\nChanges are not saved until you choose Save configuration in Setup."),
         )
@@ -732,26 +713,15 @@ def run_main_loop(
                 _run_menu_action(lambda: analysis_menu_fn(cfg), pause_fn=menu_interaction.pause)
 
         elif choice == "2":
-            if require_targets_for_menu_action_fn(cfg, "using documentation tools"):
-                dirty |= cast(
-                    bool,
-                    _run_menu_action(
-                        lambda: documentation_menu_fn(cfg),
-                        pause_fn=menu_interaction.pause,
-                        default=False,
-                    ),
-                )
-
-        elif choice == "3":
             dirty |= cast(
                 bool,
                 _run_menu_action(lambda: config_menu_fn(cfg), pause_fn=menu_interaction.pause, default=False),
             )
 
-        elif choice == "4":
+        elif choice == "3":
             _run_menu_action(lambda: tools_menu_fn(cfg), pause_fn=menu_interaction.pause)
 
-        elif choice == "5":
+        elif choice == "4":
             _run_menu_action(lambda: show_help_fn(cfg), pause_fn=menu_interaction.pause)
 
         elif choice == "q":

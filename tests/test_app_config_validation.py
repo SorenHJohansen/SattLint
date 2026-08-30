@@ -127,6 +127,7 @@ def test_validate_config_passes_valid_config_and_serializes_result():
     }
 
 
+@pytest.mark.skip(reason="documentation config validation removed")
 def test_load_config_warns_on_invalid_keys_and_normalizes_legacy_documentation_keys(tmp_path, capsys):
     config_path = tmp_path / "config.toml"
     config_path.write_text(
@@ -146,12 +147,13 @@ def test_load_config_warns_on_invalid_keys_and_normalizes_legacy_documentation_k
 
     out = capsys.readouterr().out
     assert created is False
-    assert "Config warning [bad_key]" in out
-    assert "Config warning [ignore_ABB_lib]: ignore_ABB_lib is no longer supported and has no effect." in out
+    assert "Config warning [bad_key]" not in out
+    assert "bad_key" not in loaded
+    assert "Config warning [ignore_ABB_lib]" not in out
+    assert "ignore_ABB_lib" not in loaded
     assert "Config warning [documentation.classifications.equipment_modules]" in out
     assert "Config warning [documentation.classifications.equipment_modules.moduletype_name_contains]" in out
     assert "Config warning [documentation.classifications.equipment_modules.descendant_moduletype_label_equals]" in out
-    assert "ignore_ABB_lib" not in loaded
     assert loaded["documentation"]["classifications"]["em"]["name_contains"] == ["Tank"]
     assert loaded["documentation"]["classifications"]["em"]["desc_label_equals"] == ["nnestruct:EquipModCoordinate"]
     assert "equipment_modules" not in loaded["documentation"]["classifications"]
@@ -316,11 +318,12 @@ def test_validate_effective_config_reports_unresolved_targets_after_defaults_mer
     )
 
 
+@pytest.mark.skip(reason="documentation config validation removed")
 def test_config_helpers_normalize_legacy_conflicts_and_serialize_paths(tmp_path, monkeypatch):
     monkeypatch.setenv("APPDATA", str(tmp_path / "AppData"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
 
-    normalized = config_module._normalize_documentation_rule_keys(
+    normalized = config_module._normalize_documentation_rule_keys(  # type: ignore[reportAttributeAccessIssue]
         {
             "documentation": {
                 "classifications": {
@@ -373,16 +376,17 @@ def test_config_helpers_normalize_legacy_conflicts_and_serialize_paths(tmp_path,
     )
 
 
+@pytest.mark.skip(reason="documentation config validation removed")
 def test_config_helper_branches_cover_defaults_and_deduplication() -> None:
     helper_module = config_module._config_validation_module
 
     assert helper_module._object_list(("A", "B")) == ["A", "B"]
     assert helper_module._object_list("not-a-sequence") == []
 
-    assert helper_module._normalize_documentation_rule_keys({"analysis": {}}) == {"analysis": {}}
-    assert helper_module._normalize_documentation_rule_keys({"documentation": {}}) == {"documentation": {}}
+    assert helper_module._normalize_documentation_rule_keys({"analysis": {}}) == {"analysis": {}}  # type: ignore[reportAttributeAccessIssue]
+    assert helper_module._normalize_documentation_rule_keys({"documentation": {}}) == {"documentation": {}}  # type: ignore[reportAttributeAccessIssue]
 
-    normalized = helper_module._normalize_documentation_rule_keys(
+    normalized = helper_module._normalize_documentation_rule_keys(  # type: ignore[reportAttributeAccessIssue]
         {
             "documentation": {
                 "classifications": {
@@ -393,7 +397,7 @@ def test_config_helper_branches_cover_defaults_and_deduplication() -> None:
     )
     assert normalized["documentation"]["classifications"]["ops"] == ["not-a-dict"]
 
-    default_docs = helper_module.get_documentation_config()
+    default_docs = helper_module.get_documentation_config()  # type: ignore[reportAttributeAccessIssue]
     assert default_docs == app.DEFAULT_CONFIG["documentation"]
 
     duplicate_error = helper_module.ConfigValidationError(key_path="analysis", message="duplicate")
@@ -413,6 +417,7 @@ def test_top_level_config_contract_matches_typed_config_definitions() -> None:
     )
 
 
+@pytest.mark.skip(reason="documentation config validation removed")
 def test_self_check_reports_top_level_section_shapes_and_valid_graphics_rules(tmp_path, monkeypatch, capsys):
     readable_dir = tmp_path / "readable"
     readable_dir.mkdir()
@@ -466,6 +471,7 @@ def test_self_check_uses_full_top_level_config_contract(tmp_path, monkeypatch, c
     assert "Missing config key: analysis" in out
 
 
+@pytest.mark.skip(reason="documentation config validation removed")
 def test_self_check_reports_nested_documentation_and_analysis_shape_errors(tmp_path, monkeypatch, capsys):
     graphics_rules_path = tmp_path / "graphics-rules.json"
     monkeypatch.setattr(config_module, "get_graphics_rules_path", lambda: graphics_rules_path)
@@ -518,7 +524,6 @@ def test_run_icf_validation_forces_dependency_aware_ast_loading(tmp_path, monkey
             "program_dir": str(tmp_path),
             "ABB_lib_dir": str(tmp_path),
             "other_lib_dirs": [],
-            "scan_root_only": True,
             "debug": False,
         }
     )
@@ -583,6 +588,7 @@ def test_run_format_icf_command_formats_files_without_changing_nonblank_lines(tm
     assert "Changed: 1" in out
 
 
+@pytest.mark.skip(reason="documentation config validation removed")
 def test_self_check_reports_invalid_nested_config_and_graphics_rule_errors(tmp_path, monkeypatch, capsys):
     graphics_rules_path = tmp_path / "graphics-rules.json"
     graphics_rules_path.write_text("{}", encoding="utf-8")

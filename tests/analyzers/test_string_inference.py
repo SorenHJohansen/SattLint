@@ -1,4 +1,3 @@
-from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     Equation,
@@ -8,15 +7,21 @@ from sattline_parser.models.ast_model import (
     Simple_DataType,
     Variable,
 )
+from sattline_parser.models.expressions import FuncCall, FuncCallStmt, SLExpression, VarRef
+
 from sattlint.string_inference import ExactStringInferenceEngine
 
 
-def _varref(name: str) -> dict[str, str]:
-    return {"var_name": name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
-def _func(name: str, *args: object) -> tuple[str, str, list[object]]:
-    return (const.KEY_FUNCTION_CALL, name, list(args))
+def _call(name: str, *args: SLExpression) -> FuncCall:
+    return FuncCall(name=name, args=tuple(args))
+
+
+def _func(name: str, *args: SLExpression) -> FuncCallStmt:
+    return FuncCallStmt(call=FuncCall(name=name, args=tuple(args)))
 
 
 def _base_picture(*, variables: list[Variable], code: list[object]) -> BasePicture:
@@ -31,7 +36,7 @@ def _base_picture(*, variables: list[Variable], code: list[object]) -> BasePictu
                     name="Main",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=code,
+                    code=code,  # pyright: ignore[reportArgumentType]
                 )
             ]
         ),
@@ -65,7 +70,7 @@ def test_exact_string_inference_maxstringlength_drives_result_capacity() -> None
         ],
         code=[
             _func("ClearString", _varref("Tag")),
-            _func("PutBlanks", _varref("Tag"), _func("MaxStringLength", _varref("Tag")), _varref("Status")),
+            _func("PutBlanks", _varref("Tag"), _call("MaxStringLength", _varref("Tag")), _varref("Status")),
         ],
     )
 

@@ -13,6 +13,22 @@ from typing import Any, cast
 from .app_interaction import MenuInteraction
 from .config_types import ConfigDict
 
+APP_SHELL_BINDINGS: list[tuple[str, str, str]] = [
+    ("ctrl+1", "show_analyze", "Analyze"),
+    ("ctrl+3", "show_tools", "Tools"),
+    ("ctrl+4", "show_setup", "Setup"),
+    ("slash", "prompt_view_filter", "Filter"),
+    ("question_mark", "show_help", "Help"),
+    ("ctrl+h", "show_help", "Help"),
+    ("ctrl+c", "copy_output", "Copy Output"),
+    ("ctrl+g", "cancel_running_analysis", "Cancel Analysis"),
+    ("ctrl+l", "clear_output", "Clear Output"),
+    ("ctrl+q", "quit_shell", "Quit"),
+    ("ctrl+s", "save_config", "Save Config"),
+    ("tab", "focus_next_control", "Next"),
+    ("shift+tab", "focus_previous_control", "Prev"),
+]
+
 _SessionOutputLog: type[Any] | None = None
 _TEXTUAL_COLOR_SYSTEM_ENV = "TEXTUAL_COLOR_SYSTEM"
 
@@ -120,18 +136,68 @@ def has_textual() -> bool:
 
 
 def _query_required(widget_owner: Any, selector: str, expected_type: Any | None = None) -> Any:
-    query_exactly_one = getattr(widget_owner, "query_exactly_one", None)
-    if callable(query_exactly_one):
-        if expected_type is None:
-            return query_exactly_one(selector)
-        return query_exactly_one(selector, expected_type)
     if expected_type is None:
-        return widget_owner.query_one(selector)
-    return widget_owner.query_one(selector, expected_type)
+        return widget_owner.query_exactly_one(selector)
+    return widget_owner.query_exactly_one(selector, expected_type)
 
 
 DEFAULT_SHELL_TITLE = "SattLint"
 _ANALYZE_PLANNER_LIST_ID_PREFIX = "analyze-planner-section-"
+
+MENU_DEFINITIONS: list[tuple[str, list[tuple[str, str | None] | None]]] = [
+    (
+        "File",
+        [
+            ("Open Project...", "menu-file-open-project"),
+            ("Open Recent", "menu-file-open-recent"),
+            ("Save Project", "menu-file-save-project"),
+            None,
+            ("Quit", "action-quit"),
+        ],
+    ),
+    (
+        "Analyze",
+        [
+            ("Run Selected", "menu-analyze-run-selected"),
+            ("Cancel", "menu-analyze-cancel"),
+        ],
+    ),
+    (
+        "Reports",
+        [
+            ("Generate DOCX", "menu-reports-generate-docx"),
+            ("Source Diff", "menu-reports-source-diff"),
+            ("Export", "menu-reports-export"),
+        ],
+    ),
+    (
+        "Tools",
+        [
+            ("Refresh Cache", "menu-tools-refresh-cache"),
+            ("Diagnostics", "menu-tools-diagnostics"),
+            None,
+            ("Datatype Field Trace", "menu-tools-datatype-trace"),
+            ("Variable Usage Trace", "menu-tools-variable-trace"),
+            ("Module Locals Trace", "menu-tools-module-locals"),
+        ],
+    ),
+    (
+        "Settings",
+        [
+            ("Project Settings", "menu-settings-project"),
+            ("General Settings", "menu-settings-general"),
+        ],
+    ),
+    (
+        "Help",
+        [
+            ("Keyboard Shortcuts", "menu-help-shortcuts"),
+            ("Documentation", "menu-help-documentation"),
+            None,
+            ("About SattLint", "menu-help-about"),
+        ],
+    ),
+]
 TEXTUAL_SHELL_CSS = Path(__file__).with_name("app_textual.tcss").read_text(encoding="utf-8")
 
 

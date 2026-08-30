@@ -13,7 +13,8 @@ from sattline_parser.models.ast_model import (
     Simple_DataType,
     Variable,
 )
-from sattlint import constants as const
+from sattline_parser.models.expressions import Assignment, VarRef
+
 from sattlint.analyzers import scan_concurrency as scan_concurrency_module
 from sattlint.analyzers.framework import Issue
 from sattlint.analyzers.registry import get_actual_cli_analyzer_keys, get_default_analyzers
@@ -24,16 +25,12 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict[str, str]:
-    return {const.KEY_VAR_NAME: name}
-
-
-def _assign(name: str, value: object) -> tuple[object, object, object]:
-    return (const.KEY_ASSIGN, _varref(name), value)
+def _assign(name: str, value: object) -> Assignment:
+    return Assignment(target=VarRef(name=name), value=value)  # pyright: ignore[reportArgumentType]
 
 
 def _step(name: str, active_stmts: list[object]) -> SFCStep:
-    return SFCStep(kind="step", name=name, code=SFCCodeBlocks(active=active_stmts))
+    return SFCStep(kind="step", name=name, code=SFCCodeBlocks(active=active_stmts))  # pyright: ignore[reportArgumentType]
 
 
 def _sequence(nodes: list[object]) -> Sequence:
@@ -42,7 +39,7 @@ def _sequence(nodes: list[object]) -> Sequence:
         type="sequence",
         position=(0.0, 0.0),
         size=(1.0, 1.0),
-        code=nodes,
+        code=nodes,  # pyright: ignore[reportArgumentType]
     )
 
 

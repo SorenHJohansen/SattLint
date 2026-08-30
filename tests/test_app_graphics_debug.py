@@ -8,8 +8,8 @@ from types import SimpleNamespace, TracebackType
 from typing import Any, cast
 
 import pytest
-
 from sattline_parser.models.ast_model import BasePicture
+
 from sattlint import app
 from sattlint.models.project_graph import ProjectGraph
 

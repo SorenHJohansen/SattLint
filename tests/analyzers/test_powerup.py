@@ -6,6 +6,7 @@ from sattline_parser.models.ast_model import (
     Simple_DataType,
     Variable,
 )
+
 from sattlint.analyzers.powerup import analyze_powerup
 from sattlint.analyzers.registry import get_actual_cli_analyzer_keys, get_default_analyzers
 

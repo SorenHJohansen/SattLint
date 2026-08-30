@@ -92,7 +92,7 @@ def evaluate_structural_budget_ratchet(
     ratchet_state: dict[str, Any],
     current_file_line_counts: dict[str, int],
 ) -> dict[str, Any]:
-    from sattlint.devtools import structural_reports as structural_reports_module  # noqa: PLC0415
+    from . import structural_reports as structural_reports_module  # noqa: PLC0415
 
     status = ratchet_state["status"]
     if status != "loaded":

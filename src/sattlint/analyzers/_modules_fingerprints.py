@@ -160,7 +160,7 @@ def _code_entry_map(items: list[Sequence] | list[Equation]) -> NormalizedEntryMa
     """Map case-insensitive names to normalized structural signatures."""
     entries: NormalizedEntryMap = {}
     for item in items:
-        entries[normalize_name(item.name)] = normalize_ast_value(item)
+        entries[normalize_name(item.name or "")] = normalize_ast_value(item)
     return entries
 
 

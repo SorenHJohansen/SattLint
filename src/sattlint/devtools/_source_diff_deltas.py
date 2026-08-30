@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
+
 from sattlint.devtools._source_diff_details import (
     collect_moduletype_instance_details,
     format_qualifiers,

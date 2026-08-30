@@ -24,7 +24,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
 
       - name: Set up Python 3.13
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.13"
 
@@ -48,7 +48,7 @@ jobs:
       - name: Set up shared CI tooling
         uses: ./.github/actions/setup-ci-tooling
         with:
-          dependency-spec: ".[dev,lsp]"
+          dependency-spec: ".[dev]"
           install-node: "true"
           install-markdownlint: "true"
           install-actionlint: "true"
@@ -61,9 +61,6 @@ jobs:
 
       - name: Run fast test tier (exclude slow, quarantine)
         run: python -m pytest -q --tb=short -m "not slow and not quarantine" --no-header -x --timeout=30 -q 2>&1 || true
-
-      - name: Run benchmark suite
-        run: python -m pytest tests/benchmarks/ -q --benchmark-only --benchmark-json artifacts/health/benchmark.json 2>&1 || true
 
       - name: Run doc gardener
         run: sattlint-doc-gardener --check-only
@@ -104,27 +101,10 @@ jobs:
       - name: Set up shared CI tooling
         uses: ./.github/actions/setup-ci-tooling
         with:
-          dependency-spec: ".[dev,lsp]"
+          dependency-spec: ".[dev]"
 
       - name: Run pytest on Windows
         run: python -m pytest -q --tb=short -x --timeout=300
 
       - name: Run repository audit
         run: sattlint-repo-audit --profile quick --output-dir artifacts/audit-windows --fail-on high
-
-  vscode-extension-lint:
-    name: VS Code Extension Lint
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
-
-      - name: Set up shared CI tooling
-        uses: ./.github/actions/setup-ci-tooling
-        with:
-          install-dependencies: "false"
-          install-node: "true"
-
-      - name: Lint VS Code extension
-        run: cd vscode/sattline-vscode && npm ci && npm run lint

@@ -17,26 +17,6 @@
 
 **Completed:** P0 (Quick hygiene & baseline, 14 items), P1 (Distribution & packaging, 7 items), P2 (Documentation & governance, 8 items), P3 (CI/CD hardening, 7 items) — 36 items finished.
 
----
-
-## P4 — Technical Debt: Source Code (9 items, ~1 week)
-
-Address the 500-line cap violation per AGENTS.md policy.
-
-| # | Task | File(s) | Lines | Effort |
-|---|------|---------|-------|--------|
-
-| P4.4 | Split `scripts/repo_health.py` | `scripts/repo_health.py` | 1,437 | 4h |
-| P4.5 | Split `scripts/check_ratchet_policy.py` | `scripts/check_ratchet_policy.py` | 1,552 | 4h |
-| P4.6 | Split `src/sattlint/devtools/pipeline.py` | `src/sattlint/devtools/pipeline.py` | 1,261 | 4h |
-| P4.7 | Split `src/sattlint/docgenerator/docgen.py` | `src/sattlint/docgenerator/docgen.py` | 1,392 | 4h |
-| P4.8 | Split `src/sattlint/docgenerator/configgen.py` | `src/sattlint/docgenerator/configgen.py` | ~1,160 | 3h |
-| P4.9 | Split remaining 10 files over 500 lines | `src/sattlint/_app_textual_setup.py`, `app.py`, `validation.py`, `cache.py`, `_app_analysis_loading.py`, `_picture_display_path_runtime.py`, `core/_semantic_snapshot.py`, `graphics_validation.py`, `analyzers/_reset_path_collection.py`, `analyzers/_dataflow_conditions.py` | 540–1,075 | 2 days |
-
-**Note:** These are not v1.0 *blockers* in the strict sense — the packaged code works fine. They represent a policy violation per `AGENTS.md` that should be tracked on the post-v1.0 roadmap.
-
----
-
 ## P5 — Technical Debt: Test Files (6 items, ~3 days)
 
 Overlong test files reduce maintainability and reviewability.
@@ -48,25 +28,12 @@ Overlong test files reduce maintainability and reviewability.
 | P5.3 | `tests/devtools/test_source_diff_report.py` | ~1,708 | Split by diff scenario |
 | P5.4 | `tests/test_pipeline_run.py` | ~1,582 | Split by pipeline stage |
 | P5.5 | `tests/test_variables_access_and_contract_helpers.py` | ~1,422 | Extract helper factories |
-| P5.6 | Remaining 9 files over 800 lines | ~1,000–1,378 each | Consolidate `_hdr()` and `_varref()` into `tests/helpers/` (currently copied in ~50 and ~47 files); parametrize copy-paste tests |
+| P5.6a | Helper dedupe in analyzer/editor/app-analysis tests | ~845–1,287 | Replace remaining local `_hdr()` and `_varref()` copies with `tests.helpers.variable_test_support` in the oversized suites that still inline those AST builders |
+| P5.6b | CLI/menu/app-analysis scenario tables | ~1,171–1,275 | Parametrize repeated CLI, menu, and app-analysis permutations in the remaining large app-facing test modules |
+| P5.6c | Analyzer variable-suite dedupe | ~1,123–1,195 | Move repeated variable-analysis scenario builders into shared analyzer support modules and merge near-duplicate assertions |
+| P5.6d | Parser/corpus/ICF fixture dedupe | ~1,048–1,238 | Table-drive repeated parser, corpus, engine-loader, and ICF validation scenarios; extract shared fixture builders instead of copying setup blocks |
 
 ---
-
-## P6 — Technical Debt: Architecture (10 items, ~2 weeks)
-
-Structural improvements to internal architecture. These are the most invasive changes.
-
-| # | Task | Area | Effort | Notes |
-|---|------|------|--------|-------|
-| P6.1 | Introduce shared `CliApp` base class for 11 standalone console scripts | CLI system | 2 days | Eliminates per-script argparse duplication |
-
-| P6.4 | Add `--output-format json` to all CLI commands | CLI system | 2 days | Only `simulate` and `telemetry-summary` support it |
-| P6.5 | Add health/status endpoint to LSP server | LSP | 1 day | Liveness probe for editor clients |
-| P6.6 | Consolidate DevTools `__init__.py` circular-import workaround | DevTools | 2 days | Replace `__getattr__` + dynamic routing with explicit subpackages |
-| P6.7 | Register all schema kinds in `artifact_registry.py` | DevTools | 1 day | Currently ~15+ independent constants |
-
-| P6.10 | Consolidate cache persistence patterns; add HMAC guard to pickle usage | Cache | 2 days | 4 persistence patterns, `# nosec B301`/`B403` without HMAC |
-
 ---
 
 ## P7 — Polish & Release (4 items, ~2h)
@@ -99,7 +66,6 @@ P4–P6 are independent of each other and of the release track.
 |----------|-------|
 | `pyproject.toml` | (none remaining) |
 | `src/sattlint/` (source splits) | P4.1–P4.9 |
-| `src/sattlint_lsp/` | P6.5 |
 | `src/sattlint/__init__.py` + subpackages | (none remaining) |
 | `.github/workflows/` | (none remaining) |
 | `.pre-commit-config.yaml` | (none remaining) |

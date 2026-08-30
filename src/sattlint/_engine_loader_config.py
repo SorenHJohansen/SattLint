@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 ContextualFileLookup = Callable[[str, list[str], Path | None, str], Path | None]
 LoadStageTimingSink = Callable[[str, str, float], None]
 GraphicsLoadTimingSink = Callable[[str, str, float], None]
-_LOADER_CONFIG_KEYS = ("program_dir", "other_lib_dirs", "ABB_lib_dir", "mode", "scan_root_only", "debug")
+_LOADER_CONFIG_KEYS = ("program_dir", "other_lib_dirs", "ABB_lib_dir", "mode", "debug")
 
 
 @dataclass(frozen=True)
@@ -27,7 +27,6 @@ class SattLineProjectLoaderConfig:
     other_lib_dirs: Sequence[Path]
     abb_lib_dir: Path
     mode: CodeMode
-    scan_root_only: bool
     debug: bool
     use_file_ast_cache: bool = True
     refresh_mode: str = "full"
@@ -171,7 +170,6 @@ def _legacy_loader_kwargs(
         "other_lib_dirs": list(config.other_lib_dirs),
         "abb_lib_dir": config.abb_lib_dir,
         "mode": config.mode,
-        "scan_root_only": config.scan_root_only,
         "debug": config.debug,
         "contextual_lookup": runtime.contextual_lookup,
         "use_file_ast_cache": config.use_file_ast_cache,
@@ -217,7 +215,6 @@ def build_project_loader_from_type(
     refresh_mode: str = "full",
     stage_timing_sink: LoadStageTimingSink | None = None,
     graphics_timing_sink: GraphicsLoadTimingSink | None = None,
-    scan_root_only: bool | None = None,
     dependencies: SattLineProjectLoaderDependencies | None = None,
 ) -> SattLineProjectLoader:
     validate_loader_config(cfg)
@@ -226,16 +223,13 @@ def build_project_loader_from_type(
     other_lib_dirs = _coerce_path_sequence_config_value(cfg["other_lib_dirs"], key="other_lib_dirs")
     abb_lib_dir = _coerce_path_config_value(cfg["ABB_lib_dir"], key="ABB_lib_dir")
     mode = _coerce_code_mode(cfg["mode"])
-    configured_scan_root_only = _coerce_bool_config_value(cfg["scan_root_only"], key="scan_root_only")
     debug = _coerce_bool_config_value(cfg["debug"], key="debug")
-    selected_scan_root_only = configured_scan_root_only if scan_root_only is None else scan_root_only
 
     config = SattLineProjectLoaderConfig(
         program_dir=program_dir,
         other_lib_dirs=other_lib_dirs,
         abb_lib_dir=abb_lib_dir,
         mode=mode,
-        scan_root_only=selected_scan_root_only,
         debug=debug,
         use_file_ast_cache=use_file_ast_cache,
         refresh_mode=refresh_mode,

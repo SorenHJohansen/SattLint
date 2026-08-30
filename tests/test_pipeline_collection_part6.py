@@ -1,5 +1,4 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportIndexIssue=false
-# ruff: noqa: F403
 from ._pipeline_collection_test_support import *
 
 
@@ -18,6 +17,7 @@ def test_scope_context_resolve_global_name_empty_returns_none():
 
 def test_scope_context_resolve_global_name_walks_parent():
     from sattline_parser.models.ast_model import Variable  # noqa: PLC0415
+
     from sattlint.resolution.scope import ScopeContext  # noqa: PLC0415
 
     parent_var = Variable(name="GlobVar", datatype="Integer")
@@ -40,6 +40,7 @@ def test_scope_context_resolve_global_name_walks_parent():
 
 def test_scope_context_resolve_variable_caches_parent_lookup_result():
     from sattline_parser.models.ast_model import Variable  # noqa: PLC0415
+
     from sattlint.resolution.scope import ScopeContext  # noqa: PLC0415
 
     parent_var = Variable(name="Sig", datatype="Integer")
@@ -66,6 +67,7 @@ def test_scope_context_resolve_variable_caches_parent_lookup_result():
 
 def test_scope_context_resolve_variable_prefix_plus_field_and_unresolved_paths():
     from sattline_parser.models.ast_model import Variable  # noqa: PLC0415
+
     from sattlint.resolution.scope import ScopeContext  # noqa: PLC0415
 
     src_var = Variable(name="Dv", datatype="UserType")
@@ -464,6 +466,7 @@ def test_simple_report_summary_formats_metadata_and_analysis_context_fallback():
     from types import SimpleNamespace  # noqa: PLC0415
 
     from sattline_parser.models.ast_model import BasePicture, ModuleHeader  # noqa: PLC0415
+
     from sattlint.analyzers.framework import AnalysisContext, Issue, SimpleReport  # noqa: PLC0415
 
     issue = Issue(
@@ -590,6 +593,7 @@ def test_type_graph_has_record_and_field():
 
 def test_type_graph_iter_leaf_field_paths_simple_type():
     from sattline_parser.models.ast_model import Simple_DataType  # noqa: PLC0415
+
     from sattlint.resolution.type_graph import TypeGraph  # noqa: PLC0415
 
     graph = TypeGraph({})
@@ -623,6 +627,7 @@ def test_type_graph_from_basepicture_builds_records():
 
 def test_type_graph_seeds_builtin_datatypes():
     from sattline_parser.models.ast_model import Simple_DataType  # noqa: PLC0415
+
     from sattlint.resolution.type_graph import TypeGraph  # noqa: PLC0415
 
     graph = TypeGraph.from_datatypes([])
@@ -664,6 +669,7 @@ def test_type_graph_iter_leaf_field_paths_nested_record():
     from types import SimpleNamespace  # noqa: PLC0415
 
     from sattline_parser.models.ast_model import Simple_DataType  # noqa: PLC0415
+
     from sattlint.resolution.type_graph import TypeGraph  # noqa: PLC0415
 
     # RecordA has field "FieldA" of type Integer (Simple_DataType)
@@ -680,6 +686,7 @@ def test_type_graph_iter_leaf_field_paths_follows_nested_record_fields():
     from types import SimpleNamespace  # noqa: PLC0415
 
     from sattline_parser.models.ast_model import Simple_DataType  # noqa: PLC0415
+
     from sattlint.resolution.type_graph import TypeGraph  # noqa: PLC0415
 
     inner = SimpleNamespace(
@@ -715,6 +722,7 @@ def test_type_graph_iter_all_addressable_paths():
     from types import SimpleNamespace  # noqa: PLC0415
 
     from sattline_parser.models.ast_model import Simple_DataType, Variable  # noqa: PLC0415
+
     from sattlint.resolution.type_graph import TypeGraph  # noqa: PLC0415
 
     dt = SimpleNamespace(

@@ -12,7 +12,8 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
-from sattlint import constants as const
+from sattline_parser.models.expressions import FuncCall, FuncCallStmt, VarRef
+
 from sattlint.analyzers.variables import VariablesAnalyzer
 from sattlint.reporting.variables_report import IssueKind
 
@@ -21,12 +22,16 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict[str, str]:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
 def _eq(code: list[object]):
-    return Equation(name="E1", position=(0.0, 0.0), size=(1.0, 1.0), code=code)
+    return Equation(name="E1", position=(0.0, 0.0), size=(1.0, 1.0), code=code)  # pyright: ignore[reportArgumentType]
+
+
+def _func(name: str, *args: object) -> FuncCallStmt:
+    return FuncCallStmt(call=FuncCall(name=name, args=tuple(args)))  # pyright: ignore[reportArgumentType]
 
 
 def test_getrecordcomponent_reports_record_component_order_dependence():
@@ -54,10 +59,12 @@ def test_getrecordcomponent_reports_record_component_order_dependence():
             equations=[
                 _eq(
                     [
-                        (
-                            const.KEY_FUNCTION_CALL,
+                        _func(
                             "GetRecordComponent",
-                            [_varref("Rec"), 2, _varref("ResultRec"), _varref("Status")],
+                            _varref("Rec"),
+                            2,
+                            _varref("ResultRec"),
+                            _varref("Status"),
                         )
                     ]
                 )
@@ -121,10 +128,12 @@ def test_putrecordcomponent_reports_record_component_order_dependence():
             equations=[
                 _eq(
                     [
-                        (
-                            const.KEY_FUNCTION_CALL,
+                        _func(
                             "PutRecordComponent",
-                            [_varref("Rec"), 1, _varref("InputRec"), _varref("Status")],
+                            _varref("Rec"),
+                            1,
+                            _varref("InputRec"),
+                            _varref("Status"),
                         )
                     ]
                 )
@@ -189,15 +198,19 @@ def test_repeated_positional_access_reports_each_datatype_once():
             equations=[
                 _eq(
                     [
-                        (
-                            const.KEY_FUNCTION_CALL,
+                        _func(
                             "GetRecordComponent",
-                            [_varref("RecA"), 1, _varref("ResultRec"), _varref("Status")],
+                            _varref("RecA"),
+                            1,
+                            _varref("ResultRec"),
+                            _varref("Status"),
                         ),
-                        (
-                            const.KEY_FUNCTION_CALL,
+                        _func(
                             "GetRecordComponent",
-                            [_varref("RecB"), 2, _varref("ResultRec"), _varref("Status")],
+                            _varref("RecB"),
+                            2,
+                            _varref("ResultRec"),
+                            _varref("Status"),
                         ),
                     ]
                 )
@@ -244,20 +257,19 @@ def test_positional_record_component_wrapper_ignores_anytype_for_datatype_list()
             equations=[
                 _eq(
                     [
-                        (
-                            const.KEY_FUNCTION_CALL,
+                        _func(
                             "GetRecordComponent",
-                            [
-                                _varref("RecipeRecord"),
-                                _varref("GetComponentIndex"),
-                                _varref("StateElement"),
-                                _varref("Status"),
-                            ],
+                            _varref("RecipeRecord"),
+                            _varref("GetComponentIndex"),
+                            _varref("StateElement"),
+                            _varref("Status"),
                         ),
-                        (
-                            const.KEY_FUNCTION_CALL,
+                        _func(
                             "PutArray",
-                            [_varref("RecipeArray"), 1, _varref("StateElement"), _varref("Status")],
+                            _varref("RecipeArray"),
+                            1,
+                            _varref("StateElement"),
+                            _varref("Status"),
                         ),
                     ]
                 )

@@ -42,22 +42,6 @@ def pick_or_prompt_graphics_rule_selector_value_from_app(
     )
 
 
-def annotate_graphics_entries_with_structure_paths_from_app(
-    entries: list[dict[str, Any]],
-    project_bp: BasePicture,
-    graph: ProjectGraph,
-    *,
-    app_module: Any,
-) -> list[dict[str, Any]]:
-    return app_module.app_graphics.annotate_graphics_entries_with_structure_paths(
-        entries,
-        project_bp,
-        graph,
-        classify_documentation_structure_fn=app_module.classify_documentation_structure,
-        discover_documentation_unit_candidates_fn=app_module.discover_documentation_unit_candidates,
-    )
-
-
 def graphics_rules_menu_from_app(cfg: ConfigDict | None, *, app_module: Any) -> None:
     graphics_menus_module.graphics_rules_menu(
         cfg,
@@ -106,7 +90,6 @@ def collect_graphics_layout_entries_for_target_from_app(
         target_name,
         project_bp,
         graph,
-        annotate_graphics_entries_with_structure_paths_fn=app_module._annotate_graphics_entries_with_structure_paths,
     )
 
 

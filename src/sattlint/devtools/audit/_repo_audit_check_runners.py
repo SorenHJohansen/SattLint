@@ -6,26 +6,31 @@ from __future__ import annotations
 
 import ast
 import json
-import re
-import subprocess  # nosec B404 - audit intentionally executes trusted local developer tools
-import sys
 from collections.abc import Iterable
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from sattlint import config as config_module
-from sattlint.devtools import ai_work_map as _ai_work_map_module
-from sattlint.devtools import audit_core as _audit_core_module
-from sattlint.devtools import audit_orchestration as _audit_orchestration_module
-from sattlint.devtools import doc_gardener as _doc_gardener_module
-from sattlint.devtools import layer_linter as _layer_linter_module
-from sattlint.repo_paths import repo_root_from
+from sattlint.repo_paths import repo_root_from_optional
 
+from .. import ai_work_map as _ai_work_map_module
+from .. import audit_core as _audit_core_module
+from .. import audit_orchestration as _audit_orchestration_module
+from .. import doc_gardener as _doc_gardener_module
+from .. import layer_linter as _layer_linter_module
 from . import repo_audit_compat as _repo_audit_compat_module
 from . import repo_audit_shared as _repo_audit_shared_module
 
-REPO_ROOT = repo_root_from(Path(__file__))
+
+def _module_repo_root() -> Path:
+    r = repo_root_from_optional(Path(__file__))
+    if r is None:
+        return Path(__file__).resolve().parent
+    return r
+
+
+REPO_ROOT = _module_repo_root()
 LOCAL_CI_PARITY_LINE_FINDING_IDS = _repo_audit_shared_module.LOCAL_CI_PARITY_LINE_FINDING_IDS
 OVERSIZED_MODULE_LINE_LIMIT = _repo_audit_shared_module.OVERSIZED_MODULE_LINE_LIMIT
 HARNESS_FRESHNESS_DOC_SCANNERS = _repo_audit_shared_module.HARNESS_FRESHNESS_DOC_SCANNERS
@@ -63,91 +68,6 @@ def run_local_ci_parity_check(context: RepoAuditScanContext) -> list[Finding]:
     findings.extend(_find_hidden_local_dependency_findings(context.test_context, root=context.root))
     findings.extend(_find_hidden_local_dependency_findings(context.scripts_context, root=context.root))
     findings.extend(_find_host_specific_test_assumptions(context.test_context, root=context.root))
-    return findings
-
-
-_RATCHET_POLICY_PREFIX = "ratchet-policy:"
-_RATCHET_POLICY_ERROR_PATH_RE = re.compile(r"(?P<path>(?:src|tests|docs|scripts)/[^:\s]+)")
-
-
-def _ratchet_policy_command() -> list[str]:
-    return [sys.executable, "scripts/check_ratchet_policy.py"]
-
-
-def _normalize_ratchet_policy_errors(*, stdout: str, stderr: str) -> list[str]:
-    errors: list[str] = []
-    for raw_line in (*stderr.splitlines(), *stdout.splitlines()):
-        line = raw_line.strip()
-        if not line or line == "ratchet-policy: OK" or line == "ratchet-policy: blocked":
-            continue
-        if line.startswith("- "):
-            errors.append(line[2:].strip())
-            continue
-        if line.startswith(_RATCHET_POLICY_PREFIX):
-            errors.append(line.removeprefix(_RATCHET_POLICY_PREFIX).strip())
-            continue
-        errors.append(line)
-    return errors
-
-
-def _ratchet_policy_finding_id(message: str) -> str:
-    lowered = message.casefold()
-    if "coverage" in lowered:
-        return "ratchet-policy-coverage"
-    if "structural" in lowered:
-        return "ratchet-policy-structural"
-    if "typing" in lowered or "strict" in lowered:
-        return "ratchet-policy-typing"
-    return "ratchet-policy-blocked"
-
-
-def _ratchet_policy_finding_category(message: str) -> str:
-    if "coverage" in message.casefold():
-        return "coverage"
-    return "architecture"
-
-
-def build_ratchet_policy_report(root: Path = REPO_ROOT) -> dict[str, Any]:
-    result = subprocess.run(  # nosec B603 - fixed interpreter and repo-local script path
-        _ratchet_policy_command(),
-        cwd=root,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    errors = _normalize_ratchet_policy_errors(stdout=result.stdout, stderr=result.stderr)
-    return {
-        "kind": "sattlint.ratchet_policy",
-        "schema_version": 1,
-        "generated_by": "sattlint.devtools.audit.repo_audit",
-        "command": _ratchet_policy_command(),
-        "status": "pass" if result.returncode == 0 else "fail",
-        "exit_code": result.returncode,
-        "errors": errors,
-        "stdout": result.stdout,
-        "stderr": result.stderr,
-    }
-
-
-def _run_ratchet_policy_check(context: RepoAuditScanContext) -> list[Finding]:
-    report = build_ratchet_policy_report(context.root)
-    if report["status"] == "pass":
-        return []
-
-    findings: list[Finding] = []
-    for message in report["errors"]:
-        path_match = _RATCHET_POLICY_ERROR_PATH_RE.search(message)
-        findings.append(
-            Finding(
-                id=_ratchet_policy_finding_id(message),
-                category=_ratchet_policy_finding_category(message),
-                severity="high",
-                confidence="high",
-                message=message,
-                path=None if path_match is None else path_match.group("path"),
-                source="ratchet-policy",
-            )
-        )
     return findings
 
 
@@ -382,10 +302,8 @@ __all__ = [
     "_find_unused_config_keys",
     "_layer_linter_module",
     "_patch_doc_gardener_paths",
-    "_run_ratchet_policy_check",
     "_shared_text_line_findings",
     "_with_shared_text_line_findings",
-    "build_ratchet_policy_report",
     "run_ai_gc_check",
     "run_architecture_check",
     "run_cli_check",

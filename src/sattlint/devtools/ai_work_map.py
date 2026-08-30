@@ -223,8 +223,8 @@ def render_ai_check_catalog(work_map: dict[str, Any] | None = None) -> str:
 
 
 def build_ai_work_map() -> dict[str, Any]:
-    from sattlint.devtools import pipeline  # noqa: PLC0415
-    from sattlint.devtools.audit import repo_audit_entrypoints  # noqa: PLC0415
+    from . import pipeline  # noqa: PLC0415
+    from .audit import repo_audit_entrypoints  # noqa: PLC0415
 
     pipeline_catalog = pipeline.build_pipeline_check_catalog(
         profile="full",

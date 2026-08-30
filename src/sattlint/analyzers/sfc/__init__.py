@@ -256,17 +256,17 @@ def collect_sfc_reachability_findings(
         if modulecode is None:
             continue
         for sequence in modulecode.sequences or []:
-            _inspect_sfc_linear_nodes(findings, sequence.code, module_path, sequence.name)
+            _inspect_sfc_linear_nodes(findings, sequence.code, module_path, sequence.name or "")
 
     return findings
 
 
-def _collect_active_step_sets(nodes: list[object] | None) -> set[StepSet]:
+def _collect_active_step_sets(nodes: SequenceABC[object] | None) -> set[StepSet]:
     active_sets: set[StepSet] = set()
 
     for node in nodes or []:
         if isinstance(node, SFCStep):
-            active_sets.add(frozenset({node.name}))
+            active_sets.add(frozenset({node.name or ""}))
             continue
 
         if isinstance(node, SFCTransition | SFCFork | SFCBreak):

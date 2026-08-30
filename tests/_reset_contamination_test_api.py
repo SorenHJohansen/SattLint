@@ -4,6 +4,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from sattline_parser.models.ast_model import SFCSubsequence, SFCTransition, SFCTransitionSub
+
 from sattlint.analyzers import reset_contamination as public_reset_contamination
 from sattlint.analyzers.reset_contamination._reset_latching import (
     BooleanPathState,

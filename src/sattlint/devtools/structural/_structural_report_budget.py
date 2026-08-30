@@ -27,7 +27,7 @@ def load_structural_budget_ratchet(
     *,
     ratchet_path: Path | None = None,
 ) -> dict[str, Any]:
-    from sattlint.devtools import structural_reports as structural_reports_module  # noqa: PLC0415
+    from . import structural_reports as structural_reports_module  # noqa: PLC0415
 
     resolved_path = ratchet_path or (repo_root / structural_reports_module.STRUCTURAL_BUDGET_RATCHET_PATH)
     sanitized_path = structural_reports_module.sanitize_path_for_report(resolved_path, repo_root=repo_root)
@@ -219,7 +219,7 @@ def collect_structural_budget_report(  # noqa: PLR0915
     *,
     ratchet_path: Path | None = None,
 ) -> dict[str, Any]:
-    from sattlint.devtools import structural_reports as structural_reports_module  # noqa: PLC0415
+    from . import structural_reports as structural_reports_module  # noqa: PLC0415
 
     thresholds = structural_reports_module.STRUCTURAL_BUDGET_THRESHOLDS
     source_file_max_lines = thresholds["source_file_max_lines"]

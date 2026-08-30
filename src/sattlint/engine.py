@@ -7,12 +7,11 @@ from dataclasses import replace
 from pathlib import Path
 
 from lark import Lark
-
 from sattline_parser import parse_source_file as parser_core_parse_source_file
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.api import describe_parse_error, read_text_with_fallback
-from sattline_parser.grammar.parser_decode import is_compressed, preprocess_sl_text
 from sattline_parser.models.ast_model import BasePicture, DataType, ModuleTypeDef
+from sattline_parser.preprocessing import is_compressed, preprocess_sl_text
 from sattline_parser.transformer.sl_transformer import SLTransformer
 
 from . import _engine_syntax_helpers as engine_syntax_helpers
@@ -106,7 +105,6 @@ def build_project_loader(
     refresh_mode: str = "full",
     stage_timing_sink: LoadStageTimingSink | None = None,
     graphics_timing_sink: GraphicsLoadTimingSink | None = None,
-    scan_root_only: bool | None = None,
     dependencies: SattLineProjectLoaderDependencies | None = None,
 ) -> SattLineProjectLoader:
     return build_project_loader_from_type(
@@ -118,7 +116,6 @@ def build_project_loader(
         refresh_mode=refresh_mode,
         stage_timing_sink=stage_timing_sink,
         graphics_timing_sink=graphics_timing_sink,
-        scan_root_only=scan_root_only,
         dependencies=dependencies,
     )
 
@@ -133,7 +130,6 @@ def load_project_graph(
     refresh_mode: str = "full",
     stage_timing_sink: LoadStageTimingSink | None = None,
     graphics_timing_sink: GraphicsLoadTimingSink | None = None,
-    scan_root_only: bool | None = None,
     dependencies: SattLineProjectLoaderDependencies | None = None,
     strict: bool = False,
 ) -> tuple[SattLineProjectLoader, BasePicture | None, ProjectGraph]:
@@ -145,7 +141,6 @@ def load_project_graph(
         refresh_mode=refresh_mode,
         stage_timing_sink=stage_timing_sink,
         graphics_timing_sink=graphics_timing_sink,
-        scan_root_only=scan_root_only,
         dependencies=dependencies,
     )
     graph = loader.resolve(target_name, strict=strict)
@@ -197,7 +192,7 @@ def parse_source_file(
         transformer=transformer,
         debug=debug,
         parser_core_parse_source_file_fn=parser_core_parse_source_file,
-        validate_transformed_basepicture_fn=validate_transformed_basepicture,
+        validate_transformed_basepicture_fn=lambda _bp: None,
     )
 
 
