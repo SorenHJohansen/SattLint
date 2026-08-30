@@ -1,4 +1,4 @@
-# ruff: noqa: F403, F405
+# pyright: reportPrivateUsage=false
 from ._repo_audit_test_support import *
 
 

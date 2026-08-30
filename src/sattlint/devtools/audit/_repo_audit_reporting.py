@@ -7,11 +7,11 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, cast
 
-from sattlint.devtools import _portable_command_text as _portable_command_text_module
-from sattlint.devtools import coverage_reports as _coverage_reports_module
 from sattlint.devtools.json_helpers import json_mapping as _json_mapping
 from sattlint.devtools.shared.pipeline_artifacts import write_json_artifact
 
+from .. import _portable_command_text as _portable_command_text_module
+from .. import coverage_reports as _coverage_reports_module
 from ._repo_audit_ai_gc import (
     ai_gc_report_findings,
     filter_ai_gc_findings_for_output_dir,
@@ -350,20 +350,12 @@ def structural_report_location_detail(finding: dict[str, Any]) -> tuple[str | No
         if entries:
             first_entry = entries[0]
             return first_entry.get("path"), f"calls {first_entry.get('target')} at line {first_entry.get('line')}"
-    if finding_id == "structural-budget-ratchet-regression":
-        regressions = finding.get("regressions", [])
-        if regressions:
-            first_regression = regressions[0]
-            return None, (
-                f"{first_regression.get('metric')}: {first_regression.get('actual')} > "
-                f"{first_regression.get('expected_max')}"
-            )
     return None, None
 
 
 def find_structural_report_findings(root: Path | None = None) -> list[Any]:
     repo_audit = _repo_audit_reporting_module()
-    from sattlint.devtools.structural import structural_reports as structural_reports_module  # noqa: PLC0415
+    from ..structural import structural_reports as structural_reports_module  # noqa: PLC0415
 
     report_root = repo_audit.REPO_ROOT if root is None else root
     architecture_report = structural_reports_module.collect_architecture_report(report_root)

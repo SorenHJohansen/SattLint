@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import Simple_DataType, SourceSpan, Variable
+
 from sattlint.core.diagnostics import project_variable_issues
 from sattlint.reporting.variables_report import IssueKind, VariableIssue
 
@@ -16,7 +17,7 @@ def test_record_component_order_diagnostic_message_includes_guidance() -> None:
     definition = SimpleNamespace(
         source_file="/tmp/Main.s",
         source_library="MainLib",
-        declaration_span=SourceSpan(12, 4),
+        declaration_span=SourceSpan(start=12, end=4, line=0, column=0),
         canonical_path="BasePicture.TypeDef:PicklistType.RecipeRecord",
         field_path=None,
     )

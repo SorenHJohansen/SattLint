@@ -12,7 +12,7 @@ from typing import Any, cast
 
 from sattlint import cli_output
 
-from ..repo_paths import repo_root_from
+from ..repo_paths import repo_root_from_optional
 from .artifact_registry import LAYER_LINT_POLICY_FILENAME, POLICY_KIND, POLICY_SCHEMA_VERSION
 
 # Define the layers based on SattLint architecture from AGENTS.md and docs/public/architecture.md
@@ -23,9 +23,7 @@ from .artifact_registry import LAYER_LINT_POLICY_FILENAME, POLICY_KIND, POLICY_S
 #                                    reporting, and shared helpers
 # Layer 5: reserved
 # Layer 6: reserved
-# Layer 7: sattlint_lsp        - language server
-# Layer 8: vscode              - VS Code extension client
-# Layer 9: sattlint.devtools   - tooling-only; must not be imported by layers 0-7
+# Layer 9: sattlint.devtools   - tooling-only; must not be imported by layers 0-4
 
 LAYER_MAP = {
     "sattline_parser": 0,
@@ -36,12 +34,18 @@ LAYER_MAP = {
     "sattlint.analyzers": 4,
     "sattlint.reporting": 4,
     "sattlint": 4,
-    "sattlint_lsp": 7,
-    "vscode": 8,
     "sattlint.devtools": 9,
 }
 
-REPO_ROOT = repo_root_from(Path(__file__))
+
+def _module_repo_root() -> Path:
+    r = repo_root_from_optional(Path(__file__))
+    if r is None:
+        return Path(__file__).resolve().parent
+    return r
+
+
+REPO_ROOT = _module_repo_root()
 POLICY_PATH = REPO_ROOT / "metrics" / LAYER_LINT_POLICY_FILENAME
 
 # Allowed dependencies: a layer can depend on same layer or lower layers (lower number)

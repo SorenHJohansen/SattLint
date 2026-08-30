@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-import ctypes
 import re
 import threading
 import time
 from contextlib import redirect_stderr, redirect_stdout, suppress
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 try:
@@ -25,11 +25,15 @@ from ._app_textual_shared import (
     _TEXTUAL_SELECTION_LIST,
     _TEXTUAL_STATIC,
     _TEXTUAL_VERTICAL,
+    APP_SHELL_BINDINGS,
     InteractionRequest,
     _query_required,
     _TextualOutput,
 )
-from ._app_textual_widgets import _InteractionPane
+from ._app_textual_widgets import _FileBrowserScreen, _InteractionPane, _MenubarWidget
+from .project import load_project as _load_project_fn
+from .project.io import save_project as _save_slproj
+from .project.types import ProjectDict
 
 _TARGET_HEADER_RE = re.compile(r"^===\s*Target:\s*(?P<name>.+?)\s*===\s*$")
 _PHASE_HEADER_RE = re.compile(r"^\[(?P<index>\d+)/(?P<total>\d+)\]\s+(?P<label>.+)$")
@@ -159,29 +163,6 @@ def _output_line_needs_gap(line_text: str) -> bool:
     return bool(_TARGET_HEADER_RE.match(stripped) or _PHASE_HEADER_RE.match(stripped))
 
 
-def _interrupt_worker_thread(thread: Any, exception_type: type[BaseException]) -> bool:
-    thread_id = getattr(thread, "ident", None)
-    if not isinstance(thread_id, int):
-        return False
-
-    is_alive_fn = getattr(thread, "is_alive", None)
-    if callable(is_alive_fn) and not bool(is_alive_fn()):
-        return False
-
-    try:
-        set_async_exc = ctypes.pythonapi.PyThreadState_SetAsyncExc
-        result = int(set_async_exc(ctypes.c_ulong(thread_id), ctypes.py_object(exception_type)))
-    except (AttributeError, TypeError, ValueError, ctypes.ArgumentError):
-        return False
-
-    if result == 1:
-        return True
-    if result > 1:
-        with suppress(Exception):
-            set_async_exc(ctypes.c_ulong(thread_id), 0)
-    return False
-
-
 def present_request(self: Any, request: InteractionRequest, on_response_fn: Any | None = None) -> None:
     if self._active_request is not None:
         self._complete_request(request, None)
@@ -254,40 +235,19 @@ def _refresh_summary(self: Any) -> None:
     summary = self._summary_text()
     active_job_text = self._active_job_text()
     running_suffix = f"\n\nRunning: {active_job_text}" if active_job_text is not None else ""
-    dirty_suffix = "\n\nUnsaved configuration changes pending." if self._dirty else ""
     try:
         summary_widget = self.query_one("#summary", _TEXTUAL_STATIC)
     except _TEXTUAL_QUERY_ERRORS:
         return
-    summary_widget.update(f"{summary}{running_suffix}{dirty_suffix}")
-    summary_widget.set_class(self._dirty, "attention")
+    summary_widget.update(f"{summary}{running_suffix}")
 
 
 def _set_active_action(self: Any, action_id: str | None) -> None:
     self._active_job_action_id = action_id
-    if not tuple(getattr(self, "children", ())):
-        return
-    output_widget = _query_required(self, "#output")
-
-    active_view = self._view_state(self._active_view)
-    highlighted_action_id = self._active_job_action_id or active_view.action_id
-    config_mode = active_view.action_id == "action-setup"
-    with suppress(*_TEXTUAL_QUERY_ERRORS):
-        self.query_one("#summary", _TEXTUAL_STATIC).set_class(config_mode, "config-mode")
-    output_widget.set_class(config_mode, "config-mode")
-    for button_id in self._ACTION_IDS:
-        button = _query_required(self, f"#{button_id}", _TEXTUAL_BUTTON)
-        button.set_class(button_id == highlighted_action_id, "action-active")
-        button.set_class(config_mode and button_id == active_view.action_id, "config-active")
 
 
 def _clear_output_widget(self: Any, output_widget: Any) -> None:
-    if hasattr(output_widget, "clear"):
-        with suppress(Exception):
-            output_widget.clear()
-    if hasattr(output_widget, "load_text"):
-        with suppress(Exception):
-            output_widget.load_text("")
+    output_widget.clear()
     plain_text_parts = getattr(output_widget, "_plain_text_parts", None)
     if isinstance(plain_text_parts, list):
         plain_text_parts.clear()
@@ -295,18 +255,11 @@ def _clear_output_widget(self: Any, output_widget: Any) -> None:
 
 def _append_output_line_to_widget(self: Any, output_widget: Any, line_text: str, *, previous_line: str | None) -> str:
     rendered = f"{line_text}\n"
-    rich_output = hasattr(output_widget, "write") and hasattr(output_widget, "scroll_end")
-    if rich_output:
-        if hasattr(output_widget, "append_plain_text"):
-            output_widget.append_plain_text(rendered)
-        if _output_line_needs_gap(line_text) and previous_line not in (None, ""):
-            output_widget.write("", scroll_end=False)
-        output_widget.write(_render_output_line(line_text), scroll_end=False)
-        return line_text
-
+    if hasattr(output_widget, "append_plain_text"):
+        output_widget.append_plain_text(rendered)
     if _output_line_needs_gap(line_text) and previous_line not in (None, ""):
-        output_widget.insert("\n", output_widget.document.end, maintain_selection_offset=False)
-    output_widget.insert(rendered, output_widget.document.end, maintain_selection_offset=False)
+        output_widget.write("", scroll_end=False)
+    output_widget.write(_render_output_line(line_text), scroll_end=False)
     return line_text
 
 
@@ -336,8 +289,7 @@ def _write_output(self: Any, text: str) -> None:
     if not normalized:
         return
 
-    rich_output = hasattr(output_widget, "write") and hasattr(output_widget, "scroll_end")
-    follow_output = bool(getattr(output_widget, "is_vertical_scroll_end", True)) if rich_output else True
+    follow_output = bool(getattr(output_widget, "is_vertical_scroll_end", True))
     line_texts = [chunk[:-1] if chunk.endswith("\n") else chunk for chunk in normalized.splitlines(keepends=True)]
     self._session_output_lines.extend(line_texts)
     trimmed = self._trim_session_output_lines()
@@ -348,11 +300,8 @@ def _write_output(self: Any, text: str) -> None:
         for line_text in line_texts:
             previous_line = self._append_output_line_to_widget(output_widget, line_text, previous_line=previous_line)
         self._last_output_line = previous_line
-    if rich_output:
-        if follow_output:
-            output_widget.scroll_end(animate=False)
-    else:
-        output_widget.scroll_cursor_visible(animate=False)
+    if follow_output:
+        output_widget.scroll_end(animate=False)
 
 
 def _emit_output_from_thread(self: Any, text: str) -> None:
@@ -403,13 +352,6 @@ def _handle_toolbar_action(self: Any, button_id: str) -> None:
     view_name = self._VIEW_ACTIONS.get(button_id)
     if view_name is not None:
         self._activate_view(view_name)
-    elif button_id == "setup-save":
-        self._start_action(
-            "Save configuration",
-            lambda: self._save_config_fn(self._config_path, self._cfg),
-            action_id="action-setup",
-            clear_dirty_on_success=True,
-        )
     elif button_id == "action-help":
         self._open_help_popup()
     elif button_id == "action-quit":
@@ -418,10 +360,6 @@ def _handle_toolbar_action(self: Any, button_id: str) -> None:
 
 def action_show_analyze(self: Any) -> None:
     self._handle_toolbar_action("action-analyze")
-
-
-def action_show_documentation(self: Any) -> None:
-    self._handle_toolbar_action("action-documentation")
 
 
 def action_show_setup(self: Any) -> None:
@@ -476,9 +414,8 @@ def action_cancel_running_analysis(self: Any) -> None:
         return
 
     worker = getattr(self, "_active_job_worker", None)
-    worker_thread = getattr(self, "_active_job_thread", None)
     cancel_event = getattr(self, "_active_job_cancel_event", None)
-    if cancel_event is None or (worker is None and worker_thread is None):
+    if cancel_event is None:
         self._write_output("The running analysis queue does not currently support cancellation.")
         return
     if self._active_job_cancel_requested:
@@ -490,16 +427,9 @@ def action_cancel_running_analysis(self: Any) -> None:
     if worker is not None:
         with suppress(Exception):
             worker.cancel()
-    interrupted = _interrupt_worker_thread(worker_thread, KeyboardInterrupt) if worker_thread is not None else False
     self._refresh_view()
     self._refresh_shell_state()
-    if interrupted:
-        self._write_output("Cancellation requested. Interrupting the running analysis immediately.")
-        return
-
-    self._write_output(
-        "Immediate interruption was unavailable. The running analysis will stop after the current safe checkpoint."
-    )
+    self._write_output("Cancellation requested. The running analysis will stop at the next checkpoint.")
 
 
 def action_quit_shell(self: Any) -> None:
@@ -508,6 +438,56 @@ def action_quit_shell(self: Any) -> None:
 
 def action_clear_output(self: Any) -> None:
     self._clear_session_output()
+
+
+def _make_project_relative(path: str, anchor: Path) -> str:
+    p = Path(path)
+    if not p.is_absolute():
+        return str(p)
+    try:
+        return str(p.relative_to(anchor))
+    except ValueError:
+        return str(p)
+
+
+def action_save_config(self: Any) -> None:
+    raw_path = self._config_path
+    if raw_path is None:
+        return
+    config_path = Path(raw_path)
+    if config_path.suffix == ".slproj":
+        root = config_path.parent.resolve()
+        cfg_raw: dict[str, object] = self._cfg
+        project_data: dict[str, object] = {
+            "slproj_version": 1,
+            "analyzed_programs_and_libraries": list(
+                cast(list[str], cfg_raw.get("analyzed_programs_and_libraries") or [])
+            ),
+            "include_reverse_library_consumers": bool(cfg_raw.get("include_reverse_library_consumers", False)),
+            "mode": str(cfg_raw.get("mode", "official")),
+            "debug": bool(cfg_raw.get("debug", False)),
+            "program_dir": _make_project_relative(str(cfg_raw.get("program_dir", "")), root),
+            "ABB_lib_dir": _make_project_relative(str(cfg_raw.get("ABB_lib_dir", "")), root),
+            "icf_dir": _make_project_relative(str(cfg_raw.get("icf_dir", "")), root),
+            "other_lib_dirs": [
+                _make_project_relative(str(p), root) for p in cast(list[str], cfg_raw.get("other_lib_dirs") or [])
+            ],
+            "output_dir": "output",
+            "cache_dir": ".sattlint-cache",
+            "telemetry": dict(cast(dict[str, object], cfg_raw.get("telemetry") or {"enabled": False})),
+            "analysis": dict(cast(dict[str, object], cfg_raw.get("analysis") or {})),
+        }
+        _save_slproj(config_path, cast(ProjectDict, project_data))
+        self._dirty = False
+        self._write_output("Configuration saved.")
+        return
+    try:
+        self._save_config_fn(self._config_path, self._cfg)
+    except ValueError as exc:
+        self._write_output(f"Save failed: {exc}")
+        return
+    self._dirty = False
+    self._write_output("Configuration saved.")
 
 
 def action_back(self: Any) -> None:
@@ -604,6 +584,8 @@ def _start_action(
     self._refresh_summary()
     self._refresh_shell_state()
     self._refresh_view()
+    if action_id in ("action-analyze",):
+        self._clear_session_output()
     self._write_output(f"Starting {label}... Live output is shown in this panel.")
 
     def _run() -> None:
@@ -632,7 +614,7 @@ def _start_action(
     self._active_job_worker = self._start_managed_action_worker(_run, label=label, action_id=action_id)
 
 
-def _refresh_view(self: Any) -> None:  # noqa: PLR0915
+def _refresh_view(self: Any) -> None:
     if not tuple(getattr(self, "children", ())):
         return
     workspace_host = _query_required(self, "#workspace-host", _TEXTUAL_VERTICAL)
@@ -644,60 +626,106 @@ def _refresh_view(self: Any) -> None:  # noqa: PLR0915
     view_actions = _query_required(self, "#view-actions", _TEXTUAL_HORIZONTAL)
     launch_button = _query_required(self, "#view-primary-action", _TEXTUAL_BUTTON)
     analyze_actions_primary = _query_required(self, "#analyze-actions-primary", _TEXTUAL_HORIZONTAL)
-    analyze_browser = _query_required(self, "#analyze-browser", _TEXTUAL_HORIZONTAL)
-    analyze_right_widget = _query_required(self, "#analyze-browser-right", _TEXTUAL_STATIC)
-    documentation_actions = _query_required(self, "#documentation-actions", _TEXTUAL_HORIZONTAL)
+    analyze_browser = _query_required(self, "#analyze-browser", _TEXTUAL_VERTICAL)
     setup_browser = _query_required(self, "#setup-browser", _TEXTUAL_HORIZONTAL)
     tools_actions = _query_required(self, "#tools-actions", _TEXTUAL_HORIZONTAL)
 
     view = self._view_state(self._active_view)
     analyze_view = self._active_view == "analyze"
-    documentation_view = self._active_view == "documentation"
     setup_view = self._active_view == "setup"
     tools_view = self._active_view == "tools"
-    docs_tools_split_view = documentation_view or tools_view
 
+    title_widget.set_class(setup_view, "is-hidden")
+    description_widget.set_class(setup_view, "is-hidden")
+    note_widget.set_class(setup_view, "is-hidden")
     title_widget.update(view.title)
     description_widget.update(view.description)
-    if analyze_view:
-        note_widget.update(self._analyze_note_text())
-    elif documentation_view:
-        note_widget.update(self._documentation_note_text())
-    elif setup_view:
-        note_widget.update(self._setup_note_text())
+    if analyze_view or setup_view:
+        note_widget.update("")
     else:
         note_widget.update(view.note)
     launch_button.label = view.launch_label
     workspace_host.set_class(analyze_view, "analyze-split")
-    workspace_host.set_class(docs_tools_split_view, "docs-tools-split")
+    workspace_host.set_class(tools_view, "docs-tools-split")
     workspace_host.set_class(setup_view, "no-output")
-    view_host.set_class(view.action_id == "action-setup", "config-mode")
+    setup_browser.set_class(self._dirty, "config-mode")
+    view_host.set_class(setup_view, "is-hidden")
     output_pane.set_class(setup_view, "is-hidden")
-    description_widget.set_class(False, "is-hidden")
-    note_widget.set_class(False, "is-hidden")
     view_actions.set_class(self._active_view not in ("help",), "is-hidden")
     analyze_actions_primary.set_class(not analyze_view, "is-hidden")
     analyze_browser.set_class(not analyze_view, "is-hidden")
-    documentation_actions.set_class(not documentation_view, "is-hidden")
     setup_browser.set_class(not setup_view, "is-hidden")
     tools_actions.set_class(not tools_view, "is-hidden")
 
+    for tab in self.query(".nav-tab"):
+        tab_id = str(getattr(tab, "id", "") or "")
+        tab_view = tab_id.removeprefix("nav-tab-")
+        tab.set_class(tab_view == self._active_view, "nav-tab-active")
+
     if analyze_view:
         self._refresh_analyze_planner()
-        analyze_right_widget.update(self._analyze_browser_detail_renderable())
-    else:
-        analyze_right_widget.update("")
 
     if setup_view:
         self._refresh_setup_target_list()
         self._refresh_setup_settings_labels()
 
 
+def _show_keyboard_shortcuts(self: Any) -> None:
+    bindings = APP_SHELL_BINDINGS
+    lines: list[str] = ["Keyboard Shortcuts", "=" * 18, ""]
+    for key, _action_name, description in bindings:
+        lines.append(f"  {key:20s}  {description}")
+    lines.append("")
+    lines.append("Press Escape or Enter to close.")
+    self._show_help_modal("\n".join(lines))
+
+
+def _show_about(self: Any) -> None:
+    about_lines = [
+        "About SattLint",
+        "=" * 14,
+        "",
+        "SattLint — parser, analyzer, editor-facade, and repo-audit",
+        "toolchain for the SattLine language.",
+        "",
+        "Version: see pyproject.toml",
+        "",
+        "Press Escape or Enter to close.",
+    ]
+    self._show_help_modal("\n".join(about_lines))
+
+
+def _open_project_browser(self: Any) -> None:
+    cfg_path = getattr(self, "_config_path", None)
+    start_dir = Path(cfg_path).resolve().parent if cfg_path is not None else Path.cwd().resolve()
+
+    def _on_project_result(result: object) -> None:
+        if not isinstance(result, Path):
+            return
+        try:
+            project = _load_project_fn(result)
+        except (ValueError, OSError) as exc:
+            self._write_output(f"Failed to load project: {exc}")
+            return
+        new_cfg = project.to_default_merged_config_dict()
+        self._cfg = new_cfg
+        self._config_path = result
+        self._dirty = False
+        self._startup_output = ""
+        self._clear_session_output()
+        self._refresh_summary()
+        self._refresh_view()
+        self._refresh_shell_state()
+        self._write_output(f"Switched to project: {result.name}")
+
+    self.push_screen(
+        _FileBrowserScreen(start_paths=[start_dir], file_suffix=".slproj"),
+        _on_project_result,
+    )
+
+
 def _launch_active_view(self: Any) -> None:
     view = self._view_state(self._active_view)
-    if view.action_id == "action-documentation":
-        self._write_output("Documentation actions are available directly in the Documentation view.")
-        return
     if view.action_id == "action-analyze":
         self._write_output("The analyze planner is available directly in the Analyze view.")
         return
@@ -713,7 +741,7 @@ def _launch_active_view(self: Any) -> None:
     self._write_output(f"{view.title} is not available as a standalone action in the Textual shell.")
 
 
-def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
+def _refresh_shell_state(self: Any) -> None:
     if not tuple(getattr(self, "children", ())):
         return
     output_title_widget = _query_required(self, "#output-title", _TEXTUAL_STATIC)
@@ -724,12 +752,6 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
     analyze_cancel_running_button = _query_required(self, "#analyze-cancel-running", _TEXTUAL_BUTTON)
     analyze_clear_selection_button = _query_required(self, "#analyze-clear-selection", _TEXTUAL_BUTTON)
     analyze_clear_output_button = _query_required(self, "#analyze-clear-output", _TEXTUAL_BUTTON)
-    documentation_generate_button = _query_required(self, "#documentation-generate", _TEXTUAL_BUTTON)
-    documentation_preview_button = _query_required(self, "#documentation-preview-candidates", _TEXTUAL_BUTTON)
-    documentation_scope_all_button = _query_required(self, "#documentation-scope-all", _TEXTUAL_BUTTON)
-    documentation_scope_moduletype_button = _query_required(self, "#documentation-scope-moduletype", _TEXTUAL_BUTTON)
-    documentation_scope_instance_button = _query_required(self, "#documentation-scope-instance-path", _TEXTUAL_BUTTON)
-    tools_self_check_button = _query_required(self, "#tools-self-check", _TEXTUAL_BUTTON)
     tools_dumps_button = _query_required(self, "#tools-dumps", _TEXTUAL_BUTTON)
     tools_source_diff_button = _query_required(self, "#tools-source-diff", _TEXTUAL_BUTTON)
     tools_refresh_ast_button = _query_required(self, "#tools-refresh-ast", _TEXTUAL_BUTTON)
@@ -745,7 +767,6 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
     toolbar_disabled = self._busy or interaction_active
     launch_button.disabled = toolbar_disabled
     analyze_view = self._active_view == "analyze"
-    documentation_view = self._active_view == "documentation"
     setup_view = self._active_view == "setup"
     tools_view = self._active_view == "tools"
     analyze_plan = self._analyze_plan()
@@ -773,31 +794,15 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
     ):
         analyze_cancel_running_button.focus()
 
-    documentation_buttons = (
-        documentation_generate_button,
-        documentation_preview_button,
-        documentation_scope_all_button,
-        documentation_scope_moduletype_button,
-        documentation_scope_instance_button,
-    )
-    for button in documentation_buttons:
-        button.disabled = toolbar_disabled or not documentation_view or not self._setup_has_targets()
     for btn_id in (
         "setup-edit-program-dir",
-        "setup-edit-abb-dir",
         "setup-edit-other-lib-dirs",
         "setup-edit-icf-dir",
         "setup-toggle-mode",
-        "setup-toggle-scan-root-only",
-        "setup-toggle-fast-cache-validation",
         "setup-toggle-debug",
-        "setup-toggle-telemetry",
         "setup-target-browse",
     ):
         _query_required(self, f"#{btn_id}", _TEXTUAL_BUTTON).disabled = toolbar_disabled or not setup_view
-    _query_required(self, "#setup-save", _TEXTUAL_BUTTON).disabled = (
-        toolbar_disabled or not setup_view or not self._dirty
-    )
     _query_required(self, "#setup-target-remove", _TEXTUAL_BUTTON).disabled = (
         toolbar_disabled
         or not setup_view
@@ -806,15 +811,51 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
     )
     if setup_view:
         self._refresh_setup_settings_labels()
-    tools_self_check_button.disabled = toolbar_disabled or not tools_view
     tools_dumps_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
     tools_source_diff_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
     tools_refresh_ast_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
     tools_datatype_usage_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
     tools_variable_trace_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
     tools_module_locals_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
-    for button_id in self._ACTION_IDS:
-        _query_required(self, f"#{button_id}", _TEXTUAL_BUTTON).disabled = toolbar_disabled
+
+
+def on_click(self: Any, event: Any) -> None:
+    _on_nav_tab_click(self, event)
+    _menubar_click_outside(self, event)
+
+
+def _on_nav_tab_click(self: Any, event: Any) -> None:
+    if self._interaction_screen_active():
+        return
+    if self._busy:
+        return
+    widget = getattr(event, "widget", None)
+    if widget is None:
+        return
+    widget_id = str(getattr(widget, "id", "") or "")
+    if widget_id.startswith("nav-tab-"):
+        view_name = widget_id.removeprefix("nav-tab-")
+        self._activate_view(view_name)
+
+
+def _menubar_click_outside(self: Any, event: Any) -> None:
+    """Close any open menubar dropdown when clicking outside it."""
+    try:
+        menubar = self.query_one("#menubar", _MenubarWidget)
+    except _TEXTUAL_QUERY_ERRORS:
+        return
+    if not menubar.menu_open:
+        return
+    clicked = getattr(event, "widget", None)
+    if clicked is None:
+        menubar.click_outside()
+        return
+    parent = clicked
+    while parent is not None:
+        if getattr(parent, "id", None) == "menubar":
+            return
+        parent = getattr(parent, "parent", None)
+    menubar.click_outside()
 
 
 def on_button_pressed(self: Any, event: Any) -> None:
@@ -827,28 +868,38 @@ def on_button_pressed(self: Any, event: Any) -> None:
         "analyze-cancel-running": self.action_cancel_running_analysis,
         "analyze-clear-selection": self._clear_selected_analysis_plan,
         "analyze-clear-output": self._clear_session_output,
-        "documentation-generate": self._run_documentation_generate,
-        "documentation-preview-candidates": self._run_documentation_preview_candidates,
-        "documentation-scope-all": self._run_documentation_scope_all,
-        "documentation-scope-moduletype": self._run_documentation_scope_moduletype,
-        "documentation-scope-instance-path": self._run_documentation_scope_instance_path,
         "setup-edit-program-dir": lambda: self._queue_setup_value_prompt("program_dir", label="program_dir"),
         "setup-edit-abb-dir": lambda: self._queue_setup_value_prompt("ABB_lib_dir", label="ABB_lib_dir"),
         "setup-edit-other-lib-dirs": lambda: self._queue_setup_value_prompt(
             "other_lib_dirs", label="other_lib_dirs", is_list=True
         ),
         "setup-toggle-mode": self._toggle_setup_mode,
-        "setup-toggle-scan-root-only": lambda: self._toggle_setup_flag("scan_root_only", label="scan_root_only"),
         "setup-edit-icf-dir": lambda: self._queue_setup_value_prompt("icf_dir", label="icf_dir"),
         "setup-toggle-debug": lambda: self._toggle_setup_flag("debug", label="debug"),
-        "setup-toggle-telemetry": self._toggle_setup_telemetry,
-        "tools-self-check": self._run_tool_self_check,
         "tools-dumps": self._run_tool_dumps,
         "tools-source-diff": self._run_tool_source_diff,
         "tools-refresh-ast": self._run_tool_refresh_ast,
         "tools-datatype-usage": self._run_tool_datatype_usage,
         "tools-variable-trace": self._run_tool_variable_trace,
         "tools-module-locals": self._run_tool_module_locals,
+        "menu-file-open-project": self._open_project_browser,
+        "menu-file-open-recent": lambda: self._write_output("Open Recent not yet implemented."),
+        "menu-file-save-project": self.action_save_config,
+        "action-quit": self._request_quit_shell,
+        "menu-analyze-run-selected": self._run_selected_analysis_plan,
+        "menu-analyze-cancel": self.action_cancel_running_analysis,
+        "menu-reports-source-diff": self._run_tool_source_diff,
+        "menu-reports-export": lambda: self._write_output("Export not yet implemented."),
+        "menu-tools-refresh-cache": self._run_tool_refresh_ast,
+        "menu-tools-diagnostics": self._run_tool_dumps,
+        "menu-tools-datatype-trace": self._run_tool_datatype_usage,
+        "menu-tools-variable-trace": self._run_tool_variable_trace,
+        "menu-tools-module-locals": self._run_tool_module_locals,
+        "menu-settings-project": self.action_show_setup,
+        "menu-settings-general": lambda: self._write_output("General Settings not yet implemented."),
+        "menu-help-shortcuts": lambda: self._show_keyboard_shortcuts(),
+        "menu-help-documentation": self._open_help_popup,
+        "menu-help-about": lambda: self._show_about(),
     }
     action = button_actions.get(button_id)
     if action is not None:
@@ -879,8 +930,11 @@ if TYPE_CHECKING:
         def _finish_action(self, dirty: bool = False, *, clear_dirty_on_success: bool = False) -> None: ...
         def _interaction_screen_active(self) -> bool: ...
         def _handle_toolbar_action(self, button_id: str) -> None: ...
+        def on_click(self, event: Any) -> None: ...
+        def _show_keyboard_shortcuts(self) -> None: ...
+        def _show_about(self) -> None: ...
+        def _open_project_browser(self) -> None: ...
         def action_show_analyze(self) -> None: ...
-        def action_show_documentation(self) -> None: ...
         def action_show_setup(self) -> None: ...
         def action_show_tools(self) -> None: ...
         def action_show_help(self) -> None: ...
@@ -889,6 +943,7 @@ if TYPE_CHECKING:
         def action_cancel_running_analysis(self) -> None: ...
         def action_quit_shell(self) -> None: ...
         def action_clear_output(self) -> None: ...
+        def action_save_config(self) -> None: ...
         def action_back(self) -> None: ...
         def _request_quit_shell(self) -> None: ...
         async def _request_quit_shell_async(self) -> None: ...
@@ -931,8 +986,11 @@ else:
         _finish_action = _finish_action
         _interaction_screen_active = _interaction_screen_active
         _handle_toolbar_action = _handle_toolbar_action
+        on_click = on_click
+        _show_keyboard_shortcuts = _show_keyboard_shortcuts
+        _show_about = _show_about
+        _open_project_browser = _open_project_browser
         action_show_analyze = action_show_analyze
-        action_show_documentation = action_show_documentation
         action_show_setup = action_show_setup
         action_show_tools = action_show_tools
         action_show_help = action_show_help
@@ -941,6 +999,7 @@ else:
         action_cancel_running_analysis = action_cancel_running_analysis
         action_quit_shell = action_quit_shell
         action_clear_output = action_clear_output
+        action_save_config = action_save_config
         action_back = action_back
         _request_quit_shell = _request_quit_shell
         _request_quit_shell_async = _request_quit_shell_async

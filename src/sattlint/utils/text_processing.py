@@ -6,10 +6,9 @@ from functools import cache
 from typing import TYPE_CHECKING, Any
 
 from lark.exceptions import UnexpectedInput
-
 from sattline_parser.api import build_lark_parser
 
-from ._comment_scanning import scan_comments_with_code, scan_disallowed_comments, strip_sl_comments_impl
+from ._comment_scanning import scan_comments_with_code, scan_disallowed_comments
 
 if TYPE_CHECKING:
     from lark import Lark
@@ -329,26 +328,3 @@ def find_comments_with_code(text: str) -> list[CommentCodeHit]:
         comment_code_indicators=_comment_code_indicators,
         hit_factory=CommentCodeHit,
     )
-
-
-def strip_sl_comments(text: str) -> str:
-    """
-    Remove nested comments of the form (* ... *) from the input text.
-    Preserves original line numbers by emitting newline characters
-    encountered inside comments and in the whitespace after a comment.
-    Also removes a single semicolon that immediately follows a comment
-    (allowing intervening whitespace/newlines), while preserving those
-    whitespace/newlines.
-
-    Additionally:
-    - Does NOT treat (* or *) as comment delimiters when they appear inside
-      single- or double-quoted strings.
-    - Inside strings, supports doubled quotes ("" and '') and backslash escapes.
-    - A newline ends a string if it hasn't been closed yet. Both LF and CR will
-      terminate the string; CRLF is preserved as-is.
-
-    Assumptions:
-    - Comments can be nested and may contain newlines.
-    - Every comment is closed before EOF.
-    """
-    return strip_sl_comments_impl(text)

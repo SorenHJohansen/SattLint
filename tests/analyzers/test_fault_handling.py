@@ -1,6 +1,15 @@
 # pyright: reportUnknownVariableType=false, reportUnknownParameterType=false, reportMissingTypeArgument=false
-from sattline_parser.models.ast_model import BasePicture, Equation, ModuleCode, ModuleHeader, Simple_DataType, Variable
-from sattlint import constants as const
+from sattline_parser.models.ast_model import (
+    Assignment,
+    BasePicture,
+    Equation,
+    ModuleCode,
+    ModuleHeader,
+    Simple_DataType,
+    Variable,
+)
+from sattline_parser.models.expressions import VarRef
+
 from sattlint.analyzers.fault_handling import analyze_fault_handling
 from sattlint.analyzers.registry import get_default_analyzers
 
@@ -9,8 +18,8 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
 def test_fault_handling_flags_unhandled_and_never_cleared_faults():
@@ -29,10 +38,10 @@ def test_fault_handling_flags_unhandled_and_never_cleared_faults():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (const.KEY_ASSIGN, _varref("HighFault"), True),
-                        (const.KEY_ASSIGN, _varref("HandledFault"), True),
-                        (const.KEY_ASSIGN, _varref("Status"), _varref("HandledFault")),
-                        (const.KEY_ASSIGN, _varref("HandledFault"), False),
+                        Assignment(target=_varref("HighFault"), value=True),
+                        Assignment(target=_varref("HandledFault"), value=True),
+                        Assignment(target=_varref("Status"), value=_varref("HandledFault")),
+                        Assignment(target=_varref("HandledFault"), value=False),
                     ],
                 )
             ]

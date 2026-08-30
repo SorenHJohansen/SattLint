@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+from pathlib import Path
 
 from sattlint.devtools import (
     FAULT_INJECTION_RESULTS_FILENAME,
@@ -104,7 +105,7 @@ def test_run_fault_injection_campaign_marks_real_errors_unexpected_when_injected
     assert record.checkpoint is None
 
 
-def test_write_fault_injection_results_writes_machine_readable_report(tmp_path):
+def test_write_fault_injection_results_writes_machine_readable_report(tmp_path: Path):
     def case_fn(injector: FaultInjector) -> None:
         injector.checkpoint("load")
 

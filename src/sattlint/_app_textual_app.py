@@ -18,16 +18,17 @@ from ._app_textual_shared import (
     _TEXTUAL_FOOTER,
     _TEXTUAL_HORIZONTAL,
     _TEXTUAL_LIST_VIEW,
-    _TEXTUAL_RICH_LOG,
     _TEXTUAL_STATIC,
-    _TEXTUAL_TEXT_AREA,
     _TEXTUAL_VERTICAL,
+    APP_SHELL_BINDINGS,
     DEFAULT_SHELL_TITLE,
+    MENU_DEFINITIONS,
     TEXTUAL_SHELL_CSS,
     TextualInteractionBridge,
     _SessionOutputLog,
     _ShellViewState,
 )
+from ._app_textual_widgets import _MenubarWidget
 from .config_types import ConfigDict
 
 
@@ -41,16 +42,9 @@ _DEFAULT_VIEW_REGISTRY: dict[str, _ShellViewState] = {
     "analyze": _ShellViewState(
         action_id="action-analyze",
         title="Analyze",
-        description="Plan one or more analyses, inspect the normalized queue, and run the selected steps directly.",
-        note="Build an analysis queue in this view and run the shared planner directly.",
+        description="",
+        note="",
         launch_label="Open Analyze Planner",
-    ),
-    "documentation": _ShellViewState(
-        action_id="action-documentation",
-        title="Documentation",
-        description="Preview unit candidates, adjust scope, and generate DOCX output directly from this screen.",
-        note="Documentation actions are available directly in this view.",
-        launch_label="Open Documentation Flow",
     ),
     "setup": _ShellViewState(
         action_id="action-setup",
@@ -75,15 +69,15 @@ _DEFAULT_VIEW_REGISTRY: dict[str, _ShellViewState] = {
     "help": _ShellViewState(
         action_id="action-help",
         title="Help",
-        description="See first-run guidance and the recommended workflow for setup, analysis, and documentation.",
-        note="Open the guide to review the recommended setup, analysis, and documentation workflow.",
+        description="See first-run guidance and the recommended workflow for setup and analysis.",
+        note="Open the guide to review the recommended setup and analysis workflow.",
         launch_label="Open Help Guide",
     ),
 }
 
 
 if _TEXTUAL_APP is not None:
-    _SessionOutputWidget: Any = _SessionOutputLog if _TEXTUAL_RICH_LOG is not None else None
+    _SessionOutputWidget: Any = _SessionOutputLog
 
     class _AstRefreshTextualAppImpl(_TEXTUAL_APP):
         """Shows startup AST-cache progress before the main Textual shell opens."""
@@ -121,24 +115,36 @@ if _TEXTUAL_APP is not None:
             margin-top: 1;
             color: #58787e;
         }
+
+        #ast-refresh-activity {
+            dock: bottom;
+            width: 100%;
+            padding: 0 1;
+            background: #0077b3;
+            color: #ffffff;
+            text-style: bold;
+        }
         """
 
         def __init__(self, *, refresh_ast_cache_fn: Any) -> None:
             super().__init__()
             self._refresh_ast_cache_fn = refresh_ast_cache_fn
             self._status_lines: list[str] = ["Starting cached AST refresh..."]
+            self._activity_line: str | None = None
             self._failure_prompt: str | None = None
             self._refresh_failed = False
             self._refresh_exception: BaseException | None = None
 
         def compose(self) -> _TEXTUAL_COMPOSE_RESULT:
-            with _TEXTUAL_VERTICAL(id="ast-refresh-host"), _TEXTUAL_VERTICAL(id="ast-refresh-card"):
-                yield _TEXTUAL_STATIC("Refreshing cached ASTs", id="ast-refresh-title")
-                yield _TEXTUAL_STATIC(
-                    "Checking the cached project graphs before opening the main Textual shell.",
-                    id="ast-refresh-body",
-                )
-                yield _TEXTUAL_STATIC("\n".join(self._status_lines), id="ast-refresh-status")
+            with _TEXTUAL_VERTICAL(id="ast-refresh-host"):
+                with _TEXTUAL_VERTICAL(id="ast-refresh-card"):
+                    yield _TEXTUAL_STATIC("Refreshing cached ASTs", id="ast-refresh-title")
+                    yield _TEXTUAL_STATIC(
+                        "Checking the cached project graphs before opening the main Textual shell.",
+                        id="ast-refresh-body",
+                    )
+                    yield _TEXTUAL_STATIC("\n".join(self._status_lines), id="ast-refresh-status")
+                yield _TEXTUAL_STATIC("", id="ast-refresh-activity")
 
         def on_mount(self) -> None:
             threading.Thread(target=self._run_refresh, daemon=True).start()
@@ -155,7 +161,17 @@ if _TEXTUAL_APP is not None:
             normalized = message.replace("\r\n", "\n").replace("\r", "\n")
             if not normalized:
                 return
-            self._status_lines.extend(normalized.split("\n"))
+            parts = normalized.split("\n")
+            for part in parts:
+                if part.startswith("Loading "):
+                    self._activity_line = part
+                    self.query_one("#ast-refresh-activity", _TEXTUAL_STATIC).update(part)
+                elif part == "":
+                    self._status_lines.append("")
+                else:
+                    self._status_lines.append(part)
+                    self._activity_line = None
+                    self.query_one("#ast-refresh-activity", _TEXTUAL_STATIC).update("")
             self.query_one("#ast-refresh-status", _TEXTUAL_STATIC).update(self._render_status_text())
 
         def _set_failure_prompt(self) -> None:
@@ -216,32 +232,7 @@ if _TEXTUAL_APP is not None:
 
         TITLE = DEFAULT_SHELL_TITLE
 
-        BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
-            ("1", "show_analyze", "Analyze"),
-            ("2", "show_documentation", "Docs"),
-            ("3", "show_setup", "Setup"),
-            ("4", "show_tools", "Tools"),
-            ("5", "show_help", "Help"),
-            ("slash", "prompt_view_filter", "Filter"),
-            ("question_mark", "show_help", "Help"),
-            ("ctrl+h", "show_help", "Help"),
-            ("ctrl+c", "copy_output", "Copy Output"),
-            ("ctrl+g", "cancel_running_analysis", "Cancel Analysis"),
-            ("ctrl+l", "clear_output", "Clear Output"),
-            ("escape", "back", "Back"),
-            ("q", "quit_shell", "Quit"),
-            ("tab", "focus_next_control", "Next"),
-            ("shift+tab", "focus_previous_control", "Prev"),
-        ]
-
-        _ACTION_IDS = (
-            "action-analyze",
-            "action-documentation",
-            "action-setup",
-            "action-tools",
-            "action-help",
-            "action-quit",
-        )
+        BINDINGS: ClassVar[list[tuple[str, str, str]]] = APP_SHELL_BINDINGS
 
         _VIEW_REGISTRY: ClassVar[dict[str, _ShellViewState]] = _DEFAULT_VIEW_REGISTRY
         _VIEW_ACTIONS: ClassVar[dict[str, str]] = {
@@ -256,7 +247,6 @@ if _TEXTUAL_APP is not None:
             cfg: ConfigDict,
             summarize_targets_fn: Any,
             analysis_menu_fn: Any,
-            documentation_menu_fn: Any,
             config_menu_fn: Any,
             tools_menu_fn: Any,
             show_help_fn: Any,
@@ -277,7 +267,6 @@ if _TEXTUAL_APP is not None:
             self._cfg = cfg
             self._summarize_targets_fn = summarize_targets_fn
             self._analysis_menu_fn = analysis_menu_fn
-            self._documentation_menu_fn = documentation_menu_fn
             self._config_menu_fn = config_menu_fn
             self._tools_menu_fn = tools_menu_fn
             self._show_help_fn = show_help_fn
@@ -298,6 +287,7 @@ if _TEXTUAL_APP is not None:
             self._analyze_focused_entry_id: str | None = None
             self._analyze_selected_entry_ids: set[str] = set()
             self._analyze_filter_text = ""
+            self._analyze_help_shown = False
             self._suppress_analyze_planner_events = False
             self._setup_candidate_index = 0
             self._setup_filter_text = ""
@@ -313,28 +303,24 @@ if _TEXTUAL_APP is not None:
             self._force_refresh_ast_fn = force_refresh_ast_fn or (lambda _cfg: None)
             self._startup_output = startup_output.strip("\n")
             self._startup_output_is_warning = startup_output_is_warning
+            self._welcome_shown = False
             self._last_output_line: str | None = None
             self._session_output_lines: list[str] = []
             self._session_output_dropped_line_count = 0
 
         def compose(self) -> _TEXTUAL_COMPOSE_RESULT:  # noqa: PLR0915
-            with _TEXTUAL_HORIZONTAL(id="actions"):
-                yield _TEXTUAL_BUTTON("Analyze", id="action-analyze", classes="raised-button toolbar-button")
-                yield _TEXTUAL_BUTTON("Docs", id="action-documentation", classes="raised-button toolbar-button")
-                yield _TEXTUAL_BUTTON("Tools", id="action-tools", classes="raised-button toolbar-button")
-                yield _TEXTUAL_STATIC("", id="actions-spacer")
-                yield _TEXTUAL_BUTTON("Setup", id="action-setup", classes="raised-button toolbar-button")
-                yield _TEXTUAL_BUTTON("Help & Guide", id="action-help", classes="raised-button toolbar-button")
-                yield _TEXTUAL_BUTTON("Quit", id="action-quit", classes="raised-button toolbar-button")
+            with _TEXTUAL_VERTICAL(id="top-bar"):
+                yield _MenubarWidget(menus=MENU_DEFINITIONS)
+                with _TEXTUAL_HORIZONTAL(id="nav-tabs"):
+                    yield _TEXTUAL_STATIC("  Analyze  ", id="nav-tab-analyze", classes="nav-tab")
+                    yield _TEXTUAL_STATIC("  Tools  ", id="nav-tab-tools", classes="nav-tab")
+                    yield _TEXTUAL_STATIC("  Setup  ", id="nav-tab-setup", classes="nav-tab")
             with _TEXTUAL_VERTICAL(id="content-host"):
                 with _TEXTUAL_VERTICAL(id="workspace-host"):
                     with _TEXTUAL_VERTICAL(id="view-pane"):
                         yield _TEXTUAL_STATIC("", id="view-title")
                         with _TEXTUAL_VERTICAL(id="view-host"):
                             with _TEXTUAL_HORIZONTAL(id="view-header"):
-                                with _TEXTUAL_VERTICAL(id="view-copy"):
-                                    yield _TEXTUAL_STATIC("", id="view-description")
-                                    yield _TEXTUAL_STATIC("", id="view-note")
                                 with _TEXTUAL_VERTICAL(id="view-side-actions"):
                                     with _TEXTUAL_HORIZONTAL(id="view-actions"):
                                         yield _TEXTUAL_BUTTON(
@@ -361,38 +347,7 @@ if _TEXTUAL_APP is not None:
                                             id="analyze-clear-output",
                                             classes="raised-button toolbar-button",
                                         )
-                                    with _TEXTUAL_HORIZONTAL(id="documentation-actions", classes="is-hidden"):
-                                        yield _TEXTUAL_BUTTON(
-                                            "Generate DOCX",
-                                            id="documentation-generate",
-                                            classes="raised-button toolbar-button",
-                                        )
-                                        yield _TEXTUAL_BUTTON(
-                                            "Preview candidates",
-                                            id="documentation-preview-candidates",
-                                            classes="raised-button toolbar-button",
-                                        )
-                                        yield _TEXTUAL_BUTTON(
-                                            "Use all detected units",
-                                            id="documentation-scope-all",
-                                            classes="raised-button toolbar-button",
-                                        )
-                                        yield _TEXTUAL_BUTTON(
-                                            "Scope by moduletype",
-                                            id="documentation-scope-moduletype",
-                                            classes="raised-button toolbar-button",
-                                        )
-                                        yield _TEXTUAL_BUTTON(
-                                            "Scope by instance path",
-                                            id="documentation-scope-instance-path",
-                                            classes="raised-button toolbar-button",
-                                        )
                                     with _TEXTUAL_HORIZONTAL(id="tools-actions", classes="is-hidden"):
-                                        yield _TEXTUAL_BUTTON(
-                                            "Self-check diagnostics",
-                                            id="tools-self-check",
-                                            classes="raised-button toolbar-button",
-                                        )
                                         yield _TEXTUAL_BUTTON(
                                             "Diagnostics & dumps",
                                             id="tools-dumps",
@@ -423,14 +378,18 @@ if _TEXTUAL_APP is not None:
                                             id="tools-module-locals",
                                             classes="raised-button toolbar-button",
                                         )
-                            with _TEXTUAL_HORIZONTAL(id="analyze-browser", classes="is-hidden"):
+                                with _TEXTUAL_VERTICAL(id="view-copy"):
+                                    yield _TEXTUAL_STATIC("", id="view-description")
+                                    yield _TEXTUAL_STATIC("", id="view-note")
+                            with _TEXTUAL_VERTICAL(id="analyze-browser", classes="is-hidden"):  # noqa: SIM117
                                 with _TEXTUAL_VERTICAL(id="analyze-browser-left"):
                                     pass
-                                yield _TEXTUAL_STATIC("", id="analyze-browser-right")
-                            with _TEXTUAL_HORIZONTAL(id="setup-browser", classes="is-hidden"):
+                        with _TEXTUAL_HORIZONTAL(id="setup-browser", classes="is-hidden"):
+                            with _TEXTUAL_VERTICAL(id="setup-targets-section"):
+                                yield _TEXTUAL_STATIC("Analysis Targets", id="setup-targets-title")
                                 with _TEXTUAL_VERTICAL(id="setup-targets-col"):
-                                    yield _TEXTUAL_STATIC("Analysis Targets", classes="setup-section-title")
-                                    yield _TEXTUAL_LIST_VIEW(id="setup-target-listview")
+                                    with _TEXTUAL_VERTICAL(id="setup-target-inner"):
+                                        yield _TEXTUAL_LIST_VIEW(id="setup-target-listview")
                                     with _TEXTUAL_HORIZONTAL(id="setup-target-actions"):
                                         yield _TEXTUAL_BUTTON(
                                             "Remove", id="setup-target-remove", classes="raised-button", disabled=True
@@ -438,96 +397,66 @@ if _TEXTUAL_APP is not None:
                                         yield _TEXTUAL_BUTTON(
                                             "Add from file...", id="setup-target-browse", classes="raised-button"
                                         )
+                            with _TEXTUAL_VERTICAL(id="setup-settings-section"):
+                                yield _TEXTUAL_STATIC("Configuration", id="setup-config-title")
                                 with _TEXTUAL_VERTICAL(id="setup-settings-col"):
-                                    yield _TEXTUAL_STATIC("Configuration", classes="setup-section-title")
-                                    yield _TEXTUAL_STATIC("Directories", classes="setup-group-title")
-                                    with _TEXTUAL_HORIZONTAL(classes="setup-row"):
-                                        yield _TEXTUAL_BUTTON(
-                                            "Program folder",
-                                            id="setup-edit-program-dir",
-                                            classes="raised-button setup-row-button",
-                                        )
-                                        yield _TEXTUAL_STATIC(
-                                            "", id="setup-label-program-dir", classes="setup-row-label"
-                                        )
-                                    with _TEXTUAL_HORIZONTAL(classes="setup-row"):
-                                        yield _TEXTUAL_BUTTON(
-                                            "ABB library",
-                                            id="setup-edit-abb-dir",
-                                            classes="raised-button setup-row-button",
-                                        )
-                                        yield _TEXTUAL_STATIC("", id="setup-label-abb-dir", classes="setup-row-label")
-                                    with _TEXTUAL_HORIZONTAL(classes="setup-row"):
-                                        yield _TEXTUAL_BUTTON(
-                                            "Other libraries",
-                                            id="setup-edit-other-lib-dirs",
-                                            classes="raised-button setup-row-button",
-                                        )
-                                        yield _TEXTUAL_STATIC(
-                                            "", id="setup-label-other-dirs", classes="setup-row-label"
-                                        )
-                                    with _TEXTUAL_HORIZONTAL(classes="setup-row"):
-                                        yield _TEXTUAL_BUTTON(
-                                            "ICF folder",
-                                            id="setup-edit-icf-dir",
-                                            classes="raised-button setup-row-button",
-                                        )
-                                        yield _TEXTUAL_STATIC("", id="setup-label-icf-dir", classes="setup-row-label")
-                                    yield _TEXTUAL_STATIC("Mode & Config", classes="setup-group-title")
-                                    with _TEXTUAL_HORIZONTAL(classes="setup-row"):
-                                        yield _TEXTUAL_BUTTON(
-                                            "Mode", id="setup-toggle-mode", classes="raised-button setup-row-button"
-                                        )
-                                        yield _TEXTUAL_STATIC("", id="setup-label-mode", classes="setup-row-label")
-                                    with _TEXTUAL_HORIZONTAL(classes="setup-row"):
-                                        yield _TEXTUAL_BUTTON(
-                                            "Scan root only",
-                                            id="setup-toggle-scan-root-only",
-                                            classes="raised-button setup-row-button",
-                                        )
-                                        yield _TEXTUAL_STATIC(
-                                            "", id="setup-label-scan-root-only", classes="setup-row-label"
-                                        )
-                                    with _TEXTUAL_HORIZONTAL(classes="setup-row"):
-                                        yield _TEXTUAL_BUTTON(
-                                            "Fast cache",
-                                            id="setup-toggle-fast-cache-validation",
-                                            classes="raised-button setup-row-button",
-                                        )
-                                        yield _TEXTUAL_STATIC(
-                                            "", id="setup-label-fast-cache", classes="setup-row-label"
-                                        )
-                                    yield _TEXTUAL_STATIC("Runtime", classes="setup-group-title")
-                                    with _TEXTUAL_HORIZONTAL(classes="setup-row"):
-                                        yield _TEXTUAL_BUTTON(
-                                            "Debug logging",
-                                            id="setup-toggle-debug",
-                                            classes="raised-button setup-row-button",
-                                        )
-                                        yield _TEXTUAL_STATIC("", id="setup-label-debug", classes="setup-row-label")
-                                    with _TEXTUAL_HORIZONTAL(classes="setup-row"):
-                                        yield _TEXTUAL_BUTTON(
-                                            "Telemetry",
-                                            id="setup-toggle-telemetry",
-                                            classes="raised-button setup-row-button",
-                                        )
-                                        yield _TEXTUAL_STATIC("", id="setup-label-telemetry", classes="setup-row-label")
-                                    yield _TEXTUAL_STATIC("Save", classes="setup-group-title")
-                                    yield _TEXTUAL_BUTTON(
-                                        "Save config", id="setup-save", classes="raised-button setup-row-button"
-                                    )
+                                    with _TEXTUAL_VERTICAL(id="setup-group-dirs", classes="setup-group-box"):
+                                        yield _TEXTUAL_STATIC("Directories", classes="setup-group-title")
+                                        with _TEXTUAL_HORIZONTAL(classes="setup-row"):
+                                            yield _TEXTUAL_BUTTON(
+                                                "Program folder",
+                                                id="setup-edit-program-dir",
+                                                classes="raised-button setup-row-button",
+                                            )
+                                            yield _TEXTUAL_STATIC(
+                                                "", id="setup-label-program-dir", classes="setup-row-label"
+                                            )
+                                        with _TEXTUAL_HORIZONTAL(classes="setup-row"):
+                                            yield _TEXTUAL_BUTTON(
+                                                "ABB library",
+                                                id="setup-edit-abb-dir",
+                                                classes="raised-button setup-row-button",
+                                            )
+                                            yield _TEXTUAL_STATIC(
+                                                "", id="setup-label-abb-dir", classes="setup-row-label"
+                                            )
+                                        with _TEXTUAL_HORIZONTAL(classes="setup-row"):
+                                            yield _TEXTUAL_BUTTON(
+                                                "Other libraries",
+                                                id="setup-edit-other-lib-dirs",
+                                                classes="raised-button setup-row-button",
+                                            )
+                                            yield _TEXTUAL_STATIC(
+                                                "", id="setup-label-other-dirs", classes="setup-row-label"
+                                            )
+                                        with _TEXTUAL_HORIZONTAL(classes="setup-row"):
+                                            yield _TEXTUAL_BUTTON(
+                                                "ICF folder",
+                                                id="setup-edit-icf-dir",
+                                                classes="raised-button setup-row-button",
+                                            )
+                                            yield _TEXTUAL_STATIC(
+                                                "", id="setup-label-icf-dir", classes="setup-row-label"
+                                            )
+                                    with _TEXTUAL_VERTICAL(id="setup-group-mode", classes="setup-group-box"):
+                                        yield _TEXTUAL_STATIC("Mode & Config", classes="setup-group-title")
+                                        with _TEXTUAL_HORIZONTAL(classes="setup-row"):
+                                            yield _TEXTUAL_BUTTON(
+                                                "Mode", id="setup-toggle-mode", classes="raised-button setup-row-button"
+                                            )
+                                            yield _TEXTUAL_STATIC("", id="setup-label-mode", classes="setup-row-label")
+                                    with _TEXTUAL_VERTICAL(id="setup-group-runtime", classes="setup-group-box"):
+                                        yield _TEXTUAL_STATIC("Runtime", classes="setup-group-title")
+                                        with _TEXTUAL_HORIZONTAL(classes="setup-row"):
+                                            yield _TEXTUAL_BUTTON(
+                                                "Debug logging",
+                                                id="setup-toggle-debug",
+                                                classes="raised-button setup-row-button",
+                                            )
+                                            yield _TEXTUAL_STATIC("", id="setup-label-debug", classes="setup-row-label")
                     with _TEXTUAL_VERTICAL(id="output-pane"):
                         yield _TEXTUAL_STATIC("Session output", id="output-title")
-                        if _SessionOutputWidget is None:
-                            yield _TEXTUAL_TEXT_AREA(
-                                "",
-                                id="output",
-                                read_only=True,
-                                soft_wrap=True,
-                                show_line_numbers=False,
-                            )
-                        else:
-                            yield _SessionOutputWidget(id="output")
+                        yield _SessionOutputWidget(id="output")
                 with _TEXTUAL_VERTICAL(id="interaction-host"):
                     pass
             yield _TEXTUAL_FOOTER()
@@ -535,21 +464,29 @@ if _TEXTUAL_APP is not None:
         def on_mount(self) -> None:
             self._refresh_summary()
             self._refresh_view()
-            self._set_active_action(None)
             self._refresh_shell_state()
-            self.query_one("#action-analyze", _TEXTUAL_BUTTON).focus()
-            self._write_output("Textual shell ready. Use the action bar to move between native TUI views and actions.")
-            if self._startup_output:
-                if self._startup_output_is_warning:
-                    self._write_output(
-                        "AST cache startup checks reported issues before the shell opened. Review the preserved log below."
-                    )
-                else:
-                    self._write_output("Initial AST loading log:")
-                self._write_output(self._startup_output)
+            self._clear_session_output()
+            self._write_output(
+                "Welcome to SattLint Analyze.\n\n"
+                "Select one or more analysis entries from the Available analyses list below, "
+                'then press "Run selected analyses" to execute. '
+                "Press / to filter entries, Ctrl+1-4 to switch views, Esc to go back, ? or Ctrl+H for help."
+            )
+            self._analyze_help_shown = True
 
         def _view_state(self, view_name: str) -> _ShellViewState:
             return self._VIEW_REGISTRY.get(view_name, self._VIEW_REGISTRY["analyze"])
+
+        def _show_welcome(self) -> None:
+            welcome = (
+                "Welcome to SattLint!\n\n"
+                "This is your first session. Here is a quick orientation:\n\n"
+                "1. Setup — Add analysis targets in the Setup view (Ctrl+4).\n"
+                "2. Analyze — Select analyses to run in the Analyze view (Ctrl+1).\n"
+                "3. Tools — Use diagnostics, traces, and cache tools (Ctrl+3).\n\n"
+                "Tip: Press Ctrl+S to save your configuration at any time."
+            )
+            self._show_help_modal(welcome)
 
     _AstRefreshTextualAppImpl.__name__ = "_AstRefreshTextualApp"
     _AstRefreshTextualAppImpl.__qualname__ = "_AstRefreshTextualApp"
@@ -586,7 +523,6 @@ def run_textual_shell(
     app_module: Any,
     summarize_targets_fn: Any,
     analysis_menu_fn: Any | None = None,
-    documentation_menu_fn: Any | None = None,
     config_menu_fn: Any | None = None,
     tools_menu_fn: Any | None = None,
     show_help_fn: Any,
@@ -608,7 +544,6 @@ def run_textual_shell(
         cfg=cfg,
         summarize_targets_fn=summarize_targets_fn,
         analysis_menu_fn=analysis_menu_fn or _noop_menu_action,
-        documentation_menu_fn=documentation_menu_fn or _noop_menu_action,
         config_menu_fn=config_menu_fn or _noop_menu_action,
         tools_menu_fn=tools_menu_fn or _noop_menu_action,
         app_module=app_module,

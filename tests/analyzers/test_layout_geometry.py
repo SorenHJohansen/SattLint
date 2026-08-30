@@ -10,6 +10,7 @@ from sattline_parser.models.ast_model import (
     ModuleTypeDef,
     SingleModule,
 )
+
 from sattlint.analyzers import layout_geometry as layout_geometry_module
 from sattlint.analyzers.layout_geometry import collect_layout_overlap_issues
 from sattlint.reporting.variables_report import IssueKind
@@ -18,7 +19,7 @@ from sattlint.reporting.variables_report import IssueKind
 def _hdr(
     name: str,
     *,
-    layer_info: str | None = None,
+    layer_info: int | None = None,
     invoke_coord: tuple[float, float, float, float, float] = (0.0, 0.0, 0.0, 0.1, 0.1),
 ) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=invoke_coord, layer_info=layer_info)
@@ -60,7 +61,7 @@ def test_layout_overlap_ignores_modules_on_different_layers() -> None:
         localvariables=[],
         submodules=[
             SingleModule(
-                header=_hdr("Layer1", layer_info="1"),
+                header=_hdr("Layer1", layer_info=1),
                 moduledef=child_moduledef,
                 moduleparameters=[],
                 localvariables=[],
@@ -69,7 +70,7 @@ def test_layout_overlap_ignores_modules_on_different_layers() -> None:
                 parametermappings=[],
             ),
             SingleModule(
-                header=_hdr("Layer2", layer_info="2", invoke_coord=(0.02, 0.02, 0.0, 0.1, 0.1)),
+                header=_hdr("Layer2", layer_info=2, invoke_coord=(0.02, 0.02, 0.0, 0.1, 0.1)),
                 moduledef=child_moduledef,
                 moduleparameters=[],
                 localvariables=[],
@@ -190,7 +191,7 @@ def test_layout_geometry_helpers_cover_normalization_and_fallbacks() -> None:
         parametermappings=[],
     )
     fallback_child = SingleModule(
-        header=_hdr("Fallback", layer_info=" LayerA ", invoke_coord=(1.0, 2.0, 0.0, 2.0, 3.0)),
+        header=_hdr("Fallback", layer_info=42, invoke_coord=(1.0, 2.0, 0.0, 2.0, 3.0)),
         moduledef=ModuleDef(clipping_bounds=cast(Any, [(0.0, 0.0), ("bad", 1.0)])),
         moduleparameters=[],
         localvariables=[],
@@ -207,7 +208,7 @@ def test_layout_geometry_helpers_cover_normalization_and_fallbacks() -> None:
 
     assert fallback_rect is not None
     assert fallback_rect.rect == (1.0, 2.0, 3.0, 5.0)
-    assert fallback_rect.layer == "LayerA"
+    assert fallback_rect.layer == "42"
 
     object_rects = helpers._collect_object_rects(
         [
@@ -278,7 +279,7 @@ def test_layout_overlap_skips_same_layer_rects_when_they_do_not_intersect() -> N
             localvariables=[],
             submodules=[
                 SingleModule(
-                    header=_hdr("Left", layer_info="1", invoke_coord=(0.0, 0.0, 0.0, 0.1, 0.1)),
+                    header=_hdr("Left", layer_info=1, invoke_coord=(0.0, 0.0, 0.0, 0.1, 0.1)),
                     moduledef=None,
                     moduleparameters=[],
                     localvariables=[],
@@ -287,7 +288,7 @@ def test_layout_overlap_skips_same_layer_rects_when_they_do_not_intersect() -> N
                     parametermappings=[],
                 ),
                 SingleModule(
-                    header=_hdr("Right", layer_info="1", invoke_coord=(0.5, 0.5, 0.0, 0.1, 0.1)),
+                    header=_hdr("Right", layer_info=1, invoke_coord=(0.5, 0.5, 0.0, 0.1, 0.1)),
                     moduledef=None,
                     moduleparameters=[],
                     localvariables=[],

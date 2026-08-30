@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -15,6 +17,7 @@ from ._app_textual_shared import (
     _TEXTUAL_LIST_ITEM,
     _TEXTUAL_LIST_VIEW,
     _TEXTUAL_MODAL_SCREEN,
+    _TEXTUAL_QUERY_ERRORS,
     _TEXTUAL_STATIC,
     _TEXTUAL_VERTICAL,
     InteractionRequest,
@@ -249,6 +252,17 @@ if _TEXTUAL_APP is not None:
         def action_dismiss_help(self) -> None:
             self.dismiss(None)
 
+    class _FilteredDirectoryTree(_TEXTUAL_DIRECTORY_TREE):
+        def __init__(self, path: str, *, file_suffix: str | None = None, **kwargs: Any) -> None:
+            super().__init__(path, **kwargs)
+            self._file_suffix = file_suffix
+
+        def filter_paths(self, paths: Iterable[Path]) -> Iterable[Path]:
+            if self._file_suffix is None:
+                return paths
+            suffix = self._file_suffix.lower()
+            return (p for p in paths if not p.is_file() or p.suffix.lower() == suffix)
+
     class _FileBrowserScreenImpl(_TEXTUAL_MODAL_SCREEN):
         BINDINGS: ClassVar[list[tuple[str, str, str]]] = [("escape", "dismiss_cancel", "Cancel")]
 
@@ -257,6 +271,7 @@ if _TEXTUAL_APP is not None:
             *,
             start_paths: list[Path],
             candidates: tuple[tuple[str, tuple[str, ...]], ...] = (),
+            file_suffix: str | None = None,
         ) -> None:
             super().__init__()
             self._start_paths = start_paths if start_paths else [Path.home()]
@@ -264,6 +279,7 @@ if _TEXTUAL_APP is not None:
             self._candidates = candidates
             self._candidate_name: str | None = None
             self._show_candidate_list = bool(candidates)
+            self._file_suffix = file_suffix
 
         def compose(self) -> _TEXTUAL_COMPOSE_RESULT:
             with _TEXTUAL_VERTICAL(id="file-browser-dialog"):
@@ -280,7 +296,9 @@ if _TEXTUAL_APP is not None:
                     )
                     yield _TEXTUAL_LIST_VIEW(id="file-browser-targets")
                 else:
-                    yield _TEXTUAL_DIRECTORY_TREE(str(self._start_paths[0]), id="file-browser-tree")
+                    yield _FilteredDirectoryTree(
+                        str(self._start_paths[0]), id="file-browser-tree", file_suffix=self._file_suffix
+                    )
                 with _TEXTUAL_HORIZONTAL(id="file-browser-actions"):
                     yield _TEXTUAL_BUTTON("Select", id="file-browser-select", classes="raised-button", disabled=True)
                     if self._candidates:
@@ -381,12 +399,97 @@ if _TEXTUAL_APP is not None:
         def action_dismiss_cancel(self) -> None:
             self.dismiss(None)
 
+    class _MenubarWidgetImpl(_TEXTUAL_VERTICAL):
+        """A horizontal menubar with inline dropdown menus."""
+
+        BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+            ("escape", "close_menu", "Close Menu"),
+        ]
+
+        def __init__(
+            self,
+            menus: list[tuple[str, list[tuple[str, str | None] | None]]] | None = None,
+        ) -> None:
+            super().__init__(id="menubar")
+            self._menus = menus or []
+            self._active_menu_index: int | None = None
+
+        def set_menus(self, menus: list[tuple[str, list[tuple[str, str | None] | None]]]) -> None:
+            self._menus = menus
+            self._rebuild_headers()
+
+        def compose(self) -> _TEXTUAL_COMPOSE_RESULT:
+            with _TEXTUAL_HORIZONTAL(id="menubar-headers"):
+                pass
+            yield _TEXTUAL_VERTICAL(id="menubar-dropdown", classes="is-hidden")
+
+        def on_mount(self) -> None:
+            self._rebuild_headers()
+
+        def _rebuild_headers(self) -> None:
+            headers = self.query_one("#menubar-headers", _TEXTUAL_HORIZONTAL)
+            headers.remove_children()
+            for i, (label, _items) in enumerate(self._menus):
+                headers.mount(_TEXTUAL_STATIC(f"  {label}  ", id=f"mbh-{i}", classes="menubar-header"))
+
+        def on_click(self, event: Any) -> None:
+            widget = getattr(event, "widget", None)
+            widget_id = str(getattr(widget, "id", "") or "")
+            if widget_id.startswith("mbh-"):
+                index = int(widget_id.split("-")[-1])
+                if self._active_menu_index == index:
+                    self._close_menu()
+                else:
+                    self._open_menu(index)
+
+        def on_button_pressed(self, event: Any) -> None:
+            self._close_menu()
+
+        def action_close_menu(self) -> None:
+            self._close_menu()
+
+        @property
+        def menu_open(self) -> bool:
+            return self._active_menu_index is not None
+
+        def click_outside(self) -> None:
+            if self._active_menu_index is not None:
+                self._close_menu()
+
+        def _open_menu(self, index: int) -> None:
+            self._active_menu_index = index
+            dropdown = self.query_one("#menubar-dropdown", _TEXTUAL_VERTICAL)
+            dropdown.remove_children()
+            dropdown.remove_class("is-hidden")
+            _label, items = self._menus[index]
+            for item in items:
+                if item is None:
+                    dropdown.mount(_TEXTUAL_STATIC("", classes="menubar-separator"))
+                else:
+                    item_label, action_id = item
+                    dropdown.mount(_TEXTUAL_BUTTON(item_label, id=action_id, classes="menubar-item"))
+            for i in range(len(self._menus)):
+                self.query_one(f"#mbh-{i}", _TEXTUAL_STATIC).set_class(i == index, "menu-active")
+
+        def _close_menu(self) -> None:
+            if self._active_menu_index is None:
+                return
+            self._active_menu_index = None
+            dropdown = self.query_one("#menubar-dropdown", _TEXTUAL_VERTICAL)
+            dropdown.add_class("is-hidden")
+            dropdown.remove_children()
+            for i in range(len(self._menus)):
+                with suppress(*_TEXTUAL_QUERY_ERRORS):
+                    self.query_one(f"#mbh-{i}", _TEXTUAL_STATIC).remove_class("menu-active")
+
     _ShellBanner = _ShellBannerImpl
     _InteractionPane = _InteractionPaneImpl
     _HelpScreen = _HelpScreenImpl
     _FileBrowserScreen = _FileBrowserScreenImpl
+    _MenubarWidget = _MenubarWidgetImpl
 else:  # pragma: no cover - optional dependency path
     _ShellBanner: Any = None
     _InteractionPane: Any = None
     _HelpScreen: Any = None
     _FileBrowserScreen: Any = None
+    _MenubarWidget: Any = None

@@ -1,0 +1,29 @@
+{
+    "case_id": "analyzer-state-inference-clean",
+    "target_file": "../valid/MinimalProgram.s",
+    "mode": "analyzer-state-inference",
+    "expectation": {
+        "expected_finding_ids": [],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "state-inference"
+            },
+            "summary.json": {
+                "analyzer_key": "state-inference",
+                "finding_count": 0,
+                "rule_counts": {}
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

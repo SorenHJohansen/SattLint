@@ -8,6 +8,7 @@ from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
+    CodeItem,
     Equation,
     ModuleCode,
     ModuleHeader,
@@ -21,6 +22,8 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattline_parser.models.expressions import Assignment, IfStmt, NotOp, VarRef
+
 from sattlint import constants as const
 from sattlint.reporting.variables_report import VariableIssue
 from tests._reset_contamination_test_api import reset_contamination_module
@@ -30,8 +33,8 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict[str, str]:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
 def _reset_equation(run_target: str, reset_target: str) -> Equation:
@@ -39,23 +42,25 @@ def _reset_equation(run_target: str, reset_target: str) -> Equation:
         name="Main",
         position=(0.0, 0.0),
         size=(1.0, 1.0),
-        code=[
-            (
-                const.GRAMMAR_VALUE_IF,
-                [
-                    (
-                        (const.GRAMMAR_VALUE_NOT, _varref("OpSeq.Reset")),
-                        [(const.KEY_ASSIGN, _varref(run_target), _varref("ResetValue"))],
+        code=cast(
+            list[CodeItem],
+            [
+                IfStmt(
+                    branches=(
+                        (
+                            NotOp(operand=_varref("OpSeq.Reset")),
+                            (Assignment(target=_varref(run_target), value=_varref("ResetValue")),),
+                        ),
+                        (
+                            NotOp(operand=_varref("SeqResetOld")),
+                            (Assignment(target=_varref(reset_target), value=_varref("ResetValue")),),
+                        ),
                     ),
-                    (
-                        (const.GRAMMAR_VALUE_NOT, _varref("SeqResetOld")),
-                        [(const.KEY_ASSIGN, _varref(reset_target), _varref("ResetValue"))],
-                    ),
-                ],
-                [],
-            ),
-            (const.KEY_ASSIGN, _varref("SeqResetOld"), _varref("OpSeq.Reset")),
-        ],
+                    else_block=(),
+                ),
+                Assignment(target=_varref("SeqResetOld"), value=_varref("OpSeq.Reset")),
+            ],
+        ),
     )
 
 
@@ -81,13 +86,17 @@ def _typedef_with_latch(name: str) -> ModuleTypeDef:
                     name="LatchEq",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[
-                        (
-                            const.GRAMMAR_VALUE_IF,
-                            [(_varref("Start"), [(const.KEY_ASSIGN, _varref("AlarmLatched"), True)])],
-                            [],
-                        )
-                    ],
+                    code=cast(
+                        list[CodeItem],
+                        [
+                            IfStmt(
+                                branches=(
+                                    (_varref("Start"), (Assignment(target=_varref("AlarmLatched"), value=True),)),
+                                ),
+                                else_block=(),
+                            )
+                        ],
+                    ),
                 )
             ]
         ),
@@ -141,13 +150,17 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
                     name="RootEq",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[
-                        (
-                            const.GRAMMAR_VALUE_IF,
-                            [(_varref("Start"), [(const.KEY_ASSIGN, _varref("RootLatched"), True)])],
-                            [],
-                        )
-                    ],
+                    code=cast(
+                        list[CodeItem],
+                        [
+                            IfStmt(
+                                branches=(
+                                    (_varref("Start"), (Assignment(target=_varref("RootLatched"), value=True),)),
+                                ),
+                                else_block=(),
+                            )
+                        ],
+                    ),
                 )
             ]
         ),
@@ -306,13 +319,15 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
                     name="GuardOnly",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[
-                        (
-                            const.GRAMMAR_VALUE_IF,
-                            [((const.GRAMMAR_VALUE_NOT, _varref("OpSeq.Reset")), [])],
-                            [],
-                        )
-                    ],
+                    code=cast(
+                        list[CodeItem],
+                        [
+                            IfStmt(
+                                branches=((NotOp(operand=_varref("OpSeq.Reset")), ()),),
+                                else_block=(),
+                            )
+                        ],
+                    ),
                 )
             ],
             sequences=[Sequence(name="OpSeq", type="sequence", position=(0.0, 0.0), size=(1.0, 1.0), code=[])],
@@ -430,7 +445,7 @@ def test_reset_contamination_helpers_bound_duplicate_paths_and_emit_debug(caplog
                                         kind="step",
                                         name="LeftA",
                                         code=SFCCodeBlocks(
-                                            active=[(const.KEY_ASSIGN, _varref("Counter.Left"), _varref("Source"))]
+                                            active=[Assignment(target=_varref("Counter.Left"), value=_varref("Source"))]  # pyright: ignore[reportArgumentType]
                                         ),
                                     )
                                 ],
@@ -439,7 +454,7 @@ def test_reset_contamination_helpers_bound_duplicate_paths_and_emit_debug(caplog
                                         kind="step",
                                         name="LeftB",
                                         code=SFCCodeBlocks(
-                                            active=[(const.KEY_ASSIGN, _varref("Counter.Left"), _varref("Source"))]
+                                            active=[Assignment(target=_varref("Counter.Left"), value=_varref("Source"))]  # pyright: ignore[reportArgumentType]
                                         ),
                                     )
                                 ],
@@ -454,7 +469,9 @@ def test_reset_contamination_helpers_bound_duplicate_paths_and_emit_debug(caplog
                                         kind="step",
                                         name="RightA",
                                         code=SFCCodeBlocks(
-                                            active=[(const.KEY_ASSIGN, _varref("Counter.Right"), _varref("Source"))]
+                                            active=[
+                                                Assignment(target=_varref("Counter.Right"), value=_varref("Source"))
+                                            ]  # pyright: ignore[reportArgumentType]
                                         ),
                                     )
                                 ],
@@ -463,7 +480,9 @@ def test_reset_contamination_helpers_bound_duplicate_paths_and_emit_debug(caplog
                                         kind="step",
                                         name="RightB",
                                         code=SFCCodeBlocks(
-                                            active=[(const.KEY_ASSIGN, _varref("Counter.Right"), _varref("Source"))]
+                                            active=[
+                                                Assignment(target=_varref("Counter.Right"), value=_varref("Source"))
+                                            ]  # pyright: ignore[reportArgumentType]
                                         ),
                                     )
                                 ],

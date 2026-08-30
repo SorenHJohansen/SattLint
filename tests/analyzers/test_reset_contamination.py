@@ -1,16 +1,19 @@
 from sattline_parser.models.ast_model import (
     BasePicture,
+    CodeItem,
     Equation,
     FrameModule,
     ModuleCode,
     ModuleHeader,
     ModuleTypeDef,
     Sequence,
+    SFCBodyItem,
     Simple_DataType,
     SingleModule,
     Variable,
 )
-from sattlint import constants as const
+from sattline_parser.models.expressions import Assignment, IfStmt, NotOp, VarRef
+
 from sattlint.analyzers import reset_contamination as reset_contamination_module
 from sattlint.analyzers.framework import AnalysisSharedArtifacts
 from sattlint.reporting.variables_report import VariableIssue
@@ -20,15 +23,15 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict[str, str]:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
-def _eq(name: str, code: list[object]) -> Equation:
+def _eq(name: str, code: list[CodeItem]) -> Equation:
     return Equation(name=name, position=(0.0, 0.0), size=(1.0, 1.0), code=code)
 
 
-def _seq(name: str, code: list[object]) -> Sequence:
+def _seq(name: str, code: list[SFCBodyItem]) -> Sequence:
     return Sequence(name=name, type="sequence", position=(0.0, 0.0), size=(1.0, 1.0), code=code)
 
 
@@ -38,21 +41,20 @@ def _reset_equation(run_target: str, reset_target: str) -> Equation:
         position=(0.0, 0.0),
         size=(1.0, 1.0),
         code=[
-            (
-                const.GRAMMAR_VALUE_IF,
-                [
+            IfStmt(
+                branches=(
                     (
-                        (const.GRAMMAR_VALUE_NOT, _varref("OpSeq.Reset")),
-                        [(const.KEY_ASSIGN, _varref(run_target), _varref("ResetValue"))],
+                        NotOp(operand=_varref("OpSeq.Reset")),
+                        (Assignment(target=_varref(run_target), value=_varref("ResetValue")),),
                     ),
                     (
-                        (const.GRAMMAR_VALUE_NOT, _varref("SeqResetOld")),
-                        [(const.KEY_ASSIGN, _varref(reset_target), _varref("ResetValue"))],
+                        NotOp(operand=_varref("SeqResetOld")),
+                        (Assignment(target=_varref(reset_target), value=_varref("ResetValue")),),
                     ),
-                ],
-                [],
+                ),
+                else_block=(),
             ),
-            (const.KEY_ASSIGN, _varref("SeqResetOld"), _varref("OpSeq.Reset")),
+            Assignment(target=_varref("SeqResetOld"), value=_varref("OpSeq.Reset")),
         ],
     )
 
@@ -80,10 +82,14 @@ def _typedef_with_latch(name: str) -> ModuleTypeDef:
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.GRAMMAR_VALUE_IF,
-                            [(_varref("Start"), [(const.KEY_ASSIGN, _varref("AlarmLatched"), True)])],
-                            [],
+                        IfStmt(
+                            branches=(
+                                (
+                                    _varref("Start"),
+                                    (Assignment(target=_varref("AlarmLatched"), value=True),),
+                                ),
+                            ),
+                            else_block=(),
                         )
                     ],
                 )
@@ -140,10 +146,14 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.GRAMMAR_VALUE_IF,
-                            [(_varref("Start"), [(const.KEY_ASSIGN, _varref("RootLatched"), True)])],
-                            [],
+                        IfStmt(
+                            branches=(
+                                (
+                                    _varref("Start"),
+                                    (Assignment(target=_varref("RootLatched"), value=True),),
+                                ),
+                            ),
+                            else_block=(),
                         )
                     ],
                 )
@@ -187,30 +197,33 @@ def test_detection_walks_frame_submodules_for_reset_and_latching() -> None:
                 _eq(
                     "ResetEq",
                     [
-                        (
-                            const.GRAMMAR_VALUE_IF,
-                            [
+                        IfStmt(
+                            branches=(
                                 (
-                                    (const.GRAMMAR_VALUE_NOT, _varref("OpSeq.Reset")),
-                                    [(const.KEY_ASSIGN, _varref("Counter"), _varref("ResetValue"))],
+                                    NotOp(operand=_varref("OpSeq.Reset")),
+                                    (Assignment(target=_varref("Counter"), value=_varref("ResetValue")),),
                                 ),
                                 (
-                                    (const.GRAMMAR_VALUE_NOT, _varref("SeqResetOld")),
-                                    [(const.KEY_ASSIGN, _varref("Other"), _varref("ResetValue"))],
+                                    NotOp(operand=_varref("SeqResetOld")),
+                                    (Assignment(target=_varref("Other"), value=_varref("ResetValue")),),
                                 ),
-                            ],
-                            [],
+                            ),
+                            else_block=(),
                         ),
-                        (const.KEY_ASSIGN, _varref("SeqResetOld"), _varref("OpSeq.Reset")),
+                        Assignment(target=_varref("SeqResetOld"), value=_varref("OpSeq.Reset")),
                     ],
                 ),
                 _eq(
                     "LatchEq",
                     [
-                        (
-                            const.GRAMMAR_VALUE_IF,
-                            [(_varref("Start"), [(const.KEY_ASSIGN, _varref("Latch"), True)])],
-                            [],
+                        IfStmt(
+                            branches=(
+                                (
+                                    _varref("Start"),
+                                    (Assignment(target=_varref("Latch"), value=True),),
+                                ),
+                            ),
+                            else_block=(),
                         )
                     ],
                 ),
@@ -264,30 +277,33 @@ def test_reset_contamination_can_consume_shared_indexes() -> None:
                 _eq(
                     "ResetEq",
                     [
-                        (
-                            const.GRAMMAR_VALUE_IF,
-                            [
+                        IfStmt(
+                            branches=(
                                 (
-                                    (const.GRAMMAR_VALUE_NOT, _varref("OpSeq.Reset")),
-                                    [(const.KEY_ASSIGN, _varref("Counter"), _varref("ResetValue"))],
+                                    NotOp(operand=_varref("OpSeq.Reset")),
+                                    (Assignment(target=_varref("Counter"), value=_varref("ResetValue")),),
                                 ),
                                 (
-                                    (const.GRAMMAR_VALUE_NOT, _varref("SeqResetOld")),
-                                    [(const.KEY_ASSIGN, _varref("Other"), _varref("ResetValue"))],
+                                    NotOp(operand=_varref("SeqResetOld")),
+                                    (Assignment(target=_varref("Other"), value=_varref("ResetValue")),),
                                 ),
-                            ],
-                            [],
+                            ),
+                            else_block=(),
                         ),
-                        (const.KEY_ASSIGN, _varref("SeqResetOld"), _varref("OpSeq.Reset")),
+                        Assignment(target=_varref("SeqResetOld"), value=_varref("OpSeq.Reset")),
                     ],
                 ),
                 _eq(
                     "LatchEq",
                     [
-                        (
-                            const.GRAMMAR_VALUE_IF,
-                            [(_varref("Start"), [(const.KEY_ASSIGN, _varref("Latch"), True)])],
-                            [],
+                        IfStmt(
+                            branches=(
+                                (
+                                    _varref("Start"),
+                                    (Assignment(target=_varref("Latch"), value=True),),
+                                ),
+                            ),
+                            else_block=(),
                         )
                     ],
                 ),

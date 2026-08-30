@@ -329,6 +329,14 @@ def build_cli_parser(*, prog: str = "sattlint-trace", add_help: bool = True) -> 
     parser.add_argument("source_file", help="Path to the .s or .x source file to trace")
     parser.add_argument("--output", help="Write trace JSON to this path instead of stdout")
     parser.add_argument("--debug", action="store_true", help="Include parser debug events in the trace")
+    parser.add_argument(
+        "--output-format",
+        "--format",
+        dest="format",
+        choices=["json"],
+        default="json",
+        help="Output format.",
+    )
     return parser
 
 

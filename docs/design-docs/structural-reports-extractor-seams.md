@@ -1,6 +1,6 @@
 # Structural Reports Extractor Seams
 
-Status: Proposed
+Status: Partially implemented
 Owner: Devtools structural reports
 
 ## Problem
@@ -9,11 +9,20 @@ Owner: Devtools structural reports
 
 Current direct dependencies called out in review:
 
-- analyzer registry surfaces
-- core semantic workspace loading
-- reporting variables rendering
-- resolution helpers
-- semantic analysis helpers
+- analyzer registry surfaces (`analysis_catalog`)
+- core semantic workspace loading (`core/semantic`)
+- reporting variables rendering (`reporting/variables_report`)
+- resolution helpers (`resolution/common`)
+- semantic analysis helpers (`semantic_analysis`)
+
+Current submodule structure after partial extraction:
+
+- `_structural_report_architecture` — architecture report builder
+- `_structural_report_budget` — structural budget report builder
+- `_structural_report_graphics` — graphics report builder
+- `_structural_report_graphs` — graph report builder
+- `_structural_report_impact` — impact analysis report builder
+- `_structural_budget_inventory` — budget line/markdown/python counting helpers
 
 ## Goal
 
@@ -32,6 +41,10 @@ Move `structural_reports.py` onto report-specific extractor interfaces so the or
 - Structural report orchestration tests can run with fake extractor implementations.
 - The extractor contracts are typed and documented well enough to make new report adapters predictable.
 - Existing JSON artifact shapes remain unchanged unless a separate artifact-contract change is approved.
+
+## Current State
+
+Report-family submodules have been extracted into dedicated files under `src/sattlint/devtools/structural/`. The main orchestrator still imports directly from `core/semantic`, `resolution/common`, and `semantic_analysis` for workspace loading and variable artifact construction. The remaining work is to replace those direct imports with typed extractor contracts.
 
 ## Non-Goals
 

@@ -1,4 +1,4 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportArgumentType=false
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportArgumentType=false, reportPrivateUsage=false
 from __future__ import annotations
 
 import json

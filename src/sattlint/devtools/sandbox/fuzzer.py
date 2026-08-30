@@ -23,6 +23,7 @@ from sattline_parser.fuzz_harness import (
     run_corpus_regression,
     run_random_fuzz,
 )
+
 from sattlint.devtools.artifact_registry import (
     FUZZ_RESULTS_FILENAME,
     FUZZ_RESULTS_SCHEMA_KIND,

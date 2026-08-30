@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from sattline_parser.models.ast_model import SourceSpan
+from sattline_parser.models.expressions import VarRef
 
 from .models._validation_notice import ValidationNotice
 
@@ -93,7 +94,9 @@ def warn_or_raise(
     )
 
 
-def ref_span(ref: dict[str, object] | str | None) -> SourceSpan | None:
+def ref_span(ref: dict[str, object] | VarRef | str | None) -> SourceSpan | None:
+    if isinstance(ref, VarRef):
+        return ref.span
     if not isinstance(ref, dict):
         return None
     span = ref.get("span")

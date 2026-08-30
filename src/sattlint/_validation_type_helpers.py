@@ -12,6 +12,7 @@ from sattline_parser.models.ast_model import (
     Simple_DataType,
     Variable,
 )
+from sattline_parser.models.expressions import VarRef
 
 from .casefolding import is_anytype_name
 from .grammar import constants as const
@@ -232,12 +233,18 @@ def _normalize_builtin_datatype(datatype: str) -> Simple_DataType | str:
         return datatype
 
 
+def _ref_full_name(ref: dict[str, object] | VarRef) -> str:
+    if isinstance(ref, VarRef):
+        return ref.name
+    return str(ref.get(const.KEY_VAR_NAME, ""))
+
+
 def _resolve_ref_datatype(
-    ref: dict[str, object],
+    ref: dict[str, object] | VarRef,
     env: dict[str, Variable],
     type_graph: TypeGraph,
 ) -> Simple_DataType | str | None:
-    full_name = str(ref[const.KEY_VAR_NAME])
+    full_name = _ref_full_name(ref)
     parts = [part for part in full_name.split(".") if part]
     if not parts:
         return None
@@ -259,8 +266,8 @@ def _resolve_ref_datatype(
     return current
 
 
-def _resolve_root_variable(ref: dict[str, object], env: dict[str, Variable]) -> Variable | None:
-    full_name = str(ref.get(const.KEY_VAR_NAME, ""))
+def _resolve_root_variable(ref: dict[str, object] | VarRef, env: dict[str, Variable]) -> Variable | None:
+    full_name = _ref_full_name(ref)
     base_name, _field_path = _split_dotted_name(full_name)
     if not base_name:
         return None

@@ -68,30 +68,3 @@ def test_text_processing_comment_code_indicators_returns_assignment_and_call_whe
 
     assert "assignment" in indicators
     assert "call" in indicators
-
-
-def test_strip_sl_comments_removes_nested_comments_and_optional_semicolon() -> None:
-    stripped = text_processing.strip_sl_comments("Value = 1; (* outer\n(* inner *)\ncomment *)\n   ;\nNext = 2;\n")
-
-    assert stripped == "Value = 1; \n\n\n   \nNext = 2;\n"
-
-
-def test_strip_sl_comments_preserves_strings_with_comment_tokens_and_backslashes() -> None:
-    stripped = text_processing.strip_sl_comments(
-        'Message = "(* keep *) and ""quoted"" text";\nPathValue = ".\\\\Temp\\\\(* keep *)";\n(* remove me *) ;\n'
-    )
-
-    assert '"(* keep *) and ""quoted"" text"' in stripped
-    assert '".\\\\Temp\\\\(* keep *)"' in stripped
-    assert "remove me" not in stripped
-    assert stripped.endswith(" \n")
-
-
-def test_strip_sl_comments_ends_unterminated_string_at_newline_before_comment() -> None:
-    stripped = text_processing.strip_sl_comments('Message = "unterminated\n(* remove me *)\nNext = 2;\n')
-
-    assert stripped == 'Message = "unterminated\n\nNext = 2;\n'
-
-
-def test_strip_sl_comments_preserves_terminal_backslash_inside_string() -> None:
-    assert text_processing.strip_sl_comments('"abc\\') == '"abc\\'

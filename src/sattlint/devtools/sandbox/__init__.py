@@ -2,17 +2,27 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from . import fuzzer
+from .fuzzer import (
+    FuzzerReport,
+    FuzzExecutionRecord,
+    FuzzTarget,
+    parser_fuzz_target,
+    run_fuzz_target,
+    run_parser_fuzzer,
+    write_fuzzer_report,
+)
 
+FUZZER_DEFAULT_TIMEOUT_SECONDS = fuzzer.DEFAULT_TIMEOUT_SECONDS
 
-def __getattr__(name: str) -> Any:
-    return getattr(fuzzer, name)
-
-
-def __dir__() -> list[str]:
-    return sorted(set(globals()) | set(dir(fuzzer)))
-
-
-__all__ = ["fuzzer"]
+__all__ = [
+    "FUZZER_DEFAULT_TIMEOUT_SECONDS",
+    "FuzzExecutionRecord",
+    "FuzzTarget",
+    "FuzzerReport",
+    "fuzzer",
+    "parser_fuzz_target",
+    "run_fuzz_target",
+    "run_parser_fuzzer",
+    "write_fuzzer_report",
+]

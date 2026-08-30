@@ -8,6 +8,8 @@ from sattline_parser.models.ast_model import (
     Simple_DataType,
     Variable,
 )
+from sattline_parser.models.expressions import VarRef
+
 from sattlint import constants as const
 from sattlint.analyzers.config_drift import analyze_config_drift
 from sattlint.analyzers.registry import get_default_analyzers
@@ -17,8 +19,8 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
 def test_config_drift_reports_drifting_instance_configuration():

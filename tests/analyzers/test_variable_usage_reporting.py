@@ -4,7 +4,6 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-
 from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
@@ -14,6 +13,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+
 from sattlint.analyzers import variable_usage_reporting as reporting
 from sattlint.models.usage import VariableUsage
 from sattlint.reporting.variables_report import IssueKind

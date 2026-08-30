@@ -12,6 +12,7 @@ from sattline_parser.models.ast_model import (
     SFCSubsequence,
     SFCTransitionSub,
 )
+
 from sattlint.analyzers.dataflow import analyze_dataflow
 
 

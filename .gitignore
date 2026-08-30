@@ -66,9 +66,7 @@ artifacts/analysis/**
 !artifacts/analysis/artifact_registry.json
 !artifacts/analysis/artifact_registry.sources.json
 !artifacts/analysis/call_graph.json
-!artifacts/analysis/coverage_ratchet.json
 !artifacts/analysis/dependency_graph.json
-!artifacts/analysis/file_debt_ratchet.json
 !artifacts/analysis/findings.json
 !artifacts/analysis/progress.json
 !artifacts/analysis/status.json

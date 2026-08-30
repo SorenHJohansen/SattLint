@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
+
 from sattlint.devtools._source_diff_deltas import (
     collect_promoted_singlemodule_entries,
     diff_modulecode_detail,

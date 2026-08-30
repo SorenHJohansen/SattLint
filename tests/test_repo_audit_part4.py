@@ -1,5 +1,4 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false
-# ruff: noqa: F403, F405
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false, reportUnknownLambdaType=false
 from ._repo_audit_test_support import *
 
 
@@ -120,7 +119,7 @@ def test_find_pipeline_findings_ignores_allowlisted_bandit_noise_from_bandit_rep
             {
                 "findings": [
                     {
-                        "filename": "./src/sattline_parser/fuzz_harness.py",
+                        "filename": "./src/sattlint/devtools/parser_properties.py",
                         "issue_confidence": "HIGH",
                         "issue_severity": "LOW",
                         "issue_text": "Standard pseudo-random generators are not suitable for security/cryptographic purposes.",

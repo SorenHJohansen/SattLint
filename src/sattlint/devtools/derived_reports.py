@@ -19,14 +19,11 @@ from .artifact_registry import (
 )
 
 _FULL_FALLBACK_PREFIXES = (
-    "src/sattline_parser/",
     "src/sattlint/core/",
     "src/sattlint/editor_api.py",
     "src/sattlint/engine.py",
     "src/sattlint/validation.py",
     "src/sattlint/devtools/",
-    "src/sattlint_lsp/",
-    "vscode/",
 )
 _ANALYZER_SOURCE_PREFIX = "src/sattlint/analyzers/"
 _PROGRAM_SUFFIXES = (".s", ".x", ".l", ".z")

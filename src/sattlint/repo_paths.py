@@ -16,3 +16,11 @@ def repo_root_from(anchor: Path | str) -> Path:
         if current.parent == current:
             raise RuntimeError(f"Could not locate repository root from {anchor!s}")
         current = current.parent
+
+
+def repo_root_from_optional(anchor: Path | str) -> Path | None:
+    """Like ``repo_root_from`` but returns *None* instead of raising."""
+    try:
+        return repo_root_from(anchor)
+    except RuntimeError:
+        return None

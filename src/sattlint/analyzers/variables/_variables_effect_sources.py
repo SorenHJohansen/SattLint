@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from sattline_parser.models.expressions import VarRef
+
 from sattlint.resolution.scope import ScopeContext
 
 from ...grammar import constants as const
@@ -29,6 +31,8 @@ ResolveEffectKey = Callable[[str, ScopeContext], EffectKey | None]
 
 
 def _var_name_from_mapping(node: object) -> str | None:
+    if isinstance(node, VarRef):
+        return node.name or None
     mapping = _string_key_dict(node)
     if mapping is None:
         return None
@@ -111,6 +115,14 @@ def collect_expression_effect_sources(
     sources: set[EffectKey] = set()
 
     if obj is None:
+        return sources
+
+    if isinstance(obj, VarRef):
+        full_ref = obj.name
+        if full_ref:
+            key = resolve_effect_key(full_ref, context)
+            if key is not None:
+                sources.add(key)
         return sources
 
     node_dict = _string_key_dict(obj)

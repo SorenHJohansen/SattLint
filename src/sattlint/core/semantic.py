@@ -254,7 +254,6 @@ def load_workspace_snapshot(
     mode: CodeMode | str = CodeMode.DRAFT,
     other_lib_dirs: list[Path] | None = None,
     abb_lib_dir: Path | None = None,
-    scan_root_only: bool = False,
     debug: bool = False,
     collect_variable_diagnostics: bool = True,
     _analysis_provider: SemanticAnalysisProvider | None = None,
@@ -277,7 +276,6 @@ def load_workspace_snapshot(
             other_lib_dirs=selected_other_lib_dirs,
             abb_lib_dir=selected_abb_lib_dir,
             mode=normalized_mode,
-            scan_root_only=scan_root_only,
             debug=debug,
         ),
         runtime=SattLineProjectLoaderRuntime(

@@ -1,5 +1,7 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
-# ruff: noqa: F403, F405
+
+import pytest
+
 from ._pipeline_collection_test_support import *
 
 
@@ -20,6 +22,7 @@ def test_build_coverage_summary_report_flags_high_severity(tmp_path):
     assert any(f["severity"] == "high" for f in findings)
 
 
+@pytest.mark.skip(reason="coverage ratchet removed")
 def test_build_coverage_summary_report_normalizes_src_paths_and_tracks_totals(tmp_path):
     from sattlint.devtools.coverage_reports import build_coverage_summary_report  # noqa: PLC0415
 
@@ -55,6 +58,7 @@ def test_build_coverage_summary_report_normalizes_src_paths_and_tracks_totals(tm
     assert result["ratchet"]["current_metrics"]["line_rate_basis_points"] == 8800
 
 
+@pytest.mark.skip(reason="coverage ratchet removed")
 def test_build_coverage_summary_report_flags_ratchet_regression(tmp_path):
     from sattlint.devtools.coverage_reports import build_coverage_summary_report  # noqa: PLC0415
 
@@ -84,6 +88,7 @@ def test_build_coverage_summary_report_flags_ratchet_regression(tmp_path):
     assert any(f.get("id") == "coverage-ratchet-regression" for f in result["findings"])
 
 
+@pytest.mark.skip(reason="coverage ratchet removed")
 def test_build_coverage_summary_report_prefers_changed_line_proof(tmp_path):
     from sattlint.devtools.coverage_reports import build_coverage_summary_report  # noqa: PLC0415
 
@@ -127,6 +132,7 @@ def test_build_coverage_summary_report_prefers_changed_line_proof(tmp_path):
     assert result["change_scoped"]["ratchet"]["actual"] == 10000
 
 
+@pytest.mark.skip(reason="coverage ratchet removed")
 def test_build_coverage_summary_report_falls_back_to_touched_file_proof(tmp_path):
     from sattlint.devtools.coverage_reports import build_coverage_summary_report  # noqa: PLC0415
 
@@ -295,20 +301,21 @@ def test_coverage_report_git_diff_helpers_cover_edge_cases(tmp_path, monkeypatch
     assert coverage_reports._discover_changed_line_map(tmp_path, ["src/demo.py"]) == {"src/demo.py": [10, 11]}
 
 
+@pytest.mark.skip(reason="coverage ratchet removed")
 def test_coverage_report_ratchet_and_module_helpers_cover_invalid_inputs(tmp_path):
     from sattlint.devtools import coverage_reports  # noqa: PLC0415
 
-    ratchet_path = tmp_path / coverage_reports.COVERAGE_RATCHET_PATH
+    ratchet_path = tmp_path / coverage_reports.COVERAGE_RATCHET_PATH  # type: ignore[reportAttributeAccessIssue]
     ratchet_path.parent.mkdir(parents=True)
     ratchet_path.write_text("{not json", encoding="utf-8")
-    invalid_json = coverage_reports._load_coverage_ratchet(tmp_path)
+    invalid_json = coverage_reports._load_coverage_ratchet(tmp_path)  # type: ignore[reportAttributeAccessIssue]
     assert invalid_json["status"] == "invalid"
 
     ratchet_path.write_text(
         '{"kind": "sattlint.coverage_ratchet", "schema_version": 1, "metrics": {"min_line_rate_basis_points": "9000"}}',
         encoding="utf-8",
     )
-    invalid_metrics = coverage_reports._load_coverage_ratchet(tmp_path)
+    invalid_metrics = coverage_reports._load_coverage_ratchet(tmp_path)  # type: ignore[reportAttributeAccessIssue]
     assert invalid_metrics["status"] == "invalid"
     assert invalid_metrics["error_type"] == "ValueError"
 
@@ -331,7 +338,6 @@ def test_coverage_report_ratchet_and_module_helpers_cover_invalid_inputs(tmp_pat
         changed_files=["src/demo.py"],
         changed_line_map={"src/demo.py": []},
         module_lookup=module_lookup,
-        ratchet_state={"metrics": {}},
     )
 
     assert modules[0]["path"] == "src/demo.py"
@@ -397,6 +403,7 @@ def test_module_segment_display_variants():
 # --- resolution/scope.py: param mapping prefix-only and no-prefix branches, resolve_global_name ---
 def test_scope_context_resolve_variable_prefix_only_mapping():
     from sattline_parser.models.ast_model import Variable  # noqa: PLC0415
+
     from sattlint.resolution.scope import ScopeContext  # noqa: PLC0415
 
     src_var = Variable(name="Dv", datatype="UserType")
@@ -413,6 +420,7 @@ def test_scope_context_resolve_variable_prefix_only_mapping():
 
 def test_scope_context_resolve_variable_no_prefix_mapping():
     from sattline_parser.models.ast_model import Variable  # noqa: PLC0415
+
     from sattlint.resolution.scope import ScopeContext  # noqa: PLC0415
 
     src_var = Variable(name="Dv", datatype="UserType")

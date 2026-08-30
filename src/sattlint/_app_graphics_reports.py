@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from .app_telemetry import telemetry_output_path
-from .config_types import ConfigDict, ConfigOverrideDict, DocumentationConfig, DocumentationConfigOverride
+from .config_types import ConfigDict
 
 GraphicsRule = dict[str, Any]
 GraphicsRulesConfig = dict[str, Any]
@@ -56,10 +56,6 @@ def print_config_list(
 def show_config(
     cfg: ConfigDict,
     *,
-    get_documentation_config_fn: Callable[
-        [ConfigDict | ConfigOverrideDict | DocumentationConfig | DocumentationConfigOverride | None],
-        DocumentationConfig,
-    ],
     get_graphics_rules_path_fn: Callable[[], Path],
     load_graphics_rules_fn: Callable[..., tuple[GraphicsRulesConfig, bool]],
     graphics_rule_config_line_fn: Callable[[GraphicsRule], str],
@@ -67,7 +63,6 @@ def show_config(
     print_config_list_fn: Callable[[str, list[object]], None],
     print_config_section_fn: Callable[[str, Sequence[tuple[str, object | str | bool | Path]]], None],
 ) -> None:
-    documentation_cfg = get_documentation_config_fn(cfg)
     graphics_rules_path = get_graphics_rules_path_fn()
     graphics_rule_count: object = 0
     graphics_rules_payload: GraphicsRulesConfig | None = None
@@ -81,7 +76,6 @@ def show_config(
             graphics_rule_count = len(graphics_rules.get("rules", []))
     general_rows = [
         ("mode", cfg["mode"]),
-        ("scan_root_only", cfg["scan_root_only"]),
         ("debug", cfg["debug"]),
     ]
     telemetry_cfg = cast(dict[str, object], cfg.get("telemetry", {}))
@@ -121,18 +115,6 @@ def show_config(
         for index, rule in enumerate(configured_rules, start=1):
             emit_output_fn(f"  [{index}] {graphics_rule_config_line_fn(rule)}")
     emit_output_fn()
-    emit_output_fn("Documentation Classifications")
-    classifications = cast(dict[str, dict[str, list[object]]], documentation_cfg.get("classifications", {}))
-    for category, rule in classifications.items():
-        active_rules = [(key, ", ".join(str(value) for value in values)) for key, values in rule.items() if values]
-        emit_output_fn(f"  {category}")
-        if not active_rules:
-            emit_output_fn("    (none)")
-            continue
-        label_width = max(len(key) for key, _ in active_rules)
-        for key, value in active_rules:
-            emit_output_fn(f"    {key:<{label_width}}  {value}")
-    emit_output_fn()
 
 
 def flatten_graphics_expected_fields(
@@ -162,12 +144,6 @@ def truncate_table_cell(value: object, width: int) -> str:
 def graphics_rule_selector_text(rule: dict[str, Any]) -> str:
     module_kind = str(rule.get("module_kind") or "")
     relative_module_path = str(rule.get("relative_module_path") or "").strip()
-    unit_structure_path = str(rule.get("unit_structure_path") or "").strip()
-    equipment_module_structure_path = str(rule.get("equipment_module_structure_path") or "").strip()
-    if unit_structure_path:
-        return f"unit:{unit_structure_path}"
-    if equipment_module_structure_path:
-        return f"equipment:{equipment_module_structure_path}"
     if module_kind == "moduletype":
         moduletype_name = str(rule.get("moduletype_name") or "").strip()
         if relative_module_path:
@@ -183,10 +159,6 @@ def graphics_rule_label(rule: dict[str, Any]) -> str:
 
 
 def graphics_rule_scope_text(rule: dict[str, Any]) -> str:
-    if str(rule.get("unit_structure_path") or "").strip():
-        return "unit"
-    if str(rule.get("equipment_module_structure_path") or "").strip():
-        return "equipment"
     if str(rule.get("relative_module_path") or "").strip():
         return "path"
     if str(rule.get("moduletype_name") or "").strip():
@@ -199,16 +171,10 @@ def graphics_rule_config_line(rule: dict[str, Any]) -> str:
         str(rule.get("module_kind") or ""),
         f"scope={graphics_rule_scope_text(rule)}",
     ]
-    unit_structure_path = str(rule.get("unit_structure_path") or "").strip()
-    equipment_module_structure_path = str(rule.get("equipment_module_structure_path") or "").strip()
     relative_module_path = str(rule.get("relative_module_path") or "").strip()
     moduletype_name = str(rule.get("moduletype_name") or "").strip()
     description = str(rule.get("description") or "").strip()
 
-    if unit_structure_path:
-        parts.append(f"unit_structure_path={unit_structure_path}")
-    if equipment_module_structure_path:
-        parts.append(f"equipment_module_structure_path={equipment_module_structure_path}")
     if relative_module_path:
         parts.append(f"relative_module_path={relative_module_path}")
     if moduletype_name:

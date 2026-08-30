@@ -16,6 +16,19 @@ from sattline_parser.models.ast_model import (
     SFCTransitionSub,
     SingleModule,
 )
+from sattline_parser.models.expressions import (
+    Assignment,
+    BinOp,
+    BoolOp,
+    Compare,
+    FuncCall,
+    FuncCallStmt,
+    IfStmt,
+    NotOp,
+    TernaryOp,
+    UnaryOp,
+    VarRef,
+)
 
 from ..grammar import constants as const
 from .framework import Issue, SimpleReport
@@ -115,12 +128,12 @@ class CyclomaticComplexityAnalyzer:
     ) -> int:
         complexity = 1
         for equation in modulecode.equations or []:
-            complexity += self._count_statement_list(equation.code or [])
+            complexity += self._count_statement_list(cast(list[object], equation.code or []))
         for sequence in modulecode.sequences or []:
             complexity += self._count_sequence_nodes(
                 module_path=module_path,
-                sequence_name=sequence.name,
-                nodes=sequence.code or [],
+                sequence_name=sequence.name or "",
+                nodes=cast(list[object], sequence.code or []),
             )
         return complexity
 
@@ -166,14 +179,14 @@ class CyclomaticComplexityAnalyzer:
                     count += self._count_sequence_nodes(
                         module_path=module_path,
                         sequence_name=sequence_name,
-                        nodes=branch,
+                        nodes=cast(list[object], branch),
                     )
                 continue
             if isinstance(node, SFCSubsequence | SFCTransitionSub):
                 count += self._count_sequence_nodes(
                     module_path=module_path,
                     sequence_name=sequence_name,
-                    nodes=node.body or [],
+                    nodes=cast(list[object], node.body or []),
                 )
         return count
 
@@ -182,6 +195,37 @@ class CyclomaticComplexityAnalyzer:
 
     def _count_node(self, node: object) -> int:  # noqa: PLR0915
         if node is None:
+            return 0
+        if isinstance(node, IfStmt):
+            count = len(node.branches)
+            for condition, body in node.branches:
+                count += self._count_node(condition)
+                count += self._count_statement_list(list(body))
+            if node.else_block is not None:
+                count += self._count_statement_list(list(node.else_block))
+            return count
+        if isinstance(node, TernaryOp):
+            count = len(node.branches)
+            for condition, then_expr in node.branches:
+                count += self._count_node(condition)
+                count += self._count_node(then_expr)
+            count += self._count_node(node.else_expr)
+            return count
+        if isinstance(node, Assignment):
+            return self._count_node(node.target) + self._count_node(node.value)
+        if isinstance(node, FuncCallStmt):
+            return self._count_node(node.call)
+        if isinstance(node, FuncCall):
+            return sum(self._count_node(argument) for argument in node.args)
+        if isinstance(node, BoolOp):
+            return max(0, len(node.operands) - 1) + sum(self._count_node(child) for child in node.operands)
+        if isinstance(node, NotOp):
+            return self._count_node(node.operand)
+        if isinstance(node, Compare | BinOp):
+            return self._count_node(node.left) + self._count_node(node.right)
+        if isinstance(node, UnaryOp):
+            return self._count_node(node.operand)
+        if isinstance(node, VarRef):
             return 0
         if isinstance(node, tuple):
             items = cast(tuple[object, ...], node)

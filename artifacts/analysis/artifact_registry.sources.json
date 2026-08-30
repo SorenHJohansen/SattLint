@@ -1,5 +1,5 @@
 {
-  "artifact_digest": "sha1:e51c073cf279ed1cb32127da8abebd24ab9275e5",
+  "artifact_digest": "sha256:b67106fd837afd8476a0875cfc5aaad427a79523c1fee409222762591ebdf4c1",
   "artifact_file": "artifacts/analysis/artifact_registry.json",
   "artifact_kind": null,
   "artifact_schema_version": null,
@@ -9,9 +9,9 @@
   "source_count": 1,
   "sources": [
     {
-      "digest": "sha1:6cf5bb73a516e055731c821814cf561456ba789c",
+      "digest": "sha256:9a8905203d1cd9c2821f3b49e480d4a18977ce6ee6118fea3eb62d0cafec40d5",
       "exists": true,
-      "path": "src/sattlint/devtools/pipeline.py"
+      "path": "src/sattlint/devtools/pipeline/__init__.py"
     }
   ]
 }

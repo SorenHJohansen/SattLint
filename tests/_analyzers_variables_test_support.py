@@ -8,6 +8,7 @@ from typing import Any, cast
 
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.models.ast_model import (
+    Assignment,
     BasePicture,
     DataType,
     Equation,
@@ -28,6 +29,7 @@ from sattline_parser.models.ast_model import (
     SourceSpan,
     Variable,
 )
+
 from sattlint import constants as const
 from sattlint.analyzers.shadowing import analyze_shadowing
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
@@ -80,6 +82,7 @@ from tests.test_analyzers_variables_adjacent_analyzers import (  # noqa: F401
 
 __all__ = [
     "Any",
+    "Assignment",
     "BasePicture",
     "DataType",
     "Equation",

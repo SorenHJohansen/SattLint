@@ -10,6 +10,7 @@ from sattline_parser.models.ast_model import (
     SourceSpan,
     Variable,
 )
+
 from sattlint.analyzers.picture_display_paths import analyze_picture_display_paths
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
 from sattlint.engine import (
@@ -49,7 +50,6 @@ def _load_fixture_base_picture(stem: str) -> BasePicture:
             other_lib_dirs=[],
             abb_lib_dir=fixture.parent,
             mode=CodeMode.DRAFT,
-            scan_root_only=True,
             debug=False,
             use_file_ast_cache=False,
         )
@@ -100,7 +100,7 @@ def test_variable_invalid_picture_display_rows_do_not_count_as_usage() -> None:
             kind="var",
             raw_text="PathAIT",
             value=_varref("PathAIT"),
-            span=SourceSpan(line=2, column=5),
+            span=SourceSpan(start=0, end=0, line=2, column=5),
         )
     ]
     base_picture.graphics_picture_display_occurrences = [
@@ -119,7 +119,7 @@ def test_variable_invalid_picture_display_rows_do_not_count_as_usage() -> None:
                         index_value=1,
                         kind="variable_invalid",
                         raw_text="PathAIT",
-                        span=SourceSpan(line=2, column=5),
+                        span=SourceSpan(start=0, end=0, line=2, column=5),
                     ),
                 ),
             ),

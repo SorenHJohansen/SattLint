@@ -1,7 +1,6 @@
 """Tests for moduletype resolution within library scopes."""
 
 import pytest
-
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -14,6 +13,8 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattline_parser.models.expressions import FuncCall, FuncCallStmt, VarRef
+
 from sattlint import constants as const
 from sattlint.analyzers.variables import VariablesAnalyzer
 from sattlint.resolution.common import (
@@ -221,13 +222,7 @@ def test_analyzer_uses_library_scoped_moduletype_defs():
                     name="E1",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "InitVariable",
-                            [{const.KEY_VAR_NAME: "DV.Active"}],
-                        )
-                    ],
+                    code=[FuncCallStmt(call=FuncCall(name="InitVariable", args=(VarRef(name="DV.Active"),)))],
                 )
             ]
         ),
@@ -247,13 +242,7 @@ def test_analyzer_uses_library_scoped_moduletype_defs():
                     name="E1",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "InitVariable",
-                            [{const.KEY_VAR_NAME: "DV.Active"}],
-                        )
-                    ],
+                    code=[FuncCallStmt(call=FuncCall(name="InitVariable", args=(VarRef(name="DV.Active"),)))],
                 )
             ]
         ),

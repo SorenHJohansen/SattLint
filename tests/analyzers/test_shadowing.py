@@ -9,6 +9,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+
 from sattlint.analyzers.registry import get_default_analyzers
 from sattlint.analyzers.shadowing import ShadowingAnalyzer, analyze_shadowing
 from sattlint.reporting.variables_report import IssueKind
