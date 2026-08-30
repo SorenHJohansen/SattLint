@@ -416,7 +416,7 @@ pip install -e .         # For development
 pip install -e ".[dev]"  # With all dev tools
 ```
 
-Console scripts are declared in `pyproject.toml` and automatically added to `PATH` during installation.
+Console scripts are declared in `pyproject.toml` and automatically added to `PATH` during installation. Requires Python 3.13+ and the `sattline-parser` package (installed automatically as a dependency). Requires Python 3.13+ and the `sattline-parser` package (installed automatically as a dependency).
 
 ---
 

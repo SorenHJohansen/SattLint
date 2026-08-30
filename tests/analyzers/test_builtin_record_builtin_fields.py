@@ -112,7 +112,7 @@ def test_builtin_progstationdata_nested_field_addressable() -> None:
 
 
 def test_builtin_record_fields_from_parameter_mapping() -> None:
-    from sattline_parser.models.ast_model import ModuleTypeDef, ModuleTypeInstance
+    from sattline_parser.models.ast_model import ModuleTypeDef, ModuleTypeInstance  # noqa: PLC0415
 
     record_var = Variable(name="MyRecord", datatype="InnerType")
     target_var = Variable(name="Target", datatype=Simple_DataType.INTEGER)
