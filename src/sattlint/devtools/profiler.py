@@ -21,10 +21,18 @@ from sattlint.core.semantic import (
     load_workspace_snapshot,
 )
 from sattlint.devtools._io import emit_progress, sanitize_repo_path
-from sattlint.repo_paths import repo_root_from
+from sattlint.repo_paths import repo_root_from_optional
 from sattlint.semantic_analysis import build_variable_semantic_artifacts
 
-REPO_ROOT = repo_root_from(Path(__file__))
+
+def _module_repo_root() -> Path:
+    r = repo_root_from_optional(Path(__file__))
+    if r is None:
+        return Path(__file__).resolve().parent
+    return r
+
+
+REPO_ROOT = _module_repo_root()
 DEFAULT_OUTPUT_FILENAME = "profiler_report.json"
 canonicalize_analyzer_key = analysis_catalog.canonicalize_analyzer_key
 get_default_analyzer_catalog = analysis_catalog.get_default_analyzer_catalog

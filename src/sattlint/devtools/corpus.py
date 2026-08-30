@@ -47,13 +47,21 @@ from sattlint.devtools._corpus_artifacts import (
 from sattlint.models import VariableIssue
 from sattlint.models._variable_issues import materialize_variable_issue_metadata
 from sattlint.path_sanitizer import sanitize_path_for_report
-from sattlint.repo_paths import repo_root_from
+from sattlint.repo_paths import repo_root_from_optional
 
 from .artifact_registry import CORPUS_RESULTS_FILENAME, CORPUS_RESULTS_SCHEMA_KIND, CORPUS_RESULTS_SCHEMA_VERSION
 
 _write_json = write_json
 
-REPO_ROOT = repo_root_from(Path(__file__))
+
+def _module_repo_root() -> Path:
+    r = repo_root_from_optional(Path(__file__))
+    if r is None:
+        return Path(__file__).resolve().parent
+    return r
+
+
+REPO_ROOT = _module_repo_root()
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "analysis"
 DEFAULT_MANIFEST_DIR = REPO_ROOT / "tests" / "fixtures" / "corpus" / "manifests"
 DEFAULT_CASES_DIRNAME = "corpus_cases"

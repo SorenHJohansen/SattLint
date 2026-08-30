@@ -90,10 +90,10 @@ Use `--profile quick` for fast local loops. Read `artifacts/analysis/status.json
 
 ### Analyzers And Reporting
 
-- `src/sattlint/analyzers/variables.py`: variable-usage analyzer.
+- `src/sattlint/analyzers/variables/`: variable-usage analyzer (package).
 - `src/sattlint/analyzers/spec_compliance.py`: engineering-spec compliance checks.
 - `src/sattlint/analyzers/shadowing.py`: shadowing analyzer.
-- `src/sattlint/analyzers/mms.py`: MMS analysis.
+- `src/sattlint/analyzers/mms/`: MMS analysis (package).
 - `src/sattlint/analyzers/comment_code.py`: commented-out code detection.
 - `src/sattlint/reporting/variables_report.py`: variable report formatting.
 - `src/sattlint/devtools/pipeline.py`: repeatable repo-audit pipeline.
@@ -102,7 +102,7 @@ Use `--profile quick` for fast local loops. Read `artifacts/analysis/status.json
 ### Tests And Fixtures
 
 - `tests/fixtures/sample_sattline_files/`: real SattLine examples.
-- `tests/test_app.py`: interactive CLI coverage.
+- `tests/test_app_cli_commands.py`: CLI command coverage.
 - `tests/test_editor_api.py`: editor-facing snapshot and lookup coverage.
 
 ### Reference Docs

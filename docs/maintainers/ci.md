@@ -4,9 +4,12 @@ Keep CI small and predictable.
 
 ## Workflow Layout
 
-- `.github/workflows/ci.yml` - default pull-request and main-branch validation
+- `.github/workflows/ci.yml` - default pull-request and main-branch validation (clean install, repo gate, Windows tests)
+- `.github/workflows/typing.yml` - type checking, tests, pip-audit
 - `.github/workflows/nightly.yml` - scheduled full-health pass and artifact snapshot
 - `.github/workflows/publish.yml` - build and publish flow for releases
+- `.github/workflows/fuzz.yml` - ClusterFuzzLite fuzzing
+- `.github/workflows/scorecard.yml` - OpenSSF Scorecard analysis
 - `.github/actions/setup-ci-tooling/action.yml` - shared Python, uv, Node, markdownlint, and actionlint setup
 
 ## Default Validation Path
@@ -23,5 +26,6 @@ AI-touched files are blocked locally through `.github/hooks/ai-edit-gate.json` a
 - `scripts/repo_health.py`
 - `scripts/install_actionlint.py`
 - `scripts/run_repo_python.py`
+- `scripts/run_ai_edit_gate.py`
 
 Keep this list small. If a script stops being CI-owned, remove its final workflow reference and remove it from this page in the same change.

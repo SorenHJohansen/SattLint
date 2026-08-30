@@ -11,6 +11,10 @@
       "cd *; git*": "deny",
       "* && git*": "deny",
       "*; git*": "deny",
+      "git log": "allow",
+      "git diff": "allow",
+      "git show": "allow",
+      "git branch -a": "allow",
       "gh repo create*": "deny",
       "gh repo rename*": "deny",
       "gh repo transfer*": "deny"

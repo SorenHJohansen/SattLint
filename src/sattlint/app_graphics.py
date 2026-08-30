@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import importlib
 import json
 import logging
 from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 from sattline_parser.models.ast_model import BasePicture
@@ -308,23 +308,12 @@ def collect_graphics_layout_entries_for_target(
     project_bp: BasePicture,
     graph: ProjectGraph,
 ) -> list[dict[str, Any]]:
-    from .devtools.structural import structural_reports as structural_reports_module  # noqa: PLC0415
-
-    synthetic_entry_file = Path.cwd() / f"{target_name}.s"
-    snapshot = SimpleNamespace(
-        entry_file=synthetic_entry_file,
-        base_picture=project_bp,
-        project_graph=graph,
+    structural_graphics_module = importlib.import_module("sattlint.devtools.structural._structural_report_graphics")
+    return structural_graphics_module.collect_graphics_layout_entries_for_target(
+        target_name,
+        project_bp,
+        graph,
     )
-    discovery = SimpleNamespace(
-        program_files=(synthetic_entry_file,),
-        dependency_files=(),
-    )
-    report = structural_reports_module.collect_graphics_layout_report(
-        workspace_root=Path.cwd(),
-        graph_inputs=(discovery, [snapshot], []),
-    )
-    return list(report.get("entries", []))
 
 
 def graphics_rules_menu(

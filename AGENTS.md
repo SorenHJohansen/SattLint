@@ -63,7 +63,7 @@
 
 **A denied command is a hard prohibition, not a puzzle to solve.**
 
-This repository denies ALL `git` commands by permission (`git`, `git *`, `git*`), plus `sudo`, `rm`, and `pacman`/`yay`. If any command is denied, the denial is the final answer — the action should NEVER be performed by the AI. The user will run the command themselves if it is needed.
+This repository allows ONLY the read-only git commands `git log`, `git diff`, `git show`, and `git branch -a`; all other `git` commands (`git`, `git *`, `git*`) are denied, plus `sudo`, `rm`, and `pacman`/`yay`. If any command is denied, the denial is the final answer — the action should NEVER be performed by the AI. The user will run the command themselves if it is needed.
 
 You MUST NOT:
 
@@ -79,7 +79,7 @@ Instead:
 2. Give the user the exact command to run themselves in their terminal.
 3. Let the user execute it and report back. Never continue the operation by other means.
 
-Only `trash-put` is an allowed alternative — and only because it is explicitly listed as `allow` in the permission config for `rm`. Anything not explicitly allowed is denied.
+Only `trash-put` is an allowed alternative — and only because it is explicitly listed as `allow` in the permission config for `rm` — and the four read-only git commands above. Anything not explicitly allowed is denied.
 
 ## Guardrails
 

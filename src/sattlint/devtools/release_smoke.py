@@ -23,9 +23,17 @@ from sattlint.devtools.artifact_registry import (
     RELEASE_SMOKE_SUMMARY_SCHEMA_KIND,
 )
 from sattlint.devtools.shared.pipeline_artifacts import write_json_artifact
-from sattlint.repo_paths import repo_root_from
+from sattlint.repo_paths import repo_root_from_optional
 
-REPO_ROOT = repo_root_from(Path(__file__))
+
+def _module_repo_root() -> Path:
+    r = repo_root_from_optional(Path(__file__))
+    if r is None:
+        return Path(__file__).resolve().parent
+    return r
+
+
+REPO_ROOT = _module_repo_root()
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "release-smoke"
 STATUS_SCHEMA_KIND = RELEASE_SMOKE_STATUS_SCHEMA_KIND
 SUMMARY_SCHEMA_KIND = RELEASE_SMOKE_SUMMARY_SCHEMA_KIND

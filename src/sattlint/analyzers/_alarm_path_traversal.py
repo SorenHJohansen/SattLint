@@ -91,7 +91,7 @@ def iter_sequence_node_statements(node: object) -> list[object]:
     return []
 
 
-def collect_boolean_writes(
+def collect_boolean_writes(  # noqa: PLR0915
     obj: object,
     env: dict[str, Variable],
     writes: dict[str, AlarmBooleanWriteSummary],
