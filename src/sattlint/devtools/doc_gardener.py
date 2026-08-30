@@ -20,14 +20,22 @@ from pathlib import Path
 from typing import Any, NamedTuple, cast
 
 from sattlint import cli_output
-from sattlint.repo_paths import repo_root_from
+from sattlint.repo_paths import repo_root_from_optional
 
 from . import _doc_gardener_scan as doc_gardener_scan_module
 from . import _doc_gardener_updates as doc_gardener_updates_module
 from . import coordination_lock_state
 
+
 # Constants
-REPO_ROOT = repo_root_from(Path(__file__))
+def _module_repo_root() -> Path:
+    r = repo_root_from_optional(Path(__file__))
+    if r is None:
+        return Path(__file__).resolve().parent
+    return r
+
+
+REPO_ROOT = _module_repo_root()
 DOCS_DIR = REPO_ROOT / "docs"
 AGENTS_MD = REPO_ROOT / "AGENTS.md"
 QUALITY_SCORE = DOCS_DIR / "quality-score.md"

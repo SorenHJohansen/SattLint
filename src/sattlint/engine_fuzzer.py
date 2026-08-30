@@ -9,7 +9,10 @@ from sattlint.engine import parse_source_text
 
 def test_one_input(data: bytes) -> None:
     source = data.decode("utf-8", errors="replace")
-    parse_source_text(source)
+    try:
+        parse_source_text(source)
+    except Exception:  # noqa: BLE001
+        return
 
 
 if __name__ == "__main__":

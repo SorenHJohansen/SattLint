@@ -113,7 +113,7 @@ def test_project_status_summary(tmp_path: Path) -> None:
 
 
 def test_normalize_converters() -> None:
-    assert _normalize(Path("/x/y")) == "/x/y"
+    assert _normalize(Path("/x/y")) == str(Path("/x/y"))
     assert _normalize([Path("a"), "b"]) == ["a", "b"]
     assert _normalize({"k": Path("v")}) == {"k": "v"}
     assert _normalize(5) == 5
