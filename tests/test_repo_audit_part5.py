@@ -1,4 +1,8 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
+import time
+
+from sattlint.devtools import _doc_gardener_scan
+
 from ._repo_audit_test_support import *
 
 
@@ -405,3 +409,42 @@ def test_progress_active_stage_key_returns_none_for_missing_active_stage_mapping
     result = repo_audit._audit_orchestration_module._progress_active_stage_key(progress)
 
     assert result is None
+
+
+def test_doc_gardener_scan_stale_docs_resolves_symlink_target_for_git_time(tmp_path):
+    docs_dir = tmp_path / "docs"
+    public = docs_dir / "public"
+    public.mkdir(parents=True)
+    references = docs_dir / "references"
+    references.mkdir()
+    references_content = "See `pyproject.toml`."
+    (references / "a.md").write_text(references_content, encoding="utf-8")
+    (public / "a.md").symlink_to("../references/a.md")
+    (references / "stale.md").write_text(references_content, encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text('name = "demo"\n', encoding="utf-8")
+
+    now = int(time.time())
+    recent = str(now - 3600)
+    old = str(now - 90 * 86400)
+
+    def run_repo_cli(command, args):
+        if command != "git":
+            raise AssertionError(f"unexpected command {command!r}")
+        used_path = args[args.index("--") + 1]
+        if used_path == "src/":
+            stdout = "abc123"
+        elif used_path in {"docs/references/a.md", "pyproject.toml"}:
+            stdout = recent
+        else:
+            stdout = old
+        return SimpleNamespace(returncode=0, stdout=stdout)
+
+    findings = _doc_gardener_scan.scan_stale_docs(
+        doc_finding_cls=doc_gardener.DocFinding,
+        docs_dir=docs_dir,
+        read_text_fn=lambda path: path.read_text(encoding="utf-8"),
+        relative_path_fn=lambda path: path.relative_to(tmp_path).as_posix(),
+        run_repo_cli_fn=run_repo_cli,
+    )
+
+    assert [(finding.file, finding.category) for finding in findings] == [("docs/references/stale.md", "stale")]

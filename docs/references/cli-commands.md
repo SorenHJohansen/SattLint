@@ -47,12 +47,12 @@ sattlint validate-config
 sattlint --config path/to/config.toml validate-config
 ```
 
-**docgen**  -  Generate Word documentation:
+**trace**  -  Trace parser and analyzer execution for one source file:
 
 ```bash
-sattlint docgen --output-dir docs-out
-sattlint docgen --output-path docs-out/Main_FS.docx
-sattlint --config path/to/config.toml docgen --output-dir docs-out
+sattlint trace path/to/Program.s
+sattlint trace path/to/Program.s --output trace.json   # Write trace JSON instead of stdout
+sattlint trace path/to/Program.s --debug               # Include parser debug events
 ```
 
 **format-icf**  -  Format Industrial Control Format:
@@ -416,7 +416,7 @@ pip install -e .         # For development
 pip install -e ".[dev]"  # With all dev tools
 ```
 
-Console scripts are declared in `pyproject.toml` and automatically added to `PATH` during installation. Requires Python 3.13+ and the `sattline-parser` package (installed automatically as a dependency). Requires Python 3.13+ and the `sattline-parser` package (installed automatically as a dependency).
+Console scripts are declared in `pyproject.toml` and automatically added to `PATH` during installation. Requires Python 3.13+ and the `sattline-parser` package (installed automatically as a dependency).
 
 ---
 
