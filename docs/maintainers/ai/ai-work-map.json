@@ -65,22 +65,6 @@
         "repo-audit"
       ],
       "summary": "If CLI menu layout or numbering changes, update tests/test_app.py in the same change."
-    },
-    {
-      "details": "Run sattlineLsp.restartServer after changes under the editor or workspace loading surfaces.",
-      "id": "restart-lsp-after-editor-surface-edits",
-      "path_globs": [
-        "src/sattlint/core/**",
-        "src/sattlint_lsp/**",
-        "src/sattlint/editor_api.py",
-        "vscode/sattline-vscode/**"
-      ],
-      "selected_surfaces": [
-        "session-start",
-        "pipeline",
-        "repo-audit"
-      ],
-      "summary": "Restart the language server after semantic core, LSP, editor_api, or VS Code client edits."
     }
   ],
   "default_entrypoint": {
@@ -149,24 +133,12 @@
     },
     {
       "apply_to": [
-        "src/sattlint/docgenerator/**",
-        "tests/test_docgen*.py",
-        "tests/test_app_docgen.py"
-      ],
-      "description": "Use when changing DOCX generation, documentation classification, FS grouping, unit scope selection, or app documentation workflows in SattLint. Covers docgen-specific boundaries and tests.",
-      "file_path": ".github/instructions/docgen.instructions.md",
-      "name": "Documentation Generation Instructions"
-    },
-    {
-      "apply_to": [
-        "src/sattline_parser/**",
         "src/sattlint/grammar/**",
         "src/sattlint/models/ast_model.py",
         "src/sattlint/transformer/**",
-        "tests/parser/**",
         "tests/fixtures/corpus/**"
       ],
-      "description": "Use when changing parser-core, strict validation, grammar, AST, transformer, parser fixtures, or parser tests in SattLint. Covers parser invariants and first validation routing.",
+      "description": "Use when changing strict validation, grammar-boundary usage, AST helpers, parser fixtures, or parser tests in SattLint. Covers parser invariants and first validation routing. Parser-core code itself lives in the external sattline-parser package.",
       "file_path": ".github/instructions/parser-analysis.instructions.md",
       "name": "Parser Analysis Instructions"
     },
@@ -191,19 +163,6 @@
     },
     {
       "apply_to": [
-        "scripts/check_ratchet_policy.py",
-        "tests/test_ratchet_policy.py",
-        ".github/approvals/*.md",
-        ".github/workflows/typing.yml",
-        "docs/maintainers/quality-gates.md",
-        "pyproject.toml"
-      ],
-      "description": "Use when changing ratchet baselines, debt ledgers, approval records, coverage floors, or ratchet-policy tests in SattLint. Covers approval, monotonicity, per-file debt, and focused validation rules.",
-      "file_path": ".github/instructions/ratchet-policy.instructions.md",
-      "name": "Ratchet Policy Instructions"
-    },
-    {
-      "apply_to": [
         "src/sattlint/devtools/**",
         "tests/test_repo_audit*.py",
         "tests/test_pipeline*.py",
@@ -220,7 +179,6 @@
         "scripts/**",
         ".github/**",
         "docs/**",
-        "vscode/**",
         "metrics/**"
       ],
       "description": "Use when routing work to the owning SattLint surface or choosing the closest repo area for a change. Provides the condensed repo map that was removed from AGENTS.md for context efficiency.",
@@ -239,24 +197,11 @@
     {
       "apply_to": [
         "tests/fixtures/**",
-        "tests/parser/test_corpus.py",
         "tests/test_analyzer_guardrails.py"
       ],
       "description": "Use when changing SattLint test fixtures, corpus manifests, sample SattLine files, or golden analysis artifacts. Covers fixture shape, corpus layout, and minimal SattLine validity rules.",
       "file_path": ".github/instructions/test-fixtures.instructions.md",
       "name": "Test Fixture Instructions"
-    },
-    {
-      "apply_to": [
-        "src/sattlint_lsp/**",
-        "src/sattlint/core/**",
-        "src/sattlint/editor_api.py",
-        "vscode/sattline-vscode/**",
-        "tests/test_lsp*.py"
-      ],
-      "description": "Use when changing workspace loading, semantic core, editor facade, dirty-buffer parsing, LSP diagnostics, or VS Code client behavior in SattLint. Covers workspace-specific invariants and restart rules.",
-      "file_path": ".github/instructions/workspace-lsp.instructions.md",
-      "name": "Workspace LSP Instructions"
     }
   ],
   "kind": "sattlint.ai_work_map",
@@ -392,8 +337,7 @@
     },
     {
       "ai_instruction_files": [
-        ".github/instructions/parser-analysis.instructions.md",
-        ".github/instructions/workspace-lsp.instructions.md"
+        ".github/instructions/parser-analysis.instructions.md"
       ],
       "ai_summary": "Use when parser, analyzer, or workspace-loading edits need trace or profiling artifacts.",
       "command": "sattlint-analysis-pipeline --profile full --check trace --output-dir artifacts/generated/ai-work-map/pipeline",
@@ -402,13 +346,11 @@
       "label": "Collect trace report",
       "owner_surface": "trace",
       "owner_test_targets": [
-        "tests/test_pipeline_phase2.py"
+        "tests/analyzers/test_sattline_semantics.py"
       ],
       "path_globs": [
-        "src/sattline_parser/**",
         "src/sattlint/analyzers/**",
         "src/sattlint/core/**",
-        "src/sattlint_lsp/**",
         "tests/fixtures/sample_sattline_files/**"
       ],
       "source": "pipeline"
@@ -425,13 +367,11 @@
       "label": "Run corpus suite",
       "owner_surface": "corpus",
       "owner_test_targets": [
-        "tests/parser/test_corpus.py"
+        "tests/test_pipeline_run.py"
       ],
       "path_globs": [
-        "src/sattline_parser/**",
         "src/sattlint/analyzers/**",
-        "tests/fixtures/corpus/**",
-        "tests/parser/test_corpus.py"
+        "tests/fixtures/corpus/**"
       ],
       "source": "pipeline"
     }
@@ -836,13 +776,9 @@
     },
     {
       "commands": [
-        "python scripts/run_repo_python.py -m pytest --no-cov tests/test_docgen_part*.py -x -q --tb=short",
-        "tests/test_app_docgen.py",
-        "tests/test_app_menus.py"
+        "python scripts/run_repo_python.py -m pytest --no-cov tests/test_docgen_part*.py -x -q --tb=short"
       ],
-      "notes": [
-        "add  or  when docgen entry points changed."
-      ],
+      "notes": [],
       "surface": "Documentation generation or classification behavior"
     },
     {

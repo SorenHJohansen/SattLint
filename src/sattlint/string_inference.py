@@ -22,6 +22,16 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattline_parser.models.expressions import (
+    Assignment,
+    BinOp,
+    FuncCall,
+    FuncCallStmt,
+    IfStmt,
+    TernaryOp,
+    UnaryOp,
+    VarRef,
+)
 
 from ._validation_type_helpers import is_string_simple_type
 from .resolution.common import select_moduletype_def_strict, varname_base, varname_full
@@ -35,6 +45,12 @@ _MAX_STRING_CANDIDATES = 24
 _MAX_CURSOR_POSITIONS = 24
 _MAX_FIXED_POINT_PASSES = 8
 _MAX_OVERFLOW_EXAMPLES = 8
+
+
+def _noop_progress(_msg: str) -> None:
+    pass
+
+
 _STRING_LIMITS: dict[Simple_DataType, int] = {
     Simple_DataType.IDENTSTRING: 15,
     Simple_DataType.TAGSTRING: 30,
@@ -127,9 +143,18 @@ class _ModuleContext:
 class ExactStringInferenceEngine:
     """Infers exact string candidates and cursor positions for module-scoped refs."""
 
-    def __init__(self, base_picture: BasePicture, *, graph: ProjectGraph | None = None):
+    def __init__(
+        self,
+        base_picture: BasePicture,
+        *,
+        graph: ProjectGraph | None = None,
+        progress_callback: Callable[[str], None] | None = None,
+    ):
         self.base_picture = base_picture
         self.graph = graph
+        self._progress_callback: Callable[[str], None] = (
+            progress_callback if progress_callback is not None else _noop_progress
+        )
         self._moduletype_index = _candidate_moduletype_index(base_picture, graph)
         self._contexts_by_path: dict[tuple[str, ...], _ModuleContext] = {}
         self._execution_contexts: list[_ModuleContext] = []
@@ -157,7 +182,8 @@ class ExactStringInferenceEngine:
         if self._solved_state is not None:
             return
         state = self._initial_state.clone()
-        for _ in range(_MAX_FIXED_POINT_PASSES):
+        for pass_idx in range(_MAX_FIXED_POINT_PASSES):
+            self._progress_callback(f"resolving string values: pass {pass_idx + 1}/{_MAX_FIXED_POINT_PASSES}")
             next_state = state.clone()
             written_string_keys: set[_SlotKey] = set()
             written_int_keys: set[_SlotKey] = set()
@@ -356,38 +382,36 @@ class ExactStringInferenceEngine:
     def _execute_statement(self, statement: object, state: _AbstractState, scope: ScopeContext) -> _AbstractState:
         if isinstance(statement, list):
             return self._execute_statement_list(statement, state, scope)
+        if isinstance(statement, Assignment):
+            return self._execute_assignment(statement.target, statement.value, state, scope)
+
+        if isinstance(statement, FuncCallStmt):
+            return self._execute_builtin_call(
+                statement.call.name,
+                list(statement.call.args),
+                state,
+                scope,
+            )
+
+        if isinstance(statement, IfStmt):
+            branch_states: list[_AbstractState] = []
+            for _condition, branch_body in statement.branches:
+                branch_states.append(self._execute_statement_list(list(branch_body), state.clone(), scope))
+            if statement.else_block:
+                branch_states.append(self._execute_statement_list(list(statement.else_block), state.clone(), scope))
+            if not branch_states:
+                return state
+            merged = branch_states[0].clone()
+            for branch_state in branch_states[1:]:
+                _merge_state_into(merged, branch_state)
+            return merged
+
         if not isinstance(statement, tuple) or not statement:
             return state
 
         tag = statement[0]
         if tag == const.KEY_ASSIGN and len(statement) == 3:
-            target_ref = varname_full(statement[1])
-            if not target_ref:
-                return state
-            target_slot = _resolve_slot(scope, target_ref)
-            if target_slot is None:
-                return state
-            next_state = state.clone()
-            int_result = self._eval_int_expr(statement[2], state, scope)
-            string_result = self._eval_string_expr(statement[2], state, scope)
-            target_is_string = is_string_simple_type(target_slot.variable.datatype)
-            target_is_integer = target_slot.variable.datatype is Simple_DataType.INTEGER
-            if target_is_string or (
-                target_slot.key.field_path
-                and (string_result.candidates or string_result.unknown_text)
-                and not int_result.values
-            ):
-                next_state.string_values[target_slot.key] = _with_end_cursor(
-                    _retarget_string_result(string_result, target_result=_read_string_result(state, target_slot))
-                )
-                return next_state
-            if int_result.values or (int_result.unknown and target_is_integer):
-                next_state.int_values[target_slot.key] = int_result
-                return next_state
-            if string_result.candidates or string_result.unknown_text:
-                next_state.string_values[target_slot.key] = _with_end_cursor(string_result)
-                return next_state
-            return next_state
+            return self._execute_assignment(statement[1], statement[2], state, scope)
 
         if tag == const.KEY_FUNCTION_CALL and len(statement) == 3:
             return self._execute_builtin_call(cast(str, statement[1]), cast(list[object], statement[2]), state, scope)
@@ -395,7 +419,7 @@ class ExactStringInferenceEngine:
         if tag == const.GRAMMAR_VALUE_IF and len(statement) == 3:
             branches = cast(list[tuple[object, list[object]]], statement[1])
             else_branch = cast(list[object], statement[2])
-            branch_states: list[_AbstractState] = []
+            branch_states = []
             for _condition, branch_body in branches:
                 branch_states.append(self._execute_statement_list(branch_body, state.clone(), scope))
             if else_branch:
@@ -408,6 +432,41 @@ class ExactStringInferenceEngine:
             return merged
 
         return state
+
+    def _execute_assignment(
+        self,
+        target_node: object,
+        value_node: object,
+        state: _AbstractState,
+        scope: ScopeContext,
+    ) -> _AbstractState:
+        target_ref = varname_full(target_node)
+        if not target_ref:
+            return state
+        target_slot = _resolve_slot(scope, target_ref)
+        if target_slot is None:
+            return state
+        next_state = state.clone()
+        int_result = self._eval_int_expr(value_node, state, scope)
+        string_result = self._eval_string_expr(value_node, state, scope)
+        target_is_string = is_string_simple_type(target_slot.variable.datatype)
+        target_is_integer = target_slot.variable.datatype is Simple_DataType.INTEGER
+        if target_is_string or (
+            target_slot.key.field_path
+            and (string_result.candidates or string_result.unknown_text)
+            and not int_result.values
+        ):
+            next_state.string_values[target_slot.key] = _with_end_cursor(
+                _retarget_string_result(string_result, target_result=_read_string_result(state, target_slot))
+            )
+            return next_state
+        if int_result.values or (int_result.unknown and target_is_integer):
+            next_state.int_values[target_slot.key] = int_result
+            return next_state
+        if string_result.candidates or string_result.unknown_text:
+            next_state.string_values[target_slot.key] = _with_end_cursor(string_result)
+            return next_state
+        return next_state
 
     def _execute_builtin_call(
         self,
@@ -602,6 +661,23 @@ class ExactStringInferenceEngine:
                 max_length=len(expr),
             )
 
+        if isinstance(expr, VarRef):
+            ref_name = varname_full(expr)
+            if not ref_name:
+                return _unknown_string_result()
+            resolved = _resolve_slot(scope, ref_name)
+            if resolved is None:
+                return _unknown_string_result()
+            return _read_string_result(state, resolved)
+
+        if isinstance(expr, TernaryOp):
+            merged = StringInferenceResult()
+            for _condition, branch_expr in expr.branches:
+                merged = _merge_string_results(merged, self._eval_string_expr(branch_expr, state, scope))
+            if expr.else_expr is not None:
+                merged = _merge_string_results(merged, self._eval_string_expr(expr.else_expr, state, scope))
+            return merged
+
         if isinstance(expr, dict):
             ref_name = varname_full(expr)
             if not ref_name:
@@ -630,6 +706,58 @@ class ExactStringInferenceEngine:
         if isinstance(expr, int):
             return _normalize_int_result(_IntResult((expr,), False))
 
+        if isinstance(expr, VarRef):
+            ref_name = varname_full(expr)
+            if not ref_name:
+                return _IntResult(unknown=True)
+            resolved = _resolve_slot(scope, ref_name)
+            if resolved is None:
+                return _IntResult(unknown=True)
+            return state.int_values.get(resolved.key, _IntResult(unknown=True))
+
+        if isinstance(expr, FuncCall):
+            name = expr.name.casefold()
+            args = list(expr.args)
+            if name == "stringlength" and args:
+                source = self._eval_string_expr(args[0], state, scope)
+                values = tuple(len(candidate.text) for candidate in source.candidates)
+                return _normalize_int_result(_IntResult(values, source.unknown_text))
+            if name == "getstringpos" and args:
+                source = self._eval_string_expr(args[0], state, scope)
+                return _normalize_int_result(_IntResult(source.cursor_positions, source.unknown_cursor))
+            if name == "maxstringlength" and args:
+                source = self._eval_string_expr(args[0], state, scope)
+                if source.max_length is None:
+                    return _IntResult(unknown=source.unknown_max_length)
+                return _normalize_int_result(_IntResult((source.max_length,), source.unknown_max_length))
+
+        if isinstance(expr, BinOp):
+            result = self._eval_int_expr(expr.left, state, scope)
+            if expr.op == "-":
+                tail = self._eval_int_expr(expr.right, state, scope)
+                result = _apply_int_operator(result, "-", tail)
+            else:
+                tail = self._eval_int_expr(expr.right, state, scope)
+                result = _apply_int_operator(result, expr.op, tail)
+            return result
+
+        if isinstance(expr, UnaryOp):
+            if expr.op == "-":
+                source = self._eval_int_expr(expr.operand, state, scope)
+                return _normalize_int_result(
+                    _IntResult(tuple(-value for value in source.values), source.unknown),
+                )
+            if expr.op == "+":
+                return self._eval_int_expr(expr.operand, state, scope)
+
+        if isinstance(expr, TernaryOp):
+            merged = _IntResult()
+            for _condition, branch_expr in expr.branches:
+                merged = _merge_int_results(merged, self._eval_int_expr(branch_expr, state, scope))
+            if expr.else_expr is not None:
+                merged = _merge_int_results(merged, self._eval_int_expr(expr.else_expr, state, scope))
+            return merged
+
         if isinstance(expr, dict):
             ref_name = varname_full(expr)
             if not ref_name:
@@ -640,45 +768,50 @@ class ExactStringInferenceEngine:
             return state.int_values.get(resolved.key, _IntResult(unknown=True))
 
         if isinstance(expr, tuple) and expr:
-            tag = expr[0]
-            if tag == const.KEY_FUNCTION_CALL and len(expr) == 3:
-                name = cast(str, expr[1]).casefold()
-                args = cast(list[object], expr[2])
-                if name == "stringlength" and args:
-                    source = self._eval_string_expr(args[0], state, scope)
-                    values = tuple(len(candidate.text) for candidate in source.candidates)
-                    return _normalize_int_result(_IntResult(values, source.unknown_text))
-                if name == "getstringpos" and args:
-                    source = self._eval_string_expr(args[0], state, scope)
-                    return _normalize_int_result(_IntResult(source.cursor_positions, source.unknown_cursor))
-                if name == "maxstringlength" and args:
-                    source = self._eval_string_expr(args[0], state, scope)
-                    if source.max_length is None:
-                        return _IntResult(unknown=source.unknown_max_length)
-                    return _normalize_int_result(_IntResult((source.max_length,), source.unknown_max_length))
+            return self._eval_int_tuple_expr(expr, state, scope)
 
-            if tag == const.KEY_ADD and len(expr) == 3:
-                result = self._eval_int_expr(expr[1], state, scope)
-                for operator, tail_expr in cast(list[tuple[str, object]], expr[2]):
-                    tail = self._eval_int_expr(tail_expr, state, scope)
-                    result = _apply_int_operator(result, operator, tail)
-                return result
+        return _IntResult(unknown=True)
 
-            if tag == const.KEY_MINUS and len(expr) == 2:
-                source = self._eval_int_expr(expr[1], state, scope)
-                return _normalize_int_result(
-                    _IntResult(tuple(-value for value in source.values), source.unknown),
-                )
+    def _eval_int_tuple_expr(self, expr: tuple[object, ...], state: _AbstractState, scope: ScopeContext) -> _IntResult:
+        tag = expr[0]
+        if tag == const.KEY_FUNCTION_CALL and len(expr) == 3:
+            name = cast(str, expr[1]).casefold()
+            args = cast(list[object], expr[2])
+            if name == "stringlength" and args:
+                source = self._eval_string_expr(args[0], state, scope)
+                values = tuple(len(candidate.text) for candidate in source.candidates)
+                return _normalize_int_result(_IntResult(values, source.unknown_text))
+            if name == "getstringpos" and args:
+                source = self._eval_string_expr(args[0], state, scope)
+                return _normalize_int_result(_IntResult(source.cursor_positions, source.unknown_cursor))
+            if name == "maxstringlength" and args:
+                source = self._eval_string_expr(args[0], state, scope)
+                if source.max_length is None:
+                    return _IntResult(unknown=source.unknown_max_length)
+                return _normalize_int_result(_IntResult((source.max_length,), source.unknown_max_length))
 
-            if tag == const.KEY_PLUS and len(expr) == 2:
-                return self._eval_int_expr(expr[1], state, scope)
+        if tag == const.KEY_ADD and len(expr) == 3:
+            result = self._eval_int_expr(expr[1], state, scope)
+            for operator, tail_expr in cast(list[tuple[str, object]], expr[2]):
+                tail = self._eval_int_expr(tail_expr, state, scope)
+                result = _apply_int_operator(result, operator, tail)
+            return result
 
-            if tag == const.KEY_TERNARY and len(expr) == 3:
-                merged = _IntResult()
-                for _condition, branch_expr in cast(list[tuple[object, object]], expr[1]):
-                    merged = _merge_int_results(merged, self._eval_int_expr(branch_expr, state, scope))
-                merged = _merge_int_results(merged, self._eval_int_expr(expr[2], state, scope))
-                return merged
+        if tag == const.KEY_MINUS and len(expr) == 2:
+            source = self._eval_int_expr(expr[1], state, scope)
+            return _normalize_int_result(
+                _IntResult(tuple(-value for value in source.values), source.unknown),
+            )
+
+        if tag == const.KEY_PLUS and len(expr) == 2:
+            return self._eval_int_expr(expr[1], state, scope)
+
+        if tag == const.KEY_TERNARY and len(expr) == 3:
+            merged = _IntResult()
+            for _condition, branch_expr in cast(list[tuple[object, object]], expr[1]):
+                merged = _merge_int_results(merged, self._eval_int_expr(branch_expr, state, scope))
+            merged = _merge_int_results(merged, self._eval_int_expr(expr[2], state, scope))
+            return merged
 
         return _IntResult(unknown=True)
 

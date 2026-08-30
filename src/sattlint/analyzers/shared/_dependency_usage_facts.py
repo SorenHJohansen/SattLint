@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import cast
 
 from sattline_parser.models.ast_model import (
+    Assignment,
     BasePicture,
     ModuleCode,
     ModuleTypeDef,
@@ -13,7 +15,9 @@ from sattline_parser.models.ast_model import (
     SFCSubsequence,
     SFCTransition,
     SFCTransitionSub,
+    SLExpression,
 )
+from sattline_parser.models.expressions import FuncCallStmt, VarRef
 
 from ...grammar import constants as const
 from ...resolution.scope import ScopeContext
@@ -145,11 +149,11 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
             for statement in equation.code or []:
                 self._append_statement_fact(statement, context, module_path, site)
         for sequence in modulecode.sequences or []:
-            self._walk_sequence_nodes(sequence.code or [], context, module_path, sequence.name)
+            self._walk_sequence_nodes(sequence.code or [], context, module_path, sequence.name or "")
 
     def _walk_sequence_nodes(
         self,
-        nodes: list[object],
+        nodes: Sequence[object],
         context: ScopeContext,
         module_path: list[str],
         sequence_name: str,
@@ -165,7 +169,7 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
                     for statement in statements:
                         self._append_statement_fact(statement, context, module_path, site)
                 continue
-            if isinstance(node, SFCTransition) and node.condition is not None:
+            if isinstance(node, SFCTransition) and cast(SLExpression | None, node.condition) is not None:
                 site = f"sequence {sequence_name!r} transition {node.name!r} condition"
                 self._append_statement_fact(node.condition, context, module_path, site)
                 continue
@@ -245,6 +249,13 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
         if node is None:
             return
 
+        if isinstance(node, VarRef):
+            resolved = self._resolve_ref(node, context)
+            if resolved is not None and resolved.key not in seen_reads:
+                seen_reads.add(resolved.key)
+                reads.append(resolved)
+            return
+
         node_dict = _string_key_dict(node)
         if node_dict is not None and const.KEY_VAR_NAME in node_dict:
             resolved = self._resolve_ref(node_dict, context)
@@ -264,6 +275,49 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
                 seen_reads=seen_reads,
                 seen_writes=seen_writes,
             )
+            return
+
+        if isinstance(node, FuncCallStmt):
+            call_name = node.call.name
+            args = list(node.call.args) if node.call.args else []
+            signature = get_function_signature(call_name)
+            resolved_args: list[FactRef | None] = []
+            for index, argument in enumerate(args):
+                direction = "in"
+                if signature is not None and index < len(signature.parameters):
+                    direction = signature.parameters[index].direction
+                if direction in {"in", "in var", "inout"}:
+                    self._collect_node_facts(
+                        argument,
+                        context,
+                        reads=reads,
+                        writes=writes,
+                        calls=calls,
+                        seen_reads=seen_reads,
+                        seen_writes=seen_writes,
+                    )
+                resolved = self._resolve_ref(argument, context)
+                resolved_args.append(resolved)
+                if direction in {"out", "inout"} and resolved is not None and resolved.key not in seen_writes:
+                    seen_writes.add(resolved.key)
+                    writes.append(resolved)
+            calls.append(CallFact(function_name=call_name, args=tuple(resolved_args)))
+            return
+
+        if isinstance(node, Assignment):
+            self._collect_node_facts(
+                node.value,
+                context,
+                reads=reads,
+                writes=writes,
+                calls=calls,
+                seen_reads=seen_reads,
+                seen_writes=seen_writes,
+            )
+            resolved = self._resolve_ref(node.target, context)
+            if resolved is not None and resolved.key not in seen_writes:
+                seen_writes.add(resolved.key)
+                writes.append(resolved)
             return
 
         tuple_node = _object_tuple(node)
@@ -398,6 +452,29 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
             )
 
     def _resolve_ref(self, expr: object, context: ScopeContext) -> FactRef | None:
+        if isinstance(expr, VarRef):
+            full_name = expr.name
+            variable, field_path, decl_path, _decl_display_path = context.resolve_variable(full_name)
+            if variable is None:
+                return None
+            declaring_context = self._find_declaring_context(context, decl_path)
+            raw_state_access = getattr(expr, "state", None)
+            state_access = raw_state_access if isinstance(raw_state_access, str) else None
+            key = self._state_key(decl_path, variable.name, field_path, state_access)
+            root_key = self._state_key(decl_path, variable.name, "", state_access)
+            display_name = full_name if not state_access else f"{full_name}:{state_access.title()}"
+            return FactRef(
+                key=key,
+                root_key=root_key,
+                display_name=display_name,
+                base_display_name=full_name,
+                field_path=field_path,
+                state_access=state_access,
+                decl_module_path=tuple(decl_path),
+                has_initializer=variable.init_value is not None,
+                is_moduleparameter=variable.name.casefold()
+                in self._moduleparameter_keys_by_context.get(id(declaring_context), set()),
+            )
         expr_map = _string_key_dict(expr)
         if expr_map is None or const.KEY_VAR_NAME not in expr_map:
             return None

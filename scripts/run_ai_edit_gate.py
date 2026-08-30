@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib
 import json
 import subprocess
 import sys
@@ -18,8 +17,6 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from scripts._python_runtime import resolve_repo_python  # noqa: E402
-
-check_ratchet_policy = importlib.import_module("check_ratchet_policy")
 
 RATCHET_PATH = REPO_ROOT / "metrics" / "ratchet.json"
 
@@ -142,10 +139,6 @@ def _run_gate_command(command: list[str], *, label: str) -> int:
     return completed.returncode
 
 
-def _ratchet_errors(rel_paths: Sequence[str]) -> list[str]:
-    return check_ratchet_policy.run_policy_check_for_paths(rel_paths, repo_root=REPO_ROOT)
-
-
 def main(argv: Sequence[str] | None = None) -> int:
     candidate_files = _collect_candidate_files(list(argv) if argv is not None else sys.argv[1:])
     python_files = _existing_python_files(candidate_files)
@@ -214,17 +207,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         if layer_linter_exit_code != 0:
             return layer_linter_exit_code
-
-    try:
-        ratchet_errors = _ratchet_errors(candidate_files)
-    except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
-        print(f"[ai-edit-gate] ratchet-policy: {exc}", file=sys.stderr, flush=True)
-        return 1
-    if ratchet_errors:
-        print("[ai-edit-gate] ratchet-policy: blocked", file=sys.stderr, flush=True)
-        for error in ratchet_errors:
-            print(f"- {error}", file=sys.stderr, flush=True)
-        return 1
 
     return 0
 

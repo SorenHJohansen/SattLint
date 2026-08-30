@@ -19,11 +19,17 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattline_parser.models.expressions import Assignment, BoolOp, VarRef
+
 from sattlint import constants as const
 from sattlint.analyzers.registry import get_default_analyzers, get_enabled_analyzers, get_selectable_analyzers
 from sattlint.analyzers.sattline_semantics import analyze_sattline_semantics, get_sattline_semantic_rule_groups
 from sattlint.tracing import detect_unreachable_sequence_logic
-from tests.analyzers.test_sattline_semantics import _hdr, _sequence, _varref
+from tests.analyzers.test_sattline_semantics import _hdr, _sequence
+
+
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
 def test_sattline_semantics_includes_loop_stability_rule():
@@ -38,8 +44,8 @@ def test_sattline_semantics_includes_loop_stability_rule():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (const.KEY_ASSIGN, _varref("Setpoint"), 10),
-                        (const.KEY_ASSIGN, _varref("Setpoint"), 20),
+                        Assignment(target=_varref("Setpoint"), value=10),
+                        Assignment(target=_varref("Setpoint"), value=20),
                     ],
                 )
             ]
@@ -67,10 +73,10 @@ def test_sattline_semantics_includes_fault_handling_rules():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (const.KEY_ASSIGN, _varref("HighFault"), True),
-                        (const.KEY_ASSIGN, _varref("HandledFault"), True),
-                        (const.KEY_ASSIGN, _varref("Status"), _varref("HandledFault")),
-                        (const.KEY_ASSIGN, _varref("HandledFault"), False),
+                        Assignment(target=_varref("HighFault"), value=True),
+                        Assignment(target=_varref("HandledFault"), value=True),
+                        Assignment(target=_varref("Status"), value=_varref("HandledFault")),
+                        Assignment(target=_varref("HandledFault"), value=False),
                     ],
                 )
             ]
@@ -99,7 +105,7 @@ def test_sattline_semantics_includes_numeric_constraints_rule():
                     name="Main",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Output"), 12)],
+                    code=[Assignment(target=_varref("Output"), value=12)],
                 )
             ]
         ),
@@ -173,11 +179,11 @@ def test_sattline_semantics_includes_duplicate_transition_guard_rule():
                 _sequence(
                     SFCTransition(
                         name="OpenPrimary",
-                        condition=(const.GRAMMAR_VALUE_AND, [_varref("Permit"), _varref("Ready")]),
+                        condition=BoolOp(op="AND", operands=(_varref("Permit"), _varref("Ready"))),
                     ),
                     SFCTransition(
                         name="OpenBackup",
-                        condition=(const.GRAMMAR_VALUE_AND, [_varref("Ready"), _varref("Permit")]),
+                        condition=BoolOp(op="AND", operands=(_varref("Ready"), _varref("Permit"))),
                     ),
                 )
             ]
@@ -313,7 +319,7 @@ def test_sattline_semantics_includes_hidden_global_coupling_rule():
                             name="WriteShared",
                             position=(0.0, 0.0),
                             size=(1.0, 1.0),
-                            code=[(const.KEY_ASSIGN, _varref("SharedValue"), 1)],
+                            code=[Assignment(target=_varref("SharedValue"), value=1)],
                         )
                     ],
                     sequences=[],
@@ -332,7 +338,7 @@ def test_sattline_semantics_includes_hidden_global_coupling_rule():
                             name="ReadShared",
                             position=(0.0, 0.0),
                             size=(1.0, 1.0),
-                            code=[(const.KEY_ASSIGN, _varref("Observed"), _varref("SharedValue"))],
+                            code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
                         )
                     ],
                     sequences=[],
@@ -368,8 +374,8 @@ def test_sattline_semantics_includes_global_scope_minimization_rule():
                             position=(0.0, 0.0),
                             size=(1.0, 1.0),
                             code=[
-                                (const.KEY_ASSIGN, _varref("ConfinedValue"), 1),
-                                (const.KEY_ASSIGN, _varref("Observed"), _varref("ConfinedValue")),
+                                Assignment(target=_varref("ConfinedValue"), value=1),
+                                Assignment(target=_varref("Observed"), value=_varref("ConfinedValue")),
                             ],
                         )
                     ],
@@ -405,7 +411,7 @@ def test_sattline_semantics_includes_high_fan_in_out_rule():
                             name="WriteShared",
                             position=(0.0, 0.0),
                             size=(1.0, 1.0),
-                            code=[(const.KEY_ASSIGN, _varref("SharedValue"), 1)],
+                            code=[Assignment(target=_varref("SharedValue"), value=1)],
                         )
                     ],
                     sequences=[],
@@ -424,7 +430,7 @@ def test_sattline_semantics_includes_high_fan_in_out_rule():
                             name="ReadSharedA",
                             position=(0.0, 0.0),
                             size=(1.0, 1.0),
-                            code=[(const.KEY_ASSIGN, _varref("Observed"), _varref("SharedValue"))],
+                            code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
                         )
                     ],
                     sequences=[],
@@ -443,7 +449,7 @@ def test_sattline_semantics_includes_high_fan_in_out_rule():
                             name="ReadSharedB",
                             position=(0.0, 0.0),
                             size=(1.0, 1.0),
-                            code=[(const.KEY_ASSIGN, _varref("Observed"), _varref("SharedValue"))],
+                            code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
                         )
                     ],
                     sequences=[],
@@ -462,7 +468,7 @@ def test_sattline_semantics_includes_high_fan_in_out_rule():
                             name="ReadSharedC",
                             position=(0.0, 0.0),
                             size=(1.0, 1.0),
-                            code=[(const.KEY_ASSIGN, _varref("Observed"), _varref("SharedValue"))],
+                            code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
                         )
                     ],
                     sequences=[],
@@ -497,10 +503,10 @@ def test_sattline_semantics_includes_signal_lifecycle_rules():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (const.KEY_ASSIGN, _varref("OutputSignal"), _varref("InputSignal")),
-                        (const.KEY_ASSIGN, _varref("InputSignal"), True),
-                        (const.KEY_ASSIGN, _varref("ObservedSignal"), _varref("OutputSignal")),
-                        (const.KEY_ASSIGN, _varref("NeverConsumed"), False),
+                        Assignment(target=_varref("OutputSignal"), value=_varref("InputSignal")),
+                        Assignment(target=_varref("InputSignal"), value=True),
+                        Assignment(target=_varref("ObservedSignal"), value=_varref("OutputSignal")),
+                        Assignment(target=_varref("NeverConsumed"), value=False),
                     ],
                 )
             ]

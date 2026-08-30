@@ -24,11 +24,7 @@ _MODULE_KIND_ALIASES = {
     "moduletype": "moduletype",
     "moduletype-instance": "moduletype",
 }
-_PATH_SELECTOR_FIELDS = (
-    "relative_module_path",
-    "unit_structure_path",
-    "equipment_module_structure_path",
-)
+_PATH_SELECTOR_FIELDS = ("relative_module_path", "unit_structure_path", "equipment_module_structure_path")
 
 DEFAULT_GRAPHICS_RULES: dict[str, Any] = {
     "schema_version": _SCHEMA_VERSION,
@@ -94,13 +90,12 @@ def _normalize_module_kind(value: Any) -> str:
 
 
 def _normalized_rule_name(rule: dict[str, Any]) -> str:
-    selector_text = ""
-    if rule.get("unit_structure_path"):
+    if rule.get("relative_module_path"):
+        selector_text = f"path:{rule['relative_module_path']}"
+    elif rule.get("unit_structure_path"):
         selector_text = f"unit:{rule['unit_structure_path']}"
     elif rule.get("equipment_module_structure_path"):
         selector_text = f"equipment:{rule['equipment_module_structure_path']}"
-    elif rule.get("relative_module_path"):
-        selector_text = f"path:{rule['relative_module_path']}"
     else:
         selector_text = rule["module_name"]
 
@@ -149,15 +144,13 @@ def _normalize_rule(rule: Any) -> dict[str, Any]:
 
     module_name = str(rule_obj.get("module_name") or rule_obj.get("name") or "").strip()
     relative_module_path = str(rule_obj.get("relative_module_path") or "").strip()
-    unit_structure_path = str(rule_obj.get("unit_structure_path") or "").strip()
-    equipment_module_structure_path = str(rule_obj.get("equipment_module_structure_path") or "").strip()
     moduletype_name = str(rule_obj.get("moduletype_name") or "").strip()
     module_kind = _normalize_module_kind(rule_obj.get("module_kind") or "any")
     populated_selectors = _populated_path_selectors(
         {
             "relative_module_path": relative_module_path,
-            "unit_structure_path": unit_structure_path,
-            "equipment_module_structure_path": equipment_module_structure_path,
+            "unit_structure_path": str(rule_obj.get("unit_structure_path") or "").strip(),
+            "equipment_module_structure_path": str(rule_obj.get("equipment_module_structure_path") or "").strip(),
         }
     )
     if len(populated_selectors) > 1:
@@ -181,6 +174,8 @@ def _normalize_rule(rule: Any) -> dict[str, Any]:
     expected_obj = cast(dict[str, Any], expected_raw)
 
     description = str(rule_obj.get("description") or "").strip()
+    unit_structure_path = str(rule_obj.get("unit_structure_path") or "").strip()
+    equipment_module_structure_path = str(rule_obj.get("equipment_module_structure_path") or "").strip()
     return {
         "module_name": module_name,
         "module_kind": module_kind,
@@ -282,16 +277,6 @@ def _rule_matches_entry(rule: dict[str, Any], entry: dict[str, Any]) -> bool:
     if relative_module_path and entry.get("relative_module_path", "").casefold() != relative_module_path.casefold():
         return False
 
-    unit_structure_path = str(rule.get("unit_structure_path") or "").strip()
-    if unit_structure_path and entry.get("unit_structure_path", "").casefold() != unit_structure_path.casefold():
-        return False
-
-    equipment_module_structure_path = str(rule.get("equipment_module_structure_path") or "").strip()
-    if equipment_module_structure_path and (
-        entry.get("equipment_module_structure_path", "").casefold() != equipment_module_structure_path.casefold()
-    ):
-        return False
-
     if module_kind == "moduletype":
         expected_moduletype = str(rule.get("moduletype_name") or "").strip()
         if not expected_moduletype:
@@ -301,9 +286,21 @@ def _rule_matches_entry(rule: dict[str, Any], entry: dict[str, Any]) -> bool:
             cast(dict[str, Any], resolved_moduletype).get("name") if isinstance(resolved_moduletype, dict) else ""
         )
         actual_moduletype = str(entry.get("moduletype_name") or resolved_moduletype_name or "").strip()
-        return actual_moduletype.casefold() == expected_moduletype.casefold()
+        if actual_moduletype.casefold() != expected_moduletype.casefold():
+            return False
+        equipment_selector = str(rule.get("equipment_module_structure_path") or "").strip()
+        if equipment_selector:
+            actual_equipment = str(entry.get("equipment_module_structure_path") or "").strip()
+            if actual_equipment.casefold() != equipment_selector.casefold():
+                return False
+        return True
 
-    if _populated_path_selectors(rule):
+    populated_selectors = _populated_path_selectors(rule)
+    if populated_selectors:
+        for field_name, expected_value in populated_selectors:
+            actual_value = str(entry.get(field_name) or "").strip()
+            if actual_value.casefold() != expected_value.casefold():
+                return False
         return True
 
     if not rule["module_name"]:

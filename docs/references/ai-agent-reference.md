@@ -45,12 +45,7 @@ print(report.summary())
 
 ### Generate Documentation
 
-```python
-from sattlint.config import get_documentation_config
-from sattlint.docgenerator.docgen import generate_docx
-
-generate_docx(bp, "output.docx", documentation_config=get_documentation_config())
-```
+Documentation generation was removed from this repository; use the `sattline-parser` and external tooling for doc workflows.
 
 ### Run Tests From The Repo Venv
 
@@ -91,40 +86,24 @@ Use `--profile quick` for fast local loops. Read `artifacts/analysis/status.json
 
 ### Parser Core
 
-- `src/sattline_parser/api.py`: parser-core entry points.
-- `src/sattline_parser/grammar/sattline.lark`: grammar definition.
-- `src/sattline_parser/grammar/constants.py`: grammar constants.
-- `src/sattline_parser/transformer/sl_transformer.py`: transformer implementation.
-- `src/sattline_parser/models/ast_model.py`: AST node dataclasses.
-- `src/sattline_parser/utils/text_processing.py`: comment stripping.
-- `src/sattline_parser/utils/formatter.py`: AST formatting helpers.
+- `sattline_parser.*`: external `sattline-parser` package (PyPI); API entry points, grammar, transformer, AST models, comment stripping, and formatting helpers all live there.
 
 ### Analyzers And Reporting
 
-- `src/sattlint/analyzers/variables.py`: variable-usage analyzer.
+- `src/sattlint/analyzers/variables/`: variable-usage analyzer (package).
 - `src/sattlint/analyzers/spec_compliance.py`: engineering-spec compliance checks.
 - `src/sattlint/analyzers/shadowing.py`: shadowing analyzer.
-- `src/sattlint/analyzers/mms.py`: MMS analysis.
+- `src/sattlint/analyzers/mms/`: MMS analysis (package).
 - `src/sattlint/analyzers/comment_code.py`: commented-out code detection.
 - `src/sattlint/reporting/variables_report.py`: variable report formatting.
 - `src/sattlint/devtools/pipeline.py`: repeatable repo-audit pipeline.
 - `src/sattlint/tracing.py`: parser and analyzer tracing.
 
-### LSP
-
-- `src/sattlint_lsp/document_state.py`: per-document text state and cached local analysis metadata.
-- `src/sattlint_lsp/local_parser.py`: incremental parser backend.
-- `src/sattlint_lsp/workspace_store.py`: cached workspace snapshots and invalidation.
-- `src/sattlint_lsp/server.py`: Pygls language server.
-- `vscode/sattline-vscode/extension.js`: VS Code client.
-- `vscode/sattline-vscode/package.json`: extension metadata.
-
 ### Tests And Fixtures
 
 - `tests/fixtures/sample_sattline_files/`: real SattLine examples.
-- `tests/test_app.py`: interactive CLI coverage.
+- `tests/test_app_cli_commands.py`: CLI command coverage.
 - `tests/test_editor_api.py`: editor-facing snapshot and lookup coverage.
-- `tests/test_lsp_server.py`: LSP behavior and invalidation coverage.
 
 ### Reference Docs
 

@@ -91,7 +91,6 @@ IGNORED_REPO_PATH_REFERENCE_ALLOWLIST_PREFIXES = (
     "tests/test_repo_audit_part",
 )
 IGNORED_REPO_PATH_REFERENCE_ALLOWLIST_PATHS = {
-    "scripts/check_ratchet_policy.py",
     "scripts/repo_health.py",
     "tests/test_artifact_contracts.py",
     "tests/devtools/test_devtools_review_observability.py",
@@ -100,7 +99,6 @@ IGNORED_REPO_PATH_REFERENCE_ALLOWLIST_PATHS = {
     "tests/devtools/test_context_health.py",
     "tests/test_repo_audit_entrypoints_helpers.py",
     "tests/devtools/test_run_markdownlint.py",
-    "tests/test_ratchet_policy.py",
     "tests/devtools/test_repo_health.py",
     "tests/test_recommendation_routing.py",
     "tests/test_structural_reports.py",
@@ -159,7 +157,6 @@ ALLOWED_PRINT_MODULES = {
     "src/sattlint/app.py",
     "src/sattlint/config.py",
     "src/sattlint/console.py",
-    "src/sattlint/docgenerator/configgen.py",
     "src/sattlint/engine.py",
     "src/sattlint/tracing.py",
     "src/sattlint/devtools/corpus.py",
@@ -189,14 +186,12 @@ HARNESS_FRESHNESS_DOC_SCANNERS = (
     "scan_agents_md",
     "scan_dead_links",
     "scan_completed_exec_plans_still_active",
-    "scan_stale_docs",
 )
 IGNORED_NORMALIZED_PIPELINE_FINDINGS = {
     ("bandit-b101", "src/sattlint/devtools/parser_properties.py"),
     ("bandit-b110", "src/sattlint/devtools/doc_gardener.py"),
     ("bandit-b110", "src/sattlint/devtools/layer_linter.py"),
     ("bandit-b112", "src/sattlint/devtools/mutation_engine.py"),
-    ("bandit-b311", "src/sattline_parser/fuzz_harness.py"),
     ("bandit-b311", "src/sattlint/devtools/parser_properties.py"),
     ("bandit-b404", "src/sattlint/devtools/doc_gardener.py"),
     ("bandit-b404", "src/sattlint/devtools/review_tool.py"),

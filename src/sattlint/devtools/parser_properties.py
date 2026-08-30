@@ -7,7 +7,6 @@ from collections.abc import Callable, Iterable
 from typing import Any
 
 from lark.exceptions import UnexpectedInput
-
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 
 

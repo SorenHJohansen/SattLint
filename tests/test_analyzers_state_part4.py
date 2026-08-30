@@ -1,4 +1,5 @@
-# ruff: noqa: F403, F405
+from sattline_parser.models.expressions import Assignment, VarRef
+
 from ._analyzers_state_test_support import *
 
 
@@ -14,11 +15,7 @@ def test_sfc_step_contract_detects_state_leakage_across_steps():
                 name="Prime",
                 code=SFCCodeBlocks(
                     active=[
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("StepValue"),
-                            1,
-                        )
+                        Assignment(target=_varref("StepValue"), value=1),
                     ]
                 ),
             ),
@@ -28,11 +25,7 @@ def test_sfc_step_contract_detects_state_leakage_across_steps():
                 code=SFCCodeBlocks(
                     enter=[],
                     active=[
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("Output"),
-                            _varref("StepValue"),
-                        )
+                        Assignment(target=_varref("Output"), value=_varref("StepValue")),
                     ],
                     exit=[],
                 ),
@@ -79,8 +72,8 @@ def test_write_without_effect_detected_for_internal_value_chain():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (const.KEY_ASSIGN, _varref("Stage1"), 1),
-                        (const.KEY_ASSIGN, _varref("Stage2"), _varref("Stage1")),
+                        Assignment(target=_varref("Stage1"), value=1),
+                        Assignment(target=_varref("Stage2"), value=_varref("Stage1")),
                     ],
                 )
             ],
@@ -109,8 +102,8 @@ def test_write_without_effect_detected_for_internal_value_chain():
 
 
 def test_write_without_effect_is_suppressed_for_mapped_output_path():
-    out_target: dict[str, Any] = cast(dict[str, Any], _varref("Out"))
-    final_output_source: dict[str, Any] = cast(dict[str, Any], _varref("FinalOutput"))
+    out_target: VarRef = _varref("Out")
+    final_output_source: VarRef = _varref("FinalOutput")
 
     child = SingleModule(
         header=_hdr("Worker"),
@@ -125,8 +118,8 @@ def test_write_without_effect_is_suppressed_for_mapped_output_path():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (const.KEY_ASSIGN, _varref("Internal"), 1),
-                        (const.KEY_ASSIGN, _varref("Out"), _varref("Internal")),
+                        Assignment(target=_varref("Internal"), value=1),
+                        Assignment(target=_varref("Out"), value=_varref("Internal")),
                     ],
                 )
             ],
@@ -178,7 +171,7 @@ def test_hidden_global_coupling_is_reported_for_sibling_modules_using_root_globa
                     name="WriteShared",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("SharedValue"), 1)],
+                    code=[Assignment(target=_varref("SharedValue"), value=1)],
                 )
             ],
             sequences=[],
@@ -197,7 +190,7 @@ def test_hidden_global_coupling_is_reported_for_sibling_modules_using_root_globa
                     name="ReadShared",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Observed"), _varref("SharedValue"))],
+                    code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
                 )
             ],
             sequences=[],
@@ -227,10 +220,10 @@ def test_hidden_global_coupling_is_reported_for_sibling_modules_using_root_globa
 
 
 def test_hidden_global_coupling_is_not_reported_for_explicit_parameter_mappings():
-    writer_out_target: dict[str, Any] = cast(dict[str, Any], _varref("Out"))
-    writer_shared_source: dict[str, Any] = cast(dict[str, Any], _varref("SharedValue"))
-    reader_in_target: dict[str, Any] = cast(dict[str, Any], _varref("In"))
-    reader_shared_source: dict[str, Any] = cast(dict[str, Any], _varref("SharedValue"))
+    writer_out_target: VarRef = _varref("Out")
+    writer_shared_source: VarRef = _varref("SharedValue")
+    reader_in_target: VarRef = _varref("In")
+    reader_shared_source: VarRef = _varref("SharedValue")
 
     writer = SingleModule(
         header=_hdr("Writer"),
@@ -244,7 +237,7 @@ def test_hidden_global_coupling_is_not_reported_for_explicit_parameter_mappings(
                     name="Produce",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Out"), 1)],
+                    code=[Assignment(target=_varref("Out"), value=1)],
                 )
             ],
             sequences=[],
@@ -272,7 +265,7 @@ def test_hidden_global_coupling_is_not_reported_for_explicit_parameter_mappings(
                     name="Consume",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Observed"), _varref("In"))],
+                    code=[Assignment(target=_varref("Observed"), value=_varref("In"))],
                 )
             ],
             sequences=[],
@@ -333,7 +326,7 @@ def test_global_scope_minimization_is_reported_for_root_global_confined_to_one_m
                             name="WriteConfined",
                             position=(0.0, 0.0),
                             size=(1.0, 1.0),
-                            code=[(const.KEY_ASSIGN, _varref("ConfinedValue"), 1)],
+                            code=[Assignment(target=_varref("ConfinedValue"), value=1)],
                         )
                     ],
                     sequences=[],
@@ -347,7 +340,7 @@ def test_global_scope_minimization_is_reported_for_root_global_confined_to_one_m
                     name="ReadConfined",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Observed"), _varref("ConfinedValue"))],
+                    code=[Assignment(target=_varref("Observed"), value=_varref("ConfinedValue"))],
                 )
             ],
             sequences=[],
@@ -392,7 +385,7 @@ def test_global_scope_minimization_is_not_reported_for_root_global_used_in_root_
                     name="WriteConfined",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("ConfinedValue"), 1)],
+                    code=[Assignment(target=_varref("ConfinedValue"), value=1)],
                 )
             ],
             sequences=[],
@@ -410,7 +403,7 @@ def test_global_scope_minimization_is_not_reported_for_root_global_used_in_root_
                     name="ReadAtRoot",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Observed"), _varref("ConfinedValue"))],
+                    code=[Assignment(target=_varref("Observed"), value=_varref("ConfinedValue"))],
                 )
             ],
             sequences=[],

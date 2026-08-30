@@ -13,6 +13,8 @@ from sattline_parser.models.ast_model import (
     SourceSpan,
     Variable,
 )
+from sattline_parser.models.expressions import FuncCall, FuncCallStmt, VarRef
+
 from sattlint.analyzers.picture_display_paths import analyze_picture_display_paths
 from sattlint.graphics_validation import PictureDisplayPathRow, PictureDisplayRecord
 from sattlint.models.project_graph import ProjectGraph
@@ -29,12 +31,12 @@ from tests.helpers.picture_display_paths_support import (
 ROOT_PATH_STEP = "0"
 
 
-def _varref(name: str) -> dict[str, str]:
-    return {"var_name": name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
-def _string_length_call(name: str) -> tuple[str, str, list[dict[str, str]]]:
-    return (const.KEY_FUNCTION_CALL, "StringLength", [_varref(name)])
+def _string_length_call(name: str) -> FuncCall:
+    return FuncCall(name="StringLength", args=(VarRef(name=name),))
 
 
 def _build_operation_path_base_picture() -> BasePicture:
@@ -54,26 +56,28 @@ def _build_operation_path_base_picture() -> BasePicture:
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (const.KEY_FUNCTION_CALL, "ClearString", [_varref("Paths.OperationPath")]),
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "InsertString",
-                            [
-                                _varref("Paths.OperationPath"),
-                                _varref("Prefix"),
-                                _string_length_call("Prefix"),
-                                _varref("BuilderStatus"),
-                            ],
+                        FuncCallStmt(call=FuncCall(name="ClearString", args=(_varref("Paths.OperationPath"),))),
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="InsertString",
+                                args=(
+                                    _varref("Paths.OperationPath"),
+                                    _varref("Prefix"),
+                                    _string_length_call("Prefix"),
+                                    _varref("BuilderStatus"),
+                                ),
+                            )
                         ),
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "InsertString",
-                            [
-                                _varref("Paths.OperationPath"),
-                                _varref("Name"),
-                                _string_length_call("Name"),
-                                _varref("BuilderStatus"),
-                            ],
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="InsertString",
+                                args=(
+                                    _varref("Paths.OperationPath"),
+                                    _varref("Name"),
+                                    _string_length_call("Name"),
+                                    _varref("BuilderStatus"),
+                                ),
+                            )
                         ),
                     ],
                 )
@@ -154,7 +158,7 @@ def test_picture_display_path_analyzer_reports_unresolved_paths() -> None:
                         index_value=0,
                         kind="literal",
                         raw_text="+MissingPanel",
-                        span=SourceSpan(line=1, column=1),
+                        span=SourceSpan(start=0, end=0, line=1, column=1),
                     ),
                 ),
             ),
@@ -188,7 +192,7 @@ def test_picture_display_path_analyzer_marks_library_target_findings_as_info() -
                         index_value=0,
                         kind="literal",
                         raw_text="+MissingPanel",
-                        span=SourceSpan(line=1, column=1),
+                        span=SourceSpan(start=0, end=0, line=1, column=1),
                     ),
                 ),
             ),
@@ -218,7 +222,7 @@ def test_picture_display_path_analyzer_ignores_resolved_paths() -> None:
                         index_value=0,
                         kind="literal",
                         raw_text="++Panel",
-                        span=SourceSpan(line=1, column=1),
+                        span=SourceSpan(start=0, end=0, line=1, column=1),
                     ),
                 ),
             ),
@@ -248,26 +252,28 @@ def test_picture_display_path_analyzer_reports_generic_variable_path_candidates(
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (const.KEY_FUNCTION_CALL, "ClearString", [_varref("DisplayPath")]),
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "InsertString",
-                            [
-                                _varref("DisplayPath"),
-                                _varref("Prefix"),
-                                _string_length_call("Prefix"),
-                                _varref("Status"),
-                            ],
+                        FuncCallStmt(call=FuncCall(name="ClearString", args=(_varref("DisplayPath"),))),
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="InsertString",
+                                args=(
+                                    _varref("DisplayPath"),
+                                    _varref("Prefix"),
+                                    _string_length_call("Prefix"),
+                                    _varref("Status"),
+                                ),
+                            )
                         ),
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "InsertString",
-                            [
-                                _varref("DisplayPath"),
-                                _varref("PanelName"),
-                                _string_length_call("PanelName"),
-                                _varref("Status"),
-                            ],
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="InsertString",
+                                args=(
+                                    _varref("DisplayPath"),
+                                    _varref("PanelName"),
+                                    _string_length_call("PanelName"),
+                                    _varref("Status"),
+                                ),
+                            )
                         ),
                     ],
                 )
@@ -289,7 +295,7 @@ def test_picture_display_path_analyzer_reports_generic_variable_path_candidates(
                         index_value=1,
                         kind="variable",
                         raw_text="DisplayPath",
-                        span=SourceSpan(line=1, column=1),
+                        span=SourceSpan(start=0, end=0, line=1, column=1),
                     ),
                 ),
             ),
@@ -320,7 +326,7 @@ def test_picture_display_path_analyzer_reports_unresolved_operationpath_candidat
                         index_value=1,
                         kind="variable",
                         raw_text="Paths.OperationPath",
-                        span=SourceSpan(line=1, column=1),
+                        span=SourceSpan(start=0, end=0, line=1, column=1),
                     ),
                 ),
             ),
@@ -377,19 +383,20 @@ def test_exact_string_inference_tracks_setstringpos_and_cutstring() -> None:
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (const.KEY_FUNCTION_CALL, "ClearString", [_varref("Tag")]),
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "InsertString",
-                            [
-                                _varref("Tag"),
-                                _varref("Source"),
-                                _string_length_call("Source"),
-                                _varref("Status"),
-                            ],
+                        FuncCallStmt(call=FuncCall(name="ClearString", args=(_varref("Tag"),))),
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="InsertString",
+                                args=(
+                                    _varref("Tag"),
+                                    _varref("Source"),
+                                    _string_length_call("Source"),
+                                    _varref("Status"),
+                                ),
+                            )
                         ),
-                        (const.KEY_FUNCTION_CALL, "SetStringPos", [_varref("Tag"), 2, _varref("Status")]),
-                        (const.KEY_FUNCTION_CALL, "CutString", [_varref("Tag"), 2, _varref("Status")]),
+                        FuncCallStmt(call=FuncCall(name="SetStringPos", args=(_varref("Tag"), 2, _varref("Status")))),
+                        FuncCallStmt(call=FuncCall(name="CutString", args=(_varref("Tag"), 2, _varref("Status")))),
                     ],
                 )
             ]

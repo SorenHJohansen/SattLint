@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import dataclasses
 from typing import Any, cast
 
 from lark import Tree
-
 from sattline_parser.models.ast_model import Variable
+from sattline_parser.models.expressions import VarRef
 
 from ...grammar import constants as const
 from ...resolution.scope import ScopeContext
@@ -29,6 +30,12 @@ class _DataflowStateMixin:
         collected: list[ResolvedRef] = []
 
         def visit(node: object) -> None:
+            if isinstance(node, VarRef):
+                resolved = self._resolve_ref(node, context)
+                if resolved is not None and resolved.is_state_variable:
+                    collected.append(resolved)
+                return
+
             node_dict = _string_key_dict(node)
             if node_dict is not None and const.KEY_VAR_NAME in node_dict:
                 resolved = self._resolve_ref(node, context)
@@ -39,6 +46,12 @@ class _DataflowStateMixin:
             if isinstance(node, Tree) and node.data == const.KEY_STATEMENT:
                 for child in _object_list(getattr(cast(object, node), "children", None)) or []:
                     visit(child)
+                return
+
+            dataclass_node = cast(object, node)
+            if dataclasses.is_dataclass(dataclass_node) and not isinstance(dataclass_node, type):
+                for field in dataclasses.fields(dataclass_node):
+                    visit(getattr(dataclass_node, field.name))
                 return
 
             node_obj = cast(object, node)

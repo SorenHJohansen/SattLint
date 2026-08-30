@@ -21,7 +21,7 @@ from sattlint.analysis_catalog import (
 from sattlint.cli_output import add_output_format_argument, emit_text_or_json, resolve_output_format
 from sattlint.core.semantic import discover_workspace_sources, load_workspace_snapshot
 from sattlint.path_sanitizer import sanitize_path_for_report
-from sattlint.repo_paths import repo_root_from
+from sattlint.repo_paths import repo_root_from_optional
 from sattlint.reporting.variables_report import IssueKind, VariablesReport
 from sattlint.resolution.common import resolve_moduletype_def_strict
 from sattlint.semantic_analysis import build_variable_semantic_artifacts
@@ -41,7 +41,15 @@ from ._structural_report_impact import collect_impact_analysis_report
 
 ast = _ast
 
-REPO_ROOT = repo_root_from(Path(__file__))
+
+def _module_repo_root() -> Path:
+    r = repo_root_from_optional(Path(__file__))
+    if r is None:
+        return Path(__file__).resolve().parent
+    return r
+
+
+REPO_ROOT = _module_repo_root()
 STRUCTURAL_ENTRY_ROOTS = (Path("tests") / "fixtures" / "sample_sattline_files",)
 PHASE2_ENFORCED_RULE_METADATA_FINDING_IDS = frozenset(
     {

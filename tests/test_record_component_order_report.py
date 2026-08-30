@@ -1,4 +1,5 @@
 from sattline_parser.models.ast_model import Variable
+
 from sattlint.reporting.variables_report import IssueKind, VariableIssue, VariablesReport
 
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence as SequenceABC
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -169,7 +169,7 @@ class _SfcAccessCollector(VariablesAnalyzer):
         if isinstance(node, SFCAlternative):
             for index, branch in enumerate(node.branches or []):
                 self._walk_branch_node(
-                    branch,
+                    cast(list[object], branch),
                     context,
                     path,
                     label=f"ALT:BRANCH:{index}" if include_site_labels else None,
@@ -177,12 +177,12 @@ class _SfcAccessCollector(VariablesAnalyzer):
             return
 
         if isinstance(node, SFCParallel):
-            self._walk_parallel_branches(node.branches, context, path)
+            self._walk_parallel_branches(cast(list[list[object]], node.branches), context, path)
             return
 
         if isinstance(node, SFCSubsequence):
             self._walk_branch_node(
-                node.body,
+                cast(list[object], node.body),
                 context,
                 path,
                 label=f"SUBSEQ:{getattr(node, 'name', '<unnamed>')}" if include_site_labels else None,
@@ -191,7 +191,7 @@ class _SfcAccessCollector(VariablesAnalyzer):
 
         if isinstance(node, SFCTransitionSub):
             self._walk_branch_node(
-                node.body,
+                cast(list[object], node.body),
                 context,
                 path,
                 label=f"TRANS-SUB:{getattr(node, 'name', '<unnamed>')}" if include_site_labels else None,

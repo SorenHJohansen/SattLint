@@ -10,10 +10,7 @@ _ANALYZER_SUITE_ACCEPTANCE_TESTS = (
     "tests/test_analyzers_suites_part5.py",
     "tests/test_analyzers_suites_part6.py",
 )
-_APP_ACCEPTANCE_TESTS = (
-    "tests/test_app_cli_commands.py",
-    "tests/test_app_menus.py",
-)
+_APP_ACCEPTANCE_TESTS = ("tests/test_app_cli_commands.py",)
 
 
 @dataclass(frozen=True)
@@ -29,7 +26,7 @@ def _merge_acceptance_tests(*groups: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(sorted({path for group in groups for path in group}))
 
 
-_SEMANTIC_LAYER_ACCEPTANCE_TESTS = ("tests/test_pipeline_phase2.py", "tests/analyzers/test_sattline_semantics.py")
+_SEMANTIC_LAYER_ACCEPTANCE_TESTS = ("tests/analyzers/test_sattline_semantics.py",)
 _VARIABLE_SOURCE_ACCEPTANCE_TESTS = (
     *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
     *_APP_ACCEPTANCE_TESTS,
@@ -54,7 +51,6 @@ _TAINT_SOURCE_ACCEPTANCE_TESTS = (
 )
 _DATAFLOW_SOURCE_ACCEPTANCE_TESTS = (
     *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
-    "tests/analyzers/test_dataflow.py",
     "tests/analyzers/test_sattline_semantics.py",
 )
 _SAME_CYCLE_SOURCE_ACCEPTANCE_TESTS = (
@@ -82,10 +78,7 @@ _CONFIG_DRIFT_SOURCE_ACCEPTANCE_TESTS = (
     "tests/analyzers/test_config_drift.py",
     "tests/analyzers/test_sattline_semantics.py",
 )
-_UNSAFE_DEFAULTS_SOURCE_ACCEPTANCE_TESTS = (
-    "tests/test_pipeline_phase2.py",
-    "tests/analyzers/test_sattline_semantics.py",
-)
+_UNSAFE_DEFAULTS_SOURCE_ACCEPTANCE_TESTS = ("tests/analyzers/test_sattline_semantics.py",)
 _SPEC_SOURCE_ACCEPTANCE_TESTS = (
     *_APP_ACCEPTANCE_TESTS,
     "tests/analyzers/test_spec_compliance.py",

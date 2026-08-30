@@ -1,6 +1,288 @@
 {
-  "finding_count": 0,
-  "findings": [],
+  "finding_count": 4,
+  "findings": [
+    {
+      "analyzer": "architecture",
+      "artifact": "findings",
+      "category": "architecture",
+      "confidence": "high",
+      "data": {
+        "count": 32,
+        "over_budget_files": [
+          {
+            "line_count": 1403,
+            "path": "src/sattlint/string_inference.py"
+          },
+          {
+            "line_count": 1338,
+            "path": "scripts/check_ratchet_policy.py"
+          },
+          {
+            "line_count": 1302,
+            "path": "scripts/repo_health.py"
+          },
+          {
+            "line_count": 1286,
+            "path": "src/sattlint/devtools/corpus.py"
+          },
+          {
+            "line_count": 1146,
+            "path": "src/sattlint/devtools/pipeline/__init__.py"
+          },
+          {
+            "line_count": 908,
+            "path": "src/sattlint/_app_textual_setup.py"
+          },
+          {
+            "line_count": 811,
+            "path": "src/sattlint/_app_textual_actions.py"
+          },
+          {
+            "line_count": 803,
+            "path": "src/sattlint/analyzers/same_cycle.py"
+          },
+          {
+            "line_count": 803,
+            "path": "src/sattlint/analyzers/variables/_variables_execution.py"
+          },
+          {
+            "line_count": 747,
+            "path": "src/sattlint/cache.py"
+          }
+        ]
+      },
+      "detail": null,
+      "file": null,
+      "fingerprint": "structural-source-file-budget||||Some source modules exceed the structural line budget and should be split before they grow further.",
+      "id": "structural-source-file-budget",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [],
+        "path": null,
+        "symbol": null
+      },
+      "message": "Some source modules exceed the structural line budget and should be split before they grow further.",
+      "minimal_reproducer": null,
+      "owner_surface": "architecture",
+      "rule_id": "structural-source-file-budget",
+      "severity": "medium",
+      "source": "pipeline",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "architecture",
+      "artifact": "findings",
+      "category": "architecture",
+      "confidence": "high",
+      "data": {
+        "count": 34,
+        "over_budget_files": [
+          {
+            "line_count": 2533,
+            "path": "tests/test_analyzers_variables_part4.py"
+          },
+          {
+            "line_count": 2352,
+            "path": "tests/test_app_textual.py"
+          },
+          {
+            "line_count": 1796,
+            "path": "tests/test_app_live_adapters.py"
+          },
+          {
+            "line_count": 1600,
+            "path": "tests/test_cli.py"
+          },
+          {
+            "line_count": 1567,
+            "path": "tests/devtools/test_source_diff_report.py"
+          },
+          {
+            "line_count": 1200,
+            "path": "tests/test_variables_access_and_contract_helpers.py"
+          },
+          {
+            "line_count": 1067,
+            "path": "tests/parser/test_corpus.py"
+          },
+          {
+            "line_count": 1062,
+            "path": "tests/test_analyzers_variables_part1.py"
+          },
+          {
+            "line_count": 1054,
+            "path": "tests/test_app_analysis_project_cache.py"
+          },
+          {
+            "line_count": 1016,
+            "path": "tests/parser/test_engine_loader_helpers.py"
+          }
+        ]
+      },
+      "detail": null,
+      "file": null,
+      "fingerprint": "structural-test-file-budget||||Some test modules exceed the structural line budget and should be split by owning surface.",
+      "id": "structural-test-file-budget",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [],
+        "path": null,
+        "symbol": null
+      },
+      "message": "Some test modules exceed the structural line budget and should be split by owning surface.",
+      "minimal_reproducer": null,
+      "owner_surface": "architecture",
+      "rule_id": "structural-test-file-budget",
+      "severity": "medium",
+      "source": "pipeline",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "architecture",
+      "artifact": "findings",
+      "category": "architecture",
+      "confidence": "high",
+      "data": {
+        "count": 52,
+        "over_budget_functions": [
+          {
+            "end_line": 393,
+            "line_span": 357,
+            "path": "src/sattlint/analyzers/registry/_registry_delivery_data.py",
+            "qualname": "default_delivery_templates",
+            "start_line": 37
+          },
+          {
+            "end_line": 1145,
+            "line_span": 309,
+            "path": "tests/test_app_live_adapters.py",
+            "qualname": "test_startup_docs_graphics_helpers_delegate_dependencies",
+            "start_line": 832
+          },
+          {
+            "end_line": 326,
+            "line_span": 302,
+            "path": "src/sattlint/analyzers/_registry_spec_templates.py",
+            "qualname": "default_spec_templates",
+            "start_line": 25
+          },
+          {
+            "end_line": 376,
+            "line_span": 290,
+            "path": "src/sattlint/devtools/audit_orchestration.py",
+            "qualname": "audit_repository",
+            "start_line": 86
+          },
+          {
+            "end_line": 362,
+            "line_span": 284,
+            "path": "src/sattlint/devtools/audit/_repo_audit_strategy_registry.py",
+            "qualname": "build_repo_audit_finding_strategies",
+            "start_line": 78
+          },
+          {
+            "end_line": 381,
+            "line_span": 267,
+            "path": "src/sattlint/devtools/audit/_repo_audit_recommended_slice.py",
+            "qualname": "run_recommended_repo_audit_slice",
+            "start_line": 114
+          },
+          {
+            "end_line": 466,
+            "line_span": 263,
+            "path": "src/sattlint/devtools/structural/_structural_report_architecture.py",
+            "qualname": "collect_architecture_report",
+            "start_line": 188
+          },
+          {
+            "end_line": 304,
+            "line_span": 257,
+            "path": "src/sattlint/devtools/ai/_ai_work_map_freshness.py",
+            "qualname": "verify_ai_harness_freshness",
+            "start_line": 38
+          },
+          {
+            "end_line": 472,
+            "line_span": 251,
+            "path": "src/sattlint/utils/_comment_scanning.py",
+            "qualname": "scan_comments_with_code",
+            "start_line": 197
+          },
+          {
+            "end_line": 265,
+            "line_span": 239,
+            "path": "src/sattlint/_app_analysis_checks.py",
+            "qualname": "collect_run_checks_result",
+            "start_line": 21
+          }
+        ]
+      },
+      "detail": null,
+      "file": null,
+      "fingerprint": "structural-function-budget||||Some Python functions exceed the structural function budget and should be decomposed.",
+      "id": "structural-function-budget",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [],
+        "path": null,
+        "symbol": null
+      },
+      "message": "Some Python functions exceed the structural function budget and should be decomposed.",
+      "minimal_reproducer": null,
+      "owner_surface": "architecture",
+      "rule_id": "structural-function-budget",
+      "severity": "medium",
+      "source": "pipeline",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "architecture",
+      "artifact": "findings",
+      "category": "architecture",
+      "confidence": "high",
+      "data": {
+        "count": 1,
+        "over_budget_classes": [
+          {
+            "end_line": 1010,
+            "method_count": 60,
+            "path": "src/sattlint/_app_textual_setup.py",
+            "qualname": "_TextualSetupMixin",
+            "start_line": 934
+          }
+        ]
+      },
+      "detail": null,
+      "file": null,
+      "fingerprint": "structural-class-budget||||Some classes exceed the structural method-count budget and should be split by responsibility.",
+      "id": "structural-class-budget",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [],
+        "path": null,
+        "symbol": null
+      },
+      "message": "Some classes exceed the structural method-count budget and should be split by responsibility.",
+      "minimal_reproducer": null,
+      "owner_surface": "architecture",
+      "rule_id": "structural-class-budget",
+      "severity": "medium",
+      "source": "pipeline",
+      "suggested_next_command": null,
+      "suggestion": null
+    }
+  ],
   "kind": "sattlint.findings",
   "schema_version": 1
 }

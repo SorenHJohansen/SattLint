@@ -2,7 +2,6 @@
 """Tests for strict module-path local variable analysis."""
 
 import pytest
-
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -16,12 +15,14 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt, VarRef
+
 from sattlint import constants as const
 from sattlint.analyzers.variable_usage_reporting import report_module_localvar_fields
 
 
-def _varref(s: str) -> dict:
-    return {const.KEY_VAR_NAME: s}
+def _varref(s: str) -> VarRef:
+    return VarRef(name=s)
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -52,11 +53,7 @@ def test_module_localvar_strict_path_and_case_insensitive():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("Dv.AckText"),
-                            "Hello",
-                        )
+                        Assignment(target=_varref("Dv.AckText"), value="Hello"),
                     ],
                 )
             ]
@@ -127,11 +124,7 @@ def test_module_localvar_alias_prefix_uses_source_fields_only():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("control.Cmd"),
-                            "1",
-                        )
+                        Assignment(target=_varref("control.Cmd"), value="1"),
                     ],
                 )
             ]
@@ -222,15 +215,17 @@ def test_module_localvar_param_mapping_does_not_override_localvariable_same_name
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "InitVariable",
-                            [_varref("DV.Active"), _varref("InitVar"), _varref("si")],
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="InitVariable",
+                                args=(_varref("DV.Active"), _varref("InitVar"), _varref("si")),
+                            )
                         ),
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "CopyVariable",
-                            [_varref("DV.DefaultComm"), _varref("Inlet1.Destination"), _varref("si")],
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="CopyVariable",
+                                args=(_varref("DV.DefaultComm"), _varref("Inlet1.Destination"), _varref("si")),
+                            )
                         ),
                     ],
                 )

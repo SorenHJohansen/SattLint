@@ -14,10 +14,6 @@ from pathlib import Path
 from typing import Any, cast
 
 from sattlint.contracts import FindingCollection
-from sattlint.devtools import audit_core as _audit_core_module
-from sattlint.devtools import audit_orchestration as _audit_orchestration_module
-from sattlint.devtools import ledger as _ledger_module
-from sattlint.devtools import pipeline as pipeline_module
 from sattlint.devtools.ai import ai_gc as _ai_gc_module
 from sattlint.devtools.artifact_registry import (
     AUDIT_ARTIFACTS,
@@ -29,8 +25,12 @@ from sattlint.devtools.artifact_registry import (
 from sattlint.devtools.progress_reporting import ProgressReporter
 from sattlint.devtools.shared.pipeline_artifacts import write_json_artifact
 from sattlint.path_sanitizer import sanitize_path_for_report
-from sattlint.repo_paths import repo_root_from
+from sattlint.repo_paths import repo_root_from_optional
 
+from .. import audit_core as _audit_core_module
+from .. import audit_orchestration as _audit_orchestration_module
+from .. import ledger as _ledger_module
+from .. import pipeline as pipeline_module
 from . import _repo_audit_check_runners as _repo_audit_check_runners_module
 from . import repo_audit_cli as _repo_audit_cli_module
 from . import repo_audit_compat as _repo_audit_compat_module
@@ -60,7 +60,15 @@ run_check_my_changes = _repo_audit_entrypoints.run_check_my_changes
 run_recommended_repo_audit_finish_gate = _repo_audit_entrypoints.run_recommended_repo_audit_finish_gate
 run_recommended_repo_audit_slice = _repo_audit_entrypoints.run_recommended_repo_audit_slice
 
-REPO_ROOT = repo_root_from(Path(__file__))
+
+def _module_repo_root() -> Path:
+    r = repo_root_from_optional(Path(__file__))
+    if r is None:
+        return Path(__file__).resolve().parent
+    return r
+
+
+REPO_ROOT = _module_repo_root()
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "audit"
 PIPELINE_OUTPUT_DIRNAME = "pipeline"
 AUDIT_RUN_HISTORY_DIRNAME = _ledger_module.AUDIT_RUN_HISTORY_DIRNAME
@@ -137,8 +145,6 @@ _find_unused_config_keys = _repo_audit_check_runners_module._find_unused_config_
 _build_local_import_graph = _repo_audit_check_runners_module._build_local_import_graph
 _find_import_cycles = _repo_audit_check_runners_module._find_import_cycles
 run_local_ci_parity_check = _repo_audit_check_runners_module.run_local_ci_parity_check
-build_ratchet_policy_report = _repo_audit_check_runners_module.build_ratchet_policy_report
-_run_ratchet_policy_check = _repo_audit_check_runners_module._run_ratchet_policy_check
 
 
 _relative_path = _repo_audit_compat_module._relative_path

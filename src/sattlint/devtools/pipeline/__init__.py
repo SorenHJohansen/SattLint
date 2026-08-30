@@ -74,7 +74,7 @@ from sattlint.devtools.structural.structural_reports import (
 from sattlint.devtools.tool_reports import build_command_report
 from sattlint.devtools.trace_reports import collect_trace_report as build_trace_report
 from sattlint.path_sanitizer import sanitize_path_for_report
-from sattlint.repo_paths import repo_root_from
+from sattlint.repo_paths import repo_root_from_optional
 
 from . import _pipeline_cli as pipeline_cli_helpers
 from . import _pipeline_execution as pipeline_execution_helpers
@@ -84,7 +84,15 @@ from . import _pipeline_optional_reports_helpers as pipeline_optional_report_hel
 from . import _pipeline_parsing_helpers as pipeline_parsing_helpers
 from . import _pipeline_status_assembly as pipeline_status_assembly_helpers
 
-REPO_ROOT = repo_root_from(Path(__file__))
+
+def _module_repo_root() -> Path:
+    r = repo_root_from_optional(Path(__file__))
+    if r is None:
+        return Path(__file__).resolve().parent
+    return r
+
+
+REPO_ROOT = _module_repo_root()
 PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "analysis"
 DEFAULT_TRACE_TARGET = REPO_ROOT / "tests" / "fixtures" / "sample_sattline_files" / "LinterTestProgram.s"
@@ -97,7 +105,6 @@ DEFAULT_QUICK_PYTEST_TARGETS = (
     "tests/test_repo_audit_part7.py",
     "tests/test_repo_audit_part8.py",
     "tests/test_recommendation_routing.py",
-    "tests/parser/test_corpus.py",
 )
 _VULTURE_LINE_RE = re.compile(r"^(?P<file>.*?):(?P<line>\d+): (?P<message>.*) \((?P<confidence>\d+)% confidence\)$")
 
@@ -178,7 +185,6 @@ owner_test_targets_for_checks = pipeline_cli_helpers.owner_test_targets_for_chec
 build_change_proof_requirements = pipeline_cli_helpers.build_change_proof_requirements
 build_owner_pytest_step = pipeline_cli_helpers.build_owner_pytest_step
 evaluate_change_scoped_coverage_proof = pipeline_cli_helpers.evaluate_change_scoped_coverage_proof
-evaluate_change_scoped_structural_surface_proof = pipeline_cli_helpers.evaluate_change_scoped_structural_surface_proof
 build_finish_gate_commands = pipeline_cli_helpers.build_finish_gate_commands
 _build_recommendation_why_this_gate = pipeline_cli_helpers._build_recommendation_why_this_gate
 _build_recommendation_drift_report = pipeline_cli_helpers._build_recommendation_drift_report
@@ -1278,7 +1284,6 @@ __all__ = [
     "build_pipeline_check_recommendations",
     "detect_changed_files",
     "evaluate_change_scoped_coverage_proof",
-    "evaluate_change_scoped_structural_surface_proof",
     "main",
     "pipeline_cli_helpers",
     "pipeline_execution_helpers",

@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false
 from sattlint.graphics_validation import _parse_picture_display_row
 
 

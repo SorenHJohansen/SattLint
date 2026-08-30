@@ -13,9 +13,9 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattline_parser.models.expressions import VarRef
 
 from ..casefolding import casefold_key
-from ..grammar import constants as const
 from ..resolution.common import resolve_moduletype_def_strict, varname_base
 from ..resolution.scope import ScopeContext
 from .shared.variable_utils import matches_root_origin
@@ -125,10 +125,15 @@ class DependencyUsageScopeSupportMixin:
             target_name = varname_base(mapping.target)
             if not target_name:
                 continue
-            if isinstance(mapping.source, dict) and const.KEY_VAR_NAME in mapping.source:
-                full_source = mapping.source[const.KEY_VAR_NAME]
-            elif isinstance(mapping.source, str):
-                full_source = mapping.source
+            source = mapping.source
+            if source is None:
+                continue
+            if isinstance(source, VarRef):  # type: ignore[reportUnnecessaryIsInstance]
+                full_source = source.name
+            elif isinstance(source, str):  # type: ignore[reportUnnecessaryIsInstance]
+                full_source = source
+            elif isinstance(source, dict) and "var_name" in source:  # type: ignore[reportUnnecessaryIsInstance]
+                full_source = source["var_name"]
             else:
                 continue
             source_var, field_prefix, decl_path, decl_display_path = parent_context.resolve_variable(str(full_source))

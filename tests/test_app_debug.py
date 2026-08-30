@@ -7,8 +7,8 @@ from types import SimpleNamespace, TracebackType
 from typing import Any, cast
 
 import pytest
-
 from sattline_parser.models.ast_model import BasePicture
+
 from sattlint import _app_analysis_commands as app_analysis_commands
 from sattlint import app_analysis
 from sattlint._app_debug import log_debug_exception

@@ -48,7 +48,6 @@ def build_app_command_handlers(app_module: Any) -> CommandHandlers:
                 "validate_config": app_module.run_validate_config_command,
                 "analyze": app_module.run_analyze_command,
                 "simulate": app_module.run_simulate_command,
-                "docgen": app_module.run_docgen_command,
                 "cache_prune": app_module.run_cache_prune_command,
                 "telemetry_summary": app_module.run_telemetry_summary_command,
                 "format_icf": app_module.run_format_icf_command,

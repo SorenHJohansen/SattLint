@@ -12,6 +12,7 @@ from sattline_parser.models.ast_model import (
     Simple_DataType,
     Variable,
 )
+
 from sattlint import constants as const
 from sattlint.analyzers.registry import get_default_analyzers
 from sattlint.analyzers.taint_paths import analyze_taint_paths

@@ -5,7 +5,6 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -18,6 +17,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+
 from sattlint.analyzers.variables import VariableIssue
 from sattlint.analyzers.variables import _variables_submodules as variables_submodules_module
 

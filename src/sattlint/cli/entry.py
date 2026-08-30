@@ -16,6 +16,15 @@ from .._exit_codes import EXIT_SUCCESS, EXIT_USAGE_ERROR
 from ..cli_output import add_output_format_argument
 from ..config_types import ConfigDict
 from ..console import print_output
+from ..project import (
+    SLPROJ_FILENAME,
+    discover_project,
+    init_project,
+    project_status,
+)
+from ..project import (
+    load_project as _load_project,
+)
 
 _CONFIG_LOAD_EXCEPTIONS = (OSError, ValueError)
 
@@ -35,7 +44,6 @@ class CommandHandlers(TypedDict, total=False):
     validate_config: AppCommandFn
     analyze: AppCommandFn
     simulate: AppCommandFn
-    docgen: AppCommandFn
     cache_prune: AppCommandFn
     telemetry_summary: AppCommandFn
     format_icf: AppCommandFn
@@ -59,6 +67,7 @@ def _load_trace_module() -> Any:
 
 class _ParsedCliArgs(Protocol):
     config: str | None
+    project: str | None
     cache_dir: str | None
     no_cache: bool
     quiet: bool
@@ -66,6 +75,12 @@ class _ParsedCliArgs(Protocol):
     ui: str | None
     command: str | None
     file: str
+    dir: str
+    name: str
+    program_dir: str
+    abb_lib_dir: str
+    icf_dir: str
+    other_lib_dirs: list[str]
     checks: list[str]
     list_checks: bool
     issue_kinds: list[str]
@@ -123,6 +138,12 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"sattlint {version}")
     parser.add_argument("--config", default=None, metavar="PATH", help="Path to a SattLint config file")
+    parser.add_argument(
+        "--project",
+        default=None,
+        metavar="PATH",
+        help="Path to a .slproj project file (default: auto-discover from CWD)",
+    )
     parser.add_argument("--no-cache", action="store_true", dest="no_cache", help="Skip the AST cache")
     parser.add_argument("--quiet", action="store_true", help="Suppress stdout output")
     parser.add_argument("--debug", action="store_true", help="Enable debug output")
@@ -133,6 +154,27 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         help="Interactive UI mode to use when no subcommand is selected (Textual only)",
     )
     subparsers = parser.add_subparsers(dest="command")
+
+    init_parser = subparsers.add_parser(
+        "init",
+        help="Scaffold a new .slproj project file",
+        description="Create a new .slproj project file in the current or specified directory.",
+    )
+    init_parser.add_argument(
+        "--dir",
+        default=".",
+        help="Directory to create the project file in (default: current directory)",
+    )
+    init_parser.add_argument("--name", default=None, help="Optional project display name")
+    init_parser.add_argument("--program-dir", default="", help="Path to program source files (relative to project)")
+    init_parser.add_argument("--abb-lib-dir", default="", help="Path to ABB library files (relative to project)")
+    init_parser.add_argument("--icf-dir", default="", help="Path to ICF files (relative to project)")
+    init_parser.add_argument(
+        "--other-lib-dirs",
+        action="append",
+        default=[],
+        help="Additional library directories (repeatable, relative to project)",
+    )
 
     syntax_parser = subparsers.add_parser(
         "syntax-check",
@@ -159,6 +201,7 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         default=None,
         help="Optional cache directory to prune instead of the default SattLint cache location",
     )
+    add_output_format_argument(cache_prune_parser)
 
     analyze_parser = subparsers.add_parser(
         "analyze",
@@ -218,32 +261,11 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         help="Maximum number of scans to execute before stopping",
     )
     simulate_parser.add_argument(
-        "--format",
-        default="text",
-        choices=["text", "json"],
-        help="Output format",
-    )
-    simulate_parser.add_argument(
         "--output",
         default=None,
         help="Optional path to write the simulation output",
     )
-
-    docgen_parser = subparsers.add_parser(
-        "docgen",
-        help="Generate DOCX documentation",
-        description="Generate FS-style DOCX documentation for configured targets.",
-    )
-    docgen_parser.add_argument(
-        "--output-dir",
-        default=None,
-        help="Directory to write generated DOCX files into",
-    )
-    docgen_parser.add_argument(
-        "--output-path",
-        default=None,
-        help="Explicit DOCX file path for single-target generation",
-    )
+    add_output_format_argument(simulate_parser)
 
     format_icf_parser = subparsers.add_parser(
         "format-icf",
@@ -258,18 +280,14 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         action="store_true",
         help="Report whether configured .icf files would change without rewriting them.",
     )
+    add_output_format_argument(format_icf_parser)
 
     telemetry_summary_parser = subparsers.add_parser(
         "telemetry-summary",
         help="Summarize local app telemetry bottlenecks",
         description="Read local app telemetry and summarize slowest operations, stages, analyzers, and nested phases.",
     )
-    telemetry_summary_parser.add_argument(
-        "--format",
-        default="text",
-        choices=["text", "json"],
-        help="Output format",
-    )
+    add_output_format_argument(telemetry_summary_parser)
     telemetry_summary_parser.add_argument(
         "--output",
         default=None,
@@ -304,6 +322,34 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
     return parser
 
 
+def _resolve_config_and_project(
+    args: _ParsedCliArgs,
+    *,
+    default_config_path: Path,
+) -> tuple[Path | None, Path]:
+    """Resolve the effective project path and config path from CLI args.
+
+    Returns ``(project_path, config_path)``. When ``--project`` is given or
+    a ``.slproj`` is auto-discovered, *project_path* is set and *config_path*
+    falls back to the default. When ``--config`` is given explicitly,
+    *project_path* is ``None``.
+    """
+    explicit_config = getattr(args, "config", None)
+    explicit_project = getattr(args, "project", None)
+
+    if explicit_config:
+        return None, Path(explicit_config)
+
+    if explicit_project:
+        return Path(explicit_project).resolve(), default_config_path
+
+    discovered = discover_project()
+    if discovered is not None:
+        return discovered, default_config_path
+
+    return None, default_config_path
+
+
 def run_cli(  # noqa: PLR0915
     argv: list[str],
     *,
@@ -331,7 +377,6 @@ def run_cli(  # noqa: PLR0915
 
     args = cast(_ParsedCliArgs, parsed_namespace)
 
-    resolved_config_path = Path(args.config) if args.config else config_path
     use_cache = not args.no_cache
     quiet = args.quiet
     command = args.command
@@ -340,13 +385,47 @@ def run_cli(  # noqa: PLR0915
         print_output(f"sattlint: error: unrecognized arguments: {' '.join(leftover)}", file=sys.stderr)
         return exit_usage_error
 
+    # --- init command (short-circuits everything) ---
+    if command == "init":
+        target_dir = Path(getattr(args, "dir", ".")).resolve()
+        slproj_path = target_dir / SLPROJ_FILENAME
+        if slproj_path.exists():
+            print_output(f"Project already exists: {slproj_path}", file=sys.stderr)
+            return exit_usage_error
+        project = init_project(
+            slproj_path,
+            program_dir=getattr(args, "program_dir", ""),
+            ABB_lib_dir=getattr(args, "abb_lib_dir", ""),
+            icf_dir=getattr(args, "icf_dir", ""),
+            other_lib_dirs=getattr(args, "other_lib_dirs", None),
+        )
+        print_output(f"Created project: {slproj_path}")
+        print_output(project_status(project))
+        return exit_success
+
+    # --- resolve project / config source ---
+    project_path, resolved_config_path = _resolve_config_and_project(args, default_config_path=config_path)
+
+    active_project: object = None  # SattLineProject | None
+    project_config: ConfigDict | None = None
+
+    if project_path is not None:
+        try:
+            active_project = _load_project(project_path)
+            project_config = active_project.to_default_merged_config_dict()
+            if not args.quiet:
+                print_output(f"Using project: {project_status(active_project)}")
+        except (FileNotFoundError, ValueError) as exc:
+            print_output(f"ERROR [project] {exc}", file=sys.stderr)
+            return exit_usage_error
+
     if command == "syntax-check":
         syntax_check_handler = None if command_handlers is None else command_handlers.get("syntax_check")
         if syntax_check_handler is None:
             raise RuntimeError("syntax-check handler is required")
         context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
         with context:
-            if getattr(args, "format", "text") == "json":
+            if cli_output.resolve_output_format(args) == "json":
                 return syntax_check_handler(args.file, output_format="json")
             return syntax_check_handler(args.file)
 
@@ -427,7 +506,7 @@ def run_cli(  # noqa: PLR0915
             telemetry_summary_handler(
                 {},
                 config_path=resolved_config_path,
-                output_format=getattr(args, "format", "text"),
+                output_format=cli_output.resolve_output_format(args),
                 output_path=getattr(args, "output", None),
             ),
             fallback=exit_success,
@@ -438,35 +517,45 @@ def run_cli(  # noqa: PLR0915
         if cache_prune_handler is None:
             raise RuntimeError("cache-prune handler is required")
         return _exit_code(
-            cache_prune_handler(cache_dir=getattr(args, "cache_dir", None)),
+            cache_prune_handler(
+                cache_dir=getattr(args, "cache_dir", None),
+                output_format=cli_output.resolve_output_format(args),
+            ),
             fallback=exit_success,
         )
 
-    if command in ("validate-config", "analyze", "simulate", "docgen", "format-icf"):
+    if command in ("validate-config", "analyze", "simulate", "format-icf"):
         debug_requested = bool(getattr(args, "debug", False))
-        if load_config_fn is None or apply_debug_fn is None:
-            raise RuntimeError("CLI config handlers are required for this command")
-        try:
-            cfg, default_used = load_config_fn(resolved_config_path)
-        except _CONFIG_LOAD_EXCEPTIONS as exc:
-            print_output(f"ERROR [config] {exc}", file=sys.stderr)
-            if debug_requested:
-                traceback.print_exc(file=sys.stderr)
-            return exit_usage_error
+
+        if project_config is not None:
+            cfg = project_config
+            default_used = False
+        else:
+            if load_config_fn is None or apply_debug_fn is None:
+                raise RuntimeError("CLI config handlers are required for this command")
+            try:
+                cfg, default_used = load_config_fn(resolved_config_path)
+            except _CONFIG_LOAD_EXCEPTIONS as exc:
+                print_output(f"ERROR [config] {exc}", file=sys.stderr)
+                if debug_requested:
+                    traceback.print_exc(file=sys.stderr)
+                return exit_usage_error
         debug_requested = debug_requested or bool(cfg.get("debug", False))
         if getattr(args, "debug", False):
             cfg["debug"] = True
-        apply_debug_fn(cfg)
+        if apply_debug_fn is not None:
+            apply_debug_fn(cfg)
 
         if command == "validate-config":
             validate_config_handler = None if command_handlers is None else command_handlers.get("validate_config")
             if validate_config_handler is None:
                 raise RuntimeError("validate-config handler is required")
+            effective_config_path = project_path if project_path is not None else resolved_config_path
             validate_config_kwargs: dict[str, Any] = {
-                "config_path": resolved_config_path,
+                "config_path": effective_config_path,
                 "default_used": default_used,
             }
-            if getattr(args, "format", "text") == "json":
+            if cli_output.resolve_output_format(args) == "json":
                 validate_config_kwargs["output_format"] = "json"
             return _exit_code(validate_config_handler(cfg, **validate_config_kwargs), fallback=exit_success)
 
@@ -498,23 +587,9 @@ def run_cli(  # noqa: PLR0915
                     module_name=args.module,
                     mode=args.mode,
                     max_scans=args.max_scans,
-                    output_format=args.format,
+                    output_format=cli_output.resolve_output_format(args),
                     output_path=args.output,
                     use_cache=use_cache,
-                ),
-                fallback=exit_success,
-            )
-
-        if command == "docgen":
-            docgen_handler = None if command_handlers is None else command_handlers.get("docgen")
-            if docgen_handler is None:
-                raise RuntimeError("docgen handler is required")
-            return _exit_code(
-                docgen_handler(
-                    cfg,
-                    use_cache=use_cache,
-                    output_dir=getattr(args, "output_dir", None),
-                    output_path=getattr(args, "output_path", None),
                 ),
                 fallback=exit_success,
             )
@@ -522,7 +597,14 @@ def run_cli(  # noqa: PLR0915
         format_icf_handler = None if command_handlers is None else command_handlers.get("format_icf")
         if format_icf_handler is None:
             raise RuntimeError("format-icf handler is required")
-        return _exit_code(format_icf_handler(cfg, check=args.check), fallback=exit_success)
+        return _exit_code(
+            format_icf_handler(
+                cfg,
+                check=args.check,
+                output_format=cli_output.resolve_output_format(args),
+            ),
+            fallback=exit_success,
+        )
 
     parser.print_usage(sys.stderr)
     return exit_usage_error

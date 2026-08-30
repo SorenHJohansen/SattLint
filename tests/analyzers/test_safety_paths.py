@@ -12,6 +12,7 @@ from sattline_parser.models.ast_model import (
     Simple_DataType,
     Variable,
 )
+
 from sattlint import constants as const
 from sattlint.analyzers import safety_paths as safety_paths_module
 from sattlint.analyzers.framework import Issue

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any, ClassVar, Protocol, cast
 
 from sattline_parser.models.ast_model import ParameterMapping, Simple_DataType, Variable
+from sattline_parser.models.expressions import VarRef
 
 from ..._validation_type_helpers import (
     assignment_type_matches as _assignment_type_matches,
@@ -147,6 +148,8 @@ class MinMaxValidator:
     _MAX_NAME_TOKENS: ClassVar[set[str]] = {"max", "maximum"}
 
     def _mapping_name_text(self, value: Any) -> str | None:
+        if isinstance(value, VarRef):
+            return value.name or None
         if isinstance(value, dict) and const.KEY_VAR_NAME in value:
             name = cast(dict[str, object], value).get(const.KEY_VAR_NAME)
             return name if isinstance(name, str) else None

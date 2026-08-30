@@ -13,6 +13,7 @@ from sattline_parser.models.ast_model import (
     SFCTransitionSub,
     Variable,
 )
+from sattline_parser.models.expressions import IfStmt
 
 from ...grammar import constants as const
 from ...reporting.variables_report import IssueKind, VariableIssue
@@ -116,6 +117,60 @@ def scan_stmt_for_latching(
                 issues,
                 seen,
                 site=site,
+                sequence_name=sequence_name,
+            )
+        return
+    if isinstance(obj, IfStmt):
+        branch_states: list[tuple[str, list[BooleanPathState]]] = []
+        for index, (_condition, branch_statements) in enumerate(obj.branches or []):
+            label = "IF" if index == 0 else f"ELSIF:{index}"
+            states = collect_boolean_stmt_block_paths(
+                list(branch_statements) or [],
+                env,
+                [BooleanPathState()],
+            )
+            branch_states.append((label, states or [BooleanPathState()]))
+            scan_stmt_block_for_latching(
+                list(branch_statements) or [],
+                env,
+                path,
+                issues,
+                seen,
+                site=f"{site} > {label}",
+                sequence_name=sequence_name,
+            )
+        else_states = (
+            collect_boolean_stmt_block_paths(list(obj.else_block) or [], env, [BooleanPathState()])
+            if obj.else_block
+            else [BooleanPathState()]
+        )
+        if obj.else_block:
+            scan_stmt_block_for_latching(
+                list(obj.else_block) or [],
+                env,
+                path,
+                issues,
+                seen,
+                site=f"{site} > ELSE",
+                sequence_name=sequence_name,
+            )
+
+        for label, states in branch_states:
+            alternative_states = [
+                alternative_state
+                for other_label, other_states in branch_states
+                if other_label != label
+                for alternative_state in other_states
+            ]
+            alternative_states.extend(else_states)
+            emit_branch_latch_issues(
+                states,
+                alternative_states or [BooleanPathState()],
+                path,
+                issues,
+                seen,
+                site=f"{site} > {label}",
+                role_prefix="implicit latch across alternative paths",
                 sequence_name=sequence_name,
             )
         return

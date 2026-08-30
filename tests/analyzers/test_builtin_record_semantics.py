@@ -2,9 +2,9 @@
 """Tests for builtin record read/write semantics."""
 
 import pytest
-
 from sattline_parser.models.ast_model import (
     BasePicture,
+    CodeItem,
     DataType,
     Equation,
     ModuleCode,
@@ -13,7 +13,8 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
-from sattlint import constants as const
+from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt, VarRef
+
 from sattlint.analyzers.variables import VariablesAnalyzer
 from sattlint.reporting.variables_report import IssueKind
 
@@ -22,11 +23,11 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(s: str) -> dict[str, str]:
-    return {const.KEY_VAR_NAME: s}
+def _varref(s: str) -> VarRef:
+    return VarRef(name=s)
 
 
-def _eq(code: list[object]) -> Equation:
+def _eq(code: list[CodeItem]) -> Equation:
     return Equation(
         name="E1",
         position=(0.0, 0.0),
@@ -60,10 +61,11 @@ def test_copyvariable_marks_all_leaf_fields_read_and_written():
             equations=[
                 _eq(
                     [
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "CopyVariable",
-                            [_varref("Src"), _varref("Dst"), _varref("Status")],
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="CopyVariable",
+                                args=(_varref("Src"), _varref("Dst"), _varref("Status")),
+                            )
                         )
                     ]
                 )
@@ -134,14 +136,11 @@ def test_copyvarnosort_expands_nested_prefix_fields():
             equations=[
                 _eq(
                     [
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "CopyVarNoSort",
-                            [
-                                _varref("OuterSrc.Inner"),
-                                _varref("OuterDst.Inner"),
-                                _varref("Status"),
-                            ],
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="CopyVarNoSort",
+                                args=(_varref("OuterSrc.Inner"), _varref("OuterDst.Inner"), _varref("Status")),
+                            )
                         )
                     ]
                 )
@@ -198,10 +197,9 @@ def test_partial_record_usage_reports_unused_leaf_fields():
             equations=[
                 _eq(
                     [
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("Rec.A"),
-                            1,
+                        Assignment(
+                            target=_varref("Rec.A"),
+                            value=1,
                         )
                     ]
                 )
@@ -259,10 +257,9 @@ def test_whole_record_access_does_not_report_unused_leaf_fields():
             equations=[
                 _eq(
                     [
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("Dst"),
-                            _varref("Src"),
+                        Assignment(
+                            target=_varref("Dst"),
+                            value=_varref("Src"),
                         )
                     ]
                 )
@@ -311,10 +308,11 @@ def test_copyvariable_fails_loudly_on_unknown_field_prefix():
             equations=[
                 _eq(
                     [
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "CopyVariable",
-                            [_varref("Src.Nope"), _varref("Dst"), _varref("Status")],
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="CopyVariable",
+                                args=(_varref("Src.Nope"), _varref("Dst"), _varref("Status")),
+                            )
                         )
                     ]
                 )
@@ -352,10 +350,11 @@ def test_copyvariable_allows_opaque_builtin_record_type():
             equations=[
                 _eq(
                     [
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "CopyVariable",
-                            [_varref("Random"), _varref("Random2")],
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="CopyVariable",
+                                args=(_varref("Random"), _varref("Random2")),
+                            )
                         )
                     ]
                 )
@@ -406,13 +405,24 @@ def test_array_builtins_bind_record_element_contracts_and_mark_whole_record_acce
             equations=[
                 _eq(
                     [
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "CreateArray",
-                            [_varref("Arr"), 1, 2, _varref("Seed"), _varref("Status")],
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="CreateArray",
+                                args=(_varref("Arr"), 1, 2, _varref("Seed"), _varref("Status")),
+                            )
                         ),
-                        (const.KEY_FUNCTION_CALL, "GetArray", [_varref("Arr"), 1, _varref("Out"), _varref("Status")]),
-                        (const.KEY_FUNCTION_CALL, "PutArray", [_varref("Arr"), 2, _varref("Seed"), _varref("Status")]),
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="GetArray",
+                                args=(_varref("Arr"), 1, _varref("Out"), _varref("Status")),
+                            )
+                        ),
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="PutArray",
+                                args=(_varref("Arr"), 2, _varref("Seed"), _varref("Status")),
+                            )
+                        ),
                     ]
                 )
             ]
@@ -459,12 +469,18 @@ def test_getarray_reports_dynamic_array_contract_mismatch_for_incompatible_targe
             equations=[
                 _eq(
                     [
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "CreateArray",
-                            [_varref("Arr"), 1, 2, _varref("Seed"), _varref("Status")],
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="CreateArray",
+                                args=(_varref("Arr"), 1, 2, _varref("Seed"), _varref("Status")),
+                            )
                         ),
-                        (const.KEY_FUNCTION_CALL, "GetArray", [_varref("Arr"), 1, _varref("Out"), _varref("Status")]),
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="GetArray",
+                                args=(_varref("Arr"), 1, _varref("Out"), _varref("Status")),
+                            )
+                        ),
                     ]
                 )
             ]

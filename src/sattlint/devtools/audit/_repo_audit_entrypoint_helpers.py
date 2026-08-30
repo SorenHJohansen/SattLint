@@ -193,7 +193,7 @@ _print_cli_summary = _render_cli_summary
 
 
 def _default_corpus_manifest_dir() -> Path | None:
-    from sattlint.devtools import pipeline as pipeline_module  # noqa: PLC0415
+    from .. import pipeline as pipeline_module  # noqa: PLC0415
 
     manifest_dir = pipeline_module.DEFAULT_CORPUS_MANIFEST_DIR.resolve()
     if not manifest_dir.exists():

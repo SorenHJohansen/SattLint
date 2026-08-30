@@ -143,7 +143,7 @@ class _SfcStepContractCollector(VariablesAnalyzer):
             context,
             module_path,
             state=set(),
-            sequence_name=sequence.name,
+            sequence_name=sequence.name or "",
         )
 
     def _walk_sequence_nodes(
@@ -247,7 +247,7 @@ class _SfcStepContractCollector(VariablesAnalyzer):
         *,
         sequence_name: str,
     ) -> set[CanonicalPath]:
-        contract = self._step_contracts.get(step.name.casefold())
+        contract = self._step_contracts.get((step.name or "").casefold())
 
         base = f"STEP:{step.name}"
         phase_writes: dict[str, set[CanonicalPath]] = {

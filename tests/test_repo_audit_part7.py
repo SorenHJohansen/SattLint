@@ -1,5 +1,4 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
-# ruff: noqa: F403, F405
 from sattlint.devtools.ai import ai_gc
 
 from ._repo_audit_test_support import *

@@ -11,9 +11,17 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from sattlint.repo_paths import repo_root_from
+from sattlint.repo_paths import repo_root_from_optional
 
-REPO_ROOT = repo_root_from(Path(__file__))
+
+def _module_repo_root() -> Path:
+    r = repo_root_from_optional(Path(__file__))
+    if r is None:
+        return Path(__file__).resolve().parent
+    return r
+
+
+REPO_ROOT = _module_repo_root()
 
 
 @dataclass(slots=True)
@@ -131,6 +139,8 @@ def _detect_changed_files(*, repo_root: Path = REPO_ROOT) -> list[str]:
     changed_files: set[str] = set()
     for raw_line in completed.stdout.splitlines():
         if len(raw_line) < 4:
+            continue
+        if "D" in raw_line[:2]:
             continue
         path_text = raw_line[3:].strip()
         if not path_text:
