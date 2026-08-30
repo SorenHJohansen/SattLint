@@ -25,6 +25,7 @@ from ._app_textual_shared import (
     _TEXTUAL_SELECTION_LIST,
     _TEXTUAL_STATIC,
     _TEXTUAL_VERTICAL,
+    APP_SHELL_BINDINGS,
     InteractionRequest,
     _query_required,
     _TextualOutput,
@@ -670,9 +671,7 @@ def _refresh_view(self: Any) -> None:
 
 
 def _show_keyboard_shortcuts(self: Any) -> None:
-    from ._app_textual_app import SattLintTextualApp  # noqa: PLC0415
-
-    bindings = SattLintTextualApp.BINDINGS
+    bindings = APP_SHELL_BINDINGS
     lines: list[str] = ["Keyboard Shortcuts", "=" * 18, ""]
     for key, _action_name, description in bindings:
         lines.append(f"  {key:20s}  {description}")

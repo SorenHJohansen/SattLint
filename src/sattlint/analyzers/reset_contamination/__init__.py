@@ -255,10 +255,10 @@ class ResetContaminationAnalyzer(BasePictureAnalyzer):
                 )
 
     @staticmethod
-    def _collect_var_refs(modulecode: ModuleCode) -> set[str]:
+    def _collect_var_refs(modulecode: ModuleCode) -> set[str]:  # noqa: PLR0915
         refs: set[str] = set()
 
-        def visit(obj: Any) -> None:
+        def visit(obj: Any) -> None:  # noqa: PLR0915
             if obj is None:
                 return
             if isinstance(obj, VarRef):
@@ -357,7 +357,7 @@ class ResetContaminationAnalyzer(BasePictureAnalyzer):
         return refs
 
     @staticmethod
-    def _collect_reset_old_vars(modulecode: ModuleCode, reset_ref_cf: str) -> set[str]:
+    def _collect_reset_old_vars(modulecode: ModuleCode, reset_ref_cf: str) -> set[str]:  # noqa: PLR0915
         reset_old_vars: set[str] = set()
 
         def visit(obj: Any) -> None:

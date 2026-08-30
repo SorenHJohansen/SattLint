@@ -13,7 +13,6 @@ Canonical first-check command source for SattLint maintainer surfaces.
   `python scripts/run_repo_python.py -m pytest --no-cov tests/test_app_menus.py tests/test_app_analysis_part*.py tests/test_cli.py -x -q --tb=short`
 - Documentation generation or classification behavior:
   `python scripts/run_repo_python.py -m pytest --no-cov tests/test_docgen_part*.py -x -q --tb=short`
-  add `tests/test_app_docgen.py` or `tests/test_app_menus.py` when docgen entry points changed.
 - Repo audit or devtools pipeline:
   `python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile quick --output-dir artifacts/audit`
   or focused pytest such as `tests/test_repo_audit_part*.py` or `tests/test_pipeline_run.py` when that is narrower.

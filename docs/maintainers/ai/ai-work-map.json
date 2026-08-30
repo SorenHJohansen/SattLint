@@ -776,13 +776,9 @@
     },
     {
       "commands": [
-        "python scripts/run_repo_python.py -m pytest --no-cov tests/test_docgen_part*.py -x -q --tb=short",
-        "tests/test_app_docgen.py",
-        "tests/test_app_menus.py"
+        "python scripts/run_repo_python.py -m pytest --no-cov tests/test_docgen_part*.py -x -q --tb=short"
       ],
-      "notes": [
-        "add  or  when docgen entry points changed."
-      ],
+      "notes": [],
       "surface": "Documentation generation or classification behavior"
     },
     {

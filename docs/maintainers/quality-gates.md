@@ -27,7 +27,7 @@ This file defines the layered operating contract so single-chat assistant work a
 ## Per-File Debt Ledger
 
 `artifacts/analysis/file_debt_ratchet.json` is the snapshot ledger of known per-file debt for repo-maintenance work.
-The file-debt ratchet policy engine is retired; this ledger is informational and reflects debt authorities that no longer block touches.
+The file-debt ratchet policy engine has been retired; this ledger is informational and reflects debt authorities that no longer block touches.
 
 ## Pre-Commit Gate
 
@@ -60,8 +60,8 @@ Use this before pushing when you want the same full-repo audit burden that CI ex
 
 For long-running quick or full audit snapshots, use the staged runner instead of writing directly into a reused `*-current` directory:
 
-- `python scripts/run_repo_python.py -m sattlint.devtools.repo_audit_runs --final-output-dir artifacts/audit-quick-current --keep-history artifacts/audit-history --profile quick`
-- `python scripts/run_repo_python.py -m sattlint.devtools.repo_audit_runs --final-output-dir artifacts/audit-full-current --keep-history artifacts/audit-history --profile full`
+- `python scripts/run_repo_python.py -m sattlint.devtools.audit.repo_audit_runs --final-output-dir artifacts/audit-quick-current --keep-history artifacts/audit-history --profile quick`
+- `python scripts/run_repo_python.py -m sattlint.devtools.audit.repo_audit_runs --final-output-dir artifacts/audit-full-current --keep-history artifacts/audit-history --profile full`
 
 When a repo-owned Python command needs reliable post-run capture instead of shell redirection, `scripts/run_repo_python.py` also supports an opt-in artifact mode via environment variables:
 

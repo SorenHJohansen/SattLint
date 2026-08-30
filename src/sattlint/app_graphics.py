@@ -4,7 +4,6 @@ import json
 import logging
 from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 from sattline_parser.models.ast_model import BasePicture
@@ -16,6 +15,9 @@ from . import graphics_rules as graphics_rules_module
 from ._app_debug import log_debug_exception
 from .app_interaction import MenuInteraction
 from .config_types import ConfigDict
+from .devtools.structural._structural_report_graphics import (  # noqa: F401
+    collect_graphics_layout_entries_for_target,
+)
 from .models.project_graph import ProjectGraph
 
 log = logging.getLogger("SattLint")
@@ -301,30 +303,6 @@ def prompt_graphics_rule_definition_with_config(
         required_prompt_validation_error=RequiredPromptValidationError,
         interaction=interaction,
     )
-
-
-def collect_graphics_layout_entries_for_target(
-    target_name: str,
-    project_bp: BasePicture,
-    graph: ProjectGraph,
-) -> list[dict[str, Any]]:
-    from .devtools.structural import structural_reports as structural_reports_module  # noqa: PLC0415
-
-    synthetic_entry_file = Path.cwd() / f"{target_name}.s"
-    snapshot = SimpleNamespace(
-        entry_file=synthetic_entry_file,
-        base_picture=project_bp,
-        project_graph=graph,
-    )
-    discovery = SimpleNamespace(
-        program_files=(synthetic_entry_file,),
-        dependency_files=(),
-    )
-    report = structural_reports_module.collect_graphics_layout_report(
-        workspace_root=Path.cwd(),
-        graph_inputs=(discovery, [snapshot], []),
-    )
-    return list(report.get("entries", []))
 
 
 def graphics_rules_menu(

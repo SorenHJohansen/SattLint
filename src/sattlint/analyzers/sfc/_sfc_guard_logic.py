@@ -219,7 +219,7 @@ def _normalize_compare_guard(left: object, operator: str, right: object) -> obje
 
 
 def _normalize_guard_signature(expr: object) -> object:
-    from sattline_parser.models.expressions import BoolOp, NotOp, VarRef
+    from sattline_parser.models.expressions import BoolOp, NotOp, VarRef  # noqa: PLC0415
 
     if getattr(expr, "data", None) == const.KEY_STATEMENT:
         children = getattr(expr, "children", None)

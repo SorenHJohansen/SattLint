@@ -55,7 +55,7 @@ flowchart LR
 - `src/sattlint/editor_api.py` is the public editor-facing compatibility facade.
 - `src/sattlint/core/` owns the semantic helpers behind that facade.
 - `src/sattlint/` owns CLI flows, analyzers, reporting, and configuration.
-- `sattline-parser` (external dependency) owns the SattLine grammar, parse tree transformation, and AST models.
+- `sattline-parser` (external dependency, `sattline-parser>=2026.8.1`) owns the SattLine grammar, parse tree transformation, and AST models.
 
 ## Operational Layer
 

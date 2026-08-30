@@ -10,7 +10,7 @@ Use it before widening into subsystem docs.
 | `sattline-parser` (external) | Parser grammar, AST, transformer, strict syntax behavior | `sattlint syntax-check` or targeted parser pytest |
 | `src/sattlint/` | CLI flows, analyzers, reporting, config, and shared app orchestration | Targeted owner pytest, then Ruff and Pyright |
 | `src/sattlint/editor_api.py` | Public editor-facing compatibility facade over `src/sattlint/core/semantic.py` | `tests/test_editor_api.py`, then targeted semantic pytest |
-| `src/sattlint/core/` | Shared semantic and document helpers behind the editor facade | Targeted semantic pytest |
+| `src/sattlint/core/` | Shared semantic and document helpers behind the editor facade; workspace discovery, symbol lookup, snapshots | Targeted semantic pytest |
 | `src/sattlint/devtools/` | Repo audit, pipeline, health reports, structural reports | Targeted devtools pytest, then `sattlint-repo-audit --check-my-changes` |
 | `tests/` | Owner suites and regression proofs | Narrow pytest slice first |
 | `.github/` | CI and scoped instructions | Diagnostics or config validation, then workflow run if needed |

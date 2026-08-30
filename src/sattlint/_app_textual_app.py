@@ -20,6 +20,7 @@ from ._app_textual_shared import (
     _TEXTUAL_LIST_VIEW,
     _TEXTUAL_STATIC,
     _TEXTUAL_VERTICAL,
+    APP_SHELL_BINDINGS,
     DEFAULT_SHELL_TITLE,
     MENU_DEFINITIONS,
     TEXTUAL_SHELL_CSS,
@@ -231,21 +232,7 @@ if _TEXTUAL_APP is not None:
 
         TITLE = DEFAULT_SHELL_TITLE
 
-        BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
-            ("ctrl+1", "show_analyze", "Analyze"),
-            ("ctrl+3", "show_tools", "Tools"),
-            ("ctrl+4", "show_setup", "Setup"),
-            ("slash", "prompt_view_filter", "Filter"),
-            ("question_mark", "show_help", "Help"),
-            ("ctrl+h", "show_help", "Help"),
-            ("ctrl+c", "copy_output", "Copy Output"),
-            ("ctrl+g", "cancel_running_analysis", "Cancel Analysis"),
-            ("ctrl+l", "clear_output", "Clear Output"),
-            ("ctrl+q", "quit_shell", "Quit"),
-            ("ctrl+s", "save_config", "Save Config"),
-            ("tab", "focus_next_control", "Next"),
-            ("shift+tab", "focus_previous_control", "Prev"),
-        ]
+        BINDINGS: ClassVar[list[tuple[str, str, str]]] = APP_SHELL_BINDINGS
 
         _VIEW_REGISTRY: ClassVar[dict[str, _ShellViewState]] = _DEFAULT_VIEW_REGISTRY
         _VIEW_ACTIONS: ClassVar[dict[str, str]] = {

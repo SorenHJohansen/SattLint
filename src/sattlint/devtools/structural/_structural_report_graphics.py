@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
@@ -395,9 +396,32 @@ def collect_graphics_layout_report(
     )
 
 
+def collect_graphics_layout_entries_for_target(
+    target_name: str,
+    project_bp: BasePicture,
+    graph: Any,
+) -> list[dict[str, Any]]:
+    synthetic_entry_file = Path.cwd() / f"{target_name}.s"
+    snapshot = SimpleNamespace(
+        entry_file=synthetic_entry_file,
+        base_picture=project_bp,
+        project_graph=graph,
+    )
+    discovery = SimpleNamespace(
+        program_files=(synthetic_entry_file,),
+        dependency_files=(),
+    )
+    report = collect_graphics_layout_report(
+        workspace_root=Path.cwd(),
+        graph_inputs=(discovery, [snapshot], []),
+    )
+    return list(report.get("entries", []))
+
+
 __all__ = [
     "accumulate_graphics_layout_snapshot",
     "build_graphics_layout_report",
+    "collect_graphics_layout_entries_for_target",
     "collect_graphics_layout_report",
     "graphics_field_value",
     "graphics_layout_entry",

@@ -13,6 +13,22 @@ from typing import Any, cast
 from .app_interaction import MenuInteraction
 from .config_types import ConfigDict
 
+APP_SHELL_BINDINGS: list[tuple[str, str, str]] = [
+    ("ctrl+1", "show_analyze", "Analyze"),
+    ("ctrl+3", "show_tools", "Tools"),
+    ("ctrl+4", "show_setup", "Setup"),
+    ("slash", "prompt_view_filter", "Filter"),
+    ("question_mark", "show_help", "Help"),
+    ("ctrl+h", "show_help", "Help"),
+    ("ctrl+c", "copy_output", "Copy Output"),
+    ("ctrl+g", "cancel_running_analysis", "Cancel Analysis"),
+    ("ctrl+l", "clear_output", "Clear Output"),
+    ("ctrl+q", "quit_shell", "Quit"),
+    ("ctrl+s", "save_config", "Save Config"),
+    ("tab", "focus_next_control", "Next"),
+    ("shift+tab", "focus_previous_control", "Prev"),
+]
+
 _SessionOutputLog: type[Any] | None = None
 _TEXTUAL_COLOR_SYSTEM_ENV = "TEXTUAL_COLOR_SYSTEM"
 
