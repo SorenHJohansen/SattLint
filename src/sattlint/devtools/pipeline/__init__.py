@@ -74,7 +74,7 @@ from sattlint.devtools.structural.structural_reports import (
 from sattlint.devtools.tool_reports import build_command_report
 from sattlint.devtools.trace_reports import collect_trace_report as build_trace_report
 from sattlint.path_sanitizer import sanitize_path_for_report
-from sattlint.repo_paths import repo_root_from
+from sattlint.repo_paths import repo_root_from_optional
 
 from . import _pipeline_cli as pipeline_cli_helpers
 from . import _pipeline_execution as pipeline_execution_helpers
@@ -84,7 +84,15 @@ from . import _pipeline_optional_reports_helpers as pipeline_optional_report_hel
 from . import _pipeline_parsing_helpers as pipeline_parsing_helpers
 from . import _pipeline_status_assembly as pipeline_status_assembly_helpers
 
-REPO_ROOT = repo_root_from(Path(__file__))
+
+def _module_repo_root() -> Path:
+    r = repo_root_from_optional(Path(__file__))
+    if r is None:
+        return Path(__file__).resolve().parent
+    return r
+
+
+REPO_ROOT = _module_repo_root()
 PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "analysis"
 DEFAULT_TRACE_TARGET = REPO_ROOT / "tests" / "fixtures" / "sample_sattline_files" / "LinterTestProgram.s"

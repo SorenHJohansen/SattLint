@@ -3,9 +3,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from sattlint.repo_paths import repo_root_from
+from sattlint.repo_paths import repo_root_from_optional
 
-REPO_ROOT = repo_root_from(Path(__file__))
+
+def _module_repo_root() -> Path:
+    r = repo_root_from_optional(Path(__file__))
+    if r is None:
+        return Path(__file__).resolve().parent
+    return r
+
+
+REPO_ROOT = _module_repo_root()
 VALIDATION_MAP_PATH = REPO_ROOT / "docs" / "maintainers" / "validation-map.md"
 ACTIVE_EXEC_PLANS_DIR = REPO_ROOT / "docs" / "exec-plans" / "active"
 COMPLETED_EXEC_PLANS_DIR = REPO_ROOT / "docs" / "exec-plans" / "completed"

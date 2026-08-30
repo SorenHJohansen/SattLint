@@ -17,7 +17,7 @@ from unittest.mock import patch
 
 from sattlint import app as app_module
 from sattlint.devtools.ai import ai_gc as _ai_gc_module
-from sattlint.repo_paths import repo_root_from
+from sattlint.repo_paths import repo_root_from_optional
 
 from .. import artifact_registry as _artifact_registry_module
 from .. import audit_core as _audit_core_module
@@ -28,7 +28,15 @@ from .. import ledger as _ledger_module
 from . import _repo_audit_reporting as _reporting_module
 from . import repo_audit_shared as _shared
 
-REPO_ROOT = repo_root_from(Path(__file__))
+
+def _module_repo_root() -> Path:
+    r = repo_root_from_optional(Path(__file__))
+    if r is None:
+        return Path(__file__).resolve().parent
+    return r
+
+
+REPO_ROOT = _module_repo_root()
 AUDIT_RUN_HISTORY_FILENAME = _artifact_registry_module.AUDIT_RUN_HISTORY_FILENAME
 CLI_CONSISTENCY_FILENAME = _artifact_registry_module.CLI_CONSISTENCY_FILENAME
 AUDIT_RUN_HISTORY_DIRNAME = _ledger_module.AUDIT_RUN_HISTORY_DIRNAME

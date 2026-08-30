@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from sattlint import config as config_module
-from sattlint.repo_paths import repo_root_from
+from sattlint.repo_paths import repo_root_from_optional
 
 from .. import ai_work_map as _ai_work_map_module
 from .. import audit_core as _audit_core_module
@@ -22,7 +22,15 @@ from .. import layer_linter as _layer_linter_module
 from . import repo_audit_compat as _repo_audit_compat_module
 from . import repo_audit_shared as _repo_audit_shared_module
 
-REPO_ROOT = repo_root_from(Path(__file__))
+
+def _module_repo_root() -> Path:
+    r = repo_root_from_optional(Path(__file__))
+    if r is None:
+        return Path(__file__).resolve().parent
+    return r
+
+
+REPO_ROOT = _module_repo_root()
 LOCAL_CI_PARITY_LINE_FINDING_IDS = _repo_audit_shared_module.LOCAL_CI_PARITY_LINE_FINDING_IDS
 OVERSIZED_MODULE_LINE_LIMIT = _repo_audit_shared_module.OVERSIZED_MODULE_LINE_LIMIT
 HARNESS_FRESHNESS_DOC_SCANNERS = _repo_audit_shared_module.HARNESS_FRESHNESS_DOC_SCANNERS

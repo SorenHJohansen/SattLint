@@ -12,7 +12,7 @@ from typing import Any, cast
 
 from sattlint import cli_output
 
-from ..repo_paths import repo_root_from
+from ..repo_paths import repo_root_from_optional
 from .artifact_registry import LAYER_LINT_POLICY_FILENAME, POLICY_KIND, POLICY_SCHEMA_VERSION
 
 # Define the layers based on SattLint architecture from AGENTS.md and docs/public/architecture.md
@@ -37,7 +37,15 @@ LAYER_MAP = {
     "sattlint.devtools": 9,
 }
 
-REPO_ROOT = repo_root_from(Path(__file__))
+
+def _module_repo_root() -> Path:
+    r = repo_root_from_optional(Path(__file__))
+    if r is None:
+        return Path(__file__).resolve().parent
+    return r
+
+
+REPO_ROOT = _module_repo_root()
 POLICY_PATH = REPO_ROOT / "metrics" / LAYER_LINT_POLICY_FILENAME
 
 # Allowed dependencies: a layer can depend on same layer or lower layers (lower number)

@@ -72,7 +72,7 @@ These modules are only used by `sattlint-analysis-pipeline` or by other devtools
 
 Delete gitignored regenerable directories to free disk space:
 
-```
+```bash
 rm -rf artifacts/audit/ artifacts/analysis/ htmlcov/ build/ dist/ .pytest_cache/ .ruff_cache/ coverage.xml
 ```
 

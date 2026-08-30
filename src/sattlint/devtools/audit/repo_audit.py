@@ -25,7 +25,7 @@ from sattlint.devtools.artifact_registry import (
 from sattlint.devtools.progress_reporting import ProgressReporter
 from sattlint.devtools.shared.pipeline_artifacts import write_json_artifact
 from sattlint.path_sanitizer import sanitize_path_for_report
-from sattlint.repo_paths import repo_root_from
+from sattlint.repo_paths import repo_root_from_optional
 
 from .. import audit_core as _audit_core_module
 from .. import audit_orchestration as _audit_orchestration_module
@@ -60,7 +60,15 @@ run_check_my_changes = _repo_audit_entrypoints.run_check_my_changes
 run_recommended_repo_audit_finish_gate = _repo_audit_entrypoints.run_recommended_repo_audit_finish_gate
 run_recommended_repo_audit_slice = _repo_audit_entrypoints.run_recommended_repo_audit_slice
 
-REPO_ROOT = repo_root_from(Path(__file__))
+
+def _module_repo_root() -> Path:
+    r = repo_root_from_optional(Path(__file__))
+    if r is None:
+        return Path(__file__).resolve().parent
+    return r
+
+
+REPO_ROOT = _module_repo_root()
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "audit"
 PIPELINE_OUTPUT_DIRNAME = "pipeline"
 AUDIT_RUN_HISTORY_DIRNAME = _ledger_module.AUDIT_RUN_HISTORY_DIRNAME

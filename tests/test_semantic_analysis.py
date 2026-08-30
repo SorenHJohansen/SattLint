@@ -376,8 +376,8 @@ def test_build_source_snapshot_from_basepicture_exercises_full_semantic_pipeline
                                 FuncCallStmt(
                                     call=FuncCall(
                                         name="CopyVariable",
-                                        args=tuple(
-                                            [_varref("MappedInput"), _varref("TypedOutput"), _varref("TypedStatus")]
+                                        args=(
+                                            _varref("MappedInput"), _varref("TypedOutput"), _varref("TypedStatus")
                                         ),
                                     )
                                 ),
@@ -442,8 +442,8 @@ def test_build_source_snapshot_from_basepicture_exercises_full_semantic_pipeline
                                 FuncCallStmt(
                                     call=FuncCall(
                                         name="CopyVariable",
-                                        args=tuple(
-                                            [_varref("Input"), _varref("SingleOutput"), _varref("SingleStatus")]
+                                        args=(
+                                            _varref("Input"), _varref("SingleOutput"), _varref("SingleStatus")
                                         ),
                                     )
                                 ),
