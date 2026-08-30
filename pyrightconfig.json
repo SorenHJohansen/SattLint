@@ -1,6 +1,0 @@
-[tool.pyright]
-ignore = [
-    "app_graphics.py:19",  # Import "collect_graphics_layout_entries_for_target" is not accessed
-    "tests/test_reset_contamination_ratchet_helpers.py:159",  # Type assignment error
-    "tests/test_reset_contamination_ratchet_helpers.py:162",  # Type assignment error
-]
