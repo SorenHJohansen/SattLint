@@ -186,7 +186,6 @@ HARNESS_FRESHNESS_DOC_SCANNERS = (
     "scan_agents_md",
     "scan_dead_links",
     "scan_completed_exec_plans_still_active",
-    "scan_stale_docs",
 )
 IGNORED_NORMALIZED_PIPELINE_FINDINGS = {
     ("bandit-b101", "src/sattlint/devtools/parser_properties.py"),

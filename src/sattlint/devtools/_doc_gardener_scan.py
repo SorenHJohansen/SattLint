@@ -16,20 +16,6 @@ def relative_path(path: Path, *, repo_root: Path) -> str:
         return path.as_posix()
 
 
-def _doc_git_log_path(path: Path, *, repo_root: Path, rel_path: Path) -> Path:
-    """Return the repo-relative git-log path for a doc, resolving symlinks to their tracked target.
-
-    Symlinked docs otherwise keep the timestamp of the symlink commit instead of the
-    content file, which makes recently updated target files appear permanently stale.
-    """
-    if not path.is_symlink():
-        return rel_path
-    try:
-        return path.resolve(strict=False).relative_to(repo_root)
-    except ValueError:
-        return rel_path
-
-
 def should_skip_path(path: Path) -> bool:
     return any(part.startswith(".venv") or part == "__pycache__" for part in path.parts)
 
@@ -481,11 +467,7 @@ def scan_stale_docs(
 
         md_files = list(docs_dir.rglob("*.md")) + list(docs_dir.rglob("*.txt"))
         for doc in md_files:
-            rel_path = _doc_git_log_path(
-                doc,
-                repo_root=docs_dir.parent,
-                rel_path=doc.relative_to(docs_dir.parent),
-            )
+            rel_path = doc.relative_to(docs_dir.parent)
             doc_result = run_repo_cli_fn("git", ["log", "-1", "--format=%ct", "--", str(rel_path)])
             if doc_result.returncode == 0 and doc_result.stdout.strip():
                 try:
