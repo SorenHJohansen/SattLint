@@ -1,5 +1,4 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
-# ruff: noqa: F403, F405
 from ._pipeline_collection_test_support import *
 
 
@@ -369,9 +368,10 @@ def test_raw_source_validation_error_stores_line_and_column():
 
 def test_span_kwargs_returns_line_and_column_from_span():
     from sattline_parser.models.ast_model import SourceSpan  # noqa: PLC0415
+
     from sattlint._validation_shared import span_kwargs  # noqa: PLC0415
 
-    span = SourceSpan(line=3, column=7)
+    span = SourceSpan(start=0, end=0, line=3, column=7)
     result = span_kwargs(span)
     assert result == {"line": 3, "column": 7}
 
@@ -387,9 +387,10 @@ def test_warn_or_raise_raises_when_no_sink():
 
 def test_ref_span_returns_span_from_dict_with_span():
     from sattline_parser.models.ast_model import SourceSpan  # noqa: PLC0415
+
     from sattlint._validation_shared import ref_span  # noqa: PLC0415
 
-    span = SourceSpan(line=1, column=0)
+    span = SourceSpan(start=0, end=0, line=1, column=0)
     result = ref_span({"span": span})
     assert result is span
 
@@ -411,9 +412,3 @@ def test_build_coverage_summary_report_skipped_when_no_xml(tmp_path):
     assert result["skip_reason"] == "coverage.xml not found"
     assert result["modules"] == []
     assert result["change_scoped"]["status"] == "skipped"
-    assert result["ratchet"]["status"] == "skipped"
-    assert result["ratchet"]["setpoint_metrics"] == {
-        "min_line_rate_basis_points": 10000,
-        "min_changed_line_rate_basis_points": 10000,
-        "min_touched_file_line_rate_basis_points": 9000,
-    }

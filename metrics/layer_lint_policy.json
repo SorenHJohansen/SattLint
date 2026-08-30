@@ -4,21 +4,16 @@
   "forbidden_imports": {
     "sattline_parser": {
       "cannot_import": [
-        "sattlint.devtools",
-        "sattlint_lsp",
-        "vscode"
+        "sattlint.devtools"
       ]
     },
     "sattlint.core": {
       "cannot_import": [
-        "sattlint.devtools",
-        "vscode"
+        "sattlint.devtools"
       ]
     },
     "sattlint": {
-      "cannot_import": [
-        "vscode"
-      ]
+      "cannot_import": []
     }
   }
 }

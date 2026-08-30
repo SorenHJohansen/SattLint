@@ -2,7 +2,6 @@ import logging
 from typing import Any, cast
 
 import pytest
-
 from sattline_parser.models.ast_model import (
     BasePicture,
     Equation,
@@ -13,7 +12,8 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
-from sattlint import constants as const
+from sattline_parser.models.expressions import Assignment, VarRef
+
 from sattlint.analyzers.modules import (
     CodeDiff,
     ComparisonResult,
@@ -31,8 +31,8 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict[str, str]:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
 def test_version_drift_detects_small_code_delta_between_same_named_modules() -> None:
@@ -49,7 +49,7 @@ def test_version_drift_detects_small_code_delta_between_same_named_modules() -> 
                     name="Logic",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Output"), 1)],
+                    code=[Assignment(target=_varref("Output"), value=1)],
                 )
             ],
             sequences=[],
@@ -69,7 +69,7 @@ def test_version_drift_detects_small_code_delta_between_same_named_modules() -> 
                     name="Logic",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Output"), 2)],
+                    code=[Assignment(target=_varref("Output"), value=2)],
                 )
             ],
             sequences=[],
@@ -157,7 +157,7 @@ def test_version_drift_ignores_datecode_only_differences() -> None:
                     name="Logic",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Output"), 1)],
+                    code=[Assignment(target=_varref("Output"), value=1)],
                 )
             ],
             sequences=[],
@@ -177,7 +177,7 @@ def test_version_drift_ignores_datecode_only_differences() -> None:
                     name="Logic",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Output"), 1)],
+                    code=[Assignment(target=_varref("Output"), value=1)],
                 )
             ],
             sequences=[],
@@ -215,7 +215,7 @@ def test_module_comparison_summary_lists_variant_differences() -> None:
                     name="MainEq",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("OnlyA"), IntLiteral(1))],
+                    code=[Assignment(target=_varref("OnlyA"), value=IntLiteral(1))],
                 )
             ]
         ),
@@ -233,7 +233,7 @@ def test_module_comparison_summary_lists_variant_differences() -> None:
                     name="OtherEq",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("OnlyB"), IntLiteral(2))],
+                    code=[Assignment(target=_varref("OnlyB"), value=IntLiteral(2))],
                 )
             ]
         ),

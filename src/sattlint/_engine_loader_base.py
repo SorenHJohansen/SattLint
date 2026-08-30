@@ -68,6 +68,10 @@ def ensure_local_validation(
     )
 
 
+def mark_local_validation(basepic: BasePicture) -> BasePicture:
+    return _mark_local_validation(basepic)
+
+
 def record_missing_library(
     graph: ProjectGraph,
     *,
@@ -141,7 +145,6 @@ class SattLineProjectLoaderBase(DebugMixin):
         self.other_lib_dirs = list(config.other_lib_dirs)
         self.abb_lib_dir = config.abb_lib_dir
         self.mode = config.mode
-        self.scan_root_only = config.scan_root_only
         self.debug = config.debug
         self.contextual_lookup = selected_runtime.contextual_lookup
         self.use_file_ast_cache = config.use_file_ast_cache

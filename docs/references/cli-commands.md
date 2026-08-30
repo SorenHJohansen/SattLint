@@ -47,12 +47,12 @@ sattlint validate-config
 sattlint --config path/to/config.toml validate-config
 ```
 
-**docgen**  -  Generate Word documentation:
+**trace**  -  Trace parser and analyzer execution for one source file:
 
 ```bash
-sattlint docgen --output-dir docs-out
-sattlint docgen --output-path docs-out/Main_FS.docx
-sattlint --config path/to/config.toml docgen --output-dir docs-out
+sattlint trace path/to/Program.s
+sattlint trace path/to/Program.s --output trace.json   # Write trace JSON instead of stdout
+sattlint trace path/to/Program.s --debug               # Include parser debug events
 ```
 
 **format-icf**  -  Format Industrial Control Format:
@@ -86,23 +86,6 @@ sattlint --config path/to/config.toml [subcommand]
 sattlint --quiet [subcommand]
 sattlint --no-cache [subcommand]
 ```
-
-### sattlint-lsp
-
-Language Server Protocol (LSP) server for SattLine support in editors like VS Code.
-
-```bash
-sattlint-lsp
-```
-
-Used by the VS Code extension (`vscode/sattline-vscode/`) to provide:
-
-- Syntax diagnostics
-- Code completion
-- Definition lookup
-- References
-- Hover information
-- Workspace symbol resolution
 
 ---
 
@@ -183,7 +166,7 @@ python scripts/run_ai_edit_gate.py path/to/file.py [path/to/other-file]
 ```
 
 This is the same runner invoked by `.github/hooks/ai-edit-gate.json` after AI file edits.
-It enforces touched-file Ruff fix and format, touched-file Pyright, AI-control checks such as `context_health.py --check`, and touched-file ratchet policy through `scripts/check_ratchet_policy.py`.
+It enforces touched-file Ruff fix and format, touched-file Pyright, and AI-control checks such as `context_health.py --check`.
 
 AI drift gate:
 
@@ -191,7 +174,7 @@ AI drift gate:
 sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit
 ```
 
-Use the AI drift gate for the heavier current-slice proof burden: focused owner tests, touched-file Ruff and Pyright, ratchet policy, and the recommended repo-audit slice for the current change set.
+Use the AI drift gate for the heavier current-slice proof burden: focused owner tests, touched-file Ruff and Pyright, and the recommended repo-audit slice for the current change set.
 It also evaluates changed-file structural surface proof against the recorded `import_max_count`, `dependency_max_count`, `public_symbol_max_count`, and `nesting_max_depth` ceilings.
 
 Local pre-push or CI gate:
@@ -225,10 +208,10 @@ Requirement:
 
 ### sattlint-structural-ratchet
 
-Run only the structural budget ratchet check without the rest of the repository audit pipeline.
+Run only the structural budget report check without the rest of the repository audit pipeline.
 
 ```bash
-# Fast structural-ratchet check against the checked-in baseline
+# Fast structural budget check against the checked-in baseline
 sattlint-structural-ratchet
 
 # Machine-readable status for scripting
@@ -238,8 +221,8 @@ sattlint-structural-ratchet --json
 Used to:
 
 - Verify whether structural budget regressions exist before running the full repo audit
-- Inspect the checked-in ratchet status and regressions quickly during local edits
-- Override the repo root or ratchet file when debugging with `--repo-root` or `--ratchet-path`
+- Inspect the checked-in structural budget status and regressions quickly during local edits
+- Override the repo root or baseline file when debugging with `--repo-root` or `--ratchet-path`
 
 Trigger conditions:
 
@@ -248,8 +231,8 @@ Trigger conditions:
 
 Exit code:
 
-- `0` when the ratchet passes
-- `1` when the ratchet is missing, invalid, or regressed
+- `0` when the structural budget check passes
+- `1` when the baseline is missing, invalid, or regressed
 
 ---
 
@@ -433,7 +416,7 @@ pip install -e .         # For development
 pip install -e ".[dev]"  # With all dev tools
 ```
 
-Console scripts are declared in `pyproject.toml` and automatically added to `PATH` during installation.
+Console scripts are declared in `pyproject.toml` and automatically added to `PATH` during installation. Requires Python 3.13+ and the `sattline-parser` package (installed automatically as a dependency).
 
 ---
 

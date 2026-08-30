@@ -1,16 +1,14 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false, reportAttributeAccessIssue=false
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false, reportAttributeAccessIssue=false, reportPrivateUsage=false
 
 """Tests for app analysis project loading and AST cache behavior."""
 
 import json
 import logging
-import pickle
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -20,6 +18,8 @@ from sattline_parser.models.ast_model import (
     Simple_DataType,
     Variable,
 )
+
+import sattlint.cache as cache_mod
 from sattlint import app_analysis
 from sattlint import constants as const
 from sattlint.analyzers.variables import IssueKind, analyze_variables
@@ -69,7 +69,6 @@ def test_load_project_returns_cached_project_without_building_loader(monkeypatch
             "other_lib_dirs": [],
             "ABB_lib_dir": "abb",
             "mode": "draft",
-            "scan_root_only": True,
             "debug": False,
             "analyzed_programs_and_libraries": ["TargetA"],
         },
@@ -137,7 +136,6 @@ def test_load_project_rebuilds_when_cached_project_is_invalid(monkeypatch):
             "other_lib_dirs": [],
             "ABB_lib_dir": "abb",
             "mode": "draft",
-            "scan_root_only": True,
             "debug": False,
             "analyzed_programs_and_libraries": ["TargetA"],
         },
@@ -275,8 +273,7 @@ def test_analysis_report_cache_rejects_legacy_payload(tmp_path):
         "files": {str(source_path): (stat_result.st_mtime_ns, stat_result.st_size)},
     }
 
-    with (report_cache.cache_dir / f"{key}.pickle").open("wb") as f:
-        pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
+    cache_mod._save_pickle_payload(report_cache.cache_dir / f"{key}.pickle", payload)
 
     loaded = report_cache.load(key)
 
@@ -350,7 +347,6 @@ def test_load_project_ast_only_refresh_skips_project_merge_and_save(monkeypatch)
             "other_lib_dirs": [],
             "ABB_lib_dir": "abb",
             "mode": "draft",
-            "scan_root_only": True,
             "debug": False,
             "analyzed_programs_and_libraries": ["TargetA"],
         },
@@ -454,7 +450,6 @@ def test_load_project_saves_full_mode_file_family_in_cache_manifest(
             "other_lib_dirs": [],
             "ABB_lib_dir": str(abb_dir),
             "mode": mode,
-            "scan_root_only": False,
             "debug": False,
             "analyzed_programs_and_libraries": ["TargetA"],
         },
@@ -540,7 +535,6 @@ def test_load_project_raises_target_load_error_when_root_program_missing(monkeyp
                 "other_lib_dirs": ["libs"],
                 "ABB_lib_dir": "abb",
                 "mode": "draft",
-                "scan_root_only": False,
                 "debug": True,
                 "analyzed_programs_and_libraries": ["TargetA"],
             },
@@ -580,7 +574,6 @@ def test_load_program_ast_raises_when_program_was_not_parsed(monkeypatch):
                 "other_lib_dirs": [],
                 "ABB_lib_dir": "abb",
                 "mode": "draft",
-                "scan_root_only": True,
                 "debug": False,
             },
             "TargetA",
@@ -675,7 +668,6 @@ def test_load_project_library_target_includes_configured_reverse_consumers(monke
             "other_lib_dirs": ["ProjectLib"],
             "ABB_lib_dir": "abb",
             "mode": "draft",
-            "scan_root_only": False,
             "debug": False,
             "analyzed_programs_and_libraries": ["LibraryTarget", "ConsumerTarget", "OtherTarget"],
         },
@@ -762,7 +754,6 @@ def test_load_project_library_target_includes_workspace_reverse_consumers(monkey
             "other_lib_dirs": [str(project_lib_dir)],
             "ABB_lib_dir": str(tmp_path / "abb"),
             "mode": "draft",
-            "scan_root_only": False,
             "debug": False,
             "analyzed_programs_and_libraries": ["LibraryTarget"],
         },
@@ -907,7 +898,6 @@ def test_load_project_library_target_workspace_program_usage_suppresses_unused_d
             "other_lib_dirs": [str(project_lib_dir)],
             "ABB_lib_dir": str(tmp_path / "abb"),
             "mode": "draft",
-            "scan_root_only": False,
             "debug": False,
             "analyzed_programs_and_libraries": ["LibraryTarget"],
         },
@@ -1142,7 +1132,7 @@ def test_ensure_ast_cache_handles_valid_fast_path_rebuilds_and_failures(monkeypa
         def has_cache_artifact(self, key):
             return key == "key:Fresh"
 
-    def fake_load_project(_cfg, target_name=None, use_cache=True, use_file_ast_cache=True):
+    def fake_load_project(_cfg, target_name=None, use_cache=True, use_file_ast_cache=True, **kwargs):
         resolved_target = target_name or ""
         load_calls.append(resolved_target)
         if target_name == "Broken":
@@ -1286,3 +1276,96 @@ def test_ensure_ast_cache_rebuilds_when_has_cache_artifact_fails(monkeypatch):
     assert artifact_check_calls == ["key:Ok"]
     assert rebuild_calls == ["Ok"]
     assert any("AST cache stale; rebuilding" in line for line in lines)
+
+
+LIBRARY_WITH_UNUSED_SOURCE = """
+"Syntax version 2.23, date: 2026-04-23-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-04-23-12:00:00.000, name: MyLib"
+
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION MyModule_ 1
+
+LOCALVARIABLES
+    UsedLocal: integer := 0;
+    UnusedLocal: integer := 0;
+
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        UsedLocal = 1;
+ENDDEF (*BasePicture*);
+"""
+
+DEP_SOURCE = """
+"Syntax version 2.23, date: 2026-04-23-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-04-23-12:00:00.000, name: DepA"
+
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DepModule_ 1
+
+LOCALVARIABLES
+    DepLocal: integer := 0;
+
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        DepLocal = 1;
+ENDDEF (*BasePicture*);
+"""
+
+
+def test_load_project_library_target_resolves_origin_and_finds_unused(tmp_path):
+    program_dir = tmp_path / "programs"
+    lib_dir = tmp_path / "projectlib"
+    abb_dir = tmp_path / "abb_lib"
+    program_dir.mkdir(parents=True, exist_ok=True)
+    lib_dir.mkdir(parents=True, exist_ok=True)
+    abb_dir.mkdir(parents=True, exist_ok=True)
+
+    target_name = "MyLib"
+    target_file = lib_dir / f"{target_name}.s"
+    dep_file = lib_dir / f"{target_name}.l"
+    dep_src_file = lib_dir / "DepA.s"
+    dep_dep_file = lib_dir / "DepA.l"
+
+    target_file.write_text(LIBRARY_WITH_UNUSED_SOURCE, encoding="utf-8")
+    dep_file.write_text("DepA\n", encoding="utf-8")
+    dep_src_file.write_text(DEP_SOURCE, encoding="utf-8")
+    dep_dep_file.write_text("", encoding="utf-8")
+
+    cfg = {
+        "program_dir": str(program_dir),
+        "ABB_lib_dir": str(abb_dir),
+        "other_lib_dirs": [str(lib_dir)],
+        "analyzed_programs_and_libraries": [target_name],
+        "mode": "draft",
+        "use_cache": False,
+        "debug": False,
+    }
+
+    project_bp, graph = app_analysis.load_project(
+        cfg,
+        use_cache=False,
+        get_cache_dir_fn=lambda: tmp_path / "cache-dir",
+    )
+
+    assert getattr(project_bp, "origin_file", None) == f"{target_name}.s"
+    assert getattr(project_bp, "origin_lib", None) == "projectlib"
+    assert target_name in graph.ast_by_name
+    assert "DepA" in graph.ast_by_name
+
+    report = analyze_variables(
+        project_bp,
+        config=cfg,
+        debug=False,
+        unavailable_libraries=set(),
+        analyzed_target_is_library=True,
+        selected_issue_kinds={IssueKind.UNUSED},
+    )
+
+    unused_names = {v.name for issue in report.unused for v in [issue.variable] if v is not None}
+    assert "UnusedLocal" in unused_names, f"Expected UnusedLocal in unused variables, got: {unused_names}"
+    assert "UsedLocal" not in unused_names
+    assert "DepLocal" not in unused_names

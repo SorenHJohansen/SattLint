@@ -1,33 +1,58 @@
 """Cache helpers for parsed ASTs and file manifests."""
+# pyright: reportUnusedFunction=false
 
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
-import pickle  # nosec B403 - trusted local cache files only
+import pickle
+import secrets
 import shutil
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TypedDict, cast
+from typing import TypedDict, cast
 
+from ._cache_classes import AnalysisReportCache, ASTCache, FileASTCache, FileLookupCache
+from ._cache_manager import (
+    CacheManager,
+    build_analysis_report_cache,
+    build_ast_cache,
+    get_cache_manager,
+    prune_cache_dir,
+)
 from ._config_defaults import PROJECT_CACHE_CONFIG_KEYS
+
+__all__ = [
+    "ANALYSIS_REPORT_CACHE_VERSION",
+    "CACHE_VERSION",
+    "LOOKUP_CACHE_VERSION",
+    "ASTCache",
+    "AnalysisReportCache",
+    "CacheManager",
+    "CachePruneResult",
+    "FileASTCache",
+    "FileLookupCache",
+    "build_analysis_report_cache",
+    "build_ast_cache",
+    "get_cache_dir",
+    "get_cache_manager",
+    "prune_cache_dir",
+]
 
 CACHE_VERSION = 15  # Bump when cached AST semantics or attached graphics companion record shapes change.
 ANALYSIS_REPORT_CACHE_VERSION = 3
 LOOKUP_CACHE_VERSION = 1
-DEFAULT_LOOKUP_CACHE_FLUSH_INTERVAL = 25
+_PICKLE_CACHE_MAGIC = b"SATTLINT-PICKLE-V1\n"
+_PICKLE_HMAC_KEY_NAME = ".pickle-hmac-key"
+_PICKLE_HMAC_SIZE = 32
 
 
 class _FileLookupEntry(TypedDict):
     base_dir: str
     ext: str
-
-
-class _FileLookupCacheData(TypedDict):
-    version: int
-    entries: dict[str, _FileLookupEntry]
 
 
 @dataclass(frozen=True)
@@ -163,10 +188,108 @@ def _validate_manifest(files: object) -> bool:
 
 def _load_pickle_payload(path: Path) -> object | None:
     try:
-        with path.open("rb") as handle:
-            return pickle.load(handle)  # nosec B301 - loading SattLint-owned local cache files only
-    except (OSError, pickle.UnpicklingError, TypeError, AttributeError, EOFError, ModuleNotFoundError):
+        payload_bytes = path.read_bytes()
+    except OSError:
         return None
+
+    signature, pickled_payload = _read_signed_pickle_envelope(payload_bytes)
+    if signature is None:
+        return None
+
+    key = _load_or_create_pickle_hmac_key(path.parent)
+    if key is None:
+        return None
+
+    expected_signature = hmac.new(key, pickled_payload, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(signature, expected_signature):
+        return None
+
+    try:
+        return pickle.loads(pickled_payload)
+    except (pickle.UnpicklingError, TypeError, AttributeError, EOFError, ModuleNotFoundError, ValueError):
+        return None
+
+
+def _pickle_hmac_key_path(directory: Path) -> Path:
+    return directory / _PICKLE_HMAC_KEY_NAME
+
+
+def _load_or_create_pickle_hmac_key(directory: Path) -> bytes | None:
+    key_path = _pickle_hmac_key_path(directory)
+    existing_key = _read_pickle_hmac_key(key_path)
+    if existing_key is not None:
+        return existing_key
+    if key_path.exists() and not _remove_file(key_path):
+        return None
+
+    directory.mkdir(parents=True, exist_ok=True)
+    key = secrets.token_bytes(_PICKLE_HMAC_SIZE)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    try:
+        fd = os.open(key_path, flags, 0o600)
+    except FileExistsError:
+        return _read_pickle_hmac_key(key_path)
+    except OSError:
+        return None
+
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(key)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except OSError:
+        _remove_file(key_path)
+        return None
+
+    return key
+
+
+def _read_pickle_hmac_key(path: Path) -> bytes | None:
+    try:
+        key = path.read_bytes()
+    except OSError:
+        return None
+    if len(key) != _PICKLE_HMAC_SIZE:
+        return None
+    return key
+
+
+def _read_signed_pickle_envelope(payload_bytes: bytes) -> tuple[str | None, bytes]:
+    if not payload_bytes.startswith(_PICKLE_CACHE_MAGIC):
+        return None, b""
+
+    remainder = payload_bytes[len(_PICKLE_CACHE_MAGIC) :]
+    signature, separator, pickled_payload = remainder.partition(b"\n")
+    if separator != b"\n" or len(signature) != hashlib.sha256().digest_size * 2:
+        return None, b""
+
+    try:
+        return signature.decode("ascii"), pickled_payload
+    except UnicodeDecodeError:
+        return None, b""
+
+
+def _save_pickle_payload(path: Path, payload: object) -> None:
+    key = _load_or_create_pickle_hmac_key(path.parent)
+    if key is None:
+        raise OSError(f"Could not create pickle HMAC key for {path.parent}")
+
+    pickled_payload = pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL)
+    signature = hmac.new(key, pickled_payload, hashlib.sha256).hexdigest().encode("ascii")
+    temp_path = path.with_name(f"{path.name}.tmp")
+
+    try:
+        with temp_path.open("wb") as handle:
+            handle.write(_PICKLE_CACHE_MAGIC)
+            handle.write(signature)
+            handle.write(b"\n")
+            handle.write(pickled_payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+    except OSError:
+        _remove_file(temp_path)
+        raise
 
 
 def _remove_file(path: Path) -> bool:
@@ -252,207 +375,6 @@ def _normalize_lookup_base_dir(base_dir: Path) -> str:
     return str(_normalize_cache_dir(base_dir))
 
 
-class FileLookupCache:
-    def __init__(
-        self,
-        cache_dir: Path,
-        *,
-        flush_interval: int | None = DEFAULT_LOOKUP_CACHE_FLUSH_INTERVAL,
-        write_through: bool = False,
-    ):
-        if flush_interval is not None and flush_interval <= 0:
-            raise ValueError("flush_interval must be positive or None")
-        self.cache_dir = cache_dir
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.path = self.cache_dir / "file_lookup_cache.json"
-        self._flush_interval = flush_interval
-        self._write_through = write_through
-        self._pending_mutations = 0
-        self._data: _FileLookupCacheData = {"version": LOOKUP_CACHE_VERSION, "entries": {}}
-        self._dirty = False
-        self._startup_pruned_entries = self.prune_stale_entries()
-        self._load()
-
-    def _load(self) -> None:
-        if not self.path.exists():
-            return
-        try:
-            with self.path.open("r", encoding="utf-8") as f:
-                loaded = json.load(f)
-            data = _as_mapping(loaded)
-            if data is None or data.get("version") != LOOKUP_CACHE_VERSION:
-                return
-            entries = _load_file_lookup_entries(data.get("entries"))
-            if entries is not None:
-                self._data = {"version": LOOKUP_CACHE_VERSION, "entries": entries}
-        except (OSError, json.JSONDecodeError):
-            return
-
-    def prune_stale_entries(self) -> int:
-        if not self.path.exists():
-            return 0
-        try:
-            with self.path.open("r", encoding="utf-8") as handle:
-                loaded = json.load(handle)
-        except (OSError, json.JSONDecodeError):
-            return 1 if _remove_file(self.path) else 0
-
-        data = _as_mapping(loaded)
-        if data is None or data.get("version") != LOOKUP_CACHE_VERSION:
-            return 1 if _remove_file(self.path) else 0
-        return 0
-
-    def drain_startup_pruned_entries(self) -> int:
-        removed = self._startup_pruned_entries
-        self._startup_pruned_entries = 0
-        return removed
-
-    def _save(self) -> None:
-        payload = {
-            "version": LOOKUP_CACHE_VERSION,
-            "entries": self._data.get("entries", {}),
-        }
-        temp_path = self.path.with_name(f"{self.path.name}.tmp")
-        with temp_path.open("w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=True, indent=2, sort_keys=True)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(temp_path, self.path)
-
-    def _record_mutation(self) -> None:
-        self._dirty = True
-        self._pending_mutations += 1
-        should_flush = self._write_through or (
-            self._flush_interval is not None and self._pending_mutations >= self._flush_interval
-        )
-        if should_flush:
-            self.flush()
-
-    def _key(self, kind: str, name: str, mode: str) -> str:
-        return f"{kind}:{mode}:{name.casefold()}"
-
-    def get(self, kind: str, name: str, mode: str) -> dict[str, str] | None:
-        key = self._key(kind, name, mode)
-        entries = cast(object, self._data.get("entries"))
-        if not isinstance(entries, dict):
-            return None
-        entry = _as_file_lookup_entry(cast(dict[str, object], entries).get(key))
-        if entry is None:
-            return None
-        return {"base_dir": entry["base_dir"], "ext": entry["ext"]}
-
-    def set(self, kind: str, name: str, mode: str, base_dir: Path, ext: str) -> None:
-        key = self._key(kind, name, mode)
-        entries = cast(object, self._data.setdefault("entries", {}))
-        if not isinstance(entries, dict):
-            return
-        entry_map = cast(dict[str, _FileLookupEntry], entries)
-        payload: _FileLookupEntry = {
-            "base_dir": _normalize_lookup_base_dir(base_dir),
-            "ext": ext,
-        }
-        if entry_map.get(key) == payload:
-            return
-        entry_map[key] = payload
-        self._record_mutation()
-
-    def forget(self, kind: str, name: str, mode: str) -> None:
-        key = self._key(kind, name, mode)
-        entries = cast(object, self._data.get("entries"))
-        if not isinstance(entries, dict):
-            return
-        entry_map = cast(dict[str, _FileLookupEntry], entries)
-        if key in entry_map:
-            entry_map.pop(key, None)
-            self._record_mutation()
-
-    def flush(self) -> None:
-        if not self._dirty:
-            return
-        self._save()
-        self._dirty = False
-        self._pending_mutations = 0
-
-
-class FileASTCache:
-    def __init__(self, cache_dir: Path):
-        self.cache_dir = cache_dir / "file_ast"
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self._startup_pruned_entries = self.prune_stale_entries()
-
-    def _stat(self, code_path: Path) -> os.stat_result | None:
-        return _safe_stat(code_path)
-
-    def _key(self, code_path: Path, mode: str) -> str:
-        h = hashlib.sha256()
-        h.update(str(code_path).encode("utf-8", errors="ignore"))
-        h.update(mode.encode("utf-8", errors="ignore"))
-        return h.hexdigest()
-
-    def _path(self, code_path: Path, mode: str) -> Path:
-        return self.cache_dir / f"{self._key(code_path, mode)}.pickle"
-
-    def load(self, code_path: Path, mode: str) -> object | None:
-        p = self._path(code_path, mode)
-        if not p.exists():
-            return None
-        payload = _load_pickle_payload(p)
-        if payload is None:
-            return None
-
-        payload_map = _as_mapping(payload)
-        if payload_map is None or payload_map.get("version") != CACHE_VERSION:
-            return None
-        meta = _as_mapping(payload_map.get("meta"))
-        if meta is None:
-            return None
-        if meta.get("path") != str(code_path):
-            return None
-        if meta.get("mode") != mode:
-            return None
-        if not _matches_stat_snapshot(
-            code_path,
-            mtime_ns=meta.get("mtime_ns"),
-            size=meta.get("size"),
-        ):
-            return None
-
-        return payload_map.get("ast")
-
-    def prune_stale_entries(self) -> int:
-        removed = 0
-        for path in self.cache_dir.glob("*.pickle"):
-            payload = _load_pickle_payload(path)
-            payload_map = _as_mapping(payload)
-            if payload_map is not None and payload_map.get("version") == CACHE_VERSION:
-                continue
-            if _remove_file(path):
-                removed += 1
-        return removed
-
-    def drain_startup_pruned_entries(self) -> int:
-        removed = self._startup_pruned_entries
-        self._startup_pruned_entries = 0
-        return removed
-
-    def save(self, code_path: Path, mode: str, ast: object) -> None:
-        st = self._stat(code_path)
-        if st is None:
-            return
-        payload: dict[str, object] = {
-            "version": CACHE_VERSION,
-            "meta": {
-                "path": str(code_path),
-                "mode": mode,
-                "mtime_ns": st.st_mtime_ns,
-                "size": st.st_size,
-            },
-            "ast": ast,
-        }
-        with self._path(code_path, mode).open("wb") as f:
-            pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
-
-
 PROJECT_CACHE_SCHEMA_VERSION = "2026-06-11-project-graph-root-origin-schema"
 ANALYSIS_REPORT_CACHE_SCHEMA_VERSION = "2026-06-04-string-literal-mismatch-threshold"
 
@@ -478,432 +400,3 @@ def compute_analysis_report_cache_key(project_cache_key: str, analyzer_key: str)
     h.update(project_cache_key.encode("utf-8", errors="ignore"))
     h.update(analyzer_key.encode("utf-8", errors="ignore"))
     return h.hexdigest()
-
-
-class ASTCache:
-    def __init__(self, cache_dir: Path):
-        self.cache_dir = cache_dir
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self._startup_prune_result = self.prune_startup_entries()
-
-    def _path(self, key: str) -> Path:
-        return self.cache_dir / f"{key}.pickle"
-
-    def _manifest_path(self, key: str) -> Path:
-        return self.cache_dir / f"{key}.manifest.json"
-
-    def load(self, key: str) -> object | None:
-        p = self._path(key)
-        if not p.exists():
-            return None
-        payload = _load_pickle_payload(p)
-        payload_map = _as_mapping(payload)
-        if payload_map is None or payload_map.get("version") != CACHE_VERSION:
-            return None
-        return payload
-
-    def has_payload(self, key: str) -> bool:
-        return self._path(key).exists()
-
-    def load_manifest(self, key: str) -> dict[str, tuple[int, int]] | None:
-        return _load_manifest_payload(self._manifest_path(key))
-
-    def has_manifest(self, key: str) -> bool:
-        return self.load_manifest(key) is not None
-
-    def has_cache_artifact(self, key: str) -> bool:
-        return self.has_payload(key) and self.has_manifest(key)
-
-    def manifest_paths(self, key: str) -> frozenset[Path]:
-        manifest = self.load_manifest(key)
-        if manifest is None:
-            return frozenset()
-        return frozenset(Path(path_str) for path_str in manifest)
-
-    def save(
-        self,
-        key: str,
-        *,
-        project: object,
-        files: Iterable[Path],
-    ) -> None:
-        manifest = _snapshot_manifest(files)
-        if manifest is None:
-            return
-
-        payload: dict[str, object] = {
-            "version": CACHE_VERSION,
-            "project": project,
-        }
-
-        with self._manifest_path(key).open("w", encoding="utf-8") as handle:
-            json.dump(manifest, handle, ensure_ascii=True, indent=2, sort_keys=True)
-
-        with self._path(key).open("wb") as f:
-            pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
-
-    def load_validated(self, key: str) -> object | None:
-        manifest = self.load_manifest(key)
-        if manifest is None:
-            return None
-
-        payload = self.load(key)
-        if payload is None:
-            return None
-
-        if not _validate_manifest(manifest):
-            return None
-
-        return payload
-
-    def prune_startup_entries(self) -> CachePruneResult:
-        removed_payloads = 0
-        removed_manifests = 0
-        payload_stems: set[str] = set()
-
-        for payload_path in self.cache_dir.glob("*.pickle"):
-            payload_stems.add(payload_path.stem)
-            manifest_path = self._manifest_path(payload_path.stem)
-            manifest_valid = manifest_path.exists() and _load_manifest_payload(manifest_path) is not None
-
-            if manifest_valid:
-                continue
-
-            if _remove_file(payload_path):
-                removed_payloads += 1
-            if manifest_path.exists() and _remove_file(manifest_path):
-                removed_manifests += 1
-
-        for manifest_path in self.cache_dir.glob("*.manifest.json"):
-            if manifest_path.name[: -len(".manifest.json")] in payload_stems:
-                continue
-            if _remove_file(manifest_path):
-                removed_manifests += 1
-
-        return CachePruneResult(
-            ast_payload_entries=removed_payloads,
-            ast_manifest_entries=removed_manifests,
-        )
-
-    def prune_stale_entries(self) -> CachePruneResult:
-        removed_payloads = 0
-        removed_manifests = 0
-        payload_stems: set[str] = set()
-
-        for payload_path in self.cache_dir.glob("*.pickle"):
-            payload_stems.add(payload_path.stem)
-            manifest_path = self._manifest_path(payload_path.stem)
-            payload = _load_pickle_payload(payload_path)
-            payload_map = _as_mapping(payload)
-            manifest = _load_manifest_payload(manifest_path) if manifest_path.exists() else None
-            payload_valid = payload_map is not None and payload_map.get("version") == CACHE_VERSION
-            manifest_valid = manifest is not None
-
-            if payload_valid and manifest_valid:
-                continue
-
-            if _remove_file(payload_path):
-                removed_payloads += 1
-            if manifest_path.exists() and _remove_file(manifest_path):
-                removed_manifests += 1
-
-        for manifest_path in self.cache_dir.glob("*.manifest.json"):
-            if manifest_path.name[: -len(".manifest.json")] in payload_stems:
-                continue
-            if _remove_file(manifest_path):
-                removed_manifests += 1
-
-        return CachePruneResult(
-            ast_payload_entries=removed_payloads,
-            ast_manifest_entries=removed_manifests,
-        )
-
-    def drain_startup_prune_result(self) -> CachePruneResult:
-        result = self._startup_prune_result
-        self._startup_prune_result = CachePruneResult()
-        return result
-
-    def clear(self, key: str) -> None:
-        """Remove cache file for the given key."""
-        p = self._path(key)
-        if p.exists():
-            p.unlink()
-        manifest_path = self._manifest_path(key)
-        if manifest_path.exists():
-            manifest_path.unlink()
-
-
-class AnalysisReportCache:
-    def __init__(self, cache_dir: Path):
-        self.cache_dir = cache_dir / "analysis_reports"
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self._startup_pruned_entries = self.prune_stale_entries()
-
-    def _path(self, key: str) -> Path:
-        return self.cache_dir / f"{key}.pickle"
-
-    def load(self, key: str) -> object | None:
-        p = self._path(key)
-        if not p.exists():
-            return None
-        payload = _load_pickle_payload(p)
-        if payload is None:
-            return None
-        return payload
-
-    def save(
-        self,
-        key: str,
-        *,
-        report: object,
-        files: Iterable[Path],
-    ) -> bool:
-        manifest = _snapshot_manifest(files)
-        if manifest is None:
-            return False
-
-        payload: dict[str, object] = {
-            "version": ANALYSIS_REPORT_CACHE_VERSION,
-            "report": report,
-            "files": manifest,
-        }
-
-        try:
-            with self._path(key).open("wb") as f:
-                pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
-        except (OSError, pickle.PicklingError, TypeError, AttributeError, ValueError):
-            return False
-
-        return True
-
-    def validate(self, payload: object, *, fast: bool = False) -> bool:
-        payload_map = _as_mapping(payload)
-        if payload_map is None or payload_map.get("version") != ANALYSIS_REPORT_CACHE_VERSION:
-            return False
-
-        if fast:
-            return "report" in payload_map
-
-        return _validate_manifest(payload_map.get("files"))
-
-    def clear(self, key: str) -> None:
-        p = self._path(key)
-        if p.exists():
-            p.unlink()
-
-    def clear_all(self) -> int:
-        removed = 0
-        for path in self.cache_dir.glob("*.pickle"):
-            try:
-                path.unlink()
-            except OSError:
-                continue
-            removed += 1
-        return removed
-
-    def prune_stale_entries(self) -> int:
-        removed = 0
-        for path in self.cache_dir.glob("*.pickle"):
-            payload = _load_pickle_payload(path)
-            if self.validate(payload, fast=True):
-                continue
-            if _remove_file(path):
-                removed += 1
-        return removed
-
-    def drain_startup_pruned_entries(self) -> int:
-        removed = self._startup_pruned_entries
-        self._startup_pruned_entries = 0
-        return removed
-
-
-class CacheManager:
-    def __init__(
-        self,
-        cache_dir: Path | None = None,
-        *,
-        file_lookup_cache_cls: type[FileLookupCache] = FileLookupCache,
-        file_ast_cache_cls: type[FileASTCache] = FileASTCache,
-        ast_cache_cls: type[ASTCache] = ASTCache,
-        analysis_report_cache_cls: type[AnalysisReportCache] = AnalysisReportCache,
-    ) -> None:
-        resolved_cache_dir = get_cache_dir() if cache_dir is None else cache_dir
-        self.cache_dir = resolved_cache_dir
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self._file_lookup_cache_cls = file_lookup_cache_cls
-        self._file_ast_cache_cls = file_ast_cache_cls
-        self._ast_cache_cls = ast_cache_cls
-        self._analysis_report_cache_cls = analysis_report_cache_cls
-        self._file_lookup_cache: FileLookupCache | None = None
-        self._file_ast_cache: FileASTCache | None = None
-        self._ast_cache: ASTCache | None = None
-        self._analysis_report_cache: AnalysisReportCache | None = None
-
-    @property
-    def file_lookup_cache(self) -> FileLookupCache:
-        if self._file_lookup_cache is None:
-            self._file_lookup_cache = self._file_lookup_cache_cls(self.cache_dir)
-        return self._file_lookup_cache
-
-    @property
-    def file_ast_cache(self) -> FileASTCache:
-        if self._file_ast_cache is None:
-            self._file_ast_cache = self._file_ast_cache_cls(self.cache_dir)
-        return self._file_ast_cache
-
-    @property
-    def ast_cache(self) -> ASTCache:
-        if self._ast_cache is None:
-            self._ast_cache = self._ast_cache_cls(self.cache_dir)
-        return self._ast_cache
-
-    @property
-    def analysis_report_cache(self) -> AnalysisReportCache:
-        if self._analysis_report_cache is None:
-            self._analysis_report_cache = self._analysis_report_cache_cls(self.cache_dir)
-        return self._analysis_report_cache
-
-    def prune_stale_entries(self) -> CachePruneResult:
-        result = CachePruneResult()
-        file_lookup_cache = self.file_lookup_cache
-        file_ast_cache = self.file_ast_cache
-        ast_cache = self.ast_cache
-        analysis_report_cache = self.analysis_report_cache
-        result = result.combine(
-            CachePruneResult(
-                file_lookup_entries=file_lookup_cache.drain_startup_pruned_entries()
-                + file_lookup_cache.prune_stale_entries()
-            )
-        )
-        result = result.combine(
-            CachePruneResult(
-                file_ast_entries=file_ast_cache.drain_startup_pruned_entries() + file_ast_cache.prune_stale_entries()
-            )
-        )
-        result = result.combine(ast_cache.drain_startup_prune_result().combine(ast_cache.prune_stale_entries()))
-        result = result.combine(
-            CachePruneResult(
-                analysis_report_entries=analysis_report_cache.drain_startup_pruned_entries()
-                + analysis_report_cache.prune_stale_entries()
-            )
-        )
-        return result
-
-    def clear_all(self) -> CachePruneResult:
-        result = CachePruneResult()
-
-        lookup_path = self.file_lookup_cache.path
-        if lookup_path.exists() and _remove_file(lookup_path):
-            result = result.combine(CachePruneResult(file_lookup_entries=1))
-        self._file_lookup_cache = self._file_lookup_cache_cls(self.cache_dir)
-
-        file_ast_entries = 0
-        for path in self.file_ast_cache.cache_dir.glob("*.pickle"):
-            if _remove_file(path):
-                file_ast_entries += 1
-        result = result.combine(CachePruneResult(file_ast_entries=file_ast_entries))
-        self._file_ast_cache = self._file_ast_cache_cls(self.cache_dir)
-
-        ast_payload_entries = 0
-        ast_manifest_entries = 0
-        ast_cache_dir = self.ast_cache.cache_dir
-        for path in ast_cache_dir.glob("*.pickle"):
-            if _remove_file(path):
-                ast_payload_entries += 1
-        for path in ast_cache_dir.glob("*.manifest.json"):
-            if _remove_file(path):
-                ast_manifest_entries += 1
-        result = result.combine(
-            CachePruneResult(
-                ast_payload_entries=ast_payload_entries,
-                ast_manifest_entries=ast_manifest_entries,
-            )
-        )
-        self._ast_cache = self._ast_cache_cls(self.cache_dir)
-
-        analysis_report_entries = self.analysis_report_cache.clear_all()
-        result = result.combine(CachePruneResult(analysis_report_entries=analysis_report_entries))
-        self._analysis_report_cache = self._analysis_report_cache_cls(self.cache_dir)
-
-        return result
-
-
-_CACHE_MANAGERS: dict[Path, CacheManager] = {}
-
-
-def _uses_default_cache_types(
-    *,
-    file_lookup_cache_cls: type[FileLookupCache],
-    file_ast_cache_cls: type[FileASTCache],
-    ast_cache_cls: type[ASTCache],
-    analysis_report_cache_cls: type[AnalysisReportCache],
-) -> bool:
-    return (
-        file_lookup_cache_cls is FileLookupCache
-        and file_ast_cache_cls is FileASTCache
-        and ast_cache_cls is ASTCache
-        and analysis_report_cache_cls is AnalysisReportCache
-    )
-
-
-def get_cache_manager(
-    cache_dir: Path | None = None,
-    *,
-    file_lookup_cache_cls: type[FileLookupCache] = FileLookupCache,
-    file_ast_cache_cls: type[FileASTCache] = FileASTCache,
-    ast_cache_cls: type[ASTCache] = ASTCache,
-    analysis_report_cache_cls: type[AnalysisReportCache] = AnalysisReportCache,
-) -> CacheManager:
-    raw_cache_dir = get_cache_dir() if cache_dir is None else cache_dir
-    resolved_cache_dir = _normalize_cache_dir(raw_cache_dir)
-    if not _uses_default_cache_types(
-        file_lookup_cache_cls=file_lookup_cache_cls,
-        file_ast_cache_cls=file_ast_cache_cls,
-        ast_cache_cls=ast_cache_cls,
-        analysis_report_cache_cls=analysis_report_cache_cls,
-    ):
-        return CacheManager(
-            raw_cache_dir,
-            file_lookup_cache_cls=file_lookup_cache_cls,
-            file_ast_cache_cls=file_ast_cache_cls,
-            ast_cache_cls=ast_cache_cls,
-            analysis_report_cache_cls=analysis_report_cache_cls,
-        )
-
-    manager = _CACHE_MANAGERS.get(resolved_cache_dir)
-    if manager is None:
-        manager = CacheManager(resolved_cache_dir)
-        _CACHE_MANAGERS[resolved_cache_dir] = manager
-    return manager
-
-
-def build_file_lookup_cache(cache_dir: Path, file_lookup_cache_cls: type[Any] = FileLookupCache) -> Any:
-    return get_cache_manager(
-        cache_dir,
-        file_lookup_cache_cls=cast(type[FileLookupCache], file_lookup_cache_cls),
-    ).file_lookup_cache
-
-
-def build_file_ast_cache(cache_dir: Path, file_ast_cache_cls: type[Any] = FileASTCache) -> Any:
-    return get_cache_manager(
-        cache_dir,
-        file_ast_cache_cls=cast(type[FileASTCache], file_ast_cache_cls),
-    ).file_ast_cache
-
-
-def build_ast_cache(cache_dir: Path, ast_cache_cls: type[Any] = ASTCache) -> Any:
-    return get_cache_manager(
-        cache_dir,
-        ast_cache_cls=cast(type[ASTCache], ast_cache_cls),
-    ).ast_cache
-
-
-def build_analysis_report_cache(cache_dir: Path, analysis_report_cache_cls: type[Any] = AnalysisReportCache) -> Any:
-    return get_cache_manager(
-        cache_dir,
-        analysis_report_cache_cls=cast(type[AnalysisReportCache], analysis_report_cache_cls),
-    ).analysis_report_cache
-
-
-def prune_cache_dir(cache_dir: Path | None = None) -> CachePruneResult:
-    return get_cache_manager(cache_dir).prune_stale_entries()

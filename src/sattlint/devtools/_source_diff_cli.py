@@ -108,7 +108,14 @@ def build_cli_parser(
         action="store_true",
         help="Discover same-basename .s/.x pairs under the workspace root.",
     )
-    parser.add_argument("--format", choices=("json", "markdown"), default="json", help="Stdout format.")
+    parser.add_argument(
+        "--output-format",
+        "--format",
+        dest="format",
+        choices=("json", "markdown"),
+        default="json",
+        help="Stdout format.",
+    )
     parser.add_argument(
         "--output-dir", default=None, help="Optional directory that receives JSON and Markdown reports."
     )

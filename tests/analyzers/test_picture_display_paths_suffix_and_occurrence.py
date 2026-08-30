@@ -8,6 +8,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     SourceSpan,
 )
+
 from sattlint.graphics_validation import PictureDisplayPathRow, PictureDisplayRecord
 from sattlint.picture_display_paths import (
     PictureDisplayOccurrence,
@@ -142,7 +143,7 @@ def test_correlate_picture_display_records_maps_local_moduletype_record_to_templ
                 0,
                 "literal",
                 picture_display_jump_node_path_text(),
-                SourceSpan(line=1, column=1),
+                SourceSpan(start=0, end=0, line=1, column=1),
             ),
         ),
     )
@@ -207,7 +208,7 @@ def test_correlate_picture_display_records_treats_same_library_typedef_as_local(
                 0,
                 "literal",
                 picture_display_jump_node_path_text(),
-                SourceSpan(line=1, column=1),
+                SourceSpan(start=0, end=0, line=1, column=1),
             ),
         ),
     )

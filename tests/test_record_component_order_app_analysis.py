@@ -1,4 +1,5 @@
 import builtins
+from typing import cast
 
 import pytest
 
@@ -25,6 +26,6 @@ def test_variable_usage_submenu_exposes_record_component_order_report(
     monkeypatch.setattr(app, "run_variable_analysis", _capture)
     monkeypatch.setattr(builtins, "input", make_input(["12", "b"]))
 
-    app.variable_usage_submenu(app.DEFAULT_CONFIG.copy())
+    app.variable_usage_submenu(cast(dict[str, object], app.DEFAULT_CONFIG.copy()))
 
     assert captured == [{app.IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE}]

@@ -1,0 +1,22 @@
+{
+    "case_id": "analyzer-dataflow-temporal-misuse",
+    "target_file": "../semantic/analyzer/DflowTempMis.s",
+    "mode": "analyzer-dataflow",
+    "expectation": {
+        "expected_finding_ids": [
+            "semantic.scan-cycle-temporal-misuse"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "dataflow"
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": ["findings.json", "status.json", "summary.json"]
+}

@@ -7,9 +7,10 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from sattlint.devtools import pipeline as pipeline_module
 from sattlint.devtools.shared.pipeline_checks import matching_changed_files, normalize_changed_files
 from sattlint.path_sanitizer import sanitize_path_for_report
+
+from .. import pipeline as pipeline_module
 
 
 def _entrypoints_module() -> Any:
@@ -19,7 +20,7 @@ def _entrypoints_module() -> Any:
 
 
 def _run_verify_recommendations_check(_context: Any) -> list[Any]:
-    from sattlint.devtools.ai import ai_work_map as ai_work_map_module  # noqa: PLC0415
+    from ..ai import ai_work_map as ai_work_map_module  # noqa: PLC0415
 
     entrypoints_module = _entrypoints_module()
     repo_audit = entrypoints_module._repo_audit_module()

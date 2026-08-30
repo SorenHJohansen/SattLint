@@ -7,7 +7,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, cast
 
 from lark import Tree
-
 from sattline_parser.models.ast_model import (
     FloatLiteral,
     IntLiteral,
@@ -22,6 +21,19 @@ from sattline_parser.models.ast_model import (
     SFCTransition,
     SFCTransitionSub,
     Variable,
+)
+from sattline_parser.models.expressions import (
+    Assignment,
+    BinOp,
+    BoolOp,
+    Compare,
+    FuncCall,
+    FuncCallStmt,
+    IfStmt,
+    NotOp,
+    TernaryOp,
+    UnaryOp,
+    VarRef,
 )
 
 from ...grammar import constants as const
@@ -130,6 +142,91 @@ def _walk_stmt_or_expr(  # noqa: PLR0915
     if obj is None:
         return
 
+    if isinstance(obj, IfStmt):
+        for cond, stmts in obj.branches or []:
+            self._walk_stmt_or_expr(cond, context, path, is_ui_read=is_ui_read)
+            for stmt in stmts or []:
+                self._walk_stmt_or_expr(stmt, context, path, is_ui_read=is_ui_read)
+        for stmt in obj.else_block or []:
+            self._walk_stmt_or_expr(stmt, context, path, is_ui_read=is_ui_read)
+        return
+
+    if isinstance(obj, Assignment):
+        full_name = _var_name_of(obj.target)
+        if full_name is not None:
+            value_name = _var_name_of(obj.value)
+            target_base = varname_base(full_name)
+            value_base = varname_base(value_name) if value_name is not None else None
+            is_param_self_assignment = (
+                bool(context.moduleparameter_keys)
+                and target_base is not None
+                and target_base.casefold() in context.moduleparameter_keys
+                and value_base is not None
+                and value_base.casefold() == target_base.casefold()
+            )
+            if not is_param_self_assignment:
+                self._mark_ref_access(full_name, context, path, AccessKind.WRITE, is_ui_read=is_ui_read)
+            self._record_assignment_effect_flow(full_name, obj.value, context)
+        self._walk_stmt_or_expr(obj.value, context, path, is_ui_read=is_ui_read)
+        return
+
+    if isinstance(obj, FuncCallStmt):
+        self._handle_function_call(
+            obj.call.name,
+            list(obj.call.args),
+            context,
+            path,
+            is_ui_read=is_ui_read,
+        )
+        return
+
+    if isinstance(obj, VarRef):
+        full_name = _var_name_of(obj)
+        if full_name is not None:
+            self._mark_ref_access(full_name, context, path, AccessKind.READ, is_ui_read=is_ui_read)
+        return
+
+    if isinstance(obj, BoolOp):
+        for sub in obj.operands or []:
+            self._walk_stmt_or_expr(sub, context, path, is_ui_read=is_ui_read)
+        return
+
+    if isinstance(obj, NotOp):
+        self._walk_stmt_or_expr(obj.operand, context, path, is_ui_read=is_ui_read)
+        return
+
+    if isinstance(obj, Compare):
+        self._walk_stmt_or_expr(obj.left, context, path, is_ui_read=is_ui_read)
+        self._walk_stmt_or_expr(obj.right, context, path, is_ui_read=is_ui_read)
+        return
+
+    if isinstance(obj, BinOp):
+        self._walk_stmt_or_expr(obj.left, context, path, is_ui_read=is_ui_read)
+        self._walk_stmt_or_expr(obj.right, context, path, is_ui_read=is_ui_read)
+        return
+
+    if isinstance(obj, UnaryOp):
+        self._walk_stmt_or_expr(obj.operand, context, path, is_ui_read=is_ui_read)
+        return
+
+    if isinstance(obj, TernaryOp):
+        for cond, then_expr in obj.branches or []:
+            self._walk_stmt_or_expr(cond, context, path, is_ui_read=is_ui_read)
+            self._walk_stmt_or_expr(then_expr, context, path, is_ui_read=is_ui_read)
+        if obj.else_expr is not None:
+            self._walk_stmt_or_expr(obj.else_expr, context, path, is_ui_read=is_ui_read)
+        return
+
+    if isinstance(obj, FuncCall):
+        self._handle_function_call(
+            obj.name,
+            list(obj.args),
+            context,
+            path,
+            is_ui_read=is_ui_read,
+        )
+        return
+
     if isinstance(obj, IntLiteral | FloatLiteral):
         span = getattr(obj, "span", None)
         value = int(obj) if isinstance(obj, IntLiteral) else float(obj)
@@ -212,6 +309,13 @@ def _walk_stmt_or_expr(  # noqa: PLR0915
                 self._walk_stmt_or_expr(child, context, path, is_ui_read=is_ui_read)
             return
         if obj.data == const.GRAMMAR_VALUE_INVAR_PREFIX:
+            for child in _children_of(obj) or []:
+                self._walk_stmt_or_expr(child, context, path, is_ui_read=is_ui_read)
+            return
+        if obj.data == const.GRAMMAR_VALUE_OUTVAR_PREFIX:
+            self._walk_output_tail(obj, context, path, is_ui_read=is_ui_read)
+            return
+        if obj.data in {"procedure_args", "proc_atom"}:
             for child in _children_of(obj) or []:
                 self._walk_stmt_or_expr(child, context, path, is_ui_read=is_ui_read)
             return

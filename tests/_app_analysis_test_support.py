@@ -12,9 +12,9 @@ from types import SimpleNamespace
 from typing import Any, ClassVar, cast
 
 import pytest
-
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.models.ast_model import FrameModule, ModuleTypeInstance, SingleModule
+
 from sattlint import _app_analysis_checks as app_analysis_checks
 from sattlint import _app_analysis_commands as app_analysis_commands
 from sattlint import app, app_analysis

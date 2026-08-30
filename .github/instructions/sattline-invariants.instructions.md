@@ -57,15 +57,12 @@ A file can be syntactically valid but semantically broken:
 - Calling `app.main()` with no argv still opens the Textual interactive shell.
 - If you change CLI menu layout or numbering, keep `tests/test_app.py` in sync.
 - Do not rely on the IDE test runner as the first validation path here; use repo-venv pytest commands directly, and treat IDE zero-test collection as expected noise rather than a project signal.
-- Prefer targeted test modules first, for example `tests/test_app.py` for CLI and menu work, `tests/parser/test_parser.py` for parser or validation work, and `tests/test_pipeline_run.py` or `tests/test_repo_audit_part1.py` for devtools artifact changes.
+- Prefer targeted test modules first, for example `tests/test_app.py` for CLI and menu work, `tests/analyzers/test_cyclomatic_complexity.py` for analyzer work, and `tests/test_pipeline_run.py` or `tests/test_repo_audit_part1.py` for devtools artifact changes.
 - Use the real fixtures under `tests/fixtures/sample_sattline_files/` when uncertain about syntax or semantics.
 
-## Workspace, Editor, And LSP
+## Workspace And Editor Loading
 
-- The VS Code client and server only do live LSP analysis for `.s` and `.x` program files; `.l` and `.z` are dependency-name lists for workspace resolution.
 - Workspace or editor loading may use dependency context, local snapshots, cached bundles, and proximity-based `.l` or `.z` resolution. CLI and config-driven resolution remain unchanged.
 - `ControlLib` is an expected unavailable proprietary dependency in workspace or editor flows and should be reported as unavailable rather than as a normal missing-code error.
 - Workspace validation intentionally differs from single-file strict validation for some dependency cases. Do not collapse those two modes together.
 - Single-file strict validation still rejects unknown locally resolvable parameter targets and duplicate sibling submodule names; workspace or editor loading may continue past those issues in dependency libraries outside `program_dir`.
-- The local LSP parser can report cheap dirty-buffer sequence auto-var issues; preserve that distinction from full workspace semantic analysis.
-- After changing `src/sattlint_lsp/`, `src/sattlint/core/`, `src/sattlint/editor_api.py`, or `vscode/sattline-vscode/`, restart the server with the `sattlineLsp.restartServer` command.

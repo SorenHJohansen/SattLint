@@ -1,5 +1,4 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportIndexIssue=false
-# ruff: noqa: F403, F405
 from ._app_analysis_test_support import *
 from .helpers import AnalysisGraphStub, named_object
 
@@ -53,7 +52,6 @@ def test_load_project_saves_cache_after_successful_merge(monkeypatch):
             "other_lib_dirs": [],
             "ABB_lib_dir": "abb",
             "mode": "draft",
-            "scan_root_only": True,
             "debug": False,
             "analyzed_programs_and_libraries": ["TargetA"],
         },
@@ -106,7 +104,6 @@ def test_load_project_raises_default_error_when_target_missing(monkeypatch):
                 "other_lib_dirs": [],
                 "ABB_lib_dir": "abb",
                 "mode": "draft",
-                "scan_root_only": True,
                 "debug": False,
                 "analyzed_programs_and_libraries": ["TargetA"],
             },
@@ -125,7 +122,6 @@ def test_load_project_raises_value_error_when_loader_config_missing(monkeypatch)
                 "other_lib_dirs": [],
                 "ABB_lib_dir": "abb",
                 "mode": "draft",
-                "scan_root_only": True,
                 "analyzed_programs_and_libraries": ["TargetA"],
             },
             cache_key_for_target_fn=lambda _cfg, _target: "cache-key",
@@ -151,7 +147,6 @@ def test_load_program_ast_force_dependency_resolution_returns_loaded_program(mon
             "other_lib_dirs": [],
             "ABB_lib_dir": "abb",
             "mode": "draft",
-            "scan_root_only": True,
             "debug": False,
         },
         "TargetA",
@@ -159,7 +154,6 @@ def test_load_program_ast_force_dependency_resolution_returns_loaded_program(mon
     )
 
     assert result == ("bp-main", SimpleNamespace(ast_by_name={"TargetA": "bp-main"}))
-    assert seen_kwargs["scan_root_only"] is False
 
 
 def test_force_refresh_ast_returns_none_without_targets():
@@ -200,7 +194,6 @@ def test_load_project_uses_cached_ast_only_project_and_manifest_metadata(monkeyp
             "other_lib_dirs": [],
             "ABB_lib_dir": "abb",
             "mode": "draft",
-            "scan_root_only": True,
             "debug": False,
             "analyzed_programs_and_libraries": ["TargetA"],
         },
@@ -269,7 +262,6 @@ def test_load_project_ast_only_collects_stage_timings_and_flushes_lookup_cache(m
             "other_lib_dirs": [],
             "ABB_lib_dir": "abb",
             "mode": "draft",
-            "scan_root_only": True,
             "debug": False,
             "analyzed_programs_and_libraries": ["TargetA"],
         },
@@ -341,7 +333,6 @@ def test_load_project_uses_custom_target_load_error_factory(monkeypatch):
                 "other_lib_dirs": [],
                 "ABB_lib_dir": "abb",
                 "mode": "draft",
-                "scan_root_only": True,
                 "debug": False,
                 "analyzed_programs_and_libraries": ["TargetA"],
             },
@@ -375,7 +366,6 @@ def test_load_program_ast_raises_when_program_missing(monkeypatch):
                 "other_lib_dirs": [],
                 "ABB_lib_dir": "abb",
                 "mode": "draft",
-                "scan_root_only": True,
                 "debug": False,
             },
             "TargetA",
@@ -543,7 +533,7 @@ def test_ensure_ast_cache_covers_cache_hit_stale_missing_and_failure(monkeypatch
         def has_cache_artifact(self, key):
             return cache_state[key][2]
 
-    def fake_load_project(_cfg, *, target_name, use_cache):
+    def fake_load_project(_cfg, *, target_name, use_cache, **kwargs):
         load_calls.append((target_name, use_cache))
         if target_name == "TargetE":
             raise RuntimeError("boom")

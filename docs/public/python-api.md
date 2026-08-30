@@ -106,7 +106,9 @@ The pipeline package provides the analysis pipeline entrypoint and supporting ut
 
 ---
 
-## `sattline_parser` Package
+## `sattline_parser` Package (external dependency)
+
+`sattline_parser` is provided by the external `sattline-parser` package (from PyPI), not this repository.
 
 | Export | Description |
 |--------|-------------|
@@ -116,7 +118,7 @@ The pipeline package provides the analysis pipeline entrypoint and supporting ut
 | `fuzz_parse_text` | Fuzz-targeted parse with timeout |
 | `run_random_fuzz` | Run random fuzz rounds |
 
-See the `sattline_parser` source for the full `__all__` listing.
+See the `sattline-parser` source for the full `__all__` listing.
 
 ---
 
@@ -129,4 +131,3 @@ See the `sattline_parser` source for the full `__all__` listing.
 | `sattline_parser.api` | Stable |
 | `sattlint.analyzers.*` | Preview |
 | `sattlint.devtools.*` | Internal |
-| `sattlint_lsp.*` | Internal |

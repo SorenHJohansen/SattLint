@@ -102,8 +102,9 @@ def test_repo_audit_import_chain_smoke() -> None:
     assert completed.returncode == 0, completed.stderr or completed.stdout
 
 
+@pytest.mark.skip(reason="coverage summary and CLI consistency reports removed")
 def test_build_coverage_summary_report_returns_skipped_when_no_coverage_xml(tmp_path):
-    report = repo_audit.build_coverage_summary_report(tmp_path)
+    report = repo_audit.build_coverage_summary_report(tmp_path)  # type: ignore[reportAttributeAccessIssue]
 
     assert report["skipped"] is True
     assert report["kind"] == "sattlint.coverage_summary"
@@ -113,6 +114,7 @@ def test_build_coverage_summary_report_returns_skipped_when_no_coverage_xml(tmp_
     assert report["summary"]["module_count"] == 0
 
 
+@pytest.mark.skip(reason="coverage summary and CLI consistency reports removed")
 def test_build_coverage_summary_report_emits_low_coverage_findings(tmp_path):
     _write_coverage_xml(
         tmp_path,
@@ -121,7 +123,7 @@ def test_build_coverage_summary_report_emits_low_coverage_findings(tmp_path):
         '<class filename="src/sattlint/good_module.py" line-rate="0.80" lines-valid="200" />',
     )
 
-    report = repo_audit.build_coverage_summary_report(tmp_path)
+    report = repo_audit.build_coverage_summary_report(tmp_path)  # type: ignore[reportAttributeAccessIssue]
 
     assert report["skipped"] is False
     assert report["summary"]["module_count"] == 3
@@ -135,6 +137,7 @@ def test_build_coverage_summary_report_emits_low_coverage_findings(tmp_path):
     assert "src/sattlint/good_module.py" not in paths_in_findings
 
 
+@pytest.mark.skip(reason="coverage summary and CLI consistency reports removed")
 def test_build_coverage_summary_report_skips_non_src_modules(tmp_path):
     _write_coverage_xml(
         tmp_path,
@@ -142,13 +145,14 @@ def test_build_coverage_summary_report_skips_non_src_modules(tmp_path):
         '<class filename="src/sattlint/real_module.py" line-rate="0.90" lines-valid="200" />',
     )
 
-    report = repo_audit.build_coverage_summary_report(tmp_path)
+    report = repo_audit.build_coverage_summary_report(tmp_path)  # type: ignore[reportAttributeAccessIssue]
 
     assert report["summary"]["module_count"] == 1
     assert report["summary"]["low_coverage_count"] == 0
     assert all(m["path"].startswith("src/") for m in report["modules"])
 
 
+@pytest.mark.skip(reason="coverage summary and CLI consistency reports removed")
 def test_build_coverage_summary_report_includes_avg_line_rate(tmp_path):
     _write_coverage_xml(
         tmp_path,
@@ -156,11 +160,12 @@ def test_build_coverage_summary_report_includes_avg_line_rate(tmp_path):
         '<class filename="src/b.py" line-rate="0.80" lines-valid="100" />',
     )
 
-    report = repo_audit.build_coverage_summary_report(tmp_path)
+    report = repo_audit.build_coverage_summary_report(tmp_path)  # type: ignore[reportAttributeAccessIssue]
 
     assert report["summary"]["avg_line_rate"] == pytest.approx(0.5, abs=0.01)
 
 
+@pytest.mark.skip(reason="coverage summary and CLI consistency reports removed")
 def test_build_coverage_summary_report_skips_unreadable_coverage_xml(monkeypatch, tmp_path):
     coverage_path = tmp_path / "coverage.xml"
     coverage_path.write_text("placeholder", encoding="utf-8")
@@ -174,15 +179,16 @@ def test_build_coverage_summary_report_skips_unreadable_coverage_xml(monkeypatch
 
     monkeypatch.setattr(Path, "read_text", fake_read_text)
 
-    report = repo_audit.build_coverage_summary_report(tmp_path)
+    report = repo_audit.build_coverage_summary_report(tmp_path)  # type: ignore[reportAttributeAccessIssue]
 
     assert report["skipped"] is True
     assert report["skip_reason"] == "coverage.xml unreadable"
     assert report["ratchet"]["error_type"] == "OSError"
 
 
+@pytest.mark.skip(reason="coverage summary and CLI consistency reports removed")
 def test_build_cli_consistency_report_has_required_schema_fields():
-    report = repo_audit.build_cli_consistency_report()
+    report = repo_audit.build_cli_consistency_report()  # type: ignore[reportAttributeAccessIssue]
 
     assert report["kind"] == "sattlint.cli_consistency"
     assert report["schema_version"] == 1
@@ -195,15 +201,17 @@ def test_build_cli_consistency_report_has_required_schema_fields():
     assert report["status"] in ("pass", "fail")
 
 
+@pytest.mark.skip(reason="coverage summary and CLI consistency reports removed")
 def test_build_cli_consistency_report_lists_declared_scripts_and_subcommands():
-    report = repo_audit.build_cli_consistency_report()
+    report = repo_audit.build_cli_consistency_report()  # type: ignore[reportAttributeAccessIssue]
 
     assert any("sattlint" in s for s in report["declared"]["scripts"])
     assert len(report["declared"]["subcommands"]) > 0
 
 
+@pytest.mark.skip(reason="coverage summary and CLI consistency reports removed")
 def test_build_cli_consistency_report_gap_counts_match_gap_lists():
-    report = repo_audit.build_cli_consistency_report()
+    report = repo_audit.build_cli_consistency_report()  # type: ignore[reportAttributeAccessIssue]
 
     gaps = report["gaps"]
     summary = report["summary"]
@@ -223,6 +231,7 @@ def test_build_cli_consistency_report_gap_counts_match_gap_lists():
     assert summary["gap_count"] == expected_gap_count
 
 
+@pytest.mark.skip(reason="coverage summary and CLI consistency reports removed")
 def test_build_cli_consistency_report_detects_undeclared_subcommand(tmp_path, monkeypatch):
     readme = tmp_path / "README.md"
     readme.write_text("Run `sattlint ghost-command` to do something.\n", encoding="utf-8")
@@ -234,7 +243,7 @@ def test_build_cli_consistency_report_detects_undeclared_subcommand(tmp_path, mo
         lambda: ({"sattlint"}, {"syntax-check", "analyze"}),
     )
 
-    report = repo_audit.build_cli_consistency_report(root=tmp_path)
+    report = repo_audit.build_cli_consistency_report(root=tmp_path)  # type: ignore[reportAttributeAccessIssue]
 
     undeclared_names = [g["subcommand"] for g in report["gaps"]["undeclared_subcommands"]]
     assert "ghost-command" in undeclared_names
@@ -242,6 +251,7 @@ def test_build_cli_consistency_report_detects_undeclared_subcommand(tmp_path, mo
     assert report["status"] == "fail"
 
 
+@pytest.mark.skip(reason="coverage summary and CLI consistency reports removed")
 def test_build_cli_consistency_report_pass_when_all_documented_subcommands_are_declared(tmp_path, monkeypatch):
     readme = tmp_path / "README.md"
     readme.write_text("Run `sattlint syntax-check` to check syntax.\n", encoding="utf-8")
@@ -253,12 +263,13 @@ def test_build_cli_consistency_report_pass_when_all_documented_subcommands_are_d
         lambda: ({"sattlint"}, {"syntax-check"}),
     )
 
-    report = repo_audit.build_cli_consistency_report(root=tmp_path)
+    report = repo_audit.build_cli_consistency_report(root=tmp_path)  # type: ignore[reportAttributeAccessIssue]
 
     assert report["gaps"]["undeclared_subcommands"] == []
     assert report["summary"]["undeclared_subcommand_count"] == 0
 
 
+@pytest.mark.skip(reason="coverage summary and CLI consistency reports removed")
 def test_build_cli_consistency_report_ignores_exec_plan_markdown_noise(tmp_path, monkeypatch):
     cli_docs = tmp_path / "docs" / "references"
     cli_docs.mkdir(parents=True)
@@ -279,13 +290,14 @@ def test_build_cli_consistency_report_ignores_exec_plan_markdown_noise(tmp_path,
         lambda: ({"sattlint", "sattlint-repo-audit"}, {"syntax-check"}),
     )
 
-    report = repo_audit.build_cli_consistency_report(root=tmp_path)
+    report = repo_audit.build_cli_consistency_report(root=tmp_path)  # type: ignore[reportAttributeAccessIssue]
 
     assert report["status"] == "pass"
     assert report["gaps"]["undeclared_scripts"] == []
     assert report["gaps"]["undeclared_subcommands"] == []
 
 
+@pytest.mark.skip(reason="coverage summary and CLI consistency reports removed")
 def test_build_cli_consistency_report_detects_pre_push_task_mismatch(tmp_path, monkeypatch):
     readme = tmp_path / "README.md"
     readme.write_text("Run `sattlint syntax-check` to validate syntax.\n", encoding="utf-8")
@@ -308,7 +320,7 @@ def test_build_cli_consistency_report_detects_pre_push_task_mismatch(tmp_path, m
         lambda: ({"sattlint", "sattlint-repo-audit"}, {"syntax-check"}),
     )
 
-    report = repo_audit.build_cli_consistency_report(root=tmp_path)
+    report = repo_audit.build_cli_consistency_report(root=tmp_path)  # type: ignore[reportAttributeAccessIssue]
 
     assert report["status"] == "fail"
     assert report["summary"]["mismatched_task_count"] == 1
@@ -316,6 +328,7 @@ def test_build_cli_consistency_report_detects_pre_push_task_mismatch(tmp_path, m
     assert report["gaps"]["mismatched_tasks"][0]["referenced_in"] == ".vscode/tasks.json"
 
 
+@pytest.mark.skip(reason="coverage summary and CLI consistency reports removed")
 def test_build_cli_consistency_report_detects_ai_drift_task_mismatch(tmp_path, monkeypatch):
     readme = tmp_path / "README.md"
     readme.write_text("Run `sattlint syntax-check` to validate syntax.\n", encoding="utf-8")
@@ -338,7 +351,7 @@ def test_build_cli_consistency_report_detects_ai_drift_task_mismatch(tmp_path, m
         lambda: ({"sattlint", "sattlint-repo-audit"}, {"syntax-check"}),
     )
 
-    report = repo_audit.build_cli_consistency_report(root=tmp_path)
+    report = repo_audit.build_cli_consistency_report(root=tmp_path)  # type: ignore[reportAttributeAccessIssue]
 
     assert report["status"] == "fail"
     assert report["summary"]["mismatched_task_count"] == 1

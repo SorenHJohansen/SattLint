@@ -6,6 +6,7 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Any, cast
 
+from sattline_parser.formatting.formatter import format_expr, format_seq_nodes
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -17,11 +18,10 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
-from sattline_parser.utils.formatter import format_expr, format_seq_nodes
 
 
 def stable_signature_text(value: object) -> str:
-    return re.sub(r"SourceSpan\([^)]*\)", "SourceSpan()", repr(value))
+    return re.sub(r"SourceSpan\([^)]*\)", "SourceSpan(start=0, end=0, line=0, column=0)", repr(value))
 
 
 def stable_signature_value(value: object) -> object:
@@ -97,7 +97,7 @@ def modulecode_signature(modulecode: ModuleCode | None) -> tuple[object, ...] | 
     return (
         tuple(
             (
-                sequence.name.casefold(),
+                (sequence.name or "").casefold(),
                 sequence.type.casefold(),
                 sequence.position,
                 sequence.size,

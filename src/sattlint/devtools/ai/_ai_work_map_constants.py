@@ -3,9 +3,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from sattlint.repo_paths import repo_root_from
+from sattlint.repo_paths import repo_root_from_optional
 
-REPO_ROOT = repo_root_from(Path(__file__))
+
+def _module_repo_root() -> Path:
+    r = repo_root_from_optional(Path(__file__))
+    if r is None:
+        return Path(__file__).resolve().parent
+    return r
+
+
+REPO_ROOT = _module_repo_root()
 VALIDATION_MAP_PATH = REPO_ROOT / "docs" / "maintainers" / "validation-map.md"
 ACTIVE_EXEC_PLANS_DIR = REPO_ROOT / "docs" / "exec-plans" / "active"
 COMPLETED_EXEC_PLANS_DIR = REPO_ROOT / "docs" / "exec-plans" / "completed"
@@ -91,18 +99,6 @@ BLOCKING_INVARIANT_RULES: tuple[dict[str, Any], ...] = (
         "details": "CLI menu invariants require the interactive app tests to move with the menu surface.",
         "selected_surfaces": ("session-start", "pipeline", "repo-audit"),
         "path_globs": ("src/sattlint/app.py",),
-    },
-    {
-        "id": "restart-lsp-after-editor-surface-edits",
-        "summary": "Restart the language server after semantic core, LSP, editor_api, or VS Code client edits.",
-        "details": "Run sattlineLsp.restartServer after changes under the editor or workspace loading surfaces.",
-        "selected_surfaces": ("session-start", "pipeline", "repo-audit"),
-        "path_globs": (
-            "src/sattlint/core/**",
-            "src/sattlint_lsp/**",
-            "src/sattlint/editor_api.py",
-            "vscode/sattline-vscode/**",
-        ),
     },
 )
 

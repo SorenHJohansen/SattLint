@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from sattline_parser.models.ast_model import BasePicture, ModuleHeader
+
 from sattlint.analyzers import registry as registry_module
 from sattlint.analyzers._registry_spec_templates import AnalyzerSpecTemplate, default_spec_templates
 from sattlint.analyzers._registry_specs import build_context_kwargs, build_default_analyzers

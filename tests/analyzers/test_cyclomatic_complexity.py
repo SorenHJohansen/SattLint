@@ -1,6 +1,7 @@
 # pyright: reportUnknownVariableType=false, reportUnknownParameterType=false, reportUnknownArgumentType=false, reportMissingTypeArgument=false
 from sattline_parser.models.ast_model import (
     BasePicture,
+    CodeItem,
     Equation,
     IntLiteral,
     ModuleCode,
@@ -12,7 +13,8 @@ from sattline_parser.models.ast_model import (
     Simple_DataType,
     Variable,
 )
-from sattlint import constants as const
+from sattline_parser.models.expressions import Assignment, IfStmt, VarRef
+
 from sattlint.analyzers.cyclomatic_complexity import analyze_cyclomatic_complexity
 from sattlint.analyzers.registry import get_default_analyzers
 
@@ -21,8 +23,8 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
 def test_cyclomatic_complexity_ignores_low_complexity_program_modulecode() -> None:
@@ -38,7 +40,7 @@ def test_cyclomatic_complexity_ignores_low_complexity_program_modulecode() -> No
                     name="MainEq",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Output"), IntLiteral(1))],
+                    code=[Assignment(target=_varref("Output"), value=IntLiteral(1))],
                 )
             ]
         ),
@@ -52,11 +54,15 @@ def test_cyclomatic_complexity_ignores_low_complexity_program_modulecode() -> No
 
 
 def test_cyclomatic_complexity_flags_high_complexity_program_modulecode() -> None:
-    decision_statements = [
-        (
-            const.GRAMMAR_VALUE_IF,
-            [(_varref(f"Cond{index}"), [(const.KEY_ASSIGN, _varref("Output"), IntLiteral(index))])],
-            [],
+    decision_statements: list[CodeItem] = [
+        IfStmt(
+            branches=(
+                (
+                    _varref(f"Cond{index}"),
+                    (Assignment(target=_varref("Output"), value=IntLiteral(index)),),
+                ),
+            ),
+            else_block=(),
         )
         for index in range(10)
     ]
@@ -106,15 +112,14 @@ def test_cyclomatic_complexity_flags_high_complexity_sfc_step() -> None:
                             name="HeatUp",
                             code=SFCCodeBlocks(
                                 active=[
-                                    (
-                                        const.GRAMMAR_VALUE_IF,
-                                        [
+                                    IfStmt(
+                                        branches=(
                                             (
                                                 _varref(f"StepCond{index}"),
-                                                [(const.KEY_ASSIGN, _varref("Output"), IntLiteral(index))],
-                                            )
-                                        ],
-                                        [],
+                                                (Assignment(target=_varref("Output"), value=IntLiteral(index)),),
+                                            ),
+                                        ),
+                                        else_block=(),
                                     )
                                     for index in range(6)
                                 ]

@@ -6,6 +6,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
+from sattline_parser.models.expressions import Assignment, IfStmt, VarRef
+
 from sattlint.analyzers.reset_contamination import _reset_path_state as reset_path_state_module
 from tests.test_reset_contamination_ratchet import (
     Equation,
@@ -138,23 +140,27 @@ def test_reset_contamination_remaining_branch_coverage(caplog: Any) -> None:
                 position=(0.0, 0.0),
                 size=(1.0, 1.0),
                 code=[
-                    None,
+                    None,  # pyright: ignore[reportArgumentType]
                     SimpleNamespace(
                         data=const.KEY_STATEMENT,
                         children=[(const.KEY_ASSIGN, _varref("SeqResetOld"), _varref("OpSeq.Reset"))],
                     ),
-                    [(const.KEY_ASSIGN, _varref("Counter"), _varref("OpSeq.Reset"))],
+                    [Assignment(target=VarRef(name="Counter"), value=VarRef(name="OpSeq.Reset"))],
                     SFCStep(
                         kind="step",
                         name="VisitAll",
                         code=SFCCodeBlocks(
-                            enter=[(const.KEY_ASSIGN, _varref("SeqResetOld"), _varref("OpSeq.Reset"))],
-                            active=[(const.KEY_ASSIGN, _varref("Counter"), _varref("OpSeq.Reset"))],
-                            exit=[(const.KEY_ASSIGN, _varref("SeqResetOld"), _varref("OpSeq.Reset"))],
+                            enter=[Assignment(target=VarRef(name="SeqResetOld"), value=VarRef(name="OpSeq.Reset"))],  # pyright: ignore[reportArgumentType]
+                            active=[Assignment(target=VarRef(name="Counter"), value=VarRef(name="OpSeq.Reset"))],  # pyright: ignore[reportArgumentType]
+                            exit=[Assignment(target=VarRef(name="SeqResetOld"), value=VarRef(name="OpSeq.Reset"))],  # pyright: ignore[reportArgumentType]
                         ),
                     ),
-                    SFCAlternative(branches=[[(const.KEY_ASSIGN, _varref("Counter"), _varref("OpSeq.Reset"))]]),
-                    SFCParallel(branches=[[(const.KEY_ASSIGN, _varref("Counter"), _varref("OpSeq.Reset"))]]),
+                    SFCAlternative(
+                        branches=[[Assignment(target=VarRef(name="Counter"), value=VarRef(name="OpSeq.Reset"))]]
+                    ),  # pyright: ignore[reportArgumentType]
+                    SFCParallel(
+                        branches=[[Assignment(target=VarRef(name="Counter"), value=VarRef(name="OpSeq.Reset"))]]
+                    ),  # pyright: ignore[reportArgumentType]
                 ],
             )
         ],
@@ -163,17 +169,16 @@ def test_reset_contamination_remaining_branch_coverage(caplog: Any) -> None:
                 name="Nested",
                 position=(0.0, 0.0),
                 size=(1.0, 1.0),
-                code=[
-                    SimpleNamespace(children=[(const.KEY_ASSIGN, _varref("SeqResetOld"), _varref("OpSeq.Reset"))]),
-                    (
-                        const.GRAMMAR_VALUE_IF,
-                        [
+                code=[  # pyright: ignore[reportArgumentType]
+                    Assignment(target=VarRef(name="SeqResetOld"), value=VarRef(name="OpSeq.Reset")),
+                    IfStmt(
+                        branches=(
                             (
-                                SimpleNamespace(children=[None, [_varref("OpSeq.Reset")]]),
-                                [SimpleNamespace(data=const.KEY_STATEMENT, children=[])],
-                            )
-                        ],
-                        [(const.KEY_ASSIGN, _varref("Counter"), _varref("OpSeq.Reset"))],
+                                SimpleNamespace(children=[None, [_varref("OpSeq.Reset")]]),  # pyright: ignore[reportArgumentType]
+                                (SimpleNamespace(data=const.KEY_STATEMENT, children=[]),),
+                            ),
+                        ),
+                        else_block=(Assignment(target=VarRef(name="Counter"), value=VarRef(name="OpSeq.Reset")),),
                     ),
                 ],
             )

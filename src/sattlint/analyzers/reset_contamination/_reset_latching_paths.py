@@ -15,6 +15,7 @@ from sattline_parser.models.ast_model import (
     SFCTransitionSub,
     Variable,
 )
+from sattline_parser.models.expressions import Assignment, FuncCallStmt, IfStmt, VarRef
 
 from ...grammar import constants as const
 from ._reset_path_state import WriteKey, WriteMap
@@ -78,6 +79,45 @@ def collect_boolean_stmt_paths(
         for child in _children_of(obj) or []:
             next_states = collect_boolean_stmt_paths(child, env, next_states)
         return next_states
+
+    if isinstance(obj, IfStmt):
+        branch_states: list[BooleanPathState] = []
+        for state in states:
+            for _condition, branch_statements in obj.branches or []:
+                branch_states.extend(
+                    collect_boolean_stmt_block_paths(
+                        list(branch_statements) or [],
+                        env,
+                        [state.clone()],
+                    )
+                )
+            if obj.else_block:
+                branch_states.extend(
+                    collect_boolean_stmt_block_paths(
+                        list(obj.else_block) or [],
+                        env,
+                        [state.clone()],
+                    )
+                )
+            else:
+                branch_states.append(state.clone())
+        return branch_states or states
+
+    if isinstance(obj, Assignment):
+        assigned_states: list[BooleanPathState] = []
+        for state in states:
+            next_state = state.clone()
+            record_boolean_assignment(obj.target, obj.value, env, next_state)
+            assigned_states.append(next_state)
+        return assigned_states or states
+
+    if isinstance(obj, FuncCallStmt):
+        call_states: list[BooleanPathState] = []
+        for state in states:
+            next_state = state.clone()
+            record_boolean_function_call(obj.call.name, list(obj.call.args), env, next_state)
+            call_states.append(next_state)
+        return call_states or states
 
     if isinstance(obj, tuple) and obj and obj[0] == const.GRAMMAR_VALUE_IF:
         _, branches, else_block = cast(IfTuple, obj)
@@ -247,9 +287,12 @@ def literal_boolean(expr: Any) -> bool | None:
 
 
 def record_boolean_write(target: Any, env: dict[str, Variable], out: WriteMap) -> None:
-    if not isinstance(target, dict) or const.KEY_VAR_NAME not in target:
+    if isinstance(target, VarRef):
+        full_ref = target.name
+    elif isinstance(target, dict) and const.KEY_VAR_NAME in target:
+        full_ref = cast(dict[str, object], target).get(const.KEY_VAR_NAME)
+    else:
         return
-    full_ref = cast(dict[str, object], target).get(const.KEY_VAR_NAME)
     if not isinstance(full_ref, str) or not full_ref:
         return
     base, field_path = split_var_ref(full_ref)

@@ -12,6 +12,8 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattline_parser.models.expressions import Assignment, VarRef
+
 from sattlint import constants as const
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
 from sattlint.resolution.access_graph import AccessEvent, AccessGraph, AccessKind
@@ -19,8 +21,8 @@ from sattlint.resolution.paths import CanonicalPath, ModuleSegment, decorate_seg
 from sattlint.resolution.type_graph import TypeGraph
 
 
-def _varref(s: str) -> dict:
-    return {const.KEY_VAR_NAME: s}
+def _varref(s: str) -> VarRef:
+    return VarRef(name=s)
 
 
 def test_resolves_submodule_parameter_access_to_canonical_parent_path():
@@ -78,10 +80,9 @@ def test_resolves_submodule_parameter_access_to_canonical_parent_path():
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("signal.comp_signal.value"),
-                            1.0,
+                        Assignment(
+                            target=_varref("signal.comp_signal.value"),
+                            value=1.0,
                         )
                     ],
                 )

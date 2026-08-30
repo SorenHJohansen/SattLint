@@ -53,7 +53,6 @@ def load_workspace_snapshot(
     mode: CodeMode | str = "draft",
     other_lib_dirs: list[Path] | None = None,
     abb_lib_dir: Path | None = None,
-    scan_root_only: bool = False,
     debug: bool = False,
     collect_variable_diagnostics: bool = True,
 ):
@@ -65,7 +64,6 @@ def load_workspace_snapshot(
         mode=mode,
         other_lib_dirs=other_lib_dirs,
         abb_lib_dir=abb_lib_dir,
-        scan_root_only=scan_root_only,
         debug=debug,
         collect_variable_diagnostics=collect_variable_diagnostics,
         _analysis_provider=_ensure_analysis_provider(),

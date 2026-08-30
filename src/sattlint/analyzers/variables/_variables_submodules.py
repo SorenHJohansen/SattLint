@@ -14,6 +14,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattline_parser.models.expressions import VarRef
 
 from ...casefolding import is_anytype_name
 from ...grammar import constants as const
@@ -400,6 +401,14 @@ def _lookup_env_var_from_varname_dict(
     var_dict_or_other: Any,
     env: dict[str, Variable],
 ) -> Variable | None:
+    if isinstance(var_dict_or_other, VarRef):
+        base = varname_base(var_dict_or_other)
+        if base is not None:
+            return env.get(base)
+    if isinstance(var_dict_or_other, str):
+        base = varname_base(var_dict_or_other)
+        if base is not None:
+            return env.get(base)
     if isinstance(var_dict_or_other, dict) and const.KEY_VAR_NAME in var_dict_or_other:
         var_dict = cast(dict[str, object], var_dict_or_other)
         base = varname_base(var_dict)

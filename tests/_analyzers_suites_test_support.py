@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
+    Assignment,
     BasePicture,
     DataType,
     Equation,
@@ -33,6 +34,8 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattline_parser.models.expressions import FuncCall, FuncCallStmt
+
 from sattlint import constants as const
 from sattlint.analyzers import registry as registry_module
 from sattlint.analyzers.alarm_integrity import analyze_alarm_integrity
@@ -95,6 +98,7 @@ from tests.helpers.variable_test_support import (
 __all__ = [
     "AnalyzerSpec",
     "Any",
+    "Assignment",
     "AstDiffDetail",
     "BasePicture",
     "CodeDiff",
@@ -102,6 +106,8 @@ __all__ = [
     "DataType",
     "Equation",
     "FrameModule",
+    "FuncCall",
+    "FuncCallStmt",
     "GraphObject",
     "IntLiteral",
     "IssueKind",

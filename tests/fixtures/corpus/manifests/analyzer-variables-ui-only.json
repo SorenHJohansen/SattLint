@@ -1,0 +1,22 @@
+{
+    "case_id": "analyzer-variables-ui-only",
+    "target_file": "../semantic/analyzer/VariableUiOnly.s",
+    "mode": "analyzer-variables",
+    "expectation": {
+        "expected_finding_ids": [
+            "semantic.ui-only-variable"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "variables"
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": ["findings.json", "status.json", "summary.json"]
+}

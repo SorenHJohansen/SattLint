@@ -1,4 +1,3 @@
-# ruff: noqa: F403, F405
 from ._analyzers_suites_test_support import *
 
 
@@ -347,13 +346,7 @@ def test_alarm_integrity_detects_never_cleared_alarm_variable():
                     name="Main",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "SetBooleanValue",
-                            [_varref("AlarmTrip"), True],
-                        )
-                    ],
+                    code=[FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("AlarmTrip"), True)))],
                 )
             ]
         ),

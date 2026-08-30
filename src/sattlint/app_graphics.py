@@ -5,20 +5,17 @@ import json
 import logging
 from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
-from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 
 from sattline_parser.models.ast_model import BasePicture
 
 from . import _app_graphics_menus as graphics_menus_module
 from . import _app_graphics_reports as graphics_reports_module
-from . import config as config_module
 from . import console as console_module
 from . import graphics_rules as graphics_rules_module
 from ._app_debug import log_debug_exception
 from .app_interaction import MenuInteraction
 from .config_types import ConfigDict
-from .docgenerator import classification as documentation_classification_module
 from .models.project_graph import ProjectGraph
 
 log = logging.getLogger("SattLint")
@@ -29,18 +26,6 @@ GraphicsRulesConfig = dict[str, Any]
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
 LoadedProjectIterator = Callable[[ConfigDict], Iterator[LoadedProject]]
 CollectGraphicsLayoutEntriesForTargetFn = Callable[[str, BasePicture, ProjectGraph], list[GraphicsRule]]
-ClassifyDocumentationStructureFn = Callable[..., Any]
-DiscoverDocumentationUnitCandidatesFn = Callable[[Any], Sequence[Any]]
-_documentation_classification_module: Any = documentation_classification_module
-
-DEFAULT_CLASSIFY_DOCUMENTATION_STRUCTURE_FN = cast(
-    ClassifyDocumentationStructureFn,
-    _documentation_classification_module.classify_documentation_structure,
-)
-DEFAULT_DISCOVER_DOCUMENTATION_UNIT_CANDIDATES_FN = cast(
-    DiscoverDocumentationUnitCandidatesFn,
-    _documentation_classification_module.discover_documentation_unit_candidates,
-)
 
 
 def get_graphics_rules_path(config_path: Path) -> Path:
@@ -91,7 +76,6 @@ def show_config(
 ) -> None:
     graphics_reports_module.show_config(
         cfg,
-        get_documentation_config_fn=config_module.get_documentation_config,
         get_graphics_rules_path_fn=get_graphics_rules_path_fn,
         load_graphics_rules_fn=load_graphics_rules_fn,
         graphics_rule_config_line_fn=graphics_rule_config_line_fn,
@@ -281,40 +265,7 @@ def prompt_graphics_rule_selector(
         module_kind,
         cfg=cfg,
         pick_or_prompt_graphics_rule_selector_value_fn=pick_or_prompt_graphics_rule_selector_value_fn,
-        emit_output_fn=emit_output,
         interaction=interaction,
-    )
-
-
-def path_startswith_casefold(path: Sequence[str], prefix: Sequence[str]) -> bool:
-    return graphics_menus_module.path_startswith_casefold(path, prefix)
-
-
-def graphics_entry_canonical_segment(entry: dict[str, Any]) -> str:
-    return graphics_menus_module.graphics_entry_canonical_segment(entry)
-
-
-def looks_like_graphics_unit_root(
-    candidate_path: Sequence[str],
-    entries: Sequence[dict[str, Any]],
-) -> bool:
-    return graphics_menus_module.looks_like_graphics_unit_root(candidate_path, entries)
-
-
-def annotate_graphics_entries_with_structure_paths(
-    entries: list[GraphicsRule],
-    project_bp: BasePicture,
-    graph: ProjectGraph,
-    *,
-    classify_documentation_structure_fn: ClassifyDocumentationStructureFn = DEFAULT_CLASSIFY_DOCUMENTATION_STRUCTURE_FN,
-    discover_documentation_unit_candidates_fn: DiscoverDocumentationUnitCandidatesFn = DEFAULT_DISCOVER_DOCUMENTATION_UNIT_CANDIDATES_FN,
-) -> list[GraphicsRule]:
-    return graphics_menus_module.annotate_graphics_entries_with_structure_paths(
-        entries,
-        project_bp,
-        graph,
-        classify_documentation_structure_fn=classify_documentation_structure_fn,
-        discover_documentation_unit_candidates_fn=discover_documentation_unit_candidates_fn,
     )
 
 
@@ -356,29 +307,10 @@ def collect_graphics_layout_entries_for_target(
     target_name: str,
     project_bp: BasePicture,
     graph: ProjectGraph,
-    *,
-    annotate_graphics_entries_with_structure_paths_fn: Callable[
-        [list[dict[str, Any]], BasePicture, ProjectGraph], list[dict[str, Any]]
-    ],
 ) -> list[dict[str, Any]]:
-    structural_reports_module = importlib.import_module("sattlint.devtools.structural_reports")
-
-    synthetic_entry_file = Path.cwd() / f"{target_name}.s"
-    snapshot = SimpleNamespace(
-        entry_file=synthetic_entry_file,
-        base_picture=project_bp,
-        project_graph=graph,
-    )
-    discovery = SimpleNamespace(
-        program_files=(synthetic_entry_file,),
-        dependency_files=(),
-    )
-    report = structural_reports_module.collect_graphics_layout_report(
-        workspace_root=Path.cwd(),
-        graph_inputs=(discovery, [snapshot], []),
-    )
-    return annotate_graphics_entries_with_structure_paths_fn(
-        list(report.get("entries", [])),
+    structural_graphics_module = importlib.import_module("sattlint.devtools.structural._structural_report_graphics")
+    return structural_graphics_module.collect_graphics_layout_entries_for_target(
+        target_name,
         project_bp,
         graph,
     )

@@ -8,6 +8,7 @@ import logging
 from typing import TYPE_CHECKING, Any, cast
 
 from sattline_parser.models.ast_model import FloatLiteral, IntLiteral, Variable
+from sattline_parser.models.expressions import VarRef
 
 from ...casefolding import is_anytype_name
 from ...grammar import constants as const
@@ -91,6 +92,8 @@ def _children_of(value: Any) -> list[Any] | None:
 
 
 def _var_name_of(value: Any) -> str | None:
+    if isinstance(value, VarRef):
+        return value.name or None
     if not isinstance(value, dict) or const.KEY_VAR_NAME not in value:
         return None
     full_name = cast(dict[str, object], value).get(const.KEY_VAR_NAME)
@@ -570,6 +573,13 @@ def _scan_for_varrefs(
                     self._walk_output_tail(tail, context, path, is_ui_read=is_ui_read)
                 else:
                     self._walk_tail(tail, context, path, is_ui_read=is_ui_read)
+        if (
+            const.KEY_NAME in mapping
+            and const.KEY_TAIL in mapping
+            and mapping[const.KEY_TAIL] is None
+            and isinstance(mapping[const.KEY_NAME], str)
+        ):
+            self._walk_tail(mapping[const.KEY_NAME], context, path, is_ui_read=is_ui_read)
         for value in mapping.values():
             self._scan_for_varrefs(value, context, path, is_ui_read=is_ui_read)
         return
