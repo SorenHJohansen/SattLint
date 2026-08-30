@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import json
 import logging
 from collections.abc import Callable, Iterator, Sequence
@@ -15,9 +16,6 @@ from . import graphics_rules as graphics_rules_module
 from ._app_debug import log_debug_exception
 from .app_interaction import MenuInteraction
 from .config_types import ConfigDict
-from .devtools.structural._structural_report_graphics import (  # noqa: F401
-    collect_graphics_layout_entries_for_target,
-)
 from .models.project_graph import ProjectGraph
 
 log = logging.getLogger("SattLint")
@@ -302,6 +300,19 @@ def prompt_graphics_rule_definition_with_config(
         emit_output_fn=emit_output,
         required_prompt_validation_error=RequiredPromptValidationError,
         interaction=interaction,
+    )
+
+
+def collect_graphics_layout_entries_for_target(
+    target_name: str,
+    project_bp: BasePicture,
+    graph: ProjectGraph,
+) -> list[dict[str, Any]]:
+    structural_graphics_module = importlib.import_module("sattlint.devtools.structural._structural_report_graphics")
+    return structural_graphics_module.collect_graphics_layout_entries_for_target(
+        target_name,
+        project_bp,
+        graph,
     )
 
 
