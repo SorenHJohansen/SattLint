@@ -270,7 +270,6 @@ def run_scan() -> dict[str, Any]:
     findings.extend(scan_ai_first_source_drift())
     findings.extend(scan_ai_first_status_drift())
     findings.extend(scan_completed_exec_plans_still_active())
-    findings.extend(scan_stale_docs())
     return doc_gardener_scan_module.build_scan_result(
         findings,
         severity_order=SEVERITY_ORDER,
