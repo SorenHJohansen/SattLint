@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from typing import cast
 
 from sattline_parser.models.ast_model import Variable
+from sattline_parser.models.expressions import VarRef
 
 from ..grammar import constants as const
 
@@ -25,6 +26,8 @@ def varname_base(var_dict_or_str: object) -> str | None:
 
 def varname_full(var_dict_or_str: object) -> str | None:
     """Extract full variable name from a variable_name dict or string."""
+    if isinstance(var_dict_or_str, VarRef):
+        return var_dict_or_str.name
     if isinstance(var_dict_or_str, str):
         return var_dict_or_str
     mapping = _string_object_mapping(var_dict_or_str)

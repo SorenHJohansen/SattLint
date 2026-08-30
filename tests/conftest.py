@@ -40,7 +40,6 @@ def sample_config():
     return {
         "root": "test_module",
         "mode": "draft",
-        "scan_root_only": False,
         "debug": False,
         "program_dir": "/tmp/test_programs",
         "ABB_lib_dir": "/tmp/test_abb_lib",

@@ -5,14 +5,15 @@ from __future__ import annotations
 
 from collections import defaultdict
 from types import SimpleNamespace
-from typing import Any
 
 from sattline_parser.models.ast_model import (
     ModuleHeader,
     ParameterMapping,
     Simple_DataType,
     Variable,
+    VarRef,
 )
+
 from sattlint import constants as const
 from sattlint.analyzers.variables import _variables_effect_flow as effect_flow_module
 from sattlint.analyzers.variables import _variables_effect_sources as effect_sources_module
@@ -25,21 +26,21 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict[str, str]:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
-def _string_source(text: str) -> Any:
-    return text
+def _string_source(text: str) -> VarRef:
+    return VarRef(name=text)
 
 
 def test_parameter_mapping_normalizes_string_variable_refs() -> None:
     mapping = ParameterMapping(
-        target="Input",
+        target=_varref("Input"),
         source_type=const.TREE_TAG_VARIABLE_NAME,
         is_duration=False,
         is_source_global=False,
-        source="ParentLocal.Member",
+        source=_varref("ParentLocal.Member"),
         source_literal=None,
     )
 
@@ -494,7 +495,9 @@ def test_effect_flow_tracker_special_function_paths_ignore_unreadable_var_refs(m
         effect_flow_module,
         "_var_ref_text",
         lambda raw: (
-            None if isinstance(raw, dict) and raw.get(const.KEY_VAR_NAME) == "Missing" else str(raw[const.KEY_VAR_NAME])
+            None
+            if isinstance(raw, VarRef) and raw.name == "Missing"
+            else (raw.name if isinstance(raw, VarRef) else str(raw))
         ),
     )
 

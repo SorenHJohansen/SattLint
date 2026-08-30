@@ -14,6 +14,7 @@ from sattline_parser.models.ast_model import (
     SFCTransitionSub,
     Variable,
 )
+from sattline_parser.models.expressions import Assignment, FuncCallStmt, IfStmt
 
 from ..grammar import constants as const
 from ..resolution.common import varname_full
@@ -90,7 +91,7 @@ def iter_sequence_node_statements(node: object) -> list[object]:
     return []
 
 
-def collect_boolean_writes(
+def collect_boolean_writes(  # noqa: PLR0915
     obj: object,
     env: dict[str, Variable],
     writes: dict[str, AlarmBooleanWriteSummary],
@@ -102,6 +103,31 @@ def collect_boolean_writes(
     if statement_children is not None:
         for child in statement_children:
             collect_boolean_writes(child, env, writes)
+        return
+
+    if isinstance(obj, Assignment):
+        record_boolean_write(obj.target, obj.value, env, writes)
+        collect_boolean_writes(obj.value, env, writes)
+        return
+
+    if isinstance(obj, FuncCallStmt):
+        call = obj.call
+        function_name = call.name if hasattr(call, "name") else ""
+        args = list(call.args) if hasattr(call, "args") else []
+        if function_name.casefold() == "setbooleanvalue" and len(args) >= 2:
+            record_boolean_write(args[0], args[1], env, writes)
+        for argument in args:
+            collect_boolean_writes(argument, env, writes)
+        return
+
+    if isinstance(obj, IfStmt):
+        for condition, branch_statements in obj.branches:
+            collect_boolean_writes(condition, env, writes)
+            for statement in _sequence_as_list(branch_statements):
+                collect_boolean_writes(statement, env, writes)
+        if obj.else_block:
+            for statement in _sequence_as_list(obj.else_block):
+                collect_boolean_writes(statement, env, writes)
         return
 
     tuple_node = _object_tuple(obj)

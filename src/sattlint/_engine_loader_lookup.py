@@ -16,6 +16,7 @@ from ._engine_loader_base import (
     code_ext,
     deps_ext,
     ensure_local_validation,
+    mark_local_validation,
 )
 
 
@@ -510,8 +511,7 @@ class SattLineProjectLoaderLookupMixin(SattLineProjectLoaderBase):
 
         self._update_status(f"Loading {code_path.stem}: parsing {code_path.name}")
         basepicture = self._parse_one(code_path)
-        if self.refresh_mode == "ast-only":
-            ensure_local_validation(basepicture)
+        mark_local_validation(basepicture)
         cache_save_started_at = perf_counter()
         self._ast_cache.save(code_path, self.mode.value, basepicture)
         self._record_stage_timing(resolved_owner_name, "ast_cache_save", cache_save_started_at)

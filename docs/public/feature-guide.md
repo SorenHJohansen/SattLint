@@ -67,14 +67,6 @@ sattlint repo-audit --profile full
 sattlint repo-audit --fail-on high
 ```
 
-### `sattlint-lsp`
-
-Start the Language Server Protocol server. Used by the VS Code extension.
-
-```bash
-sattlint-lsp
-```
-
 ---
 
 ## Preview CLI Commands
@@ -147,7 +139,7 @@ These are internal repository-tooling entry points. They ship with the package b
 | `sattlint-repo-audit` | Full repository audit entry point | `--profile quick/full` |
 | `sattlint-analysis-pipeline` | Shared CI pipeline runner | `--profile full --check <name>` |
 | `sattlint-layer-lint` | SattLine module hierarchy layer validation | — |
-| `sattlint-structural-ratchet` | Structural budget ratchet verification | `--json` |
+| `sattlint-structural-ratchet` | Structural budget report verification | `--json` |
 | `sattlint-doc-gardener` | Documentation structure and reference validation | `--check-only` |
 | `sattlint-release-smoke` | Pre-publish wheel smoke test | `--wheel ... --sample-file ...` |
 | `sattlint-corpus-runner` | Regression test corpus execution | — |

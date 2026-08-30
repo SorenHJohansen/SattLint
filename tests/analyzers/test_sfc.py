@@ -23,6 +23,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+
 from sattlint import constants as const
 from sattlint.analyzers import sfc as sfc_module
 from sattlint.analyzers import variables as variables_module

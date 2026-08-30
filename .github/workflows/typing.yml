@@ -28,7 +28,7 @@ jobs:
       - name: Set up shared CI tooling
         uses: ./.github/actions/setup-ci-tooling
         with:
-          dependency-spec: ".[dev,lsp]"
+          dependency-spec: ".[dev]"
 
       - name: Install Pyright from pyproject constraint
         shell: bash
@@ -39,7 +39,7 @@ jobs:
           uv pip install --system "$pyright_spec"
 
       - name: Run Pyright
-        run: python -m pyright src/sattlint src/sattline_parser
+        run: python -m pyright src/sattlint
 
   tests:
     name: Tests & Coverage
@@ -53,9 +53,7 @@ jobs:
       - name: Set up shared CI tooling
         uses: ./.github/actions/setup-ci-tooling
         with:
-          dependency-spec: ".[dev,lsp]"
-          install-node: "true"
-          install-markdownlint: "true"
+          dependency-spec: ".[dev]"
 
       - name: Run pytest with coverage
         run: python -m pytest -q --tb=short
@@ -72,7 +70,7 @@ jobs:
       - name: Set up shared CI tooling
         uses: ./.github/actions/setup-ci-tooling
         with:
-          dependency-spec: ".[dev,lsp]"
+          dependency-spec: ".[dev]"
 
       - name: Run Vulture dead code analysis
         run: python -m vulture src --min-confidence 80
@@ -94,22 +92,3 @@ jobs:
 
       - name: Audit dependencies
         run: pip-audit --skip-editable
-
-  npm-audit:
-    name: Npm Audit
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: vscode/sattline-vscode
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
-
-      - name: Set up shared CI tooling
-        uses: ./.github/actions/setup-ci-tooling
-        with:
-          install-dependencies: "false"
-          install-node: "true"
-
-      - name: Audit VS Code client dependencies
-        run: npm audit --audit-level=high

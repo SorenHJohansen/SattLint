@@ -8,7 +8,8 @@ from sattline_parser.models.ast_model import (
     Simple_DataType,
     Variable,
 )
-from sattlint import constants as const
+from sattline_parser.models.expressions import Assignment, VarRef
+
 from sattlint.analyzers.numeric_constraints import analyze_numeric_constraints
 from sattlint.analyzers.registry import get_default_analyzers
 
@@ -17,8 +18,8 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
 def test_numeric_constraints_flags_assignments_outside_visible_bounds():
@@ -36,7 +37,7 @@ def test_numeric_constraints_flags_assignments_outside_visible_bounds():
                     name="Main",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Output"), IntLiteral(12))],
+                    code=[Assignment(target=_varref("Output"), value=IntLiteral(12))],
                 )
             ]
         ),

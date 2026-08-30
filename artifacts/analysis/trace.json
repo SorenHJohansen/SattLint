@@ -208,7 +208,7 @@
         "stage": "ok"
       },
       "phase": "syntax",
-      "time_offset_ms": 59.318
+      "time_offset_ms": 153.794
     },
     {
       "action": "basepicture-loaded",
@@ -217,7 +217,7 @@
         "source_file": "tests/fixtures/sample_sattline_files/LinterTestProgram.s"
       },
       "phase": "analysis",
-      "time_offset_ms": 65.92
+      "time_offset_ms": 162.591
     },
     {
       "action": "ast-summary",
@@ -235,7 +235,7 @@
         "submodule_count": 1
       },
       "phase": "analysis",
-      "time_offset_ms": 65.938
+      "time_offset_ms": 162.609
     },
     {
       "action": "start",
@@ -248,7 +248,7 @@
         "submodule_count": 1
       },
       "phase": "variables",
-      "time_offset_ms": 65.987
+      "time_offset_ms": 162.738
     },
     {
       "action": "root-context-built",
@@ -256,7 +256,7 @@
         "root_symbols": 2
       },
       "phase": "variables",
-      "time_offset_ms": 66.007
+      "time_offset_ms": 162.771
     },
     {
       "action": "issue",
@@ -268,11 +268,11 @@
           "VariableTest"
         ],
         "role": "literal",
-        "site": "EQ:Main",
+        "site": "",
         "variable": null
       },
       "phase": "variables",
-      "time_offset_ms": 66.296
+      "time_offset_ms": 163.018
     },
     {
       "action": "issue",
@@ -284,11 +284,11 @@
           "VariableTest"
         ],
         "role": "literal",
-        "site": "EQ:Main",
+        "site": "",
         "variable": null
       },
       "phase": "variables",
-      "time_offset_ms": 66.324
+      "time_offset_ms": 163.075
     },
     {
       "action": "issue",
@@ -300,11 +300,11 @@
           "VariableTest"
         ],
         "role": "literal",
-        "site": "EQ:Main",
+        "site": "",
         "variable": null
       },
       "phase": "variables",
-      "time_offset_ms": 66.345
+      "time_offset_ms": 163.121
     },
     {
       "action": "issue",
@@ -316,11 +316,11 @@
           "VariableTest"
         ],
         "role": "literal",
-        "site": "EQ:Main",
+        "site": "",
         "variable": null
       },
       "phase": "variables",
-      "time_offset_ms": 66.385
+      "time_offset_ms": 163.212
     },
     {
       "action": "issue",
@@ -332,11 +332,11 @@
           "VariableTest"
         ],
         "role": "literal",
-        "site": "EQ:Main",
+        "site": "",
         "variable": null
       },
       "phase": "variables",
-      "time_offset_ms": 66.389
+      "time_offset_ms": 163.218
     },
     {
       "action": "issue",
@@ -348,11 +348,11 @@
           "VariableTest"
         ],
         "role": "literal",
-        "site": "EQ:Main",
+        "site": "",
         "variable": null
       },
       "phase": "variables",
-      "time_offset_ms": 66.479
+      "time_offset_ms": 163.397
     },
     {
       "action": "issue",
@@ -366,11 +366,11 @@
           "SM1"
         ],
         "role": "literal",
-        "site": "EQ:Equa1",
+        "site": "",
         "variable": null
       },
       "phase": "variables",
-      "time_offset_ms": 66.556
+      "time_offset_ms": 163.556
     },
     {
       "action": "issue",
@@ -384,11 +384,11 @@
           "SM1"
         ],
         "role": "literal",
-        "site": "EQ:Equa1",
+        "site": "",
         "variable": null
       },
       "phase": "variables",
-      "time_offset_ms": 66.56
+      "time_offset_ms": 163.563
     },
     {
       "action": "issue",
@@ -402,11 +402,11 @@
           "SM1"
         ],
         "role": "literal",
-        "site": "EQ:Equa1",
+        "site": "",
         "variable": null
       },
       "phase": "variables",
-      "time_offset_ms": 66.57
+      "time_offset_ms": 163.579
     },
     {
       "action": "issue",
@@ -420,11 +420,79 @@
           "SM1"
         ],
         "role": "literal",
-        "site": "EQ:Equa1",
+        "site": "",
         "variable": null
       },
       "phase": "variables",
-      "time_offset_ms": 66.573
+      "time_offset_ms": 163.584
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "required_parameter_connection",
+        "module_path": [
+          "BasePicture",
+          "VariableTest"
+        ],
+        "role": "required parameter connection missing for 'pTransReadOnly'",
+        "site": null,
+        "variable": "pTransReadOnly"
+      },
+      "phase": "variables",
+      "time_offset_ms": 165.235
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "required_parameter_connection",
+        "module_path": [
+          "BasePicture",
+          "VariableTest"
+        ],
+        "role": "required parameter connection missing for 'pTransWriteOnly'",
+        "site": null,
+        "variable": "pTransWriteOnly"
+      },
+      "phase": "variables",
+      "time_offset_ms": 165.245
+    },
+    {
+      "action": "phase-complete",
+      "data": {
+        "duration_ms": 2.499,
+        "phase_name": "root-traversal"
+      },
+      "phase": "variables",
+      "time_offset_ms": 165.252
+    },
+    {
+      "action": "phase-complete",
+      "data": {
+        "duration_ms": 0.004,
+        "phase_name": "display-binding-scan"
+      },
+      "phase": "variables",
+      "time_offset_ms": 165.261
+    },
+    {
+      "action": "phase-complete",
+      "data": {
+        "duration_ms": 0.001,
+        "phase_name": "dependency-typedef-usage"
+      },
+      "phase": "variables",
+      "time_offset_ms": 165.265
+    },
+    {
+      "action": "phase-complete",
+      "data": {
+        "duration_ms": 0.013,
+        "phase_name": "alias-propagation"
+      },
+      "phase": "variables",
+      "time_offset_ms": 165.281
     },
     {
       "action": "alias-back-propagation",
@@ -432,7 +500,15 @@
         "alias_link_count": 3
       },
       "phase": "variables",
-      "time_offset_ms": 66.692
+      "time_offset_ms": 165.283
+    },
+    {
+      "action": "string-operation-overflow-scan",
+      "data": {
+        "added_issue_count": 0
+      },
+      "phase": "variables",
+      "time_offset_ms": 168.585
     },
     {
       "action": "reset-contamination-scan",
@@ -440,7 +516,7 @@
         "added_issue_count": 0
       },
       "phase": "variables",
-      "time_offset_ms": 66.712
+      "time_offset_ms": 168.646
     },
     {
       "action": "implicit-latch-scan",
@@ -448,7 +524,24 @@
         "added_issue_count": 0
       },
       "phase": "variables",
-      "time_offset_ms": 66.73
+      "time_offset_ms": 168.677
+    },
+    {
+      "action": "layout-overlap-scan",
+      "data": {
+        "added_issue_count": 0
+      },
+      "phase": "variables",
+      "time_offset_ms": 168.743
+    },
+    {
+      "action": "phase-complete",
+      "data": {
+        "duration_ms": 3.48,
+        "phase_name": "post-traversal-checks"
+      },
+      "phase": "variables",
+      "time_offset_ms": 168.768
     },
     {
       "action": "issue",
@@ -463,7 +556,7 @@
         "variable": "Used"
       },
       "phase": "variables",
-      "time_offset_ms": 66.75
+      "time_offset_ms": 168.791
     },
     {
       "action": "issue",
@@ -478,7 +571,16 @@
         "variable": "Unused"
       },
       "phase": "variables",
-      "time_offset_ms": 66.755
+      "time_offset_ms": 168.799
+    },
+    {
+      "action": "phase-complete",
+      "data": {
+        "duration_ms": 0.04,
+        "phase_name": "base-picture-issue-scan"
+      },
+      "phase": "variables",
+      "time_offset_ms": 168.814
     },
     {
       "action": "issue",
@@ -490,11 +592,11 @@
           "TypeDef:Linter_Test"
         ],
         "role": "literal",
-        "site": "EQ:Main",
+        "site": "",
         "variable": null
       },
       "phase": "variables",
-      "time_offset_ms": 66.802
+      "time_offset_ms": 168.936
     },
     {
       "action": "issue",
@@ -506,11 +608,11 @@
           "TypeDef:Linter_Test"
         ],
         "role": "literal",
-        "site": "EQ:Main",
+        "site": "",
         "variable": null
       },
       "phase": "variables",
-      "time_offset_ms": 66.824
+      "time_offset_ms": 168.989
     },
     {
       "action": "issue",
@@ -522,11 +624,11 @@
           "TypeDef:Linter_Test"
         ],
         "role": "literal",
-        "site": "EQ:Main",
+        "site": "",
         "variable": null
       },
       "phase": "variables",
-      "time_offset_ms": 66.843
+      "time_offset_ms": 169.033
     },
     {
       "action": "issue",
@@ -538,11 +640,11 @@
           "TypeDef:Linter_Test"
         ],
         "role": "literal",
-        "site": "EQ:Main",
+        "site": "",
         "variable": null
       },
       "phase": "variables",
-      "time_offset_ms": 66.883
+      "time_offset_ms": 169.12
     },
     {
       "action": "issue",
@@ -554,11 +656,11 @@
           "TypeDef:Linter_Test"
         ],
         "role": "literal",
-        "site": "EQ:Main",
+        "site": "",
         "variable": null
       },
       "phase": "variables",
-      "time_offset_ms": 66.886
+      "time_offset_ms": 169.125
     },
     {
       "action": "issue",
@@ -570,11 +672,11 @@
           "TypeDef:Linter_Test"
         ],
         "role": "literal",
-        "site": "EQ:Main",
+        "site": "",
         "variable": null
       },
       "phase": "variables",
-      "time_offset_ms": 66.962
+      "time_offset_ms": 169.28
     },
     {
       "action": "issue",
@@ -588,11 +690,11 @@
           "SM1"
         ],
         "role": "literal",
-        "site": "EQ:Equa1",
+        "site": "",
         "variable": null
       },
       "phase": "variables",
-      "time_offset_ms": 67.03
+      "time_offset_ms": 169.421
     },
     {
       "action": "issue",
@@ -606,11 +708,11 @@
           "SM1"
         ],
         "role": "literal",
-        "site": "EQ:Equa1",
+        "site": "",
         "variable": null
       },
       "phase": "variables",
-      "time_offset_ms": 67.034
+      "time_offset_ms": 169.427
     },
     {
       "action": "issue",
@@ -624,11 +726,11 @@
           "SM1"
         ],
         "role": "literal",
-        "site": "EQ:Equa1",
+        "site": "",
         "variable": null
       },
       "phase": "variables",
-      "time_offset_ms": 67.042
+      "time_offset_ms": 169.441
     },
     {
       "action": "issue",
@@ -642,11 +744,11 @@
           "SM1"
         ],
         "role": "literal",
-        "site": "EQ:Equa1",
+        "site": "",
         "variable": null
       },
       "phase": "variables",
-      "time_offset_ms": 67.045
+      "time_offset_ms": 169.446
     },
     {
       "action": "issue",
@@ -662,7 +764,7 @@
         "variable": "pReadOnly"
       },
       "phase": "variables",
-      "time_offset_ms": 67.129
+      "time_offset_ms": 169.704
     },
     {
       "action": "issue",
@@ -678,7 +780,7 @@
         "variable": "pWriteOnly"
       },
       "phase": "variables",
-      "time_offset_ms": 67.132
+      "time_offset_ms": 169.71
     },
     {
       "action": "issue",
@@ -694,7 +796,7 @@
         "variable": "pUnused"
       },
       "phase": "variables",
-      "time_offset_ms": 67.135
+      "time_offset_ms": 169.714
     },
     {
       "action": "issue",
@@ -710,7 +812,43 @@
         "variable": "pTransUnused"
       },
       "phase": "variables",
-      "time_offset_ms": 67.14
+      "time_offset_ms": 169.722
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "unused",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test",
+          "FM1",
+          "SM1"
+        ],
+        "role": "moduleparameter",
+        "site": null,
+        "variable": "pTransUnused"
+      },
+      "phase": "variables",
+      "time_offset_ms": 169.734
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "unused",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test",
+          "FM1",
+          "SM1"
+        ],
+        "role": "moduleparameter",
+        "site": null,
+        "variable": "pGlobalUnused"
+      },
+      "phase": "variables",
+      "time_offset_ms": 169.739
     },
     {
       "action": "issue",
@@ -726,7 +864,7 @@
         "variable": "Value"
       },
       "phase": "variables",
-      "time_offset_ms": 67.147
+      "time_offset_ms": 169.752
     },
     {
       "action": "issue",
@@ -742,7 +880,7 @@
         "variable": "'Value'"
       },
       "phase": "variables",
-      "time_offset_ms": 67.151
+      "time_offset_ms": 169.758
     },
     {
       "action": "issue",
@@ -758,7 +896,7 @@
         "variable": "Shadow"
       },
       "phase": "variables",
-      "time_offset_ms": 67.154
+      "time_offset_ms": 169.763
     },
     {
       "action": "issue",
@@ -774,7 +912,7 @@
         "variable": "vReadOnly"
       },
       "phase": "variables",
-      "time_offset_ms": 67.157
+      "time_offset_ms": 169.769
     },
     {
       "action": "issue",
@@ -790,7 +928,7 @@
         "variable": "vWriteOnly"
       },
       "phase": "variables",
-      "time_offset_ms": 67.16
+      "time_offset_ms": 169.773
     },
     {
       "action": "issue",
@@ -806,7 +944,7 @@
         "variable": "vUnused"
       },
       "phase": "variables",
-      "time_offset_ms": 67.164
+      "time_offset_ms": 169.779
     },
     {
       "action": "issue",
@@ -822,7 +960,7 @@
         "variable": "vTekst"
       },
       "phase": "variables",
-      "time_offset_ms": 67.167
+      "time_offset_ms": 169.784
     },
     {
       "action": "issue",
@@ -838,7 +976,7 @@
         "variable": "Enable"
       },
       "phase": "variables",
-      "time_offset_ms": 67.17
+      "time_offset_ms": 169.788
     },
     {
       "action": "issue",
@@ -854,7 +992,7 @@
         "variable": "vIf"
       },
       "phase": "variables",
-      "time_offset_ms": 67.173
+      "time_offset_ms": 169.793
     },
     {
       "action": "issue",
@@ -870,7 +1008,7 @@
         "variable": "vTernary"
       },
       "phase": "variables",
-      "time_offset_ms": 67.178
+      "time_offset_ms": 169.801
     },
     {
       "action": "issue",
@@ -886,7 +1024,7 @@
         "variable": "vFunction"
       },
       "phase": "variables",
-      "time_offset_ms": 67.183
+      "time_offset_ms": 169.809
     },
     {
       "action": "issue",
@@ -902,7 +1040,7 @@
         "variable": "vProcedure"
       },
       "phase": "variables",
-      "time_offset_ms": 67.187
+      "time_offset_ms": 169.815
     },
     {
       "action": "issue",
@@ -918,7 +1056,7 @@
         "variable": "vAssignment"
       },
       "phase": "variables",
-      "time_offset_ms": 67.191
+      "time_offset_ms": 169.821
     },
     {
       "action": "issue",
@@ -934,7 +1072,7 @@
         "variable": "vExpression"
       },
       "phase": "variables",
-      "time_offset_ms": 67.194
+      "time_offset_ms": 169.825
     },
     {
       "action": "issue",
@@ -950,7 +1088,25 @@
         "variable": "si"
       },
       "phase": "variables",
-      "time_offset_ms": 67.2
+      "time_offset_ms": 169.834
+    },
+    {
+      "action": "phase-complete",
+      "data": {
+        "duration_ms": 1.02,
+        "phase_name": "typedef-scan"
+      },
+      "phase": "variables",
+      "time_offset_ms": 169.838
+    },
+    {
+      "action": "phase-complete",
+      "data": {
+        "duration_ms": 0.014,
+        "phase_name": "root-variable-access-summary-build"
+      },
+      "phase": "variables",
+      "time_offset_ms": 169.86
     },
     {
       "action": "global-scope-minimization-scan",
@@ -958,7 +1114,7 @@
         "added_issue_count": 0
       },
       "phase": "variables",
-      "time_offset_ms": 67.261
+      "time_offset_ms": 170.12
     },
     {
       "action": "hidden-global-coupling-scan",
@@ -966,7 +1122,7 @@
         "added_issue_count": 0
       },
       "phase": "variables",
-      "time_offset_ms": 67.321
+      "time_offset_ms": 170.127
     },
     {
       "action": "high-fan-in-out-scan",
@@ -974,7 +1130,16 @@
         "added_issue_count": 0
       },
       "phase": "variables",
-      "time_offset_ms": 67.379
+      "time_offset_ms": 170.132
+    },
+    {
+      "action": "phase-complete",
+      "data": {
+        "duration_ms": 0.293,
+        "phase_name": "final-issue-synthesis"
+      },
+      "phase": "variables",
+      "time_offset_ms": 170.135
     },
     {
       "action": "issue",
@@ -990,7 +1155,7 @@
         "variable": null
       },
       "phase": "variables",
-      "time_offset_ms": 67.401
+      "time_offset_ms": 170.264
     },
     {
       "action": "issue",
@@ -1006,7 +1171,7 @@
         "variable": null
       },
       "phase": "variables",
-      "time_offset_ms": 67.405
+      "time_offset_ms": 170.269
     },
     {
       "action": "issue",
@@ -1022,37 +1187,64 @@
         "variable": null
       },
       "phase": "variables",
-      "time_offset_ms": 67.408
+      "time_offset_ms": 170.273
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": "Value",
+        "kind": "field_never_read",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "localvariable",
+        "site": null,
+        "variable": "Shadow"
+      },
+      "phase": "variables",
+      "time_offset_ms": 170.388
+    },
+    {
+      "action": "phase-complete",
+      "data": {
+        "duration_ms": 0.254,
+        "phase_name": "datatype-field-scan"
+      },
+      "phase": "variables",
+      "time_offset_ms": 170.393
     },
     {
       "action": "complete",
       "data": {
         "issue_counts": {
+          "field_never_read": 1,
           "magic_number": 20,
           "never_read": 4,
           "procedure_status": 1,
           "read_only_non_const": 3,
+          "required_parameter_connection": 2,
           "ui_only": 2,
-          "unused": 7,
+          "unused": 9,
           "unused_datatype_field": 3,
           "write_without_effect": 4
         },
-        "total_issue_count": 44,
+        "total_issue_count": 49,
         "warning_count": 0
       },
       "phase": "variables",
-      "time_offset_ms": 67.431
+      "time_offset_ms": 170.416
     },
     {
       "action": "completed",
       "data": {
         "dataflow_issue_count": 14,
-        "issue_count": 44,
+        "issue_count": 49,
         "transform_violation_count": 0,
         "unreachable_logic_count": 0
       },
       "phase": "analysis",
-      "time_offset_ms": 68.501
+      "time_offset_ms": 172.352
     }
   ],
   "heuristics": {
@@ -1067,15 +1259,31 @@
     "ok": true,
     "stage": "ok"
   },
+  "timing_summary": {
+    "analysis": {
+      "event_count": 3,
+      "span_ms": 9.761
+    },
+    "syntax": {
+      "event_count": 1,
+      "span_ms": 0.0
+    },
+    "variables": {
+      "event_count": 70,
+      "span_ms": 7.678
+    }
+  },
   "variable_analysis": {
-    "issue_count": 44,
+    "issue_count": 49,
     "issue_counts": {
+      "field_never_read": 1,
       "magic_number": 20,
       "never_read": 4,
       "procedure_status": 1,
       "read_only_non_const": 3,
+      "required_parameter_connection": 2,
       "ui_only": 2,
-      "unused": 7,
+      "unused": 9,
       "unused_datatype_field": 3,
       "write_without_effect": 4
     }

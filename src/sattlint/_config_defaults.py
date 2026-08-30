@@ -5,36 +5,6 @@ from typing import Any, cast
 
 from .config_types import ConfigDict, ConfigOverrideDict
 
-DOCUMENTATION_RULE_LIST_KEYS = (
-    "name_contains",
-    "label_equals",
-    "desc_name_contains",
-    "desc_label_equals",
-)
-
-DOCUMENTATION_CATEGORY_KEYS = (
-    "em",
-    "ops",
-    "rp",
-    "ep",
-    "up",
-)
-
-DOCUMENTATION_LEGACY_RULE_KEYS = {
-    "moduletype_name_contains": "name_contains",
-    "moduletype_label_equals": "label_equals",
-    "descendant_moduletype_name_contains": "desc_name_contains",
-    "descendant_moduletype_label_equals": "desc_label_equals",
-}
-
-DOCUMENTATION_LEGACY_CATEGORY_KEYS = {
-    "equipment_modules": "em",
-    "operations": "ops",
-    "recipe_parameters": "rp",
-    "engineering_parameters": "ep",
-    "user_parameters": "up",
-}
-
 NAMING_STYLE_KEYS = (
     "infer",
     "pascal",
@@ -76,11 +46,6 @@ TOP_LEVEL_CONFIG_FIELDS: dict[str, TopLevelConfigField] = {
     ),
     "mode": TopLevelConfigField(
         "official", "Controls whether official or draft file extensions are resolved.", affects_project_cache=True
-    ),
-    "scan_root_only": TopLevelConfigField(
-        False,
-        "Limits discovery to the configured program root instead of scanning dependency roots recursively.",
-        affects_project_cache=True,
     ),
     "debug": TopLevelConfigField(False, "Enables verbose CLI diagnostics and debugging behavior."),
     "program_dir": TopLevelConfigField("", "Primary directory for program source files.", affects_project_cache=True),
@@ -125,43 +90,6 @@ TOP_LEVEL_CONFIG_FIELDS: dict[str, TopLevelConfigField] = {
             },
         },
         "Analyzer-specific configuration for SFC contracts, naming policy, and rule profiles.",
-    ),
-    "documentation": TopLevelConfigField(
-        {
-            "classifications": {
-                "em": {
-                    "name_contains": [],
-                    "label_equals": [],
-                    "desc_name_contains": [],
-                    "desc_label_equals": ["nnestruct:EquipModCoordinate"],
-                },
-                "ops": {
-                    "name_contains": [],
-                    "label_equals": [],
-                    "desc_name_contains": [],
-                    "desc_label_equals": ["NNEMESIFLib:MES_StateControl"],
-                },
-                "rp": {
-                    "name_contains": ["RecPar"],
-                    "label_equals": [],
-                    "desc_name_contains": [],
-                    "desc_label_equals": [],
-                },
-                "ep": {
-                    "name_contains": ["EngPar"],
-                    "label_equals": [],
-                    "desc_name_contains": [],
-                    "desc_label_equals": [],
-                },
-                "up": {
-                    "name_contains": ["UsrPar"],
-                    "label_equals": [],
-                    "desc_name_contains": [],
-                    "desc_label_equals": [],
-                },
-            },
-        },
-        "Documentation classification rules used by doc generation and related workflows.",
     ),
 }
 

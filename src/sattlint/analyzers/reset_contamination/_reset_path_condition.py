@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from sattline_parser.models.expressions import NotOp, VarRef
+
 from ...grammar import constants as const
 from ..shared.ast_node_helpers import (
     object_list as _object_list,
@@ -21,6 +23,10 @@ from ._reset_path_state import PathState as _PathState
 
 
 def _varref_casefold(obj: Any) -> str | None:
+    if isinstance(obj, VarRef):
+        if obj.name:
+            return obj.name.casefold()
+        return None
     node_dict = _string_key_dict(obj)
     if node_dict is None or const.KEY_VAR_NAME not in node_dict:
         return None
@@ -31,6 +37,8 @@ def _varref_casefold(obj: Any) -> str | None:
 
 
 def _is_exact_run_condition(cond: Any, reset_ref_cf: str) -> bool:
+    if isinstance(cond, NotOp):
+        return _varref_casefold(cond.operand) == reset_ref_cf
     tuple_node = _object_tuple(cond)
     return (
         tuple_node is not None
@@ -41,6 +49,8 @@ def _is_exact_run_condition(cond: Any, reset_ref_cf: str) -> bool:
 
 
 def _is_exact_reset_condition(cond: Any, reset_ref_cf: str, reset_old_vars_cf: set[str]) -> bool:
+    if isinstance(cond, NotOp):
+        return _varref_casefold(cond.operand) in reset_old_vars_cf
     tuple_node = _object_tuple(cond)
     if _varref_casefold(cond) == reset_ref_cf:
         return True
@@ -58,6 +68,18 @@ def _classify_reset_condition(cond: Any, reset_ref_cf: str, reset_old_vars_cf: s
 
     def visit(obj: object, negated: bool) -> None:
         if obj is None:
+            return
+        if isinstance(obj, VarRef):
+            if obj.name:
+                name_cf = obj.name.casefold()
+                if name_cf == reset_ref_cf or name_cf in reset_old_vars_cf:
+                    if negated:
+                        negatives.add(name_cf)
+                    else:
+                        positives.add(name_cf)
+            return
+        if isinstance(obj, NotOp):
+            visit(obj.operand, not negated)
             return
         node_dict = _string_key_dict(obj)
         if node_dict is not None and const.KEY_VAR_NAME in node_dict:

@@ -1,8 +1,10 @@
+# pyright: reportPrivateUsage=false
 from __future__ import annotations
 
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import FloatLiteral, IntLiteral
+from sattline_parser.models.expressions import BinOp, FuncCall
 
 from ...grammar import constants as const
 from ...resolution.scope import ScopeContext
@@ -15,46 +17,35 @@ from ._dataflow_common import (
     invert_compare_operator,
     is_scalar_value,
 )
-
-type ExprNode = Any
-type ComparePair = tuple[str, ExprNode]
-type CompareTuple = tuple[str, ExprNode, list[ComparePair] | None]
-type TernaryBranch = tuple[ExprNode, ExprNode]
-type TernaryTuple = tuple[str, list[TernaryBranch] | None, ExprNode | None]
-type FunctionCallTuple = tuple[str, str | None, list[ExprNode] | None]
-type LogicalTuple = tuple[str, list[ExprNode] | None]
-type BinaryOpPart = tuple[str, ExprNode]
-type BinaryOpTuple = tuple[str, ExprNode, list[BinaryOpPart] | None]
-
-type ExprTuple = tuple[object, ...]
-type ExprList = list[object]
-
-
-def _expr_tuple(value: object) -> ExprTuple | None:
-    return cast(ExprTuple, value) if isinstance(value, tuple) else None
-
-
-def _expr_list(value: object) -> ExprList | None:
-    return cast(ExprList, value) if isinstance(value, list) else None
-
-
-def _expr_items(value: object) -> list[object]:
-    tuple_value = _expr_tuple(value)
-    if tuple_value is not None:
-        return list(tuple_value)
-    list_value = _expr_list(value)
-    if list_value is not None:
-        return list_value
-    return []
+from ._dataflow_condition_expr import (
+    BinaryOpTuple,
+    CompareTuple,
+    FunctionCallTuple,
+    LogicalTuple,
+    TernaryTuple,
+    _expr_items,
+    _expr_tuple,
+    _statement_children,
+    bin_op_parts,
+    bool_op_operands,
+    bool_op_operator,
+    compare_left,
+    compare_parts,
+    is_bool_op,
+    is_compare,
+    is_not_op,
+    is_ternary,
+    is_unary_op,
+    is_var_ref,
+    not_op_operand,
+    ternary_parts,
+    unary_op_operand,
+    unary_op_operator,
+)
+from ._dataflow_condition_facts import _DataflowConditionFactsMixin
 
 
-def _statement_children(value: object) -> list[object] | None:
-    if getattr(value, "data", None) != const.KEY_STATEMENT:
-        return None
-    return _expr_list(getattr(value, "children", None))
-
-
-class _DataflowConditionMixin:
+class _DataflowConditionMixin(_DataflowConditionFactsMixin):
     def _report_condition(
         self: Any,
         condition: Any,
@@ -116,27 +107,37 @@ class _DataflowConditionMixin:
         condition: object,
         context: ScopeContext,
     ) -> bool | None:
-        condition_tuple = _expr_tuple(condition)
-        if condition_tuple is None or not condition_tuple:
-            return None
-
-        operator = condition_tuple[0]
-        if operator == const.GRAMMAR_VALUE_NOT:
-            truth = self._logical_shortcut_truth(condition_tuple[1] if len(condition_tuple) > 1 else None, context)
+        if is_not_op(condition):
+            truth = self._logical_shortcut_truth(not_op_operand(condition), context)
             return None if truth is None else not truth
 
-        if operator in (const.GRAMMAR_VALUE_AND, const.GRAMMAR_VALUE_OR):
+        if is_bool_op(condition):
+            operator = bool_op_operator(condition)
             facts = [
                 fact
-                for fact in (
-                    self._condition_fact(part, context)
-                    for part in _expr_items(condition_tuple[1] if len(condition_tuple) > 1 else None)
-                )
+                for fact in (self._condition_fact(part, context) for part in bool_op_operands(condition))
                 if fact is not None
             ]
-            if operator == const.GRAMMAR_VALUE_AND:
+            if operator == "AND":
                 return self._facts_contradict(facts)
             return self._facts_form_tautology(facts)
+
+        condition_tuple = _expr_tuple(condition)
+        if condition_tuple is not None and condition_tuple:
+            operator = condition_tuple[0]
+            if operator == const.GRAMMAR_VALUE_NOT:
+                truth = self._logical_shortcut_truth(
+                    condition_tuple[1] if len(condition_tuple) > 1 else None,
+                    context,
+                )
+                return None if truth is None else not truth
+
+            if operator in (const.GRAMMAR_VALUE_AND, const.GRAMMAR_VALUE_OR):
+                parts = _expr_items(condition_tuple[1] if len(condition_tuple) > 1 else None)
+                facts = [fact for fact in (self._condition_fact(part, context) for part in parts) if fact is not None]
+                if operator == const.GRAMMAR_VALUE_AND:
+                    return self._facts_contradict(facts)
+                return self._facts_form_tautology(facts)
 
         return None
 
@@ -145,13 +146,33 @@ class _DataflowConditionMixin:
         expr: object,
         context: ScopeContext,
     ) -> ConditionFact | None:
-        if isinstance(expr, dict) and const.KEY_VAR_NAME in expr:
+        if is_var_ref(expr):
             resolved = self._resolve_ref(expr, context)
             if resolved is None:
                 return None
             return ("bool", resolved.key, True)
 
-        expr_tuple = _expr_tuple(cast(object, expr))
+        if isinstance(expr, dict):
+            if const.KEY_VAR_NAME not in expr:
+                return None
+            resolved = self._resolve_ref(expr, context)
+            if resolved is None:
+                return None
+            return ("bool", resolved.key, True)
+
+        if is_not_op(expr):
+            inner = self._condition_fact(not_op_operand(expr), context)
+            return self._negate_condition_fact(inner)
+
+        if is_compare(expr):
+            pairs = compare_parts(expr)
+            left_expr = compare_left(expr)
+            if pairs is None or len(pairs) != 1 or left_expr is None:
+                return None
+            comparison_operator, right_expr = pairs[0]
+            return self._comparison_fact(left_expr, comparison_operator, right_expr, context)
+
+        expr_tuple = _expr_tuple(expr)
         if expr_tuple is not None and expr_tuple:
             operator = expr_tuple[0]
             if operator == const.GRAMMAR_VALUE_NOT:
@@ -228,90 +249,6 @@ class _DataflowConditionMixin:
 
         return None
 
-    def _facts_contradict(self: Any, facts: list[ConditionFact]) -> bool | None:
-        if not facts:
-            return None
-
-        bool_truths: dict[tuple[str, ...], set[bool]] = {}
-        equals: dict[tuple[str, ...], set[ScalarValue]] = {}
-        not_equals: dict[tuple[str, ...], set[ScalarValue]] = {}
-
-        for fact in facts:
-            kind = fact[0]
-            key = fact[1]
-            if kind == "bool":
-                bool_truths.setdefault(key, set()).add(cast(bool, fact[2]))
-                continue
-
-            operator, literal = cast(tuple[str, ScalarValue], fact[2])
-            if operator == "==":
-                equals.setdefault(key, set()).add(literal)
-            elif operator == "<>":
-                not_equals.setdefault(key, set()).add(literal)
-
-        if any(len(values) > 1 for values in bool_truths.values()):
-            return False
-
-        for key, equal_values in equals.items():
-            if len(equal_values) > 1:
-                return False
-            if any(value in not_equals.get(key, set()) for value in equal_values):
-                return False
-
-        return None
-
-    def _facts_form_tautology(self: Any, facts: list[ConditionFact]) -> bool | None:
-        if not facts:
-            return None
-
-        bool_truths: dict[tuple[str, ...], set[bool]] = {}
-        equals: dict[tuple[str, ...], set[ScalarValue]] = {}
-        not_equals: dict[tuple[str, ...], set[ScalarValue]] = {}
-
-        for fact in facts:
-            kind = fact[0]
-            key = fact[1]
-            if kind == "bool":
-                bool_truths.setdefault(key, set()).add(cast(bool, fact[2]))
-                continue
-
-            operator, literal = cast(tuple[str, ScalarValue], fact[2])
-            if operator == "==":
-                equals.setdefault(key, set()).add(literal)
-            elif operator == "<>":
-                not_equals.setdefault(key, set()).add(literal)
-
-        if any(len(values) > 1 for values in bool_truths.values()):
-            return True
-
-        for key, equal_values in equals.items():
-            if any(value in not_equals.get(key, set()) for value in equal_values):
-                return True
-
-        return None
-
-    def _self_compare_truth(
-        self: Any,
-        condition: object,
-        context: ScopeContext,
-    ) -> bool | None:
-        condition_tuple = _expr_tuple(condition)
-        if condition_tuple is None or not condition_tuple or condition_tuple[0] not in (const.KEY_COMPARE, "compare"):
-            return None
-        _, left, pairs = cast(CompareTuple, condition_tuple)
-        if pairs is None or len(pairs) != 1:
-            return None
-        operator, right = pairs[0]
-        left_ref = self._resolve_ref(left, context)
-        right_ref = self._resolve_ref(right, context)
-        if left_ref is None or right_ref is None or left_ref.key != right_ref.key:
-            return None
-        if operator in ("==", "<=", ">="):
-            return True
-        if operator in ("<>", "<", ">"):
-            return False
-        return None
-
     def _evaluate_expression(  # noqa: PLR0915
         self: Any,
         expr: object,
@@ -338,19 +275,113 @@ class _DataflowConditionMixin:
         if isinstance(expr, str):
             return expr
 
-        if isinstance(expr, dict) and const.KEY_VAR_NAME in expr:
+        if is_var_ref(expr):
             resolved = self._resolve_ref(expr, context)
             if resolved is None:
                 return UNKNOWN
             return self._read_resolved_value(resolved, module_path, state)
 
-        expr_tuple = _expr_tuple(cast(object, expr))
+        if isinstance(expr, dict):
+            if const.KEY_VAR_NAME not in expr:
+                return UNKNOWN
+            resolved = self._resolve_ref(expr, context)
+            if resolved is None:
+                return UNKNOWN
+            return self._read_resolved_value(resolved, module_path, state)
+
+        if is_bool_op(expr):
+            operator = bool_op_operator(expr)
+            values = [self._evaluate_expression(part, context, module_path, state) for part in bool_op_operands(expr)]
+            if operator == "OR":
+                if any(value is True for value in values):
+                    return True
+                if all(value is False for value in values):
+                    return False
+            else:
+                if any(value is False for value in values):
+                    return False
+                if values and all(value is True for value in values):
+                    return True
+            return UNKNOWN
+
+        if is_not_op(expr):
+            value = self._evaluate_expression(not_op_operand(expr), context, module_path, state)
+            return (not value) if isinstance(value, bool) else UNKNOWN
+
+        if is_compare(expr):
+            pairs = compare_parts(expr)
+            left_expr = compare_left(expr)
+            if pairs is None or left_expr is None:
+                return UNKNOWN
+            left_value = self._evaluate_expression(left_expr, context, module_path, state)
+            if not is_scalar_value(left_value):
+                return UNKNOWN
+            scalar_left = left_value
+            results: list[bool] = []
+            for operator, right_expr in pairs:
+                right_value = self._evaluate_expression(right_expr, context, module_path, state)
+                if not is_scalar_value(right_value):
+                    return UNKNOWN
+                scalar_right = right_value
+                comparison = self._compare_values(scalar_left, operator, scalar_right)
+                if comparison is None:
+                    return UNKNOWN
+                results.append(comparison)
+            return all(results)
+
+        if isinstance(expr, BinOp):
+            left_value = self._evaluate_expression(expr.left, context, module_path, state)
+            if not is_scalar_value(left_value):
+                return UNKNOWN
+            scalar_value = left_value
+            for symbol, right_expr in bin_op_parts(expr) or []:
+                right_value = self._evaluate_expression(right_expr, context, module_path, state)
+                if not is_scalar_value(right_value):
+                    return UNKNOWN
+                scalar_right = right_value
+                value = self._apply_arithmetic(symbol, scalar_value, scalar_right)
+                if not is_scalar_value(value):
+                    return UNKNOWN
+                scalar_value = value
+            return scalar_value
+
+        if is_unary_op(expr):
+            inner = self._evaluate_expression(unary_op_operand(expr), context, module_path, state)
+            operator = unary_op_operator(expr)
+            if not isinstance(inner, int | float) or isinstance(inner, bool):
+                return UNKNOWN
+            return inner if operator == const.KEY_PLUS else -inner
+
+        if isinstance(expr, FuncCall):
+            for argument in expr.args:
+                self._evaluate_expression(argument, context, module_path, state)
+            return UNKNOWN
+
+        if is_ternary(expr):
+            _, branches, else_expr = cast(TernaryTuple, ternary_parts(expr))
+            branch_values: list[ScalarValue | object] = []
+            fallthrough_state = state
+            for condition, branch_expr in branches or []:
+                condition_value = self._report_condition(condition, context, module_path, fallthrough_state)
+                if condition_value is False:
+                    fallthrough_state = self._assume(condition, False, fallthrough_state, context, module_path)
+                    continue
+                true_state = self._assume(condition, True, fallthrough_state, context, module_path)
+                branch_values.append(self._evaluate_expression(branch_expr, context, module_path, true_state))
+                if condition_value is True:
+                    return branch_values[-1]
+                fallthrough_state = self._assume(condition, False, fallthrough_state, context, module_path)
+            if else_expr is not None:
+                branch_values.append(self._evaluate_expression(else_expr, context, module_path, fallthrough_state))
+            return self._coalesce_values(branch_values)
+
+        expr_tuple = _expr_tuple(expr)
         if expr_tuple is not None and expr_tuple:
             operator = expr_tuple[0]
 
             if operator in (const.KEY_TERNARY, "Ternary"):
                 _, branches, else_expr = cast(TernaryTuple, expr_tuple)
-                branch_values: list[ScalarValue | object] = []
+                branch_values = []
                 fallthrough_state = state
                 for condition, branch_expr in branches or []:
                     condition_value = self._report_condition(condition, context, module_path, fallthrough_state)
@@ -454,13 +485,43 @@ class _DataflowConditionMixin:
                 return self._assume(statement_children[0], truth, next_state, context, module_path)
             return next_state
 
-        if isinstance(condition, dict) and const.KEY_VAR_NAME in condition:
+        if is_var_ref(condition):
             resolved = self._resolve_ref(condition, context)
             if resolved is not None:
                 next_state[resolved.key] = truth
             return next_state
 
-        condition_tuple = _expr_tuple(cast(object, condition))
+        if isinstance(condition, dict):
+            if const.KEY_VAR_NAME not in condition:
+                return next_state
+            resolved = self._resolve_ref(condition, context)
+            if resolved is not None:
+                next_state[resolved.key] = truth
+            return next_state
+
+        if is_not_op(condition):
+            return self._assume(not_op_operand(condition), not truth, next_state, context, module_path)
+
+        if is_bool_op(condition):
+            operator = bool_op_operator(condition)
+            if operator == "AND" and truth:
+                for part in bool_op_operands(condition):
+                    next_state = self._assume(part, True, next_state, context, module_path)
+                return next_state
+            if operator == "OR" and not truth:
+                for part in bool_op_operands(condition):
+                    next_state = self._assume(part, False, next_state, context, module_path)
+                return next_state
+
+        if is_compare(condition):
+            pairs = compare_parts(condition)
+            left_expr = compare_left(condition)
+            if pairs is not None and len(pairs) == 1 and left_expr is not None:
+                assumed = self._assume_compare(left_expr, pairs[0], truth, next_state, context, module_path)
+                if assumed is not None:
+                    return assumed
+
+        condition_tuple = _expr_tuple(condition)
         if condition_tuple is not None and condition_tuple:
             operator = condition_tuple[0]
             if operator == const.GRAMMAR_VALUE_NOT:
@@ -480,24 +541,34 @@ class _DataflowConditionMixin:
                     next_state = self._assume(part, False, next_state, context, module_path)
                 return next_state
             if operator in (const.KEY_COMPARE, "compare"):
-                assumed = self._assume_compare(condition_tuple, truth, next_state, context, module_path)
-                if assumed is not None:
-                    return assumed
+                compare_left_expr = condition_tuple[1] if len(condition_tuple) > 1 else None
+                compare_pairs = _expr_items(condition_tuple[2] if len(condition_tuple) > 2 else None)
+                for pair in compare_pairs:
+                    if isinstance(pair, tuple) and len(cast(tuple[object, ...], pair)) == 2:
+                        assumed = self._assume_compare(
+                            compare_left_expr,
+                            cast(tuple[str, object], pair),
+                            truth,
+                            next_state,
+                            context,
+                            module_path,
+                        )
+                        if assumed is not None:
+                            next_state = assumed
+                return next_state
 
         return next_state
 
     def _assume_compare(
         self: Any,
-        condition: tuple[Any, ...],
+        left_expr: Any,
+        pair: tuple[str, object],
         truth: bool,
         state: StateMap,
         context: ScopeContext,
         module_path: list[str],
     ) -> StateMap | None:
-        _, left_expr, pairs = cast(CompareTuple, condition)
-        if pairs is None or len(pairs) != 1:
-            return None
-        operator, right_expr = pairs[0]
+        operator, right_expr = pair
 
         resolved_left = self._resolve_ref(left_expr, context)
         resolved_right = self._resolve_ref(right_expr, context)

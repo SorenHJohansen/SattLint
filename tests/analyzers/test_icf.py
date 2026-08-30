@@ -9,6 +9,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+
 from sattlint.analyzers.icf import (
     format_icf_text,
     parse_icf_file,

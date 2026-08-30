@@ -7,6 +7,7 @@ from pathlib import Path
 
 from sattline_parser.models.ast_model import (
     BasePicture,
+    CodeItem,
     Equation,
     IntLiteral,
     ModuleCode,
@@ -21,6 +22,8 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt, IfStmt
+
 from sattlint import constants as const
 from sattlint.analyzers.cyclomatic_complexity import analyze_cyclomatic_complexity
 from sattlint.analyzers.loop_output_refactor import analyze_loop_output_refactor
@@ -250,7 +253,7 @@ def test_mms_interface_collects_nested_typedef_mappings_and_write_locations():
                     name="Main",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("ExportValue"), IntLiteral(1))],
+                    code=[Assignment(target=_varref("ExportValue"), value=IntLiteral(1))],
                 )
             ]
         ),
@@ -362,13 +365,13 @@ def test_loop_output_refactor_detects_cycle_across_equations_and_active_step():
         name="Input",
         position=(0.0, 0.0),
         size=(1.0, 1.0),
-        code=[(const.KEY_ASSIGN, _varref("A"), _varref("B"))],
+        code=[Assignment(target=_varref("A"), value=_varref("B"))],
     )
     eq_feedback = Equation(
         name="Feedback",
         position=(1.0, 0.0),
         size=(1.0, 1.0),
-        code=[(const.KEY_ASSIGN, _varref("B"), _varref("C"))],
+        code=[Assignment(target=_varref("B"), value=_varref("C"))],
     )
     seq = Sequence(
         name="MainSeq",
@@ -379,7 +382,7 @@ def test_loop_output_refactor_detects_cycle_across_equations_and_active_step():
             SFCStep(
                 kind="step",
                 name="Transfer",
-                code=SFCCodeBlocks(active=[(const.KEY_ASSIGN, _varref("C"), _varref("A"))]),
+                code=SFCCodeBlocks(active=[Assignment(target=_varref("C"), value=_varref("A"))]),
             )
         ],
     )
@@ -422,13 +425,13 @@ def test_loop_output_refactor_ignores_acyclic_sorted_blocks():
         name="Source",
         position=(0.0, 0.0),
         size=(1.0, 1.0),
-        code=[(const.KEY_ASSIGN, _varref("A"), _varref("B"))],
+        code=[Assignment(target=_varref("A"), value=_varref("B"))],
     )
     eq_sink = Equation(
         name="Sink",
         position=(1.0, 0.0),
         size=(1.0, 1.0),
-        code=[(const.KEY_ASSIGN, _varref("C"), _varref("A"))],
+        code=[Assignment(target=_varref("C"), value=_varref("A"))],
     )
     bp = BasePicture(
         header=_hdr("BasePicture"),
@@ -567,7 +570,7 @@ def test_cyclomatic_complexity_ignores_low_complexity_program_modulecode():
                     name="MainEq",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Output"), IntLiteral(1))],
+                    code=[Assignment(target=_varref("Output"), value=IntLiteral(1))],
                 )
             ]
         ),
@@ -581,11 +584,15 @@ def test_cyclomatic_complexity_ignores_low_complexity_program_modulecode():
 
 
 def test_cyclomatic_complexity_flags_high_complexity_program_modulecode():
-    decision_statements = [
-        (
-            const.GRAMMAR_VALUE_IF,
-            [(_varref(f"Cond{index}"), [(const.KEY_ASSIGN, _varref("Output"), IntLiteral(index))])],
-            [],
+    decision_statements: list[CodeItem] = [
+        IfStmt(
+            branches=(
+                (
+                    _varref(f"Cond{index}"),
+                    (Assignment(target=_varref("Output"), value=IntLiteral(index)),),
+                ),
+            ),
+            else_block=None,
         )
         for index in range(10)
     ]
@@ -636,15 +643,14 @@ def test_cyclomatic_complexity_flags_high_complexity_sfc_step():
                             name="HeatUp",
                             code=SFCCodeBlocks(
                                 active=[
-                                    (
-                                        const.GRAMMAR_VALUE_IF,
-                                        [
+                                    IfStmt(
+                                        branches=(
                                             (
                                                 _varref(f"StepCond{index}"),
-                                                [(const.KEY_ASSIGN, _varref("Output"), IntLiteral(index))],
-                                            )
-                                        ],
-                                        [],
+                                                (Assignment(target=_varref("Output"), value=IntLiteral(index)),),
+                                            ),
+                                        ),
+                                        else_block=None,
                                     )
                                     for index in range(6)
                                 ]
@@ -687,10 +693,11 @@ def test_scan_loop_resource_usage_flags_non_precision_builtin_in_equation_block(
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "AssignSystemString",
-                            [_varref("SysVarId"), _varref("Value"), _varref("Status")],
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="AssignSystemString",
+                                args=(_varref("SysVarId"), _varref("Value"), _varref("Status")),
+                            )
                         )
                     ],
                 )
@@ -731,10 +738,11 @@ def test_scan_loop_resource_usage_flags_non_precision_builtin_in_active_step_cod
                             name="Poll",
                             code=SFCCodeBlocks(
                                 active=[
-                                    (
-                                        const.KEY_FUNCTION_CALL,
-                                        "AssignSystemString",
-                                        [_varref("SysVarId"), _varref("Value"), _varref("Status")],
+                                    FuncCallStmt(
+                                        call=FuncCall(
+                                            name="AssignSystemString",
+                                            args=(_varref("SysVarId"), _varref("Value"), _varref("Status")),
+                                        )
                                     )
                                 ]
                             ),
@@ -779,10 +787,11 @@ def test_scan_loop_resource_usage_ignores_non_precision_builtin_outside_active_s
                             name="Setup",
                             code=SFCCodeBlocks(
                                 enter=[
-                                    (
-                                        const.KEY_FUNCTION_CALL,
-                                        "AssignSystemString",
-                                        [_varref("SysVarId"), _varref("Value"), _varref("Status")],
+                                    FuncCallStmt(
+                                        call=FuncCall(
+                                            name="AssignSystemString",
+                                            args=(_varref("SysVarId"), _varref("Value"), _varref("Status")),
+                                        )
                                     )
                                 ]
                             ),

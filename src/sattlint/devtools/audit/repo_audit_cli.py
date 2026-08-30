@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from sattlint import cli_output
-from sattlint.repo_paths import repo_root_from
+from sattlint.repo_paths import repo_root_from_optional
 
 from ._repo_audit_entrypoint_helpers import _blocking_finding_count, _should_fail
 from .repo_audit_cli_reporting import (
@@ -26,7 +26,15 @@ from .repo_audit_cli_reporting import (
     latest_report_links as _reporting_latest_report_links,
 )
 
-REPO_ROOT = repo_root_from(Path(__file__))
+
+def _module_repo_root() -> Path:
+    r = repo_root_from_optional(Path(__file__))
+    if r is None:
+        return Path(__file__).resolve().parent
+    return r
+
+
+REPO_ROOT = _module_repo_root()
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "audit"
 
 

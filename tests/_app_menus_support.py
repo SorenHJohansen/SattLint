@@ -7,8 +7,8 @@ from collections.abc import Sequence
 from typing import ClassVar
 
 import pytest
-
 from sattline_parser.models.ast_model import BasePicture, FrameModule, ModuleTypeInstance, SingleModule
+
 from sattlint import app
 from sattlint.analyzers import variables as variables_module
 from sattlint.models.project_graph import ProjectGraph

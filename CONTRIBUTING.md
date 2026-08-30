@@ -108,28 +108,13 @@ cd SattLint
 
 # Preferred: install through uv
 uv venv
-python scripts/run_repo_python.py -m pip install -e .[dev,lsp]
+python scripts/run_repo_python.py -m pip install -e .[dev]
 
 # Fallback
 # python -m venv .venv
-# python scripts/run_repo_python.py -m pip install -e .[dev,lsp]
+# python scripts/run_repo_python.py -m pip install -e .[dev]
 
 # Recommended VS Code extensions are listed in .vscode/extensions.json
-```
-
-To run the local SattLine VS Code extension client preview:
-
-```powershell
-pip install -e .[lsp]
-```
-
-Then copy or symlink `vscode\sattline-vscode` into your VS Code user extensions directory under a folder such as `local.sattline-vscode-dev` and reload the window. There is no npm or TypeScript build step in the current client, and this client remains a preview-only surface until it has a public publisher and release story.
-
-If you need a packaged extension artifact, run the extension-local packaging script from WSL:
-
-```bash
-cd vscode/sattline-vscode
-npm run package:vsix
 ```
 
 #### 2. VS Code Configuration
@@ -210,7 +195,7 @@ pytest --cov=src
 pytest tests/test_cli.py
 ```
 
-The repository currently enforces a ratcheted minimum coverage threshold in `pyproject.toml`.
+The repository enforces a fixed minimum coverage threshold in `pyproject.toml` via `--cov-fail-under`.
 Raise that threshold incrementally as test surface expands instead of jumping directly to the long-term target.
 
 ### Local Setup
@@ -263,12 +248,10 @@ Recommended context workflow in VS Code:
 
 - `src/sattlint/` - Main source code
 - `tests/` - Test suite
-- `grammar/` - SattLine grammar files
+- `src/sattlint/grammar/` - SattLine grammar files (parsing delegated to the external `sattline-parser` package)
 - `pyproject.toml` - Project configuration and dependencies
 - `.editorconfig` - Cross-editor formatting rules
 - `.vscode/settings.json` - VS Code workspace configuration
-- `vscode/sattline-vscode/` - Local VS Code extension client for `sattlint_lsp`
-- `src/sattlint_lsp/` - Python LSP server implementation used by the VS Code client
 
 ## Making Changes
 
@@ -279,10 +262,6 @@ Recommended context workflow in VS Code:
 5. Push and create the pull request.
 
 ## Platform-Specific Notes
-
-### Windows-Specific Tool
-
-Note: `src/sattlint/docgenerator/configgen.py` generates Excel configuration workbooks and now requires an explicit root directory argument instead of relying on a workstation-specific default path. It is not required for core SattLint functionality.
 
 ### Cross-Platform Compatibility
 

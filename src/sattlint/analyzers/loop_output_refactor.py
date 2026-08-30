@@ -17,6 +17,7 @@ from sattline_parser.models.ast_model import (
     SFCTransitionSub,
     SingleModule,
 )
+from sattline_parser.models.expressions import Assignment, IfStmt, VarRef
 
 from .. import constants as const
 from ..core.ast_tools import iter_variable_refs
@@ -150,14 +151,14 @@ class LoopOutputRefactorAnalyzer:
                 )
             )
         for sequence in modulecode.sequences or []:
-            self._collect_sequence_blocks(module_path, sequence.name, sequence.code or [], blocks)
+            self._collect_sequence_blocks(module_path, sequence.name or "", sequence.code or [], blocks)
         return blocks
 
     def _collect_sequence_blocks(
         self,
         module_path: list[str],
         sequence_name: str,
-        nodes: list[object],
+        nodes: Sequence[object],
         blocks: list[_ExecutionBlock],
     ) -> None:
         for node in nodes:
@@ -198,7 +199,7 @@ class LoopOutputRefactorAnalyzer:
         self,
         module_path: list[str],
         label: str,
-        statements: list[object],
+        statements: Sequence[object],
     ) -> _ExecutionBlock:
         reads: set[str] = set()
         writes: set[str] = set()
@@ -215,6 +216,21 @@ class LoopOutputRefactorAnalyzer:
         return block
 
     def _collect_statement_io(self, node: object, reads: set[str], writes: set[str]) -> None:
+        if isinstance(node, Assignment):
+            self._collect_target_writes(node.target, writes)
+            self._collect_expression_reads(node.value, reads)
+            return
+
+        if isinstance(node, IfStmt):
+            for cond, body in node.branches:
+                self._collect_expression_reads(cond, reads)
+                for stmt in body:
+                    self._collect_statement_io(stmt, reads, writes)
+            if node.else_block:
+                for stmt in node.else_block:
+                    self._collect_statement_io(stmt, reads, writes)
+            return
+
         if hasattr(node, "data") and getattr(node, "data", None) == const.KEY_STATEMENT:
             for child in getattr(node, "children", []):
                 self._collect_statement_io(child, reads, writes)
@@ -250,14 +266,14 @@ class LoopOutputRefactorAnalyzer:
 
     def _collect_expression_reads(self, node: object, reads: set[str]) -> None:
         for ref in iter_variable_refs(node, key_name=const.KEY_VAR_NAME):
-            name = ref.get(const.KEY_VAR_NAME)
+            name = ref.name if isinstance(ref, VarRef) else ref.get(const.KEY_VAR_NAME)
             key = _root_variable_key(name)
             if key is not None:
                 reads.add(key)
 
     def _collect_target_writes(self, target: object, writes: set[str]) -> None:
         for ref in iter_variable_refs(target, key_name=const.KEY_VAR_NAME):
-            name = ref.get(const.KEY_VAR_NAME)
+            name = ref.name if isinstance(ref, VarRef) else ref.get(const.KEY_VAR_NAME)
             key = _root_variable_key(name)
             if key is not None:
                 writes.add(key)

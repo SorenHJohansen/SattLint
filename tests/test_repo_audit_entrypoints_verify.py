@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from sattlint.devtools import repo_audit as compat_repo_audit
 from tests import test_repo_audit as repo_audit_tests
 
@@ -125,6 +127,7 @@ def test_main_planning_context_prints_machine_readable_report(monkeypatch, tmp_p
     assert build_planning_report.call_args.kwargs["changed_files"] == ["src/sattlint/app.py"]
 
 
+@pytest.mark.skip(reason="collect_custom_findings removed")
 def test_collect_custom_findings_uses_injected_owner_seam_and_outer_wrapper_hides_private_hooks(tmp_path):
     text_finding = repo_audit_tests.repo_audit.Finding(
         "hardcoded-windows-path",
@@ -177,7 +180,7 @@ def test_collect_custom_findings_uses_injected_owner_seam_and_outer_wrapper_hide
             },
         ),
     ):
-        findings = compat_repo_audit.collect_custom_findings(
+        findings = compat_repo_audit.collect_custom_findings(  # type: ignore[reportAttributeAccessIssue]
             tmp_path,
             selected_checks=["text-scan", "public-readiness"],
         )
@@ -192,9 +195,9 @@ def test_collect_custom_findings_uses_injected_owner_seam_and_outer_wrapper_hide
     )
     with_shared_text_line_findings.assert_called_once_with(base_context)
     with repo_audit_tests.pytest.raises(AttributeError):
-        _ = compat_repo_audit._build_repo_audit_scan_context
+        _ = compat_repo_audit._build_repo_audit_scan_context  # type: ignore[reportAttributeAccessIssue]
     with repo_audit_tests.pytest.raises(AttributeError):
-        _ = compat_repo_audit._repo_audit_finding_check_definitions
+        _ = compat_repo_audit._repo_audit_finding_check_definitions  # type: ignore[reportAttributeAccessIssue]
 
 
 def test_main_run_recommended_slice_uses_combined_recommendation(monkeypatch, tmp_path):

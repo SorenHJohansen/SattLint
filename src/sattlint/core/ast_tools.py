@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from typing import Literal, Protocol, cast
+
+from sattline_parser.models.expressions import FuncCall, FuncCallStmt, VarRef
 
 from ..grammar import constants as const
 from ..types import VariableRef
@@ -32,12 +35,21 @@ def _iter_nested_values(node: object) -> Iterator[object]:
         yield from children
         return
 
+    if dataclasses.is_dataclass(node) and not isinstance(node, type):
+        for field in dataclasses.fields(node):
+            yield getattr(node, field.name)
+        return
+
     node_dict = getattr(node, "__dict__", None)
     if isinstance(node_dict, dict):
         yield from node_dict.values()
 
 
-def iter_variable_refs(node: object, *, key_name: str = _DEFAULT_VAR_NAME) -> Iterator[VariableRef]:
+def iter_variable_refs(node: object, *, key_name: str = _DEFAULT_VAR_NAME) -> Iterator[VariableRef | VarRef]:
+    if isinstance(node, VarRef):
+        yield node
+        return
+
     if isinstance(node, dict):
         mapping = cast(dict[str, object], node)
         if key_name in mapping:
@@ -62,6 +74,18 @@ def iter_variable_refs(node: object, *, key_name: str = _DEFAULT_VAR_NAME) -> It
 
 
 def iter_call_sites(node: object) -> Iterator[CallSite]:
+    if isinstance(node, FuncCall):
+        args = tuple(node.args)
+        yield ("function", node.name, args)
+        for argument in args:
+            yield from iter_call_sites(argument)
+        return
+
+    if isinstance(node, FuncCallStmt):
+        if cast(FuncCall | None, node.call) is not None:
+            yield from iter_call_sites(node.call)
+        return
+
     if isinstance(node, tuple):
         items = cast(tuple[object, ...], node)
         if len(items) == 3 and items[0] == const.KEY_FUNCTION_CALL and isinstance(items[1], str):

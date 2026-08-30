@@ -1,5 +1,4 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
-# ruff: noqa: F403, F405
 import runpy
 import sys
 
@@ -521,11 +520,6 @@ def test_doc_gardener_helper_forwarders_and_run_scan(monkeypatch, tmp_path):
         "scan_completed_exec_plans_still_active",
         lambda **_kwargs: [finding],
     )
-    monkeypatch.setattr(
-        doc_gardener.doc_gardener_scan_module,
-        "scan_stale_docs",
-        lambda **_kwargs: [finding],
-    )
 
     def _fake_build_scan_result(findings, **kwargs):
         observed["findings"] = tuple(findings)
@@ -553,8 +547,8 @@ def test_doc_gardener_helper_forwarders_and_run_scan(monkeypatch, tmp_path):
 
     result = doc_gardener.run_scan()
 
-    assert result["total_findings"] == 8
-    assert observed["findings"] == (finding, finding, finding, finding, finding, finding, finding, finding)
+    assert result["total_findings"] == 7
+    assert observed["findings"] == (finding, finding, finding, finding, finding, finding, finding)
     assert doc_gardener.open_fixup_pr([finding]) == ((finding,), doc_gardener._run_repo_cli)
 
 

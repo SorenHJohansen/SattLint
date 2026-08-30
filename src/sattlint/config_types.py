@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from os import PathLike
 from pathlib import Path
-from typing import Literal, NotRequired, TypedDict
+from typing import Literal, TypedDict
 
 type ConfigMode = Literal["official", "draft"]
 type NamingStyle = Literal["infer", "pascal", "camel", "snake", "upper_snake", "lower", "upper"]
@@ -99,72 +99,10 @@ class AnalysisConfigOverride(TypedDict, total=False):
     rule_profiles: RuleProfilesConfigOverride
 
 
-class DocumentationRuleConfig(TypedDict):
-    name_contains: list[str]
-    label_equals: list[str]
-    desc_name_contains: list[str]
-    desc_label_equals: list[str]
-
-
-class DocumentationRuleConfigOverride(TypedDict, total=False):
-    name_contains: list[str]
-    label_equals: list[str]
-    desc_name_contains: list[str]
-    desc_label_equals: list[str]
-    moduletype_name_contains: list[str]
-    moduletype_label_equals: list[str]
-    descendant_moduletype_name_contains: list[str]
-    descendant_moduletype_label_equals: list[str]
-
-
-class DocumentationClassificationsConfig(TypedDict):
-    em: DocumentationRuleConfig
-    ops: DocumentationRuleConfig
-    rp: DocumentationRuleConfig
-    ep: DocumentationRuleConfig
-    up: DocumentationRuleConfig
-
-
-class DocumentationClassificationsConfigOverride(TypedDict, total=False):
-    em: DocumentationRuleConfigOverride
-    ops: DocumentationRuleConfigOverride
-    rp: DocumentationRuleConfigOverride
-    ep: DocumentationRuleConfigOverride
-    up: DocumentationRuleConfigOverride
-    equipment_modules: DocumentationRuleConfigOverride
-    operations: DocumentationRuleConfigOverride
-    recipe_parameters: DocumentationRuleConfigOverride
-    engineering_parameters: DocumentationRuleConfigOverride
-    user_parameters: DocumentationRuleConfigOverride
-
-
-class DocumentationUnitsConfig(TypedDict):
-    mode: str
-    instance_paths: list[str]
-    moduletype_names: list[str]
-
-
-class DocumentationUnitsConfigOverride(TypedDict, total=False):
-    mode: str
-    instance_paths: list[str]
-    moduletype_names: list[str]
-
-
-class DocumentationConfig(TypedDict):
-    classifications: DocumentationClassificationsConfig
-    units: NotRequired[DocumentationUnitsConfig]
-
-
-class DocumentationConfigOverride(TypedDict, total=False):
-    classifications: DocumentationClassificationsConfigOverride
-    units: DocumentationUnitsConfigOverride
-
-
 class ConfigDict(TypedDict):
     analyzed_programs_and_libraries: list[str]
     include_reverse_library_consumers: bool
     mode: ConfigMode
-    scan_root_only: bool
     debug: bool
     program_dir: ConfigPathValue
     ABB_lib_dir: ConfigPathValue
@@ -172,14 +110,12 @@ class ConfigDict(TypedDict):
     other_lib_dirs: list[ConfigPathValue]
     telemetry: TelemetryConfig
     analysis: AnalysisConfig
-    documentation: DocumentationConfig
 
 
 class ConfigOverrideDict(TypedDict, total=False):
     analyzed_programs_and_libraries: list[str]
     include_reverse_library_consumers: bool
     mode: str
-    scan_root_only: bool
     debug: bool
     program_dir: ConfigPathValue
     ABB_lib_dir: ConfigPathValue
@@ -187,7 +123,6 @@ class ConfigOverrideDict(TypedDict, total=False):
     other_lib_dirs: list[ConfigPathValue]
     telemetry: TelemetryConfigOverride
     analysis: AnalysisConfigOverride
-    documentation: DocumentationConfigOverride
 
 
 __all__ = [
@@ -198,12 +133,6 @@ __all__ = [
     "ConfigObjectMap",
     "ConfigOverrideDict",
     "ConfigPathValue",
-    "DocumentationConfig",
-    "DocumentationConfigOverride",
-    "DocumentationRuleConfig",
-    "DocumentationRuleConfigOverride",
-    "DocumentationUnitsConfig",
-    "DocumentationUnitsConfigOverride",
     "NamingConfig",
     "NamingConfigOverride",
     "NamingRuleConfig",
