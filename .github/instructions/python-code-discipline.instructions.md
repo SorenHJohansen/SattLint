@@ -1,7 +1,7 @@
 ---
 description: "Use when changing Python implementation or tests in SattLint. Covers dead-code discipline, getattr boundaries, module cohesion, and side-effect documentation."
 name: "Python Code Discipline"
-applyTo: ["src/**/*.py", "tests/**/*.py", "scripts/**/*.py"]
+applyTo: ["src/**/*.py", "tests/**/*.py"]
 ---
 # Python Code Discipline
 

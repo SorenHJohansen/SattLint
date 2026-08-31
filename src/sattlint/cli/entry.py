@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib
 import io
 import sys
 import traceback
@@ -32,7 +31,6 @@ BuildCliParserFn = Callable[[], argparse.ArgumentParser]
 LoadConfigFn = Callable[[Path], tuple[ConfigDict, bool]]
 ApplyDebugFn = Callable[[ConfigDict], None]
 AppCommandFn = Callable[..., int | None]
-RunParsedArgsCommandFn = Callable[[argparse.Namespace], int | None]
 
 
 class RunSyntaxCheckCommandFn(Protocol):
@@ -47,22 +45,6 @@ class CommandHandlers(TypedDict, total=False):
     cache_prune: AppCommandFn
     telemetry_summary: AppCommandFn
     format_icf: AppCommandFn
-    repo_audit: RunParsedArgsCommandFn
-    source_diff: RunParsedArgsCommandFn
-    trace: RunParsedArgsCommandFn
-
-
-def _load_devtools_module(module_name: str) -> Any:
-    return importlib.import_module(f"sattlint.devtools.{module_name}")
-
-
-def _build_devtools_parent_parser(module_name: str, *, prog: str) -> argparse.ArgumentParser:
-    cli_module = _load_devtools_module(module_name)
-    return cast(argparse.ArgumentParser, cli_module.build_cli_parser(prog=prog, add_help=False))
-
-
-def _load_trace_module() -> Any:
-    return importlib.import_module("sattlint.tracing")
 
 
 class _ParsedCliArgs(Protocol):
@@ -134,7 +116,7 @@ def _is_version_request(argv: list[str]) -> bool:
 def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sattlint",
-        description="Interactive SattLine analysis app with non-interactive syntax-check, analysis, documentation, simulation, source-diff, and repo-audit commands.",
+        description="Interactive SattLine analysis app with non-interactive syntax-check, analysis, documentation, and simulation commands.",
     )
     parser.add_argument("--version", action="version", version=f"sattlint {version}")
     parser.add_argument("--config", default=None, metavar="PATH", help="Path to a SattLint config file")
@@ -294,31 +276,6 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         help="Optional path to write the telemetry summary",
     )
 
-    source_diff_parent = _build_devtools_parent_parser("source_diff_report", prog="sattlint source-diff")
-    subparsers.add_parser(
-        "source-diff",
-        parents=[source_diff_parent],
-        help="Build a review-friendly report for draft .s versus official .x source pairs",
-        description=source_diff_parent.description,
-    )
-
-    repo_audit_parent = _build_devtools_parent_parser("repo_audit_cli", prog="sattlint repo-audit")
-    subparsers.add_parser(
-        "repo-audit",
-        parents=[repo_audit_parent],
-        help="Run repository audit checks",
-        description=repo_audit_parent.description,
-    )
-
-    trace_module = _load_trace_module()
-    trace_parent = cast(argparse.ArgumentParser, trace_module.build_cli_parser(prog="sattlint trace", add_help=False))
-    subparsers.add_parser(
-        "trace",
-        parents=[trace_parent],
-        help="Trace parser and analyzer execution for one source file",
-        description=trace_parent.description,
-    )
-
     return parser
 
 
@@ -428,48 +385,6 @@ def run_cli(  # noqa: PLR0915
             if cli_output.resolve_output_format(args) == "json":
                 return syntax_check_handler(args.file, output_format="json")
             return syntax_check_handler(args.file)
-
-    if command == "repo-audit":
-        repo_audit_handler = None if command_handlers is None else command_handlers.get("repo_audit")
-        if repo_audit_handler is None:
-            raise RuntimeError("repo-audit handler is required")
-        context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
-        try:
-            with context:
-                return _exit_code(
-                    repo_audit_handler(parsed_namespace),
-                    fallback=exit_success,
-                )
-        except SystemExit as exc:
-            return exc.code if isinstance(exc.code, int) else exit_usage_error
-
-    if command == "source-diff":
-        source_diff_handler = None if command_handlers is None else command_handlers.get("source_diff")
-        if source_diff_handler is None:
-            raise RuntimeError("source-diff handler is required")
-        context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
-        try:
-            with context:
-                return _exit_code(
-                    source_diff_handler(parsed_namespace),
-                    fallback=exit_success,
-                )
-        except SystemExit as exc:
-            return exc.code if isinstance(exc.code, int) else exit_usage_error
-
-    if command == "trace":
-        trace_handler = None if command_handlers is None else command_handlers.get("trace")
-        if trace_handler is None:
-            raise RuntimeError("trace handler is required")
-        context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
-        try:
-            with context:
-                return _exit_code(
-                    trace_handler(parsed_namespace),
-                    fallback=exit_success,
-                )
-        except SystemExit as exc:
-            return exc.code if isinstance(exc.code, int) else exit_usage_error
 
     if command == "analyze" and getattr(args, "list_checks", False):
         context = redirect_stdout(io.StringIO()) if quiet else nullcontext()

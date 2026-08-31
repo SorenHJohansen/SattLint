@@ -753,7 +753,6 @@ def _refresh_shell_state(self: Any) -> None:
     analyze_clear_selection_button = _query_required(self, "#analyze-clear-selection", _TEXTUAL_BUTTON)
     analyze_clear_output_button = _query_required(self, "#analyze-clear-output", _TEXTUAL_BUTTON)
     tools_dumps_button = _query_required(self, "#tools-dumps", _TEXTUAL_BUTTON)
-    tools_source_diff_button = _query_required(self, "#tools-source-diff", _TEXTUAL_BUTTON)
     tools_refresh_ast_button = _query_required(self, "#tools-refresh-ast", _TEXTUAL_BUTTON)
     tools_datatype_usage_button = _query_required(self, "#tools-datatype-usage", _TEXTUAL_BUTTON)
     tools_variable_trace_button = _query_required(self, "#tools-variable-trace", _TEXTUAL_BUTTON)
@@ -812,7 +811,6 @@ def _refresh_shell_state(self: Any) -> None:
     if setup_view:
         self._refresh_setup_settings_labels()
     tools_dumps_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
-    tools_source_diff_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
     tools_refresh_ast_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
     tools_datatype_usage_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
     tools_variable_trace_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
@@ -877,7 +875,6 @@ def on_button_pressed(self: Any, event: Any) -> None:
         "setup-edit-icf-dir": lambda: self._queue_setup_value_prompt("icf_dir", label="icf_dir"),
         "setup-toggle-debug": lambda: self._toggle_setup_flag("debug", label="debug"),
         "tools-dumps": self._run_tool_dumps,
-        "tools-source-diff": self._run_tool_source_diff,
         "tools-refresh-ast": self._run_tool_refresh_ast,
         "tools-datatype-usage": self._run_tool_datatype_usage,
         "tools-variable-trace": self._run_tool_variable_trace,
@@ -888,7 +885,6 @@ def on_button_pressed(self: Any, event: Any) -> None:
         "action-quit": self._request_quit_shell,
         "menu-analyze-run-selected": self._run_selected_analysis_plan,
         "menu-analyze-cancel": self.action_cancel_running_analysis,
-        "menu-reports-source-diff": self._run_tool_source_diff,
         "menu-reports-export": lambda: self._write_output("Export not yet implemented."),
         "menu-tools-refresh-cache": self._run_tool_refresh_ast,
         "menu-tools-diagnostics": self._run_tool_dumps,

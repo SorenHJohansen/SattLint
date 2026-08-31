@@ -1,8 +1,6 @@
 # pyright: reportUnusedFunction=false
 from __future__ import annotations
 
-import argparse
-import importlib
 from pathlib import Path
 from typing import Any, cast
 
@@ -148,11 +146,6 @@ def run_format_icf_command(cfg: dict[str, object], *, check: bool = False, outpu
             exit_usage_error=app.EXIT_USAGE_ERROR,
         ),
     )
-
-
-def run_trace_command(args: argparse.Namespace) -> int:
-    tracing_module = importlib.import_module("sattlint.tracing")
-    return cast(int, tracing_module.run_parsed_args(args))
 
 
 def run_icf_formatter(cfg: dict[str, object]) -> None:

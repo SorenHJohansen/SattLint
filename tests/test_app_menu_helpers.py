@@ -340,10 +340,10 @@ def test_dump_menu_tools_menu_and_main_loop_cover_invalid_and_quit_paths(monkeyp
                 pause_fn=lambda: outputs.append("pause"),
                 require_targets_for_menu_action_fn=lambda *_: False,
                 dump_menu_fn=lambda *_: None,
-                run_source_diff_report_fn=lambda *_: None,
                 confirm_fn=lambda *_: False,
                 force_refresh_ast_fn=lambda *_: None,
             )
+
     finally:
         app_menus.emit_output = original_emit
     assert outputs[:2] == ["Invalid choice.", "pause"]
@@ -392,7 +392,6 @@ def test_menu_helpers_handle_keyboard_interrupt_and_return_to_current_menu(monke
             pause_fn=lambda: outputs.append("pause"),
             require_targets_for_menu_action_fn=lambda *_: True,
             dump_menu_fn=lambda *_: None,
-            run_source_diff_report_fn=lambda *_: None,
             confirm_fn=lambda *_: True,
             force_refresh_ast_fn=lambda *_: None,
         )

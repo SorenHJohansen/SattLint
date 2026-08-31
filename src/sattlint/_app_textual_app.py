@@ -257,7 +257,6 @@ if _TEXTUAL_APP is not None:
             app_module: Any | None = None,
             self_check_fn: Any | None = None,
             dump_menu_fn: Any | None = None,
-            source_diff_fn: Any | None = None,
             force_refresh_ast_fn: Any | None = None,
             startup_output: str = "",
             startup_output_is_warning: bool = False,
@@ -299,7 +298,6 @@ if _TEXTUAL_APP is not None:
             self._pending_ui_tasks: set[asyncio.Task[Any]] = set()
             self._self_check_fn = self_check_fn or (lambda _cfg: None)
             self._dump_menu_fn = dump_menu_fn or (lambda _cfg: None)
-            self._source_diff_fn = source_diff_fn or (lambda _cfg: None)
             self._force_refresh_ast_fn = force_refresh_ast_fn or (lambda _cfg: None)
             self._startup_output = startup_output.strip("\n")
             self._startup_output_is_warning = startup_output_is_warning
@@ -351,11 +349,6 @@ if _TEXTUAL_APP is not None:
                                         yield _TEXTUAL_BUTTON(
                                             "Diagnostics & dumps",
                                             id="tools-dumps",
-                                            classes="raised-button toolbar-button",
-                                        )
-                                        yield _TEXTUAL_BUTTON(
-                                            "Source diff report",
-                                            id="tools-source-diff",
                                             classes="raised-button toolbar-button",
                                         )
                                         yield _TEXTUAL_BUTTON(
@@ -549,7 +542,6 @@ def run_textual_shell(
         app_module=app_module,
         self_check_fn=app_module.self_check,
         dump_menu_fn=app_module.dump_menu,
-        source_diff_fn=lambda cfg: app_module.run_source_diff_report(cfg, _pause_fn=lambda: None),
         force_refresh_ast_fn=app_module.refresh_analysis_caches,
         show_help_fn=show_help_fn,
         get_help_text_fn=get_help_text_fn,
