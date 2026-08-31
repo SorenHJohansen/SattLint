@@ -192,7 +192,6 @@ def test_run_textual_shell_refreshes_ast_cache_before_main_app(monkeypatch: pyte
     app_module = SimpleNamespace(
         self_check=lambda _cfg: True,
         dump_menu=lambda _cfg: None,
-        run_source_diff_report=lambda _cfg, _pause_fn=None: None,
         force_refresh_ast=lambda _cfg: None,
         refresh_analysis_caches=lambda _cfg: None,
         _has_analyzed_targets=lambda _cfg: True,
@@ -318,7 +317,6 @@ def test_run_textual_shell_preserves_ast_cache_failure_log(monkeypatch: pytest.M
     app_module = SimpleNamespace(
         self_check=lambda _cfg: True,
         dump_menu=lambda _cfg: None,
-        run_source_diff_report=lambda _cfg, _pause_fn=None: None,
         force_refresh_ast=lambda _cfg: None,
         refresh_analysis_caches=lambda _cfg: None,
         _has_analyzed_targets=lambda _cfg: True,
@@ -2238,7 +2236,6 @@ def test_textual_documentation_view_shows_direct_actions() -> None:
         ("documentation-scope-moduletype", "_run_documentation_scope_moduletype", "scope-moduletype"),
         ("documentation-scope-instance-path", "_run_documentation_scope_instance_path", "scope-instance"),
         ("tools-dumps", "_run_tool_dumps", "dumps"),
-        ("tools-source-diff", "_run_tool_source_diff", "source-diff"),
         ("tools-refresh-ast", "_run_tool_refresh_ast", "refresh-ast"),
         ("tools-datatype-usage", "_run_tool_datatype_usage", "datatype-usage"),
         ("tools-variable-trace", "_run_tool_variable_trace", "variable-trace"),
@@ -2282,7 +2279,6 @@ def test_textual_tools_dumps_button_opens_menu_without_ansi_clear() -> None:
             app_module=app,
             self_check_fn=lambda _cfg: True,
             dump_menu_fn=app.dump_menu,
-            source_diff_fn=lambda _cfg: None,
             force_refresh_ast_fn=lambda _cfg: None,
         )
         bridge = app_textual.TextualInteractionBridge(
@@ -2404,7 +2400,6 @@ def test_textual_tools_view_shows_direct_actions() -> None:
             view_host = app_instance.query_one("#view-host")
             output_pane = app_instance.query_one("#output-pane")
             dumps_button = app_instance.query_one("#tools-dumps")
-            source_diff_button = app_instance.query_one("#tools-source-diff")
             refresh_ast_button = app_instance.query_one("#tools-refresh-ast")
             datatype_usage_button = app_instance.query_one("#tools-datatype-usage")
             variable_trace_button = app_instance.query_one("#tools-variable-trace")
@@ -2419,7 +2414,6 @@ def test_textual_tools_view_shows_direct_actions() -> None:
             assert app_instance.query_one("#view-actions").has_class("is-hidden") is True
             assert app_instance.query_one("#tools-actions").has_class("is-hidden") is False
             assert getattr(dumps_button, "disabled", False) is True
-            assert getattr(source_diff_button, "disabled", False) is True
             assert getattr(refresh_ast_button, "disabled", False) is True
             assert getattr(datatype_usage_button, "disabled", False) is True
             assert getattr(variable_trace_button, "disabled", False) is True
@@ -2429,7 +2423,6 @@ def test_textual_tools_view_shows_direct_actions() -> None:
             assert view_side_actions.size.height > 0
             for button in (
                 dumps_button,
-                source_diff_button,
                 refresh_ast_button,
                 datatype_usage_button,
                 variable_trace_button,
@@ -2438,8 +2431,7 @@ def test_textual_tools_view_shows_direct_actions() -> None:
                 assert button.size.width > 0
                 assert button.region.x >= tools_actions.region.x
                 assert button.region.right <= tools_actions.region.right
-            assert dumps_button.region.y < source_diff_button.region.y
-            assert source_diff_button.region.y < refresh_ast_button.region.y
+            assert dumps_button.region.y < refresh_ast_button.region.y
             assert refresh_ast_button.region.y < datatype_usage_button.region.y
             assert datatype_usage_button.region.y < variable_trace_button.region.y
             assert variable_trace_button.region.y < module_locals_button.region.y

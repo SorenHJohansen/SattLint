@@ -19,54 +19,38 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
 
-      - name: Set up shared CI tooling
-        uses: ./.github/actions/setup-ci-tooling
+      - name: Set up Python 3.13
+        uses: actions/setup-python@f6771399287f28495f6a15a3c1e0b3c6e8901f5f # v6.0.0
         with:
-          dependency-spec: ".[dev]"
+          python-version: "3.13"
 
       - name: Build distributions
-        run: python -m build
-
-      - name: Generate SBOM
-        shell: bash
         run: |
-          pip install "cyclonedx-bom==7.3.0" --hash=sha256:73d7d76b3a28ebadc50eabf424cbcf128785a74b8a59ce7893da2e29cfaab585
-          cyclonedx-py requirements --pyproject -o dist/sbom.json
+          python -m pip install --upgrade pip build twine
+          python -m build
 
       - name: Check distribution metadata
         run: python -m twine check dist/*
 
-      - name: Run release smoke rehearsal
+      - name: Clean-wheel smoke using retained commands
         shell: bash
         run: |
-          wheel_path=$(find dist -maxdepth 1 -name '*.whl' -print -quit)
-          if [[ -z "$wheel_path" ]]; then
-            echo "Built wheel not found in dist/" >&2
-            exit 1
-          fi
-          sattlint-release-smoke \
-            --wheel "$wheel_path" \
-            --sample-file tests/fixtures/sample_sattline_files/SattLineFullGrammarTest.s \
-            --output-dir artifacts/release-smoke
+          python -m venv /tmp/clean-venv
+          /tmp/clean-venv/bin/pip install dist/*.whl
+          /tmp/clean-venv/bin/sattlint --version
+          /tmp/clean-venv/bin/sattlint --help
+          /tmp/clean-venv/bin/sattlint syntax-check tests/fixtures/sample_sattline_files/SattLineFullGrammarTest.s
 
       - name: Upload distributions
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           if-no-files-found: error
           name: pypi-dist-${{ github.run_id }}
           path: |
             dist/*.whl
             dist/*.tar.gz
-            dist/sbom.json
-
-      - name: Upload release smoke artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          if-no-files-found: error
-          name: release-smoke-${{ github.run_id }}
-          path: artifacts/release-smoke/
 
   publish:
     if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
@@ -79,7 +63,7 @@ jobs:
       id-token: write
     steps:
       - name: Download distributions
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6
         with:
           name: pypi-dist-${{ github.run_id }}
           path: dist

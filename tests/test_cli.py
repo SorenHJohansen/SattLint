@@ -45,7 +45,6 @@ def _command_handlers(**overrides: Any) -> dict[str, Any]:
                     "cache_prune": lambda *, cache_dir, output_format="text": app_base.EXIT_SUCCESS,
                     "telemetry_summary": lambda cfg, *, config_path, output_format, output_path: app_base.EXIT_SUCCESS,
                     "format_icf": lambda cfg, *, check, output_format="text": app_base.EXIT_SUCCESS,
-                    "trace": lambda args: app_base.EXIT_SUCCESS,
                 }
                 | overrides,
             ),
@@ -81,9 +80,6 @@ def test_build_cli_parser_has_descriptions():
         "telemetry-summary",
         "validate-config",
         "format-icf",
-        "source-diff",
-        "repo-audit",
-        "trace",
     } <= set(choices)
     assert getattr(syntax_parser, "description", None)
 
@@ -134,8 +130,6 @@ def test_build_cli_parser_analyze_includes_output_format():
         ("cache-prune", {"--format", "--output-format"}),
         ("format-icf", {"--format", "--output-format"}),
         ("telemetry-summary", {"--format", "--output-format"}),
-        ("source-diff", {"--format", "--output-format"}),
-        ("trace", {"--format", "--output-format"}),
     ],
 )
 def test_build_cli_parser_commands_include_output_format_aliases(command_name: str, expected_options: set[str]):
@@ -149,49 +143,6 @@ def test_build_cli_parser_commands_include_output_format_aliases(command_name: s
     }
 
     assert expected_options <= option_strings
-
-
-def test_build_cli_parser_repo_audit_includes_dedicated_options():
-    parser = app_base.build_cli_parser()
-
-    action = next(action for action in parser._actions if isinstance(getattr(action, "choices", None), Mapping))
-    choices = cast(dict[str, object], action.choices)
-    repo_audit_parser = cast(Any, choices["repo-audit"])
-    option_strings = {
-        option
-        for parser_action in repo_audit_parser._actions
-        for option in getattr(parser_action, "option_strings", [])
-    }
-
-    assert {"--profile", "--fail-on", "--list-checks", "--planning-context"} <= option_strings
-
-
-def test_build_cli_parser_source_diff_includes_dedicated_options():
-    parser = app_base.build_cli_parser()
-
-    action = next(action for action in parser._actions if isinstance(getattr(action, "choices", None), Mapping))
-    choices = cast(dict[str, object], action.choices)
-    source_diff_parser = cast(Any, choices["source-diff"])
-    option_strings = {
-        option
-        for parser_action in source_diff_parser._actions
-        for option in getattr(parser_action, "option_strings", [])
-    }
-
-    assert {"--workspace-root", "--draft-file", "--official-file", "--discover-pairs"} <= option_strings
-
-
-def test_build_cli_parser_trace_includes_dedicated_options():
-    parser = app_base.build_cli_parser()
-
-    action = next(action for action in parser._actions if isinstance(getattr(action, "choices", None), Mapping))
-    choices = cast(dict[str, object], action.choices)
-    trace_parser = cast(Any, choices["trace"])
-    option_strings = {
-        option for parser_action in trace_parser._actions for option in getattr(parser_action, "option_strings", [])
-    }
-
-    assert {"--output", "--debug"} <= option_strings
 
 
 def test_build_cli_parser_exposes_interactive_ui_override():
@@ -747,9 +698,6 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
         is True
     )
 
-    def run_source_diff_report(_cfg: object) -> None:
-        return None
-
     _app_interactive_menus.tools_menu(
         cfg,
         tools_menu_fn=lambda local_cfg, **kwargs: misc_seen.update({"tools_cfg": local_cfg, **kwargs}),
@@ -761,7 +709,6 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
         pause_fn=lambda: None,
         require_targets_for_menu_action_fn=lambda _cfg, _action: True,
         dump_menu_fn=lambda _cfg: None,
-        run_source_diff_report_fn=run_source_diff_report,
         confirm_fn=lambda _message: True,
         force_refresh_ast_fn=lambda _cfg: None,
     )
@@ -771,7 +718,6 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
     assert misc_seen["menu_title"] == "Menu"
     assert misc_seen["summarize_cfg"] is cfg
     assert misc_seen["target_is_library_fn"] is dump_target_is_library
-    assert misc_seen["run_source_diff_report_fn"] is run_source_diff_report
 
 
 def test_package_exports_version():
@@ -1226,131 +1172,6 @@ def test_run_cli_cache_prune_passes_cache_dir_without_loading_config():
     assert seen == {"cache_dir": "custom-cache", "output_format": "json"}
 
 
-def test_run_cli_repo_audit_uses_parsed_handler():
-    seen = {}
-
-    exit_code = _run_base_cli(
-        ["repo-audit", "--profile", "quick", "--fail-on", "high"],
-        command_handlers={
-            "repo_audit": lambda args: (
-                seen.update(
-                    {
-                        "command": args.command,
-                        "profile": args.profile,
-                        "fail_on": args.fail_on,
-                    }
-                )
-                or app_base.EXIT_SUCCESS
-            )
-        },
-    )
-
-    assert exit_code == app_base.EXIT_SUCCESS
-    assert seen == {"command": "repo-audit", "profile": "quick", "fail_on": "high"}
-
-
-def test_run_cli_source_diff_uses_parsed_handler():
-    seen = {}
-
-    exit_code = _run_base_cli(
-        [
-            "source-diff",
-            "--workspace-root",
-            "tests/fixtures/source_diff",
-            "--draft-file",
-            "WidgetReview.s",
-            "--official-file",
-            "WidgetReview.x",
-        ],
-        command_handlers={
-            "source_diff": lambda args: (
-                seen.update(
-                    {
-                        "command": args.command,
-                        "workspace_root": args.workspace_root,
-                        "draft_file": args.draft_file,
-                        "official_file": args.official_file,
-                    }
-                )
-                or app_base.EXIT_SUCCESS
-            )
-        },
-    )
-
-    assert exit_code == app_base.EXIT_SUCCESS
-    assert seen == {
-        "command": "source-diff",
-        "workspace_root": "tests/fixtures/source_diff",
-        "draft_file": "WidgetReview.s",
-        "official_file": "WidgetReview.x",
-    }
-
-
-def test_run_cli_trace_uses_parsed_handler():
-    seen = {}
-
-    exit_code = _run_base_cli(
-        ["trace", "tests/fixtures/sample_sattline_files/Program/Main.s", "--output", "trace.json", "--debug"],
-        command_handlers={
-            "trace": lambda args: (
-                seen.update(
-                    {
-                        "command": args.command,
-                        "source_file": args.source_file,
-                        "output": args.output,
-                        "debug": args.debug,
-                    }
-                )
-                or app_base.EXIT_SUCCESS
-            )
-        },
-    )
-
-    assert exit_code == app_base.EXIT_SUCCESS
-    assert seen == {
-        "command": "trace",
-        "source_file": "tests/fixtures/sample_sattline_files/Program/Main.s",
-        "output": "trace.json",
-        "debug": True,
-    }
-
-
-def test_run_cli_quiet_suppresses_repo_audit_stdout(capsys):
-    exit_code = _run_base_cli(
-        ["--quiet", "repo-audit", "--list-checks"],
-        command_handlers={"repo_audit": lambda _args: print("visible") or app_base.EXIT_SUCCESS},
-    )
-
-    captured = capsys.readouterr()
-    assert exit_code == app_base.EXIT_SUCCESS
-    assert captured.out == ""
-    assert captured.err == ""
-
-
-def test_run_cli_quiet_suppresses_source_diff_stdout(capsys):
-    exit_code = _run_base_cli(
-        ["--quiet", "source-diff", "--discover-pairs"],
-        command_handlers={"source_diff": lambda _args: print("visible") or app_base.EXIT_SUCCESS},
-    )
-
-    captured = capsys.readouterr()
-    assert exit_code == app_base.EXIT_SUCCESS
-    assert captured.out == ""
-    assert captured.err == ""
-
-
-def test_run_cli_quiet_suppresses_trace_stdout(capsys):
-    exit_code = _run_base_cli(
-        ["--quiet", "trace", "tests/fixtures/sample_sattline_files/Program/Main.s"],
-        command_handlers={"trace": lambda _args: print("visible") or app_base.EXIT_SUCCESS},
-    )
-
-    captured = capsys.readouterr()
-    assert exit_code == app_base.EXIT_SUCCESS
-    assert captured.out == ""
-    assert captured.err == ""
-
-
 def test_run_cli_quiet_suppresses_stdout(monkeypatch, capsys):
     monkeypatch.setattr(
         app_base,
@@ -1794,45 +1615,6 @@ def test_cli_entry_format_icf_requires_handler():
         )
 
 
-def test_cli_entry_repo_audit_requires_handler():
-    parser = _FakeParser(
-        args=SimpleNamespace(command="repo-audit", checks=[], config=None, no_cache=False, quiet=False),
-    )
-
-    with pytest.raises(RuntimeError, match="repo-audit handler is required"):
-        cli_entry.run_cli(
-            ["repo-audit"],
-            config_path=Path("config.toml"),
-            build_cli_parser_fn=lambda: parser,
-        )
-
-
-def test_cli_entry_source_diff_requires_handler():
-    parser = _FakeParser(
-        args=SimpleNamespace(command="source-diff", checks=[], config=None, no_cache=False, quiet=False),
-    )
-
-    with pytest.raises(RuntimeError, match="source-diff handler is required"):
-        cli_entry.run_cli(
-            ["source-diff"],
-            config_path=Path("config.toml"),
-            build_cli_parser_fn=lambda: parser,
-        )
-
-
-def test_cli_entry_trace_requires_handler():
-    parser = _FakeParser(
-        args=SimpleNamespace(command="trace", checks=[], config=None, no_cache=False, quiet=False),
-    )
-
-    with pytest.raises(RuntimeError, match="trace handler is required"):
-        cli_entry.run_cli(
-            ["trace", "program.s"],
-            config_path=Path("config.toml"),
-            build_cli_parser_fn=lambda: parser,
-        )
-
-
 def test_cli_entry_prints_usage_when_no_command_selected():
     parser = _FakeParser(
         args=SimpleNamespace(command=None, checks=[], config=None, no_cache=False, quiet=False),
@@ -1846,57 +1628,6 @@ def test_cli_entry_prints_usage_when_no_command_selected():
 
     assert exit_code == cli_entry.EXIT_USAGE_ERROR
     assert parser.usage_stream is not None
-
-
-def test_cli_entry_repo_audit_uses_parsed_handler():
-    seen: dict[str, Any] = {}
-    parser = _FakeParser(
-        args=SimpleNamespace(command="repo-audit", checks=[], config=None, no_cache=False, quiet=False),
-    )
-
-    exit_code = cli_entry.run_cli(
-        [],
-        config_path=Path("config.toml"),
-        build_cli_parser_fn=lambda: parser,
-        command_handlers={"repo_audit": lambda args: seen.update({"command": args.command}) or 0},
-    )
-
-    assert exit_code == cli_entry.EXIT_SUCCESS
-    assert seen == {"command": "repo-audit"}
-
-
-def test_cli_entry_source_diff_uses_parsed_handler():
-    seen: dict[str, Any] = {}
-    parser = _FakeParser(
-        args=SimpleNamespace(command="source-diff", checks=[], config=None, no_cache=False, quiet=False),
-    )
-
-    exit_code = cli_entry.run_cli(
-        [],
-        config_path=Path("config.toml"),
-        build_cli_parser_fn=lambda: parser,
-        command_handlers={"source_diff": lambda args: seen.update({"command": args.command}) or 0},
-    )
-
-    assert exit_code == cli_entry.EXIT_SUCCESS
-    assert seen == {"command": "source-diff"}
-
-
-def test_cli_entry_trace_uses_parsed_handler():
-    seen: dict[str, Any] = {}
-    parser = _FakeParser(
-        args=SimpleNamespace(command="trace", checks=[], config=None, no_cache=False, quiet=False),
-    )
-
-    exit_code = cli_entry.run_cli(
-        [],
-        config_path=Path("config.toml"),
-        build_cli_parser_fn=lambda: parser,
-        command_handlers={"trace": lambda args: seen.update({"command": args.command}) or 0},
-    )
-
-    assert exit_code == cli_entry.EXIT_SUCCESS
-    assert seen == {"command": "trace"}
 
 
 def test_cli_entry_reraises_when_config_handlers_are_missing():

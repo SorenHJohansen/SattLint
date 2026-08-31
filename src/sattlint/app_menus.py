@@ -596,7 +596,6 @@ def tools_menu(
     pause_fn: Callable[[], None] | None = None,
     require_targets_for_menu_action_fn: Callable[[ConfigDict, str], bool],
     dump_menu_fn: Callable[[ConfigDict], None],
-    run_source_diff_report_fn: Callable[[ConfigDict], None],
     confirm_fn: Callable[[str], bool] | None = None,
     force_refresh_ast_fn: Callable[[ConfigDict], Any],
     choose_menu_option_fn: Callable[..., str] | None = None,
@@ -618,11 +617,6 @@ def tools_menu(
                 menu_option_factory("2", "Diagnostics & dumps", "Inspect parser, AST, and dependency output"),
                 menu_option_factory(
                     "3",
-                    "Source diff report",
-                    "Compare draft .s and official .x files for all configured analysis targets",
-                ),
-                menu_option_factory(
-                    "4",
                     "Refresh all caches",
                     "Clear lookup, AST, and analysis caches, then rebuild when results look stale",
                 ),
@@ -648,9 +642,6 @@ def tools_menu(
             if require_targets_for_menu_action_fn(cfg, "using diagnostics and dumps"):
                 _run_menu_action(lambda: dump_menu_fn(cfg), pause_fn=menu_interaction.pause)
         elif choice == "3":
-            if require_targets_for_menu_action_fn(cfg, "generating source diff reports"):
-                _run_menu_action(lambda: run_source_diff_report_fn(cfg), pause_fn=menu_interaction.pause)
-        elif choice == "4":
             if require_targets_for_menu_action_fn(cfg, "refreshing all caches") and menu_interaction.confirm(
                 "Refresh all caches?"
             ):

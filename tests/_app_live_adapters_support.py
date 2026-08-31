@@ -146,7 +146,6 @@ def _build_startup_app_module() -> SimpleNamespace:
         _require_targets_for_menu_action=lambda _cfg, _action: True,
         force_refresh_ast=lambda _cfg: None,
         refresh_analysis_caches=lambda _cfg: None,
-        run_source_diff_report=lambda _cfg: None,
         analyze_variables=lambda *args, **kwargs: None,
         classify_documentation_structure=lambda *args, **kwargs: [],
         discover_documentation_unit_candidates=lambda *args, **kwargs: [],

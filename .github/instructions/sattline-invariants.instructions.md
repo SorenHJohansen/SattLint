@@ -57,7 +57,7 @@ A file can be syntactically valid but semantically broken:
 - Calling `app.main()` with no argv still opens the Textual interactive shell.
 - If you change CLI menu layout or numbering, keep `tests/test_app.py` in sync.
 - Do not rely on the IDE test runner as the first validation path here; use repo-venv pytest commands directly, and treat IDE zero-test collection as expected noise rather than a project signal.
-- Prefer targeted test modules first, for example `tests/test_app.py` for CLI and menu work, `tests/analyzers/test_cyclomatic_complexity.py` for analyzer work, and `tests/test_pipeline_run.py` or `tests/test_repo_audit_part1.py` for devtools artifact changes.
+- Prefer targeted test modules first, for example `tests/test_cli.py` for CLI work, `tests/analyzers/test_cyclomatic_complexity.py` for analyzer work, and the matching source-owner test module for the touched seam.
 - Use the real fixtures under `tests/fixtures/sample_sattline_files/` when uncertain about syntax or semantics.
 
 ## Workspace And Editor Loading
