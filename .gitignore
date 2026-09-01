@@ -48,49 +48,8 @@ bandit_results*.json
 tmp_pyright_analyzers.json
 probe_results.json
 
-# Project outputs (allow-list tracked artifacts only)
-artifacts/**
-!artifacts/ai-chat-fixture/
-artifacts/ai-chat-fixture/**
-!artifacts/ai-chat-fixture/findings.json
-!artifacts/ai-chat-fixture/findings.sources.json
-!artifacts/ai-chat-fixture/sessions.json
-!artifacts/ai-chat-fixture/status.json
-!artifacts/ai-chat-fixture/status.sources.json
-!artifacts/ai-chat-fixture/summary.json
-!artifacts/ai-chat-fixture/summary.sources.json
-!artifacts/analysis/
-artifacts/analysis/**
-!artifacts/analysis/analyzer_registry.json
-!artifacts/analysis/architecture.json
-!artifacts/analysis/artifact_registry.json
-!artifacts/analysis/artifact_registry.sources.json
-!artifacts/analysis/call_graph.json
-!artifacts/analysis/dependency_graph.json
-!artifacts/analysis/findings.json
-!artifacts/analysis/progress.json
-!artifacts/analysis/status.json
-!artifacts/analysis/structural_budget_ratchet.json
-!artifacts/analysis/summary.json
-!artifacts/analysis/trace.json
-!artifacts/audit-security-plan/
-artifacts/audit-security-plan/**
-!artifacts/audit-security-plan/findings.json
-!artifacts/audit-security-plan/progress.json
-!artifacts/audit-security-plan/run_history.json
-!artifacts/audit-security-plan/status.json
-!artifacts/audit-security-plan/status.sources.json
-!artifacts/audit-security-plan/summary.json
-!artifacts/audit-security-plan/summary.md
-!artifacts/audit-security-plan/summary.sources.json
-!artifacts/generated/
-artifacts/generated/**
-!artifacts/generated/KaGCFreezeLib-s-vs-x.html
-!artifacts/generated/KaGCUF_FS_verification.md
-*.docx
-*.xlsx
-*.txt
-*.Zone.Identifier
+# Generated outputs / local analysis results
+artifacts/
 
 # Local library trees (DO NOT COMMIT)
 Libs/
@@ -103,9 +62,6 @@ src/config.toml
 # IDE / Editor state (DO NOT COMMIT)
 .benchmarks/
 .opencode/
-.github/coordination/current-work.md
-.github/coordination/current_work_lock.json
-.github/coordination/current_work_summary.json
 *.vsix
 
 # Local settings

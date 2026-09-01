@@ -2,15 +2,13 @@
 
 This guide covers setting up a development environment for contributing to SattLint.
 
-For public support boundaries, see [SUPPORT.md](SUPPORT.md) and [docs/references/public-support-matrix.md](docs/references/public-support-matrix.md). All contributors are expected to follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
-
-Maintainer operating docs now start at [docs/maintainers/README.md](docs/maintainers/README.md), including the routing map, quality gates, and validation map.
+For public support boundaries, see [SUPPORT.md](SUPPORT.md). All contributors are expected to follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## How to Contribute as a Human Contributor
 
 ### Reporting Bugs
 
-1. Check the [public support matrix](docs/references/public-support-matrix.md) to confirm whether the affected surface is stable or preview.
+1. Check [SUPPORT.md](SUPPORT.md) to confirm whether the affected surface is stable or preview.
 2. Search existing [issues](https://github.com/SorenHJohansen/SattLint/issues) to avoid duplicates.
 3. Open a [bug report](https://github.com/SorenHJohansen/SattLint/issues/new?template=bug_report.md) with:
    - SattLint version (`sattlint --version`)
@@ -21,7 +19,7 @@ Maintainer operating docs now start at [docs/maintainers/README.md](docs/maintai
 
 ### Suggesting Features
 
-1. Read the [public support matrix](docs/references/public-support-matrix.md) to understand stable vs preview boundaries.
+1. Read [SUPPORT.md](SUPPORT.md) to understand stable vs preview boundaries.
 2. Open a [feature request](https://github.com/SorenHJohansen/SattLint/issues/new?template=feature_request.md) describing the problem you are solving, the desired behavior, and any current workaround.
 
 ### Submitting Pull Requests
@@ -34,16 +32,19 @@ Maintainer operating docs now start at [docs/maintainers/README.md](docs/maintai
    python -m pre_commit run --all-files
    ```
 
-4. Run the full audit if your change touches source or test files:
+4. Run the full validation set if your change touches source or test files:
 
    ```bash
-   sattlint-repo-audit --profile full --output-dir artifacts/audit
+   python -m ruff check .
+   python -m ruff format --check .
+   python -m pyright src/sattlint
+   python -m pytest -q --tb=short
    ```
 
 5. Open a pull request against `main`. Fill in the PR template with commands run and remaining risks.
 6. A maintainer will review your changes. Expect questions or requests for narrower scope.
 
-For human-readable CLI reference, see [docs/public/feature-guide.md](docs/public/feature-guide.md) and [docs/public/cli-commands.md](docs/public/cli-commands.md).
+For a human-readable CLI reference, see [docs/public/feature-guide.md](docs/public/feature-guide.md).
 
 ### Getting Help
 
@@ -78,12 +79,12 @@ cd SattLint
 # Preferred: install through uv
 uv venv
 source .venv/bin/activate
-uv pip install -e .[dev,lsp]
+uv pip install -e ".[dev]"
 
 # Fallback
 # python -m venv .venv
 # source .venv/bin/activate
-# pip install -e .[dev,lsp]
+# pip install -e ".[dev]"
 ```
 
 #### 2. Editor Setup
@@ -94,11 +95,9 @@ Configure your editor with:
 - Ruff for linting and formatting
 - Pyright for type checking
 
-Consult your editor's documentation for the appropriate LSP and formatter plugins.
+### Option 2: Windows
 
-### Option 2: Windows with Visual Studio Code
-
-#### 1. Install Dependencies (Windows)
+#### 1. Install Dependencies
 
 ```powershell
 # Install Python from python.org or Windows Store
@@ -108,29 +107,19 @@ cd SattLint
 
 # Preferred: install through uv
 uv venv
-python scripts/run_repo_python.py -m pip install -e .[dev]
+.venv\Scripts\activate
+uv pip install -e ".[dev]"
 
 # Fallback
 # python -m venv .venv
-# python scripts/run_repo_python.py -m pip install -e .[dev]
-
-# Recommended VS Code extensions are listed in .vscode/extensions.json
+# .venv\Scripts\activate
+# pip install -e ".[dev]"
 ```
 
 #### 2. VS Code Configuration
 
-The repository includes `.vscode/settings.json` which configures:
-
-- Cross-platform Python interpreter discovery via `.venv`
-- Ruff for linting
-- Pylance in `openFilesOnly` mode for lower editor overhead in this AI-first repo
-- Pyright CLI runs as the authoritative type-check gate
-- Pytest for testing
-- Context Optimizer line budget alignment for AI context files
-- Search visibility for machine-readable audit reports under `artifacts/audit/`
-
-Use the workspace task runner in `.vscode/tasks.json` for the common AI and validation flows.
-The committed task list is intentionally short; keep one-off investigation commands out of the shared workspace file.
+The repository includes `.vscode/settings.json` which configures Python interpreter
+discovery, Ruff, Pylance, Pyright, and pytest.
 
 ## Development Workflow
 
@@ -145,110 +134,43 @@ ruff format src/ tests/
 # Lint code
 ruff check src/ tests/
 
-# Type check
-pyright src tests
+# Type check production code
+pyright src/sattlint
 
 # Run tests
-pytest tests/ -v
-
-# Run tests with the enforced coverage baseline
 pytest -q --tb=short
-
-# Lint GitHub Actions workflows via the repo wrapper used by pre-commit and CI
-python scripts/run_actionlint.py
-
-# Lint Markdown via the repo wrapper used by pre-commit and CI
-python scripts/run_markdownlint.py --config .markdownlint-cli2.jsonc
-
-# Run the fast local pre-commit gate
-python -m pre_commit run --all-files
-
-# Run the AI post-change drift gate
-sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit
-
-# Audit installed Python dependencies
-pip-audit
-
-# Run the local pre-push or CI audit
-sattlint-repo-audit --profile full --output-dir artifacts/audit
 ```
 
-The canonical audit entry point is `sattlint-repo-audit`.
+Run the fast local hygiene gate before pushing:
 
-- Use `--profile quick` for fast edit-and-verify loops.
-- Use `--profile full` for the complete lint, type, test, security, dead-code, and repo-audit pass.
-- Open `artifacts/audit/status.json` first; it is the compact machine-readable summary intended for tooling and AI agents.
-- The full details remain in `artifacts/audit/summary.json`, `artifacts/audit/findings.json`, and `artifacts/audit/pipeline/`.
-- `python scripts/context_health.py --check` is the fast AI-control-plane gate.
-- `python scripts/repo_health.py --check --audit-dir artifacts/audit` emits the repo health dashboard from the current audit artifacts.
+```bash
+python -m pre_commit run --all-files
+```
+
+The pre-commit gate runs Ruff fix and format, Pyright on `src/sattlint`,
+SattLine `syntax-check` on staged SattLine fixtures, and the standard
+pre-commit-hooks checks.
 
 ### Running Tests
 
 ```bash
 # Run all tests
-pytest
+python -m pytest
 
-# Run with coverage
-pytest --cov=src
+# Run a focused test module
+python -m pytest tests/test_cli.py
 
-# Run specific test file
-pytest tests/test_cli.py
+# Run focused owner validation after editing
+python -m pytest <focused-paths> -q --tb=short
 ```
 
-The repository enforces a fixed minimum coverage threshold in `pyproject.toml` via `--cov-fail-under`.
-Raise that threshold incrementally as test surface expands instead of jumping directly to the long-term target.
-
-### Local Setup
-
-```bash
-pip install -e .[dev]
-pre-commit install
-python scripts/context_health.py --check
-python -m pre_commit run --all-files
-```
-
-Run focused owner validation immediately after the first substantive edit.
-Use `python scripts/context_health.py --check` when the AI-control plane changes.
-Use `python -m pre_commit run --all-files` as the fast local hygiene gate for staged formatting, changed Markdown lint, SattLine syntax-check, and targeted context-health checks.
-Use `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit` as the AI post-change drift gate.
-Use `sattlint-repo-audit --profile full --output-dir artifacts/audit` as the real local pre-push gate before you push or when you want CI-equivalent repo proof.
-Use the shared workspace tasks only as thin wrappers around those same commands when you want them in VS Code.
-Use `python scripts/run_ai_edit_gate.py <touched paths...>` only when you are debugging the `.github/hooks/ai-edit-gate.json` hook itself.
-
-## AI-First Workflow
-
-Use one focused branch or worktree per slice.
-
-1. Start from `AGENTS.md` and the owning file, failing command, or failing test.
-2. Keep the slice small enough that focused validation is obvious.
-3. Run the first focused owner validation immediately.
-4. Run `python scripts/context_health.py --check` when AI-control files changed.
-5. AI-touched files are additionally blocked through `.github/hooks/ai-edit-gate.json`; rerun `python scripts/run_ai_edit_gate.py <touched paths...>` only when debugging that hook locally.
-6. Run `python -m pre_commit run --all-files`, then `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit` while iterating, and finish with `sattlint-repo-audit --profile full --output-dir artifacts/audit` before pushing.
-
-Repository structure for maintainer work:
-
-- `AGENTS.md` is the human-authored AI workflow contract.
-- `.ai/` is reserved for machine-authored AI artifacts and handoff data.
-- `docs/maintainers/` holds human maintainer docs.
-- `.github/workflows/` should stay small: CI, nightly, and publish.
-- `.vscode/` should stay repo-wide and stable, not issue-specific.
-
-Recommended branch names:
-
-- `feature/<topic>`
-- `fix/<topic>`
-- `chore/<topic>`
-
-Recommended context workflow in VS Code:
-
-- `@context-optimizer /audit`
+Run focused owner validation immediately after the first substantive edit, then
+widen to the full suite.
 
 ## Project Structure
 
 - `src/sattlint/` - Main source code
 - `tests/` - Test suite
-- `src/sattlint/grammar/` - SattLine grammar files (parsing delegated to the external `sattline-parser` package)
 - `pyproject.toml` - Project configuration and dependencies
 - `.editorconfig` - Cross-editor formatting rules
 - `.vscode/settings.json` - VS Code workspace configuration
@@ -257,7 +179,8 @@ Recommended context workflow in VS Code:
 
 1. Create a focused branch or worktree.
 2. Keep the slice small and run the first focused validation immediately.
-3. Run `python scripts/context_health.py --check` when AI-control files changed, then `python -m pre_commit run --all-files`, then `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit`, and use `sattlint-repo-audit --profile full --output-dir artifacts/audit` before pushing.
+3. Run `python -m pre_commit run --all-files`, then the full validation set above
+   before pushing.
 4. Fill in the pull request template with commands run and remaining risks.
 5. Push and create the pull request.
 

@@ -22,12 +22,9 @@
     "globs": [
         "*.md",
         "docs/**/*.md",
-        "tests/fixtures/**/*.md",
-        "vscode/**/*.md"
+        "tests/fixtures/**/*.md"
     ],
     "ignores": [
-        "artifacts/**",
-        "docs/generated/**",
         "docs/SattLineReferenceDocs/**",
         "docs/references/sattline_system_procedures_reference.md"
     ]

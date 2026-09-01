@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "sattlint"
 dynamic = ["version"]
-description = "Static analysis, validation, documentation, and LSP tooling for SattLine projects"
+description = "Static analysis, validation, and tooling for SattLine projects"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "S\u00f8ren H. Johansen" }]
 requires-python = ">=3.13"
-keywords = ["sattline", "static-analysis", "lsp", "documentation", "plc"]
+keywords = ["sattline", "static-analysis", "plc"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
@@ -122,10 +122,6 @@ venvPath = "."
 venv = ".venv"
 extraPaths = ["src"]
 reportMissingTypeStubs = false
-
-[tool.bandit]
-exclude_dirs = ["tests"]
-skips = ["B404", "B603"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

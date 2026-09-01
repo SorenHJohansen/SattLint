@@ -83,34 +83,6 @@ def run_analyze_command_from_app(
     )
 
 
-def run_simulate_command_from_app(
-    cfg: ConfigDict,
-    *,
-    target_path: str,
-    module_name: str,
-    mode: str,
-    max_scans: int,
-    output_format: str,
-    output_path: str | None,
-    use_cache: bool,
-    app_module: Any,
-) -> int:
-    return startup_core.run_simulate_command(
-        cfg,
-        target_path=target_path,
-        module_name=module_name,
-        mode=mode,
-        max_scans=max_scans,
-        output_format=output_format,
-        output_path=output_path,
-        use_cache=use_cache,
-        run_simulate_command_fn=app_module.app_cli_commands.run_simulate_command,
-        simulate_fn=app_module._simulate_target,
-        exit_success=app_module.EXIT_SUCCESS,
-        exit_usage_error=app_module.EXIT_USAGE_ERROR,
-    )
-
-
 def run_cache_prune_command_from_app(*, cache_dir: str | None, output_format: str = "text", app_module: Any) -> int:
     return startup_core.run_cache_prune_command(
         cache_dir=cache_dir,
@@ -118,28 +90,6 @@ def run_cache_prune_command_from_app(*, cache_dir: str | None, output_format: st
         run_cache_prune_command_fn=app_module.app_cli_commands.run_cache_prune_command,
         prune_cache_dir_fn=app_module.cache.prune_cache_dir,
         get_cache_dir_fn=app_module.get_cache_dir,
-        exit_success=app_module.EXIT_SUCCESS,
-        exit_usage_error=app_module.EXIT_USAGE_ERROR,
-    )
-
-
-def run_telemetry_summary_command_from_app(
-    cfg: ConfigDict,
-    *,
-    config_path: startup_core.Path,
-    output_format: str,
-    output_path: str | None,
-    app_module: Any,
-) -> int:
-    return startup_core.run_telemetry_summary_command(
-        cfg,
-        config_path=config_path,
-        output_format=output_format,
-        output_path=output_path,
-        run_telemetry_summary_command_fn=app_module.app_cli_commands.run_telemetry_summary_command,
-        telemetry_output_path_fn=app_module.app_telemetry.telemetry_output_path_for_config,
-        summarize_telemetry_fn=app_module.telemetry_summary.summarize_telemetry_file,
-        render_text_summary_fn=app_module.telemetry_summary.render_text_summary,
         exit_success=app_module.EXIT_SUCCESS,
         exit_usage_error=app_module.EXIT_USAGE_ERROR,
     )
