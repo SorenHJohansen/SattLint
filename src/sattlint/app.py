@@ -37,7 +37,6 @@ from . import cache as cache_module
 from . import config as _config_module
 from . import console as console_module
 from . import engine as engine_module_impl
-from . import telemetry_summary as telemetry_summary_module
 from .analyzers.variables import (
     IssueKind,
 )
@@ -69,7 +68,6 @@ app_support: Any = app_support_module
 app_telemetry: Any = app_telemetry_module
 cache: Any = cache_module
 engine_module: Any = engine_module_impl
-telemetry_summary: Any = telemetry_summary_module
 get_default_cli_analyzers = analysis_catalog_module.get_default_cli_analyzers
 get_selectable_analyzers = analysis_catalog_module.get_selectable_analyzers
 analyze_variables = app_analysis_module.analyze_variables
@@ -204,10 +202,7 @@ def run_syntax_check_command(file_path: str, *, output_format: str = "text") -> 
 run_cli = app_facade_commands_module.run_cli
 run_validate_config_command = app_facade_commands_module.run_validate_config_command
 run_analyze_command = app_facade_commands_module.run_analyze_command
-_simulate_target = app_facade_commands_module._simulate_target
-run_simulate_command = app_facade_commands_module.run_simulate_command
 run_cache_prune_command = app_facade_commands_module.run_cache_prune_command
-run_telemetry_summary_command = app_facade_commands_module.run_telemetry_summary_command
 _configured_icf_files = app_facade_commands_module._configured_icf_files
 run_format_icf_command = app_facade_commands_module.run_format_icf_command
 run_icf_formatter = app_facade_commands_module.run_icf_formatter
@@ -375,7 +370,6 @@ _COMPATIBILITY_HELPERS = (
     _menu_option,
     _summarize_targets,
     _graphics_rule_label,
-    _simulate_target,
     _require_targets_for_menu_action,
     _split_csv_values,
     _discover_graphics_rule_selector_options,

@@ -5,11 +5,10 @@
 
 ## Quick Reference
 
-**Purpose:** SattLint is a parser, analyzer, editor-facade, documentation, LSP, and repo-audit toolchain for SattLine.
+**Purpose:** SattLint is a parser, analyzer, and validation toolchain for SattLine, with a CLI and a Textual terminal UI.
 **Default workflow:** one chat owns routing, editing, validation, and summary unless the user explicitly asks for something else.
 **Global authority:** this file is the root AI guide; compatibility docs must not add competing workflow rules.
 **Communication:** terse and concrete.
-**Health checks:** `python scripts/context_health.py --check`; `python scripts/repo_health.py --check --audit-dir artifacts/audit`.
 
 ## Project system
 
@@ -48,7 +47,6 @@
 - `sattlint syntax-check` stays strict. No silent fallback behavior.
 - Use repo venv commands or existing VS Code tasks for executable proof.
 - Use markdown links for workspace file and line references.
-- Treat `artifacts/audit/` outputs as snapshots; refresh them when validation changes the relevant evidence.
 - Never use `python3 - << 'PY'` heredocs through the VS Code terminal tools.
 
 ## Workflow

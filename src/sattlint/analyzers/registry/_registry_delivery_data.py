@@ -322,23 +322,19 @@ def default_delivery_templates(
             acceptance_tests=(
                 *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
                 "tests/analyzers/test_sattline_semantics.py",
-                "tests/test_editor_api.py",
             ),
             depends_on_analyzers=(semantic_layer_analyzer_key,),
             min_fixture_set=shared_fixtures,
-            exposed_via=(semantic_layer_analyzer_key, "editor-api"),
+            exposed_via=(semantic_layer_analyzer_key,),
         ),
         AnalyzerDeliveryTemplate(
             key="taint-paths",
             scope="cross-module",
             implementation_bucket="graph-tracing",
             lsp_exposed=True,
-            acceptance_tests=(
-                *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
-                "tests/test_editor_api.py",
-            ),
+            acceptance_tests=(*_ANALYZER_SUITE_ACCEPTANCE_TESTS,),
             min_fixture_set=shared_fixtures,
-            exposed_via=(semantic_layer_analyzer_key, "editor-api"),
+            exposed_via=(semantic_layer_analyzer_key,),
         ),
         AnalyzerDeliveryTemplate(
             key="unsafe-defaults",

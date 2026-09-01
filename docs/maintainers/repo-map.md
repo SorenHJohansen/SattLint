@@ -8,50 +8,37 @@ Use it before widening into subsystem docs.
 | Path | Role | First validation |
 | --- | --- | --- |
 | `sattline-parser` (external) | Parser grammar, AST, transformer, strict syntax behavior | `sattlint syntax-check` or targeted parser pytest |
-| `src/sattlint/` | CLI flows, analyzers, reporting, config, and shared app orchestration | Targeted owner pytest, then Ruff and Pyright |
-| `src/sattlint/editor_api.py` | Public editor-facing compatibility facade over `src/sattlint/core/semantic.py` | `tests/test_editor_api.py`, then targeted semantic pytest |
-| `src/sattlint/core/` | Shared semantic and document helpers behind the editor facade; workspace discovery, symbol lookup, snapshots | Targeted semantic pytest |
-| `src/sattlint/devtools/` | Repo audit, pipeline, health reports, structural reports | Targeted devtools pytest, then `sattlint-repo-audit --check-my-changes` |
+| `src/sattlint/app.py`, `src/sattlint/cli/` | CLI entrypoints and command handlers | Targeted owner pytest, then Ruff and Pyright |
+| `src/sattlint/analyzers/` | Heuristic analyzers and the rule registry | Targeted analyzer pytest |
+| `src/sattlint/core/` | Shared semantic snapshot and document helpers | Targeted semantic pytest |
+| `src/sattlint/project/` | `.slproj` project model and loading | `tests/test_project*.py`, targeted pytest |
+| `src/sattlint/` (ICF, graphics, validation, engine) | ICF analysis, graphics rules, strict syntax validation | Targeted owner pytest |
+| `src/sattlint/app_textual.py` | Textual interactive UI | `tests/test_app_textual*.py` |
+| `src/sattlint/structural/` | Graphics layout helpers retained from the structural reports | Targeted pytest |
+| `src/sattlint/tracing.py` | Engine-internal analysis trace recorder | Targeted pytest |
 | `tests/` | Owner suites and regression proofs | Narrow pytest slice first |
-| `.github/` | CI and scoped instructions | Diagnostics or config validation, then workflow run if needed |
-| `.vscode/` | Local task runner, settings, extension recommendations | `python scripts/context_health.py --check` |
-| `metrics/` | Maintainer operating thresholds and historical health snapshots | `python scripts/repo_health.py --check --audit-dir artifacts/audit` |
-| `scripts/` | Thin local entrypoints and policy helpers | Touched-file Ruff and Pyright, then focused script execution |
+| `.github/` | CI workflows and scoped instructions | Diagnostics or config validation, then workflow run if needed |
 
 ## Primary Entrypoints
 
 - `sattlint`
-- `sattlint-repo-audit --profile full --planning-context --output-dir artifacts/audit`
 - `python -m pre_commit run --all-files`
-- `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit`
-- `python scripts/context_health.py --check`
-- `python scripts/repo_health.py --check --audit-dir artifacts/audit`
+- `python -m ruff check .`
+- `python -m pyright src/sattlint`
+- `python -m pytest -q --tb=short`
 
 ## Actual Runtime Map
 
-- Stable CLI commands enter through `sattlint -> src/sattlint/app.py`, then route into the shared app helpers, analyzers, reporting, and parser-backed semantic loaders.
-- The preview interactive menu also starts in `src/sattlint/app.py`; it is shipped, but its UX contract is looser than `syntax-check` and `repo-audit`.
-- Editor-facing library consumers should enter through `src/sattlint/editor_api.py`; that file is a compatibility facade over `src/sattlint/core/semantic.py`, not a second semantic implementation.
-- Repo-audit and layer-lint are maintainer-facing entrypoints under `src/sattlint/devtools/`; they are runtime-adjacent tooling, not part of the editor or parser control path.
+- Stable CLI commands enter through `sattlint -> src/sattlint/app.py`, then route
+  into the shared app helpers, analyzers, reporting, and parser-backed semantic
+  loaders.
+- The interactive menu also starts in `src/sattlint/app.py`; it is shipped, but
+  its UX contract is looser than the stable CLI commands.
 
 ## Assistant Anchors
 
 - `AGENTS.md` is the stable AI table of contents.
 - `AGENTS.md` owns context loading order and default workflow rules.
-- `docs/maintainers/analyzer-authoring.md` defines the default class-plus-mixins analyzer pattern.
+- `docs/maintainers/analyzer-authoring.md` defines the default analyzer pattern.
 - `docs/maintainers/quality-gates.md` defines stage-by-stage validation commands.
 - `docs/public/architecture.md` captures the short architecture boundary summary.
-
-## Safe Edit Order
-
-1. Start from the owning surface.
-2. Read the matching instruction file if one applies.
-3. Make the smallest local change.
-4. Run the first focused validation immediately.
-5. Only then widen to the finish gate.
-
-## Health Outputs
-
-- `artifacts/audit/` contains machine-readable audit artifacts.
-- `metrics/ratchet.json` contains the maintainer operating thresholds for AI-context checks.
-- `metrics/history/` stores curated health snapshots.

@@ -52,78 +52,11 @@ def run_analyze_command(
     )
 
 
-def _simulate_target(
-    cfg: dict[str, object],
-    *,
-    target_path: str,
-    module_name: str,
-    mode: str,
-    max_scans: int,
-    use_cache: bool,
-) -> Any:
-    from .simulation import simulate_snapshot_target  # noqa: PLC0415
-
-    app = _app()
-    del cfg, use_cache
-    snapshot = app.load_workspace_snapshot(
-        Path(target_path),
-        collect_variable_diagnostics=False,
-    )
-    return simulate_snapshot_target(
-        snapshot,
-        module_name=module_name,
-        mode=mode,
-        max_scans=max_scans,
-    )
-
-
-def run_simulate_command(
-    cfg: dict[str, object],
-    *,
-    target_path: str,
-    module_name: str,
-    mode: str,
-    max_scans: int,
-    output_format: str,
-    output_path: str | None,
-    use_cache: bool,
-) -> int:
-    app = _app()
-    return app.app_startup_module.run_simulate_command_from_app(
-        cfg,
-        target_path=target_path,
-        module_name=module_name,
-        mode=mode,
-        max_scans=max_scans,
-        output_format=output_format,
-        output_path=output_path,
-        use_cache=use_cache,
-        app_module=app,
-    )
-
-
 def run_cache_prune_command(*, cache_dir: str | None = None, output_format: str = "text") -> int:
     app = _app()
     return app.app_startup_module.run_cache_prune_command_from_app(
         cache_dir=cache_dir,
         output_format=output_format,
-        app_module=app,
-    )
-
-
-def run_telemetry_summary_command(
-    cfg: dict[str, object],
-    *,
-    config_path: Path,
-    output_format: str,
-    output_path: str | None,
-) -> int:
-    app = _app()
-    return app.app_startup_module.run_telemetry_summary_command_from_app(
-        cfg,
-        config_path=config_path,
-        output_format=output_format,
-        output_path=output_path,
         app_module=app,
     )
 

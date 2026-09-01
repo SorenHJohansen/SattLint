@@ -41,9 +41,7 @@ class CommandHandlers(TypedDict, total=False):
     syntax_check: RunSyntaxCheckCommandFn
     validate_config: AppCommandFn
     analyze: AppCommandFn
-    simulate: AppCommandFn
     cache_prune: AppCommandFn
-    telemetry_summary: AppCommandFn
     format_icf: AppCommandFn
 
 
@@ -67,10 +65,7 @@ class _ParsedCliArgs(Protocol):
     list_checks: bool
     issue_kinds: list[str]
     list_issue_kinds: bool
-    target_path: str
-    module: str
     mode: str
-    max_scans: int
     format: str
     output: str | None
     output_dir: str | None
@@ -116,7 +111,7 @@ def _is_version_request(argv: list[str]) -> bool:
 def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sattlint",
-        description="Interactive SattLine analysis app with non-interactive syntax-check, analysis, documentation, and simulation commands.",
+        description="Interactive SattLine analysis app with non-interactive syntax-check, analysis, validation, and formatting commands.",
     )
     parser.add_argument("--version", action="version", version=f"sattlint {version}")
     parser.add_argument("--config", default=None, metavar="PATH", help="Path to a SattLint config file")
@@ -222,33 +217,6 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         help_text="Output format for analyze list commands",
     )
 
-    simulate_parser = subparsers.add_parser(
-        "simulate",
-        help="Run bounded SFC scan-cycle simulation",
-        description="Simulate one SFC-bearing target and report steady state, cycles, or scan-budget exhaustion.",
-    )
-    simulate_parser.add_argument("target_path", help="Path to the SattLine entry file to load")
-    simulate_parser.add_argument("--module", required=True, help="Module or instance path to simulate")
-    simulate_parser.add_argument(
-        "--mode",
-        default="steady-state",
-        choices=["steady-state"],
-        help="Simulation mode to run",
-    )
-    simulate_parser.add_argument(
-        "--max-scans",
-        type=int,
-        default=25,
-        dest="max_scans",
-        help="Maximum number of scans to execute before stopping",
-    )
-    simulate_parser.add_argument(
-        "--output",
-        default=None,
-        help="Optional path to write the simulation output",
-    )
-    add_output_format_argument(simulate_parser)
-
     format_icf_parser = subparsers.add_parser(
         "format-icf",
         help="Normalize blank-line spacing in configured ICF files",
@@ -263,18 +231,6 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         help="Report whether configured .icf files would change without rewriting them.",
     )
     add_output_format_argument(format_icf_parser)
-
-    telemetry_summary_parser = subparsers.add_parser(
-        "telemetry-summary",
-        help="Summarize local app telemetry bottlenecks",
-        description="Read local app telemetry and summarize slowest operations, stages, analyzers, and nested phases.",
-    )
-    add_output_format_argument(telemetry_summary_parser)
-    telemetry_summary_parser.add_argument(
-        "--output",
-        default=None,
-        help="Optional path to write the telemetry summary",
-    )
 
     return parser
 
@@ -413,20 +369,6 @@ def run_cli(  # noqa: PLR0915
         )
         return exit_usage_error
 
-    if command == "telemetry-summary":
-        telemetry_summary_handler = None if command_handlers is None else command_handlers.get("telemetry_summary")
-        if telemetry_summary_handler is None:
-            raise RuntimeError("telemetry-summary handler is required")
-        return _exit_code(
-            telemetry_summary_handler(
-                {},
-                config_path=resolved_config_path,
-                output_format=cli_output.resolve_output_format(args),
-                output_path=getattr(args, "output", None),
-            ),
-            fallback=exit_success,
-        )
-
     if command == "cache-prune":
         cache_prune_handler = None if command_handlers is None else command_handlers.get("cache_prune")
         if cache_prune_handler is None:
@@ -439,7 +381,7 @@ def run_cli(  # noqa: PLR0915
             fallback=exit_success,
         )
 
-    if command in ("validate-config", "analyze", "simulate", "format-icf"):
+    if command in ("validate-config", "analyze", "format-icf"):
         debug_requested = bool(getattr(args, "debug", False))
 
         if project_config is not None:
@@ -487,24 +429,6 @@ def run_cli(  # noqa: PLR0915
                     selected_issue_kinds=selected_issue_kinds,
                     use_cache=use_cache,
                     output_format=cli_output.resolve_output_format(args),
-                ),
-                fallback=exit_success,
-            )
-
-        if command == "simulate":
-            simulate_handler = None if command_handlers is None else command_handlers.get("simulate")
-            if simulate_handler is None:
-                raise RuntimeError("simulate handler is required")
-            return _exit_code(
-                simulate_handler(
-                    cfg,
-                    target_path=args.target_path,
-                    module_name=args.module,
-                    mode=args.mode,
-                    max_scans=args.max_scans,
-                    output_format=cli_output.resolve_output_format(args),
-                    output_path=args.output,
-                    use_cache=use_cache,
                 ),
                 fallback=exit_success,
             )

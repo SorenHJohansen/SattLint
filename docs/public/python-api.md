@@ -62,7 +62,7 @@ No public exports. Import submodules directly.
 | Export | Description |
 |--------|-------------|
 | `SemanticSnapshot`, `SymbolDefinition`, `SymbolReference` | Core semantic types |
-| `CompletionItem`, `SemanticDiagnostic` | LSP-oriented types |
+| `CompletionItem`, `SemanticDiagnostic` | Editor-facing helper types |
 | `WorkspaceSourceDiscovery` | Source discovery |
 | `build_source_snapshot_from_basepicture`, `discover_workspace_sources`, `load_source_snapshot`, `load_workspace_snapshot` | Snapshot loading |
 | `LineIndex`, `utf16_index_to_codepoint_offset` | Document text helpers |
@@ -85,24 +85,11 @@ No public exports. Import submodules directly.
 
 No public exports. Import submodules directly.
 
-### `sattlint.devtools`
-
-See the `sattlint-devtools` CLI surface in [cli-commands.md](cli-commands.md) for the primary tooling entrypoints.
-
-### `sattlint.devtools.ai`, `sattlint.devtools.audit`, `sattlint.devtools.sandbox`
-
-These packages use `__getattr__` to dynamically re-export submodule contents.
-
-### `sattlint.devtools.pipeline`
-
-The pipeline package provides the analysis pipeline entrypoint and supporting utilities.
-
-### `sattlint.devtools.structural`
+### `sattlint.structural`
 
 | Export | Description |
 |--------|-------------|
-| `collect_structural_budget_report` | Structural budget report collector |
-| `summarize_structural_budget_metrics` | Budget metric summarizer |
+| `collect_graphics_layout_entries_for_target` | Collect graphics layout entries for an analysis target |
 
 ---
 
@@ -130,4 +117,4 @@ See the `sattline-parser` source for the full `__all__` listing.
 | `sattlint` CLI commands | Stable |
 | `sattline_parser.api` | Stable |
 | `sattlint.analyzers.*` | Preview |
-| `sattlint.devtools.*` | Internal |
+| `sattlint.structural` | Internal |

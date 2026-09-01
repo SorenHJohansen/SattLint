@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import pytest
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.grammar import constants as const
 from sattline_parser.models.expressions import VarRef as _VarRef
@@ -48,7 +47,6 @@ def test_iter_variable_refs_walks_nested_dicts_and_tuple_children() -> None:
     ]
 
 
-@pytest.mark.skip(reason="VarRef no longer dict-like")
 def test_iter_variable_refs_walks_parser_produced_modulecode() -> None:
     code = """
 "SyntaxVersion"

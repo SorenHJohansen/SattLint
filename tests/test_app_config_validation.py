@@ -127,38 +127,6 @@ def test_validate_config_passes_valid_config_and_serializes_result():
     }
 
 
-@pytest.mark.skip(reason="documentation config validation removed")
-def test_load_config_warns_on_invalid_keys_and_normalizes_legacy_documentation_keys(tmp_path, capsys):
-    config_path = tmp_path / "config.toml"
-    config_path.write_text(
-        "\n".join(
-            [
-                "bad_key = true",
-                "ignore_ABB_lib = true",
-                "[documentation.classifications.equipment_modules]",
-                'moduletype_name_contains = ["Tank"]',
-                'descendant_moduletype_label_equals = ["nnestruct:EquipModCoordinate"]',
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    loaded, created = config_module.load_config(config_path)
-
-    out = capsys.readouterr().out
-    assert created is False
-    assert "Config warning [bad_key]" not in out
-    assert "bad_key" not in loaded
-    assert "Config warning [ignore_ABB_lib]" not in out
-    assert "ignore_ABB_lib" not in loaded
-    assert "Config warning [documentation.classifications.equipment_modules]" in out
-    assert "Config warning [documentation.classifications.equipment_modules.moduletype_name_contains]" in out
-    assert "Config warning [documentation.classifications.equipment_modules.descendant_moduletype_label_equals]" in out
-    assert loaded["documentation"]["classifications"]["em"]["name_contains"] == ["Tank"]
-    assert loaded["documentation"]["classifications"]["em"]["desc_label_equals"] == ["nnestruct:EquipModCoordinate"]
-    assert "equipment_modules" not in loaded["documentation"]["classifications"]
-
-
 def test_load_config_warns_on_missing_paths_from_loaded_validation(tmp_path, capsys):
     config_path = tmp_path / "config.toml"
     config_path.write_text('program_dir = "missing-programs"\n', encoding="utf-8")
@@ -318,97 +286,6 @@ def test_validate_effective_config_reports_unresolved_targets_after_defaults_mer
     )
 
 
-@pytest.mark.skip(reason="documentation config validation removed")
-def test_config_helpers_normalize_legacy_conflicts_and_serialize_paths(tmp_path, monkeypatch):
-    monkeypatch.setenv("APPDATA", str(tmp_path / "AppData"))
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
-
-    normalized = config_module._normalize_documentation_rule_keys(  # type: ignore[reportAttributeAccessIssue]
-        {
-            "documentation": {
-                "classifications": {
-                    "operations": {"moduletype_label_equals": ["LegacyCategoryRule"]},
-                    "ops": {
-                        "moduletype_label_equals": ["LegacyRule"],
-                        "label_equals": ["ModernRule"],
-                    },
-                }
-            }
-        }
-    )
-    config_path = config_module.get_config_path()
-    save_path = tmp_path / "saved-config.toml"
-    for directory_name in ("programs", "abb", "lib-a", "lib-b"):
-        (tmp_path / directory_name).mkdir()
-    save_cfg = {
-        "program_dir": tmp_path / "programs",
-        "ABB_lib_dir": tmp_path / "abb",
-        "other_lib_dirs": (tmp_path / "lib-a", tmp_path / "lib-b"),
-        "documentation": {"classifications": {"ops": {"label_equals": ["ModernRule"]}}},
-    }
-
-    config_module.save_config(save_path, save_cfg)
-
-    saved_text = save_path.read_text(encoding="utf-8")
-    assert "operations" not in normalized["documentation"]["classifications"]
-    assert normalized["documentation"]["classifications"]["ops"]["label_equals"] == ["ModernRule"]
-    expected_config_path = (
-        tmp_path / "AppData" / "sattlint" / "config.toml"
-        if config_module.os.name == "nt"
-        else tmp_path / "xdg-config" / "sattlint" / "config.toml"
-    )
-    assert config_path == expected_config_path
-    assert config_path.parent.is_dir()
-    assert 'program_dir = "' in saved_text
-    assert "programs" in saved_text
-    assert "lib-a" in saved_text
-    assert (
-        config_module.target_exists(
-            "MissingTarget",
-            {
-                "program_dir": str(tmp_path / "missing-programs"),
-                "ABB_lib_dir": str(tmp_path / "missing-abb"),
-                "other_lib_dirs": [str(tmp_path / "missing-lib")],
-                "mode": "official",
-            },
-        )
-        is False
-    )
-
-
-@pytest.mark.skip(reason="documentation config validation removed")
-def test_config_helper_branches_cover_defaults_and_deduplication() -> None:
-    helper_module = config_module._config_validation_module
-
-    assert helper_module._object_list(("A", "B")) == ["A", "B"]
-    assert helper_module._object_list("not-a-sequence") == []
-
-    assert helper_module._normalize_documentation_rule_keys({"analysis": {}}) == {"analysis": {}}  # type: ignore[reportAttributeAccessIssue]
-    assert helper_module._normalize_documentation_rule_keys({"documentation": {}}) == {"documentation": {}}  # type: ignore[reportAttributeAccessIssue]
-
-    normalized = helper_module._normalize_documentation_rule_keys(  # type: ignore[reportAttributeAccessIssue]
-        {
-            "documentation": {
-                "classifications": {
-                    "ops": ["not-a-dict"],
-                }
-            }
-        }
-    )
-    assert normalized["documentation"]["classifications"]["ops"] == ["not-a-dict"]
-
-    default_docs = helper_module.get_documentation_config()  # type: ignore[reportAttributeAccessIssue]
-    assert default_docs == app.DEFAULT_CONFIG["documentation"]
-
-    duplicate_error = helper_module.ConfigValidationError(key_path="analysis", message="duplicate")
-    merged = helper_module._merge_validation_results(
-        helper_module.ConfigValidationResult(passed=False, errors=(duplicate_error,)),
-        helper_module.ConfigValidationResult(passed=False, errors=(duplicate_error,)),
-    )
-
-    assert merged == helper_module.ConfigValidationResult(passed=False, errors=(duplicate_error,))
-
-
 def test_top_level_config_contract_matches_typed_config_definitions() -> None:
     assert frozenset(config_defaults_module.REQUIRED_TOP_LEVEL_CONFIG_KEYS) == frozenset(ConfigDict.__required_keys__)
     assert frozenset(ConfigOverrideDict.__optional_keys__) == config_defaults_module.VALID_TOP_LEVEL_CONFIG_KEYS
@@ -417,7 +294,6 @@ def test_top_level_config_contract_matches_typed_config_definitions() -> None:
     )
 
 
-@pytest.mark.skip(reason="documentation config validation removed")
 def test_self_check_reports_top_level_section_shapes_and_valid_graphics_rules(tmp_path, monkeypatch, capsys):
     readable_dir = tmp_path / "readable"
     readable_dir.mkdir()
@@ -437,7 +313,6 @@ def test_self_check_reports_top_level_section_shapes_and_valid_graphics_rules(tm
             "ABB_lib_dir": "",
             "icf_dir": "",
             "other_lib_dirs": [str(readable_dir)],
-            "documentation": "bad",
             "analysis": "bad",
         }
     )
@@ -448,7 +323,6 @@ def test_self_check_reports_top_level_section_shapes_and_valid_graphics_rules(tm
     assert ok is False
     assert "program_dir not readable" in out
     assert "other_lib_dirs: " in out
-    assert "documentation must be a table/object" in out
     assert "analysis must be a table/object" in out
     assert "graphics_rules_path:" in out
     assert "2 rules" in out
@@ -471,15 +345,13 @@ def test_self_check_uses_full_top_level_config_contract(tmp_path, monkeypatch, c
     assert "Missing config key: analysis" in out
 
 
-@pytest.mark.skip(reason="documentation config validation removed")
-def test_self_check_reports_nested_documentation_and_analysis_shape_errors(tmp_path, monkeypatch, capsys):
+def test_self_check_reports_nested_analysis_shape_errors(tmp_path, monkeypatch, capsys):
     graphics_rules_path = tmp_path / "graphics-rules.json"
     monkeypatch.setattr(config_module, "get_graphics_rules_path", lambda: graphics_rules_path)
 
     cfg = deepcopy(app.DEFAULT_CONFIG)
     cfg.update(
         {
-            "documentation": {"classifications": {"ops": "bad"}},
             "analysis": {"sfc": "bad", "naming": "bad"},
         }
     )
@@ -487,7 +359,6 @@ def test_self_check_reports_nested_documentation_and_analysis_shape_errors(tmp_p
     bad_ok = config_module.self_check(cfg)
     bad_out = capsys.readouterr().out
 
-    cfg["documentation"] = {"classifications": {}}
     cfg["analysis"] = {
         "sfc": {"mutually_exclusive_steps": "bad", "step_contracts": []},
         "naming": {
@@ -501,12 +372,10 @@ def test_self_check_reports_nested_documentation_and_analysis_shape_errors(tmp_p
     empty_out = capsys.readouterr().out
 
     assert bad_ok is False
-    assert "documentation.classifications.ops must be a table/object" in bad_out
     assert "analysis.sfc must be a table/object" in bad_out
     assert "analysis.naming must be a table/object" in bad_out
     assert "graphics_rules_path not created yet" in bad_out
     assert empty_ok is False
-    assert "documentation.classifications must be a non-empty table/object" in empty_out
     assert "analysis.sfc.mutually_exclusive_steps must be a list" in empty_out
     assert "analysis.sfc.step_contracts must be a table/object" in empty_out
 
@@ -588,7 +457,6 @@ def test_run_format_icf_command_formats_files_without_changing_nonblank_lines(tm
     assert "Changed: 1" in out
 
 
-@pytest.mark.skip(reason="documentation config validation removed")
 def test_self_check_reports_invalid_nested_config_and_graphics_rule_errors(tmp_path, monkeypatch, capsys):
     graphics_rules_path = tmp_path / "graphics-rules.json"
     graphics_rules_path.write_text("{}", encoding="utf-8")
@@ -610,15 +478,6 @@ def test_self_check_reports_invalid_nested_config_and_graphics_rule_errors(tmp_p
             "ABB_lib_dir": "",
             "icf_dir": str(tmp_path / "missing-icf"),
             "other_lib_dirs": [str(tmp_path / "missing-other")],
-            "documentation": {
-                "classifications": {
-                    "unknown": {},
-                    "ops": {
-                        "desc_label_equals": "not-a-list",
-                        "label_equals": [1],
-                    },
-                }
-            },
             "analysis": {
                 "sfc": {
                     "mutually_exclusive_steps": "bad",
@@ -650,9 +509,6 @@ def test_self_check_reports_invalid_nested_config_and_graphics_rule_errors(tmp_p
     assert "icf_dir does not exist" in out
     assert "other_lib_dirs entry missing" in out
     assert "MissingTarget (not found)" in out
-    assert "documentation.classifications.unknown is not a supported category" in out
-    assert "documentation.classifications.ops.desc_label_equals must be a list of strings" in out
-    assert "documentation.classifications.ops.label_equals must be a list of strings" in out
     assert "analysis.sfc.mutually_exclusive_steps must be a list" in out
     assert "analysis.sfc.step_contracts keys must be non-empty strings" in out
     assert "analysis.sfc.step_contracts.StepA.required_enter_writes must be a list of strings" in out

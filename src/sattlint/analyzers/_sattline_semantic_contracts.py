@@ -30,7 +30,6 @@ _SEMANTIC_LAYER_ACCEPTANCE_TESTS = ("tests/analyzers/test_sattline_semantics.py"
 _VARIABLE_SOURCE_ACCEPTANCE_TESTS = (
     *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
     *_APP_ACCEPTANCE_TESTS,
-    "tests/test_editor_api.py",
     "tests/analyzers/test_sattline_semantics.py",
 )
 _SFC_SOURCE_ACCEPTANCE_TESTS = (
@@ -42,13 +41,9 @@ _ALARM_SOURCE_ACCEPTANCE_TESTS = (*_ANALYZER_SUITE_ACCEPTANCE_TESTS, "tests/anal
 _INITIAL_VALUES_SOURCE_ACCEPTANCE_TESTS = _ANALYZER_SUITE_ACCEPTANCE_TESTS
 _SAFETY_SOURCE_ACCEPTANCE_TESTS = (
     *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
-    "tests/test_editor_api.py",
     "tests/analyzers/test_sattline_semantics.py",
 )
-_TAINT_SOURCE_ACCEPTANCE_TESTS = (
-    *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
-    "tests/test_editor_api.py",
-)
+_TAINT_SOURCE_ACCEPTANCE_TESTS = (*_ANALYZER_SUITE_ACCEPTANCE_TESTS,)
 _DATAFLOW_SOURCE_ACCEPTANCE_TESTS = (
     *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
     "tests/analyzers/test_sattline_semantics.py",
