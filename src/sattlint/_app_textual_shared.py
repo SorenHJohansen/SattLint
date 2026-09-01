@@ -165,8 +165,6 @@ MENU_DEFINITIONS: list[tuple[str, list[tuple[str, str | None] | None]]] = [
     (
         "Reports",
         [
-            ("Generate DOCX", "menu-reports-generate-docx"),
-            ("Source Diff", "menu-reports-source-diff"),
             ("Export", "menu-reports-export"),
         ],
     ),

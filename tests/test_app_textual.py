@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import re
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -192,7 +191,6 @@ def test_run_textual_shell_refreshes_ast_cache_before_main_app(monkeypatch: pyte
     app_module = SimpleNamespace(
         self_check=lambda _cfg: True,
         dump_menu=lambda _cfg: None,
-        run_source_diff_report=lambda _cfg, _pause_fn=None: None,
         force_refresh_ast=lambda _cfg: None,
         refresh_analysis_caches=lambda _cfg: None,
         _has_analyzed_targets=lambda _cfg: True,
@@ -318,7 +316,6 @@ def test_run_textual_shell_preserves_ast_cache_failure_log(monkeypatch: pytest.M
     app_module = SimpleNamespace(
         self_check=lambda _cfg: True,
         dump_menu=lambda _cfg: None,
-        run_source_diff_report=lambda _cfg, _pause_fn=None: None,
         force_refresh_ast=lambda _cfg: None,
         refresh_analysis_caches=lambda _cfg: None,
         _has_analyzed_targets=lambda _cfg: True,
@@ -437,75 +434,6 @@ def test_resolve_shell_title_falls_back_to_default_banner_title() -> None:
     assert app_textual.resolve_shell_title(SimpleNamespace(title="")) == app_textual.DEFAULT_SHELL_TITLE
 
 
-@pytest.mark.skip(reason="documentation menu removed")
-def test_textual_shell_css_mentions_banner_and_full_width_menu_buttons() -> None:
-    css = app_textual.TEXTUAL_SHELL_CSS
-
-    assert "#view-actions" in app_textual.TEXTUAL_SHELL_CSS
-    assert "#view-header" in app_textual.TEXTUAL_SHELL_CSS
-    assert "#view-copy" in app_textual.TEXTUAL_SHELL_CSS
-    assert "#view-side-actions" in app_textual.TEXTUAL_SHELL_CSS
-    assert "overflow-y: auto;" in app_textual.TEXTUAL_SHELL_CSS
-    assert "#content-host" in app_textual.TEXTUAL_SHELL_CSS
-    assert "#workspace-host" in app_textual.TEXTUAL_SHELL_CSS
-    assert "#view-pane" in app_textual.TEXTUAL_SHELL_CSS
-    assert "#view-host" in app_textual.TEXTUAL_SHELL_CSS
-    assert "#output-pane" in app_textual.TEXTUAL_SHELL_CSS
-    assert "#analyze-browser" in app_textual.TEXTUAL_SHELL_CSS
-    assert "#analyze-actions-primary" in app_textual.TEXTUAL_SHELL_CSS
-    assert "#documentation-actions" in app_textual.TEXTUAL_SHELL_CSS
-    assert "#setup-browser" in app_textual.TEXTUAL_SHELL_CSS
-    assert "#interaction-host" in app_textual.TEXTUAL_SHELL_CSS
-    assert "#interaction-screen" in app_textual.TEXTUAL_SHELL_CSS
-    assert "Button.raised-button" in app_textual.TEXTUAL_SHELL_CSS
-    assert "#interaction-options Button.raised-button" in app_textual.TEXTUAL_SHELL_CSS
-    assert "#view-actions Button.raised-button" in app_textual.TEXTUAL_SHELL_CSS
-    assert ".selection-list--button-selected" in app_textual.TEXTUAL_SHELL_CSS
-    assert "outline: none;" in app_textual.TEXTUAL_SHELL_CSS
-    assert "width: 100%;" in app_textual.TEXTUAL_SHELL_CSS
-    assert "}Screen {" not in css
-
-    for selector in (
-        "Screen",
-        "Footer",
-        "#content-host",
-        "#workspace-host",
-        "#view-pane",
-        "#view-header",
-        "#view-host",
-        "#output-pane",
-        "#analyze-browser",
-        "#setup-browser",
-        "#interaction-screen",
-    ):
-        assert len(re.findall(rf"(?m)^\s*{re.escape(selector)} " + r"\{", css)) == 1
-
-    assert re.search(r"(?ms)^\s*#view-host \{.*?^\s*padding: 1 2;.*?^\s*\}", css)
-    assert re.search(
-        r"(?ms)^\s*#workspace-host\.analyze-split,\n\s*#workspace-host\.docs-tools-split \{.*?^\s*layout: horizontal;.*?^\s*\}",
-        css,
-    )
-    assert re.search(
-        r"(?ms)^\s*#workspace-host\.analyze-split #view-pane,\n\s*#workspace-host\.docs-tools-split #view-pane \{.*?^\s*width: 1fr;.*?^\s*\}",
-        css,
-    )
-    assert re.search(
-        r"(?ms)^\s*#workspace-host\.analyze-split #output-pane,\n\s*#workspace-host\.docs-tools-split #output-pane \{.*?^\s*width: 2fr;.*?^\s*\}",
-        css,
-    )
-    assert "wide-output-split" not in css
-    assert re.search(r"(?ms)^\s*Screen \{.*?^\s*scrollbar-background: #b9d9df;.*?^\s*\}", css)
-    assert re.search(
-        r"(?ms)^\s*#workspace-host\.docs-tools-split #view-side-actions \{.*?^\s*overflow-y: auto;.*?^\s*\}", css
-    )
-    assert re.search(r"(?ms)^\s*#analyze-browser \{.*?^\s*margin-top: 1;.*?^\s*\}", css)
-    assert re.search(r"(?ms)^\s*#setup-browser \{.*?^\s*margin-top: 1;.*?^\s*\}", css)
-    assert re.search(r"(?ms)^\s*#analyze-browser-left \{.*?^\s*padding: 1 2;.*?^\s*\}", css)
-    assert re.search(r"(?ms)^\s*#setup-targets-col \{.*?^\s*padding: 1 2;.*?^\s*\}", css)
-    assert re.search(r"(?ms)^\s*#setup-settings-col \{.*?^\s*padding: 1 2;.*?^\s*\}", css)
-    assert re.search(r"(?ms)^\s*#output \{.*?^\s*padding: 1 2;.*?^\s*\}", css)
-
-
 def test_textual_app_title_defaults_to_banner_title() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -513,7 +441,6 @@ def test_textual_app_title_defaults_to_banner_title() -> None:
     assert app_textual.SattLintTextualApp.TITLE == app_textual.DEFAULT_SHELL_TITLE
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_top_chrome_removes_banner_and_summary_boxes() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -523,7 +450,6 @@ def test_textual_top_chrome_removes_banner_and_summary_boxes() -> None:
             cfg={},
             summarize_targets_fn=lambda _cfg: "targets",
             analysis_menu_fn=lambda _cfg: None,
-            documentation_menu_fn=lambda _cfg: None,
             config_menu_fn=lambda _cfg: None,
             tools_menu_fn=lambda _cfg: None,
             show_help_fn=lambda _cfg: None,
@@ -542,7 +468,6 @@ def test_textual_top_chrome_removes_banner_and_summary_boxes() -> None:
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_toolbar_is_available_without_summary_box() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -552,7 +477,6 @@ def test_textual_toolbar_is_available_without_summary_box() -> None:
             cfg={"analyzed_programs_and_libraries": ["Target1", "Target2"]},
             summarize_targets_fn=lambda _cfg: "targets",
             analysis_menu_fn=lambda _cfg: None,
-            documentation_menu_fn=lambda _cfg: None,
             config_menu_fn=lambda _cfg: None,
             tools_menu_fn=lambda _cfg: None,
             show_help_fn=lambda _cfg: None,
@@ -574,7 +498,6 @@ def test_textual_toolbar_is_available_without_summary_box() -> None:
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_quit_keybinding_does_not_crash() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -584,7 +507,6 @@ def test_textual_quit_keybinding_does_not_crash() -> None:
             cfg={},
             summarize_targets_fn=lambda _cfg: "targets",
             analysis_menu_fn=lambda _cfg: None,
-            documentation_menu_fn=lambda _cfg: None,
             config_menu_fn=lambda _cfg: None,
             tools_menu_fn=lambda _cfg: None,
             show_help_fn=lambda _cfg: None,
@@ -600,30 +522,6 @@ def test_textual_quit_keybinding_does_not_crash() -> None:
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
-def test_textual_setup_auto_saves_on_change() -> None:
-    if not app_textual.has_textual():
-        pytest.skip("Textual not installed")
-
-    saved: list[bool] = []
-
-    def _save_fn(_path: object, _cfg: object) -> None:
-        saved.append(True)
-
-    async def _run() -> None:
-        app_instance = _make_textual_app(save_config_fn=_save_fn)
-
-        async with app_instance.run_test() as pilot:
-            await pilot.pause()
-            app_instance._toggle_setup_flag("debug", label="debug")
-            await pilot.pause()
-            assert len(saved) == 1
-            assert app_instance._dirty is False
-
-    asyncio.run(_run())
-
-
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_ctrl_c_copy_binding_copies_session_output() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -634,7 +532,6 @@ def test_textual_ctrl_c_copy_binding_copies_session_output() -> None:
             cfg={},
             summarize_targets_fn=lambda _cfg: "targets",
             analysis_menu_fn=lambda _cfg: None,
-            documentation_menu_fn=lambda _cfg: None,
             config_menu_fn=lambda _cfg: None,
             tools_menu_fn=lambda _cfg: None,
             show_help_fn=lambda _cfg: None,
@@ -658,7 +555,6 @@ def test_textual_ctrl_c_copy_binding_copies_session_output() -> None:
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_ctrl_l_clear_binding_clears_session_output() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -682,7 +578,6 @@ def test_textual_ctrl_l_clear_binding_clears_session_output() -> None:
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_question_mark_binding_opens_help() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -725,7 +620,6 @@ def test_textual_pause_requests_are_noop() -> None:
     assert seen_kinds == []
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_slash_binding_filters_analyze_planner() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -752,7 +646,6 @@ def test_textual_slash_binding_filters_analyze_planner() -> None:
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_slash_binding_filters_setup_targets() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -779,7 +672,6 @@ def test_textual_slash_binding_filters_setup_targets() -> None:
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_session_output_preserves_manual_scroll_position_on_new_output() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -789,7 +681,6 @@ def test_textual_session_output_preserves_manual_scroll_position_on_new_output()
             cfg={},
             summarize_targets_fn=lambda _cfg: "targets",
             analysis_menu_fn=lambda _cfg: None,
-            documentation_menu_fn=lambda _cfg: None,
             config_menu_fn=lambda _cfg: None,
             tools_menu_fn=lambda _cfg: None,
             show_help_fn=lambda _cfg: None,
@@ -819,7 +710,6 @@ def test_textual_session_output_preserves_manual_scroll_position_on_new_output()
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_session_output_keeps_following_when_already_at_bottom() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -829,7 +719,6 @@ def test_textual_session_output_keeps_following_when_already_at_bottom() -> None
             cfg={},
             summarize_targets_fn=lambda _cfg: "targets",
             analysis_menu_fn=lambda _cfg: None,
-            documentation_menu_fn=lambda _cfg: None,
             config_menu_fn=lambda _cfg: None,
             tools_menu_fn=lambda _cfg: None,
             show_help_fn=lambda _cfg: None,
@@ -857,7 +746,6 @@ def test_textual_session_output_keeps_following_when_already_at_bottom() -> None
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_present_request_uses_inline_host_and_preserves_shell_chrome() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -867,7 +755,6 @@ def test_textual_present_request_uses_inline_host_and_preserves_shell_chrome() -
             cfg={},
             summarize_targets_fn=lambda _cfg: "targets",
             analysis_menu_fn=lambda _cfg: None,
-            documentation_menu_fn=lambda _cfg: None,
             config_menu_fn=lambda _cfg: None,
             tools_menu_fn=lambda _cfg: None,
             show_help_fn=lambda _cfg: None,
@@ -907,13 +794,11 @@ def test_textual_present_request_uses_inline_host_and_preserves_shell_chrome() -
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_toolbar_navigation_switches_view_without_starting_action(monkeypatch: pytest.MonkeyPatch) -> None:
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
         analysis_menu_fn=lambda _cfg: None,
-        documentation_menu_fn=lambda _cfg: None,
         config_menu_fn=lambda _cfg: None,
         tools_menu_fn=lambda _cfg: None,
         show_help_fn=lambda _cfg: None,
@@ -932,13 +817,11 @@ def test_textual_toolbar_navigation_switches_view_without_starting_action(monkey
     assert started == []
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_view_primary_action_launches_active_view(monkeypatch: pytest.MonkeyPatch) -> None:
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
         analysis_menu_fn=lambda _cfg: None,
-        documentation_menu_fn=lambda _cfg: None,
         config_menu_fn=lambda _cfg: None,
         tools_menu_fn=lambda _cfg: None,
         show_help_fn=lambda _cfg: None,
@@ -976,7 +859,6 @@ def _make_textual_app(
         cfg=cfg or {"analyzed_programs_and_libraries": ["TargetA"]},
         summarize_targets_fn=lambda _cfg: "targets",
         analysis_menu_fn=lambda _cfg: None,
-        documentation_menu_fn=lambda _cfg: None,
         config_menu_fn=lambda _cfg: None,
         tools_menu_fn=lambda _cfg: None,
         show_help_fn=lambda _cfg: None,
@@ -990,7 +872,6 @@ def _make_textual_app(
     )
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_shell_defaults_to_truecolor_console() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -1000,7 +881,6 @@ def test_textual_shell_defaults_to_truecolor_console() -> None:
     assert app_instance.console.color_system == "truecolor"
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_analyze_view_shows_planner_controls() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -1047,7 +927,6 @@ def test_textual_analyze_view_shows_planner_controls() -> None:
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_analyze_view_keeps_planner_panes_visible_on_small_terminal() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -1067,7 +946,6 @@ def test_textual_analyze_view_keeps_planner_panes_visible_on_small_terminal() ->
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_analyze_selection_lists_expand_instead_of_scrolling_individually() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -1087,7 +965,6 @@ def test_textual_analyze_selection_lists_expand_instead_of_scrolling_individuall
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_analyze_header_buttons_fit_without_clipping() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -1107,7 +984,6 @@ def test_textual_analyze_header_buttons_fit_without_clipping() -> None:
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_analyze_selection_styles_hide_unselected_marker_and_highlight_current_row() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -1155,7 +1031,6 @@ def test_textual_analyze_selection_styles_hide_unselected_marker_and_highlight_c
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_analyze_planner_renders_grouped_sections_and_detail() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -1204,7 +1079,6 @@ def test_textual_analyze_planner_renders_grouped_sections_and_detail() -> None:
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_analyze_planner_selection_updates_summary_and_enables_run() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -1236,7 +1110,6 @@ def test_textual_analyze_planner_selection_updates_summary_and_enables_run() -> 
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_analyze_run_selected_executes_planned_steps_in_catalog_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1283,61 +1156,6 @@ def test_textual_analyze_run_selected_executes_planned_steps_in_catalog_order(
     }
 
 
-@pytest.mark.skip(reason="documentation menu removed")
-def test_textual_analyze_run_selected_passes_catalog_issue_kind_subsets(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    pytest.skip("Catalog issue entries removed from planner")
-    calls: list[object] = []
-    launched: list[tuple[str, str]] = []
-
-    app_instance = _make_textual_app(
-        app_module=SimpleNamespace(
-            _get_enabled_analyzers=lambda: [
-                SimpleNamespace(
-                    key="dataflow",
-                    name="Dataflow",
-                    description="Scan dataflow hazards",
-                )
-            ],
-            _run_checks=lambda _cfg, selected_keys, *, selected_issue_kinds=None: calls.append(
-                (
-                    "checks",
-                    None if selected_keys is None else tuple(selected_keys),
-                    None if selected_issue_kinds is None else frozenset(selected_issue_kinds),
-                )
-            ),
-        )
-    )
-    app_instance._analyze_selected_entry_ids = {
-        "catalog.issue.dataflow.read_before_write",
-        "catalog.issue.dataflow.dead_overwrite",
-    }
-    app_instance._analyze_focused_entry_id = "catalog.issue.dataflow.read_before_write"
-
-    monkeypatch.setattr(
-        app_instance,
-        "_start_action",
-        lambda label, action_fn, *, action_id, marks_dirty=False, clear_dirty_on_success=False: (
-            launched.append((label, action_id)),
-            action_fn(),
-        ),
-    )
-    monkeypatch.setattr(app_instance, "_emit_output_from_thread", lambda _text: None)
-
-    app_instance._run_selected_analysis_plan()
-
-    assert launched == [("Run selected analyses", "action-analyze")]
-    assert calls == [
-        (
-            "checks",
-            ("dataflow",),
-            frozenset({"dataflow.read_before_write", "dataflow.dead_overwrite"}),
-        )
-    ]
-
-
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_analyze_run_selected_surfaces_variable_issue_output_from_real_app(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1394,7 +1212,6 @@ def test_textual_analyze_run_selected_surfaces_variable_issue_output_from_real_a
     assert seen_kinds == [{app.IssueKind.UNUSED}]
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_analyze_running_state_calls_out_output_location(monkeypatch: pytest.MonkeyPatch) -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -1428,7 +1245,7 @@ def test_textual_analyze_running_state_calls_out_output_location(monkeypatch: py
                 "Session output ⠋ - Run selected analyses in progress"
             )
 
-            current_time += (1.0 / 10.0) + 0.001
+            current_time += (1.0 / 60.0) + 0.001
             app_instance._advance_output_title_spinner()
             assert str(app_instance.query_one("#output-title").renderable) == (
                 "Session output ⠙ - Run selected analyses in progress"
@@ -1441,7 +1258,6 @@ def test_textual_analyze_running_state_calls_out_output_location(monkeypatch: py
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_analyze_running_state_uses_60fps_output_title_spinner(monkeypatch: pytest.MonkeyPatch) -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -1471,7 +1287,7 @@ def test_textual_analyze_running_state_uses_60fps_output_title_spinner(monkeypat
 
     app_instance._sync_output_title_spinner()
 
-    assert captured["interval"] == pytest.approx(1.0 / 10.0)
+    assert captured["interval"] == pytest.approx(1.0 / 60.0)
     assert captured["callback"] == app_instance._advance_output_title_spinner
     assert captured["pause"] is False
     assert timer_calls == {"resume": 0, "pause": 0}
@@ -1488,7 +1304,6 @@ def test_textual_analyze_running_state_uses_60fps_output_title_spinner(monkeypat
     assert timer_calls == {"resume": 1, "pause": 1}
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_analyze_buttons_unlock_after_finish_action() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -1536,7 +1351,6 @@ def test_textual_analyze_buttons_unlock_after_finish_action() -> None:
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_analyze_cancel_button_enables_for_running_queue() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -1565,7 +1379,6 @@ def test_textual_analyze_cancel_button_enables_for_running_queue() -> None:
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_analyze_run_selected_reports_missing_handlers(monkeypatch: pytest.MonkeyPatch) -> None:
     lines: list[str] = []
 
@@ -1581,7 +1394,6 @@ def test_textual_analyze_run_selected_reports_missing_handlers(monkeypatch: pyte
     assert any("run_variable_analysis" in line for line in lines)
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_execute_analyze_plan_emits_progress_lines(monkeypatch: pytest.MonkeyPatch) -> None:
     emitted: list[str] = []
     executed: list[str] = []
@@ -1615,7 +1427,6 @@ def test_textual_execute_analyze_plan_emits_progress_lines(monkeypatch: pytest.M
     assert executed == ["Run full suite", "Commented out code"]
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_execute_analyze_plan_stops_after_cancel_request(monkeypatch: pytest.MonkeyPatch) -> None:
     emitted: list[str] = []
     executed: list[str] = []
@@ -1653,7 +1464,6 @@ def test_textual_execute_analyze_plan_stops_after_cancel_request(monkeypatch: py
     ]
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_start_action_tracks_active_worker_thread(monkeypatch: pytest.MonkeyPatch) -> None:
     created_workers: list[object] = []
 
@@ -1673,7 +1483,6 @@ def test_textual_start_action_tracks_active_worker_thread(monkeypatch: pytest.Mo
         cfg={"analyzed_programs_and_libraries": ["TargetA"]},
         summarize_targets_fn=lambda _cfg: "targets",
         analysis_menu_fn=lambda _cfg: None,
-        documentation_menu_fn=lambda _cfg: None,
         config_menu_fn=lambda _cfg: None,
         tools_menu_fn=lambda _cfg: None,
         show_help_fn=lambda _cfg: None,
@@ -1701,7 +1510,6 @@ def test_textual_start_action_tracks_active_worker_thread(monkeypatch: pytest.Mo
     assert app_instance._active_job_cancel_event is not None
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_schedule_ui_coroutine_tracks_pending_task(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeTask:
         def __init__(self) -> None:
@@ -1739,7 +1547,6 @@ def test_textual_schedule_ui_coroutine_tracks_pending_task(monkeypatch: pytest.M
     assert fake_task not in app_instance._pending_ui_tasks
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_start_action_reports_type_errors_from_action(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeTextualApp(app_textual.SattLintTextualApp):
         def _start_managed_action_worker(self, work: Any, *, label: str, action_id: str) -> object:
@@ -1752,7 +1559,6 @@ def test_textual_start_action_reports_type_errors_from_action(monkeypatch: pytes
         cfg={"analyzed_programs_and_libraries": ["TargetA"]},
         summarize_targets_fn=lambda _cfg: "targets",
         analysis_menu_fn=lambda _cfg: None,
-        documentation_menu_fn=lambda _cfg: None,
         config_menu_fn=lambda _cfg: None,
         tools_menu_fn=lambda _cfg: None,
         show_help_fn=lambda _cfg: None,
@@ -1787,7 +1593,6 @@ def test_textual_start_action_reports_type_errors_from_action(monkeypatch: pytes
     ]
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_open_help_popup_propagates_type_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     app_instance = _make_textual_app()
     app_instance._get_help_text_fn = lambda _cfg: (_ for _ in ()).throw(TypeError("bad help wiring"))
@@ -1801,7 +1606,6 @@ def test_textual_open_help_popup_propagates_type_errors(monkeypatch: pytest.Monk
     assert shown_help == []
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_ctrl_g_cancel_binding_requests_stop_for_running_analysis() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -1847,7 +1651,6 @@ def test_textual_ctrl_g_cancel_binding_requests_stop_for_running_analysis() -> N
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_analyze_clear_selection_resets_planner_state() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -1881,7 +1684,6 @@ def test_textual_analyze_clear_selection_resets_planner_state() -> None:
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_analyze_clear_output_clears_session_log_only() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -1917,7 +1719,6 @@ def test_textual_analyze_clear_output_clears_session_log_only() -> None:
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_toolbar_key_switches_routed_view() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -1927,7 +1728,6 @@ def test_textual_toolbar_key_switches_routed_view() -> None:
             cfg={},
             summarize_targets_fn=lambda _cfg: "targets",
             analysis_menu_fn=lambda _cfg: None,
-            documentation_menu_fn=lambda _cfg: None,
             config_menu_fn=lambda _cfg: None,
             tools_menu_fn=lambda _cfg: None,
             show_help_fn=lambda _cfg: None,
@@ -1950,7 +1750,6 @@ def test_textual_toolbar_key_switches_routed_view() -> None:
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_toolbar_keys_respect_busy_guard() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -1960,7 +1759,6 @@ def test_textual_toolbar_keys_respect_busy_guard() -> None:
             cfg={},
             summarize_targets_fn=lambda _cfg: "targets",
             analysis_menu_fn=lambda _cfg: None,
-            documentation_menu_fn=lambda _cfg: None,
             config_menu_fn=lambda _cfg: None,
             tools_menu_fn=lambda _cfg: None,
             show_help_fn=lambda _cfg: None,
@@ -1980,7 +1778,7 @@ def test_textual_toolbar_keys_respect_busy_guard() -> None:
             app_instance._refresh_shell_state()
             await pilot.pause()
 
-            await pilot.press("ctrl+2")
+            await pilot.press("ctrl+3")
             await pilot.press("ctrl+4")
             await pilot.pause()
 
@@ -1992,7 +1790,6 @@ def test_textual_toolbar_keys_respect_busy_guard() -> None:
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_analyze_view_does_not_compose_secondary_actions_row() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -2009,7 +1806,6 @@ def test_textual_analyze_view_does_not_compose_secondary_actions_row() -> None:
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_setup_view_shows_selected_target_preview(tmp_path: Path) -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -2034,7 +1830,6 @@ def test_textual_setup_view_shows_selected_target_preview(tmp_path: Path) -> Non
             cfg=cfg,
             summarize_targets_fn=lambda _cfg: "targets",
             analysis_menu_fn=lambda _cfg: None,
-            documentation_menu_fn=lambda _cfg: None,
             config_menu_fn=lambda _cfg: None,
             tools_menu_fn=lambda _cfg: None,
             show_help_fn=lambda _cfg: None,
@@ -2065,8 +1860,10 @@ def test_textual_setup_view_shows_selected_target_preview(tmp_path: Path) -> Non
             assert str(getattr(program_button, "label", "")) == "Program folder"
             assert targets_col is not None
             assert settings_col is not None
-            assert str(app_instance.query_one("#setup-label-program-dir").renderable) == str(program_dir)
-            assert str(app_instance.query_one("#setup-label-abb-dir").renderable) == str(abb_dir)
+            assert str(app_instance.query_one("#setup-label-program-dir").renderable) == (
+                f"{program_dir.name}\n{program_dir}"
+            )
+            assert str(app_instance.query_one("#setup-label-abb-dir").renderable) == f"{abb_dir.name}\n{abb_dir}"
             assert str(app_instance.query_one("#setup-label-other-dirs").renderable) == "No extra libraries"
             assert str(app_instance.query_one("#setup-label-icf-dir").renderable) == "Not configured"
             assert str(app_instance.query_one("#setup-label-mode").renderable) == "Draft mode\n.s and .l files"
@@ -2087,7 +1884,6 @@ def test_textual_setup_view_shows_selected_target_preview(tmp_path: Path) -> Non
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_setup_browse_shows_discovered_targets_once(tmp_path: Path) -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -2138,7 +1934,6 @@ def test_textual_setup_browse_shows_discovered_targets_once(tmp_path: Path) -> N
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_startup_output_is_written_for_successful_ast_refresh_logs() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -2157,96 +1952,17 @@ def test_textual_startup_output_is_written_for_successful_ast_refresh_logs() -> 
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
-def test_textual_documentation_view_shows_direct_actions() -> None:
-    if not app_textual.has_textual():
-        pytest.skip("Textual not installed")
-
-    async def _run() -> None:
-        app_instance = app_textual.SattLintTextualApp(
-            cfg={"analyzed_programs_and_libraries": ["TargetA"]},
-            summarize_targets_fn=lambda _cfg: "targets",
-            analysis_menu_fn=lambda _cfg: None,
-            documentation_menu_fn=lambda _cfg: None,
-            config_menu_fn=lambda _cfg: None,
-            tools_menu_fn=lambda _cfg: None,
-            show_help_fn=lambda _cfg: None,
-            save_config_fn=lambda _path, _cfg: None,
-            config_path=None,
-            quit_app_error=RuntimeError,
-            app_module=SimpleNamespace(
-                _get_documentation_unit_selection=lambda: {
-                    "mode": "moduletype_names",
-                    "instance_paths": [],
-                    "moduletype_names": ["ApplTank"],
-                }
-            ),
-        )
-
-        async with app_instance.run_test(size=(80, 28)) as pilot:
-            await pilot.press("ctrl+2")
-            await pilot.pause()
-
-            workspace_host = app_instance.query_one("#workspace-host")
-            documentation_actions = app_instance.query_one("#documentation-actions")
-            view_side_actions = app_instance.query_one("#view-side-actions")
-            view_title = app_instance.query_one("#view-title")
-            view_host = app_instance.query_one("#view-host")
-            output_pane = app_instance.query_one("#output-pane")
-            generate_button = app_instance.query_one("#documentation-generate")
-            preview_button = app_instance.query_one("#documentation-preview-candidates")
-            scope_all_button = app_instance.query_one("#documentation-scope-all")
-            scope_moduletype_button = app_instance.query_one("#documentation-scope-moduletype")
-            scope_instance_button = app_instance.query_one("#documentation-scope-instance-path")
-            assert app_instance._active_view == "documentation"
-            assert workspace_host.has_class("docs-tools-split")
-            assert workspace_host.has_class("analyze-split") is False
-            assert str(view_title.renderable) == "Documentation"
-            assert view_title.region.bottom <= view_host.region.y
-            assert output_pane.has_class("is-hidden") is False
-            assert output_pane.size.width > view_host.size.width
-            assert app_instance.query_one("#view-actions").has_class("is-hidden") is True
-            assert app_instance.query_one("#documentation-actions").has_class("is-hidden") is False
-            assert getattr(generate_button, "disabled", True) is False
-            assert workspace_host.has_class("wide-output-split") is False
-            assert view_side_actions.size.height > 0
-            for button in (
-                generate_button,
-                preview_button,
-                scope_all_button,
-                scope_moduletype_button,
-                scope_instance_button,
-            ):
-                assert button.size.width > 0
-                assert button.region.x >= documentation_actions.region.x
-                assert button.region.right <= documentation_actions.region.right
-            assert generate_button.region.y < preview_button.region.y
-            assert preview_button.region.y < scope_all_button.region.y
-            assert scope_all_button.region.y < scope_moduletype_button.region.y
-            assert scope_moduletype_button.region.y < scope_instance_button.region.y
-            assert "Current scope: moduletype: ApplTank" in str(app_instance.query_one("#view-note").renderable)
-
-    asyncio.run(_run())
-
-
 @pytest.mark.parametrize(
     ("button_id", "handler_name", "expected_call"),
     [
-        ("documentation-generate", "_run_documentation_generate", "generate"),
-        ("documentation-preview-candidates", "_run_documentation_preview_candidates", "preview"),
-        ("documentation-scope-all", "_run_documentation_scope_all", "scope-all"),
-        ("documentation-scope-moduletype", "_run_documentation_scope_moduletype", "scope-moduletype"),
-        ("documentation-scope-instance-path", "_run_documentation_scope_instance_path", "scope-instance"),
         ("tools-dumps", "_run_tool_dumps", "dumps"),
-        ("tools-source-diff", "_run_tool_source_diff", "source-diff"),
         ("tools-refresh-ast", "_run_tool_refresh_ast", "refresh-ast"),
         ("tools-datatype-usage", "_run_tool_datatype_usage", "datatype-usage"),
         ("tools-variable-trace", "_run_tool_variable_trace", "variable-trace"),
         ("tools-module-locals", "_run_tool_module_locals", "module-locals"),
     ],
 )
-@pytest.mark.skip(reason="documentation menu removed")
-def test_textual_docs_and_tools_buttons_dispatch_direct_actions(
+def test_textual_tools_buttons_dispatch_direct_actions(
     monkeypatch: pytest.MonkeyPatch,
     button_id: str,
     handler_name: str,
@@ -2262,7 +1978,6 @@ def test_textual_docs_and_tools_buttons_dispatch_direct_actions(
     assert seen == [expected_call]
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_tools_dumps_button_opens_menu_without_ansi_clear() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -2272,7 +1987,6 @@ def test_textual_tools_dumps_button_opens_menu_without_ansi_clear() -> None:
             cfg={"analyzed_programs_and_libraries": ["TargetA"]},
             summarize_targets_fn=lambda _cfg: "targets",
             analysis_menu_fn=lambda _cfg: None,
-            documentation_menu_fn=lambda _cfg: None,
             config_menu_fn=lambda _cfg: None,
             tools_menu_fn=lambda _cfg: None,
             show_help_fn=lambda _cfg: None,
@@ -2282,7 +1996,6 @@ def test_textual_tools_dumps_button_opens_menu_without_ansi_clear() -> None:
             app_module=app,
             self_check_fn=lambda _cfg: True,
             dump_menu_fn=app.dump_menu,
-            source_diff_fn=lambda _cfg: None,
             force_refresh_ast_fn=lambda _cfg: None,
         )
         bridge = app_textual.TextualInteractionBridge(
@@ -2317,7 +2030,6 @@ def test_textual_tools_dumps_button_opens_menu_without_ansi_clear() -> None:
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_setup_target_button_click_adds_and_removes_target(tmp_path: Path) -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -2338,7 +2050,6 @@ def test_textual_setup_target_button_click_adds_and_removes_target(tmp_path: Pat
             cfg=cfg,
             summarize_targets_fn=lambda _cfg: "targets",
             analysis_menu_fn=lambda _cfg: None,
-            documentation_menu_fn=lambda _cfg: None,
             config_menu_fn=lambda _cfg: None,
             tools_menu_fn=lambda _cfg: None,
             show_help_fn=lambda _cfg: None,
@@ -2374,7 +2085,6 @@ def test_textual_setup_target_button_click_adds_and_removes_target(tmp_path: Pat
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_tools_view_shows_direct_actions() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -2384,7 +2094,6 @@ def test_textual_tools_view_shows_direct_actions() -> None:
             cfg={"analyzed_programs_and_libraries": []},
             summarize_targets_fn=lambda _cfg: "targets",
             analysis_menu_fn=lambda _cfg: None,
-            documentation_menu_fn=lambda _cfg: None,
             config_menu_fn=lambda _cfg: None,
             tools_menu_fn=lambda _cfg: None,
             show_help_fn=lambda _cfg: None,
@@ -2404,7 +2113,6 @@ def test_textual_tools_view_shows_direct_actions() -> None:
             view_host = app_instance.query_one("#view-host")
             output_pane = app_instance.query_one("#output-pane")
             dumps_button = app_instance.query_one("#tools-dumps")
-            source_diff_button = app_instance.query_one("#tools-source-diff")
             refresh_ast_button = app_instance.query_one("#tools-refresh-ast")
             datatype_usage_button = app_instance.query_one("#tools-datatype-usage")
             variable_trace_button = app_instance.query_one("#tools-variable-trace")
@@ -2419,7 +2127,6 @@ def test_textual_tools_view_shows_direct_actions() -> None:
             assert app_instance.query_one("#view-actions").has_class("is-hidden") is True
             assert app_instance.query_one("#tools-actions").has_class("is-hidden") is False
             assert getattr(dumps_button, "disabled", False) is True
-            assert getattr(source_diff_button, "disabled", False) is True
             assert getattr(refresh_ast_button, "disabled", False) is True
             assert getattr(datatype_usage_button, "disabled", False) is True
             assert getattr(variable_trace_button, "disabled", False) is True
@@ -2429,7 +2136,6 @@ def test_textual_tools_view_shows_direct_actions() -> None:
             assert view_side_actions.size.height > 0
             for button in (
                 dumps_button,
-                source_diff_button,
                 refresh_ast_button,
                 datatype_usage_button,
                 variable_trace_button,
@@ -2438,8 +2144,7 @@ def test_textual_tools_view_shows_direct_actions() -> None:
                 assert button.size.width > 0
                 assert button.region.x >= tools_actions.region.x
                 assert button.region.right <= tools_actions.region.right
-            assert dumps_button.region.y < source_diff_button.region.y
-            assert source_diff_button.region.y < refresh_ast_button.region.y
+            assert dumps_button.region.y < refresh_ast_button.region.y
             assert refresh_ast_button.region.y < datatype_usage_button.region.y
             assert datatype_usage_button.region.y < variable_trace_button.region.y
             assert variable_trace_button.region.y < module_locals_button.region.y
@@ -2448,7 +2153,6 @@ def test_textual_tools_view_shows_direct_actions() -> None:
     asyncio.run(_run())
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_setup_add_selected_target_marks_dirty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     program_dir = tmp_path / "programs"
     program_dir.mkdir()
@@ -2465,7 +2169,6 @@ def test_textual_setup_add_selected_target_marks_dirty(tmp_path: Path, monkeypat
         cfg=cfg,
         summarize_targets_fn=lambda _cfg: "targets",
         analysis_menu_fn=lambda _cfg: None,
-        documentation_menu_fn=lambda _cfg: None,
         config_menu_fn=lambda _cfg: None,
         tools_menu_fn=lambda _cfg: None,
         show_help_fn=lambda _cfg: None,
@@ -2487,11 +2190,10 @@ def test_textual_setup_add_selected_target_marks_dirty(tmp_path: Path, monkeypat
 
     assert cfg["analyzed_programs_and_libraries"] == ["TargetA"]
     assert cfg["analyzed_programs_and_libraries"] is not original_targets
-    assert app_instance._dirty is False
+    assert app_instance._dirty is True
     assert messages == ["Added analysis target 'TargetA' from the Setup view."]
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_setup_remove_selected_target_marks_dirty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     program_dir = tmp_path / "programs"
     program_dir.mkdir()
@@ -2508,7 +2210,6 @@ def test_textual_setup_remove_selected_target_marks_dirty(tmp_path: Path, monkey
         cfg=cfg,
         summarize_targets_fn=lambda _cfg: "targets",
         analysis_menu_fn=lambda _cfg: None,
-        documentation_menu_fn=lambda _cfg: None,
         config_menu_fn=lambda _cfg: None,
         tools_menu_fn=lambda _cfg: None,
         show_help_fn=lambda _cfg: None,
@@ -2530,11 +2231,10 @@ def test_textual_setup_remove_selected_target_marks_dirty(tmp_path: Path, monkey
 
     assert cfg["analyzed_programs_and_libraries"] == []
     assert cfg["analyzed_programs_and_libraries"] is not original_targets
-    assert app_instance._dirty is False
+    assert app_instance._dirty is True
     assert messages == ["Removed analysis target 'TargetA' from the Setup view."]
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_setup_prompt_updates_program_dir(monkeypatch: pytest.MonkeyPatch) -> None:
     cfg: dict[str, Any] = {
         "analyzed_programs_and_libraries": [],
@@ -2547,7 +2247,6 @@ def test_textual_setup_prompt_updates_program_dir(monkeypatch: pytest.MonkeyPatc
         cfg=cfg,
         summarize_targets_fn=lambda _cfg: "targets",
         analysis_menu_fn=lambda _cfg: None,
-        documentation_menu_fn=lambda _cfg: None,
         config_menu_fn=lambda _cfg: None,
         tools_menu_fn=lambda _cfg: None,
         show_help_fn=lambda _cfg: None,
@@ -2584,11 +2283,10 @@ def test_textual_setup_prompt_updates_program_dir(monkeypatch: pytest.MonkeyPatc
     callback("/new/programs")
 
     assert cfg["program_dir"] == "/new/programs"
-    assert app_instance._dirty is False
+    assert app_instance._dirty is True
     assert messages == ["Updated program_dir from the Setup view."]
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_setup_prompt_replaces_whole_other_lib_dirs_list(monkeypatch: pytest.MonkeyPatch) -> None:
     original_other_dirs = ["/old/lib-a", "/old/lib-b"]
     cfg: dict[str, Any] = {
@@ -2602,7 +2300,6 @@ def test_textual_setup_prompt_replaces_whole_other_lib_dirs_list(monkeypatch: py
         cfg=cfg,
         summarize_targets_fn=lambda _cfg: "targets",
         analysis_menu_fn=lambda _cfg: None,
-        documentation_menu_fn=lambda _cfg: None,
         config_menu_fn=lambda _cfg: None,
         tools_menu_fn=lambda _cfg: None,
         show_help_fn=lambda _cfg: None,
@@ -2641,11 +2338,10 @@ def test_textual_setup_prompt_replaces_whole_other_lib_dirs_list(monkeypatch: py
 
     assert cfg["other_lib_dirs"] == ["/new/lib-a", "/new/lib-b"]
     assert cfg["other_lib_dirs"] is not original_other_dirs
-    assert app_instance._dirty is False
+    assert app_instance._dirty is True
     assert messages == ["Updated other_lib_dirs from the Setup view."]
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_activate_view_leaves_dirty_setup_changes_unsaved(monkeypatch: pytest.MonkeyPatch) -> None:
     app_instance = _make_textual_app()
     app_instance._active_view = "setup"
@@ -2657,20 +2353,18 @@ def test_textual_activate_view_leaves_dirty_setup_changes_unsaved(monkeypatch: p
     monkeypatch.setattr(app_instance, "_set_active_action", lambda _action_id: None)
     monkeypatch.setattr(app_instance, "_refresh_shell_state", lambda: None)
 
-    app_instance._activate_view("documentation")
+    app_instance._activate_view("tools")
 
     assert started == []
-    assert app_instance._active_view == "documentation"
+    assert app_instance._active_view == "tools"
     assert app_instance._dirty is True
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_finish_action_clears_dirty_after_success() -> None:
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
         analysis_menu_fn=lambda _cfg: None,
-        documentation_menu_fn=lambda _cfg: None,
         config_menu_fn=lambda _cfg: None,
         tools_menu_fn=lambda _cfg: None,
         show_help_fn=lambda _cfg: None,
@@ -2687,13 +2381,11 @@ def test_textual_finish_action_clears_dirty_after_success() -> None:
     assert app_instance._dirty is False
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_quit_action_respects_busy_guard(monkeypatch: pytest.MonkeyPatch) -> None:
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
         analysis_menu_fn=lambda _cfg: None,
-        documentation_menu_fn=lambda _cfg: None,
         config_menu_fn=lambda _cfg: None,
         tools_menu_fn=lambda _cfg: None,
         show_help_fn=lambda _cfg: None,
@@ -2714,13 +2406,11 @@ def test_textual_quit_action_respects_busy_guard(monkeypatch: pytest.MonkeyPatch
     assert messages == ["An action is still running. Wait for it to finish before quitting."]
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_write_output_preserves_blank_lines(monkeypatch: pytest.MonkeyPatch) -> None:
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
         analysis_menu_fn=lambda _cfg: None,
-        documentation_menu_fn=lambda _cfg: None,
         config_menu_fn=lambda _cfg: None,
         tools_menu_fn=lambda _cfg: None,
         show_help_fn=lambda _cfg: None,
@@ -2753,13 +2443,11 @@ def test_textual_write_output_preserves_blank_lines(monkeypatch: pytest.MonkeyPa
     assert scrolled == [False]
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_write_output_inserts_spacing_before_target_headers(monkeypatch: pytest.MonkeyPatch) -> None:
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
         analysis_menu_fn=lambda _cfg: None,
-        documentation_menu_fn=lambda _cfg: None,
         config_menu_fn=lambda _cfg: None,
         tools_menu_fn=lambda _cfg: None,
         show_help_fn=lambda _cfg: None,
@@ -2797,13 +2485,11 @@ def test_textual_write_output_inserts_spacing_before_target_headers(monkeypatch:
     assert isinstance(written[2], Rule)
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_write_output_caps_retained_lines(monkeypatch: pytest.MonkeyPatch) -> None:
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
         analysis_menu_fn=lambda _cfg: None,
-        documentation_menu_fn=lambda _cfg: None,
         config_menu_fn=lambda _cfg: None,
         tools_menu_fn=lambda _cfg: None,
         show_help_fn=lambda _cfg: None,
@@ -2850,7 +2536,6 @@ def test_textual_app_uses_explicit_mixins() -> None:
     assert issubclass(app_textual_module.SattLintTextualApp, app_textual_module._TextualAnalyzeMixin)
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_refresh_view_raises_when_required_widget_is_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -2894,13 +2579,11 @@ def test_textual_file_browser_selection_raises_when_required_widgets_are_missing
         browser._set_candidate_selection(None)
 
 
-@pytest.mark.skip(reason="documentation menu removed")
 def test_textual_toolbar_actions_are_ignored_while_interaction_screen_is_open(monkeypatch: pytest.MonkeyPatch) -> None:
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
         analysis_menu_fn=lambda _cfg: None,
-        documentation_menu_fn=lambda _cfg: None,
         config_menu_fn=lambda _cfg: None,
         tools_menu_fn=lambda _cfg: None,
         show_help_fn=lambda _cfg: None,

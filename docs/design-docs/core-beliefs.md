@@ -1,7 +1,6 @@
 # Core Beliefs - Golden Principles for SattLint
 
 Agent-first principles that keep this codebase legible, consistent, and maintainable.
-Violations trigger the doc-gardening agent to open fix-up PRs.
 
 ## Governance
 
@@ -28,7 +27,6 @@ Failures must be explicit and actionable.
 
 - Parser: clear error messages with remediation hints
 - Analyzers: confidence levels, not guesswork
-- LSP: degrade only in documented ways (unavailable deps, dirty buffers)
 
 ### Enforcement Mechanisms
 
@@ -79,7 +77,7 @@ No secrets, PII, or machine-specific paths in outputs.
 Enforced architecture with freedom inside boundaries.
 
 - Parser core never imports application code
-- LSP → Core → Analyzers/Engine → Parser (dependency direction)
+- CLI/TUI → Core → Analyzers/Engine → Parser (dependency direction)
 - Within a module, agent has freedom of expression
 
 ### 8. Machine-Readable Outputs
@@ -87,7 +85,6 @@ Enforced architecture with freedom inside boundaries.
 Reports serve both humans and agents.
 
 - Findings: structured (severity, confidence, location)
-- Artifacts: JSON in `artifacts/`
 - Logs: key=value, issue-scoped
 - No pretty-printed tables that hide structure
 

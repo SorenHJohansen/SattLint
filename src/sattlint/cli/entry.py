@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib
 import io
 import sys
 import traceback
@@ -32,7 +31,6 @@ BuildCliParserFn = Callable[[], argparse.ArgumentParser]
 LoadConfigFn = Callable[[Path], tuple[ConfigDict, bool]]
 ApplyDebugFn = Callable[[ConfigDict], None]
 AppCommandFn = Callable[..., int | None]
-RunParsedArgsCommandFn = Callable[[argparse.Namespace], int | None]
 
 
 class RunSyntaxCheckCommandFn(Protocol):
@@ -43,26 +41,8 @@ class CommandHandlers(TypedDict, total=False):
     syntax_check: RunSyntaxCheckCommandFn
     validate_config: AppCommandFn
     analyze: AppCommandFn
-    simulate: AppCommandFn
     cache_prune: AppCommandFn
-    telemetry_summary: AppCommandFn
     format_icf: AppCommandFn
-    repo_audit: RunParsedArgsCommandFn
-    source_diff: RunParsedArgsCommandFn
-    trace: RunParsedArgsCommandFn
-
-
-def _load_devtools_module(module_name: str) -> Any:
-    return importlib.import_module(f"sattlint.devtools.{module_name}")
-
-
-def _build_devtools_parent_parser(module_name: str, *, prog: str) -> argparse.ArgumentParser:
-    cli_module = _load_devtools_module(module_name)
-    return cast(argparse.ArgumentParser, cli_module.build_cli_parser(prog=prog, add_help=False))
-
-
-def _load_trace_module() -> Any:
-    return importlib.import_module("sattlint.tracing")
 
 
 class _ParsedCliArgs(Protocol):
@@ -85,10 +65,7 @@ class _ParsedCliArgs(Protocol):
     list_checks: bool
     issue_kinds: list[str]
     list_issue_kinds: bool
-    target_path: str
-    module: str
     mode: str
-    max_scans: int
     format: str
     output: str | None
     output_dir: str | None
@@ -134,7 +111,7 @@ def _is_version_request(argv: list[str]) -> bool:
 def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sattlint",
-        description="Interactive SattLine analysis app with non-interactive syntax-check, analysis, documentation, simulation, source-diff, and repo-audit commands.",
+        description="Interactive SattLine analysis app with non-interactive syntax-check, analysis, validation, and formatting commands.",
     )
     parser.add_argument("--version", action="version", version=f"sattlint {version}")
     parser.add_argument("--config", default=None, metavar="PATH", help="Path to a SattLint config file")
@@ -240,33 +217,6 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         help_text="Output format for analyze list commands",
     )
 
-    simulate_parser = subparsers.add_parser(
-        "simulate",
-        help="Run bounded SFC scan-cycle simulation",
-        description="Simulate one SFC-bearing target and report steady state, cycles, or scan-budget exhaustion.",
-    )
-    simulate_parser.add_argument("target_path", help="Path to the SattLine entry file to load")
-    simulate_parser.add_argument("--module", required=True, help="Module or instance path to simulate")
-    simulate_parser.add_argument(
-        "--mode",
-        default="steady-state",
-        choices=["steady-state"],
-        help="Simulation mode to run",
-    )
-    simulate_parser.add_argument(
-        "--max-scans",
-        type=int,
-        default=25,
-        dest="max_scans",
-        help="Maximum number of scans to execute before stopping",
-    )
-    simulate_parser.add_argument(
-        "--output",
-        default=None,
-        help="Optional path to write the simulation output",
-    )
-    add_output_format_argument(simulate_parser)
-
     format_icf_parser = subparsers.add_parser(
         "format-icf",
         help="Normalize blank-line spacing in configured ICF files",
@@ -281,43 +231,6 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         help="Report whether configured .icf files would change without rewriting them.",
     )
     add_output_format_argument(format_icf_parser)
-
-    telemetry_summary_parser = subparsers.add_parser(
-        "telemetry-summary",
-        help="Summarize local app telemetry bottlenecks",
-        description="Read local app telemetry and summarize slowest operations, stages, analyzers, and nested phases.",
-    )
-    add_output_format_argument(telemetry_summary_parser)
-    telemetry_summary_parser.add_argument(
-        "--output",
-        default=None,
-        help="Optional path to write the telemetry summary",
-    )
-
-    source_diff_parent = _build_devtools_parent_parser("source_diff_report", prog="sattlint source-diff")
-    subparsers.add_parser(
-        "source-diff",
-        parents=[source_diff_parent],
-        help="Build a review-friendly report for draft .s versus official .x source pairs",
-        description=source_diff_parent.description,
-    )
-
-    repo_audit_parent = _build_devtools_parent_parser("repo_audit_cli", prog="sattlint repo-audit")
-    subparsers.add_parser(
-        "repo-audit",
-        parents=[repo_audit_parent],
-        help="Run repository audit checks",
-        description=repo_audit_parent.description,
-    )
-
-    trace_module = _load_trace_module()
-    trace_parent = cast(argparse.ArgumentParser, trace_module.build_cli_parser(prog="sattlint trace", add_help=False))
-    subparsers.add_parser(
-        "trace",
-        parents=[trace_parent],
-        help="Trace parser and analyzer execution for one source file",
-        description=trace_parent.description,
-    )
 
     return parser
 
@@ -429,48 +342,6 @@ def run_cli(  # noqa: PLR0915
                 return syntax_check_handler(args.file, output_format="json")
             return syntax_check_handler(args.file)
 
-    if command == "repo-audit":
-        repo_audit_handler = None if command_handlers is None else command_handlers.get("repo_audit")
-        if repo_audit_handler is None:
-            raise RuntimeError("repo-audit handler is required")
-        context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
-        try:
-            with context:
-                return _exit_code(
-                    repo_audit_handler(parsed_namespace),
-                    fallback=exit_success,
-                )
-        except SystemExit as exc:
-            return exc.code if isinstance(exc.code, int) else exit_usage_error
-
-    if command == "source-diff":
-        source_diff_handler = None if command_handlers is None else command_handlers.get("source_diff")
-        if source_diff_handler is None:
-            raise RuntimeError("source-diff handler is required")
-        context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
-        try:
-            with context:
-                return _exit_code(
-                    source_diff_handler(parsed_namespace),
-                    fallback=exit_success,
-                )
-        except SystemExit as exc:
-            return exc.code if isinstance(exc.code, int) else exit_usage_error
-
-    if command == "trace":
-        trace_handler = None if command_handlers is None else command_handlers.get("trace")
-        if trace_handler is None:
-            raise RuntimeError("trace handler is required")
-        context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
-        try:
-            with context:
-                return _exit_code(
-                    trace_handler(parsed_namespace),
-                    fallback=exit_success,
-                )
-        except SystemExit as exc:
-            return exc.code if isinstance(exc.code, int) else exit_usage_error
-
     if command == "analyze" and getattr(args, "list_checks", False):
         context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
         with context:
@@ -498,20 +369,6 @@ def run_cli(  # noqa: PLR0915
         )
         return exit_usage_error
 
-    if command == "telemetry-summary":
-        telemetry_summary_handler = None if command_handlers is None else command_handlers.get("telemetry_summary")
-        if telemetry_summary_handler is None:
-            raise RuntimeError("telemetry-summary handler is required")
-        return _exit_code(
-            telemetry_summary_handler(
-                {},
-                config_path=resolved_config_path,
-                output_format=cli_output.resolve_output_format(args),
-                output_path=getattr(args, "output", None),
-            ),
-            fallback=exit_success,
-        )
-
     if command == "cache-prune":
         cache_prune_handler = None if command_handlers is None else command_handlers.get("cache_prune")
         if cache_prune_handler is None:
@@ -524,7 +381,7 @@ def run_cli(  # noqa: PLR0915
             fallback=exit_success,
         )
 
-    if command in ("validate-config", "analyze", "simulate", "format-icf"):
+    if command in ("validate-config", "analyze", "format-icf"):
         debug_requested = bool(getattr(args, "debug", False))
 
         if project_config is not None:
@@ -572,24 +429,6 @@ def run_cli(  # noqa: PLR0915
                     selected_issue_kinds=selected_issue_kinds,
                     use_cache=use_cache,
                     output_format=cli_output.resolve_output_format(args),
-                ),
-                fallback=exit_success,
-            )
-
-        if command == "simulate":
-            simulate_handler = None if command_handlers is None else command_handlers.get("simulate")
-            if simulate_handler is None:
-                raise RuntimeError("simulate handler is required")
-            return _exit_code(
-                simulate_handler(
-                    cfg,
-                    target_path=args.target_path,
-                    module_name=args.module,
-                    mode=args.mode,
-                    max_scans=args.max_scans,
-                    output_format=cli_output.resolve_output_format(args),
-                    output_path=args.output,
-                    use_cache=use_cache,
                 ),
                 fallback=exit_success,
             )

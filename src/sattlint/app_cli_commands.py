@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -10,7 +9,6 @@ from typing import Any, cast
 from sattline_parser.models.ast_model import BasePicture
 
 from . import console as console_module
-from ._app_debug import log_debug_exception
 from .cache import CachePruneResult
 from .cli_output import render_json_output
 from .config_types import ConfigDict
@@ -85,25 +83,6 @@ def render_analyze_command_result(
         emit_output_fn(line)
 
 
-def _run_with_live_status(status_text: str, run_fn: Callable[[], Any]) -> Any:
-    with console_module.live_status_line() as status_update_fn:
-        status_update_fn(status_text)
-        return run_fn()
-
-
-def _write_output_file(destination: Path, content: str, *, label: str, cfg: ConfigDict | None = None) -> bool:
-    try:
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(content + "\n", encoding="utf-8")
-    except OSError as exc:
-        if cfg is not None:
-            log_debug_exception(cfg, f"Failed to write {label} to {destination}", logger=log)
-        console_module.print_output(f"Failed to write {label} to {destination}: {exc}")
-        return False
-    console_module.print_output(f"Wrote {destination}")
-    return True
-
-
 def _format_cache_prune_result(result: CachePruneResult) -> str:
     details = (
         ("lookup", result.file_lookup_entries),
@@ -162,95 +141,6 @@ def run_analyze_command(
     render_analyze_command_result(result, emit_output_fn=emit_output_fn)
     if result.cancelled:
         emit_output_fn("\nOperation canceled. Returning to the menu.")
-    return exit_success
-
-
-def run_simulate_command(
-    cfg: ConfigDict,
-    *,
-    target_path: str,
-    module_name: str,
-    mode: str,
-    max_scans: int,
-    output_format: str,
-    output_path: str | None,
-    use_cache: bool,
-    simulate_fn: Callable[..., Any],
-    exit_success: int,
-    exit_usage_error: int,
-) -> int:
-    try:
-        result = _run_with_live_status(
-            f"Simulating {module_name} from {target_path}",
-            lambda: simulate_fn(
-                cfg,
-                target_path=target_path,
-                module_name=module_name,
-                mode=mode,
-                max_scans=max_scans,
-                use_cache=use_cache,
-            ),
-        )
-    except (FileNotFoundError, ValueError) as exc:
-        console_module.print_output(str(exc))
-        return exit_usage_error
-    except Exception as exc:  # noqa: BLE001
-        log_debug_exception(
-            cfg, f"Simulation command failed for module {module_name!r} from {target_path!r}", logger=log
-        )
-        console_module.print_output(f"Simulation failed: {exc}")
-        return exit_usage_error
-
-    if output_format == "json":
-        payload = json.dumps(result.to_dict(), indent=2)
-        if output_path:
-            destination = Path(output_path)
-            if not _write_output_file(destination, payload, label="simulation output", cfg=cfg):
-                return exit_usage_error
-        else:
-            console_module.print_output(payload)
-        return exit_success
-
-    summary = result.render_summary()
-    if output_path:
-        destination = Path(output_path)
-        if not _write_output_file(destination, summary, label="simulation output", cfg=cfg):
-            return exit_usage_error
-    else:
-        console_module.print_output(summary)
-    return exit_success
-
-
-def run_telemetry_summary_command(
-    cfg: ConfigDict,
-    *,
-    config_path: Path,
-    output_format: str,
-    output_path: str | None,
-    telemetry_output_path_fn: Callable[[Path], Path],
-    summarize_telemetry_fn: Callable[[Path], dict[str, Any]],
-    render_text_summary_fn: Callable[[dict[str, Any]], str],
-    exit_success: int,
-    exit_usage_error: int,
-) -> int:
-    telemetry_path = telemetry_output_path_fn(config_path)
-    try:
-        summary = summarize_telemetry_fn(telemetry_path)
-    except FileNotFoundError:
-        console_module.print_output(f"Telemetry file not found: {telemetry_path}")
-        return exit_usage_error
-    except (OSError, ValueError) as exc:
-        log_debug_exception(cfg, f"Telemetry summary failed for {telemetry_path}", logger=log)
-        console_module.print_output(f"Telemetry summary failed: {exc}")
-        return exit_usage_error
-
-    content = json.dumps(summary, indent=2) if output_format == "json" else render_text_summary_fn(summary)
-
-    if output_path:
-        if not _write_output_file(Path(output_path), content, label="telemetry summary", cfg=cfg):
-            return exit_usage_error
-    else:
-        console_module.print_output(content)
     return exit_success
 
 

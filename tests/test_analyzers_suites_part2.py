@@ -1,4 +1,3 @@
-import pytest
 from sattline_parser.models.expressions import (
     Assignment,
     BoolOp,
@@ -45,7 +44,6 @@ def test_dataflow_flags_contradictory_branch_condition_in_analyzer_suite():
     assert "dataflow.unreachable_branch" in _issue_kinds(report)
 
 
-@pytest.mark.skip(reason="impossible inferred compare condition detection changed")
 def test_dataflow_flags_impossible_inferred_compare_condition_in_analyzer_suite():
     bp = BasePicture(
         header=_hdr("Root"),

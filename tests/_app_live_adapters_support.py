@@ -53,14 +53,7 @@ def _build_startup_app_module() -> SimpleNamespace:
         app_cli_commands=SimpleNamespace(
             run_validate_config_command=lambda *args, **kwargs: 0,
             run_analyze_command=lambda *args, **kwargs: 0,
-            run_simulate_command=lambda *args, **kwargs: 0,
             run_docgen_command=lambda *args, **kwargs: 0,
-            run_telemetry_summary_command=lambda *args, **kwargs: 0,
-        ),
-        app_telemetry=SimpleNamespace(telemetry_output_path_for_config=lambda path: Path("telemetry.json")),
-        telemetry_summary=SimpleNamespace(
-            summarize_telemetry_file=lambda path: {"path": str(path)},
-            render_text_summary=lambda summary: str(summary),
         ),
         app_graphics=SimpleNamespace(
             show_config=lambda *args, **kwargs: None,
@@ -102,9 +95,7 @@ def _build_startup_app_module() -> SimpleNamespace:
         run_cli=lambda _argv: 0,
         run_validate_config_command=lambda _cfg, **_kwargs: 0,
         run_analyze_command=lambda _cfg, **_kwargs: 0,
-        run_simulate_command=lambda _cfg, **_kwargs: 0,
         run_docgen_command=lambda _cfg, **_kwargs: 0,
-        run_telemetry_summary_command=lambda _cfg, **_kwargs: 0,
         run_format_icf_command=lambda _cfg: 0,
         pause=lambda: None,
         get_graphics_rules_path=lambda: Path("graphics.json"),
@@ -146,7 +137,6 @@ def _build_startup_app_module() -> SimpleNamespace:
         _require_targets_for_menu_action=lambda _cfg, _action: True,
         force_refresh_ast=lambda _cfg: None,
         refresh_analysis_caches=lambda _cfg: None,
-        run_source_diff_report=lambda _cfg: None,
         analyze_variables=lambda *args, **kwargs: None,
         classify_documentation_structure=lambda *args, **kwargs: [],
         discover_documentation_unit_candidates=lambda *args, **kwargs: [],

@@ -1,7 +1,7 @@
 ---
 description: "Use when routing work to the owning SattLint surface or choosing the closest repo area for a change. Provides the condensed repo map that was removed from AGENTS.md for context efficiency."
 name: "Repo Map Instructions"
-applyTo: ["src/**", "tests/**", "scripts/**", ".github/**", "docs/**", "metrics/**"]
+applyTo: ["src/**", "tests/**", ".github/**", "docs/**"]
 ---
 # Repo Map
 
@@ -10,11 +10,8 @@ applyTo: ["src/**", "tests/**", "scripts/**", ".github/**", "docs/**", "metrics/
 | `sattline-parser` (external) | Parser core: grammar, transformer, AST models; installed from PyPI and owned by the `sattline-parser` repo |
 | `src/sattlint/` | CLI, analyzers, reporting, config |
 | `src/sattlint/core/` | Shared semantic and document helpers |
-| `src/sattlint/devtools/` | Repo audit, pipeline, health and structural reporting |
 | `tests/` | Owner suites and regression coverage |
-| `.github/` | CI, instructions, hooks, and optional chat customizations |
-| `metrics/` | Maintainer operating thresholds and curated health history |
-| `artifacts/` | Machine-readable audit outputs |
+| `.github/` | CI, instructions, and optional chat customizations |
 
 ## Search Routing
 

@@ -53,12 +53,6 @@ def _run_tool_dumps(self: Any) -> None:
     self._start_action("Diagnostics & dumps", lambda: self._dump_menu_fn(self._cfg), action_id="action-tools")
 
 
-def _run_tool_source_diff(self: Any) -> None:
-    if not self._targets_action_allowed("source diff reports"):
-        return
-    self._start_action("Source diff report", lambda: self._source_diff_fn(self._cfg), action_id="action-tools")
-
-
 def _run_tool_refresh_ast(self: Any) -> None:
     if not self._targets_action_allowed("all cache refresh"):
         return

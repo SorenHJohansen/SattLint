@@ -169,7 +169,6 @@ def tools_menu(
     pause_fn: Callable[[], None],
     require_targets_for_menu_action_fn: Callable[[ConfigDict, str], bool],
     dump_menu_fn: Callable[[ConfigDict], None],
-    run_source_diff_report_fn: Callable[[ConfigDict], None],
     confirm_fn: Callable[[str], bool],
     force_refresh_ast_fn: Callable[[ConfigDict], Any],
 ) -> None:
@@ -183,7 +182,6 @@ def tools_menu(
         pause_fn=pause_fn,
         require_targets_for_menu_action_fn=require_targets_for_menu_action_fn,
         dump_menu_fn=dump_menu_fn,
-        run_source_diff_report_fn=run_source_diff_report_fn,
         confirm_fn=confirm_fn,
         force_refresh_ast_fn=force_refresh_ast_fn,
     )

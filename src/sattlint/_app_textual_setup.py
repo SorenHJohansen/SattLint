@@ -18,7 +18,6 @@ from ._app_textual_setup_actions import (
     _run_tool_module_locals,
     _run_tool_refresh_ast,
     _run_tool_self_check,
-    _run_tool_source_diff,
     _run_tool_variable_trace,
     _set_setup_filter_text,
 )
@@ -193,7 +192,6 @@ if TYPE_CHECKING:
         def _run_analyze_checks(self) -> None: ...
         def _run_tool_self_check(self) -> None: ...
         def _run_tool_dumps(self) -> None: ...
-        def _run_tool_source_diff(self) -> None: ...
         def _run_tool_refresh_ast(self) -> None: ...
         def _run_tool_datatype_usage(self) -> None: ...
         def _run_tool_variable_trace(self) -> None: ...
@@ -251,7 +249,6 @@ else:
         _run_analyze_checks = _run_analyze_checks
         _run_tool_self_check = _run_tool_self_check
         _run_tool_dumps = _run_tool_dumps
-        _run_tool_source_diff = _run_tool_source_diff
         _run_tool_refresh_ast = _run_tool_refresh_ast
         _run_tool_datatype_usage = _run_tool_datatype_usage
         _run_tool_variable_trace = _run_tool_variable_trace
