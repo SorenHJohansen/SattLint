@@ -308,7 +308,7 @@ def collect_graphics_layout_entries_for_target(
     project_bp: BasePicture,
     graph: ProjectGraph,
 ) -> list[dict[str, Any]]:
-    structural_graphics_module = importlib.import_module("sattlint.devtools.structural._structural_report_graphics")
+    structural_graphics_module = importlib.import_module("sattlint.structural._structural_report_graphics")
     return structural_graphics_module.collect_graphics_layout_entries_for_target(
         target_name,
         project_bp,

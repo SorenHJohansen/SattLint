@@ -1,7 +1,6 @@
 # pyright: reportUnusedFunction=false
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any, cast
 
 from .analyzers.shadowing import analyze_shadowing
@@ -216,20 +215,6 @@ def run_advanced_datatype_analysis(cfg: dict[str, object]) -> None:
 def dump_menu(cfg: dict[str, object]) -> None:
     app = _app()
     app.app_menus_from_app_module.dump_menu_from_app(cfg, app_module=app)
-
-
-def run_source_diff_report(cfg: dict[str, object], *, _pause_fn: Callable[[], None] | None = None) -> None:
-    app = _app()
-    app.app_source_diff_module.run_source_diff_report(
-        cfg,
-        iter_loaded_projects_fn=app._iter_loaded_projects,
-        source_paths_for_current_target_fn=app._source_paths_for_current_target,
-        live_status_line_factory=app.console_module.live_status_line,
-        build_pair_report_fn=app.source_diff_report_module.build_pair_report,
-        render_markdown_fn=app.source_diff_report_module.render_markdown,
-        emit_output_fn=app.emit_output,
-        pause_fn=_pause_fn if _pause_fn is not None else app.pause,
-    )
 
 
 def config_menu(cfg: dict[str, object]) -> bool:

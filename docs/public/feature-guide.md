@@ -1,6 +1,6 @@
 # SattLint Feature Guide
 
-Comprehensive guide to all SattLint tools, CLI commands, TUI workflows, and their relationships.
+Comprehensive guide to the SattLint tools, CLI commands, and TUI workflows.
 
 ---
 
@@ -10,9 +10,7 @@ SattLint is a Python toolkit for SattLine projects. It provides:
 
 - **Syntax validation** — strict single-file parsing
 - **Static analysis** — semantic checks, variable analysis, dataflow, architecture validation
-- **Repository auditing** — health checks, quality gates, CI integration
-- **Documentation generation** — DOCX output from SattLine sources
-- **Language server** — LSP endpoint for editor integration (VS Code)
+- **ICF and graphics analysis** — validate and format ICF files and check graphics rules
 - **Interactive TUI** — Textual-based menu for guided workflows
 
 ---
@@ -28,7 +26,7 @@ For development:
 ```bash
 git clone https://github.com/SorenHJohansen/SattLint.git
 cd SattLint
-pip install -e ".[dev,lsp]"
+pip install -e .
 ```
 
 Requirements: Python 3.13+, Windows or Linux.
@@ -57,16 +55,6 @@ sattlint syntax-check path/to/Program.s
 
 Exit codes: 0 = valid, 1 = problem found, 2 = invalid arguments.
 
-### `sattlint repo-audit`
-
-Run repository-level health and quality checks. Supports `--profile quick` for fast iteration and `--profile full` for comprehensive CI gate.
-
-```bash
-sattlint repo-audit --profile quick
-sattlint repo-audit --profile full
-sattlint repo-audit --fail-on high
-```
-
 ---
 
 ## Preview CLI Commands
@@ -93,13 +81,12 @@ sattlint validate-config
 sattlint --config path/to/config.toml validate-config
 ```
 
-### `sattlint docgen`
+### `sattlint cache-prune`
 
-Generate Word (DOCX) documentation from SattLine sources.
+Prune the AST analysis cache.
 
 ```bash
-sattlint docgen --output-dir docs-out
-sattlint docgen --output-path docs-out/Main_FS.docx
+sattlint cache-prune
 ```
 
 ### `sattlint format-icf`
@@ -109,15 +96,6 @@ Format Industrial Control Format (ICF) files.
 ```bash
 sattlint format-icf
 sattlint format-icf --check
-```
-
-### `sattlint source-diff`
-
-Build a review-friendly diff report between draft `.s` and official `.x` source pairs.
-
-```bash
-sattlint source-diff --workspace-root path/to/workspace --discover-pairs
-sattlint source-diff --workspace-root path/to/workspace --draft-file WidgetReview.s --official-file WidgetReview.x
 ```
 
 ### Shared Flags
@@ -130,25 +108,6 @@ sattlint --no-cache <subcommand>
 
 ---
 
-## DevTools Commands
-
-These are internal repository-tooling entry points. They ship with the package but are designed for maintainer and CI use.
-
-| Command | Purpose | Profile |
-|---------|---------|---------|
-| `sattlint-repo-audit` | Full repository audit entry point | `--profile quick/full` |
-| `sattlint-analysis-pipeline` | Shared CI pipeline runner | `--profile full --check <name>` |
-| `sattlint-layer-lint` | SattLine module hierarchy layer validation | — |
-| `sattlint-structural-ratchet` | Structural budget report verification | `--json` |
-| `sattlint-doc-gardener` | Documentation structure and reference validation | `--check-only` |
-| `sattlint-release-smoke` | Pre-publish wheel smoke test | `--wheel ... --sample-file ...` |
-| `sattlint-corpus-runner` | Regression test corpus execution | — |
-| `sattlint-review` | Code review assistant (advisory) | — |
-| `sattlint-trace` | Parser and analyzer execution tracer | — |
-| `sattlint-observability` | Performance profiling and metrics snapshot | — |
-
----
-
 ## Interactive TUI
 
 Running `sattlint` with no arguments opens the Textual interactive shell.
@@ -158,10 +117,8 @@ Running `sattlint` with no arguments opens the Textual interactive shell.
 | View | Purpose |
 |------|---------|
 | **Analyze** | Queue reports and analyzers. Start with the planner for a broad pass, then add focused reports. |
-| **Documentation** | Preview unit scope and generate DOCX output. |
 | **Setup** | Configure paths (program_dir, ABB_lib_dir, icf_dir, other_lib_dirs), targets, mode, cache settings. |
-| **Tools** | Run self-check diagnostics, inspect dumps, refresh caches, open tracing tools. |
-| **Results** | View formatted output of previous actions. Click history entries for details. |
+| **Tools** | Run self-check diagnostics, inspect dumps, refresh caches. |
 | **Help** | First-run guidance, workflow explanations. |
 
 ### Graphics Layout Specification
@@ -175,14 +132,13 @@ Running `sattlint` with no arguments opens the Textual interactive shell.
 
 ### Keyboard & Mouse
 
-- **Sidebar**: Click view names to switch between Analyze, Config, Docs, Tools, Results.
+- **Sidebar**: Click view names to switch between Analyze, Setup, Tools, and Help.
 - **Buttons**: Click action buttons to start tasks.
-- **History**: Click entries in Results view for details.
 - **Scrolling**: All text areas support scrollbars.
 
 ### Status Bar
 
-Shows current action and task progress (e.g., "Self-check running...", "Documentation generation finished").
+Shows current action and task progress (e.g., "Self-check running...").
 
 ---
 
@@ -193,7 +149,7 @@ First run creates a default config file:
 - **Windows:** `%APPDATA%\sattlint\config.toml`
 - **Linux:** `~/.config/sattlint/config.toml`
 
-Override with `--config path/to/custom.toml`.
+Override with `--config path/to/custom.toml`. Project analysis uses `.slproj` project files.
 
 ### Key settings
 
@@ -213,13 +169,16 @@ Use names without file extensions: `MyProgram`, not `MyProgram.s`.
 
 ## Quality Gates
 
-| Gate | Command | When |
-|------|---------|------|
-| Pre-commit | `python -m pre_commit run --all-files` | Before every commit |
-| AI drift | `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit` | After AI-assisted edits |
-| Pre-push | `sattlint-repo-audit --profile full --output-dir artifacts/audit` | Before pushing |
-| CI | Automatic on PR and push to `main` | Via GitHub Actions |
-| Nightly | Scheduled full audit with trend snapshots | Daily |
+Run the retained validation locally before changes:
+
+```bash
+python -m ruff check .
+python -m pyright src/sattlint
+python -m pytest -q
+python -m build
+```
+
+CI runs automatically on PR and push to `main`.
 
 ---
 
@@ -236,7 +195,6 @@ Use names without file extensions: `MyProgram`, not `MyProgram.s`.
 ## See Also
 
 - [Architecture overview](architecture.md) — system layering and runtime entry points
-- [CLI commands reference](cli-commands.md) — full command surface
-- [Public support matrix](../references/public-support-matrix.md) — stable vs preview contract
+- [SUPPORT.md](../../SUPPORT.md) — support contract, stable vs preview status, removed surfaces
 - [CONTRIBUTING.md](../../CONTRIBUTING.md) — development setup and workflow
 - [README.md](../../README.md) — source checkout quick start

@@ -17,6 +17,54 @@ from sattline_parser.models.ast_model import (
     SingleModule,
 )
 
+from sattlint.path_sanitizer import sanitize_path_for_report
+from sattlint.resolution._moduletype_resolution import resolve_moduletype_def_strict
+
+GRAPHICS_LAYOUT_COMPARISON_FIELDS = (
+    "invocation.coords",
+    "invocation.arguments",
+    "invocation.layer",
+    "invocation.zoom_limits",
+    "invocation.zoomable",
+    "moduledef.clipping_origin",
+    "moduledef.clipping_size",
+    "moduledef.zoom_limits",
+    "moduledef.grid",
+    "moduledef.zoomable",
+)
+
+
+class WorkspaceGraphInputs:
+    __slots__ = ("discovery", "snapshot_failures", "snapshots")
+
+    def __init__(
+        self,
+        *,
+        discovery: Any,
+        snapshots: list[Any],
+        snapshot_failures: list[dict[str, Any]],
+    ) -> None:
+        self.discovery = discovery
+        self.snapshots = snapshots
+        self.snapshot_failures = snapshot_failures
+
+
+def normalize_graph_inputs(
+    graph_inputs: Any,
+    *,
+    workspace_root: Path,
+) -> WorkspaceGraphInputs:
+    if isinstance(graph_inputs, WorkspaceGraphInputs):
+        return graph_inputs
+    if graph_inputs is None:
+        raise ValueError("graph_inputs is required; no workspace graph-input fallback is available")
+    discovery, snapshots, failures = graph_inputs
+    return WorkspaceGraphInputs(
+        discovery=discovery,
+        snapshots=list(snapshots),
+        snapshot_failures=list(failures),
+    )
+
 
 def serialize_invoke_coord(header: ModuleHeader) -> dict[str, Any]:
     return {
@@ -68,12 +116,10 @@ def graphics_layout_group_payload(
     module_name: str,
     members: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    from . import structural_reports as structural_reports_module  # noqa: PLC0415
-
     differing_fields: list[str] = []
     field_variants: dict[str, list[Any]] = {}
 
-    for field_name in structural_reports_module.GRAPHICS_LAYOUT_COMPARISON_FIELDS:
+    for field_name in GRAPHICS_LAYOUT_COMPARISON_FIELDS:
         variants: dict[str, Any] = {}
         for member in members:
             value = graphics_field_value(member, field_name)
@@ -108,12 +154,10 @@ def graphics_layout_entry(
     resolved_moduletype: ModuleTypeDef | None = None,
     resolution_error: str | None = None,
 ) -> dict[str, Any]:
-    from . import structural_reports as structural_reports_module  # noqa: PLC0415
-
     relative_path = ".".join(module_path[1:]) if len(module_path) > 1 else ""
     module_name = module_path[-1] if module_path else ""
     payload = {
-        "entry_file": structural_reports_module.sanitize_path_for_report(entry_file, repo_root=workspace_root),
+        "entry_file": sanitize_path_for_report(entry_file, repo_root=workspace_root),
         "module_path": ".".join(module_path),
         "relative_module_path": relative_path,
         "module_name": module_name,
@@ -149,8 +193,6 @@ def walk_graphics_layout_children(
     definition_scope: str,
     active_moduletype_keys: set[tuple[str, str]],
 ) -> None:
-    from . import structural_reports as structural_reports_module  # noqa: PLC0415
-
     project_graph: object = getattr(snapshot, "project_graph", None)
     raw_unavailable_libraries: object = (
         getattr(project_graph, "unavailable_libraries", None) if project_graph is not None else None
@@ -218,7 +260,7 @@ def walk_graphics_layout_children(
         resolved_moduletype: ModuleTypeDef | None = None
         resolution_error: str | None = None
         try:
-            resolved_moduletype = structural_reports_module.resolve_moduletype_def_strict(
+            resolved_moduletype = resolve_moduletype_def_strict(
                 bp,
                 child.moduletype_name,
                 current_library=current_library,
@@ -315,8 +357,6 @@ def build_graphics_layout_report(
     snapshot_count: int,
     snapshot_failures: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    from . import structural_reports as structural_reports_module  # noqa: PLC0415
-
     sorted_entries = sorted(entries, key=lambda item: (item["entry_file"] or "", item["module_path"].casefold()))
 
     grouped_entries: dict[tuple[str, str], list[dict[str, Any]]] = {}
@@ -356,13 +396,13 @@ def build_graphics_layout_report(
     ]
 
     return {
-        "generated_by": "sattlint.devtools.pipeline",
+        "generated_by": "sattlint.structural.structural_reports",
         "report_kind": "graphics-layout",
-        "workspace_root": structural_reports_module.sanitize_path_for_report(
+        "workspace_root": sanitize_path_for_report(
             workspace_root,
             repo_root=workspace_root,
         ),
-        "comparison_fields": list(structural_reports_module.GRAPHICS_LAYOUT_COMPARISON_FIELDS),
+        "comparison_fields": list(GRAPHICS_LAYOUT_COMPARISON_FIELDS),
         "entries": sorted_entries,
         "groups": groups,
         "findings": findings,
@@ -376,19 +416,17 @@ def collect_graphics_layout_report(
     *,
     graph_inputs: Any = None,
 ) -> dict[str, Any]:
-    from . import structural_reports as structural_reports_module  # noqa: PLC0415
-
-    resolved_inputs = structural_reports_module.normalize_graph_inputs(graph_inputs, workspace_root=workspace_root)
+    resolved_inputs = normalize_graph_inputs(graph_inputs, workspace_root=workspace_root)
     entries: list[dict[str, Any]] = []
 
     for snapshot in resolved_inputs.snapshots:
-        structural_reports_module.accumulate_graphics_layout_snapshot(
+        accumulate_graphics_layout_snapshot(
             snapshot,
             workspace_root=workspace_root,
             entries=entries,
         )
 
-    return structural_reports_module.build_graphics_layout_report(
+    return build_graphics_layout_report(
         workspace_root=workspace_root,
         entries=entries,
         snapshot_count=len(resolved_inputs.snapshots),

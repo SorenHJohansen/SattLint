@@ -79,32 +79,6 @@ def resolve_interactive_cli_overrides(
     return InteractiveCliOverrides(config_path=config_path, debug=debug, ui_mode=ui_mode)
 
 
-def run_telemetry_summary_command(
-    cfg: ConfigDict,
-    *,
-    config_path: Path,
-    output_format: str,
-    output_path: str | None,
-    run_telemetry_summary_command_fn: Callable[..., int],
-    telemetry_output_path_fn: Callable[[Path], Path],
-    summarize_telemetry_fn: Callable[[Path], dict[str, Any]],
-    render_text_summary_fn: Callable[[dict[str, Any]], str],
-    exit_success: int,
-    exit_usage_error: int,
-) -> int:
-    return run_telemetry_summary_command_fn(
-        cfg,
-        config_path=config_path,
-        output_format=output_format,
-        output_path=output_path,
-        telemetry_output_path_fn=telemetry_output_path_fn,
-        summarize_telemetry_fn=summarize_telemetry_fn,
-        render_text_summary_fn=render_text_summary_fn,
-        exit_success=exit_success,
-        exit_usage_error=exit_usage_error,
-    )
-
-
 def run_cache_prune_command(
     *,
     cache_dir: str | None,
@@ -197,36 +171,6 @@ def run_analyze_command(
         output_format=output_format,
         collect_analyze_result_fn=_collect_result,
         exit_success=exit_success,
-    )
-
-
-def run_simulate_command(
-    cfg: ConfigDict,
-    *,
-    target_path: str,
-    module_name: str,
-    mode: str,
-    max_scans: int,
-    output_format: str,
-    output_path: str | None,
-    use_cache: bool,
-    run_simulate_command_fn: Callable[..., int],
-    simulate_fn: Callable[..., Any],
-    exit_success: int,
-    exit_usage_error: int,
-) -> int:
-    return run_simulate_command_fn(
-        cfg,
-        target_path=target_path,
-        module_name=module_name,
-        mode=mode,
-        max_scans=max_scans,
-        output_format=output_format,
-        output_path=output_path,
-        use_cache=use_cache,
-        simulate_fn=simulate_fn,
-        exit_success=exit_success,
-        exit_usage_error=exit_usage_error,
     )
 
 

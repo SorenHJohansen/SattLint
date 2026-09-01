@@ -1,5 +1,5 @@
 ---
-description: "Use when changing src/ or tests/ in SattLint. Critical SattLine language invariants, validation rules, variable-analysis gotchas, CLI testing rules, and workspace/LSP boundaries that must not be broken."
+description: "Use when changing src/ or tests/ in SattLint. Critical SattLine language invariants, validation rules, variable-analysis gotchas, CLI testing rules, and workspace-loading boundaries that must not be broken."
 name: "SattLine Invariants"
 applyTo: ["src/**", "tests/**"]
 ---
@@ -57,12 +57,12 @@ A file can be syntactically valid but semantically broken:
 - Calling `app.main()` with no argv still opens the Textual interactive shell.
 - If you change CLI menu layout or numbering, keep `tests/test_app.py` in sync.
 - Do not rely on the IDE test runner as the first validation path here; use repo-venv pytest commands directly, and treat IDE zero-test collection as expected noise rather than a project signal.
-- Prefer targeted test modules first, for example `tests/test_app.py` for CLI and menu work, `tests/analyzers/test_cyclomatic_complexity.py` for analyzer work, and `tests/test_pipeline_run.py` or `tests/test_repo_audit_part1.py` for devtools artifact changes.
+- Prefer targeted test modules first, for example `tests/test_cli.py` for CLI work, `tests/analyzers/test_cyclomatic_complexity.py` for analyzer work, and the matching source-owner test module for the touched seam.
 - Use the real fixtures under `tests/fixtures/sample_sattline_files/` when uncertain about syntax or semantics.
 
-## Workspace And Editor Loading
+## Workspace And Project Loading
 
-- Workspace or editor loading may use dependency context, local snapshots, cached bundles, and proximity-based `.l` or `.z` resolution. CLI and config-driven resolution remain unchanged.
-- `ControlLib` is an expected unavailable proprietary dependency in workspace or editor flows and should be reported as unavailable rather than as a normal missing-code error.
+- Workspace or project loading may use dependency context, local snapshots, cached bundles, and proximity-based `.l` or `.z` resolution. CLI and config-driven resolution remain unchanged.
+- `ControlLib` is an expected unavailable proprietary dependency in workspace flows and should be reported as unavailable rather than as a normal missing-code error.
 - Workspace validation intentionally differs from single-file strict validation for some dependency cases. Do not collapse those two modes together.
-- Single-file strict validation still rejects unknown locally resolvable parameter targets and duplicate sibling submodule names; workspace or editor loading may continue past those issues in dependency libraries outside `program_dir`.
+- Single-file strict validation still rejects unknown locally resolvable parameter targets and duplicate sibling submodule names; workspace or project loading may continue past those issues in dependency libraries outside `program_dir`.

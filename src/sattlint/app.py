@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib
 import os
 import sys
 from collections.abc import Callable, Sequence
@@ -24,7 +23,6 @@ from . import _app_facade_commands as app_facade_commands_module
 from . import _app_facade_project as app_facade_project_module
 from . import _app_graphics_from_app as _app_graphics_from_app_module
 from . import _app_menus_from_app as _app_menus_from_app_module
-from . import _app_source_diff as _app_source_diff_module
 from . import _app_startup_from_app as app_startup_module
 from . import analysis_catalog as analysis_catalog_module
 from . import app_analysis as app_analysis_module
@@ -39,7 +37,6 @@ from . import cache as cache_module
 from . import config as _config_module
 from . import console as console_module
 from . import engine as engine_module_impl
-from . import telemetry_summary as telemetry_summary_module
 from .analyzers.variables import (
     IssueKind,
 )
@@ -67,13 +64,10 @@ app_graphics: Any = app_graphics_module
 app_graphics_from_app_module: Any = _app_graphics_from_app_module
 app_menus: Any = app_menus_module
 app_menus_from_app_module: Any = _app_menus_from_app_module
-app_source_diff_module: Any = _app_source_diff_module
 app_support: Any = app_support_module
 app_telemetry: Any = app_telemetry_module
 cache: Any = cache_module
 engine_module: Any = engine_module_impl
-telemetry_summary: Any = telemetry_summary_module
-source_diff_report_module: Any = importlib.import_module("sattlint.devtools.source_diff_report")
 get_default_cli_analyzers = analysis_catalog_module.get_default_cli_analyzers
 get_selectable_analyzers = analysis_catalog_module.get_selectable_analyzers
 analyze_variables = app_analysis_module.analyze_variables
@@ -208,13 +202,9 @@ def run_syntax_check_command(file_path: str, *, output_format: str = "text") -> 
 run_cli = app_facade_commands_module.run_cli
 run_validate_config_command = app_facade_commands_module.run_validate_config_command
 run_analyze_command = app_facade_commands_module.run_analyze_command
-_simulate_target = app_facade_commands_module._simulate_target
-run_simulate_command = app_facade_commands_module.run_simulate_command
 run_cache_prune_command = app_facade_commands_module.run_cache_prune_command
-run_telemetry_summary_command = app_facade_commands_module.run_telemetry_summary_command
 _configured_icf_files = app_facade_commands_module._configured_icf_files
 run_format_icf_command = app_facade_commands_module.run_format_icf_command
-run_trace_command = app_facade_commands_module.run_trace_command
 run_icf_formatter = app_facade_commands_module.run_icf_formatter
 show_config = app_facade_commands_module.show_config
 
@@ -368,7 +358,6 @@ run_debug_variable_usage = app_facade_analysis_module.run_debug_variable_usage
 run_comment_code_analysis = app_facade_analysis_module.run_comment_code_analysis
 run_advanced_datatype_analysis = app_facade_analysis_module.run_advanced_datatype_analysis
 dump_menu = app_facade_analysis_module.dump_menu
-run_source_diff_report = app_facade_analysis_module.run_source_diff_report
 config_menu = app_facade_analysis_module.config_menu
 tools_menu = app_facade_analysis_module.tools_menu
 
@@ -381,7 +370,6 @@ _COMPATIBILITY_HELPERS = (
     _menu_option,
     _summarize_targets,
     _graphics_rule_label,
-    _simulate_target,
     _require_targets_for_menu_action,
     _split_csv_values,
     _discover_graphics_rule_selector_options,

@@ -34,18 +34,11 @@ def _command_handlers(**overrides: Any) -> dict[str, Any]:
                     "analyze": lambda cfg, *, selected_keys, selected_issue_kinds=None, use_cache, output_format="text": (
                         app_base.EXIT_SUCCESS
                     ),
-                    "simulate": (
-                        lambda cfg, *, target_path, module_name, mode, max_scans, output_format, output_path, use_cache: (
-                            app_base.EXIT_SUCCESS
-                        )
-                    ),
                     "docgen": lambda cfg, *, use_cache, output_format="text", output_dir, output_path: (
                         app_base.EXIT_SUCCESS
                     ),
                     "cache_prune": lambda *, cache_dir, output_format="text": app_base.EXIT_SUCCESS,
-                    "telemetry_summary": lambda cfg, *, config_path, output_format, output_path: app_base.EXIT_SUCCESS,
                     "format_icf": lambda cfg, *, check, output_format="text": app_base.EXIT_SUCCESS,
-                    "trace": lambda args: app_base.EXIT_SUCCESS,
                 }
                 | overrides,
             ),
@@ -76,14 +69,9 @@ def test_build_cli_parser_has_descriptions():
     assert {
         "syntax-check",
         "analyze",
-        "simulate",
         "cache-prune",
-        "telemetry-summary",
         "validate-config",
         "format-icf",
-        "source-diff",
-        "repo-audit",
-        "trace",
     } <= set(choices)
     assert getattr(syntax_parser, "description", None)
 
@@ -130,12 +118,8 @@ def test_build_cli_parser_analyze_includes_output_format():
 @pytest.mark.parametrize(
     ("command_name", "expected_options"),
     [
-        ("simulate", {"--format", "--output-format"}),
         ("cache-prune", {"--format", "--output-format"}),
         ("format-icf", {"--format", "--output-format"}),
-        ("telemetry-summary", {"--format", "--output-format"}),
-        ("source-diff", {"--format", "--output-format"}),
-        ("trace", {"--format", "--output-format"}),
     ],
 )
 def test_build_cli_parser_commands_include_output_format_aliases(command_name: str, expected_options: set[str]):
@@ -149,49 +133,6 @@ def test_build_cli_parser_commands_include_output_format_aliases(command_name: s
     }
 
     assert expected_options <= option_strings
-
-
-def test_build_cli_parser_repo_audit_includes_dedicated_options():
-    parser = app_base.build_cli_parser()
-
-    action = next(action for action in parser._actions if isinstance(getattr(action, "choices", None), Mapping))
-    choices = cast(dict[str, object], action.choices)
-    repo_audit_parser = cast(Any, choices["repo-audit"])
-    option_strings = {
-        option
-        for parser_action in repo_audit_parser._actions
-        for option in getattr(parser_action, "option_strings", [])
-    }
-
-    assert {"--profile", "--fail-on", "--list-checks", "--planning-context"} <= option_strings
-
-
-def test_build_cli_parser_source_diff_includes_dedicated_options():
-    parser = app_base.build_cli_parser()
-
-    action = next(action for action in parser._actions if isinstance(getattr(action, "choices", None), Mapping))
-    choices = cast(dict[str, object], action.choices)
-    source_diff_parser = cast(Any, choices["source-diff"])
-    option_strings = {
-        option
-        for parser_action in source_diff_parser._actions
-        for option in getattr(parser_action, "option_strings", [])
-    }
-
-    assert {"--workspace-root", "--draft-file", "--official-file", "--discover-pairs"} <= option_strings
-
-
-def test_build_cli_parser_trace_includes_dedicated_options():
-    parser = app_base.build_cli_parser()
-
-    action = next(action for action in parser._actions if isinstance(getattr(action, "choices", None), Mapping))
-    choices = cast(dict[str, object], action.choices)
-    trace_parser = cast(Any, choices["trace"])
-    option_strings = {
-        option for parser_action in trace_parser._actions for option in getattr(parser_action, "option_strings", [])
-    }
-
-    assert {"--output", "--debug"} <= option_strings
 
 
 def test_build_cli_parser_exposes_interactive_ui_override():
@@ -529,35 +470,12 @@ def test_startup_main_handles_quit_app_error() -> None:
     assert exit_code == 0
 
 
-@pytest.mark.skip(reason="docgen removed")
 def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
-    telemetry_seen: dict[str, object] = {}
     validate_seen: dict[str, object] = {}
     analyze_seen: dict[str, object] = {}
-    simulate_seen: dict[str, object] = {}
-    docgen_seen: dict[str, object] = {}
     misc_seen: dict[str, object] = {}
     cfg = {"debug": False}
     project = ("Root", cast(Any, object()), ProjectGraph())
-
-    assert (
-        _app_startup.run_telemetry_summary_command(
-            cfg,
-            config_path=Path("config.toml"),
-            output_format="json",
-            output_path="summary.json",
-            run_telemetry_summary_command_fn=lambda local_cfg, **kwargs: (
-                telemetry_seen.update({"cfg": local_cfg, **kwargs}) or 19
-            ),
-            telemetry_output_path_fn=lambda path: path.with_suffix(".telemetry.json"),
-            summarize_telemetry_fn=lambda _path: {"events": 1},
-            render_text_summary_fn=lambda summary: str(summary),
-            exit_success=0,
-            exit_usage_error=2,
-        )
-        == 19
-    )
-    assert telemetry_seen["cfg"] is cfg
 
     assert (
         _app_startup.run_validate_config_command(
@@ -631,43 +549,6 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
         str([project]),
         "['selected']",
     )
-
-    assert (
-        _app_startup.run_simulate_command(
-            cfg,
-            target_path="program.s",
-            module_name="Main",
-            mode="steady-state",
-            max_scans=5,
-            output_format="json",
-            output_path="simulation.json",
-            use_cache=True,
-            run_simulate_command_fn=lambda local_cfg, **kwargs: (
-                simulate_seen.update({"cfg": local_cfg, **kwargs}) or 31
-            ),
-            simulate_fn=lambda *_args, **_kwargs: object(),
-            exit_success=0,
-            exit_usage_error=2,
-        )
-        == 31
-    )
-    assert simulate_seen["module_name"] == "Main"
-
-    assert (
-        _app_startup.run_docgen_command(  # type: ignore[reportAttributeAccessIssue]
-            cfg,
-            use_cache=False,
-            output_dir="docs",
-            output_path=None,
-            run_docgen_command_fn=lambda local_cfg, **kwargs: docgen_seen.update({"cfg": local_cfg, **kwargs}) or 37,
-            iter_loaded_projects_fn=lambda _cfg, use_cache: iter([project] if not use_cache else []),
-            documentation_unit_selection_fn=lambda: {"mode": "all"},
-            exit_success=0,
-            exit_usage_error=2,
-        )
-        == 37
-    )
-    assert list(cast(Any, docgen_seen["iter_loaded_projects_fn"])(cfg, False)) == [project]
 
     _app_interactive_menus.run_icf_formatter(
         cfg,
@@ -747,9 +628,6 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
         is True
     )
 
-    def run_source_diff_report(_cfg: object) -> None:
-        return None
-
     _app_interactive_menus.tools_menu(
         cfg,
         tools_menu_fn=lambda local_cfg, **kwargs: misc_seen.update({"tools_cfg": local_cfg, **kwargs}),
@@ -761,7 +639,6 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
         pause_fn=lambda: None,
         require_targets_for_menu_action_fn=lambda _cfg, _action: True,
         dump_menu_fn=lambda _cfg: None,
-        run_source_diff_report_fn=run_source_diff_report,
         confirm_fn=lambda _message: True,
         force_refresh_ast_fn=lambda _cfg: None,
     )
@@ -771,7 +648,6 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
     assert misc_seen["menu_title"] == "Menu"
     assert misc_seen["summarize_cfg"] is cfg
     assert misc_seen["target_is_library_fn"] is dump_target_is_library
-    assert misc_seen["run_source_diff_report_fn"] is run_source_diff_report
 
 
 def test_package_exports_version():
@@ -1079,56 +955,6 @@ def test_run_cli_analyze_list_issue_kinds_supports_json_without_loading_config(c
     assert captured.err == ""
 
 
-def test_run_cli_simulate_passes_flags():
-    seen = {}
-
-    exit_code = _run_base_cli(
-        [
-            "--no-cache",
-            "simulate",
-            "tests/fixtures/sample_sattline_files/Program/Main.s",
-            "--module",
-            "Main",
-            "--mode",
-            "steady-state",
-            "--max-scans",
-            "25",
-            "--format",
-            "json",
-            "--output",
-            "simulation.json",
-        ],
-        load_config_fn=lambda path: ({"debug": False}, False),
-        apply_debug_fn=lambda _cfg: None,
-        command_handlers={
-            "simulate": lambda cfg, *, target_path, module_name, mode, max_scans, output_format, output_path, use_cache: (
-                seen.update(
-                    {
-                        "cfg": cfg,
-                        "target_path": target_path,
-                        "module_name": module_name,
-                        "mode": mode,
-                        "max_scans": max_scans,
-                        "output_format": output_format,
-                        "output_path": output_path,
-                        "use_cache": use_cache,
-                    }
-                )
-                or app_base.EXIT_SUCCESS
-            )
-        },
-    )
-
-    assert exit_code == app_base.EXIT_SUCCESS
-    assert seen["target_path"] == "tests/fixtures/sample_sattline_files/Program/Main.s"
-    assert seen["module_name"] == "Main"
-    assert seen["mode"] == "steady-state"
-    assert seen["max_scans"] == 25
-    assert seen["output_format"] == "json"
-    assert seen["output_path"] == "simulation.json"
-    assert seen["use_cache"] is False
-
-
 def test_run_cli_format_icf_passes_check_flag():
     seen = {}
 
@@ -1148,65 +974,6 @@ def test_run_cli_format_icf_passes_check_flag():
     assert seen["output_format"] == "text"
 
 
-@pytest.mark.skip(reason="docgen removed")
-def test_run_cli_docgen_passes_output_flags():
-    seen = {}
-
-    exit_code = _run_base_cli(
-        ["docgen", "--output-format", "json", "--output-dir", "docs-out", "--output-path", "report.docx"],
-        load_config_fn=lambda path: ({"debug": False}, False),
-        apply_debug_fn=lambda _cfg: None,
-        command_handlers={
-            "docgen": lambda cfg, *, use_cache, output_format="text", output_dir, output_path: (
-                seen.update(
-                    {
-                        "cfg": cfg,
-                        "use_cache": use_cache,
-                        "output_format": output_format,
-                        "output_dir": output_dir,
-                        "output_path": output_path,
-                    }
-                )
-                or app_base.EXIT_SUCCESS
-            )
-        },
-    )
-
-    assert exit_code == app_base.EXIT_SUCCESS
-    assert seen["use_cache"] is True
-    assert seen["output_format"] == "json"
-    assert seen["output_dir"] == "docs-out"
-    assert seen["output_path"] == "report.docx"
-
-
-def test_run_cli_telemetry_summary_passes_output_flags():
-    seen = {}
-
-    exit_code = _run_base_cli(
-        ["--config", "custom.toml", "telemetry-summary", "--format", "json", "--output", "summary.json"],
-        load_config_fn=lambda path: ({"debug": False}, False),
-        apply_debug_fn=lambda _cfg: None,
-        command_handlers={
-            "telemetry_summary": lambda cfg, *, config_path, output_format, output_path: (
-                seen.update(
-                    {
-                        "cfg": cfg,
-                        "config_path": config_path,
-                        "output_format": output_format,
-                        "output_path": output_path,
-                    }
-                )
-                or app_base.EXIT_SUCCESS
-            )
-        },
-    )
-
-    assert exit_code == app_base.EXIT_SUCCESS
-    assert str(seen["config_path"]).endswith("custom.toml")
-    assert seen["output_format"] == "json"
-    assert seen["output_path"] == "summary.json"
-
-
 def test_run_cli_cache_prune_passes_cache_dir_without_loading_config():
     seen = {}
 
@@ -1224,131 +991,6 @@ def test_run_cli_cache_prune_passes_cache_dir_without_loading_config():
 
     assert exit_code == app_base.EXIT_SUCCESS
     assert seen == {"cache_dir": "custom-cache", "output_format": "json"}
-
-
-def test_run_cli_repo_audit_uses_parsed_handler():
-    seen = {}
-
-    exit_code = _run_base_cli(
-        ["repo-audit", "--profile", "quick", "--fail-on", "high"],
-        command_handlers={
-            "repo_audit": lambda args: (
-                seen.update(
-                    {
-                        "command": args.command,
-                        "profile": args.profile,
-                        "fail_on": args.fail_on,
-                    }
-                )
-                or app_base.EXIT_SUCCESS
-            )
-        },
-    )
-
-    assert exit_code == app_base.EXIT_SUCCESS
-    assert seen == {"command": "repo-audit", "profile": "quick", "fail_on": "high"}
-
-
-def test_run_cli_source_diff_uses_parsed_handler():
-    seen = {}
-
-    exit_code = _run_base_cli(
-        [
-            "source-diff",
-            "--workspace-root",
-            "tests/fixtures/source_diff",
-            "--draft-file",
-            "WidgetReview.s",
-            "--official-file",
-            "WidgetReview.x",
-        ],
-        command_handlers={
-            "source_diff": lambda args: (
-                seen.update(
-                    {
-                        "command": args.command,
-                        "workspace_root": args.workspace_root,
-                        "draft_file": args.draft_file,
-                        "official_file": args.official_file,
-                    }
-                )
-                or app_base.EXIT_SUCCESS
-            )
-        },
-    )
-
-    assert exit_code == app_base.EXIT_SUCCESS
-    assert seen == {
-        "command": "source-diff",
-        "workspace_root": "tests/fixtures/source_diff",
-        "draft_file": "WidgetReview.s",
-        "official_file": "WidgetReview.x",
-    }
-
-
-def test_run_cli_trace_uses_parsed_handler():
-    seen = {}
-
-    exit_code = _run_base_cli(
-        ["trace", "tests/fixtures/sample_sattline_files/Program/Main.s", "--output", "trace.json", "--debug"],
-        command_handlers={
-            "trace": lambda args: (
-                seen.update(
-                    {
-                        "command": args.command,
-                        "source_file": args.source_file,
-                        "output": args.output,
-                        "debug": args.debug,
-                    }
-                )
-                or app_base.EXIT_SUCCESS
-            )
-        },
-    )
-
-    assert exit_code == app_base.EXIT_SUCCESS
-    assert seen == {
-        "command": "trace",
-        "source_file": "tests/fixtures/sample_sattline_files/Program/Main.s",
-        "output": "trace.json",
-        "debug": True,
-    }
-
-
-def test_run_cli_quiet_suppresses_repo_audit_stdout(capsys):
-    exit_code = _run_base_cli(
-        ["--quiet", "repo-audit", "--list-checks"],
-        command_handlers={"repo_audit": lambda _args: print("visible") or app_base.EXIT_SUCCESS},
-    )
-
-    captured = capsys.readouterr()
-    assert exit_code == app_base.EXIT_SUCCESS
-    assert captured.out == ""
-    assert captured.err == ""
-
-
-def test_run_cli_quiet_suppresses_source_diff_stdout(capsys):
-    exit_code = _run_base_cli(
-        ["--quiet", "source-diff", "--discover-pairs"],
-        command_handlers={"source_diff": lambda _args: print("visible") or app_base.EXIT_SUCCESS},
-    )
-
-    captured = capsys.readouterr()
-    assert exit_code == app_base.EXIT_SUCCESS
-    assert captured.out == ""
-    assert captured.err == ""
-
-
-def test_run_cli_quiet_suppresses_trace_stdout(capsys):
-    exit_code = _run_base_cli(
-        ["--quiet", "trace", "tests/fixtures/sample_sattline_files/Program/Main.s"],
-        command_handlers={"trace": lambda _args: print("visible") or app_base.EXIT_SUCCESS},
-    )
-
-    captured = capsys.readouterr()
-    assert exit_code == app_base.EXIT_SUCCESS
-    assert captured.out == ""
-    assert captured.err == ""
 
 
 def test_run_cli_quiet_suppresses_stdout(monkeypatch, capsys):
@@ -1650,45 +1292,6 @@ def test_cli_entry_analyze_requires_handler():
         )
 
 
-@pytest.mark.skip(reason="docgen removed")
-def test_cli_entry_docgen_requires_handler():
-    parser = _FakeParser(
-        args=SimpleNamespace(command="docgen", checks=[], config=None, no_cache=False, quiet=False),
-    )
-
-    with pytest.raises(RuntimeError, match="docgen handler is required"):
-        cli_entry.run_cli(
-            ["docgen"],
-            config_path=Path("config.toml"),
-            build_cli_parser_fn=lambda: parser,
-            load_config_fn=lambda _path: ({"debug": False}, False),
-            apply_debug_fn=lambda _cfg: None,
-        )
-
-
-def test_cli_entry_telemetry_summary_requires_handler():
-    parser = _FakeParser(
-        args=SimpleNamespace(
-            command="telemetry-summary",
-            checks=[],
-            config=None,
-            no_cache=False,
-            quiet=False,
-            format="text",
-            output=None,
-        ),
-    )
-
-    with pytest.raises(RuntimeError, match="telemetry-summary handler is required"):
-        cli_entry.run_cli(
-            ["telemetry-summary"],
-            config_path=Path("config.toml"),
-            build_cli_parser_fn=lambda: parser,
-            load_config_fn=lambda _path: ({"debug": False}, False),
-            apply_debug_fn=lambda _cfg: None,
-        )
-
-
 def test_cli_entry_cache_prune_requires_handler():
     parser = _FakeParser(
         args=SimpleNamespace(
@@ -1709,76 +1312,6 @@ def test_cli_entry_cache_prune_requires_handler():
         )
 
 
-def test_cli_entry_telemetry_summary_skips_config_loading():
-    parser = _FakeParser(
-        args=SimpleNamespace(
-            command="telemetry-summary",
-            checks=[],
-            config="broken.toml",
-            no_cache=False,
-            quiet=False,
-            format="json",
-            output="summary.json",
-        ),
-    )
-    seen: dict[str, Any] = {}
-
-    exit_code = cli_entry.run_cli(
-        ["--config", "broken.toml", "telemetry-summary", "--format", "json", "--output", "summary.json"],
-        config_path=Path("config.toml"),
-        build_cli_parser_fn=lambda: parser,
-        load_config_fn=lambda _path: (_ for _ in ()).throw(AssertionError("config should not be loaded")),
-        apply_debug_fn=lambda _cfg: (_ for _ in ()).throw(AssertionError("debug should not be applied")),
-        command_handlers={
-            "telemetry_summary": lambda cfg, *, config_path, output_format, output_path: (
-                seen.update(
-                    {
-                        "cfg": cfg,
-                        "config_path": config_path,
-                        "output_format": output_format,
-                        "output_path": output_path,
-                    }
-                )
-                or cli_entry.EXIT_SUCCESS
-            )
-        },
-    )
-
-    assert exit_code == cli_entry.EXIT_SUCCESS
-    assert seen == {
-        "cfg": {},
-        "config_path": Path("broken.toml"),
-        "output_format": "json",
-        "output_path": "summary.json",
-    }
-
-
-def test_cli_entry_simulate_requires_handler():
-    parser = _FakeParser(
-        args=SimpleNamespace(
-            command="simulate",
-            target_path="program.s",
-            module="Main",
-            mode="steady-state",
-            max_scans=25,
-            format="json",
-            output=None,
-            config=None,
-            no_cache=False,
-            quiet=False,
-        ),
-    )
-
-    with pytest.raises(RuntimeError, match="simulate handler is required"):
-        cli_entry.run_cli(
-            ["simulate", "program.s", "--module", "Main"],
-            config_path=Path("config.toml"),
-            build_cli_parser_fn=lambda: parser,
-            load_config_fn=lambda _path: ({"debug": False}, False),
-            apply_debug_fn=lambda _cfg: None,
-        )
-
-
 def test_cli_entry_format_icf_requires_handler():
     parser = _FakeParser(
         args=SimpleNamespace(command="format-icf", checks=[], config=None, no_cache=False, quiet=False),
@@ -1791,45 +1324,6 @@ def test_cli_entry_format_icf_requires_handler():
             build_cli_parser_fn=lambda: parser,
             load_config_fn=lambda _path: ({"debug": False}, False),
             apply_debug_fn=lambda _cfg: None,
-        )
-
-
-def test_cli_entry_repo_audit_requires_handler():
-    parser = _FakeParser(
-        args=SimpleNamespace(command="repo-audit", checks=[], config=None, no_cache=False, quiet=False),
-    )
-
-    with pytest.raises(RuntimeError, match="repo-audit handler is required"):
-        cli_entry.run_cli(
-            ["repo-audit"],
-            config_path=Path("config.toml"),
-            build_cli_parser_fn=lambda: parser,
-        )
-
-
-def test_cli_entry_source_diff_requires_handler():
-    parser = _FakeParser(
-        args=SimpleNamespace(command="source-diff", checks=[], config=None, no_cache=False, quiet=False),
-    )
-
-    with pytest.raises(RuntimeError, match="source-diff handler is required"):
-        cli_entry.run_cli(
-            ["source-diff"],
-            config_path=Path("config.toml"),
-            build_cli_parser_fn=lambda: parser,
-        )
-
-
-def test_cli_entry_trace_requires_handler():
-    parser = _FakeParser(
-        args=SimpleNamespace(command="trace", checks=[], config=None, no_cache=False, quiet=False),
-    )
-
-    with pytest.raises(RuntimeError, match="trace handler is required"):
-        cli_entry.run_cli(
-            ["trace", "program.s"],
-            config_path=Path("config.toml"),
-            build_cli_parser_fn=lambda: parser,
         )
 
 
@@ -1846,57 +1340,6 @@ def test_cli_entry_prints_usage_when_no_command_selected():
 
     assert exit_code == cli_entry.EXIT_USAGE_ERROR
     assert parser.usage_stream is not None
-
-
-def test_cli_entry_repo_audit_uses_parsed_handler():
-    seen: dict[str, Any] = {}
-    parser = _FakeParser(
-        args=SimpleNamespace(command="repo-audit", checks=[], config=None, no_cache=False, quiet=False),
-    )
-
-    exit_code = cli_entry.run_cli(
-        [],
-        config_path=Path("config.toml"),
-        build_cli_parser_fn=lambda: parser,
-        command_handlers={"repo_audit": lambda args: seen.update({"command": args.command}) or 0},
-    )
-
-    assert exit_code == cli_entry.EXIT_SUCCESS
-    assert seen == {"command": "repo-audit"}
-
-
-def test_cli_entry_source_diff_uses_parsed_handler():
-    seen: dict[str, Any] = {}
-    parser = _FakeParser(
-        args=SimpleNamespace(command="source-diff", checks=[], config=None, no_cache=False, quiet=False),
-    )
-
-    exit_code = cli_entry.run_cli(
-        [],
-        config_path=Path("config.toml"),
-        build_cli_parser_fn=lambda: parser,
-        command_handlers={"source_diff": lambda args: seen.update({"command": args.command}) or 0},
-    )
-
-    assert exit_code == cli_entry.EXIT_SUCCESS
-    assert seen == {"command": "source-diff"}
-
-
-def test_cli_entry_trace_uses_parsed_handler():
-    seen: dict[str, Any] = {}
-    parser = _FakeParser(
-        args=SimpleNamespace(command="trace", checks=[], config=None, no_cache=False, quiet=False),
-    )
-
-    exit_code = cli_entry.run_cli(
-        [],
-        config_path=Path("config.toml"),
-        build_cli_parser_fn=lambda: parser,
-        command_handlers={"trace": lambda args: seen.update({"command": args.command}) or 0},
-    )
-
-    assert exit_code == cli_entry.EXIT_SUCCESS
-    assert seen == {"command": "trace"}
 
 
 def test_cli_entry_reraises_when_config_handlers_are_missing():

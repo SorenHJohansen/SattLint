@@ -1,11 +1,12 @@
-"""Tracing helpers for parser and analyzer execution over SattLine files."""
+"""Internal tracing helpers used by the retained analyzer engine.
+
+Only the symbols consumed by the retained analyzers are kept here; the trace
+report and command surface has been removed.
+"""
 
 from __future__ import annotations
 
-import argparse
-import sys
 import time
-from collections import Counter
 from collections.abc import Sequence as SequenceABC
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,24 +19,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
 )
 
-from ._exit_codes import EXIT_FAILURE, EXIT_SUCCESS
-from .analyzers.dataflow import analyze_dataflow
 from .analyzers.sfc import collect_sfc_reachability_findings
-from .analyzers.variables import analyze_variables
-from .cli_output import render_json_output
-from .engine import parse_source_file, validate_single_file_syntax
-from .path_sanitizer import sanitize_path_for_report
-from .repo_paths import repo_root_from
-
-
-def _trace_report_root() -> Path:
-    try:
-        return repo_root_from(Path(__file__))
-    except RuntimeError:
-        return Path(__file__).resolve().parent
-
-
-REPO_ROOT = _trace_report_root()
 
 
 def _empty_trace_events() -> list[dict[str, Any]]:
@@ -69,52 +53,6 @@ def _module_node_label(node: object) -> str:
     if isinstance(node, ModuleTypeInstance):
         return f"ModuleTypeInstance:{node.header.name}"
     return type(node).__name__
-
-
-def collect_ast_summary(base_picture: BasePicture) -> dict[str, Any]:
-    summary = {
-        "datatype_definition_count": len(base_picture.datatype_defs or []),
-        "moduletype_definition_count": len(base_picture.moduletype_defs or []),
-        "root_localvariable_count": len(base_picture.localvariables or []),
-        "submodule_count": 0,
-        "single_module_count": 0,
-        "frame_module_count": 0,
-        "moduletype_instance_count": 0,
-        "moduleparameter_count": 0,
-        "module_localvariable_count": 0,
-        "sequence_count": 0,
-        "equation_count": 0,
-    }
-
-    def walk_modulecode(modulecode: object | None) -> None:
-        if modulecode is None:
-            return
-        summary["sequence_count"] += len(getattr(modulecode, "sequences", []) or [])
-        summary["equation_count"] += len(getattr(modulecode, "equations", []) or [])
-
-    def walk_modules(modules: SequenceABC[object] | None) -> None:
-        for module in modules or []:
-            summary["submodule_count"] += 1
-            if isinstance(module, SingleModule):
-                summary["single_module_count"] += 1
-                summary["moduleparameter_count"] += len(module.moduleparameters or [])
-                summary["module_localvariable_count"] += len(module.localvariables or [])
-                walk_modulecode(module.modulecode)
-                walk_modules(module.submodules)
-            elif isinstance(module, FrameModule):
-                summary["frame_module_count"] += 1
-                walk_modules(module.submodules)
-            elif isinstance(module, ModuleTypeInstance):
-                summary["moduletype_instance_count"] += 1
-
-    walk_modulecode(base_picture.modulecode)
-    walk_modules(base_picture.submodules)
-    for moduletype in base_picture.moduletype_defs or []:
-        summary["moduleparameter_count"] += len(moduletype.moduleparameters or [])
-        summary["module_localvariable_count"] += len(moduletype.localvariables or [])
-        walk_modulecode(moduletype.modulecode)
-
-    return summary
 
 
 def detect_transform_invariant_violations(base_picture: BasePicture) -> list[dict[str, Any]]:
@@ -171,212 +109,8 @@ def detect_unreachable_sequence_logic(base_picture: BasePicture) -> list[dict[st
     ]
 
 
-def _build_timing_summary(events: list[dict[str, Any]]) -> dict[str, Any]:
-    """Aggregate trace events into per-phase event counts and span durations.
-
-    For each phase, computes:
-    - event_count: number of events in that phase
-    - span_ms: elapsed time between first and last event in the phase
-    """
-    phase_events: dict[str, list[float]] = {}
-    for event in events:
-        phase = str(event.get("phase") or "unknown")
-        offset = float(event.get("time_offset_ms") or 0.0)
-        phase_events.setdefault(phase, []).append(offset)
-
-    summary: dict[str, Any] = {}
-    for phase, offsets in sorted(phase_events.items()):
-        summary[phase] = {
-            "event_count": len(offsets),
-            "span_ms": round(max(offsets) - min(offsets), 3) if len(offsets) > 1 else 0.0,
-        }
-    return summary
-
-
-def trace_basepicture_analysis(
-    base_picture: BasePicture,
-    *,
-    source_file: Path | None = None,
-    recorder: AnalysisTraceRecorder | None = None,
-    debug: bool = False,
-) -> dict[str, Any]:
-    trace_recorder = recorder or AnalysisTraceRecorder(source_file=source_file)
-    sanitized_source_file = sanitize_path_for_report(source_file, repo_root=REPO_ROOT)
-    trace_recorder.event(
-        "analysis",
-        "basepicture-loaded",
-        basepicture_name=base_picture.header.name,
-        source_file=sanitized_source_file,
-    )
-
-    ast_summary = collect_ast_summary(base_picture)
-    trace_recorder.event("analysis", "ast-summary", **ast_summary)
-
-    report = analyze_variables(base_picture, debug=debug, trace_recorder=trace_recorder)
-    dataflow_report = analyze_dataflow(base_picture)
-    issue_counts = dict(sorted(Counter(issue.kind.value for issue in report.issues).items()))
-    dataflow_issue_counts = dict(sorted(Counter(issue.kind for issue in dataflow_report.issues).items()))
-    unreachable_logic = detect_unreachable_sequence_logic(base_picture)
-    transform_violations = detect_transform_invariant_violations(base_picture)
-
-    trace_recorder.event(
-        "analysis",
-        "completed",
-        issue_count=len(report.issues),
-        dataflow_issue_count=len(dataflow_report.issues),
-        unreachable_logic_count=len(unreachable_logic),
-        transform_violation_count=len(transform_violations),
-    )
-
-    return {
-        "source_file": sanitized_source_file,
-        "basepicture_name": base_picture.header.name,
-        "ast_summary": ast_summary,
-        "variable_analysis": {
-            "issue_count": len(report.issues),
-            "issue_counts": issue_counts,
-        },
-        "dataflow_analysis": {
-            "issue_count": len(dataflow_report.issues),
-            "issue_counts": dataflow_issue_counts,
-            "findings": [
-                {
-                    "kind": issue.kind,
-                    "message": issue.message,
-                    "module_path": issue.module_path,
-                    "data": issue.data,
-                }
-                for issue in dataflow_report.issues
-            ],
-        },
-        "heuristics": {
-            "unreachable_logic": unreachable_logic,
-            "transform_invariant_violations": transform_violations,
-        },
-        "timing_summary": _build_timing_summary(trace_recorder.events),
-        "events": trace_recorder.events,
-    }
-
-
-def trace_source_file_analysis(
-    source_file: Path,
-    *,
-    output_path: Path | None = None,
-    debug: bool = False,
-) -> dict[str, Any]:
-    resolved_source = source_file.resolve()
-    recorder = AnalysisTraceRecorder(source_file=resolved_source)
-    sanitized_source_file = sanitize_path_for_report(resolved_source, repo_root=REPO_ROOT)
-    syntax_result = validate_single_file_syntax(resolved_source)
-    recorder.event(
-        "syntax",
-        "validated",
-        ok=syntax_result.ok,
-        stage=syntax_result.stage,
-        line=syntax_result.line,
-        column=syntax_result.column,
-        message=syntax_result.message,
-    )
-
-    payload: dict[str, Any] = {
-        "source_file": sanitized_source_file,
-        "syntax_validation": {
-            "ok": syntax_result.ok,
-            "stage": syntax_result.stage,
-            "line": syntax_result.line,
-            "column": syntax_result.column,
-            "message": syntax_result.message,
-        },
-    }
-
-    if syntax_result.ok:
-        base_picture = parse_source_file(
-            resolved_source,
-            debug=(lambda message: recorder.event("parse", "debug", message=message)) if debug else None,
-        )
-        payload.update(
-            trace_basepicture_analysis(
-                base_picture,
-                source_file=resolved_source,
-                recorder=recorder,
-                debug=debug,
-            )
-        )
-    else:
-        payload["events"] = recorder.events
-
-    if output_path is not None:
-        try:
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.write_text(render_json_output(payload), encoding="utf-8")
-        except OSError as exc:
-            payload["output_error"] = {
-                "path": sanitize_path_for_report(output_path.resolve(), repo_root=REPO_ROOT)
-                or output_path.resolve().as_posix(),
-                "error": str(exc),
-                "error_type": type(exc).__name__,
-            }
-
-    return payload
-
-
-def build_cli_parser(*, prog: str = "sattlint-trace", add_help: bool = True) -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog=prog,
-        add_help=add_help,
-        description="Trace parser and analyzer execution for a SattLine file.",
-    )
-    parser.add_argument("source_file", help="Path to the .s or .x source file to trace")
-    parser.add_argument("--output", help="Write trace JSON to this path instead of stdout")
-    parser.add_argument("--debug", action="store_true", help="Include parser debug events in the trace")
-    parser.add_argument(
-        "--output-format",
-        "--format",
-        dest="format",
-        choices=["json"],
-        default="json",
-        help="Output format.",
-    )
-    return parser
-
-
-def run_parsed_args(args: argparse.Namespace) -> int:
-    source_file = str(args.source_file)
-    output = getattr(args, "output", None)
-    debug = bool(getattr(args, "debug", False))
-
-    payload = trace_source_file_analysis(
-        Path(source_file),
-        output_path=Path(output) if output else None,
-        debug=debug,
-    )
-    if output:
-        if payload.get("output_error"):
-            print(f"Trace output error: {payload['output_error']['error']}", file=sys.stderr, flush=True)
-            return EXIT_FAILURE
-        print(f"Trace written to {Path(output).resolve()}")
-    else:
-        print(render_json_output(payload))
-    return EXIT_SUCCESS
-
-
-def cli(argv: list[str] | None = None) -> int:
-    from . import app as app_module  # noqa: PLC0415
-
-    # Keep the standalone console script as a thin compatibility wrapper so
-    # all parsing and exit-code handling lives on the canonical `sattlint trace` path.
-    delegated_argv = ["trace", *(sys.argv[1:] if argv is None else argv)]
-    return app_module.run_cli(delegated_argv)
-
-
 __all__ = [
     "AnalysisTraceRecorder",
-    "build_cli_parser",
-    "cli",
-    "collect_ast_summary",
     "detect_transform_invariant_violations",
     "detect_unreachable_sequence_logic",
-    "run_parsed_args",
-    "trace_basepicture_analysis",
-    "trace_source_file_analysis",
 ]

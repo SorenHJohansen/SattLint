@@ -2,7 +2,7 @@
 
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/SorenHJohansen/SattLint/badge)](https://securityscorecards.dev/viewer/?uri=github.com/SorenHJohansen/SattLint)
 
-SattLint is a Python toolkit for SattLine projects. It provides syntax-checking, repository auditing, configurable analysis, DOCX documentation generation, and a language-server protocol entry point.
+SattLint is a Python toolkit for SattLine projects. It provides syntax-checking, configurable static analysis, ICF validation and formatting, graphics-rule analysis, and an interactive terminal UI.
 
 ---
 
@@ -11,7 +11,7 @@ SattLint is a Python toolkit for SattLine projects. It provides syntax-checking,
 - Check whether a SattLine file parses correctly
 - Analyze a full program or library together with its dependencies
 - Find issues such as unused variables, written-but-never-read variables, and shadowing
-- Generate DOCX documentation from analyzed programs
+- Validate and format ICF files and check graphics rules
 - Inspect parser outputs when something looks wrong
 
 ---
@@ -95,10 +95,9 @@ sattlint syntax-check path/to/Program.s
 sattlint analyze
 sattlint analyze --list-checks
 sattlint validate-config
+sattlint cache-prune
 sattlint format-icf
 sattlint format-icf --check
-sattlint docgen --output-dir docs-out
-sattlint repo-audit --profile quick --fail-on high
 ```
 
 Shared flags for config-driven commands:
@@ -106,10 +105,9 @@ Shared flags for config-driven commands:
 ```bash
 sattlint --config path/to/config.toml analyze
 sattlint --config path/to/config.toml --no-cache analyze
-sattlint --quiet repo-audit --profile quick
 ```
 
-For the full command reference, see [docs/references/cli-commands.md](docs/references/cli-commands.md).
+For the full command reference, run `sattlint --help`.
 
 ---
 
@@ -122,7 +120,6 @@ sattlint
 Opens the Textual interactive terminal UI with the following views:
 
 - **Analyze** — queue curated reports and additional analyzers
-- **Documentation** — preview unit scope and generate DOCX
 - **Setup** — configure paths, targets, mode, and cache settings
 - **Tools** — run self-checks, inspect dumps, refresh caches
 - **Help** — first-time guidance and workflow explanation
