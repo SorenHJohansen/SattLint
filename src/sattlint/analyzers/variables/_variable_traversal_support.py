@@ -8,7 +8,16 @@ import logging
 from typing import TYPE_CHECKING, Any, cast
 
 from sattline_parser.models.ast_model import FloatLiteral, IntLiteral, Variable
-from sattline_parser.models.expressions import VarRef
+from sattline_parser.models.expressions import (
+    BinOp,
+    BoolOp,
+    Compare,
+    FuncCall,
+    NotOp,
+    TernaryOp,
+    UnaryOp,
+    VarRef,
+)
 
 from ...casefolding import is_anytype_name
 from ...grammar import constants as const
@@ -705,6 +714,10 @@ def _walk_tail(
             AccessKind.READ,
             is_ui_read=is_ui_read,
         )
+        return
+
+    if isinstance(tail, (BinOp, BoolOp, Compare, FuncCall, NotOp, TernaryOp, UnaryOp)):
+        self._walk_stmt_or_expr(tail, context, path, is_ui_read=is_ui_read)
         return
 
     if _children_of(tail) is not None:

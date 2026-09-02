@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypeGuard, cast
 
-from . import _config_paths as _config_paths_module
 from ._config_defaults import (
     NAMING_RULE_TARGETS as _NAMING_RULE_TARGETS,
 )
@@ -466,20 +465,6 @@ def validate_loaded_config(cfg: ConfigDict) -> ConfigValidationResult:
                 message=f"{target} (not found)",
             )
         )
-
-    graphics_rules_path = _config_paths_module.get_graphics_rules_path()
-    if graphics_rules_path.exists():
-        from . import graphics_rules as graphics_rules_module  # noqa: PLC0415
-
-        try:
-            graphics_rules_module.load_graphics_rules(graphics_rules_path)
-        except (OSError, RuntimeError, ValueError) as exc:
-            errors.append(
-                ConfigValidationError(
-                    key_path="graphics_rules_path",
-                    message=f"graphics_rules_path invalid: {graphics_rules_path} ({exc})",
-                )
-            )
 
     return _build_validation_result(errors)
 

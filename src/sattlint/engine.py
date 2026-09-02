@@ -15,22 +15,15 @@ from sattline_parser.preprocessing import is_compressed, preprocess_sl_text
 from sattline_parser.transformer.sl_transformer import SLTransformer
 
 from . import _engine_syntax_helpers as engine_syntax_helpers
-from . import cache as cache_module_module
-from ._engine_dependency_helpers import collect_dependency_version_conflicts
 from ._engine_graphics_context_helpers import graphics_source_context_path as _graphics_source_context_path
 from ._engine_graphics_context_helpers import (
     load_picture_display_source_context as _load_picture_display_source_context,
 )
 from ._engine_graphics_context_helpers import picture_display_path_warnings as _picture_display_path_warnings
 from ._engine_graphics_context_helpers import resolve_graphics_companion_path
-from ._engine_graphics_helpers import attach_graphics_companion, graphics_companion_needs_refresh
 from ._engine_loader_base import (
     CircularDependencyError,
     DependencyVersionCompatibilityError,
-    PrefetchedDependencyCandidate,
-    PrefetchedLoadResult,
-    ensure_local_validation,
-    record_missing_library,
 )
 from ._engine_loader_config import (
     ContextualFileLookup,
@@ -43,10 +36,7 @@ from ._engine_loader_config import (
     validate_loader_config,
 )
 from ._engine_project_loader import SattLineProjectLoader
-from ._validation_shared import ValidationNotice, ValidationWarning, coerce_validation_notice
-from .cache import FileASTCache as FileASTCacheType
-from .cache import FileLookupCache as FileLookupCacheType
-from .cache import get_cache_dir as get_cache_dir_fn
+from ._validation_shared import ValidationNotice, coerce_validation_notice
 from .graphics_validation import validate_graphics_file
 from .models.project_graph import ProjectGraph
 from .picture_display_paths import correlate_picture_display_records
@@ -60,10 +50,6 @@ from .validation import (
 )
 
 SyntaxValidationResult = engine_syntax_helpers.SyntaxValidationResult
-cache_module = cache_module_module
-FileASTCache = FileASTCacheType
-FileLookupCache = FileLookupCacheType
-get_cache_dir = get_cache_dir_fn
 CodeMode = engine_syntax_helpers.CodeMode
 code_ext = engine_syntax_helpers.code_ext
 deps_ext = engine_syntax_helpers.deps_ext
@@ -77,23 +63,7 @@ expected_unavailable_library_reason = engine_syntax_helpers.expected_unavailable
 raise_syntax_validation_failure = engine_syntax_helpers.raise_syntax_validation_failure
 
 _extract_error_position = engine_syntax_helpers.extract_error_position
-_format_debug_list = engine_syntax_helpers.format_debug_list
-_format_debug_missing_entries = engine_syntax_helpers.format_debug_missing_entries
-_normalize_code_mode = normalize_code_mode
 _graphics_validation_to_syntax_result = engine_syntax_helpers.graphics_validation_to_syntax_result
-attach_graphics_companion = attach_graphics_companion
-graphics_companion_needs_refresh = graphics_companion_needs_refresh
-collect_dependency_version_conflicts = collect_dependency_version_conflicts
-_attach_graphics_companion = attach_graphics_companion
-_graphics_companion_needs_refresh = graphics_companion_needs_refresh
-_collect_dependency_version_conflicts = collect_dependency_version_conflicts
-_PrefetchedDependencyCandidate = PrefetchedDependencyCandidate
-_PrefetchedLoadResult = PrefetchedLoadResult
-_raise_syntax_validation_failure = raise_syntax_validation_failure
-_record_missing_library = record_missing_library
-_record_project_failure = engine_syntax_helpers.record_project_failure
-_record_project_warning = engine_syntax_helpers.record_project_warning
-_LOCAL_VALIDATION_MARKER_ATTR = engine_syntax_helpers.LOCAL_VALIDATION_MARKER_ATTR
 
 
 def build_project_loader(
@@ -194,14 +164,6 @@ def parse_source_file(
         parser_core_parse_source_file_fn=parser_core_parse_source_file,
         validate_transformed_basepicture_fn=lambda _bp: None,
     )
-
-
-def _ensure_local_validation(
-    basepic: BasePicture,
-    *,
-    warning_sink: list[ValidationWarning] | None = None,
-) -> bool:
-    return ensure_local_validation(basepic, warning_sink=warning_sink)
 
 
 def validate_single_file_syntax(
@@ -332,7 +294,6 @@ def dump_dependency_graph(project: tuple[BasePicture, ProjectGraph]) -> None:
 
 __all__ = [
     "LOCAL_STRUCTURE_VALIDATION_SCHEMA_VERSION",
-    "_LOCAL_VALIDATION_MARKER_ATTR",
     "CircularDependencyError",
     "CodeMode",
     "ContextualFileLookup",
@@ -346,15 +307,6 @@ __all__ = [
     "StructuralValidationError",
     "SyntaxValidationResult",
     "ValidationNotice",
-    "_PrefetchedDependencyCandidate",
-    "_PrefetchedLoadResult",
-    "_ensure_local_validation",
-    "_graphics_validation_to_syntax_result",
-    "_load_source_text",
-    "_raise_syntax_validation_failure",
-    "_record_missing_library",
-    "_record_project_failure",
-    "_record_project_warning",
     "build_project_loader",
     "code_ext",
     "create_sl_parser",

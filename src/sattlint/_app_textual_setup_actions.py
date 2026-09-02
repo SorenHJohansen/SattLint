@@ -20,8 +20,8 @@ def _run_app_module_cfg_action(
 ) -> None:
     if require_targets and not self._targets_action_allowed(action_text or label.casefold()):
         return
-    app_module = self._app_module
-    action_fn = getattr(app_module, attr_name, None) if app_module is not None else None
+    handlers = getattr(self, "_analysis_handlers", None)
+    action_fn = cast(dict[str, Callable[..., Any]], handlers).get(attr_name) if isinstance(handlers, dict) else None
     if not callable(action_fn):
         self._write_output(f"{label} is unavailable in the current Textual session.")
         return

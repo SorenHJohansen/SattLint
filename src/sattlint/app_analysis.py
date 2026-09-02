@@ -18,7 +18,6 @@ from . import _app_analysis_variable_analyses as analysis_variable_analyses_modu
 from . import analysis_catalog as analysis_catalog_module
 from . import analysis_dispatch as analysis_dispatch_module
 from . import app_support as app_support_module
-from . import app_telemetry as telemetry_module
 from . import cache as cache_module
 from . import console as console_module
 from . import engine as engine_module
@@ -31,10 +30,11 @@ from .analyzers.mms import analyze_mms_interface_variables
 from .analyzers.modules import analyze_module_duplicates, compare_modules, debug_module_structure, find_modules_by_name
 from .analyzers.shadowing import analyze_shadowing
 from .analyzers.variables import IssueKind, analyze_variables, filter_variable_report
-from .app_interaction import MenuInteraction
+from .application.interaction import MenuInteraction
 from .cache import AnalysisReportCache, ASTCache
 from .casefolding import casefold_equal, casefold_key
 from .config_types import ConfigDict
+from .core import telemetry as telemetry_module
 from .models.project_graph import ProjectGraph
 from .reporting.variables_report import VariablesReport
 
@@ -593,7 +593,6 @@ def module_analysis_submenu(
     run_module_duplicates_analysis_fn: Callable[[ConfigDict], None],
     run_module_find_by_name_fn: Callable[[ConfigDict], None],
     run_module_tree_debug_fn: Callable[[ConfigDict], None],
-    run_graphics_rules_validation_fn: Callable[[ConfigDict], None],
     pause_fn: Callable[[], None],
 ) -> None:
     analysis_menus_module.module_analysis_submenu(
@@ -605,7 +604,6 @@ def module_analysis_submenu(
         run_module_duplicates_analysis_fn=run_module_duplicates_analysis_fn,
         run_module_find_by_name_fn=run_module_find_by_name_fn,
         run_module_tree_debug_fn=run_module_tree_debug_fn,
-        run_graphics_rules_validation_fn=run_graphics_rules_validation_fn,
         pause_fn=pause_fn,
         emit_output_fn=emit_output,
     )

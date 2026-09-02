@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from sattlint import app_menus
+from sattlint.cli import menus as app_menus
 
 from ._app_menus_support import make_input
 
@@ -289,10 +289,9 @@ def test_dump_menu_tools_menu_and_main_loop_cover_invalid_and_quit_paths(monkeyp
     monkeypatch.setattr(
         builtins,
         "input",
-        make_input(["10", "y", "4", "new-dir", "y", "11", "2", "1", "n", "q", "y"]),
+        make_input(["10", "y", "4", "new-dir", "y", "2", "1", "n", "q", "y"]),
     )
     saves: list[tuple[Path, dict[str, object]]] = []
-    graphics_calls: list[dict[str, object]] = []
     with pytest.raises(SystemExit):
         app_menus.config_menu(
             {
@@ -315,10 +314,8 @@ def test_dump_menu_tools_menu_and_main_loop_cover_invalid_and_quit_paths(monkeyp
             target_exists_fn=lambda *_: True,
             save_config_fn=lambda path, cfg: saves.append((path, dict(cfg))),
             apply_debug_fn=lambda *_: None,
-            graphics_rules_menu_fn=lambda cfg: graphics_calls.append(dict(cfg)),
             quit_app_fn=lambda: (_ for _ in ()).throw(SystemExit()),
         )
-    assert graphics_calls
     assert saves and saves[0][0] == Path("config.json")
     assert saves[0][1]["program_dir"] == "new-dir"
     assert saves[0][1]["telemetry"] == {"enabled": True}

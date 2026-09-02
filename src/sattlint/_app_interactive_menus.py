@@ -26,16 +26,8 @@ def show_config(
     cfg: ConfigDict,
     *,
     show_config_fn: Callable[..., None],
-    get_graphics_rules_path_fn: Callable[[], Path],
-    load_graphics_rules_fn: Callable[[Path | None], tuple[dict[str, Any], bool]],
-    graphics_rule_config_line_fn: Callable[[dict[str, Any]], str],
 ) -> None:
-    show_config_fn(
-        cfg,
-        get_graphics_rules_path_fn=get_graphics_rules_path_fn,
-        load_graphics_rules_fn=load_graphics_rules_fn,
-        graphics_rule_config_line_fn=graphics_rule_config_line_fn,
-    )
+    show_config_fn(cfg)
 
 
 def print_menu(
@@ -136,7 +128,6 @@ def config_menu(
     target_exists_fn: Callable[[str, ConfigDict], bool],
     save_config_fn: Callable[[Path, ConfigDict], None],
     apply_debug_fn: Callable[[ConfigDict], None],
-    graphics_rules_menu_fn: Callable[[ConfigDict], None],
     quit_app_fn: Callable[[], None],
 ) -> bool:
     return config_menu_fn(
@@ -144,7 +135,7 @@ def config_menu(
         config_path=config_path,
         clear_screen_fn=clear_screen_fn,
         show_config_fn=show_config_fn,
-        print_menu_fn=print_menu_fn,
+        print_menu_fn=print_menu,
         menu_option_factory=menu_option_factory,
         prompt_fn=prompt_fn,
         pause_fn=pause_fn,
@@ -152,7 +143,6 @@ def config_menu(
         target_exists_fn=target_exists_fn,
         save_config_fn=save_config_fn,
         apply_debug_fn=apply_debug_fn,
-        graphics_rules_menu_fn=graphics_rules_menu_fn,
         quit_app_fn=quit_app_fn,
     )
 

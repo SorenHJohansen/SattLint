@@ -8,7 +8,6 @@ from typing import Any
 
 from sattline_parser.models.ast_model import BasePicture
 
-from . import _app_startup_docs_graphics
 from . import console as console_module
 from .cli_output import emit_text_or_json
 from .config_types import ConfigDict
@@ -33,14 +32,6 @@ def _build_interactive_override_parser() -> argparse.ArgumentParser:
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--ui", default=None)
     return parser
-
-
-collect_graphics_layout_entries_for_target = _app_startup_docs_graphics.collect_graphics_layout_entries_for_target
-discover_graphics_rule_selector_options = _app_startup_docs_graphics.discover_graphics_rule_selector_options
-graphics_rules_menu = _app_startup_docs_graphics.graphics_rules_menu
-pick_or_prompt_graphics_rule_selector_value = _app_startup_docs_graphics.pick_or_prompt_graphics_rule_selector_value
-prompt_graphics_rule_definition_with_config = _app_startup_docs_graphics.prompt_graphics_rule_definition_with_config
-run_graphics_rules_validation = _app_startup_docs_graphics.run_graphics_rules_validation
 
 
 def resolve_interactive_cli_overrides(

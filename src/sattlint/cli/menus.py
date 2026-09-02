@@ -8,12 +8,12 @@ from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
-from . import console as console_module
-from . import engine as engine_module
-from .app_interaction import MenuInteraction, build_menu_interaction
-from .casefolding import casefold_equal
-from .config_types import ConfigDict, TelemetryConfig
-from .models.project_graph import ProjectGraph
+from .. import console as console_module
+from .. import engine as engine_module
+from ..application.interaction import MenuInteraction, build_menu_interaction
+from ..casefolding import casefold_equal
+from ..config_types import ConfigDict, TelemetryConfig
+from ..models.project_graph import ProjectGraph
 
 log = logging.getLogger("SattLint")
 emit_output = console_module.print_output
@@ -52,7 +52,6 @@ def _build_config_menu_options(menu_option_factory: Callable[[str, str, str], An
         menu_option_factory("8", "Change icf_dir", "Set the directory used for ICF validation"),
         menu_option_factory("9", "Toggle debug", "Show extra debugging output while running"),
         menu_option_factory("10", "Toggle telemetry", "Enable or disable local telemetry logging"),
-        menu_option_factory("11", "Edit graphics rules", "Manage the JSON graphics rules used by the graphics check"),
         menu_option_factory("b", "Back", ""),
         menu_option_factory("q", "Quit", ""),
     ]
@@ -399,7 +398,6 @@ def config_menu(
     target_exists_fn: Callable[[str, ConfigDict], bool],
     save_config_fn: Callable[[Path, ConfigDict], None],
     apply_debug_fn: Callable[[ConfigDict], None],
-    graphics_rules_menu_fn: Callable[[ConfigDict], None],
     quit_app_fn: Callable[[], None],
     choose_menu_option_fn: Callable[..., str] | None = None,
     interaction: MenuInteraction | None = None,
@@ -578,8 +576,6 @@ def config_menu(
                 pause_fn=menu_interaction.pause,
                 default=dirty,
             )
-        elif choice == "11":
-            _run_menu_action(lambda: graphics_rules_menu_fn(cfg), pause_fn=menu_interaction.pause)
         else:
             emit_output("Invalid choice.")
             menu_interaction.pause()

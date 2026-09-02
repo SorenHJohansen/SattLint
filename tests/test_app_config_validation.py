@@ -12,8 +12,10 @@ import pytest
 
 from sattlint import _config_defaults as config_defaults_module
 from sattlint import app
+from sattlint import app_analysis as app_analysis_module
 from sattlint import config as config_module
-from sattlint import graphics_rules as graphics_rules_module
+from sattlint.application import analyze as analyze_application
+from sattlint.application import project as project_application
 from sattlint.config_types import ConfigDict, ConfigOverrideDict
 
 
@@ -294,44 +296,7 @@ def test_top_level_config_contract_matches_typed_config_definitions() -> None:
     )
 
 
-def test_self_check_reports_top_level_section_shapes_and_valid_graphics_rules(tmp_path, monkeypatch, capsys):
-    readable_dir = tmp_path / "readable"
-    readable_dir.mkdir()
-    graphics_rules_path = tmp_path / "graphics-rules.json"
-    graphics_rules_path.write_text("{}", encoding="utf-8")
-
-    monkeypatch.setattr(config_module, "get_graphics_rules_path", lambda: graphics_rules_path)
-    monkeypatch.setattr(
-        graphics_rules_module, "load_graphics_rules", lambda *_args, **_kwargs: ({"rules": [1, 2]}, False)
-    )
-    monkeypatch.setattr(config_module.os, "access", lambda path, mode: Path(path) != readable_dir)
-
-    cfg = deepcopy(app.DEFAULT_CONFIG)
-    cfg.update(
-        {
-            "program_dir": str(readable_dir),
-            "ABB_lib_dir": "",
-            "icf_dir": "",
-            "other_lib_dirs": [str(readable_dir)],
-            "analysis": "bad",
-        }
-    )
-
-    ok = config_module.self_check(cfg)
-
-    out = capsys.readouterr().out
-    assert ok is False
-    assert "program_dir not readable" in out
-    assert "other_lib_dirs: " in out
-    assert "analysis must be a table/object" in out
-    assert "graphics_rules_path:" in out
-    assert "2 rules" in out
-
-
 def test_self_check_uses_full_top_level_config_contract(tmp_path, monkeypatch, capsys):
-    graphics_rules_path = tmp_path / "graphics-rules.json"
-    monkeypatch.setattr(config_module, "get_graphics_rules_path", lambda: graphics_rules_path)
-
     cfg = deepcopy(app.DEFAULT_CONFIG)
     for key in ("include_reverse_library_consumers", "telemetry", "analysis"):
         cfg.pop(key)
@@ -346,9 +311,6 @@ def test_self_check_uses_full_top_level_config_contract(tmp_path, monkeypatch, c
 
 
 def test_self_check_reports_nested_analysis_shape_errors(tmp_path, monkeypatch, capsys):
-    graphics_rules_path = tmp_path / "graphics-rules.json"
-    monkeypatch.setattr(config_module, "get_graphics_rules_path", lambda: graphics_rules_path)
-
     cfg = deepcopy(app.DEFAULT_CONFIG)
     cfg.update(
         {
@@ -374,7 +336,6 @@ def test_self_check_reports_nested_analysis_shape_errors(tmp_path, monkeypatch, 
     assert bad_ok is False
     assert "analysis.sfc must be a table/object" in bad_out
     assert "analysis.naming must be a table/object" in bad_out
-    assert "graphics_rules_path not created yet" in bad_out
     assert empty_ok is False
     assert "analysis.sfc.mutually_exclusive_steps must be a list" in empty_out
     assert "analysis.sfc.step_contracts must be a table/object" in empty_out
@@ -414,9 +375,14 @@ def test_run_icf_validation_forces_dependency_aware_ast_loading(tmp_path, monkey
         def summary(self):
             return "summary"
 
-    monkeypatch.setattr(app, "load_program_ast", fake_load_program_ast)
+    monkeypatch.setattr(project_application, "load_program_ast", fake_load_program_ast)
+    monkeypatch.setattr(analyze_application, "pause", lambda: None)
     monkeypatch.setattr(app.engine_module, "merge_project_basepicture", lambda bp, _graph: bp)
-    monkeypatch.setattr(app, "validate_icf_entries_against_program", lambda *args, **kwargs: FakeReport())
+    monkeypatch.setattr(
+        app_analysis_module,
+        "validate_icf_entries_against_program",
+        lambda *args, **kwargs: FakeReport(),
+    )
 
     app.run_icf_validation(cfg)
 
@@ -457,16 +423,7 @@ def test_run_format_icf_command_formats_files_without_changing_nonblank_lines(tm
     assert "Changed: 1" in out
 
 
-def test_self_check_reports_invalid_nested_config_and_graphics_rule_errors(tmp_path, monkeypatch, capsys):
-    graphics_rules_path = tmp_path / "graphics-rules.json"
-    graphics_rules_path.write_text("{}", encoding="utf-8")
-
-    monkeypatch.setattr(config_module, "get_graphics_rules_path", lambda: graphics_rules_path)
-    monkeypatch.setattr(
-        graphics_rules_module,
-        "load_graphics_rules",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("broken rules")),
-    )
+def test_self_check_reports_invalid_nested_config_errors(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(config_module, "target_exists", lambda *_args, **_kwargs: False)
 
     cfg = deepcopy(app.DEFAULT_CONFIG)
@@ -518,7 +475,6 @@ def test_self_check_reports_invalid_nested_config_and_graphics_rule_errors(tmp_p
     assert "analysis.naming.variables.allow must be a list of strings" in out
     assert "analysis.naming.modules must be a table/object" in out
     assert "analysis.naming.instances.allow must be a list of strings" in out
-    assert "graphics_rules_path invalid" in out
 
 
 def test_main_pauses_when_initial_ast_check_fails(noop_screen, monkeypatch):

@@ -10,10 +10,10 @@ from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef
 from . import _app_analysis_module_commands as module_commands
 from . import _app_analysis_reporting as analysis_reporting_module
 from . import app_analysis as shared
-from . import app_telemetry as telemetry_module
 from .analyzers import variable_usage_reporting as variables_reporting_module
-from .app_interaction import MenuInteraction
+from .application.interaction import MenuInteraction
 from .config_types import ConfigDict
+from .core import telemetry as telemetry_module
 from .models.project_graph import ProjectGraph
 from .reporting.variables_report import DEFAULT_VARIABLE_ANALYSIS_KINDS, IssueKind, VariablesReport
 

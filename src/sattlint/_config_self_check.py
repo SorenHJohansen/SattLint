@@ -72,23 +72,6 @@ def _report_validation_namespace(cfg: ConfigDict, namespace: str) -> bool:
     return ok
 
 
-def _self_check_graphics_rules() -> bool:
-    graphics_rules_path = config_module.get_graphics_rules_path()
-    if graphics_rules_path.exists():
-        from . import graphics_rules as graphics_rules_module  # noqa: PLC0415
-
-        try:
-            graphics_rules, _created = graphics_rules_module.load_graphics_rules(graphics_rules_path)
-        except (OSError, RuntimeError, ValueError) as exc:
-            emit_output(f"graphics_rules_path invalid: {graphics_rules_path} ({exc})")
-            return False
-        emit_output(f"graphics_rules_path: {graphics_rules_path} ({len(graphics_rules.get('rules', []))} rules)")
-        return True
-
-    emit_output(f"graphics_rules_path not created yet: {graphics_rules_path}")
-    return True
-
-
 def self_check(cfg: ConfigDict) -> bool:
     emit_output("\n--- Self-check diagnostics ---")
     ok = True
@@ -106,7 +89,6 @@ def self_check(cfg: ConfigDict) -> bool:
     ok = _self_check_directories(cfg, errors_by_key=errors_by_key) and ok
     ok = _self_check_targets(cfg, errors_by_key=errors_by_key) and ok
     ok = _report_validation_namespace(cfg, "analysis") and ok
-    ok = _self_check_graphics_rules() and ok
 
     emit_output("------------------------------\n")
     return ok

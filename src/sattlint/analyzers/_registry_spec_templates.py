@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
+
+type AnalyzerCategory = Literal["correctness", "heuristic", "style", "development"]
 
 
 @dataclass(frozen=True)
@@ -11,6 +14,7 @@ class AnalyzerSpecTemplate:
     name: str
     description: str
     analyzer_attr: str
+    category: AnalyzerCategory = "correctness"
     requires: tuple[str, ...] = ()
     context_kwargs: tuple[str, ...] = ()
     enabled: bool = True
@@ -87,6 +91,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             name="Commented-out code",
             description="Code-like content inside comments",
             analyzer_attr="analyze_comment_code",
+            category="correctness",
             direct_context=True,
             semantic_rule_source="comment-code",
         ),
@@ -153,6 +158,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             name="Naming consistency",
             description="Detect inconsistent naming styles for variables, modules, and instances across the analyzed target",
             analyzer_attr="analyze_naming_consistency",
+            category="style",
             context_kwargs=("rules",),
         ),
         AnalyzerSpecTemplate(
@@ -160,12 +166,14 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             name="Cyclomatic complexity",
             description="Detect modules and SFC steps whose control-flow complexity exceeds default thresholds",
             analyzer_attr="analyze_cyclomatic_complexity",
+            category="style",
         ),
         AnalyzerSpecTemplate(
             key="parameter-drift",
             name="Parameter drift",
             description="Detect moduletype instances whose resolved literal parameter values drift across the analyzed target",
             analyzer_attr="analyze_parameter_drift",
+            category="heuristic",
             context_kwargs=("unavailable_libraries",),
         ),
         AnalyzerSpecTemplate(
@@ -278,6 +286,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             name="Version drift",
             description="Detect repeated module names that have drifted structurally beyond datecode-only changes",
             analyzer_attr="analyze_version_drift",
+            category="heuristic",
             context_kwargs=("debug",),
             semantic_rule_source="version-drift",
         ),

@@ -11,9 +11,12 @@ from sattline_parser.models.ast_model import BasePicture
 
 from ._engine_graphics_context_helpers import (
     picture_display_path_warnings,
+    resolve_graphics_companion_path,
 )
+from ._engine_syntax_helpers import record_project_warning
 from ._picture_display_path_runtime import correlate_composite_records
 from ._validation_shared import ValidationNotice
+from .graphics_validation import validate_graphics_file
 from .models.project_graph import ProjectGraph
 from .picture_display_paths import correlate_picture_display_records
 
@@ -140,9 +143,7 @@ def graphics_companion_needs_refresh(
     code_path: Path,
     mode: CodeMode | str | None,
 ) -> bool:
-    from . import engine as engine_module  # noqa: PLC0415
-
-    companion_path = engine_module.resolve_graphics_companion_path(code_path, mode=mode)
+    companion_path = resolve_graphics_companion_path(code_path, mode=mode)
     if companion_path is None or companion_path == code_path:
         return _has_attached_graphics_companion(bp)
 
@@ -199,21 +200,13 @@ def attach_graphics_companion(
     timing_sink: Callable[[str, str, float], None] | None = None,
     status_callback: Callable[[str], None] | None = None,
 ) -> bool:
-    from . import engine as engine_module  # noqa: PLC0415
-
-    engine_module_any: Any = engine_module
-    record_project_warning = cast(
-        Callable[[ProjectGraph, str, ValidationNotice | str], None],
-        engine_module_any._record_project_warning,
-    )
-
     def _record_timing(phase_name: str, started_at: float) -> None:
         if timing_sink is None:
             return
         timing_sink(owner_name, phase_name, perf_counter() - started_at)
 
     resolve_started_at = perf_counter()
-    companion_path = engine_module.resolve_graphics_companion_path(code_path, mode=mode)
+    companion_path = resolve_graphics_companion_path(code_path, mode=mode)
     _record_timing("resolve-companion-path", resolve_started_at)
     if companion_path is None or companion_path == code_path:
         return _clear_attached_graphics_companion(bp)
@@ -229,7 +222,7 @@ def attach_graphics_companion(
     ):
         bp_any: Any = bp
         validate_started_at = perf_counter()
-        result = engine_module.validate_graphics_file(companion_path)
+        result = validate_graphics_file(companion_path)
         _record_timing("validate-graphics-file", validate_started_at)
         bp.graphics_file = companion_path.name
         bp.graphics_bindings = list(getattr(result, "bindings", ()))

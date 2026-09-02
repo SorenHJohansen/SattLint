@@ -6,7 +6,7 @@ from typing import Any
 
 from . import _app_analysis_catalog as analysis_catalog
 from .analyzers.variables import IssueKind
-from .app_interaction import MenuInteraction, build_menu_interaction
+from .application.interaction import MenuInteraction, build_menu_interaction
 from .config_types import ConfigDict
 
 
@@ -254,7 +254,6 @@ def module_analysis_submenu(
     run_module_duplicates_analysis_fn: Callable[[ConfigDict], None],
     run_module_find_by_name_fn: Callable[[ConfigDict], None],
     run_module_tree_debug_fn: Callable[[ConfigDict], None],
-    run_graphics_rules_validation_fn: Callable[[ConfigDict], None],
     pause_fn: Callable[[], None],
     emit_output_fn: Callable[..., None],
     choose_menu_option_fn: Callable[..., str] | None = None,
@@ -293,7 +292,6 @@ def module_analysis_submenu(
                 "run_module_duplicates_analysis": run_module_duplicates_analysis_fn,
                 "run_module_find_by_name": run_module_find_by_name_fn,
                 "run_module_tree_debug": run_module_tree_debug_fn,
-                "run_graphics_rules_validation": run_graphics_rules_validation_fn,
             },
         )
 

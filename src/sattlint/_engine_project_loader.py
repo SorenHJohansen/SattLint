@@ -2,26 +2,27 @@
 
 from __future__ import annotations
 
-import importlib
 from pathlib import Path
 from time import perf_counter
 
 from . import _engine_syntax_helpers as engine_syntax_helpers
+from ._engine_dependency_helpers import collect_dependency_version_conflicts
+from ._engine_graphics_helpers import attach_graphics_companion
 from ._engine_loader_base import CircularDependencyError, DependencyVersionCompatibilityError, record_missing_library
 from ._engine_loader_lookup import SattLineProjectLoaderLookupMixin
 from ._validation_shared import ValidationWarning
 from .models.project_graph import ProjectGraph
-from .validation import StructuralValidationError
+from .validation import (
+    StructuralValidationError,
+    validate_transformed_basepicture,
+    validate_transformed_basepicture_dependency_context,
+)
 
 _format_debug_list = engine_syntax_helpers.format_debug_list
 _format_debug_missing_entries = engine_syntax_helpers.format_debug_missing_entries
 _has_current_local_validation = engine_syntax_helpers.has_current_local_validation
 _record_project_failure = engine_syntax_helpers.record_project_failure
 _record_project_warning = engine_syntax_helpers.record_project_warning
-
-
-def _engine_module():
-    return importlib.import_module("sattlint.engine")
 
 
 class SattLineProjectLoader(SattLineProjectLoaderLookupMixin):
@@ -72,9 +73,6 @@ class SattLineProjectLoader(SattLineProjectLoaderLookupMixin):
     ) -> None:
         key = name.lower()
         root_key = getattr(self, "_active_root_key", None)
-        engine_module = _engine_module()
-        attach_graphics_companion = engine_module._attach_graphics_companion
-        collect_dependency_version_conflicts = engine_module._collect_dependency_version_conflicts
 
         if key in self._visited:
             return
@@ -92,8 +90,8 @@ class SattLineProjectLoader(SattLineProjectLoaderLookupMixin):
                 self._update_status(f"Loading {name}: running syntax check")
                 root_code_path = self._find_code_with_context(name, requester_dir=requester_dir)
                 if root_code_path is not None:
-                    engine_module.raise_syntax_validation_failure(
-                        engine_module.validate_single_file_syntax(root_code_path, mode=self.mode)
+                    engine_syntax_helpers.raise_syntax_validation_failure(
+                        engine_syntax_helpers.validate_single_file_syntax(root_code_path, mode=self.mode)
                     )
 
             self._update_status(f"Loading {name}: reading dependency list")
@@ -136,7 +134,7 @@ class SattLineProjectLoader(SattLineProjectLoaderLookupMixin):
                         self._update_status(f"Loading {name}: validating {code_path.name}")
                         validation_started_at = perf_counter()
                         if key != root_key and _has_current_local_validation(basepicture):
-                            engine_module.validate_transformed_basepicture_dependency_context(
+                            validate_transformed_basepicture_dependency_context(
                                 basepicture,
                                 external_datatypes=()
                                 if self.refresh_mode == "ast-only"
@@ -150,7 +148,7 @@ class SattLineProjectLoader(SattLineProjectLoaderLookupMixin):
                                 warning_sink=validation_warnings.append,
                             )
                         else:
-                            engine_module.validate_transformed_basepicture(
+                            validate_transformed_basepicture(
                                 basepicture,
                                 external_datatypes=()
                                 if self.refresh_mode == "ast-only"

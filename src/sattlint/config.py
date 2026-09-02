@@ -18,7 +18,6 @@ validate_config = _config_validation_module.validate_config
 validate_effective_config = _config_validation_module.validate_effective_config
 validate_loaded_config = _config_validation_module.validate_loaded_config
 get_config_path = _config_io_module.get_config_path
-get_graphics_rules_path = _config_io_module.get_graphics_rules_path
 load_config = _config_io_module.load_config
 save_config = _config_io_module.save_config
 configured_targets = _config_validation_module.configured_targets

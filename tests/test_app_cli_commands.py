@@ -8,7 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
-from sattlint import _app_startup, _app_startup_from_app, app
+from sattlint import _app_startup, app
 from sattlint import config as config_module
 
 
@@ -35,7 +35,7 @@ def test_run_validate_config_command_delegates_to_startup_core(monkeypatch):
         return 77
 
     monkeypatch.setattr(
-        _app_startup_from_app.startup_core,
+        _app_startup,
         "run_validate_config_command",
         fake_run_validate_config_command,
     )
@@ -91,7 +91,7 @@ def test_run_analyze_command_delegates_to_startup_core(monkeypatch):
         return 78
 
     monkeypatch.setattr(
-        _app_startup_from_app.startup_core,
+        _app_startup,
         "run_analyze_command",
         fake_run_analyze_command,
     )
@@ -189,7 +189,7 @@ def test_run_cache_prune_command_delegates_to_cli_owner(monkeypatch):
     assert seen["cache_dir"] == "custom-cache"
     assert seen["output_format"] == "json"
     assert seen["prune_cache_dir_fn"] is app.cache.prune_cache_dir
-    assert seen["get_cache_dir_fn"] is app.get_cache_dir
+    assert seen["get_cache_dir_fn"] is app.cache.get_cache_dir
     assert seen["exit_success"] == app.EXIT_SUCCESS
     assert seen["exit_usage_error"] == app.EXIT_USAGE_ERROR
 

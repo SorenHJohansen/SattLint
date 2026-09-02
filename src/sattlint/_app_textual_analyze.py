@@ -52,9 +52,8 @@ def on_selection_list_selection_highlighted(self: Any, event: Any) -> None:
 
 
 def _available_analyzer_specs(self: Any) -> tuple[Any, ...]:
-    app_module = self._app_module
-    get_analyzers_fn = getattr(app_module, "_get_enabled_analyzers", None) if app_module is not None else None
-    if not callable(get_analyzers_fn):
+    get_analyzers_fn = getattr(self, "_get_enabled_analyzers_fn", None)
+    if get_analyzers_fn is None or not callable(get_analyzers_fn):
         return ()
     analyzers_obj = get_analyzers_fn()
     if isinstance(analyzers_obj, list):
@@ -200,7 +199,7 @@ def _analyze_plan(self: Any) -> analysis_planner.AnalysisPlan:
     return analysis_planner.plan_analysis_entries(
         self._ordered_selected_analyze_entry_ids(),
         analyzer_specs=self._available_analyzer_specs(),
-        available_handler_names=analysis_planner.available_handler_names(self._app_module),
+        available_handler_names=analysis_planner.available_handler_names(getattr(self, "_analysis_handlers", None)),
     )
 
 
@@ -456,11 +455,9 @@ def _prompt_analyze_filter(self: Any) -> None:
 def _execute_planned_analysis_step(self: Any, step: analysis_planner.PlannedAnalysisStep) -> None:
     if step.execution.require_targets and not self._configured_target_names():
         raise RuntimeError(f"No configured analysis targets are available for {step.execution.action_text}.")
-    app_module = self._app_module
-    if app_module is None:
-        raise RuntimeError("Analysis actions are unavailable in the current Textual session.")
 
-    action_fn = getattr(app_module, step.execution.handler_name, None)
+    handlers = getattr(self, "_analysis_handlers", None)
+    action_fn = handlers.get(step.execution.handler_name) if isinstance(handlers, dict) else None
     if not callable(action_fn):
         raise RuntimeError(f"{step.label} is unavailable in the current Textual session.")
 

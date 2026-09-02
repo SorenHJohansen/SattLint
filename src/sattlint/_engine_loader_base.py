@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import importlib
 import logging
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
 
 from sattline_parser.models.ast_model import BasePicture
+from sattline_parser.transformer.sl_transformer import SLTransformer
 
 from . import _engine_syntax_helpers as engine_syntax_helpers
 from ._engine_loader_config import (
@@ -17,7 +17,9 @@ from ._engine_loader_config import (
     SattLineProjectLoaderRuntime,
 )
 from ._validation_shared import ValidationWarning
+from .cache import FileASTCache, FileLookupCache, get_cache_dir, get_cache_manager
 from .models.project_graph import ProjectGraph
+from .validation import validate_transformed_basepicture_locally
 
 log = logging.getLogger("SattLint")
 
@@ -29,10 +31,6 @@ _has_current_local_validation = engine_syntax_helpers.has_current_local_validati
 _mark_local_validation = engine_syntax_helpers.mark_local_validation
 _record_project_failure = engine_syntax_helpers.record_project_failure
 _record_project_warning = engine_syntax_helpers.record_project_warning
-
-
-def _engine_module():
-    return importlib.import_module("sattlint.engine")
 
 
 class CircularDependencyError(RuntimeError):
@@ -57,14 +55,12 @@ def ensure_local_validation(
     *,
     warning_sink: list[ValidationWarning] | None = None,
 ) -> bool:
-    engine_module = _engine_module()
-
     return engine_syntax_helpers.ensure_local_validation(
         basepic,
         warning_sink=warning_sink,
         has_current_local_validation_fn=_has_current_local_validation,
         mark_local_validation_fn=_mark_local_validation,
-        validate_transformed_basepicture_locally_fn=engine_module.validate_transformed_basepicture_locally,
+        validate_transformed_basepicture_locally_fn=validate_transformed_basepicture_locally,
     )
 
 
@@ -136,8 +132,6 @@ class SattLineProjectLoaderBase(DebugMixin):
         runtime: SattLineProjectLoaderRuntime | None = None,
         dependencies: SattLineProjectLoaderDependencies | None = None,
     ):
-        engine_module = _engine_module()
-
         selected_runtime = SattLineProjectLoaderRuntime() if runtime is None else runtime
         selected_dependencies = SattLineProjectLoaderDependencies() if dependencies is None else dependencies
         self.config = config
@@ -153,17 +147,17 @@ class SattLineProjectLoaderBase(DebugMixin):
         self._stage_timing_sink = selected_runtime.stage_timing_sink
         self._graphics_timing_sink = selected_runtime.graphics_timing_sink
         self._last_status_message: str | None = None
-        self.parser = engine_module.create_sl_parser()
-        self.transformer = engine_module.SLTransformer()
+        self.parser = engine_syntax_helpers.create_sl_parser()
+        self.transformer = SLTransformer()
         self._visited: set[str] = set()
         self._visit_stack: list[str] = []
         self._ignored_dirs: set[Path] = set()
         if selected_dependencies.cache_manager is None:
-            self._cache_dir = engine_module.get_cache_dir()
-            self._cache_manager = engine_module.cache_module.get_cache_manager(
+            self._cache_dir = get_cache_dir()
+            self._cache_manager = get_cache_manager(
                 self._cache_dir,
-                file_lookup_cache_cls=engine_module.FileLookupCache,
-                file_ast_cache_cls=engine_module.FileASTCache,
+                file_lookup_cache_cls=FileLookupCache,
+                file_ast_cache_cls=FileASTCache,
             )
         else:
             self._cache_manager = selected_dependencies.cache_manager

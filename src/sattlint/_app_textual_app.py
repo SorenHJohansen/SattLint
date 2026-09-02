@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, ClassVar
@@ -254,7 +255,8 @@ if _TEXTUAL_APP is not None:
             save_config_fn: Any,
             config_path: Any,
             quit_app_error: type[BaseException],
-            app_module: Any | None = None,
+            analysis_handlers: dict[str, Callable[..., Any]] | None = None,
+            get_enabled_analyzers_fn: Any | None = None,
             self_check_fn: Any | None = None,
             dump_menu_fn: Any | None = None,
             force_refresh_ast_fn: Any | None = None,
@@ -262,7 +264,8 @@ if _TEXTUAL_APP is not None:
             startup_output_is_warning: bool = False,
         ) -> None:
             super().__init__()
-            self._app_module = app_module
+            self._analysis_handlers = analysis_handlers or {}
+            self._get_enabled_analyzers_fn = get_enabled_analyzers_fn
             self._cfg = cfg
             self._summarize_targets_fn = summarize_targets_fn
             self._analysis_menu_fn = analysis_menu_fn
@@ -492,12 +495,15 @@ else:  # pragma: no cover - optional dependency path
     SattLintTextualApp: Any = None
 
 
-def _run_textual_ast_refresh_screen(cfg: ConfigDict, *, app_module: Any) -> _AstRefreshStartupResult:
-    has_targets_fn = getattr(app_module, "_has_analyzed_targets", None)
-    ensure_ast_cache_fn = getattr(app_module, "ensure_ast_cache", None)
-    if not callable(has_targets_fn) or not callable(ensure_ast_cache_fn):
+def _run_textual_ast_refresh_screen(
+    cfg: ConfigDict,
+    *,
+    has_analyzed_targets_fn: Any | None = None,
+    ensure_ast_cache_fn: Any | None = None,
+) -> _AstRefreshStartupResult:
+    if not callable(has_analyzed_targets_fn) or not callable(ensure_ast_cache_fn):
         return _AstRefreshStartupResult(ok=True, output="")
-    if not has_targets_fn(cfg):
+    if not has_analyzed_targets_fn(cfg):
         return _AstRefreshStartupResult(ok=True, output="")
 
     loading_app = _AstRefreshTextualApp(
@@ -513,7 +519,6 @@ def _run_textual_ast_refresh_screen(cfg: ConfigDict, *, app_module: Any) -> _Ast
 def run_textual_shell(
     cfg: ConfigDict,
     *,
-    app_module: Any,
     summarize_targets_fn: Any,
     analysis_menu_fn: Any | None = None,
     config_menu_fn: Any | None = None,
@@ -523,12 +528,25 @@ def run_textual_shell(
     save_config_fn: Any,
     config_path: Any,
     quit_app_error: type[BaseException],
+    analysis_handler_fns: dict[str, Callable[..., Any]] | None = None,
+    get_enabled_analyzers_fn: Any | None = None,
+    has_analyzed_targets_fn: Any | None = None,
+    ensure_ast_cache_fn: Any | None = None,
+    self_check_fn: Any | None = None,
+    dump_menu_fn: Any | None = None,
+    force_refresh_ast_fn: Any | None = None,
+    set_textual_menu_interaction_fn: Any | None = None,
+    clear_textual_menu_interaction_fn: Any | None = None,
     **_unused: Any,
 ) -> None:
     if _TEXTUAL_APP is None:
         raise RuntimeError("Textual UI requested, but textual is not installed")
 
-    startup_result = _run_textual_ast_refresh_screen(cfg, app_module=app_module)
+    startup_result = _run_textual_ast_refresh_screen(
+        cfg,
+        has_analyzed_targets_fn=has_analyzed_targets_fn,
+        ensure_ast_cache_fn=ensure_ast_cache_fn,
+    )
 
     def _noop_menu_action(_cfg: ConfigDict) -> None:
         return None
@@ -539,10 +557,11 @@ def run_textual_shell(
         analysis_menu_fn=analysis_menu_fn or _noop_menu_action,
         config_menu_fn=config_menu_fn or _noop_menu_action,
         tools_menu_fn=tools_menu_fn or _noop_menu_action,
-        app_module=app_module,
-        self_check_fn=app_module.self_check,
-        dump_menu_fn=app_module.dump_menu,
-        force_refresh_ast_fn=app_module.refresh_analysis_caches,
+        analysis_handlers=analysis_handler_fns,
+        get_enabled_analyzers_fn=get_enabled_analyzers_fn,
+        self_check_fn=self_check_fn,
+        dump_menu_fn=dump_menu_fn,
+        force_refresh_ast_fn=force_refresh_ast_fn,
         show_help_fn=show_help_fn,
         get_help_text_fn=get_help_text_fn,
         save_config_fn=save_config_fn,
@@ -554,8 +573,10 @@ def run_textual_shell(
     bridge = TextualInteractionBridge(
         submit_request_fn=lambda request: textual_app.call_from_thread(textual_app.present_request, request)
     )
-    app_module.set_textual_menu_interaction(bridge.as_menu_interaction())
+    if set_textual_menu_interaction_fn is not None:
+        set_textual_menu_interaction_fn(bridge.as_menu_interaction())
     try:
         textual_app.run()
     finally:
-        app_module.clear_textual_menu_interaction()
+        if clear_textual_menu_interaction_fn is not None:
+            clear_textual_menu_interaction_fn()

@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
-from .app_interaction import MenuInteraction
+from .application.interaction import MenuInteraction
 from .config_types import ConfigDict
 
 APP_SHELL_BINDINGS: list[tuple[str, str, str]] = [

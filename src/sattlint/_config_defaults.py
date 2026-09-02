@@ -81,7 +81,7 @@ TOP_LEVEL_CONFIG_FIELDS: dict[str, TopLevelConfigField] = {
                 "active": "default",
                 "profiles": {
                     "default": {
-                        "description": "Balanced default analyzer profile.",
+                        "description": "Default profile that runs only correctness checks.",
                         "disabled_rules": [],
                         "severity_overrides": {},
                         "confidence_overrides": {},

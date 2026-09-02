@@ -17,8 +17,3 @@ def get_config_path() -> Path:
     cfg_dir = base / "sattlint"
     cfg_dir.mkdir(parents=True, exist_ok=True)
     return cfg_dir / "config.toml"
-
-
-def get_graphics_rules_path(config_path: Path | None = None) -> Path:
-    resolved_config_path = config_path or get_config_path()
-    return resolved_config_path.with_name("graphics_rules.json")

@@ -63,8 +63,27 @@ DEFAULT_CLI_ANALYZER_KEYS: tuple[str, ...] = (
     "shadowing",
     "spec-compliance",
     "loop-output-refactor",
+    "alarm-integrity",
+    "initial-values",
+    "interface-contracts",
     "powerup",
+    "signal-lifecycle",
+    "loop-stability",
+    "fault-handling",
+    "numeric-constraints",
+    "data-dependency",
+    "config-drift",
+    "scan-loop-resource-usage",
+    "resource-usage",
+    "scan-concurrency",
+    "scan-shared-access",
+    "same-cycle",
     "timing",
+    "safety-paths",
+    "taint-paths",
+    "unsafe-defaults",
+    "dataflow",
+    "state-inference",
 )
 
 
@@ -169,6 +188,7 @@ class AnalyzerMetadata:
             "key": self.spec.key,
             "name": self.spec.name,
             "description": self.spec.description,
+            "category": self.spec.category,
             "enabled": self.spec.enabled,
             "supports_live_diagnostics": self.spec.supports_live_diagnostics,
             "semantic_mapping_kind": self.spec.semantic_mapping_kind,
@@ -445,6 +465,16 @@ def get_default_analyzers() -> list[AnalyzerSpec]:
     return build_default_analyzers(semantic_layer_analyzer_key=SEMANTIC_LAYER_ANALYZER_KEY)
 
 
+def get_correctness_analyzer_keys() -> tuple[str, ...]:
+    return tuple(
+        sorted(
+            analyzer.spec.key
+            for analyzer in get_default_analyzer_catalog().analyzers
+            if analyzer.spec.enabled and analyzer.spec.category == "correctness"
+        )
+    )
+
+
 __all__ = [
     "DEFAULT_CLI_ANALYZER_KEYS",
     "DEFAULT_CORPUS_MANIFEST_DIR",
@@ -501,6 +531,7 @@ __all__ = [
     "get_configured_mutually_exclusive_step_sets",
     "get_configured_naming_rules",
     "get_configured_step_contracts",
+    "get_correctness_analyzer_keys",
     "get_declared_cli_analyzer_keys",
     "get_declared_lsp_analyzer_keys",
     "get_default_analyzer_catalog",

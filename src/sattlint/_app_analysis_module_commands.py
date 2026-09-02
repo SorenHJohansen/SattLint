@@ -7,7 +7,7 @@ from sattline_parser.models.ast_model import BasePicture
 from . import _app_analysis_menus as analysis_menus_module
 from . import app_analysis as shared
 from .analyzers import variable_usage_reporting as variables_reporting_module
-from .app_interaction import MenuInteraction
+from .application.interaction import MenuInteraction
 from .config_types import ConfigDict
 from .models.project_graph import ProjectGraph
 

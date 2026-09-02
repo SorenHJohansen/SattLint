@@ -372,22 +372,6 @@ def build_static_catalog_entries() -> tuple[AnalysisCatalogEntry, ...]:
                 classic_menu_key="3",
             ),
             AnalysisCatalogEntry(
-                entry_id="structure.validate-graphics-rules",
-                family_id=FAMILY_STRUCTURE_MODULES,
-                section_id=SECTION_STRUCTURE_ACTIONS,
-                label="Validate graphics rules",
-                description="Check configured graphics rules against loaded modules.",
-                execution=AnalysisExecutionSpec(
-                    kind="run_handler",
-                    handler_name="run_graphics_rules_validation",
-                    require_targets=True,
-                    action_text="module analysis",
-                    normalized_step_id="step.structure.validate-graphics-rules",
-                ),
-                sort_order=603,
-                classic_menu_key="4",
-            ),
-            AnalysisCatalogEntry(
                 entry_id="interfaces.mms-interface-variables",
                 family_id=FAMILY_INTERFACES,
                 section_id=SECTION_INTERFACE_ACTIONS,

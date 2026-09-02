@@ -9,10 +9,10 @@ from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
-from . import app_telemetry as telemetry_module
 from ._app_debug import debug_enabled, log_debug_exception
 from .casefolding import casefold_equal
 from .config_types import ConfigDict
+from .core import telemetry as telemetry_module
 from .models.project_graph import ProjectGraph
 
 _STAGE_ORDER = ("load_or_parse", "validate", "attach_graphics", "index", "ast_cache_save")
