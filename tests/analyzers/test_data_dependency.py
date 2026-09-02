@@ -13,12 +13,12 @@ def _varref(name: str) -> VarRef:
     return VarRef(name=name)
 
 
-def test_data_dependency_analyzer_is_registered_and_opt_in_for_cli() -> None:
+def test_data_dependency_analyzer_is_registered_and_in_default_cli() -> None:
     specs = {spec.key: spec for spec in get_default_analyzers()}
 
     assert "data-dependency" in specs
     assert specs["data-dependency"].enabled is True
-    assert "data-dependency" not in get_actual_cli_analyzer_keys()
+    assert "data-dependency" in get_actual_cli_analyzer_keys()
 
 
 def test_data_dependency_reports_transitive_dependency_path() -> None:

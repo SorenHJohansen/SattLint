@@ -234,6 +234,7 @@ class AnalyzerSpec:
     name: str
     description: str
     run: Analyzer
+    category: str = "correctness"
     requires: tuple[str, ...] = ()
     enabled: bool = True
     supports_live_diagnostics: bool = False

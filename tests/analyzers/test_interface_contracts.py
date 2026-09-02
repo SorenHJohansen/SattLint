@@ -45,7 +45,7 @@ def test_interface_contracts_analyzer_is_registered() -> None:
 
     assert "interface-contracts" in specs
     assert specs["interface-contracts"].enabled is True
-    assert "interface-contracts" not in get_actual_cli_analyzer_keys()
+    assert "interface-contracts" in get_actual_cli_analyzer_keys()
 
 
 def test_interface_contracts_reports_missing_required_parameter_connection() -> None:

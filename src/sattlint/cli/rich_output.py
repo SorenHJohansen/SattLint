@@ -3,8 +3,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from . import app_support as app_support_module
-from . import console as console_module
+from .. import app_support as app_support_module
+from .. import console as console_module
 
 
 def print_menu(

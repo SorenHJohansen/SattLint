@@ -1,11 +1,27 @@
 from __future__ import annotations
 
-import inspect
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
 from . import _app_analysis_catalog as analysis_catalog
+
+HANDLER_NAMES: frozenset[str] = frozenset(
+    {
+        "run_variable_analysis",
+        "_run_checks",
+        "run_datatype_usage_analysis",
+        "run_debug_variable_usage",
+        "run_module_localvar_analysis",
+        "run_module_duplicates_analysis",
+        "run_module_find_by_name",
+        "run_module_tree_debug",
+        "run_mms_interface_analysis",
+        "run_icf_validation",
+        "run_icf_formatter",
+        "run_comment_code_analysis",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -51,18 +67,14 @@ class AnalysisPlan:
         return not self.missing_handlers and bool(self.executable_steps)
 
 
-def available_handler_names(app_module: Any | None) -> frozenset[str]:
-    if app_module is None:
+def available_handler_names(
+    handler_fns: Mapping[str, Callable[..., Any]] | Iterable[str] | None = None,
+) -> frozenset[str]:
+    if handler_fns is None:
         return frozenset()
-    names: set[str] = set()
-    for name in dir(app_module):
-        try:
-            value = inspect.getattr_static(app_module, name)
-        except AttributeError:
-            continue
-        if callable(value):
-            names.add(name)
-    return frozenset(names)
+    if isinstance(handler_fns, Mapping):
+        return frozenset(handler_fns.keys())
+    return frozenset(handler_fns)
 
 
 def plan_analysis_entries(

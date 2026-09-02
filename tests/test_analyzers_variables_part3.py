@@ -1,5 +1,6 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportPrivateUsage=false
 from sattline_parser.models.ast_model import FrameModule
+from sattline_parser.models.expressions import BoolOp
 
 from ._analyzers_variables_test_support import *
 
@@ -684,6 +685,50 @@ def test_absolute_enable_tail_marks_ancestor_moduleparameter_as_used():
 
     assert not any(issue.kind is IssueKind.UNUSED and issue.variable is parent_parameter for issue in analyzer.issues)
     assert analyzer._get_usage(parent_parameter).ui_read is True
+
+
+def test_header_enable_tail_boolean_expression_marks_operand_variables_as_used():
+    child_header = _hdr("Child")
+    child_header.enable_tail = BoolOp(
+        "AND",
+        (_varref("Enable"), _varref("EnablePrivilege")),
+    )
+    enable_var = Variable(name="Enable", datatype=Simple_DataType.BOOLEAN)
+    privilege_var = Variable(name="EnablePrivilege", datatype=Simple_DataType.BOOLEAN)
+    parent_module = SingleModule(
+        header=_hdr("Parent"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[enable_var, privilege_var],
+        submodules=[
+            SingleModule(
+                header=child_header,
+                moduledef=None,
+                moduleparameters=[],
+                localvariables=[],
+                submodules=[],
+                modulecode=None,
+                parametermappings=[],
+            )
+        ],
+        modulecode=None,
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[parent_module],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp, selected_issue_kinds={IssueKind.UNUSED})
+    analyzer.run()
+
+    assert analyzer._get_usage(enable_var).ui_read is True
+    assert analyzer._get_usage(privilege_var).ui_read is True
 
 
 def test_variables_fallback_warnings_are_not_logged_without_debug(caplog):

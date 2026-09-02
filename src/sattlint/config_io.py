@@ -49,10 +49,6 @@ def get_config_path() -> Path:
     return _config_paths_module.get_config_path()
 
 
-def get_graphics_rules_path(config_path: Path | None = None) -> Path:
-    return _config_paths_module.get_graphics_rules_path(config_path)
-
-
 def load_config(path: Path) -> tuple[ConfigDict, bool]:
     if not path.exists():
         emit_output(f"⚠ No config found, creating default: {path}")

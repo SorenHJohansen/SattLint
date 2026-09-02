@@ -10,7 +10,6 @@ from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
-from . import app_telemetry as telemetry_module
 from . import cache as cache_module
 from ._app_analysis_loading_support import (
     _attach_analysis_cache_metadata,
@@ -28,6 +27,7 @@ from ._app_analysis_loading_support import (
 from ._app_debug import log_debug_exception
 from .casefolding import casefold_equal, casefold_key
 from .config_types import ConfigDict
+from .core import telemetry as telemetry_module
 from .models.project_graph import ProjectGraph, RootOrigin
 
 LoadedProject = tuple[str, BasePicture, ProjectGraph]

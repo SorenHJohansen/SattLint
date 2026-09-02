@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from sattlint import app, app_rich
+from sattlint import app
+from sattlint.cli import rich_output as app_rich
+from sattlint.cli import startup as startup_application
 
 
 def test_rich_menu_renderer_uses_console_helpers(monkeypatch) -> None:
@@ -42,8 +44,8 @@ def test_app_print_menu_uses_startup_renderer(monkeypatch) -> None:
     seen: dict[str, object] = {}
 
     monkeypatch.setattr(
-        app.app_startup_module,
-        "print_menu_from_app",
+        startup_application,
+        "print_menu",
         lambda *args, **kwargs: seen.update({"startup": (args, kwargs)}),
     )
 

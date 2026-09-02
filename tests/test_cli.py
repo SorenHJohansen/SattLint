@@ -558,9 +558,6 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
     _app_interactive_menus.show_config(
         cfg,
         show_config_fn=lambda local_cfg, **kwargs: misc_seen.update({"show_config_cfg": local_cfg, **kwargs}),
-        get_graphics_rules_path_fn=lambda: Path("graphics.json"),
-        load_graphics_rules_fn=lambda path=None: ({"rules": []}, False),
-        graphics_rule_config_line_fn=lambda _rule: "line",
     )
     _app_interactive_menus.print_menu(
         "Menu",
@@ -622,7 +619,6 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
             target_exists_fn=lambda _target, _cfg: True,
             save_config_fn=lambda _path, _cfg: None,
             apply_debug_fn=lambda _cfg: None,
-            graphics_rules_menu_fn=lambda _cfg: None,
             quit_app_fn=lambda: None,
         )
         is True

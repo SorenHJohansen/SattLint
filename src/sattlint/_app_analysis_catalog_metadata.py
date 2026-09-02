@@ -149,10 +149,6 @@ _STATIC_ENTRY_DETAILS: dict[str, tuple[str, str]] = {
         "The resolved module hierarchy for the current target.",
         "Walks the loaded target structure and renders the module hierarchy for inspection.",
     ),
-    "structure.validate-graphics-rules": (
-        "Configured graphics-rule violations across the loaded modules.",
-        "Runs the configured graphics rule checks against the loaded module tree and graphics metadata.",
-    ),
     "interfaces.mms-interface-variables": (
         "MMS mappings plus any related interface findings on the loaded target.",
         "Builds the MMS and ICF inventory, then reports interface hits and MMS-specific findings.",

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # pyright: reportPrivateUsage=false, reportUnusedFunction=false
+# ruff: noqa: PLC0415
 """CLI entry points and interactive helpers for SattLint."""
 
 from __future__ import annotations
@@ -8,8 +9,6 @@ import argparse
 import os
 import sys
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
-from functools import partial
 from pathlib import Path
 from typing import Any, cast
 
@@ -17,22 +16,10 @@ from sattline_parser.models.ast_model import BasePicture
 
 from . import _app_analysis_checks as app_analysis_checks_module
 from . import _app_analysis_commands as app_analysis_commands_module
-from . import _app_analysis_from_app as _app_analysis_from_app_module
-from . import _app_facade_analysis as app_facade_analysis_module
-from . import _app_facade_commands as app_facade_commands_module
-from . import _app_facade_project as app_facade_project_module
-from . import _app_graphics_from_app as _app_graphics_from_app_module
-from . import _app_menus_from_app as _app_menus_from_app_module
-from . import _app_startup_from_app as app_startup_module
 from . import analysis_catalog as analysis_catalog_module
 from . import app_analysis as app_analysis_module
 from . import app_base as app_base_module
-from . import app_cli_commands as app_cli_commands_module
-from . import app_graphics as app_graphics_module
-from . import app_interaction as app_interaction_module
-from . import app_menus as app_menus_module
 from . import app_support as app_support_module
-from . import app_telemetry as app_telemetry_module
 from . import cache as cache_module
 from . import config as _config_module
 from . import console as console_module
@@ -40,6 +27,18 @@ from . import engine as engine_module_impl
 from .analyzers.variables import (
     IssueKind,
 )
+from .application import analyze as analyze_application
+from .application import interaction as app_interaction_module
+from .application import project as project_application
+from .application._interaction import (
+    has_textual_menu_interaction,
+    textual_menu_interaction,
+)
+from .cli import app_cli_commands as app_cli_commands_module
+from .cli import app_commands as commands_application
+from .cli import menus as app_menus_module
+from .cli import startup as startup_application
+from .core import telemetry as app_telemetry_module
 from .core.semantic import load_workspace_snapshot
 from .models.project_graph import ProjectGraph
 
@@ -49,21 +48,15 @@ ConfigDict = _config_module.ConfigDict
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
 VariableAnalysisSelection = set[IssueKind] | None
 VariableAnalysisMap = dict[str, tuple[str, VariableAnalysisSelection]]
-GraphicsRulesConfig = dict[str, Any]
-GraphicsRulesLoadResult = tuple[GraphicsRulesConfig, bool]
 LoadedConfig = tuple[ConfigDict, bool]
 ConfigValidationResult = _config_module.ConfigValidationResult
 
 app_analysis: Any = app_analysis_module
 app_analysis_checks: Any = app_analysis_checks_module
 app_analysis_commands: Any = app_analysis_commands_module
-app_analysis_from_app_module: Any = _app_analysis_from_app_module
 app_base: Any = app_base_module
 app_cli_commands: Any = app_cli_commands_module
-app_graphics: Any = app_graphics_module
-app_graphics_from_app_module: Any = _app_graphics_from_app_module
 app_menus: Any = app_menus_module
-app_menus_from_app_module: Any = _app_menus_from_app_module
 app_support: Any = app_support_module
 app_telemetry: Any = app_telemetry_module
 cache: Any = cache_module
@@ -72,10 +65,6 @@ get_default_cli_analyzers = analysis_catalog_module.get_default_cli_analyzers
 get_selectable_analyzers = analysis_catalog_module.get_selectable_analyzers
 analyze_variables = app_analysis_module.analyze_variables
 ASTCache = cache_module.ASTCache
-
-_APP_MODULE: Any = sys.modules[__name__]
-_interactive_ui_mode = "textual"
-_textual_menu_interaction: Any | None = None
 
 VARIABLE_ANALYSES: VariableAnalysisMap = app_analysis.VARIABLE_ANALYSES
 HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = app_analysis.HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS
@@ -90,11 +79,7 @@ CONFIG_PATH: Path = app_base.CONFIG_PATH
 DEFAULT_CONFIG: ConfigDict = app_base.DEFAULT_CONFIG
 
 
-@dataclass(frozen=True)
-class MenuOption:
-    key: str
-    label: str
-    description: str = ""
+MenuOption = startup_application.MenuOption
 
 
 TargetLoadError = app_support.TargetLoadError
@@ -120,25 +105,11 @@ def save_config(path: Path, cfg: ConfigDict) -> None:
     app_base.save_config(path, cfg)
 
 
-def get_graphics_rules_path() -> Path:
-    return cast(Path, app_graphics.get_graphics_rules_path(CONFIG_PATH))
-
-
-def load_graphics_rules(path: Path | None = None) -> GraphicsRulesLoadResult:
-    return cast(GraphicsRulesLoadResult, app_graphics.load_graphics_rules(CONFIG_PATH, path))
-
-
-def save_graphics_rules(path: Path, rules: dict[str, Any]) -> None:
-    app_graphics.save_graphics_rules(path, rules)
-    emit_output("Graphics rules saved")
-
-
 def self_check(cfg: ConfigDict) -> bool:
     return cast(bool, app_base.self_check(cfg))
 
 
-def validate_effective_config(cfg: ConfigDict) -> ConfigValidationResult:
-    return _config_module.validate_effective_config(cfg)
+validate_effective_config = _config_module.validate_effective_config
 
 
 log: Any = app_base.log
@@ -152,14 +123,15 @@ def _clear_windows_console() -> None:
 
 
 def clear_screen() -> None:
-    if _interactive_ui_mode == "textual" and _textual_menu_interaction is not None:
+    if has_textual_menu_interaction():
         return
     app_base.clear_screen(os_module=os, sys_module=sys, clear_windows_console=_clear_windows_console)
 
 
 def pause() -> None:
-    if _interactive_ui_mode == "textual" and _textual_menu_interaction is not None:
-        _textual_menu_interaction.pause()
+    interaction = textual_menu_interaction()
+    if interaction is not None:
+        interaction.pause()
         return
     app_base.pause()
 
@@ -172,14 +144,16 @@ def quit_app() -> None:
 
 
 def confirm(msg: str) -> bool:
-    if _interactive_ui_mode == "textual" and _textual_menu_interaction is not None:
-        return bool(_textual_menu_interaction.confirm(msg))
+    interaction = textual_menu_interaction()
+    if interaction is not None:
+        return bool(interaction.confirm(msg))
     return cast(bool, app_base.confirm(msg))
 
 
 def prompt(msg: str, default: str | None = None) -> str:
-    if _interactive_ui_mode == "textual" and _textual_menu_interaction is not None:
-        return str(_textual_menu_interaction.prompt(msg, default))
+    interaction = textual_menu_interaction()
+    if interaction is not None:
+        return str(interaction.prompt(msg, default))
     return cast(str, app_base.prompt(msg, default))
 
 
@@ -199,14 +173,14 @@ def run_syntax_check_command(file_path: str, *, output_format: str = "text") -> 
     return cast(int, app_base.run_syntax_check_command(file_path, output_format=output_format))
 
 
-run_cli = app_facade_commands_module.run_cli
-run_validate_config_command = app_facade_commands_module.run_validate_config_command
-run_analyze_command = app_facade_commands_module.run_analyze_command
-run_cache_prune_command = app_facade_commands_module.run_cache_prune_command
-_configured_icf_files = app_facade_commands_module._configured_icf_files
-run_format_icf_command = app_facade_commands_module.run_format_icf_command
-run_icf_formatter = app_facade_commands_module.run_icf_formatter
-show_config = app_facade_commands_module.show_config
+run_cli = commands_application.run_cli
+run_validate_config_command = commands_application.run_validate_config_command
+run_analyze_command = commands_application.run_analyze_command
+run_cache_prune_command = commands_application.run_cache_prune_command
+_configured_icf_files = commands_application.configured_icf_files
+run_format_icf_command = commands_application.run_format_icf_command
+run_icf_formatter = commands_application.run_icf_formatter
+show_config = commands_application.show_config
 
 
 def _print_menu(
@@ -216,34 +190,37 @@ def _print_menu(
     intro: str | None = None,
     note: str | None = None,
 ) -> None:
-    app_startup_module.print_menu_from_app(title, options, intro=intro, note=note, app_module=_APP_MODULE)
+    startup_application.print_menu(title, options, intro=intro, note=note)
 
 
 def set_interactive_ui_mode(ui_mode: str | None) -> None:
-    global _interactive_ui_mode
-    if ui_mode == "textual":
-        _interactive_ui_mode = ui_mode
-        return
-    _interactive_ui_mode = "textual"
+    from .application._interaction import set_interactive_ui_mode as _set
+
+    _set(ui_mode)
 
 
 def reset_interactive_ui_mode() -> None:
-    set_interactive_ui_mode("textual")
-    clear_textual_menu_interaction()
+    from .application._interaction import reset_interactive_ui_mode as _reset
+
+    _reset()
 
 
 def get_interactive_ui_mode() -> str:
-    return _interactive_ui_mode
+    from .application._interaction import get_interactive_ui_mode as _get
+
+    return _get()
 
 
 def set_textual_menu_interaction(interaction: Any) -> None:
-    global _textual_menu_interaction
-    _textual_menu_interaction = interaction
+    from .application._interaction import set_textual_menu_interaction as _set
+
+    _set(interaction)
 
 
 def clear_textual_menu_interaction() -> None:
-    global _textual_menu_interaction
-    _textual_menu_interaction = None
+    from .application._interaction import clear_textual_menu_interaction as _clear
+
+    _clear()
 
 
 def choose_menu_option(
@@ -266,8 +243,9 @@ def choose_menu_option(
 
 
 def build_menu_interaction() -> Any:
-    if _textual_menu_interaction is not None:
-        return _textual_menu_interaction
+    interaction = textual_menu_interaction()
+    if interaction is not None:
+        return interaction
     return app_interaction_module.build_menu_interaction(
         print_menu_fn=_print_menu,
         choose_menu_option_fn=choose_menu_option,
@@ -283,7 +261,7 @@ def resolve_interactive_ui_mode(cfg: ConfigDict, override_ui_mode: str | None = 
     if requested_ui is not None and requested_ui.strip().casefold() not in {"", "textual"}:
         raise ValueError("SattLint interactive mode is Textual-only; --ui must be 'textual'.")
 
-    from . import app_textual as app_textual_module  # noqa: PLC0415
+    from . import app_textual as app_textual_module
 
     if app_textual_module.has_textual():
         return "textual"
@@ -291,75 +269,65 @@ def resolve_interactive_ui_mode(cfg: ConfigDict, override_ui_mode: str | None = 
 
 
 def run_interactive_session(cfg: ConfigDict, **kwargs: Any) -> None:
-    from . import app_textual as app_textual_module  # noqa: PLC0415
+    from .cli import startup as cli_startup
 
-    kwargs.setdefault("get_help_text_fn", get_help_text)
-    app_textual_module.run_textual_shell(cfg, app_module=_APP_MODULE, **kwargs)
+    cli_startup.run_interactive_session(cfg, **kwargs)
 
 
 def _menu_option(key: str, label: str, description: str) -> MenuOption:
     return MenuOption(key, label, description)
 
 
-_summarize_targets = app_facade_project_module._summarize_targets
-show_help = app_facade_project_module.show_help
-get_help_text = app_facade_project_module.get_help_text
-_get_analyzed_targets = app_facade_project_module._get_analyzed_targets
-_require_analyzed_targets = app_facade_project_module._require_analyzed_targets
-_has_analyzed_targets = app_facade_project_module._has_analyzed_targets
-_require_targets_for_menu_action = app_facade_project_module._require_targets_for_menu_action
-_cache_key_for_target = app_facade_project_module._cache_key_for_target
-_split_csv_values = app_facade_project_module._split_csv_values
+_summarize_targets = startup_application.summarize_targets
+show_help = startup_application.show_help
+get_help_text = startup_application.get_help_text
+_get_analyzed_targets = project_application.get_analyzed_targets
+_require_analyzed_targets = project_application.require_analyzed_targets
+_has_analyzed_targets = project_application.has_analyzed_targets
+_require_targets_for_menu_action = project_application.require_targets_for_menu_action
+_cache_key_for_target = project_application.cache_key_for_target
+_split_csv_values = project_application.split_csv_values
 
 
-_graphics_rule_label: Callable[[dict[str, Any]], str] = app_graphics.graphics_rule_label
-_graphics_rule_config_line: Callable[[dict[str, Any]], str] = app_graphics.graphics_rule_config_line
-_print_graphics_rules_summary: Callable[..., None] = app_graphics.print_graphics_rules_summary
 config_module = _config_module
 validate_icf_entries_against_program: Callable[..., Any] = app_analysis.validate_icf_entries_against_program
 
 
-_discover_graphics_rule_selector_options = app_facade_project_module._discover_graphics_rule_selector_options
-_pick_or_prompt_graphics_rule_selector_value = app_facade_project_module._pick_or_prompt_graphics_rule_selector_value
-graphics_rules_menu = app_facade_project_module.graphics_rules_menu
-_prompt_graphics_rule_definition_with_config = app_facade_project_module._prompt_graphics_rule_definition_with_config
-_collect_graphics_layout_entries_for_target = app_facade_project_module._collect_graphics_layout_entries_for_target
-run_graphics_rules_validation = app_facade_project_module.run_graphics_rules_validation
-_iter_loaded_projects = app_facade_project_module._iter_loaded_projects
-_source_paths_for_current_target = app_facade_project_module._source_paths_for_current_target
-_target_is_library = app_facade_project_module._target_is_library
-load_project = app_facade_project_module.load_project
-load_program_ast = app_facade_project_module.load_program_ast
-force_refresh_ast = app_facade_project_module.force_refresh_ast
-ensure_ast_cache = app_facade_project_module.ensure_ast_cache
-refresh_analysis_caches = app_facade_project_module.refresh_analysis_caches
-run_variable_analysis = app_facade_analysis_module.run_variable_analysis
-run_datatype_usage_analysis = app_facade_analysis_module.run_datatype_usage_analysis
-variable_usage_submenu = app_facade_analysis_module.variable_usage_submenu
-module_analysis_submenu = app_facade_analysis_module.module_analysis_submenu
-interface_communication_submenu = app_facade_analysis_module.interface_communication_submenu
-code_quality_submenu = app_facade_analysis_module.code_quality_submenu
-analyzer_catalog_menu = app_facade_analysis_module.analyzer_catalog_menu
-advanced_analysis_menu = app_facade_analysis_module.advanced_analysis_menu
-analysis_menu = app_facade_analysis_module.analysis_menu
-run_module_duplicates_analysis = app_facade_analysis_module.run_module_duplicates_analysis
-run_module_find_by_name = app_facade_analysis_module.run_module_find_by_name
-run_module_tree_debug = app_facade_analysis_module.run_module_tree_debug
-run_analysis_menu = app_facade_analysis_module.run_analysis_menu
-variable_analysis_menu = app_facade_analysis_module.variable_analysis_menu
-run_module_localvar_analysis = app_facade_analysis_module.run_module_localvar_analysis
-_get_enabled_analyzers = app_facade_analysis_module._get_enabled_analyzers
-_get_selectable_analyzers = app_facade_analysis_module._get_selectable_analyzers
-_run_checks = app_facade_analysis_module._run_checks
-run_checks_menu = app_facade_analysis_module.run_checks_menu
-run_mms_interface_analysis = app_facade_analysis_module.run_mms_interface_analysis
-run_icf_validation = app_facade_analysis_module.run_icf_validation
-run_debug_variable_usage = app_facade_analysis_module.run_debug_variable_usage
-run_comment_code_analysis = app_facade_analysis_module.run_comment_code_analysis
-run_advanced_datatype_analysis = app_facade_analysis_module.run_advanced_datatype_analysis
-dump_menu = app_facade_analysis_module.dump_menu
-config_menu = app_facade_analysis_module.config_menu
-tools_menu = app_facade_analysis_module.tools_menu
+_iter_loaded_projects = project_application.iter_loaded_projects
+_source_paths_for_current_target = project_application.source_paths_for_current_target
+_target_is_library = project_application.target_is_library
+load_project = project_application.load_project
+load_program_ast = project_application.load_program_ast
+force_refresh_ast = project_application.force_refresh_ast
+ensure_ast_cache = project_application.ensure_ast_cache
+refresh_analysis_caches = project_application.refresh_analysis_caches
+run_variable_analysis = analyze_application.run_variable_analysis
+run_datatype_usage_analysis = analyze_application.run_datatype_usage_analysis
+variable_usage_submenu = startup_application.variable_usage_submenu
+module_analysis_submenu = startup_application.module_analysis_submenu
+interface_communication_submenu = startup_application.interface_communication_submenu
+code_quality_submenu = startup_application.code_quality_submenu
+analyzer_catalog_menu = startup_application.analyzer_catalog_menu
+advanced_analysis_menu = startup_application.advanced_analysis_menu
+analysis_menu = startup_application.analysis_menu
+run_module_duplicates_analysis = analyze_application.run_module_duplicates_analysis
+run_module_find_by_name = analyze_application.run_module_find_by_name
+run_module_tree_debug = analyze_application.run_module_tree_debug
+run_analysis_menu = startup_application.run_analysis_menu
+variable_analysis_menu = startup_application.variable_analysis_menu
+run_module_localvar_analysis = analyze_application.run_module_localvar_analysis
+_get_enabled_analyzers = analyze_application._get_enabled_analyzers
+_get_selectable_analyzers = analyze_application._get_selectable_analyzers
+_run_checks = analyze_application.run_checks
+run_checks_menu = startup_application.run_checks_menu
+run_mms_interface_analysis = analyze_application.run_mms_interface_analysis
+run_icf_validation = analyze_application.run_icf_validation
+run_debug_variable_usage = analyze_application.run_debug_variable_usage
+run_comment_code_analysis = analyze_application.run_comment_code_analysis
+run_advanced_datatype_analysis = analyze_application.run_advanced_datatype_analysis
+dump_menu = startup_application.dump_menu
+config_menu = startup_application.config_menu
+tools_menu = startup_application.tools_menu
 
 
 # ----------------------------
@@ -369,21 +337,21 @@ _COMPATIBILITY_HELPERS = (
     _print_menu,
     _menu_option,
     _summarize_targets,
-    _graphics_rule_label,
     _require_targets_for_menu_action,
     _split_csv_values,
-    _discover_graphics_rule_selector_options,
-    _pick_or_prompt_graphics_rule_selector_value,
-    _prompt_graphics_rule_definition_with_config,
-    _collect_graphics_layout_entries_for_target,
 )
 
 
 def main(argv: list[str] | None = None) -> int:
-    return app_startup_module.main_from_app(argv, app_module=_APP_MODULE)
+    from .cli import startup as cli_startup
+
+    return cli_startup.main(argv, run_interactive_session_fn=run_interactive_session)
 
 
-cli = cast(Callable[[], int], partial(app_startup_module.cli_from_app, app_module=_APP_MODULE))
+def cli(argv: list[str] | None = None) -> int:
+    from .cli import startup as cli_startup
+
+    return cli_startup.cli(argv)
 
 
 if __name__ == "__main__":

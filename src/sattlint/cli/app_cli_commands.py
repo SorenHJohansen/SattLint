@@ -8,11 +8,11 @@ from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
-from . import console as console_module
-from .cache import CachePruneResult
-from .cli_output import render_json_output
-from .config_types import ConfigDict
-from .models.project_graph import ProjectGraph
+from .. import console as console_module
+from ..cache import CachePruneResult
+from ..cli_output import render_json_output
+from ..config_types import ConfigDict
+from ..models.project_graph import ProjectGraph
 
 log = logging.getLogger("SattLint")
 emit_output: Callable[..., None] = console_module.print_output  # type: ignore[assignment]

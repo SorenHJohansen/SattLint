@@ -6,7 +6,7 @@ from typing import Any, cast
 
 import pytest
 
-from sattlint import app_menus
+from sattlint.cli import menus as app_menus
 
 
 def test_save_configuration_logs_debug_traceback_on_save_error(

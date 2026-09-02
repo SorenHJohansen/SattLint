@@ -3,7 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import os
+import pty
+import select
+import subprocess
+import sys
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
@@ -142,14 +149,14 @@ def test_run_interactive_session_dispatches_to_textual_shell(monkeypatch: pytest
     seen: dict[str, Any] = {}
     app.set_interactive_ui_mode("textual")
 
-    def _fake_run_textual_shell(cfg: dict[str, Any], *, app_module: Any, **kwargs: Any) -> None:
-        seen.update({"cfg": cfg, "app_module": app_module, **kwargs})
+    def _fake_run_textual_shell(cfg: dict[str, Any], **kwargs: Any) -> None:
+        seen.update({"cfg": cfg, **kwargs})
 
     def _summarize_targets(_cfg: dict[str, Any]) -> str:
         return "targets"
 
     monkeypatch.setattr(
-        app_textual,
+        app_textual_module,
         "run_textual_shell",
         _fake_run_textual_shell,
     )
@@ -160,7 +167,10 @@ def test_run_interactive_session_dispatches_to_textual_shell(monkeypatch: pytest
         app.reset_interactive_ui_mode()
 
     assert seen["cfg"] == {"debug": False}
-    assert seen["app_module"] is app
+    assert "analysis_handler_fns" in seen
+    assert isinstance(seen["analysis_handler_fns"], dict)
+    assert seen["analysis_handler_fns"]
+    assert all(callable(fn) for fn in seen["analysis_handler_fns"].values())
 
 
 def test_run_textual_shell_refreshes_ast_cache_before_main_app(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -188,25 +198,20 @@ def test_run_textual_shell_refreshes_ast_cache_before_main_app(monkeypatch: pyte
         def run(self) -> None:
             seen.append(("main-run", True))
 
-    app_module = SimpleNamespace(
-        self_check=lambda _cfg: True,
-        dump_menu=lambda _cfg: None,
-        force_refresh_ast=lambda _cfg: None,
-        refresh_analysis_caches=lambda _cfg: None,
-        _has_analyzed_targets=lambda _cfg: True,
-        ensure_ast_cache=lambda _cfg, *, emit_output_fn=None: (
-            (emit_output_fn("Checking AST cache for Demo") if emit_output_fn is not None else None) or True
-        ),
-        set_textual_menu_interaction=lambda interaction: seen.append(("set-interaction", interaction is not None)),
-        clear_textual_menu_interaction=lambda: seen.append(("clear-interaction", True)),
-    )
-
     monkeypatch.setattr(app_textual_module, "_AstRefreshTextualApp", FakeLoadingApp)
     monkeypatch.setattr(app_textual_module, "SattLintTextualApp", FakeMainApp)
 
     app_textual.run_textual_shell(
         _typed_cfg({"debug": False}),
-        app_module=app_module,
+        has_analyzed_targets_fn=lambda _cfg: True,
+        ensure_ast_cache_fn=lambda _cfg, *, emit_output_fn=None: (
+            (emit_output_fn("Checking AST cache for Demo") if emit_output_fn is not None else None) or True
+        ),
+        self_check_fn=lambda _cfg: True,
+        dump_menu_fn=lambda _cfg: None,
+        force_refresh_ast_fn=lambda _cfg: None,
+        set_textual_menu_interaction_fn=lambda interaction: seen.append(("set-interaction", interaction is not None)),
+        clear_textual_menu_interaction_fn=lambda: seen.append(("clear-interaction", True)),
         summarize_targets_fn=lambda _cfg: "targets",
         show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
@@ -313,25 +318,20 @@ def test_run_textual_shell_preserves_ast_cache_failure_log(monkeypatch: pytest.M
         def run(self) -> None:
             seen["main_run"] = True
 
-    app_module = SimpleNamespace(
-        self_check=lambda _cfg: True,
-        dump_menu=lambda _cfg: None,
-        force_refresh_ast=lambda _cfg: None,
-        refresh_analysis_caches=lambda _cfg: None,
-        _has_analyzed_targets=lambda _cfg: True,
-        ensure_ast_cache=lambda _cfg, *, emit_output_fn=None: (
-            [emit_output_fn(f"line {index}") for index in range(1, 7)] and False
-        ),
-        set_textual_menu_interaction=lambda _interaction: None,
-        clear_textual_menu_interaction=lambda: None,
-    )
-
     monkeypatch.setattr(app_textual_module, "_AstRefreshTextualApp", FakeLoadingApp)
     monkeypatch.setattr(app_textual_module, "SattLintTextualApp", FakeMainApp)
 
     app_textual.run_textual_shell(
         _typed_cfg({"debug": False}),
-        app_module=app_module,
+        has_analyzed_targets_fn=lambda _cfg: True,
+        ensure_ast_cache_fn=lambda _cfg, *, emit_output_fn=None: (
+            [emit_output_fn(f"line {index}") for index in range(1, 7)] and False
+        ),
+        self_check_fn=lambda _cfg: True,
+        dump_menu_fn=lambda _cfg: None,
+        force_refresh_ast_fn=lambda _cfg: None,
+        set_textual_menu_interaction_fn=lambda _interaction: None,
+        clear_textual_menu_interaction_fn=lambda: None,
         summarize_targets_fn=lambda _cfg: "targets",
         show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
@@ -850,7 +850,8 @@ def test_textual_view_primary_action_launches_active_view(monkeypatch: pytest.Mo
 def _make_textual_app(
     *,
     cfg: dict[str, Any] | None = None,
-    app_module: Any | None = None,
+    analysis_handlers: dict[str, Any] | None = None,
+    get_enabled_analyzers_fn: Any | None = None,
     startup_output: str = "",
     startup_output_is_warning: bool = False,
     save_config_fn: Callable[[Any, Any], None] | None = None,
@@ -866,7 +867,8 @@ def _make_textual_app(
         save_config_fn=save_config_fn or (lambda _path, _cfg: None),
         config_path=None,
         quit_app_error=RuntimeError,
-        app_module=app_module,
+        analysis_handlers=analysis_handlers,
+        get_enabled_analyzers_fn=get_enabled_analyzers_fn,
         startup_output=startup_output,
         startup_output_is_warning=startup_output_is_warning,
     )
@@ -1037,16 +1039,14 @@ def test_textual_analyze_planner_renders_grouped_sections_and_detail() -> None:
 
     async def _run() -> None:
         app_instance = _make_textual_app(
-            app_module=SimpleNamespace(
-                _get_enabled_analyzers=lambda: [
-                    SimpleNamespace(
-                        key="timing",
-                        name="Timing",
-                        description="Scan-cycle timing hazards",
-                    ),
-                ],
-                _run_checks=lambda _cfg, _selected_keys: None,
-            )
+            get_enabled_analyzers_fn=lambda: [
+                SimpleNamespace(
+                    key="timing",
+                    name="Timing",
+                    description="Scan-cycle timing hazards",
+                ),
+            ],
+            analysis_handlers={"_run_checks": lambda _cfg, _selected_keys: None},
         )
 
         async with app_instance.run_test() as pilot:
@@ -1085,9 +1085,7 @@ def test_textual_analyze_planner_selection_updates_summary_and_enables_run() -> 
 
     async def _run() -> None:
         app_instance = _make_textual_app(
-            app_module=SimpleNamespace(
-                run_variable_analysis=lambda _cfg, _kinds: None,
-            )
+            analysis_handlers={"run_variable_analysis": lambda _cfg, _kinds: None},
         )
 
         async with app_instance.run_test() as pilot:
@@ -1117,15 +1115,15 @@ def test_textual_analyze_run_selected_executes_planned_steps_in_catalog_order(
     launched: list[tuple[str, str]] = []
 
     app_instance = _make_textual_app(
-        app_module=SimpleNamespace(
-            _run_checks=lambda _cfg, selected_keys: calls.append(
+        analysis_handlers={
+            "_run_checks": lambda _cfg, selected_keys: calls.append(
                 ("checks", None if selected_keys is None else tuple(selected_keys))
             ),
-            run_variable_analysis=lambda _cfg, kinds: calls.append(
+            "run_variable_analysis": lambda _cfg, kinds: calls.append(
                 ("variable-analysis", None if kinds is None else tuple(sorted(kind.value for kind in kinds)))
             ),
-            run_comment_code_analysis=lambda _cfg: calls.append(("comment-code", None)),
-        )
+            "run_comment_code_analysis": lambda _cfg: calls.append(("comment-code", None)),
+        }
     )
     app_instance._analyze_selected_entry_ids = {
         "variables.issue.6",
@@ -1176,7 +1174,9 @@ def test_textual_analyze_run_selected_surfaces_variable_issue_output_from_real_a
     monkeypatch.setattr(app.app_analysis, "run_variable_analysis", _fake_run_variable_analysis)
 
     async def _run() -> None:
-        app_instance = _make_textual_app(app_module=app)
+        app_instance = _make_textual_app(
+            analysis_handlers={"run_variable_analysis": app.app_analysis.run_variable_analysis}
+        )
         bridge = app_textual.TextualInteractionBridge(
             submit_request_fn=lambda request: app_instance.call_from_thread(app_instance.present_request, request)
         )
@@ -1221,11 +1221,7 @@ def test_textual_analyze_running_state_calls_out_output_location(monkeypatch: py
 
     async def _run() -> None:
         nonlocal current_time
-        app_instance = _make_textual_app(
-            app_module=SimpleNamespace(
-                run_comment_code_analysis=lambda _cfg: None,
-            )
-        )
+        app_instance = _make_textual_app(analysis_handlers={"run_comment_code_analysis": lambda _cfg: None})
 
         async with app_instance.run_test() as pilot:
             await pilot.pause()
@@ -1268,11 +1264,7 @@ def test_textual_analyze_running_state_uses_60fps_output_title_spinner(monkeypat
         resume=lambda: timer_calls.__setitem__("resume", timer_calls["resume"] + 1),
         pause=lambda: timer_calls.__setitem__("pause", timer_calls["pause"] + 1),
     )
-    app_instance = _make_textual_app(
-        app_module=SimpleNamespace(
-            run_comment_code_analysis=lambda _cfg: None,
-        )
-    )
+    app_instance = _make_textual_app(analysis_handlers={"run_comment_code_analysis": lambda _cfg: None})
     app_instance._busy = True
     app_instance._active_job_action_id = "action-analyze"
     app_instance._active_job_label = "Run selected analyses"
@@ -1311,9 +1303,7 @@ def test_textual_analyze_buttons_unlock_after_finish_action() -> None:
     async def _run() -> None:
         app_instance = _make_textual_app(
             cfg={"analyzed_programs_and_libraries": ["DemoTarget.s"]},
-            app_module=SimpleNamespace(
-                run_comment_code_analysis=lambda _cfg: None,
-            ),
+            analysis_handlers={"run_comment_code_analysis": lambda _cfg: None},
         )
 
         async with app_instance.run_test() as pilot:
@@ -1358,9 +1348,7 @@ def test_textual_analyze_cancel_button_enables_for_running_queue() -> None:
     async def _run() -> None:
         app_instance = _make_textual_app(
             cfg={"analyzed_programs_and_libraries": ["DemoTarget.s"]},
-            app_module=SimpleNamespace(
-                run_comment_code_analysis=lambda _cfg: None,
-            ),
+            analysis_handlers={"run_comment_code_analysis": lambda _cfg: None},
         )
 
         async with app_instance.run_test() as pilot:
@@ -1382,7 +1370,7 @@ def test_textual_analyze_cancel_button_enables_for_running_queue() -> None:
 def test_textual_analyze_run_selected_reports_missing_handlers(monkeypatch: pytest.MonkeyPatch) -> None:
     lines: list[str] = []
 
-    app_instance = _make_textual_app(app_module=SimpleNamespace())
+    app_instance = _make_textual_app(analysis_handlers={})
     app_instance._analyze_selected_entry_ids = {"variables.issue.6"}
 
     monkeypatch.setattr(app_instance, "_write_output", lambda text: lines.extend(text.splitlines()))
@@ -1398,7 +1386,7 @@ def test_textual_execute_analyze_plan_emits_progress_lines(monkeypatch: pytest.M
     emitted: list[str] = []
     executed: list[str] = []
 
-    app_instance = _make_textual_app(app_module=SimpleNamespace())
+    app_instance = _make_textual_app(analysis_handlers={})
     plan = SimpleNamespace(
         executable_steps=[
             SimpleNamespace(label="Run full suite", source_labels=("Full suite", "Toolbar")),
@@ -1431,7 +1419,7 @@ def test_textual_execute_analyze_plan_stops_after_cancel_request(monkeypatch: py
     emitted: list[str] = []
     executed: list[str] = []
 
-    app_instance = _make_textual_app(app_module=SimpleNamespace())
+    app_instance = _make_textual_app(analysis_handlers={})
     plan = SimpleNamespace(
         executable_steps=[
             SimpleNamespace(label="Run full suite", source_labels=("Full suite",)),
@@ -1490,7 +1478,7 @@ def test_textual_start_action_tracks_active_worker_thread(monkeypatch: pytest.Mo
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
         quit_app_error=RuntimeError,
-        app_module=SimpleNamespace(),
+        analysis_handlers={},
     )
 
     monkeypatch.setattr(app_instance, "_refresh_summary", lambda: None)
@@ -1566,7 +1554,7 @@ def test_textual_start_action_reports_type_errors_from_action(monkeypatch: pytes
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
         quit_app_error=RuntimeError,
-        app_module=SimpleNamespace(),
+        analysis_handlers={},
     )
 
     monkeypatch.setattr(app_instance, "_refresh_summary", lambda: None)
@@ -1613,9 +1601,7 @@ def test_textual_ctrl_g_cancel_binding_requests_stop_for_running_analysis() -> N
     async def _run() -> None:
         app_instance = _make_textual_app(
             cfg={"analyzed_programs_and_libraries": ["DemoTarget.s"]},
-            app_module=SimpleNamespace(
-                run_comment_code_analysis=lambda _cfg: None,
-            ),
+            analysis_handlers={"run_comment_code_analysis": lambda _cfg: None},
         )
 
         async with app_instance.run_test() as pilot:
@@ -1656,11 +1642,7 @@ def test_textual_analyze_clear_selection_resets_planner_state() -> None:
         pytest.skip("Textual not installed")
 
     async def _run() -> None:
-        app_instance = _make_textual_app(
-            app_module=SimpleNamespace(
-                run_comment_code_analysis=lambda _cfg: None,
-            )
-        )
+        app_instance = _make_textual_app(analysis_handlers={"run_comment_code_analysis": lambda _cfg: None})
 
         async with app_instance.run_test() as pilot:
             await pilot.pause()
@@ -1689,11 +1671,7 @@ def test_textual_analyze_clear_output_clears_session_log_only() -> None:
         pytest.skip("Textual not installed")
 
     async def _run() -> None:
-        app_instance = _make_textual_app(
-            app_module=SimpleNamespace(
-                run_comment_code_analysis=lambda _cfg: None,
-            )
-        )
+        app_instance = _make_textual_app(analysis_handlers={"run_comment_code_analysis": lambda _cfg: None})
 
         async with app_instance.run_test() as pilot:
             await pilot.pause()
@@ -1993,7 +1971,6 @@ def test_textual_tools_dumps_button_opens_menu_without_ansi_clear() -> None:
             save_config_fn=lambda _path, _cfg: None,
             config_path=None,
             quit_app_error=RuntimeError,
-            app_module=app,
             self_check_fn=lambda _cfg: True,
             dump_menu_fn=app.dump_menu,
             force_refresh_ast_fn=lambda _cfg: None,
@@ -2599,3 +2576,62 @@ def test_textual_toolbar_actions_are_ignored_while_interaction_screen_is_open(mo
     app_instance._handle_toolbar_action("action-analyze")
 
     assert started == []
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_textual_shell_does_not_crash_within_window(tmp_path: Path) -> None:
+    """End-to-end smoke test: launch the real ``sattlint`` CLI in a pseudo-terminal and assert
+    the Textual shell is still alive after a bounded window.
+
+    Guards the on-mount startup path (e.g. the ``_analysis_handlers`` wiring bug that crashed
+    ``on_mount`` shortly after launch) which the in-process unit tests do not exercise.
+    """
+    if sys.platform == "win32":
+        pytest.skip("pty-based subprocess smoke test is POSIX-only")
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    window_seconds = 5
+
+    master, slave = pty.openpty()
+    try:
+        env = dict(os.environ)
+        env["TERM"] = "xterm-256color"
+        env["COLUMNS"] = "100"
+        env["LINES"] = "30"
+        process = subprocess.Popen(
+            [sys.executable, "-m", "sattlint", "--ui", "textual"],
+            stdin=slave,
+            stdout=slave,
+            stderr=slave,
+            env=env,
+            cwd=tmp_path,
+            close_fds=True,
+            start_new_session=True,
+        )
+    finally:
+        os.close(slave)
+
+    try:
+        deadline = time.monotonic() + window_seconds
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                break
+            readable, _, _ = select.select([master], [], [], 0.25)
+            if readable:
+                with contextlib.suppress(OSError):
+                    os.read(master, 4096)
+
+        assert process.poll() is None, (
+            f"sattlint exited with code {process.poll()} within {window_seconds}s "
+            "(crashed during Textual startup)"
+        )
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+        os.close(master)

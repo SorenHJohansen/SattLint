@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import importlib
 from pathlib import Path
 from time import perf_counter
 
+from sattline_parser import parse_source_file as parser_core_parse_source_file
+from sattline_parser.api import read_text_with_fallback
 from sattline_parser.models.ast_model import BasePicture
 
 from ._engine_loader_base import (
@@ -21,9 +22,6 @@ from ._engine_loader_base import (
 
 
 class SattLineProjectLoaderLookupMixin(SattLineProjectLoaderBase):
-    def _engine_module(self):
-        return importlib.import_module("sattlint.engine")
-
     def _is_ignored_base(self, base: Path) -> bool:
         try:
             base_r = base.resolve()
@@ -415,8 +413,7 @@ class SattLineProjectLoaderLookupMixin(SattLineProjectLoaderBase):
         return None
 
     def _read_deps(self, deps_path: Path) -> list[str]:
-        engine_module = self._engine_module()
-        text = engine_module.read_text_with_fallback(deps_path)
+        text = read_text_with_fallback(deps_path)
         lines = text.splitlines()
         names = [line.strip() for line in lines if line.strip()]
         self.dbg(f"Deps from {deps_path.name}: {names}")
@@ -473,8 +470,7 @@ class SattLineProjectLoaderLookupMixin(SattLineProjectLoaderBase):
         return origin_lib if isinstance(origin_lib, str) and origin_lib else None
 
     def _parse_one(self, code_path: Path) -> BasePicture:
-        engine_module = self._engine_module()
-        return engine_module.parser_core_parse_source_file(
+        return parser_core_parse_source_file(
             code_path,
             parser=self.parser,
             transformer=self.transformer,

@@ -8,10 +8,10 @@ from sattline_parser.models.ast_model import BasePicture
 
 from . import _app_analysis_reporting as analysis_reporting_module
 from . import app_analysis as shared
-from . import app_telemetry as telemetry_module
 from .analyzers.framework import build_analysis_context
 from .analyzers.rule_profiles import apply_rule_profile_to_report
 from .config_types import ConfigDict
+from .core import telemetry as telemetry_module
 from .models.project_graph import ProjectGraph
 
 LoadedProject = shared.LoadedProject
