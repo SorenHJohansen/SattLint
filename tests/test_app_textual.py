@@ -208,7 +208,6 @@ def test_run_textual_shell_refreshes_ast_cache_before_main_app(monkeypatch: pyte
             (emit_output_fn("Checking AST cache for Demo") if emit_output_fn is not None else None) or True
         ),
         self_check_fn=lambda _cfg: True,
-        dump_menu_fn=lambda _cfg: None,
         force_refresh_ast_fn=lambda _cfg: None,
         set_textual_menu_interaction_fn=lambda interaction: seen.append(("set-interaction", interaction is not None)),
         clear_textual_menu_interaction_fn=lambda: seen.append(("clear-interaction", True)),
@@ -328,7 +327,6 @@ def test_run_textual_shell_preserves_ast_cache_failure_log(monkeypatch: pytest.M
             [emit_output_fn(f"line {index}") for index in range(1, 7)] and False
         ),
         self_check_fn=lambda _cfg: True,
-        dump_menu_fn=lambda _cfg: None,
         force_refresh_ast_fn=lambda _cfg: None,
         set_textual_menu_interaction_fn=lambda _interaction: None,
         clear_textual_menu_interaction_fn=lambda: None,
@@ -449,9 +447,7 @@ def test_textual_top_chrome_removes_banner_and_summary_boxes() -> None:
         app_instance = app_textual.SattLintTextualApp(
             cfg={},
             summarize_targets_fn=lambda _cfg: "targets",
-            analysis_menu_fn=lambda _cfg: None,
-            config_menu_fn=lambda _cfg: None,
-            tools_menu_fn=lambda _cfg: None,
+
             show_help_fn=lambda _cfg: None,
             save_config_fn=lambda _path, _cfg: None,
             config_path=None,
@@ -476,9 +472,7 @@ def test_textual_toolbar_is_available_without_summary_box() -> None:
         app_instance = app_textual.SattLintTextualApp(
             cfg={"analyzed_programs_and_libraries": ["Target1", "Target2"]},
             summarize_targets_fn=lambda _cfg: "targets",
-            analysis_menu_fn=lambda _cfg: None,
-            config_menu_fn=lambda _cfg: None,
-            tools_menu_fn=lambda _cfg: None,
+
             show_help_fn=lambda _cfg: None,
             save_config_fn=lambda _path, _cfg: None,
             config_path=None,
@@ -506,9 +500,7 @@ def test_textual_quit_keybinding_does_not_crash() -> None:
         app_instance = app_textual.SattLintTextualApp(
             cfg={},
             summarize_targets_fn=lambda _cfg: "targets",
-            analysis_menu_fn=lambda _cfg: None,
-            config_menu_fn=lambda _cfg: None,
-            tools_menu_fn=lambda _cfg: None,
+
             show_help_fn=lambda _cfg: None,
             save_config_fn=lambda _path, _cfg: None,
             config_path=None,
@@ -531,9 +523,7 @@ def test_textual_ctrl_c_copy_binding_copies_session_output() -> None:
         app_instance = app_textual.SattLintTextualApp(
             cfg={},
             summarize_targets_fn=lambda _cfg: "targets",
-            analysis_menu_fn=lambda _cfg: None,
-            config_menu_fn=lambda _cfg: None,
-            tools_menu_fn=lambda _cfg: None,
+
             show_help_fn=lambda _cfg: None,
             save_config_fn=lambda _path, _cfg: None,
             config_path=None,
@@ -625,7 +615,23 @@ def test_textual_slash_binding_filters_analyze_planner() -> None:
         pytest.skip("Textual not installed")
 
     async def _run() -> None:
-        app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": ["TargetA"]})
+        app_instance = _make_textual_app(
+            cfg={"analyzed_programs_and_libraries": ["TargetA"]},
+            get_enabled_analyzers_fn=lambda: [
+                SimpleNamespace(
+                    key="comment-code",
+                    name="Commented out code",
+                    description="Detect commented-out code.",
+                    category="code-quality",
+                ),
+                SimpleNamespace(
+                    key="timing",
+                    name="Timing",
+                    description="Scan-cycle timing hazards.",
+                    category="correctness",
+                ),
+            ],
+        )
 
         async with app_instance.run_test() as pilot:
             await pilot.pause()
@@ -640,7 +646,7 @@ def test_textual_slash_binding_filters_analyze_planner() -> None:
 
             assert app_instance.query_one("#interaction-host").has_class("active") is False
             assert app_instance._analyze_filter_text == "comment"
-            assert app_instance._planner_entry_ids() == (app_textual.analysis_catalog.ENTRY_COMMENTED_OUT_CODE,)
+            assert app_instance._planner_entry_ids() == ("comment-code",)
             assert 'Filter: "comment"' not in str(app_instance.query_one("#view-note").renderable)
 
     asyncio.run(_run())
@@ -680,9 +686,7 @@ def test_textual_session_output_preserves_manual_scroll_position_on_new_output()
         app_instance = app_textual.SattLintTextualApp(
             cfg={},
             summarize_targets_fn=lambda _cfg: "targets",
-            analysis_menu_fn=lambda _cfg: None,
-            config_menu_fn=lambda _cfg: None,
-            tools_menu_fn=lambda _cfg: None,
+
             show_help_fn=lambda _cfg: None,
             save_config_fn=lambda _path, _cfg: None,
             config_path=None,
@@ -718,9 +722,7 @@ def test_textual_session_output_keeps_following_when_already_at_bottom() -> None
         app_instance = app_textual.SattLintTextualApp(
             cfg={},
             summarize_targets_fn=lambda _cfg: "targets",
-            analysis_menu_fn=lambda _cfg: None,
-            config_menu_fn=lambda _cfg: None,
-            tools_menu_fn=lambda _cfg: None,
+
             show_help_fn=lambda _cfg: None,
             save_config_fn=lambda _path, _cfg: None,
             config_path=None,
@@ -754,9 +756,7 @@ def test_textual_present_request_uses_inline_host_and_preserves_shell_chrome() -
         app_instance = app_textual.SattLintTextualApp(
             cfg={},
             summarize_targets_fn=lambda _cfg: "targets",
-            analysis_menu_fn=lambda _cfg: None,
-            config_menu_fn=lambda _cfg: None,
-            tools_menu_fn=lambda _cfg: None,
+
             show_help_fn=lambda _cfg: None,
             save_config_fn=lambda _path, _cfg: None,
             config_path=None,
@@ -798,9 +798,7 @@ def test_textual_toolbar_navigation_switches_view_without_starting_action(monkey
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
-        analysis_menu_fn=lambda _cfg: None,
-        config_menu_fn=lambda _cfg: None,
-        tools_menu_fn=lambda _cfg: None,
+
         show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
@@ -821,9 +819,7 @@ def test_textual_view_primary_action_launches_active_view(monkeypatch: pytest.Mo
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
-        analysis_menu_fn=lambda _cfg: None,
-        config_menu_fn=lambda _cfg: None,
-        tools_menu_fn=lambda _cfg: None,
+
         show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
@@ -859,9 +855,6 @@ def _make_textual_app(
     return app_textual.SattLintTextualApp(
         cfg=cfg or {"analyzed_programs_and_libraries": ["TargetA"]},
         summarize_targets_fn=lambda _cfg: "targets",
-        analysis_menu_fn=lambda _cfg: None,
-        config_menu_fn=lambda _cfg: None,
-        tools_menu_fn=lambda _cfg: None,
         show_help_fn=lambda _cfg: None,
         get_help_text_fn=lambda _cfg: "Help text",
         save_config_fn=save_config_fn or (lambda _path, _cfg: None),
@@ -953,16 +946,27 @@ def test_textual_analyze_selection_lists_expand_instead_of_scrolling_individuall
         pytest.skip("Textual not installed")
 
     async def _run() -> None:
-        app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": ["TargetA"]})
+        app_instance = _make_textual_app(
+            cfg={"analyzed_programs_and_libraries": ["TargetA"]},
+            get_enabled_analyzers_fn=lambda: [
+                SimpleNamespace(
+                    key=f"analyzer-{index}",
+                    name=f"Analyzer {index}",
+                    description=f"Description {index}",
+                    category="correctness",
+                )
+                for index in range(12)
+            ],
+        )
 
         async with app_instance.run_test(size=(80, 18)) as pilot:
             await pilot.pause()
 
             analyze_left = app_instance.query_one("#analyze-browser-left")
-            high_confidence = app_instance.query_one("#analyze-planner-section-variable-high-confidence")
+            analyzers_list = app_instance.query_one("#analyze-planner-section-analyzers")
 
             assert analyze_left.virtual_size.height > analyze_left.size.height
-            assert high_confidence.size.height >= high_confidence.virtual_size.height
+            assert analyzers_list.size.height >= analyzers_list.virtual_size.height
 
     asyncio.run(_run())
 
@@ -991,12 +995,22 @@ def test_textual_analyze_selection_styles_hide_unselected_marker_and_highlight_c
         pytest.skip("Textual not installed")
 
     async def _run() -> None:
-        app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": ["TargetA"]})
+        app_instance = _make_textual_app(
+            cfg={"analyzed_programs_and_libraries": ["TargetA"]},
+            get_enabled_analyzers_fn=lambda: [
+                SimpleNamespace(
+                    key="comment-code",
+                    name="Commented-out code",
+                    description="Detect commented-out code.",
+                    category="code-quality",
+                )
+            ],
+        )
 
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
-            selection_list = app_instance.query_one("#analyze-planner-section-variable-high-confidence")
+            selection_list = app_instance.query_one("#analyze-planner-section-analyzers")
             option_style = selection_list.get_component_rich_style("option-list--option")
             option_highlighted_style = selection_list.get_component_rich_style("option-list--option-highlighted")
             unselected_button_style = selection_list.get_component_rich_style("selection-list--button")
@@ -1044,6 +1058,7 @@ def test_textual_analyze_planner_renders_grouped_sections_and_detail() -> None:
                     key="timing",
                     name="Timing",
                     description="Scan-cycle timing hazards",
+                    category="correctness",
                 ),
             ],
             analysis_handlers={"_run_checks": lambda _cfg, _selected_keys: None},
@@ -1055,25 +1070,16 @@ def test_textual_analyze_planner_renders_grouped_sections_and_detail() -> None:
             assert len(list(app_instance.query("#analyze-planner-section-top-level"))) == 0
             assert len(list(app_instance.query("#analyze-planner-section-variable-suite"))) == 0
             assert len(list(app_instance.query("#analyze-planner-section-investigation"))) == 0
-            assert app_instance.query_one("#analyze-planner-section-variable-high-confidence") is not None
+            assert app_instance.query_one("#analyze-planner-section-analyzers") is not None
             assert len(list(app_instance.query("#analyze-planner-section-catalog-issue-checks"))) == 0
             assert len(list(app_instance.query("#analyze-planner-section-catalog-analyzers"))) == 0
-            assert "catalog.analyzer.comment-code" not in app_instance._planner_entry_ids()
-            assert "catalog.issue.comment_code" not in app_instance._planner_entry_ids()
-            assert app_textual.analysis_catalog.ENTRY_DATATYPE_USAGE not in app_instance._planner_entry_ids()
+            assert "timing" in app_instance._planner_entry_ids()
 
+            app_instance._analyze_focused_entry_id = "timing"
             app_instance._write_focused_entry_to_output()
             await pilot.pause()
             output_text = getattr(app_instance.query_one("#output"), "text", "")
-            assert "Analysis: Unused variables" in output_text
-            assert "Description:" in output_text
-
-            app_instance._analyze_focused_entry_id = app_textual.analysis_catalog.ENTRY_COMMENTED_OUT_CODE
-            app_instance._write_focused_entry_to_output()
-            await pilot.pause()
-
-            output_text = getattr(app_instance.query_one("#output"), "text", "")
-            assert "Analysis: Commented-out code" in output_text
+            assert "Analyzer: Timing" in output_text
             assert "Description:" in output_text
 
     asyncio.run(_run())
@@ -1085,23 +1091,37 @@ def test_textual_analyze_planner_selection_updates_summary_and_enables_run() -> 
 
     async def _run() -> None:
         app_instance = _make_textual_app(
-            analysis_handlers={"run_variable_analysis": lambda _cfg, _kinds: None},
+            get_enabled_analyzers_fn=lambda: [
+                SimpleNamespace(
+                    key="timing",
+                    name="Timing",
+                    description="Scan-cycle timing hazards",
+                    category="correctness",
+                ),
+                SimpleNamespace(
+                    key="state-inference",
+                    name="State inference",
+                    description="Detect incorrect state inference.",
+                    category="correctness",
+                ),
+            ],
+            analysis_handlers={"_run_checks": lambda _cfg, _selected_keys: None},
         )
 
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
-            high_list = app_instance.query_one("#analyze-planner-section-variable-high-confidence")
+            analyzers_list = app_instance.query_one("#analyze-planner-section-analyzers")
 
-            high_list.select("variables.issue.2")
-            high_list.select("variables.issue.6")
-            app_instance._sync_analyze_selection_from_selection_list(high_list)
+            analyzers_list.select("timing")
+            analyzers_list.select("state-inference")
+            app_instance._sync_analyze_selection_from_selection_list(analyzers_list)
             app_instance._write_focused_entry_to_output()
             app_instance._refresh_shell_state()
             await pilot.pause()
 
             output_text = getattr(app_instance.query_one("#output"), "text", "")
-            assert "Analysis: Unused variables" in output_text
+            assert "Analyzer:" in output_text
             assert "Description:" in output_text
             assert getattr(app_instance.query_one("#analyze-run-selected"), "disabled", True) is False
 
@@ -1115,21 +1135,28 @@ def test_textual_analyze_run_selected_executes_planned_steps_in_catalog_order(
     launched: list[tuple[str, str]] = []
 
     app_instance = _make_textual_app(
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="alpha-analyzer",
+                name="Alpha Analyzer",
+                description="Alpha description",
+                category="correctness",
+            ),
+            SimpleNamespace(
+                key="beta-analyzer",
+                name="Beta Analyzer",
+                description="Beta description",
+                category="correctness",
+            ),
+        ],
         analysis_handlers={
             "_run_checks": lambda _cfg, selected_keys: calls.append(
                 ("checks", None if selected_keys is None else tuple(selected_keys))
             ),
-            "run_variable_analysis": lambda _cfg, kinds: calls.append(
-                ("variable-analysis", None if kinds is None else tuple(sorted(kind.value for kind in kinds)))
-            ),
-            "run_comment_code_analysis": lambda _cfg: calls.append(("comment-code", None)),
-        }
+        },
     )
-    app_instance._analyze_selected_entry_ids = {
-        "variables.issue.6",
-        app_textual.analysis_catalog.ENTRY_COMMENTED_OUT_CODE,
-    }
-    app_instance._analyze_focused_entry_id = "variables.issue.6"
+    app_instance._analyze_selected_entry_ids = {"alpha-analyzer", "beta-analyzer"}
+    app_instance._analyze_focused_entry_id = "alpha-analyzer"
 
     monkeypatch.setattr(
         app_instance,
@@ -1143,15 +1170,9 @@ def test_textual_analyze_run_selected_executes_planned_steps_in_catalog_order(
 
     app_instance._run_selected_analysis_plan()
 
-    assert launched == [("Run selected analyses", "action-analyze")]
-    assert calls == [
-        ("variable-analysis", ("unknown_parameter_target",)),
-        ("comment-code", None),
-    ]
-    assert app_instance._analyze_selected_entry_ids == {
-        "variables.issue.6",
-        app_textual.analysis_catalog.ENTRY_COMMENTED_OUT_CODE,
-    }
+    assert launched == [("Run selected analyzers", "action-analyze")]
+    assert calls == [("checks", ("alpha-analyzer", "beta-analyzer"))]
+    assert app_instance._analyze_selected_entry_ids == {"alpha-analyzer", "beta-analyzer"}
 
 
 def test_textual_analyze_run_selected_surfaces_variable_issue_output_from_real_app(
@@ -1160,56 +1181,63 @@ def test_textual_analyze_run_selected_surfaces_variable_issue_output_from_real_a
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
-    seen_kinds: list[set[app.IssueKind] | None] = []
+    seen_keys: list[list[str] | None] = []
 
-    def _fake_run_variable_analysis(local_cfg: Any, kinds: set[app.IssueKind] | None, **kwargs: Any) -> None:
-        del local_cfg
-        seen_kinds.append(None if kinds is None else set(kinds))
-        app.app_analysis.emit_output("\n=== Target: ProgramA ===")
-        app.app_analysis.emit_output("Report: Variable issues")
-        pause_fn = kwargs.get("pause_fn")
-        if callable(pause_fn):
-            pause_fn()
-
-    monkeypatch.setattr(app.app_analysis, "run_variable_analysis", _fake_run_variable_analysis)
+    def _fake_checks(app_instance: Any, selected_keys: list[str] | None) -> None:
+        app_instance._write_output("=== Target: ProgramA ===")
+        app_instance._write_output("Report: Variable issues")
+        seen_keys.append(None if selected_keys is None else list(selected_keys))
 
     async def _run() -> None:
         app_instance = _make_textual_app(
-            analysis_handlers={"run_variable_analysis": app.app_analysis.run_variable_analysis}
+            get_enabled_analyzers_fn=lambda: [
+                SimpleNamespace(
+                    key="state-inference",
+                    name="State inference",
+                    description="Detect incorrect state inference.",
+                    category="correctness",
+                ),
+            ],
+            analysis_handlers={
+                "_run_checks": lambda _local_cfg, selected_keys: _fake_checks(app_instance, selected_keys)
+            },
         )
-        bridge = app_textual.TextualInteractionBridge(
-            submit_request_fn=lambda request: app_instance.call_from_thread(app_instance.present_request, request)
+        monkeypatch.setattr(
+            app_instance,
+            "_start_action",
+            lambda label, action_fn, *, action_id, marks_dirty=False, clear_dirty_on_success=False: action_fn(),
+        )
+        monkeypatch.setattr(
+            app_instance,
+            "_emit_output_from_thread",
+            lambda text: app_instance._write_output(text),
         )
 
-        app.set_interactive_ui_mode("textual")
-        app.set_textual_menu_interaction(bridge.as_menu_interaction())
-        try:
-            async with app_instance.run_test() as pilot:
-                await pilot.pause()
+        async with app_instance.run_test() as pilot:
+            await pilot.pause()
 
-                high_list = app_instance.query_one("#analyze-planner-section-variable-high-confidence")
-                high_list.select("variables.issue.2")
-                app_instance._sync_analyze_selection_from_selection_list(high_list)
-                app_instance._write_focused_entry_to_output()
-                app_instance._refresh_shell_state()
-                await pilot.pause()
+            analyzers_list = app_instance.query_one("#analyze-planner-section-analyzers")
+            analyzers_list.select("state-inference")
+            app_instance._sync_analyze_selection_from_selection_list(analyzers_list)
+            app_instance._write_focused_entry_to_output()
+            app_instance._refresh_shell_state()
+            await pilot.pause()
 
-                app_instance.on_button_pressed(SimpleNamespace(button=app_instance.query_one("#analyze-run-selected")))
-                await pilot.pause()
-                await pilot.pause()
+            app_instance.on_button_pressed(SimpleNamespace(button=app_instance.query_one("#analyze-run-selected")))
+            await pilot.pause()
+            await pilot.pause()
 
-                output_text = str(getattr(app_instance.query_one("#output"), "text", ""))
-                assert "Analyze planner queue" in output_text
-                assert "=== Target: ProgramA ===" in output_text
-                assert "Report: Variable issues" in output_text
-                assert app_instance.query_one("#interaction-host").has_class("active") is False
-                assert app_instance._busy is False
-        finally:
-            app.reset_interactive_ui_mode()
+            output_text = str(getattr(app_instance.query_one("#output"), "text", ""))
+            assert "Running 1 selected analyzer(s)." in output_text
+            assert "=== Target: ProgramA ===" in output_text
+            assert "Report: Variable issues" in output_text
+            assert "Selected analyzers completed." in output_text
+            assert app_instance.query_one("#interaction-host").has_class("active") is False
+            assert app_instance._busy is False
 
     asyncio.run(_run())
 
-    assert seen_kinds == [{app.IssueKind.UNUSED}]
+    assert seen_keys == [["state-inference"]]
 
 
 def test_textual_analyze_running_state_calls_out_output_location(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1221,34 +1249,44 @@ def test_textual_analyze_running_state_calls_out_output_location(monkeypatch: py
 
     async def _run() -> None:
         nonlocal current_time
-        app_instance = _make_textual_app(analysis_handlers={"run_comment_code_analysis": lambda _cfg: None})
+        app_instance = _make_textual_app(
+            get_enabled_analyzers_fn=lambda: [
+                SimpleNamespace(
+                    key="comment-code",
+                    name="Commented-out code",
+                    description="Detect commented-out code.",
+                    category="code-quality",
+                ),
+            ],
+            analysis_handlers={"run_comment_code_analysis": lambda _cfg: None},
+        )
 
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
-            quality_list = app_instance.query_one("#analyze-planner-section-variable-low-confidence")
-            quality_list.select(app_textual.analysis_catalog.ENTRY_COMMENTED_OUT_CODE)
-            app_instance._sync_analyze_selection_from_selection_list(quality_list)
+            analyzers_list = app_instance.query_one("#analyze-planner-section-analyzers")
+            analyzers_list.select("comment-code")
+            app_instance._sync_analyze_selection_from_selection_list(analyzers_list)
             app_instance._busy = True
             app_instance._active_job_action_id = "action-analyze"
-            app_instance._active_job_label = "Run selected analyses"
+            app_instance._active_job_label = "Run selected analyzers"
             app_instance._refresh_summary()
             app_instance._write_focused_entry_to_output()
             app_instance._refresh_shell_state()
 
             assert str(app_instance.query_one("#view-note").renderable) == ""
             assert str(app_instance.query_one("#output-title").renderable) == (
-                "Session output ⠋ - Run selected analyses in progress"
+                "Session output ⠋ - Run selected analyzers in progress"
             )
 
             current_time += (1.0 / 60.0) + 0.001
             app_instance._advance_output_title_spinner()
             assert str(app_instance.query_one("#output-title").renderable) == (
-                "Session output ⠙ - Run selected analyses in progress"
+                "Session output ⠙ - Run selected analyzers in progress"
             )
 
             output_text = getattr(app_instance.query_one("#output"), "text", "")
-            assert "Analysis:" in output_text
+            assert "Analyzer:" in output_text
             assert "Description:" in output_text
 
     asyncio.run(_run())
@@ -1303,15 +1341,23 @@ def test_textual_analyze_buttons_unlock_after_finish_action() -> None:
     async def _run() -> None:
         app_instance = _make_textual_app(
             cfg={"analyzed_programs_and_libraries": ["DemoTarget.s"]},
+            get_enabled_analyzers_fn=lambda: [
+                SimpleNamespace(
+                    key="comment-code",
+                    name="Commented-out code",
+                    description="Detect commented-out code.",
+                    category="code-quality",
+                ),
+            ],
             analysis_handlers={"run_comment_code_analysis": lambda _cfg: None},
         )
 
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
-            quality_list = app_instance.query_one("#analyze-planner-section-variable-low-confidence")
-            quality_list.select(app_textual.analysis_catalog.ENTRY_COMMENTED_OUT_CODE)
-            app_instance._sync_analyze_selection_from_selection_list(quality_list)
+            analyzers_list = app_instance.query_one("#analyze-planner-section-analyzers")
+            analyzers_list.select("comment-code")
+            app_instance._sync_analyze_selection_from_selection_list(analyzers_list)
             app_instance._write_focused_entry_to_output()
             app_instance._refresh_shell_state()
             await pilot.pause()
@@ -1321,7 +1367,7 @@ def test_textual_analyze_buttons_unlock_after_finish_action() -> None:
 
             app_instance._busy = True
             app_instance._active_job_action_id = "action-analyze"
-            app_instance._active_job_label = "Run selected analyses"
+            app_instance._active_job_label = "Run selected analyzers"
             app_instance._refresh_summary()
             app_instance._write_focused_entry_to_output()
             app_instance._refresh_shell_state()
@@ -1369,87 +1415,65 @@ def test_textual_analyze_cancel_button_enables_for_running_queue() -> None:
 
 def test_textual_analyze_run_selected_reports_missing_handlers(monkeypatch: pytest.MonkeyPatch) -> None:
     lines: list[str] = []
+    started: list[tuple[str, str]] = []
 
-    app_instance = _make_textual_app(analysis_handlers={})
-    app_instance._analyze_selected_entry_ids = {"variables.issue.6"}
+    app_instance = _make_textual_app(
+        cfg={"analyzed_programs_and_libraries": ["TargetA"]},
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                description="Detect incorrect state inference.",
+                category="correctness",
+            ),
+        ],
+        analysis_handlers={},
+    )
+    app_instance._analyze_selected_entry_ids = {"state-inference"}
 
     monkeypatch.setattr(app_instance, "_write_output", lambda text: lines.extend(text.splitlines()))
-    monkeypatch.setattr(app_instance, "_start_action", lambda *_args, **_kwargs: pytest.fail("should not start"))
+    monkeypatch.setattr(
+        app_instance,
+        "_start_action",
+        lambda label, action_fn, *, action_id, marks_dirty=False, clear_dirty_on_success=False: (
+            started.append((label, action_id)),
+            action_fn(),
+        ),
+    )
+    monkeypatch.setattr(
+        app_instance,
+        "_emit_output_from_thread",
+        lambda text: lines.extend(text.splitlines()),
+    )
 
     app_instance._run_selected_analysis_plan()
 
-    assert any("Missing handlers" in line for line in lines)
-    assert any("run_variable_analysis" in line for line in lines)
+    assert started == [("Run selected analyzers", "action-analyze")]
+    assert any("The analyzer runner is unavailable" in line for line in lines)
 
 
-def test_textual_execute_analyze_plan_emits_progress_lines(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_textual_execute_analyze_plan_dispatches_to_run_checks(monkeypatch: pytest.MonkeyPatch) -> None:
     emitted: list[str] = []
-    executed: list[str] = []
+    called: list[list[str] | None] = []
 
-    app_instance = _make_textual_app(analysis_handlers={})
-    plan = SimpleNamespace(
-        executable_steps=[
-            SimpleNamespace(label="Run full suite", source_labels=("Full suite", "Toolbar")),
-            SimpleNamespace(label="Commented out code", source_labels=("Code quality",)),
-        ]
+    app_instance = _make_textual_app(
+        analysis_handlers={
+            "_run_checks": lambda _cfg, selected_keys: called.append(
+                None if selected_keys is None else list(selected_keys)
+            )
+        }
     )
+    plan = SimpleNamespace(selected_analyzer_keys=("alpha-analyzer", "beta-analyzer"))
 
-    monkeypatch.setattr(app_textual.analysis_planner, "render_analysis_plan_summary", lambda _plan: "Plan summary")
     monkeypatch.setattr(app_instance, "_emit_output_from_thread", lambda text: emitted.append(text))
-    monkeypatch.setattr(
-        app_instance,
-        "_execute_planned_analysis_step",
-        lambda step: executed.append(str(step.label)),
-    )
 
     app_instance._execute_analyze_plan(plan)
 
     assert emitted == [
-        "Analyze planner queue",
-        "Plan summary",
-        "[1/2] Run full suite",
-        "Merged selections: Full suite, Toolbar",
-        "[2/2] Commented out code",
-        "Selected analyses completed.",
+        "Running 2 selected analyzer(s).",
+        "Selected analyzers completed.",
     ]
-    assert executed == ["Run full suite", "Commented out code"]
-
-
-def test_textual_execute_analyze_plan_stops_after_cancel_request(monkeypatch: pytest.MonkeyPatch) -> None:
-    emitted: list[str] = []
-    executed: list[str] = []
-
-    app_instance = _make_textual_app(analysis_handlers={})
-    plan = SimpleNamespace(
-        executable_steps=[
-            SimpleNamespace(label="Run full suite", source_labels=("Full suite",)),
-            SimpleNamespace(label="Commented out code", source_labels=("Code quality",)),
-        ]
-    )
-
-    monkeypatch.setattr(app_textual.analysis_planner, "render_analysis_plan_summary", lambda _plan: "Plan summary")
-    monkeypatch.setattr(app_instance, "_emit_output_from_thread", lambda text: emitted.append(text))
-
-    def _execute(step: Any) -> None:
-        executed.append(str(step.label))
-        app_instance._active_job_cancel_requested = True
-
-    monkeypatch.setattr(app_instance, "_execute_planned_analysis_step", _execute)
-
-    app_instance._busy = True
-    app_instance._active_job_action_id = "action-analyze"
-    app_instance._active_job_cancel_event = threading.Event()
-    app_instance._active_job_cancel_requested = False
-
-    app_instance._execute_analyze_plan(plan)
-
-    assert executed == ["Run full suite"]
-    assert emitted == [
-        "Analyze planner queue",
-        "Plan summary",
-        "[1/2] Run full suite",
-        "Cancellation requested. Remaining queued analyses were not started.",
-    ]
+    assert called == [["alpha-analyzer", "beta-analyzer"]]
 
 
 def test_textual_start_action_tracks_active_worker_thread(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1470,9 +1494,7 @@ def test_textual_start_action_tracks_active_worker_thread(monkeypatch: pytest.Mo
     app_instance = FakeTextualApp(
         cfg={"analyzed_programs_and_libraries": ["TargetA"]},
         summarize_targets_fn=lambda _cfg: "targets",
-        analysis_menu_fn=lambda _cfg: None,
-        config_menu_fn=lambda _cfg: None,
-        tools_menu_fn=lambda _cfg: None,
+
         show_help_fn=lambda _cfg: None,
         get_help_text_fn=lambda _cfg: "Help text",
         save_config_fn=lambda _path, _cfg: None,
@@ -1546,9 +1568,7 @@ def test_textual_start_action_reports_type_errors_from_action(monkeypatch: pytes
     app_instance = FakeTextualApp(
         cfg={"analyzed_programs_and_libraries": ["TargetA"]},
         summarize_targets_fn=lambda _cfg: "targets",
-        analysis_menu_fn=lambda _cfg: None,
-        config_menu_fn=lambda _cfg: None,
-        tools_menu_fn=lambda _cfg: None,
+
         show_help_fn=lambda _cfg: None,
         get_help_text_fn=lambda _cfg: "Help text",
         save_config_fn=lambda _path, _cfg: None,
@@ -1601,19 +1621,27 @@ def test_textual_ctrl_g_cancel_binding_requests_stop_for_running_analysis() -> N
     async def _run() -> None:
         app_instance = _make_textual_app(
             cfg={"analyzed_programs_and_libraries": ["DemoTarget.s"]},
+            get_enabled_analyzers_fn=lambda: [
+                SimpleNamespace(
+                    key="comment-code",
+                    name="Commented-out code",
+                    description="Detect commented-out code.",
+                    category="code-quality",
+                ),
+            ],
             analysis_handlers={"run_comment_code_analysis": lambda _cfg: None},
         )
 
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
-            quality_list = app_instance.query_one("#analyze-planner-section-variable-low-confidence")
-            quality_list.select(app_textual.analysis_catalog.ENTRY_COMMENTED_OUT_CODE)
-            app_instance._sync_analyze_selection_from_selection_list(quality_list)
+            analyzers_list = app_instance.query_one("#analyze-planner-section-analyzers")
+            analyzers_list.select("comment-code")
+            app_instance._sync_analyze_selection_from_selection_list(analyzers_list)
             app_instance._write_focused_entry_to_output()
             app_instance._busy = True
             app_instance._active_job_action_id = "action-analyze"
-            app_instance._active_job_label = "Run selected analyses"
+            app_instance._active_job_label = "Run selected analyzers"
             app_instance._active_job_cancel_event = threading.Event()
             app_instance._active_job_cancel_requested = False
             app_instance._active_job_worker = SimpleNamespace(cancel=lambda: None)
@@ -1632,7 +1660,7 @@ def test_textual_ctrl_g_cancel_binding_requests_stop_for_running_analysis() -> N
             assert app_instance._active_job_cancel_event.is_set() is True
             assert "Cancellation requested. The running analysis will stop at the next checkpoint." in output_text
             assert str(app_instance.query_one("#view-note").renderable) == ""
-            assert "Analysis:" in output_text
+            assert "Analyzer:" in output_text
 
     asyncio.run(_run())
 
@@ -1642,19 +1670,29 @@ def test_textual_analyze_clear_selection_resets_planner_state() -> None:
         pytest.skip("Textual not installed")
 
     async def _run() -> None:
-        app_instance = _make_textual_app(analysis_handlers={"run_comment_code_analysis": lambda _cfg: None})
+        app_instance = _make_textual_app(
+            get_enabled_analyzers_fn=lambda: [
+                SimpleNamespace(
+                    key="comment-code",
+                    name="Commented-out code",
+                    description="Detect commented-out code.",
+                    category="code-quality",
+                ),
+            ],
+            analysis_handlers={"run_comment_code_analysis": lambda _cfg: None},
+        )
 
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
-            quality_list = app_instance.query_one("#analyze-planner-section-variable-low-confidence")
-            quality_list.select(app_textual.analysis_catalog.ENTRY_COMMENTED_OUT_CODE)
-            app_instance._sync_analyze_selection_from_selection_list(quality_list)
+            analyzers_list = app_instance.query_one("#analyze-planner-section-analyzers")
+            analyzers_list.select("comment-code")
+            app_instance._sync_analyze_selection_from_selection_list(analyzers_list)
             app_instance._write_focused_entry_to_output()
             app_instance._refresh_shell_state()
             await pilot.pause()
 
-            assert app_instance._analyze_selected_entry_ids == {app_textual.analysis_catalog.ENTRY_COMMENTED_OUT_CODE}
+            assert app_instance._analyze_selected_entry_ids == {"comment-code"}
             assert getattr(app_instance.query_one("#analyze-clear-selection"), "disabled", True) is False
 
             app_instance.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id="analyze-clear-selection")))
@@ -1671,27 +1709,37 @@ def test_textual_analyze_clear_output_clears_session_log_only() -> None:
         pytest.skip("Textual not installed")
 
     async def _run() -> None:
-        app_instance = _make_textual_app(analysis_handlers={"run_comment_code_analysis": lambda _cfg: None})
+        app_instance = _make_textual_app(
+            get_enabled_analyzers_fn=lambda: [
+                SimpleNamespace(
+                    key="comment-code",
+                    name="Commented-out code",
+                    description="Detect commented-out code.",
+                    category="code-quality",
+                ),
+            ],
+            analysis_handlers={"run_comment_code_analysis": lambda _cfg: None},
+        )
 
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
-            quality_list = app_instance.query_one("#analyze-planner-section-variable-low-confidence")
-            quality_list.select(app_textual.analysis_catalog.ENTRY_COMMENTED_OUT_CODE)
-            app_instance._sync_analyze_selection_from_selection_list(quality_list)
+            analyzers_list = app_instance.query_one("#analyze-planner-section-analyzers")
+            analyzers_list.select("comment-code")
+            app_instance._sync_analyze_selection_from_selection_list(analyzers_list)
             app_instance._write_focused_entry_to_output()
             app_instance._refresh_shell_state()
             app_instance._write_output("extra output")
             await pilot.pause()
 
-            assert app_textual.analysis_catalog.ENTRY_COMMENTED_OUT_CODE in app_instance._analyze_selected_entry_ids
-            assert "Analysis: Unused variables" in getattr(app_instance.query_one("#output"), "text", "")
+            assert "comment-code" in app_instance._analyze_selected_entry_ids
+            assert "Analyzer: Commented-out code" in getattr(app_instance.query_one("#output"), "text", "")
 
             app_instance.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id="analyze-clear-output")))
             await pilot.pause()
 
             assert getattr(app_instance.query_one("#output"), "text", "") == ""
-            assert app_textual.analysis_catalog.ENTRY_COMMENTED_OUT_CODE in app_instance._analyze_selected_entry_ids
+            assert "comment-code" in app_instance._analyze_selected_entry_ids
             assert str(app_instance.query_one("#output-title").renderable) == "Session output"
 
     asyncio.run(_run())
@@ -1705,9 +1753,7 @@ def test_textual_toolbar_key_switches_routed_view() -> None:
         app_instance = app_textual.SattLintTextualApp(
             cfg={},
             summarize_targets_fn=lambda _cfg: "targets",
-            analysis_menu_fn=lambda _cfg: None,
-            config_menu_fn=lambda _cfg: None,
-            tools_menu_fn=lambda _cfg: None,
+
             show_help_fn=lambda _cfg: None,
             save_config_fn=lambda _path, _cfg: None,
             config_path=None,
@@ -1736,9 +1782,7 @@ def test_textual_toolbar_keys_respect_busy_guard() -> None:
         app_instance = app_textual.SattLintTextualApp(
             cfg={},
             summarize_targets_fn=lambda _cfg: "targets",
-            analysis_menu_fn=lambda _cfg: None,
-            config_menu_fn=lambda _cfg: None,
-            tools_menu_fn=lambda _cfg: None,
+
             show_help_fn=lambda _cfg: None,
             save_config_fn=lambda _path, _cfg: None,
             config_path=None,
@@ -1807,9 +1851,7 @@ def test_textual_setup_view_shows_selected_target_preview(tmp_path: Path) -> Non
         app_instance = app_textual.SattLintTextualApp(
             cfg=cfg,
             summarize_targets_fn=lambda _cfg: "targets",
-            analysis_menu_fn=lambda _cfg: None,
-            config_menu_fn=lambda _cfg: None,
-            tools_menu_fn=lambda _cfg: None,
+
             show_help_fn=lambda _cfg: None,
             save_config_fn=lambda _path, _cfg: None,
             config_path=None,
@@ -1933,11 +1975,7 @@ def test_textual_startup_output_is_written_for_successful_ast_refresh_logs() -> 
 @pytest.mark.parametrize(
     ("button_id", "handler_name", "expected_call"),
     [
-        ("tools-dumps", "_run_tool_dumps", "dumps"),
         ("tools-refresh-ast", "_run_tool_refresh_ast", "refresh-ast"),
-        ("tools-datatype-usage", "_run_tool_datatype_usage", "datatype-usage"),
-        ("tools-variable-trace", "_run_tool_variable_trace", "variable-trace"),
-        ("tools-module-locals", "_run_tool_module_locals", "module-locals"),
     ],
 )
 def test_textual_tools_buttons_dispatch_direct_actions(
@@ -1954,57 +1992,6 @@ def test_textual_tools_buttons_dispatch_direct_actions(
     app_instance.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id=button_id)))
 
     assert seen == [expected_call]
-
-
-def test_textual_tools_dumps_button_opens_menu_without_ansi_clear() -> None:
-    if not app_textual.has_textual():
-        pytest.skip("Textual not installed")
-
-    async def _run() -> None:
-        app_instance = app_textual.SattLintTextualApp(
-            cfg={"analyzed_programs_and_libraries": ["TargetA"]},
-            summarize_targets_fn=lambda _cfg: "targets",
-            analysis_menu_fn=lambda _cfg: None,
-            config_menu_fn=lambda _cfg: None,
-            tools_menu_fn=lambda _cfg: None,
-            show_help_fn=lambda _cfg: None,
-            save_config_fn=lambda _path, _cfg: None,
-            config_path=None,
-            quit_app_error=RuntimeError,
-            self_check_fn=lambda _cfg: True,
-            dump_menu_fn=app.dump_menu,
-            force_refresh_ast_fn=lambda _cfg: None,
-        )
-        bridge = app_textual.TextualInteractionBridge(
-            submit_request_fn=lambda request: app_instance.call_from_thread(app_instance.present_request, request)
-        )
-
-        app.set_interactive_ui_mode("textual")
-        app.set_textual_menu_interaction(bridge.as_menu_interaction())
-        try:
-            async with app_instance.run_test(size=(80, 28)) as pilot:
-                await pilot.press("ctrl+3")
-                await pilot.pause()
-
-                app_instance.on_button_pressed(SimpleNamespace(button=app_instance.query_one("#tools-dumps")))
-                await pilot.pause()
-                await pilot.pause()
-
-                output_text = str(getattr(app_instance.query_one("#output"), "text", ""))
-                assert "\x1b[2J" not in output_text
-                assert "\x1b[H" not in output_text
-                assert app_instance.query_one("#interaction-host").has_class("active")
-
-                await pilot.press("escape")
-                await pilot.pause()
-                await pilot.pause()
-
-                assert app_instance.query_one("#interaction-host").has_class("active") is False
-                assert app_instance._busy is False
-        finally:
-            app.reset_interactive_ui_mode()
-
-    asyncio.run(_run())
 
 
 def test_textual_setup_target_button_click_adds_and_removes_target(tmp_path: Path) -> None:
@@ -2026,9 +2013,7 @@ def test_textual_setup_target_button_click_adds_and_removes_target(tmp_path: Pat
         app_instance = app_textual.SattLintTextualApp(
             cfg=cfg,
             summarize_targets_fn=lambda _cfg: "targets",
-            analysis_menu_fn=lambda _cfg: None,
-            config_menu_fn=lambda _cfg: None,
-            tools_menu_fn=lambda _cfg: None,
+
             show_help_fn=lambda _cfg: None,
             save_config_fn=lambda _path, _cfg: None,
             config_path=None,
@@ -2070,9 +2055,7 @@ def test_textual_tools_view_shows_direct_actions() -> None:
         app_instance = app_textual.SattLintTextualApp(
             cfg={"analyzed_programs_and_libraries": []},
             summarize_targets_fn=lambda _cfg: "targets",
-            analysis_menu_fn=lambda _cfg: None,
-            config_menu_fn=lambda _cfg: None,
-            tools_menu_fn=lambda _cfg: None,
+
             show_help_fn=lambda _cfg: None,
             save_config_fn=lambda _path, _cfg: None,
             config_path=None,
@@ -2089,11 +2072,7 @@ def test_textual_tools_view_shows_direct_actions() -> None:
             view_title = app_instance.query_one("#view-title")
             view_host = app_instance.query_one("#view-host")
             output_pane = app_instance.query_one("#output-pane")
-            dumps_button = app_instance.query_one("#tools-dumps")
             refresh_ast_button = app_instance.query_one("#tools-refresh-ast")
-            datatype_usage_button = app_instance.query_one("#tools-datatype-usage")
-            variable_trace_button = app_instance.query_one("#tools-variable-trace")
-            module_locals_button = app_instance.query_one("#tools-module-locals")
             assert app_instance._active_view == "tools"
             assert workspace_host.has_class("docs-tools-split")
             assert workspace_host.has_class("analyze-split") is False
@@ -2103,28 +2082,13 @@ def test_textual_tools_view_shows_direct_actions() -> None:
             assert output_pane.size.width > view_host.size.width
             assert app_instance.query_one("#view-actions").has_class("is-hidden") is True
             assert app_instance.query_one("#tools-actions").has_class("is-hidden") is False
-            assert getattr(dumps_button, "disabled", False) is True
             assert getattr(refresh_ast_button, "disabled", False) is True
-            assert getattr(datatype_usage_button, "disabled", False) is True
-            assert getattr(variable_trace_button, "disabled", False) is True
-            assert getattr(module_locals_button, "disabled", False) is True
             assert str(getattr(refresh_ast_button, "label", "")) == "Refresh all caches"
             assert workspace_host.has_class("wide-output-split") is False
             assert view_side_actions.size.height > 0
-            for button in (
-                dumps_button,
-                refresh_ast_button,
-                datatype_usage_button,
-                variable_trace_button,
-                module_locals_button,
-            ):
-                assert button.size.width > 0
-                assert button.region.x >= tools_actions.region.x
-                assert button.region.right <= tools_actions.region.right
-            assert dumps_button.region.y < refresh_ast_button.region.y
-            assert refresh_ast_button.region.y < datatype_usage_button.region.y
-            assert datatype_usage_button.region.y < variable_trace_button.region.y
-            assert variable_trace_button.region.y < module_locals_button.region.y
+            assert refresh_ast_button.size.width > 0
+            assert refresh_ast_button.region.x >= tools_actions.region.x
+            assert refresh_ast_button.region.right <= tools_actions.region.right
             assert "targeted tracing tools" in str(app_instance.query_one("#view-description").renderable)
 
     asyncio.run(_run())
@@ -2145,9 +2109,7 @@ def test_textual_setup_add_selected_target_marks_dirty(tmp_path: Path, monkeypat
     app_instance = app_textual.SattLintTextualApp(
         cfg=cfg,
         summarize_targets_fn=lambda _cfg: "targets",
-        analysis_menu_fn=lambda _cfg: None,
-        config_menu_fn=lambda _cfg: None,
-        tools_menu_fn=lambda _cfg: None,
+
         show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
@@ -2186,9 +2148,7 @@ def test_textual_setup_remove_selected_target_marks_dirty(tmp_path: Path, monkey
     app_instance = app_textual.SattLintTextualApp(
         cfg=cfg,
         summarize_targets_fn=lambda _cfg: "targets",
-        analysis_menu_fn=lambda _cfg: None,
-        config_menu_fn=lambda _cfg: None,
-        tools_menu_fn=lambda _cfg: None,
+
         show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
@@ -2223,9 +2183,7 @@ def test_textual_setup_prompt_updates_program_dir(monkeypatch: pytest.MonkeyPatc
     app_instance = app_textual.SattLintTextualApp(
         cfg=cfg,
         summarize_targets_fn=lambda _cfg: "targets",
-        analysis_menu_fn=lambda _cfg: None,
-        config_menu_fn=lambda _cfg: None,
-        tools_menu_fn=lambda _cfg: None,
+
         show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
@@ -2276,9 +2234,7 @@ def test_textual_setup_prompt_replaces_whole_other_lib_dirs_list(monkeypatch: py
     app_instance = app_textual.SattLintTextualApp(
         cfg=cfg,
         summarize_targets_fn=lambda _cfg: "targets",
-        analysis_menu_fn=lambda _cfg: None,
-        config_menu_fn=lambda _cfg: None,
-        tools_menu_fn=lambda _cfg: None,
+
         show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
@@ -2341,9 +2297,7 @@ def test_textual_finish_action_clears_dirty_after_success() -> None:
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
-        analysis_menu_fn=lambda _cfg: None,
-        config_menu_fn=lambda _cfg: None,
-        tools_menu_fn=lambda _cfg: None,
+
         show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
@@ -2362,9 +2316,7 @@ def test_textual_quit_action_respects_busy_guard(monkeypatch: pytest.MonkeyPatch
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
-        analysis_menu_fn=lambda _cfg: None,
-        config_menu_fn=lambda _cfg: None,
-        tools_menu_fn=lambda _cfg: None,
+
         show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
@@ -2387,9 +2339,7 @@ def test_textual_write_output_preserves_blank_lines(monkeypatch: pytest.MonkeyPa
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
-        analysis_menu_fn=lambda _cfg: None,
-        config_menu_fn=lambda _cfg: None,
-        tools_menu_fn=lambda _cfg: None,
+
         show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
@@ -2424,9 +2374,7 @@ def test_textual_write_output_inserts_spacing_before_target_headers(monkeypatch:
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
-        analysis_menu_fn=lambda _cfg: None,
-        config_menu_fn=lambda _cfg: None,
-        tools_menu_fn=lambda _cfg: None,
+
         show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
@@ -2466,9 +2414,7 @@ def test_textual_write_output_caps_retained_lines(monkeypatch: pytest.MonkeyPatc
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
-        analysis_menu_fn=lambda _cfg: None,
-        config_menu_fn=lambda _cfg: None,
-        tools_menu_fn=lambda _cfg: None,
+
         show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
@@ -2560,9 +2506,7 @@ def test_textual_toolbar_actions_are_ignored_while_interaction_screen_is_open(mo
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
-        analysis_menu_fn=lambda _cfg: None,
-        config_menu_fn=lambda _cfg: None,
-        tools_menu_fn=lambda _cfg: None,
+
         show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,

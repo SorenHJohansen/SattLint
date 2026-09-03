@@ -2,16 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from time import perf_counter
-from types import SimpleNamespace
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef
 
-from . import _app_analysis_module_commands as module_commands
 from . import _app_analysis_reporting as analysis_reporting_module
 from . import app_analysis as shared
-from .analyzers import variable_usage_reporting as variables_reporting_module
-from .application.interaction import MenuInteraction
 from .config_types import ConfigDict
 from .core import telemetry as telemetry_module
 from .models.project_graph import ProjectGraph
@@ -19,11 +15,29 @@ from .reporting.variables_report import DEFAULT_VARIABLE_ANALYSIS_KINDS, IssueKi
 
 LoadedProject = shared.LoadedProject
 
-parse_index_selection = module_commands.parse_index_selection
-run_module_duplicates_analysis = module_commands.run_module_duplicates_analysis
-run_module_find_by_name = module_commands.run_module_find_by_name
-run_module_tree_debug = module_commands.run_module_tree_debug
-run_module_localvar_analysis = module_commands.run_module_localvar_analysis
+
+def parse_index_selection(selection: str, max_index: int) -> list[int]:
+    tokens = [token.strip() for token in selection.replace(" ", ",").split(",") if token.strip()]
+    indices: set[int] = set()
+
+    for token in tokens:
+        if "-" in token:
+            parts = [part.strip() for part in token.split("-", 1)]
+            if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
+                continue
+            start = int(parts[0])
+            end = int(parts[1])
+            if start > end:
+                start, end = end, start
+            for idx in range(start, end + 1):
+                if 1 <= idx <= max_index:
+                    indices.add(idx)
+        elif token.isdigit():
+            idx = int(token)
+            if 1 <= idx <= max_index:
+                indices.add(idx)
+
+    return sorted(indices)
 
 
 def run_variable_analysis(  # noqa: PLR0915
@@ -245,58 +259,31 @@ def run_variable_analysis(  # noqa: PLR0915
         pause_fn()
 
 
-def run_datatype_usage_analysis(
+def run_comment_code_analysis(
     cfg: ConfigDict,
     *,
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
+    source_paths_for_current_target_fn: Callable[[BasePicture, ProjectGraph], set[Any]] | None = None,
     pause_fn: Callable[[], None] | None = None,
-    interaction: MenuInteraction | None = None,
 ) -> None:
     if iter_loaded_projects_fn is None:
         iter_loaded_projects_fn = shared.iter_loaded_projects
+    if source_paths_for_current_target_fn is None:
+        source_paths_for_current_target_fn = shared.source_paths_for_current_target
 
-    shared.emit_output("\n--- Datatype Usage Analysis ---")
-    shared.emit_output("Enter the variable name to analyze:")
-    var_name = interaction.prompt("Variable name", None).strip() if interaction is not None else input("> ").strip()
-
-    if not var_name:
-        shared.emit_output("❌ No variable name provided")
-        if pause_fn is not None:
-            pause_fn()
-        return
-
+    shared.emit_output("\n--- Commented-out Code ---")
     for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
-        succeeded, report = shared.run_logged_cli_action(
-            cfg,
-            action=lambda target_name=target_name, var_name=var_name, project_bp=project_bp, graph=graph: (
-                shared.run_with_live_status(
-                    f"Analyzing datatype usage for {target_name}: {var_name}",
-                    lambda project_bp=project_bp, graph=graph: variables_reporting_module.report_datatype_usage(
-                        project_bp,
-                        var_name,
-                        debug=shared.debug_enabled(cfg),
-                        unavailable_libraries=analysis_reporting_module.unavailable_libraries(graph),
-                    ),
-                )
-            ),
-            debug_message=f"Datatype usage analysis failed for target {target_name!r} and variable {var_name!r}",
-            user_message=f"❌ Error during analysis for {target_name}: {{error}}",
+        paths = source_paths_for_current_target_fn(project_bp, graph)
+        report = shared.run_with_live_status(
+            f"Analyzing commented-out code for {target_name}",
+            lambda paths=paths, target_name=target_name: shared.analyze_comment_code_files(paths, target_name),
         )
-        if not succeeded or report is None:
-            continue
+        report = analysis_reporting_module.normalize_report_target_name(report, target_name)
         shared.emit_output(f"\n=== Target: {target_name} ===")
-        shared.emit_output(report)
+        shared.emit_output(report.summary())
 
     if pause_fn is not None:
         pause_fn()
-
-
-def run_analysis_menu(cfg: ConfigDict, *, analysis_menu_fn: Callable[[ConfigDict], None]) -> None:
-    analysis_menu_fn(cfg)
-
-
-def variable_analysis_menu(cfg: ConfigDict, *, analysis_menu_fn: Callable[[ConfigDict], None]) -> None:
-    analysis_menu_fn(cfg)
 
 
 def run_mms_interface_analysis(
@@ -421,171 +408,6 @@ def run_icf_validation(
     shared.emit_output(f"  Valid: {total_valid}")
     shared.emit_output(f"  Invalid: {total_invalid}")
     shared.emit_output(f"  Skipped: {total_skipped}")
-
-    if pause_fn is not None:
-        pause_fn()
-
-
-def run_debug_variable_usage(
-    cfg: ConfigDict,
-    *,
-    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
-    pause_fn: Callable[[], None] | None = None,
-    interaction: MenuInteraction | None = None,
-) -> None:
-    if iter_loaded_projects_fn is None:
-        iter_loaded_projects_fn = shared.iter_loaded_projects
-
-    shared.emit_output("\n--- Variable Usage (Fields + Locations) ---")
-    shared.emit_output("Enter the variable name to analyze:")
-    var_name = interaction.prompt("Variable name", None).strip() if interaction is not None else input("> ").strip()
-
-    if not var_name:
-        shared.emit_output("❌ No variable name provided")
-        if pause_fn is not None:
-            pause_fn()
-        return
-
-    for target_name, project_bp, _graph in iter_loaded_projects_fn(cfg):
-        succeeded, report = shared.run_logged_cli_action(
-            cfg,
-            action=lambda target_name=target_name, var_name=var_name, project_bp=project_bp: (
-                shared.run_with_live_status(
-                    f"Tracing variable usage for {target_name}: {var_name}",
-                    lambda project_bp=project_bp: shared.debug_variable_usage(
-                        project_bp,
-                        var_name,
-                        debug=shared.debug_enabled(cfg),
-                    ),
-                )
-            ),
-            debug_message=f"Variable usage debug failed for target {target_name!r} and variable {var_name!r}",
-            user_message=f"❌ Error during debug for {target_name}: {{error}}",
-        )
-        if not succeeded or report is None:
-            continue
-        shared.emit_output(f"\n=== Target: {target_name} ===")
-        shared.emit_output(report)
-
-    if pause_fn is not None:
-        pause_fn()
-
-
-def run_comment_code_analysis(
-    cfg: ConfigDict,
-    *,
-    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
-    source_paths_for_current_target_fn: Callable[[BasePicture, ProjectGraph], set[Any]] | None = None,
-    pause_fn: Callable[[], None] | None = None,
-) -> None:
-    if iter_loaded_projects_fn is None:
-        iter_loaded_projects_fn = shared.iter_loaded_projects
-    if source_paths_for_current_target_fn is None:
-        source_paths_for_current_target_fn = shared.source_paths_for_current_target
-
-    shared.emit_output("\n--- Commented-out Code ---")
-    for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
-        paths = source_paths_for_current_target_fn(project_bp, graph)
-        report = shared.run_with_live_status(
-            f"Analyzing commented-out code for {target_name}",
-            lambda paths=paths, target_name=target_name: shared.analyze_comment_code_files(paths, target_name),
-        )
-        report = analysis_reporting_module.normalize_report_target_name(report, target_name)
-        shared.emit_output(f"\n=== Target: {target_name} ===")
-        shared.emit_output(report.summary())
-
-    if pause_fn is not None:
-        pause_fn()
-
-
-def run_advanced_datatype_analysis(
-    cfg: ConfigDict,
-    *,
-    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
-    pause_fn: Callable[[], None] | None = None,
-    interaction: MenuInteraction | None = None,
-) -> None:
-    if iter_loaded_projects_fn is None:
-        iter_loaded_projects_fn = shared.iter_loaded_projects
-
-    if interaction is not None:
-        choice = interaction.choose_menu_option(
-            "Advanced Datatype Analysis",
-            [
-                SimpleNamespace(
-                    key="1",
-                    label="Analyze variable by name",
-                    description="Field-level usage",
-                ),
-                SimpleNamespace(
-                    key="2",
-                    label="Compare module variants by name",
-                    description="",
-                ),
-                SimpleNamespace(
-                    key="3",
-                    label="Debug specific variable usage",
-                    description="",
-                ),
-                SimpleNamespace(key="b", label="Back", description=""),
-            ],
-        )
-    else:
-        shared.emit_output("\n--- Advanced Datatype Analysis ---")
-        shared.emit_output("1) Analyze variable by name (field-level usage)")
-        shared.emit_output("2) Compare module variants by name")
-        shared.emit_output("3) Debug specific variable usage")
-        shared.emit_output("b) Back")
-
-        choice = input("> ").strip()
-
-    if choice == "1":
-        var_name = (
-            interaction.prompt("Variable name", None).strip()
-            if interaction is not None
-            else input("Enter variable name: ").strip()
-        )
-        if var_name:
-            for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
-                report = shared.run_with_live_status(
-                    f"Analyzing datatype usage for {target_name}: {var_name}",
-                    lambda project_bp=project_bp, graph=graph: variables_reporting_module.report_datatype_usage(
-                        project_bp,
-                        var_name,
-                        debug=shared.debug_enabled(cfg),
-                        unavailable_libraries=analysis_reporting_module.unavailable_libraries(graph),
-                    ),
-                )
-                shared.emit_output(f"\n=== Target: {target_name} ===")
-                shared.emit_output(report)
-
-    elif choice == "2":
-        module_name = (
-            interaction.prompt("Module name to compare", None).strip()
-            if interaction is not None
-            else input("Enter module name to compare: ").strip()
-        )
-        if module_name:
-            shared.emit_output("⚠ Module comparison analysis not yet implemented")
-
-    elif choice == "3":
-        var_name = (
-            interaction.prompt("Variable name to debug", None).strip()
-            if interaction is not None
-            else input("Enter variable name to debug: ").strip()
-        )
-        if var_name:
-            for target_name, project_bp, _graph in iter_loaded_projects_fn(cfg):
-                report = shared.run_with_live_status(
-                    f"Tracing variable usage for {target_name}: {var_name}",
-                    lambda project_bp=project_bp: shared.debug_variable_usage(
-                        project_bp,
-                        var_name,
-                        debug=shared.debug_enabled(cfg),
-                    ),
-                )
-                shared.emit_output(f"\n=== Target: {target_name} ===")
-                shared.emit_output(report)
 
     if pause_fn is not None:
         pause_fn()

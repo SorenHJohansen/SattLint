@@ -36,7 +36,6 @@ from .application._interaction import (
 )
 from .cli import app_cli_commands as app_cli_commands_module
 from .cli import app_commands as commands_application
-from .cli import menus as app_menus_module
 from .cli import startup as startup_application
 from .core import telemetry as app_telemetry_module
 from .core.semantic import load_workspace_snapshot
@@ -56,7 +55,6 @@ app_analysis_checks: Any = app_analysis_checks_module
 app_analysis_commands: Any = app_analysis_commands_module
 app_base: Any = app_base_module
 app_cli_commands: Any = app_cli_commands_module
-app_menus: Any = app_menus_module
 app_support: Any = app_support_module
 app_telemetry: Any = app_telemetry_module
 cache: Any = cache_module
@@ -177,9 +175,6 @@ run_cli = commands_application.run_cli
 run_validate_config_command = commands_application.run_validate_config_command
 run_analyze_command = commands_application.run_analyze_command
 run_cache_prune_command = commands_application.run_cache_prune_command
-_configured_icf_files = commands_application.configured_icf_files
-run_format_icf_command = commands_application.run_format_icf_command
-run_icf_formatter = commands_application.run_icf_formatter
 show_config = commands_application.show_config
 
 
@@ -302,32 +297,13 @@ force_refresh_ast = project_application.force_refresh_ast
 ensure_ast_cache = project_application.ensure_ast_cache
 refresh_analysis_caches = project_application.refresh_analysis_caches
 run_variable_analysis = analyze_application.run_variable_analysis
-run_datatype_usage_analysis = analyze_application.run_datatype_usage_analysis
-variable_usage_submenu = startup_application.variable_usage_submenu
-module_analysis_submenu = startup_application.module_analysis_submenu
-interface_communication_submenu = startup_application.interface_communication_submenu
-code_quality_submenu = startup_application.code_quality_submenu
-analyzer_catalog_menu = startup_application.analyzer_catalog_menu
-advanced_analysis_menu = startup_application.advanced_analysis_menu
-analysis_menu = startup_application.analysis_menu
-run_module_duplicates_analysis = analyze_application.run_module_duplicates_analysis
-run_module_find_by_name = analyze_application.run_module_find_by_name
-run_module_tree_debug = analyze_application.run_module_tree_debug
-run_analysis_menu = startup_application.run_analysis_menu
-variable_analysis_menu = startup_application.variable_analysis_menu
-run_module_localvar_analysis = analyze_application.run_module_localvar_analysis
 _get_enabled_analyzers = analyze_application._get_enabled_analyzers
 _get_selectable_analyzers = analyze_application._get_selectable_analyzers
 _run_checks = analyze_application.run_checks
 run_checks_menu = startup_application.run_checks_menu
 run_mms_interface_analysis = analyze_application.run_mms_interface_analysis
 run_icf_validation = analyze_application.run_icf_validation
-run_debug_variable_usage = analyze_application.run_debug_variable_usage
 run_comment_code_analysis = analyze_application.run_comment_code_analysis
-run_advanced_datatype_analysis = analyze_application.run_advanced_datatype_analysis
-dump_menu = startup_application.dump_menu
-config_menu = startup_application.config_menu
-tools_menu = startup_application.tools_menu
 
 
 # ----------------------------

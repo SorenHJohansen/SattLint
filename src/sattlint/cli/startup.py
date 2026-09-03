@@ -5,7 +5,7 @@ Direct replacement for the old ``application.startup`` surface, relocated
 from ``application/`` to ``cli/`` as part of Phase 6 (application-layer
 refactor).  This module wires the owning implementations
 (:mod:`sattlint._app_interactive_menus`, :mod:`sattlint._app_startup`,
-:mod:`sattlint.cli.menus`, :mod:`sattlint._config_display`,
+:mod:`sattlint._config_display`,
 :mod:`sattlint.app_support`) directly, keeping the interactive loop
 independent of the legacy ``app`` module.
 """
@@ -19,7 +19,6 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from .. import _app_analysis_menus as analysis_menus_module
 from .. import _app_interactive_menus as interactive_core
 from .. import _app_startup as startup_core
 from .. import _config_display, app_support
@@ -38,7 +37,6 @@ from ..application._interaction import set_textual_menu_interaction as _ui_set_t
 from ..application._interaction import textual_menu_interaction as _ui_textual_menu_interaction
 from ..config_types import ConfigDict
 from . import app_commands as commands_application
-from . import menus as app_menus
 
 QuitAppError = app_base_module.QuitAppError
 
@@ -176,15 +174,8 @@ def analysis_handler_fns() -> dict[str, Callable[..., Any]]:
         "run_variable_analysis": analyze_application.run_variable_analysis,
         "_run_checks": analyze_application.run_checks,
         "run_checks_menu": run_checks_menu,
-        "run_datatype_usage_analysis": analyze_application.run_datatype_usage_analysis,
-        "run_debug_variable_usage": analyze_application.run_debug_variable_usage,
-        "run_module_localvar_analysis": analyze_application.run_module_localvar_analysis,
-        "run_module_duplicates_analysis": analyze_application.run_module_duplicates_analysis,
-        "run_module_find_by_name": analyze_application.run_module_find_by_name,
-        "run_module_tree_debug": analyze_application.run_module_tree_debug,
         "run_mms_interface_analysis": analyze_application.run_mms_interface_analysis,
         "run_icf_validation": analyze_application.run_icf_validation,
-        "run_icf_formatter": run_icf_formatter,
         "run_comment_code_analysis": analyze_application.run_comment_code_analysis,
     }
 
@@ -196,7 +187,6 @@ def run_interactive_session(cfg: ConfigDict, **kwargs: Any) -> None:
 
     kwargs.setdefault("get_help_text_fn", get_help_text)
     kwargs.setdefault("self_check_fn", app_base_module.self_check)
-    kwargs.setdefault("dump_menu_fn", dump_menu)
     kwargs.setdefault("force_refresh_ast_fn", project_application.refresh_analysis_caches)
     kwargs.setdefault("has_analyzed_targets_fn", project_application.has_analyzed_targets)
     kwargs.setdefault("ensure_ast_cache_fn", project_application.ensure_ast_cache)
@@ -240,14 +230,6 @@ def build_cli_parser() -> argparse.ArgumentParser:
     return app_base_module.build_cli_parser()
 
 
-def run_icf_formatter(cfg: ConfigDict) -> None:
-    interactive_core.run_icf_formatter(
-        cfg,
-        run_format_icf_command_fn=commands_application.run_format_icf_command,
-        pause_fn=pause,
-    )
-
-
 def show_config(cfg: ConfigDict) -> None:
     interactive_core.show_config(
         cfg,
@@ -255,179 +237,8 @@ def show_config(cfg: ConfigDict) -> None:
     )
 
 
-def dump_menu(cfg: ConfigDict) -> None:
-    app_menus.dump_menu(
-        cfg,
-        clear_screen_fn=clear_screen,
-        print_menu_fn=print_menu,
-        menu_option_factory=menu_option,
-        quit_app_fn=quit_app,
-        iter_loaded_projects_fn=project_application.iter_loaded_projects,
-        target_is_library_fn=project_application.target_is_library,
-        analyze_variables_fn=app_analysis_module.analyze_variables,
-        interaction=build_menu_interaction(),
-    )
-
-
-def config_menu(cfg: ConfigDict) -> bool:
-    return interactive_core.config_menu(
-        cfg,
-        config_menu_fn=app_menus.config_menu,
-        config_path=app_base_module.CONFIG_PATH,
-        clear_screen_fn=clear_screen,
-        show_config_fn=show_config,
-        print_menu_fn=print_menu,
-        menu_option_factory=menu_option,
-        prompt_fn=prompt,
-        pause_fn=pause,
-        confirm_fn=confirm,
-        target_exists_fn=app_base_module.target_exists,
-        save_config_fn=app_base_module.save_config,
-        apply_debug_fn=app_base_module.apply_debug,
-        quit_app_fn=quit_app,
-    )
-
-
-def tools_menu(cfg: ConfigDict) -> None:
-    interactive_core.tools_menu(
-        cfg,
-        tools_menu_fn=app_menus.tools_menu,
-        clear_screen_fn=clear_screen,
-        print_menu_fn=print_menu,
-        menu_option_factory=menu_option,
-        quit_app_fn=quit_app,
-        self_check_fn=app_base_module.self_check,
-        pause_fn=pause,
-        require_targets_for_menu_action_fn=project_application.require_targets_for_menu_action,
-        dump_menu_fn=dump_menu,
-        confirm_fn=confirm,
-        force_refresh_ast_fn=project_application.refresh_analysis_caches,
-    )
-
-
 def run_checks_menu(cfg: ConfigDict) -> None:
     app_analysis_module.run_checks_menu(cfg, run_checks_fn=analyze_application.run_checks)
-
-
-def run_analysis_menu(cfg: ConfigDict) -> None:
-    app_analysis_module.run_analysis_menu(cfg, analysis_menu_fn=analysis_menu)
-
-
-def variable_analysis_menu(cfg: ConfigDict) -> None:
-    app_analysis_module.variable_analysis_menu(cfg, analysis_menu_fn=analysis_menu)
-
-
-def variable_usage_submenu(cfg: ConfigDict) -> None:
-    analysis_menus_module.variable_usage_submenu(
-        cfg,
-        clear_screen_fn=clear_screen,
-        quit_app_fn=quit_app,
-        run_variable_analysis_fn=analyze_application.run_variable_analysis,
-        run_datatype_usage_analysis_fn=analyze_application.run_datatype_usage_analysis,
-        run_debug_variable_usage_fn=analyze_application.run_debug_variable_usage,
-        run_module_localvar_analysis_fn=analyze_application.run_module_localvar_analysis,
-        pause_fn=pause,
-        emit_output_fn=console_module.print_output,
-        interaction=build_menu_interaction(),
-    )
-
-
-def module_analysis_submenu(cfg: ConfigDict) -> None:
-    analysis_menus_module.module_analysis_submenu(
-        cfg,
-        clear_screen_fn=clear_screen,
-        print_menu_fn=print_menu,
-        menu_option_factory=menu_option,
-        quit_app_fn=quit_app,
-        run_module_duplicates_analysis_fn=analyze_application.run_module_duplicates_analysis,
-        run_module_find_by_name_fn=analyze_application.run_module_find_by_name,
-        run_module_tree_debug_fn=analyze_application.run_module_tree_debug,
-        pause_fn=pause,
-        emit_output_fn=console_module.print_output,
-        interaction=build_menu_interaction(),
-    )
-
-
-def interface_communication_submenu(cfg: ConfigDict) -> None:
-    analysis_menus_module.interface_communication_submenu(
-        cfg,
-        clear_screen_fn=clear_screen,
-        print_menu_fn=print_menu,
-        menu_option_factory=menu_option,
-        quit_app_fn=quit_app,
-        run_mms_interface_analysis_fn=analyze_application.run_mms_interface_analysis,
-        run_icf_validation_fn=analyze_application.run_icf_validation,
-        run_icf_formatter_fn=run_icf_formatter,
-        pause_fn=pause,
-        emit_output_fn=console_module.print_output,
-        interaction=build_menu_interaction(),
-    )
-
-
-def code_quality_submenu(cfg: ConfigDict) -> None:
-    analysis_menus_module.code_quality_submenu(
-        cfg,
-        clear_screen_fn=clear_screen,
-        print_menu_fn=print_menu,
-        menu_option_factory=menu_option,
-        quit_app_fn=quit_app,
-        run_comment_code_analysis_fn=analyze_application.run_comment_code_analysis,
-        pause_fn=pause,
-        emit_output_fn=console_module.print_output,
-        interaction=build_menu_interaction(),
-    )
-
-
-def analyzer_catalog_menu(cfg: ConfigDict) -> None:
-    analysis_menus_module.analyzer_catalog_menu(
-        cfg,
-        clear_screen_fn=clear_screen,
-        print_menu_fn=print_menu,
-        menu_option_factory=menu_option,
-        quit_app_fn=quit_app,
-        get_enabled_analyzers_fn=analyze_application.get_enabled_analyzers,
-        run_checks_fn=analyze_application.run_checks,
-        pause_fn=pause,
-        emit_output_fn=console_module.print_output,
-        interaction=build_menu_interaction(),
-    )
-
-
-def advanced_analysis_menu(cfg: ConfigDict) -> None:
-    analysis_menus_module.advanced_analysis_menu(
-        cfg,
-        clear_screen_fn=clear_screen,
-        print_menu_fn=print_menu,
-        menu_option_factory=menu_option,
-        quit_app_fn=quit_app,
-        run_datatype_usage_analysis_fn=analyze_application.run_datatype_usage_analysis,
-        run_debug_variable_usage_fn=analyze_application.run_debug_variable_usage,
-        run_module_localvar_analysis_fn=analyze_application.run_module_localvar_analysis,
-        pause_fn=pause,
-        emit_output_fn=console_module.print_output,
-        interaction=build_menu_interaction(),
-    )
-
-
-def analysis_menu(cfg: ConfigDict) -> None:
-    analysis_menus_module.analysis_menu(
-        cfg,
-        clear_screen_fn=clear_screen,
-        print_menu_fn=print_menu,
-        menu_option_factory=menu_option,
-        quit_app_fn=quit_app,
-        run_checks_fn=analyze_application.run_checks,
-        variable_usage_submenu_fn=variable_usage_submenu,
-        module_analysis_submenu_fn=module_analysis_submenu,
-        interface_communication_submenu_fn=interface_communication_submenu,
-        code_quality_submenu_fn=code_quality_submenu,
-        analyzer_catalog_menu_fn=analyzer_catalog_menu,
-        advanced_analysis_menu_fn=advanced_analysis_menu,
-        summarize_targets_fn=summarize_targets,
-        pause_fn=pause,
-        emit_output_fn=console_module.print_output,
-        interaction=build_menu_interaction(),
-    )
 
 
 def main(argv: list[str] | None = None, *, run_interactive_session_fn: Callable[..., None] | None = None) -> int:
@@ -458,9 +269,6 @@ def main(argv: list[str] | None = None, *, run_interactive_session_fn: Callable[
         menu_option_factory=menu_option,
         summarize_targets_fn=summarize_targets,
         require_targets_for_menu_action_fn=project_application.require_targets_for_menu_action,
-        analysis_menu_fn=analysis_menu,
-        config_menu_fn=config_menu,
-        tools_menu_fn=tools_menu,
         show_help_fn=show_help,
         save_config_fn=app_base_module.save_config,
         quit_app_fn=quit_app,

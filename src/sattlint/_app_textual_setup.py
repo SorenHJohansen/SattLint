@@ -13,12 +13,8 @@ from ._app_textual_setup_actions import (
     _queue_setup_value_prompt,
     _run_analyze_checks,
     _run_app_module_cfg_action,
-    _run_tool_datatype_usage,
-    _run_tool_dumps,
-    _run_tool_module_locals,
     _run_tool_refresh_ast,
     _run_tool_self_check,
-    _run_tool_variable_trace,
     _set_setup_filter_text,
 )
 from ._app_textual_setup_display import (
@@ -191,11 +187,7 @@ if TYPE_CHECKING:
         ) -> None: ...
         def _run_analyze_checks(self) -> None: ...
         def _run_tool_self_check(self) -> None: ...
-        def _run_tool_dumps(self) -> None: ...
         def _run_tool_refresh_ast(self) -> None: ...
-        def _run_tool_datatype_usage(self) -> None: ...
-        def _run_tool_variable_trace(self) -> None: ...
-        def _run_tool_module_locals(self) -> None: ...
         def _prompt_setup_value(self, field_key: str, *, label: str, is_list: bool = False) -> None: ...
         async def _prompt_setup_value_async(self, field_key: str, *, label: str, is_list: bool = False) -> None: ...
         def _queue_setup_value_prompt(self, field_key: str, *, label: str, is_list: bool = False) -> None: ...
@@ -248,11 +240,7 @@ else:
         _run_app_module_cfg_action = _run_app_module_cfg_action
         _run_analyze_checks = _run_analyze_checks
         _run_tool_self_check = _run_tool_self_check
-        _run_tool_dumps = _run_tool_dumps
         _run_tool_refresh_ast = _run_tool_refresh_ast
-        _run_tool_datatype_usage = _run_tool_datatype_usage
-        _run_tool_variable_trace = _run_tool_variable_trace
-        _run_tool_module_locals = _run_tool_module_locals
         _prompt_setup_value = _prompt_setup_value
         _prompt_setup_value_async = _prompt_setup_value_async
         _queue_setup_value_prompt = _queue_setup_value_prompt

@@ -172,11 +172,6 @@ MENU_DEFINITIONS: list[tuple[str, list[tuple[str, str | None] | None]]] = [
         "Tools",
         [
             ("Refresh Cache", "menu-tools-refresh-cache"),
-            ("Diagnostics", "menu-tools-diagnostics"),
-            None,
-            ("Datatype Field Trace", "menu-tools-datatype-trace"),
-            ("Variable Usage Trace", "menu-tools-variable-trace"),
-            ("Module Locals Trace", "menu-tools-module-locals"),
         ],
     ),
     (

@@ -15,7 +15,7 @@ Every important rule should map to:
 
 ### 2. AGENTS.md Is Table of Contents, Not Encyclopedia
 
-- Keep under 100 lines (enforced by lint)
+- Keep it short and pointed — a table of contents, not an encyclopedia
 - Point to deeper docs, don't duplicate them
 - Update only on material change to architecture/invariants
 
@@ -32,7 +32,6 @@ Failures must be explicit and actionable.
 
 Every principle must have enforcement:
 
-- AGENTS.md line count → CI lint
 - Architecture boundaries → import-linter
 - Doc freshness → automated stale-doc scanner
 - Casefold enforcement → custom lint rule
@@ -167,6 +166,23 @@ Eliminate illegal states through typing.
 - OpenAPI contracts for external APIs
 - Types shrink the search space of possible actions
 
+### 26. Objects Over Dicts/Tuples
+
+Typed objects (dataclasses/classes) over ad-hoc dicts/tuples for data shapes.
+
+- Named attribute access, never positional/numeric indexing (`item.value`, never `item[0]`)
+- Multi-value returns are typed result objects, not tuples
+- No "stringly-typed" dicts with magic keys (extends #4)
+- Invalid states are unrepresentable by construction (see #4)
+
+### 27. Strict Typing by Default
+
+Prefer the strictest sound typing the codebase supports.
+
+- Touched files stay Pyright strict-clean
+- Eliminate avoidable `Any`; `Any` is a documented, justified exception, not a default
+- Typed boundaries over loose `dict[str, object]` plumbing
+
 ## Development Workflow
 
 ### 13. Fast Ephemeral Dev Environments
@@ -275,6 +291,14 @@ Agents start with small, stable entry point (`AGENTS.md`), follow pointers to de
 - Temporary compatibility layers documented
 - Dead code removal prioritized
 
+### 29. Typed Dispatch Over Reflection
+
+Typed callables over `getattr`/attribute-name strings for dispatch.
+
+- Analyzer execution and command routing use statically typed callables
+- No runtime reflection for dispatch when a typed callable works
+- Avoid "magic" registries without clear contracts (see #20)
+
 ## Quality
 
 ### 25. Root Cause Before Remedy
@@ -284,6 +308,15 @@ Agents start with small, stable entry point (`AGENTS.md`), follow pointers to de
 - Shared solutions preferred over local patches
 - Repeated issue classes trigger architectural review
 - Every fix must reduce future issue probability
+
+### 28. Right Solution, Not Safe Solution
+
+Do the correct, root-cause fix even when a compatibility shim lands faster.
+
+- "Safe" workarounds that preserve the wrong shape are deferred debt
+- No new compatibility seam without a removal timeline (see #23)
+- Delete indirection rather than relocate it
+- Change callers rather than preserving obsolete internal APIs
 
 ## Agent Guardrails
 

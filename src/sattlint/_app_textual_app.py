@@ -247,9 +247,6 @@ if _TEXTUAL_APP is not None:
             *,
             cfg: ConfigDict,
             summarize_targets_fn: Any,
-            analysis_menu_fn: Any,
-            config_menu_fn: Any,
-            tools_menu_fn: Any,
             show_help_fn: Any,
             get_help_text_fn: Any | None = None,
             save_config_fn: Any,
@@ -258,7 +255,6 @@ if _TEXTUAL_APP is not None:
             analysis_handlers: dict[str, Callable[..., Any]] | None = None,
             get_enabled_analyzers_fn: Any | None = None,
             self_check_fn: Any | None = None,
-            dump_menu_fn: Any | None = None,
             force_refresh_ast_fn: Any | None = None,
             startup_output: str = "",
             startup_output_is_warning: bool = False,
@@ -268,9 +264,6 @@ if _TEXTUAL_APP is not None:
             self._get_enabled_analyzers_fn = get_enabled_analyzers_fn
             self._cfg = cfg
             self._summarize_targets_fn = summarize_targets_fn
-            self._analysis_menu_fn = analysis_menu_fn
-            self._config_menu_fn = config_menu_fn
-            self._tools_menu_fn = tools_menu_fn
             self._show_help_fn = show_help_fn
             self._get_help_text_fn = get_help_text_fn
             self._save_config_fn = save_config_fn
@@ -300,7 +293,6 @@ if _TEXTUAL_APP is not None:
             self._interaction_pane: Any = None
             self._pending_ui_tasks: set[asyncio.Task[Any]] = set()
             self._self_check_fn = self_check_fn or (lambda _cfg: None)
-            self._dump_menu_fn = dump_menu_fn or (lambda _cfg: None)
             self._force_refresh_ast_fn = force_refresh_ast_fn or (lambda _cfg: None)
             self._startup_output = startup_output.strip("\n")
             self._startup_output_is_warning = startup_output_is_warning
@@ -350,28 +342,8 @@ if _TEXTUAL_APP is not None:
                                         )
                                     with _TEXTUAL_HORIZONTAL(id="tools-actions", classes="is-hidden"):
                                         yield _TEXTUAL_BUTTON(
-                                            "Diagnostics & dumps",
-                                            id="tools-dumps",
-                                            classes="raised-button toolbar-button",
-                                        )
-                                        yield _TEXTUAL_BUTTON(
                                             "Refresh all caches",
                                             id="tools-refresh-ast",
-                                            classes="raised-button toolbar-button",
-                                        )
-                                        yield _TEXTUAL_BUTTON(
-                                            "Datatype field trace",
-                                            id="tools-datatype-usage",
-                                            classes="raised-button toolbar-button",
-                                        )
-                                        yield _TEXTUAL_BUTTON(
-                                            "Variable usage trace",
-                                            id="tools-variable-trace",
-                                            classes="raised-button toolbar-button",
-                                        )
-                                        yield _TEXTUAL_BUTTON(
-                                            "Module local usage",
-                                            id="tools-module-locals",
                                             classes="raised-button toolbar-button",
                                         )
                                 with _TEXTUAL_VERTICAL(id="view-copy"):
@@ -520,9 +492,6 @@ def run_textual_shell(
     cfg: ConfigDict,
     *,
     summarize_targets_fn: Any,
-    analysis_menu_fn: Any | None = None,
-    config_menu_fn: Any | None = None,
-    tools_menu_fn: Any | None = None,
     show_help_fn: Any,
     get_help_text_fn: Any | None = None,
     save_config_fn: Any,
@@ -533,11 +502,9 @@ def run_textual_shell(
     has_analyzed_targets_fn: Any | None = None,
     ensure_ast_cache_fn: Any | None = None,
     self_check_fn: Any | None = None,
-    dump_menu_fn: Any | None = None,
     force_refresh_ast_fn: Any | None = None,
     set_textual_menu_interaction_fn: Any | None = None,
     clear_textual_menu_interaction_fn: Any | None = None,
-    **_unused: Any,
 ) -> None:
     if _TEXTUAL_APP is None:
         raise RuntimeError("Textual UI requested, but textual is not installed")
@@ -548,19 +515,12 @@ def run_textual_shell(
         ensure_ast_cache_fn=ensure_ast_cache_fn,
     )
 
-    def _noop_menu_action(_cfg: ConfigDict) -> None:
-        return None
-
     textual_app = SattLintTextualApp(
         cfg=cfg,
         summarize_targets_fn=summarize_targets_fn,
-        analysis_menu_fn=analysis_menu_fn or _noop_menu_action,
-        config_menu_fn=config_menu_fn or _noop_menu_action,
-        tools_menu_fn=tools_menu_fn or _noop_menu_action,
         analysis_handlers=analysis_handler_fns,
         get_enabled_analyzers_fn=get_enabled_analyzers_fn,
         self_check_fn=self_check_fn,
-        dump_menu_fn=dump_menu_fn,
         force_refresh_ast_fn=force_refresh_ast_fn,
         show_help_fn=show_help_fn,
         get_help_text_fn=get_help_text_fn,

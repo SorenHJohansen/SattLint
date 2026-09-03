@@ -1,17 +1,11 @@
 # pyright: reportArgumentType=false
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
 
 from sattlint import app_support
-
-
-class _FormatResult:
-    def __init__(self, *, changed: bool) -> None:
-        self.changed = changed
 
 
 def test_target_load_error_categorizes_other_entries_and_warnings() -> None:
@@ -89,119 +83,10 @@ def test_print_validation_warnings_and_target_helpers_cover_edge_cases(tmp_path:
     assert paused == ["pause"]
 
 
-def test_configured_icf_files_and_run_format_icf_command_cover_error_paths(tmp_path: Path) -> None:
+def test_configured_icf_files_cover_error_paths(tmp_path: Path) -> None:
     assert app_support.configured_icf_files({"icf_dir": ""}) == (None, [])
-
-    printed: list[str] = []
-    assert (
-        app_support.run_format_icf_command(
-            {"icf_dir": ""},
-            check=False,
-            print_fn=printed.append,
-            exit_success=0,
-            exit_usage_error=2,
-        )
-        == 2
-    )
-    assert any("icf_dir is not set" in line for line in printed)
 
     missing_dir = tmp_path / "missing"
     icf_dir, icf_files = app_support.configured_icf_files({"icf_dir": str(missing_dir)})
     assert icf_dir == missing_dir
     assert icf_files == []
-
-    printed.clear()
-    assert (
-        app_support.run_format_icf_command(
-            {"icf_dir": str(missing_dir)},
-            check=False,
-            print_fn=printed.append,
-            exit_success=0,
-            exit_usage_error=2,
-        )
-        == 2
-    )
-    assert any("does not exist" in line for line in printed)
-
-    real_dir = tmp_path / "icf"
-    real_dir.mkdir()
-    printed.clear()
-    assert (
-        app_support.run_format_icf_command(
-            {"icf_dir": str(real_dir)},
-            check=False,
-            print_fn=printed.append,
-            exit_success=0,
-            exit_usage_error=2,
-        )
-        == 2
-    )
-
-    changed_file = real_dir / "a.icf"
-    unchanged_file = real_dir / "b.icf"
-    changed_file.write_text("x", encoding="utf-8")
-    unchanged_file.write_text("y", encoding="utf-8")
-
-    def fake_format_icf_file(path: Path, check: bool) -> _FormatResult:
-        del check
-        return _FormatResult(changed=path.name == "a.icf")
-
-    original = app_support.format_icf_file
-    app_support.format_icf_file = fake_format_icf_file
-    try:
-        printed.clear()
-        exit_code = app_support.run_format_icf_command(
-            {"icf_dir": str(real_dir)},
-            check=True,
-            print_fn=printed.append,
-            exit_success=0,
-            exit_usage_error=2,
-        )
-    finally:
-        app_support.format_icf_file = original
-
-    assert exit_code == 1
-    assert any("Would change: 1" in line for line in printed)
-    assert any("Unchanged: 1" in line for line in printed)
-
-
-def test_run_format_icf_command_prints_json_output(tmp_path: Path) -> None:
-    real_dir = tmp_path / "icf"
-    real_dir.mkdir()
-    changed_file = real_dir / "a.icf"
-    unchanged_file = real_dir / "b.icf"
-    changed_file.write_text("x", encoding="utf-8")
-    unchanged_file.write_text("y", encoding="utf-8")
-
-    def fake_format_icf_file(path: Path, check: bool) -> _FormatResult:
-        del check
-        return _FormatResult(changed=path.name == "a.icf")
-
-    original = app_support.format_icf_file
-    app_support.format_icf_file = fake_format_icf_file
-    printed: list[str] = []
-    try:
-        exit_code = app_support.run_format_icf_command(
-            {"icf_dir": str(real_dir)},
-            check=True,
-            output_format="json",
-            print_fn=printed.append,
-            exit_success=0,
-            exit_usage_error=2,
-        )
-    finally:
-        app_support.format_icf_file = original
-
-    assert exit_code == 1
-    assert json.loads(printed[0]) == {
-        "status": "ok",
-        "check": True,
-        "icf_dir": str(real_dir),
-        "files_processed": 2,
-        "changed_count": 1,
-        "unchanged_count": 1,
-        "files": [
-            {"path": str(changed_file), "name": "a.icf", "changed": True},
-            {"path": str(unchanged_file), "name": "b.icf", "changed": False},
-        ],
-    }
