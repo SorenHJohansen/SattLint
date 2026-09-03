@@ -5,62 +5,6 @@ from ._app_analysis_test_support import *
 from .helpers import AnalysisGraphStub
 
 
-def test_run_advanced_datatype_analysis_covers_back_compare_and_debug_branches(monkeypatch):
-    lines: list[str] = []
-    pauses: list[str] = []
-
-    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
-    monkeypatch.setattr(builtins, "input", make_input(["b", "2", "Pump", "3", "FlowVar"]))
-    monkeypatch.setattr(variables_reporting_module, "debug_variable_usage", lambda *_args, **_kwargs: "debug report")
-
-    app_analysis_commands.run_advanced_datatype_analysis(
-        app.DEFAULT_CONFIG.copy(), pause_fn=lambda: pauses.append("pause-back")
-    )
-    app_analysis_commands.run_advanced_datatype_analysis(
-        app.DEFAULT_CONFIG.copy(), pause_fn=lambda: pauses.append("pause-compare")
-    )
-    app_analysis_commands.run_advanced_datatype_analysis(
-        app.DEFAULT_CONFIG.copy(),
-        iter_loaded_projects_fn=cast(
-            Any,
-            lambda *_args, **_kwargs: iter([("TargetA", "bp-a", AnalysisGraphStub())]),
-        ),
-        pause_fn=lambda: pauses.append("pause-debug"),
-    )
-
-    assert any("Module comparison analysis not yet implemented" in line for line in lines)
-    assert any("debug report" in line for line in lines)
-    assert pauses == ["pause-back", "pause-compare", "pause-debug"]
-
-
-def test_run_advanced_datatype_analysis_can_use_interaction_choice_handler(monkeypatch):
-    lines: list[str] = []
-    pauses: list[str] = []
-
-    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
-    monkeypatch.setattr(variables_reporting_module, "debug_variable_usage", lambda *_args, **_kwargs: "debug report")
-
-    interaction = app.app_interaction_module.MenuInteraction(
-        choose_menu_option=lambda _title, _options, **_kwargs: "3",
-        prompt=lambda _message, default=None: default or "FlowVar",
-        confirm=lambda _message: False,
-        pause=lambda: pauses.append("interaction-pause"),
-    )
-
-    app_analysis_commands.run_advanced_datatype_analysis(
-        app.DEFAULT_CONFIG.copy(),
-        iter_loaded_projects_fn=cast(
-            Any,
-            lambda *_args, **_kwargs: iter([("TargetA", "bp-a", AnalysisGraphStub())]),
-        ),
-        pause_fn=lambda: pauses.append("pause"),
-        interaction=interaction,
-    )
-
-    assert any("debug report" in line for line in lines)
-    assert pauses == ["pause"]
-
-
 def test_app_analysis_wrappers_delegate_to_underlying_helpers(monkeypatch):
     monkeypatch.setattr(
         app_analysis.app_support_module,

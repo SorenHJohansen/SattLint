@@ -8,50 +8,6 @@ from ._app_analysis_test_support import *
 from .helpers import AnalysisGraphStub, named_object
 
 
-def test_advanced_datatype_analysis_choices(noop_screen, monkeypatch, real_context):
-    if real_context:
-        cfg = real_context["cfg"].copy()
-
-        monkeypatch.setattr(
-            builtins,
-            "input",
-            make_input(["1", real_context["var_name"]]),
-        )
-        app_analysis_commands.run_advanced_datatype_analysis(cfg)
-
-        monkeypatch.setattr(
-            builtins,
-            "input",
-            make_input(["2", real_context["module_name"]]),
-        )
-        app_analysis_commands.run_advanced_datatype_analysis(cfg)
-
-        monkeypatch.setattr(
-            builtins,
-            "input",
-            make_input(["3", real_context["var_name"]]),
-        )
-        app_analysis_commands.run_advanced_datatype_analysis(cfg)
-        return
-
-    monkeypatch.setattr(
-        app_analysis,
-        "_iter_loaded_projects",
-        lambda *_args, **_kwargs: iter([("TargetA", "project", AnalysisGraphStub())]),
-    )
-    monkeypatch.setattr(variables_reporting_module, "report_datatype_usage", lambda *_, **__: "report")
-    monkeypatch.setattr(variables_reporting_module, "debug_variable_usage", lambda *_, **__: "report")
-
-    monkeypatch.setattr(builtins, "input", make_input(["1", "VarName"]))
-    app_analysis_commands.run_advanced_datatype_analysis(app.DEFAULT_CONFIG.copy())
-
-    monkeypatch.setattr(builtins, "input", make_input(["2", "ModuleName"]))
-    app_analysis_commands.run_advanced_datatype_analysis(app.DEFAULT_CONFIG.copy())
-
-    monkeypatch.setattr(builtins, "input", make_input(["3", "VarName"]))
-    app_analysis_commands.run_advanced_datatype_analysis(app.DEFAULT_CONFIG.copy())
-
-
 def test_run_variable_analysis_runs_all_analyzed_targets(noop_screen, monkeypatch, capsys):
     monkeypatch.setattr(
         app_analysis,
@@ -807,72 +763,6 @@ def test_target_is_library_returns_false_without_matching_source_paths():
     graph = AnalysisGraphStub()
 
     assert app_analysis._target_is_library(cfg, cast(Any, project_bp), cast(Any, graph)) is False
-
-
-def test_run_datatype_usage_analysis_rejects_empty_input(monkeypatch):
-    monkeypatch.setattr(builtins, "input", lambda _prompt="": "   ")
-    pauses: list[str] = []
-    lines: list[str] = []
-    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
-    monkeypatch.setattr(
-        app_analysis, "_iter_loaded_projects", lambda *_args, **_kwargs: pytest.fail("should not load projects")
-    )
-
-    app_analysis_commands.run_datatype_usage_analysis(
-        app.DEFAULT_CONFIG.copy(), pause_fn=lambda: pauses.append("pause")
-    )
-
-    assert "No variable name provided" in "\n".join(lines)
-    assert pauses == ["pause"]
-
-
-def test_run_datatype_usage_analysis_reports_errors_and_pauses(monkeypatch):
-    monkeypatch.setattr(builtins, "input", lambda _prompt="": "FlowVar")
-    pauses: list[str] = []
-    lines: list[str] = []
-    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
-    monkeypatch.setattr(
-        app_analysis,
-        "_iter_loaded_projects",
-        lambda *_args, **_kwargs: iter([("TargetA", "bp-a", AnalysisGraphStub(unavailable_libraries={"ControlLib"}))]),
-    )
-    monkeypatch.setattr(
-        variables_reporting_module,
-        "report_datatype_usage",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
-    )
-
-    app_analysis_commands.run_datatype_usage_analysis(
-        app.DEFAULT_CONFIG.copy(), pause_fn=lambda: pauses.append("pause")
-    )
-
-    assert any("Error during analysis for TargetA: boom" in line for line in lines)
-    assert pauses == ["pause"]
-
-
-def test_run_datatype_usage_analysis_updates_live_status(monkeypatch):
-    updates: list[str] = []
-
-    class FakeLiveStatusLine:
-        def __enter__(self):
-            return updates.append
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-    monkeypatch.setattr(builtins, "input", lambda _prompt="": "FlowVar")
-    monkeypatch.setattr(
-        app_analysis,
-        "_iter_loaded_projects",
-        lambda *_args, **_kwargs: iter([("TargetA", "bp-a", AnalysisGraphStub())]),
-    )
-    monkeypatch.setattr(variables_reporting_module, "report_datatype_usage", lambda *_args, **_kwargs: "report")
-    monkeypatch.setattr(app_analysis.console_module, "live_status_line", lambda: FakeLiveStatusLine())
-    monkeypatch.setattr(app_analysis, "emit_output", lambda *_args, **_kwargs: None)
-
-    app_analysis_commands.run_datatype_usage_analysis(app.DEFAULT_CONFIG.copy(), pause_fn=None)
-
-    assert updates == ["Analyzing datatype usage for TargetA: FlowVar"]
 
 
 def test_parse_index_selection_supports_ranges_and_filters_invalid_tokens():

@@ -50,167 +50,6 @@ def test_source_version_label_uses_graph_root_origin_when_source_path_missing() 
     assert label == "official"
 
 
-def test_run_module_duplicates_analysis_rejects_empty_name(monkeypatch):
-    lines: list[str] = []
-    pauses: list[str] = []
-
-    monkeypatch.setattr(builtins, "input", lambda _prompt="": "   ")
-    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
-
-    app_analysis.run_module_duplicates_analysis(
-        app.DEFAULT_CONFIG.copy(),
-        iter_loaded_projects_fn=lambda *_args, **_kwargs: pytest.fail("should not load projects"),
-        pause_fn=lambda: pauses.append("pause"),
-    )
-
-    assert any("No module name provided" in line for line in lines)
-    assert pauses == ["pause"]
-
-
-def test_run_module_duplicates_analysis_uses_selected_instances(monkeypatch):
-    lines: list[str] = []
-    pauses: list[str] = []
-    matches = [
-        (["Root", "Area", "PumpA"], SimpleNamespace(datecode=101)),
-        (["Root", "Area", "PumpB"], SimpleNamespace(datecode=None)),
-        (["Root", "Area", "PumpC"], SimpleNamespace(datecode=303)),
-    ]
-    captured: dict[str, object] = {}
-
-    monkeypatch.setattr(builtins, "input", make_input(["Pump", "1, 3-2"]))
-    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
-    monkeypatch.setattr(app_analysis, "find_modules_by_name", lambda *_args, **_kwargs: matches)
-    monkeypatch.setattr(
-        app_analysis,
-        "compare_modules",
-        lambda selected: (
-            captured.update({"selected": selected}) or SimpleNamespace(summary=lambda: "comparison summary")
-        ),
-    )
-    monkeypatch.setattr(
-        app_analysis,
-        "analyze_module_duplicates",
-        lambda *_args, **_kwargs: pytest.fail("should use explicit comparison path"),
-    )
-
-    app_analysis.run_module_duplicates_analysis(
-        app.DEFAULT_CONFIG.copy(),
-        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", AnalysisGraphStub())])),
-        pause_fn=lambda: pauses.append("pause"),
-    )
-
-    assert captured["selected"] == matches
-    assert any("Found 3 instance(s) for 'Pump':" in line for line in lines)
-    assert any("comparison summary" in line for line in lines)
-    assert pauses == ["pause"]
-
-
-def test_run_module_duplicates_analysis_requires_two_selected_instances(monkeypatch):
-    lines: list[str] = []
-    pauses: list[str] = []
-    matches = [
-        (["Root", "PumpA"], SimpleNamespace(datecode=101)),
-        (["Root", "PumpB"], SimpleNamespace(datecode=202)),
-    ]
-
-    monkeypatch.setattr(builtins, "input", make_input(["Pump", "1"]))
-    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
-    monkeypatch.setattr(app_analysis, "find_modules_by_name", lambda *_args, **_kwargs: matches)
-    monkeypatch.setattr(
-        app_analysis,
-        "compare_modules",
-        lambda *_args, **_kwargs: pytest.fail("should skip compare when fewer than two indices are selected"),
-    )
-
-    app_analysis.run_module_duplicates_analysis(
-        app.DEFAULT_CONFIG.copy(),
-        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", AnalysisGraphStub())])),
-        pause_fn=lambda: pauses.append("pause"),
-    )
-
-    assert any("Need at least two instances to compare; skipping." in line for line in lines)
-    assert pauses == ["pause"]
-
-
-def test_run_module_find_by_name_lists_matches_and_reports_errors(monkeypatch):
-    lines: list[str] = []
-    pauses: list[str] = []
-
-    def fake_find_modules(_project_bp, module_name, debug=False):
-        if module_name == "Pump":
-            return [(["Root", "PumpA"], SimpleNamespace(datecode=101))]
-        if module_name == "Missing":
-            return []
-        raise RuntimeError("boom")
-
-    monkeypatch.setattr(builtins, "input", lambda _prompt="": "Pump, Missing, Boom")
-    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
-    monkeypatch.setattr(app_analysis, "find_modules_by_name", fake_find_modules)
-
-    app_analysis.run_module_find_by_name(
-        app.DEFAULT_CONFIG.copy(),
-        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", AnalysisGraphStub())])),
-        pause_fn=lambda: pauses.append("pause"),
-    )
-
-    assert any("Found 1 module instance(s) for 'Pump':" in line for line in lines)
-    assert any("No modules found with name 'Missing'." in line for line in lines)
-    assert any("Error during search: boom" in line for line in lines)
-    assert pauses == ["pause"]
-
-
-def test_run_module_find_by_name_updates_live_status(monkeypatch):
-    updates: list[str] = []
-
-    class FakeLiveStatusLine:
-        def __enter__(self):
-            return updates.append
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-    monkeypatch.setattr(builtins, "input", lambda _prompt="": "Pump")
-    monkeypatch.setattr(app_analysis, "emit_output", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(app_analysis.console_module, "live_status_line", lambda: FakeLiveStatusLine())
-    monkeypatch.setattr(
-        app_analysis,
-        "find_modules_by_name",
-        lambda *_args, **_kwargs: [(["Root", "PumpA"], SimpleNamespace(datecode=101))],
-    )
-
-    app_analysis.run_module_find_by_name(
-        app.DEFAULT_CONFIG.copy(),
-        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", AnalysisGraphStub())])),
-        pause_fn=None,
-    )
-
-    assert updates == ["Finding module instances in TargetA: Pump"]
-
-
-def test_run_module_tree_debug_uses_default_depth_on_invalid_input(monkeypatch):
-    lines: list[str] = []
-    pauses: list[str] = []
-    captured: dict[str, object] = {}
-
-    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
-    monkeypatch.setattr(
-        app_analysis,
-        "debug_module_structure",
-        lambda project_bp, max_depth=0: captured.update({"project_bp": project_bp, "max_depth": max_depth}),
-    )
-
-    app_analysis.run_module_tree_debug(
-        app.DEFAULT_CONFIG.copy(),
-        prompt_fn=lambda _message, _default: "not-a-number",
-        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", AnalysisGraphStub())])),
-        pause_fn=lambda: pauses.append("pause"),
-    )
-
-    assert captured == {"project_bp": "bp", "max_depth": 10}
-    assert any("Invalid depth; using default 10" in line for line in lines)
-    assert pauses == ["pause"]
-
-
 def test_run_checks_reports_no_matching_checks_and_pauses(monkeypatch):
     lines: list[str] = []
     pauses: list[str] = []
@@ -951,80 +790,15 @@ def test_run_icf_validation_covers_missing_dir_invalid_dir_and_empty_file_list(m
     assert pauses == ["pause-none", "pause-missing", "pause-empty"]
 
 
-def test_run_module_localvar_analysis_rejects_empty_module_path_and_variable(monkeypatch):
-    lines: list[str] = []
-    pauses: list[str] = []
-
-    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
-    monkeypatch.setattr(builtins, "input", make_input(["", "UnitA", ""]))
-
-    def load_project_fn(_cfg):
-        return (named_object("BasePicture"), AnalysisGraphStub())
-
-    app_analysis.run_module_localvar_analysis(
-        app.DEFAULT_CONFIG.copy(),
-        load_project_fn=cast(Any, load_project_fn),
-        pause_fn=lambda: pauses.append("pause-module"),
-    )
-    app_analysis.run_module_localvar_analysis(
-        app.DEFAULT_CONFIG.copy(),
-        load_project_fn=cast(Any, load_project_fn),
-        pause_fn=lambda: pauses.append("pause-var"),
-    )
-
-    assert any("No module path provided" in line for line in lines)
-    assert any("No variable name provided" in line for line in lines)
-    assert pauses == ["pause-module", "pause-var"]
-
-
-def test_run_module_localvar_analysis_reports_success_and_errors(monkeypatch):
-    lines: list[str] = []
-    pauses: list[str] = []
-
-    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
-    monkeypatch.setattr(builtins, "input", make_input(["UnitA", "Dv"]))
-
-    reporting_module = pytest.importorskip("sattlint.analyzers.variable_usage_reporting")
-    monkeypatch.setattr(reporting_module, "report_module_localvar_fields", lambda *_args, **_kwargs: "field report")
-
-    app_analysis.run_module_localvar_analysis(
-        app.DEFAULT_CONFIG.copy(),
-        load_project_fn=cast(
-            Any,
-            lambda _cfg: (named_object("BasePicture"), AnalysisGraphStub()),
-        ),
-        iter_loaded_projects_fn=cast(
-            Any,
-            lambda *_args, **_kwargs: iter(
-                [
-                    ("TargetA", "bp-a", AnalysisGraphStub()),
-                    ("TargetB", "bp-b", AnalysisGraphStub()),
-                ]
-            ),
-        ),
-        pause_fn=lambda: pauses.append("pause"),
-    )
-
-    assert any("=== Target: TargetA ===" in line for line in lines)
-    assert any("field report" in line for line in lines)
-    assert pauses == ["pause"]
-
-
 def test_menu_wrappers_delegate_to_underlying_callbacks():
     calls: list[tuple[str, object]] = []
 
-    app_analysis.run_analysis_menu(app.DEFAULT_CONFIG.copy(), analysis_menu_fn=lambda cfg: calls.append(("run", cfg)))
-    app_analysis.variable_analysis_menu(
-        app.DEFAULT_CONFIG.copy(), analysis_menu_fn=lambda cfg: calls.append(("var", cfg))
-    )
     app_analysis.run_checks_menu(
         app.DEFAULT_CONFIG.copy(),
         run_checks_fn=lambda cfg, selected: calls.append(("checks", selected if selected is not None else cfg)),
     )
 
-    assert calls[0][0] == "run"
-    assert calls[1][0] == "var"
-    assert calls[2] == ("checks", app.DEFAULT_CONFIG.copy())
+    assert calls[0] == ("checks", app.DEFAULT_CONFIG.copy())
 
 
 def test_run_mms_interface_analysis_reports_summary_and_errors(monkeypatch):
@@ -1122,15 +896,11 @@ def test_run_icf_validation_reports_entryless_files_load_failures_and_summary(mo
     assert pauses == ["pause"]
 
 
-def test_run_debug_variable_usage_and_comment_code_analysis_cover_empty_success_and_error(monkeypatch):
+def test_run_comment_code_analysis_reports_success_and_pauses(monkeypatch):
     lines: list[str] = []
     pauses: list[str] = []
 
     monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
-    monkeypatch.setattr(builtins, "input", make_input(["", "FlowVar"]))
-    monkeypatch.setattr(
-        app_analysis, "debug_variable_usage", lambda bp, var_name, debug=False: f"debug:{bp}:{var_name}"
-    )
     monkeypatch.setattr(
         app_analysis,
         "analyze_comment_code_files",
@@ -1139,20 +909,6 @@ def test_run_debug_variable_usage_and_comment_code_analysis_cover_empty_success_
         ),
     )
 
-    app_analysis.run_debug_variable_usage(app.DEFAULT_CONFIG.copy(), pause_fn=lambda: pauses.append("pause-empty"))
-    app_analysis.run_debug_variable_usage(
-        app.DEFAULT_CONFIG.copy(),
-        iter_loaded_projects_fn=cast(
-            Any,
-            lambda *_args, **_kwargs: iter(
-                [
-                    ("TargetA", "bp-a", AnalysisGraphStub()),
-                    ("TargetB", "bp-b", AnalysisGraphStub()),
-                ]
-            ),
-        ),
-        pause_fn=lambda: pauses.append("pause-debug"),
-    )
     app_analysis.run_comment_code_analysis(
         app.DEFAULT_CONFIG.copy(),
         iter_loaded_projects_fn=cast(
@@ -1163,8 +919,5 @@ def test_run_debug_variable_usage_and_comment_code_analysis_cover_empty_success_
         pause_fn=lambda: pauses.append("pause-comment"),
     )
 
-    assert any("No variable name provided" in line for line in lines)
-    assert any("debug:bp-a:FlowVar" in line for line in lines)
-    assert any("debug:bp-b:FlowVar" in line for line in lines)
     assert any("comment:TargetA:['A.s', 'B.s']" in line for line in lines)
-    assert pauses == ["pause-empty", "pause-debug", "pause-comment"]
+    assert pauses == ["pause-comment"]

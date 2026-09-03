@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from . import _app_analysis_catalog as analysis_catalog
-from . import _app_analysis_planner as analysis_planner
 from ._app_textual_app import SattLintTextualApp, run_textual_shell
 from ._app_textual_shared import (
     DEFAULT_SHELL_TITLE,
@@ -22,8 +20,6 @@ __all__ = [
     "SattLintTextualApp",
     "TextualInteractionBridge",
     "advance_menu_choice_buffer",
-    "analysis_catalog",
-    "analysis_planner",
     "discover_setup_target_candidates",
     "has_textual",
     "interaction_ledger_text",

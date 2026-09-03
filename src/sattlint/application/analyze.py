@@ -18,11 +18,10 @@ from .. import analysis_catalog as analysis_catalog_module
 from .. import app_analysis as app_analysis_module
 from ..analyzers.shadowing import analyze_shadowing
 from ..analyzers.variables import IssueKind, analyze_variables, filter_variable_report
-from ..app_base import pause, prompt
+from ..app_base import pause
 from ..config_types import ConfigDict
 from ..models.project_graph import ProjectGraph
 from . import project as project_application
-from ._interaction import menu_interaction
 
 
 def _get_enabled_analyzers() -> list[Any]:
@@ -52,52 +51,6 @@ def run_variable_analysis(cfg: ConfigDict, kinds: set[IssueKind] | None) -> None
     )
 
 
-def run_datatype_usage_analysis(cfg: ConfigDict) -> None:
-    app_analysis_module.run_datatype_usage_analysis(
-        cfg,
-        iter_loaded_projects_fn=project_application.iter_loaded_projects,
-        pause_fn=pause,
-        interaction=menu_interaction(),
-    )
-
-
-def run_module_duplicates_analysis(cfg: ConfigDict) -> None:
-    app_analysis_module.run_module_duplicates_analysis(
-        cfg,
-        iter_loaded_projects_fn=project_application.iter_loaded_projects,
-        pause_fn=pause,
-        interaction=menu_interaction(),
-    )
-
-
-def run_module_find_by_name(cfg: ConfigDict) -> None:
-    app_analysis_module.run_module_find_by_name(
-        cfg,
-        iter_loaded_projects_fn=project_application.iter_loaded_projects,
-        pause_fn=pause,
-        interaction=menu_interaction(),
-    )
-
-
-def run_module_tree_debug(cfg: ConfigDict) -> None:
-    app_analysis_module.run_module_tree_debug(
-        cfg,
-        prompt_fn=prompt,
-        iter_loaded_projects_fn=project_application.iter_loaded_projects,
-        pause_fn=pause,
-    )
-
-
-def run_module_localvar_analysis(cfg: ConfigDict) -> None:
-    app_analysis_module.run_module_localvar_analysis(
-        cfg,
-        load_project_fn=project_application.load_project,
-        iter_loaded_projects_fn=project_application.iter_loaded_projects,
-        pause_fn=pause,
-        interaction=menu_interaction(),
-    )
-
-
 def run_icf_validation(cfg: ConfigDict) -> None:
     def _load_program_ast(local_cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
         return project_application.load_program_ast(local_cfg, program_name, force_dependency_resolution=True)
@@ -119,30 +72,12 @@ def run_mms_interface_analysis(cfg: ConfigDict) -> None:
     )
 
 
-def run_debug_variable_usage(cfg: ConfigDict) -> None:
-    app_analysis_module.run_debug_variable_usage(
-        cfg,
-        iter_loaded_projects_fn=project_application.iter_loaded_projects,
-        pause_fn=pause,
-        interaction=menu_interaction(),
-    )
-
-
 def run_comment_code_analysis(cfg: ConfigDict) -> None:
     app_analysis_module.run_comment_code_analysis(
         cfg,
         iter_loaded_projects_fn=project_application.iter_loaded_projects,
         source_paths_for_current_target_fn=project_application.source_paths_for_current_target,
         pause_fn=pause,
-    )
-
-
-def run_advanced_datatype_analysis(cfg: ConfigDict) -> None:
-    app_analysis_module.run_advanced_datatype_analysis(
-        cfg,
-        iter_loaded_projects_fn=project_application.iter_loaded_projects,
-        pause_fn=pause,
-        interaction=menu_interaction(),
     )
 
 

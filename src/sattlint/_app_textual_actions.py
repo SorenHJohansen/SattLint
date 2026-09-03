@@ -752,11 +752,7 @@ def _refresh_shell_state(self: Any) -> None:
     analyze_cancel_running_button = _query_required(self, "#analyze-cancel-running", _TEXTUAL_BUTTON)
     analyze_clear_selection_button = _query_required(self, "#analyze-clear-selection", _TEXTUAL_BUTTON)
     analyze_clear_output_button = _query_required(self, "#analyze-clear-output", _TEXTUAL_BUTTON)
-    tools_dumps_button = _query_required(self, "#tools-dumps", _TEXTUAL_BUTTON)
     tools_refresh_ast_button = _query_required(self, "#tools-refresh-ast", _TEXTUAL_BUTTON)
-    tools_datatype_usage_button = _query_required(self, "#tools-datatype-usage", _TEXTUAL_BUTTON)
-    tools_variable_trace_button = _query_required(self, "#tools-variable-trace", _TEXTUAL_BUTTON)
-    tools_module_locals_button = _query_required(self, "#tools-module-locals", _TEXTUAL_BUTTON)
 
     self._sync_output_title_spinner()
     output_title_widget.update(self._output_title_text())
@@ -810,11 +806,7 @@ def _refresh_shell_state(self: Any) -> None:
     )
     if setup_view:
         self._refresh_setup_settings_labels()
-    tools_dumps_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
     tools_refresh_ast_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
-    tools_datatype_usage_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
-    tools_variable_trace_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
-    tools_module_locals_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
 
 
 def on_click(self: Any, event: Any) -> None:
@@ -874,11 +866,7 @@ def on_button_pressed(self: Any, event: Any) -> None:
         "setup-toggle-mode": self._toggle_setup_mode,
         "setup-edit-icf-dir": lambda: self._queue_setup_value_prompt("icf_dir", label="icf_dir"),
         "setup-toggle-debug": lambda: self._toggle_setup_flag("debug", label="debug"),
-        "tools-dumps": self._run_tool_dumps,
         "tools-refresh-ast": self._run_tool_refresh_ast,
-        "tools-datatype-usage": self._run_tool_datatype_usage,
-        "tools-variable-trace": self._run_tool_variable_trace,
-        "tools-module-locals": self._run_tool_module_locals,
         "menu-file-open-project": self._open_project_browser,
         "menu-file-open-recent": lambda: self._write_output("Open Recent not yet implemented."),
         "menu-file-save-project": self.action_save_config,
@@ -887,10 +875,6 @@ def on_button_pressed(self: Any, event: Any) -> None:
         "menu-analyze-cancel": self.action_cancel_running_analysis,
         "menu-reports-export": lambda: self._write_output("Export not yet implemented."),
         "menu-tools-refresh-cache": self._run_tool_refresh_ast,
-        "menu-tools-diagnostics": self._run_tool_dumps,
-        "menu-tools-datatype-trace": self._run_tool_datatype_usage,
-        "menu-tools-variable-trace": self._run_tool_variable_trace,
-        "menu-tools-module-locals": self._run_tool_module_locals,
         "menu-settings-project": self.action_show_setup,
         "menu-settings-general": lambda: self._write_output("General Settings not yet implemented."),
         "menu-help-shortcuts": lambda: self._show_keyboard_shortcuts(),

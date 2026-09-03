@@ -38,7 +38,6 @@ def _command_handlers(**overrides: Any) -> dict[str, Any]:
                         app_base.EXIT_SUCCESS
                     ),
                     "cache_prune": lambda *, cache_dir, output_format="text": app_base.EXIT_SUCCESS,
-                    "format_icf": lambda cfg, *, check, output_format="text": app_base.EXIT_SUCCESS,
                 }
                 | overrides,
             ),
@@ -71,7 +70,6 @@ def test_build_cli_parser_has_descriptions():
         "analyze",
         "cache-prune",
         "validate-config",
-        "format-icf",
     } <= set(choices)
     assert getattr(syntax_parser, "description", None)
 
@@ -119,7 +117,6 @@ def test_build_cli_parser_analyze_includes_output_format():
     ("command_name", "expected_options"),
     [
         ("cache-prune", {"--format", "--output-format"}),
-        ("format-icf", {"--format", "--output-format"}),
     ],
 )
 def test_build_cli_parser_commands_include_output_format_aliases(command_name: str, expected_options: set[str]):
@@ -170,9 +167,6 @@ def test_startup_main_routes_cli_argv_to_run_cli() -> None:
         menu_option_factory=lambda key, label, description: (key, label, description),
         summarize_targets_fn=lambda _cfg: "targets",
         require_targets_for_menu_action_fn=lambda _cfg, _action: True,
-        analysis_menu_fn=lambda _cfg: None,
-        config_menu_fn=lambda _cfg: True,
-        tools_menu_fn=lambda _cfg: None,
         show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         quit_app_fn=lambda: None,
@@ -208,9 +202,6 @@ def test_startup_main_routes_debug_only_cli_argv_to_interactive_loop() -> None:
         menu_option_factory=lambda key, label, description: (key, label, description),
         summarize_targets_fn=lambda _cfg: "targets",
         require_targets_for_menu_action_fn=lambda _cfg, _action: True,
-        analysis_menu_fn=lambda _cfg: None,
-        config_menu_fn=lambda _cfg: True,
-        tools_menu_fn=lambda _cfg: None,
         show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         quit_app_fn=lambda: None,
@@ -250,9 +241,6 @@ def test_startup_main_routes_ui_only_cli_argv_to_interactive_loop() -> None:
         menu_option_factory=lambda key, label, description: (key, label, description),
         summarize_targets_fn=lambda _cfg: "targets",
         require_targets_for_menu_action_fn=lambda _cfg, _action: True,
-        analysis_menu_fn=lambda _cfg: None,
-        config_menu_fn=lambda _cfg: True,
-        tools_menu_fn=lambda _cfg: None,
         show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         quit_app_fn=lambda: None,
@@ -290,9 +278,6 @@ def test_startup_main_routes_config_only_cli_argv_to_interactive_loop() -> None:
         menu_option_factory=lambda key, label, description: (key, label, description),
         summarize_targets_fn=lambda _cfg: "targets",
         require_targets_for_menu_action_fn=lambda _cfg, _action: True,
-        analysis_menu_fn=lambda _cfg: None,
-        config_menu_fn=lambda _cfg: True,
-        tools_menu_fn=lambda _cfg: None,
         show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         quit_app_fn=lambda: None,
@@ -333,9 +318,6 @@ def test_startup_main_defaults_plain_interactive_session_to_textual() -> None:
         menu_option_factory=lambda key, label, description: (key, label, description),
         summarize_targets_fn=lambda _cfg: "targets",
         require_targets_for_menu_action_fn=lambda _cfg, _action: True,
-        analysis_menu_fn=lambda _cfg: None,
-        config_menu_fn=lambda _cfg: True,
-        tools_menu_fn=lambda _cfg: None,
         show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         quit_app_fn=lambda: None,
@@ -379,9 +361,6 @@ def test_startup_main_textual_launch_skips_terminal_preflight_for_targets() -> N
         menu_option_factory=lambda key, label, description: (key, label, description),
         summarize_targets_fn=lambda _cfg: "targets",
         require_targets_for_menu_action_fn=lambda _cfg, _action: True,
-        analysis_menu_fn=lambda _cfg: None,
-        config_menu_fn=lambda _cfg: True,
-        tools_menu_fn=lambda _cfg: None,
         show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         quit_app_fn=lambda: None,
@@ -418,9 +397,6 @@ def test_startup_main_warns_and_pauses_for_default_config() -> None:
         menu_option_factory=lambda key, label, description: (key, label, description),
         summarize_targets_fn=lambda _cfg: "targets",
         require_targets_for_menu_action_fn=lambda _cfg, _action: True,
-        analysis_menu_fn=lambda _cfg: None,
-        config_menu_fn=lambda _cfg: True,
-        tools_menu_fn=lambda _cfg: None,
         show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         quit_app_fn=lambda: None,
@@ -458,9 +434,6 @@ def test_startup_main_handles_quit_app_error() -> None:
         menu_option_factory=lambda key, label, description: (key, label, description),
         summarize_targets_fn=lambda _cfg: "targets",
         require_targets_for_menu_action_fn=lambda _cfg, _action: True,
-        analysis_menu_fn=lambda _cfg: None,
-        config_menu_fn=lambda _cfg: True,
-        tools_menu_fn=lambda _cfg: None,
         show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         quit_app_fn=lambda: None,
@@ -550,11 +523,6 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
         "['selected']",
     )
 
-    _app_interactive_menus.run_icf_formatter(
-        cfg,
-        run_format_icf_command_fn=lambda local_cfg: misc_seen.update({"icf_cfg": local_cfg}) or 0,
-        pause_fn=lambda: misc_seen.update({"paused": True}),
-    )
     _app_interactive_menus.show_config(
         cfg,
         show_config_fn=lambda local_cfg, **kwargs: misc_seen.update({"show_config_cfg": local_cfg, **kwargs}),
@@ -589,61 +557,8 @@ def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
         pause_fn=lambda: None,
     )
 
-    def dump_target_is_library(_cfg: object, _project_bp: object, _graph: object) -> bool:
-        return False
-
-    _app_interactive_menus.dump_menu(
-        cfg,
-        dump_menu_fn=lambda local_cfg, **kwargs: misc_seen.update({"dump_cfg": local_cfg, **kwargs}),
-        clear_screen_fn=lambda: None,
-        print_menu_fn=lambda *_args, **_kwargs: None,
-        menu_option_factory=lambda key, label, description: (key, label, description),
-        quit_app_fn=lambda: None,
-        confirm_fn=lambda _message: True,
-        iter_loaded_projects_fn=lambda *_args, **_kwargs: iter([project]),
-        target_is_library_fn=dump_target_is_library,
-        analyze_variables_fn=lambda *_args, **_kwargs: None,
-    )
-    assert (
-        _app_interactive_menus.config_menu(
-            cfg,
-            config_menu_fn=lambda local_cfg, **kwargs: misc_seen.update({"config_cfg": local_cfg, **kwargs}) or True,
-            config_path=Path("config.toml"),
-            clear_screen_fn=lambda: None,
-            show_config_fn=lambda _cfg: None,
-            print_menu_fn=lambda *_args, **_kwargs: None,
-            menu_option_factory=lambda key, label, description: (key, label, description),
-            prompt_fn=lambda _message, default=None: default or "value",
-            pause_fn=lambda: None,
-            confirm_fn=lambda _message: True,
-            target_exists_fn=lambda _target, _cfg: True,
-            save_config_fn=lambda _path, _cfg: None,
-            apply_debug_fn=lambda _cfg: None,
-            quit_app_fn=lambda: None,
-        )
-        is True
-    )
-
-    _app_interactive_menus.tools_menu(
-        cfg,
-        tools_menu_fn=lambda local_cfg, **kwargs: misc_seen.update({"tools_cfg": local_cfg, **kwargs}),
-        clear_screen_fn=lambda: None,
-        print_menu_fn=lambda *_args, **_kwargs: None,
-        menu_option_factory=lambda key, label, description: (key, label, description),
-        quit_app_fn=lambda: None,
-        self_check_fn=lambda _cfg: True,
-        pause_fn=lambda: None,
-        require_targets_for_menu_action_fn=lambda _cfg, _action: True,
-        dump_menu_fn=lambda _cfg: None,
-        confirm_fn=lambda _message: True,
-        force_refresh_ast_fn=lambda _cfg: None,
-    )
-
-    assert misc_seen["icf_cfg"] is cfg
-    assert misc_seen["paused"] is True
     assert misc_seen["menu_title"] == "Menu"
     assert misc_seen["summarize_cfg"] is cfg
-    assert misc_seen["target_is_library_fn"] is dump_target_is_library
 
 
 def test_package_exports_version():
@@ -949,25 +864,6 @@ def test_run_cli_analyze_list_issue_kinds_supports_json_without_loading_config(c
     assert exit_code == app_base.EXIT_SUCCESS
     assert json.loads(captured.out) == {"issue_kinds": [issue_kind.value for issue_kind in IssueKind]}
     assert captured.err == ""
-
-
-def test_run_cli_format_icf_passes_check_flag():
-    seen = {}
-
-    exit_code = _run_base_cli(
-        ["format-icf", "--check"],
-        load_config_fn=lambda path: ({"debug": False, "icf_dir": "icf"}, False),
-        apply_debug_fn=lambda _cfg: None,
-        command_handlers={
-            "format_icf": lambda cfg, *, check, output_format="text": (
-                seen.update({"cfg": cfg, "check": check, "output_format": output_format}) or app_base.EXIT_SUCCESS
-            )
-        },
-    )
-
-    assert exit_code == app_base.EXIT_SUCCESS
-    assert seen["check"] is True
-    assert seen["output_format"] == "text"
 
 
 def test_run_cli_cache_prune_passes_cache_dir_without_loading_config():
@@ -1305,21 +1201,6 @@ def test_cli_entry_cache_prune_requires_handler():
             ["cache-prune"],
             config_path=Path("config.toml"),
             build_cli_parser_fn=lambda: parser,
-        )
-
-
-def test_cli_entry_format_icf_requires_handler():
-    parser = _FakeParser(
-        args=SimpleNamespace(command="format-icf", checks=[], config=None, no_cache=False, quiet=False),
-    )
-
-    with pytest.raises(RuntimeError, match="format-icf handler is required"):
-        cli_entry.run_cli(
-            ["format-icf"],
-            config_path=Path("config.toml"),
-            build_cli_parser_fn=lambda: parser,
-            load_config_fn=lambda _path: ({"debug": False}, False),
-            apply_debug_fn=lambda _cfg: None,
         )
 
 

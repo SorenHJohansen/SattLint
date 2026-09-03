@@ -42,7 +42,6 @@ class CommandHandlers(TypedDict, total=False):
     validate_config: AppCommandFn
     analyze: AppCommandFn
     cache_prune: AppCommandFn
-    format_icf: AppCommandFn
 
 
 class _ParsedCliArgs(Protocol):
@@ -217,21 +216,6 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         help_text="Output format for analyze list commands",
     )
 
-    format_icf_parser = subparsers.add_parser(
-        "format-icf",
-        help="Normalize blank-line spacing in configured ICF files",
-        description=(
-            "Rewrite configured .icf files so Unit, Journal, Operation, and Group headers use "
-            "consistent spacing without changing nonblank content."
-        ),
-    )
-    format_icf_parser.add_argument(
-        "--check",
-        action="store_true",
-        help="Report whether configured .icf files would change without rewriting them.",
-    )
-    add_output_format_argument(format_icf_parser)
-
     return parser
 
 
@@ -381,7 +365,7 @@ def run_cli(  # noqa: PLR0915
             fallback=exit_success,
         )
 
-    if command in ("validate-config", "analyze", "format-icf"):
+    if command in ("validate-config", "analyze"):
         debug_requested = bool(getattr(args, "debug", False))
 
         if project_config is not None:
@@ -432,18 +416,6 @@ def run_cli(  # noqa: PLR0915
                 ),
                 fallback=exit_success,
             )
-
-        format_icf_handler = None if command_handlers is None else command_handlers.get("format_icf")
-        if format_icf_handler is None:
-            raise RuntimeError("format-icf handler is required")
-        return _exit_code(
-            format_icf_handler(
-                cfg,
-                check=args.check,
-                output_format=cli_output.resolve_output_format(args),
-            ),
-            fallback=exit_success,
-        )
 
     parser.print_usage(sys.stderr)
     return exit_usage_error

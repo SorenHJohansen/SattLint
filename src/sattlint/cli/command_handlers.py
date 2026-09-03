@@ -44,7 +44,6 @@ def build_app_command_handlers() -> CommandHandlers:
                 "validate_config": app_commands.run_validate_config_command,
                 "analyze": app_commands.run_analyze_command,
                 "cache_prune": app_commands.run_cache_prune_command,
-                "format_icf": app_commands.run_format_icf_command,
             },
         )
     )

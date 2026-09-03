@@ -47,12 +47,6 @@ def _run_tool_self_check(self: Any) -> None:
     self._start_action("Self-check diagnostics", lambda: self._self_check_fn(self._cfg), action_id="action-tools")
 
 
-def _run_tool_dumps(self: Any) -> None:
-    if not self._targets_action_allowed("diagnostics and dumps"):
-        return
-    self._start_action("Diagnostics & dumps", lambda: self._dump_menu_fn(self._cfg), action_id="action-tools")
-
-
 def _run_tool_refresh_ast(self: Any) -> None:
     if not self._targets_action_allowed("all cache refresh"):
         return
@@ -60,36 +54,6 @@ def _run_tool_refresh_ast(self: Any) -> None:
         "Refresh all caches",
         lambda: self._force_refresh_ast_fn(self._cfg),
         action_id="action-tools",
-    )
-
-
-def _run_tool_datatype_usage(self: Any) -> None:
-    self._run_app_module_cfg_action(
-        "run_datatype_usage_analysis",
-        "Datatype field trace",
-        action_id="action-tools",
-        require_targets=True,
-        action_text="datatype usage tracing",
-    )
-
-
-def _run_tool_variable_trace(self: Any) -> None:
-    self._run_app_module_cfg_action(
-        "run_debug_variable_usage",
-        "Variable usage trace",
-        action_id="action-tools",
-        require_targets=True,
-        action_text="variable usage tracing",
-    )
-
-
-def _run_tool_module_locals(self: Any) -> None:
-    self._run_app_module_cfg_action(
-        "run_module_localvar_analysis",
-        "Module local usage",
-        action_id="action-tools",
-        require_targets=True,
-        action_text="module local-variable tracing",
     )
 
 

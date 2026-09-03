@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
-from . import _app_analysis_catalog as analysis_catalog
-from . import _app_analysis_catalog_metadata as analysis_catalog_metadata
-from . import _app_analysis_planner as analysis_planner
 from ._app_textual_actions import _label_value_renderable
 from ._app_textual_shared import (
     _ANALYZE_PLANNER_LIST_ID_PREFIX,
@@ -18,6 +16,27 @@ from ._app_textual_shared import (
     _query_required,
     _stringify_value,
 )
+
+
+@dataclass(frozen=True)
+class _AnalyzerItem:
+    """A single selectable analyzer sourced straight from the registry."""
+
+    entry_id: str
+    label: str
+    description: str
+    category: str
+
+
+@dataclass(frozen=True)
+class _AnalyzeRunPlan:
+    """The direct run request for the currently selected analyzers."""
+
+    selected_analyzer_keys: tuple[str, ...]
+
+    @property
+    def is_runnable(self) -> bool:
+        return bool(self.selected_analyzer_keys)
 
 
 def on_selection_list_selection_toggled(self: Any, event: Any) -> None:
@@ -51,135 +70,80 @@ def on_selection_list_selection_highlighted(self: Any, event: Any) -> None:
     self._refresh_shell_state()
 
 
-def _available_analyzer_specs(self: Any) -> tuple[Any, ...]:
+def _available_analyzer_items(self: Any) -> tuple[_AnalyzerItem, ...]:
     get_analyzers_fn = getattr(self, "_get_enabled_analyzers_fn", None)
     if get_analyzers_fn is None or not callable(get_analyzers_fn):
         return ()
     analyzers_obj = get_analyzers_fn()
+    raw_items: list[object]
     if isinstance(analyzers_obj, list):
-        return cast(tuple[Any, ...], tuple(cast(list[object], analyzers_obj)))
-    if isinstance(analyzers_obj, tuple):
-        return cast(tuple[Any, ...], analyzers_obj)
-    return ()
+        raw_items = analyzers_obj
+    elif isinstance(analyzers_obj, tuple):
+        raw_items = list(analyzers_obj)
+    else:
+        return ()
+    items: list[_AnalyzerItem] = []
+    for raw in raw_items:
+        key = str(getattr(raw, "key", "") or "").strip()
+        if not key:
+            continue
+        name = str(getattr(raw, "name", "") or "").strip() or _pretty_analyzer_key(key)
+        description = str(getattr(raw, "description", "") or "").strip()
+        category = str(getattr(raw, "category", "") or "correctness").strip()
+        items.append(_AnalyzerItem(key, name, description, category))
+    return tuple(items)
+
+
+def _pretty_analyzer_key(key: str) -> str:
+    return key.replace("-", " ").title()
 
 
 def _analyze_filter_value(self: Any) -> str:
     return str(getattr(self, "_analyze_filter_text", "") or "").strip()
 
 
-def _planner_entry_matches_filter(self: Any, entry: analysis_catalog.AnalysisCatalogEntry) -> bool:
+def _item_matches_filter(self: Any, item: _AnalyzerItem) -> bool:
     filter_text = self._analyze_filter_value().casefold()
     if not filter_text:
         return True
-    search_text = " ".join((entry.entry_id, entry.label, entry.description)).casefold()
+    search_text = " ".join((item.entry_id, item.label, item.description)).casefold()
     return filter_text in search_text
 
 
-def _planner_base_entries_for_section(
-    self: Any,
-    section_id: str,
-) -> tuple[analysis_catalog.AnalysisCatalogEntry, ...]:
-    analyzer_specs = self._available_analyzer_specs()
-    removed_entry_ids = {
-        analysis_catalog.ENTRY_ANALYZE_FULL_SUITE,
-        analysis_catalog.ENTRY_VARIABLE_HIGH_CONFIDENCE_SUITE,
-        analysis_catalog.ENTRY_DATATYPE_USAGE,
-        analysis_catalog.ENTRY_VARIABLE_USAGE_TRACE,
-        analysis_catalog.ENTRY_MODULE_LOCAL_VARIABLES,
-        "structure.compare-module-variants",
-        "structure.find-module-instances",
-        "structure.inspect-module-tree",
-        "interfaces.format-icf-files",
-    }
-    planner_hidden_analyzer_keys = {"comment-code", "mms-interface", "shadowing", "variables"}
-    return tuple(
-        entry
-        for entry in analysis_catalog.analysis_entries_for_section(
-            section_id,
-            analyzer_specs=analyzer_specs,
-        )
-        if entry.entry_id not in removed_entry_ids
-        and not (
-            entry.execution.selected_analyzer_keys is not None
-            and any(key in planner_hidden_analyzer_keys for key in entry.execution.selected_analyzer_keys)
-        )
-    )
-
-
-def _planner_entries_for_section(
-    self: Any,
-    section_id: str,
-) -> tuple[analysis_catalog.AnalysisCatalogEntry, ...]:
-    return tuple(
-        entry
-        for entry in self._planner_base_entries_for_section(section_id)
-        if self._planner_entry_matches_filter(entry)
-    )
-
-
-def _high_section_spec() -> analysis_catalog.AnalysisSectionSpec:
-    return analysis_catalog.AnalysisSectionSpec(
-        section_id=analysis_catalog.SECTION_VARIABLE_HIGH_CONFIDENCE,
-        label="High confidence",
-        description="Focused reports with a low expected false-positive rate.",
-        sort_order=300,
-    )
-
-
-def _other_section_spec() -> analysis_catalog.AnalysisSectionSpec:
-    return analysis_catalog.AnalysisSectionSpec(
-        section_id=analysis_catalog.SECTION_VARIABLE_LOW_CONFIDENCE,
-        label="Other",
-        description="Additional reports that may need manual review before action.",
-        sort_order=400,
-    )
+def _planner_items(self: Any) -> tuple[_AnalyzerItem, ...]:
+    return tuple(item for item in self._available_analyzer_items() if self._item_matches_filter(item))
 
 
 def _planner_section_groups(
     self: Any,
-) -> tuple[tuple[analysis_catalog.AnalysisSectionSpec, tuple[analysis_catalog.AnalysisCatalogEntry, ...]], ...]:
-    filter_active = bool(self._analyze_filter_value())
-    skipped_sections = {
-        analysis_catalog.SECTION_CATALOG_SUITE,
-    }
-    high_entries: list[analysis_catalog.AnalysisCatalogEntry] = []
-    other_entries: list[analysis_catalog.AnalysisCatalogEntry] = []
+) -> tuple[tuple[Any, tuple[_AnalyzerItem, ...]], ...]:
+    items = self._planner_items()
+    if not items:
+        return ()
+    ordered: list[_AnalyzerItem] = list(items)
+    ordered.sort(key=lambda item: (item.category, item.label.casefold()))
+    return ((_analyzers_section_spec(), tuple(ordered)),)
 
-    for section in analysis_catalog.analysis_section_specs():
-        if section.section_id in skipped_sections:
-            continue
-        base_entries = self._planner_base_entries_for_section(section.section_id)
-        if not base_entries:
-            continue
-        entries = self._planner_entries_for_section(section.section_id)
-        if not entries and not filter_active:
-            continue
-        if section.section_id == analysis_catalog.SECTION_VARIABLE_HIGH_CONFIDENCE:
-            high_entries.extend(entries)
-        else:
-            other_entries.extend(entries)
 
-    return tuple(
-        (section_spec, tuple(entries))
-        for section_spec, entries in [
-            (_high_section_spec(), high_entries),
-            (_other_section_spec(), other_entries),
-        ]
-        if entries or filter_active
-    )
+def _analyzers_section_spec() -> Any:
+    return type(
+        "SectionSpec",
+        (),
+        {"section_id": "analyzers", "label": "Analyzers", "description": "Select one or more analyzers to run."},
+    )()
 
 
 def _planner_entry_ids(self: Any) -> tuple[str, ...]:
-    return tuple(entry.entry_id for _section, entries in self._planner_section_groups() for entry in entries)
+    return tuple(item.entry_id for _section, items in self._planner_section_groups() for item in items)
 
 
-def _planner_entry(self: Any, entry_id: str | None) -> analysis_catalog.AnalysisCatalogEntry | None:
+def _planner_entry(self: Any, entry_id: str | None) -> _AnalyzerItem | None:
     if entry_id is None:
         return None
-    return analysis_catalog.analysis_catalog_entry(
-        entry_id,
-        analyzer_specs=self._available_analyzer_specs(),
-    )
+    for item in self._available_analyzer_items():
+        if item.entry_id == entry_id:
+            return item
+    return None
 
 
 def _normalize_analyze_planner_state(self: Any) -> None:
@@ -195,12 +159,8 @@ def _ordered_selected_analyze_entry_ids(self: Any) -> tuple[str, ...]:
     return tuple(entry_id for entry_id in self._planner_entry_ids() if entry_id in self._analyze_selected_entry_ids)
 
 
-def _analyze_plan(self: Any) -> analysis_planner.AnalysisPlan:
-    return analysis_planner.plan_analysis_entries(
-        self._ordered_selected_analyze_entry_ids(),
-        analyzer_specs=self._available_analyzer_specs(),
-        available_handler_names=analysis_planner.available_handler_names(getattr(self, "_analysis_handlers", None)),
-    )
+def _analyze_plan(self: Any) -> _AnalyzeRunPlan:
+    return _AnalyzeRunPlan(tuple(self._ordered_selected_analyze_entry_ids()))
 
 
 def _analyze_section_list_id(self: Any, section_id: str) -> str:
@@ -226,15 +186,14 @@ def _selection_list_highlighted_entry_id(self: Any, selection_list: Any) -> str 
     except _TEXTUAL_OPTION_LIST_ERRORS:
         return None
     value = _stringify_value(cast(object | None, getattr(option, "value", None))).strip()
-    entry = self._planner_entry(value)
-    return entry.entry_id if entry is not None else None
+    return value or None
 
 
 def _sync_analyze_selection_from_selection_list(self: Any, selection_list: Any) -> bool:
     section_id = self._analyze_section_id_from_list(selection_list)
     if section_id is None:
         return False
-    section_entry_ids = {entry.entry_id for entry in self._planner_entries_for_section(section_id)}
+    section_entry_ids = {item.entry_id for item in self._planner_items()}
     selected_ids = {
         _stringify_value(cast(object | None, value)).strip()
         for value in cast(list[object], getattr(selection_list, "selected", []))
@@ -248,17 +207,17 @@ def _sync_analyze_selection_from_selection_list(self: Any, selection_list: Any) 
 def _update_analyze_planner_selection_list(
     self: Any,
     selection_list: Any,
-    entries: tuple[analysis_catalog.AnalysisCatalogEntry, ...],
+    items: tuple[_AnalyzerItem, ...],
 ) -> None:
     selection_list.clear_options()
     selection_list.add_options(
-        [(entry.label, entry.entry_id, entry.entry_id in self._analyze_selected_entry_ids) for entry in entries]
+        [(item.label, item.entry_id, item.entry_id in self._analyze_selected_entry_ids) for item in items]
     )
-    if entries:
+    if items:
         highlighted_index = 0
         if self._analyze_focused_entry_id is not None:
-            for index, entry in enumerate(entries):
-                if entry.entry_id == self._analyze_focused_entry_id:
+            for index, item in enumerate(items):
+                if item.entry_id == self._analyze_focused_entry_id:
                     highlighted_index = index
                     break
         selection_list.highlighted = highlighted_index
@@ -275,55 +234,44 @@ def _refresh_analyze_planner(self: Any) -> None:
             for child in list(getattr(container, "children", [])):
                 child.remove()
             empty_text = (
-                f'No analyses match "{self._analyze_filter_value()}".'
+                f'No analyzers match "{self._analyze_filter_value()}".'
                 if self._analyze_filter_value()
-                else "No analysis planner entries are available in the current Textual session."
+                else "No analyzers are available in the current Textual session."
             )
             container.mount(_TEXTUAL_STATIC(empty_text, classes="browser-empty-state"))
             return
 
-        expected_list_ids = tuple(
-            self._analyze_section_list_id(section.section_id) for section, _entries in section_groups
-        )
+        section, items = section_groups[0]
+        expected_list_id = self._analyze_section_list_id(section.section_id)
         children = tuple(cast(tuple[Any, ...], getattr(container, "children", ())))
-        current_list_ids: list[str] = []
-        for child_widget in children:
-            child_id = getattr(child_widget, "id", None)
-            if child_id is None:
-                continue
-            child_id_str = str(child_id)
-            if child_id_str.startswith(_ANALYZE_PLANNER_LIST_ID_PREFIX):
-                current_list_ids.append(child_id_str)
-        if tuple(current_list_ids) == expected_list_ids and children:
-            for section, entries in section_groups:
-                selection_list = _query_required(
-                    self,
-                    f"#{self._analyze_section_list_id(section.section_id)}",
-                    _TEXTUAL_SELECTION_LIST,
-                )
-                self._update_analyze_planner_selection_list(selection_list, entries)
-            return
-
-        for child in list(getattr(container, "children", [])):
-            child.remove()
-
-        for section, entries in section_groups:
+        existing_matching = [
+            child
+            for child in children
+            if str(getattr(child, "id", "") or "") == expected_list_id
+        ]
+        selection_list: Any = None
+        if existing_matching:
+            selection_list = _query_required(self, f"#{expected_list_id}", _TEXTUAL_SELECTION_LIST)
+            self._update_analyze_planner_selection_list(selection_list, items)
+        else:
+            for child in list(getattr(container, "children", [])):
+                child.remove()
             container.mount(_TEXTUAL_STATIC(section.label, classes="browser-section-title"))
-            if section.description:
+            if getattr(section, "description", ""):
                 container.mount(_TEXTUAL_STATIC(section.description, classes="planner-section-note"))
             selection_list = _TEXTUAL_SELECTION_LIST(
                 *[
-                    (entry.label, entry.entry_id, entry.entry_id in self._analyze_selected_entry_ids)
-                    for entry in entries
+                    (item.label, item.entry_id, item.entry_id in self._analyze_selected_entry_ids)
+                    for item in items
                 ],
-                id=self._analyze_section_list_id(section.section_id),
+                id=expected_list_id,
                 classes="analyze-planner-list",
             )
-            if entries:
+            if items:
                 highlighted_index = 0
                 if self._analyze_focused_entry_id is not None:
-                    for index, entry in enumerate(entries):
-                        if entry.entry_id == self._analyze_focused_entry_id:
+                    for index, item in enumerate(items):
+                        if item.entry_id == self._analyze_focused_entry_id:
                             highlighted_index = index
                             break
                 selection_list.highlighted = highlighted_index
@@ -332,43 +280,10 @@ def _refresh_analyze_planner(self: Any) -> None:
         self._suppress_analyze_planner_events = False
 
 
-def _planner_entry_description(self: Any, entry: analysis_catalog.AnalysisCatalogEntry | None) -> str:
-    if entry is None:
-        return "Select an analysis on the left to see what the report covers."
-
-    description = entry.description.strip()
-    return description or "No description available."
-
-
-def _planner_entry_analyzer_key(
-    self: Any,
-    entry: analysis_catalog.AnalysisCatalogEntry | None,
-) -> str | None:
-    if entry is None or entry.execution.selected_analyzer_keys is None:
-        return None
-    if len(entry.execution.selected_analyzer_keys) != 1:
-        return None
-    return entry.execution.selected_analyzer_keys[0]
-
-
-def _planner_entry_detection(self: Any, entry: analysis_catalog.AnalysisCatalogEntry | None) -> str:
-    if entry is None:
-        return "Select an analysis on the left to see what it detects."
-    return analysis_catalog_metadata.planner_entry_detection(
-        entry.entry_id,
-        self._planner_entry_analyzer_key(entry),
-        entry.description.strip(),
-    )
-
-
-def _planner_entry_how(self: Any, entry: analysis_catalog.AnalysisCatalogEntry | None) -> str:
-    if entry is None:
-        return "Select an analysis on the left to see how it works."
-    return analysis_catalog_metadata.planner_entry_how(
-        entry.entry_id,
-        self._planner_entry_analyzer_key(entry),
-        entry.description.strip(),
-    )
+def _planner_entry_description(self: Any, item: _AnalyzerItem | None) -> str:
+    if item is None:
+        return "Select an analyzer on the left to see what it reports."
+    return item.description or "No description available."
 
 
 def _write_focused_entry_to_output(self: Any) -> None:
@@ -377,12 +292,14 @@ def _write_focused_entry_to_output(self: Any) -> None:
     self._analyze_help_shown = True
     self._clear_session_output()
     if focused_entry is None:
-        self._write_output("Select an analysis on the left to see what the report covers.")
+        self._write_output("Select an analyzer on the left to see what it reports.")
         return
     description = self._planner_entry_description(focused_entry)
     segments: list[tuple[str, str]] = [
-        ("Analysis", focused_entry.label),
+        ("Analyzer", focused_entry.label),
     ]
+    if focused_entry.category:
+        segments.append(("Category", focused_entry.category))
     if description:
         segments.append(("", ""))
         segments.append(("Description", description))
@@ -435,9 +352,9 @@ def _set_analyze_filter_text(self: Any, raw_text: object) -> None:
     self._set_active_action(None)
     self._refresh_shell_state()
     if filter_text:
-        self._write_output(f'Analyze planner filter: "{filter_text}".')
+        self._write_output(f'Analyzer filter: "{filter_text}".')
     else:
-        self._write_output("Cleared the Analyze planner filter.")
+        self._write_output("Cleared the analyzer filter.")
 
 
 def _prompt_analyze_filter(self: Any) -> None:
@@ -445,69 +362,43 @@ def _prompt_analyze_filter(self: Any) -> None:
         return
     request = InteractionRequest(
         kind="prompt",
-        title="Filter analyze planner",
-        message="Type text to filter analyses by name or description. Leave blank to clear the filter.",
+        title="Filter analyzers",
+        message="Type text to filter analyzers by name or description. Leave blank to clear the filter.",
         default=self._analyze_filter_value(),
     )
     self.present_request(request, on_response_fn=self._set_analyze_filter_text)
 
 
-def _execute_planned_analysis_step(self: Any, step: analysis_planner.PlannedAnalysisStep) -> None:
-    if step.execution.require_targets and not self._configured_target_names():
-        raise RuntimeError(f"No configured analysis targets are available for {step.execution.action_text}.")
-
-    handlers = getattr(self, "_analysis_handlers", None)
-    action_fn = handlers.get(step.execution.handler_name) if isinstance(handlers, dict) else None
-    if not callable(action_fn):
-        raise RuntimeError(f"{step.label} is unavailable in the current Textual session.")
-
-    if step.execution.kind == "run_checks":
-        selected_keys = (
-            None if step.execution.selected_analyzer_keys is None else list(step.execution.selected_analyzer_keys)
-        )
-        selected_issue_kinds = step.execution.selected_issue_kind_names
-        if selected_issue_kinds is None:
-            action_fn(self._cfg, selected_keys)
-        else:
-            action_fn(self._cfg, selected_keys, selected_issue_kinds=frozenset(selected_issue_kinds))
-        return
-    if step.execution.kind == "run_variable_analysis":
-        issue_kinds = None if step.execution.variable_issue_kinds is None else set(step.execution.variable_issue_kinds)
-        action_fn(self._cfg, issue_kinds)
-        return
-    action_fn(self._cfg)
-
-
-def _execute_analyze_plan(self: Any, plan: analysis_planner.AnalysisPlan) -> None:
-    self._emit_output_from_thread("Analyze planner queue")
-    self._emit_output_from_thread(analysis_planner.render_analysis_plan_summary(plan))
-    total_steps = len(plan.executable_steps)
-    for index, step in enumerate(plan.executable_steps, start=1):
-        if self._active_job_cancel_requested:
-            self._emit_output_from_thread("Cancellation requested. Remaining queued analyses were not started.")
-            return
-        self._emit_output_from_thread(f"[{index}/{total_steps}] {step.label}")
-        if len(step.source_labels) > 1:
-            self._emit_output_from_thread("Merged selections: " + ", ".join(step.source_labels))
-        self._execute_planned_analysis_step(step)
-    self._emit_output_from_thread("Selected analyses completed.")
-
-
 def _run_selected_analysis_plan(self: Any) -> None:
-    if not self._targets_action_allowed("analysis planning"):
+    if not self._targets_action_allowed("analysis"):
         return
     if not self._ordered_selected_analyze_entry_ids():
-        self._write_output("Select one or more analyses in the planner first.")
+        self._write_output("Select one or more analyzers in the list first.")
         return
     plan = self._analyze_plan()
     if not plan.is_runnable:
-        self._write_output(analysis_planner.render_analysis_plan_summary(plan))
+        self._write_output("No analyzers are selected to run.")
         return
     self._start_action(
-        "Run selected analyses",
+        "Run selected analyzers",
         lambda plan=plan: self._execute_analyze_plan(plan),
         action_id="action-analyze",
     )
+
+
+def _execute_analyze_plan(self: Any, plan: _AnalyzeRunPlan) -> None:
+    self._emit_output_from_thread(f"Running {len(plan.selected_analyzer_keys)} selected analyzer(s).")
+    handler = None
+    if isinstance(getattr(self, "_analysis_handlers", None), dict):
+        handler = self._analysis_handlers.get("_run_checks")
+    if not callable(handler):
+        self._emit_output_from_thread("The analyzer runner is unavailable in the current Textual session.")
+        return
+    if not self._configured_target_names():
+        self._emit_output_from_thread("No configured analysis targets are available.")
+        return
+    handler(self._cfg, list(plan.selected_analyzer_keys))
+    self._emit_output_from_thread("Selected analyzers completed.")
 
 
 def _clear_selected_analysis_plan(self: Any) -> None:
@@ -516,7 +407,7 @@ def _clear_selected_analysis_plan(self: Any) -> None:
     self._analyze_selected_entry_ids.clear()
     self._refresh_view()
     self._refresh_shell_state()
-    self._write_output("Cleared the analyze planner selection.")
+    self._write_output("Cleared the analyzer selection.")
 
 
 if TYPE_CHECKING:
@@ -524,58 +415,42 @@ if TYPE_CHECKING:
     class _TextualAnalyzeMixin:
         def on_selection_list_selection_toggled(self, event: Any) -> None: ...
         def on_selection_list_selection_highlighted(self, event: Any) -> None: ...
-        def _available_analyzer_specs(self) -> tuple[Any, ...]: ...
+        def _available_analyzer_items(self) -> tuple[_AnalyzerItem, ...]: ...
         def _analyze_filter_value(self) -> str: ...
-        def _planner_entry_matches_filter(self, entry: analysis_catalog.AnalysisCatalogEntry) -> bool: ...
-        def _planner_base_entries_for_section(
-            self, section_id: str
-        ) -> tuple[analysis_catalog.AnalysisCatalogEntry, ...]: ...
-        def _planner_entries_for_section(
-            self, section_id: str
-        ) -> tuple[analysis_catalog.AnalysisCatalogEntry, ...]: ...
-        def _planner_section_groups(
-            self,
-        ) -> tuple[
-            tuple[analysis_catalog.AnalysisSectionSpec, tuple[analysis_catalog.AnalysisCatalogEntry, ...]], ...
-        ]: ...
+        def _item_matches_filter(self, item: _AnalyzerItem) -> bool: ...
+        def _planner_items(self) -> tuple[_AnalyzerItem, ...]: ...
+        def _planner_section_groups(self) -> tuple[tuple[Any, tuple[_AnalyzerItem, ...]], ...]: ...
         def _planner_entry_ids(self) -> tuple[str, ...]: ...
-        def _planner_entry(self, entry_id: str | None) -> analysis_catalog.AnalysisCatalogEntry | None: ...
+        def _planner_entry(self, entry_id: str | None) -> _AnalyzerItem | None: ...
         def _normalize_analyze_planner_state(self) -> None: ...
         def _ordered_selected_analyze_entry_ids(self) -> tuple[str, ...]: ...
-        def _analyze_plan(self) -> analysis_planner.AnalysisPlan: ...
+        def _analyze_plan(self) -> _AnalyzeRunPlan: ...
         def _analyze_section_list_id(self, section_id: str) -> str: ...
         def _analyze_section_id_from_list(self, selection_list: Any) -> str | None: ...
         def _selection_list_highlighted_entry_id(self, selection_list: Any) -> str | None: ...
         def _sync_analyze_selection_from_selection_list(self, selection_list: Any) -> bool: ...
         def _update_analyze_planner_selection_list(
-            self,
-            selection_list: Any,
-            entries: tuple[analysis_catalog.AnalysisCatalogEntry, ...],
+            self, selection_list: Any, items: tuple[_AnalyzerItem, ...]
         ) -> None: ...
         def _refresh_analyze_planner(self) -> None: ...
-        def _planner_entry_description(self, entry: analysis_catalog.AnalysisCatalogEntry | None) -> str: ...
-        def _planner_entry_analyzer_key(self, entry: analysis_catalog.AnalysisCatalogEntry | None) -> str | None: ...
-        def _planner_entry_detection(self, entry: analysis_catalog.AnalysisCatalogEntry | None) -> str: ...
-        def _planner_entry_how(self, entry: analysis_catalog.AnalysisCatalogEntry | None) -> str: ...
+        def _planner_entry_description(self, item: _AnalyzerItem | None) -> str: ...
         def _write_focused_entry_to_output(self) -> None: ...
         def _set_analyze_filter_text(self, raw_text: object) -> None: ...
         def _prompt_analyze_filter(self) -> None: ...
-        def _execute_planned_analysis_step(self, step: Any) -> None: ...
-        def _execute_analyze_plan(self, plan: analysis_planner.AnalysisPlan) -> None: ...
         def _run_selected_analysis_plan(self) -> None: ...
+        def _execute_analyze_plan(self, plan: _AnalyzeRunPlan) -> None: ...
         def _clear_selected_analysis_plan(self) -> None: ...
 else:
 
     class _TextualAnalyzeMixin:
-        """Provides analyze-planner state, filtering, rendering, and execution behavior."""
+        """Provides direct analyzer selection and execution behavior."""
 
         on_selection_list_selection_toggled = on_selection_list_selection_toggled
         on_selection_list_selection_highlighted = on_selection_list_selection_highlighted
-        _available_analyzer_specs = _available_analyzer_specs
+        _available_analyzer_items = _available_analyzer_items
         _analyze_filter_value = _analyze_filter_value
-        _planner_entry_matches_filter = _planner_entry_matches_filter
-        _planner_base_entries_for_section = _planner_base_entries_for_section
-        _planner_entries_for_section = _planner_entries_for_section
+        _item_matches_filter = _item_matches_filter
+        _planner_items = _planner_items
         _planner_section_groups = _planner_section_groups
         _planner_entry_ids = _planner_entry_ids
         _planner_entry = _planner_entry
@@ -589,13 +464,9 @@ else:
         _update_analyze_planner_selection_list = _update_analyze_planner_selection_list
         _refresh_analyze_planner = _refresh_analyze_planner
         _planner_entry_description = _planner_entry_description
-        _planner_entry_analyzer_key = _planner_entry_analyzer_key
-        _planner_entry_detection = _planner_entry_detection
-        _planner_entry_how = _planner_entry_how
         _write_focused_entry_to_output = _write_focused_entry_to_output
         _set_analyze_filter_text = _set_analyze_filter_text
         _prompt_analyze_filter = _prompt_analyze_filter
-        _execute_planned_analysis_step = _execute_planned_analysis_step
-        _execute_analyze_plan = _execute_analyze_plan
         _run_selected_analysis_plan = _run_selected_analysis_plan
+        _execute_analyze_plan = _execute_analyze_plan
         _clear_selected_analysis_plan = _clear_selected_analysis_plan

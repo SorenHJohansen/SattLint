@@ -12,7 +12,6 @@ from typing import Any, cast
 from sattline_parser.models.ast_model import BasePicture
 
 from . import _app_analysis_loading as analysis_loading_module
-from . import _app_analysis_menus as analysis_menus_module
 from . import _app_analysis_reporting as analysis_reporting_module
 from . import _app_analysis_variable_analyses as analysis_variable_analyses_module
 from . import analysis_catalog as analysis_catalog_module
@@ -27,10 +26,9 @@ from .analyzers.comment_code import analyze_comment_code_files
 from .analyzers.framework import AnalysisSharedArtifacts, Issue, SimpleReport
 from .analyzers.icf import parse_icf_file, validate_icf_entries_against_program
 from .analyzers.mms import analyze_mms_interface_variables
-from .analyzers.modules import analyze_module_duplicates, compare_modules, debug_module_structure, find_modules_by_name
+from .analyzers.modules import debug_module_structure
 from .analyzers.shadowing import analyze_shadowing
 from .analyzers.variables import IssueKind, analyze_variables, filter_variable_report
-from .application.interaction import MenuInteraction
 from .cache import AnalysisReportCache, ASTCache
 from .casefolding import casefold_equal, casefold_key
 from .config_types import ConfigDict
@@ -105,6 +103,8 @@ analyze_mms_interface_variables = analyze_mms_interface_variables
 parse_icf_file = parse_icf_file
 analyze_comment_code_files = analyze_comment_code_files
 debug_module_structure = debug_module_structure
+debug_enabled = debug_enabled
+validate_icf_entries_against_program = validate_icf_entries_against_program
 
 
 def debug_variable_usage(base_picture: BasePicture, var_name: str, debug: bool = False) -> str:
@@ -457,62 +457,6 @@ def _run_logged_cli_action(
 run_logged_cli_action = _run_logged_cli_action
 
 
-def _run_module_duplicates_for_name(
-    cfg: ConfigDict,
-    *,
-    target_name: str,
-    project_bp: BasePicture,
-    module_name: str,
-    interaction: MenuInteraction | None,
-) -> Any | None:
-    matches = _run_with_live_status(
-        f"Searching module variants in {target_name}: {module_name}",
-        lambda project_bp=project_bp, module_name=module_name: find_modules_by_name(
-            project_bp,
-            module_name,
-            debug=debug_enabled(cfg),
-        ),
-    )
-    if not matches:
-        emit_output(f"\n⚠ No modules found with name {module_name!r}.")
-        return None
-
-    emit_output(f"\nFound {len(matches)} instance(s) for {module_name!r}:")
-    for idx, (path, module) in enumerate(matches, 1):
-        datecode = getattr(module, "datecode", None)
-        datecode_txt = f" (DateCode: {datecode})" if datecode else ""
-        emit_output(f"  {idx}) {' -> '.join(path)}{datecode_txt}")
-
-    emit_output("\nSelect instances to compare (e.g., 6,7).")
-    emit_output("Press Enter to compare all instances.")
-    selection = (
-        interaction.prompt("Instances to compare", None).strip() if interaction is not None else input("> ").strip()
-    )
-
-    if selection:
-        indices = _parse_index_selection(selection, len(matches))
-        if len(indices) < 2:
-            emit_output("⚠ Need at least two instances to compare; skipping.")
-            return None
-        selected = [matches[i - 1] for i in indices]
-        return _run_with_live_status(
-            f"Comparing module variants in {target_name}: {module_name}",
-            lambda selected=selected: compare_modules(selected),
-        )
-
-    return _run_with_live_status(
-        f"Comparing module variants in {target_name}: {module_name}",
-        lambda project_bp=project_bp, module_name=module_name: analyze_module_duplicates(
-            project_bp,
-            module_name,
-            debug=debug_enabled(cfg),
-        ),
-    )
-
-
-run_module_duplicates_for_name = _run_module_duplicates_for_name
-
-
 def run_variable_analysis(
     cfg: ConfigDict,
     kinds: set[IssueKind] | None,
@@ -542,290 +486,56 @@ def run_variable_analysis(
     )
 
 
-def run_datatype_usage_analysis(
-    cfg: ConfigDict,
-    *,
-    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
-    pause_fn: Callable[[], None] | None = None,
-    interaction: MenuInteraction | None = None,
-) -> None:
-    commands_module = _commands_module()
-
-    commands_module.run_datatype_usage_analysis(
-        cfg,
-        iter_loaded_projects_fn=iter_loaded_projects_fn,
-        pause_fn=pause_fn,
-        interaction=interaction,
-    )
-
-
-def variable_usage_submenu(
-    cfg: ConfigDict,
-    *,
-    clear_screen_fn: Callable[[], None],
-    quit_app_fn: Callable[[], None],
-    run_variable_analysis_fn: Callable[[ConfigDict, set[IssueKind] | None], None],
-    run_datatype_usage_analysis_fn: Callable[[ConfigDict], None],
-    run_debug_variable_usage_fn: Callable[[ConfigDict], None],
-    run_module_localvar_analysis_fn: Callable[[ConfigDict], None],
-    pause_fn: Callable[[], None],
-) -> None:
-    analysis_menus_module.variable_usage_submenu(
-        cfg,
-        clear_screen_fn=clear_screen_fn,
-        quit_app_fn=quit_app_fn,
-        run_variable_analysis_fn=run_variable_analysis_fn,
-        run_datatype_usage_analysis_fn=run_datatype_usage_analysis_fn,
-        run_debug_variable_usage_fn=run_debug_variable_usage_fn,
-        run_module_localvar_analysis_fn=run_module_localvar_analysis_fn,
-        pause_fn=pause_fn,
-        emit_output_fn=emit_output,
-    )
-
-
-def module_analysis_submenu(
-    cfg: ConfigDict,
-    *,
-    clear_screen_fn: Callable[[], None],
-    print_menu_fn: Callable[..., None],
-    menu_option_factory: Callable[[str, str, str], Any],
-    quit_app_fn: Callable[[], None],
-    run_module_duplicates_analysis_fn: Callable[[ConfigDict], None],
-    run_module_find_by_name_fn: Callable[[ConfigDict], None],
-    run_module_tree_debug_fn: Callable[[ConfigDict], None],
-    pause_fn: Callable[[], None],
-) -> None:
-    analysis_menus_module.module_analysis_submenu(
-        cfg,
-        clear_screen_fn=clear_screen_fn,
-        print_menu_fn=print_menu_fn,
-        menu_option_factory=menu_option_factory,
-        quit_app_fn=quit_app_fn,
-        run_module_duplicates_analysis_fn=run_module_duplicates_analysis_fn,
-        run_module_find_by_name_fn=run_module_find_by_name_fn,
-        run_module_tree_debug_fn=run_module_tree_debug_fn,
-        pause_fn=pause_fn,
-        emit_output_fn=emit_output,
-    )
-
-
-def interface_communication_submenu(
-    cfg: ConfigDict,
-    *,
-    clear_screen_fn: Callable[[], None],
-    print_menu_fn: Callable[..., None],
-    menu_option_factory: Callable[[str, str, str], Any],
-    quit_app_fn: Callable[[], None],
-    run_mms_interface_analysis_fn: Callable[[ConfigDict], None],
-    run_icf_validation_fn: Callable[[ConfigDict], None],
-    run_icf_formatter_fn: Callable[[ConfigDict], None],
-    pause_fn: Callable[[], None],
-) -> None:
-    analysis_menus_module.interface_communication_submenu(
-        cfg,
-        clear_screen_fn=clear_screen_fn,
-        print_menu_fn=print_menu_fn,
-        menu_option_factory=menu_option_factory,
-        quit_app_fn=quit_app_fn,
-        run_mms_interface_analysis_fn=run_mms_interface_analysis_fn,
-        run_icf_validation_fn=run_icf_validation_fn,
-        run_icf_formatter_fn=run_icf_formatter_fn,
-        pause_fn=pause_fn,
-        emit_output_fn=emit_output,
-    )
-
-
-def code_quality_submenu(
-    cfg: ConfigDict,
-    *,
-    clear_screen_fn: Callable[[], None],
-    print_menu_fn: Callable[..., None],
-    menu_option_factory: Callable[[str, str, str], Any],
-    quit_app_fn: Callable[[], None],
-    run_comment_code_analysis_fn: Callable[[ConfigDict], None],
-    pause_fn: Callable[[], None],
-) -> None:
-    analysis_menus_module.code_quality_submenu(
-        cfg,
-        clear_screen_fn=clear_screen_fn,
-        print_menu_fn=print_menu_fn,
-        menu_option_factory=menu_option_factory,
-        quit_app_fn=quit_app_fn,
-        run_comment_code_analysis_fn=run_comment_code_analysis_fn,
-        pause_fn=pause_fn,
-        emit_output_fn=emit_output,
-    )
-
-
-def analyzer_catalog_menu(
-    cfg: ConfigDict,
-    *,
-    clear_screen_fn: Callable[[], None],
-    print_menu_fn: Callable[..., None],
-    menu_option_factory: Callable[[str, str, str], Any],
-    quit_app_fn: Callable[[], None],
-    get_enabled_analyzers_fn: Callable[[], list[Any]],
-    run_checks_fn: Callable[[ConfigDict, list[str] | None], None],
-    pause_fn: Callable[[], None],
-) -> None:
-    analysis_menus_module.analyzer_catalog_menu(
-        cfg,
-        clear_screen_fn=clear_screen_fn,
-        print_menu_fn=print_menu_fn,
-        menu_option_factory=menu_option_factory,
-        quit_app_fn=quit_app_fn,
-        get_enabled_analyzers_fn=get_enabled_analyzers_fn,
-        run_checks_fn=run_checks_fn,
-        pause_fn=pause_fn,
-        emit_output_fn=emit_output,
-    )
-
-
-def advanced_analysis_menu(
-    cfg: ConfigDict,
-    *,
-    clear_screen_fn: Callable[[], None],
-    print_menu_fn: Callable[..., None],
-    menu_option_factory: Callable[[str, str, str], Any],
-    quit_app_fn: Callable[[], None],
-    run_datatype_usage_analysis_fn: Callable[[ConfigDict], None],
-    run_debug_variable_usage_fn: Callable[[ConfigDict], None],
-    run_module_localvar_analysis_fn: Callable[[ConfigDict], None],
-    pause_fn: Callable[[], None],
-) -> None:
-    analysis_menus_module.advanced_analysis_menu(
-        cfg,
-        clear_screen_fn=clear_screen_fn,
-        print_menu_fn=print_menu_fn,
-        menu_option_factory=menu_option_factory,
-        quit_app_fn=quit_app_fn,
-        run_datatype_usage_analysis_fn=run_datatype_usage_analysis_fn,
-        run_debug_variable_usage_fn=run_debug_variable_usage_fn,
-        run_module_localvar_analysis_fn=run_module_localvar_analysis_fn,
-        pause_fn=pause_fn,
-        emit_output_fn=emit_output,
-    )
-
-
-def analysis_menu(
-    cfg: ConfigDict,
-    *,
-    clear_screen_fn: Callable[[], None],
-    print_menu_fn: Callable[..., None],
-    menu_option_factory: Callable[[str, str, str], Any],
-    quit_app_fn: Callable[[], None],
-    run_checks_fn: Callable[[ConfigDict, list[str] | None], None],
-    variable_usage_submenu_fn: Callable[[ConfigDict], None],
-    module_analysis_submenu_fn: Callable[[ConfigDict], None],
-    interface_communication_submenu_fn: Callable[[ConfigDict], None],
-    code_quality_submenu_fn: Callable[[ConfigDict], None],
-    analyzer_catalog_menu_fn: Callable[[ConfigDict], None],
-    advanced_analysis_menu_fn: Callable[[ConfigDict], None],
-    summarize_targets_fn: Callable[[ConfigDict], str],
-    pause_fn: Callable[[], None],
-) -> None:
-    analysis_menus_module.analysis_menu(
-        cfg,
-        clear_screen_fn=clear_screen_fn,
-        print_menu_fn=print_menu_fn,
-        menu_option_factory=menu_option_factory,
-        quit_app_fn=quit_app_fn,
-        run_checks_fn=run_checks_fn,
-        variable_usage_submenu_fn=variable_usage_submenu_fn,
-        module_analysis_submenu_fn=module_analysis_submenu_fn,
-        interface_communication_submenu_fn=interface_communication_submenu_fn,
-        code_quality_submenu_fn=code_quality_submenu_fn,
-        analyzer_catalog_menu_fn=analyzer_catalog_menu_fn,
-        advanced_analysis_menu_fn=advanced_analysis_menu_fn,
-        summarize_targets_fn=summarize_targets_fn,
-        pause_fn=pause_fn,
-        emit_output_fn=emit_output,
-    )
-
-
-def _parse_index_selection(selection: str, max_index: int) -> list[int]:
-    return analysis_menus_module.parse_index_selection(selection, max_index)
-
-
-def run_module_duplicates_analysis(
+def run_mms_interface_analysis(
     cfg: ConfigDict,
     *,
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] = _iter_loaded_projects,
     pause_fn: Callable[[], None] | None = None,
-    interaction: MenuInteraction | None = None,
 ) -> None:
     commands_module = _commands_module()
 
-    commands_module.run_module_duplicates_analysis(
+    commands_module.run_mms_interface_analysis(
         cfg,
-        iter_loaded_projects_fn=iter_loaded_projects_fn,
-        pause_fn=pause_fn,
-        interaction=interaction,
-    )
-
-
-def run_module_find_by_name(
-    cfg: ConfigDict,
-    *,
-    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] = _iter_loaded_projects,
-    pause_fn: Callable[[], None] | None = None,
-    interaction: MenuInteraction | None = None,
-) -> None:
-    commands_module = _commands_module()
-
-    commands_module.run_module_find_by_name(
-        cfg,
-        iter_loaded_projects_fn=iter_loaded_projects_fn,
-        pause_fn=pause_fn,
-        interaction=interaction,
-    )
-
-
-def run_module_tree_debug(
-    cfg: ConfigDict,
-    *,
-    prompt_fn: Callable[[str, str | None], str],
-    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] = _iter_loaded_projects,
-    pause_fn: Callable[[], None] | None = None,
-) -> None:
-    commands_module = _commands_module()
-
-    commands_module.run_module_tree_debug(
-        cfg,
-        prompt_fn=prompt_fn,
         iter_loaded_projects_fn=iter_loaded_projects_fn,
         pause_fn=pause_fn,
     )
 
 
-def run_analysis_menu(cfg: ConfigDict, *, analysis_menu_fn: Callable[[ConfigDict], None]) -> None:
-    commands_module = _commands_module()
-
-    commands_module.run_analysis_menu(cfg, analysis_menu_fn=analysis_menu_fn)
-
-
-def variable_analysis_menu(cfg: ConfigDict, *, analysis_menu_fn: Callable[[ConfigDict], None]) -> None:
-    commands_module = _commands_module()
-
-    commands_module.variable_analysis_menu(cfg, analysis_menu_fn=analysis_menu_fn)
-
-
-def run_module_localvar_analysis(
+def run_icf_validation(
     cfg: ConfigDict,
     *,
-    load_project_fn: Callable[[ConfigDict], tuple[BasePicture, ProjectGraph]],
-    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] = _iter_loaded_projects,
+    configured_icf_files_fn: Callable[[ConfigDict], tuple[Path | None, list[Path]]],
+    load_program_ast_fn: Callable[[ConfigDict, str], tuple[BasePicture, ProjectGraph]],
+    validate_icf_entries_against_program_fn: Callable[..., Any] = validate_icf_entries_against_program,
     pause_fn: Callable[[], None] | None = None,
-    interaction: MenuInteraction | None = None,
 ) -> None:
     commands_module = _commands_module()
 
-    commands_module.run_module_localvar_analysis(
+    commands_module.run_icf_validation(
         cfg,
-        load_project_fn=load_project_fn,
-        iter_loaded_projects_fn=iter_loaded_projects_fn,
+        configured_icf_files_fn=configured_icf_files_fn,
+        load_program_ast_fn=load_program_ast_fn,
+        validate_icf_entries_against_program_fn=validate_icf_entries_against_program_fn,
         pause_fn=pause_fn,
-        interaction=interaction,
+    )
+
+
+def run_comment_code_analysis(
+    cfg: ConfigDict,
+    *,
+    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] = _iter_loaded_projects,
+    source_paths_for_current_target_fn: Callable[
+        [BasePicture, ProjectGraph], set[Path]
+    ] = _source_paths_for_current_target,
+    pause_fn: Callable[[], None] | None = None,
+) -> None:
+    commands_module = _commands_module()
+
+    commands_module.run_comment_code_analysis(
+        cfg,
+        iter_loaded_projects_fn=iter_loaded_projects_fn,
+        source_paths_for_current_target_fn=source_paths_for_current_target_fn,
+        pause_fn=pause_fn,
     )
 
 
@@ -931,90 +641,3 @@ def parse_index_selection(selection: str, max_index: int) -> list[int]:
     commands_module = _commands_module()
 
     return commands_module.parse_index_selection(selection, max_index)
-
-
-def run_mms_interface_analysis(
-    cfg: ConfigDict,
-    *,
-    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] = _iter_loaded_projects,
-    pause_fn: Callable[[], None] | None = None,
-) -> None:
-    commands_module = _commands_module()
-
-    commands_module.run_mms_interface_analysis(
-        cfg,
-        iter_loaded_projects_fn=iter_loaded_projects_fn,
-        pause_fn=pause_fn,
-    )
-
-
-def run_icf_validation(
-    cfg: ConfigDict,
-    *,
-    configured_icf_files_fn: Callable[[ConfigDict], tuple[Path | None, list[Path]]],
-    load_program_ast_fn: Callable[[ConfigDict, str], tuple[BasePicture, ProjectGraph]],
-    validate_icf_entries_against_program_fn: Callable[..., Any] = validate_icf_entries_against_program,
-    pause_fn: Callable[[], None] | None = None,
-) -> None:
-    commands_module = _commands_module()
-
-    commands_module.run_icf_validation(
-        cfg,
-        configured_icf_files_fn=configured_icf_files_fn,
-        load_program_ast_fn=load_program_ast_fn,
-        validate_icf_entries_against_program_fn=validate_icf_entries_against_program_fn,
-        pause_fn=pause_fn,
-    )
-
-
-def run_debug_variable_usage(
-    cfg: ConfigDict,
-    *,
-    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] = _iter_loaded_projects,
-    pause_fn: Callable[[], None] | None = None,
-    interaction: MenuInteraction | None = None,
-) -> None:
-    commands_module = _commands_module()
-
-    commands_module.run_debug_variable_usage(
-        cfg,
-        iter_loaded_projects_fn=iter_loaded_projects_fn,
-        pause_fn=pause_fn,
-        interaction=interaction,
-    )
-
-
-def run_comment_code_analysis(
-    cfg: ConfigDict,
-    *,
-    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] = _iter_loaded_projects,
-    source_paths_for_current_target_fn: Callable[
-        [BasePicture, ProjectGraph], set[Path]
-    ] = _source_paths_for_current_target,
-    pause_fn: Callable[[], None] | None = None,
-) -> None:
-    commands_module = _commands_module()
-
-    commands_module.run_comment_code_analysis(
-        cfg,
-        iter_loaded_projects_fn=iter_loaded_projects_fn,
-        source_paths_for_current_target_fn=source_paths_for_current_target_fn,
-        pause_fn=pause_fn,
-    )
-
-
-def run_advanced_datatype_analysis(
-    cfg: ConfigDict,
-    *,
-    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
-    pause_fn: Callable[[], None] | None = None,
-    interaction: MenuInteraction | None = None,
-) -> None:
-    commands_module = _commands_module()
-
-    commands_module.run_advanced_datatype_analysis(
-        cfg,
-        iter_loaded_projects_fn=iter_loaded_projects_fn,
-        pause_fn=pause_fn,
-        interaction=interaction,
-    )

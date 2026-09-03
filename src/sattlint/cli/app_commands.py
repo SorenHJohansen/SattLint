@@ -16,7 +16,7 @@ from typing import cast
 
 from .. import _app_analysis_checks as app_analysis_checks_module
 from .. import _app_startup as startup_core
-from .. import app_base, app_support
+from .. import app_base
 from .. import cache as cache_module
 from ..application import analyze as analyze_application
 from ..application import project as project_application
@@ -34,7 +34,6 @@ def _build_command_handlers() -> CommandHandlers:
             "validate_config": run_validate_config_command,
             "analyze": run_analyze_command,
             "cache_prune": run_cache_prune_command,
-            "format_icf": run_format_icf_command,
         },
     )
 
@@ -105,31 +104,6 @@ def run_cache_prune_command(*, cache_dir: str | None = None, output_format: str 
         get_cache_dir_fn=cache_module.get_cache_dir,
         exit_success=app_base.EXIT_SUCCESS,
         exit_usage_error=app_base.EXIT_USAGE_ERROR,
-    )
-
-
-def configured_icf_files(cfg: ConfigDict) -> tuple[Path | None, list[Path]]:
-    return app_support.configured_icf_files(cfg)
-
-
-def run_format_icf_command(cfg: ConfigDict, *, check: bool = False, output_format: str = "text") -> int:
-    return app_support.run_format_icf_command(
-        cfg,
-        check=check,
-        output_format=output_format,
-        print_fn=print,
-        exit_success=app_base.EXIT_SUCCESS,
-        exit_usage_error=app_base.EXIT_USAGE_ERROR,
-    )
-
-
-def run_icf_formatter(cfg: ConfigDict) -> None:
-    from .._app_interactive_menus import run_icf_formatter as _run_icf_formatter  # noqa: PLC0415
-
-    _run_icf_formatter(
-        cfg,
-        run_format_icf_command_fn=run_format_icf_command,
-        pause_fn=app_base.pause,
     )
 
 
