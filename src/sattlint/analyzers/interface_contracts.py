@@ -5,8 +5,8 @@ from dataclasses import dataclass, field
 from sattline_parser.models.ast_model import BasePicture
 
 from ..reporting.variables_report import IssueKind, VariableIssue
-from .framework import empty_issues, format_report_header
-from .variables import analyze_variables
+from .framework import AnalysisContext, empty_issues, format_report_header
+from .variables import VariablesAnalyzer, analyze_variables
 
 INTERFACE_CONTRACT_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
     {
@@ -87,20 +87,49 @@ class InterfaceContractsReport:
         return "\n".join(lines)
 
 
-def analyze_interface_contracts(
+def _resolve_contract_issues(
+    analysis_context: AnalysisContext | None,
     base_picture: BasePicture,
-    debug: bool = False,
-    unavailable_libraries: set[str] | None = None,
-    analyzed_target_is_library: bool = False,
-) -> InterfaceContractsReport:
-    report = analyze_variables(
+    debug: bool,
+    unavailable_libraries: set[str] | None,
+    analyzed_target_is_library: bool,
+) -> list[VariableIssue]:
+    if analysis_context is not None and analysis_context.shared_artifacts is not None:
+        shared = analysis_context.shared_artifacts.variable_analyzer
+        if isinstance(shared, VariablesAnalyzer):
+            return list(shared.issues)
+        return analyze_variables(
+            base_picture,
+            analysis_context=analysis_context,
+            debug=debug,
+            unavailable_libraries=unavailable_libraries,
+            analyzed_target_is_library=analyzed_target_is_library,
+            selected_issue_kinds=INTERFACE_CONTRACT_ISSUE_KINDS,
+        ).issues
+    return analyze_variables(
         base_picture,
         debug=debug,
         unavailable_libraries=unavailable_libraries,
         analyzed_target_is_library=analyzed_target_is_library,
         selected_issue_kinds=INTERFACE_CONTRACT_ISSUE_KINDS,
+    ).issues
+
+
+def analyze_interface_contracts(
+    base_picture: BasePicture,
+    debug: bool = False,
+    unavailable_libraries: set[str] | None = None,
+    analyzed_target_is_library: bool = False,
+    analysis_context: AnalysisContext | None = None,
+) -> InterfaceContractsReport:
+    issues = _resolve_contract_issues(
+        analysis_context,
+        base_picture,
+        debug=debug,
+        unavailable_libraries=unavailable_libraries,
+        analyzed_target_is_library=analyzed_target_is_library,
     )
     return InterfaceContractsReport(
         name=base_picture.header.name,
-        issues=[issue for issue in report.issues if issue.kind in INTERFACE_CONTRACT_ISSUE_KINDS],
+        issues=[issue for issue in issues if issue.kind in INTERFACE_CONTRACT_ISSUE_KINDS],
     )

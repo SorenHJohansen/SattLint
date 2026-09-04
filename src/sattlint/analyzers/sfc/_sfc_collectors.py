@@ -78,21 +78,9 @@ class _SfcAccessCollector(VariablesAnalyzer):
         is_ui_read: bool = False,
     ) -> None:
         var, field_path, decl_module_path, _decl_display = context.resolve_variable(full_ref)
-        if var is None:
-            return
+        super()._mark_ref_access(full_ref, context, path, kind, is_ui_read=is_ui_read)
 
-        self.usage_tracker.mark_ref_access(
-            variable=var,
-            field_path=field_path,
-            decl_module_path=decl_module_path,
-            context=context,
-            path=path,
-            kind=kind,
-            syntactic_ref=full_ref,
-            ui_read=is_ui_read,
-        )
-
-        if kind is not AccessKind.WRITE:
+        if var is None or kind is not AccessKind.WRITE:
             return
 
         segments = [*list(decl_module_path), var.name]
