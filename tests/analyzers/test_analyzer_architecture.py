@@ -6,23 +6,33 @@ import re
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from sattline_parser.models.ast_model import BasePicture, ModuleHeader
 
+from sattlint import cache as cache_module
 from sattlint.analyzers import registry as registry_module
+from sattlint.analyzers._registry_dispatch import run_registry_analyzer
 from sattlint.analyzers._registry_spec_templates import AnalyzerSpecTemplate, default_spec_templates
 from sattlint.analyzers._registry_specs import build_context_kwargs, build_default_analyzers
 from sattlint.analyzers.dataflow import DataflowAnalyzer
 from sattlint.analyzers.framework import (
     AnalysisContext,
+    AnalysisSharedArtifacts,
     AnalyzerLifecycleMixin,
     BasePictureAnalyzer,
     SimpleReport,
     build_analysis_context,
 )
+from sattlint.analyzers.plugin import (
+    clear_registered_plugin_analyzers,
+    get_registered_plugin_analyzers,
+    register_analyzer,
+)
 from sattlint.analyzers.registry._registry_delivery_data import default_delivery_templates
 from sattlint.analyzers.reset_contamination import ResetContaminationAnalyzer
 from sattlint.analyzers.shared.variable_utils import VariablesConstMixin
 from sattlint.analyzers.variables import VariablesAnalyzer
+from sattlint.analyzers.variables import _build_variable_analysis_artifacts as _build_foundation
 from sattlint.analyzers.variables._variable_issue_collection import VariablesIssueCollectionMixin
 from sattlint.analyzers.variables._variable_traversal import VariablesTraversalMixin
 from sattlint.analyzers.variables._variables_access import VariablesAccessMixin
@@ -375,3 +385,190 @@ def test_build_analysis_context_normalizes_config_and_shared_artifacts() -> None
     assert context.shared_artifacts is not None
     assert context.shared_artifacts.counters.shared_artifact_holders_created == 1
     assert context.unavailable_libraries == {"ControlLib"}
+
+
+class _FakeFoundationCache:
+    def __init__(self) -> None:
+        self.store: dict[str, object] = {}
+        self.saved: list[tuple[str, object]] = []
+
+    def load(self, key: str) -> object | None:
+        return self.store.get(key)
+
+    def save(self, key: str, foundation: object) -> None:
+        self.store[key] = foundation
+        self.saved.append((key, foundation))
+
+
+def _make_foundation():
+    base_picture = BasePicture(
+        header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+    )
+    return _build_foundation(base_picture)
+
+
+def test_ensure_foundation_builds_once_and_memoizes() -> None:
+    shared = AnalysisSharedArtifacts()
+    build_calls = []
+
+    def build_fn():
+        build_calls.append(1)
+        return _make_foundation()
+
+    first = shared.ensure_foundation(build_fn)
+    second = shared.ensure_foundation(build_fn)
+
+    assert shared.variable_analysis is first
+    assert second is first
+    assert len(build_calls) == 1
+    assert shared.counters.variable_foundation_builds == 1
+
+
+def test_ensure_foundation_restores_from_cache_hit_without_rebuild() -> None:
+    shared = AnalysisSharedArtifacts()
+    fake_cache = _FakeFoundationCache()
+    cached = _make_foundation()
+    key = cache_module.compute_foundation_cache_key("proj", {"a.sl": (1, 2)})
+    fake_cache.save(key, cached)
+    shared.foundation_cache = fake_cache
+    shared.foundation_project_cache_key = "proj"
+    shared.foundation_source_manifest = {"a.sl": (1, 2)}
+    build_calls = []
+
+    def build_fn():
+        build_calls.append(1)
+        return _make_foundation()
+
+    result = shared.ensure_foundation(build_fn)
+
+    assert result is cached
+    assert build_calls == []
+    assert shared.counters.variable_foundation_builds == 0
+    assert fake_cache.saved == [(key, cached)]
+
+
+def test_ensure_foundation_persists_build_on_cache_miss() -> None:
+    shared = AnalysisSharedArtifacts()
+    fake_cache = _FakeFoundationCache()
+    shared.foundation_cache = fake_cache
+    shared.foundation_project_cache_key = "proj"
+    shared.foundation_source_manifest = {"a.sl": (1, 2)}
+    foundation = _make_foundation()
+
+    result = shared.ensure_foundation(lambda: foundation)
+
+    key = cache_module.compute_foundation_cache_key("proj", {"a.sl": (1, 2)})
+    assert result is foundation
+    assert shared.counters.variable_foundation_builds == 1
+    assert fake_cache.saved == [(key, foundation)]
+    assert fake_cache.load(key) is foundation
+
+
+# ---- Phase G: public register_analyzer developer API ----
+
+
+@pytest.fixture(autouse=True)
+def _clean_plugin_registry():
+    clear_registered_plugin_analyzers()
+    yield
+    clear_registered_plugin_analyzers()
+
+
+def test_register_analyzer_builds_direct_context_spec_with_contributes() -> None:
+    @register_analyzer(
+        key="my-plugin",
+        requires=("variables",),
+        contributes="derived_reports.my-plugin",
+        name="My Plugin",
+        description="A plugin analyzer",
+    )
+    def run(context: AnalysisContext) -> SimpleReport:
+        return SimpleReport(name="my-plugin")
+
+    specs = get_registered_plugin_analyzers()
+    assert len(specs) == 1
+    spec = specs[0]
+    assert spec.key == "my-plugin"
+    assert spec.name == "My Plugin"
+    assert spec.description == "A plugin analyzer"
+    assert spec.requires == ("variables",)
+    assert spec.contributes == "derived_reports.my-plugin"
+    assert spec.direct_context is True
+    assert spec.enabled is True
+    assert spec.run is run
+
+
+def test_register_analyzer_defaults_and_casefold_key() -> None:
+    @register_analyzer(key="My-Upper")
+    def run(context: AnalysisContext) -> SimpleReport:
+        return SimpleReport(name="x")
+
+    (spec,) = get_registered_plugin_analyzers()
+    assert spec.name == "My-Upper"
+    assert spec.requires == ()
+    assert spec.contributes is None
+    assert spec.direct_context is True
+
+    # Keys are canonicalized case-insensitively, so a re-registration with a different case
+    # overwrites the prior entry rather than introducing a duplicate key.
+    @register_analyzer(key="my-upper")
+    def run2(context: AnalysisContext) -> SimpleReport:
+        return SimpleReport(name="y")
+
+    specs = get_registered_plugin_analyzers()
+    assert len(specs) == 1
+    assert specs[0].run is run2
+
+
+def test_clear_registered_plugin_analyzers_resets_registry() -> None:
+    @register_analyzer(key="tmp-plugin")
+    def run(context: AnalysisContext) -> SimpleReport:
+        return SimpleReport(name="x")
+
+    assert len(get_registered_plugin_analyzers()) == 1
+    clear_registered_plugin_analyzers()
+    assert get_registered_plugin_analyzers() == ()
+
+
+def test_plugin_analyzers_merged_into_default_analyzers() -> None:
+    @register_analyzer(key="merged-plugin", requires=("variables",))
+    def run(context: AnalysisContext) -> SimpleReport:
+        return SimpleReport(name="x")
+
+    default_keys = {spec.key for spec in registry_module.get_default_analyzers()}
+    assert "merged-plugin" in default_keys
+
+
+def test_plugin_analyzer_runs_with_full_context_and_shared_artifacts() -> None:
+    context_sa: list[AnalysisSharedArtifacts | None] = []
+
+    @register_analyzer(key="context-consumer", requires=("variables",))
+    def run(context: AnalysisContext) -> SimpleReport:
+        context_sa.append(context.shared_artifacts)
+        return SimpleReport(name="context-consumer")
+
+    (spec,) = get_registered_plugin_analyzers()
+    base_picture = BasePicture(
+        header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+    )
+    shared = AnalysisSharedArtifacts()
+    shared.variable_analysis = _make_foundation()
+    context = build_analysis_context(base_picture, shared_artifacts=shared)
+    report = run_registry_analyzer(spec, context, use_shared_artifacts=True)
+
+    assert isinstance(report, SimpleReport)
+    assert context_sa == [shared]
+    # requires=("variables",) is satisfied by the shared foundation without re-running.
+    assert shared.counters.variable_root_traversals == 0

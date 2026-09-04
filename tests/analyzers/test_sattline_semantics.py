@@ -753,7 +753,7 @@ def test_sattline_semantics_reuses_precomputed_reports(monkeypatch):
         submodules=[],
     )
     shared_artifacts = AnalysisSharedArtifacts()
-    shared_artifacts.reports_by_analyzer_key["variables"] = SimpleNamespace(
+    shared_artifacts.derived_reports["variables"] = SimpleNamespace(
         issues=[
             VariableIssue(
                 kind=IssueKind.UNUSED,

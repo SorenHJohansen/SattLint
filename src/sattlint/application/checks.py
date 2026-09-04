@@ -415,7 +415,7 @@ def collect_run_checks_result(  # noqa: PLR0915
                     )
                 analyzer_timings_ms[spec.key] = round((perf_counter() - analyzer_started_at) * 1000, 3)
                 if context.shared_artifacts is not None:
-                    context.shared_artifacts.reports_by_analyzer_key[spec.key] = report
+                    context.shared_artifacts.derived_reports[spec.key] = report
                 phase_timings_ms = profiling_module.normalize_phase_timings_ms(getattr(report, "phase_timings", None))
                 if phase_timings_ms:
                     analyzer_phase_timings_ms[spec.key] = phase_timings_ms

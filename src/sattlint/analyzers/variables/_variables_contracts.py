@@ -181,6 +181,7 @@ def _make_nested_contract_extractor(self: VariablesAnalyzer) -> VariablesAnalyze
         selected_issue_kinds=None,
         trace_recorder=None,
         build_anytype_contracts=False,
+        shared_artifacts=getattr(self, "_shared_artifacts", None),
     )
     extractor_any: Any = extractor
     extractor_any._required_parameter_names_by_owner = self.required_parameter_names_by_owner
@@ -257,6 +258,7 @@ def _check_param_mappings_for_type_instance(
             inst.moduletype_name,
             current_library=current_library,
             unavailable_libraries=self.unavailable_libraries,
+            moduletype_index=getattr(self, "typedef_index", None),
         )
     except ValueError:
         return

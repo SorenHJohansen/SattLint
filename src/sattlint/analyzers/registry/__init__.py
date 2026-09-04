@@ -29,6 +29,7 @@ from ..naming import analyze_naming_consistency, get_configured_naming_rules
 from ..numeric_constraints import analyze_numeric_constraints
 from ..parameter_drift import analyze_parameter_drift
 from ..picture_display_paths import analyze_picture_display_paths
+from ..plugin import get_registered_plugin_analyzers, register_analyzer
 from ..powerup import analyze_powerup
 from ..resource_usage import analyze_resource_usage
 from ..rule_profiles import get_default_rule_profile_report
@@ -524,6 +525,16 @@ def _mapped_analyzers_for_rule(
 
 
 def get_default_analyzer_catalog() -> AnalyzerCatalog:
+    return _build_default_analyzer_catalog()
+
+
+@lru_cache(maxsize=1)
+def _build_default_analyzer_catalog() -> AnalyzerCatalog:
+    # Building this from the static rule/analyzer registry costs tens of ms (rule-metadata and
+    # delivery-metadata construction for every rule), and was previously rebuilt from scratch on
+    # every collect_run_checks_result() call. All inputs are static module-level data, so caching
+    # it for the process lifetime is safe; get_default_analyzer_catalog stays the public,
+    # monkeypatch-friendly entry point tests already rely on.
     analyzer_specs = tuple(get_default_analyzers())
     validate_analyzer_dependencies(analyzer_specs)
     analyzer_specs = deterministic_dependency_order(analyzer_specs)
@@ -581,7 +592,10 @@ def get_default_cli_analyzers() -> list[AnalyzerSpec]:
 
 
 def get_default_analyzers() -> list[AnalyzerSpec]:
-    return build_default_analyzers(semantic_layer_analyzer_key=SEMANTIC_LAYER_ANALYZER_KEY)
+    return [
+        *build_default_analyzers(semantic_layer_analyzer_key=SEMANTIC_LAYER_ANALYZER_KEY),
+        *get_registered_plugin_analyzers(),
+    ]
 
 
 def get_correctness_analyzer_keys() -> tuple[str, ...]:
@@ -660,8 +674,10 @@ __all__ = [
     "get_default_cli_analyzers",
     "get_default_rule_profile_report",
     "get_enabled_analyzers",
+    "get_registered_plugin_analyzers",
     "get_sattline_semantic_rule_groups",
     "get_selectable_analyzers",
+    "register_analyzer",
     "summary_output_for_analyzer",
     "validate_analyzer_dependencies",
 ]

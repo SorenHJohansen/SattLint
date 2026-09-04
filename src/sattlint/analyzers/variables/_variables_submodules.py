@@ -211,6 +211,7 @@ def _walk_moduletype_instance_subtree(  # noqa: PLR0915
                 child.moduletype_name,
                 current_library=parent_context.current_library,
                 unavailable_libraries=self.unavailable_libraries,
+                moduletype_index=getattr(self, "typedef_index", None),
             )
         except ValueError:
             moduletype = None

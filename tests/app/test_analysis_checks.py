@@ -323,7 +323,7 @@ def test_run_checks_skips_semantic_layer_when_batch_selection_includes_contribut
         run_order.append("sattline-semantics")
         shared_ids.append(id(context.shared_artifacts))
         assert context.shared_artifacts is not None
-        assert "variables" in context.shared_artifacts.reports_by_analyzer_key
+        assert "variables" in context.shared_artifacts.derived_reports
         return _report("semantics summary")
 
     def _variables_run(context):

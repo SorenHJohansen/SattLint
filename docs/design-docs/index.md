@@ -21,6 +21,7 @@ Index of design documents and owner hints.
 | [../exec-plans/library-resolution-and-config-cleanup.md](../exec-plans/library-resolution-and-config-cleanup.md) | Library resolution + config surface cleanup | Implemented | All agents |
 | [../exec-plans/tests-cleanup-and-hardening.md](../exec-plans/tests-cleanup-and-hardening.md) | Tests layout + confidence hardening | Complete | All agents |
 | [../exec-plans/enforcement-gaps.md](../exec-plans/enforcement-gaps.md) | Missing enforcement (casefold, coverage) + enforcement-section reconciliation | Active | All agents |
+| [analyzer-performance-architecture.md](analyzer-performance-architecture.md) | Analyzer performance & extensibility plan (layered pipeline, cached foundation) | Proposed | All agents |
 
 ## Adding New Docs
 

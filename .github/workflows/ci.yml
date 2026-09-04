@@ -46,6 +46,9 @@ jobs:
       - name: Full pytest with coverage
         run: python -m pytest -q --tb=short --cov=sattlint --cov-report=term-missing
 
+      - name: Analyzer counter regression guardrail
+        run: python scripts/benchmark_analyzer_counters.py --target MinimalProgram
+
       - name: Package smoke (clean wheel install)
         run: |
           python -m build --wheel --outdir /tmp/dist

@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
@@ -41,10 +42,14 @@ if TYPE_CHECKING:
     from ..models.project_graph import ProjectGraph
 
 
+log = logging.getLogger("SattLint")
+
+
 _MAX_STRING_CANDIDATES = 24
 _MAX_CURSOR_POSITIONS = 24
 _MAX_FIXED_POINT_PASSES = 8
 _MAX_OVERFLOW_EXAMPLES = 8
+_MAX_CONTEXT_BUILD_DEPTH = 64
 
 
 def _noop_progress(_msg: str) -> None:
@@ -149,19 +154,35 @@ class ExactStringInferenceEngine:
         *,
         graph: ProjectGraph | None = None,
         progress_callback: Callable[[str], None] | None = None,
+        debug: bool = False,
     ):
         self.base_picture = base_picture
         self.graph = graph
+        self.debug = debug
+        self._context_build_depth = 0
+        self._context_build_limit_reported = False
         self._progress_callback: Callable[[str], None] = (
             progress_callback if progress_callback is not None else _noop_progress
         )
         self._moduletype_index = _candidate_moduletype_index(base_picture, graph)
         self._contexts_by_path: dict[tuple[str, ...], _ModuleContext] = {}
         self._execution_contexts: list[_ModuleContext] = []
+        if self.debug:
+            log.debug(
+                "string-inference: building module context tree for root=%s (typedefs=%d)",
+                base_picture.header.name,
+                len(base_picture.moduletype_defs or []),
+            )
         self._root_context = self._build_basepicture_context()
         self._collect_contexts(self._root_context)
         for moduletype in self.base_picture.moduletype_defs or []:
             self._collect_contexts(self._build_typedef_root_context(moduletype))
+        if self.debug:
+            log.debug(
+                "string-inference: context tree built; %d contexts, %d executable",
+                len(self._contexts_by_path),
+                len(self._execution_contexts),
+            )
         self._initial_state = self._build_initial_state()
         self._solved_state: _AbstractState | None = None
 
@@ -302,6 +323,34 @@ class ExactStringInferenceEngine:
             return _ModuleContext(path=child_path, scope=scope, node=child, literal_bindings=())
 
         scope = _build_typedef_scope(resolved_typedef, child, parent.scope, child_path)
+        self._context_build_depth += 1
+        if self.debug:
+            log.debug(
+                "string-inference: expanding moduletype=%s into %s (depth=%d)",
+                resolved_typedef.name,
+                ".".join(child_path),
+                self._context_build_depth,
+            )
+
+        if self._context_build_depth > _MAX_CONTEXT_BUILD_DEPTH:
+            if not self._context_build_limit_reported:
+                log.warning(
+                    "string-inference: typedef expansion deeper than %d at %s; "
+                    "possible recursive module-type instantiation (moduletype=%s) - "
+                    "stopping expansion",
+                    _MAX_CONTEXT_BUILD_DEPTH,
+                    ".".join(child_path),
+                    resolved_typedef.name,
+                )
+                self._context_build_limit_reported = True
+            self._context_build_depth -= 1
+            return _ModuleContext(
+                path=child_path,
+                scope=scope,
+                node=resolved_typedef,
+                literal_bindings=_literal_bindings_for_mappings(child.parametermappings, "parameter_mapping_literal"),
+            )
+
         context = _ModuleContext(
             path=child_path,
             scope=scope,
@@ -311,6 +360,7 @@ class ExactStringInferenceEngine:
         context.children = tuple(
             self._build_child_context(context, grandchild) for grandchild in resolved_typedef.submodules or []
         )
+        self._context_build_depth -= 1
         return context
 
     def _collect_contexts(self, context: _ModuleContext) -> None:

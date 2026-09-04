@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TypedDict, cast
 
 from ..config.defaults import PROJECT_CACHE_CONFIG_KEYS
-from .classes import AnalysisReportCache, ASTCache, FileASTCache, FileLookupCache
+from .classes import AnalysisReportCache, ASTCache, FileASTCache, FileLookupCache, FoundationCache
 from .manager import (
     CacheManager,
     build_analysis_report_cache,
@@ -35,8 +35,11 @@ __all__ = [
     "CachePruneResult",
     "FileASTCache",
     "FileLookupCache",
+    "FoundationCache",
     "build_analysis_report_cache",
     "build_ast_cache",
+    "compute_analysis_report_cache_key",
+    "compute_foundation_cache_key",
     "get_cache_dir",
     "get_cache_manager",
     "prune_cache_dir",
@@ -377,6 +380,10 @@ def _normalize_lookup_base_dir(base_dir: Path) -> str:
 
 PROJECT_CACHE_SCHEMA_VERSION = "2026-06-11-project-graph-root-origin-schema"
 ANALYSIS_REPORT_CACHE_SCHEMA_VERSION = "2026-06-04-string-literal-mismatch-threshold"
+# Phase E: the analysis foundation (type graph + typedef/moduletype/datatype indices + symbol
+# skeleton) is a pure function of the parsed ASTs, so it is content-addressable. This version
+# must be bumped whenever the serialized foundation shape or its derivation changes.
+FOUNDATION_CACHE_SCHEMA_VERSION = "2026-09-03-source-content-derived-foundation-schema"
 
 
 def compute_cache_key(cfg: Mapping[str, object], *, analysis_target: str | None = None) -> str:
@@ -399,4 +406,22 @@ def compute_analysis_report_cache_key(project_cache_key: str, analyzer_key: str)
     h.update(ANALYSIS_REPORT_CACHE_SCHEMA_VERSION.encode())
     h.update(project_cache_key.encode("utf-8", errors="ignore"))
     h.update(analyzer_key.encode("utf-8", errors="ignore"))
+    return h.hexdigest()
+
+
+def compute_foundation_cache_key(project_cache_key: str, source_manifest: Mapping[str, tuple[int, int]]) -> str:
+    """Content-derived key for the cached analysis foundation.
+
+    Distinct from the rule/config-derived report key (see keep_foundation_key_distinct in the
+    architecture doc): editing a source file changes this key, while changing a lint rule must not.
+    The manifest is the same source-content/mtime snapshot the AST cache keys on, so foundation
+    staleness risk matches the already-proven AST cache.
+    """
+    h = hashlib.sha256()
+    h.update(FOUNDATION_CACHE_SCHEMA_VERSION.encode())
+    h.update(project_cache_key.encode("utf-8", errors="ignore"))
+    for path in sorted(source_manifest):
+        h.update(path.encode("utf-8", errors="ignore"))
+        h.update(b"\x00")
+        h.update(repr(source_manifest[path]).encode())
     return h.hexdigest()
