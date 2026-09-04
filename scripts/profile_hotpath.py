@@ -28,6 +28,8 @@ Usage:
         --target MinimalProgram --check comment-code --cache warm
     .venv/bin/python scripts/profile_hotpath.py analyze \
         --target MinimalProgram --check comment-code --cprofile
+    .venv/bin/python scripts/profile_hotpath.py analyze \
+        --project ~/.config/sattlint/OG.slproj --target KaHAMPCSøjleLib --check comment-code
 """
 
 from __future__ import annotations
@@ -45,6 +47,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from time import perf_counter
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
@@ -56,7 +59,10 @@ from sattlint import (  # noqa: E402
     app_analysis,
 )
 from sattlint._app_analysis_checks import collect_run_checks_result  # noqa: E402
+from sattlint.analyzers.registry import get_enabled_analyzers  # noqa: E402
 from sattlint.app_analysis import ChecksRunResult  # noqa: E402
+from sattlint.config_types import ConfigDict  # noqa: E402
+from sattlint.project import load_project  # noqa: E402
 
 # The project-level analysis-result cache (separate from the per-file AST cache) replays the
 # stage/analyzer timings recorded on the ORIGINAL load on every cache hit, so a warm rep would
@@ -115,7 +121,7 @@ def _instrumented_ms(result: ChecksRunResult) -> float:
     return total
 
 
-def _build_cfg(target_name: str) -> dict[str, object]:
+def _build_cfg(target_name: str) -> ConfigDict:
     cfg = deepcopy(app.DEFAULT_CONFIG)
     cfg.update(
         {
@@ -132,12 +138,33 @@ def _build_cfg(target_name: str) -> dict[str, object]:
     return cfg
 
 
-def _run_analyze_once(cfg: dict[str, object], selected_keys: list[str] | None) -> RunMetrics:
+def _build_cfg_from_project(project_path: Path) -> ConfigDict:
+    project = load_project(project_path)
+    cfg = project.to_default_merged_config_dict()
+    # Overwrite the configured target list: profiling focuses on a single target
+    # unless --target is explicitly passed; the caller fills this in.
+    cfg["analyzed_programs_and_libraries"] = []
+    # debug=True forces collect_stage_timings=True and per-analyzer timings.
+    cfg["debug"] = True
+    return cfg
+
+
+def _all_enabled_analyzers_fn() -> list[Any]:
+    return list(get_enabled_analyzers())
+
+
+def _run_analyze_once(
+    cfg: ConfigDict,
+    selected_keys: list[str] | None,
+    *,
+    get_enabled_analyzers_fn: Callable[[], list[Any]] | None = None,
+) -> RunMetrics:
     started_at = perf_counter()
-    result = collect_run_checks_result(  # type: ignore[arg-type]
+    result = collect_run_checks_result(
         cfg,
         selected_keys,
         iter_loaded_projects_fn=_ITER_LOADED_PROJECTS_NO_RESULT_CACHE,
+        get_enabled_analyzers_fn=get_enabled_analyzers_fn,
     )
     wall_ms = (perf_counter() - started_at) * 1000.0
     return RunMetrics(wall_ms=wall_ms, instrumented_ms=_instrumented_ms(result))
@@ -203,23 +230,62 @@ def _cmd_ast(args: argparse.Namespace) -> None:
         _run_baseline_repeats(args, run_once)
 
 
-def _cmd_analyze(args: argparse.Namespace) -> None:
-    cfg = _build_cfg(args.target)
-    file_count = len(list(CORPUS_VALID_DIR.glob("*.s")))
-    source_bytes = sum(f.stat().st_size for f in CORPUS_VALID_DIR.glob("*.s"))
-    _print_run_header(
-        target_or_file=args.target,
-        extra={"program_dir_files": file_count, "program_dir_bytes": source_bytes},
-        args=args,
-    )
+def _print_analyzer_report(result: ChecksRunResult) -> None:
+    for target in result.targets:
+        print(f"\n=== {target.target_name} ({len(target.analyzers)} analyzers) ===")
+        rows = sorted(
+            (
+                (a.name, a.key, a.duration_ms or 0.0, a.issue_count if a.issue_count is not None else 0)
+                for a in target.analyzers
+            ),
+            key=lambda row: row[2],
+            reverse=True,
+        )
+        name_width = max(len(name) for name, _key, _dur, _cnt in rows) if rows else 0
+        print(f"{'analyzer':<{name_width}}  {'key':<30} {'duration_ms':>10}  {'issues':>6}")
+        for name, key, duration_ms, issues in rows:
+            print(f"{name:<{name_width}}  {key:<30} {duration_ms:>10.2f}  {issues:>6}")
 
-    def run_once() -> RunMetrics:
-        return _run_analyze_once(cfg, args.check or None)
+
+def _cmd_analyze(args: argparse.Namespace) -> None:
+    if args.project:
+        project_path = Path(args.project).expanduser().resolve()
+        cfg = _build_cfg_from_project(project_path)
+        if args.target:
+            cfg["analyzed_programs_and_libraries"] = [args.target]
+        _print_run_header(target_or_file=f"project:{project_path}", extra={}, args=args)
+        print(f"targets={args.target or cfg.get('analyzed_programs_and_libraries')}")
+    else:
+        cfg = _build_cfg(args.target)
+        file_count = len(list(CORPUS_VALID_DIR.glob("*.s")))
+        source_bytes = sum(f.stat().st_size for f in CORPUS_VALID_DIR.glob("*.s"))
+        _print_run_header(
+            target_or_file=args.target,
+            extra={"program_dir_files": file_count, "program_dir_bytes": source_bytes},
+            args=args,
+        )
+
+    enabled_fn = _all_enabled_analyzers_fn if args.all else None
 
     if args.cprofile:
-        _run_cprofile(args, run_once, output_stem=args.target)
-    else:
-        _run_baseline_repeats(args, run_once)
+        output_stem = args.target or Path(args.project or "project").stem
+        _run_cprofile(
+            args,
+            lambda: _run_analyze_once(cfg, args.check or None, get_enabled_analyzers_fn=enabled_fn),
+            output_stem=output_stem,
+        )
+        return
+
+    started_at = perf_counter()
+    result = collect_run_checks_result(
+        cfg,
+        args.check or None,
+        iter_loaded_projects_fn=_ITER_LOADED_PROJECTS_NO_RESULT_CACHE,
+        get_enabled_analyzers_fn=enabled_fn,
+    )
+    wall_ms = (perf_counter() - started_at) * 1000.0
+    print(f"wall_ms={wall_ms:.2f} instrumented_ms={_instrumented_ms(result):.2f}")
+    _print_analyzer_report(result)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -231,8 +297,22 @@ def main(argv: list[str] | None = None) -> int:
     ast_parser.set_defaults(func=_cmd_ast)
 
     analyze_parser = subparsers.add_parser("analyze")
-    analyze_parser.add_argument("--target", required=True, help="Target name under tests/fixtures/corpus/valid/")
+    analyze_parser.add_argument(
+        "--target",
+        default=None,
+        help="Target name under tests/fixtures/corpus/valid/ (or an override when --project is set)",
+    )
+    analyze_parser.add_argument(
+        "--project",
+        default=None,
+        help="Path to an .slproj project file to profile (paths resolved relative to the project)",
+    )
     analyze_parser.add_argument("--check", action="append", default=[], metavar="KEY", help="Analyzer key (repeatable)")
+    analyze_parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Run every registered enabled batch-dispatch analyzer (all except the semantic layer)",
+    )
     analyze_parser.set_defaults(func=_cmd_analyze)
 
     for sub in (ast_parser, analyze_parser):

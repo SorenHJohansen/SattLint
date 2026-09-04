@@ -270,7 +270,8 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "a string variable."
             ),
             analyzer_attr="analyze_interface_contracts",
-            context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library"),
+            context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library", "analysis_context"),
+            requires=("variables",),
         ),
         AnalyzerSpecTemplate(
             key="powerup",
@@ -574,7 +575,8 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "read anywhere."
             ),
             analyzer_attr="analyze_safety_paths",
-            context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library"),
+            context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library", "analysis_context"),
+            requires=("variables",),
             semantic_mapping_kind="framework",
             semantic_rule_source="safety-paths",
         ),
@@ -592,7 +594,8 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "through a moduletype mapping."
             ),
             analyzer_attr="analyze_taint_paths",
-            context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library"),
+            context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library", "analysis_context"),
+            requires=("variables",),
             semantic_mapping_kind="framework",
             semantic_rule_source="taint-paths",
         ),
