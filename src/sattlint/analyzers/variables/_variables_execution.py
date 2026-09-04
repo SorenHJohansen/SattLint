@@ -39,10 +39,17 @@ from ._variables_picture_display_support import (
     record_graphics_binding_occurrences,
     record_picture_display_variable_occurrences,
 )
-from ._variables_string_overflow import collect_string_operation_overflow_issues
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer
+
+
+_process_root_traversal_count: int = 0
+
+
+def count_process_root_traversals() -> int:
+    """Return the process-wide number of variables root traversals started."""
+    return _process_root_traversal_count
 
 
 log = logging.getLogger("SattLint")
@@ -276,9 +283,6 @@ def _analyze_root_scope(self: VariablesAnalyzer) -> ScopeContext:
 
 
 def _run_post_traversal_analyses(self: VariablesAnalyzer) -> None:
-    if _should_collect_issue_kind(self, IssueKind.STRING_MAPPING_MISMATCH):
-        collect_string_operation_overflow_issues(self)
-
     if _should_collect_issue_kind(self, IssueKind.DATATYPE_DUPLICATION):
         self._detect_datatype_duplications()
 
@@ -518,6 +522,11 @@ def run(  # noqa: PLR0915
     limit_to_module_path: list[str] | None = None,
 ) -> list[VariableIssue]:
     _reset_analysis_state(self)
+    global _process_root_traversal_count
+    _process_root_traversal_count += 1
+    shared_artifacts = getattr(self, "_shared_artifacts", None)
+    if shared_artifacts is not None:
+        shared_artifacts.counters.variable_root_traversals += 1
     self._unresolved_variable_lookup_total = 0
     self._unresolved_variable_lookup_counts = defaultdict(int)
     self._unresolved_variable_lookup_examples = {}

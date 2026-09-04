@@ -25,6 +25,7 @@ from sattline_parser.models.ast_model import (
 
 from ...resolution.paths import CanonicalPath
 from ..framework import AnalysisContext, Issue, SimpleReport
+from ..variables import VariablesAnalyzer
 from ._sfc_collectors import _SfcAccessCollector
 from ._sfc_guard_logic import (
     _collect_transition_logic_issues,
@@ -368,6 +369,40 @@ def _format_terminator(terminated_by: dict[str, Any]) -> str:
     return terminator
 
 
+def get_variables_collector_class() -> type[VariablesAnalyzer]:
+    """Return the SFC-aware variables analyzer class.
+
+    When SFC parallel-branch collection is enabled, the canonical ``variables``
+    analyzer is run as this class so parallel-write data is recorded during the
+    single canonical traversal instead of a separate SFC walk.
+    """
+    return _SfcAccessCollector
+
+
+def _resolve_parallel_write_collector(
+    base_picture: BasePicture,
+    analysis_context: AnalysisContext | None,
+) -> _SfcAccessCollector | None:
+    """Return a collector with ``parallel_writes`` populated.
+
+    Prefers the canonical, already-run SFC-aware ``variables`` analyzer captured in
+    shared artifacts (recorded during the single canonical traversal). Falls back to
+    a fresh SFC-aware collector run here when no shared canonical run is available.
+    """
+    shared = analysis_context.shared_artifacts if analysis_context is not None else None
+    if shared is not None:
+        canonical = shared.variable_analyzer
+        if isinstance(canonical, _SfcAccessCollector):
+            return canonical
+    collector = (
+        _SfcAccessCollector(base_picture, shared_artifacts=shared)
+        if shared is not None
+        else _SfcAccessCollector(base_picture)
+    )
+    collector.run()
+    return collector
+
+
 def analyze_sfc(
     base_picture: BasePicture,
     analysis_context: AnalysisContext | None = None,
@@ -382,11 +417,7 @@ def analyze_sfc(
 
     collector: _SfcAccessCollector | None = None
     if _should_collect_any_issue_kinds(_SFC_PARALLEL_WRITE_RACE_ISSUE_KINDS):
-        if analysis_context is not None and analysis_context.shared_artifacts is not None:
-            collector = _SfcAccessCollector(base_picture, shared_artifacts=analysis_context.shared_artifacts)
-        else:
-            collector = _SfcAccessCollector(base_picture)
-        collector.run()
+        collector = _resolve_parallel_write_collector(base_picture, analysis_context)
 
     normalized_groups = (
         _normalize_step_groups(mutually_exclusive_steps)
@@ -479,9 +510,15 @@ def analyze_sfc(
         issues.extend(_collect_illegal_state_combination_issues(base_picture, normalized_groups))
 
     if normalized_step_contracts:
-        contract_collector = _SfcStepContractCollector(
-            base_picture,
-            normalized_step_contracts,
+        sfc_shared_artifacts = analysis_context.shared_artifacts if analysis_context is not None else None
+        contract_collector = (
+            _SfcStepContractCollector(
+                base_picture,
+                normalized_step_contracts,
+                shared_artifacts=sfc_shared_artifacts,
+            )
+            if sfc_shared_artifacts is not None
+            else _SfcStepContractCollector(base_picture, normalized_step_contracts)
         )
         issues.extend(contract_collector.collect())
 
@@ -498,6 +535,7 @@ __all__ = [
     "conflict_rep",
     "get_configured_mutually_exclusive_step_sets",
     "get_configured_step_contracts",
+    "get_variables_collector_class",
     "iter_sfc_modulecodes",
     "normalize_mutually_exclusive_step_sets",
     "normalize_step_contracts",

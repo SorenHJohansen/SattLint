@@ -8,7 +8,7 @@ from collections import defaultdict
 from collections.abc import Callable, Generator
 from collections.abc import Set as AbstractSet
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -30,7 +30,13 @@ from ...reporting.variables_report import (
 from ...resolution import CanonicalSymbolTable, TypeGraph
 from ...resolution.context_builder import ContextBuilder
 from ...resolution.scope import ScopeContext
-from ..framework import AnalysisContext, AnalysisSharedArtifacts, AnalyzerLifecycleMixin, VariableAnalysisArtifacts
+from ..framework import (
+    AnalysisContext,
+    AnalysisSharedArtifacts,
+    AnalyzerLifecycleMixin,
+    CollectedViews,
+    VariableAnalysisArtifacts,
+)
 from ..shared._dedupe import get_or_register_index
 from ..shared._validators import AnyTypeFieldContract, ContractMappingValidator, MinMaxValidator, StringMappingValidator
 from ..shared.variable_utils import VariablesConstMixin
@@ -109,6 +115,27 @@ def _build_variable_analysis_artifacts(base_picture: BasePicture) -> VariableAna
     )
 
 
+def _publish_shared_artifacts(
+    analysis_context: AnalysisContext | None,
+    analyzer: VariablesAnalyzer,
+) -> None:
+    if analysis_context is None or analysis_context.shared_artifacts is None:
+        return
+    shared_artifacts = analysis_context.shared_artifacts
+    shared_artifacts.variable_analyzer = analyzer
+    variable_analysis = shared_artifacts.variable_analysis
+    shared_artifacts.collected_views = CollectedViews(
+        access_graph=analyzer.access_graph,
+        usage_tracker=analyzer.usage_tracker,
+        alias_links=tuple(analyzer.alias_links),
+        effect_flow_edges=analyzer.effect_flow_edges,
+        effect_flow_display_names=analyzer.effect_flow_display_names,
+        contexts_by_module_path=dict(analyzer.contexts_by_module_path),
+        root_env=dict(variable_analysis.root_env) if variable_analysis is not None else None,
+        typedef_index=variable_analysis.typedef_index if variable_analysis is not None else None,
+    )
+
+
 def analyze_variables(
     base_picture: BasePicture,
     analysis_context: AnalysisContext | None = None,
@@ -128,7 +155,10 @@ def analyze_variables(
     )
     normalized_selected_issue_kinds = _normalize_selected_issue_kinds(selected_issue_kinds)
     init_started_at = time.perf_counter()
-    analyzer = VariablesAnalyzer(
+    collector_class = VariablesAnalyzer
+    if analysis_context is not None and analysis_context.variables_collector_class is not None:
+        collector_class = cast(type[VariablesAnalyzer], analysis_context.variables_collector_class)
+    analyzer = collector_class(
         base_picture,
         debug=debug,
         fail_loudly=False,
@@ -143,6 +173,7 @@ def analyze_variables(
     )
     init_duration_ms = round((time.perf_counter() - init_started_at) * 1000, 3)
     issues = analyzer.run()
+    _publish_shared_artifacts(analysis_context, analyzer)
     return VariablesReport(
         basepicture_name=base_picture.header.name,
         issues=issues,
@@ -236,14 +267,13 @@ class VariablesAnalyzer(
         self,
         shared_artifacts: AnalysisSharedArtifacts | None,
     ) -> VariableAnalysisArtifacts:
-        variable_artifacts = shared_artifacts.variable_analysis if shared_artifacts is not None else None
-        if variable_artifacts is not None:
+        if shared_artifacts is None:
+            variable_artifacts = _build_variable_analysis_artifacts(self.bp)
             return variable_artifacts
 
-        variable_artifacts = _build_variable_analysis_artifacts(self.bp)
-        if shared_artifacts is not None:
-            shared_artifacts.variable_analysis = variable_artifacts
-            shared_artifacts.counters.variable_foundation_builds += 1
+        variable_artifacts = shared_artifacts.ensure_foundation(lambda: _build_variable_analysis_artifacts(self.bp))
+        if variable_artifacts is None:
+            raise RuntimeError("foundation build produced no artifacts")
         return variable_artifacts
 
     def _initialize_usage_state(self) -> None:

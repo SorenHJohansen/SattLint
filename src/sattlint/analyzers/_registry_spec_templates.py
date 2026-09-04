@@ -121,7 +121,8 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "assigned."
             ),
             analyzer_attr="analyze_mms_interface_variables",
-            context_kwargs=("debug", "config"),
+            context_kwargs=("debug", "config", "analysis_context"),
+            requires=("variables",),
             semantic_rule_source="mms-interface",
         ),
         AnalyzerSpecTemplate(

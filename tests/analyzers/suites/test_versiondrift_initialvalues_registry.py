@@ -474,7 +474,7 @@ def test_run_registry_analyzer_requires_variable_artifacts_for_sfc():
         debug=False,
         target_is_library=False,
         config={},
-        shared_artifacts=SimpleNamespace(variable_analysis=None, reports_by_analyzer_key={}),
+        shared_artifacts=SimpleNamespace(variable_analysis=None, derived_reports={}),
         unavailable_libraries=set(),
     )
 

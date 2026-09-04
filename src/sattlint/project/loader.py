@@ -100,12 +100,16 @@ class SattLineProjectLoader(SattLineProjectLoaderLookupMixin):
             root_code_path: Path | None = None
             if strict and syntax_check and key == root_key:
                 self._update_status(f"Loading {name}: running syntax check")
+                syntax_check_lookup_started_at = perf_counter()
                 root_code_path = self._find_code_with_context(name, requester_dir=requester_dir)
+                self._record_stage_timing(name, "file_lookup", syntax_check_lookup_started_at)
                 if root_code_path is not None:
                     raise_syntax_validation_failure(validate_single_file_syntax(root_code_path, mode=self.mode))
 
             self._update_status(f"Loading {name}: reading dependency list")
+            deps_lookup_started_at = perf_counter()
             deps_path = self._find_deps_with_context(name, requester_dir=requester_dir)
+            self._record_stage_timing(name, "file_lookup", deps_lookup_started_at)
             dep_names = self._read_deps(deps_path) if deps_path else []
             dependency_requester = deps_path.parent if deps_path is not None else requester_dir
             self._prefetch_dependency_candidates(dep_names, requester_dir=dependency_requester)
@@ -122,7 +126,9 @@ class SattLineProjectLoader(SattLineProjectLoaderLookupMixin):
                     dep_libs.append(dependency_library_name)
 
             self._update_status(f"Loading {name}: locating source file")
+            code_lookup_started_at = perf_counter()
             code_path = root_code_path or self._find_code_with_context(name, requester_dir=requester_dir)
+            self._record_stage_timing(name, "file_lookup", code_lookup_started_at)
             if code_path is not None:
                 try:
                     validation_warnings: list[ValidationWarning] = []

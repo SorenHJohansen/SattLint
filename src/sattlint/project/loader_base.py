@@ -158,6 +158,15 @@ class SattLineProjectLoaderBase(DebugMixin):
         self._lib_by_name: dict[str, str] = {}
         self._prefetched_dependency_candidates: dict[tuple[str, str | None], PrefetchedDependencyCandidate] = {}
         self._prefetched_load_results_by_path: dict[Path, PrefetchedLoadResult] = {}
+        # In-memory memo for unpickled AST-cache entries, keyed by code_path, for the lifetime of
+        # this loader/resolve() call. Common leaf libraries (e.g. iconlib) are dependencies of
+        # dozens of other libraries, and without this, every one of those would re-read and
+        # re-unpickle the same on-disk cache entry from scratch (the dominant real-world cost).
+        self._ast_cache_memo: dict[Path, BasePicture] = {}
+        # Counted once each, at the single authoritative decision point in _load_or_parse:
+        # ast_requests == cache_hits + parses + parse_failures (never double-counted against
+        # the separate prefetch_candidates/prefetch_entries_consumed bookkeeping).
+        self.ast_cache_counts: dict[str, int] = {}
         self.dbg(f"Selected mode={self.mode.value}, code_ext={code_ext(self.mode)}, deps_ext={deps_ext(self.mode)}")
         self.dbg(f"Programs dir: {self.program_dir}")
         for i, ld in enumerate(self.other_lib_dirs, start=1):
@@ -173,6 +182,19 @@ class SattLineProjectLoaderBase(DebugMixin):
         if self._stage_timing_sink is None:
             return
         self._stage_timing_sink(owner_name, stage, duration)
+
+    def _bump_cache_count(self, key: str) -> None:
+        self.ast_cache_counts[key] = self.ast_cache_counts.get(key, 0) + 1
+
+    def _load_ast_cache_memoized(self, code_path: Path) -> BasePicture | None:
+        memoized = self._ast_cache_memo.get(code_path)
+        if memoized is not None:
+            return memoized
+        cached = self._ast_cache.load(code_path, self.mode.value)
+        if isinstance(cached, BasePicture):
+            self._ast_cache_memo[code_path] = cached
+            return cached
+        return None
 
     def _update_status(self, message: str) -> None:
         if self._status_update_fn is None:

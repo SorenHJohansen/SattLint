@@ -59,7 +59,7 @@ def _requirement_satisfied(required_key: str, shared_artifacts: Any | None) -> b
     canonical_required = _canonical_key(required_key)
     if canonical_required == "variables":
         return getattr(shared_artifacts, "variable_analysis", None) is not None
-    reports_by_key = getattr(shared_artifacts, "reports_by_analyzer_key", None)
+    reports_by_key = getattr(shared_artifacts, "derived_reports", None)
     if not isinstance(reports_by_key, Mapping):
         return False
     return canonical_required in reports_by_key
@@ -150,7 +150,7 @@ def run_registry_analyzer(
     _validate_required_analyzers(spec, context)
     shared_artifacts = context.shared_artifacts
     if use_shared_artifacts and shared_artifacts is not None:
-        cached_report = shared_artifacts.reports_by_analyzer_key.get(spec.key)
+        cached_report = shared_artifacts.derived_reports.get(spec.key)
         if cached_report is not None:
             shared_artifacts.counters.semantic_precomputed_reports_used += 1
             return cast(Report, cached_report)

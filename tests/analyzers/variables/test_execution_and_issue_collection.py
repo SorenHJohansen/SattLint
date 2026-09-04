@@ -1,4 +1,6 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
+from sattline_parser.models.expressions import NotOp
+
 from tests.helpers.analyzers_variables_support import *
 
 
@@ -31,6 +33,31 @@ def test_walk_tail_children_fallback_marks_parent_scope_variable_reads() -> None
     analyzer._walk_tail(SimpleNamespace(children=[_varref("p.name")]), child_context, child_context.module_path)
 
     assert analyzer._get_usage(parent_parameter).read is True
+
+
+def test_walk_tail_not_expression_marks_operand_variable_reads() -> None:
+    parameter = Variable(name="EnableVar", datatype=Simple_DataType.BOOLEAN)
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+    )
+    analyzer = VariablesAnalyzer(bp)
+    context = ScopeContext(
+        env={"enablevar": parameter},
+        param_mappings={},
+        module_path=["BasePicture", "Graph"],
+        display_module_path=["BasePicture<BP>", "Graph<GO>"],
+    )
+
+    analyzer._walk_tail(NotOp(operand=_varref("EnableVar")), context, context.module_path, is_ui_read=True)
+
+    assert analyzer._get_usage(parameter).read is True
+    assert analyzer._get_usage(parameter).ui_read is True
 
 
 def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_paths(monkeypatch):
