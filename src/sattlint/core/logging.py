@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 
-from ..config_types import ConfigDict
+from ..config.types import ConfigDict
 
 log = logging.getLogger("SattLint")
 

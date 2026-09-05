@@ -22,7 +22,7 @@ from rich.text import Text
 
 from sattlint import app
 from sattlint import ui as app_textual
-from sattlint.config_types import ConfigDict
+from sattlint.config.types import ConfigDict
 from sattlint.ui import _app_textual_actions as app_textual_actions_module
 from sattlint.ui import _app_textual_app as app_textual_module
 from sattlint.ui import _app_textual_setup as app_textual_setup_module

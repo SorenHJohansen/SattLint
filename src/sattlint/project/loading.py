@@ -2,22 +2,23 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import replace
 from pathlib import Path
 from time import perf_counter
 from typing import Any, cast
 
-from lark.exceptions import VisitError
 from sattline_parser.models.ast_model import BasePicture
 
 from .. import cache as cache_module
-from ..casefolding import casefold_equal, casefold_key
-from ..config_types import ConfigDict
+from ..config.types import ConfigDict
 from ..core import telemetry as telemetry_module
 from ..core.debug import log_debug_exception
-from ..models.project_graph import ProjectFailure, ProjectGraph, RootOrigin
-from ..validation.shared import ValidationNotice, ValidationWarning, coerce_validation_notice
+from ..graphics.graphics_context_helpers import resolve_graphics_companion_path
+from ..models.project_graph import ProjectGraph, RootOrigin, merge_project_basepicture
+from ..utils.casefolding import casefold_equal, casefold_key
+from .loader import SattLineProjectLoader
+from .loader_config import build_project_loader_from_type, validate_loader_config
 from .loading_support import (
     _attach_analysis_cache_metadata,
     _call_load_project_compat,
@@ -164,10 +165,9 @@ def load_project(  # noqa: PLR0915
     target_load_error_factory: Callable[..., Exception] | None,
     get_cache_dir_fn: Callable[[], Path],
     ast_cache_cls: type[Any],
-    engine_module: Any,
     status_update_fn: Callable[[str], None] | None = None,
 ) -> tuple[BasePicture, ProjectGraph]:
-    engine_module.validate_loader_config(cfg)
+    validate_loader_config(cfg)
     targets = require_analyzed_targets_fn(cfg)
     selected_target = target_name or targets[0]
     cache_dir = get_cache_dir_fn()
@@ -176,7 +176,7 @@ def load_project(  # noqa: PLR0915
     def build_project_view(root_bp: BasePicture, graph: ProjectGraph) -> BasePicture:
         if refresh_mode == "ast-only":
             return root_bp
-        project_bp = cast(BasePicture, engine_module.merge_project_basepicture(root_bp, graph))
+        project_bp = merge_project_basepicture(root_bp, graph)
         root_origin_for_basepicture = getattr(graph, "root_origin_for_basepicture", None)
         if callable(root_origin_for_basepicture):
             root_origin = cast(RootOrigin | None, root_origin_for_basepicture(project_bp))
@@ -217,15 +217,17 @@ def load_project(  # noqa: PLR0915
         owner_timings = graphics_timings_by_program.setdefault(owner_name, {})
         owner_timings[phase_name] = owner_timings.get(phase_name, 0.0) + duration
 
-    loader, root_bp, graph = engine_module.load_project_graph(
+    loader = build_project_loader_from_type(
+        SattLineProjectLoader,
         cfg,
-        selected_target,
         use_file_ast_cache=use_file_ast_cache,
         status_update_fn=status_update_fn,
         refresh_mode=refresh_mode,
         stage_timing_sink=record_stage_timing if collect_stage_timings else None,
         graphics_timing_sink=record_graphics_timing if collect_stage_timings else None,
     )
+    graph = loader.resolve(selected_target, strict=False)
+    root_bp = graph.ast_by_name.get(selected_target)
     try:
         deps_path = _loader_find_dependency_path(loader, selected_target, Path(cfg["program_dir"]))
         direct_dependencies = _loader_read_dependency_names(loader, deps_path)
@@ -265,7 +267,7 @@ def load_project(  # noqa: PLR0915
         graph=graph,
         loader=loader,
         require_analyzed_targets_fn=require_analyzed_targets_fn,
-        engine_module=engine_module,
+        is_within_directory_fn=is_within_directory,
         target_is_library_fn=target_is_library,
         source_paths_for_current_target_fn=lambda project_bp, current_graph: source_paths_for_current_target(
             project_bp,
@@ -280,7 +282,7 @@ def load_project(  # noqa: PLR0915
         cfg,
         graph,
         find_dependency_path_fn=lambda name, requester_dir: _loader_find_dependency_path(loader, name, requester_dir),
-        resolve_graphics_companion_path_fn=engine_module.resolve_graphics_companion_path,
+        resolve_graphics_companion_path_fn=resolve_graphics_companion_path,
         casefold_equal_fn=casefold_equal,
         casefold_key_fn=casefold_key,
     )
@@ -310,7 +312,6 @@ def load_project_with_live_status(
     target_load_error_factory: Callable[..., Exception] | None,
     get_cache_dir_fn: Callable[[], Path],
     ast_cache_cls: type[Any],
-    engine_module: Any,
     live_status_line_factory: Callable[[], Any],
 ) -> tuple[BasePicture, ProjectGraph]:
     return _with_status_line(
@@ -327,7 +328,6 @@ def load_project_with_live_status(
             target_load_error_factory=target_load_error_factory,
             get_cache_dir_fn=get_cache_dir_fn,
             ast_cache_cls=ast_cache_cls,
-            engine_module=engine_module,
             status_update_fn=status_update_fn,
         ),
     )
@@ -338,10 +338,10 @@ def load_program_ast(
     program_name: str,
     *,
     force_dependency_resolution: bool,
-    engine_module: Any,
     status_update_fn: Callable[[str], None] | None = None,
 ) -> tuple[BasePicture, ProjectGraph]:
-    loader = engine_module.build_project_loader(
+    loader = build_project_loader_from_type(
+        SattLineProjectLoader,
         cfg,
         status_update_fn=status_update_fn,
     )
@@ -359,7 +359,6 @@ def load_program_ast_with_live_status(
     program_name: str,
     *,
     force_dependency_resolution: bool,
-    engine_module: Any,
     live_status_line_factory: Callable[[], Any],
 ) -> tuple[BasePicture, ProjectGraph]:
     return _with_status_line(
@@ -368,7 +367,6 @@ def load_program_ast_with_live_status(
             cfg,
             program_name,
             force_dependency_resolution=force_dependency_resolution,
-            engine_module=engine_module,
             status_update_fn=status_update_fn,
         ),
     )
@@ -528,59 +526,6 @@ def ensure_ast_cache(
             ok = False
 
     return ok
-
-
-def record_project_failure(graph: ProjectGraph, name: str, exception: Exception) -> None:
-    message = f"{name} parse/transform error: {exception}"
-    line = getattr(exception, "line", None)
-    column = getattr(exception, "column", None)
-    length = getattr(exception, "length", None)
-    if isinstance(exception, VisitError):
-        line = line if line is not None else getattr(exception.orig_exc, "line", None)
-        column = column if column is not None else getattr(exception.orig_exc, "column", None)
-        length = length if length is not None else getattr(exception.orig_exc, "length", None)
-    graph.missing.append(message)
-    graph.failures[name.casefold()] = ProjectFailure(
-        name=name,
-        message=message,
-        line=line,
-        column=column,
-        length=length,
-    )
-
-
-def record_project_warning(graph: ProjectGraph, name: str, message: ValidationWarning) -> None:
-    notice = coerce_validation_notice(message)
-    graph.warnings.append(f"{name}: {notice.message}")
-    warning_notices = getattr(graph, "warning_notices", None)
-    if isinstance(warning_notices, list):
-        cast(list[tuple[str, ValidationNotice]], warning_notices).append((name, notice))
-
-
-def format_debug_list(title: str, entries: Iterable[str]) -> str:
-    items = [str(entry) for entry in entries]
-    if not items:
-        return f"{title}: none"
-
-    lines = [f"{title} ({len(items)}):"]
-    lines.extend(f"  - {item}" for item in items)
-    return "\n".join(lines)
-
-
-def format_debug_missing_entries(entries: Iterable[str]) -> str:
-    items = [str(entry) for entry in entries]
-    if not items:
-        return "Missing/failed: none"
-
-    lines = [f"Missing/failed ({len(items)}):"]
-    for item in items:
-        library_name, separator, detail = item.partition(" parse/transform error: ")
-        if separator:
-            lines.append(f"  - {library_name}")
-            lines.append(f"    parse/transform error: {detail}")
-            continue
-        lines.append(f"  - {item}")
-    return "\n".join(lines)
 
 
 def is_within_directory(path: Path, directory: Path) -> bool:

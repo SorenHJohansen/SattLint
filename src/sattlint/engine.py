@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import replace
 from pathlib import Path
 
 from lark import Lark
 from sattline_parser import parse_source_file as parser_core_parse_source_file
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.api import describe_parse_error, read_text_with_fallback
-from sattline_parser.models.ast_model import BasePicture, DataType, ModuleTypeDef
+from sattline_parser.models.ast_model import BasePicture
 from sattline_parser.preprocessing import is_compressed, preprocess_sl_text
 from sattline_parser.transformer.sl_transformer import SLTransformer
 
@@ -53,6 +52,7 @@ from .graphics.graphics_context_helpers import resolve_graphics_companion_path
 from .graphics.picture_display_paths import correlate_picture_display_records
 from .graphics.validation import validate_graphics_file
 from .models.project_graph import ProjectGraph
+from .models.project_graph import merge_project_basepicture as _merge_project_basepicture_core
 from .project.loader import SattLineProjectLoader
 from .project.loader_base import CircularDependencyError, DependencyVersionCompatibilityError
 from .project.loader_config import (
@@ -167,6 +167,9 @@ def parse_source_file(
     transformer: SLTransformer | None = None,
     debug: Callable[[str], None] | None = None,
 ) -> BasePicture:
+    # Raw-parse helper for analyzer unit tests and tooling that build an
+    # unvalidated AST on purpose. Validation is load-path-mandatory in
+    # project/loader.py; this surface stays parse-only by design.
     return _parse_source_file_core(
         code_path,
         parser=parser,
@@ -203,104 +206,7 @@ def validate_single_file_syntax(
 
 
 def merge_project_basepicture(root_bp: BasePicture, graph: ProjectGraph) -> BasePicture:
-    merged_datatypes: list[DataType] = list(graph.datatype_defs.values())
-    merged_modtypes: list[ModuleTypeDef] = list(graph.moduletype_defs.values())
-    lib_deps = {lib: sorted(deps) for lib, deps in (graph.library_dependencies or {}).items()}
-    return replace(
-        root_bp,
-        datatype_defs=merged_datatypes,
-        moduletype_defs=merged_modtypes,
-        library_dependencies=lib_deps,
-    )
-
-
-def _get_dump_dir() -> Path:
-    dump_dir = Path.home() / ".sattlint" / "dumps"
-    dump_dir.mkdir(parents=True, exist_ok=True)
-    return dump_dir
-
-
-def dump_parse_tree(project: tuple[BasePicture, ProjectGraph]) -> None:
-    from datetime import datetime  # noqa: PLC0415
-
-    project_bp, _graph = project
-    if project_bp.parse_tree is None:
-        print("❌ No parse tree available for the root program.")
-        return
-
-    dump_dir = _get_dump_dir()
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = dump_dir / f"parse_tree_{project_bp.header.name}_{timestamp}.txt"
-    filename.write_text(project_bp.parse_tree.pretty(), encoding="utf-8")
-    print(f"\n✔ Parse tree saved to: {filename}")
-    print()
-
-
-def dump_ast(project: tuple[BasePicture, ProjectGraph]) -> None:
-    from datetime import datetime  # noqa: PLC0415
-
-    project_bp, _graph = project
-    dump_dir = _get_dump_dir()
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = dump_dir / f"ast_{project_bp.header.name}_{timestamp}.txt"
-    filename.write_text(str(project_bp), encoding="utf-8")
-    print(f"\n✔ AST saved to: {filename}")
-    print()
-
-
-def dump_dependency_graph(project: tuple[BasePicture, ProjectGraph]) -> None:
-    from datetime import datetime  # noqa: PLC0415
-
-    project_bp, graph = project
-    dump_dir = _get_dump_dir()
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = dump_dir / f"dependency_graph_{project_bp.header.name}_{timestamp}.txt"
-
-    lines = ["--- Dependency Graph ---"]
-    lines.append(f"Programs/Libraries parsed: {len(graph.ast_by_name)}")
-    for name in sorted(graph.ast_by_name.keys()):
-        bp = graph.ast_by_name[name]
-        origin_info = f" (from {bp.origin_lib}/{bp.origin_file})" if bp.origin_lib or bp.origin_file else ""
-        lines.append(f"  • {name}{origin_info}")
-
-    if graph.datatype_defs:
-        lines.append(f"\nDataType Definitions: {len(graph.datatype_defs)}")
-        for name in sorted(graph.datatype_defs.keys()):
-            dt = graph.datatype_defs[name]
-            origin_info = f" (from {dt.origin_lib}/{dt.origin_file})" if dt.origin_lib or dt.origin_file else ""
-            lines.append(f"  • {name}{origin_info}")
-
-    if graph.moduletype_defs:
-        lines.append(f"\nModuleType Definitions: {len(graph.moduletype_defs)}")
-        for (_lib_key, _name_key, _file_key), mt in sorted(graph.moduletype_defs.items()):
-            display = f"{mt.origin_lib}:{mt.name}" if mt.origin_lib else mt.name
-            origin_info = f" (from {mt.origin_lib}/{mt.origin_file})" if mt.origin_lib or mt.origin_file else ""
-            lines.append(f"  • {display}{origin_info}")
-
-    if graph.library_dependencies:
-        lines.append("\nLibrary dependencies:")
-        for lib, deps in sorted(graph.library_dependencies.items()):
-            dep_list = ", ".join(sorted(deps)) if deps else "<none>"
-            lines.append(f"  • {lib} -> {dep_list}")
-
-    if graph.missing:
-        lines.append(f"\nMissing/Unresolved: {len(graph.missing)}")
-        for msg in graph.missing:
-            lines.append(f"  ⚠ {msg}")
-
-    if graph.warnings:
-        lines.append(f"\nWarnings: {len(graph.warnings)}")
-        for msg in graph.warnings:
-            lines.append(f"  ⚠ {msg}")
-
-    if graph.ignored_vendor:
-        lines.append(f"\nIgnored Vendor: {len(graph.ignored_vendor)}")
-        for msg in graph.ignored_vendor:
-            lines.append(f"  ⓘ {msg}")
-
-    filename.write_text("\n".join(lines), encoding="utf-8")
-    print(f"\n✔ Dependency graph saved to: {filename}")
-    print()
+    return _merge_project_basepicture_core(root_bp, graph)
 
 
 __all__ = [
@@ -322,9 +228,6 @@ __all__ = [
     "code_ext",
     "create_sl_parser",
     "deps_ext",
-    "dump_ast",
-    "dump_dependency_graph",
-    "dump_parse_tree",
     "expected_unavailable_library_reason",
     "graphics_ext",
     "graphics_ext_candidates",

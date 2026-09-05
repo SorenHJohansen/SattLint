@@ -6,13 +6,15 @@ from collections.abc import Mapping
 
 from sattline_parser.models.ast_model import BasePicture
 
-from .analyzers.dispatch import (
+from ..analyzers.dispatch import (
     collect_lsp_report_issues,
     run_variables_registry_report,
 )
-from .analyzers.framework import AnalysisContext, AnalysisSharedArtifacts, build_analysis_context
-from .analyzers.variables import analyze_variables
-from .core.diagnostics import (
+from ..analyzers.framework import AnalysisContext, AnalysisSharedArtifacts, build_analysis_context
+from ..analyzers.variables import analyze_variables
+from ..models.project_graph import ProjectGraph
+from ..reporting.variables_report import VariableIssue, VariablesReport
+from .diagnostics import (
     DiagnosticProjectionResult,
     SemanticDiagnostic,
     build_module_diagnostic_sites,
@@ -21,9 +23,7 @@ from .core.diagnostics import (
     project_report_issues,
     project_variable_issues,
 )
-from .core.semantic import SemanticAnalysisArtifacts, SymbolDefinition
-from .models.project_graph import ProjectGraph
-from .reporting.variables_report import VariableIssue, VariablesReport
+from .semantic import SemanticAnalysisArtifacts, SymbolDefinition
 
 
 def _run_variables_report(

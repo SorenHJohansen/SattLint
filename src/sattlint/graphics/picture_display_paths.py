@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from sattline_parser.models.ast_model import BasePicture
 
-from ..string_inference import ExactStringInferenceEngine
+from ..analyzers.string_inference import ExactStringInferenceEngine
 from .picture_display_runtime import (
     RuntimeModuleNode,
     RuntimeTree,

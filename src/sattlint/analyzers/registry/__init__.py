@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from typing import cast
 
-from ...repo_paths import repo_root_from
+from ...utils.repo_paths import repo_root_from
 from .._registry_specs import build_default_analyzers
 from ..alarm_integrity import analyze_alarm_integrity
 from ..comment_code import analyze_comment_code
@@ -281,6 +282,122 @@ def canonicalize_analyzer_keys(keys: tuple[str, ...] | list[str] | set[str]) -> 
     return tuple(canonicalize_analyzer_key(key) for key in keys if key.strip())
 
 
+class AnalyzerDependencyGraphError(ValueError):
+    """Raised when the analyzer dependency graph is invalid at construction."""
+
+
+def _duplicate_and_canonical_collisions(specs: Sequence[AnalyzerSpec]) -> list[str]:
+    seen_raw: set[str] = set()
+    canonical_to_first: dict[str, str] = {}
+    errors: list[str] = []
+    for spec in specs:
+        if spec.key in seen_raw:
+            errors.append(f"duplicate analyzer key {spec.key!r}")
+        seen_raw.add(spec.key)
+        canonical_key = canonicalize_analyzer_key(spec.key)
+        if canonical_key in canonical_to_first and canonical_to_first[canonical_key] != spec.key:
+            errors.append(
+                f"analyzer keys {canonical_to_first[canonical_key]!r} and {spec.key!r} "
+                f"collide on canonical key {canonical_key!r}"
+            )
+        canonical_to_first.setdefault(canonical_key, spec.key)
+    return errors
+
+
+def _unknown_and_self_dependencies(specs: Sequence[AnalyzerSpec]) -> list[str]:
+    registered_keys = {canonicalize_analyzer_key(spec.key) for spec in specs}
+    errors: list[str] = []
+    for spec in specs:
+        canonical_self = canonicalize_analyzer_key(spec.key)
+        for required_key in spec.requires:
+            canonical_required = canonicalize_analyzer_key(required_key)
+            if canonical_required == canonical_self:
+                errors.append(f"analyzer {spec.key!r} depends on itself")
+            elif canonical_required not in registered_keys:
+                errors.append(f"analyzer {spec.key!r} requires unknown analyzer {required_key!r}")
+    return errors
+
+
+def _detect_dependency_cycle(specs: Sequence[AnalyzerSpec]) -> list[str] | None:
+    by_key = {canonicalize_analyzer_key(spec.key): spec for spec in specs}
+    visiting: set[str] = set()
+    visited: set[str] = set()
+    stack: list[str] = []
+
+    def visit(key: str) -> list[str] | None:
+        if key in visited:
+            return None
+        if key in visiting:
+            cycle_start = stack.index(key)
+            return [*stack[cycle_start:], key]
+        visiting.add(key)
+        stack.append(key)
+        spec = by_key.get(key)
+        if spec is None:
+            stack.pop()
+            visiting.remove(key)
+            visited.add(key)
+            return None
+        for required_key in spec.requires:
+            cycle = visit(canonicalize_analyzer_key(required_key))
+            if cycle is not None:
+                return cycle
+        stack.pop()
+        visiting.remove(key)
+        visited.add(key)
+        return None
+
+    for spec in specs:
+        cycle = visit(canonicalize_analyzer_key(spec.key))
+        if cycle is not None:
+            return cycle
+    return None
+
+
+def validate_analyzer_dependencies(specs: Sequence[AnalyzerSpec]) -> None:
+    """Reject invalid analyzer dependency graphs once, at construction.
+
+    Raises :class:`AnalyzerDependencyGraphError` on duplicate keys, colliding
+    canonical keys, unknown required analyzers, self-dependencies, or cycles.
+    """
+    errors: list[str] = []
+    errors.extend(_duplicate_and_canonical_collisions(specs))
+    errors.extend(_unknown_and_self_dependencies(specs))
+    cycle = _detect_dependency_cycle(specs)
+    if cycle is not None:
+        errors.append(f"analyzer dependency cycle: {' -> '.join(cycle)}")
+    if errors:
+        detail = "\n".join(f"  - {error}" for error in errors)
+        raise AnalyzerDependencyGraphError(f"Invalid analyzer dependency graph:\n{detail}")
+
+
+def deterministic_dependency_order(specs: Sequence[AnalyzerSpec]) -> tuple[AnalyzerSpec, ...]:
+    """Return analyzers ordered by dependencies (dependencies first).
+
+    Assumes :func:`validate_analyzer_dependencies` has already passed; keeps
+    input order for analyzers with no dependency relationship, yielding a
+    deterministic order.
+    """
+    by_key = {canonicalize_analyzer_key(spec.key): spec for spec in specs}
+    visited: set[str] = set()
+    ordered: list[AnalyzerSpec] = []
+
+    def visit(spec: AnalyzerSpec) -> None:
+        key = canonicalize_analyzer_key(spec.key)
+        if key in visited:
+            return
+        visited.add(key)
+        for required_key in spec.requires:
+            required_spec = by_key.get(canonicalize_analyzer_key(required_key))
+            if required_spec is not None:
+                visit(required_spec)
+        ordered.append(spec)
+
+    for spec in specs:
+        visit(spec)
+    return tuple(ordered)
+
+
 def get_declared_cli_analyzer_keys() -> tuple[str, ...]:
     return tuple(
         sorted(
@@ -408,6 +525,8 @@ def _mapped_analyzers_for_rule(
 
 def get_default_analyzer_catalog() -> AnalyzerCatalog:
     analyzer_specs = tuple(get_default_analyzers())
+    validate_analyzer_dependencies(analyzer_specs)
+    analyzer_specs = deterministic_dependency_order(analyzer_specs)
     semantic_rule_groups = get_sattline_semantic_rule_groups()
     registered_keys = {spec.key for spec in analyzer_specs}
     rule_ids_by_analyzer: dict[str, list[str]] = {spec.key: [] for spec in analyzer_specs}
@@ -455,7 +574,7 @@ def get_selectable_analyzers() -> list[AnalyzerSpec]:
 
 
 def get_default_cli_analyzers() -> list[AnalyzerSpec]:
-    enabled_by_key = {spec.key.casefold(): spec for spec in get_enabled_analyzers()}
+    enabled_by_key = {canonicalize_analyzer_key(spec.key): spec for spec in get_enabled_analyzers()}
     return [
         enabled_by_key[key] for key in canonicalize_analyzer_keys(DEFAULT_CLI_ANALYZER_KEYS) if key in enabled_by_key
     ]
@@ -483,6 +602,7 @@ __all__ = [
     "SEMANTIC_LAYER_ANALYZER_KEY",
     "AnalyzerCatalog",
     "AnalyzerDeliveryMetadata",
+    "AnalyzerDependencyGraphError",
     "AnalyzerMetadata",
     "AnalyzerSpec",
     "RuleMetadata",
@@ -526,6 +646,7 @@ __all__ = [
     "build_delivery_metadata",
     "canonicalize_analyzer_key",
     "canonicalize_analyzer_keys",
+    "deterministic_dependency_order",
     "get_actual_cli_analyzer_keys",
     "get_actual_lsp_analyzer_keys",
     "get_configured_mutually_exclusive_step_sets",
@@ -542,4 +663,5 @@ __all__ = [
     "get_sattline_semantic_rule_groups",
     "get_selectable_analyzers",
     "summary_output_for_analyzer",
+    "validate_analyzer_dependencies",
 ]

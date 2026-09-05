@@ -46,7 +46,7 @@ from ._variables_status import ProcedureStatusBinding, VariablesStatusMixin, con
 from ._variables_submodules import VariablesSubmodulesMixin
 
 if TYPE_CHECKING:
-    from ...tracing import AnalysisTraceRecorder
+    from ...core.tracing import AnalysisTraceRecorder
 
 log = logging.getLogger("SattLint")
 

@@ -9,11 +9,11 @@ from typing import Any, cast
 
 import tomli_w
 
-from . import _config_paths as _config_paths_module
-from . import console as console_module
-from ._config_defaults import DEFAULT_CONFIG
-from .config_types import ConfigDict, ConfigObjectMap, ConfigOverrideDict
-from .config_validation import (
+from .. import console as console_module
+from . import paths as _config_paths_module
+from .defaults import DEFAULT_CONFIG
+from .types import ConfigDict, ConfigObjectMap, ConfigOverrideDict
+from .validation import (
     deep_merge_dict,
     load_time_config_warnings,
     strip_unknown_keys,

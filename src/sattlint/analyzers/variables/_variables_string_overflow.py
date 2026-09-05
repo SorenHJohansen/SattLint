@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING
 from sattline_parser.models.ast_model import Simple_DataType, Variable
 
 from ...reporting.variables_report import IssueKind, VariableIssue
-from ...string_inference import ExactStringInferenceEngine, StringInferenceResult
 from ...validation.type_helpers import is_string_simple_type
+from ..string_inference import ExactStringInferenceEngine, StringInferenceResult
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer

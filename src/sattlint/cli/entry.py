@@ -9,11 +9,8 @@ from contextlib import nullcontext, redirect_stdout
 from pathlib import Path
 from typing import Any, Protocol, TypedDict, cast
 
-from .. import cli_output
 from ..__version__ import __version__
-from .._exit_codes import EXIT_SUCCESS, EXIT_USAGE_ERROR
-from ..cli_output import add_output_format_argument
-from ..config_types import ConfigDict
+from ..config.types import ConfigDict
 from ..console import print_output
 from ..project import (
     SLPROJ_FILENAME,
@@ -24,6 +21,9 @@ from ..project import (
 from ..project import (
     load_project as _load_project,
 )
+from . import cli_output
+from ._exit_codes import EXIT_SUCCESS, EXIT_USAGE_ERROR
+from .cli_output import add_output_format_argument
 
 _CONFIG_LOAD_EXCEPTIONS = (OSError, ValueError)
 

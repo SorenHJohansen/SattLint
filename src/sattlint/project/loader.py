@@ -24,16 +24,16 @@ from ..validation import (
 from ..validation.shared import ValidationWarning
 from .loader_base import CircularDependencyError, DependencyVersionCompatibilityError, record_missing_library
 from .loader_lookup import SattLineProjectLoaderLookupMixin
-from .loading import (
+from .loading_support import (
     format_debug_list as _format_debug_list,
 )
-from .loading import (
+from .loading_support import (
     format_debug_missing_entries as _format_debug_missing_entries,
 )
-from .loading import (
+from .loading_support import (
     record_project_failure as _record_project_failure,
 )
-from .loading import (
+from .loading_support import (
     record_project_warning as _record_project_warning,
 )
 

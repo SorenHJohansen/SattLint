@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
-from ..config_io import get_config_path
-from ..config_types import ConfigDict, TelemetryConfig
+from ..config.io import get_config_path
+from ..config.types import ConfigDict, TelemetryConfig
 
 APP_TELEMETRY_KIND = "sattlint.app.telemetry"
 APP_TELEMETRY_SCHEMA_VERSION = 1

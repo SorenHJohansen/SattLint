@@ -11,11 +11,11 @@ from typing import Any, ClassVar, Protocol, cast
 from sattline_parser.models.ast_model import ParameterMapping, Simple_DataType, Variable
 from sattline_parser.models.expressions import VarRef
 
-from ...casefolding import casefold_key, is_anytype_name
 from ...grammar import constants as const
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ...resolution import TypeGraph
 from ...resolution.common import varname_full
+from ...utils.casefolding import casefold_key, is_anytype_name
 from ...validation.type_helpers import (
     assignment_type_matches as _assignment_type_matches,
 )

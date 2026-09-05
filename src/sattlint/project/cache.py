@@ -16,7 +16,7 @@ from typing import Any, cast
 from .. import cache as cache_module
 from ..analyzers.variables import IssueKind
 from ..cache import AnalysisReportCache
-from ..config_types import ConfigDict
+from ..config.types import ConfigDict
 from ..models.project_graph import ProjectGraph
 
 log = logging.getLogger("SattLint")

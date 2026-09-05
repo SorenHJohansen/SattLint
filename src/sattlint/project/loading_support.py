@@ -7,13 +7,15 @@ from collections.abc import Callable, Iterable, Iterator, Mapping, Sized
 from pathlib import Path
 from typing import Any, cast
 
+from lark.exceptions import VisitError
 from sattline_parser.models.ast_model import BasePicture
 
-from ..casefolding import casefold_equal
-from ..config_types import ConfigDict
+from ..config.types import ConfigDict
 from ..core import telemetry as telemetry_module
 from ..core.debug import debug_enabled, log_debug_exception
-from ..models.project_graph import ProjectGraph
+from ..models.project_graph import ProjectFailure, ProjectGraph
+from ..utils.casefolding import casefold_equal
+from ..validation.shared import ValidationNotice, ValidationWarning, coerce_validation_notice
 
 _STAGE_ORDER = ("load_or_parse", "validate", "attach_graphics", "index", "ast_cache_save")
 log = logging.getLogger("SattLint")
@@ -220,7 +222,7 @@ def _include_reverse_library_consumers(
     graph: ProjectGraph,
     loader: Any,
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
-    engine_module: Any,
+    is_within_directory_fn: Callable[[Path, Path], bool],
     target_is_library_fn: Callable[..., bool],
     source_paths_for_current_target_fn: Callable[[BasePicture, ProjectGraph], set[Path]],
 ) -> None:
@@ -229,7 +231,7 @@ def _include_reverse_library_consumers(
         root_bp,
         graph,
         source_paths_for_current_target_fn=source_paths_for_current_target_fn,
-        is_within_directory_fn=engine_module.is_within_directory,
+        is_within_directory_fn=is_within_directory_fn,
     ):
         return
 
@@ -301,3 +303,56 @@ def iter_loaded_projects(
             continue
         _emit_debug_load_summary(cfg, target_name=target_name, graph=graph, emit_output_fn=emit_output_fn)
         yield target_name, project_bp, graph
+
+
+def record_project_failure(graph: ProjectGraph, name: str, exception: Exception) -> None:
+    message = f"{name} parse/transform error: {exception}"
+    line = getattr(exception, "line", None)
+    column = getattr(exception, "column", None)
+    length = getattr(exception, "length", None)
+    if isinstance(exception, VisitError):
+        line = line if line is not None else getattr(exception.orig_exc, "line", None)
+        column = column if column is not None else getattr(exception.orig_exc, "column", None)
+        length = length if length is not None else getattr(exception.orig_exc, "length", None)
+    graph.missing.append(message)
+    graph.failures[name.casefold()] = ProjectFailure(
+        name=name,
+        message=message,
+        line=line,
+        column=column,
+        length=length,
+    )
+
+
+def record_project_warning(graph: ProjectGraph, name: str, message: ValidationWarning) -> None:
+    notice = coerce_validation_notice(message)
+    graph.warnings.append(f"{name}: {notice.message}")
+    warning_notices = getattr(graph, "warning_notices", None)
+    if isinstance(warning_notices, list):
+        cast(list[tuple[str, ValidationNotice]], warning_notices).append((name, notice))
+
+
+def format_debug_list(title: str, entries: Iterable[str]) -> str:
+    items = [str(entry) for entry in entries]
+    if not items:
+        return f"{title}: none"
+
+    lines = [f"{title} ({len(items)}):"]
+    lines.extend(f"  - {item}" for item in items)
+    return "\n".join(lines)
+
+
+def format_debug_missing_entries(entries: Iterable[str]) -> str:
+    items = [str(entry) for entry in entries]
+    if not items:
+        return "Missing/failed: none"
+
+    lines = [f"Missing/failed ({len(items)}):"]
+    for item in items:
+        library_name, separator, detail = item.partition(" parse/transform error: ")
+        if separator:
+            lines.append(f"  - {library_name}")
+            lines.append(f"    parse/transform error: {detail}")
+            continue
+        lines.append(f"  - {item}")
+    return "\n".join(lines)

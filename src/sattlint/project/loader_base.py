@@ -34,7 +34,7 @@ from .loader_config import (
     SattLineProjectLoaderDependencies,
     SattLineProjectLoaderRuntime,
 )
-from .loading import record_project_warning as _record_project_warning
+from .loading_support import record_project_warning as _record_project_warning
 
 log = logging.getLogger("SattLint")
 

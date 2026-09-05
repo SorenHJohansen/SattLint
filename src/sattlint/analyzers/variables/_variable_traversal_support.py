@@ -19,11 +19,11 @@ from sattline_parser.models.expressions import (
     VarRef,
 )
 
-from ...casefolding import is_anytype_name
 from ...grammar import constants as const
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ...resolution import AccessKind
 from ...resolution.scope import ScopeContext
+from ...utils.casefolding import is_anytype_name
 from ..sattline_builtins import get_function_signature
 from ..shared._array_builtins import get_dynamic_array_builtin_spec
 from ._variable_traversal_objects import (

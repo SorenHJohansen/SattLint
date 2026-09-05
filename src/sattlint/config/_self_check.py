@@ -3,11 +3,15 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from . import config as config_module
-from . import config_validation as config_validation_module
-from . import console as console_module
-from ._config_defaults import REQUIRED_TOP_LEVEL_CONFIG_KEYS
-from .config_types import ConfigDict
+from .. import console as console_module
+from .defaults import REQUIRED_TOP_LEVEL_CONFIG_KEYS
+from .types import ConfigDict
+from .validation import (
+    configured_targets,
+    validate_config,
+    validate_loaded_config,
+    validation_errors_by_key,
+)
 
 emit_output = console_module.print_output
 
@@ -43,7 +47,7 @@ def _self_check_directories(cfg: ConfigDict, *, errors_by_key: dict[str, tuple[s
 
 def _self_check_targets(cfg: ConfigDict, *, errors_by_key: dict[str, tuple[str, ...]]) -> bool:
     ok = True
-    targets = list(config_validation_module.configured_targets(cfg))
+    targets = list(configured_targets(cfg))
     if not targets:
         emit_output("WARNING analyzed_programs_and_libraries is empty")
         emit_output("Configure targets before running analyses, documentation, or AST cache refresh.")
@@ -62,7 +66,7 @@ def _self_check_targets(cfg: ConfigDict, *, errors_by_key: dict[str, tuple[str, 
 
 
 def _report_validation_namespace(cfg: ConfigDict, namespace: str) -> bool:
-    validation = config_module.validate_config(cfg)
+    validation = validate_config(cfg)
     ok = True
     for error in validation.errors:
         if not error.key_path.startswith(namespace):
@@ -83,8 +87,8 @@ def self_check(cfg: ConfigDict) -> bool:
             emit_output(f"â�Œ Missing config key: {key}")
             ok = False
 
-    validation = config_module.validate_loaded_config(cfg)
-    errors_by_key = config_validation_module.validation_errors_by_key(validation)
+    validation = validate_loaded_config(cfg)
+    errors_by_key = validation_errors_by_key(validation)
 
     ok = _self_check_directories(cfg, errors_by_key=errors_by_key) and ok
     ok = _self_check_targets(cfg, errors_by_key=errors_by_key) and ok

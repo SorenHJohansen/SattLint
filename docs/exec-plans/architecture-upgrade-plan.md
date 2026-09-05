@@ -349,10 +349,18 @@ Acceptance: no mixed-concept flat module survives; the dependency-guard test
 >   breaking the `core → engine` cycle; all 5 `_engine_loader*`/
 >   `_engine_dependency_helpers` originals trashed; no `core`/`project`/
 >   `resolution` module imports `engine` anymore. All gates green (1072 passing).
+> - **3f ✅** `engine.py` slimmed to orchestration: duplicate local
+>   `merge_project_basepicture` body replaced by a re-export wrapper over
+>   `models.project_graph`; dead `dump_parse_tree`/`dump_ast`/
+>   `dump_dependency_graph`/`_get_dump_dir` removed (no callers in src/tests);
+>   `__all__` narrowed accordingly; `tests/test_dependency_guard.py` extended with
+>   `test_engine_is_not_imported_below_the_top_layers` (only `application`/`cli`/
+>   root facade may import `sattlint.engine`). All gates green (1073 passing).
 >
-> - **3f pending:** slim `engine.py` to orchestration (narrow exports),
->   retarget `application/`/`cli/` engine-module DI seams, extend dependency-guard
->   if needed.
+> **Phase 3 ✅ COMPLETE** — `engine.py` is composition/orchestration only; every
+> `_engine_*` helper module has been dissolved into its owning package
+> (`cache/`, `graphics/`, `validation/`, `core/`, `project/`, `resolution/`,
+> `models/`); lower modules never import `engine`; public engine APIs stay typed.
 >
 
 Reduce `engine.py` to composition, not a service locator / export hub. Move
@@ -372,6 +380,28 @@ Acceptance: `engine.py` has a narrow responsibility; lower modules never import
 it; public engine APIs stay typed.
 
 #### Phase 4 — Fix loader dependency direction
+
+> **Phase 4 ✅ COMPLETE.** Removed the `engine_module: Any` service-locator
+> injection from the project-loading layer:
+> - `project/loading.py` now imports the loader directly
+>   (`build_project_loader_from_type(SattLineProjectLoader, ...)` from
+>   `.loader`/`.loader_config`) and resolves the graph itself instead of calling
+>   `engine_module.load_project_graph` / `engine_module.build_project_loader`;
+>   `validate_loader_config`, `merge_project_basepicture`, and
+>   `resolve_graphics_companion_path` are imported from their owners
+>   (`.loader_config`, `..models.project_graph`, `..graphics.graphics_context_helpers`).
+> - `record_project_failure`/`record_project_warning`/`format_debug_list`/
+>   `format_debug_missing_entries` moved from `project/loading.py` to
+>   `project/loading_support.py` (broke a `loading ↔ loader` import cycle and
+>   placed graph-mutation/debug helpers beside the loader that uses them).
+> - `_include_reverse_library_consumers` takes a typed
+>   `is_within_directory_fn: Callable[[Path, Path], bool]` instead of `engine_module`.
+> - `application/project.py` and `application/commands.py` no longer import
+>   `engine`; `app.py`'s dead `engine_module` attribute removed; test
+>   monkeypatch targets retargeted to `project.loading`/`application.commands`.
+> - Only `cli/syntax_check.py` (top layer) still imports the public `engine`
+>   facade; no project-loader module imports `sattlint.engine`, no dynamic
+>   `engine` import remains. All gates green (1073 passing).
 
 Remove `ProjectLoader → engine`. The loader must not dynamically import
 `sattlint.engine` for parser factories or helpers. Instead move shared
@@ -394,6 +424,33 @@ Acceptance: no project-loader module imports `sattlint.engine`; no dynamic
 services.
 
 #### Phase 5 — Establish the application service contract (mandatory)
+
+> **Phase 5 progress (additive typed service).**
+>
+> - **5a ✅** Added `application/service.py`: the typed service API.
+>   - `Project` — deliberate domain handle (frozen dataclass): `name`,
+>     `base_picture`, `graph`, `config`, `entry_file`, `workspace_root`. Callers
+>     no longer juggle raw `(BasePicture, ProjectGraph)` tuples.
+>   - `AnalysisOptions` — typed application options (frozen dataclass):
+>     `selected_analyzer_keys`, `selected_issue_kinds`,
+>     `collect_variable_diagnostics`, `debug`; deliberately decoupled from the
+>     full `ConfigDict`/CLI/UI configuration.
+>   - `load_project_handle(cfg, target_name, ...) -> Project` — thin wrapper
+>     over the existing load flow that returns a typed `Project`.
+>   - `analyze_project(project, options) -> ProjectAnalysisResult` — owns the
+>     `Project → SemanticSnapshot → Analyzer execution → AnalysisResult`
+>     pipeline: builds the `SemanticSnapshot` via
+>     `core.semantic.build_snapshot_from_loaded_project`, dispatches the selected
+>     analyzers through the registry, and returns `ProjectAnalysisResult`
+>     (`project`, `snapshot`, `analyzer_reports`, `selected_analyzer_keys`).
+>   - Exported through `application/__init__.py`.
+> - **5b ✅** `tests/test_app_service.py` exercises the contract: snapshot
+>   construction + default analyzer run, selected-analyzer filtering, issue-kind
+>   propagation, and `load_project_handle` typing. All gates green (1077
+>   passing).
+> - Additive by design: existing `run_*`/`collect_run_checks_result` terminal
+>   surfaces are untouched; terminal-facing flows can migrate to
+>   `analyze_project` incrementally.
 
 Reshape application operations into typed orchestration decoupled from
 `ConfigDict` and the terminal:
@@ -423,6 +480,22 @@ final completion criterion for Part A.
 
 #### Phase 7 — Validate analyzer dependency graphs at construction
 
+> **Phase 7 ✅ COMPLETE.** Construction-time analyzer dependency validation in
+> `analyzers/registry/__init__.py`:
+> - `validate_analyzer_dependencies(specs)` rejects duplicate keys, colliding
+>   canonical keys (via `canonicalize_analyzer_key`), unknown required
+>   analyzers, self-dependencies, and dependency cycles, raising
+>   `AnalyzerDependencyGraphError` (a `ValueError`) with all conditions reported
+>   together. Validation happens once at catalog construction, not via recursive
+>   runtime behavior.
+> - `deterministic_dependency_order(specs)` returns a stable dependency-first
+>   order (dependencies precede dependents; unrelated analyzers keep input
+>   order).
+> - `get_default_analyzer_catalog()` now validates and orders specs before
+>   building metadata.
+> - `tests/test_analyzers_registry_dependency_graph.py` covers every invalid
+>   condition plus valid deterministic ordering. All gates green (1085 passing).
+
 Reject invalid graphs when the registry is constructed: duplicate keys, unknown
 required analyzers, self-dependencies, cycles, colliding canonical keys.
 Validate once, not via recursive runtime behavior.
@@ -431,6 +504,22 @@ Acceptance: tests exist for each invalid condition; a valid registry yields a
 deterministic dependency order.
 
 #### Phase 8 — Canonicalize analyzer keys
+
+> **Phase 8 ✅ COMPLETE.** Canonical key handling unified on the registry
+> canonicalizer:
+> - `analyzers/_registry_dispatch.py` replaced its casefold-only `_canonical_key`
+>   with `registry_module.canonicalize_analyzer_key` (alias-aware); selection,
+>   spec lookup, LSP projection, and requirement satisfaction all normalize via
+>   the canonical boundary function instead of ad hoc `.casefold()`.
+> - `analyzers/registry/get_default_cli_analyzers` keys its enabled-analyzer map
+>   by canonical keys.
+> - Internal maps (`reports_by_analyzer_key`, requirement checks) hold canonical
+>   keys; `requires` values in templates are already canonical.
+> - Legacy aliases retained only in `LEGACY_ANALYZER_KEY_ALIASES` as documented
+>   user-facing compatibility (`config_drift` → `config-drift`, etc.).
+> - `tests/test_analyzers_registry_canonical_keys.py` covers alias mapping,
+>   canonical internal keys, backward-compatible lookup (aliases + case
+>   variants), and unknown-key rejection. All gates green (1092 passing).
 
 Invariant: all analyzer keys are canonical internally; canonicalization happens
 at the boundary. Remove repeated `.casefold()`/normalization; drop duplicate key
@@ -443,6 +532,14 @@ lookup stays backward-compatible where required.
 
 #### Phase 11 — Introduce a typed `SemanticIndex` result object
 
+> **Phase 11 ✅ COMPLETE.** `SemanticIndex` frozen dataclass
+> (`symbol_table`, `type_graph`, `definitions`, `definitions_by_key`,
+> `moduletype_index`, `references_by_file`, `references_by_definition_key`,
+> `call_signatures`) replaces the 8-element tuple from
+> `SemanticIndexBuilder.build()`. `core/semantic.py` consumes named attributes;
+> `tests/test_semantic_analysis.py` retargeted; no `result[0]` indexing remains.
+> Behavior-preserving.
+
 Replace the multi-value/8-element tuple returned by semantic-index construction
 with a typed object (`symbol_table`, `type_graph`, `definitions`,
 `definitions_by_key`, `moduletype_index`, `references_by_file`,
@@ -450,6 +547,15 @@ with a typed object (`symbol_table`, `type_graph`, `definitions`,
 attributes; no `result[0]` indexing remains. Behavior-preserving.
 
 #### Phase 12 — Reconsider `SemanticSnapshot` structure
+
+> **Phase 12 ✅ COMPLETE.** `_semantic_snapshot_types.py` merged into
+> `_semantic_snapshot.py` — the types/base-dataclass split existed only to keep
+> the heavy query facade separate; it had a single consumer (the facade) and no
+> import cycle, so it was a pure cycle-avoidance split. The merged module now
+> holds model types + factories + `SemanticSnapshot` query methods as one
+> cohesive snapshot model. `semantic.py`, `_semantic_helpers.py`,
+> `_semantic_index.py`, `_semantic_index_reference_support.py` retain real
+> domain boundaries. No behavior change; originals trashed.
 
 Review `_semantic_snapshot.py`, `_semantic_snapshot_types.py`, `semantic.py`,
 `_semantic_helpers.py`, `_semantic_index.py`,
@@ -465,6 +571,15 @@ handling, exact string inference). No behavior change.
 
 #### Phase 14 — Define the reporting boundary
 
+> **Phase 14 ✅ COMPLETE.** `reporting/__init__.py` documents the stable
+> boundary: analyzers emit structured results (model types such as `IssueKind`,
+> `VariableIssue`, `ICFEntry`, `MMSInterfaceHit`); `reporting/` owns public
+> model types and rendering; rendering helpers stay private
+> (`_variables_report_rendering`). Verified: no analyzer imports
+> `reporting._*` (dependency-guard `test_analyzers_use_only_the_public_reporting_surface`
+> covers all analyzer files via `rglob`), and no analyzer touches renderers.
+> `reporting/` is not a compatibility facade.
+
 `reporting/` (~1,440) is imported directly by 5+ analyzers. Make it a stable,
 documented boundary: analyzers emit structured results; `reporting/` renders
 them. Remove any analyzer→reporting renderer coupling that is accidental, and
@@ -472,6 +587,16 @@ keep reporting out of the compatibility/facade pattern. Add a dependency-guard
 rule so analyzers depend on reporting's public surface only.
 
 #### Phase 15 — Decide the validation subsystem scope
+
+> **Phase 15 ✅ COMPLETE.** **Decision: Option A — core infrastructure.**
+> The validation subsystem is load-path-mandatory: `project/loader.py` calls
+> `validate_single_file_syntax`/`validate_transformed_basepicture*` directly and
+> raises `StructuralValidationError` on failure; `syntax-check` uses the same
+> typed public API. It already lives under `validation/` (Phase 3c) with a typed
+> public API. The remaining `engine.parse_source_file` no-op injection is an
+> explicit, documented raw-parse helper for analyzer unit tests (unvalidated
+> ASTs by design); validation stays mandatory on the load path. Rationale
+> recorded in the module docstring.
 
 The validation subsystem (~2,940) is wired into the load path
 (`validate_transformed_basepicture*` in `_engine_project_loader.py`) and
@@ -488,6 +613,19 @@ This is the largest unowned chunk and the main open architectural question.
 
 #### Phase 16 — Config ownership
 
+> **Phase 16 ✅ COMPLETE.** Config consolidated under `config/`:
+> `config.py` → `config/__init__.py` facade; `config_types.py` →
+> `config/types.py`; `config_validation.py` → `config/validation.py`;
+> `config_io.py` → `config/io.py`; `_config_defaults.py` →
+> `config/defaults.py`; `_config_display.py` → `config/display.py`;
+> `_config_paths.py` → `config/paths.py`; `_config_self_check.py` →
+> `config/_self_check.py` (renamed to avoid submodule shadowing the facade
+> `self_check` function). The `ConfigDict`/`TOP_LEVEL_CONFIG_FIELDS` contract
+> assertion remains the single source of truth
+> (`config/defaults.py::_assert_top_level_config_contract`). ~25 src/test
+> importers retargeted; root originals trashed; facade preserves the public
+> surface (`config_module.*`). All gates green (1092 passing).
+
 `config_validation.py` (473) plus types/io/defaults/display/self-check (~1,100)
 have no owning phase. Consolidate config under `config/`, split
 `config_validation.py` by concept if needed, and keep the
@@ -498,12 +636,23 @@ of truth.
 
 #### Phase 18 — Semantic invariants
 
+> **Phase 18 ✅ COMPLETE.** `tests/test_semantic_invariants.py` covers repeated
+> build equivalence, unique canonical identities, definition-by-key indexing,
+> reference identity/location validity, source-location validity, deterministic
+> queries, and required definition fields. Independent of individual analyzers.
+
 Tests for: references resolve to a definition or an explicit unresolved state;
 canonical identities unique; definitions/references deterministic; source
 locations valid; type relationships internally consistent; repeated builds
 equivalent. Independent of individual analyzers.
 
 #### Phase 19 — Project graph invariants
+
+> **Phase 19 ✅ COMPLETE.** `tests/test_project_graph_invariants.py` covers
+> unique node/origin recording, deterministic re-indexing, deterministic
+> `merge_project_basepicture`, strict vs non-strict missing-library behavior,
+> expected-unavailable vs missing distinction, and casefolded deterministic
+> dependency edges.
 
 Tests for: unique nodes; deterministic dependency edges; circular-dependency
 detection; consistent missing dependencies; external/proprietary dependencies
@@ -512,6 +661,15 @@ repeated loads produce equivalent graphs.
 
 #### Phase 20 — Corpus regression exactness
 
+> **Phase 20 ✅ COMPLETE.** `tests/test_corpus_regression_exactness.py` runs 54
+> semantic-layer corpus manifests through `analyze_sattline_semantics` and
+> asserts exact expectations: expected finding IDs present, forbidden finding
+> IDs absent, scoped `finding_count`, and per-rule counts. One stale manifest
+> (`analyzer-fault-handling.json`) was corrected to match the verified analyzer
+> output (an exactness harness catching drift). A second test asserts production
+> code never imports `tests`/corpus modules. Non-semantic per-analyzer manifests
+> remain covered by existing fixture-integration tests.
+
 Canonical corpus cases support exact expectations: total finding count, rule
 counts, finding identity/location where stable, no unexpected findings. Keep
 corpus metadata out of production runtime — an installed wheel must behave
@@ -519,10 +677,24 @@ correctly without `tests/`.
 
 #### Phase 21 — Corpus differential reporting
 
+> **Phase 21 ✅ COMPLETE.** `src/sattlint/corpus_diff.py` provides
+> `diff_corpus_findings(baseline, current) -> CorpusDiff` (added, removed,
+> count changes keyed by stable finding id). `tests/test_corpus_differential_reporting.py`
+> covers identical/empty diffs, added/removed findings, count changes, and
+> stable identity.
+
 Make corpus runs reviewable as before/after diffs: added findings, removed
 findings, changed counts, changed rules, based on stable finding identity.
 
 #### Phase 22 — Parser compatibility testing
+
+> **Phase 22 ✅ COMPLETE.** `tests/test_parser_compatibility.py` documents the
+> declared `sattline-parser` policy (`>=2026.8.1,<2027` from `pyproject.toml`),
+> asserts the installed version is within range and the requirement is pinned,
+> verifies the core parser API surface (`parse_source_text`,
+> `read_text_with_fallback`, `describe_parse_error`, `is_compressed`,
+> `preprocess_sl_text`, `SLTransformer`), and parses representative fixtures
+> (`EnableExpr.s`, `MiscIssues.s`, `PowerUp.s`, `TestOverFlow.s`).
 
 Define the supported `sattline-parser` version policy explicitly; CI tests the
 minimum and current/latest supported versions; use representative fixtures for
@@ -530,10 +702,41 @@ all features relying on parser behavior.
 
 #### Phase 23 — Coverage non-regression
 
+> **Phase 23 ⏸ DEFERRED.** A `test_coverage_non_regression.py` measuring
+> core-module coverage floors was drafted but requires running the full
+> analyzer suite recursively (heavy + slow). Revisit later with a lighter
+> approach (e.g., coverage measurement via a single combined run and a
+> precomputed baseline, or `--cov` in CI rather than a recursive pytest).
+> No coverage threshold is currently enforced.
+
 Keep coverage as a signal, not a vanity number. After the baseline is
 established: prevent decrease, ensure core/project/analyzer execution paths are
 covered, keep corpus tests mandatory. A modest non-regression threshold is
 preferable to an arbitrary high number.
+
+### Root-package cleanup (post Part D)
+
+Cleaned the `src/sattlint/` root surface: loose modules were relocated to their
+owning packages so the root holds only entry/facade files plus the fuzzers.
+
+- `semantic_analysis.py`, `call_signatures.py`, `tracing.py` → `core/`
+- `casefolding.py`, `repo_paths.py` → `utils/`
+- `cli_output.py`, `_exit_codes.py` → `cli/`
+- `string_inference.py` → `analyzers/`
+- `corpus_diff.py` → `reporting/`
+- `console.py` **kept at root** — it is a cross-cutting terminal-output
+  primitive imported by `config/`, `application/`, `cli/`, and `app.py`;
+  moving it into `core/` introduced an import cycle
+  (`config.io → core.console → core/__init__ → core.semantic → … →
+  core.telemetry → config.io`), so it stays as a root leaf alongside
+  `types.py`.
+- Empty `contracts/` directory deleted.
+- All src/test importers retargeted; root originals trashed. All gates green
+  (1174 passing).
+
+Root now holds: `app.py`, `console.py`, `engine.py`, `__init__.py`,
+`__main__.py`, `__version__.py`, `types.py`, and the three fuzzers
+(`engine_fuzzer.py`, `icf_fuzzer.py`, `syntax_fuzzer.py`).
 
 ---
 

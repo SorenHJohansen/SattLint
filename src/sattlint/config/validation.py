@@ -8,21 +8,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypeGuard, cast
 
-from ._config_defaults import (
+from ..types import TargetName
+from .defaults import (
     NAMING_RULE_TARGETS as _NAMING_RULE_TARGETS,
 )
-from ._config_defaults import (
+from .defaults import (
     NAMING_STYLE_KEYS as _NAMING_STYLE_KEYS,
 )
-from ._config_defaults import (
+from .defaults import (
     VALID_TOP_LEVEL_CONFIG_KEYS,
 )
-from .config_types import (
+from .types import (
     ConfigDict,
     ConfigObjectMap,
     ConfigOverrideDict,
 )
-from .types import TargetName
 
 VALID_TOP_LEVEL_KEYS = VALID_TOP_LEVEL_CONFIG_KEYS
 

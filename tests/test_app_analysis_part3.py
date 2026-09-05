@@ -128,7 +128,6 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
             return self._read_deps(deps_path)
 
     loader = FakeLoader()
-    engine_stub = SimpleNamespace(is_within_directory=lambda *_args: False)
     monkeypatch.setattr(analysis_loading_module, "target_is_library", lambda *args, **kwargs: False)
     analysis_loading_module._include_reverse_library_consumers(
         cfg,
@@ -137,7 +136,7 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
         graph=cast(Any, "graph"),
         loader=loader,
         require_analyzed_targets_fn=lambda _cfg: ["Selected", "CandidateA", "NoDeps", "NoPath", "DupLocal"],
-        engine_module=engine_stub,
+        is_within_directory_fn=lambda *_args: False,
         target_is_library_fn=lambda *_a, **_kw: False,
         source_paths_for_current_target_fn=lambda _bp, _graph: set(),
     )
@@ -165,7 +164,7 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
         graph=cast(Any, "graph"),
         loader=loader,
         require_analyzed_targets_fn=lambda _cfg: ["Selected", "CandidateA", "NoDeps", "NoPath", "DupLocal"],
-        engine_module=engine_stub,
+        is_within_directory_fn=lambda *_args: False,
         target_is_library_fn=lambda *_a, **_kw: True,
         source_paths_for_current_target_fn=lambda _bp, _graph: set(),
     )

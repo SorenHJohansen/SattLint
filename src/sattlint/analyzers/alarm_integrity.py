@@ -14,7 +14,6 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
-from ..casefolding import casefold_equal, casefold_key
 from ..grammar import constants as const
 from ..resolution.common import (
     format_moduletype_label,
@@ -22,6 +21,7 @@ from ..resolution.common import (
     varname_base,
     varname_full,
 )
+from ..utils.casefolding import casefold_equal, casefold_key
 from . import _alarm_path_traversal as _alarm_path_traversal_module
 from .framework import Issue, format_report_header
 from .shared._walk_utils import walk_nested_modules_with_state

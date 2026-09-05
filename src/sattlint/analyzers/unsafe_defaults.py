@@ -12,7 +12,7 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
-from ..casefolding import casefold_equal, casefold_key
+from ..utils.casefolding import casefold_equal, casefold_key
 from .framework import Issue, format_report_header
 from .shared._walk_utils import iter_nested_modules
 from .shared.variable_utils import matches_root_origin

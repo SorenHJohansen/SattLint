@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, cast
 from sattline_parser.models.ast_model import BasePicture
 
 from ..models.project_graph import ProjectGraph
-from ..project.loading import record_project_warning
+from ..project.loading_support import record_project_warning
 from ..validation.shared import ValidationNotice
 from .graphics_context_helpers import (
     picture_display_path_warnings,

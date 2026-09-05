@@ -21,8 +21,9 @@ from sattline_parser.models.ast_model import (
 from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt, VarRef
 
 from sattlint import constants as const
-from sattlint import semantic_analysis as semantic_analysis_module
 from sattlint.core import semantic as semantic_core_module
+from sattlint.core import semantic_analysis as semantic_analysis_module
+from sattlint.core._semantic_index import SemanticIndex
 from sattlint.core._semantic_snapshot import SemanticAnalysisArtifacts, SymbolDefinition
 from sattlint.core.diagnostics import DroppedDiagnosticIssue
 from sattlint.reporting.variables_report import IssueKind, VariableIssue, VariablesReport
@@ -258,15 +259,15 @@ def test_build_semantic_snapshot_preserves_builder_tuple_contract(monkeypatch):
         display_module_path=("Root<BP>",),
     )
     definitions_by_key = {("root", "output"): definition}
-    builder_result = (
-        object(),
-        object(),
-        (definition,),
-        definitions_by_key,
-        {"worker": []},
-        {"Root.s": ()},
-        {("root", "output"): ()},
-        (object(),),
+    builder_result = SemanticIndex(
+        symbol_table=object(),
+        type_graph=object(),
+        definitions=(definition,),
+        definitions_by_key=definitions_by_key,
+        moduletype_index={"worker": []},
+        references_by_file={"Root.s": ()},
+        references_by_definition_key={("root", "output"): ()},
+        call_signatures=(object(),),
     )
     captured: dict[str, object] = {}
 
@@ -320,14 +321,14 @@ def test_build_semantic_snapshot_preserves_builder_tuple_contract(monkeypatch):
         "debug": True,
         "definitions": definitions_by_key,
     }
-    assert snapshot.symbol_table is builder_result[0]
-    assert snapshot.type_graph is builder_result[1]
-    assert snapshot.definitions == builder_result[2]
-    assert snapshot.call_signatures == builder_result[7]
-    assert snapshot._definitions_by_key is builder_result[3]
-    assert snapshot._moduletype_index is builder_result[4]
-    assert snapshot._references_by_file is builder_result[5]
-    assert snapshot._references_by_definition_key is builder_result[6]
+    assert snapshot.symbol_table is builder_result.symbol_table
+    assert snapshot.type_graph is builder_result.type_graph
+    assert snapshot.definitions == builder_result.definitions
+    assert snapshot.call_signatures == builder_result.call_signatures
+    assert snapshot._definitions_by_key is builder_result.definitions_by_key
+    assert snapshot._moduletype_index is builder_result.moduletype_index
+    assert snapshot._references_by_file is builder_result.references_by_file
+    assert snapshot._references_by_definition_key is builder_result.references_by_definition_key
     assert snapshot.diagnostics == ("diagnostic",)
     assert snapshot._accesses_by_definition_key == {("root", "output"): ("access",)}
     assert snapshot._effect_flow_edges == {("root", "output"): (("root", "sink"),)}

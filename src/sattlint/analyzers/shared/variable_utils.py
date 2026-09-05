@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING, Any, cast
 
 from sattline_parser.models.ast_model import ParameterMapping, Simple_DataType, Variable
 
-from ...casefolding import casefold_key
 from ...grammar import constants as const
 from ...resolution.common import varname_base
+from ...utils.casefolding import casefold_key
 
 if TYPE_CHECKING:
     from ..variables import VariablesAnalyzer

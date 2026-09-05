@@ -11,9 +11,9 @@ import pytest
 
 from sattlint import config as config_module
 from sattlint import engine
-from sattlint._exit_codes import EXIT_SUCCESS
 from sattlint.cli import config as cli_config
 from sattlint.cli import syntax_check as syntax_check_module
+from sattlint.cli._exit_codes import EXIT_SUCCESS
 from sattlint.core import interaction as interaction_module
 from sattlint.core import terminal as terminal_module
 from sattlint.core.logging import apply_debug

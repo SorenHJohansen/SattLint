@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, cast
 
-from .config_types import ConfigDict, ConfigOverrideDict
+from .types import ConfigDict, ConfigOverrideDict
 
 NAMING_STYLE_KEYS = (
     "infer",

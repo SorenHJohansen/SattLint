@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .. import config as config_module
 from .. import console as console_module
-from ..config_types import ConfigDict
+from ..config.types import ConfigDict
 
 
 def save_config(path: Path, cfg: ConfigDict) -> None:

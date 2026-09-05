@@ -14,10 +14,10 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import VarRef
 
-from ..casefolding import is_anytype_name
 from ..grammar import constants as const
 from ..resolution._builtin_datatypes import BUILTIN_DECLARED_DATATYPE_NAMES
 from ..resolution.type_graph import TypeGraph
+from ..utils.casefolding import is_anytype_name
 
 _PLAIN_DURATION_LITERAL_RE = re.compile(r"\d+(?:\.\d+)?")
 _DURATION_COMPONENT_PATTERNS = (

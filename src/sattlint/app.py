@@ -17,16 +17,6 @@ from sattline_parser.models.ast_model import BasePicture
 from . import cache as cache_module
 from . import config as _config_module
 from . import console as console_module
-from . import engine as engine_module_impl
-from ._exit_codes import (
-    EXIT_FAILURE as _EXIT_FAILURE,
-)
-from ._exit_codes import (
-    EXIT_SUCCESS as _EXIT_SUCCESS,
-)
-from ._exit_codes import (
-    EXIT_USAGE_ERROR as _EXIT_USAGE_ERROR,
-)
 from .analyzers import catalog as analysis_catalog_module
 from .analyzers import variable_analyses as analysis_variable_analyses_module
 from .analyzers.icf import validate_icf_entries_against_program
@@ -42,6 +32,15 @@ from .cli import app_cli_commands as app_cli_commands_module
 from .cli import app_commands as commands_application
 from .cli import interaction as cli_interaction_module
 from .cli import startup as startup_application
+from .cli._exit_codes import (
+    EXIT_FAILURE as _EXIT_FAILURE,
+)
+from .cli._exit_codes import (
+    EXIT_SUCCESS as _EXIT_SUCCESS,
+)
+from .cli._exit_codes import (
+    EXIT_USAGE_ERROR as _EXIT_USAGE_ERROR,
+)
 from .cli._interaction import (
     has_textual_menu_interaction,
     textual_menu_interaction,
@@ -69,7 +68,6 @@ app_analysis_commands: Any = app_analysis_commands_module
 app_cli_commands: Any = app_cli_commands_module
 app_telemetry: Any = app_telemetry_module
 cache: Any = cache_module
-engine_module: Any = engine_module_impl
 get_default_cli_analyzers = analysis_catalog_module.get_default_cli_analyzers
 get_selectable_analyzers = analysis_catalog_module.get_selectable_analyzers
 ASTCache = cache_module.ASTCache

@@ -9,7 +9,7 @@ from typing import Any, cast
 
 import tomli_w
 
-from ..config_types import ConfigObjectMap
+from ..config.types import ConfigObjectMap
 from .models import SattLineProject
 from .types import DEFAULT_PROJECT_DICT, ProjectDict
 

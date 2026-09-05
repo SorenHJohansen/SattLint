@@ -21,12 +21,12 @@ from sattline_parser.models.ast_model import (
 
 import sattlint.cache as cache_mod
 from sattlint import constants as const
-from sattlint import engine as engine_module
 from sattlint.analyzers.variables import IssueKind, analyze_variables
 from sattlint.application import project as project_application
 from sattlint.cache import ANALYSIS_REPORT_CACHE_VERSION, AnalysisReportCache, compute_analysis_report_cache_key
 from sattlint.core import telemetry as telemetry_module
 from sattlint.models.project_graph import ProjectFailure
+from sattlint.project import loading as analysis_loading_module
 from tests.helpers import named_object
 from tests.helpers.app_projects import build_mini_project_context
 
@@ -55,12 +55,12 @@ def test_load_project_returns_cached_project_without_building_loader(monkeypatch
 
     monkeypatch.setattr(project_application, "ASTCache", FakeCache)
     monkeypatch.setattr(
-        engine_module,
+        analysis_loading_module,
         "SattLineProjectLoader",
         lambda **_kwargs: pytest.fail("loader should not be created"),
     )
     monkeypatch.setattr(
-        engine_module,
+        analysis_loading_module,
         "merge_project_basepicture",
         lambda root_bp, graph: merge_calls.append((root_bp, graph)) or ("bp-cached", graph),
     )
@@ -125,9 +125,9 @@ def test_load_project_rebuilds_when_cached_project_is_invalid(monkeypatch):
             return None
 
     monkeypatch.setattr(project_application, "ASTCache", FakeCache)
-    monkeypatch.setattr(engine_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(analysis_loading_module, "SattLineProjectLoader", FakeLoader)
     monkeypatch.setattr(
-        engine_module,
+        analysis_loading_module,
         "merge_project_basepicture",
         lambda root_bp, _graph: ("bp-fresh", root_bp.header.name),
     )
@@ -336,9 +336,9 @@ def test_load_project_ast_only_refresh_skips_project_merge_and_save(monkeypatch)
             return None
 
     monkeypatch.setattr(project_application, "ASTCache", FakeCache)
-    monkeypatch.setattr(engine_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(analysis_loading_module, "SattLineProjectLoader", FakeLoader)
     monkeypatch.setattr(
-        engine_module,
+        analysis_loading_module,
         "merge_project_basepicture",
         lambda *_args, **_kwargs: pytest.fail("merge should be skipped during ast-only refresh"),
     )
@@ -439,9 +439,9 @@ def test_load_project_saves_full_mode_file_family_in_cache_manifest(
             return None
 
     monkeypatch.setattr(project_application, "ASTCache", FakeCache)
-    monkeypatch.setattr(engine_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(analysis_loading_module, "SattLineProjectLoader", FakeLoader)
     monkeypatch.setattr(
-        engine_module,
+        analysis_loading_module,
         "merge_project_basepicture",
         lambda root_bp, _graph: ("bp-fresh", root_bp.header.name),
     )
@@ -524,7 +524,7 @@ def test_load_project_raises_target_load_error_when_root_program_missing(monkeyp
 
     monkeypatch.setattr(project_application, "ASTCache", FakeCache)
     monkeypatch.setattr(project_application, "get_cache_dir", lambda: Path("cache-dir"))
-    monkeypatch.setattr(engine_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(analysis_loading_module, "SattLineProjectLoader", FakeLoader)
 
     def fake_error_factory(target_name, **kwargs):
         captured.update({"target_name": target_name, **kwargs})
@@ -567,7 +567,7 @@ def test_load_program_ast_raises_when_program_was_not_parsed(monkeypatch):
         def flush_lookup_cache(self):
             return None
 
-    monkeypatch.setattr(engine_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(analysis_loading_module, "SattLineProjectLoader", FakeLoader)
 
     with pytest.raises(RuntimeError, match="Program 'TargetA' not parsed"):
         project_application.load_program_ast(
@@ -657,9 +657,9 @@ def test_load_project_library_target_includes_configured_reverse_consumers(monke
             return None
 
     monkeypatch.setattr(project_application, "ASTCache", FakeCache)
-    monkeypatch.setattr(engine_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(analysis_loading_module, "SattLineProjectLoader", FakeLoader)
     monkeypatch.setattr(
-        engine_module,
+        analysis_loading_module,
         "merge_project_basepicture",
         lambda bp, graph: (bp.header.name, tuple(sorted(graph.ast_by_name))),
     )
@@ -743,9 +743,9 @@ def test_load_project_library_target_includes_workspace_reverse_consumers(monkey
             return None
 
     monkeypatch.setattr(project_application, "ASTCache", FakeCache)
-    monkeypatch.setattr(engine_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(analysis_loading_module, "SattLineProjectLoader", FakeLoader)
     monkeypatch.setattr(
-        engine_module,
+        analysis_loading_module,
         "merge_project_basepicture",
         lambda bp, graph: (bp.header.name, tuple(sorted(graph.ast_by_name))),
     )
@@ -891,8 +891,8 @@ def test_load_project_library_target_workspace_program_usage_suppresses_unused_d
         )
 
     monkeypatch.setattr(project_application, "ASTCache", FakeCache)
-    monkeypatch.setattr(engine_module, "SattLineProjectLoader", FakeLoader)
-    monkeypatch.setattr(engine_module, "merge_project_basepicture", _merge_project_basepicture)
+    monkeypatch.setattr(analysis_loading_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(analysis_loading_module, "merge_project_basepicture", _merge_project_basepicture)
 
     project_bp, _graph = project_application.load_project(
         {
