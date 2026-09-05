@@ -1,0 +1,922 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false
+import json
+from types import SimpleNamespace
+
+from sattlint.analyzers.framework import Issue
+from sattlint.reporting import target_report as analysis_reporting_module
+from tests.helpers import AnalysisGraphStub, named_object
+from tests.helpers.app_analysis_support import *
+
+
+def test_select_report_source_path_propagates_callback_type_error() -> None:
+    with pytest.raises(TypeError, match="bad graph"):
+        analysis_reporting_module.select_report_source_path(
+            SimpleNamespace(origin_file="Root.s"),
+            SimpleNamespace(),
+            source_paths_for_current_target_fn=lambda *_args: (_ for _ in ()).throw(TypeError("bad graph")),
+            casefold_equal_fn=lambda left, right: left.casefold() == right.casefold(),
+        )
+
+
+def test_select_report_source_path_prefers_graph_root_origin_path() -> None:
+    project_bp = named_object("Root")
+    graph = AnalysisGraphStub(source_files={Path("fallback/Root.s")})
+    graph.record_root_origin("Root", source_path=Path("preferred/Root.s"), library_name="Lib")
+
+    selected = analysis_reporting_module.select_report_source_path(
+        project_bp,
+        graph,
+        source_paths_for_current_target_fn=lambda *_args: {Path("fallback/Root.s"), Path("preferred/Root.s")},
+        casefold_equal_fn=lambda left, right: left.casefold() == right.casefold(),
+    )
+
+    assert selected == Path("preferred/Root.s")
+
+
+def test_source_version_label_uses_graph_root_origin_when_source_path_missing() -> None:
+    project_bp = named_object("Root")
+    graph = AnalysisGraphStub()
+    graph.record_root_origin("Root", source_path=Path("preferred/Root.z"), library_name="Lib")
+
+    label = analysis_reporting_module.source_version_label(
+        project_bp,
+        graph,
+        None,
+        draft_source_suffixes=frozenset({".s", ".l"}),
+        official_source_suffixes=frozenset({".x", ".z"}),
+    )
+
+    assert label == "official"
+
+
+def test_run_checks_reports_no_matching_checks_and_pauses(monkeypatch):
+    lines: list[str] = []
+    pauses: list[str] = []
+
+    monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
+
+    checks_application.run_checks(
+        app.DEFAULT_CONFIG.copy(),
+        ["missing-check"],
+        get_enabled_analyzers_fn=lambda: [SimpleNamespace(key="variables", name="Variables")],
+        pause_fn=lambda: pauses.append("pause"),
+    )
+
+    assert any("No matching checks found" in line for line in lines)
+    assert pauses == ["pause"]
+
+
+def test_run_checks_runs_selected_non_default_cli_exposed_analyzer(monkeypatch):
+    lines: list[str] = []
+
+    monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
+
+    class MutableReport:
+        def __init__(self) -> None:
+            self.name = "BasePicture"
+
+        def summary(self) -> str:
+            return f"state inference summary for {self.name}"
+
+    report = MutableReport()
+
+    checks_application.run_checks(
+        app.DEFAULT_CONFIG.copy(),
+        ["state-inference"],
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        named_object("TargetA"),
+                        AnalysisGraphStub(
+                            unavailable_libraries=set(),
+                            load_stage_timings={"load_or_parse": 0.5},
+                            graphics_load_timings={"correlate-picture-display": 0.125},
+                        ),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                run=lambda _context: report,
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        pause_fn=None,
+    )
+
+    assert any("State inference (state-inference)" in line for line in lines)
+    assert any("state inference summary for TargetA" in line for line in lines)
+    assert not any("state inference summary for BasePicture" in line for line in lines)
+
+
+def test_run_checks_announces_selected_variable_issue_kinds_before_running(monkeypatch):
+    lines: list[str] = []
+
+    monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
+
+    checks_application.run_checks(
+        app.DEFAULT_CONFIG.copy(),
+        ["variables"],
+        selected_issue_kinds={IssueKind.UNUSED.value},
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        named_object("TargetA"),
+                        AnalysisGraphStub(
+                            unavailable_libraries=set(),
+                            load_stage_timings={},
+                            graphics_load_timings={},
+                        ),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="variables",
+                name="Variable issues",
+                run=lambda _context: SimpleNamespace(summary=lambda: "variables summary", phase_timings=[]),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        pause_fn=None,
+    )
+
+    assert lines[:4] == [
+        "\n--- Running checks ---",
+        "\n=== Target: TargetA ===",
+        "\n=== Variable issues (variables) ===",
+        "Running variables analyzer for issue kinds: unused",
+    ]
+
+
+def test_run_checks_updates_live_status_for_active_analyzer(monkeypatch):
+    updates: list[str] = []
+
+    class FakeLiveStatusLine:
+        def __enter__(self):
+            return updates.append
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(output_module, "emit_output", lambda _message: None)
+    monkeypatch.setattr(console_module, "live_status_line", lambda: FakeLiveStatusLine())
+
+    checks_application.run_checks(
+        app.DEFAULT_CONFIG.copy(),
+        ["state-inference"],
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        named_object("TargetA"),
+                        AnalysisGraphStub(
+                            unavailable_libraries=set(),
+                            load_stage_timings={"load_or_parse": 0.5},
+                            graphics_load_timings={"correlate-picture-display": 0.125},
+                        ),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                run=lambda _context: SimpleNamespace(summary=lambda: "state inference summary"),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        pause_fn=None,
+    )
+
+    assert updates == ["Analyzing TargetA: State inference (state-inference)"]
+
+
+def test_run_checks_filters_non_variable_report_for_selected_issue_kinds(monkeypatch):
+    lines: list[str] = []
+
+    monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
+
+    checks_application.run_checks(
+        app.DEFAULT_CONFIG.copy(),
+        ["comment-code"],
+        selected_issue_kinds={"comment_code_read_error"},
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        named_object("TargetA"),
+                        AnalysisGraphStub(
+                            unavailable_libraries=set(),
+                            load_stage_timings={},
+                            graphics_load_timings={},
+                        ),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="comment-code",
+                name="Commented-out code",
+                run=lambda _context: SimpleReport(
+                    name="TargetA",
+                    issues=[
+                        Issue(kind="comment_code", message="inactive code"),
+                        Issue(kind="comment_code_read_error", message="scan read failed"),
+                    ],
+                ),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        pause_fn=None,
+    )
+
+    assert any("Issues: 1" in line for line in lines)
+    assert not any("Issues: 2" in line for line in lines)
+    assert any("scan read failed" in line for line in lines)
+    assert not any("inactive code" in line for line in lines)
+
+
+def test_collect_run_checks_result_captures_target_and_analyzer_metadata():
+    result = checks_application.collect_run_checks_result(
+        app.DEFAULT_CONFIG.copy(),
+        ["state-inference"],
+        selected_issue_kinds={"unused"},
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        named_object("TargetA"),
+                        AnalysisGraphStub(
+                            unavailable_libraries=set(),
+                            load_stage_timings={},
+                            graphics_load_timings={},
+                        ),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                supports_selected_issue_kinds=True,
+                run=lambda _context: SimpleNamespace(
+                    summary=lambda: "state inference summary",
+                    issues=[Issue(kind="unused", message="unused state")],
+                    phase_timings=[{"phase": "plan", "duration_ms": 1.25}],
+                ),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+    )
+
+    assert result.cancelled is False
+    assert result.selected_analyzers == ("state-inference",)
+    assert result.selected_issue_kinds == ("unused",)
+    assert result.output_lines[0] == "\n--- Running checks ---"
+    assert len(result.targets) == 1
+
+    target = result.targets[0]
+    assert target.target_name == "TargetA"
+    assert target.is_library is False
+    assert len(target.analyzers) == 1
+
+    analyzer = target.analyzers[0]
+    assert analyzer.key == "state-inference"
+    assert analyzer.name == "State inference"
+    assert analyzer.status == "completed"
+    assert "unused state" in cast(str, analyzer.summary)
+    assert analyzer.report_kind == "SimpleReport"
+    assert analyzer.issue_count == 1
+    assert analyzer.selected_issue_kinds == ("unused",)
+    assert analyzer.phase_timings_ms == ({"phase": "plan", "duration_ms": 1.25},)
+
+
+def test_run_checks_skips_semantic_layer_when_batch_selection_includes_contributors(monkeypatch):
+    lines: list[str] = []
+    run_order: list[str] = []
+    shared_ids: list[int] = []
+
+    def _report(name: str):
+        return SimpleNamespace(summary=lambda: name, issues=[])
+
+    def _semantic_run(context):
+        run_order.append("sattline-semantics")
+        shared_ids.append(id(context.shared_artifacts))
+        assert context.shared_artifacts is not None
+        assert "variables" in context.shared_artifacts.reports_by_analyzer_key
+        return _report("semantics summary")
+
+    def _variables_run(context):
+        run_order.append("variables")
+        shared_ids.append(id(context.shared_artifacts))
+        assert context.shared_artifacts is not None
+        return _report("variables summary")
+
+    monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
+
+    checks_application.run_checks(
+        app.DEFAULT_CONFIG.copy(),
+        ["variables", "sattline-semantics"],
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        named_object("TargetA"),
+                        AnalysisGraphStub(
+                            unavailable_libraries=set(),
+                            load_stage_timings={"load_or_parse": 0.5},
+                            graphics_load_timings={"correlate-picture-display": 0.125},
+                        ),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(key="sattline-semantics", name="SattLine semantics", run=_semantic_run),
+            SimpleNamespace(key="variables", name="Variable issues", run=_variables_run),
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        pause_fn=None,
+    )
+
+    assert run_order == ["variables"]
+    assert len(set(shared_ids)) == 1
+    assert any("variables summary" in line for line in lines)
+    assert not any("semantics summary" in line for line in lines)
+
+
+def test_run_checks_writes_target_telemetry_summary(tmp_path, monkeypatch):
+    telemetry_path = tmp_path / "telemetry.jsonl"
+    monkeypatch.setattr(output_module, "emit_output", lambda _message: None)
+    monkeypatch.setattr(telemetry_module, "get_config_path", lambda: tmp_path / "config.toml")
+
+    checks_application.run_checks(
+        app.DEFAULT_CONFIG.copy() | {"telemetry": {"enabled": True}},
+        ["state-inference", "variables"],
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        SimpleNamespace(header=SimpleNamespace(name="TargetA")),
+                        SimpleNamespace(
+                            unavailable_libraries=set(),
+                            load_stage_timings={"load_or_parse": 0.5},
+                            graphics_load_timings={"correlate-picture-display": 0.125},
+                        ),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                run=lambda _context: SimpleNamespace(
+                    summary=lambda: "state inference summary",
+                    phase_timings=[
+                        {"phase": "collect", "duration_ms": 1.25},
+                        {"phase": "report", "duration_ms": 2.5},
+                    ],
+                ),
+            ),
+            SimpleNamespace(
+                key="variables",
+                name="Variable issues",
+                run=lambda _context: SimpleNamespace(summary=lambda: "variables summary"),
+            ),
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        pause_fn=None,
+    )
+
+    events = [json.loads(line) for line in telemetry_path.read_text(encoding="utf-8").splitlines()]
+
+    assert len(events) == 1
+    assert events[0]["kind"] == "sattlint.app.telemetry"
+    assert events[0]["operation"] == "checks"
+    assert events[0]["target_name"] == "TargetA"
+    assert events[0]["success"] is True
+    assert events[0]["payload"]["selected_analyzers"] == ["state-inference", "variables"]
+    assert set(events[0]["payload"]["analyzer_timings_ms"]) == {"variables", "state-inference"}
+    assert events[0]["payload"]["analyzer_phase_timings_ms"] == {
+        "state-inference": [
+            {"phase": "collect", "duration_ms": 1.25},
+            {"phase": "report", "duration_ms": 2.5},
+        ]
+    }
+    assert events[0]["payload"]["analyzer_phase_bottleneck"] == {
+        "kind": "analyzer-phase",
+        "name": "report",
+        "duration_ms": 2.5,
+        "analyzer_key": "state-inference",
+    }
+    assert events[0]["payload"]["bottleneck_kind"] == "analyzer-phase"
+    assert events[0]["payload"]["stage_timings_ms"] == {"load_or_parse": 500.0}
+    assert events[0]["payload"]["graphics_timings_ms"] == {"correlate-picture-display": 125.0}
+
+
+def test_run_checks_uses_cached_report_when_available(monkeypatch):
+    lines: list[str] = []
+    run_calls: list[str] = []
+    load_keys: list[str] = []
+    validate_calls: list[tuple[object, bool]] = []
+    save_calls: list[tuple[str, object, frozenset[Path]]] = []
+
+    class MutableReport:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.issues: list[object] = []
+
+        def summary(self) -> str:
+            return f"state inference summary for {self.name}"
+
+    cached_report = MutableReport("BasePicture")
+
+    class FakeReportCache:
+        def __init__(self, cache_dir):
+            assert cache_dir == Path("report-cache-dir")
+
+        def load(self, key):
+            load_keys.append(key)
+            return {"report": cached_report}
+
+        def validate(self, payload, *, fast=False):
+            validate_calls.append((payload, fast))
+            return True
+
+        def save(self, key, *, report, files):
+            save_calls.append((key, report, frozenset(files)))
+            return True
+
+    monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
+    monkeypatch.setattr(checks_application, "AnalysisReportCache", FakeReportCache)
+    monkeypatch.setattr(checks_application, "get_cache_dir", lambda: Path("report-cache-dir"))
+    monkeypatch.setattr(
+        checks_application,
+        "compute_analysis_report_cache_key",
+        lambda project_key, analyzer_key: f"{project_key}:{analyzer_key}",
+    )
+
+    checks_application.run_checks(
+        app.DEFAULT_CONFIG.copy(),
+        ["state-inference"],
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        named_object("TargetA"),
+                        AnalysisGraphStub(
+                            unavailable_libraries=set(),
+                            analysis_cache_key="project-key",
+                            analysis_manifest_files=frozenset({Path("programs/TargetA.s")}),
+                        ),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                run=lambda _context: run_calls.append("run") or MutableReport("Live"),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        pause_fn=None,
+    )
+
+    assert run_calls == []
+    assert load_keys == ["project-key:state-inference"]
+    assert validate_calls == [({"report": cached_report}, False)]
+    assert save_calls == []
+    assert any("state inference summary for TargetA" in line for line in lines)
+
+
+def test_run_checks_rebuilds_report_cache_when_cached_payload_is_stale(monkeypatch):
+    lines: list[str] = []
+    run_calls: list[str] = []
+    load_keys: list[str] = []
+    save_calls: list[tuple[str, object, frozenset[Path]]] = []
+
+    class MutableReport:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.issues: list[object] = []
+
+        def summary(self) -> str:
+            return f"state inference summary for {self.name}"
+
+    class FakeReportCache:
+        def __init__(self, cache_dir):
+            assert cache_dir == Path("report-cache-dir")
+
+        def load(self, key):
+            load_keys.append(key)
+            return {"report": MutableReport("Stale")}
+
+        def validate(self, payload, *, fast=False):
+            del payload, fast
+            return False
+
+        def save(self, key, *, report, files):
+            save_calls.append((key, report, frozenset(files)))
+            return True
+
+    monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
+    monkeypatch.setattr(checks_application, "AnalysisReportCache", FakeReportCache)
+    monkeypatch.setattr(checks_application, "get_cache_dir", lambda: Path("report-cache-dir"))
+    monkeypatch.setattr(
+        checks_application,
+        "compute_analysis_report_cache_key",
+        lambda project_key, analyzer_key: f"{project_key}:{analyzer_key}",
+    )
+
+    checks_application.run_checks(
+        app.DEFAULT_CONFIG.copy(),
+        ["state-inference"],
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        named_object("TargetA"),
+                        AnalysisGraphStub(
+                            unavailable_libraries=set(),
+                            analysis_cache_key="project-key",
+                            analysis_manifest_files=frozenset({Path("programs/TargetA.s")}),
+                        ),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                run=lambda _context: run_calls.append("run") or MutableReport("Live"),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        pause_fn=None,
+    )
+
+    assert run_calls == ["run"]
+    assert load_keys == ["project-key:state-inference"]
+    assert save_calls == [
+        (
+            "project-key:state-inference",
+            save_calls[0][1],
+            frozenset({Path("programs/TargetA.s")}),
+        )
+    ]
+    assert any("state inference summary for TargetA" in line for line in lines)
+
+
+def test_run_checks_bypasses_report_cache_when_use_cache_disabled(monkeypatch):
+    run_calls: list[str] = []
+
+    class ForbiddenReportCache:
+        def __init__(self, _cache_dir):
+            pytest.fail("report cache should be bypassed when use_cache is false")
+
+    monkeypatch.setattr(checks_application, "AnalysisReportCache", ForbiddenReportCache)
+
+    checks_application.run_checks(
+        app.DEFAULT_CONFIG.copy() | {"use_cache": False},
+        ["state-inference"],
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        named_object("TargetA"),
+                        AnalysisGraphStub(
+                            unavailable_libraries=set(),
+                            analysis_cache_key="project-key",
+                            analysis_manifest_files=frozenset({Path("programs/TargetA.s")}),
+                        ),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                run=lambda _context: run_calls.append("run") or SimpleNamespace(issues=[], summary=lambda: "summary"),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        pause_fn=None,
+    )
+
+    assert run_calls == ["run"]
+
+
+def test_run_checks_bypasses_report_cache_when_debug_enabled(monkeypatch):
+    run_calls: list[str] = []
+
+    class ForbiddenReportCache:
+        def __init__(self, _cache_dir):
+            pytest.fail("report cache should be bypassed when debug is true")
+
+    monkeypatch.setattr(checks_application, "AnalysisReportCache", ForbiddenReportCache)
+
+    checks_application.run_checks(
+        app.DEFAULT_CONFIG.copy() | {"debug": True},
+        ["state-inference"],
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        named_object("TargetA"),
+                        AnalysisGraphStub(
+                            unavailable_libraries=set(),
+                            analysis_cache_key="project-key",
+                            analysis_manifest_files=frozenset({Path("programs/TargetA.s")}),
+                        ),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                run=lambda _context: run_calls.append("run") or SimpleNamespace(issues=[], summary=lambda: "summary"),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        pause_fn=None,
+    )
+
+    assert run_calls == ["run"]
+
+
+def test_run_checks_handles_keyboard_interrupt_and_pauses(monkeypatch):
+    lines: list[str] = []
+    pauses: list[str] = []
+
+    monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
+
+    checks_application.run_checks(
+        app.DEFAULT_CONFIG.copy(),
+        ["state-inference"],
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        named_object("TargetA"),
+                        AnalysisGraphStub(),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                run=lambda _context: (_ for _ in ()).throw(KeyboardInterrupt()),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        pause_fn=lambda: pauses.append("pause"),
+    )
+
+    assert any("Operation canceled. Returning to the menu." in line for line in lines)
+    assert pauses == ["pause"]
+
+
+def test_run_checks_accepts_legacy_underscore_analyzer_key(monkeypatch):
+    lines: list[str] = []
+
+    monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
+
+    checks_application.run_checks(
+        app.DEFAULT_CONFIG.copy(),
+        ["state_inference"],
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        named_object("TargetA"),
+                        AnalysisGraphStub(),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                run=lambda _context: SimpleNamespace(summary=lambda: "state inference summary"),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        pause_fn=None,
+    )
+
+    assert any("State inference (state-inference)" in line for line in lines)
+
+
+def test_run_icf_validation_covers_missing_dir_invalid_dir_and_empty_file_list(monkeypatch, tmp_path):
+    lines: list[str] = []
+    pauses: list[str] = []
+
+    monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
+
+    commands_application.run_icf_validation(
+        app.DEFAULT_CONFIG.copy(),
+        configured_icf_files_fn=lambda _cfg: (None, []),
+        load_program_ast_fn=lambda *_args, **_kwargs: pytest.fail("should not load program"),
+        pause_fn=lambda: pauses.append("pause-none"),
+    )
+
+    missing_dir = tmp_path / "missing-icf"
+    commands_application.run_icf_validation(
+        app.DEFAULT_CONFIG.copy(),
+        configured_icf_files_fn=lambda _cfg: (missing_dir, [missing_dir / "ProgramA.icf"]),
+        load_program_ast_fn=lambda *_args, **_kwargs: pytest.fail("should not load program"),
+        pause_fn=lambda: pauses.append("pause-missing"),
+    )
+
+    valid_dir = tmp_path / "icf"
+    valid_dir.mkdir()
+    commands_application.run_icf_validation(
+        app.DEFAULT_CONFIG.copy(),
+        configured_icf_files_fn=lambda _cfg: (valid_dir, []),
+        load_program_ast_fn=lambda *_args, **_kwargs: pytest.fail("should not load program"),
+        pause_fn=lambda: pauses.append("pause-empty"),
+    )
+
+    assert any("icf_dir is not set in the config" in line for line in lines)
+    assert any(f"icf_dir does not exist or is not a directory: {missing_dir}" in line for line in lines)
+    assert any(f"No .icf files found in {valid_dir}" in line for line in lines)
+    assert pauses == ["pause-none", "pause-missing", "pause-empty"]
+
+
+def test_menu_wrappers_delegate_to_underlying_callbacks():
+    calls: list[tuple[str, object]] = []
+
+    checks_application.run_checks_menu(
+        app.DEFAULT_CONFIG.copy(),
+        run_checks_fn=lambda cfg, selected: calls.append(("checks", selected if selected is not None else cfg)),
+    )
+
+    assert calls[0] == ("checks", app.DEFAULT_CONFIG.copy())
+
+
+def test_run_mms_interface_analysis_reports_summary_and_errors(monkeypatch):
+    lines: list[str] = []
+    pauses: list[str] = []
+
+    monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
+
+    class MutableReport:
+        def __init__(self) -> None:
+            self.basepicture_name = "BasePicture"
+
+        def summary(self) -> str:
+            return f"mms summary for {self.basepicture_name}"
+
+    def fake_mms(project_bp, debug=False, config=None):
+        if project_bp == "bp-b":
+            raise RuntimeError("boom")
+        return MutableReport()
+
+    monkeypatch.setattr(commands_application, "analyze_mms_interface_variables", fake_mms)
+
+    commands_application.run_mms_interface_analysis(
+        app.DEFAULT_CONFIG.copy(),
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    ("TargetA", "bp-a", AnalysisGraphStub()),
+                    ("TargetB", "bp-b", AnalysisGraphStub()),
+                ]
+            ),
+        ),
+        pause_fn=lambda: pauses.append("pause"),
+    )
+
+    assert any("mms summary for TargetA" in line for line in lines)
+    assert not any("mms summary for BasePicture" in line for line in lines)
+    assert any("Error during analysis for TargetB: boom" in line for line in lines)
+    assert pauses == ["pause"]
+
+
+def test_run_icf_validation_reports_entryless_files_load_failures_and_summary(monkeypatch, tmp_path):
+    lines: list[str] = []
+    pauses: list[str] = []
+    icf_dir = tmp_path / "icf"
+    icf_dir.mkdir()
+    empty_file = icf_dir / "Empty.icf"
+    broken_file = icf_dir / "Broken.icf"
+    valid_file = icf_dir / "Valid.icf"
+    for path in (empty_file, broken_file, valid_file):
+        path.write_text("dummy", encoding="utf-8")
+
+    monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
+    monkeypatch.setattr(
+        commands_application,
+        "parse_icf_file",
+        lambda path: [] if path.name == "Empty.icf" else [SimpleNamespace()],
+    )
+    monkeypatch.setattr(commands_application, "merge_project_basepicture", lambda bp, _graph: bp)
+
+    def fake_load_program(_cfg, program_name):
+        if program_name == "Broken":
+            raise RuntimeError("load failed")
+        return "bp-valid", SimpleNamespace(ast_by_name={})
+
+    def fake_validate(program_bp, entries, expected_program, debug=False, moduletype_index=None):
+        assert program_bp == "bp-valid"
+        assert expected_program == "Valid"
+        return SimpleNamespace(
+            total_entries=3,
+            valid_entries=2,
+            issues=[object()],
+            skipped_entries=1,
+            summary=lambda: "icf report",
+        )
+
+    commands_application.run_icf_validation(
+        app.DEFAULT_CONFIG.copy(),
+        configured_icf_files_fn=lambda _cfg: (icf_dir, [empty_file, broken_file, valid_file]),
+        load_program_ast_fn=cast(Any, fake_load_program),
+        validate_icf_entries_against_program_fn=fake_validate,
+        pause_fn=lambda: pauses.append("pause"),
+    )
+
+    assert any("Empty.icf: no entries found" in line for line in lines)
+    assert any("Broken.icf: failed to load program 'Broken': load failed" in line for line in lines)
+    assert any("icf report" in line for line in lines)
+    assert any("Files processed: 3" in line for line in lines)
+    assert any("Files failed: 1" in line for line in lines)
+    assert any("Entries: 3" in line for line in lines)
+    assert any("Valid: 2" in line for line in lines)
+    assert any("Invalid: 1" in line for line in lines)
+    assert any("Skipped: 1" in line for line in lines)
+    assert pauses == ["pause"]
+
+
+def test_run_comment_code_analysis_reports_success_and_pauses(monkeypatch):
+    lines: list[str] = []
+    pauses: list[str] = []
+
+    monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
+    monkeypatch.setattr(
+        commands_application,
+        "analyze_comment_code_files",
+        lambda paths, root_name: SimpleNamespace(
+            summary=lambda: f"comment:{root_name}:{sorted(str(path) for path in paths)}"
+        ),
+    )
+
+    commands_application.run_comment_code_analysis(
+        app.DEFAULT_CONFIG.copy(),
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter([("TargetA", named_object("Root"), "graph")]),
+        ),
+        source_paths_for_current_target_fn=lambda _project_bp, _graph: {Path("A.s"), Path("B.s")},
+        pause_fn=lambda: pauses.append("pause-comment"),
+    )
+
+    assert any("comment:TargetA:['A.s', 'B.s']" in line for line in lines)
+    assert pauses == ["pause-comment"]
