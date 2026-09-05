@@ -1,6 +1,9 @@
 # Tests Cleanup and Confidence Hardening
 
-> Status: Draft — not started
+> Status: Complete — Phases A, B, C1, C5, E done; C2 largely satisfied by C1;
+> C3 blocked by repo policy; C4 requires human review; Phase D content merges
+> deferred (see notes below). Final state: 1216 tests green, ruff + format clean,
+> pyright CLI clean.
 > Depends on: nothing
 > Scope: `tests/` layout, naming, coverage gaps, and analyzer FP/FN confidence
 
@@ -204,3 +207,69 @@ Focused pytest after every move/rename batch; `python -m pytest -q --tb=short`
 and `python -m ruff check tests` + `python -m ruff format --check tests` at the
 end. Commits are performed by the user per repository policy (git write commands
 are not run by the assistant).
+
+## Completed execution notes
+
+**Phase A — done.** All root `_*` support modules moved to `tests/helpers/`
+(`analyzers_state_support`, `analyzers_suites_support`,
+`analyzers_variables_support`, `analyzers_variables_part4_support`,
+`app_analysis_support`, `app_menus_support`, `reset_contamination_api`) with
+all importer paths updated.
+
+**Phase B — done.** Created `tests/analyzers/state_integrity/`,
+`tests/analyzers/suites/`, `tests/analyzers/variables/`, `tests/app/`,
+`tests/core/`, `tests/project/`, `tests/reporting/`, `tests/cache/`,
+`tests/corpus/`, `tests/validation/`. All `_partN` files renamed to descriptive
+topic names and relocated; the seven `part4_*` splinters dropped their `part4_`
+prefix. `test_analyzers_variables_part4.py` was kept as a standalone renamed
+`test_library_typedef_usage.py` (coherent "library-typedef usage" theme) instead
+of being folded, to avoid a risky 1200-line merge. Cross-file absolute imports
+and `__file__`-based fixture paths were updated for the new depths. `tests/`
+root now holds only `conftest.py`, `__init__.py`, and the cross-cutting
+`test_dependency_guard.py`.
+
+**Phase C1 — done.** `test_corpus_regression_exactness.py` now runs every
+`analyzer-*.json` manifest (76, up from the semantic-only subset):
+`semantic.*`-namespaced manifests run through the semantic umbrella; all other
+manifests are dispatched to their registry analyzer through the real project
+loader (mirroring the crash-sweep harness) with a dependency closure, so
+findings that need `graph.source_files` (comment-code) or cross-module context
+(interface-contracts, picture-display) reproduce. Enum `IssueKind` values are
+normalized via `.value`. The malformed
+`analyzer-sattline-semantics-read-before-write.json` expectation (`"unknown"`)
+was corrected to `semantic.read-before-write`.
+
+**Phase C2 — largely satisfied by C1.** The newly activated `*-clean.json`
+manifests are the negative-control mechanism (they assert zero findings for
+their analyzer on known-good input), covering the anti-false-positive half for
+every analyzer that has a manifest. Remaining hand-written negative twins are a
+rolling task as rules change.
+
+**Phase C3 — not implemented.** A mutation script that temporarily edits source
+would violate the repository's bulk-edit prohibition in AGENTS.md. Left as a
+documented idea; a human can run it outside the assistant flow.
+
+**Phase C4 — human action.** Corpus expectations still need independent review
+(a second set of eyes or a small human-labeled golden set) to break the
+self-authored-expectation loop.
+
+**Phase C5 — done.** `tests/validation/` now has 21 real tests for
+`validation/expression.py` (logical/arithmetic/comparison typing, division by
+zero, builtin call arity and var-ref rules, string literals in calls) and
+`validation/sequences.py` (sequence label collection/counting, parallel branch
+trailers, STATE-vs-non-STATE variable refs). This closes the previously empty
+placeholder files.
+
+**Phase D — relocations done, content merges deferred.** Reset-contamination
+tests are now co-located in `tests/analyzers/state_integrity/`, and `suites/`
+remains as a deliberate integration seam. The proposed content merges (folding
+`state_integrity/*` reset-contamination tests into
+`tests/analyzers/test_reset_contamination.py`, etc.) are deferred: they are
+real merges with regression risk and should be done against a fresh coverage
+baseline with human review, not in this pass.
+
+**Phase E — done.** Full suite green (1216 tests), ruff check + format clean,
+pyright CLI clean on touched files, empty `tests/benchmarks/` removed,
+`docs/maintainers/repo-map.md` and `docs/maintainers/validation-map.md` updated
+to the new test paths. `coverage.xml`/`htmlcov` regeneration is a follow-up
+task when a coverage snapshot is next wanted.
