@@ -2,8 +2,8 @@
 
 from sattline_parser.models.ast_model import FrameModule, GraphicsBinding
 
-from sattlint.graphics_validation import PictureDisplayPathRow, PictureDisplayRecord
-from sattlint.picture_display_paths import PictureDisplayOccurrence
+from sattlint.graphics.picture_display_paths import PictureDisplayOccurrence
+from sattlint.graphics.validation import PictureDisplayPathRow, PictureDisplayRecord
 
 from ._analyzers_variables_part4_support import COLUMN_TYPE_STEP, FIRST_RECORD_STEP
 from ._analyzers_variables_test_support import *

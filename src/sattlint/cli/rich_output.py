@@ -3,8 +3,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from .. import app_support as app_support_module
 from .. import console as console_module
+from . import menu as menu_module
 
 
 def print_menu(
@@ -15,7 +15,7 @@ def print_menu(
     note: str | None = None,
 ) -> None:
     if not console_module.has_rich():
-        app_support_module.print_menu(
+        menu_module.print_menu(
             title,
             options,
             print_fn=console_module.print_output,

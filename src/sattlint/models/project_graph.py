@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from ._validation_notice import ValidationNotice
@@ -200,3 +200,16 @@ class ProjectGraph:
             if library_name and not d.origin_lib:
                 d.origin_lib = library_name
             self.datatype_defs[d.name] = d
+
+
+def merge_project_basepicture(root_bp: BasePicture, graph: ProjectGraph) -> BasePicture:
+    """Merge gathered moduletype/datatype/label-definitions into the root base picture."""
+    merged_datatypes: list[DataType] = list(graph.datatype_defs.values())
+    merged_modtypes: list[ModuleTypeDef] = list(graph.moduletype_defs.values())
+    lib_deps = {lib: sorted(deps) for lib, deps in (graph.library_dependencies or {}).items()}
+    return replace(
+        root_bp,
+        datatype_defs=merged_datatypes,
+        moduletype_defs=merged_modtypes,
+        library_dependencies=lib_deps,
+    )

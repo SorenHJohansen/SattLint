@@ -14,32 +14,46 @@ from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
-from . import _app_analysis_checks as app_analysis_checks_module
-from . import _app_analysis_commands as app_analysis_commands_module
-from . import analysis_catalog as analysis_catalog_module
-from . import app_analysis as app_analysis_module
-from . import app_base as app_base_module
-from . import app_support as app_support_module
 from . import cache as cache_module
 from . import config as _config_module
 from . import console as console_module
 from . import engine as engine_module_impl
+from ._exit_codes import (
+    EXIT_FAILURE as _EXIT_FAILURE,
+)
+from ._exit_codes import (
+    EXIT_SUCCESS as _EXIT_SUCCESS,
+)
+from ._exit_codes import (
+    EXIT_USAGE_ERROR as _EXIT_USAGE_ERROR,
+)
+from .analyzers import catalog as analysis_catalog_module
+from .analyzers import variable_analyses as analysis_variable_analyses_module
+from .analyzers.icf import validate_icf_entries_against_program
 from .analyzers.variables import (
     IssueKind,
+    analyze_variables,
 )
 from .application import analyze as analyze_application
-from .application import interaction as app_interaction_module
+from .application import checks as app_analysis_checks_module
+from .application import commands as app_analysis_commands_module
 from .application import project as project_application
-from .application._interaction import (
+from .cli import app_cli_commands as app_cli_commands_module
+from .cli import app_commands as commands_application
+from .cli import interaction as cli_interaction_module
+from .cli import startup as startup_application
+from .cli._interaction import (
     has_textual_menu_interaction,
     textual_menu_interaction,
 )
-from .cli import app_cli_commands as app_cli_commands_module
-from .cli import app_commands as commands_application
-from .cli import startup as startup_application
+from .cli.syntax_check import run_syntax_check_command as run_syntax_check_command_impl
+from .core import interaction as core_interaction_module
 from .core import telemetry as app_telemetry_module
+from .core import terminal as core_terminal_module
+from .core.logging import apply_debug as core_apply_debug
 from .core.semantic import load_workspace_snapshot
 from .models.project_graph import ProjectGraph
+from .project import support as project_support_module
 
 load_workspace_snapshot = load_workspace_snapshot
 
@@ -50,49 +64,48 @@ VariableAnalysisMap = dict[str, tuple[str, VariableAnalysisSelection]]
 LoadedConfig = tuple[ConfigDict, bool]
 ConfigValidationResult = _config_module.ConfigValidationResult
 
-app_analysis: Any = app_analysis_module
 app_analysis_checks: Any = app_analysis_checks_module
 app_analysis_commands: Any = app_analysis_commands_module
-app_base: Any = app_base_module
 app_cli_commands: Any = app_cli_commands_module
-app_support: Any = app_support_module
 app_telemetry: Any = app_telemetry_module
 cache: Any = cache_module
 engine_module: Any = engine_module_impl
 get_default_cli_analyzers = analysis_catalog_module.get_default_cli_analyzers
 get_selectable_analyzers = analysis_catalog_module.get_selectable_analyzers
-analyze_variables = app_analysis_module.analyze_variables
 ASTCache = cache_module.ASTCache
 
-VARIABLE_ANALYSES: VariableAnalysisMap = app_analysis.VARIABLE_ANALYSES
-HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = app_analysis.HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS
-LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = app_analysis.LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS
+VARIABLE_ANALYSES: VariableAnalysisMap = analysis_variable_analyses_module.VARIABLE_ANALYSES
+HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = (
+    analysis_variable_analyses_module.HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS
+)
+LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = (
+    analysis_variable_analyses_module.LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS
+)
 emit_output: Callable[..., None] = console_module.print_output  # type: ignore[assignment]
 
-EXIT_SUCCESS: int = app_base.EXIT_SUCCESS
-EXIT_FAILURE: int = app_base.EXIT_FAILURE
-EXIT_USAGE_ERROR: int = app_base.EXIT_USAGE_ERROR
+EXIT_SUCCESS: int = _EXIT_SUCCESS
+EXIT_FAILURE: int = _EXIT_FAILURE
+EXIT_USAGE_ERROR: int = _EXIT_USAGE_ERROR
 
-CONFIG_PATH: Path = app_base.CONFIG_PATH
-DEFAULT_CONFIG: ConfigDict = app_base.DEFAULT_CONFIG
-
+CONFIG_PATH: Path = _config_module.get_config_path()
+DEFAULT_CONFIG = _config_module.DEFAULT_CONFIG
 
 MenuOption = startup_application.MenuOption
 
 
-TargetLoadError = app_support.TargetLoadError
+TargetLoadError = project_support_module.TargetLoadError
 
 
 def _print_validation_warnings(warnings: list[str], *, limit: int = 12) -> None:
-    app_support.print_validation_warnings(warnings, print_fn=print, limit=limit)
+    project_support_module.print_validation_warnings(warnings, print_fn=print, limit=limit)
 
 
 def _target_validation_warnings(target_name: str, warnings: list[str]) -> list[str]:
-    return cast(list[str], app_support.target_validation_warnings(target_name, warnings))
+    return project_support_module.target_validation_warnings(target_name, warnings)
 
 
 def load_config(path: Path) -> LoadedConfig:
-    return cast(LoadedConfig, app_base.load_config(path))
+    return _config_module.load_config(path)
 
 
 def get_cache_dir() -> Path:
@@ -100,30 +113,29 @@ def get_cache_dir() -> Path:
 
 
 def save_config(path: Path, cfg: ConfigDict) -> None:
-    app_base.save_config(path, cfg)
+    from .cli.config import save_config as _cli_save_config
+
+    _cli_save_config(path, cfg)
 
 
 def self_check(cfg: ConfigDict) -> bool:
-    return cast(bool, app_base.self_check(cfg))
+    return _config_module.self_check(cfg)
 
 
 validate_effective_config = _config_module.validate_effective_config
-
-
-log: Any = app_base.log
 
 
 # ----------------------------
 # Helpers
 # ----------------------------
 def _clear_windows_console() -> None:
-    app_base.clear_windows_console()
+    core_terminal_module.clear_windows_console()
 
 
 def clear_screen() -> None:
     if has_textual_menu_interaction():
         return
-    app_base.clear_screen(os_module=os, sys_module=sys, clear_windows_console=_clear_windows_console)
+    core_terminal_module.clear_screen(os_module=os, sys_module=sys, clear_windows_console=_clear_windows_console)
 
 
 def pause() -> None:
@@ -131,44 +143,46 @@ def pause() -> None:
     if interaction is not None:
         interaction.pause()
         return
-    app_base.pause()
+    core_interaction_module.pause()
 
 
-QuitAppError = app_base.QuitAppError
+QuitAppError = core_interaction_module.QuitAppError
 
 
 def quit_app() -> None:
-    app_base.quit_app(clear_screen_fn=clear_screen)
+    core_interaction_module.quit_app(clear_screen_fn=clear_screen)
 
 
 def confirm(msg: str) -> bool:
     interaction = textual_menu_interaction()
     if interaction is not None:
         return bool(interaction.confirm(msg))
-    return cast(bool, app_base.confirm(msg))
+    return core_interaction_module.confirm(msg)
 
 
 def prompt(msg: str, default: str | None = None) -> str:
     interaction = textual_menu_interaction()
     if interaction is not None:
         return str(interaction.prompt(msg, default))
-    return cast(str, app_base.prompt(msg, default))
+    return core_interaction_module.prompt(msg, default)
 
 
 def target_exists(target: str, cfg: ConfigDict) -> bool:
-    return cast(bool, app_base.target_exists(target, cfg))
+    return _config_module.target_exists(target, cfg)
 
 
 def apply_debug(cfg: ConfigDict) -> None:
-    app_base.apply_debug(cfg)
+    core_apply_debug(cfg)
 
 
 def build_cli_parser() -> argparse.ArgumentParser:
-    return cast(argparse.ArgumentParser, app_base.build_cli_parser())
+    from .cli.entry import build_cli_parser as _build_cli_parser
+
+    return _build_cli_parser()
 
 
 def run_syntax_check_command(file_path: str, *, output_format: str = "text") -> int:
-    return cast(int, app_base.run_syntax_check_command(file_path, output_format=output_format))
+    return run_syntax_check_command_impl(file_path, output_format=output_format)
 
 
 run_cli = commands_application.run_cli
@@ -189,31 +203,31 @@ def _print_menu(
 
 
 def set_interactive_ui_mode(ui_mode: str | None) -> None:
-    from .application._interaction import set_interactive_ui_mode as _set
+    from .cli._interaction import set_interactive_ui_mode as _set
 
     _set(ui_mode)
 
 
 def reset_interactive_ui_mode() -> None:
-    from .application._interaction import reset_interactive_ui_mode as _reset
+    from .cli._interaction import reset_interactive_ui_mode as _reset
 
     _reset()
 
 
 def get_interactive_ui_mode() -> str:
-    from .application._interaction import get_interactive_ui_mode as _get
+    from .cli._interaction import get_interactive_ui_mode as _get
 
     return _get()
 
 
 def set_textual_menu_interaction(interaction: Any) -> None:
-    from .application._interaction import set_textual_menu_interaction as _set
+    from .cli._interaction import set_textual_menu_interaction as _set
 
     _set(interaction)
 
 
 def clear_textual_menu_interaction() -> None:
-    from .application._interaction import clear_textual_menu_interaction as _clear
+    from .cli._interaction import clear_textual_menu_interaction as _clear
 
     _clear()
 
@@ -225,15 +239,12 @@ def choose_menu_option(
     intro: str | None = None,
     note: str | None = None,
 ) -> str:
-    return cast(
-        str,
-        app_base.choose_menu_option(
-            title,
-            options,
-            print_menu_fn=_print_menu,
-            intro=intro,
-            note=note,
-        ),
+    return core_interaction_module.choose_menu_option(
+        title,
+        options,
+        print_menu_fn=_print_menu,
+        intro=intro,
+        note=note,
     )
 
 
@@ -241,7 +252,7 @@ def build_menu_interaction() -> Any:
     interaction = textual_menu_interaction()
     if interaction is not None:
         return interaction
-    return app_interaction_module.build_menu_interaction(
+    return cli_interaction_module.build_menu_interaction(
         print_menu_fn=_print_menu,
         choose_menu_option_fn=choose_menu_option,
         prompt_fn=prompt,
@@ -256,7 +267,7 @@ def resolve_interactive_ui_mode(cfg: ConfigDict, override_ui_mode: str | None = 
     if requested_ui is not None and requested_ui.strip().casefold() not in {"", "textual"}:
         raise ValueError("SattLint interactive mode is Textual-only; --ui must be 'textual'.")
 
-    from . import app_textual as app_textual_module
+    from . import ui as app_textual_module
 
     if app_textual_module.has_textual():
         return "textual"
@@ -276,16 +287,17 @@ def _menu_option(key: str, label: str, description: str) -> MenuOption:
 _summarize_targets = startup_application.summarize_targets
 show_help = startup_application.show_help
 get_help_text = startup_application.get_help_text
-_get_analyzed_targets = project_application.get_analyzed_targets
-_require_analyzed_targets = project_application.require_analyzed_targets
-_has_analyzed_targets = project_application.has_analyzed_targets
-_require_targets_for_menu_action = project_application.require_targets_for_menu_action
+_get_analyzed_targets = project_support_module.get_analyzed_targets
+_require_analyzed_targets = project_support_module.require_analyzed_targets
+_has_analyzed_targets = project_support_module.has_analyzed_targets
+_require_targets_for_menu_action = startup_application.require_targets_for_menu_action
 _cache_key_for_target = project_application.cache_key_for_target
-_split_csv_values = project_application.split_csv_values
+_split_csv_values = project_support_module.split_csv_values
 
 
 config_module = _config_module
-validate_icf_entries_against_program: Callable[..., Any] = app_analysis.validate_icf_entries_against_program
+validate_icf_entries_against_program: Callable[..., Any] = validate_icf_entries_against_program
+analyze_variables: Callable[..., Any] = analyze_variables
 
 
 _iter_loaded_projects = project_application.iter_loaded_projects
@@ -321,7 +333,7 @@ _COMPATIBILITY_HELPERS = (
 def main(argv: list[str] | None = None) -> int:
     from .cli import startup as cli_startup
 
-    return cli_startup.main(argv, run_interactive_session_fn=run_interactive_session)
+    return cli_startup.main(argv, run_main_loop_fn=run_interactive_session)
 
 
 def cli(argv: list[str] | None = None) -> int:

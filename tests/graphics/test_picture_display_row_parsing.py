@@ -1,5 +1,5 @@
 # pyright: reportPrivateUsage=false
-from sattlint.graphics_validation import _parse_picture_display_row
+from sattlint.graphics.validation import _parse_picture_display_row
 
 
 def test_parse_picture_display_row_accepts_nested_invalid_variable_paths() -> None:

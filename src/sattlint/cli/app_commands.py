@@ -4,33 +4,46 @@
 Direct replacement for the old ``application.commands`` surface, relocated
 from ``application/`` to ``cli/`` as part of Phase 6 (application-layer
 refactor).  Each command binds the owning implementations
-(:mod:`sattlint.app_base`, :mod:`sattlint.app_cli_commands`,
-:mod:`sattlint.app_support`, :mod:`sattlint.cache`) directly, with no
-dependency on the legacy ``app`` module.
+(:mod:`sattlint.cli.syntax_check`, :mod:`sattlint.app_cli_commands`,
+:mod:`sattlint.cache`) directly, with no dependency on the legacy ``app``
+module.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
-from .. import _app_analysis_checks as app_analysis_checks_module
-from .. import _app_startup as startup_core
-from .. import app_base
+from sattline_parser.models.ast_model import BasePicture
+
+from .. import _config_display as config_display_module
 from .. import cache as cache_module
+from .. import config as config_module
+from .. import console as console_module
+from .._exit_codes import EXIT_SUCCESS, EXIT_USAGE_ERROR
 from ..application import analyze as analyze_application
+from ..application import checks as app_analysis_checks_module
 from ..application import project as project_application
+from ..cli_output import emit_text_or_json
 from ..config_types import ConfigDict
-from . import app_cli_commands
+from ..config_validation import validate_effective_config
+from ..core.logging import apply_debug
+from ..models.project_graph import ProjectGraph
+from . import app_cli_commands, syntax_check
 from . import entry as cli_entry
 from .entry import CommandHandlers, RunSyntaxCheckCommandFn
+
+LoadedProject = tuple[str, BasePicture, ProjectGraph]
+
+syntax_check_command = syntax_check.run_syntax_check_command
 
 
 def _build_command_handlers() -> CommandHandlers:
     return cast(
         CommandHandlers,
         {
-            "syntax_check": cast(RunSyntaxCheckCommandFn, app_base.run_syntax_check_command),
+            "syntax_check": cast(RunSyntaxCheckCommandFn, syntax_check_command),
             "validate_config": run_validate_config_command,
             "analyze": run_analyze_command,
             "cache_prune": run_cache_prune_command,
@@ -41,13 +54,13 @@ def _build_command_handlers() -> CommandHandlers:
 def run_cli(argv: list[str]) -> int:
     return cli_entry.run_cli(
         argv,
-        config_path=app_base.CONFIG_PATH,
-        build_cli_parser_fn=app_base.build_cli_parser,
-        load_config_fn=app_base.load_config,
-        apply_debug_fn=app_base.apply_debug,
+        config_path=config_module.get_config_path(),
+        build_cli_parser_fn=cli_entry.build_cli_parser,
+        load_config_fn=config_module.load_config,
+        apply_debug_fn=apply_debug,
         command_handlers=_build_command_handlers(),
-        exit_success=app_base.EXIT_SUCCESS,
-        exit_usage_error=app_base.EXIT_USAGE_ERROR,
+        exit_success=EXIT_SUCCESS,
+        exit_usage_error=EXIT_USAGE_ERROR,
     )
 
 
@@ -58,17 +71,25 @@ def run_validate_config_command(
     default_used: bool,
     output_format: str = "text",
 ) -> int:
-    from ..config_validation import validate_effective_config  # noqa: PLC0415
+    validation = validate_effective_config(cfg)
+    if output_format == "json":
+        emit_text_or_json(
+            text="",
+            json_payload={
+                "config_path": str(config_path),
+                "default_used": default_used,
+                **validation.to_dict(),
+            },
+            output_format="json",
+            emit_text_fn=print,
+        )
+        return EXIT_SUCCESS if validation.passed else EXIT_USAGE_ERROR
 
-    return startup_core.run_validate_config_command(
-        cfg,
-        config_path=config_path,
-        default_used=default_used,
-        validate_config_fn=validate_effective_config,
-        output_format=output_format,
-        exit_success=app_base.EXIT_SUCCESS,
-        exit_usage_error=app_base.EXIT_USAGE_ERROR,
-    )
+    if default_used:
+        console_module.print_output(f"Warning: default config loaded from {config_path}")
+    for error in validation.errors:
+        console_module.print_output(error.message)
+    return EXIT_SUCCESS if validation.passed else EXIT_USAGE_ERROR
 
 
 def run_analyze_command(
@@ -79,39 +100,49 @@ def run_analyze_command(
     use_cache: bool,
     output_format: str = "text",
 ) -> int:
-    return startup_core.run_analyze_command(
+    def _collect_result(
+        local_cfg: ConfigDict,
+        *,
+        selected_keys: list[str] | None,
+        selected_issue_kinds: frozenset[str] | None = None,
+    ) -> Any:
+        def _iter_nested_projects(nested_cfg: ConfigDict) -> Iterator[LoadedProject]:
+            return project_application.iter_loaded_projects(nested_cfg, use_cache=use_cache)
+
+        return app_analysis_checks_module.collect_run_checks_result(
+            cast(ConfigDict, local_cfg | {"use_cache": use_cache}),
+            selected_keys,
+            selected_issue_kinds=selected_issue_kinds,
+            iter_loaded_projects_fn=_iter_nested_projects,
+            get_enabled_analyzers_fn=(
+                analyze_application.get_selectable_analyzers
+                if selected_keys
+                else analyze_application.get_enabled_analyzers
+            ),
+            target_is_library_fn=project_application.target_is_library,
+        )
+
+    return app_cli_commands.run_analyze_command(
         cfg,
         selected_keys=selected_keys,
         selected_issue_kinds=selected_issue_kinds,
         use_cache=use_cache,
         output_format=output_format,
-        run_analyze_command_fn=app_cli_commands.run_analyze_command,
-        iter_loaded_projects_fn=project_application.iter_loaded_projects,
-        collect_run_checks_result_fn=app_analysis_checks_module.collect_run_checks_result,
-        get_selectable_analyzers_fn=analyze_application.get_selectable_analyzers,
-        get_enabled_analyzers_fn=analyze_application.get_enabled_analyzers,
-        target_is_library_fn=project_application.target_is_library,
-        exit_success=app_base.EXIT_SUCCESS,
+        collect_analyze_result_fn=_collect_result,
+        exit_success=EXIT_SUCCESS,
     )
 
 
 def run_cache_prune_command(*, cache_dir: str | None = None, output_format: str = "text") -> int:
-    return startup_core.run_cache_prune_command(
+    return app_cli_commands.run_cache_prune_command(
         cache_dir=cache_dir,
         output_format=output_format,
-        run_cache_prune_command_fn=app_cli_commands.run_cache_prune_command,
         prune_cache_dir_fn=cache_module.prune_cache_dir,
         get_cache_dir_fn=cache_module.get_cache_dir,
-        exit_success=app_base.EXIT_SUCCESS,
-        exit_usage_error=app_base.EXIT_USAGE_ERROR,
+        exit_success=EXIT_SUCCESS,
+        exit_usage_error=EXIT_USAGE_ERROR,
     )
 
 
 def show_config(cfg: ConfigDict) -> None:
-    from .. import _config_display  # noqa: PLC0415
-    from .._app_interactive_menus import show_config as _show_config  # noqa: PLC0415
-
-    _show_config(
-        cfg,
-        show_config_fn=_config_display.show_config,
-    )
+    config_display_module.show_config(cfg, emit_output_fn=console_module.print_output)

@@ -16,9 +16,9 @@ from sattline_parser.models.ast_model import (
     SingleModule,
 )
 
-from ..._picture_display_path_runtime import CompositeRecordOccurrence, correlate_composite_records
-from ...graphics_validation import GraphicsCompositeRecord
-from ...picture_display_paths import PictureDisplayOccurrence
+from ...graphics.picture_display_paths import PictureDisplayOccurrence
+from ...graphics.picture_display_runtime import CompositeRecordOccurrence, correlate_composite_records
+from ...graphics.validation import GraphicsCompositeRecord
 from ...resolution import AccessKind, decorate_segment
 from ...resolution.common import resolve_moduletype_def_strict
 from ...resolution.scope import ScopeContext

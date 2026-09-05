@@ -9,13 +9,13 @@ from sattline_parser.models.ast_model import (
     SourceSpan,
 )
 
-from sattlint.graphics_validation import PictureDisplayPathRow, PictureDisplayRecord
-from sattlint.picture_display_paths import (
+from sattlint.graphics.picture_display_paths import (
     PictureDisplayOccurrence,
     correlate_picture_display_records,
     diagnose_picture_display_paths,
     resolve_picture_display_path,
 )
+from sattlint.graphics.validation import PictureDisplayPathRow, PictureDisplayRecord
 from tests.helpers.picture_display_paths_support import (
     base_picture_with_leading_dash_paths,
     base_picture_with_moduletype_form_picture_display,

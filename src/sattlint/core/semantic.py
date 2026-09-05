@@ -10,14 +10,12 @@ from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.models.ast_model import BasePicture
 
 from ..call_signatures import CallSignatureOccurrence
-from ..engine import (
-    CodeMode,
-    SattLineProjectLoader,
+from ..models.project_graph import ProjectGraph, merge_project_basepicture
+from ..project.loader import SattLineProjectLoader
+from ..project.loader_config import (
     SattLineProjectLoaderConfig,
     SattLineProjectLoaderRuntime,
-    merge_project_basepicture,
 )
-from ..models.project_graph import ProjectGraph
 from . import _semantic_helpers as _semantic_helpers
 from . import workspace_discovery as _workspace_discovery
 from ._semantic_index import SemanticIndexBuilder
@@ -31,6 +29,7 @@ from ._semantic_snapshot import (
 )
 from .diagnostics import SemanticDiagnostic
 from .safety_paths import DEFAULT_SAFETY_SIGNAL_KEYWORDS, SafetyPathTrace, SymbolAccess
+from .syntax import CodeMode
 from .taint_paths import TaintPathTrace
 from .workspace_discovery import WorkspaceSourceDiscovery, discover_workspace_sources, single_entry_discovery
 

@@ -77,7 +77,7 @@ def _exit_code(result: int | None, *, fallback: int) -> int:
 
 
 def _collect_analyzer_keys() -> tuple[str, ...]:
-    from ..analysis_catalog import get_selectable_analyzers  # noqa: PLC0415
+    from ..analyzers.catalog import get_selectable_analyzers  # noqa: PLC0415
 
     return tuple(spec.key for spec in get_selectable_analyzers())
 

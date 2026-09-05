@@ -33,14 +33,14 @@ def build_base_command_handlers(
 
 
 def build_app_command_handlers() -> CommandHandlers:
-    from .. import app_base  # noqa: PLC0415
     from . import app_commands  # noqa: PLC0415
+    from .syntax_check import run_syntax_check_command  # noqa: PLC0415
 
     return build_command_handlers(
         overrides=cast(
             CommandHandlers,
             {
-                "syntax_check": app_base.run_syntax_check_command,
+                "syntax_check": run_syntax_check_command,
                 "validate_config": app_commands.run_validate_config_command,
                 "analyze": app_commands.run_analyze_command,
                 "cache_prune": app_commands.run_cache_prune_command,

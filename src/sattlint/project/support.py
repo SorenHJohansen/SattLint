@@ -7,7 +7,7 @@ from typing import TypeGuard, cast
 
 from ..casefolding import casefold_equal, casefold_key, dedupe_casefolded_strings
 from ..config_types import ConfigDict
-from ..engine import expected_unavailable_library_reason
+from ..core.libraries import expected_unavailable_library_reason
 from ..models.project_graph import ProjectFailure
 
 _PICTURE_DISPLAY_WARNING_RE = re.compile(
