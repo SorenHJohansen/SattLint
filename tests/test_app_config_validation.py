@@ -12,9 +12,8 @@ import pytest
 
 from sattlint import _config_defaults as config_defaults_module
 from sattlint import app
-from sattlint import app_analysis as app_analysis_module
 from sattlint import config as config_module
-from sattlint.application import analyze as analyze_application
+from sattlint.analyzers import icf as icf_module
 from sattlint.application import project as project_application
 from sattlint.config_types import ConfigDict, ConfigOverrideDict
 
@@ -376,10 +375,9 @@ def test_run_icf_validation_forces_dependency_aware_ast_loading(tmp_path, monkey
             return "summary"
 
     monkeypatch.setattr(project_application, "load_program_ast", fake_load_program_ast)
-    monkeypatch.setattr(analyze_application, "pause", lambda: None)
     monkeypatch.setattr(app.engine_module, "merge_project_basepicture", lambda bp, _graph: bp)
     monkeypatch.setattr(
-        app_analysis_module,
+        icf_module,
         "validate_icf_entries_against_program",
         lambda *args, **kwargs: FakeReport(),
     )

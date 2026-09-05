@@ -1,8 +1,11 @@
 # SattLint Architecture Upgrade Plan
 
-> Status: Active (no phases of the unified plan started)
+> Status: Active (Phase 1 of the unified plan complete)
 > This plan is the single authority. It replaces and merges
 > `application-layer-plan.md` and `architecture-reliability-refactor.md`.
+>
+> **Deferred:** Phases 6, 9, 10, 17 are deferred pending the analyzer
+> performance optimization branch. See `analyzer-execution-refactor.md`.
 
 ## Goal
 
@@ -171,9 +174,18 @@ clean, full pytest green):
 
 ## Unified phases
 
+### Unified-plan completions
+
+- **Phase 1 (of this plan) — Move CLI concerns fully out of `application/`**:
+  CLI interaction (`_interaction.py`, `interaction.py`) moved from `application/`
+  to `cli/`; `require_targets_for_menu_action` relocated from `application/project.py`
+  to `cli/startup.py`; removed hardcoded `pause`/`print_output` defaults from
+  `application/analyze.py` and `application/project.py`; `app.py` re-exports
+  re-pointed; tests updated. All gates green.
+
 ### Part A — Layering
 
-#### Phase 1 — Move CLI concerns fully out of `application/`
+#### Phase 1 — Move CLI concerns fully out of `application/` ✅ COMPLETE
 
 `application/` must contain service-style operations only.
 
@@ -187,6 +199,79 @@ clean, full pytest green):
 Acceptance: every function in `application/` passes the classification test.
 
 #### Phase 2 — Dissolve the flat `_app_*`/`app_*` implementation modules
+
+> **Phase 2 progress (substages 2a–2h ✅ COMPLETE).**
+>
+> - **2a ✅** Created `src/sattlint/ui/` — moved `app_textual.py`, `_app_textual_*`
+>   (10 modules) and `app_textual.tcss` into it; `ui/__init__.py` is the facade;
+>   `app.py` and `cli/startup.py` re-pointed; `tests/test_app_textual.py` retargeted
+>   to `sattlint.ui`; root `_app_textual_*`/`app_textual.py`/`app_textual.tcss` trashed.
+> - **2b ✅** `_app_debug.py` → `core/debug.py`; `_app_analysis_variable_analyses.py`
+>   → `analyzers/variable_analyses.py`; consumers (`_app_analysis_loading*`,
+>   `app_analysis.py`, `tests/test_app_debug.py`) retargeted; root files trashed.
+> - **2c ✅** `analysis_catalog.py` → `analyzers/catalog.py`; `analysis_dispatch.py`
+>   → `analyzers/dispatch.py`; consumers (`app.py`, `app_analysis.py`,
+>   `application/analyze.py`, `semantic_analysis.py`, `cli/entry.py`,
+>   `tests/test_full_analysis_crash_sweep.py`) retargeted; root files trashed.
+>   `test_analyzer_architecture.py` boundary rule still green.
+> - **2d ✅** `_app_analysis_loading.py` → `project/loading.py`; the
+>   `_app_analysis_loading_support.py` helpers → `project/loading_support.py`;
+>   `app_analysis.py` and `tests/test_app_analysis_part3.py` retargeted; root files
+>   trashed.
+> - **2e ✅** Reporting helpers split to `reporting/target_report.py` and
+>   `project/cache.py` (AST/report cache moved under `project/`); consumers
+>   (`app_analysis.py`, `_app_analysis_checks.py`, `_app_analysis_commands.py`,
+>   `application/`) retargeted; root reporting shims removed.
+> - **2f ✅** `app_base.py` dissolved into `core/terminal.py`, `core/logging.py`,
+>   `core/interaction.py`, `cli/syntax_check.py`, `cli/config.py` with consumer
+>   retargets (`app.py`, `cli/startup.py`, `cli/_interaction.py`,
+>   `cli/app_commands.py`, `cli/command_handlers.py`, `tests/test_app_base.py`,
+>   `tests/test_cli.py`, `tests/test_app_textual.py`); `app_base.py` trashed.
+>   `app_support.py` dissolved into `project/support.py` (canonical target/ICF/csv
+>   queries, warning helpers, `TargetLoadError`) and `cli/menu.py` (menu/help
+>   presentation); consumer retargets (`app.py`, `app_analysis.py`,
+>   `cli/startup.py`, `cli/_interaction.py`, `cli/rich_output.py`,
+>   `application/project.py`, `application/analyze.py`,
+>   `_app_analysis_commands.py`, `tests/test_app_support_helpers.py`,
+>   `tests/test_app_analysis_part3.py`); the `app_support` DI seams in
+>   `project/loading*.py` removed (dead duplicates deleted); `app_support.py`
+>   trashed. `application/project.py` now binds `project/support.py` directly.
+> - **2g ✅** `app_analysis.py`, `_app_analysis_checks.py`, `_app_analysis_commands.py`
+>   dissolved into `application/` (project loading orchestration and cache wrappers
+>   in `application/project.py`, checks/run orchestration in `application/checks.py`,
+>   per-command implementations in `application/commands.py`, output glue in
+>   `application/output.py`, `flush_stdout()` in `core/terminal.py`); all src
+>   consumers (`app.py` facade aliases, `application/analyze.py`,
+>   `cli/startup.py`, `cli/app_commands.py`) and tests (`test_app_analysis_part1–4`,
+>   `test_app_analysis_project_cache.py`, `test_app_config_validation.py`,
+>   `_app_analysis_test_support.py`) retargeted; `app.py` public surface kept
+>   (`DEFAULT_CONFIG`, `EXIT_*`, `VARIABLE_ANALYSES`, `analyze_variables`,
+>   `validate_icf_entries_against_program`, `app_analysis_checks`/
+>   `app_analysis_commands` aliases); call-time vs def-time monkeypatch semantics
+>   preserved (module-global reads for `analyze_variables`/`analyze_shadowing`/
+>   `AnalysisReportCache`/`get_cache_dir`/`compute_analysis_report_cache_key`/
+>   `emit_output`/`ASTCache`/`parse_icf_file`/`validate_icf_entries_against_program`);
+>   the three flat modules trashed; all gates green (1069 passing, pyright strict,
+>   ruff, `ruff format --check`).
+>
+> - **2h ✅** `_app_startup.py` and `_app_interactive_menus.py` dissolved into
+>   `cli/startup.py` (merged `main` keeps the full module-function DI defaults;
+>   `run_interactive_session` now defaulted via `run_main_loop_fn` so `app.main`
+>   still injects `app.run_interactive_session`) and `cli/app_commands.py`
+>   (`run_validate_config_command`, `run_analyze_command`,
+>   `run_cache_prune_command`, `show_config` inline with
+>   `emit_output_fn=console_module.print_output`); `InteractiveCliOverrides`/
+>   `resolve_interactive_cli_overrides` moved to `cli/startup.py`; `show_config`
+>   duplicate removed from `cli/startup.py`; the two flat modules trashed; tests
+>   retargeted (`tests/test_cli.py` — 8 `startup_application.main(` call sites plus
+>   menu-helper delegation rewrites; `tests/test_app_cli_commands.py` — command
+>   delegation rewrites patching `cli/` owners); new
+>   `tests/test_dependency_guard.py` AST/import-graph guard covering
+>   `application`→`app`/`app_*`/`_app_*`, `core`/`project`→`application`+`cli`,
+>   `resolution`→`application`+`project`, `analyzers`→`application` and the
+>   reporting-internals rule; all gates green (1072 passing).
+>
+> All gates green (1072 passing) after each substage; Phase 2 complete.
 
 Replace flat root modules with layered packages so `application/` depends only
 on `project/core/analyzers/resolution/reporting/validation`.
@@ -209,6 +294,66 @@ Acceptance: no mixed-concept flat module survives; the dependency-guard test
 (mechanical enforcement below) is green.
 
 #### Phase 3 — Simplify `engine.py` to orchestration
+
+> **Phase 3 progress (substages 3a–3f).**
+>
+> - **3a ✅** Cache implementation moved under `cache/`: `cache.py` → `cache/__init__.py`
+>   (facade, `__all__`), `_cache_classes.py` → `cache/classes.py`,
+>   `_cache_manager.py` → `cache/manager.py`; internal/computed-mode imports
+>   retargeted (`from .. import cache as cache_module`,
+>   `from .._config_defaults import PROJECT_CACHE_CONFIG_KEYS`);
+>   `tests/test_cache_classes.py` retargeted to `sattlint.cache.classes`; root
+>   `cache.py`, `_cache_classes.py`, `_cache_manager.py` trashed. All gates green.
+> - **3b ✅** Graphics handling moved under `graphics/`: `graphics_validation.py` →
+>   `graphics/validation.py`, `_graphics_validation_bindings.py` →
+>   `graphics/validation_bindings.py`, `picture_display_paths.py` →
+>   `graphics/picture_display_paths.py`, `_picture_display_path_runtime*.py` →
+>   `graphics/picture_display_runtime*.py`, `_engine_graphics_helpers.py` →
+>   `graphics/graphics_helpers.py`, `_engine_graphics_context_helpers.py` →
+>   `graphics/graphics_context_helpers.py`; consumers (`_engine_syntax_helpers.py`,
+>   `engine.py`, `_engine_project_loader.py`, `analyzers/picture_display_paths.py`,
+>   `analyzers/variables/_variables_picture_display_support.py`) and 6 test files
+>   retargeted; 7 root graphics modules trashed. All gates green.
+> - **3c ✅** Validation subsystem moved under `validation/`:
+>   `validation.py` → `validation/__init__.py` (facade, keeps `__all__`),
+>   `_validation_shared.py` → `validation/shared.py`, `_validation_expression.py` →
+>   `validation/expression.py`, `_validation_sequences.py` → `validation/sequences.py`,
+>   `_validation_structure_core.py` → `validation/structure_core.py`,
+>   `_validation_structure_modules.py` → `validation/structure_modules.py`,
+>   `_validation_type_helpers.py` → `validation/type_helpers.py`; subtree relative
+>   imports deepened (`.grammar`/`.resolution.type_graph`/`.types` → `..*`);
+>   consumers of `_validation_shared`/`_validation_type_helpers` retargeted
+>   (`engine.py`, `_engine_syntax_helpers.py`, `_engine_loader_base.py`,
+>   `_engine_project_loader.py`, `graphics/graphics_helpers.py`,
+>   `graphics/graphics_context_helpers.py`, `string_inference.py`,
+>   `analyzers/shared/_validators.py`, `analyzers/variables/_variables_contracts.py`,
+>   `analyzers/variables/_variables_string_overflow.py`); 7 root validation modules
+>   trashed. All gates green (1072 passing).
+> - **3d ✅** Parsing/validation-surface split of `_engine_syntax_helpers.py`:
+>   `core/syntax.py` (parsing + syntax validation surface),
+>   `core/libraries.py` (`expected_unavailable_library_reason`/
+>   `is_expected_unavailable_library`), `project/loading.py`
+>   (`record_project_failure`/`record_project_warning`/`format_debug_*`/
+>   `is_within_directory`); consumers retargeted (`_engine_loader_base.py`,
+>   `_engine_loader_config.py`, `_engine_project_loader.py`, `engine.py`,
+>   `graphics/graphics_helpers.py`, `graphics/graphics_context_helpers.py`,
+>   `core/_semantic_helpers.py`, `project/support.py`); original
+>   `_engine_syntax_helpers.py` trashed. All gates green.
+> - **3e ✅** Loader relocated under `project/`: `_engine_loader_base/config/lookup` →
+>   `project/loader_base.py`/`project/loader_config.py`/`project/loader_lookup.py`,
+>   `_engine_project_loader.py` → `project/loader.py`;
+>   `_engine_dependency_helpers.py` → `resolution/dependency_versions.py`;
+>   `merge_project_basepicture` moved to `models/project_graph.py` (engine still
+>   re-exports it for the DI seam); `core/semantic.py` retargeted off `engine`
+>   (`core.syntax.CodeMode`, `project.loader*`, `models.project_graph.merge_*`),
+>   breaking the `core → engine` cycle; all 5 `_engine_loader*`/
+>   `_engine_dependency_helpers` originals trashed; no `core`/`project`/
+>   `resolution` module imports `engine` anymore. All gates green (1072 passing).
+>
+> - **3f pending:** slim `engine.py` to orchestration (narrow exports),
+>   retarget `application/`/`cli/` engine-module DI seams, extend dependency-guard
+>   if needed.
+>
 
 Reduce `engine.py` to composition, not a service locator / export hub. Move
 implementation to the owning package:
@@ -276,22 +421,6 @@ final completion criterion for Part A.
 
 ### Part B — Registry
 
-#### Phase 6 — Replace registry reflection with typed definitions
-
-Replace string/reflection execution (`getattr` by attribute name) with typed
-analyzer definitions containing the callable:
-
-```python
-AnalyzerSpec(key="powerup", run=analyze_powerup, requires=(...))
-```
-
-Goals: eliminate avoidable `Any`, eliminate runtime `getattr()` for execution,
-reduce dynamic imports, make execution directly type-checkable, keep lookup
-simple. Do not reintroduce plugin complexity.
-
-Acceptance: analyzer execution has no string-based `getattr()`; callables are
-statically typed; pyright clean; outputs unchanged.
-
 #### Phase 7 — Validate analyzer dependency graphs at construction
 
 Reject invalid graphs when the registry is constructed: duplicate keys, unknown
@@ -309,32 +438,6 @@ representations; retain aliases only as documented user-facing compatibility.
 
 Acceptance: internal maps hold canonical keys; dependency checks use them;
 lookup stays backward-compatible where required.
-
-#### Phase 9 — Simplify registry/catalog/dispatch
-
-Review `registry`, `catalog`, `dispatch`, `specs`, `delivery` as a whole. Remove
-layers that only forward calls or exist because of past refactors. Target:
-
-```text
-AnalyzerSpec → AnalyzerRegistry → Analyzer execution
-```
-
-Keep separate modules only for meaningful domain boundaries; optimize for
-minimum conceptual indirection, not minimum file count.
-
-Acceptance: the execution path is traceable without traversing facade modules.
-
-#### Phase 10 — Remove remaining compatibility architecture
-
-Once Parts A–B are working, delete historical compatibility mechanisms
-(`_COMPATIBILITY_HELPERS`, `_REGISTRY_MONKEYPATCH_SURFACE`, any remaining
-`_app_*_from_app`, `_app_facade_*`). Do not move them elsewhere. Replace
-monkeypatch-only production APIs with injection or typed test seams. Keep only
-documented public compatibility.
-
-Acceptance: no compatibility helper exists solely for old internal callers; no
-monkeypatch-only production API; legacy aliases removed or justified; full suite
-green.
 
 ### Part C — Domain structure & boundaries
 
@@ -392,13 +495,6 @@ have no owning phase. Consolidate config under `config/`, split
 of truth.
 
 ### Part D — Reliability & tests
-
-#### Phase 17 — Analyzer isolation and ordering tests
-
-- **Isolation:** each analyzer run alone produces the same result as in the
-  full suite, except for explicitly declared dependencies.
-- **Order independence:** run analyzers in different valid orders and verify
-  equivalent results. Undeclared ordering dependencies fail tests.
 
 #### Phase 18 — Semantic invariants
 
@@ -465,17 +561,15 @@ A violation fails CI.
 
 ## Definition of Done
 
+This plan:
 - Canonical corpus cases enforce exact expected behavior.
 - Production code has no dependency on `tests/fixtures/corpus`.
 - Project loader no longer imports/dynamically loads `engine`.
-- Analyzer execution uses typed callable definitions.
 - Semantic index uses a typed `SemanticIndex` object.
 - Analyzer dependency graphs are validated; internal keys are canonical.
-- Obsolete compatibility/monkeypatch/facade mechanisms are removed.
 - `engine.py` is orchestration, not a service locator.
 - `application/` is a thin typed service layer (`analyze_project`).
 - Reporting and validation have defined boundaries (Phases 14–15).
-- Analyzers are independent except for explicit dependencies.
 - Semantic and project invariants are tested.
 - Corpus differential reporting is available.
 - Supported parser versions are explicitly tested.
@@ -484,6 +578,11 @@ A violation fails CI.
 - Gates: `pyright src/sattlint` 0 errors, `ruff check` clean, `ruff format --check` clean, full pytest green.
 - Installed-package behavior works without repository test files.
 - No functionality or diagnostic behavior changes unintentionally.
+
+Deferred to `analyzer-execution-refactor.md`:
+- Analyzer execution uses typed callable definitions (Phase R1).
+- Obsolete compatibility/monkeypatch/facade mechanisms are removed (Phase R3).
+- Analyzers are independent except for explicit dependencies (Phase R4).
 
 ---
 

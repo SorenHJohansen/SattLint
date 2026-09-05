@@ -16,6 +16,7 @@ Index of design documents and owner hints.
 | [../public/architecture.md](../public/architecture.md) | Canonical high-level architecture summary | Active | All agents |
 | [../../ARCHITECTURE.md](../../ARCHITECTURE.md) | Compatibility pointer for legacy links | Active | All agents |
 | [../exec-plans/architecture-upgrade-plan.md](../exec-plans/architecture-upgrade-plan.md) | Unified architecture upgrade plan (merged app-layer + reliability refactor) | Active | All agents |
+| [../exec-plans/analyzer-execution-refactor.md](../exec-plans/analyzer-execution-refactor.md) | Deferred registry/execution refactors (Phases R1–R4) | Deferred | All agents |
 
 ## Adding New Docs
 

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from sattlint.analysis_dispatch import get_cli_dispatch_analyzers, run_registry_analyzer
+from sattlint.analyzers.dispatch import get_cli_dispatch_analyzers, run_registry_analyzer
 from sattlint.analyzers.framework import build_analysis_context
 from sattlint.analyzers.registry import get_enabled_analyzers
 from sattlint.engine import CodeMode, SattLineProjectLoader, SattLineProjectLoaderConfig, merge_project_basepicture
@@ -22,9 +22,7 @@ FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "sample_sattline_fi
 # Add a fixture here whenever a real file surfaces a new analyzer crash shape.
 # The file must load through SattLineProjectLoader without a strict-validation
 # failure so the sweep reaches the analyzers.
-ANALYZER_CRASH_FIXTURES = (
-    "EnableExpr",
-)
+ANALYZER_CRASH_FIXTURES = ("EnableExpr",)
 
 
 def _load_base_picture(stem: str):
@@ -56,7 +54,5 @@ def test_full_analysis_pipeline_does_not_crash_on_real_fixture(stem: str) -> Non
         try:
             report = run_registry_analyzer(spec, context)
         except Exception as exc:
-            raise AssertionError(
-                f"{stem}.s: analyzer '{spec.key}' raised {type(exc).__name__}: {exc}"
-            ) from exc
+            raise AssertionError(f"{stem}.s: analyzer '{spec.key}' raised {type(exc).__name__}: {exc}") from exc
         context.shared_artifacts.reports_by_analyzer_key[spec.key] = report

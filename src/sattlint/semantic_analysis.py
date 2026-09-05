@@ -6,7 +6,7 @@ from collections.abc import Mapping
 
 from sattline_parser.models.ast_model import BasePicture
 
-from .analysis_dispatch import (
+from .analyzers.dispatch import (
     collect_lsp_report_issues,
     run_variables_registry_report,
 )

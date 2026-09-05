@@ -33,9 +33,9 @@ from sattline_parser.models.expressions import (
     VarRef,
 )
 
-from ._validation_type_helpers import is_string_simple_type
 from .resolution.common import select_moduletype_def_strict, varname_base, varname_full
 from .resolution.scope import ScopeContext
+from .validation.type_helpers import is_string_simple_type
 
 if TYPE_CHECKING:
     from .models.project_graph import ProjectGraph

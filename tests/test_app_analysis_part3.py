@@ -1,5 +1,5 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false
-from sattlint import _app_analysis_loading_support as loading_support_module
+from sattlint.project import loading_support as loading_support_module
 
 from ._app_analysis_test_support import *
 from .helpers import AnalysisGraphStub
@@ -7,24 +7,28 @@ from .helpers import AnalysisGraphStub
 
 def test_app_analysis_wrappers_delegate_to_underlying_helpers(monkeypatch):
     monkeypatch.setattr(
-        app_analysis.app_support_module,
+        support_module,
         "target_validation_warnings",
         lambda target, warnings: [f"{target}:{len(warnings)}"],
     )
-    monkeypatch.setattr(app_analysis, "_iter_loaded_projects", lambda *_args, **_kwargs: iter([("TargetA", "bp", "g")]))
-    monkeypatch.setattr(app_analysis, "_source_paths_for_current_target", lambda *_args: {Path("TargetA.s")})
-    monkeypatch.setattr(app_analysis, "_target_is_library", lambda *_args: True)
-    monkeypatch.setattr(app_analysis, "get_default_cli_analyzers", lambda: ["variables"])
+    monkeypatch.setattr(
+        project_application, "_iter_loaded_projects", lambda *_args, **_kwargs: iter([("TargetA", "bp", "g")])
+    )
+    monkeypatch.setattr(project_application, "_source_paths_for_current_target", lambda *_args: {Path("TargetA.s")})
+    monkeypatch.setattr(project_application, "_target_is_library", lambda *_args: True)
+    monkeypatch.setattr(analysis_catalog_module, "get_default_cli_analyzers", lambda: ["variables"])
 
-    assert app_analysis._target_validation_warnings("TargetA", ["a", "b"]) == ["TargetA:2"]
-    assert list(app_analysis.iter_loaded_projects({})) == [("TargetA", "bp", "g")]
-    assert app_analysis.source_paths_for_current_target(cast(Any, "bp"), cast(Any, "graph")) == {Path("TargetA.s")}
-    assert app_analysis.target_is_library({}, cast(Any, "bp"), cast(Any, "graph")) is True
-    assert app_analysis._get_enabled_analyzers() == ["variables"]
+    assert project_application._target_validation_warnings("TargetA", ["a", "b"]) == ["TargetA:2"]
+    assert list(project_application.iter_loaded_projects({})) == [("TargetA", "bp", "g")]
+    assert project_application.source_paths_for_current_target(cast(Any, "bp"), cast(Any, "graph")) == {
+        Path("TargetA.s")
+    }
+    assert project_application.target_is_library({}, cast(Any, "bp"), cast(Any, "graph")) is True
+    assert checks_application._get_enabled_analyzers() == ["variables"]
 
 
 def test_target_validation_warnings_suppresses_expected_unavailable_dependency_warning():
-    assert app_analysis._target_validation_warnings(
+    assert project_application._target_validation_warnings(
         "KaHAMPCSøjleLib",
         [
             "KaHAMPCSøjleLib: dependency 'controllib' unavailable: expected proprietary dependency",
@@ -35,14 +39,14 @@ def test_target_validation_warnings_suppresses_expected_unavailable_dependency_w
 
 
 def test_analysis_loading_helpers_cover_target_accessors_and_refresh_formatting(monkeypatch):
-    monkeypatch.setattr(app_analysis.app_support_module, "get_analyzed_targets", lambda cfg: ["TargetA"])
-    monkeypatch.setattr(app_analysis.app_support_module, "require_analyzed_targets", lambda cfg: ["TargetB"])
+    monkeypatch.setattr(support_module, "get_analyzed_targets", lambda cfg: ["TargetA"])
+    monkeypatch.setattr(support_module, "require_analyzed_targets", lambda cfg: ["TargetB"])
 
-    assert app_analysis._get_analyzed_targets({}) == ["TargetA"]
-    assert app_analysis._require_analyzed_targets({}) == ["TargetB"]
+    assert project_application._get_analyzed_targets({}) == ["TargetA"]
+    assert project_application._require_analyzed_targets({}) == ["TargetB"]
     assert loading_support_module._workspace_dependency_suffixes("draft") == (".l", ".z")
     assert loading_support_module._workspace_dependency_suffixes("official") == (".z",)
-    assert app_analysis.analysis_loading_module._format_refresh_stage_timings(
+    assert analysis_loading_module._format_refresh_stage_timings(
         {"load_or_parse": 0.1, "validate": 0.2, "ast_cache_save": 0.3},
         refresh_mode="ast-only",
     ) == (
@@ -125,8 +129,8 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
 
     loader = FakeLoader()
     engine_stub = SimpleNamespace(is_within_directory=lambda *_args: False)
-    monkeypatch.setattr(app_analysis.analysis_loading_module, "target_is_library", lambda *args, **kwargs: False)
-    app_analysis.analysis_loading_module._include_reverse_library_consumers(
+    monkeypatch.setattr(analysis_loading_module, "target_is_library", lambda *args, **kwargs: False)
+    analysis_loading_module._include_reverse_library_consumers(
         cfg,
         selected_target="Selected",
         root_bp=cast(Any, SimpleNamespace(header=SimpleNamespace(name="BasePicture"))),
@@ -139,7 +143,7 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
     )
     assert visits == []
 
-    monkeypatch.setattr(app_analysis.analysis_loading_module, "target_is_library", lambda *args, **kwargs: True)
+    monkeypatch.setattr(analysis_loading_module, "target_is_library", lambda *args, **kwargs: True)
     monkeypatch.setattr(
         loading_support_module,
         "_iter_workspace_reverse_library_consumer_dependency_files",
@@ -154,7 +158,7 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
         ),
     )
 
-    app_analysis.analysis_loading_module._include_reverse_library_consumers(
+    analysis_loading_module._include_reverse_library_consumers(
         cfg,
         selected_target="Selected",
         root_bp=cast(Any, SimpleNamespace(header=SimpleNamespace(name="BasePicture"))),
@@ -184,7 +188,7 @@ def test_analysis_loading_cache_manifest_files_adds_companions_and_dependency_ma
     graph.record_root_origin("TargetA", source_path=Path("programs/TargetA.s"), library_name="programs")
     graph.record_root_origin("TargetB", source_path=Path("libraries/TargetB.s"), library_name="libraries")
 
-    manifest_files = app_analysis.analysis_loading_module.cache_manifest_files(
+    manifest_files = analysis_loading_module.cache_manifest_files(
         cfg,
         graph,
         find_dependency_path_fn=lambda target_name, requester_dir: (

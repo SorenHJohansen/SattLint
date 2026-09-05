@@ -13,10 +13,11 @@ from sattline_parser.models.ast_model import (
     SingleModule,
 )
 
-from ..engine import CodeMode, expected_unavailable_library_reason
 from ..models.project_graph import ProjectGraph
 from ..resolution import TypeGraph
 from ..resolution.common import resolve_moduletype_def_strict
+from .libraries import expected_unavailable_library_reason
+from .syntax import CodeMode
 
 _DEFAULT_LIST_DISPLAY_LIMIT = 12
 

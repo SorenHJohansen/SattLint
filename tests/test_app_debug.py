@@ -5,7 +5,7 @@ import logging
 
 import pytest
 
-from sattlint._app_debug import log_debug_exception
+from sattlint.core.debug import log_debug_exception
 
 
 def test_log_debug_exception_logs_traceback_when_debug_disabled(

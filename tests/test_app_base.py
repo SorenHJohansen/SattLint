@@ -9,7 +9,14 @@ from typing import Any
 
 import pytest
 
-from sattlint import app_base, engine
+from sattlint import config as config_module
+from sattlint import engine
+from sattlint._exit_codes import EXIT_SUCCESS
+from sattlint.cli import config as cli_config
+from sattlint.cli import syntax_check as syntax_check_module
+from sattlint.core import interaction as interaction_module
+from sattlint.core import terminal as terminal_module
+from sattlint.core.logging import apply_debug
 
 
 class _FakeKernelCall:
@@ -56,70 +63,72 @@ def _install_fake_kernel(monkeypatch: pytest.MonkeyPatch, **kwargs: Any) -> _Fak
     return kernel32
 
 
-def test_config_wrappers_delegate_and_save_emits(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_config_save_emits_confirmation(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     cfg = {"debug": False}
     config_path = Path("config.toml")
     seen: dict[str, Any] = {}
 
-    monkeypatch.setattr(app_base, "_load_config", lambda path: (seen.setdefault("load_path", path), True))
     monkeypatch.setattr(
-        app_base,
-        "_save_config",
+        config_module,
+        "save_config",
         lambda path, data: seen.update({"save_path": path, "save_cfg": data}),
     )
-    monkeypatch.setattr(app_base, "_self_check", lambda data: seen.setdefault("self_check_cfg", data) is cfg)
-    monkeypatch.setattr(
-        app_base,
-        "_target_exists",
-        lambda target, data: seen.update({"target": target, "target_cfg": data}) or True,
-    )
 
-    loaded_cfg, created = app_base.load_config(config_path)
-    app_base.save_config(config_path, cfg)
+    cli_config.save_config(config_path, cfg)
 
-    assert loaded_cfg == config_path
-    assert created is True
-    assert app_base.self_check(cfg) is True
-    assert app_base.target_exists("RootProgram", cfg) is True
     assert seen == {
-        "load_path": config_path,
         "save_path": config_path,
         "save_cfg": cfg,
-        "self_check_cfg": cfg,
-        "target": "RootProgram",
-        "target_cfg": cfg,
     }
     assert capsys.readouterr().out == "Config saved\n"
 
 
-def test_apply_debug_and_build_cli_parser_cover_both_branches(monkeypatch: pytest.MonkeyPatch) -> None:
-    parser_calls: list[str | None] = []
-    root_logger = logging.getLogger()
-    original_root_level = root_logger.level
-    original_log_level = app_base.log.level
+def test_load_self_check_and_target_exists_delegate(monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = {"debug": False}
+    config_path = Path("config.toml")
+    seen: dict[str, Any] = {}
+
+    monkeypatch.setattr(config_module, "load_config", lambda path: (seen.setdefault("load_path", path), True))
+    monkeypatch.setattr(config_module, "self_check", lambda data: seen.setdefault("self_check_cfg", data) is cfg)
     monkeypatch.setattr(
-        app_base,
-        "_build_cli_parser",
-        lambda version=None: parser_calls.append(version) or {"version": version},
+        config_module,
+        "target_exists",
+        lambda target, data: seen.update({"target": target, "target_cfg": data}) or True,
     )
 
-    try:
-        app_base.apply_debug({"debug": True})
-        assert root_logger.level == logging.DEBUG
-        assert app_base.log.level == logging.DEBUG
+    loaded_cfg, created = config_module.load_config(config_path)
 
-        app_base.apply_debug({"debug": False})
+    assert loaded_cfg == config_path
+    assert created is True
+    assert config_module.self_check(cfg) is True
+    assert config_module.target_exists("RootProgram", cfg) is True
+    assert seen == {
+        "load_path": config_path,
+        "self_check_cfg": cfg,
+        "target": "RootProgram",
+        "target_cfg": cfg,
+    }
+
+
+def test_apply_debug_switches_log_levels(monkeypatch: pytest.MonkeyPatch) -> None:
+    import logging as _logging  # noqa: PLC0415 - mirror root logger state cleanly
+
+    sattlint_logger = _logging.getLogger("SattLint")
+    root_logger = _logging.getLogger()
+    original_root_level = root_logger.level
+    original_log_level = sattlint_logger.level
+
+    try:
+        apply_debug({"debug": True})
+        assert root_logger.level == logging.DEBUG
+        assert sattlint_logger.level == logging.DEBUG
+
+        apply_debug({"debug": False})
         assert root_logger.level == logging.INFO
-        assert app_base.log.level == logging.INFO
+        assert sattlint_logger.level == logging.INFO
     finally:
         root_logger.setLevel(original_root_level)
-        app_base.log.setLevel(original_log_level)
-
-    assert app_base.build_cli_parser() == {"version": None}
-    assert app_base.build_cli_parser(version="9.9.9") == {"version": "9.9.9"}
-    assert parser_calls == [None, "9.9.9"]
+        sattlint_logger.setLevel(original_log_level)
 
 
 def test_syntax_helpers_cover_line_only_unknown_error_and_warning() -> None:
@@ -131,9 +140,10 @@ def test_syntax_helpers_cover_line_only_unknown_error_and_warning() -> None:
         line=4,
     )
 
-    assert app_base._format_syntax_error(result) == "ERROR [validation] Program.s:4: Unknown error"
+    assert syntax_check_module._format_syntax_error(result) == "ERROR [validation] Program.s:4: Unknown error"
     assert (
-        app_base._format_syntax_warning(Path("Program.s"), "Watch this") == "WARNING [validation] Program.s: Watch this"
+        syntax_check_module._format_syntax_warning(Path("Program.s"), "Watch this")
+        == "WARNING [validation] Program.s: Watch this"
     )
 
 
@@ -145,7 +155,7 @@ def test_run_syntax_check_command_prints_warnings_before_ok(
     source_path = tmp_path / "Program.s"
     source_path.write_text("BasePicture\n", encoding="utf-8")
     monkeypatch.setattr(
-        app_base.engine_module,
+        engine,
         "validate_single_file_syntax",
         lambda _path: engine.SyntaxValidationResult(
             file_path=source_path,
@@ -155,7 +165,7 @@ def test_run_syntax_check_command_prints_warnings_before_ok(
         ),
     )
 
-    assert app_base.run_syntax_check_command(str(source_path)) == app_base.EXIT_SUCCESS
+    assert syntax_check_module.run_syntax_check_command(str(source_path)) == EXIT_SUCCESS
 
     captured = capsys.readouterr()
     assert captured.out == "OK\n"
@@ -166,7 +176,7 @@ def test_run_syntax_check_command_prints_warnings_before_ok(
 def test_configure_windows_console_api_wrapper_delegates(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, Any] = {}
     monkeypatch.setattr(
-        app_base,
+        terminal_module,
         "_configure_windows_console_api",
         lambda kernel32, coord_type, buffer_info_type: seen.update(
             {
@@ -177,7 +187,7 @@ def test_configure_windows_console_api_wrapper_delegates(monkeypatch: pytest.Mon
         ),
     )
 
-    app_base.configure_windows_console_api("kernel32", "coord", "buffer")
+    terminal_module.configure_windows_console_api("kernel32", "coord", "buffer")
 
     assert seen == {
         "kernel32": "kernel32",
@@ -188,9 +198,9 @@ def test_configure_windows_console_api_wrapper_delegates(monkeypatch: pytest.Mon
 
 def test_clear_windows_console_wrapper_delegates(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
-    monkeypatch.setattr(app_base, "_clear_windows_console", lambda: calls.append("clear"))
+    monkeypatch.setattr(terminal_module, "_clear_windows_console", lambda: calls.append("clear"))
 
-    app_base.clear_windows_console()
+    terminal_module.clear_windows_console()
 
     assert calls == ["clear"]
 
@@ -198,7 +208,7 @@ def test_clear_windows_console_wrapper_delegates(monkeypatch: pytest.MonkeyPatch
 def test_clear_windows_console_executes_success_path(monkeypatch: pytest.MonkeyPatch) -> None:
     kernel32 = _install_fake_kernel(monkeypatch)
 
-    app_base._clear_windows_console()
+    terminal_module._clear_windows_console()
 
     assert kernel32.GetStdHandle.calls
     assert kernel32.GetConsoleScreenBufferInfo.calls
@@ -225,7 +235,7 @@ def test_clear_windows_console_raises_for_each_windows_api_failure(
     _install_fake_kernel(monkeypatch, **kwargs)
 
     with pytest.raises(OSError, match=message):
-        app_base._clear_windows_console()
+        terminal_module._clear_windows_console()
 
 
 def test_clear_screen_covers_default_windows_helper_and_ansi_paths(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -240,9 +250,9 @@ def test_clear_screen_covers_default_windows_helper_and_ansi_paths(monkeypatch: 
             "write": lambda self, text: writes.append(text),
         },
     )()
-    monkeypatch.setattr(app_base, "_clear_windows_console", lambda: clears.append("clear"))
+    monkeypatch.setattr(terminal_module, "_clear_windows_console", lambda: clears.append("clear"))
 
-    app_base.clear_screen(
+    terminal_module.clear_screen(
         os_module=type("_Os", (), {"name": "nt", "system": lambda self, command: 1})(),
         sys_module=type("_Sys", (), {"stdout": stdout})(),
     )
@@ -251,7 +261,7 @@ def test_clear_screen_covers_default_windows_helper_and_ansi_paths(monkeypatch: 
     assert writes == []
     assert flushes == ["flush"]
 
-    app_base.clear_screen(
+    terminal_module.clear_screen(
         os_module=type("_Os", (), {"name": "posix", "system": lambda self, command: 1})(),
         sys_module=type("_Sys", (), {"stdout": stdout})(),
         clear_windows_console=lambda: None,
@@ -273,7 +283,7 @@ def test_clear_screen_falls_back_to_cls_or_ansi_after_windows_error() -> None:
         },
     )()
 
-    app_base.clear_screen(
+    terminal_module.clear_screen(
         os_module=type("_Os", (), {"name": "nt", "system": lambda self, command: cls_calls.append(command) or 0})(),
         sys_module=type("_Sys", (), {"stdout": stdout_cls})(),
         clear_windows_console=lambda: (_ for _ in ()).throw(OSError("boom")),
@@ -282,7 +292,7 @@ def test_clear_screen_falls_back_to_cls_or_ansi_after_windows_error() -> None:
     assert cls_calls == ["cls"]
     assert ansi_writes == []
 
-    app_base.clear_screen(
+    terminal_module.clear_screen(
         os_module=type("_Os", (), {"name": "nt", "system": lambda self, command: 1})(),
         sys_module=type("_Sys", (), {"stdout": stdout_cls})(),
         clear_windows_console=lambda: (_ for _ in ()).throw(OSError("boom")),
@@ -300,15 +310,15 @@ def test_input_helpers_cover_pause_confirm_prompt_and_quit(monkeypatch: pytest.M
         lambda prompt="": prompts.append(prompt) or next(responses),
     )
     clear_calls: list[str] = []
-    monkeypatch.setattr(app_base, "clear_screen", lambda: clear_calls.append("clear"))
+    monkeypatch.setattr(terminal_module, "clear_screen", lambda: clear_calls.append("clear"))
 
-    app_base.pause()
-    assert app_base.confirm("Continue") is True
-    assert app_base.prompt("Output", "report.docx") == "report.docx"
-    assert app_base.prompt("Name") == "custom"
+    interaction_module.pause()
+    assert interaction_module.confirm("Continue") is True
+    assert interaction_module.prompt("Output", "report.docx") == "report.docx"
+    assert interaction_module.prompt("Name") == "custom"
 
-    with pytest.raises(app_base.QuitAppError):
-        app_base.quit_app()
+    with pytest.raises(interaction_module.QuitAppError):
+        interaction_module.quit_app()
 
     assert prompts == ["\nPress Enter to continue...", "Continue [y/N]: ", "Output [report.docx]: ", "Name: "]
     assert clear_calls == ["clear"]

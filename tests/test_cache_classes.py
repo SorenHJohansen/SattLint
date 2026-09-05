@@ -8,7 +8,7 @@ import json
 import pytest
 
 from sattlint import cache as cache_module
-from sattlint._cache_classes import (
+from sattlint.cache.classes import (
     AnalysisReportCache,
     ASTCache,
     FileASTCache,

@@ -19,8 +19,8 @@ from sattlint.engine import (
     SattLineProjectLoaderConfig,
     merge_project_basepicture,
 )
-from sattlint.graphics_validation import PictureDisplayPathRow, PictureDisplayRecord
-from sattlint.picture_display_paths import PictureDisplayOccurrence
+from sattlint.graphics.picture_display_paths import PictureDisplayOccurrence
+from sattlint.graphics.validation import PictureDisplayPathRow, PictureDisplayRecord
 
 SAMPLE_FIXTURE_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "sample_sattline_files"
 CORPUS_ANALYZER_FIXTURE_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "corpus" / "semantic" / "analyzer"

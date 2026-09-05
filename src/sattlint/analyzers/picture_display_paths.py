@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from sattline_parser.models.ast_model import BasePicture
 
+from ..graphics.picture_display_paths import diagnose_picture_display_paths, format_picture_display_path_diagnostic
 from ..models.project_graph import ProjectGraph
-from ..picture_display_paths import diagnose_picture_display_paths, format_picture_display_path_diagnostic
 from .framework import Issue, SimpleReport
 
 

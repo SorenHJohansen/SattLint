@@ -20,10 +20,12 @@ from sattline_parser.models.ast_model import (
 )
 
 import sattlint.cache as cache_mod
-from sattlint import app_analysis
 from sattlint import constants as const
+from sattlint import engine as engine_module
 from sattlint.analyzers.variables import IssueKind, analyze_variables
+from sattlint.application import project as project_application
 from sattlint.cache import ANALYSIS_REPORT_CACHE_VERSION, AnalysisReportCache, compute_analysis_report_cache_key
+from sattlint.core import telemetry as telemetry_module
 from sattlint.models.project_graph import ProjectFailure
 from tests.helpers import named_object
 from tests.helpers.app_projects import build_mini_project_context
@@ -51,19 +53,19 @@ def test_load_project_returns_cached_project_without_building_loader(monkeypatch
             assert key == "cache-key"
             return frozenset({Path("programs/TargetA.s")})
 
-    monkeypatch.setattr(app_analysis, "ASTCache", FakeCache)
+    monkeypatch.setattr(project_application, "ASTCache", FakeCache)
     monkeypatch.setattr(
-        app_analysis.engine_module,
+        engine_module,
         "SattLineProjectLoader",
         lambda **_kwargs: pytest.fail("loader should not be created"),
     )
     monkeypatch.setattr(
-        app_analysis.engine_module,
+        engine_module,
         "merge_project_basepicture",
         lambda root_bp, graph: merge_calls.append((root_bp, graph)) or ("bp-cached", graph),
     )
 
-    result = app_analysis.load_project(
+    result = project_application.load_project(
         {
             "program_dir": "programs",
             "other_lib_dirs": [],
@@ -122,15 +124,15 @@ def test_load_project_rebuilds_when_cached_project_is_invalid(monkeypatch):
         def flush_lookup_cache(self):
             return None
 
-    monkeypatch.setattr(app_analysis, "ASTCache", FakeCache)
-    monkeypatch.setattr(app_analysis.engine_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(project_application, "ASTCache", FakeCache)
+    monkeypatch.setattr(engine_module, "SattLineProjectLoader", FakeLoader)
     monkeypatch.setattr(
-        app_analysis.engine_module,
+        engine_module,
         "merge_project_basepicture",
         lambda root_bp, _graph: ("bp-fresh", root_bp.header.name),
     )
 
-    result = app_analysis.load_project(
+    result = project_application.load_project(
         {
             "program_dir": "programs",
             "other_lib_dirs": [],
@@ -179,10 +181,10 @@ def test_iter_loaded_projects_emits_debug_load_summary_when_debug_enabled(monkey
         },
     )
 
-    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+    monkeypatch.setattr(project_application, "emit_output", lambda message: lines.append(message))
 
     loaded = list(
-        app_analysis.iter_loaded_projects(
+        project_application.iter_loaded_projects(
             {"debug": True},
             use_cache=False,
             require_analyzed_targets_fn=lambda _cfg: ["TargetA"],
@@ -212,10 +214,10 @@ def test_iter_loaded_projects_debug_summary_tolerates_unsized_fields(monkeypatch
         unavailable_libraries=object(),
     )
 
-    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+    monkeypatch.setattr(project_application, "emit_output", lambda message: lines.append(message))
 
     loaded = list(
-        app_analysis.iter_loaded_projects(
+        project_application.iter_loaded_projects(
             {"debug": True},
             use_cache=False,
             require_analyzed_targets_fn=lambda _cfg: ["TargetA"],
@@ -333,15 +335,15 @@ def test_load_project_ast_only_refresh_skips_project_merge_and_save(monkeypatch)
         def flush_lookup_cache(self):
             return None
 
-    monkeypatch.setattr(app_analysis, "ASTCache", FakeCache)
-    monkeypatch.setattr(app_analysis.engine_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(project_application, "ASTCache", FakeCache)
+    monkeypatch.setattr(engine_module, "SattLineProjectLoader", FakeLoader)
     monkeypatch.setattr(
-        app_analysis.engine_module,
+        engine_module,
         "merge_project_basepicture",
         lambda *_args, **_kwargs: pytest.fail("merge should be skipped during ast-only refresh"),
     )
 
-    result = app_analysis.load_project(
+    result = project_application.load_project(
         {
             "program_dir": "programs",
             "other_lib_dirs": [],
@@ -436,15 +438,15 @@ def test_load_project_saves_full_mode_file_family_in_cache_manifest(
         def flush_lookup_cache(self):
             return None
 
-    monkeypatch.setattr(app_analysis, "ASTCache", FakeCache)
-    monkeypatch.setattr(app_analysis.engine_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(project_application, "ASTCache", FakeCache)
+    monkeypatch.setattr(engine_module, "SattLineProjectLoader", FakeLoader)
     monkeypatch.setattr(
-        app_analysis.engine_module,
+        engine_module,
         "merge_project_basepicture",
         lambda root_bp, _graph: ("bp-fresh", root_bp.header.name),
     )
 
-    saved_bp, saved_graph = app_analysis.load_project(
+    saved_bp, saved_graph = project_application.load_project(
         {
             "program_dir": str(programs_dir),
             "other_lib_dirs": [],
@@ -520,16 +522,16 @@ def test_load_project_raises_target_load_error_when_root_program_missing(monkeyp
 
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr(app_analysis, "ASTCache", FakeCache)
-    monkeypatch.setattr(app_analysis, "get_cache_dir", lambda: Path("cache-dir"))
-    monkeypatch.setattr(app_analysis.engine_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(project_application, "ASTCache", FakeCache)
+    monkeypatch.setattr(project_application, "get_cache_dir", lambda: Path("cache-dir"))
+    monkeypatch.setattr(engine_module, "SattLineProjectLoader", FakeLoader)
 
     def fake_error_factory(target_name, **kwargs):
         captured.update({"target_name": target_name, **kwargs})
         return RuntimeError(f"missing {target_name}")
 
     with pytest.raises(RuntimeError, match="missing TargetA"):
-        app_analysis.load_project(
+        project_application.load_project(
             {
                 "program_dir": "programs",
                 "other_lib_dirs": ["libs"],
@@ -565,10 +567,10 @@ def test_load_program_ast_raises_when_program_was_not_parsed(monkeypatch):
         def flush_lookup_cache(self):
             return None
 
-    monkeypatch.setattr(app_analysis.engine_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(engine_module, "SattLineProjectLoader", FakeLoader)
 
     with pytest.raises(RuntimeError, match="Program 'TargetA' not parsed"):
-        app_analysis.load_program_ast(
+        project_application.load_program_ast(
             {
                 "program_dir": "programs",
                 "other_lib_dirs": [],
@@ -583,7 +585,7 @@ def test_load_program_ast_raises_when_program_was_not_parsed(monkeypatch):
 def test_load_project_parses_portable_mini_project(tmp_path):
     context = build_mini_project_context(tmp_path)
 
-    project_bp, graph = app_analysis.load_project(
+    project_bp, graph = project_application.load_project(
         cast(dict[str, object], context["cfg"]),
         use_cache=False,
         get_cache_dir_fn=lambda: tmp_path / "cache-dir",
@@ -654,15 +656,15 @@ def test_load_project_library_target_includes_configured_reverse_consumers(monke
         def flush_lookup_cache(self):
             return None
 
-    monkeypatch.setattr(app_analysis, "ASTCache", FakeCache)
-    monkeypatch.setattr(app_analysis.engine_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(project_application, "ASTCache", FakeCache)
+    monkeypatch.setattr(engine_module, "SattLineProjectLoader", FakeLoader)
     monkeypatch.setattr(
-        app_analysis.engine_module,
+        engine_module,
         "merge_project_basepicture",
         lambda bp, graph: (bp.header.name, tuple(sorted(graph.ast_by_name))),
     )
 
-    project_bp, graph = app_analysis.load_project(
+    project_bp, graph = project_application.load_project(
         {
             "program_dir": "programs",
             "other_lib_dirs": ["ProjectLib"],
@@ -740,15 +742,15 @@ def test_load_project_library_target_includes_workspace_reverse_consumers(monkey
         def flush_lookup_cache(self):
             return None
 
-    monkeypatch.setattr(app_analysis, "ASTCache", FakeCache)
-    monkeypatch.setattr(app_analysis.engine_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(project_application, "ASTCache", FakeCache)
+    monkeypatch.setattr(engine_module, "SattLineProjectLoader", FakeLoader)
     monkeypatch.setattr(
-        app_analysis.engine_module,
+        engine_module,
         "merge_project_basepicture",
         lambda bp, graph: (bp.header.name, tuple(sorted(graph.ast_by_name))),
     )
 
-    project_bp, graph = app_analysis.load_project(
+    project_bp, graph = project_application.load_project(
         {
             "program_dir": str(programs_dir),
             "other_lib_dirs": [str(project_lib_dir)],
@@ -888,11 +890,11 @@ def test_load_project_library_target_workspace_program_usage_suppresses_unused_d
             origin_lib=bp.origin_lib,
         )
 
-    monkeypatch.setattr(app_analysis, "ASTCache", FakeCache)
-    monkeypatch.setattr(app_analysis.engine_module, "SattLineProjectLoader", FakeLoader)
-    monkeypatch.setattr(app_analysis.engine_module, "merge_project_basepicture", _merge_project_basepicture)
+    monkeypatch.setattr(project_application, "ASTCache", FakeCache)
+    monkeypatch.setattr(engine_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(engine_module, "merge_project_basepicture", _merge_project_basepicture)
 
-    project_bp, _graph = app_analysis.load_project(
+    project_bp, _graph = project_application.load_project(
         {
             "program_dir": str(programs_dir),
             "other_lib_dirs": [str(project_lib_dir)],
@@ -927,11 +929,11 @@ def test_force_refresh_ast_clears_cache_entries_and_reloads_all_targets():
         def clear(self, key):
             cache_clears.append(key)
 
-    original_emit_output = app_analysis.emit_output
-    app_analysis.emit_output = lambda message: lines.append(message)
+    original_emit_output = project_application.emit_output
+    project_application.emit_output = lambda message: lines.append(message)
 
     try:
-        result = app_analysis.force_refresh_ast(
+        result = project_application.force_refresh_ast(
             {"analyzed_programs_and_libraries": ["TargetA", "TargetB"]},
             cache_key_for_target_fn=lambda _cfg, target_name: f"key:{target_name}",
             load_project_fn=cast(
@@ -947,7 +949,7 @@ def test_force_refresh_ast_clears_cache_entries_and_reloads_all_targets():
             get_cache_dir_fn=lambda: Path("cache-dir"),
         )
     finally:
-        app_analysis.emit_output = original_emit_output
+        project_application.emit_output = original_emit_output
 
     assert cache_clears == ["key:TargetA", "key:TargetB"]
     assert load_calls == [
@@ -972,14 +974,14 @@ def test_force_refresh_ast_emits_stage_timing_summary_in_debug_mode(monkeypatch)
         def clear(self, _key):
             return None
 
-    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(str(message)))
+    monkeypatch.setattr(project_application, "emit_output", lambda message: lines.append(str(message)))
 
     graph = SimpleNamespace(
         load_stage_timings={"load_or_parse": 1.25, "validate": 0.75, "ast_cache_save": 0.25},
         graphics_load_timings={"validate-graphics-file": 0.4, "picture-display-warnings": 0.1},
     )
 
-    result = app_analysis.force_refresh_ast(
+    result = project_application.force_refresh_ast(
         {
             "analyzed_programs_and_libraries": ["TargetA"],
             "debug": True,
@@ -1018,7 +1020,7 @@ def test_refresh_analysis_caches_clears_all_caches_before_ast_refresh():
         refresh_calls.append(dict(cfg))
         return ("bp", "graph")
 
-    result = app_analysis.refresh_analysis_caches(
+    result = project_application.refresh_analysis_caches(
         {"analyzed_programs_and_libraries": ["TargetA"]},
         force_refresh_ast_fn=fake_force_refresh_ast,
         get_cache_dir_fn=lambda: Path("cache-dir"),
@@ -1044,15 +1046,15 @@ def test_force_refresh_ast_collects_stage_timings_and_writes_telemetry_when_enab
             return None
 
     telemetry_path = tmp_path / "telemetry.jsonl"
-    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(str(message)))
-    monkeypatch.setattr(app_analysis.telemetry_module, "get_config_path", lambda: tmp_path / "config.toml")
+    monkeypatch.setattr(project_application, "emit_output", lambda message: lines.append(str(message)))
+    monkeypatch.setattr(telemetry_module, "get_config_path", lambda: tmp_path / "config.toml")
 
     graph = SimpleNamespace(
         load_stage_timings={"load_or_parse": 1.25, "validate": 0.75, "ast_cache_save": 0.25},
         graphics_load_timings={"validate-graphics-file": 0.4, "picture-display-warnings": 0.1},
     )
 
-    result = app_analysis.force_refresh_ast(
+    result = project_application.force_refresh_ast(
         {
             "analyzed_programs_and_libraries": ["TargetA"],
             "debug": False,
@@ -1139,9 +1141,9 @@ def test_ensure_ast_cache_handles_valid_fast_path_rebuilds_and_failures(monkeypa
             raise RuntimeError("boom")
         return (f"bp-{resolved_target}", SimpleNamespace())
 
-    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+    monkeypatch.setattr(project_application, "emit_output", lambda message: lines.append(message))
 
-    ok = app_analysis.ensure_ast_cache(
+    ok = project_application.ensure_ast_cache(
         {
             "analyzed_programs_and_libraries": ["Fresh", "Stale", "Old", "Broken"],
         },
@@ -1183,10 +1185,10 @@ def test_ensure_ast_cache_logs_debug_traceback_on_rebuild_failure(monkeypatch, c
     def fail_load_project(_cfg, target_name=None, use_cache=True, **kwargs):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+    monkeypatch.setattr(project_application, "emit_output", lambda message: lines.append(message))
 
     with caplog.at_level(logging.ERROR, logger="SattLint"):
-        ok = app_analysis.ensure_ast_cache(
+        ok = project_application.ensure_ast_cache(
             {"debug": True},
             get_analyzed_targets_fn=lambda _cfg: ["Broken"],
             cache_key_for_target_fn=lambda _cfg, target_name: f"key:{target_name}",
@@ -1221,9 +1223,9 @@ def test_ensure_ast_cache_uses_has_cache_artifact_for_warm_cache_checks(monkeypa
             return True
 
     lines: list[str] = []
-    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+    monkeypatch.setattr(project_application, "emit_output", lambda message: lines.append(message))
 
-    ok = app_analysis.ensure_ast_cache(
+    ok = project_application.ensure_ast_cache(
         {"analyzed_programs_and_libraries": ["Ok"]},
         cache_key_for_target_fn=lambda _cfg, target_name: f"key:{target_name}",
         load_project_fn=cast(Any, lambda *a, **kw: pytest.fail("should not rebuild")),
@@ -1257,9 +1259,9 @@ def test_ensure_ast_cache_rebuilds_when_has_cache_artifact_fails(monkeypatch):
             return False
 
     lines: list[str] = []
-    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+    monkeypatch.setattr(project_application, "emit_output", lambda message: lines.append(message))
 
-    ok = app_analysis.ensure_ast_cache(
+    ok = project_application.ensure_ast_cache(
         {"analyzed_programs_and_libraries": ["Ok"]},
         cache_key_for_target_fn=lambda _cfg, target_name: f"key:{target_name}",
         load_project_fn=cast(
@@ -1345,7 +1347,7 @@ def test_load_project_library_target_resolves_origin_and_finds_unused(tmp_path):
         "debug": False,
     }
 
-    project_bp, graph = app_analysis.load_project(
+    project_bp, graph = project_application.load_project(
         cfg,
         use_cache=False,
         get_cache_dir_fn=lambda: tmp_path / "cache-dir",

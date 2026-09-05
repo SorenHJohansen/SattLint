@@ -14,18 +14,48 @@ from sattline_parser.models.ast_model import BasePicture, DataType, ModuleTypeDe
 from sattline_parser.preprocessing import is_compressed, preprocess_sl_text
 from sattline_parser.transformer.sl_transformer import SLTransformer
 
-from . import _engine_syntax_helpers as engine_syntax_helpers
-from ._engine_graphics_context_helpers import graphics_source_context_path as _graphics_source_context_path
-from ._engine_graphics_context_helpers import (
+from .core.libraries import expected_unavailable_library_reason, is_expected_unavailable_library
+from .core.syntax import (
+    CodeMode,
+    SyntaxValidationResult,
+    code_ext,
+    create_sl_parser,
+    deps_ext,
+    graphics_ext,
+    graphics_ext_candidates,
+    normalize_code_mode,
+    raise_syntax_validation_failure,
+)
+from .core.syntax import (
+    extract_error_position as _extract_error_position,
+)
+from .core.syntax import (
+    graphics_validation_to_syntax_result as _graphics_validation_to_syntax_result,
+)
+from .core.syntax import (
+    load_source_text as _load_source_text_core,
+)
+from .core.syntax import (
+    parse_source_file as _parse_source_file_core,
+)
+from .core.syntax import (
+    parse_source_text as _parse_source_text_core,
+)
+from .core.syntax import (
+    validate_single_file_syntax as _validate_single_file_syntax_core,
+)
+from .graphics.graphics_context_helpers import graphics_source_context_path as _graphics_source_context_path
+from .graphics.graphics_context_helpers import (
     load_picture_display_source_context as _load_picture_display_source_context,
 )
-from ._engine_graphics_context_helpers import picture_display_path_warnings as _picture_display_path_warnings
-from ._engine_graphics_context_helpers import resolve_graphics_companion_path
-from ._engine_loader_base import (
-    CircularDependencyError,
-    DependencyVersionCompatibilityError,
-)
-from ._engine_loader_config import (
+from .graphics.graphics_context_helpers import picture_display_path_warnings as _picture_display_path_warnings
+from .graphics.graphics_context_helpers import resolve_graphics_companion_path
+from .graphics.picture_display_paths import correlate_picture_display_records
+from .graphics.validation import validate_graphics_file
+from .models.project_graph import ProjectGraph
+from .project.loader import SattLineProjectLoader
+from .project.loader_base import CircularDependencyError, DependencyVersionCompatibilityError
+from .project.loader_config import (
     ContextualFileLookup,
     GraphicsLoadTimingSink,
     LoadStageTimingSink,
@@ -35,11 +65,7 @@ from ._engine_loader_config import (
     build_project_loader_from_type,
     validate_loader_config,
 )
-from ._engine_project_loader import SattLineProjectLoader
-from ._validation_shared import ValidationNotice, coerce_validation_notice
-from .graphics_validation import validate_graphics_file
-from .models.project_graph import ProjectGraph
-from .picture_display_paths import correlate_picture_display_records
+from .project.loading import is_within_directory
 from .utils.text_processing import find_disallowed_comments
 from .validation import (
     LOCAL_STRUCTURE_VALIDATION_SCHEMA_VERSION,
@@ -48,22 +74,7 @@ from .validation import (
     validate_transformed_basepicture_dependency_context,
     validate_transformed_basepicture_locally,
 )
-
-SyntaxValidationResult = engine_syntax_helpers.SyntaxValidationResult
-CodeMode = engine_syntax_helpers.CodeMode
-code_ext = engine_syntax_helpers.code_ext
-deps_ext = engine_syntax_helpers.deps_ext
-graphics_ext = engine_syntax_helpers.graphics_ext
-graphics_ext_candidates = engine_syntax_helpers.graphics_ext_candidates
-normalize_code_mode = engine_syntax_helpers.normalize_code_mode
-create_sl_parser = engine_syntax_helpers.create_sl_parser
-is_within_directory = engine_syntax_helpers.is_within_directory
-is_expected_unavailable_library = engine_syntax_helpers.is_expected_unavailable_library
-expected_unavailable_library_reason = engine_syntax_helpers.expected_unavailable_library_reason
-raise_syntax_validation_failure = engine_syntax_helpers.raise_syntax_validation_failure
-
-_extract_error_position = engine_syntax_helpers.extract_error_position
-_graphics_validation_to_syntax_result = engine_syntax_helpers.graphics_validation_to_syntax_result
+from .validation.shared import ValidationNotice, coerce_validation_notice
 
 
 def build_project_loader(
@@ -123,7 +134,7 @@ def _load_source_text(
     *,
     debug: Callable[[str], None] | None = None,
 ) -> str:
-    return engine_syntax_helpers.load_source_text(
+    return _load_source_text_core(
         code_path,
         debug=debug,
         read_text_with_fallback_fn=read_text_with_fallback,
@@ -139,7 +150,7 @@ def parse_source_text(
     transformer: SLTransformer | None = None,
     debug: Callable[[str], None] | None = None,
 ) -> BasePicture:
-    return engine_syntax_helpers.parse_source_text(
+    return _parse_source_text_core(
         src,
         parser=parser,
         transformer=transformer,
@@ -156,7 +167,7 @@ def parse_source_file(
     transformer: SLTransformer | None = None,
     debug: Callable[[str], None] | None = None,
 ) -> BasePicture:
-    return engine_syntax_helpers.parse_source_file(
+    return _parse_source_file_core(
         code_path,
         parser=parser,
         transformer=transformer,
@@ -171,7 +182,7 @@ def validate_single_file_syntax(
     *,
     mode: CodeMode | str | None = None,
 ) -> SyntaxValidationResult:
-    return engine_syntax_helpers.validate_single_file_syntax(
+    return _validate_single_file_syntax_core(
         code_path,
         mode=mode,
         load_source_text_fn=_load_source_text,
