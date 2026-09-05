@@ -509,7 +509,7 @@ def test_run_variable_analysis_bypasses_report_cache_when_use_cache_disabled(noo
         lambda *_, **__: analyze_calls.append("run") or make_variable_report("ProgramA"),
     )
 
-    commands_application.run_variable_analysis(app.DEFAULT_CONFIG.copy() | {"use_cache": False}, {IssueKind.UNUSED})
+    commands_application.run_variable_analysis(app.DEFAULT_CONFIG.copy(), {IssueKind.UNUSED}, use_cache=False)
 
     assert analyze_calls == ["run"]
 
@@ -617,7 +617,7 @@ def test_run_variable_analysis_hides_dependency_validation_warnings(noop_screen,
     assert "Issues: 0" in out
 
 
-def test_run_variable_analysis_hides_expected_unavailable_dependency_warnings(noop_screen, monkeypatch, capsys):
+def test_run_variable_analysis_shows_controllib_dependency_warnings(noop_screen, monkeypatch, capsys):
     graph = AnalysisGraphStub(
         unavailable_libraries={"controllib"},
         warnings=["KaHAMPCSøjleLib: dependency 'controllib' unavailable: expected proprietary dependency"],
@@ -633,8 +633,8 @@ def test_run_variable_analysis_hides_expected_unavailable_dependency_warnings(no
     commands_application.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
 
     out = capsys.readouterr().out
-    assert "Validation warnings (" not in out
-    assert "expected proprietary dependency" not in out
+    assert "Validation warnings (" in out
+    assert "expected proprietary dependency" in out
     assert "Issues: 0" in out
 
 
@@ -725,12 +725,14 @@ def test_print_validation_warnings_formats_picture_display_entries(monkeypatch):
     ]
 
 
-def test_cache_key_for_target_adds_analysis_target(monkeypatch):
+def test_cache_key_for_target_passes_analysis_target(monkeypatch):
     captured: dict[str, object] = {}
     monkeypatch.setattr(
         cache_module,
         "compute_cache_key",
-        lambda cfg: captured.update({"cfg": cfg.copy()}) or "cache-key",
+        lambda cfg, *, analysis_target=None: (
+            captured.update({"cfg": cfg.copy(), "analysis_target": analysis_target}) or "cache-key"
+        ),
     )
 
     cfg = {"mode": "official"}
@@ -738,7 +740,8 @@ def test_cache_key_for_target_adds_analysis_target(monkeypatch):
 
     assert result == "cache-key"
     assert cfg == {"mode": "official"}
-    assert captured["cfg"] == {"mode": "official", "analysis_target": "TargetA"}
+    assert captured["cfg"] == {"mode": "official"}
+    assert captured["analysis_target"] == "TargetA"
 
 
 def test_source_paths_for_current_target_falls_back_to_header_name():

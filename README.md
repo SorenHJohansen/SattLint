@@ -85,26 +85,29 @@ Output:
 Exit codes:
 
 - `0` — success
-- `1` — command ran and found a real problem
+- `1` — a real problem was found (e.g. `syntax-check` found a syntax error)
 - `2` — invalid arguments or configuration
+
+`analyze` reports issues in its output but exits `0` once the analysis runs;
+among the CLI commands, only `syntax-check` uses exit code `1` for findings.
 
 ### Available Commands
 
 ```bash
 sattlint syntax-check path/to/Program.s
-sattlint analyze
-sattlint analyze --list-checks
+sattlint init                    # scaffold a .slproj project file
+sattlint analyze --list-checks   # list available analyzers
+sattlint analyze --check naming-consistency
 sattlint validate-config
 sattlint cache-prune
-sattlint format-icf
-sattlint format-icf --check
 ```
 
 Shared flags for config-driven commands:
 
 ```bash
-sattlint --config path/to/config.toml analyze
-sattlint --config path/to/config.toml --no-cache analyze
+sattlint --config path/to/config.toml analyze --check naming-consistency
+sattlint --config path/to/config.toml --no-cache analyze --check naming-consistency
+sattlint --project path/to/project.slproj analyze --check naming-consistency
 ```
 
 For the full command reference, run `sattlint --help`.
@@ -126,12 +129,34 @@ Opens the Textual interactive terminal UI with the following views:
 
 ---
 
+## Project Files (.slproj)
+
+A `.slproj` project file captures all analysis settings in a single
+checked-in file: targets, directories, mode, and output/cache paths. Paths
+inside a `.slproj` are relative to the file itself, so projects are portable
+across machines.
+
+- `sattlint init` scaffolds a new `.slproj` in the current directory.
+- `sattlint --project PATH <command>` uses an explicit project file.
+- Without `--project` or `--config`, SattLint auto-discovers a `.slproj` by
+  walking up from the current working directory.
+- Project settings merge over `~/.config/sattlint/config.toml` defaults.
+
+Prefer a `.slproj` project file over editing `~/.config/sattlint/config.toml`
+directly.
+
+---
+
 ## First-Time Setup
 
 The first time SattLint runs, it creates a config file automatically:
 
 - **Windows:** `%APPDATA%\sattlint\config.toml`
 - **Linux:** `~/.config/sattlint/config.toml`
+
+For a portable, checked-in setup, create a `.slproj` project file with
+`sattlint init` instead; project settings merge over these config defaults
+(see [Project Files](#project-files-slproj)).
 
 ### Configuration
 

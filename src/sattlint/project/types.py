@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TypedDict
+from copy import deepcopy
+from typing import Any, TypedDict, cast
 
+from ..config.defaults import DEFAULT_CONFIG
 from ..config.types import AnalysisConfig, ConfigMode, TelemetryConfig
 
 
@@ -17,8 +19,6 @@ class ProjectDict(TypedDict):
     ABB_lib_dir: str
     icf_dir: str
     other_lib_dirs: list[str]
-    output_dir: str
-    cache_dir: str
     telemetry: TelemetryConfig
     analysis: AnalysisConfig
 
@@ -33,31 +33,8 @@ DEFAULT_PROJECT_DICT: ProjectDict = {
     "ABB_lib_dir": "",
     "icf_dir": "",
     "other_lib_dirs": [],
-    "output_dir": "output",
-    "cache_dir": ".sattlint-cache",
     "telemetry": {"enabled": False},
-    "analysis": {
-        "sfc": {
-            "mutually_exclusive_steps": [],
-            "step_contracts": {},
-        },
-        "naming": {
-            "variables": {"style": "infer", "allow": []},
-            "modules": {"style": "infer", "allow": []},
-            "instances": {"style": "infer", "allow": []},
-        },
-        "rule_profiles": {
-            "active": "default",
-            "profiles": {
-                "default": {
-                    "description": "Balanced default analyzer profile.",
-                    "disabled_rules": [],
-                    "severity_overrides": {},
-                    "confidence_overrides": {},
-                },
-            },
-        },
-    },
+    "analysis": deepcopy(cast(AnalysisConfig, cast(Any, DEFAULT_CONFIG)["analysis"])),
 }
 
 

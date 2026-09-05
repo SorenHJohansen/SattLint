@@ -26,7 +26,7 @@ def test_app_analysis_wrappers_delegate_to_underlying_helpers(monkeypatch):
     assert checks_application._get_enabled_analyzers() == ["variables"]
 
 
-def test_target_validation_warnings_suppresses_expected_unavailable_dependency_warning():
+def test_target_validation_warnings_keeps_controllib_dependency_warning():
     assert project_application._target_validation_warnings(
         "KaHAMPCSøjleLib",
         [
@@ -34,7 +34,10 @@ def test_target_validation_warnings_suppresses_expected_unavailable_dependency_w
             "KaHAMPCSøjleLib: warning one",
             "dep_b: warning two",
         ],
-    ) == ["KaHAMPCSøjleLib: warning one"]
+    ) == [
+        "KaHAMPCSøjleLib: dependency 'controllib' unavailable: expected proprietary dependency",
+        "KaHAMPCSøjleLib: warning one",
+    ]
 
 
 def test_analysis_loading_helpers_cover_target_accessors_and_refresh_formatting(monkeypatch):

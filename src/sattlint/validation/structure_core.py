@@ -214,7 +214,7 @@ def _validate_sequence_nodes(
     module_labels: frozenset[str] = frozenset(),
     module_label_counts: dict[str, int] | None = None,
     warning_sink: ValidationWarningSink | None = None,
-    allow_old_state_assignment: bool = True,
+    allow_old_state_assignment: bool = False,
     suppress_semantic_errors: bool = False,
     module_code_policy: validation_sequences_module.ModuleCodeValidationPolicy | None = None,
 ) -> None:
@@ -243,7 +243,7 @@ def _validate_module_code(
     type_graph: TypeGraph,
     *,
     warning_sink: ValidationWarningSink | None = None,
-    allow_old_state_assignment: bool = True,
+    allow_old_state_assignment: bool = False,
     suppress_semantic_errors: bool = False,
     module_code_policy: validation_sequences_module.ModuleCodeValidationPolicy | None = None,
 ) -> None:
@@ -340,7 +340,7 @@ class _ModuleValidationPolicy:
     warn_unknown_parameter_targets: bool = False
     warn_incompatible_parameter_mappings: bool = False
     warning_sink: ValidationWarningSink | None = None
-    allow_old_state_assignment: bool = True
+    allow_old_state_assignment: bool = False
     suppress_module_code_semantic_errors: bool = False
 
 

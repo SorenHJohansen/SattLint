@@ -50,7 +50,7 @@ def load_workspace_snapshot(
     *,
     workspace_root: Path | None = None,
     discovery: WorkspaceSourceDiscovery | None = None,
-    mode: CodeMode | str = "draft",
+    mode: CodeMode | str = "official",
     other_lib_dirs: list[Path] | None = None,
     abb_lib_dir: Path | None = None,
     debug: bool = False,

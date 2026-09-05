@@ -1,7 +1,7 @@
 ---
 description: "Use when changing sattlint CLI routing, argparse surfaces, interactive app menus, config flows, or console UX in SattLint. Covers menu and command invariants plus test routing."
 name: "CLI App Instructions"
-applyTo: ["src/sattlint/app.py", "src/sattlint/config.py", "tests/test_cli.py", "tests/test_app*.py"]
+applyTo: ["src/sattlint/app.py", "src/sattlint/cli/**", "src/sattlint/config/**", "src/sattlint/application/**", "tests/app/test_cli*.py", "tests/app/test_app*.py"]
 ---
 # CLI App
 

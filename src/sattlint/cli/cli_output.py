@@ -12,7 +12,6 @@ def add_output_format_argument(
     parser: argparse.ArgumentParser,
     *,
     default: OutputFormat = "text",
-    include_json_alias: bool = False,
     help_text: str = "Output format",
 ) -> None:
     parser.add_argument(
@@ -23,17 +22,9 @@ def add_output_format_argument(
         default=default,
         help=help_text,
     )
-    if include_json_alias:
-        parser.add_argument(
-            "--json",
-            action="store_true",
-            help="Alias for --format json",
-        )
 
 
 def resolve_output_format(args: object, *, default: OutputFormat = "text") -> OutputFormat:
-    if bool(getattr(args, "json", False)):
-        return "json"
     return "json" if getattr(args, "format", default) == "json" else "text"
 
 

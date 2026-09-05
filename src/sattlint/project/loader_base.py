@@ -11,7 +11,6 @@ from sattline_parser.models.ast_model import BasePicture
 from sattline_parser.transformer.sl_transformer import SLTransformer
 
 from ..cache import FileASTCache, FileLookupCache, get_cache_dir, get_cache_manager
-from ..core.libraries import expected_unavailable_library_reason
 from ..core.syntax import (
     code_ext,
     create_sl_parser,
@@ -34,7 +33,6 @@ from .loader_config import (
     SattLineProjectLoaderDependencies,
     SattLineProjectLoaderRuntime,
 )
-from .loading_support import record_project_warning as _record_project_warning
 
 log = logging.getLogger("SattLint")
 
@@ -82,19 +80,6 @@ def record_missing_library(
     strict: bool,
     requester: str | None = None,
 ) -> None:
-    reason = expected_unavailable_library_reason(name)
-    if reason:
-        graph.unavailable_libraries.add(name.casefold())
-        if requester and requester.casefold() != name.casefold():
-            _record_project_warning(
-                graph,
-                requester,
-                f"dependency '{name}' unavailable: {reason}",
-            )
-        else:
-            _record_project_warning(graph, name, f"unavailable library: {reason}")
-        return
-
     if requester and requester.casefold() != name.casefold():
         message = f"Missing code file for dependency '{name}' referenced by '{requester}' ({mode})"
     else:
@@ -157,7 +142,6 @@ class SattLineProjectLoaderBase(DebugMixin):
         self.transformer = SLTransformer()
         self._visited: set[str] = set()
         self._visit_stack: list[str] = []
-        self._ignored_dirs: set[Path] = set()
         if selected_dependencies.cache_manager is None:
             self._cache_dir = get_cache_dir()
             self._cache_manager = get_cache_manager(

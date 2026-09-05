@@ -18,7 +18,6 @@ class TelemetryConfig(TypedDict):
 
 class TelemetryConfigOverride(TypedDict, total=False):
     enabled: bool
-    path: str
 
 
 class NamingRuleConfig(TypedDict):

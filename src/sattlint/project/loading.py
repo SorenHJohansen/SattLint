@@ -32,6 +32,7 @@ from .loading_support import (
     _with_status_line,
     log,
 )
+from .support import configured_icf_files
 
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
 
@@ -148,6 +149,11 @@ def cache_manifest_files(
             deps_path = find_dependency_path_fn(target_name, requester_dir)
             if deps_path is not None:
                 manifest_files.add(deps_path)
+
+    # ICF inputs participate in analysis-input tracking so ICF/MMS analysis
+    # results go stale when configured ICF files change.
+    _, icf_files = configured_icf_files(cfg)
+    manifest_files.update(icf_files)
 
     return manifest_files
 
@@ -337,7 +343,6 @@ def load_program_ast(
     cfg: ConfigDict,
     program_name: str,
     *,
-    force_dependency_resolution: bool,
     status_update_fn: Callable[[str], None] | None = None,
 ) -> tuple[BasePicture, ProjectGraph]:
     loader = build_project_loader_from_type(
@@ -358,7 +363,6 @@ def load_program_ast_with_live_status(
     cfg: ConfigDict,
     program_name: str,
     *,
-    force_dependency_resolution: bool,
     live_status_line_factory: Callable[[], Any],
 ) -> tuple[BasePicture, ProjectGraph]:
     return _with_status_line(
@@ -366,7 +370,6 @@ def load_program_ast_with_live_status(
         run_fn=lambda status_update_fn: load_program_ast(
             cfg,
             program_name,
-            force_dependency_resolution=force_dependency_resolution,
             status_update_fn=status_update_fn,
         ),
     )

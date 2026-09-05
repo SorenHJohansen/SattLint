@@ -379,14 +379,14 @@ PROJECT_CACHE_SCHEMA_VERSION = "2026-06-11-project-graph-root-origin-schema"
 ANALYSIS_REPORT_CACHE_SCHEMA_VERSION = "2026-06-04-string-literal-mismatch-threshold"
 
 
-def compute_cache_key(cfg: Mapping[str, object]) -> str:
+def compute_cache_key(cfg: Mapping[str, object], *, analysis_target: str | None = None) -> str:
     """
     Fast cache key based only on configuration.
     File changes are handled by manifest validation.
     """
     h = hashlib.sha256()
     h.update(PROJECT_CACHE_SCHEMA_VERSION.encode())
-    h.update(repr(cfg.get("analysis_target")).encode())
+    h.update(repr(analysis_target).encode())
 
     for k in PROJECT_CACHE_CONFIG_KEYS:
         h.update(repr(cfg.get(k)).encode())

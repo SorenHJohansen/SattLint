@@ -276,11 +276,7 @@ def discover_workspace_sources(workspace_root: Path) -> WorkspaceSourceDiscovery
                 dependency_files.append(path)
                 referenced_program_names.update(_read_dependency_names(path))
 
-    abb_candidates = sorted(
-        (directory for directory in source_dirs if "abb" in directory.name.casefold()),
-        key=_path_key,
-    )
-    abb_lib_dir = abb_candidates[0] if abb_candidates else None
+    abb_lib_dir = None
 
     sorted_program_files = tuple(sorted(program_files, key=_path_key))
     sorted_dependency_files = tuple(sorted(dependency_files, key=_path_key))

@@ -24,6 +24,7 @@ from ..cache import AnalysisReportCache, compute_analysis_report_cache_key, get_
 from ..config.types import ConfigDict
 from ..core import telemetry as telemetry_module
 from ..core.debug import debug_enabled
+from ..core.syntax import CodeMode, code_ext, deps_ext
 from ..models.project_graph import ProjectGraph, merge_project_basepicture
 from ..project import cache as report_cache_module
 from ..project import support as support_module
@@ -39,8 +40,8 @@ from . import project as project_application
 
 LoadedProject = project_application.LoadedProject
 
-DRAFT_SOURCE_SUFFIXES = frozenset({".s", ".l"})
-OFFICIAL_SOURCE_SUFFIXES = frozenset({".x", ".z"})
+DRAFT_SOURCE_SUFFIXES = frozenset({code_ext(CodeMode.DRAFT), deps_ext(CodeMode.DRAFT)})
+OFFICIAL_SOURCE_SUFFIXES = frozenset({code_ext(CodeMode.OFFICIAL), deps_ext(CodeMode.OFFICIAL)})
 
 
 def parse_index_selection(selection: str, max_index: int) -> list[int]:
@@ -71,6 +72,7 @@ def run_variable_analysis(  # noqa: PLR0915
     cfg: ConfigDict,
     kinds: set[IssueKind] | None,
     *,
+    use_cache: bool = True,
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
     analyze_variables_fn: Callable[..., VariablesReport] | None = None,
@@ -143,7 +145,7 @@ def run_variable_analysis(  # noqa: PLR0915
     )
     report_cache = report_cache_module.create_analysis_report_cache(
         cfg,
-        use_cache_enabled_fn=project_application.use_cache_enabled,
+        use_cache=use_cache,
         debug_enabled_fn=debug_enabled,
         analysis_report_cache_cls=AnalysisReportCache,
         get_cache_dir_fn=get_cache_dir,

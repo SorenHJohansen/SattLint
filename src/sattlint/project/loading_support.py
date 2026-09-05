@@ -13,8 +13,8 @@ from sattline_parser.models.ast_model import BasePicture
 from ..config.types import ConfigDict
 from ..core import telemetry as telemetry_module
 from ..core.debug import debug_enabled, log_debug_exception
+from ..core.syntax import CodeMode, deps_ext_candidates, normalize_code_mode
 from ..models.project_graph import ProjectFailure, ProjectGraph
-from ..utils.casefolding import casefold_equal
 from ..validation.shared import ValidationNotice, ValidationWarning, coerce_validation_notice
 
 _STAGE_ORDER = ("load_or_parse", "validate", "attach_graphics", "index", "ast_cache_save")
@@ -149,7 +149,8 @@ def _loader_visit_target(
 
 
 def _workspace_dependency_suffixes(mode: str) -> tuple[str, ...]:
-    return (".l", ".z") if casefold_equal(mode, "draft") else (".z",)
+    resolved_mode = normalize_code_mode(mode) or CodeMode.OFFICIAL
+    return deps_ext_candidates(resolved_mode)
 
 
 def _collect_analysis_timings(cfg: ConfigDict) -> bool:
@@ -190,7 +191,7 @@ def _iter_workspace_reverse_library_consumer_dependency_files(
 ) -> Iterator[tuple[str, Path]]:
     seen_targets: set[str] = set()
     base_dirs = [Path(cfg["program_dir"]), *(Path(path) for path in cfg["other_lib_dirs"])]
-    suffixes = _workspace_dependency_suffixes(str(cfg.get("mode", "draft")))
+    suffixes = _workspace_dependency_suffixes(str(cfg.get("mode", "official")))
 
     for base_dir in base_dirs:
         if not base_dir.exists() or not base_dir.is_dir():

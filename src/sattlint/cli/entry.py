@@ -54,7 +54,6 @@ class _ParsedCliArgs(Protocol):
     ui: str | None
     command: str | None
     file: str
-    dir: str
     name: str
     program_dir: str
     abb_lib_dir: str
@@ -67,9 +66,6 @@ class _ParsedCliArgs(Protocol):
     mode: str
     format: str
     output: str | None
-    output_dir: str | None
-    output_path: str | None
-    check: bool
 
 
 def _exit_code(result: int | None, *, fallback: int) -> int:

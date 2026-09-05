@@ -172,13 +172,10 @@ def load_project(
 def load_program_ast(
     cfg: ConfigDict,
     program_name: str,
-    *,
-    force_dependency_resolution: bool = False,
 ) -> tuple[BasePicture, ProjectGraph]:
     return analysis_loading_module.load_program_ast_with_live_status(
         cfg,
         program_name,
-        force_dependency_resolution=force_dependency_resolution,
         live_status_line_factory=console_module.live_status_line,
     )
 
@@ -243,10 +240,6 @@ def refresh_analysis_caches(
         entry_label = "entry" if removed_entries == 1 else "entries"
         resolved_emit_output_fn(f"Cleared all caches ({removed_entries} {entry_label}).")
     return force_refresh_ast_fn(cfg)
-
-
-def use_cache_enabled(cfg: ConfigDict) -> bool:
-    return bool(cfg.get("use_cache", True))
 
 
 emit_output: Callable[..., None] = console_module.print_output  # type: ignore[assignment]

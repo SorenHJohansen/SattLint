@@ -332,7 +332,8 @@ Acceptance: no mixed-concept flat module survives; the dependency-guard test
 > - **3d ✅** Parsing/validation-surface split of `_engine_syntax_helpers.py`:
 >   `core/syntax.py` (parsing + syntax validation surface),
 >   `core/libraries.py` (`expected_unavailable_library_reason`/
->   `is_expected_unavailable_library`), `project/loading.py`
+>   `is_expected_unavailable_library`; removed later by
+>   `library-resolution-and-config-cleanup.md` P1), `project/loading.py`
 >   (`record_project_failure`/`record_project_warning`/`format_debug_*`/
 >   `is_within_directory`); consumers retargeted (`_engine_loader_base.py`,
 >   `_engine_loader_config.py`, `_engine_project_loader.py`, `engine.py`,

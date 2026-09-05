@@ -115,13 +115,11 @@ def run_analyze_command(
     *,
     selected_keys: list[str] | None,
     selected_issue_kinds: frozenset[str] | None,
-    use_cache: bool,
     output_format: str = "text",
     collect_analyze_result_fn: Callable[..., Any],
     emit_output_fn: Callable[[str], None] = emit_output,
     exit_success: int,
 ) -> int:
-    del use_cache
     collected = collect_analyze_result_fn(
         cfg,
         selected_keys=selected_keys,

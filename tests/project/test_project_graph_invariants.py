@@ -80,12 +80,11 @@ def test_record_missing_library_strict_raises_without_side_effects(graph: Projec
     assert "missinglib" not in graph.unavailable_libraries
 
 
-def test_record_missing_library_expected_unavailable_is_not_missing(graph: ProjectGraph) -> None:
+def test_record_missing_library_controllib_is_missing_like_any_other(graph: ProjectGraph) -> None:
     record_missing_library(graph, name="ControlLib", mode="official", strict=False)
 
     assert "controllib" in graph.unavailable_libraries
-    assert not any("Missing code file" in message for message in graph.missing)
-    assert any("unavailable library" in message for message in graph.warnings)
+    assert any("Missing code file for 'ControlLib'" in message for message in graph.missing)
 
 
 def test_library_dependencies_edges_are_casefolded_and_deterministic(graph: ProjectGraph) -> None:

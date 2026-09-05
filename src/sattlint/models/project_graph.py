@@ -45,10 +45,6 @@ def _failures_factory() -> dict[str, ProjectFailure]:
     return {}
 
 
-def _ignored_vendor_factory() -> list[str]:
-    return []
-
-
 def _unavailable_libraries_factory() -> set[str]:
     return set()
 
@@ -102,7 +98,6 @@ class ProjectGraph:
     warnings: list[str] = field(default_factory=_warnings_factory)
     warning_notices: list[tuple[str, ValidationNotice]] = field(default_factory=_warning_notices_factory)
     failures: dict[str, ProjectFailure] = field(default_factory=_failures_factory)
-    ignored_vendor: list[str] = field(default_factory=_ignored_vendor_factory)
     # Track libraries that couldn't be loaded (e.g., proprietary ABB libraries)
     unavailable_libraries: set[str] = field(default_factory=_unavailable_libraries_factory)
     source_files: set[Path] = field(default_factory=_source_files_factory)

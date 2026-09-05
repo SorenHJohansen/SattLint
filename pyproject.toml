@@ -7,7 +7,8 @@ name = "sattlint"
 dynamic = ["version"]
 description = "Static analysis, validation, and tooling for SattLine projects"
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "S\u00f8ren H. Johansen" }]
 requires-python = ">=3.13"
 keywords = ["sattline", "static-analysis", "plc"]
@@ -79,7 +80,7 @@ markers = [
 precision = 2
 
 [project.scripts]
-sattlint = "sattlint.app:cli"
+sattlint = "sattlint.cli.startup:cli"
 
 [tool.ruff]
 line-length = 120
@@ -107,7 +108,6 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"src/sattlint/config.py" = ["RUF034"]
 "tests/*.py" = ["S101", "F403", "F405"]
 "tests/**/*.py" = ["S101", "F403", "F405"]
 

@@ -65,6 +65,14 @@ def graphics_ext(mode: CodeMode) -> str:
     return ".y" if mode is CodeMode.OFFICIAL else ".g"
 
 
+def code_ext_candidates(mode: CodeMode) -> tuple[str, ...]:
+    return (code_ext(mode),) if mode is CodeMode.OFFICIAL else (code_ext(mode), ".x")
+
+
+def deps_ext_candidates(mode: CodeMode) -> tuple[str, ...]:
+    return (deps_ext(mode),) if mode is CodeMode.OFFICIAL else (deps_ext(mode), ".z")
+
+
 def graphics_ext_candidates(mode: CodeMode) -> tuple[str, ...]:
     return (".y",) if mode is CodeMode.OFFICIAL else (".g", ".y")
 
@@ -287,10 +295,8 @@ def validate_single_file_syntax(
         validate_transformed_basepicture_fn(
             basepic,
             warning_sink=validation_warnings.append,
-            allow_old_state_assignment=target_path.suffix.lower() in {".x", ".z"},
-            allow_unresolved_external_datatypes=(
-                target_path.suffix.lower() in {".x", ".z"} or dependency_context_path is not None
-            ),
+            allow_old_state_assignment=False,
+            allow_unresolved_external_datatypes=(dependency_context_path is not None),
         )
     except UnexpectedInput as exc:
         details = describe_parse_error_fn(exc, src)

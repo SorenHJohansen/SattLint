@@ -62,9 +62,7 @@ def interactive_ui_mode() -> str:
 
 def set_interactive_ui_mode(ui_mode: str | None) -> None:
     global _interactive_ui_mode
-    if ui_mode == "textual":
-        _interactive_ui_mode = "textual"
-        return
+    del ui_mode
     _interactive_ui_mode = "textual"
 
 

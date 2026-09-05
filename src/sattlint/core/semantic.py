@@ -250,7 +250,7 @@ def load_workspace_snapshot(
     *,
     workspace_root: Path | None = None,
     discovery: WorkspaceSourceDiscovery | None = None,
-    mode: CodeMode | str = CodeMode.DRAFT,
+    mode: CodeMode | str = CodeMode.OFFICIAL,
     other_lib_dirs: list[Path] | None = None,
     abb_lib_dir: Path | None = None,
     debug: bool = False,
@@ -267,7 +267,7 @@ def load_workspace_snapshot(
     selected_other_lib_dirs = (
         list(other_lib_dirs) if other_lib_dirs is not None else list(resolved_discovery.other_lib_dirs_for(entry_path))
     )
-    selected_abb_lib_dir = abb_lib_dir or resolved_discovery.abb_lib_dir or (root / "__missing_abb_lib__")
+    selected_abb_lib_dir = abb_lib_dir or resolved_discovery.abb_lib_dir
 
     loader = SattLineProjectLoader(
         SattLineProjectLoaderConfig(

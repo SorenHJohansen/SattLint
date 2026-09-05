@@ -1,7 +1,7 @@
 ---
 description: "Use when changing SattLint test fixtures, sample SattLine files, or golden analysis artifacts. Covers fixture shape and minimal SattLine validity rules."
 name: "Test Fixture Instructions"
-applyTo: ["tests/fixtures/**", "tests/test_analyzer_guardrails.py"]
+applyTo: ["tests/fixtures/**", "tests/analyzers/test_analyzer_guardrails.py"]
 ---
 # Test Fixtures
 

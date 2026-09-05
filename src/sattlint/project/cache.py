@@ -25,12 +25,12 @@ log = logging.getLogger("SattLint")
 def create_analysis_report_cache(
     cfg: ConfigDict,
     *,
-    use_cache_enabled_fn: Callable[[ConfigDict], bool],
+    use_cache: bool,
     debug_enabled_fn: Callable[[ConfigDict], bool],
     analysis_report_cache_cls: type[AnalysisReportCache],
     get_cache_dir_fn: Callable[[], Path],
 ) -> AnalysisReportCache | None:
-    if not use_cache_enabled_fn(cfg):
+    if not use_cache:
         if log.isEnabledFor(logging.DEBUG):
             log.debug("Analysis report cache disabled by configuration")
         return None

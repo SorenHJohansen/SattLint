@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from time import perf_counter
 
-from ..core.libraries import expected_unavailable_library_reason, is_expected_unavailable_library
 from ..core.syntax import (
     has_current_local_validation as _has_current_local_validation,
 )
@@ -125,13 +124,6 @@ class SattLineProjectLoader(SattLineProjectLoaderLookupMixin):
             self._update_status(f"Loading {name}: locating source file")
             code_path = root_code_path or self._find_code_with_context(name, requester_dir=requester_dir)
             if code_path is not None:
-                if is_expected_unavailable_library(name):
-                    reason = expected_unavailable_library_reason(name)
-                    graph.unavailable_libraries.add(name.casefold())
-                    _record_project_warning(
-                        graph, name, f"unavailable library: {reason or 'expected proprietary dependency'}"
-                    )
-                    return
                 try:
                     validation_warnings: list[ValidationWarning] = []
                     basepicture = self._load_or_parse_for_owner(code_path, owner_name=name)
@@ -235,20 +227,14 @@ class SattLineProjectLoader(SattLineProjectLoaderLookupMixin):
                         raise
                     _record_project_failure(graph, name, ex)
             else:
-                vendor_code = self._find_vendor_code(name)
-                vendor_deps = self._find_vendor_deps(name)
-                if vendor_code or vendor_deps:
-                    graph.ignored_vendor.append(f"{name} (vendor: {vendor_code or vendor_deps})")
-                    graph.unavailable_libraries.add(name.lower())
-                else:
-                    requester_name = self._visit_stack[-2] if len(self._visit_stack) > 1 else None
-                    record_missing_library(
-                        graph,
-                        name=name,
-                        mode=self.mode.value,
-                        strict=strict,
-                        requester=requester_name,
-                    )
+                requester_name = self._visit_stack[-2] if len(self._visit_stack) > 1 else None
+                record_missing_library(
+                    graph,
+                    name=name,
+                    mode=self.mode.value,
+                    strict=strict,
+                    requester=requester_name,
+                )
         finally:
             self._visit_stack.remove(key)
             self._visited.add(key)

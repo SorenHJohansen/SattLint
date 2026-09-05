@@ -53,7 +53,7 @@ flowchart LR
 
 ## Actual Runtime Entry Map
 
-- `sattlint` enters at `src/sattlint/app.py`. Both command-mode flows (`syntax-check`, `analyze`, `validate-config`, `cache-prune`, `format-icf`) and the interactive Textual UI start there, then fan into app helpers, analyzers, reporting, and parser-backed semantic loading.
+- `sattlint` enters at `src/sattlint/app.py`. Both command-mode flows (`syntax-check`, `analyze`, `validate-config`, `cache-prune`) and the interactive Textual UI start there, then fan into app helpers, analyzers, reporting, and parser-backed semantic loading.
 - The interactive UI (`sattlint` with no arguments) provides Analyze, Setup, Tools, and Help views.
 
 ## Critical Boundaries

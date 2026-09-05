@@ -77,7 +77,7 @@ _SUPPRESSED_SEMANTIC_ERROR_PREFIX = (
 @dataclass(frozen=True)
 class ModuleCodeValidationPolicy:
     warning_sink: ValidationWarningSink | None = None
-    allow_old_state_assignment: bool = True
+    allow_old_state_assignment: bool = False
     suppress_semantic_errors: bool = False
 
 
@@ -536,7 +536,7 @@ def validate_sequence_nodes(  # noqa: PLR0915
     type_graph: TypeGraph,
     require_init_step: bool,
     warning_sink: ValidationWarningSink | None = None,
-    allow_old_state_assignment: bool = True,
+    allow_old_state_assignment: bool = False,
     suppress_semantic_errors: bool = False,
     module_code_policy: ModuleCodeValidationPolicy | None = None,
 ) -> None:
@@ -674,7 +674,7 @@ def validate_module_code(
     *,
     validate_identifier: Callable[[str | None, str], None],
     warning_sink: ValidationWarningSink | None = None,
-    allow_old_state_assignment: bool = True,
+    allow_old_state_assignment: bool = False,
     suppress_semantic_errors: bool = False,
     module_code_policy: ModuleCodeValidationPolicy | None = None,
 ) -> None:

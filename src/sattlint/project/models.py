@@ -73,18 +73,7 @@ class SattLineProject:
             cast(dict[str, object], deepcopy(DEFAULT_CONFIG)),
             cast(dict[str, object], self.to_config_dict()),
         )
-        merged.pop("ignore_ABB_lib", None)
         return cast(ConfigDict, merged)
-
-    @property
-    def output_dir(self) -> Path:
-        raw = self.data.get("output_dir", "output")
-        return self._resolve(raw) if raw.strip() else self.root / "output"
-
-    @property
-    def cache_dir(self) -> Path:
-        raw = self.data.get("cache_dir", ".sattlint-cache")
-        return self._resolve(raw) if raw.strip() else self.root / ".sattlint-cache"
 
 
 __all__ = ["SattLineProject"]
