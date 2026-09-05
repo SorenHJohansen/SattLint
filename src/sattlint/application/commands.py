@@ -15,18 +15,16 @@ from typing import Any, cast
 from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef
 
 from .. import console as console_module
-from .. import engine as engine_module
 from ..analyzers.comment_code import analyze_comment_code_files
 from ..analyzers.icf import parse_icf_file, validate_icf_entries_against_program
 from ..analyzers.mms import analyze_mms_interface_variables
 from ..analyzers.shadowing import analyze_shadowing
 from ..analyzers.variables import IssueKind, analyze_variables, filter_variable_report
 from ..cache import AnalysisReportCache, compute_analysis_report_cache_key, get_cache_dir
-from ..casefolding import casefold_equal
-from ..config_types import ConfigDict
+from ..config.types import ConfigDict
 from ..core import telemetry as telemetry_module
 from ..core.debug import debug_enabled
-from ..models.project_graph import ProjectGraph
+from ..models.project_graph import ProjectGraph, merge_project_basepicture
 from ..project import cache as report_cache_module
 from ..project import support as support_module
 from ..project.support import is_picture_display_warning
@@ -35,6 +33,7 @@ from ..reporting.variables_report import (
     DEFAULT_VARIABLE_ANALYSIS_KINDS,
     VariablesReport,
 )
+from ..utils.casefolding import casefold_equal
 from . import output as output_module
 from . import project as project_application
 
@@ -397,7 +396,7 @@ def run_icf_validation(
             files_failed += 1
             continue
         program_bp, graph = loaded_program
-        program_bp = engine_module.merge_project_basepicture(program_bp, graph)
+        program_bp = merge_project_basepicture(program_bp, graph)
 
         moduletype_index: dict[str, list[ModuleTypeDef]] = {}
         for bp in cast(dict[str, BasePicture], graph.ast_by_name).values():

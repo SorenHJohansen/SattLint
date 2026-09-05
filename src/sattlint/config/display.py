@@ -10,8 +10,8 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import cast
 
-from .config_types import ConfigDict
-from .core.telemetry import telemetry_output_path
+from ..core.telemetry import telemetry_output_path
+from .types import ConfigDict
 
 
 def format_config_scalar(value: object) -> str:

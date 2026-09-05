@@ -19,7 +19,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
 )
 
-from .analyzers.sfc import collect_sfc_reachability_findings
+from ..analyzers.sfc import collect_sfc_reachability_findings
 
 
 def _empty_trace_events() -> list[dict[str, Any]]:

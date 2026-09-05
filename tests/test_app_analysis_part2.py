@@ -858,7 +858,7 @@ def test_run_icf_validation_reports_entryless_files_load_failures_and_summary(mo
         "parse_icf_file",
         lambda path: [] if path.name == "Empty.icf" else [SimpleNamespace()],
     )
-    monkeypatch.setattr(engine_module, "merge_project_basepicture", lambda bp, _graph: bp)
+    monkeypatch.setattr(commands_application, "merge_project_basepicture", lambda bp, _graph: bp)
 
     def fake_load_program(_cfg, program_name):
         if program_name == "Broken":

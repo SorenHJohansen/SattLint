@@ -13,7 +13,7 @@ from collections.abc import Callable
 from typing import Any
 
 from .. import console as console_module
-from ..config_types import ConfigDict
+from ..config.types import ConfigDict
 from ..core import debug as debug_module
 
 log = logging.getLogger("SattLint")

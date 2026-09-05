@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING, Any
 
 from sattline_parser.models.ast_model import ParameterMapping, Simple_DataType, Variable
 
-from ...casefolding import is_anytype_name
 from ...grammar import constants as const
 from ...resolution import AccessKind, CanonicalPath
 from ...resolution.scope import ScopeContext
+from ...utils.casefolding import is_anytype_name
 from ..shared.variable_utils import matches_root_origin
 
 if TYPE_CHECKING:

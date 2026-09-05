@@ -5,7 +5,7 @@ Direct replacement for the old ``application.startup`` surface, relocated
 from ``application/`` to ``cli/`` as part of Phase 6 (application-layer
 refactor).  This module owns the interactive startup orchestration (``main``)
 and the menu composition helpers (:mod:`sattlint.cli.menu`,
-:mod:`sattlint._config_display`), keeping the interactive loop independent of
+:mod:`sattlint.config.display`), keeping the interactive loop independent of
 the legacy ``app`` module.
 """
 
@@ -24,7 +24,7 @@ from .. import console as console_module
 from ..application import analyze as analyze_application
 from ..application import checks as checks_application
 from ..application import project as project_application
-from ..config_types import ConfigDict
+from ..config.types import ConfigDict
 from ..core.interaction import (
     QuitAppError,
 )

@@ -13,13 +13,13 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
-from ..casefolding import casefold_equal, casefold_key
 from ..grammar import constants as const
 from ..resolution.common import (
     format_moduletype_label,
     resolve_moduletype_def_strict,
     varname_full,
 )
+from ..utils.casefolding import casefold_equal, casefold_key
 from .framework import Issue, SimpleReport
 from .shared._walk_utils import walk_nested_modules_with_state
 from .shared.variable_utils import merge_variable_env

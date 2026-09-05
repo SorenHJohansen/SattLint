@@ -15,10 +15,10 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import VarRef
 
-from ...casefolding import casefold_key, is_anytype_name
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ...resolution.common import resolve_moduletype_def_strict, varname_base, varname_full
 from ...resolution.scope import ScopeContext
+from ...utils.casefolding import casefold_key, is_anytype_name
 from ...validation.type_helpers import assignment_type_matches as _assignment_type_matches
 from ...validation.type_helpers import is_string_simple_type as _is_string_simple_type
 from ...validation.type_helpers import resolve_variable_field_datatype as _resolve_variable_field_datatype

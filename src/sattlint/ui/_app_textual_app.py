@@ -9,7 +9,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
-from ..config_types import ConfigDict
+from ..config.types import ConfigDict
 from ._app_textual_actions import _TextualActionsMixin
 from ._app_textual_analyze import _TextualAnalyzeMixin
 from ._app_textual_setup import _TextualSetupMixin

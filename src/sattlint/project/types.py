@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TypedDict
 
-from ..config_types import AnalysisConfig, ConfigMode, TelemetryConfig
+from ..config.types import AnalysisConfig, ConfigMode, TelemetryConfig
 
 
 class ProjectDict(TypedDict):

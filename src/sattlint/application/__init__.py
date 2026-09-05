@@ -12,5 +12,6 @@ from __future__ import annotations
 
 from . import analyze as analyze
 from . import project as project
+from . import service as service
 
-__all__ = ["analyze", "project"]
+__all__ = ["analyze", "project", "service"]

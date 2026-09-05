@@ -43,8 +43,8 @@ def test_load_project_saves_cache_after_successful_merge(monkeypatch):
 
     monkeypatch.setattr(project_application, "ASTCache", FakeCache)
     monkeypatch.setattr(project_application, "get_cache_dir", lambda: Path("cache-dir"))
-    monkeypatch.setattr(engine_module, "SattLineProjectLoader", FakeLoader)
-    monkeypatch.setattr(engine_module, "merge_project_basepicture", lambda bp, graph: "merged")
+    monkeypatch.setattr(analysis_loading_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(analysis_loading_module, "merge_project_basepicture", lambda bp, graph: "merged")
 
     result = project_application.load_project(
         {
@@ -95,7 +95,7 @@ def test_load_project_raises_default_error_when_target_missing(monkeypatch):
 
     monkeypatch.setattr(project_application, "ASTCache", FakeCache)
     monkeypatch.setattr(project_application, "get_cache_dir", lambda: Path("cache-dir"))
-    monkeypatch.setattr(engine_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(analysis_loading_module, "SattLineProjectLoader", FakeLoader)
 
     with pytest.raises(RuntimeError, match="Target 'TargetA' was not parsed"):
         project_application.load_project(
@@ -141,7 +141,7 @@ def test_load_program_ast_force_dependency_resolution_returns_loaded_program(mon
         def resolve(self, program_name, strict=False):
             return SimpleNamespace(ast_by_name={program_name: "bp-main"})
 
-    monkeypatch.setattr(engine_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(analysis_loading_module, "SattLineProjectLoader", FakeLoader)
 
     result = project_application.load_program_ast(
         {
@@ -185,7 +185,7 @@ def test_load_project_uses_cached_ast_only_project_and_manifest_metadata(monkeyp
     monkeypatch.setattr(project_application, "ASTCache", FakeCache)
     monkeypatch.setattr(project_application, "get_cache_dir", lambda: Path("cache-dir"))
     monkeypatch.setattr(
-        engine_module,
+        analysis_loading_module,
         "merge_project_basepicture",
         lambda *_args, **_kwargs: pytest.fail("ast-only cache hit should not merge project view"),
     )
@@ -256,7 +256,7 @@ def test_load_project_ast_only_collects_stage_timings_and_flushes_lookup_cache(m
 
     monkeypatch.setattr(project_application, "ASTCache", FakeCache)
     monkeypatch.setattr(project_application, "get_cache_dir", lambda: Path("cache-dir"))
-    monkeypatch.setattr(engine_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(analysis_loading_module, "SattLineProjectLoader", FakeLoader)
 
     result = project_application.load_project(
         {
@@ -326,7 +326,7 @@ def test_load_project_uses_custom_target_load_error_factory(monkeypatch):
 
     monkeypatch.setattr(project_application, "ASTCache", FakeCache)
     monkeypatch.setattr(project_application, "get_cache_dir", lambda: Path("cache-dir"))
-    monkeypatch.setattr(engine_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(analysis_loading_module, "SattLineProjectLoader", FakeLoader)
 
     with pytest.raises(CustomLoadError, match="custom:TargetA"):
         project_application.load_project(
@@ -359,7 +359,7 @@ def test_load_program_ast_raises_when_program_missing(monkeypatch):
         def resolve(self, program_name, strict=False):
             return SimpleNamespace(ast_by_name={"Other": "bp-other"})
 
-    monkeypatch.setattr(engine_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(analysis_loading_module, "SattLineProjectLoader", FakeLoader)
 
     with pytest.raises(RuntimeError, match="Program 'TargetA' not parsed"):
         project_application.load_program_ast(
@@ -646,7 +646,7 @@ def test_run_icf_validation_builds_moduletype_index(monkeypatch, tmp_path):
 
     monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
     monkeypatch.setattr(commands_application, "parse_icf_file", lambda _path: [SimpleNamespace()])
-    monkeypatch.setattr(engine_module, "merge_project_basepicture", lambda bp, _graph: bp)
+    monkeypatch.setattr(commands_application, "merge_project_basepicture", lambda bp, _graph: bp)
 
     graph = SimpleNamespace(
         ast_by_name={

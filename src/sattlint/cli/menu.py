@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import Any
 
-from ..config_types import ConfigDict
+from ..config.types import ConfigDict
 from ..project.support import get_analyzed_targets
 
 _HELP_TEXT = """--- Help ---

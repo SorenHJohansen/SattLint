@@ -7,10 +7,10 @@ from typing import cast
 
 from sattline_parser.models.ast_model import BasePicture
 
-from ..reporting.variables_report import VariableIssue
-from ..tracing import (
+from ..core.tracing import (
     detect_transform_invariant_violations,
 )
+from ..reporting.variables_report import VariableIssue
 from ._registry_dispatch import get_semantic_contributor_specs, run_registry_analyzer
 from ._registry_specs import build_context_kwargs
 from ._sattline_semantic_issue_mapping import (

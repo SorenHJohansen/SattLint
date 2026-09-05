@@ -11,16 +11,16 @@ from typing import Any, cast
 import pytest
 
 import sattlint
-from sattlint import _config_display as config_display_module
 from sattlint import app, engine
 from sattlint.__version__ import __version__ as package_version
-from sattlint._exit_codes import EXIT_FAILURE, EXIT_SUCCESS, EXIT_USAGE_ERROR
 from sattlint.cli import app_commands as commands_application
 from sattlint.cli import command_handlers as cli_command_handlers
 from sattlint.cli import entry as cli_entry
 from sattlint.cli import menu as cli_menu_module
 from sattlint.cli import startup as startup_application
 from sattlint.cli import syntax_check as cli_syntax_check
+from sattlint.cli._exit_codes import EXIT_FAILURE, EXIT_SUCCESS, EXIT_USAGE_ERROR
+from sattlint.config import display as config_display_module
 from sattlint.models import IssueKind
 
 

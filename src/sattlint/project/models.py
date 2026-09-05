@@ -7,9 +7,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
 
-from .._config_defaults import DEFAULT_CONFIG
-from ..config_types import ConfigDict
-from ..config_validation import deep_merge_dict
+from ..config.defaults import DEFAULT_CONFIG
+from ..config.types import ConfigDict
+from ..config.validation import deep_merge_dict
 from .types import ProjectDict
 
 

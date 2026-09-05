@@ -18,7 +18,7 @@ from ..analyzers import catalog as analysis_catalog_module
 from ..analyzers import icf as icf_module
 from ..analyzers.shadowing import analyze_shadowing
 from ..analyzers.variables import IssueKind, analyze_variables, filter_variable_report
-from ..config_types import ConfigDict
+from ..config.types import ConfigDict
 from ..models.project_graph import ProjectGraph
 from ..project import support as support_module
 from . import checks as checks_module

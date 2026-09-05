@@ -18,7 +18,6 @@ from sattline_parser.models.ast_model import FrameModule, ModuleTypeInstance, Si
 from sattlint import app
 from sattlint import cache as cache_module
 from sattlint import console as console_module
-from sattlint import engine as engine_module
 from sattlint.analyzers import catalog as analysis_catalog_module
 from sattlint.analyzers import icf as icf_module
 from sattlint.analyzers import variable_usage_reporting as variables_reporting_module

@@ -27,7 +27,7 @@ from ..analyzers.framework import (
 from ..analyzers.rule_profiles import apply_rule_profile_to_report
 from ..analyzers.variables import IssueKind
 from ..cache import AnalysisReportCache, compute_analysis_report_cache_key, get_cache_dir
-from ..config_types import ConfigDict
+from ..config.types import ConfigDict
 from ..core import telemetry as telemetry_module
 from ..core.debug import debug_enabled
 from ..core.terminal import flush_stdout

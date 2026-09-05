@@ -93,3 +93,27 @@ def test_analyzers_use_only_the_public_reporting_surface() -> None:
                     violations.append(f"{path.relative_to(SRC_DIR)}: imports reporting internals {imported}")
 
     assert violations == []
+
+
+def test_engine_is_not_imported_below_the_top_layers() -> None:
+    # engine is the top orchestration module. Only the root facade/app/cli and
+    # application are allowed to reference it; every subpackage below it must not.
+    allowed_dirs = {"application", "cli"}
+    allowed_files = {"app.py", "__init__.py", "engine.py", "engine_fuzzer.py", "syntax_fuzzer.py"}
+    violations: list[str] = []
+    for path in sorted(SRC_DIR.rglob("*.py")):
+        if path.name in allowed_files:
+            continue
+        parts = path.relative_to(SRC_DIR).parts
+        if parts and parts[0] in allowed_dirs:
+            continue
+        base_dotted = _module_dotted_name(path)
+        module = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in module.body:
+            if not isinstance(node, (ast.Import, ast.ImportFrom)):
+                continue
+            for imported in _resolve_imports(node, base_dotted):
+                if _hits_target(imported, "engine"):
+                    violations.append(f"{path.relative_to(SRC_DIR)}: imports {imported} (forbidden: engine)")
+
+    assert violations == []

@@ -5,10 +5,10 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import TypeGuard, cast
 
-from ..casefolding import casefold_equal, casefold_key, dedupe_casefolded_strings
-from ..config_types import ConfigDict
+from ..config.types import ConfigDict
 from ..core.libraries import expected_unavailable_library_reason
 from ..models.project_graph import ProjectFailure
+from ..utils.casefolding import casefold_equal, casefold_key, dedupe_casefolded_strings
 
 _PICTURE_DISPLAY_WARNING_RE = re.compile(
     r"^PictureDisplay in module '([^']+)' path ('.*?') could not be resolved: (.+)$"

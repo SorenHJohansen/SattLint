@@ -13,8 +13,8 @@ from typing import Any
 
 from .. import console as console_module
 from .. import engine as engine_module
-from .._exit_codes import EXIT_FAILURE, EXIT_SUCCESS, EXIT_USAGE_ERROR
-from ..cli_output import emit_text_or_json
+from ._exit_codes import EXIT_FAILURE, EXIT_SUCCESS, EXIT_USAGE_ERROR
+from .cli_output import emit_text_or_json
 
 
 def _format_syntax_error(result: engine_module.SyntaxValidationResult) -> str:

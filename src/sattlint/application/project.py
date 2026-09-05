@@ -3,7 +3,7 @@
 
 Direct replacement for the old flat ``app_analysis`` + ``_app_facade_project``
 helpers: these functions bind the owning implementations (:mod:`sattlint.project.loading`,
-:mod:`sattlint.project.support`, :mod:`sattlint.cache`, :mod:`sattlint.engine`,
+:mod:`sattlint.project.support`, :mod:`sattlint.cache`,
 :mod:`sattlint.console`) to the application defaults, so external callers get the
 same behaviour the interactive TUI used to depend on (in particular
 ``TargetLoadError`` on load failures).
@@ -19,12 +19,12 @@ from sattline_parser.models.ast_model import BasePicture
 
 from .. import cache as cache_module
 from .. import console as console_module
-from .. import engine as engine_module
-from ..casefolding import casefold_equal, casefold_key
-from ..config_types import ConfigDict
+from ..config.types import ConfigDict
 from ..models.project_graph import ProjectGraph
 from ..project import loading as analysis_loading_module
 from ..project import support as support_module
+from ..project.loading import is_within_directory
+from ..utils.casefolding import casefold_equal, casefold_key
 
 ASTCache = cache_module.ASTCache
 AnalysisReportCache = cache_module.AnalysisReportCache
@@ -85,7 +85,7 @@ def _target_is_library(cfg: ConfigDict, project_bp: BasePicture, graph: ProjectG
         project_bp,
         graph,
         source_paths_for_current_target_fn=_source_paths_for_current_target,
-        is_within_directory_fn=engine_module.is_within_directory,
+        is_within_directory_fn=is_within_directory,
     )
 
 
@@ -151,7 +151,6 @@ def load_project(
             target_load_error_factory=target_load_error_factory,
             get_cache_dir_fn=get_cache_dir_fn,
             ast_cache_cls=ASTCache,
-            engine_module=engine_module,
             status_update_fn=status_update_fn,
         )
     return analysis_loading_module.load_project_with_live_status(
@@ -166,7 +165,6 @@ def load_project(
         target_load_error_factory=target_load_error_factory,
         get_cache_dir_fn=get_cache_dir_fn,
         ast_cache_cls=ASTCache,
-        engine_module=engine_module,
         live_status_line_factory=console_module.live_status_line,
     )
 
@@ -181,7 +179,6 @@ def load_program_ast(
         cfg,
         program_name,
         force_dependency_resolution=force_dependency_resolution,
-        engine_module=engine_module,
         live_status_line_factory=console_module.live_status_line,
     )
 

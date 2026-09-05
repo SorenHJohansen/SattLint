@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict, cast
 
-from .._config_defaults import PROJECT_CACHE_CONFIG_KEYS
+from ..config.defaults import PROJECT_CACHE_CONFIG_KEYS
 from .classes import AnalysisReportCache, ASTCache, FileASTCache, FileLookupCache
 from .manager import (
     CacheManager,

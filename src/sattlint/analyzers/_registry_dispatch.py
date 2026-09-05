@@ -22,7 +22,7 @@ def _registry_module() -> Any:
 
 
 def _canonical_key(key: str) -> str:
-    return key.casefold()
+    return _registry_module().canonicalize_analyzer_key(key)
 
 
 def _with_required_analyzers(
@@ -56,12 +56,13 @@ def _with_required_analyzers(
 def _requirement_satisfied(required_key: str, shared_artifacts: Any | None) -> bool:
     if shared_artifacts is None:
         return False
-    if _canonical_key(required_key) == "variables":
+    canonical_required = _canonical_key(required_key)
+    if canonical_required == "variables":
         return getattr(shared_artifacts, "variable_analysis", None) is not None
     reports_by_key = getattr(shared_artifacts, "reports_by_analyzer_key", None)
     if not isinstance(reports_by_key, Mapping):
         return False
-    return required_key in reports_by_key
+    return canonical_required in reports_by_key
 
 
 def _validate_required_analyzers(spec: Any, context: AnalysisContext) -> None:
@@ -97,7 +98,7 @@ def get_cli_dispatch_analyzers(
     available_analyzers = analyzers
     if selected_keys:
         selected = {registry_module.canonicalize_analyzer_key(key) for key in selected_keys}
-        analyzers = tuple(spec for spec in analyzers if getattr(spec, "key", "").casefold() in selected)
+        analyzers = tuple(spec for spec in analyzers if _canonical_key(getattr(spec, "key", "")) in selected)
     analyzers = _with_required_analyzers(analyzers, available_analyzers=available_analyzers)
     return _order_analyzers_for_batch(
         analyzers,
@@ -122,7 +123,7 @@ def get_registry_analyzer_spec(key: str) -> Any:
 
     canonical_key = registry_module.canonicalize_analyzer_key(key)
     for analyzer in registry_module.get_default_analyzer_catalog().analyzers:
-        if analyzer.spec.key.casefold() == canonical_key:
+        if _canonical_key(analyzer.spec.key) == canonical_key:
             return analyzer.spec
     raise KeyError(key)
 
@@ -130,11 +131,11 @@ def get_registry_analyzer_spec(key: str) -> Any:
 def get_lsp_projection_analyzers() -> tuple[Any, ...]:
     registry_module = _registry_module()
 
-    excluded_keys = {registry_module.SEMANTIC_LAYER_ANALYZER_KEY.casefold(), "variables"}
+    excluded_keys = {_canonical_key(registry_module.SEMANTIC_LAYER_ANALYZER_KEY), "variables"}
     return tuple(
         analyzer
         for analyzer in registry_module.get_default_analyzer_catalog().analyzers
-        if analyzer.delivery.lsp_exposed and analyzer.spec.key.casefold() not in excluded_keys
+        if analyzer.delivery.lsp_exposed and _canonical_key(analyzer.spec.key) not in excluded_keys
     )
 
 

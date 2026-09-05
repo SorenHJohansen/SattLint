@@ -15,10 +15,10 @@
             },
             "summary.json": {
                 "analyzer_key": "fault-handling",
-                "finding_count": 2,
+                "finding_count": 3,
                 "rule_counts": {
                     "semantic.fault-missing-recovery": 1,
-                    "semantic.fault-unhandled-path": 1
+                    "semantic.fault-unhandled-path": 2
                 }
             }
         },

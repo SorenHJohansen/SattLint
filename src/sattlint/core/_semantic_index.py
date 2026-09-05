@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from sattline_parser.models.ast_model import (
     BasePicture,
     ModuleHeader,
@@ -11,7 +13,6 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
-from ..call_signatures import CallSignatureOccurrence
 from ..models._variable_issues import VariableIssue
 from ..resolution import (
     CanonicalPath,
@@ -28,6 +29,25 @@ from ._semantic_helpers import (
 )
 from ._semantic_index_reference_support import SemanticIndexReferenceSupportMixin
 from ._semantic_snapshot import ReferenceOccurrence, SymbolDefinition, SymbolReference
+from .call_signatures import CallSignatureOccurrence
+
+
+@dataclass(frozen=True, slots=True)
+class SemanticIndex:
+    """Typed result of semantic-index construction.
+
+    Replaces the historical 8-element tuple so callers use named attributes
+    instead of positional indexing.
+    """
+
+    symbol_table: CanonicalSymbolTable
+    type_graph: TypeGraph
+    definitions: tuple[SymbolDefinition, ...]
+    definitions_by_key: dict[tuple[str, ...], SymbolDefinition]
+    moduletype_index: dict[str, list[ModuleTypeDef]]
+    references_by_file: dict[str, tuple[ReferenceOccurrence, ...]]
+    references_by_definition_key: dict[tuple[str, ...], tuple[SymbolReference, ...]]
+    call_signatures: tuple[CallSignatureOccurrence, ...]
 
 
 class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
@@ -66,16 +86,7 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
 
     def build(
         self,
-    ) -> tuple[
-        CanonicalSymbolTable,
-        TypeGraph,
-        tuple[SymbolDefinition, ...],
-        dict[tuple[str, ...], SymbolDefinition],
-        dict[str, list[ModuleTypeDef]],
-        dict[str, tuple[ReferenceOccurrence, ...]],
-        dict[tuple[str, ...], tuple[SymbolReference, ...]],
-        tuple[CallSignatureOccurrence, ...],
-    ]:
+    ) -> SemanticIndex:
         root_context = self.context_builder.build_for_basepicture()
         self._record_variables(
             self.base_picture.localvariables or [],
@@ -133,15 +144,17 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
             current_origin_file=self.root_origin_file,
             current_origin_library=self.root_origin_library,
         )
-        return (
-            self.symbol_table,
-            self.type_graph,
-            tuple(self._definitions_in_order),
-            self._definitions_by_key,
-            self._moduletype_index,
-            {key: tuple(value) for key, value in self._references_by_file.items()},
-            {key: tuple(value) for key, value in self._references_by_definition_key.items()},
-            tuple(self._call_signatures),
+        return SemanticIndex(
+            symbol_table=self.symbol_table,
+            type_graph=self.type_graph,
+            definitions=tuple(self._definitions_in_order),
+            definitions_by_key=self._definitions_by_key,
+            moduletype_index=self._moduletype_index,
+            references_by_file={key: tuple(value) for key, value in self._references_by_file.items()},
+            references_by_definition_key={
+                key: tuple(value) for key, value in self._references_by_definition_key.items()
+            },
+            call_signatures=tuple(self._call_signatures),
         )
 
     def _build_datatype_field_definitions(
@@ -276,3 +289,5 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
 
 
 SemanticIndexBuilder = _SemanticIndexBuilder
+
+__all__ = ["SemanticIndex", "SemanticIndexBuilder"]

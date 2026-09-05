@@ -17,21 +17,21 @@ from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
-from .. import _config_display as config_display_module
 from .. import cache as cache_module
 from .. import config as config_module
 from .. import console as console_module
-from .._exit_codes import EXIT_SUCCESS, EXIT_USAGE_ERROR
 from ..application import analyze as analyze_application
 from ..application import checks as app_analysis_checks_module
 from ..application import project as project_application
-from ..cli_output import emit_text_or_json
-from ..config_types import ConfigDict
-from ..config_validation import validate_effective_config
+from ..config import display as config_display_module
+from ..config.types import ConfigDict
+from ..config.validation import validate_effective_config
 from ..core.logging import apply_debug
 from ..models.project_graph import ProjectGraph
 from . import app_cli_commands, syntax_check
 from . import entry as cli_entry
+from ._exit_codes import EXIT_SUCCESS, EXIT_USAGE_ERROR
+from .cli_output import emit_text_or_json
 from .entry import CommandHandlers, RunSyntaxCheckCommandFn
 
 LoadedProject = tuple[str, BasePicture, ProjectGraph]

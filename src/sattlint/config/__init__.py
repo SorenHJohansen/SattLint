@@ -1,16 +1,21 @@
-"""Configuration management for SattLint."""
+"""Configuration management for SattLint.
+
+Owns config types, defaults, validation, TOML I/O, path resolution, display,
+and self-check.  ``ConfigDict``/``TOP_LEVEL_CONFIG_FIELDS`` is the single source
+of truth for the top-level config contract (asserted at import in
+:mod:`sattlint.config.defaults`).
+"""
 
 from __future__ import annotations
 
 import os as _os
 
-from . import _config_defaults as _config_defaults_module
-from . import config_io as _config_io_module
-from . import config_validation as _config_validation_module
-from .config_types import ConfigDict
+from . import io as _config_io_module
+from . import validation as _config_validation_module
+from .defaults import DEFAULT_CONFIG
+from .types import ConfigDict
 
 os = _os
-DEFAULT_CONFIG = _config_defaults_module.DEFAULT_CONFIG
 ConfigValidationError = _config_validation_module.ConfigValidationError
 ConfigValidationResult = _config_validation_module.ConfigValidationResult
 target_exists = _config_validation_module.target_exists
@@ -28,6 +33,24 @@ _validation_errors_by_key = validation_errors_by_key
 
 
 def self_check(cfg: ConfigDict) -> bool:
-    from ._config_self_check import self_check as _self_check  # noqa: PLC0415
+    from ._self_check import self_check as _self_check  # noqa: PLC0415
 
     return _self_check(cfg)
+
+
+__all__ = [
+    "DEFAULT_CONFIG",
+    "ConfigDict",
+    "ConfigValidationError",
+    "ConfigValidationResult",
+    "configured_targets",
+    "get_config_path",
+    "load_config",
+    "save_config",
+    "self_check",
+    "target_exists",
+    "validate_config",
+    "validate_effective_config",
+    "validate_loaded_config",
+    "validation_errors_by_key",
+]

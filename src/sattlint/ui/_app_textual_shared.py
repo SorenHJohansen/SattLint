@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from ..cli.interaction import MenuInteraction
-from ..config_types import ConfigDict
+from ..config.types import ConfigDict
 
 APP_SHELL_BINDINGS: list[tuple[str, str, str]] = [
     ("ctrl+1", "show_analyze", "Analyze"),

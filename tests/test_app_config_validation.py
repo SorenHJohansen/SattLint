@@ -10,12 +10,17 @@ from typing import ClassVar
 
 import pytest
 
-from sattlint import _config_defaults as config_defaults_module
 from sattlint import app
 from sattlint import config as config_module
 from sattlint.analyzers import icf as icf_module
+from sattlint.application import commands as commands_application
 from sattlint.application import project as project_application
-from sattlint.config_types import ConfigDict, ConfigOverrideDict
+from sattlint.config.defaults import (
+    REQUIRED_TOP_LEVEL_CONFIG_KEYS,
+    TOP_LEVEL_CONFIG_CONTRACT,
+    VALID_TOP_LEVEL_CONFIG_KEYS,
+)
+from sattlint.config.types import ConfigDict, ConfigOverrideDict
 
 
 @pytest.fixture
@@ -288,11 +293,9 @@ def test_validate_effective_config_reports_unresolved_targets_after_defaults_mer
 
 
 def test_top_level_config_contract_matches_typed_config_definitions() -> None:
-    assert frozenset(config_defaults_module.REQUIRED_TOP_LEVEL_CONFIG_KEYS) == frozenset(ConfigDict.__required_keys__)
-    assert frozenset(ConfigOverrideDict.__optional_keys__) == config_defaults_module.VALID_TOP_LEVEL_CONFIG_KEYS
-    assert frozenset(config_defaults_module.TOP_LEVEL_CONFIG_CONTRACT) == frozenset(
-        config_defaults_module.REQUIRED_TOP_LEVEL_CONFIG_KEYS
-    )
+    assert frozenset(REQUIRED_TOP_LEVEL_CONFIG_KEYS) == frozenset(ConfigDict.__required_keys__)
+    assert frozenset(ConfigOverrideDict.__optional_keys__) == VALID_TOP_LEVEL_CONFIG_KEYS
+    assert frozenset(TOP_LEVEL_CONFIG_CONTRACT) == frozenset(REQUIRED_TOP_LEVEL_CONFIG_KEYS)
 
 
 def test_self_check_uses_full_top_level_config_contract(tmp_path, monkeypatch, capsys):
@@ -375,7 +378,7 @@ def test_run_icf_validation_forces_dependency_aware_ast_loading(tmp_path, monkey
             return "summary"
 
     monkeypatch.setattr(project_application, "load_program_ast", fake_load_program_ast)
-    monkeypatch.setattr(app.engine_module, "merge_project_basepicture", lambda bp, _graph: bp)
+    monkeypatch.setattr(commands_application, "merge_project_basepicture", lambda bp, _graph: bp)
     monkeypatch.setattr(
         icf_module,
         "validate_icf_entries_against_program",
