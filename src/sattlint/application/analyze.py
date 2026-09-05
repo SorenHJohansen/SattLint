@@ -54,7 +54,7 @@ def run_variable_analysis(cfg: ConfigDict, kinds: set[IssueKind] | None) -> None
 
 def run_icf_validation(cfg: ConfigDict) -> None:
     def _load_program_ast(local_cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
-        return project_application.load_program_ast(local_cfg, program_name, force_dependency_resolution=True)
+        return project_application.load_program_ast(local_cfg, program_name)
 
     commands_module.run_icf_validation(
         cfg,
@@ -84,11 +84,13 @@ def run_checks(
     selected_keys: list[str] | None,
     *,
     selected_issue_kinds: set[str] | frozenset[str] | None = None,
+    use_cache: bool = True,
 ) -> None:
     checks_module.run_checks(
         cfg,
         selected_keys,
         selected_issue_kinds=selected_issue_kinds,
+        use_cache=use_cache,
         iter_loaded_projects_fn=project_application.iter_loaded_projects,
         get_enabled_analyzers_fn=_get_selectable_analyzers if selected_keys else _get_enabled_analyzers,
         target_is_library_fn=project_application.target_is_library,

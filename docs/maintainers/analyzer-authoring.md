@@ -45,4 +45,4 @@ def analyze_example(base_picture: BasePicture, **kwargs: object) -> ExampleRepor
     return analyzer.run()
 ```
 
-`src/sattlint/analyzers/reset_contamination.py` is the reference migration for this pattern: one production owner, class-backed implementation, and private helper coverage routed through a test-only support namespace.
+`src/sattlint/analyzers/reset_contamination/` is the reference migration for this pattern: one production owner, class-backed implementation, and private helper coverage routed through a test-only support namespace.

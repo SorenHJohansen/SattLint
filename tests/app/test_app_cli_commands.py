@@ -54,7 +54,6 @@ def test_run_analyze_command_delegates_to_cli_owner(monkeypatch) -> None:
         *,
         selected_keys: list[str] | None,
         selected_issue_kinds: frozenset[str] | None = None,
-        use_cache: bool,
         output_format: str,
         collect_analyze_result_fn,
         exit_success: int,
@@ -62,7 +61,6 @@ def test_run_analyze_command_delegates_to_cli_owner(monkeypatch) -> None:
         seen["cfg"] = cfg
         seen["selected_keys"] = selected_keys
         seen["selected_issue_kinds"] = selected_issue_kinds
-        seen["use_cache"] = use_cache
         seen["output_format"] = output_format
         seen["collect_analyze_result_fn"] = collect_analyze_result_fn
         seen["exit_success"] = exit_success
@@ -84,7 +82,6 @@ def test_run_analyze_command_delegates_to_cli_owner(monkeypatch) -> None:
     assert seen["cfg"] is cfg
     assert seen["selected_keys"] == ["variables"]
     assert seen["selected_issue_kinds"] == frozenset({"unused"})
-    assert seen["use_cache"] is False
     assert seen["output_format"] == "json"
     assert seen["exit_success"] == app.EXIT_SUCCESS
 
@@ -97,6 +94,7 @@ def test_run_analyze_command_allows_opt_in_analyzer_keys(monkeypatch) -> None:
         selected_keys: list[str] | None,
         selected_issue_kinds: frozenset[str] | None = None,
         *,
+        use_cache: bool = True,
         iter_loaded_projects_fn,
         get_enabled_analyzers_fn,
         target_is_library_fn,
@@ -104,6 +102,7 @@ def test_run_analyze_command_allows_opt_in_analyzer_keys(monkeypatch) -> None:
         del cfg, iter_loaded_projects_fn, target_is_library_fn
         seen["selected_keys"] = selected_keys
         seen["selected_issue_kinds"] = selected_issue_kinds
+        seen["use_cache"] = use_cache
         seen["analyzer_keys"] = [spec.key for spec in get_enabled_analyzers_fn()]
         return SimpleNamespace(output_lines=(), cancelled=False)
 
@@ -261,7 +260,6 @@ def test_startup_run_analyze_command_delegates_and_returns_success(monkeypatch) 
         *,
         selected_keys: list[str] | None,
         selected_issue_kinds: frozenset[str] | None = None,
-        use_cache: bool,
         output_format: str,
         collect_analyze_result_fn,
         exit_success: int,
@@ -271,7 +269,6 @@ def test_startup_run_analyze_command_delegates_and_returns_success(monkeypatch) 
                 "cfg": cfg,
                 "selected_keys": selected_keys,
                 "selected_issue_kinds": selected_issue_kinds,
-                "use_cache": use_cache,
                 "output_format": output_format,
                 "collected": collect_analyze_result_fn(
                     cfg,
@@ -287,8 +284,8 @@ def test_startup_run_analyze_command_delegates_and_returns_success(monkeypatch) 
     monkeypatch.setattr(
         app.app_analysis_checks,
         "collect_run_checks_result",
-        lambda cfg, selected_keys, *, selected_issue_kinds=None, **_kwargs: SimpleNamespace(
-            output_lines=(str(cfg.get("use_cache")), str(selected_keys), str(selected_issue_kinds)),
+        lambda cfg, selected_keys, *, selected_issue_kinds=None, use_cache=True, **_kwargs: SimpleNamespace(
+            output_lines=(str(use_cache), str(selected_keys), str(selected_issue_kinds)),
             cancelled=False,
         ),
     )
@@ -305,7 +302,6 @@ def test_startup_run_analyze_command_delegates_and_returns_success(monkeypatch) 
     assert seen["cfg"] == {"debug": False}
     assert seen["selected_keys"] == ["variables"]
     assert seen["selected_issue_kinds"] == frozenset({"unused"})
-    assert seen["use_cache"] is False
     assert seen["output_format"] == "text"
     assert cast(Any, seen["collected"]).output_lines == ("False", "['variables']", "frozenset({'unused'})")
     assert seen["exit_success"] == app.EXIT_SUCCESS
@@ -316,7 +312,6 @@ def test_cli_owner_run_analyze_command_renders_collected_output(capsys) -> None:
         {"debug": False},
         selected_keys=["variables"],
         selected_issue_kinds=frozenset({"unused"}),
-        use_cache=False,
         output_format="text",
         collect_analyze_result_fn=lambda _cfg, *, selected_keys, selected_issue_kinds=None: SimpleNamespace(
             output_lines=(f"checks={selected_keys}", f"issues={selected_issue_kinds}"),
@@ -335,7 +330,6 @@ def test_cli_owner_run_analyze_command_prints_json_output(capsys) -> None:
         {"debug": False},
         selected_keys=["variables"],
         selected_issue_kinds=frozenset({"unused"}),
-        use_cache=False,
         output_format="json",
         collect_analyze_result_fn=lambda _cfg, *, selected_keys, selected_issue_kinds=None: SimpleNamespace(
             output_lines=(f"checks={selected_keys}", f"issues={selected_issue_kinds}"),

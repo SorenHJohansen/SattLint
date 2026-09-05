@@ -161,10 +161,6 @@ def _shared_artifact_profile_text(target_name: str, shared_artifacts: AnalysisSh
     )
 
 
-def use_cache_enabled(cfg: ConfigDict) -> bool:
-    return bool(cfg.get("use_cache", True))
-
-
 def _iter_loaded_projects(cfg: ConfigDict) -> Iterator[LoadedProject]:
     return project_application.iter_loaded_projects(cfg)
 
@@ -178,6 +174,7 @@ def collect_run_checks_result(  # noqa: PLR0915
     selected_keys: list[str] | None,
     selected_issue_kinds: Set[str] | None = None,
     *,
+    use_cache: bool = True,
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
     get_enabled_analyzers_fn: Callable[[], list[Any]] | None = None,
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
@@ -217,7 +214,7 @@ def collect_run_checks_result(  # noqa: PLR0915
     flush_stdout()
     report_cache = report_cache_module.create_analysis_report_cache(
         cfg,
-        use_cache_enabled_fn=use_cache_enabled,
+        use_cache=use_cache,
         debug_enabled_fn=debug_enabled,
         analysis_report_cache_cls=AnalysisReportCache,
         get_cache_dir_fn=get_cache_dir,
@@ -425,6 +422,7 @@ def run_checks(
     selected_keys: list[str] | None,
     selected_issue_kinds: Set[str] | None = None,
     *,
+    use_cache: bool = True,
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
     get_enabled_analyzers_fn: Callable[[], list[Any]] | None = None,
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
@@ -434,6 +432,7 @@ def run_checks(
         cfg,
         selected_keys,
         selected_issue_kinds,
+        use_cache=use_cache,
         iter_loaded_projects_fn=iter_loaded_projects_fn,
         get_enabled_analyzers_fn=get_enabled_analyzers_fn,
         target_is_library_fn=target_is_library_fn,

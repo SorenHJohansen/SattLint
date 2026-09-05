@@ -84,7 +84,7 @@ def self_check(cfg: ConfigDict) -> bool:
 
     for key in REQUIRED_TOP_LEVEL_CONFIG_KEYS:
         if key not in cfg:
-            emit_output(f"â�Œ Missing config key: {key}")
+            emit_output(f"\u2718 Missing config key: {key}")
             ok = False
 
     validation = validate_loaded_config(cfg)

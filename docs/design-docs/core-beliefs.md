@@ -32,8 +32,8 @@ Failures must be explicit and actionable.
 
 Every principle must have enforcement:
 
-- Architecture boundaries → import-linter
-- Doc freshness → automated stale-doc scanner
+- Architecture boundaries → import-linter (`tests/test_dependency_guard.py`)
+- Doc freshness → reviewed during each exec-plan pass (no automated stale-doc scanner)
 - Casefold enforcement → custom lint rule
 - Shared utility reuse → duplication detection
 - File size → max lines per file
@@ -47,7 +47,7 @@ Knowledge lives in-repo or it doesn't exist for agents.
 - No external docs (Google Docs, Slack threads, oral tradition)
 - Design decisions → `docs/design-docs/`
 - Plans → `docs/exec-plans/`
-- Tech debt → `docs/exec-plans/tech-debt-tracker.md`
+- Tech debt → tracked in `docs/exec-plans/` (active plans and follow-ups)
 
 ## Docs Rot
 
@@ -55,7 +55,7 @@ Knowledge lives in-repo or it doesn't exist for agents.
 
 Stale documentation is worse than no documentation.
 
-- Doc-gardening agent scans for stale docs weekly
+- Docs are checked for staleness during each exec-plan pass (see `docs/exec-plans/release-1.0-and-doc-alignment.md`); links must be valid; dead links are lint errors
 - Version docs with code (same PR when behavior changes)
 - Links must be valid; dead links are lint errors
 

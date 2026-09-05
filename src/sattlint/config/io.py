@@ -33,18 +33,6 @@ def _validation_messages(cfg: ConfigDict | ConfigOverrideDict) -> tuple[str, ...
     return tuple(f"[{error.key_path}] {error.message}" for error in validation.errors)
 
 
-def _normalize_telemetry_section(cfg: ConfigOverrideDict) -> ConfigOverrideDict:
-    telemetry = cfg.get("telemetry")
-    if not isinstance(telemetry, dict) or "path" not in telemetry:
-        return cfg
-
-    merged_cfg = dict(cast(ConfigObjectMap, cfg))
-    normalized_telemetry = dict(cast(dict[str, Any], telemetry))
-    normalized_telemetry.pop("path", None)
-    merged_cfg["telemetry"] = normalized_telemetry
-    return cast(ConfigOverrideDict, merged_cfg)
-
-
 def get_config_path() -> Path:
     return _config_paths_module.get_config_path()
 
@@ -64,8 +52,6 @@ def load_config(path: Path) -> tuple[ConfigDict, bool]:
     for warning in load_time_config_warnings(cfg):
         emit_output(f"⚠ Config warning [{warning.key_path}]: {warning.message}")
 
-    cfg = _normalize_telemetry_section(cfg)
-
     for message in _validation_messages(cfg):
         key_path, error_message = message.split("] ", maxsplit=1)
         emit_output(f"⚠ Config warning {key_path}]: {error_message}")
@@ -78,12 +64,8 @@ def save_config(path: Path, cfg: ConfigDict | ConfigOverrideDict) -> None:
     if not isinstance(sanitized_cfg_obj, dict):
         raise ValueError("Config serialization must produce a table/object.")
     sanitized_cfg: ConfigObjectMap = cast(ConfigObjectMap, sanitized_cfg_obj)
-    telemetry = sanitized_cfg.get("telemetry")
-    if isinstance(telemetry, dict):
-        cast(dict[str, Any], telemetry).pop("path", None)
 
-    normalized_cfg = _normalize_telemetry_section(cast(ConfigOverrideDict, sanitized_cfg))
-    validation_messages = _validation_messages(normalized_cfg)
+    validation_messages = _validation_messages(cast(ConfigOverrideDict, sanitized_cfg))
     if validation_messages:
         raise ValueError("Config validation failed: " + "; ".join(validation_messages))
 
@@ -101,7 +83,7 @@ def save_config(path: Path, cfg: ConfigDict | ConfigOverrideDict) -> None:
             raise ValueError("Cannot serialize None to TOML. Provide a default value or omit the key.")
         return value
 
-    serializable_cfg = normalize(normalized_cfg)
+    serializable_cfg = normalize(sanitized_cfg)
     if not isinstance(serializable_cfg, dict):
         raise ValueError("Config serialization must produce a table/object.")
 

@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import TypeGuard, cast
 
 from ..config.types import ConfigDict
-from ..core.libraries import expected_unavailable_library_reason
 from ..models.project_graph import ProjectFailure
 from ..utils.casefolding import casefold_equal, casefold_key, dedupe_casefolded_strings
 
@@ -206,22 +205,11 @@ def extract_warning_name(item: str) -> str | None:
     return item.split(": ", 1)[0]
 
 
-def is_expected_unavailable_warning(item: str) -> bool:
-    match = re.match(r"^[^:]+: dependency '([^']+)' unavailable: (.+)$", item)
-    if match is None:
-        return False
-
-    dependency_name, reason = match.groups()
-    expected_reason = expected_unavailable_library_reason(dependency_name)
-    return expected_reason is not None and reason == expected_reason
-
-
 def target_validation_warnings(target_name: str, warnings: list[str]) -> list[str]:
     return [
         item
         for item in warnings
         if ((warning_name := extract_warning_name(item)) is None or casefold_equal(warning_name, target_name))
-        and not is_expected_unavailable_warning(item)
     ]
 
 
@@ -287,11 +275,9 @@ def cache_key_for_target(
     cfg: ConfigDict,
     target_name: str,
     *,
-    compute_cache_key_fn: Callable[[Mapping[str, object]], str],
+    compute_cache_key_fn: Callable[..., str],
 ) -> str:
-    cache_cfg: dict[str, object] = dict(cfg)
-    cache_cfg["analysis_target"] = target_name
-    return compute_cache_key_fn(cache_cfg)
+    return compute_cache_key_fn(cfg, analysis_target=target_name)
 
 
 def split_csv_values(raw: str) -> list[str]:

@@ -25,9 +25,9 @@ _LOADER_CONFIG_KEYS = ("program_dir", "other_lib_dirs", "ABB_lib_dir", "mode", "
 class SattLineProjectLoaderConfig:
     program_dir: Path
     other_lib_dirs: Sequence[Path]
-    abb_lib_dir: Path
     mode: CodeMode
     debug: bool
+    abb_lib_dir: Path | None = None
     use_file_ast_cache: bool = True
     refresh_mode: str = "full"
 
@@ -38,7 +38,7 @@ class SattLineProjectLoaderConfig:
 
         object.__setattr__(self, "program_dir", Path(self.program_dir))
         object.__setattr__(self, "other_lib_dirs", tuple(Path(path) for path in self.other_lib_dirs))
-        object.__setattr__(self, "abb_lib_dir", Path(self.abb_lib_dir))
+        object.__setattr__(self, "abb_lib_dir", Path(self.abb_lib_dir) if self.abb_lib_dir else None)
         object.__setattr__(self, "refresh_mode", normalized_refresh_mode)
 
 
@@ -218,7 +218,12 @@ def build_project_loader_from_type(
 
     program_dir = _coerce_path_config_value(cfg["program_dir"], key="program_dir")
     other_lib_dirs = _coerce_path_sequence_config_value(cfg["other_lib_dirs"], key="other_lib_dirs")
-    abb_lib_dir = _coerce_path_config_value(cfg["ABB_lib_dir"], key="ABB_lib_dir")
+    raw_abb_lib_dir = cfg.get("ABB_lib_dir")
+    abb_lib_dir = (
+        None
+        if raw_abb_lib_dir is None or not str(raw_abb_lib_dir).strip()
+        else _coerce_path_config_value(raw_abb_lib_dir, key="ABB_lib_dir")
+    )
     mode = _coerce_code_mode(cfg["mode"])
     debug = _coerce_bool_config_value(cfg["debug"], key="debug")
 

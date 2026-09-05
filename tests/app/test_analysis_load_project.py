@@ -130,7 +130,7 @@ def test_load_project_raises_value_error_when_loader_config_missing(monkeypatch)
         )
 
 
-def test_load_program_ast_force_dependency_resolution_returns_loaded_program(monkeypatch):
+def test_load_program_ast_returns_loaded_program(monkeypatch):
     seen_kwargs: dict[str, object] = {}
 
     class FakeLoader:
@@ -152,7 +152,6 @@ def test_load_program_ast_force_dependency_resolution_returns_loaded_program(mon
             "debug": False,
         },
         "TargetA",
-        force_dependency_resolution=True,
     )
 
     assert result == ("bp-main", SimpleNamespace(ast_by_name={"TargetA": "bp-main"}))
@@ -371,7 +370,6 @@ def test_load_program_ast_raises_when_program_missing(monkeypatch):
                 "debug": False,
             },
             "TargetA",
-            force_dependency_resolution=False,
         )
 
 

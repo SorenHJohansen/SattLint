@@ -9,28 +9,19 @@ from sattline_parser import parse_source_file as parser_core_parse_source_file
 from sattline_parser.api import read_text_with_fallback
 from sattline_parser.models.ast_model import BasePicture
 
-from ..core.syntax import CodeMode
+from ..core.syntax import code_ext_candidates, deps_ext_candidates
 from .loader_base import (
     PrefetchedDependencyCandidate,
     PrefetchedLoadResult,
     SattLineProjectLoaderBase,
-    code_ext,
-    deps_ext,
     ensure_local_validation,
     mark_local_validation,
 )
 
 
 class SattLineProjectLoaderLookupMixin(SattLineProjectLoaderBase):
-    def _is_ignored_base(self, base: Path) -> bool:
-        try:
-            base_r = base.resolve()
-        except OSError:
-            base_r = base
-        return any(base_r == ign for ign in self._ignored_dirs)
-
     def _is_allowed_base(self, base: Path) -> bool:
-        allowed = [self.program_dir, *self.other_lib_dirs, self.abb_lib_dir]
+        allowed = [path for path in (self.program_dir, *self.other_lib_dirs, self.abb_lib_dir) if path is not None]
         try:
             base_r = base.resolve()
         except OSError:
@@ -56,7 +47,7 @@ class SattLineProjectLoaderLookupMixin(SattLineProjectLoaderBase):
         return str(self._resolved_lookup_path(path)).casefold()
 
     def _lookup_source_dirs(self) -> tuple[Path, ...]:
-        return (self.program_dir, *self.other_lib_dirs, self.abb_lib_dir)
+        return tuple(path for path in (self.program_dir, *self.other_lib_dirs, self.abb_lib_dir) if path is not None)
 
     def _is_lookup_relative_to(self, path: Path | None, root: Path | None) -> bool:
         resolved_path = self._resolved_lookup_path(path)
@@ -117,7 +108,7 @@ class SattLineProjectLoaderLookupMixin(SattLineProjectLoaderBase):
 
         def add(path: Path | None) -> None:
             resolved = self._resolved_lookup_path(path)
-            if resolved is None or self._is_ignored_base(resolved):
+            if resolved is None:
                 return
             key = self._lookup_path_key(resolved)
             if key in seen:
@@ -241,7 +232,7 @@ class SattLineProjectLoaderLookupMixin(SattLineProjectLoaderBase):
             return None
 
         base = Path(cached.get("base_dir", ""))
-        if not base or self._is_ignored_base(base):
+        if not base:
             return None
         if not self._is_allowed_base(base):
             self._lookup_cache.forget(kind, name, self.mode.value)
@@ -274,7 +265,7 @@ class SattLineProjectLoaderLookupMixin(SattLineProjectLoaderBase):
         if prefetched is not None and prefetched.code_path is not None:
             return prefetched.code_path
 
-        extensions = [code_ext(self.mode), ".x"] if self.mode == CodeMode.DRAFT else [code_ext(self.mode)]
+        extensions = list(code_ext_candidates(self.mode))
 
         if self.contextual_lookup is not None:
             resolved = self.contextual_lookup(name, extensions, requester_dir, "code")
@@ -300,7 +291,7 @@ class SattLineProjectLoaderLookupMixin(SattLineProjectLoaderBase):
             return cached
 
         for base in [self.program_dir, *self.other_lib_dirs, self.abb_lib_dir]:
-            if self._is_ignored_base(base):
+            if base is None:
                 continue
 
             indexed = self._find_in_index(
@@ -335,7 +326,7 @@ class SattLineProjectLoaderLookupMixin(SattLineProjectLoaderBase):
         if prefetched is not None and prefetched.deps_path is not None:
             return prefetched.deps_path
 
-        extensions = [deps_ext(self.mode), ".z"] if self.mode == CodeMode.DRAFT else [deps_ext(self.mode)]
+        extensions = list(deps_ext_candidates(self.mode))
 
         if self.contextual_lookup is not None:
             resolved = self.contextual_lookup(name, extensions, requester_dir, "deps")
@@ -361,7 +352,7 @@ class SattLineProjectLoaderLookupMixin(SattLineProjectLoaderBase):
             return cached
 
         for base in [self.program_dir, *self.other_lib_dirs, self.abb_lib_dir]:
-            if self._is_ignored_base(base):
+            if base is None:
                 continue
 
             indexed = self._find_in_index(
@@ -394,24 +385,6 @@ class SattLineProjectLoaderLookupMixin(SattLineProjectLoaderBase):
     ) -> Path | None:
         return self._find_deps_with_context(name, requester_dir=requester_dir)
 
-    def _find_vendor_code(self, name: str) -> Path | None:
-        extensions = [code_ext(self.mode), ".x"] if self.mode == CodeMode.DRAFT else [code_ext(self.mode)]
-        for ignored_dir in self._ignored_dirs:
-            for ext in extensions:
-                path = ignored_dir / f"{name}{ext}"
-                if path.exists():
-                    return path
-        return None
-
-    def _find_vendor_deps(self, name: str) -> Path | None:
-        extensions = [deps_ext(self.mode), ".z"] if self.mode == CodeMode.DRAFT else [deps_ext(self.mode)]
-        for ignored_dir in self._ignored_dirs:
-            for ext in extensions:
-                path = ignored_dir / f"{name}{ext}"
-                if path.exists():
-                    return path
-        return None
-
     def _read_deps(self, deps_path: Path) -> list[str]:
         text = read_text_with_fallback(deps_path)
         lines = text.splitlines()
@@ -437,12 +410,13 @@ class SattLineProjectLoaderLookupMixin(SattLineProjectLoaderBase):
                 resolved_library_dir = library_dir
             if resolved_path.is_relative_to(resolved_library_dir):
                 return resolved_library_dir.name
-        try:
-            resolved_abb_root = self.abb_lib_dir.resolve()
-        except OSError:
-            resolved_abb_root = self.abb_lib_dir
-        if resolved_path.is_relative_to(resolved_abb_root):
-            return resolved_abb_root.name
+        if self.abb_lib_dir is not None:
+            try:
+                resolved_abb_root = self.abb_lib_dir.resolve()
+            except OSError:
+                resolved_abb_root = self.abb_lib_dir
+            if resolved_path.is_relative_to(resolved_abb_root):
+                return resolved_abb_root.name
         return resolved_path.parent.name
 
     def _record_library_name(self, name: str, code_path: Path) -> str:
@@ -520,7 +494,8 @@ class SattLineProjectLoaderLookupMixin(SattLineProjectLoaderBase):
 
     def _prime_base_indexes(self) -> None:
         for base in [self.program_dir, *self.other_lib_dirs, self.abb_lib_dir]:
-            self._get_base_index(base)
+            if base is not None:
+                self._get_base_index(base)
 
     def _prefetch_ast_candidates(self, code_paths: list[Path]) -> dict[Path, PrefetchedLoadResult]:
         if not self.use_file_ast_cache or len(code_paths) < 2:
@@ -557,8 +532,8 @@ class SattLineProjectLoaderLookupMixin(SattLineProjectLoaderBase):
             return
 
         self._prime_base_indexes()
-        code_extensions = [code_ext(self.mode), ".x"] if self.mode == CodeMode.DRAFT else [code_ext(self.mode)]
-        deps_extensions = [deps_ext(self.mode), ".z"] if self.mode == CodeMode.DRAFT else [deps_ext(self.mode)]
+        code_extensions = list(code_ext_candidates(self.mode))
+        deps_extensions = list(deps_ext_candidates(self.mode))
         code_paths_to_prefetch: list[Path] = []
         for dep_name in unique_dep_names:
             code_path = self._find_in_ordered_bases_without_cache(

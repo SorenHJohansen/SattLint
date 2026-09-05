@@ -609,8 +609,9 @@ def test_run_checks_bypasses_report_cache_when_use_cache_disabled(monkeypatch):
     monkeypatch.setattr(checks_application, "AnalysisReportCache", ForbiddenReportCache)
 
     checks_application.run_checks(
-        app.DEFAULT_CONFIG.copy() | {"use_cache": False},
+        app.DEFAULT_CONFIG.copy(),
         ["state-inference"],
+        use_cache=False,
         iter_loaded_projects_fn=cast(
             Any,
             lambda *_args, **_kwargs: iter(

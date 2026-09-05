@@ -12,6 +12,7 @@ from typing import Any, cast
 
 from ..cli.interaction import MenuInteraction
 from ..config.types import ConfigDict
+from ..core.syntax import CodeMode, code_ext_candidates, normalize_code_mode
 
 APP_SHELL_BINDINGS: list[tuple[str, str, str]] = [
     ("ctrl+1", "show_analyze", "Analyze"),
@@ -424,8 +425,8 @@ def _config_directory_paths(cfg: ConfigDict) -> tuple[Path, ...]:
 
 
 def _setup_candidate_is_available(cfg: ConfigDict, files: tuple[Path, ...]) -> bool:
-    mode = str(cfg.get("mode", "official")).strip().casefold()
-    allowed_extensions = {".s", ".x"} if mode == "draft" else {".x"}
+    mode = normalize_code_mode(str(cfg.get("mode", "official")).strip().casefold()) or CodeMode.OFFICIAL
+    allowed_extensions = set(code_ext_candidates(mode))
     return any(path.suffix.casefold() in allowed_extensions for path in files)
 
 

@@ -86,7 +86,7 @@ def validate_transformed_basepicture_locally(
     allow_unresolved_external_datatypes: bool = True,
     enforce_unique_submodule_names: bool = True,
     allow_parameterless_module_mappings: bool = False,
-    allow_old_state_assignment: bool = True,
+    allow_old_state_assignment: bool = False,
     warning_sink: ValidationWarningSink | None = None,
 ) -> None:
     """Validate a transformed BasePicture for local/editor flows.
@@ -179,7 +179,7 @@ def validate_transformed_basepicture(
     allow_unresolved_external_datatypes: bool = False,
     enforce_unique_submodule_names: bool = True,
     allow_parameterless_module_mappings: bool = False,
-    allow_old_state_assignment: bool = True,
+    allow_old_state_assignment: bool = False,
     warn_unknown_parameter_targets: bool = False,
     warn_incompatible_parameter_mappings: bool = False,
     suppress_module_code_semantic_errors: bool = False,

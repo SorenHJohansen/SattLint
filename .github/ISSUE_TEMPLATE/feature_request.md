@@ -7,7 +7,7 @@ assignees: ''
 
 ---
 
-Use [SUPPORT.md](../../SUPPORT.md) and the [public support matrix](../../docs/references/public-support-matrix.md) first so it is clear whether the request targets a stable surface, a preview surface, or a new surface entirely.
+Use [SUPPORT.md](../../SUPPORT.md) first so it is clear whether the request targets a stable surface, a preview surface, or a new surface entirely.
 
 **What problem are you trying to solve?**
 Describe the workflow or pain point.

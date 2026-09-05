@@ -85,12 +85,6 @@ No public exports. Import submodules directly.
 
 No public exports. Import submodules directly.
 
-### `sattlint.structural`
-
-| Export | Description |
-|--------|-------------|
-| `collect_graphics_layout_entries_for_target` | Collect graphics layout entries for an analysis target |
-
 ---
 
 ## `sattline_parser` Package (external dependency)
@@ -117,4 +111,3 @@ See the `sattline-parser` source for the full `__all__` listing.
 | `sattlint` CLI commands | Stable |
 | `sattline_parser.api` | Stable |
 | `sattlint.analyzers.*` | Preview |
-| `sattlint.structural` | Internal |

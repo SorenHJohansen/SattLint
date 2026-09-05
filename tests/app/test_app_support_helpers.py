@@ -60,9 +60,6 @@ def test_print_validation_warnings_and_target_helpers_cover_edge_cases(tmp_path:
     assert printed[15] == "  - [Root.L1] '+MissingPanel'"
     assert printed[16] == "    module 'MissingPanel' was not found under 'Root.L1'"
     assert support_module.extract_warning_name("plain warning") is None
-    assert not support_module.is_expected_unavailable_warning(
-        "TargetA: dependency 'ControlLib' unavailable: unexpected reason"
-    )
     assert support_module.get_analyzed_targets({"analyzed_programs_and_libraries": "bad"}) == []
     assert (
         menu_module.summarize_targets({"analyzed_programs_and_libraries": ["A", "B", "C", "D"]})

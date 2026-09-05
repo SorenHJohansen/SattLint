@@ -472,8 +472,6 @@ def action_save_config(self: Any) -> None:
             "other_lib_dirs": [
                 _make_project_relative(str(p), root) for p in cast(list[str], cfg_raw.get("other_lib_dirs") or [])
             ],
-            "output_dir": "output",
-            "cache_dir": ".sattlint-cache",
             "telemetry": dict(cast(dict[str, object], cfg_raw.get("telemetry") or {"enabled": False})),
             "analysis": dict(cast(dict[str, object], cfg_raw.get("analysis") or {})),
         }

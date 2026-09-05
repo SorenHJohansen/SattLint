@@ -113,8 +113,6 @@ def _refresh_setup_settings_labels(self: Any) -> None:
     other_dirs = self._cfg.get("other_lib_dirs", [])
     icf_dir = _stringify_value(cast(object | None, self._cfg.get("icf_dir", "")))
     mode = _stringify_value(cast(object | None, self._cfg.get("mode", "official"))) or "official"
-    scan_root_only = bool(self._cfg.get("scan_root_only", False))
-    fast_cache_validation = bool(self._cfg.get("use_file_ast_cache", False))
     debug = bool(self._cfg.get("debug", False))
     telemetry = cast(dict[str, object] | None, self._cfg.get("telemetry"))
     telemetry_enabled = (
@@ -130,22 +128,6 @@ def _refresh_setup_settings_labels(self: Any) -> None:
     _safe_update("setup-label-other-dirs", _setup_other_dirs_text(other_dirs))
     _safe_update("setup-label-icf-dir", _setup_path_text(icf_dir))
     _safe_update("setup-label-mode", _setup_mode_text(mode))
-    _safe_update(
-        "setup-label-scan-root-only",
-        _setup_toggle_text(
-            scan_root_only,
-            enabled_detail="Only configured roots are scanned",
-            disabled_detail="Nested folders are also scanned",
-        ),
-    )
-    _safe_update(
-        "setup-label-fast-cache",
-        _setup_toggle_text(
-            fast_cache_validation,
-            enabled_detail="Fast cache validation is active",
-            disabled_detail="Full cache validation is active",
-        ),
-    )
     _safe_update(
         "setup-label-debug",
         _setup_toggle_text(
@@ -186,7 +168,6 @@ def _setup_browser_detail_text(self: Any) -> str:
     lines = [
         "Selected Target Detail",
         f"Mode: {self._cfg.get('mode', 'official')}",
-        f"scan_root_only: {bool(self._cfg.get('scan_root_only', False))}",
     ]
     if candidate is None:
         lines.append("Target: none")

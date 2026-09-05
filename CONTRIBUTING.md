@@ -62,8 +62,7 @@ For a human-readable CLI reference, see [docs/public/feature-guide.md](docs/publ
 
 ## Development Setup
 
-Preferred local bootstrap uses `uv` because CI already installs through `uv`.
-`pip install -e .[dev]` remains acceptable when `uv` is unavailable.
+Preferred local bootstrap uses `uv`. `pip install -e .[dev]` remains acceptable when `uv` is unavailable. CI installs with `pip install -e ".[dev]"`.
 
 ### Option 1: Linux or macOS
 
@@ -118,8 +117,8 @@ uv pip install -e ".[dev]"
 
 #### 2. VS Code Configuration
 
-The repository includes `.vscode/settings.json` which configures Python interpreter
-discovery, Ruff, Pylance, Pyright, and pytest.
+Configure your editor manually with Python interpreter discovery, Ruff,
+Pylance/Pyright, and pytest. The repository does not ship a `.vscode/settings.json`.
 
 ## Development Workflow
 
@@ -158,7 +157,7 @@ pre-commit-hooks checks.
 python -m pytest
 
 # Run a focused test module
-python -m pytest tests/test_cli.py
+python -m pytest tests/app/test_cli.py
 
 # Run focused owner validation after editing
 python -m pytest <focused-paths> -q --tb=short
@@ -173,7 +172,6 @@ widen to the full suite.
 - `tests/` - Test suite
 - `pyproject.toml` - Project configuration and dependencies
 - `.editorconfig` - Cross-editor formatting rules
-- `.vscode/settings.json` - VS Code workspace configuration
 
 ## Making Changes
 
@@ -190,5 +188,5 @@ widen to the full suite.
 
 - Use `pathlib.Path` for file operations
 - Avoid hard-coded paths in new code
-- Keep `.vscode/settings.json` platform-neutral by pointing at the virtual environment root instead of OS-specific executables
+- Keep editor settings platform-neutral by pointing at the virtual environment root instead of OS-specific executables
 - Test changes on both platforms if possible

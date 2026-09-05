@@ -110,8 +110,8 @@ def load_picture_display_source_context(source_path: Path) -> BasePicture | None
         basepic = parser_core_parse_source_text(source_text)
         validate_transformed_basepicture(
             basepic,
-            allow_old_state_assignment=source_path.suffix.lower() in {".x", ".z"},
-            allow_unresolved_external_datatypes=source_path.suffix.lower() in {".x", ".z"},
+            allow_old_state_assignment=False,
+            allow_unresolved_external_datatypes=False,
         )
         return basepic
     except (OSError, SyntaxError, UnexpectedInput, ValueError, RuntimeError):

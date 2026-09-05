@@ -13,7 +13,6 @@ from sattline_parser.models.ast_model import BasePicture
 from sattline_parser.preprocessing import is_compressed, preprocess_sl_text
 from sattline_parser.transformer.sl_transformer import SLTransformer
 
-from .core.libraries import expected_unavailable_library_reason, is_expected_unavailable_library
 from .core.syntax import (
     CodeMode,
     SyntaxValidationResult,
@@ -228,10 +227,8 @@ __all__ = [
     "code_ext",
     "create_sl_parser",
     "deps_ext",
-    "expected_unavailable_library_reason",
     "graphics_ext",
     "graphics_ext_candidates",
-    "is_expected_unavailable_library",
     "is_within_directory",
     "load_project_graph",
     "merge_project_basepicture",

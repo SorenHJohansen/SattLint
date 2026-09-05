@@ -110,9 +110,10 @@ def run_analyze_command(
             return project_application.iter_loaded_projects(nested_cfg, use_cache=use_cache)
 
         return app_analysis_checks_module.collect_run_checks_result(
-            cast(ConfigDict, local_cfg | {"use_cache": use_cache}),
+            local_cfg,
             selected_keys,
             selected_issue_kinds=selected_issue_kinds,
+            use_cache=use_cache,
             iter_loaded_projects_fn=_iter_nested_projects,
             get_enabled_analyzers_fn=(
                 analyze_application.get_selectable_analyzers
@@ -126,7 +127,6 @@ def run_analyze_command(
         cfg,
         selected_keys=selected_keys,
         selected_issue_kinds=selected_issue_kinds,
-        use_cache=use_cache,
         output_format=output_format,
         collect_analyze_result_fn=_collect_result,
         exit_success=EXIT_SUCCESS,

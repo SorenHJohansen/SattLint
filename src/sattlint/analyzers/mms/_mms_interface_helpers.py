@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -17,7 +17,9 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
+from ...config.types import ConfigDict
 from ...grammar import constants as const
+from ...project.support import configured_icf_files
 from ...reporting.icf_report import ICFEntry
 from ...resolution.common import varname_base, varname_full
 from ...resolution.context_builder import ContextBuilder
@@ -103,17 +105,14 @@ def _load_icf_entries_from_config(
     if not isinstance(config, dict):
         return []
 
-    icf_dir_raw = str(config.get("icf_dir", "") or "").strip()
-    if not icf_dir_raw:
+    icf_dir, icf_files = configured_icf_files(cast(ConfigDict, config))
+    if icf_dir is None:
         return []
 
-    icf_dir = Path(icf_dir_raw)
-    if not icf_dir.exists() or not icf_dir.is_dir():
-        return []
-
+    by_stem = {path.stem.casefold(): path for path in icf_files}
     for name in _program_name_candidates(base_picture):
-        candidate = icf_dir / f"{name}.icf"
-        if candidate.exists() and candidate.is_file():
+        candidate = by_stem.get(name.casefold())
+        if candidate is not None:
             return parse_icf_file(candidate)
 
     return []

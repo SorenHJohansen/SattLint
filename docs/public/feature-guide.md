@@ -63,13 +63,22 @@ These commands are functional but may change in future releases.
 
 ### `sattlint analyze`
 
-Run semantic analysis on the configured project.
+Run semantic analysis on the configured project. One or more `--check KEY`
+arguments are required; use `--list-checks` to see the available analyzers.
 
 ```bash
-sattlint analyze
 sattlint analyze --list-checks
-sattlint --config path/to/config.toml analyze
-sattlint --no-cache analyze
+sattlint analyze --check naming-consistency
+sattlint --config path/to/config.toml analyze --check naming-consistency
+sattlint --no-cache analyze --check naming-consistency
+```
+
+### `sattlint init`
+
+Scaffold a `.slproj` project file in the current directory.
+
+```bash
+sattlint init
 ```
 
 ### `sattlint validate-config`
@@ -89,19 +98,11 @@ Prune the AST analysis cache.
 sattlint cache-prune
 ```
 
-### `sattlint format-icf`
-
-Format Industrial Control Format (ICF) files.
-
-```bash
-sattlint format-icf
-sattlint format-icf --check
-```
-
 ### Shared Flags
 
 ```bash
 sattlint --config path/to/config.toml <subcommand>
+sattlint --project path/to/project.slproj <subcommand>
 sattlint --quiet <subcommand>
 sattlint --no-cache <subcommand>
 ```
@@ -187,13 +188,19 @@ CI runs automatically on PR and push to `main`.
 | Code | Meaning |
 |------|---------|
 | 0 | Success |
-| 1 | Command ran and found a real problem |
+| 1 | A real problem was found (for example `syntax-check` found a syntax error) |
 | 2 | Invalid arguments or configuration |
+
+Per-command behavior: `syntax-check` returns `1` when the file fails to parse
+or validate; `analyze` reports issues in its output but exits `0` once the
+analysis runs; `validate-config` returns `2` on invalid configuration. See
+[cli-commands.md](cli-commands.md) for the full reference.
 
 ---
 
 ## See Also
 
+- [CLI commands](cli-commands.md) — authoritative command reference
 - [Architecture overview](architecture.md) — system layering and runtime entry points
 - [SUPPORT.md](../../SUPPORT.md) — support contract, stable vs preview status, removed surfaces
 - [CONTRIBUTING.md](../../CONTRIBUTING.md) — development setup and workflow

@@ -162,7 +162,7 @@ def test_load_config_applies_default_telemetry_without_rewriting_existing_file(t
     assert 'path = ""' not in persisted_text
 
 
-def test_load_config_warns_on_legacy_telemetry_path_without_rewriting_file(tmp_path, capsys):
+def test_load_config_strips_legacy_telemetry_path_without_rewriting_file(tmp_path, capsys):
     config_path = tmp_path / "config.toml"
     config_path.write_text('[telemetry]\nenabled = true\npath = "legacy.jsonl"\n', encoding="utf-8")
 
@@ -172,10 +172,7 @@ def test_load_config_warns_on_legacy_telemetry_path_without_rewriting_file(tmp_p
     persisted_text = config_path.read_text(encoding="utf-8")
     assert created is False
     assert loaded["telemetry"] == {"enabled": True}
-    assert (
-        "Config warning [telemetry.path]: telemetry.path is deprecated and ignored when building the effective config."
-        in out
-    )
+    assert "telemetry.path" not in out
     assert "enabled = true" in persisted_text
     assert 'path = "legacy.jsonl"' in persisted_text
 
@@ -214,7 +211,6 @@ def test_config_io_helper_branches_cover_missing_load_passthrough_and_save_guard
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    config_io_module = config_module._config_io_module
     config_path = tmp_path / "config.toml"
 
     loaded, created = config_module.load_config(config_path)
@@ -225,15 +221,15 @@ def test_config_io_helper_branches_cover_missing_load_passthrough_and_save_guard
     assert config_path.exists()
     assert "No config found, creating default" in out
 
-    unchanged_cfg = {"telemetry": {"enabled": True}}
-    assert config_io_module._normalize_telemetry_section(unchanged_cfg) == unchanged_cfg
-    assert config_io_module._normalize_telemetry_section({"telemetry": {"enabled": True, "path": "old.jsonl"}}) == {
-        "telemetry": {"enabled": True}
-    }
-
-    save_path = tmp_path / "saved-config.toml"
-    config_module.save_config(save_path, {"mode": "draft", "telemetry": {"enabled": True, "path": "old.jsonl"}})
-    assert 'path = "old.jsonl"' not in save_path.read_text(encoding="utf-8")
+    legacy_path = tmp_path / "legacy-config.toml"
+    legacy_path.write_text(
+        'mode = "draft"\n[telemetry]\nenabled = true\npath = "old.jsonl"\n',
+        encoding="utf-8",
+    )
+    loaded_legacy, created = config_module.load_config(legacy_path)
+    assert created is False
+    assert loaded_legacy["telemetry"] == {"enabled": True}
+    assert "path" not in loaded_legacy["telemetry"]
 
     with pytest.raises(ValueError, match=r"Config validation failed: \[program_dir\]"):
         config_module.save_config(tmp_path / "invalid-path-config.toml", {"program_dir": str(tmp_path / "missing")})
@@ -362,8 +358,8 @@ def test_run_icf_validation_forces_dependency_aware_ast_loading(tmp_path, monkey
 
     calls: list[tuple[str, bool]] = []
 
-    def fake_load_program_ast(_cfg, program_name, *, force_dependency_resolution=False):
-        calls.append((program_name, force_dependency_resolution))
+    def fake_load_program_ast(_cfg, program_name):
+        calls.append(program_name)
         root_bp = SimpleNamespace(moduletype_defs=[])
         graph = SimpleNamespace(ast_by_name={program_name: SimpleNamespace(moduletype_defs=[])})
         return root_bp, graph
@@ -387,7 +383,7 @@ def test_run_icf_validation_forces_dependency_aware_ast_loading(tmp_path, monkey
 
     app.run_icf_validation(cfg)
 
-    assert calls == [("Program", True)]
+    assert calls == ["Program"]
     out = capsys.readouterr().out
     assert "summary" in out
 

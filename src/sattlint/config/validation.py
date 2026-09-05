@@ -138,20 +138,14 @@ def _strip_unknown_keys(cfg: ConfigOverrideDict) -> None:
                     if profile_cfg is not None:
                         _strip_section_keys(profile_cfg, _SECTION_RULE_PROFILE_ENTRY_KEYS)
 
+    telemetry = _config_dict(cfg_map.get("telemetry"))
+    if telemetry is not None:
+        _strip_section_keys(telemetry, VALID_TELEMETRY_KEYS)
+
 
 def _load_time_config_warnings(cfg: ConfigOverrideDict) -> tuple[ConfigValidationError, ...]:
-    warnings: list[ConfigValidationError] = []
-
-    telemetry = _config_dict(cfg.get("telemetry"))
-    if telemetry is not None and "path" in telemetry:
-        warnings.append(
-            ConfigValidationError(
-                key_path="telemetry.path",
-                message="telemetry.path is deprecated and ignored when building the effective config.",
-            )
-        )
-
-    return tuple(warnings)
+    del cfg
+    return ()
 
 
 def _build_validation_result(errors: list[ConfigValidationError]) -> ConfigValidationResult:
@@ -409,6 +403,9 @@ def target_exists(target: str, cfg: ConfigDict | ConfigOverrideDict) -> bool:
     ]
 
     mode = str(cfg.get("mode", "official")).strip().lower()
+    # Canonical draft/official code-extension mapping lives in core/syntax.py
+    # (code_ext / code_ext_candidates); config validation cannot import it
+    # without creating an import cycle, so the candidates are kept in sync here.
     extensions = [".s", ".x"] if mode == "draft" else [".x"]
 
     for directory in dirs:
