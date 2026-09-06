@@ -28,7 +28,7 @@ _IGNORED_AST_FIELDS = {
 }
 MISSING_AST_VALUE = object()
 
-type NormalizedScalar = None | bool | int | float | str
+type NormalizedScalar = bool | int | float | str | None
 type NormalizedEnumValue = tuple[str, NormalizedScalar]
 type NormalizedFields = tuple[tuple[str, NormalizedValue], ...]
 type NormalizedListValue = tuple[Literal["list"], tuple[NormalizedValue, ...]]
