@@ -15,9 +15,9 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import VarRef
 
-from ..casefolding import casefold_key
 from ..resolution.common import resolve_moduletype_def_strict, varname_base
 from ..resolution.scope import ScopeContext
+from ..utils.casefolding import casefold_key
 from .shared.variable_utils import matches_root_origin
 
 

@@ -182,7 +182,7 @@ def test_analyzer_order_independence():
 def test_transform_invariant_deterministic():
     from sattline_parser import parse_source_file as parser_core_parse_source_file  # noqa: PLC0415
 
-    from sattlint.tracing import detect_transform_invariant_violations as check  # noqa: PLC0415
+    from sattlint.core.tracing import detect_transform_invariant_violations as check  # noqa: PLC0415
 
     fixture = Path(__file__).resolve().parent.parent / "fixtures" / "sample_sattline_files" / "LinterTestProgram.s"
     if not fixture.exists():

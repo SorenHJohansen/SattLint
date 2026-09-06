@@ -11,38 +11,38 @@ from typing import Any, ClassVar, Protocol, cast
 from sattline_parser.models.ast_model import ParameterMapping, Simple_DataType, Variable
 from sattline_parser.models.expressions import VarRef
 
-from ..._validation_type_helpers import (
-    assignment_type_matches as _assignment_type_matches,
-)
-from ..._validation_type_helpers import (
-    extract_time_literal as _extract_time_literal,
-)
-from ..._validation_type_helpers import (
-    has_time_literal_marker as _has_time_literal_marker,
-)
-from ..._validation_type_helpers import (
-    infer_literal_datatype as _infer_literal_datatype,
-)
-from ..._validation_type_helpers import (
-    is_string_simple_type as _is_string_simple_type,
-)
-from ..._validation_type_helpers import (
-    is_valid_time_literal as _is_valid_time_literal,
-)
-from ..._validation_type_helpers import (
-    literal_matches_expected_datatype as _literal_matches_expected_datatype,
-)
-from ..._validation_type_helpers import (
-    resolve_variable_field_datatype as _resolve_variable_field_datatype,
-)
-from ..._validation_type_helpers import (
-    split_dotted_name as _split_dotted_name,
-)
-from ...casefolding import casefold_key, is_anytype_name
 from ...grammar import constants as const
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ...resolution import TypeGraph
 from ...resolution.common import varname_full
+from ...utils.casefolding import casefold_key, is_anytype_name
+from ...validation.type_helpers import (
+    assignment_type_matches as _assignment_type_matches,
+)
+from ...validation.type_helpers import (
+    extract_time_literal as _extract_time_literal,
+)
+from ...validation.type_helpers import (
+    has_time_literal_marker as _has_time_literal_marker,
+)
+from ...validation.type_helpers import (
+    infer_literal_datatype as _infer_literal_datatype,
+)
+from ...validation.type_helpers import (
+    is_string_simple_type as _is_string_simple_type,
+)
+from ...validation.type_helpers import (
+    is_valid_time_literal as _is_valid_time_literal,
+)
+from ...validation.type_helpers import (
+    literal_matches_expected_datatype as _literal_matches_expected_datatype,
+)
+from ...validation.type_helpers import (
+    resolve_variable_field_datatype as _resolve_variable_field_datatype,
+)
+from ...validation.type_helpers import (
+    split_dotted_name as _split_dotted_name,
+)
 
 log = logging.getLogger("SattLint")
 

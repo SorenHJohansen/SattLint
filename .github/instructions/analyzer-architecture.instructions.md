@@ -1,7 +1,7 @@
 ---
 description: "Use when changing analyzer registry wiring, analyzer entry points, helper ownership, or analyzer architecture tests in SattLint."
 name: "Analyzer Architecture"
-applyTo: ["src/sattlint/analyzers/**", "tests/test_analyzer_architecture.py", "tests/analyzers/**", "tests/_analyzers_*.py", "tests/test_analyzers_*.py", "tests/test_variables_*.py", "tests/test_reset_contamination*.py", "src/sattlint/app_analysis.py"]
+applyTo: ["src/sattlint/analyzers/**", "tests/analyzers/**"]
 ---
 # Analyzer Architecture
 

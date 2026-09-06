@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from ._validation_notice import ValidationNotice
@@ -43,10 +43,6 @@ def _warning_notices_factory() -> list[tuple[str, ValidationNotice]]:
 
 def _failures_factory() -> dict[str, ProjectFailure]:
     return {}
-
-
-def _ignored_vendor_factory() -> list[str]:
-    return []
 
 
 def _unavailable_libraries_factory() -> set[str]:
@@ -102,7 +98,6 @@ class ProjectGraph:
     warnings: list[str] = field(default_factory=_warnings_factory)
     warning_notices: list[tuple[str, ValidationNotice]] = field(default_factory=_warning_notices_factory)
     failures: dict[str, ProjectFailure] = field(default_factory=_failures_factory)
-    ignored_vendor: list[str] = field(default_factory=_ignored_vendor_factory)
     # Track libraries that couldn't be loaded (e.g., proprietary ABB libraries)
     unavailable_libraries: set[str] = field(default_factory=_unavailable_libraries_factory)
     source_files: set[Path] = field(default_factory=_source_files_factory)
@@ -200,3 +195,16 @@ class ProjectGraph:
             if library_name and not d.origin_lib:
                 d.origin_lib = library_name
             self.datatype_defs[d.name] = d
+
+
+def merge_project_basepicture(root_bp: BasePicture, graph: ProjectGraph) -> BasePicture:
+    """Merge gathered moduletype/datatype/label-definitions into the root base picture."""
+    merged_datatypes: list[DataType] = list(graph.datatype_defs.values())
+    merged_modtypes: list[ModuleTypeDef] = list(graph.moduletype_defs.values())
+    lib_deps = {lib: sorted(deps) for lib, deps in (graph.library_dependencies or {}).items()}
+    return replace(
+        root_bp,
+        datatype_defs=merged_datatypes,
+        moduletype_defs=merged_modtypes,
+        library_dependencies=lib_deps,
+    )

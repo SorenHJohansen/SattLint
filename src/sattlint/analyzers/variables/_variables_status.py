@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 from sattline_parser.models.ast_model import Variable
 from sattline_parser.models.expressions import VarRef
 
-from ...call_signatures import CallParameterSignature, resolve_call_signature
+from ...core.call_signatures import CallParameterSignature, resolve_call_signature
 from ...grammar import constants as const
 from ...models.usage import VariableUsage
 from ...reporting.variables_report import IssueKind

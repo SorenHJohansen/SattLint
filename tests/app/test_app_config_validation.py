@@ -1,0 +1,480 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportCallIssue=false, reportTypedDictNotRequiredAccess=false, reportGeneralTypeIssues=false
+"""Focused app config, self-check, and ICF command tests."""
+
+from __future__ import annotations
+
+from copy import deepcopy
+from pathlib import Path
+from types import SimpleNamespace
+from typing import ClassVar
+
+import pytest
+
+from sattlint import app
+from sattlint import config as config_module
+from sattlint.analyzers import icf as icf_module
+from sattlint.application import commands as commands_application
+from sattlint.application import project as project_application
+from sattlint.cli import startup as startup_module
+from sattlint.config.defaults import (
+    REQUIRED_TOP_LEVEL_CONFIG_KEYS,
+    TOP_LEVEL_CONFIG_CONTRACT,
+    VALID_TOP_LEVEL_CONFIG_KEYS,
+)
+from sattlint.config.types import ConfigDict, ConfigOverrideDict
+
+
+@pytest.fixture
+def noop_screen(monkeypatch):
+    monkeypatch.setenv("SATTLINT_UI", "classic")
+    monkeypatch.setattr(app, "clear_screen", lambda: None)
+    monkeypatch.setattr(app, "pause", lambda: None)
+
+
+def test_validate_config_reports_key_mode_analysis_and_documentation_errors():
+    result = config_module.validate_config(
+        {
+            "invalid_key": True,
+            "ignore_ABB_lib": True,
+            "mode": "bad_mode",
+            "analysis": "bad",
+            "run_history": "bad",
+            "documentation": "bad",
+        }
+    )
+
+    assert result.passed is False
+    assert {error.key_path for error in result.errors} == {
+        "invalid_key",
+        "ignore_ABB_lib",
+        "mode",
+        "analysis",
+        "run_history",
+        "documentation",
+    }
+
+
+def test_validate_config_reports_unknown_run_history_keys_and_invalid_shapes():
+    result = config_module.validate_config(
+        {
+            "run_history": {
+                "extra": True,
+                "enabled": "yes",
+                "limit": -1,
+            }
+        }
+    )
+
+    assert result.passed is False
+    assert {error.key_path for error in result.errors} == {
+        "run_history.extra",
+        "run_history.enabled",
+        "run_history.limit",
+    }
+
+
+def test_validate_config_reports_unknown_output_keys_and_invalid_shapes():
+    result = config_module.validate_config(
+        {
+            "output": {
+                "extra": True,
+                "retention_lines": 0,
+            }
+        }
+    )
+
+    assert result.passed is False
+    assert {error.key_path for error in result.errors} == {
+        "output.extra",
+        "output.retention_lines",
+    }
+
+
+def test_validate_config_reports_none_values_at_top_level_and_nested_paths():
+    result = config_module.validate_config(
+        {
+            "mode": None,
+            "run_history": {"limit": None},
+            "analyzed_programs_and_libraries": ["RootProgram", None],
+        }
+    )
+
+    assert result.passed is False
+    assert {error.key_path for error in result.errors} == {
+        "mode",
+        "run_history.limit",
+        "analyzed_programs_and_libraries[1]",
+    }
+
+
+def test_validate_config_reports_unknown_analysis_naming_targets_and_style():
+    result = config_module.validate_config(
+        {
+            "analysis": {
+                "unknown_analyzer": {},
+                "naming": {
+                    "unknown_target": {"style": "snake"},
+                    "variables": {"style": "bad_style"},
+                },
+            }
+        }
+    )
+
+    assert result.passed is False
+    assert {error.key_path for error in result.errors} == {
+        "analysis.unknown_analyzer",
+        "analysis.naming.unknown_target",
+        "analysis.naming.variables.style",
+    }
+
+
+def test_validate_config_passes_valid_config_and_serializes_result():
+    valid = config_module.validate_config(
+        {
+            "mode": "draft",
+            "run_history": {"enabled": True, "limit": 50},
+            "analysis": {"naming": {"variables": {"style": "snake"}}},
+        }
+    )
+    invalid = config_module.validate_config({"bad_key": True})
+
+    assert valid.passed is True
+    assert valid.errors == ()
+    assert invalid.to_dict() == {
+        "passed": False,
+        "errors": [
+            {
+                "key_path": "bad_key",
+                "message": invalid.errors[0].message,
+            }
+        ],
+    }
+
+
+def test_load_config_warns_on_missing_paths_from_loaded_validation(tmp_path, capsys):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('program_dir = "missing-programs"\n', encoding="utf-8")
+
+    loaded, created = config_module.load_config(config_path)
+
+    out = capsys.readouterr().out
+    assert created is False
+    assert loaded["program_dir"] == "missing-programs"
+    assert "Config warning [program_dir]: program_dir does not exist: missing-programs" in out
+
+
+def test_load_config_applies_default_run_history_without_rewriting_existing_file(tmp_path):
+    config_path = tmp_path / "config.toml"
+    original_text = 'mode = "draft"\nprogram_dir = "programs"'
+    config_path.write_text(original_text, encoding="utf-8")
+
+    loaded, created = config_module.load_config(config_path)
+
+    persisted_text = config_path.read_text(encoding="utf-8")
+    assert created is False
+    assert loaded["mode"] == "draft"
+    assert loaded["program_dir"] == "programs"
+    assert loaded["run_history"] == {"enabled": True, "limit": 50}
+    assert persisted_text == original_text
+    assert "[run_history]" not in persisted_text
+    assert 'path = ""' not in persisted_text
+
+
+def test_load_config_strips_unknown_run_history_key_without_rewriting_file(tmp_path, capsys):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('[run_history]\nenabled = true\nlimit = 10\npath = "legacy.jsonl"\n', encoding="utf-8")
+
+    loaded, created = config_module.load_config(config_path)
+
+    out = capsys.readouterr().out
+    persisted_text = config_path.read_text(encoding="utf-8")
+    assert created is False
+    assert loaded["run_history"] == {"enabled": True, "limit": 10}
+    assert "run_history.path" not in out
+    assert "enabled = true" in persisted_text
+    assert 'path = "legacy.jsonl"' in persisted_text
+
+
+def test_config_io_helper_guards_cover_windows_path_and_non_table_save(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_io_module = config_module._config_io_module
+    config_paths_module = config_io_module._config_paths_module
+
+    class TrackingPath(type(tmp_path)):
+        home_calls: ClassVar[int] = 0
+
+        @classmethod
+        def home(cls) -> Path:
+            cls.home_calls += 1
+            raise AssertionError("Path.home should not be called when APPDATA is set")
+
+    class _NonTableConfig:
+        def get(self, _key: str, _default: object | None = None) -> object | None:
+            return None
+
+    monkeypatch.setattr(config_paths_module.os, "name", "nt", raising=False)
+    monkeypatch.setattr(config_paths_module, "Path", TrackingPath)
+    monkeypatch.setenv("APPDATA", str(tmp_path / "AppData"))
+    assert config_module.get_config_path() == tmp_path / "AppData" / "sattlint" / "config.toml"
+    assert TrackingPath.home_calls == 0
+
+    monkeypatch.setattr(config_io_module, "deepcopy", lambda _value: _NonTableConfig())
+    with pytest.raises(ValueError, match="Config serialization must produce a table/object"):
+        config_module.save_config(tmp_path / "bad-config.toml", {"mode": "draft"})
+
+
+def test_config_io_helper_branches_cover_missing_load_passthrough_and_save_guards(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_path = tmp_path / "config.toml"
+
+    loaded, created = config_module.load_config(config_path)
+
+    out = capsys.readouterr().out
+    assert created is True
+    assert loaded["run_history"] == {"enabled": True, "limit": 50}
+    assert config_path.exists()
+    assert "No config found, creating default" in out
+
+    legacy_path = tmp_path / "legacy-config.toml"
+    legacy_path.write_text(
+        'mode = "draft"\n[run_history]\nenabled = true\nlimit = 10\npath = "old.jsonl"\n',
+        encoding="utf-8",
+    )
+    loaded_legacy, created = config_module.load_config(legacy_path)
+    assert created is False
+    assert loaded_legacy["run_history"] == {"enabled": True, "limit": 10}
+    assert "path" not in loaded_legacy["run_history"]
+
+    with pytest.raises(ValueError, match=r"Config validation failed: \[program_dir\]"):
+        config_module.save_config(tmp_path / "invalid-path-config.toml", {"program_dir": str(tmp_path / "missing")})
+
+    with pytest.raises(ValueError, match=r"Config validation failed: \[mode\] mode must not be null/None"):
+        config_module.save_config(tmp_path / "invalid-config.toml", {"mode": None})
+
+
+def test_target_exists_honors_mode_and_available_directories(tmp_path):
+    program_dir = tmp_path / "programs"
+    abb_dir = tmp_path / "abb"
+    other_lib = tmp_path / "lib"
+    for directory in (program_dir, abb_dir, other_lib):
+        directory.mkdir()
+
+    (program_dir / "DraftOnly.s").write_text("draft", encoding="utf-8")
+    (abb_dir / "OfficialOnly.x").write_text("official", encoding="utf-8")
+    (other_lib / "Shared.x").write_text("shared", encoding="utf-8")
+
+    draft_cfg = {
+        "program_dir": str(program_dir),
+        "ABB_lib_dir": str(abb_dir),
+        "other_lib_dirs": [str(other_lib)],
+        "mode": "draft",
+    }
+    official_cfg = {**draft_cfg, "mode": "official"}
+
+    assert config_module.target_exists("DraftOnly", draft_cfg) is True
+    assert config_module.target_exists("DraftOnly", official_cfg) is False
+    assert config_module.target_exists("OfficialOnly", official_cfg) is True
+    assert config_module.target_exists("Shared", official_cfg) is True
+
+
+def test_validate_effective_config_reports_unresolved_targets_after_defaults_merge(tmp_path):
+    for directory_name in ("programs", "abb", "lib"):
+        (tmp_path / directory_name).mkdir()
+
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg.update(
+        {
+            "program_dir": str(tmp_path / "programs"),
+            "ABB_lib_dir": str(tmp_path / "abb"),
+            "other_lib_dirs": [str(tmp_path / "lib")],
+            "analyzed_programs_and_libraries": ["MissingTarget"],
+        }
+    )
+
+    result = config_module.validate_effective_config(cfg)
+
+    assert result.passed is False
+    assert result.errors == (
+        config_module.ConfigValidationError(
+            key_path="analyzed_programs_and_libraries[0]",
+            message="MissingTarget (not found)",
+        ),
+    )
+
+
+def test_top_level_config_contract_matches_typed_config_definitions() -> None:
+    assert frozenset(REQUIRED_TOP_LEVEL_CONFIG_KEYS) == frozenset(ConfigDict.__required_keys__)
+    assert frozenset(ConfigOverrideDict.__optional_keys__) == VALID_TOP_LEVEL_CONFIG_KEYS
+    assert frozenset(TOP_LEVEL_CONFIG_CONTRACT) == frozenset(REQUIRED_TOP_LEVEL_CONFIG_KEYS)
+
+
+def test_self_check_uses_full_top_level_config_contract(tmp_path, monkeypatch, capsys):
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    for key in ("include_reverse_library_consumers", "run_history", "analysis"):
+        cfg.pop(key)
+
+    ok = config_module.self_check(cfg)
+
+    out = capsys.readouterr().out
+    assert ok is False
+    assert "Missing config key: include_reverse_library_consumers" in out
+    assert "Missing config key: run_history" in out
+    assert "Missing config key: analysis" in out
+
+
+def test_self_check_reports_nested_analysis_shape_errors(tmp_path, monkeypatch, capsys):
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg.update(
+        {
+            "analysis": {"sfc": "bad", "naming": "bad"},
+        }
+    )
+
+    bad_ok = config_module.self_check(cfg)
+    bad_out = capsys.readouterr().out
+
+    cfg["analysis"] = {
+        "sfc": {"mutually_exclusive_steps": "bad", "step_contracts": []},
+        "naming": {
+            "variables": {"label_equals": ["Unused"]},
+            "modules": {},
+            "instances": {},
+        },
+    }
+
+    empty_ok = config_module.self_check(cfg)
+    empty_out = capsys.readouterr().out
+
+    assert bad_ok is False
+    assert "analysis.sfc must be a table/object" in bad_out
+    assert "analysis.naming must be a table/object" in bad_out
+    assert empty_ok is False
+    assert "analysis.sfc.mutually_exclusive_steps must be a list" in empty_out
+    assert "analysis.sfc.step_contracts must be a table/object" in empty_out
+
+
+def test_run_icf_validation_forces_dependency_aware_ast_loading(tmp_path, monkeypatch, capsys, noop_screen):
+    icf_dir = tmp_path / "icf"
+    icf_dir.mkdir()
+    icf_file = icf_dir / "Program.icf"
+    icf_file.write_text("Tag=Program:Root.Value\n", encoding="utf-8")
+
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg.update(
+        {
+            "icf_dir": str(icf_dir),
+            "program_dir": str(tmp_path),
+            "ABB_lib_dir": str(tmp_path),
+            "other_lib_dirs": [],
+            "debug": False,
+        }
+    )
+
+    calls: list[tuple[str, bool]] = []
+
+    def fake_load_program_ast(_cfg, program_name):
+        calls.append(program_name)
+        root_bp = SimpleNamespace(moduletype_defs=[])
+        graph = SimpleNamespace(ast_by_name={program_name: SimpleNamespace(moduletype_defs=[])})
+        return root_bp, graph
+
+    class FakeReport:
+        total_entries = 1
+        valid_entries = 1
+        skipped_entries = 0
+        issues: ClassVar[list[object]] = []
+
+        def summary(self):
+            return "summary"
+
+    monkeypatch.setattr(project_application, "load_program_ast", fake_load_program_ast)
+    monkeypatch.setattr(commands_application, "merge_project_basepicture", lambda bp, _graph: bp)
+    monkeypatch.setattr(
+        icf_module,
+        "validate_icf_entries_against_program",
+        lambda *args, **kwargs: FakeReport(),
+    )
+
+    app.run_icf_validation(cfg)
+
+    assert calls == ["Program"]
+    out = capsys.readouterr().out
+    assert "summary" in out
+
+
+def test_self_check_reports_invalid_nested_config_errors(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(config_module, "target_exists", lambda *_args, **_kwargs: False)
+
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg.pop("mode")
+    cfg.update(
+        {
+            "analyzed_programs_and_libraries": ["MissingTarget"],
+            "program_dir": str(tmp_path / "missing-programs"),
+            "ABB_lib_dir": "",
+            "icf_dir": str(tmp_path / "missing-icf"),
+            "other_lib_dirs": [str(tmp_path / "missing-other")],
+            "analysis": {
+                "sfc": {
+                    "mutually_exclusive_steps": "bad",
+                    "step_contracts": {
+                        "": {},
+                        "StepA": {
+                            "required_enter_writes": "bad",
+                            "required_exit_writes": [1],
+                        },
+                        "StepB": "bad",
+                    },
+                },
+                "naming": {
+                    "variables": {"style": "bad", "allow": "bad"},
+                    "modules": "bad",
+                    "instances": {"allow": [1]},
+                },
+            },
+        }
+    )
+
+    ok = config_module.self_check(cfg)
+
+    out = capsys.readouterr().out
+    assert ok is False
+    assert "Missing config key: mode" in out
+    assert "program_dir does not exist" in out
+    assert "ABB_lib_dir not set" in out
+    assert "icf_dir does not exist" in out
+    assert "other_lib_dirs entry missing" in out
+    assert "MissingTarget (not found)" in out
+    assert "analysis.sfc.mutually_exclusive_steps must be a list" in out
+    assert "analysis.sfc.step_contracts keys must be non-empty strings" in out
+    assert "analysis.sfc.step_contracts.StepA.required_enter_writes must be a list of strings" in out
+    assert "analysis.sfc.step_contracts.StepA.required_exit_writes must be a list of strings" in out
+    assert "analysis.sfc.step_contracts.StepB must be a table/object" in out
+    assert "analysis.naming.variables.style must be one of" in out
+    assert "analysis.naming.variables.allow must be a list of strings" in out
+    assert "analysis.naming.modules must be a table/object" in out
+    assert "analysis.naming.instances.allow must be a list of strings" in out
+
+
+def test_main_pauses_when_initial_ast_check_fails(monkeypatch):
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg["analyzed_programs_and_libraries"] = ["Broken"]
+    calls: list[str] = []
+
+    monkeypatch.delenv("SATTLINT_UI", raising=False)
+
+    exit_code = startup_module.main(
+        load_config_fn=lambda *_: (cfg, False),
+        apply_debug_fn=lambda *_: None,
+        self_check_fn=lambda *_: pytest.fail("textual startup should skip terminal self-check"),
+        ensure_ast_cache_fn=lambda *_: pytest.fail("textual startup should skip terminal AST cache preflight"),
+        pause_fn=lambda: pytest.fail("textual startup should not pause before launching"),
+        run_main_loop_fn=lambda *_args, **_kwargs: calls.append("session"),
+    )
+
+    assert exit_code == 0
+    assert calls == ["session"]

@@ -16,13 +16,13 @@ from sattline_parser.models.ast_model import (
 from sattline_parser.models.expressions import FuncCall, FuncCallStmt, VarRef
 
 from sattlint.analyzers.picture_display_paths import analyze_picture_display_paths
-from sattlint.graphics_validation import PictureDisplayPathRow, PictureDisplayRecord
-from sattlint.models.project_graph import ProjectGraph
-from sattlint.picture_display_paths import (
+from sattlint.analyzers.string_inference import ExactStringInferenceEngine, StringProvenanceSegment
+from sattlint.graphics.picture_display_paths import (
     PictureDisplayOccurrence,
     resolve_picture_display_path,
 )
-from sattlint.string_inference import ExactStringInferenceEngine, StringProvenanceSegment
+from sattlint.graphics.validation import PictureDisplayPathRow, PictureDisplayRecord
+from sattlint.models.project_graph import ProjectGraph
 from tests.helpers.picture_display_paths_support import (
     base_picture_with_leading_dash_paths,
     base_picture_with_single_chain,

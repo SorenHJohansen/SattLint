@@ -4,7 +4,7 @@
     "mode": "analyzer-sattline-semantics",
     "expectation": {
         "expected_finding_ids": [
-            "unknown"
+            "semantic.read-before-write"
         ],
         "artifact_fragments": {
             "status.json": {

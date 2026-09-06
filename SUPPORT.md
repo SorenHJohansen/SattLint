@@ -21,7 +21,7 @@ Before opening an issue, check:
 | `sattlint analyze` (`.slproj` project analysis) | Stable | Analyzes a program or library with its dependencies using the heuristic analyzers |
 | ICF and graphics analysis | Stable | Validates and formats ICF files and checks graphics rules |
 | Textual interactive UI | Preview | Guided setup and menu-driven analysis workflows; layout and wording may evolve |
-| `sattlint validate-config`, `sattlint cache-prune`, `sattlint format-icf` | Preview | Config-driven helpers that are useful today but not part of the smallest stable contract |
+| `sattlint validate-config`, `sattlint cache-prune` | Preview | Config-driven helpers that are useful today but not part of the smallest stable contract |
 
 - **Platforms:** Windows and Linux with Python 3.13 or newer. macOS contributor workflows may work but are not part of the stable contract.
 - **Configuration:** `.slproj` project files and `~/.config/sattlint/config.toml` (or `%APPDATA%\sattlint\config.toml`).

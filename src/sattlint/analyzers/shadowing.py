@@ -14,9 +14,9 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
-from ..casefolding import casefold_key
 from ..reporting.variables_report import IssueKind, VariableIssue, VariablesReport
 from ..resolution.common import resolve_moduletype_def_strict
+from ..utils.casefolding import casefold_key
 from .shared.variable_utils import matches_root_origin
 
 

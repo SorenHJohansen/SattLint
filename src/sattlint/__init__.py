@@ -33,7 +33,7 @@ def _ensure_workspace_api() -> tuple[Any, Any]:
 def _ensure_analysis_provider() -> Any:
     analysis_provider = globals().get("build_variable_semantic_artifacts")
     if analysis_provider is None:
-        from .semantic_analysis import build_variable_semantic_artifacts as analysis_provider_impl  # noqa: PLC0415
+        from .core.semantic_analysis import build_variable_semantic_artifacts as analysis_provider_impl  # noqa: PLC0415
 
         globals()["build_variable_semantic_artifacts"] = analysis_provider_impl
         return analysis_provider_impl
@@ -50,7 +50,7 @@ def load_workspace_snapshot(
     *,
     workspace_root: Path | None = None,
     discovery: WorkspaceSourceDiscovery | None = None,
-    mode: CodeMode | str = "draft",
+    mode: CodeMode | str = "official",
     other_lib_dirs: list[Path] | None = None,
     abb_lib_dir: Path | None = None,
     debug: bool = False,

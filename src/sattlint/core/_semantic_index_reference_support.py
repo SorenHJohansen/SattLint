@@ -6,13 +6,13 @@ from typing import Any
 from sattline_parser.models.ast_model import FrameModule, ModuleTypeDef, ModuleTypeInstance, SingleModule, SourceSpan
 from sattline_parser.models.expressions import VarRef
 
-from ..call_signatures import CallSignatureOccurrence, resolve_call_signature
 from ..grammar import constants as const
 from ..resolution import CanonicalPath, decorate_segment
 from ..resolution.scope import ScopeContext
 from ._semantic_helpers import source_file_key, try_resolve_instance_typedef
 from ._semantic_snapshot import ReferenceOccurrence
 from .ast_tools import iter_call_sites, iter_variable_refs
+from .call_signatures import CallSignatureOccurrence, resolve_call_signature
 
 
 class SemanticIndexReferenceSupportMixin:

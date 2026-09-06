@@ -13,10 +13,10 @@ from sattline_parser.models.ast_model import (
     SingleModule,
 )
 
-from ..engine import CodeMode, expected_unavailable_library_reason
 from ..models.project_graph import ProjectGraph
 from ..resolution import TypeGraph
 from ..resolution.common import resolve_moduletype_def_strict
+from .syntax import CodeMode
 
 _DEFAULT_LIST_DISPLAY_LIMIT = 12
 
@@ -84,11 +84,7 @@ def _format_workspace_snapshot_failure(
     if unavailable:
         lines.append(f"Unavailable libraries ({len(unavailable)}):")
         for name in unavailable[:8]:
-            reason = expected_unavailable_library_reason(name)
-            if reason:
-                lines.append(f"- {name} ({reason})")
-            else:
-                lines.append(f"- {name}")
+            lines.append(f"- {name}")
         if len(unavailable) > 8:
             lines.append(f"- ... (+{len(unavailable) - 8} more)")
 
