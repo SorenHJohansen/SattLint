@@ -57,12 +57,12 @@ def _sequence(nodes: list[SFCBodyItem]) -> Sequence:
     )
 
 
-def test_same_cycle_analyzer_is_registered_and_opt_in_for_cli() -> None:
+def test_same_cycle_analyzer_is_registered_and_in_default_cli() -> None:
     specs = {spec.key: spec for spec in get_default_analyzers()}
 
     assert "same-cycle" in specs
     assert specs["same-cycle"].enabled is True
-    assert "same-cycle" not in get_actual_cli_analyzer_keys()
+    assert "same-cycle" in get_actual_cli_analyzer_keys()
 
 
 def test_same_cycle_reports_parallel_read_write_hazard() -> None:

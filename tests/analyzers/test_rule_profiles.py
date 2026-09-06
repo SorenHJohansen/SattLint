@@ -93,7 +93,7 @@ def test_rule_profile_configuration_helpers_normalize_payloads_and_reports() -> 
 
     default_payload = rule_profiles_module._normalize_profile_payload("default", object())
     assert default_payload.name == "default"
-    assert default_payload.description == "Balanced default analyzer profile."
+    assert default_payload.description == "Default profile that runs only correctness checks."
 
     custom_payload = rule_profiles_module._normalize_profile_payload(
         "custom",

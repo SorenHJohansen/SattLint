@@ -7,9 +7,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
 
-from .._config_defaults import DEFAULT_CONFIG
-from ..config_types import ConfigDict
-from ..config_validation import deep_merge_dict
+from ..config.defaults import DEFAULT_CONFIG
+from ..config.types import ConfigDict
+from ..config.validation import deep_merge_dict
 from .types import ProjectDict
 
 
@@ -43,12 +43,10 @@ class SattLineProject:
                 "analyzed_programs_and_libraries": list(d["analyzed_programs_and_libraries"]),
                 "include_reverse_library_consumers": d["include_reverse_library_consumers"],
                 "mode": d["mode"],
-                "debug": d["debug"],
                 "program_dir": self._maybe_resolve(d["program_dir"]),
                 "ABB_lib_dir": self._maybe_resolve(d["ABB_lib_dir"]),
                 "icf_dir": self._maybe_resolve(d["icf_dir"]),
                 "other_lib_dirs": [self._resolve(p) for p in d["other_lib_dirs"] if p.strip()],
-                "telemetry": {"enabled": bool(d["telemetry"]["enabled"])},
                 "analysis": {
                     "sfc": {
                         "mutually_exclusive_steps": list(d["analysis"]["sfc"]["mutually_exclusive_steps"]),
@@ -73,18 +71,7 @@ class SattLineProject:
             cast(dict[str, object], deepcopy(DEFAULT_CONFIG)),
             cast(dict[str, object], self.to_config_dict()),
         )
-        merged.pop("ignore_ABB_lib", None)
         return cast(ConfigDict, merged)
-
-    @property
-    def output_dir(self) -> Path:
-        raw = self.data.get("output_dir", "output")
-        return self._resolve(raw) if raw.strip() else self.root / "output"
-
-    @property
-    def cache_dir(self) -> Path:
-        raw = self.data.get("cache_dir", ".sattlint-cache")
-        return self._resolve(raw) if raw.strip() else self.root / ".sattlint-cache"
 
 
 __all__ = ["SattLineProject"]

@@ -99,6 +99,7 @@ def build_default_analyzers(
             name=template.name,
             description=template.description,
             run=_build_runner(template, resolved_registry_module),
+            category=template.category,
             requires=template.requires,
             enabled=template.enabled,
             supports_live_diagnostics=template.supports_live_diagnostics,

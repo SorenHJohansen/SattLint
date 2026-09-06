@@ -9,15 +9,12 @@ from pathlib import Path
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.models.ast_model import BasePicture
 
-from ..call_signatures import CallSignatureOccurrence
-from ..engine import (
-    CodeMode,
-    SattLineProjectLoader,
+from ..models.project_graph import ProjectGraph, merge_project_basepicture
+from ..project.loader import SattLineProjectLoader
+from ..project.loader_config import (
     SattLineProjectLoaderConfig,
     SattLineProjectLoaderRuntime,
-    merge_project_basepicture,
 )
-from ..models.project_graph import ProjectGraph
 from . import _semantic_helpers as _semantic_helpers
 from . import workspace_discovery as _workspace_discovery
 from ._semantic_index import SemanticIndexBuilder
@@ -29,8 +26,10 @@ from ._semantic_snapshot import (
     SymbolDefinition,
     SymbolReference,
 )
+from .call_signatures import CallSignatureOccurrence
 from .diagnostics import SemanticDiagnostic
 from .safety_paths import DEFAULT_SAFETY_SIGNAL_KEYWORDS, SafetyPathTrace, SymbolAccess
+from .syntax import CodeMode
 from .taint_paths import TaintPathTrace
 from .workspace_discovery import WorkspaceSourceDiscovery, discover_workspace_sources, single_entry_discovery
 
@@ -127,14 +126,14 @@ def _build_semantic_snapshot(
             unavailable_libraries=project_graph.unavailable_libraries,
         )
     builder_result = builder.build()
-    symbol_table = builder_result[0]
-    type_graph = builder_result[1]
-    definitions = builder_result[2]
-    definitions_by_key = builder_result[3]
-    moduletype_index = builder_result[4]
-    references_by_file = builder_result[5]
-    references_by_definition_key = builder_result[6]
-    call_signatures = builder_result[7]
+    symbol_table = builder_result.symbol_table
+    type_graph = builder_result.type_graph
+    definitions = builder_result.definitions
+    definitions_by_key = builder_result.definitions_by_key
+    moduletype_index = builder_result.moduletype_index
+    references_by_file = builder_result.references_by_file
+    references_by_definition_key = builder_result.references_by_definition_key
+    call_signatures = builder_result.call_signatures
 
     analysis = SemanticAnalysisArtifacts()
     if analysis_provider is not None:
@@ -251,7 +250,7 @@ def load_workspace_snapshot(
     *,
     workspace_root: Path | None = None,
     discovery: WorkspaceSourceDiscovery | None = None,
-    mode: CodeMode | str = CodeMode.DRAFT,
+    mode: CodeMode | str = CodeMode.OFFICIAL,
     other_lib_dirs: list[Path] | None = None,
     abb_lib_dir: Path | None = None,
     debug: bool = False,
@@ -268,7 +267,7 @@ def load_workspace_snapshot(
     selected_other_lib_dirs = (
         list(other_lib_dirs) if other_lib_dirs is not None else list(resolved_discovery.other_lib_dirs_for(entry_path))
     )
-    selected_abb_lib_dir = abb_lib_dir or resolved_discovery.abb_lib_dir or (root / "__missing_abb_lib__")
+    selected_abb_lib_dir = abb_lib_dir or resolved_discovery.abb_lib_dir
 
     loader = SattLineProjectLoader(
         SattLineProjectLoaderConfig(

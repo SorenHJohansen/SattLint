@@ -1,0 +1,512 @@
+"""Validation helpers and defaults for SattLint configuration."""
+
+from __future__ import annotations
+
+import os
+from copy import deepcopy
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, TypeGuard, cast
+
+from ..types import TargetName
+from .defaults import (
+    NAMING_RULE_TARGETS as _NAMING_RULE_TARGETS,
+)
+from .defaults import (
+    NAMING_STYLE_KEYS as _NAMING_STYLE_KEYS,
+)
+from .defaults import (
+    VALID_TOP_LEVEL_CONFIG_KEYS,
+)
+from .types import (
+    ConfigDict,
+    ConfigObjectMap,
+    ConfigOverrideDict,
+)
+
+VALID_TOP_LEVEL_KEYS = VALID_TOP_LEVEL_CONFIG_KEYS
+
+VALID_ANALYSIS_KEYS = frozenset({"sfc", "naming", "rule_profiles"})
+VALID_RUN_HISTORY_KEYS = frozenset({"enabled", "limit"})
+VALID_OUTPUT_KEYS = frozenset({"retention_lines"})
+VALID_NAMING_TARGETS = frozenset({"variables", "modules", "instances"})
+VALID_NAMING_STYLES = frozenset({"infer", "pascal", "camel", "snake", "upper_snake", "lower", "upper"})
+
+
+@dataclass(frozen=True, slots=True)
+class ConfigValidationError:
+    key_path: str
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
+class ConfigValidationResult:
+    passed: bool
+    errors: tuple[ConfigValidationError, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "passed": self.passed,
+            "errors": [{"key_path": e.key_path, "message": e.message} for e in self.errors],
+        }
+
+
+def _is_config_dict(value: object) -> TypeGuard[ConfigObjectMap]:
+    if not isinstance(value, dict):
+        return False
+    typed_value = cast(dict[object, object], value)
+    return all(isinstance(key, str) for key in typed_value)
+
+
+def _config_dict(value: object) -> ConfigObjectMap | None:
+    return value if _is_config_dict(value) else None
+
+
+def _object_list(value: object) -> list[object]:
+    if isinstance(value, list):
+        return list(cast(list[object], value))
+    if isinstance(value, tuple):
+        return list(cast(tuple[object, ...], value))
+    return []
+
+
+def _string_list(value: object) -> list[str] | None:
+    if not isinstance(value, list):
+        return None
+    items = list(cast(list[object], value))
+    if not all(isinstance(item, str) for item in items):
+        return None
+    return [item for item in items if isinstance(item, str)]
+
+
+def _deep_merge_dict(base: ConfigObjectMap, override: ConfigObjectMap) -> ConfigObjectMap:
+    merged = deepcopy(base)
+    for key, value in override.items():
+        nested_override = _config_dict(value)
+        nested_base = _config_dict(merged.get(key))
+        if nested_override is not None and nested_base is not None:
+            merged[key] = _deep_merge_dict(nested_base, nested_override)
+            continue
+        merged[key] = value
+    return merged
+
+
+_SECTION_SFC_KEYS = frozenset({"mutually_exclusive_steps", "step_contracts"})
+_SECTION_NAMING_RULE_KEYS = frozenset({"style", "allow"})
+_SECTION_RULE_PROFILES_KEYS = frozenset({"active", "profiles"})
+_SECTION_RULE_PROFILE_ENTRY_KEYS = frozenset(
+    {"description", "disabled_rules", "severity_overrides", "confidence_overrides"}
+)
+
+
+def _strip_section_keys(cfg: ConfigObjectMap, valid_keys: frozenset[str]) -> None:
+    for key in list(cfg):
+        if key not in valid_keys:
+            del cfg[key]
+
+
+def _strip_unknown_keys(cfg: ConfigOverrideDict) -> None:
+    cfg_map = cast(ConfigObjectMap, cfg)
+
+    _strip_section_keys(cfg_map, VALID_TOP_LEVEL_CONFIG_KEYS)
+
+    analysis = _config_dict(cfg_map.get("analysis"))
+    if analysis is not None:
+        _strip_section_keys(analysis, VALID_ANALYSIS_KEYS)
+
+        sfc = _config_dict(analysis.get("sfc"))
+        if sfc is not None:
+            _strip_section_keys(sfc, _SECTION_SFC_KEYS)
+
+        naming = _config_dict(analysis.get("naming"))
+        if naming is not None:
+            for key in list(naming):
+                if key not in VALID_NAMING_TARGETS:
+                    del naming[key]
+                else:
+                    target_rule = _config_dict(naming[key])
+                    if target_rule is not None:
+                        _strip_section_keys(target_rule, _SECTION_NAMING_RULE_KEYS)
+
+        rule_profiles = _config_dict(analysis.get("rule_profiles"))
+        if rule_profiles is not None:
+            _strip_section_keys(rule_profiles, _SECTION_RULE_PROFILES_KEYS)
+
+            profiles = _config_dict(rule_profiles.get("profiles"))
+            if profiles is not None:
+                for profile in profiles.values():
+                    profile_cfg = _config_dict(profile)
+                    if profile_cfg is not None:
+                        _strip_section_keys(profile_cfg, _SECTION_RULE_PROFILE_ENTRY_KEYS)
+
+    run_history = _config_dict(cfg_map.get("run_history"))
+    if run_history is not None:
+        _strip_section_keys(run_history, VALID_RUN_HISTORY_KEYS)
+
+    output = _config_dict(cfg_map.get("output"))
+    if output is not None:
+        _strip_section_keys(output, VALID_OUTPUT_KEYS)
+
+
+def _load_time_config_warnings(cfg: ConfigOverrideDict) -> tuple[ConfigValidationError, ...]:
+    del cfg
+    return ()
+
+
+def _build_validation_result(errors: list[ConfigValidationError]) -> ConfigValidationResult:
+    return ConfigValidationResult(
+        passed=len(errors) == 0,
+        errors=tuple(errors),
+    )
+
+
+def _merge_validation_results(*results: ConfigValidationResult) -> ConfigValidationResult:
+    merged_errors: list[ConfigValidationError] = []
+    seen: set[tuple[str, str]] = set()
+    for result in results:
+        for error in result.errors:
+            marker = (error.key_path, error.message)
+            if marker in seen:
+                continue
+            seen.add(marker)
+            merged_errors.append(error)
+    return _build_validation_result(merged_errors)
+
+
+def _configured_targets(cfg: ConfigDict | ConfigOverrideDict) -> tuple[TargetName, ...]:
+    return tuple(
+        TargetName(normalized)
+        for raw_target in _object_list(cfg.get("analyzed_programs_and_libraries", []))
+        if (normalized := str(raw_target).strip())
+    )
+
+
+def _validation_errors_by_key(validation: ConfigValidationResult) -> dict[str, tuple[str, ...]]:
+    errors_by_key: dict[str, list[str]] = {}
+    for error in validation.errors:
+        errors_by_key.setdefault(error.key_path, []).append(error.message)
+    return {key: tuple(messages) for key, messages in errors_by_key.items()}
+
+
+configured_targets = _configured_targets
+validation_errors_by_key = _validation_errors_by_key
+deep_merge_dict = _deep_merge_dict
+load_time_config_warnings = _load_time_config_warnings
+strip_unknown_keys = _strip_unknown_keys
+
+
+def _none_value_errors(value: object, *, key_path: str) -> list[ConfigValidationError]:
+    if value is None:
+        return [
+            ConfigValidationError(
+                key_path=key_path,
+                message=f"{key_path} must not be null/None",
+            )
+        ]
+
+    errors: list[ConfigValidationError] = []
+    nested_dict = _config_dict(value)
+    if nested_dict is not None:
+        for nested_key, nested_value in nested_dict.items():
+            errors.extend(_none_value_errors(nested_value, key_path=f"{key_path}.{nested_key}"))
+        return errors
+
+    if isinstance(value, (list, tuple)):
+        for index, item in enumerate(cast(list[object] | tuple[object, ...], value)):
+            errors.extend(_none_value_errors(item, key_path=f"{key_path}[{index}]"))
+    return errors
+
+
+def validate_config(cfg: ConfigDict | ConfigOverrideDict) -> ConfigValidationResult:  # noqa: PLR0915
+    errors: list[ConfigValidationError] = []
+
+    for key, value in cast(ConfigObjectMap, cfg).items():
+        if key not in VALID_TOP_LEVEL_KEYS:
+            errors.append(
+                ConfigValidationError(
+                    key_path=key,
+                    message=f"Unknown config key '{key}'. Expected one of: {', '.join(sorted(VALID_TOP_LEVEL_KEYS))}",
+                )
+            )
+        errors.extend(_none_value_errors(value, key_path=key))
+
+    mode = cfg.get("mode")
+    if mode is not None and mode not in {"official", "draft"}:
+        errors.append(
+            ConfigValidationError(
+                key_path="mode",
+                message=f"Invalid mode '{mode}'. Expected 'official' or 'draft'.",
+            )
+        )
+
+    run_history_value = cfg.get("run_history")
+    run_history = _config_dict(run_history_value)
+    if run_history_value is not None and run_history is None:
+        errors.append(
+            ConfigValidationError(
+                key_path="run_history",
+                message="run_history must be a table/object.",
+            )
+        )
+    elif run_history is not None:
+        for key in run_history:
+            if key not in VALID_RUN_HISTORY_KEYS:
+                errors.append(
+                    ConfigValidationError(
+                        key_path=f"run_history.{key}",
+                        message=f"Unknown run_history key '{key}'. Expected one of: {', '.join(sorted(VALID_RUN_HISTORY_KEYS))}",
+                    )
+                )
+
+        enabled = run_history.get("enabled", True)
+        if not isinstance(enabled, bool):
+            errors.append(
+                ConfigValidationError(
+                    key_path="run_history.enabled",
+                    message="run_history.enabled must be a boolean",
+                )
+            )
+
+        limit = run_history.get("limit", 50)
+        if not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0:
+            errors.append(
+                ConfigValidationError(
+                    key_path="run_history.limit",
+                    message="run_history.limit must be a positive integer",
+                )
+            )
+
+    output_value = cfg.get("output")
+    output = _config_dict(output_value)
+    if output_value is not None and output is None:
+        errors.append(
+            ConfigValidationError(
+                key_path="output",
+                message="output must be a table/object.",
+            )
+        )
+    elif output is not None:
+        for key in output:
+            if key not in VALID_OUTPUT_KEYS:
+                errors.append(
+                    ConfigValidationError(
+                        key_path=f"output.{key}",
+                        message=f"Unknown output key '{key}'. Expected one of: {', '.join(sorted(VALID_OUTPUT_KEYS))}",
+                    )
+                )
+
+        retention_lines = output.get("retention_lines", 4000)
+        if not isinstance(retention_lines, int) or isinstance(retention_lines, bool) or retention_lines <= 0:
+            errors.append(
+                ConfigValidationError(
+                    key_path="output.retention_lines",
+                    message="output.retention_lines must be a positive integer",
+                )
+            )
+
+    analysis_value = cfg.get("analysis")
+    analysis = _config_dict(analysis_value)
+    if analysis_value is not None and analysis is None:
+        errors.append(
+            ConfigValidationError(
+                key_path="analysis",
+                message="analysis must be a table/object.",
+            )
+        )
+    elif analysis is not None:
+        for key in analysis:
+            if key not in VALID_ANALYSIS_KEYS:
+                errors.append(
+                    ConfigValidationError(
+                        key_path=f"analysis.{key}",
+                        message=f"Unknown analysis key '{key}'. Expected one of: {', '.join(sorted(VALID_ANALYSIS_KEYS))}",
+                    )
+                )
+
+        naming_value = analysis.get("naming")
+        naming = _config_dict(naming_value)
+        if naming is not None:
+            for target in naming:
+                if target not in VALID_NAMING_TARGETS:
+                    errors.append(
+                        ConfigValidationError(
+                            key_path=f"analysis.naming.{target}",
+                            message=f"Unknown naming target '{target}'. Expected one of: {', '.join(sorted(VALID_NAMING_TARGETS))}",
+                        )
+                    )
+            for target in _NAMING_RULE_TARGETS:
+                target_rule = _config_dict(naming.get(target, {}))
+                if target_rule is None:
+                    errors.append(
+                        ConfigValidationError(
+                            key_path=f"analysis.naming.{target}",
+                            message=f"analysis.naming.{target} must be a table/object",
+                        )
+                    )
+                    continue
+
+                style = str(target_rule.get("style", "infer")).strip().lower()
+                if style not in _NAMING_STYLE_KEYS:
+                    errors.append(
+                        ConfigValidationError(
+                            key_path=f"analysis.naming.{target}.style",
+                            message=f"analysis.naming.{target}.style must be one of: {', '.join(_NAMING_STYLE_KEYS)}",
+                        )
+                    )
+
+                allow = _string_list(target_rule.get("allow", []))
+                if allow is None:
+                    errors.append(
+                        ConfigValidationError(
+                            key_path=f"analysis.naming.{target}.allow",
+                            message=f"analysis.naming.{target}.allow must be a list of strings",
+                        )
+                    )
+
+        sfc_value = analysis.get("sfc")
+        sfc = _config_dict(sfc_value)
+        if sfc_value is not None and sfc is None:
+            errors.append(
+                ConfigValidationError(
+                    key_path="analysis.sfc",
+                    message="analysis.sfc must be a table/object",
+                )
+            )
+        elif sfc is not None:
+            step_groups = sfc.get("mutually_exclusive_steps", [])
+            if not isinstance(step_groups, list):
+                errors.append(
+                    ConfigValidationError(
+                        key_path="analysis.sfc.mutually_exclusive_steps",
+                        message="analysis.sfc.mutually_exclusive_steps must be a list",
+                    )
+                )
+
+            step_contracts = _config_dict(sfc.get("step_contracts", {}))
+            if step_contracts is None:
+                errors.append(
+                    ConfigValidationError(
+                        key_path="analysis.sfc.step_contracts",
+                        message="analysis.sfc.step_contracts must be a table/object",
+                    )
+                )
+            else:
+                for step_name, contract in step_contracts.items():
+                    if not step_name.strip():
+                        errors.append(
+                            ConfigValidationError(
+                                key_path="analysis.sfc.step_contracts",
+                                message="analysis.sfc.step_contracts keys must be non-empty strings",
+                            )
+                        )
+                        continue
+                    typed_contract = _config_dict(contract)
+                    if typed_contract is None:
+                        errors.append(
+                            ConfigValidationError(
+                                key_path=f"analysis.sfc.step_contracts.{step_name}",
+                                message=f"analysis.sfc.step_contracts.{step_name} must be a table/object",
+                            )
+                        )
+                        continue
+                    for key in ("required_enter_writes", "required_exit_writes"):
+                        values = _string_list(typed_contract.get(key, []))
+                        if values is None:
+                            errors.append(
+                                ConfigValidationError(
+                                    key_path=f"analysis.sfc.step_contracts.{step_name}.{key}",
+                                    message=(
+                                        f"analysis.sfc.step_contracts.{step_name}.{key} must be a list of strings"
+                                    ),
+                                )
+                            )
+
+        if naming_value is not None and naming is None:
+            errors.append(
+                ConfigValidationError(
+                    key_path="analysis.naming",
+                    message="analysis.naming must be a table/object",
+                )
+            )
+
+    return _build_validation_result(errors)
+
+
+def target_exists(target: str, cfg: ConfigDict | ConfigOverrideDict) -> bool:
+    other_lib_dirs = _object_list(cfg.get("other_lib_dirs", []))
+    dirs = [
+        Path(str(raw_path))
+        for raw_path in (
+            cfg.get("program_dir", ""),
+            cfg.get("ABB_lib_dir", ""),
+            *other_lib_dirs,
+        )
+        if str(raw_path).strip()
+    ]
+
+    mode = str(cfg.get("mode", "official")).strip().lower()
+    # Canonical draft/official code-extension mapping lives in core/syntax.py
+    # (code_ext / code_ext_candidates); config validation cannot import it
+    # without creating an import cycle, so the candidates are kept in sync here.
+    extensions = [".s", ".x"] if mode == "draft" else [".x"]
+
+    for directory in dirs:
+        if not directory.exists():
+            continue
+        for ext in extensions:
+            if (directory / f"{target}{ext}").exists():
+                return True
+
+    return False
+
+
+def validate_loaded_config(cfg: ConfigDict) -> ConfigValidationResult:
+    errors: list[ConfigValidationError] = []
+
+    for name in ("program_dir", "ABB_lib_dir", "icf_dir"):
+        raw = str(cfg.get(name, "")).strip()
+        if not raw:
+            continue
+        path = Path(raw)
+        if not path.exists():
+            errors.append(
+                ConfigValidationError(
+                    key_path=name,
+                    message=f"{name} does not exist: {path}",
+                )
+            )
+            continue
+        if not os.access(path, os.R_OK):
+            errors.append(
+                ConfigValidationError(
+                    key_path=name,
+                    message=f"{name} not readable: {path}",
+                )
+            )
+
+    for index, raw_path in enumerate(_object_list(cfg.get("other_lib_dirs", []))):
+        path = Path(str(raw_path))
+        if path.exists():
+            continue
+        errors.append(
+            ConfigValidationError(
+                key_path=f"other_lib_dirs[{index}]",
+                message=f"other_lib_dirs entry missing: {path}",
+            )
+        )
+
+    for index, target in enumerate(_configured_targets(cfg)):
+        if target_exists(target, cfg):
+            continue
+        errors.append(
+            ConfigValidationError(
+                key_path=f"analyzed_programs_and_libraries[{index}]",
+                message=f"{target} (not found)",
+            )
+        )
+
+    return _build_validation_result(errors)
+
+
+def validate_effective_config(cfg: ConfigDict) -> ConfigValidationResult:
+    return _merge_validation_results(validate_config(cfg), validate_loaded_config(cfg))

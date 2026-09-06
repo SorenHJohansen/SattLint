@@ -14,7 +14,12 @@ permissions:
   contents: read
 
 jobs:
+  gate:
+    name: Release gate
+    uses: ./.github/workflows/ci.yml
+
   build:
+    needs: gate
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

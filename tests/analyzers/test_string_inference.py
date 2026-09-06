@@ -9,7 +9,7 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import FuncCall, FuncCallStmt, SLExpression, VarRef
 
-from sattlint.string_inference import ExactStringInferenceEngine
+from sattlint.analyzers.string_inference import ExactStringInferenceEngine
 
 
 def _varref(name: str) -> VarRef:

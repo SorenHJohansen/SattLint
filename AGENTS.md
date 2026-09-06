@@ -38,13 +38,13 @@
 
 ## Critical Invariants
 
-- Keep `AGENTS.md` as the only root AI authority.
-- Prefer root-cause fixes over compatibility shims or duplicate abstractions.
+- Keep `AGENTS.md` as the only root AI authority (core-beliefs #2).
 - Start from the owning seam. Run focused executable validation before widening.
-- Keep large files split at reasonable seams; prefer smaller focused modules over one giant file.
-- Treat 100% focused coverage as the bar for the touched slice.
-- Keep touched Python files Pyright strict-clean.
-- `sattlint syntax-check` stays strict. No silent fallback behavior.
+- `sattlint syntax-check` stays strict (core-beliefs #4/#10). No silent fallback behavior.
+- Follow core-beliefs typing discipline (#14, #26, #27, #29): objects over dicts/tuples, no avoidable `Any`, Pyright strict-clean, typed dispatch over reflection.
+- Right solution, not the safe solution (#28); root-cause fixes over compatibility shims (#25).
+- Keep files at reasonable seams; prefer smaller focused modules over one giant file (core-beliefs #16/#17).
+- Treat 100% focused coverage as the bar for the touched slice (core-beliefs #15).
 - Use repo venv commands or existing VS Code tasks for executable proof.
 - Use markdown links for workspace file and line references.
 - Never use `python3 - << 'PY'` heredocs through the VS Code terminal tools.
@@ -55,7 +55,7 @@
 - Load `docs/maintainers/repo-map.md` or `docs/public/architecture.md` only when local routing is still unclear.
 - Make the smallest grounded edit that tests the current hypothesis.
 - Run the first focused validation immediately after the first substantive edit.
-- Widen to Ruff, Pyright, pre-commit, or `--check-my-changes` only after the local check passes.
+- Widen to Ruff, Pyright, `ruff format --check`, or pre-commit only after the local check passes.
 
 ## Restricted Commands — Hard Prohibition, NO Workarounds
 
@@ -93,6 +93,6 @@ Only `trash-put` is an allowed alternative — and only because it is explicitly
 - Do NOT use `sed`, `find ... -exec`, Python one-liners, or Task agents to make bulk code changes across multiple files.
 - Do NOT write scripts that modify source or test code. Ever.
 - Every code change must be made individually with the Edit tool, with verification after each edit.
-- If a change requires touching more than 5 files, stop and propose a plan first.
+- For broad multi-file changes, state the plan and confirm scope before editing.
 
-Last Updated: 2026-08-22
+Last Updated: 2026-09-03

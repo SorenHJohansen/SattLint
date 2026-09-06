@@ -53,7 +53,7 @@ A file can be syntactically valid but semantically broken:
 
 ## CLI And Testing
 
-- The installed `sattlint` console script must call `app.cli()` so `sys.argv[1:]` reaches `app.main(argv)`.
+- The installed `sattlint` console script targets `sattlint.cli.startup:cli`, so `sys.argv[1:]` reaches the startup entry. `app.cli()` remains a compatibility shim that delegates to it.
 - Calling `app.main()` with no argv still opens the Textual interactive shell.
 - If you change CLI menu layout or numbering, keep `tests/test_app.py` in sync.
 - Do not rely on the IDE test runner as the first validation path here; use repo-venv pytest commands directly, and treat IDE zero-test collection as expected noise rather than a project signal.
@@ -63,6 +63,6 @@ A file can be syntactically valid but semantically broken:
 ## Workspace And Project Loading
 
 - Workspace or project loading may use dependency context, local snapshots, cached bundles, and proximity-based `.l` or `.z` resolution. CLI and config-driven resolution remain unchanged.
-- `ControlLib` is an expected unavailable proprietary dependency in workspace flows and should be reported as unavailable rather than as a normal missing-code error.
+- All dependencies are resolved and parsed when present, including proprietary vendor libraries such as `ControlLib`. A dependency whose source is absent is always reported as a missing-code error; no library is special-cased as "expected unavailable".
 - Workspace validation intentionally differs from single-file strict validation for some dependency cases. Do not collapse those two modes together.
 - Single-file strict validation still rejects unknown locally resolvable parameter targets and duplicate sibling submodule names; workspace or project loading may continue past those issues in dependency libraries outside `program_dir`.

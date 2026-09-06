@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import os
 import sys
 import traceback
 from collections.abc import Callable
@@ -9,11 +10,8 @@ from contextlib import nullcontext, redirect_stdout
 from pathlib import Path
 from typing import Any, Protocol, TypedDict, cast
 
-from .. import cli_output
 from ..__version__ import __version__
-from .._exit_codes import EXIT_SUCCESS, EXIT_USAGE_ERROR
-from ..cli_output import add_output_format_argument
-from ..config_types import ConfigDict
+from ..config.types import ConfigDict
 from ..console import print_output
 from ..project import (
     SLPROJ_FILENAME,
@@ -24,6 +22,9 @@ from ..project import (
 from ..project import (
     load_project as _load_project,
 )
+from . import cli_output
+from ._exit_codes import EXIT_SUCCESS, EXIT_USAGE_ERROR
+from .cli_output import add_output_format_argument
 
 _CONFIG_LOAD_EXCEPTIONS = (OSError, ValueError)
 
@@ -42,7 +43,6 @@ class CommandHandlers(TypedDict, total=False):
     validate_config: AppCommandFn
     analyze: AppCommandFn
     cache_prune: AppCommandFn
-    format_icf: AppCommandFn
 
 
 class _ParsedCliArgs(Protocol):
@@ -55,7 +55,6 @@ class _ParsedCliArgs(Protocol):
     ui: str | None
     command: str | None
     file: str
-    dir: str
     name: str
     program_dir: str
     abb_lib_dir: str
@@ -68,9 +67,7 @@ class _ParsedCliArgs(Protocol):
     mode: str
     format: str
     output: str | None
-    output_dir: str | None
-    output_path: str | None
-    check: bool
+    profile: bool
 
 
 def _exit_code(result: int | None, *, fallback: int) -> int:
@@ -78,7 +75,7 @@ def _exit_code(result: int | None, *, fallback: int) -> int:
 
 
 def _collect_analyzer_keys() -> tuple[str, ...]:
-    from ..analysis_catalog import get_selectable_analyzers  # noqa: PLC0415
+    from ..analyzers.catalog import get_selectable_analyzers  # noqa: PLC0415
 
     return tuple(spec.key for spec in get_selectable_analyzers())
 
@@ -216,21 +213,11 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         analyze_parser,
         help_text="Output format for analyze list commands",
     )
-
-    format_icf_parser = subparsers.add_parser(
-        "format-icf",
-        help="Normalize blank-line spacing in configured ICF files",
-        description=(
-            "Rewrite configured .icf files so Unit, Journal, Operation, and Group headers use "
-            "consistent spacing without changing nonblank content."
-        ),
-    )
-    format_icf_parser.add_argument(
-        "--check",
+    analyze_parser.add_argument(
+        "--profile",
         action="store_true",
-        help="Report whether configured .icf files would change without rewriting them.",
+        help="Record run diagnostics for this invocation (JSONL profile log under the cache dir)",
     )
-    add_output_format_argument(format_icf_parser)
 
     return parser
 
@@ -381,7 +368,7 @@ def run_cli(  # noqa: PLR0915
             fallback=exit_success,
         )
 
-    if command in ("validate-config", "analyze", "format-icf"):
+    if command in ("validate-config", "analyze"):
         debug_requested = bool(getattr(args, "debug", False))
 
         if project_config is not None:
@@ -420,6 +407,8 @@ def run_cli(  # noqa: PLR0915
             analyze_handler = None if command_handlers is None else command_handlers.get("analyze")
             if analyze_handler is None:
                 raise RuntimeError("analyze handler is required")
+            if getattr(args, "profile", False):
+                os.environ.setdefault("SATTLINT_PROFILE", "1")
             selected_keys = args.checks
             selected_issue_kinds = frozenset(getattr(args, "issue_kinds", [])) or None
             return _exit_code(
@@ -432,18 +421,6 @@ def run_cli(  # noqa: PLR0915
                 ),
                 fallback=exit_success,
             )
-
-        format_icf_handler = None if command_handlers is None else command_handlers.get("format_icf")
-        if format_icf_handler is None:
-            raise RuntimeError("format-icf handler is required")
-        return _exit_code(
-            format_icf_handler(
-                cfg,
-                check=args.check,
-                output_format=cli_output.resolve_output_format(args),
-            ),
-            fallback=exit_success,
-        )
 
     parser.print_usage(sys.stderr)
     return exit_usage_error

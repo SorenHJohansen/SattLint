@@ -9,7 +9,7 @@ from typing import Any, cast
 
 import tomli_w
 
-from ..config_types import ConfigObjectMap
+from ..config.types import ConfigObjectMap
 from .models import SattLineProject
 from .types import DEFAULT_PROJECT_DICT, ProjectDict
 
@@ -43,11 +43,14 @@ def load_project(path: Path) -> SattLineProject:
     """Load a .slproj file and return an ``SattLineProject``.
 
     Raises ``FileNotFoundError`` if the path does not exist.
-    Raises ``ValueError`` if the file is malformed or has an unsupported version.
+    Raises ``ValueError`` if the path is a directory or the file is malformed
+    or has an unsupported version.
     """
     path = path.resolve()
     if not path.exists():
         raise FileNotFoundError(f"Project file not found: {path}")
+    if path.is_dir():
+        raise ValueError(f"Project path is a directory, not a .slproj file: {path}")
 
     with path.open("rb") as fh:
         raw = tomllib.load(fh)

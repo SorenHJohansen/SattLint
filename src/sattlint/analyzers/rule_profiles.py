@@ -267,7 +267,7 @@ def _default_profiles() -> dict[str, RuleProfile]:
     return {
         "default": RuleProfile(
             name="default",
-            description="Balanced default analyzer profile.",
+            description="Default profile that runs only correctness checks.",
         ),
     }
 

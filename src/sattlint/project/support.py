@@ -1,0 +1,284 @@
+from __future__ import annotations
+
+import re
+from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
+from typing import TypeGuard, cast
+
+from ..config.types import ConfigDict
+from ..models.project_graph import ProjectFailure
+from ..utils.casefolding import casefold_equal, casefold_key, dedupe_casefolded_strings
+
+_PICTURE_DISPLAY_WARNING_RE = re.compile(
+    r"^PictureDisplay in module '([^']+)' path ('.*?') could not be resolved: (.+)$"
+)
+
+
+class TargetLoadError(RuntimeError):
+    def __init__(
+        self,
+        target_name: str,
+        *,
+        resolved: list[str],
+        missing: list[str],
+        warnings: list[str] | None = None,
+        direct_dependencies: list[str] | None = None,
+        failures: Mapping[str, ProjectFailure] | None = None,
+    ):
+        self.target_name = target_name
+        self.resolved = list(resolved)
+        self.missing = list(missing)
+        self.warnings = list(warnings or [])
+        self.direct_dependencies = list(direct_dependencies or [])
+        self.failures = dict(failures or {})
+        super().__init__(self._build_message())
+
+    @staticmethod
+    def _extract_missing_name(item: str) -> str | None:
+        marker = " parse/transform error: "
+        if marker in item:
+            return item.split(marker, 1)[0]
+        match = re.match(r"Missing code file for '([^']+)'", item)
+        if match:
+            return match.group(1)
+        return None
+
+    @staticmethod
+    def _extract_warning_name(item: str) -> str | None:
+        if ": " not in item:
+            return None
+        return item.split(": ", 1)[0]
+
+    @staticmethod
+    def _format_failure_location(failure: ProjectFailure) -> str:
+        parts: list[str] = []
+        if failure.line is not None:
+            parts.append(f"line {failure.line}")
+        if failure.column is not None:
+            parts.append(f"column {failure.column}")
+        if failure.length is not None:
+            parts.append(f"length {failure.length}")
+        if not parts:
+            return ""
+        return f" ({', '.join(parts)})"
+
+    def _format_missing_item(self, item: str) -> str:
+        marker = " parse/transform error: "
+        if marker not in item:
+            return item
+
+        name, detail = item.split(marker, 1)
+        failure = self.failures.get(casefold_key(name))
+        suffix = "" if failure is None else self._format_failure_location(failure)
+        return f"{name}: {detail}{suffix}"
+
+    def _build_message(self) -> str:  # noqa: PLR0915
+        direct_keys = {casefold_key(name) for name in self.direct_dependencies}
+        root_failures: list[str] = []
+        direct_failures: list[str] = []
+        transitive_failures: list[str] = []
+        other_failures: list[str] = []
+        root_warnings: list[str] = []
+        direct_warnings: list[str] = []
+        transitive_warnings: list[str] = []
+        other_warnings: list[str] = []
+
+        for item in self.missing:
+            failure_name = self._extract_missing_name(item)
+            if failure_name is None:
+                other_failures.append(item)
+                continue
+            if casefold_equal(failure_name, self.target_name):
+                root_failures.append(item)
+            elif casefold_key(failure_name) in direct_keys:
+                direct_failures.append(item)
+            else:
+                transitive_failures.append(item)
+
+        for item in self.warnings:
+            warning_name = self._extract_warning_name(item)
+            if warning_name is None:
+                other_warnings.append(item)
+            elif casefold_equal(warning_name, self.target_name):
+                root_warnings.append(item)
+            elif casefold_key(warning_name) in direct_keys:
+                direct_warnings.append(item)
+            else:
+                transitive_warnings.append(item)
+
+        lines = [f"Target {self.target_name!r} was not parsed."]
+        if self.direct_dependencies:
+            lines.append(f"Direct dependencies from the target file ({len(self.direct_dependencies)}):")
+            lines.extend(f"  - {name}" for name in self.direct_dependencies)
+        if self.resolved:
+            lines.append(f"Resolved targets ({len(self.resolved)}):")
+            lines.extend(f"  - {name}" for name in self.resolved)
+        else:
+            lines.append("Resolved targets: none")
+
+        if root_failures:
+            lines.append(f"Root target validation errors ({len(root_failures)}):")
+            lines.extend(f"  - {self._format_missing_item(item)}" for item in root_failures)
+
+        if root_warnings:
+            lines.append(f"Root target warnings ({len(root_warnings)}):")
+            lines.extend(f"  - {item}" for item in root_warnings)
+
+        if direct_failures:
+            lines.append(f"Failed direct dependencies ({len(direct_failures)}):")
+            lines.extend(f"  - {self._format_missing_item(item)}" for item in direct_failures)
+
+        if direct_warnings:
+            lines.append(f"Direct dependency warnings ({len(direct_warnings)}):")
+            lines.extend(f"  - {item}" for item in direct_warnings)
+
+        if transitive_failures:
+            lines.append(f"Transitive dependency failures ({len(transitive_failures)}):")
+            lines.extend(f"  - {self._format_missing_item(item)}" for item in transitive_failures)
+
+        if transitive_warnings:
+            lines.append(f"Transitive dependency warnings ({len(transitive_warnings)}):")
+            lines.extend(f"  - {item}" for item in transitive_warnings)
+
+        if other_failures:
+            lines.append(f"Other missing/failed entries ({len(other_failures)}):")
+            lines.extend(f"  - {self._format_missing_item(item)}" for item in other_failures)
+
+        if other_warnings:
+            lines.append(f"Other warnings ({len(other_warnings)}):")
+            lines.extend(f"  - {item}" for item in other_warnings)
+
+        if not self.missing:
+            lines.append("Missing/failed targets: none")
+
+        return "\n".join(lines)
+
+
+def print_validation_warnings(warnings: list[str], *, print_fn: Callable[..., None], limit: int = 12) -> None:
+    if not warnings:
+        return
+
+    print_fn(f"Validation warnings ({len(warnings)}):")
+    for item in _format_validation_warning_items(warnings[:limit]):
+        print_fn(item)
+    if len(warnings) > limit:
+        print_fn(f"  - ... (+{len(warnings) - limit} more)")
+
+
+def is_picture_display_warning(item: str) -> bool:
+    display_item = item.split(": ", 1)[1] if ": " in item else item
+    return _PICTURE_DISPLAY_WARNING_RE.match(display_item) is not None
+
+
+def _format_validation_warning_items(warnings: Sequence[str]) -> tuple[str, ...]:
+    shared_target = _shared_warning_target(warnings)
+    lines: list[str] = []
+    for item in warnings:
+        display_item = item.split(": ", 1)[1] if shared_target and ": " in item else item
+        picture_display_match = _PICTURE_DISPLAY_WARNING_RE.match(display_item)
+        if picture_display_match is not None:
+            module_path, path_text, detail = picture_display_match.groups()
+            lines.append(f"  - [{module_path}] {path_text}")
+            lines.append(f"    {detail}")
+            continue
+        lines.append(f"  - {display_item}")
+    return tuple(lines)
+
+
+def _shared_warning_target(warnings: Sequence[str]) -> str | None:
+    target_name: str | None = None
+    for item in warnings:
+        warning_name = extract_warning_name(item)
+        if warning_name is None:
+            return None
+        if target_name is None:
+            target_name = warning_name
+            continue
+        if not casefold_equal(target_name, warning_name):
+            return None
+    return target_name
+
+
+def extract_warning_name(item: str) -> str | None:
+    if ": " not in item:
+        return None
+    return item.split(": ", 1)[0]
+
+
+def target_validation_warnings(target_name: str, warnings: list[str]) -> list[str]:
+    return [
+        item
+        for item in warnings
+        if ((warning_name := extract_warning_name(item)) is None or casefold_equal(warning_name, target_name))
+    ]
+
+
+def configured_icf_files(cfg: ConfigDict) -> tuple[Path | None, list[Path]]:
+    icf_dir_raw = str(cfg.get("icf_dir", "") or "").strip()
+    if not icf_dir_raw:
+        return None, []
+
+    icf_dir = Path(icf_dir_raw)
+    if not icf_dir.exists() or not icf_dir.is_dir():
+        return icf_dir, []
+
+    icf_files = sorted(path for path in icf_dir.iterdir() if path.is_file() and path.suffix.lower() == ".icf")
+    return icf_dir, icf_files
+
+
+def get_analyzed_targets(cfg: Mapping[str, object]) -> list[str]:
+    raw_targets = cfg.get("analyzed_programs_and_libraries", [])
+    if not _is_string_sequence(raw_targets):
+        return []
+    return dedupe_casefolded_strings(raw_targets)
+
+
+def _is_string_sequence(value: object) -> TypeGuard[Sequence[str]]:
+    if isinstance(value, str) or not isinstance(value, Sequence):
+        return False
+    return all(isinstance(target, str) for target in cast(Sequence[object], value))
+
+
+def require_analyzed_targets(cfg: ConfigDict) -> list[str]:
+    targets = get_analyzed_targets(cfg)
+    if not targets:
+        raise RuntimeError(
+            "No analyzed programs/libraries configured. Add entries to 'analyzed_programs_and_libraries' first."
+        )
+    return targets
+
+
+def has_analyzed_targets(
+    cfg: ConfigDict,
+    *,
+    get_analyzed_targets_fn: Callable[[ConfigDict], list[str]] = get_analyzed_targets,
+) -> bool:
+    return bool(get_analyzed_targets_fn(cfg))
+
+
+def require_targets_for_menu_action(
+    cfg: ConfigDict,
+    action: str,
+    *,
+    has_analyzed_targets_fn: Callable[[ConfigDict], bool],
+    print_fn: Callable[..., None],
+    pause_fn: Callable[[], None],
+) -> bool:
+    if has_analyzed_targets_fn(cfg):
+        return True
+    print_fn(f"\nNo analyzed programs/libraries configured. Add entries in Setup before {action}.")
+    pause_fn()
+    return False
+
+
+def cache_key_for_target(
+    cfg: ConfigDict,
+    target_name: str,
+    *,
+    compute_cache_key_fn: Callable[..., str],
+) -> str:
+    return compute_cache_key_fn(cfg, analysis_target=target_name)
+
+
+def split_csv_values(raw: str) -> list[str]:
+    return [value.strip() for value in raw.split(",") if value.strip()]

@@ -16,7 +16,6 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import VarRef
 
-from ...casefolding import is_anytype_name
 from ...grammar import constants as const
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ...resolution import decorate_segment
@@ -24,6 +23,7 @@ from ...resolution.common import resolve_moduletype_def_strict, varname_base, va
 from ...resolution.paths import path_startswith_casefold
 from ...resolution.scope import ScopeContext
 from ...types import VariableId
+from ...utils.casefolding import is_anytype_name
 from ..shared.variable_utils import external_mapping_usage, mapping_target_name
 
 if TYPE_CHECKING:

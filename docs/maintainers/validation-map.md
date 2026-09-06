@@ -3,20 +3,20 @@
 Canonical first-check command source for SattLint maintainer surfaces.
 
 - Parser, grammar, transformer, AST, or strict validation:
-  `python -m pytest tests/test_cli.py -x -q --tb=short`
+  `python -m pytest tests/app/test_cli.py -x -q --tb=short`
   or `sattlint syntax-check <target>`
 - CLI routing or argparse behavior:
-  `python -m pytest tests/test_cli.py -x -q --tb=short`
+  `python -m pytest tests/app/test_cli.py -x -q --tb=short`
 - Interactive / menu / Textual app behavior:
-  `python -m pytest tests/test_app_analysis_part*.py tests/test_app_textual.py tests/test_cli.py -x -q --tb=short`
+  `python -m pytest tests/app/test_analysis_*.py tests/app/test_app_textual.py tests/app/test_cli.py -x -q --tb=short`
 - Analyzer behavior (rule-specific):
   `python -m pytest tests/analyzers/test_<rule>.py -x -q --tb=short`
 - Analyzer registry / guardrail invariants:
-  `python -m pytest tests/test_analyzer_guardrails.py -x -q --tb=short`
+  `python -m pytest tests/analyzers/test_analyzer_guardrails.py -x -q --tb=short`
 - Project / config loading:
-  `python -m pytest tests/test_project*.py -x -q --tb=short`
+  `python -m pytest tests/project/ -x -q --tb=short`
 - ICF and graphics analysis:
-  `python -m pytest -k icf or -k graphics -x -q --tb=short`
+  `python -m pytest -k "icf or graphics" -x -q --tb=short`
 - Python behavior with a nearby focused test:
   `python -m pytest <test_file> -x -q --tb=short`
 - Finish gate for touched Python files:
