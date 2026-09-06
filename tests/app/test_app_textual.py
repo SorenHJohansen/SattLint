@@ -3028,15 +3028,25 @@ def test_textual_file_browser_directory_only_tree_hides_files(tmp_path: Path) ->
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
-    tree = app_textual_widgets_module._FilteredDirectoryTree(str(tmp_path), directory_only=True)
     subdir = tmp_path / "sub"
     subdir.mkdir()
     file_path = tmp_path / "Program.s"
     file_path.write_text("draft")
 
-    result = list(tree.filter_paths([subdir, file_path]))
+    class _TreeHost(app_textual_shared_module._TEXTUAL_APP):
+        def compose(self) -> Any:
+            yield app_textual_widgets_module._FilteredDirectoryTree(
+                str(tmp_path), directory_only=True, id="file-browser-tree"
+            )
 
-    assert result == [subdir]
+    async def _run() -> None:
+        async with _TreeHost().run_test() as pilot:
+            await pilot.pause()
+            tree = pilot.app.query_one("#file-browser-tree")
+            result = list(tree.filter_paths([subdir, file_path]))
+            assert result == [subdir]
+
+    asyncio.run(_run())
 
 
 def test_textual_file_browser_directory_only_go_up_navigates_to_parent(

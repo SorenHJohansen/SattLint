@@ -3,7 +3,7 @@
 
 Documents the supported ``sattline-parser`` version policy and verifies the
 installed parser exposes the API surface SattLint relies on.  The declared
-range is ``>=2026.8.1,<2027`` (see ``pyproject.toml``); representative fixtures
+range is ``>=2026.9.1,<2027`` (see ``pyproject.toml``); representative fixtures
 exercise parse/transform behavior across the features that depend on it.
 """
 
@@ -37,7 +37,7 @@ def test_installed_parser_matches_declared_policy() -> None:
     installed = sattline_parser.__version__
 
     assert requirement.startswith("sattline-parser>="), requirement
-    assert installed >= "2026.8.1", f"installed parser {installed} below declared minimum"
+    assert installed >= "2026.9.1", f"installed parser {installed} below declared minimum"
     assert installed < "2027", f"installed parser {installed} outside declared major range"
 
 
@@ -61,6 +61,18 @@ def test_parser_core_parse_source_text_returns_basepicture() -> None:
 
     assert isinstance(base_picture, BasePicture)
     assert base_picture.header.name
+
+
+def test_parser_core_parse_tree_is_not_attached_by_default() -> None:
+    base_picture = parser_core_parse_source_text(VALID_SINGLE_FILE)
+
+    assert base_picture.parse_tree is None
+
+
+def test_parser_core_parse_tree_is_attached_when_retained() -> None:
+    base_picture = parser_core_parse_source_text(VALID_SINGLE_FILE, retain_parse_tree=True)
+
+    assert base_picture.parse_tree is not None
 
 
 @pytest.mark.parametrize(

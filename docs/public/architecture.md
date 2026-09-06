@@ -44,7 +44,7 @@ flowchart LR
 - `src/sattlint/app.py` owns CLI flows, the interactive UI, analyzers, reporting, validation, and configuration.
 - `src/sattlint/core/` owns the semantic snapshot helpers used by analysis.
 - `src/sattlint/analyzers/` owns the heuristic analyzers and the registry.
-- `sattline-parser` (external dependency, `sattline-parser>=2026.8.1`) owns the SattLine grammar, parse tree transformation, and AST models.
+- `sattline-parser` (external dependency, `sattline-parser>=2026.9.1`) owns the SattLine grammar, parse tree transformation, and AST models.
 
 ## Operational Layer
 
