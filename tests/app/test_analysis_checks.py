@@ -367,13 +367,14 @@ def test_run_checks_skips_semantic_layer_when_batch_selection_includes_contribut
     assert not any("semantics summary" in line for line in lines)
 
 
-def test_run_checks_writes_target_telemetry_summary(tmp_path, monkeypatch):
-    telemetry_path = tmp_path / "telemetry.jsonl"
+def test_run_checks_writes_target_profiling_summary(tmp_path, monkeypatch):
+    profile_path = tmp_path / "profile.jsonl"
     monkeypatch.setattr(output_module, "emit_output", lambda _message: None)
-    monkeypatch.setattr(telemetry_module, "get_config_path", lambda: tmp_path / "config.toml")
+    monkeypatch.setenv("SATTLINT_PROFILE", "1")
+    monkeypatch.setattr(profiling_module, "profiling_log_path", lambda: tmp_path / "profile.jsonl")
 
     checks_application.run_checks(
-        app.DEFAULT_CONFIG.copy() | {"telemetry": {"enabled": True}},
+        app.DEFAULT_CONFIG.copy(),
         ["state-inference", "variables"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -413,10 +414,10 @@ def test_run_checks_writes_target_telemetry_summary(tmp_path, monkeypatch):
         pause_fn=None,
     )
 
-    events = [json.loads(line) for line in telemetry_path.read_text(encoding="utf-8").splitlines()]
+    events = [json.loads(line) for line in profile_path.read_text(encoding="utf-8").splitlines()]
 
     assert len(events) == 1
-    assert events[0]["kind"] == "sattlint.app.telemetry"
+    assert events[0]["kind"] == "sattlint.app.profile"
     assert events[0]["operation"] == "checks"
     assert events[0]["target_name"] == "TargetA"
     assert events[0]["success"] is True
@@ -921,3 +922,43 @@ def test_run_comment_code_analysis_reports_success_and_pauses(monkeypatch):
 
     assert any("comment:TargetA:['A.s', 'B.s']" in line for line in lines)
     assert pauses == ["pause-comment"]
+
+
+def test_run_checks_result_returns_structured_result_and_persists_run(tmp_path, monkeypatch) -> None:
+    emitted: list[str] = []
+    monkeypatch.setattr(output_module, "emit_output", lambda message: emitted.append(str(message)))
+    monkeypatch.setattr(checks_application, "get_runs_dir", lambda: tmp_path)
+
+    report = SimpleNamespace(
+        summary=lambda: "state inference summary",
+        issues=[
+            Issue(
+                kind="unused",
+                message="declared but never read",
+                module_path=["TargetA"],
+                severity="warning",
+            )
+        ],
+    )
+
+    result = checks_application.run_checks_result(
+        app.DEFAULT_CONFIG.copy(),
+        ["state-inference"],
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [("TargetA", SimpleNamespace(header=SimpleNamespace(name="TargetA")), SimpleNamespace())]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(key="state-inference", name="State inference", run=lambda _context: report)
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+    )
+
+    assert result.selected_analyzers == ("state-inference",)
+    assert result.targets[0].analyzers[0].status == "completed"
+    assert result.targets[0].analyzers[0].findings[0].kind == "unused"
+    assert result.targets[0].analyzers[0].findings[0].module_path == ("TargetA",)
+    assert any("state inference summary" in line for line in emitted)
+    assert len(list(tmp_path.glob("*.json"))) == 1

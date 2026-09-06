@@ -9,12 +9,9 @@ from ._app_textual_setup_actions import (
     _activate_view,
     _prompt_setup_filter,
     _prompt_setup_value,
-    _prompt_setup_value_async,
-    _queue_setup_value_prompt,
+    _remove_other_lib_dir,
     _run_analyze_checks,
     _run_app_module_cfg_action,
-    _run_tool_refresh_ast,
-    _run_tool_self_check,
     _set_setup_filter_text,
 )
 from ._app_textual_setup_display import (
@@ -24,6 +21,7 @@ from ._app_textual_setup_display import (
     _active_job_text,
     _analyze_note_text,
     _configured_target_names,
+    _output_retention_lines,
     _output_retention_note,
     _output_title_spinner_timestamp,
     _selected_setup_candidate,
@@ -37,8 +35,10 @@ from ._app_textual_setup_display import (
 from ._app_textual_setup_targets import (
     _add_selected_setup_target,
     _add_target_from_path,
+    _apply_setup_dir_choice,
     _is_target_configured,
     _mark_setup_changed,
+    _open_dir_picker,
     _open_file_browser,
     _open_help_popup,
     _open_raw_file_browser,
@@ -52,9 +52,7 @@ from ._app_textual_setup_targets import (
     _setup_note_text,
     _show_help_modal,
     _targets_action_allowed,
-    _toggle_setup_flag,
     _toggle_setup_mode,
-    _toggle_setup_telemetry,
     on_list_view_highlighted,
 )
 from ._app_textual_shared import _TEXTUAL_QUERY_ERRORS, _TEXTUAL_STATIC, _SetupTargetCandidate
@@ -144,6 +142,7 @@ if TYPE_CHECKING:
         def _output_title_spinner_frame(self) -> str | None: ...
         def _output_title_text(self) -> str: ...
         def _output_retention_note(self) -> str: ...
+        def _output_retention_lines(self) -> int: ...
         def _advance_output_title_spinner(self) -> None: ...
         def _sync_output_title_spinner(self) -> None: ...
         def _analyze_note_text(self) -> str: ...
@@ -166,13 +165,15 @@ if TYPE_CHECKING:
         def _add_selected_setup_target(self, target_name: str | None) -> None: ...
         def _remove_selected_setup_target(self, target_name: str | None) -> None: ...
         def _add_target_from_path(self, _selected_path: object) -> None: ...
+        def _open_dir_picker(self, field_key: str, *, label: str, is_list: bool = False) -> None: ...
+        def _apply_setup_dir_choice(
+            self, field_key: str, selected_path: object, *, label: str, is_list: bool
+        ) -> None: ...
         def _open_file_browser(self) -> None: ...
         def _open_raw_file_browser(self) -> None: ...
         def _open_help_popup(self) -> None: ...
         def _show_help_modal(self, help_text: str) -> None: ...
-        def _toggle_setup_flag(self, field_key: str, *, label: str) -> None: ...
         def _toggle_setup_mode(self) -> None: ...
-        def _toggle_setup_telemetry(self) -> None: ...
         def _setup_has_targets(self) -> bool: ...
         def _targets_action_allowed(self, _action_text: str) -> bool: ...
         def _run_app_module_cfg_action(
@@ -186,11 +187,8 @@ if TYPE_CHECKING:
             marks_dirty: bool = False,
         ) -> None: ...
         def _run_analyze_checks(self) -> None: ...
-        def _run_tool_self_check(self) -> None: ...
-        def _run_tool_refresh_ast(self) -> None: ...
         def _prompt_setup_value(self, field_key: str, *, label: str, is_list: bool = False) -> None: ...
-        async def _prompt_setup_value_async(self, field_key: str, *, label: str, is_list: bool = False) -> None: ...
-        def _queue_setup_value_prompt(self, field_key: str, *, label: str, is_list: bool = False) -> None: ...
+        def _remove_other_lib_dir(self) -> None: ...
         def _set_setup_filter_text(self, raw_text: object) -> None: ...
         def _prompt_setup_filter(self) -> None: ...
         def _activate_view(self, view_name: str) -> None: ...
@@ -213,6 +211,7 @@ else:
         _output_title_spinner_frame = _output_title_spinner_frame
         _output_title_text = _output_title_text
         _output_retention_note = _output_retention_note
+        _output_retention_lines = _output_retention_lines
         _advance_output_title_spinner = _advance_output_title_spinner
         _sync_output_title_spinner = _sync_output_title_spinner
         _analyze_note_text = _analyze_note_text
@@ -228,22 +227,19 @@ else:
         _add_selected_setup_target = _add_selected_setup_target
         _remove_selected_setup_target = _remove_selected_setup_target
         _add_target_from_path = _add_target_from_path
+        _open_dir_picker = _open_dir_picker
+        _apply_setup_dir_choice = _apply_setup_dir_choice
         _open_file_browser = _open_file_browser
         _open_raw_file_browser = _open_raw_file_browser
         _open_help_popup = _open_help_popup
         _show_help_modal = _show_help_modal
-        _toggle_setup_flag = _toggle_setup_flag
         _toggle_setup_mode = _toggle_setup_mode
-        _toggle_setup_telemetry = _toggle_setup_telemetry
         _setup_has_targets = _setup_has_targets
         _targets_action_allowed = _targets_action_allowed
         _run_app_module_cfg_action = _run_app_module_cfg_action
         _run_analyze_checks = _run_analyze_checks
-        _run_tool_self_check = _run_tool_self_check
-        _run_tool_refresh_ast = _run_tool_refresh_ast
         _prompt_setup_value = _prompt_setup_value
-        _prompt_setup_value_async = _prompt_setup_value_async
-        _queue_setup_value_prompt = _queue_setup_value_prompt
+        _remove_other_lib_dir = _remove_other_lib_dir
         _set_setup_filter_text = _set_setup_filter_text
         _prompt_setup_filter = _prompt_setup_filter
         _activate_view = _activate_view

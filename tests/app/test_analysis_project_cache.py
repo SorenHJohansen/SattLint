@@ -24,7 +24,7 @@ from sattlint import constants as const
 from sattlint.analyzers.variables import IssueKind, analyze_variables
 from sattlint.application import project as project_application
 from sattlint.cache import ANALYSIS_REPORT_CACHE_VERSION, AnalysisReportCache, compute_analysis_report_cache_key
-from sattlint.core import telemetry as telemetry_module
+from sattlint.core import profiling as profiling_module
 from sattlint.models.project_graph import ProjectFailure
 from sattlint.project import loading as analysis_loading_module
 from tests.helpers import named_object
@@ -1034,7 +1034,7 @@ def test_refresh_analysis_caches_clears_all_caches_before_ast_refresh():
     assert result == ("bp", "graph")
 
 
-def test_force_refresh_ast_collects_stage_timings_and_writes_telemetry_when_enabled(tmp_path, monkeypatch):
+def test_force_refresh_ast_collects_stage_timings_and_writes_profiling_when_enabled(tmp_path, monkeypatch):
     lines: list[str] = []
     load_calls: list[tuple[str, str, bool]] = []
 
@@ -1045,9 +1045,10 @@ def test_force_refresh_ast_collects_stage_timings_and_writes_telemetry_when_enab
         def clear(self, _key):
             return None
 
-    telemetry_path = tmp_path / "telemetry.jsonl"
+    profile_path = tmp_path / "profile.jsonl"
     monkeypatch.setattr(project_application, "emit_output", lambda message: lines.append(str(message)))
-    monkeypatch.setattr(telemetry_module, "get_config_path", lambda: tmp_path / "config.toml")
+    monkeypatch.setenv("SATTLINT_PROFILE", "1")
+    monkeypatch.setattr(profiling_module, "profiling_log_path", lambda: tmp_path / "profile.jsonl")
 
     graph = SimpleNamespace(
         load_stage_timings={"load_or_parse": 1.25, "validate": 0.75, "ast_cache_save": 0.25},
@@ -1058,7 +1059,6 @@ def test_force_refresh_ast_collects_stage_timings_and_writes_telemetry_when_enab
         {
             "analyzed_programs_and_libraries": ["TargetA"],
             "debug": False,
-            "telemetry": {"enabled": True},
         },
         cache_key_for_target_fn=lambda _cfg, target_name: f"key:{target_name}",
         load_project_fn=cast(
@@ -1071,12 +1071,12 @@ def test_force_refresh_ast_collects_stage_timings_and_writes_telemetry_when_enab
         get_cache_dir_fn=lambda: Path("cache-dir"),
     )
 
-    events = [json.loads(line) for line in telemetry_path.read_text(encoding="utf-8").splitlines()]
+    events = [json.loads(line) for line in profile_path.read_text(encoding="utf-8").splitlines()]
 
     assert load_calls == [("TargetA", "ast-only", True)]
     assert any("AST refresh stage totals:" in line for line in lines)
     assert len(events) == 1
-    assert events[0]["kind"] == "sattlint.app.telemetry"
+    assert events[0]["kind"] == "sattlint.app.profile"
     assert events[0]["operation"] == "ast-refresh"
     assert events[0]["target_name"] == "TargetA"
     assert events[0]["success"] is True

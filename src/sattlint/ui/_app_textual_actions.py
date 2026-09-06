@@ -17,23 +17,36 @@ except ImportError:  # pragma: no cover - optional dependency path
     _RichRule = None
     _RichText = None
 
+from .. import config as config_module
 from ..project import load_project as _load_project_fn
-from ..project.io import save_project as _save_slproj
+from ..project.io import (
+    SLPROJ_FILENAME as _SLPROJ_FILENAME,
+)
+from ..project.io import (
+    init_project as _init_project,
+)
+from ..project.io import (
+    save_project as _save_slproj,
+)
 from ..project.types import ProjectDict
 from ._app_textual_shared import (
     _ANALYZE_PLANNER_LIST_ID_PREFIX,
     _TEXTUAL_BUTTON,
     _TEXTUAL_HORIZONTAL,
+    _TEXTUAL_LIST_ITEM,
+    _TEXTUAL_LIST_VIEW,
     _TEXTUAL_QUERY_ERRORS,
     _TEXTUAL_SELECTION_LIST,
     _TEXTUAL_STATIC,
     _TEXTUAL_VERTICAL,
     APP_SHELL_BINDINGS,
+    NO_PROJECT_NOTICE,
     InteractionRequest,
     _query_required,
+    _stringify_list_values,
     _TextualOutput,
 )
-from ._app_textual_widgets import _FileBrowserScreen, _InteractionPane, _MenubarWidget
+from ._app_textual_widgets import _AstRefreshModalScreen, _FileBrowserScreen, _InteractionPane
 
 _TARGET_HEADER_RE = re.compile(r"^===\s*Target:\s*(?P<name>.+?)\s*===\s*$")
 _PHASE_HEADER_RE = re.compile(r"^\[(?P<index>\d+)/(?P<total>\d+)\]\s+(?P<label>.+)$")
@@ -267,7 +280,8 @@ def _trim_session_output_lines(self: Any) -> bool:
     retained_lines = getattr(self, "_session_output_lines", None)
     if not isinstance(retained_lines, list):
         return False
-    overflow = len(retained_lines) - _SESSION_OUTPUT_MAX_LINES
+    retention = getattr(self, "_output_retention_lines", lambda: _SESSION_OUTPUT_MAX_LINES)()
+    overflow = len(retained_lines) - retention
     if overflow <= 0:
         return False
     del retained_lines[:overflow]
@@ -366,8 +380,12 @@ def action_show_setup(self: Any) -> None:
     self._handle_toolbar_action("action-setup")
 
 
-def action_show_tools(self: Any) -> None:
-    self._handle_toolbar_action("action-tools")
+def action_show_settings(self: Any) -> None:
+    self._handle_toolbar_action("action-settings")
+
+
+def action_show_results(self: Any) -> None:
+    self._handle_toolbar_action("action-results")
 
 
 def action_show_help(self: Any) -> None:
@@ -451,6 +469,15 @@ def _make_project_relative(path: str, anchor: Path) -> str:
 
 
 def action_save_config(self: Any) -> None:
+    if self._active_view == "settings":
+        try:
+            config_module.save_app_settings(config_module.get_config_path(), self._cfg)
+        except ValueError as exc:
+            self._write_output(f"Save failed: {exc}")
+            return
+        self._dirty = False
+        self._write_output("App settings saved to your user config.")
+        return
     raw_path = self._config_path
     if raw_path is None:
         return
@@ -465,14 +492,12 @@ def action_save_config(self: Any) -> None:
             ),
             "include_reverse_library_consumers": bool(cfg_raw.get("include_reverse_library_consumers", False)),
             "mode": str(cfg_raw.get("mode", "official")),
-            "debug": bool(cfg_raw.get("debug", False)),
             "program_dir": _make_project_relative(str(cfg_raw.get("program_dir", "")), root),
             "ABB_lib_dir": _make_project_relative(str(cfg_raw.get("ABB_lib_dir", "")), root),
             "icf_dir": _make_project_relative(str(cfg_raw.get("icf_dir", "")), root),
             "other_lib_dirs": [
                 _make_project_relative(str(p), root) for p in cast(list[str], cfg_raw.get("other_lib_dirs") or [])
             ],
-            "telemetry": dict(cast(dict[str, object], cfg_raw.get("telemetry") or {"enabled": False})),
             "analysis": dict(cast(dict[str, object], cfg_raw.get("analysis") or {})),
         }
         _save_slproj(config_path, cast(ProjectDict, project_data))
@@ -502,9 +527,9 @@ def _request_quit_shell(self: Any) -> None:
             fallback_fn=lambda: self.present_request(
                 InteractionRequest(
                     kind="confirm",
-                    title="Unsaved configuration changes",
-                    message="Quit and discard the pending Setup changes?",
-                    note="Choose No to stay in the shell and use Save config from Setup.",
+                    title="Unsaved app settings",
+                    message="Quit and discard unsaved app settings?",
+                    note="Choose No to stay in the shell and use Save from Settings.",
                 ),
                 on_response_fn=lambda response: self._handle_quit_confirmation(bool(response)),
             ),
@@ -518,9 +543,9 @@ async def _request_quit_shell_async(self: Any) -> None:
     confirmed = await self.present_request_async(
         InteractionRequest(
             kind="confirm",
-            title="Unsaved configuration changes",
-            message="Quit and discard the pending Setup changes?",
-            note="Choose No to stay in the shell and use Save config from Setup.",
+            title="Unsaved app settings",
+            message="Quit and discard unsaved app settings?",
+            note="Choose No to stay in the shell and use Save from Settings.",
         )
     )
     self._handle_quit_confirmation(bool(confirmed))
@@ -532,7 +557,7 @@ def _handle_quit_confirmation(self: Any, confirmed: bool) -> None:
         self.exit()
         return
     self._set_active_action(None)
-    self._write_output("Quit canceled. Unsaved configuration changes are still pending.")
+    self._write_output("Quit canceled. Unsaved app settings are still pending.")
 
 
 def action_focus_next_control(self: Any) -> None:
@@ -612,7 +637,31 @@ def _start_action(
     self._active_job_worker = self._start_managed_action_worker(_run, label=label, action_id=action_id)
 
 
-def _refresh_view(self: Any) -> None:
+def _show_setup_no_project(self: Any) -> None:
+    lv = _query_required(self, "#setup-target-listview", _TEXTUAL_LIST_VIEW)
+    self._setup_target_names_list = []
+    lv.clear()
+    lv.append(_TEXTUAL_LIST_ITEM(_TEXTUAL_STATIC(NO_PROJECT_NOTICE)))
+    for label_id in (
+        "setup-label-program-dir",
+        "setup-label-abb-dir",
+        "setup-label-other-dirs",
+        "setup-label-icf-dir",
+        "setup-label-mode",
+    ):
+        with suppress(*_TEXTUAL_QUERY_ERRORS):
+            self.query_one(f"#{label_id}", _TEXTUAL_STATIC).update("")
+
+
+def _show_results_no_project(self: Any) -> None:
+    lv = _query_required(self, "#results-runs-list", _TEXTUAL_LIST_VIEW)
+    self._results_run_summaries = []
+    self._selected_run_record = None
+    lv.clear()
+    lv.append(_TEXTUAL_LIST_ITEM(_TEXTUAL_STATIC(NO_PROJECT_NOTICE)))
+
+
+def _refresh_view(self: Any) -> None:  # noqa: PLR0915
     if not tuple(getattr(self, "children", ())):
         return
     workspace_host = _query_required(self, "#workspace-host", _TEXTUAL_VERTICAL)
@@ -625,47 +674,66 @@ def _refresh_view(self: Any) -> None:
     launch_button = _query_required(self, "#view-primary-action", _TEXTUAL_BUTTON)
     analyze_actions_primary = _query_required(self, "#analyze-actions-primary", _TEXTUAL_HORIZONTAL)
     analyze_browser = _query_required(self, "#analyze-browser", _TEXTUAL_VERTICAL)
+    analyze_split_body = _query_required(self, "#analyze-split-body", _TEXTUAL_HORIZONTAL)
     setup_browser = _query_required(self, "#setup-browser", _TEXTUAL_HORIZONTAL)
-    tools_actions = _query_required(self, "#tools-actions", _TEXTUAL_HORIZONTAL)
+    settings_browser = _query_required(self, "#settings-browser", _TEXTUAL_HORIZONTAL)
+    results_browser = _query_required(self, "#results-browser", _TEXTUAL_HORIZONTAL)
 
     view = self._view_state(self._active_view)
     analyze_view = self._active_view == "analyze"
     setup_view = self._active_view == "setup"
-    tools_view = self._active_view == "tools"
+    settings_view = self._active_view == "settings"
+    results_view = self._active_view == "results"
 
-    title_widget.set_class(setup_view, "is-hidden")
-    description_widget.set_class(setup_view, "is-hidden")
-    note_widget.set_class(setup_view, "is-hidden")
+    title_widget.set_class(setup_view or results_view, "is-hidden")
+    description_widget.set_class(setup_view or results_view, "is-hidden")
+    note_widget.set_class(setup_view or results_view, "is-hidden")
+    view_host.set_class(settings_view or results_view, "no-view-box")
     title_widget.update(view.title)
     description_widget.update(view.description)
-    if analyze_view or setup_view:
+    if analyze_view or setup_view or settings_view or results_view:
         note_widget.update("")
     else:
         note_widget.update(view.note)
     launch_button.label = view.launch_label
     workspace_host.set_class(analyze_view, "analyze-split")
-    workspace_host.set_class(tools_view, "docs-tools-split")
-    workspace_host.set_class(setup_view, "no-output")
+    workspace_host.set_class(setup_view or settings_view or results_view, "no-output")
     setup_browser.set_class(self._dirty, "config-mode")
     view_host.set_class(setup_view, "is-hidden")
-    output_pane.set_class(setup_view, "is-hidden")
+    output_pane.set_class(setup_view or settings_view or results_view, "is-hidden")
     view_actions.set_class(self._active_view not in ("help",), "is-hidden")
     analyze_actions_primary.set_class(not analyze_view, "is-hidden")
     analyze_browser.set_class(not analyze_view, "is-hidden")
+    analyze_split_body.set_class(not analyze_view, "is-hidden")
     setup_browser.set_class(not setup_view, "is-hidden")
-    tools_actions.set_class(not tools_view, "is-hidden")
+    settings_browser.set_class(not settings_view, "is-hidden")
+    results_browser.set_class(not results_view, "is-hidden")
 
     for tab in self.query(".nav-tab"):
         tab_id = str(getattr(tab, "id", "") or "")
         tab_view = tab_id.removeprefix("nav-tab-")
         tab.set_class(tab_view == self._active_view, "nav-tab-active")
 
+    no_project = not self._project_loaded()
+
     if analyze_view:
         self._refresh_analyze_planner()
 
     if setup_view:
-        self._refresh_setup_target_list()
-        self._refresh_setup_settings_labels()
+        if no_project:
+            self._show_setup_no_project()
+        else:
+            self._refresh_setup_target_list()
+            self._refresh_setup_settings_labels()
+
+    if settings_view:
+        self._refresh_settings_labels()
+
+    if results_view:
+        if no_project:
+            self._show_results_no_project()
+        else:
+            self._refresh_results_view()
 
 
 def _show_keyboard_shortcuts(self: Any) -> None:
@@ -693,9 +761,60 @@ def _show_about(self: Any) -> None:
     self._show_help_modal("\n".join(about_lines))
 
 
+def _project_loaded(self: Any) -> bool:
+    return getattr(self, "_project", None) is not None
+
+
+def _interaction_locked(self: Any) -> bool:
+    return not self._project_loaded() or bool(getattr(self, "_ast_refresh_pending", False))
+
+
+def _load_project_object(self: Any, project: Any) -> None:
+    self._project = project
+    self._cfg = project.to_default_merged_config_dict()
+    self._config_path = project.path
+    self._dirty = False
+    self._startup_output = ""
+    self._analyze_selected_entry_ids.clear()
+    self._analyze_filter_text = ""
+    self._setup_filter_text = ""
+    self._ast_refresh_pending = True
+    self._clear_session_output()
+    self._refresh_summary()
+    self._refresh_view()
+    self._refresh_shell_state()
+    self._start_project_ast_refresh()
+
+
+def _start_project_ast_refresh(self: Any) -> None:
+    ensure_fn = getattr(self, "_ensure_ast_cache_fn", None)
+    if not callable(ensure_fn) or not self._setup_has_targets():
+        self._finish_project_ast_refresh(None)
+        return
+    screen = _AstRefreshModalScreen(refresh_fn=lambda emit_status: ensure_fn(self._cfg, emit_output_fn=emit_status))
+    self.push_screen(screen, callback=self._finish_project_ast_refresh)
+
+
+def _finish_project_ast_refresh(self: Any, result: object | None) -> None:
+    self._ast_refresh_pending = False
+    if result is not None:
+        output = str(getattr(result, "output", "") or "").strip("\n")
+        if output:
+            with suppress(*_TEXTUAL_QUERY_ERRORS):
+                self._write_output(output)
+        if not bool(getattr(result, "ok", True)):
+            with suppress(*_TEXTUAL_QUERY_ERRORS):
+                self._write_output(
+                    "AST cache refresh reported issues. You can continue; the cache will rebuild on demand."
+                )
+    self._refresh_summary()
+    self._refresh_view()
+    self._refresh_shell_state()
+
+
 def _open_project_browser(self: Any) -> None:
-    cfg_path = getattr(self, "_config_path", None)
-    start_dir = Path(cfg_path).resolve().parent if cfg_path is not None else Path.cwd().resolve()
+    projects_dir = config_module.get_projects_dir()
+    start_dir = projects_dir if projects_dir.is_dir() else Path.cwd().resolve()
 
     def _on_project_result(result: object) -> None:
         if not isinstance(result, Path):
@@ -703,23 +822,78 @@ def _open_project_browser(self: Any) -> None:
         try:
             project = _load_project_fn(result)
         except (ValueError, OSError) as exc:
-            self._write_output(f"Failed to load project: {exc}")
+            self._write_output(f"Failed to load configuration: {exc}")
             return
-        new_cfg = project.to_default_merged_config_dict()
-        self._cfg = new_cfg
-        self._config_path = result
-        self._dirty = False
-        self._startup_output = ""
-        self._clear_session_output()
-        self._refresh_summary()
-        self._refresh_view()
-        self._refresh_shell_state()
-        self._write_output(f"Switched to project: {result.name}")
+        self._load_project_object(project)
+        self._write_output(f"Opened configuration: {result.name}")
 
     self.push_screen(
         _FileBrowserScreen(start_paths=[start_dir], file_suffix=".slproj"),
         _on_project_result,
     )
+
+
+def _sanitize_project_name(name: str) -> str:
+    sanitized = re.sub(r'[/\\:*?"<>|\x00-\x1f]+', "-", name).strip(" .")
+    return sanitized or "project"
+
+
+def _new_project(self: Any) -> None:
+    if self._active_request is not None:
+        return
+    request = InteractionRequest(
+        kind="prompt",
+        title="New configuration",
+        message="Enter a name for the new configuration.",
+        note=f"Configurations are stored in {config_module.get_projects_dir()}.",
+    )
+
+    def _apply_response(response: object) -> None:
+        name = str(response or "").strip()
+        if not name:
+            self._write_output("Configuration name cannot be empty.")
+            return
+        sanitized = _sanitize_project_name(name)
+        project_path = config_module.get_projects_dir() / f"{sanitized}{_SLPROJ_FILENAME}"
+        if project_path.exists():
+            self._write_output(f"A configuration already exists at {project_path}.")
+            return
+        try:
+            project = _init_project(project_path, name=sanitized)
+        except (FileExistsError, OSError, ValueError) as exc:
+            self._write_output(f"Failed to create configuration: {exc}")
+            return
+        self._load_project_object(project)
+        self._write_output(f"Created configuration: {project_path.name}")
+
+    self.present_request(request, on_response_fn=_apply_response)
+
+
+def _persist_project(self: Any) -> None:
+    project = getattr(self, "_project", None)
+    if project is None:
+        return
+    cfg_raw: dict[str, object] = self._cfg
+    root = project.root
+    project_data: dict[str, object] = {
+        "slproj_version": 1,
+        "analyzed_programs_and_libraries": list(cast(list[str], cfg_raw.get("analyzed_programs_and_libraries") or [])),
+        "include_reverse_library_consumers": bool(cfg_raw.get("include_reverse_library_consumers", False)),
+        "mode": str(cfg_raw.get("mode", "official")),
+        "program_dir": _make_project_relative(str(cfg_raw.get("program_dir", "")), root),
+        "ABB_lib_dir": _make_project_relative(str(cfg_raw.get("ABB_lib_dir", "")), root),
+        "icf_dir": _make_project_relative(str(cfg_raw.get("icf_dir", "")), root),
+        "other_lib_dirs": [
+            _make_project_relative(str(p), root) for p in cast(list[str], cfg_raw.get("other_lib_dirs") or [])
+        ],
+        "analysis": dict(cast(dict[str, object], cfg_raw.get("analysis") or {})),
+    }
+    try:
+        _save_slproj(project.path, cast(ProjectDict, project_data))
+    except (ValueError, OSError) as exc:
+        self._write_output(f"Failed to save configuration: {exc}")
+        return
+    self._dirty = False
 
 
 def _launch_active_view(self: Any) -> None:
@@ -729,9 +903,6 @@ def _launch_active_view(self: Any) -> None:
         return
     if view.action_id == "action-setup":
         self._write_output("Setup actions are available directly in the Setup view.")
-        return
-    if view.action_id == "action-tools":
-        self._write_output("Tool actions are available directly in the Tools view.")
         return
     if view.action_id == "action-help":
         self._open_help_popup()
@@ -750,7 +921,6 @@ def _refresh_shell_state(self: Any) -> None:
     analyze_cancel_running_button = _query_required(self, "#analyze-cancel-running", _TEXTUAL_BUTTON)
     analyze_clear_selection_button = _query_required(self, "#analyze-clear-selection", _TEXTUAL_BUTTON)
     analyze_clear_output_button = _query_required(self, "#analyze-clear-output", _TEXTUAL_BUTTON)
-    tools_refresh_ast_button = _query_required(self, "#tools-refresh-ast", _TEXTUAL_BUTTON)
 
     self._sync_output_title_spinner()
     output_title_widget.update(self._output_title_text())
@@ -761,23 +931,38 @@ def _refresh_shell_state(self: Any) -> None:
     launch_button.disabled = toolbar_disabled
     analyze_view = self._active_view == "analyze"
     setup_view = self._active_view == "setup"
-    tools_view = self._active_view == "tools"
+    settings_view = self._active_view == "settings"
+    results_view = self._active_view == "results"
+    interaction_locked = self._interaction_locked()
     analyze_plan = self._analyze_plan()
 
     analyze_run_selected_button.disabled = (
-        toolbar_disabled or not analyze_view or not self._setup_has_targets() or not analyze_plan.is_runnable
+        toolbar_disabled
+        or not analyze_view
+        or interaction_locked
+        or not self._setup_has_targets()
+        or not analyze_plan.is_runnable
     )
     analyze_cancel_running_button.disabled = not (
         self._busy and self._active_job_action_id == "action-analyze" and analyze_view
     )
     analyze_clear_selection_button.disabled = (
-        toolbar_disabled or not analyze_view or not bool(self._analyze_selected_entry_ids)
+        toolbar_disabled or not analyze_view or interaction_locked or not bool(self._analyze_selected_entry_ids)
     )
     analyze_clear_output_button.disabled = toolbar_disabled or not analyze_view
+    results_expand_button = _query_required(self, "#results-expand-all", _TEXTUAL_BUTTON)
+    results_collapse_button = _query_required(self, "#results-collapse-all", _TEXTUAL_BUTTON)
+    results_expand_button.disabled = toolbar_disabled or not results_view or interaction_locked
+    results_collapse_button.disabled = toolbar_disabled or not results_view or interaction_locked
+    try:
+        results_runs_list = self.query_one("#results-runs-list", _TEXTUAL_LIST_VIEW)
+        results_runs_list.disabled = toolbar_disabled or not results_view or interaction_locked
+    except _TEXTUAL_QUERY_ERRORS:
+        pass
     for selection_list in self.query(_TEXTUAL_SELECTION_LIST):
         widget_id = str(getattr(selection_list, "id", "") or "")
         if widget_id.startswith(_ANALYZE_PLANNER_LIST_ID_PREFIX):
-            selection_list.disabled = toolbar_disabled or not analyze_view
+            selection_list.disabled = toolbar_disabled or not analyze_view or interaction_locked
     focused_widget = getattr(self, "focused", None)
     if (
         analyze_view
@@ -789,27 +974,43 @@ def _refresh_shell_state(self: Any) -> None:
 
     for btn_id in (
         "setup-edit-program-dir",
+        "setup-edit-abb-dir",
         "setup-edit-other-lib-dirs",
         "setup-edit-icf-dir",
         "setup-toggle-mode",
-        "setup-toggle-debug",
         "setup-target-browse",
     ):
-        _query_required(self, f"#{btn_id}", _TEXTUAL_BUTTON).disabled = toolbar_disabled or not setup_view
+        _query_required(self, f"#{btn_id}", _TEXTUAL_BUTTON).disabled = (
+            toolbar_disabled or not setup_view or interaction_locked
+        )
+    _query_required(self, "#setup-edit-other-lib-dirs-remove", _TEXTUAL_BUTTON).disabled = (
+        toolbar_disabled
+        or not setup_view
+        or interaction_locked
+        or not bool(_stringify_list_values(self._cfg.get("other_lib_dirs")))
+    )
     _query_required(self, "#setup-target-remove", _TEXTUAL_BUTTON).disabled = (
         toolbar_disabled
         or not setup_view
+        or interaction_locked
         or not bool(self._configured_target_names())
         or self._selected_configured_target is None
     )
-    if setup_view:
+    for btn_id in (
+        "settings-toggle-run-history",
+        "settings-edit-run-history-limit",
+        "settings-toggle-debug",
+        "settings-edit-output-retention",
+    ):
+        _query_required(self, f"#{btn_id}", _TEXTUAL_BUTTON).disabled = toolbar_disabled or not settings_view
+    if setup_view and self._project_loaded():
         self._refresh_setup_settings_labels()
-    tools_refresh_ast_button.disabled = toolbar_disabled or not tools_view or not self._setup_has_targets()
+    if settings_view:
+        self._refresh_settings_labels()
 
 
 def on_click(self: Any, event: Any) -> None:
     _on_nav_tab_click(self, event)
-    _menubar_click_outside(self, event)
 
 
 def _on_nav_tab_click(self: Any, event: Any) -> None:
@@ -826,26 +1027,6 @@ def _on_nav_tab_click(self: Any, event: Any) -> None:
         self._activate_view(view_name)
 
 
-def _menubar_click_outside(self: Any, event: Any) -> None:
-    """Close any open menubar dropdown when clicking outside it."""
-    try:
-        menubar = self.query_one("#menubar", _MenubarWidget)
-    except _TEXTUAL_QUERY_ERRORS:
-        return
-    if not menubar.menu_open:
-        return
-    clicked = getattr(event, "widget", None)
-    if clicked is None:
-        menubar.click_outside()
-        return
-    parent = clicked
-    while parent is not None:
-        if getattr(parent, "id", None) == "menubar":
-            return
-        parent = getattr(parent, "parent", None)
-    menubar.click_outside()
-
-
 def on_button_pressed(self: Any, event: Any) -> None:
     button_id = event.button.id or ""
     button_actions: dict[str, Any] = {
@@ -856,25 +1037,29 @@ def on_button_pressed(self: Any, event: Any) -> None:
         "analyze-cancel-running": self.action_cancel_running_analysis,
         "analyze-clear-selection": self._clear_selected_analysis_plan,
         "analyze-clear-output": self._clear_session_output,
-        "setup-edit-program-dir": lambda: self._queue_setup_value_prompt("program_dir", label="program_dir"),
-        "setup-edit-abb-dir": lambda: self._queue_setup_value_prompt("ABB_lib_dir", label="ABB_lib_dir"),
-        "setup-edit-other-lib-dirs": lambda: self._queue_setup_value_prompt(
+        "results-expand-all": self._expand_all_results,
+        "results-collapse-all": self._collapse_all_results,
+        "setup-edit-program-dir": lambda: self._open_dir_picker("program_dir", label="program_dir"),
+        "setup-edit-abb-dir": lambda: self._open_dir_picker("ABB_lib_dir", label="ABB_lib_dir"),
+        "setup-edit-other-lib-dirs": lambda: self._open_dir_picker(
             "other_lib_dirs", label="other_lib_dirs", is_list=True
         ),
+        "setup-edit-other-lib-dirs-remove": self._remove_other_lib_dir,
         "setup-toggle-mode": self._toggle_setup_mode,
-        "setup-edit-icf-dir": lambda: self._queue_setup_value_prompt("icf_dir", label="icf_dir"),
-        "setup-toggle-debug": lambda: self._toggle_setup_flag("debug", label="debug"),
-        "tools-refresh-ast": self._run_tool_refresh_ast,
+        "setup-edit-icf-dir": lambda: self._open_dir_picker("icf_dir", label="icf_dir"),
+        "settings-toggle-run-history": lambda: self._toggle_app_section_flag(
+            "run_history", "enabled", label="run history"
+        ),
+        "settings-edit-run-history-limit": lambda: self._queue_app_int_prompt(
+            "run_history", "limit", label="keep last N runs"
+        ),
+        "settings-toggle-debug": self._toggle_app_debug,
+        "settings-edit-output-retention": lambda: self._queue_app_int_prompt(
+            "output", "retention_lines", label="session output retention"
+        ),
         "menu-file-open-project": self._open_project_browser,
-        "menu-file-open-recent": lambda: self._write_output("Open Recent not yet implemented."),
-        "menu-file-save-project": self.action_save_config,
+        "menu-file-new-project": self._new_project,
         "action-quit": self._request_quit_shell,
-        "menu-analyze-run-selected": self._run_selected_analysis_plan,
-        "menu-analyze-cancel": self.action_cancel_running_analysis,
-        "menu-reports-export": lambda: self._write_output("Export not yet implemented."),
-        "menu-tools-refresh-cache": self._run_tool_refresh_ast,
-        "menu-settings-project": self.action_show_setup,
-        "menu-settings-general": lambda: self._write_output("General Settings not yet implemented."),
         "menu-help-shortcuts": lambda: self._show_keyboard_shortcuts(),
         "menu-help-documentation": self._open_help_popup,
         "menu-help-about": lambda: self._show_about(),
@@ -911,10 +1096,20 @@ if TYPE_CHECKING:
         def on_click(self, event: Any) -> None: ...
         def _show_keyboard_shortcuts(self) -> None: ...
         def _show_about(self) -> None: ...
+        def _project_loaded(self) -> bool: ...
+        def _interaction_locked(self) -> bool: ...
+        def _load_project_object(self, project: Any) -> None: ...
+        def _start_project_ast_refresh(self) -> None: ...
+        def _finish_project_ast_refresh(self, result: object | None) -> None: ...
         def _open_project_browser(self) -> None: ...
+        def _new_project(self) -> None: ...
+        def _persist_project(self) -> None: ...
+        def _show_setup_no_project(self) -> None: ...
+        def _show_results_no_project(self) -> None: ...
         def action_show_analyze(self) -> None: ...
         def action_show_setup(self) -> None: ...
-        def action_show_tools(self) -> None: ...
+        def action_show_settings(self) -> None: ...
+        def action_show_results(self) -> None: ...
         def action_show_help(self) -> None: ...
         def action_prompt_view_filter(self) -> None: ...
         def action_copy_output(self) -> None: ...
@@ -967,10 +1162,20 @@ else:
         on_click = on_click
         _show_keyboard_shortcuts = _show_keyboard_shortcuts
         _show_about = _show_about
+        _project_loaded = _project_loaded
+        _interaction_locked = _interaction_locked
+        _load_project_object = _load_project_object
+        _start_project_ast_refresh = _start_project_ast_refresh
+        _finish_project_ast_refresh = _finish_project_ast_refresh
         _open_project_browser = _open_project_browser
+        _new_project = _new_project
+        _persist_project = _persist_project
+        _show_setup_no_project = _show_setup_no_project
+        _show_results_no_project = _show_results_no_project
         action_show_analyze = action_show_analyze
         action_show_setup = action_show_setup
-        action_show_tools = action_show_tools
+        action_show_settings = action_show_settings
+        action_show_results = action_show_results
         action_show_help = action_show_help
         action_prompt_view_filter = action_prompt_view_filter
         action_copy_output = action_copy_output

@@ -9,6 +9,7 @@ from typing import Any, cast
 from sattline_parser.models.ast_model import BasePicture
 
 from .. import console as console_module
+from ..application.findings import AnalysisFinding
 from ..cache import CachePruneResult
 from ..config.types import ConfigDict
 from ..models.project_graph import ProjectGraph
@@ -32,6 +33,7 @@ class AnalyzeCommandResult:
 
 def _serialize_analyze_analyzer_result(result: object) -> dict[str, Any]:
     selected_issue_kinds = getattr(result, "selected_issue_kinds", None)
+    findings = cast(tuple[object, ...], getattr(result, "findings", ()))
     return {
         "key": getattr(result, "key", None),
         "name": getattr(result, "name", None),
@@ -39,6 +41,7 @@ def _serialize_analyze_analyzer_result(result: object) -> dict[str, Any]:
         "summary": getattr(result, "summary", None),
         "report_kind": getattr(result, "report_kind", None),
         "issue_count": getattr(result, "issue_count", None),
+        "findings": [finding.to_dict() for finding in findings if isinstance(finding, AnalysisFinding)],
         "duration_ms": getattr(result, "duration_ms", None),
         "phase_timings_ms": list(getattr(result, "phase_timings_ms", ())),
         "selected_issue_kinds": None

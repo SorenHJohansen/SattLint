@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ._app_textual_shared import (
     _TEXTUAL_QUERY_ERRORS,
@@ -16,6 +16,7 @@ from ._app_textual_shared import (
 
 _OUTPUT_TITLE_SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
 _OUTPUT_TITLE_SPINNER_INTERVAL_SECONDS = 1.0 / 60.0
+_DEFAULT_SESSION_OUTPUT_RETENTION_LINES = 4000
 
 
 def _output_title_spinner_timestamp() -> float:
@@ -140,11 +141,21 @@ def _active_job_elapsed_text(self: Any) -> str | None:
     return f"{minutes}:{seconds:02d}"
 
 
+def _output_retention_lines(self: Any) -> int:
+    output = cast(object, self._cfg.get("output"))
+    if isinstance(output, dict):
+        mapping = cast(dict[str, object], output)
+        value = mapping.get("retention_lines", _DEFAULT_SESSION_OUTPUT_RETENTION_LINES)
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            return value
+    return _DEFAULT_SESSION_OUTPUT_RETENTION_LINES
+
+
 def _output_retention_note(self: Any) -> str:
     dropped_line_count = int(getattr(self, "_session_output_dropped_line_count", 0) or 0)
     if dropped_line_count <= 0:
         return ""
-    return " - retaining last 4000 lines"
+    return f" - retaining last {self._output_retention_lines()} lines"
 
 
 def _output_title_spinner_frame(self: Any) -> str | None:

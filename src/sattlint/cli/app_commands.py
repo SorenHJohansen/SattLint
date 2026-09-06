@@ -114,6 +114,7 @@ def run_analyze_command(
             selected_keys,
             selected_issue_kinds=selected_issue_kinds,
             use_cache=use_cache,
+            persist_run=True,
             iter_loaded_projects_fn=_iter_nested_projects,
             get_enabled_analyzers_fn=(
                 analyze_application.get_selectable_analyzers

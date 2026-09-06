@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable, Iterator, Set
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from time import perf_counter
 from typing import Any, cast
 
@@ -28,15 +29,25 @@ from ..analyzers.rule_profiles import apply_rule_profile_to_report
 from ..analyzers.variables import IssueKind
 from ..cache import AnalysisReportCache, compute_analysis_report_cache_key, get_cache_dir
 from ..config.types import ConfigDict
-from ..core import telemetry as telemetry_module
+from ..core import profiling as profiling_module
 from ..core.debug import debug_enabled
 from ..core.terminal import flush_stdout
 from ..models.project_graph import ProjectGraph
 from ..project import cache as report_cache_module
 from ..reporting.target_report import normalize_report_target_name
 from ..reporting.variables_report import VariablesReport
+from ..runs import (
+    DEFAULT_RUN_HISTORY_LIMIT,
+    RunAnalyzerRecord,
+    RunRecord,
+    RunTargetRecord,
+    get_runs_dir,
+    prune_runs,
+    save_run,
+)
 from . import output as output_module
 from . import project as project_application
+from .findings import AnalysisFinding, extract_report_findings
 
 LoadedProject = project_application.LoadedProject
 LIBRARY_SUPPRESSED_ANALYZER_KEYS = frozenset({"picture-display-paths"})
@@ -50,6 +61,7 @@ class ChecksAnalyzerResult:
     summary: str | None = None
     report_kind: str | None = None
     issue_count: int | None = None
+    findings: tuple[AnalysisFinding, ...] = ()
     duration_ms: float | None = None
     phase_timings_ms: tuple[dict[str, object], ...] = ()
     selected_issue_kinds: tuple[str, ...] | None = None
@@ -115,6 +127,84 @@ def _issue_count_for_report(report: object) -> int | None:
     return len(cast(list[object], issues))
 
 
+def _utc_now_iso() -> str:
+    return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def _run_history_enabled(cfg: ConfigDict) -> bool:
+    run_history = cast(object, cfg.get("run_history"))
+    if isinstance(run_history, dict):
+        mapping = cast(dict[str, object], run_history)
+        return bool(mapping.get("enabled", True))
+    return True
+
+
+def _run_history_limit(cfg: ConfigDict) -> int:
+    run_history = cast(object, cfg.get("run_history"))
+    if isinstance(run_history, dict):
+        mapping = cast(dict[str, object], run_history)
+        limit = mapping.get("limit", DEFAULT_RUN_HISTORY_LIMIT)
+        if isinstance(limit, int) and not isinstance(limit, bool) and limit > 0:
+            return limit
+    return DEFAULT_RUN_HISTORY_LIMIT
+
+
+def _project_tag(cfg: ConfigDict) -> str:
+    targets = cast(object, cfg.get("analyzed_programs_and_libraries", []))
+    if isinstance(targets, list):
+        return ", ".join(str(target) for target in cast(list[object], targets) if str(target).strip())
+    return ""
+
+
+def _run_analyzer_record(result: ChecksAnalyzerResult) -> RunAnalyzerRecord:
+    return RunAnalyzerRecord(
+        key=result.key,
+        name=result.name,
+        status=result.status,
+        summary=result.summary,
+        report_kind=result.report_kind,
+        issue_count=result.issue_count,
+        findings=result.findings,
+        duration_ms=result.duration_ms,
+        phase_timings_ms=result.phase_timings_ms,
+        selected_issue_kinds=result.selected_issue_kinds,
+        skip_reason=result.skip_reason,
+    )
+
+
+def _run_target_record(result: ChecksTargetResult) -> RunTargetRecord:
+    return RunTargetRecord(
+        target_name=result.target_name,
+        is_library=result.is_library,
+        analyzers=tuple(_run_analyzer_record(analyzer) for analyzer in result.analyzers),
+        stage_timings_ms=result.stage_timings_ms,
+        graphics_timings_ms=result.graphics_timings_ms,
+    )
+
+
+def build_run_record(result: ChecksRunResult, cfg: ConfigDict, *, started_at: str | None = None) -> RunRecord:
+    """Convert a checks run result into a persisted run record."""
+    return RunRecord(
+        run_id="",
+        started_at=started_at or _utc_now_iso(),
+        finished_at=_utc_now_iso(),
+        project_tag=_project_tag(cfg),
+        selected_analyzers=result.selected_analyzers,
+        selected_issue_kinds=result.selected_issue_kinds,
+        targets=tuple(_run_target_record(target) for target in result.targets),
+        output_lines=result.output_lines,
+    )
+
+
+def _persist_run_result(result: ChecksRunResult, cfg: ConfigDict, *, started_at: str) -> None:
+    if result.cancelled or not _run_history_enabled(cfg):
+        return
+    runs_dir = get_runs_dir()
+    record = build_run_record(result, cfg, started_at=started_at)
+    save_run(record, runs_dir=runs_dir)
+    prune_runs(runs_dir, limit=_run_history_limit(cfg))
+
+
 def _filter_report_for_selected_issue_kinds(
     report: object,
     selected_issue_kinds: frozenset[str] | None,
@@ -175,6 +265,7 @@ def collect_run_checks_result(  # noqa: PLR0915
     selected_issue_kinds: Set[str] | None = None,
     *,
     use_cache: bool = True,
+    persist_run: bool = False,
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
     get_enabled_analyzers_fn: Callable[[], list[Any]] | None = None,
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
@@ -186,6 +277,7 @@ def collect_run_checks_result(  # noqa: PLR0915
     if target_is_library_fn is None:
         target_is_library_fn = _target_is_library
 
+    run_started_at = _utc_now_iso()
     output_lines: list[str] = []
     target_results: list[ChecksTargetResult] = []
 
@@ -219,17 +311,17 @@ def collect_run_checks_result(  # noqa: PLR0915
         analysis_report_cache_cls=AnalysisReportCache,
         get_cache_dir_fn=get_cache_dir,
     )
-    telemetry = telemetry_module.create_app_telemetry(cfg)
+    profiler = profiling_module.create_profiler()
     try:
         for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
             target_analyzers: list[ChecksAnalyzerResult] = []
             target_started_at = perf_counter()
             analyzer_timings_ms: dict[str, float] = {}
             analyzer_phase_timings_ms: dict[str, list[dict[str, object]]] = {}
-            stage_timings_ms = telemetry_module.normalize_named_timings_ms(
+            stage_timings_ms = profiling_module.normalize_named_timings_ms(
                 getattr(graph, "load_stage_timings", None), scale=1000.0
             )
-            graphics_timings_ms = telemetry_module.normalize_named_timings_ms(
+            graphics_timings_ms = profiling_module.normalize_named_timings_ms(
                 getattr(graph, "graphics_load_timings", None),
                 scale=1000.0,
             )
@@ -295,7 +387,7 @@ def collect_run_checks_result(  # noqa: PLR0915
                             selected_issue_kinds=analyzer_selected_issue_kinds,
                         )
                     )
-                    telemetry.emit(
+                    profiler.emit(
                         operation="checks",
                         target_name=target_name,
                         duration_ms=(perf_counter() - target_started_at) * 1000,
@@ -324,13 +416,14 @@ def collect_run_checks_result(  # noqa: PLR0915
                 analyzer_timings_ms[spec.key] = round((perf_counter() - analyzer_started_at) * 1000, 3)
                 if context.shared_artifacts is not None:
                     context.shared_artifacts.reports_by_analyzer_key[spec.key] = report
-                phase_timings_ms = telemetry_module.normalize_phase_timings_ms(getattr(report, "phase_timings", None))
+                phase_timings_ms = profiling_module.normalize_phase_timings_ms(getattr(report, "phase_timings", None))
                 if phase_timings_ms:
                     analyzer_phase_timings_ms[spec.key] = phase_timings_ms
                 report = apply_rule_profile_to_report(spec.key, report, cfg)
                 report = _filter_report_for_selected_issue_kinds(report, normalized_selected_issue_kinds)
                 report = normalize_report_target_name(report, target_name)
                 summary_text = report.summary()
+                findings = extract_report_findings(report, default_name=target_name)
                 emit_line(summary_text)
                 target_analyzers.append(
                     ChecksAnalyzerResult(
@@ -340,15 +433,16 @@ def collect_run_checks_result(  # noqa: PLR0915
                         summary=summary_text,
                         report_kind=type(report).__name__,
                         issue_count=_issue_count_for_report(report),
+                        findings=findings,
                         duration_ms=analyzer_timings_ms[spec.key],
                         phase_timings_ms=tuple(analyzer_phase_timings_ms.get(spec.key, [])),
                         selected_issue_kinds=analyzer_selected_issue_kinds,
                     )
                 )
-            analyzer_bottleneck = telemetry_module.bottleneck_from_named_timings(analyzer_timings_ms, kind="analyzer")
+            analyzer_bottleneck = profiling_module.bottleneck_from_named_timings(analyzer_timings_ms, kind="analyzer")
             analyzer_phase_bottleneck: dict[str, object] | None = None
             for analyzer_key, phase_timings in analyzer_phase_timings_ms.items():
-                candidate = telemetry_module.bottleneck_from_phase_timings(
+                candidate = profiling_module.bottleneck_from_phase_timings(
                     phase_timings,
                     kind="analyzer-phase",
                     extra_fields={"analyzer_key": analyzer_key},
@@ -377,7 +471,7 @@ def collect_run_checks_result(  # noqa: PLR0915
                 payload["analyzer_phase_bottleneck"] = analyzer_phase_bottleneck
                 payload["bottleneck_kind"] = "analyzer-phase"
                 payload["bottleneck"] = analyzer_phase_bottleneck
-            telemetry.emit(
+            profiler.emit(
                 operation="checks",
                 target_name=target_name,
                 duration_ms=(perf_counter() - target_started_at) * 1000,
@@ -409,12 +503,41 @@ def collect_run_checks_result(  # noqa: PLR0915
             cancelled=True,
         )
 
-    return ChecksRunResult(
+    result = ChecksRunResult(
         output_lines=tuple(output_lines),
         targets=tuple(target_results),
         selected_analyzers=selected_analyzer_keys,
         selected_issue_kinds=selected_issue_kind_tuple_result,
     )
+    if persist_run:
+        _persist_run_result(result, cfg, started_at=run_started_at)
+    return result
+
+
+def run_checks_result(
+    cfg: ConfigDict,
+    selected_keys: list[str] | None,
+    selected_issue_kinds: Set[str] | None = None,
+    *,
+    use_cache: bool = True,
+    persist_run: bool = True,
+    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
+    get_enabled_analyzers_fn: Callable[[], list[Any]] | None = None,
+    target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
+) -> ChecksRunResult:
+    result = collect_run_checks_result(
+        cfg,
+        selected_keys,
+        selected_issue_kinds,
+        use_cache=use_cache,
+        persist_run=persist_run,
+        iter_loaded_projects_fn=iter_loaded_projects_fn,
+        get_enabled_analyzers_fn=get_enabled_analyzers_fn,
+        target_is_library_fn=target_is_library_fn,
+    )
+    for line in result.output_lines:
+        output_module.emit_output(line)
+    return result
 
 
 def run_checks(
@@ -428,17 +551,16 @@ def run_checks(
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
     pause_fn: Callable[[], None] | None = None,
 ) -> None:
-    result = collect_run_checks_result(
+    result = run_checks_result(
         cfg,
         selected_keys,
         selected_issue_kinds,
         use_cache=use_cache,
+        persist_run=True,
         iter_loaded_projects_fn=iter_loaded_projects_fn,
         get_enabled_analyzers_fn=get_enabled_analyzers_fn,
         target_is_library_fn=target_is_library_fn,
     )
-    for line in result.output_lines:
-        output_module.emit_output(line)
     if result.cancelled:
         output_module.handle_analysis_cancellation(pause_fn=pause_fn)
         return

@@ -27,7 +27,8 @@ from .types import (
 VALID_TOP_LEVEL_KEYS = VALID_TOP_LEVEL_CONFIG_KEYS
 
 VALID_ANALYSIS_KEYS = frozenset({"sfc", "naming", "rule_profiles"})
-VALID_TELEMETRY_KEYS = frozenset({"enabled"})
+VALID_RUN_HISTORY_KEYS = frozenset({"enabled", "limit"})
+VALID_OUTPUT_KEYS = frozenset({"retention_lines"})
 VALID_NAMING_TARGETS = frozenset({"variables", "modules", "instances"})
 VALID_NAMING_STYLES = frozenset({"infer", "pascal", "camel", "snake", "upper_snake", "lower", "upper"})
 
@@ -138,9 +139,13 @@ def _strip_unknown_keys(cfg: ConfigOverrideDict) -> None:
                     if profile_cfg is not None:
                         _strip_section_keys(profile_cfg, _SECTION_RULE_PROFILE_ENTRY_KEYS)
 
-    telemetry = _config_dict(cfg_map.get("telemetry"))
-    if telemetry is not None:
-        _strip_section_keys(telemetry, VALID_TELEMETRY_KEYS)
+    run_history = _config_dict(cfg_map.get("run_history"))
+    if run_history is not None:
+        _strip_section_keys(run_history, VALID_RUN_HISTORY_KEYS)
+
+    output = _config_dict(cfg_map.get("output"))
+    if output is not None:
+        _strip_section_keys(output, VALID_OUTPUT_KEYS)
 
 
 def _load_time_config_warnings(cfg: ConfigOverrideDict) -> tuple[ConfigValidationError, ...]:
@@ -234,31 +239,68 @@ def validate_config(cfg: ConfigDict | ConfigOverrideDict) -> ConfigValidationRes
             )
         )
 
-    telemetry_value = cfg.get("telemetry")
-    telemetry = _config_dict(telemetry_value)
-    if telemetry_value is not None and telemetry is None:
+    run_history_value = cfg.get("run_history")
+    run_history = _config_dict(run_history_value)
+    if run_history_value is not None and run_history is None:
         errors.append(
             ConfigValidationError(
-                key_path="telemetry",
-                message="telemetry must be a table/object.",
+                key_path="run_history",
+                message="run_history must be a table/object.",
             )
         )
-    elif telemetry is not None:
-        for key in telemetry:
-            if key not in VALID_TELEMETRY_KEYS:
+    elif run_history is not None:
+        for key in run_history:
+            if key not in VALID_RUN_HISTORY_KEYS:
                 errors.append(
                     ConfigValidationError(
-                        key_path=f"telemetry.{key}",
-                        message=f"Unknown telemetry key '{key}'. Expected one of: {', '.join(sorted(VALID_TELEMETRY_KEYS))}",
+                        key_path=f"run_history.{key}",
+                        message=f"Unknown run_history key '{key}'. Expected one of: {', '.join(sorted(VALID_RUN_HISTORY_KEYS))}",
                     )
                 )
 
-        enabled = telemetry.get("enabled", False)
+        enabled = run_history.get("enabled", True)
         if not isinstance(enabled, bool):
             errors.append(
                 ConfigValidationError(
-                    key_path="telemetry.enabled",
-                    message="telemetry.enabled must be a boolean",
+                    key_path="run_history.enabled",
+                    message="run_history.enabled must be a boolean",
+                )
+            )
+
+        limit = run_history.get("limit", 50)
+        if not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0:
+            errors.append(
+                ConfigValidationError(
+                    key_path="run_history.limit",
+                    message="run_history.limit must be a positive integer",
+                )
+            )
+
+    output_value = cfg.get("output")
+    output = _config_dict(output_value)
+    if output_value is not None and output is None:
+        errors.append(
+            ConfigValidationError(
+                key_path="output",
+                message="output must be a table/object.",
+            )
+        )
+    elif output is not None:
+        for key in output:
+            if key not in VALID_OUTPUT_KEYS:
+                errors.append(
+                    ConfigValidationError(
+                        key_path=f"output.{key}",
+                        message=f"Unknown output key '{key}'. Expected one of: {', '.join(sorted(VALID_OUTPUT_KEYS))}",
+                    )
+                )
+
+        retention_lines = output.get("retention_lines", 4000)
+        if not isinstance(retention_lines, int) or isinstance(retention_lines, bool) or retention_lines <= 0:
+            errors.append(
+                ConfigValidationError(
+                    key_path="output.retention_lines",
+                    message="output.retention_lines must be a positive integer",
                 )
             )
 

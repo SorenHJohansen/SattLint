@@ -12,7 +12,7 @@ from sattline_parser.models.ast_model import BasePicture
 
 from .. import cache as cache_module
 from ..config.types import ConfigDict
-from ..core import telemetry as telemetry_module
+from ..core import profiling as profiling_module
 from ..core.debug import log_debug_exception
 from ..graphics.graphics_context_helpers import resolve_graphics_companion_path
 from ..models.project_graph import ProjectGraph, RootOrigin, merge_project_basepicture
@@ -390,10 +390,10 @@ def force_refresh_ast(
         return None
 
     cache = cache_module.build_ast_cache(get_cache_dir_fn(), ast_cache_cls)
-    telemetry = telemetry_module.create_app_telemetry(cfg)
+    profiler = profiling_module.create_profiler()
     result = None
     total_targets = len(targets)
-    collect_stage_timings = bool(cfg.get("debug", False)) or telemetry.enabled
+    collect_stage_timings = bool(cfg.get("debug", False)) or profiler.enabled
     emit_output_fn(f"Refreshing AST caches for {total_targets} target(s)...")
     for index, target_name in enumerate(targets, start=1):
         emit_output_fn(f"\nRefreshing AST cache for {target_name}... ({index}/{total_targets})")
@@ -414,13 +414,13 @@ def force_refresh_ast(
             stage_timings = getattr(graph, "load_stage_timings", None)
             if isinstance(stage_timings, dict):
                 stage_timings_s = dict(cast(dict[str, float], stage_timings))
-                stage_timings_ms = telemetry_module.normalize_named_timings_ms(stage_timings_s, scale=1000.0)
-                stage_bottleneck = telemetry_module.bottleneck_from_named_timings(stage_timings_ms, kind="stage")
-                graphics_timings_ms = telemetry_module.normalize_named_timings_ms(
+                stage_timings_ms = profiling_module.normalize_named_timings_ms(stage_timings_s, scale=1000.0)
+                stage_bottleneck = profiling_module.bottleneck_from_named_timings(stage_timings_ms, kind="stage")
+                graphics_timings_ms = profiling_module.normalize_named_timings_ms(
                     getattr(graph, "graphics_load_timings", None),
                     scale=1000.0,
                 )
-                graphics_bottleneck = telemetry_module.bottleneck_from_named_timings(
+                graphics_bottleneck = profiling_module.bottleneck_from_named_timings(
                     graphics_timings_ms,
                     kind="graphics-phase",
                 )
@@ -451,7 +451,7 @@ def force_refresh_ast(
                     ):
                         payload["bottleneck_kind"] = "graphics-phase"
                         payload["bottleneck"] = graphics_bottleneck
-                telemetry.emit(
+                profiler.emit(
                     operation="ast-refresh",
                     target_name=target_name,
                     duration_ms=duration_ms,
@@ -459,7 +459,7 @@ def force_refresh_ast(
                     payload=payload,
                 )
             else:
-                telemetry.emit(
+                profiler.emit(
                     operation="ast-refresh",
                     target_name=target_name,
                     duration_ms=duration_ms,
@@ -467,7 +467,7 @@ def force_refresh_ast(
                     payload={"refresh_mode": "ast-only"},
                 )
         else:
-            telemetry.emit(
+            profiler.emit(
                 operation="ast-refresh",
                 target_name=target_name,
                 duration_ms=duration_ms,

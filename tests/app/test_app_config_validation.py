@@ -37,7 +37,7 @@ def test_validate_config_reports_key_mode_analysis_and_documentation_errors():
             "ignore_ABB_lib": True,
             "mode": "bad_mode",
             "analysis": "bad",
-            "telemetry": "bad",
+            "run_history": "bad",
             "documentation": "bad",
         }
     )
@@ -48,27 +48,44 @@ def test_validate_config_reports_key_mode_analysis_and_documentation_errors():
         "ignore_ABB_lib",
         "mode",
         "analysis",
-        "telemetry",
+        "run_history",
         "documentation",
     }
 
 
-def test_validate_config_reports_unknown_telemetry_keys_and_invalid_shapes():
+def test_validate_config_reports_unknown_run_history_keys_and_invalid_shapes():
     result = config_module.validate_config(
         {
-            "telemetry": {
+            "run_history": {
                 "extra": True,
                 "enabled": "yes",
-                "path": "legacy.jsonl",
+                "limit": -1,
             }
         }
     )
 
     assert result.passed is False
     assert {error.key_path for error in result.errors} == {
-        "telemetry.extra",
-        "telemetry.enabled",
-        "telemetry.path",
+        "run_history.extra",
+        "run_history.enabled",
+        "run_history.limit",
+    }
+
+
+def test_validate_config_reports_unknown_output_keys_and_invalid_shapes():
+    result = config_module.validate_config(
+        {
+            "output": {
+                "extra": True,
+                "retention_lines": 0,
+            }
+        }
+    )
+
+    assert result.passed is False
+    assert {error.key_path for error in result.errors} == {
+        "output.extra",
+        "output.retention_lines",
     }
 
 
@@ -76,7 +93,7 @@ def test_validate_config_reports_none_values_at_top_level_and_nested_paths():
     result = config_module.validate_config(
         {
             "mode": None,
-            "telemetry": {"enabled": None},
+            "run_history": {"limit": None},
             "analyzed_programs_and_libraries": ["RootProgram", None],
         }
     )
@@ -84,7 +101,7 @@ def test_validate_config_reports_none_values_at_top_level_and_nested_paths():
     assert result.passed is False
     assert {error.key_path for error in result.errors} == {
         "mode",
-        "telemetry.enabled",
+        "run_history.limit",
         "analyzed_programs_and_libraries[1]",
     }
 
@@ -114,7 +131,7 @@ def test_validate_config_passes_valid_config_and_serializes_result():
     valid = config_module.validate_config(
         {
             "mode": "draft",
-            "telemetry": {"enabled": True},
+            "run_history": {"enabled": True, "limit": 50},
             "analysis": {"naming": {"variables": {"style": "snake"}}},
         }
     )
@@ -145,7 +162,7 @@ def test_load_config_warns_on_missing_paths_from_loaded_validation(tmp_path, cap
     assert "Config warning [program_dir]: program_dir does not exist: missing-programs" in out
 
 
-def test_load_config_applies_default_telemetry_without_rewriting_existing_file(tmp_path):
+def test_load_config_applies_default_run_history_without_rewriting_existing_file(tmp_path):
     config_path = tmp_path / "config.toml"
     original_text = 'mode = "draft"\nprogram_dir = "programs"'
     config_path.write_text(original_text, encoding="utf-8")
@@ -156,23 +173,23 @@ def test_load_config_applies_default_telemetry_without_rewriting_existing_file(t
     assert created is False
     assert loaded["mode"] == "draft"
     assert loaded["program_dir"] == "programs"
-    assert loaded["telemetry"] == {"enabled": False}
+    assert loaded["run_history"] == {"enabled": True, "limit": 50}
     assert persisted_text == original_text
-    assert "[telemetry]" not in persisted_text
+    assert "[run_history]" not in persisted_text
     assert 'path = ""' not in persisted_text
 
 
-def test_load_config_strips_legacy_telemetry_path_without_rewriting_file(tmp_path, capsys):
+def test_load_config_strips_unknown_run_history_key_without_rewriting_file(tmp_path, capsys):
     config_path = tmp_path / "config.toml"
-    config_path.write_text('[telemetry]\nenabled = true\npath = "legacy.jsonl"\n', encoding="utf-8")
+    config_path.write_text('[run_history]\nenabled = true\nlimit = 10\npath = "legacy.jsonl"\n', encoding="utf-8")
 
     loaded, created = config_module.load_config(config_path)
 
     out = capsys.readouterr().out
     persisted_text = config_path.read_text(encoding="utf-8")
     assert created is False
-    assert loaded["telemetry"] == {"enabled": True}
-    assert "telemetry.path" not in out
+    assert loaded["run_history"] == {"enabled": True, "limit": 10}
+    assert "run_history.path" not in out
     assert "enabled = true" in persisted_text
     assert 'path = "legacy.jsonl"' in persisted_text
 
@@ -217,19 +234,19 @@ def test_config_io_helper_branches_cover_missing_load_passthrough_and_save_guard
 
     out = capsys.readouterr().out
     assert created is True
-    assert loaded["telemetry"] == {"enabled": False}
+    assert loaded["run_history"] == {"enabled": True, "limit": 50}
     assert config_path.exists()
     assert "No config found, creating default" in out
 
     legacy_path = tmp_path / "legacy-config.toml"
     legacy_path.write_text(
-        'mode = "draft"\n[telemetry]\nenabled = true\npath = "old.jsonl"\n',
+        'mode = "draft"\n[run_history]\nenabled = true\nlimit = 10\npath = "old.jsonl"\n',
         encoding="utf-8",
     )
     loaded_legacy, created = config_module.load_config(legacy_path)
     assert created is False
-    assert loaded_legacy["telemetry"] == {"enabled": True}
-    assert "path" not in loaded_legacy["telemetry"]
+    assert loaded_legacy["run_history"] == {"enabled": True, "limit": 10}
+    assert "path" not in loaded_legacy["run_history"]
 
     with pytest.raises(ValueError, match=r"Config validation failed: \[program_dir\]"):
         config_module.save_config(tmp_path / "invalid-path-config.toml", {"program_dir": str(tmp_path / "missing")})
@@ -296,7 +313,7 @@ def test_top_level_config_contract_matches_typed_config_definitions() -> None:
 
 def test_self_check_uses_full_top_level_config_contract(tmp_path, monkeypatch, capsys):
     cfg = deepcopy(app.DEFAULT_CONFIG)
-    for key in ("include_reverse_library_consumers", "telemetry", "analysis"):
+    for key in ("include_reverse_library_consumers", "run_history", "analysis"):
         cfg.pop(key)
 
     ok = config_module.self_check(cfg)
@@ -304,7 +321,7 @@ def test_self_check_uses_full_top_level_config_contract(tmp_path, monkeypatch, c
     out = capsys.readouterr().out
     assert ok is False
     assert "Missing config key: include_reverse_library_consumers" in out
-    assert "Missing config key: telemetry" in out
+    assert "Missing config key: run_history" in out
     assert "Missing config key: analysis" in out
 
 

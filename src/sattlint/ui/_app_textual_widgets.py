@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Iterable
-from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar
+
+try:
+    from textual._context import NoActiveAppError as _NoActiveAppError  # type: ignore[import-untyped]
+except ImportError:  # pragma: no cover - optional dependency path
+    _NoActiveAppError = RuntimeError
 
 from ._app_textual_shared import (
     _TEXTUAL_APP,
@@ -17,7 +23,6 @@ from ._app_textual_shared import (
     _TEXTUAL_LIST_ITEM,
     _TEXTUAL_LIST_VIEW,
     _TEXTUAL_MODAL_SCREEN,
-    _TEXTUAL_QUERY_ERRORS,
     _TEXTUAL_STATIC,
     _TEXTUAL_VERTICAL,
     InteractionRequest,
@@ -26,6 +31,13 @@ from ._app_textual_shared import (
     advance_menu_choice_buffer,
     interaction_ledger_text,
 )
+
+
+@dataclass(frozen=True)
+class _AstRefreshModalResult:
+    ok: bool
+    output: str
+
 
 if _TEXTUAL_APP is not None:
 
@@ -41,7 +53,7 @@ if _TEXTUAL_APP is not None:
             title_widget = self.query_one("#shell-banner-title", _TEXTUAL_STATIC)
             subtitle_widget = self.query_one("#shell-banner-subtitle", _TEXTUAL_STATIC)
             title_widget.update("")
-            subtitle_widget.update("Analysis, docs, setup, and tools")
+            subtitle_widget.update("Analysis, docs, and setup")
 
     class _InteractionPaneImpl(_TEXTUAL_VERTICAL):
         BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
@@ -238,7 +250,7 @@ if _TEXTUAL_APP is not None:
             self._help_text = help_text
 
         def compose(self) -> _TEXTUAL_COMPOSE_RESULT:
-            with _TEXTUAL_VERTICAL(id="help-overlay"), _TEXTUAL_VERTICAL(id="help-dialog"):
+            with _TEXTUAL_VERTICAL(id="help-dialog"):
                 yield _TEXTUAL_STATIC("Help & Guide", id="help-dialog-title")
                 yield _TEXTUAL_STATIC(self._help_text, id="help-dialog-body")
                 with _TEXTUAL_HORIZONTAL(id="help-dialog-actions"):
@@ -253,11 +265,16 @@ if _TEXTUAL_APP is not None:
             self.dismiss(None)
 
     class _FilteredDirectoryTree(_TEXTUAL_DIRECTORY_TREE):
-        def __init__(self, path: str, *, file_suffix: str | None = None, **kwargs: Any) -> None:
+        def __init__(
+            self, path: str, *, file_suffix: str | None = None, directory_only: bool = False, **kwargs: Any
+        ) -> None:
             super().__init__(path, **kwargs)
             self._file_suffix = file_suffix
+            self._directory_only = directory_only
 
         def filter_paths(self, paths: Iterable[Path]) -> Iterable[Path]:
+            if self._directory_only:
+                return (p for p in paths if p.is_dir())
             if self._file_suffix is None:
                 return paths
             suffix = self._file_suffix.lower()
@@ -272,6 +289,7 @@ if _TEXTUAL_APP is not None:
             start_paths: list[Path],
             candidates: tuple[tuple[str, tuple[str, ...]], ...] = (),
             file_suffix: str | None = None,
+            directory_only: bool = False,
         ) -> None:
             super().__init__()
             self._start_paths = start_paths if start_paths else [Path.home()]
@@ -280,10 +298,14 @@ if _TEXTUAL_APP is not None:
             self._candidate_name: str | None = None
             self._show_candidate_list = bool(candidates)
             self._file_suffix = file_suffix
+            self._directory_only = directory_only
 
         def compose(self) -> _TEXTUAL_COMPOSE_RESULT:
             with _TEXTUAL_VERTICAL(id="file-browser-dialog"):
-                yield _TEXTUAL_STATIC("Select Target File or Folder", id="file-browser-title")
+                yield _TEXTUAL_STATIC(
+                    "Select Folder" if self._directory_only else "Select Target File or Folder",
+                    id="file-browser-title",
+                )
                 if len(self._start_paths) > 1 and not self._show_candidate_list:
                     with _TEXTUAL_HORIZONTAL(id="file-browser-dirs"):
                         for i, p in enumerate(self._start_paths):
@@ -297,9 +319,14 @@ if _TEXTUAL_APP is not None:
                     yield _TEXTUAL_LIST_VIEW(id="file-browser-targets")
                 else:
                     yield _FilteredDirectoryTree(
-                        str(self._start_paths[0]), id="file-browser-tree", file_suffix=self._file_suffix
+                        str(self._start_paths[0]),
+                        id="file-browser-tree",
+                        file_suffix=self._file_suffix,
+                        directory_only=self._directory_only,
                     )
                 with _TEXTUAL_HORIZONTAL(id="file-browser-actions"):
+                    if self._directory_only:
+                        yield _TEXTUAL_BUTTON("Go up", id="file-browser-up", classes="raised-button", disabled=True)
                     yield _TEXTUAL_BUTTON("Select", id="file-browser-select", classes="raised-button", disabled=True)
                     if self._candidates:
                         yield _TEXTUAL_BUTTON(
@@ -321,6 +348,8 @@ if _TEXTUAL_APP is not None:
                 self._set_candidate_selection(0)
                 return
             _query_required(self, "#file-browser-tree").focus()
+            if self._directory_only:
+                self._refresh_up_button(self._start_paths[0])
 
         def _candidate_summary(self, index: int) -> str:
             if not (0 <= index < len(self._candidates)):
@@ -341,7 +370,37 @@ if _TEXTUAL_APP is not None:
         def _update_selection(self, path: Path) -> None:
             self._current_path = path
             _query_required(self, "#file-browser-selection", _TEXTUAL_STATIC).update(f"Highlighted: {path}")
-            _query_required(self, "#file-browser-select", _TEXTUAL_BUTTON).disabled = False
+            select_button = _query_required(self, "#file-browser-select", _TEXTUAL_BUTTON)
+            if self._directory_only:
+                select_button.label = "Select folder"
+                select_button.disabled = not path.is_dir()
+            elif self._file_suffix is not None and path.is_dir():
+                select_button.label = "Open folder"
+                select_button.disabled = False
+            else:
+                select_button.label = "Select"
+                select_button.disabled = False
+
+        def _refresh_up_button(self, path: Path) -> None:
+            if not self._directory_only:
+                return
+            _query_required(self, "#file-browser-up", _TEXTUAL_BUTTON).disabled = path.parent == path
+
+        def _navigate_up(self) -> None:
+            if not self._directory_only:
+                return
+            tree = _query_required(self, "#file-browser-tree", _TEXTUAL_DIRECTORY_TREE)
+            current = Path(tree.path)
+            parent = current.parent
+            if parent == current:
+                return
+            tree.path = parent
+            self._current_path = parent
+            _query_required(self, "#file-browser-selection", _TEXTUAL_STATIC).update(f"Highlighted: {parent}")
+            select_button = _query_required(self, "#file-browser-select", _TEXTUAL_BUTTON)
+            select_button.label = "Select folder"
+            select_button.disabled = False
+            self._refresh_up_button(parent)
 
         def on_list_view_highlighted(self, event: Any) -> None:
             if not self._show_candidate_list:
@@ -371,8 +430,11 @@ if _TEXTUAL_APP is not None:
 
         def on_directory_tree_file_selected(self, event: Any) -> None:
             path = getattr(event, "path", None)
-            if isinstance(path, Path):
-                self.dismiss(path)
+            if not isinstance(path, Path):
+                return
+            if self._directory_only and not path.is_dir():
+                return
+            self.dismiss(path)
 
         def on_button_pressed(self, event: Any) -> None:
             button_id = getattr(event.button, "id", "") or ""
@@ -383,7 +445,16 @@ if _TEXTUAL_APP is not None:
                     if self._candidate_name is not None:
                         self.dismiss(self._candidate_name)
                 elif self._current_path is not None:
+                    if self._file_suffix is not None and self._current_path.is_dir():
+                        tree = _query_required(self, "#file-browser-tree", _TEXTUAL_DIRECTORY_TREE)
+                        tree.path = self._current_path
+                        self._current_path = None
+                        _query_required(self, "#file-browser-selection", _TEXTUAL_STATIC).update("Highlighted: (none)")
+                        _query_required(self, "#file-browser-select", _TEXTUAL_BUTTON).disabled = True
+                        return
                     self.dismiss(self._current_path)
+            elif button_id == "file-browser-up":
+                self._navigate_up()
             elif button_id == "file-browser-browse-filesystem":
                 self._show_candidate_list = False
                 self.app.pop_screen()
@@ -399,97 +470,132 @@ if _TEXTUAL_APP is not None:
         def action_dismiss_cancel(self) -> None:
             self.dismiss(None)
 
-    class _MenubarWidgetImpl(_TEXTUAL_VERTICAL):
-        """A horizontal menubar with inline dropdown menus."""
+    class _AstRefreshModalScreenImpl(_TEXTUAL_MODAL_SCREEN):
+        """Blocking modal that checks/rebuilds the opened project's cached ASTs.
 
-        BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
-            ("escape", "close_menu", "Close Menu"),
-        ]
+        Pushed on top of the main shell right after a project is opened, so the
+        user cannot interact with Analyze/Setup/Results until the cache check
+        completes. Dismisses with an ``_AstRefreshModalResult``.
+        """
+
+        def __init__(self, *, refresh_fn: Any) -> None:
+            super().__init__()
+            self._refresh_fn = refresh_fn
+            self._status_lines: list[str] = ["Starting cached AST refresh..."]
+            self._activity_line: str | None = None
+            self._refresh_failed = False
+            self._refresh_exception: BaseException | None = None
+
+        def compose(self) -> _TEXTUAL_COMPOSE_RESULT:
+            with _TEXTUAL_VERTICAL(id="ast-refresh-dialog"):
+                yield _TEXTUAL_STATIC("Refreshing cached ASTs", id="ast-refresh-title")
+                yield _TEXTUAL_STATIC(
+                    "Checking the cached project graphs for the opened configuration before you can select analyses.",
+                    id="ast-refresh-body",
+                )
+                yield _TEXTUAL_STATIC("\n".join(self._status_lines), id="ast-refresh-status")
+                yield _TEXTUAL_STATIC("", id="ast-refresh-activity")
+
+        def on_mount(self) -> None:
+            threading.Thread(target=self._run_refresh, daemon=True).start()
+
+        def _render_status_text(self) -> str:
+            return "\n".join(self._status_lines)
+
+        def _update_status(self, message: str) -> None:
+            normalized = message.replace("\r\n", "\n").replace("\r", "\n")
+            if not normalized:
+                return
+            parts = normalized.split("\n")
+            for part in parts:
+                if part.startswith("Loading "):
+                    self._activity_line = part
+                    self.query_one("#ast-refresh-activity", _TEXTUAL_STATIC).update(part)
+                elif part == "":
+                    self._status_lines.append("")
+                else:
+                    self._status_lines.append(part)
+                    self._activity_line = None
+                    self.query_one("#ast-refresh-activity", _TEXTUAL_STATIC).update("")
+            self.query_one("#ast-refresh-status", _TEXTUAL_STATIC).update(self._render_status_text())
+
+        def _call_on_ui(self, callback: Any, *args: object, **kwargs: object) -> None:
+            try:
+                self.app.call_from_thread(callback, *args, **kwargs)
+            except (AttributeError, RuntimeError, _NoActiveAppError):  # pragma: no cover - no running app / loop
+                callback(*args, **kwargs)
+
+        def _emit_status(self, *parts: object) -> None:
+            rendered_parts = [str(part) for part in parts if part is not None]
+            if not rendered_parts:
+                return
+            message = (
+                " ".join(part.strip() for part in rendered_parts) if len(rendered_parts) > 1 else rendered_parts[0]
+            )
+            if not message.strip():
+                return
+            self._call_on_ui(self._update_status, message)
+
+        def _finish_refresh(self, *, ok: bool, exc: BaseException | None) -> None:
+            self._refresh_failed = not ok
+            self._refresh_exception = exc
+            result = _AstRefreshModalResult(ok=ok, output="\n".join(self._status_lines).strip("\n"))
+            self.dismiss(result)
+
+        def _run_refresh(self) -> None:
+            refresh_ok = False
+            refresh_exception: BaseException | None = None
+            try:
+                refresh_ok = bool(self._refresh_fn(self._emit_status))
+            except (
+                OSError,
+                RuntimeError,
+                ValueError,
+            ) as exc:  # pragma: no cover - exercised through direct method test
+                refresh_ok = False
+                refresh_exception = exc
+                self._call_on_ui(self._update_status, f"AST cache refresh failed: {exc}")
+            finally:
+                self._call_on_ui(self._finish_refresh, ok=refresh_ok, exc=refresh_exception)
+
+    class _MenubarWidgetImpl(_TEXTUAL_VERTICAL):
+        """A flat horizontal bar of action buttons (no dropdowns)."""
 
         def __init__(
             self,
-            menus: list[tuple[str, list[tuple[str, str | None] | None]]] | None = None,
+            menus: list[tuple[str, str]] | None = None,
         ) -> None:
             super().__init__(id="menubar")
-            self._menus = menus or []
-            self._active_menu_index: int | None = None
+            self._menu_items = menus or []
 
-        def set_menus(self, menus: list[tuple[str, list[tuple[str, str | None] | None]]]) -> None:
-            self._menus = menus
-            self._rebuild_headers()
+        def set_menus(self, menus: list[tuple[str, str]]) -> None:
+            self._menu_items = menus
+            self._rebuild_buttons()
 
         def compose(self) -> _TEXTUAL_COMPOSE_RESULT:
-            with _TEXTUAL_HORIZONTAL(id="menubar-headers"):
-                pass
-            yield _TEXTUAL_VERTICAL(id="menubar-dropdown", classes="is-hidden")
+            with _TEXTUAL_HORIZONTAL(id="menubar-actions"):
+                for label, action_id in self._menu_items:
+                    yield _TEXTUAL_BUTTON(label, id=action_id, classes="menubar-button")
 
         def on_mount(self) -> None:
-            self._rebuild_headers()
+            return None
 
-        def _rebuild_headers(self) -> None:
-            headers = self.query_one("#menubar-headers", _TEXTUAL_HORIZONTAL)
-            headers.remove_children()
-            for i, (label, _items) in enumerate(self._menus):
-                headers.mount(_TEXTUAL_STATIC(f"  {label}  ", id=f"mbh-{i}", classes="menubar-header"))
-
-        def on_click(self, event: Any) -> None:
-            widget = getattr(event, "widget", None)
-            widget_id = str(getattr(widget, "id", "") or "")
-            if widget_id.startswith("mbh-"):
-                index = int(widget_id.split("-")[-1])
-                if self._active_menu_index == index:
-                    self._close_menu()
-                else:
-                    self._open_menu(index)
-
-        def on_button_pressed(self, event: Any) -> None:
-            self._close_menu()
-
-        def action_close_menu(self) -> None:
-            self._close_menu()
-
-        @property
-        def menu_open(self) -> bool:
-            return self._active_menu_index is not None
-
-        def click_outside(self) -> None:
-            if self._active_menu_index is not None:
-                self._close_menu()
-
-        def _open_menu(self, index: int) -> None:
-            self._active_menu_index = index
-            dropdown = self.query_one("#menubar-dropdown", _TEXTUAL_VERTICAL)
-            dropdown.remove_children()
-            dropdown.remove_class("is-hidden")
-            _label, items = self._menus[index]
-            for item in items:
-                if item is None:
-                    dropdown.mount(_TEXTUAL_STATIC("", classes="menubar-separator"))
-                else:
-                    item_label, action_id = item
-                    dropdown.mount(_TEXTUAL_BUTTON(item_label, id=action_id, classes="menubar-item"))
-            for i in range(len(self._menus)):
-                self.query_one(f"#mbh-{i}", _TEXTUAL_STATIC).set_class(i == index, "menu-active")
-
-        def _close_menu(self) -> None:
-            if self._active_menu_index is None:
-                return
-            self._active_menu_index = None
-            dropdown = self.query_one("#menubar-dropdown", _TEXTUAL_VERTICAL)
-            dropdown.add_class("is-hidden")
-            dropdown.remove_children()
-            for i in range(len(self._menus)):
-                with suppress(*_TEXTUAL_QUERY_ERRORS):
-                    self.query_one(f"#mbh-{i}", _TEXTUAL_STATIC).remove_class("menu-active")
+        def _rebuild_buttons(self) -> None:
+            actions = self.query_one("#menubar-actions", _TEXTUAL_HORIZONTAL)
+            actions.remove_children()
+            for label, action_id in self._menu_items:
+                actions.mount(_TEXTUAL_BUTTON(label, id=action_id, classes="menubar-button"))
 
     _ShellBanner = _ShellBannerImpl
     _InteractionPane = _InteractionPaneImpl
     _HelpScreen = _HelpScreenImpl
     _FileBrowserScreen = _FileBrowserScreenImpl
+    _AstRefreshModalScreen = _AstRefreshModalScreenImpl
     _MenubarWidget = _MenubarWidgetImpl
 else:  # pragma: no cover - optional dependency path
     _ShellBanner: Any = None
     _InteractionPane: Any = None
     _HelpScreen: Any = None
     _FileBrowserScreen: Any = None
+    _AstRefreshModalScreen: Any = None
     _MenubarWidget: Any = None

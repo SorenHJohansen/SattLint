@@ -60,11 +60,18 @@ TOP_LEVEL_CONFIG_FIELDS: dict[str, TopLevelConfigField] = {
         "Additional dependency library directories searched after the primary program and ABB roots.",
         affects_project_cache=True,
     ),
-    "telemetry": TopLevelConfigField(
+    "run_history": TopLevelConfigField(
         {
-            "enabled": False,
+            "enabled": True,
+            "limit": 50,
         },
-        "Telemetry settings for optional local event capture.",
+        "Run history retention: whether completed analysis runs are saved and how many recent runs to keep.",
+    ),
+    "output": TopLevelConfigField(
+        {
+            "retention_lines": 4000,
+        },
+        "Session output retention: how many lines the live output pane keeps.",
     ),
     "analysis": TopLevelConfigField(
         {

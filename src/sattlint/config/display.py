@@ -10,7 +10,6 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import cast
 
-from ..core.telemetry import telemetry_output_path
 from .types import ConfigDict
 
 
@@ -64,10 +63,14 @@ def show_config(
         ("mode", cfg["mode"]),
         ("debug", cfg["debug"]),
     ]
-    telemetry_cfg = cast(dict[str, object], cfg.get("telemetry", {}))
-    telemetry_rows = [
-        ("enabled", telemetry_cfg.get("enabled", False)),
-        ("path", telemetry_output_path()),
+    run_history_cfg = cast(dict[str, object], cfg.get("run_history", {}))
+    run_history_rows = [
+        ("enabled", run_history_cfg.get("enabled", True)),
+        ("limit", run_history_cfg.get("limit", 50)),
+    ]
+    output_cfg = cast(dict[str, object], cfg.get("output", {}))
+    output_rows = [
+        ("retention_lines", output_cfg.get("retention_lines", 4000)),
     ]
     directory_rows = [
         ("program_dir", cfg["program_dir"]),
@@ -96,8 +99,15 @@ def show_config(
     )
     emit_output_fn()
     print_config_section(
-        "Telemetry",
-        telemetry_rows,
+        "Run History",
+        run_history_rows,
+        emit_output_fn=emit_output_fn,
+        format_config_scalar_fn=_scalar,
+    )
+    emit_output_fn()
+    print_config_section(
+        "Output",
+        output_rows,
         emit_output_fn=emit_output_fn,
         format_config_scalar_fn=_scalar,
     )

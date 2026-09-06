@@ -53,6 +53,11 @@ def test_load_project_missing_and_bad_version(tmp_path: Path) -> None:
         load_project(path)
 
 
+def test_load_project_rejects_directory(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match=r"directory"):
+        load_project(tmp_path)
+
+
 def test_save_and_reload_preserves_values(tmp_path: Path) -> None:
     path = tmp_path / "proj.slproj"
     data = {

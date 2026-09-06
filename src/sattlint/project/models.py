@@ -43,12 +43,10 @@ class SattLineProject:
                 "analyzed_programs_and_libraries": list(d["analyzed_programs_and_libraries"]),
                 "include_reverse_library_consumers": d["include_reverse_library_consumers"],
                 "mode": d["mode"],
-                "debug": d["debug"],
                 "program_dir": self._maybe_resolve(d["program_dir"]),
                 "ABB_lib_dir": self._maybe_resolve(d["ABB_lib_dir"]),
                 "icf_dir": self._maybe_resolve(d["icf_dir"]),
                 "other_lib_dirs": [self._resolve(p) for p in d["other_lib_dirs"] if p.strip()],
-                "telemetry": {"enabled": bool(d["telemetry"]["enabled"])},
                 "analysis": {
                     "sfc": {
                         "mutually_exclusive_steps": list(d["analysis"]["sfc"]["mutually_exclusive_steps"]),

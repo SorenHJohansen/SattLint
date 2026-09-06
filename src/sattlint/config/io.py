@@ -37,6 +37,10 @@ def get_config_path() -> Path:
     return _config_paths_module.get_config_path()
 
 
+def get_projects_dir() -> Path:
+    return _config_paths_module.get_projects_dir()
+
+
 def load_config(path: Path) -> tuple[ConfigDict, bool]:
     if not path.exists():
         emit_output(f"⚠ No config found, creating default: {path}")
@@ -89,3 +93,26 @@ def save_config(path: Path, cfg: ConfigDict | ConfigOverrideDict) -> None:
 
     with path.open("wb") as file_handle:
         tomli_w.dump(cast(dict[str, Any], serializable_cfg), file_handle)
+
+
+APP_LEVEL_CONFIG_KEYS: tuple[str, ...] = ("debug", "run_history", "output")
+
+
+def save_app_settings(path: Path, cfg: ConfigDict) -> None:
+    """Persist only app-level settings, preserving everything else in the file.
+
+    Loads the existing config file (or defaults when missing) and overwrites
+    only the user-scoped app keys (``debug``, ``run_history``, ``output``), so
+    writing app settings never pollutes a project file with project keys.
+    """
+    if path.exists():
+        with path.open("rb") as file_handle:
+            existing: ConfigObjectMap = cast(ConfigObjectMap, tomllib.load(file_handle))
+    else:
+        existing = cast(ConfigObjectMap, deepcopy(DEFAULT_CONFIG))
+
+    for key in APP_LEVEL_CONFIG_KEYS:
+        if key in cfg:
+            existing[key] = deepcopy(cast(ConfigObjectMap, cfg[key]))
+
+    save_config(path, cast(ConfigDict, existing))

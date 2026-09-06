@@ -19,16 +19,14 @@ SattLint can validate a single file quickly or analyze configured programs and
 libraries together with their dependencies.
 
 Recommended first run:
-1. Open Setup and configure program_dir, ABB_lib_dir, and any extra library folders.
-2. Add one or more analysis targets without file extensions.
-3. Save the configuration.
-4. Open Tools and run Self-check diagnostics.
-5. Open Analyze to run checks.
+1. Open Configuration or create a New Configuration.
+2. Open Setup and configure program_dir, ABB_lib_dir, and any extra library folders.
+3. Add one or more analysis targets without file extensions (saved automatically).
+4. Open Analyze to run checks.
 
 Main areas:
 - Analyze: run curated reports, the full analyzer suite, or registry-backed checks.
-- Setup: edit directories, targets, mode, caching, and debug settings.
-- Tools: self-check, dumps, source diff reports across configured targets, and AST cache refresh.
+- Setup: edit directories, targets, and mode (saved automatically to the configuration).
 
 Quick single-file validation:
     sattlint syntax-check /path/to/Program.s

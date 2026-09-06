@@ -1,18 +1,39 @@
+"""Profiler-gated run diagnostics recording.
+
+Replaces the former opt-in ``telemetry`` config option. Run diagnostics are
+recorded only when profiling is active for the current invocation
+(``SATTLINT_PROFILE`` env var or the ``--profile`` CLI flag), never through a
+persistent config setting. The recorder writes one JSONL event per operation to
+the profiling log under the cache directory.
+"""
+
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
-from ..config.io import get_config_path
-from ..config.types import ConfigDict, TelemetryConfig
+from ..cache import get_cache_dir
 
-APP_TELEMETRY_KIND = "sattlint.app.telemetry"
-APP_TELEMETRY_SCHEMA_VERSION = 1
+APP_PROFILE_KIND = "sattlint.app.profile"
+APP_PROFILE_SCHEMA_VERSION = 1
 _SESSION_ID = uuid4().hex
+
+_PROFILE_ENV_NAMES = ("SATTLINT_PROFILE", "SATTLINT_PROFILE_ANALYZERS")
+_PROFILE_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
+
+
+def is_profiling_enabled() -> bool:
+    """Whether profiling is active for the current invocation."""
+    return any(os.environ.get(name, "").strip().casefold() in _PROFILE_TRUE_VALUES for name in _PROFILE_ENV_NAMES)
+
+
+def profiling_log_path() -> Path:
+    return get_cache_dir() / "profile" / "profile.jsonl"
 
 
 def _coerce_duration_ms(value: object, *, scale: float = 1.0) -> float | None:
@@ -98,30 +119,9 @@ def bottleneck_from_phase_timings(
     return bottleneck
 
 
-def _telemetry_config(cfg: ConfigDict) -> TelemetryConfig:
-    telemetry = cast(dict[str, object], cfg).get("telemetry")
-    if not isinstance(telemetry, Mapping):
-        return {"enabled": False}
-    telemetry_mapping = cast(dict[str, object], telemetry)
-    return {"enabled": bool(telemetry_mapping.get("enabled", False))}
+class ProfileRecorder:
+    """Appends one JSONL diagnostics event per operation while profiling."""
 
-
-def telemetry_output_path() -> Path:
-    return telemetry_output_path_for_config(get_config_path())
-
-
-def telemetry_output_path_for_config(config_path: Path) -> Path:
-    return Path(config_path).with_name("telemetry.jsonl")
-
-
-def _resolve_telemetry_path(cfg: ConfigDict) -> Path | None:
-    telemetry = _telemetry_config(cfg)
-    if not bool(telemetry.get("enabled", False)):
-        return None
-    return telemetry_output_path()
-
-
-class AppTelemetry:
     def __init__(self, path: Path | None) -> None:
         self._path = path
 
@@ -143,8 +143,8 @@ class AppTelemetry:
             return
 
         event: dict[str, object] = {
-            "kind": APP_TELEMETRY_KIND,
-            "schema_version": APP_TELEMETRY_SCHEMA_VERSION,
+            "kind": APP_PROFILE_KIND,
+            "schema_version": APP_PROFILE_SCHEMA_VERSION,
             "session_id": _SESSION_ID,
             "timestamp": datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
             "operation": operation,
@@ -167,5 +167,22 @@ class AppTelemetry:
             return
 
 
-def create_app_telemetry(cfg: ConfigDict) -> AppTelemetry:
-    return AppTelemetry(_resolve_telemetry_path(cfg))
+def create_profiler() -> ProfileRecorder:
+    """Return an active recorder when profiling is enabled, otherwise a no-op."""
+    if not is_profiling_enabled():
+        return ProfileRecorder(None)
+    return ProfileRecorder(profiling_log_path())
+
+
+__all__ = [
+    "APP_PROFILE_KIND",
+    "APP_PROFILE_SCHEMA_VERSION",
+    "ProfileRecorder",
+    "bottleneck_from_named_timings",
+    "bottleneck_from_phase_timings",
+    "create_profiler",
+    "is_profiling_enabled",
+    "normalize_named_timings_ms",
+    "normalize_phase_timings_ms",
+    "profiling_log_path",
+]
