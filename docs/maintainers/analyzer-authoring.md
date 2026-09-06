@@ -30,8 +30,7 @@ from .framework import BasePictureAnalyzer
 
 
 class ExampleTraversalMixin:
-    def _walk(self) -> None:
-        ...
+    def _walk(self) -> None: ...
 
 
 class ExampleAnalyzer(BasePictureAnalyzer, ExampleTraversalMixin):
