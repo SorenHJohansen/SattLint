@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import os
 import sys
 import traceback
 from collections.abc import Callable
@@ -66,6 +67,7 @@ class _ParsedCliArgs(Protocol):
     mode: str
     format: str
     output: str | None
+    profile: bool
 
 
 def _exit_code(result: int | None, *, fallback: int) -> int:
@@ -210,6 +212,11 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
     add_output_format_argument(
         analyze_parser,
         help_text="Output format for analyze list commands",
+    )
+    analyze_parser.add_argument(
+        "--profile",
+        action="store_true",
+        help="Record run diagnostics for this invocation (JSONL profile log under the cache dir)",
     )
 
     return parser
@@ -400,6 +407,8 @@ def run_cli(  # noqa: PLR0915
             analyze_handler = None if command_handlers is None else command_handlers.get("analyze")
             if analyze_handler is None:
                 raise RuntimeError("analyze handler is required")
+            if getattr(args, "profile", False):
+                os.environ.setdefault("SATTLINT_PROFILE", "1")
             selected_keys = args.checks
             selected_issue_kinds = frozenset(getattr(args, "issue_kinds", [])) or None
             return _exit_code(

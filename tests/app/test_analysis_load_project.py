@@ -373,7 +373,7 @@ def test_load_program_ast_raises_when_program_missing(monkeypatch):
         )
 
 
-def test_force_refresh_ast_emits_stage_timings_and_telemetry(monkeypatch):
+def test_force_refresh_ast_emits_stage_timings_and_profiling(monkeypatch):
     lines: list[str] = []
     clears: list[str] = []
     emitted: list[dict[str, object]] = []
@@ -401,7 +401,7 @@ def test_force_refresh_ast_emits_stage_timings_and_telemetry(monkeypatch):
             emitted.append(payload)
 
     monkeypatch.setattr(project_application, "emit_output", lambda message: lines.append(str(message)))
-    monkeypatch.setattr(telemetry_module, "create_app_telemetry", lambda cfg: FakeTelemetry())
+    monkeypatch.setattr(profiling_module, "create_profiler", lambda: FakeTelemetry())
 
     result = project_application.force_refresh_ast(
         {"debug": False},
@@ -465,7 +465,7 @@ def test_iter_loaded_projects_passes_collect_stage_timings_to_load_project(monke
     assert seen == [("TargetA", False, True)]
 
 
-def test_force_refresh_ast_emits_basic_telemetry_when_stage_timings_disabled(monkeypatch):
+def test_force_refresh_ast_emits_basic_profiling_when_stage_timings_disabled(monkeypatch):
     emitted: list[dict[str, object]] = []
 
     class FakeCache:
@@ -483,7 +483,7 @@ def test_force_refresh_ast_emits_basic_telemetry_when_stage_timings_disabled(mon
 
     calls: list[bool] = []
     monkeypatch.setattr(project_application, "emit_output", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(telemetry_module, "create_app_telemetry", lambda cfg: FakeTelemetry())
+    monkeypatch.setattr(profiling_module, "create_profiler", lambda: FakeTelemetry())
 
     project_application.force_refresh_ast(
         {"debug": False},

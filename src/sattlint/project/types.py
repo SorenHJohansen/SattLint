@@ -6,7 +6,7 @@ from copy import deepcopy
 from typing import Any, TypedDict, cast
 
 from ..config.defaults import DEFAULT_CONFIG
-from ..config.types import AnalysisConfig, ConfigMode, TelemetryConfig
+from ..config.types import AnalysisConfig, ConfigMode
 
 
 class ProjectDict(TypedDict):
@@ -14,12 +14,10 @@ class ProjectDict(TypedDict):
     analyzed_programs_and_libraries: list[str]
     include_reverse_library_consumers: bool
     mode: ConfigMode
-    debug: bool
     program_dir: str
     ABB_lib_dir: str
     icf_dir: str
     other_lib_dirs: list[str]
-    telemetry: TelemetryConfig
     analysis: AnalysisConfig
 
 
@@ -28,12 +26,10 @@ DEFAULT_PROJECT_DICT: ProjectDict = {
     "analyzed_programs_and_libraries": [],
     "include_reverse_library_consumers": False,
     "mode": "official",
-    "debug": False,
     "program_dir": "",
     "ABB_lib_dir": "",
     "icf_dir": "",
     "other_lib_dirs": [],
-    "telemetry": {"enabled": False},
     "analysis": deepcopy(cast(AnalysisConfig, cast(Any, DEFAULT_CONFIG)["analysis"])),
 }
 

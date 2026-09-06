@@ -158,13 +158,14 @@ def test_run_variable_analysis_includes_version_and_last_changed(noop_screen, mo
     assert "Last changed: 2024-05-17" in out
 
 
-def test_run_variable_analysis_writes_telemetry_summary(tmp_path, noop_screen, monkeypatch):
-    telemetry_path = tmp_path / "telemetry.jsonl"
+def test_run_variable_analysis_writes_profiling_summary(tmp_path, noop_screen, monkeypatch):
+    profile_path = tmp_path / "profile.jsonl"
     graph = AnalysisGraphStub(
         load_stage_timings={"load_or_parse": 0.4, "validate": 0.2},
         graphics_load_timings={"validate-graphics-file": 0.05},
     )
-    monkeypatch.setattr(telemetry_module, "get_config_path", lambda: tmp_path / "config.toml")
+    monkeypatch.setenv("SATTLINT_PROFILE", "1")
+    monkeypatch.setattr(profiling_module, "profiling_log_path", lambda: tmp_path / "profile.jsonl")
     monkeypatch.setattr(
         project_application,
         "_iter_loaded_projects",
@@ -187,14 +188,13 @@ def test_run_variable_analysis_writes_telemetry_summary(tmp_path, noop_screen, m
     monkeypatch.setattr(commands_application, "analyze_shadowing", lambda *_, **__: make_shadowing_report("ProgramA"))
 
     cfg = app.DEFAULT_CONFIG.copy()
-    cfg["telemetry"] = {"enabled": True}
 
     commands_application.run_variable_analysis(cfg, None)
 
-    events = [json.loads(line) for line in telemetry_path.read_text(encoding="utf-8").splitlines()]
+    events = [json.loads(line) for line in profile_path.read_text(encoding="utf-8").splitlines()]
 
     assert len(events) == 1
-    assert events[0]["kind"] == "sattlint.app.telemetry"
+    assert events[0]["kind"] == "sattlint.app.profile"
     assert events[0]["operation"] == "variable-analysis"
     assert events[0]["target_name"] == "ProgramA"
     assert events[0]["success"] is True

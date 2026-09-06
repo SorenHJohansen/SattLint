@@ -46,7 +46,6 @@ from ..core.interaction import (
 from ..core.logging import apply_debug
 from ..core.terminal import clear_screen as core_clear_screen
 from ..core.terminal import clear_windows_console as core_clear_windows_console
-from ..project import discover_project, load_project, project_status
 from ..project import support as support_module
 from . import app_commands as commands_application
 from . import config as cli_config
@@ -202,6 +201,7 @@ def analysis_handler_fns() -> dict[str, Callable[..., Any]]:
     return {
         "run_variable_analysis": analyze_application.run_variable_analysis,
         "_run_checks": analyze_application.run_checks,
+        "run_checks_result": analyze_application.run_checks_result,
         "run_checks_menu": run_checks_menu,
         "run_mms_interface_analysis": analyze_application.run_mms_interface_analysis,
         "run_icf_validation": analyze_application.run_icf_validation,
@@ -215,8 +215,6 @@ def run_interactive_session(cfg: ConfigDict, **kwargs: Any) -> None:
     from ..ui._app_textual_app import run_textual_shell  # noqa: PLC0415
 
     kwargs.setdefault("get_help_text_fn", get_help_text)
-    kwargs.setdefault("self_check_fn", config_module.self_check)
-    kwargs.setdefault("force_refresh_ast_fn", project_application.refresh_analysis_caches)
     kwargs.setdefault("has_analyzed_targets_fn", support_module.has_analyzed_targets)
     kwargs.setdefault("ensure_ast_cache_fn", project_application.ensure_ast_cache)
     kwargs.setdefault("set_textual_menu_interaction_fn", set_textual_menu_interaction)
@@ -363,27 +361,9 @@ def main(
         if interactive_cli_overrides is not None:
             effective_config_path = interactive_cli_overrides.config_path
 
-        # Try to discover a .slproj project; if found, use it as the config source.
-        active_project: object = None
-        project_config_override: ConfigDict | None = None
-
-        # Only auto-discover when using the default config path (not an explicit --config).
-        if effective_config_path == config_path:
-            discovered_slproj = discover_project()
-            if discovered_slproj is not None:
-                try:
-                    active_project = load_project(discovered_slproj)
-                    project_config_override = active_project.to_default_merged_config_dict()
-                    effective_config_path = discovered_slproj
-                    emit_output_fn(f"Using project: {project_status(active_project)}")
-                except (FileNotFoundError, ValueError) as exc:
-                    emit_output_fn(f"Warning: Could not load project: {exc}")
-
-        if project_config_override is not None:
-            cfg = project_config_override
-            default_used = False
-        else:
-            cfg, default_used = load_config_fn(effective_config_path)
+        # The Textual shell always opens with no project loaded. Projects are
+        # opened or created from within the shell via Open Project / New Project.
+        cfg, default_used = load_config_fn(effective_config_path)
 
         if interactive_cli_overrides is not None and interactive_cli_overrides.debug:
             cfg["debug"] = True

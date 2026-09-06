@@ -5,6 +5,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any, cast
 
+from ..runs import load_run as _load_run
 from ._app_textual_setup_display import (
     _configured_target_names,
     _setup_candidate_display_paths,
@@ -12,7 +13,6 @@ from ._app_textual_setup_display import (
     _setup_mode_text,
     _setup_other_dirs_text,
     _setup_path_text,
-    _setup_toggle_text,
     _visible_configured_target_names,
 )
 from ._app_textual_shared import (
@@ -41,7 +41,8 @@ def _set_setup_candidate_by_name(self: Any, target_name: str) -> None:
 
 
 def _mark_setup_changed(self: Any, message: str, *, reset_candidate_selection: bool = False) -> None:
-    self._dirty = True
+    self._persist_project()
+    self._dirty = self._dirty or not self._project_loaded()
     if reset_candidate_selection:
         self._setup_candidate_index = 0
     self._refresh_summary()
@@ -113,11 +114,6 @@ def _refresh_setup_settings_labels(self: Any) -> None:
     other_dirs = self._cfg.get("other_lib_dirs", [])
     icf_dir = _stringify_value(cast(object | None, self._cfg.get("icf_dir", "")))
     mode = _stringify_value(cast(object | None, self._cfg.get("mode", "official"))) or "official"
-    debug = bool(self._cfg.get("debug", False))
-    telemetry = cast(dict[str, object] | None, self._cfg.get("telemetry"))
-    telemetry_enabled = (
-        bool(cast(object | None, telemetry.get("enabled", False))) if isinstance(telemetry, dict) else False
-    )
 
     def _safe_update(widget_id: str, text: object) -> None:
         with suppress(*_TEXTUAL_QUERY_ERRORS):
@@ -128,27 +124,17 @@ def _refresh_setup_settings_labels(self: Any) -> None:
     _safe_update("setup-label-other-dirs", _setup_other_dirs_text(other_dirs))
     _safe_update("setup-label-icf-dir", _setup_path_text(icf_dir))
     _safe_update("setup-label-mode", _setup_mode_text(mode))
-    _safe_update(
-        "setup-label-debug",
-        _setup_toggle_text(
-            debug,
-            enabled_detail="Verbose runtime logging",
-            disabled_detail="Standard runtime logging",
-        ),
-    )
-    _safe_update(
-        "setup-label-telemetry",
-        _setup_toggle_text(
-            telemetry_enabled,
-            enabled_detail="Anonymous telemetry is allowed",
-            disabled_detail="Telemetry stays off",
-        ),
-    )
 
 
 def on_list_view_highlighted(self: Any, event: Any) -> None:
     lv = getattr(event, "list_view", None)
-    if lv is None or getattr(lv, "id", None) != "setup-target-listview":
+    if lv is None:
+        return
+    list_id = getattr(lv, "id", None)
+    if list_id == "results-runs-list":
+        on_results_runs_list_highlighted(self, event)
+        return
+    if list_id != "setup-target-listview":
         return
     index = getattr(lv, "index", None)
     if index is not None and 0 <= index < len(self._setup_target_names_list):
@@ -160,6 +146,20 @@ def on_list_view_highlighted(self: Any, event: Any) -> None:
         self.query_one("#setup-target-remove", _TEXTUAL_BUTTON).disabled = not has_selection or not bool(
             _configured_target_names(self)
         )
+
+
+def on_results_runs_list_highlighted(self: Any, event: Any) -> None:
+    index = getattr(getattr(event, "list_view", None), "index", None)
+    summaries = getattr(self, "_results_run_summaries", [])
+    if not isinstance(index, int) or not (0 <= index < len(summaries)):
+        return
+    summary = summaries[index]
+    record = _load_run(summary.run_id)
+    if record is None:
+        self._write_output("That run could not be loaded.")
+        return
+    self._selected_run_record = record
+    self._render_selected_run()
 
 
 def _setup_browser_detail_text(self: Any) -> str:
@@ -183,14 +183,6 @@ def _setup_browser_detail_text(self: Any) -> str:
         lines.extend(f"- {path}" for path in directories)
     else:
         lines.append("(none configured)")
-    telemetry = cast(dict[str, object] | None, self._cfg.get("telemetry"))
-    telemetry_enabled = (
-        bool(cast(object | None, telemetry.get("enabled", False))) if isinstance(telemetry, dict) else False
-    )
-    lines.append("")
-    lines.append("Runtime")
-    lines.append(f"debug: {bool(self._cfg.get('debug', False))}")
-    lines.append(f"telemetry: {telemetry_enabled}")
     return "\n".join(lines)
 
 
@@ -322,6 +314,57 @@ def _open_raw_file_browser(self: Any) -> None:
     self.push_screen(_FileBrowserScreen(start_paths=start_paths, candidates=candidates), _on_browser_result)
 
 
+def _open_dir_picker(self: Any, field_key: str, *, label: str, is_list: bool = False) -> None:
+    if _TEXTUAL_DIRECTORY_TREE is None:
+        self._prompt_setup_value(field_key, label=label, is_list=is_list)
+        return
+
+    start_paths: list[Path] = []
+    if is_list:
+        for raw_dir in cast(list[object], self._cfg.get(field_key, [])):
+            text = _stringify_value(raw_dir).strip()
+            if text:
+                p = Path(text)
+                if p.exists() and p.is_dir():
+                    start_paths.append(p)
+    else:
+        current = _stringify_value(cast(object | None, self._cfg.get(field_key, ""))).strip()
+        if current:
+            p = Path(current)
+            if p.exists() and p.is_dir():
+                start_paths.append(p)
+    if not start_paths:
+        start_paths = [Path.home()]
+
+    def _on_dir_result(result: object) -> None:
+        if isinstance(result, Path):
+            self._apply_setup_dir_choice(field_key, result, label=label, is_list=is_list)
+
+    self.push_screen(_FileBrowserScreen(start_paths=start_paths, directory_only=True), _on_dir_result)
+
+
+def _apply_setup_dir_choice(self: Any, field_key: str, selected_path: Path, *, label: str, is_list: bool) -> None:
+    if is_list:
+        values = list(_stringify_list_values(self._cfg.get(field_key)))
+        new_values = [*values, str(selected_path)]
+        if _stringify_list_values(self._cfg.get(field_key)) == tuple(new_values):
+            return
+        self._cfg[field_key] = new_values
+    else:
+        new_value = str(selected_path)
+        if self._cfg.get(field_key) == new_value:
+            return
+        self._cfg[field_key] = new_value
+    self._persist_project()
+    self._dirty = self._dirty or not self._project_loaded()
+    self._setup_candidate_index = 0
+    self._refresh_summary()
+    self._refresh_view()
+    self._set_active_action(None)
+    self._refresh_shell_state()
+    self._write_output(f"Updated {label} from the Setup view.")
+
+
 def _open_help_popup(self: Any) -> None:
     get_help_text_fn = getattr(self, "_get_help_text_fn", None)
     if not callable(get_help_text_fn):
@@ -348,24 +391,10 @@ def _show_help_modal(self: Any, help_text: str) -> None:
     self.push_screen(_HelpScreen(help_text=help_text))
 
 
-def _toggle_setup_flag(self: Any, key: str, *, label: str) -> None:
-    self._cfg[key] = not bool(self._cfg.get(key, False))
-    self._mark_setup_changed(f"Updated {label} from the Setup view.")
-
-
 def _toggle_setup_mode(self: Any) -> None:
     current_mode = _stringify_value(cast(object | None, self._cfg.get("mode", "official"))).strip().casefold()
     self._cfg["mode"] = "draft" if current_mode == "official" else "official"
     self._mark_setup_changed("Updated mode from the Setup view.", reset_candidate_selection=True)
-
-
-def _toggle_setup_telemetry(self: Any) -> None:
-    telemetry = cast(dict[str, object] | None, self._cfg.get("telemetry"))
-    if not isinstance(telemetry, dict):
-        telemetry = {"enabled": False}
-        self._cfg["telemetry"] = telemetry
-    telemetry["enabled"] = not bool(cast(object | None, telemetry.get("enabled", False)))
-    self._mark_setup_changed("Updated telemetry from the Setup view.")
 
 
 def _setup_has_targets(self: Any) -> bool:

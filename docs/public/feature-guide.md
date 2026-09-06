@@ -119,7 +119,6 @@ Running `sattlint` with no arguments opens the Textual interactive shell.
 |------|---------|
 | **Analyze** | Queue reports and analyzers. Start with the planner for a broad pass, then add focused reports. |
 | **Setup** | Configure paths (program_dir, ABB_lib_dir, icf_dir, other_lib_dirs), targets, mode, cache settings. |
-| **Tools** | Run self-check diagnostics, inspect dumps, refresh caches. |
 | **Help** | First-run guidance, workflow explanations. |
 
 ### Graphics Layout Specification
@@ -129,11 +128,11 @@ Running `sattlint` with no arguments opens the Textual interactive shell.
 3. Use `equipment:` selectors (e.g., `equipment:L1.L2.EquipModPanelShort`) for equipment-scoped rules.
 4. Moduletype rules identify modules by resolved `ModuleType` name, optionally narrowed with `unit:`, `equipment:`, or exact-path selectors.
 5. Run **Analyze > Validate graphics rules** to report modules not matching spec.
-6. Run **Tools > Self-check diagnostics** to confirm the graphics rules JSON path is valid.
+6. Run `sattlint validate-config` to confirm the graphics rules JSON path is valid.
 
 ### Keyboard & Mouse
 
-- **Sidebar**: Click view names to switch between Analyze, Setup, Tools, and Help.
+- **Sidebar**: Click view names to switch between Analyze, Setup, and Help.
 - **Buttons**: Click action buttons to start tasks.
 - **Scrolling**: All text areas support scrollbars.
 

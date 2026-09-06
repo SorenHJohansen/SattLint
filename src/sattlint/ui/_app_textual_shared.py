@@ -16,8 +16,9 @@ from ..core.syntax import CodeMode, code_ext_candidates, normalize_code_mode
 
 APP_SHELL_BINDINGS: list[tuple[str, str, str]] = [
     ("ctrl+1", "show_analyze", "Analyze"),
-    ("ctrl+3", "show_tools", "Tools"),
-    ("ctrl+4", "show_setup", "Setup"),
+    ("ctrl+2", "show_settings", "App Settings"),
+    ("ctrl+3", "show_results", "Results"),
+    ("ctrl+4", "show_setup", "Configuration Settings"),
     ("slash", "prompt_view_filter", "Filter"),
     ("question_mark", "show_help", "Help"),
     ("ctrl+h", "show_help", "Help"),
@@ -55,6 +56,7 @@ try:
     from textual.widgets import SelectionList as _ImportedSelectionList  # type: ignore[import-untyped]
     from textual.widgets import Static as _ImportedStatic  # type: ignore[import-untyped]
     from textual.widgets import TextArea as _ImportedTextArea  # type: ignore[import-untyped]
+    from textual.widgets import Tree as _ImportedTree  # type: ignore[import-untyped]
     from textual.widgets.option_list import (
         OptionDoesNotExist as _ImportedOptionDoesNotExist,  # type: ignore[import-untyped]
     )
@@ -77,6 +79,7 @@ except ImportError:  # pragma: no cover - optional dependency path
     _TEXTUAL_SELECTION_LIST: Any = None
     _TEXTUAL_STATIC: Any = None
     _TEXTUAL_TEXT_AREA: Any = None
+    _TEXTUAL_TREE: Any = None
 else:
 
     class _CompatStatic(_ImportedStatic):  # pyright: ignore[reportUntypedBaseClass]
@@ -102,6 +105,7 @@ else:
     _TEXTUAL_SELECTION_LIST = _ImportedSelectionList
     _TEXTUAL_STATIC = _CompatStatic
     _TEXTUAL_TEXT_AREA = _ImportedTextArea
+    _TEXTUAL_TREE = _ImportedTree
 
 
 if _TEXTUAL_RICH_LOG is not None:
@@ -145,53 +149,20 @@ def _query_required(widget_owner: Any, selector: str, expected_type: Any | None 
 DEFAULT_SHELL_TITLE = "SattLint"
 _ANALYZE_PLANNER_LIST_ID_PREFIX = "analyze-planner-section-"
 
-MENU_DEFINITIONS: list[tuple[str, list[tuple[str, str | None] | None]]] = [
-    (
-        "File",
-        [
-            ("Open Project...", "menu-file-open-project"),
-            ("Open Recent", "menu-file-open-recent"),
-            ("Save Project", "menu-file-save-project"),
-            None,
-            ("Quit", "action-quit"),
-        ],
-    ),
-    (
-        "Analyze",
-        [
-            ("Run Selected", "menu-analyze-run-selected"),
-            ("Cancel", "menu-analyze-cancel"),
-        ],
-    ),
-    (
-        "Reports",
-        [
-            ("Export", "menu-reports-export"),
-        ],
-    ),
-    (
-        "Tools",
-        [
-            ("Refresh Cache", "menu-tools-refresh-cache"),
-        ],
-    ),
-    (
-        "Settings",
-        [
-            ("Project Settings", "menu-settings-project"),
-            ("General Settings", "menu-settings-general"),
-        ],
-    ),
-    (
-        "Help",
-        [
-            ("Keyboard Shortcuts", "menu-help-shortcuts"),
-            ("Documentation", "menu-help-documentation"),
-            None,
-            ("About SattLint", "menu-help-about"),
-        ],
-    ),
+MENU_DEFINITIONS: list[tuple[str, str]] = [
+    ("Open Configuration", "menu-file-open-project"),
+    ("New Configuration", "menu-file-new-project"),
+    ("Keyboard Shortcuts", "menu-help-shortcuts"),
+    ("Documentation", "menu-help-documentation"),
+    ("About SattLint", "menu-help-about"),
+    ("Quit", "action-quit"),
 ]
+
+NO_PROJECT_NOTICE = (
+    "No configuration is open.\n\n"
+    "Use Open Configuration or New Configuration from the File menu to load or create a "
+    "configuration before analyzing, viewing results, or changing the setup."
+)
 TEXTUAL_SHELL_CSS = Path(__file__).with_name("app_textual.tcss").read_text(encoding="utf-8")
 
 
@@ -209,6 +180,13 @@ class _SetupTargetCandidate:
     name: str
     files: tuple[Path, ...]
     available: bool
+
+
+@dataclass(frozen=True)
+class _MenuOption:
+    key: str
+    label: str
+    description: str = ""
 
 
 @dataclass

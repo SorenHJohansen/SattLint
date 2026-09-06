@@ -124,7 +124,6 @@ Opens the Textual interactive terminal UI with the following views:
 
 - **Analyze** — queue curated reports and additional analyzers
 - **Setup** — configure paths, targets, mode, and cache settings
-- **Tools** — run self-checks, inspect dumps, refresh caches
 - **Help** — first-time guidance and workflow explanation
 
 ---
@@ -172,7 +171,7 @@ For a portable, checked-in setup, create a `.slproj` project file with
    - `Edit graphics rules` — define expected module invocation or clipping rules (saved as JSON)
 
 4. Save with **Save configuration**
-5. Select **Tools** and run **Self-check diagnostics**
+5. Select **Analyze** to run checks
 
 > **Note:** Use names without file extensions (e.g. `MyProgram`, not `MyProgram.s`).
 
@@ -192,7 +191,7 @@ pipx install --force .
 2. Use `unit:` selectors when a module should look the same in every detected unit (e.g. `unit:L1` or `unit:L1.L2.UnitControl`)
 3. Use `equipment:` selectors when a module should look the same inside every equipment module (e.g. `equipment:L1.L2.EquipModPanelShort`)
 4. Open **Analyze**, then run **Validate graphics rules** from **Structure & modules** to report modules that are not to spec
-5. Open **Tools**, then run **Self-check diagnostics** to confirm the graphics rules JSON path is valid
+5. Run `sattlint validate-config` to confirm the graphics rules JSON path is valid
 
 ---
 
@@ -218,7 +217,7 @@ Add missing folders to `ABB_lib_dir` or `other_lib_dirs`.
 
 ### Results look outdated
 
-Run **Force refresh cached AST** from the Tools menu, or use `sattlint --no-cache analyze`.
+Use `sattlint --no-cache analyze` to skip the AST cache, or run `sattlint cache-prune` to remove stale cache artifacts before re-analyzing.
 
 ---
 

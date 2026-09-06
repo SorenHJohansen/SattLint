@@ -5,7 +5,7 @@ from collections.abc import Callable
 from functools import partial
 from typing import Any, cast
 
-from ._app_textual_shared import InteractionRequest, _stringify_list_values, _stringify_value
+from ._app_textual_shared import InteractionRequest, _MenuOption, _stringify_list_values, _stringify_value
 
 
 def _run_app_module_cfg_action(
@@ -43,20 +43,6 @@ def _run_analyze_checks(self: Any) -> None:
     )
 
 
-def _run_tool_self_check(self: Any) -> None:
-    self._start_action("Self-check diagnostics", lambda: self._self_check_fn(self._cfg), action_id="action-tools")
-
-
-def _run_tool_refresh_ast(self: Any) -> None:
-    if not self._targets_action_allowed("all cache refresh"):
-        return
-    self._start_action(
-        "Refresh all caches",
-        lambda: self._force_refresh_ast_fn(self._cfg),
-        action_id="action-tools",
-    )
-
-
 def _prompt_setup_value(self: Any, field_key: str, *, label: str, is_list: bool = False) -> None:
     if self._active_request is not None:
         return
@@ -87,7 +73,8 @@ def _prompt_setup_value(self: Any, field_key: str, *, label: str, is_list: bool 
             if self._cfg.get(field_key) == new_value:
                 return
             self._cfg[field_key] = new_value
-        self._dirty = True
+        self._persist_project()
+        self._dirty = self._dirty or not self._project_loaded()
         self._setup_candidate_index = 0
         self._refresh_summary()
         self._refresh_view()
@@ -98,51 +85,42 @@ def _prompt_setup_value(self: Any, field_key: str, *, label: str, is_list: bool 
     self.present_request(request, on_response_fn=_apply_response)
 
 
-async def _prompt_setup_value_async(self: Any, field_key: str, *, label: str, is_list: bool = False) -> None:
+def _remove_other_lib_dir(self: Any) -> None:
     if self._active_request is not None:
         return
-
-    current_value = self._cfg.get(field_key)
-    default_text = (
-        ", ".join(_stringify_list_values(current_value))
-        if is_list
-        else _stringify_value(cast(object | None, current_value))
+    entries = _stringify_list_values(self._cfg.get("other_lib_dirs"))
+    if not entries:
+        self._write_output("No extra library folders are configured to remove.")
+        return
+    options = tuple(
+        _MenuOption(key=str(index), label=value, description="") for index, value in enumerate(entries, start=1)
     )
-    message = (
-        f"Enter the full comma-separated list for {label}. Leave blank to clear the list."
-        if is_list
-        else f"Enter a new path for {label}."
-    )
-    response = await self.present_request_async(
-        InteractionRequest(kind="prompt", message=message, default=default_text)
+    request = InteractionRequest(
+        kind="menu",
+        title="Remove extra library folder",
+        message="Choose which extra library folder to remove.",
+        options=options,
     )
 
-    raw_value = str(response or "").strip()
-    new_value: list[str] | str = (
-        [part.strip() for part in raw_value.split(",") if part.strip()] if is_list else raw_value
-    )
-    if is_list:
-        if _stringify_list_values(self._cfg.get(field_key)) == tuple(cast(list[str], new_value)):
+    def _apply_response(response: object) -> None:
+        if response is None:
             return
-        self._cfg[field_key] = list(cast(list[str], new_value))
-    else:
-        if self._cfg.get(field_key) == new_value:
+        try:
+            selected_index = int(str(response)) - 1
+        except (TypeError, ValueError):
             return
-        self._cfg[field_key] = new_value
-    self._dirty = True
-    self._setup_candidate_index = 0
-    self._refresh_summary()
-    self._refresh_view()
-    self._set_active_action(None)
-    self._refresh_shell_state()
-    self._write_output(f"Updated {label} from the Setup view.")
+        if not (0 <= selected_index < len(entries)):
+            return
+        removed = entries[selected_index]
+        updated = [value for index, value in enumerate(entries) if index != selected_index]
+        self._replace_setup_list_value(
+            "other_lib_dirs",
+            updated,
+            message=f"Removed extra library folder '{removed}' from the Setup view.",
+            reset_candidate_selection=True,
+        )
 
-
-def _queue_setup_value_prompt(self: Any, field_key: str, *, label: str, is_list: bool = False) -> None:
-    self._schedule_ui_coroutine(
-        lambda: self._prompt_setup_value_async(field_key, label=label, is_list=is_list),
-        fallback_fn=lambda: self._prompt_setup_value(field_key, label=label, is_list=is_list),
-    )
+    self.present_request(request, on_response_fn=_apply_response)
 
 
 def _set_setup_filter_text(self: Any, raw_text: object) -> None:

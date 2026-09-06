@@ -12,12 +12,22 @@ type ConfigPathValue = str | PathLike[str] | Path
 type ConfigObjectMap = dict[str, object]
 
 
-class TelemetryConfig(TypedDict):
+class RunHistoryConfig(TypedDict):
     enabled: bool
+    limit: int
 
 
-class TelemetryConfigOverride(TypedDict, total=False):
+class RunHistoryConfigOverride(TypedDict, total=False):
     enabled: bool
+    limit: int
+
+
+class OutputConfig(TypedDict):
+    retention_lines: int
+
+
+class OutputConfigOverride(TypedDict, total=False):
+    retention_lines: int
 
 
 class NamingRuleConfig(TypedDict):
@@ -107,7 +117,8 @@ class ConfigDict(TypedDict):
     ABB_lib_dir: ConfigPathValue
     icf_dir: ConfigPathValue
     other_lib_dirs: list[ConfigPathValue]
-    telemetry: TelemetryConfig
+    run_history: RunHistoryConfig
+    output: OutputConfig
     analysis: AnalysisConfig
 
 
@@ -120,7 +131,8 @@ class ConfigOverrideDict(TypedDict, total=False):
     ABB_lib_dir: ConfigPathValue
     icf_dir: ConfigPathValue
     other_lib_dirs: list[ConfigPathValue]
-    telemetry: TelemetryConfigOverride
+    run_history: RunHistoryConfigOverride
+    output: OutputConfigOverride
     analysis: AnalysisConfigOverride
 
 
@@ -137,14 +149,16 @@ __all__ = [
     "NamingRuleConfig",
     "NamingRuleConfigOverride",
     "NamingStyle",
+    "OutputConfig",
+    "OutputConfigOverride",
     "RuleProfileConfig",
     "RuleProfileConfigOverride",
     "RuleProfilesConfig",
     "RuleProfilesConfigOverride",
+    "RunHistoryConfig",
+    "RunHistoryConfigOverride",
     "SfcConfig",
     "SfcConfigOverride",
     "StepContractConfig",
     "StepContractConfigOverride",
-    "TelemetryConfig",
-    "TelemetryConfigOverride",
 ]

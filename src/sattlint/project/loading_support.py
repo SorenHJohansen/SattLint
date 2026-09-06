@@ -11,7 +11,7 @@ from lark.exceptions import VisitError
 from sattline_parser.models.ast_model import BasePicture
 
 from ..config.types import ConfigDict
-from ..core import telemetry as telemetry_module
+from ..core import profiling as profiling_module
 from ..core.debug import debug_enabled, log_debug_exception
 from ..core.syntax import CodeMode, deps_ext_candidates, normalize_code_mode
 from ..models.project_graph import ProjectFailure, ProjectGraph
@@ -154,7 +154,7 @@ def _workspace_dependency_suffixes(mode: str) -> tuple[str, ...]:
 
 
 def _collect_analysis_timings(cfg: ConfigDict) -> bool:
-    return bool(cfg.get("debug", False)) or telemetry_module.create_app_telemetry(cfg).enabled
+    return bool(cfg.get("debug", False)) or profiling_module.create_profiler().enabled
 
 
 def _with_status_line(

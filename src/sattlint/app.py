@@ -47,7 +47,7 @@ from .cli._interaction import (
 )
 from .cli.syntax_check import run_syntax_check_command as run_syntax_check_command_impl
 from .core import interaction as core_interaction_module
-from .core import telemetry as app_telemetry_module
+from .core import profiling as app_profiling_module
 from .core import terminal as core_terminal_module
 from .core.logging import apply_debug as core_apply_debug
 from .core.semantic import load_workspace_snapshot
@@ -66,7 +66,7 @@ ConfigValidationResult = _config_module.ConfigValidationResult
 app_analysis_checks: Any = app_analysis_checks_module
 app_analysis_commands: Any = app_analysis_commands_module
 app_cli_commands: Any = app_cli_commands_module
-app_telemetry: Any = app_telemetry_module
+app_profiling: Any = app_profiling_module
 cache: Any = cache_module
 get_default_cli_analyzers = analysis_catalog_module.get_default_cli_analyzers
 get_selectable_analyzers = analysis_catalog_module.get_selectable_analyzers

@@ -12,6 +12,7 @@ from ._app_textual_shared import (
     _TEXTUAL_SELECTION_LIST,
     _TEXTUAL_STATIC,
     _TEXTUAL_VERTICAL,
+    NO_PROJECT_NOTICE,
     InteractionRequest,
     _query_required,
     _stringify_value,
@@ -226,6 +227,12 @@ def _update_analyze_planner_selection_list(
 def _refresh_analyze_planner(self: Any) -> None:
     container = _query_required(self, "#analyze-browser-left", _TEXTUAL_VERTICAL)
 
+    if not self._project_loaded():
+        for child in list(getattr(container, "children", [])):
+            child.remove()
+        container.mount(_TEXTUAL_STATIC(NO_PROJECT_NOTICE, classes="browser-empty-state"))
+        return
+
     self._suppress_analyze_planner_events = True
     try:
         self._normalize_analyze_planner_state()
@@ -383,24 +390,34 @@ def _execute_analyze_plan(self: Any, plan: _AnalyzeRunPlan) -> None:
     self._emit_output_from_thread(f"Running {len(plan.selected_analyzer_keys)} selected analyzer(s).")
     handler = None
     if isinstance(getattr(self, "_analysis_handlers", None), dict):
-        handler = self._analysis_handlers.get("_run_checks")
+        handler = self._analysis_handlers.get("run_checks_result")
+        if not callable(handler):
+            handler = self._analysis_handlers.get("_run_checks")
     if not callable(handler):
         self._emit_output_from_thread("The analyzer runner is unavailable in the current Textual session.")
         return
     if not self._configured_target_names():
         self._emit_output_from_thread("No configured analysis targets are available.")
         return
-    handler(self._cfg, list(plan.selected_analyzer_keys))
+    result = handler(self._cfg, list(plan.selected_analyzer_keys))
     self._emit_output_from_thread("Selected analyzers completed.")
+    if result is not None:
+        self.call_from_thread(self._finish_analysis_run, result)
+
+
+def _finish_analysis_run(self: Any, result: Any) -> None:
+    del result
+    self._activate_view("results")
 
 
 def _clear_selected_analysis_plan(self: Any) -> None:
+    self._clear_session_output()
     if not self._analyze_selected_entry_ids:
         return
     self._analyze_selected_entry_ids.clear()
     self._refresh_view()
     self._refresh_shell_state()
-    self._write_output("Cleared the analyzer selection.")
+    self._write_output("Cleared the analyzer selection and session output.")
 
 
 if TYPE_CHECKING:
@@ -432,6 +449,7 @@ if TYPE_CHECKING:
         def _prompt_analyze_filter(self) -> None: ...
         def _run_selected_analysis_plan(self) -> None: ...
         def _execute_analyze_plan(self, plan: _AnalyzeRunPlan) -> None: ...
+        def _finish_analysis_run(self, result: Any) -> None: ...
         def _clear_selected_analysis_plan(self) -> None: ...
 else:
 
@@ -462,4 +480,5 @@ else:
         _prompt_analyze_filter = _prompt_analyze_filter
         _run_selected_analysis_plan = _run_selected_analysis_plan
         _execute_analyze_plan = _execute_analyze_plan
+        _finish_analysis_run = _finish_analysis_run
         _clear_selected_analysis_plan = _clear_selected_analysis_plan

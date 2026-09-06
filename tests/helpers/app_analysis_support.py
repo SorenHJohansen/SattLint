@@ -27,7 +27,7 @@ from sattlint.application import checks as checks_application
 from sattlint.application import commands as commands_application
 from sattlint.application import output as output_module
 from sattlint.application import project as project_application
-from sattlint.core import telemetry as telemetry_module
+from sattlint.core import profiling as profiling_module
 from sattlint.project import loading as analysis_loading_module
 from sattlint.project import support as support_module
 from sattlint.reporting.variables_report import (

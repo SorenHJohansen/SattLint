@@ -95,6 +95,7 @@ def test_run_analyze_command_allows_opt_in_analyzer_keys(monkeypatch) -> None:
         selected_issue_kinds: frozenset[str] | None = None,
         *,
         use_cache: bool = True,
+        persist_run: bool = False,
         iter_loaded_projects_fn,
         get_enabled_analyzers_fn,
         target_is_library_fn,
@@ -103,6 +104,7 @@ def test_run_analyze_command_allows_opt_in_analyzer_keys(monkeypatch) -> None:
         seen["selected_keys"] = selected_keys
         seen["selected_issue_kinds"] = selected_issue_kinds
         seen["use_cache"] = use_cache
+        seen["persist_run"] = persist_run
         seen["analyzer_keys"] = [spec.key for spec in get_enabled_analyzers_fn()]
         return SimpleNamespace(output_lines=(), cancelled=False)
 
@@ -383,6 +385,7 @@ def test_cli_owner_run_analyze_command_prints_json_output(capsys) -> None:
                         "summary": "variables summary",
                         "report_kind": "VariablesReport",
                         "issue_count": 2,
+                        "findings": [],
                         "duration_ms": 12.5,
                         "phase_timings_ms": [{"phase": "scan", "duration_ms": 1.5}],
                         "selected_issue_kinds": ["unused"],

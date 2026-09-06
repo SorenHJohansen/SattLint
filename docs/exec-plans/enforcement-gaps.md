@@ -27,6 +27,10 @@ Verified ground truth at review time:
   `fail_under` in `ci.yml` or `pyproject.toml`.
 - Identifier comparison mixes `.lower()` (104 sites) and `.casefold()` (550)
   on SattLine identifiers; the claimed casefold lint rule does not exist.
+- Tests are outside the pyright gate. A strict `pyright tests` run surfaces
+  exactly **2 real type errors** today; 108 of the ~149 test files carry
+  file-level `# pyright:` suppressions, so the pass is partial — but it still
+  catches any rule not suppressed.
 
 ## Scope — already covered elsewhere (NOT re-planned)
 
@@ -58,6 +62,7 @@ These are explicitly excluded because an existing plan owns them:
 | G2 | core-beliefs #6 claims "Casefold enforcement → custom lint rule", but no such rule exists; identifier comparison mixes `.lower()` (104 sites) and `.casefold()` (550) | High | Enforcement |
 | G3 | core-beliefs #15: no coverage threshold enforced; architecture Phase 23 deferred indefinitely | Medium | Coverage |
 | G4 | `core-beliefs.md` Enforcement Mechanisms section (lines 35–39) lists mechanisms that do not exist — the beliefs doc itself is stale (#11) | Medium | Docs |
+| G5 | Tests are outside the pyright gate; a strict run over `tests/` surfaces 2 real type errors (`test_reset_contamination_ratchet_helpers.py:159,162`); 108 test files carry blanket suppressions | Low | Typing |
 
 ## Phases
 
@@ -128,7 +133,7 @@ at its real artifact.
 Acceptance: every line in the Enforcement Mechanisms section maps to a real,
 findable artifact or is honestly reworded (including the file-size line).
 
-### Part C — Coverage floor (#15)
+### Part C — Gate hardening (#15, #27)
 
 #### Phase 4 — Enforce coverage non-regression (G3)
 
@@ -146,13 +151,38 @@ already suggests.
 Acceptance: CI fails if aggregate coverage drops below the floor; the floor only
 ratchets up; the deferred Phase 23 status is updated.
 
+#### Phase 5 — Type-check the test suite (G5)
+
+Bring `tests/` into the pyright gate. It is cheap insurance: the existing
+file-level suppressions bound the noise, but anything not suppressed (e.g. the
+two `reportArgumentType` errors) is caught on every run, and new test files
+without suppressions get full strict.
+
+- Fix the 2 errors in
+  `tests/analyzers/state_integrity/test_reset_contamination_ratchet_helpers.py:159,162`
+  by relocating the inline `# pyright: ignore[reportArgumentType]` from the
+  closing-paren line (160/163) onto the argument line — matching the file's
+  existing inline-ignore style (lines 143, 153–155, 172).
+- Add `tests` to `pyproject.toml` `[tool.pyright] include`. Side effect: the
+  editor-LSP "could not be resolved" cross-test imports in `tests/helpers/`
+  disappear because the whole tree becomes one project.
+- Extend the gate command to `python -m pyright src/sattlint tests` in
+  `ci.yml` and `docs/maintainers/quality-gates.md` (full-local + CI); extend
+  the pre-commit pyright hook the same way.
+- Frame honestly: this is "pyright over tests with the existing per-file
+  suppressions", **not** "tests are strict-clean". Keep core-beliefs #27 as a
+  `src`-scoped claim; do not overclaim in docs (#11).
+
+Acceptance: `pyright src/sattlint tests` is 0/0/0; CI, full-local, and
+pre-commit run it; no doc claims tests are strictly clean.
+
 ## Dependency order
 
 Phase 1 first (restore green). Phases 2 and 3 are sequential (2 lands the guard
-+ doc reconciliation; 3 verifies the whole section). Phase 4 is independent and
-can land at any time.
++ doc reconciliation; 3 verifies the whole section). Phase 4 and Phase 5 are
+independent and can land at any time.
 
-Suggested sequence: **1 → 2 → 3 → 4**.
+Suggested sequence: **1 → 2 → 3 → 4 → 5**.
 
 ## Definition of Done
 
@@ -163,7 +193,9 @@ Suggested sequence: **1 → 2 → 3 → 4**.
   findable artifacts; the file-size line no longer reads as an enforced guard.
 - CI enforces an aggregate coverage floor that only ratchets up; deferred
   architecture Phase 23 is marked superseded.
-- Gates: `pyright src/sattlint` 0 errors, `ruff check .` clean,
+- Pyright runs over `src` and `tests` with 0/0/0 (existing per-file
+  suppressions retained; docs do not overclaim strict-clean tests).
+- Gates: `pyright src/sattlint tests` 0 errors, `ruff check .` clean,
   `ruff format --check .` clean, full pytest green after every phase.
 
 ## Implementation principles

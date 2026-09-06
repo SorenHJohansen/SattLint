@@ -22,7 +22,7 @@ from ..analyzers.shadowing import analyze_shadowing
 from ..analyzers.variables import IssueKind, analyze_variables, filter_variable_report
 from ..cache import AnalysisReportCache, compute_analysis_report_cache_key, get_cache_dir
 from ..config.types import ConfigDict
-from ..core import telemetry as telemetry_module
+from ..core import profiling as profiling_module
 from ..core.debug import debug_enabled
 from ..core.syntax import CodeMode, code_ext, deps_ext
 from ..models.project_graph import ProjectGraph, merge_project_basepicture
@@ -150,7 +150,7 @@ def run_variable_analysis(  # noqa: PLR0915
         analysis_report_cache_cls=AnalysisReportCache,
         get_cache_dir_fn=get_cache_dir,
     )
-    telemetry = telemetry_module.create_app_telemetry(cfg)
+    profiler = profiling_module.create_profiler()
 
     produced_output = False
     try:
@@ -243,12 +243,12 @@ def run_variable_analysis(  # noqa: PLR0915
                 validation_warnings = [item for item in validation_warnings if not is_picture_display_warning(item)]
             print_validation_warnings_fn(validation_warnings)
             output_module.emit_output(report.summary())
-            phase_timings_ms = telemetry_module.normalize_phase_timings_ms(getattr(report, "phase_timings", None))
-            phase_bottleneck = telemetry_module.bottleneck_from_phase_timings(phase_timings_ms, kind="phase")
-            stage_timings_ms = telemetry_module.normalize_named_timings_ms(
+            phase_timings_ms = profiling_module.normalize_phase_timings_ms(getattr(report, "phase_timings", None))
+            phase_bottleneck = profiling_module.bottleneck_from_phase_timings(phase_timings_ms, kind="phase")
+            stage_timings_ms = profiling_module.normalize_named_timings_ms(
                 getattr(graph, "load_stage_timings", None), scale=1000.0
             )
-            graphics_timings_ms = telemetry_module.normalize_named_timings_ms(
+            graphics_timings_ms = profiling_module.normalize_named_timings_ms(
                 getattr(graph, "graphics_load_timings", None),
                 scale=1000.0,
             )
@@ -267,7 +267,7 @@ def run_variable_analysis(  # noqa: PLR0915
                 payload["phase_bottleneck"] = phase_bottleneck
                 payload["bottleneck_kind"] = "phase"
                 payload["bottleneck"] = phase_bottleneck
-            telemetry.emit(
+            profiler.emit(
                 operation="variable-analysis",
                 target_name=target_name,
                 duration_ms=(perf_counter() - started_at) * 1000,
