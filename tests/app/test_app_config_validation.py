@@ -15,6 +15,7 @@ from sattlint import config as config_module
 from sattlint.analyzers import icf as icf_module
 from sattlint.application import commands as commands_application
 from sattlint.application import project as project_application
+from sattlint.cli import startup as startup_module
 from sattlint.config.defaults import (
     REQUIRED_TOP_LEVEL_CONFIG_KEYS,
     TOP_LEVEL_CONFIG_CONTRACT,
@@ -459,24 +460,21 @@ def test_self_check_reports_invalid_nested_config_errors(tmp_path, monkeypatch, 
     assert "analysis.naming.instances.allow must be a list of strings" in out
 
 
-def test_main_pauses_when_initial_ast_check_fails(noop_screen, monkeypatch):
+def test_main_pauses_when_initial_ast_check_fails(monkeypatch):
     cfg = deepcopy(app.DEFAULT_CONFIG)
     cfg["analyzed_programs_and_libraries"] = ["Broken"]
     calls: list[str] = []
 
     monkeypatch.delenv("SATTLINT_UI", raising=False)
-    monkeypatch.setattr(app, "load_config", lambda *_: (cfg, False))
-    monkeypatch.setattr(app, "apply_debug", lambda *_: None)
-    monkeypatch.setattr(app, "self_check", lambda *_: pytest.fail("textual startup should skip terminal self-check"))
-    monkeypatch.setattr(
-        app,
-        "ensure_ast_cache",
-        lambda *_: pytest.fail("textual startup should skip terminal AST cache preflight"),
-    )
-    monkeypatch.setattr(app, "pause", lambda: pytest.fail("textual startup should not pause before launching"))
-    monkeypatch.setattr(app, "run_interactive_session", lambda *_args, **_kwargs: calls.append("session"))
 
-    exit_code = app.main()
+    exit_code = startup_module.main(
+        load_config_fn=lambda *_: (cfg, False),
+        apply_debug_fn=lambda *_: None,
+        self_check_fn=lambda *_: pytest.fail("textual startup should skip terminal self-check"),
+        ensure_ast_cache_fn=lambda *_: pytest.fail("textual startup should skip terminal AST cache preflight"),
+        pause_fn=lambda: pytest.fail("textual startup should not pause before launching"),
+        run_main_loop_fn=lambda *_args, **_kwargs: calls.append("session"),
+    )
 
     assert exit_code == 0
     assert calls == ["session"]
