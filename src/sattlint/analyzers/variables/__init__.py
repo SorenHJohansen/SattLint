@@ -282,6 +282,9 @@ class VariablesAnalyzer(
         self._record_component_order_datatypes_seen: set[str] = set()
         self.usage_tracker = UsageTracker()
         self._site_stack: list[str] = []
+        self._is_contract_session = False
+        self._contract_summary_provider = None
+        self._cyclic_owner_ids: frozenset[int] | None = None
 
     def _initialize_artifact_state(
         self,

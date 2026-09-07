@@ -1,5 +1,6 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false
 import json
+import os
 from types import SimpleNamespace
 
 from sattlint.analyzers.framework import Issue
@@ -47,6 +48,29 @@ def test_source_version_label_uses_graph_root_origin_when_source_path_missing() 
     )
 
     assert label == "official"
+
+
+def test_select_report_source_path_prefers_configured_mode_suffix_on_equal_mtime(tmp_path) -> None:
+    draft = tmp_path / "Root.s"
+    official = tmp_path / "Root.x"
+    draft.touch()
+    official.touch()
+
+    draft_stat = draft.stat()
+    os.utime(official, (draft_stat.st_atime, draft_stat.st_mtime))
+
+    project_bp = named_object("Root")
+    graph = AnalysisGraphStub()
+
+    selected = analysis_reporting_module.select_report_source_path(
+        project_bp,
+        graph,
+        source_paths_for_current_target_fn=lambda *_args: {draft, official},
+        casefold_equal_fn=lambda left, right: left.casefold() == right.casefold(),
+        preferred_suffixes=frozenset({".s", ".l"}),
+    )
+
+    assert selected == draft
 
 
 def test_run_checks_reports_no_matching_checks_and_pauses(monkeypatch):

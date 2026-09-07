@@ -11,6 +11,7 @@ from sattline_parser.models.ast_model import Simple_DataType, Variable
 from ...reporting.variables_report import VariableIssue
 from ...resolution import AccessGraph
 from ..shared._validators import ContractMappingValidator, MinMaxValidator, StringMappingValidator
+from ._contract_summary_provider import ContractSummaryProvider
 from ._variables_effect_flow import EffectFlowTracker
 from ._variables_status import ProcedureStatusBinding
 
@@ -36,6 +37,8 @@ class _VariablesAnalyzerFacadeState(Protocol):
     _min_max_validator: MinMaxValidator
     _string_validator: StringMappingValidator
     _analyzing_typedefs: set[str]
+    _contract_summary_provider: ContractSummaryProvider | None
+    _cyclic_owner_ids: frozenset[int] | None
     _effect_flow_tracker: EffectFlowTracker
     _effective_output_keys: set[tuple[str, ...]]
     _site_stack: list[str]
@@ -116,6 +119,22 @@ class VariablesAnalyzerFacadePropertiesMixin:
     @property
     def analyzing_typedefs(self) -> set[str]:
         return self._state()._analyzing_typedefs
+
+    @property
+    def contract_summary_provider(self) -> ContractSummaryProvider | None:
+        return self._state()._contract_summary_provider
+
+    @contract_summary_provider.setter
+    def contract_summary_provider(self, value: ContractSummaryProvider | None) -> None:
+        self._state()._contract_summary_provider = value
+
+    @property
+    def cyclic_owner_ids(self) -> frozenset[int] | None:
+        return self._state()._cyclic_owner_ids
+
+    @cyclic_owner_ids.setter
+    def cyclic_owner_ids(self, value: frozenset[int] | None) -> None:
+        self._state()._cyclic_owner_ids = value
 
     @property
     def effect_flow_tracker(self) -> EffectFlowTracker:
