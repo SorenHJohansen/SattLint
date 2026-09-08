@@ -142,6 +142,39 @@ Shows current action and task progress (e.g., "Self-check running...").
 
 ---
 
+## Change Review
+
+Change Review is a TUI-only capability that turns two versions of a project —
+an **official** (baseline) version and a **draft** (modified) version — into a
+single compact review artifact for humans and external AI reviewers.
+
+The comparison is **semantic**: SattLint parses both versions once, diffs the
+semantic indexes, and selects the smallest useful context by the *semantic role*
+of each entity (referenced symbols, data origins, outputs and their consumers,
+callers/callees, and sequence/S88 state context), each with an explicit reason
+for inclusion. Formatting-only differences are ignored. Static analysis is not
+involved: no analyzers run and no findings are collected.
+
+### Generate a review
+
+1. Configure the project in the **Setup** view (targets plus `program_dir`).
+2. Open the **Analyze** view.
+3. Click **Generate Change Review**.
+
+SattLint loads the official (`.x`) and draft (`.s`) variants of each configured
+target, builds a `ChangeReview`, and writes both a JSON and a Markdown artifact
+to the configured output folder. The generated file names follow
+`<project>-change-review-<timestamp>.json` / `.md`.
+
+### Configure the output folder
+
+Open **App Settings > Change Review > Review output folder** and enter a
+directory (blank restores the default). The setting is stored in
+`review.output_dir` in the user config and defaults to
+`~/.config/sattlint/change-review`.
+
+---
+
 ## Configuration
 
 First run creates a default config file:
@@ -162,6 +195,7 @@ Override with `--config path/to/custom.toml`. Project analysis uses `.slproj` pr
 | `analyzed_programs_and_libraries` | Analysis targets |
 | `mode` | `"official"` or `"draft"` |
 | `include_reverse_library_consumers` | Expand analysis scope for library consumers |
+| `review.output_dir` | Directory where Change Review artifacts are written |
 
 Use names without file extensions: `MyProgram`, not `MyProgram.s`.
 

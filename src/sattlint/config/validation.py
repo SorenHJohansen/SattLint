@@ -29,6 +29,7 @@ VALID_TOP_LEVEL_KEYS = VALID_TOP_LEVEL_CONFIG_KEYS
 VALID_ANALYSIS_KEYS = frozenset({"sfc", "naming", "rule_profiles"})
 VALID_RUN_HISTORY_KEYS = frozenset({"enabled", "limit"})
 VALID_OUTPUT_KEYS = frozenset({"retention_lines"})
+VALID_REVIEW_KEYS = frozenset({"output_dir"})
 VALID_NAMING_TARGETS = frozenset({"variables", "modules", "instances"})
 VALID_NAMING_STYLES = frozenset({"infer", "pascal", "camel", "snake", "upper_snake", "lower", "upper"})
 
@@ -146,6 +147,10 @@ def _strip_unknown_keys(cfg: ConfigOverrideDict) -> None:
     output = _config_dict(cfg_map.get("output"))
     if output is not None:
         _strip_section_keys(output, VALID_OUTPUT_KEYS)
+
+    review = _config_dict(cfg_map.get("review"))
+    if review is not None:
+        _strip_section_keys(review, VALID_REVIEW_KEYS)
 
 
 def _load_time_config_warnings(cfg: ConfigOverrideDict) -> tuple[ConfigValidationError, ...]:
@@ -301,6 +306,34 @@ def validate_config(cfg: ConfigDict | ConfigOverrideDict) -> ConfigValidationRes
                 ConfigValidationError(
                     key_path="output.retention_lines",
                     message="output.retention_lines must be a positive integer",
+                )
+            )
+
+    review_value = cfg.get("review")
+    review = _config_dict(review_value)
+    if review_value is not None and review is None:
+        errors.append(
+            ConfigValidationError(
+                key_path="review",
+                message="review must be a table/object.",
+            )
+        )
+    elif review is not None:
+        for key in review:
+            if key not in VALID_REVIEW_KEYS:
+                errors.append(
+                    ConfigValidationError(
+                        key_path=f"review.{key}",
+                        message=f"Unknown review key '{key}'. Expected one of: {', '.join(sorted(VALID_REVIEW_KEYS))}",
+                    )
+                )
+
+        output_dir = review.get("output_dir", "")
+        if not isinstance(output_dir, str | Path):
+            errors.append(
+                ConfigValidationError(
+                    key_path="review.output_dir",
+                    message="review.output_dir must be a directory path string.",
                 )
             )
 

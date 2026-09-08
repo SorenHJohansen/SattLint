@@ -3,6 +3,22 @@
 > Single AI control-plane entry for SattLint.
 > Supporting docs are references, not parallel authorities.
 
+## ⚠️ CODEBASE EXPLORATION: SEMBLE ONLY — ABSOLUTE REQUIREMENT
+
+**Semble is the ONLY acceptable tool for exploring the codebase. It is not a preference — it is a hard requirement.**
+
+You MUST use Semble (`semble_search` / `semble_find_related`) for ALL codebase exploration and source discovery. This is the FIRST tool you reach for, always.
+
+You MUST NOT use `rg`, `ripgrep`, `grep`, `read`, `glob`, `find`, `ls`, `cat`, or ANY similar search/read tool to explore the codebase. These are forbidden for discovery — do not reach for them, do not fall back to them, do not "just take a quick look."
+
+- **First attempt is ALWAYS Semble.** If a Semble search is possible for the query, use it. No exceptions.
+- **Never fall back to ripgrep/grep/read/glob** because Semble "seems slower" or you are "already holding a file."
+- **Navigate directly to Semble results** — do not re-search the same content with another tool.
+- **Use `find_related` to discover similar code** elsewhere in the same repo instead of grepping for the pattern.
+- If a Semble search returns nothing useful, refine the query or retry — only then consider a documented exception.
+
+This rule exists because Semble is the indexed, accurate, and sanctioned way to explore this repository. The forbidden tools bypass that index and produce stale or incomplete results.
+
 ## Quick Reference
 
 **Purpose:** SattLint is a parser, analyzer, and validation toolchain for SattLine, with a CLI and a Textual terminal UI.
@@ -86,7 +102,7 @@ Only `trash-put` is an allowed alternative — and only because it is explicitly
 - Do not preserve temporary compatibility seams unless the phase plan still requires them.
 - Do not keep parallel AI workflow docs with independent rules.
 - Do not skip focused validation when a narrower executable check exists.
-- Do not invoke `rg`, `grep`, or `find` for Python source discovery until you have first attempted Semble.
+- Do NOT invoke `rg`, `grep`, `read`, `glob`, `find`, `ls`, `cat`, or similar tools for codebase exploration — Semble is the only sanctioned tool (see top of file).
 - Never use `git commit --no-verify` or `git push --no-verify`.
 
 ## Bulk Edit Prohibition
@@ -96,4 +112,4 @@ Only `trash-put` is an allowed alternative — and only because it is explicitly
 - Every code change must be made individually with the Edit tool, with verification after each edit.
 - For broad multi-file changes, state the plan and confirm scope before editing.
 
-Last Updated: 2026-09-03
+Last Updated: 2026-09-08

@@ -979,7 +979,7 @@ def _launch_active_view(self: Any) -> None:
     self._write_output(f"{view.title} is not available as a standalone action in the Textual shell.")
 
 
-def _refresh_shell_state(self: Any) -> None:
+def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
     if not tuple(getattr(self, "children", ())):
         return
     output_title_widget = _query_required(self, "#output-title", _TEXTUAL_STATIC)
@@ -987,6 +987,7 @@ def _refresh_shell_state(self: Any) -> None:
     interaction_host = _query_required(self, "#interaction-host", _TEXTUAL_VERTICAL)
     launch_button = _query_required(self, "#view-primary-action", _TEXTUAL_BUTTON)
     analyze_run_selected_button = _query_required(self, "#analyze-run-selected", _TEXTUAL_BUTTON)
+    analyze_generate_change_review_button = _query_required(self, "#analyze-generate-change-review", _TEXTUAL_BUTTON)
     analyze_cancel_running_button = _query_required(self, "#analyze-cancel-running", _TEXTUAL_BUTTON)
     analyze_clear_selection_button = _query_required(self, "#analyze-clear-selection", _TEXTUAL_BUTTON)
     analyze_clear_output_button = _query_required(self, "#analyze-clear-output", _TEXTUAL_BUTTON)
@@ -1011,6 +1012,9 @@ def _refresh_shell_state(self: Any) -> None:
         or interaction_locked
         or not self._setup_has_targets()
         or not analyze_plan.is_runnable
+    )
+    analyze_generate_change_review_button.disabled = (
+        toolbar_disabled or not analyze_view or interaction_locked or not self._setup_has_targets()
     )
     analyze_cancel_running_button.disabled = not (
         self._busy and self._active_job_action_id == "action-analyze" and analyze_view
@@ -1070,6 +1074,7 @@ def _refresh_shell_state(self: Any) -> None:
         "settings-edit-run-history-limit",
         "settings-toggle-debug",
         "settings-edit-output-retention",
+        "settings-edit-review-output-dir",
     ):
         _query_required(self, f"#{btn_id}", _TEXTUAL_BUTTON).disabled = toolbar_disabled or not settings_view
     if setup_view and self._project_loaded():
@@ -1103,6 +1108,7 @@ def on_button_pressed(self: Any, event: Any) -> None:
         "setup-target-browse": self._open_file_browser,
         "view-primary-action": self._launch_active_view,
         "analyze-run-selected": self._run_selected_analysis_plan,
+        "analyze-generate-change-review": self._run_generate_change_review,
         "analyze-cancel-running": self.action_cancel_running_analysis,
         "analyze-clear-selection": self._clear_selected_analysis_plan,
         "analyze-clear-output": self._clear_session_output,
@@ -1125,6 +1131,12 @@ def on_button_pressed(self: Any, event: Any) -> None:
         "settings-toggle-debug": self._toggle_app_debug,
         "settings-edit-output-retention": lambda: self._queue_app_int_prompt(
             "output", "retention_lines", label="session output retention"
+        ),
+        "settings-edit-review-output-dir": lambda: self._queue_app_text_prompt(
+            "review",
+            "output_dir",
+            label="review output folder",
+            message="Enter the directory where Change Review artifacts are written. Leave blank to use the default directory.",
         ),
         "menu-file-open-project": self._open_project_browser,
         "menu-file-new-project": self._new_project,

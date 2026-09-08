@@ -182,6 +182,11 @@ if _TEXTUAL_APP is not None:
                                             classes="raised-button toolbar-button",
                                         )
                                         yield _TEXTUAL_BUTTON(
+                                            "Generate Change Review",
+                                            id="analyze-generate-change-review",
+                                            classes="raised-button toolbar-button",
+                                        )
+                                        yield _TEXTUAL_BUTTON(
                                             "Cancel running",
                                             id="analyze-cancel-running",
                                             classes="raised-button toolbar-button",
@@ -322,6 +327,17 @@ if _TEXTUAL_APP is not None:
                                             )
                                             yield _TEXTUAL_STATIC(
                                                 "", id="settings-label-output-retention", classes="setup-row-label"
+                                            )
+                                    with _TEXTUAL_VERTICAL(id="settings-group-review", classes="setup-group-box"):
+                                        yield _TEXTUAL_STATIC("Change Review", classes="setup-group-title")
+                                        with _TEXTUAL_HORIZONTAL(classes="setup-row"):
+                                            yield _TEXTUAL_BUTTON(
+                                                "Review output folder",
+                                                id="settings-edit-review-output-dir",
+                                                classes="raised-button setup-row-button",
+                                            )
+                                            yield _TEXTUAL_STATIC(
+                                                "", id="settings-label-review-output-dir", classes="setup-row-label"
                                             )
                         with _TEXTUAL_HORIZONTAL(id="results-browser", classes="is-hidden"):
                             with _TEXTUAL_VERTICAL(id="results-runs-section"):

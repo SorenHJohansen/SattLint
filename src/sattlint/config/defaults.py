@@ -73,6 +73,15 @@ TOP_LEVEL_CONFIG_FIELDS: dict[str, TopLevelConfigField] = {
         },
         "Session output retention: how many lines the live output pane keeps.",
     ),
+    "review": TopLevelConfigField(
+        {
+            "output_dir": "",
+        },
+        (
+            "Change Review output: directory where generated review artifacts are written. "
+            "Leave empty to use the default change-review directory."
+        ),
+    ),
     "analysis": TopLevelConfigField(
         {
             "sfc": {

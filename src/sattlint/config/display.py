@@ -72,6 +72,10 @@ def show_config(
     output_rows = [
         ("retention_lines", output_cfg.get("retention_lines", 4000)),
     ]
+    review_cfg = cast(dict[str, object], cfg.get("review", {}))
+    review_rows = [
+        ("output_dir", review_cfg.get("output_dir", "")),
+    ]
     directory_rows = [
         ("program_dir", cfg["program_dir"]),
         ("ABB_lib_dir", cfg["ABB_lib_dir"]),
@@ -108,6 +112,13 @@ def show_config(
     print_config_section(
         "Output",
         output_rows,
+        emit_output_fn=emit_output_fn,
+        format_config_scalar_fn=_scalar,
+    )
+    emit_output_fn()
+    print_config_section(
+        "Change Review",
+        review_rows,
         emit_output_fn=emit_output_fn,
         format_config_scalar_fn=_scalar,
     )
