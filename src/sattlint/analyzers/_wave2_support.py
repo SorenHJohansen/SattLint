@@ -23,6 +23,7 @@ from ._wave2_node_traversal import (
     iter_statement_sites,
     root_variable_name,
 )
+from .shared.target_origin import TargetOriginFilter
 from .shared.variable_utils import merge_variable_env
 
 __all__ = [
@@ -77,12 +78,18 @@ def merge_env(
     return merge_variable_env(env, variables)
 
 
-def walk_module_scopes(base_picture: BasePicture) -> list[ModuleScope]:
+def walk_module_scopes(
+    base_picture: BasePicture,
+    *,
+    moduletype_filter: TargetOriginFilter | None = None,
+) -> list[ModuleScope]:
     root_path = (base_picture.header.name,)
     root_env = merge_env({}, base_picture.localvariables)
     scopes = [ModuleScope(module_path=root_path, env=root_env, modulecode=base_picture.modulecode)]
 
     for moduletype in base_picture.moduletype_defs or []:
+        if moduletype_filter is not None and not moduletype_filter(moduletype):
+            continue
         typedef_env = merge_env({}, moduletype.moduleparameters)
         typedef_env = merge_env(typedef_env, moduletype.localvariables)
         typedef_path = (*root_path, moduletype.name)

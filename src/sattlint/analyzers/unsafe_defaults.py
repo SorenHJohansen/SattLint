@@ -42,8 +42,9 @@ class UnsafeDefaultsReport:
 
 
 class UnsafeDefaultsAnalyzer:
-    def __init__(self, base_picture: BasePicture) -> None:
+    def __init__(self, base_picture: BasePicture, *, analyzed_target_is_library: bool = False) -> None:
         self.bp = base_picture
+        self._analyzed_target_is_library = analyzed_target_is_library
         self._issues: list[Issue] = []
 
     @property
@@ -56,7 +57,10 @@ class UnsafeDefaultsAnalyzer:
         self._walk_modules(self.bp.submodules or [], root_path)
 
         for moduletype in self.bp.moduletype_defs or []:
-            if not self._is_from_root_origin(getattr(moduletype, "origin_file", None)):
+            if not self._is_from_root_origin(
+                getattr(moduletype, "origin_file", None),
+                getattr(moduletype, "origin_lib", None),
+            ):
                 continue
             self._walk_moduletype_def(moduletype, root_path)
 
@@ -119,8 +123,14 @@ class UnsafeDefaultsAnalyzer:
             return "which can activate equipment or logic from startup"
         return None
 
-    def _is_from_root_origin(self, origin_file: str | None) -> bool:
-        return matches_root_origin(origin_file, getattr(self.bp, "origin_file", None))
+    def _is_from_root_origin(self, origin_file: str | None, origin_lib: str | None = None) -> bool:
+        return matches_root_origin(
+            origin_file,
+            getattr(self.bp, "origin_file", None),
+            analyzed_target_is_library=self._analyzed_target_is_library,
+            origin_lib=origin_lib,
+            root_origin_lib=getattr(self.bp, "origin_lib", None),
+        )
 
 
 def _identifier_tokens(name: str) -> tuple[str, ...]:
@@ -135,6 +145,10 @@ def _identifier_tokens(name: str) -> tuple[str, ...]:
     return tuple(tokens)
 
 
-def analyze_unsafe_defaults(base_picture: BasePicture) -> UnsafeDefaultsReport:
-    analyzer = UnsafeDefaultsAnalyzer(base_picture)
+def analyze_unsafe_defaults(
+    base_picture: BasePicture,
+    *,
+    analyzed_target_is_library: bool = False,
+) -> UnsafeDefaultsReport:
+    analyzer = UnsafeDefaultsAnalyzer(base_picture, analyzed_target_is_library=analyzed_target_is_library)
     return UnsafeDefaultsReport(name=base_picture.header.name, issues=analyzer.run())

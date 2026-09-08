@@ -112,6 +112,18 @@ def analyze_comment_code_files(
     )
 
 
+def _target_source_paths(context: AnalysisContext) -> set[Path]:
+    graph = context.graph
+    if graph is None:
+        return set()
+    root_source_path_for_basepicture = getattr(graph, "root_source_path_for_basepicture", None)
+    if callable(root_source_path_for_basepicture):
+        root_source_path = root_source_path_for_basepicture(context.base_picture)
+        if isinstance(root_source_path, Path):
+            return {root_source_path}
+    return set(getattr(graph, "source_files", set()) or set())
+
+
 def analyze_comment_code(context: AnalysisContext) -> CommentCodeReport:
-    paths: Iterable[Path] = getattr(context.graph, "source_files", set()) if context.graph else set()
+    paths = _target_source_paths(context)
     return analyze_comment_code_files(paths, context.base_picture.header.name)

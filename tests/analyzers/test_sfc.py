@@ -556,7 +556,7 @@ def test_analyze_sfc_covers_selected_collectors_reachability_messages_and_step_c
             return None
 
     class _FakeStepContractCollector:
-        def __init__(self, _bp, contracts):
+        def __init__(self, _bp, contracts, **_kwargs):
             self.contracts = contracts
 
         def collect(self):
@@ -566,7 +566,7 @@ def test_analyze_sfc_covers_selected_collectors_reachability_messages_and_step_c
     monkeypatch.setattr(
         sfc_module,
         "collect_sfc_reachability_findings",
-        lambda _bp: [
+        lambda _bp, **kwargs: [
             sfc_module.SfcReachabilityFinding(
                 module_path=("Root",),
                 sequence_name="SeqMain",
@@ -590,12 +590,12 @@ def test_analyze_sfc_covers_selected_collectors_reachability_messages_and_step_c
     monkeypatch.setattr(
         sfc_module,
         "_collect_transition_logic_issues",
-        lambda _bp: [Issue(kind="sfc_transition_always_true", message="logic")],
+        lambda _bp, **kwargs: [Issue(kind="sfc_transition_always_true", message="logic")],
     )
     monkeypatch.setattr(
         sfc_module,
         "_collect_illegal_state_combination_issues",
-        lambda _bp, _groups: [Issue(kind="sfc_illegal_state_combination", message="illegal")],
+        lambda _bp, _groups, **kwargs: [Issue(kind="sfc_illegal_state_combination", message="illegal")],
     )
     monkeypatch.setattr(sfc_module, "_SfcStepContractCollector", _FakeStepContractCollector)
 

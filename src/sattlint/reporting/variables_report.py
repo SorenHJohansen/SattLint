@@ -26,7 +26,6 @@ DEFAULT_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
     IssueKind.FIELD_NEVER_READ,
     IssueKind.NEVER_READ,
     IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE,
-    IssueKind.LAYOUT_OVERLAP,
     IssueKind.UNKNOWN_PARAMETER_TARGET,
     IssueKind.REQUIRED_PARAMETER_CONNECTION,
     IssueKind.STRING_MAPPING_MISMATCH,
@@ -103,7 +102,6 @@ SECTION_TITLES: dict[IssueKind, str] = {
     IssueKind.MIN_MAX_MAPPING_MISMATCH: "Min/Max mapping name mismatches",
     IssueKind.MAGIC_NUMBER: "Magic numbers in code",
     IssueKind.NAME_COLLISION: "Name collisions",
-    IssueKind.LAYOUT_OVERLAP: "Overlapping layout elements",
     IssueKind.SHADOWING: "Variable shadowing",
     IssueKind.RESET_CONTAMINATION: "Reset contamination (missing reset writes)",
     IssueKind.IMPLICIT_LATCH: "Implicit latching (missing matching False writes)",
@@ -132,7 +130,6 @@ _VARIABLE_ISSUE_LIST_SECTION_KINDS: frozenset[IssueKind] = frozenset(
         IssueKind.REQUIRED_PARAMETER_CONNECTION,
         IssueKind.CONTRACT_MISMATCH,
         IssueKind.NAME_COLLISION,
-        IssueKind.LAYOUT_OVERLAP,
         IssueKind.SHADOWING,
         IssueKind.RESET_CONTAMINATION,
         IssueKind.IMPLICIT_LATCH,
@@ -253,10 +250,6 @@ class VariablesReport:
         return [i for i in self.issues if i.kind is IssueKind.NAME_COLLISION]
 
     @property
-    def layout_overlaps(self) -> list[VariableIssue]:
-        return [i for i in self.issues if i.kind is IssueKind.LAYOUT_OVERLAP]
-
-    @property
     def shadowing(self) -> list[VariableIssue]:
         return [i for i in self.issues if i.kind is IssueKind.SHADOWING]
 
@@ -338,8 +331,6 @@ class VariablesReport:
             return self.magic_numbers
         if kind is IssueKind.NAME_COLLISION:
             return self.name_collisions
-        if kind is IssueKind.LAYOUT_OVERLAP:
-            return self.layout_overlaps
         if kind is IssueKind.SHADOWING:
             return self.shadowing
         if kind is IssueKind.RESET_CONTAMINATION:

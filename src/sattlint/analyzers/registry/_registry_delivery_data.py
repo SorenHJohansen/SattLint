@@ -127,14 +127,6 @@ def default_delivery_templates(
             min_fixture_set=shared_fixtures,
         ),
         AnalyzerDeliveryTemplate(
-            key="loop-output-refactor",
-            scope="single-file",
-            implementation_bucket="engineering-rules",
-            cli_exposed=True,
-            acceptance_tests=(*_ANALYZER_SUITE_ACCEPTANCE_TESTS, *_APP_ACCEPTANCE_TESTS),
-            min_fixture_set=shared_fixtures,
-        ),
-        AnalyzerDeliveryTemplate(
             key="alarm-integrity",
             scope="cross-module",
             implementation_bucket="shared-semantic-core",
@@ -146,14 +138,6 @@ def default_delivery_templates(
             depends_on_analyzers=(semantic_layer_analyzer_key,),
             min_fixture_set=shared_fixtures,
             exposed_via=(semantic_layer_analyzer_key,),
-        ),
-        AnalyzerDeliveryTemplate(
-            key="initial-values",
-            scope="workspace",
-            implementation_bucket="engineering-rules",
-            lsp_exposed=True,
-            acceptance_tests=_ANALYZER_SUITE_ACCEPTANCE_TESTS,
-            min_fixture_set=shared_fixtures,
         ),
         AnalyzerDeliveryTemplate(
             key="interface-contracts",

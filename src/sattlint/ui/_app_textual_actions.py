@@ -471,7 +471,7 @@ def _make_project_relative(path: str, anchor: Path) -> str:
 def action_save_config(self: Any) -> None:
     if self._active_view == "settings":
         try:
-            config_module.save_app_settings(config_module.get_config_path(), self._cfg)
+            config_module.save_app_settings(config_module.get_config_path(), self._app_only_cfg)
         except ValueError as exc:
             self._write_output(f"Save failed: {exc}")
             return
@@ -869,6 +869,44 @@ def _new_project(self: Any) -> None:
     self.present_request(request, on_response_fn=_apply_response)
 
 
+def _delete_project(self: Any) -> None:
+    project = getattr(self, "_project", None)
+    if project is None:
+        self._write_output("No configuration is open.")
+        return
+    project_path = project.path
+
+    def _confirm_delete(response: object) -> None:
+        if not bool(response):
+            self._write_output("Delete canceled.")
+            return
+        try:
+            project_path.unlink()
+        except OSError as exc:
+            self._write_output(f"Failed to delete configuration: {exc}")
+            return
+        self._project = None
+        self._cfg = dict(cast(dict[str, object], getattr(self, "_app_only_cfg", {})))
+        self._config_path = None
+        self._dirty = False
+        self._analyze_selected_entry_ids.clear()
+        self._clear_session_output()
+        self._refresh_summary()
+        self._refresh_view()
+        self._refresh_shell_state()
+        self._write_output(f"Deleted configuration: {project_path.name}")
+
+    self.present_request(
+        InteractionRequest(
+            kind="confirm",
+            title="Delete configuration",
+            message=f"Delete {project_path.name}? This cannot be undone.",
+            note="The configuration file will be permanently removed.",
+        ),
+        on_response_fn=_confirm_delete,
+    )
+
+
 def _persist_project(self: Any) -> None:
     project = getattr(self, "_project", None)
     if project is None:
@@ -1059,6 +1097,7 @@ def on_button_pressed(self: Any, event: Any) -> None:
         ),
         "menu-file-open-project": self._open_project_browser,
         "menu-file-new-project": self._new_project,
+        "setup-delete-project": self._delete_project,
         "action-quit": self._request_quit_shell,
         "menu-help-shortcuts": lambda: self._show_keyboard_shortcuts(),
         "menu-help-documentation": self._open_help_popup,
@@ -1103,6 +1142,7 @@ if TYPE_CHECKING:
         def _finish_project_ast_refresh(self, result: object | None) -> None: ...
         def _open_project_browser(self) -> None: ...
         def _new_project(self) -> None: ...
+        def _delete_project(self) -> None: ...
         def _persist_project(self) -> None: ...
         def _show_setup_no_project(self) -> None: ...
         def _show_results_no_project(self) -> None: ...
@@ -1169,6 +1209,7 @@ else:
         _finish_project_ast_refresh = _finish_project_ast_refresh
         _open_project_browser = _open_project_browser
         _new_project = _new_project
+        _delete_project = _delete_project
         _persist_project = _persist_project
         _show_setup_no_project = _show_setup_no_project
         _show_results_no_project = _show_results_no_project

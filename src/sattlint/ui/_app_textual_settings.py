@@ -71,6 +71,9 @@ def _settings_note_text(self: Any) -> str:
 
 def _mark_settings_changed(self: Any, message: str) -> None:
     self._dirty = True
+    for key in ("debug", "run_history", "output"):
+        if key in self._cfg:
+            self._app_only_cfg[key] = self._cfg[key]
     self._refresh_summary()
     self._refresh_view()
     self._set_active_action(None)
@@ -133,17 +136,17 @@ def _prompt_app_int_async(self: Any, key: str, subkey: str, *, label: str) -> No
     if self._active_request is not None:
         return
     current = _section_value(self, key, subkey, "")
-    response = self.present_request_async(
-        InteractionRequest(
-            kind="prompt",
-            title=f"Set {label}",
-            message=f"Enter a positive integer for {label}.",
-            default="" if current is None else str(current),
-        )
-    )
 
     async def _apply_async() -> None:
-        raw_value = str(await response or "").strip()
+        response = await self.present_request_async(
+            InteractionRequest(
+                kind="prompt",
+                title=f"Set {label}",
+                message=f"Enter a positive integer for {label}.",
+                default="" if current is None else str(current),
+            )
+        )
+        raw_value = str(response or "").strip()
         try:
             value = int(raw_value)
         except ValueError:

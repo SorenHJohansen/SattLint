@@ -272,7 +272,6 @@ def test_run_variable_analysis_all_reports_lists_empty_categories(noop_screen, m
     assert "  - Unused variables: 0" in out
     assert "Min/Max mapping name mismatches" in out
     assert "Missing required parameter connections" in out
-    assert "Overlapping layout elements" in out
     assert "Reset contamination (missing reset writes)" in out
     assert "Implicit latching (missing matching False writes)" not in out
     assert "UI/display-only variables" not in out

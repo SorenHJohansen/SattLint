@@ -80,8 +80,6 @@ def describe_variable_issue(issue: VariableIssue) -> str:
         return f"Datatype {datatype_name!r} appears {duplicates} times with the same structure."
     if issue.kind is IssueKind.NAME_COLLISION:
         return issue.role or "Declaration name collision."
-    if issue.kind is IssueKind.LAYOUT_OVERLAP:
-        return issue.role or "Layout elements overlap in the same scope."
     if issue.kind is IssueKind.MIN_MAX_MAPPING_MISMATCH:
         return issue.role or "Min_/Max_ parameter mappings do not align by base name."
     if issue.kind is IssueKind.SHADOWING:
