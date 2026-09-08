@@ -153,6 +153,8 @@ if _TEXTUAL_APP is not None:
             self._last_output_line: str | None = None
             self._session_output_lines: list[str] = []
             self._session_output_dropped_line_count = 0
+            self._pending_error_target_name: str | None = None
+            self._last_output_target_name: str | None = None
 
         def compose(self) -> _TEXTUAL_COMPOSE_RESULT:  # noqa: PLR0915
             with _TEXTUAL_VERTICAL(id="top-bar"):
@@ -280,7 +282,7 @@ if _TEXTUAL_APP is not None:
                         with _TEXTUAL_HORIZONTAL(id="settings-browser", classes="is-hidden"):  # noqa: SIM117
                             with _TEXTUAL_VERTICAL(id="settings-settings-section"):
                                 yield _TEXTUAL_STATIC("App Settings", id="settings-config-title")
-                                with _TEXTUAL_VERTICAL(id="settings-settings-col"):
+                                with _TEXTUAL_HORIZONTAL(id="settings-settings-col"):
                                     with _TEXTUAL_VERTICAL(id="settings-group-run-history", classes="setup-group-box"):
                                         yield _TEXTUAL_STATIC("Run History", classes="setup-group-title")
                                         with _TEXTUAL_HORIZONTAL(classes="setup-row"):

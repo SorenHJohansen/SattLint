@@ -495,6 +495,8 @@ class AlarmIntegrityAnalyzer:
                         data={
                             "tag": tag_label,
                             "locations": locations,
+                            "site": ".".join(candidate.module_path),
+                            "context": tag_label,
                         },
                     )
                 )
@@ -521,6 +523,8 @@ class AlarmIntegrityAnalyzer:
                         data={
                             "condition": condition_label,
                             "locations": locations,
+                            "site": ".".join(candidate.module_path),
+                            "context": condition_label,
                         },
                     )
                 )
@@ -576,6 +580,8 @@ class AlarmIntegrityAnalyzer:
                                 "scope_value": scope_label,
                                 "priorities": sorted(priorities),
                                 "locations": locations,
+                                "site": ".".join(candidate.module_path),
+                                "context": f"{scope_label} = {priorities_label}",
                             },
                         )
                     )
@@ -601,7 +607,11 @@ class AlarmIntegrityAnalyzer:
                         f"Alarm variable {entry.display!r} is only written with True and is never explicitly cleared to False in this scope."
                     ),
                     module_path=module_path.copy(),
-                    data={"variable": entry.display},
+                    data={
+                        "variable": entry.display,
+                        "site": ".".join(module_path),
+                        "context": f"{entry.display} = TRUE",
+                    },
                 )
             )
 

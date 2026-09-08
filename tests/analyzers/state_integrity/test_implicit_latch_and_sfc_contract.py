@@ -275,7 +275,7 @@ def test_implicit_latch_detected_for_step_without_exit_clear():
     assert len(issues) == 1
     assert issues[0].variable is not None
     assert issues[0].variable.name == "StepFlag"
-    assert issues[0].site == "SEQ:OperationSequence > STEP:Run"
+    assert issues[0].site == "SQ:OperationSequence > STEP:Run"
 
 
 def test_sfc_step_contract_detects_missing_enter_initialization():

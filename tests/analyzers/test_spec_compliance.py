@@ -391,6 +391,8 @@ def test_spec_compliance_parameter_helpers_cover_unknown_and_mapping_fallbacks()
         "parameter": "Max_TRY",
         "expected": 10,
         "status": "unknown",
+        "site": ".".join(analyzer.issues[-1].module_path or []),
+        "context": "MES_BatchControl.Max_TRY unresolved",
     }
     assert "could not be verified" in analyzer.issues[-1].message
 

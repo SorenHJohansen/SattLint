@@ -9,8 +9,8 @@ the same gate names.
 | Stage | Responsibility | Required commands | Expected proof |
 | --- | --- | --- | --- |
 | Focused local | Immediate correctness on the touched slice | Focused pytest, touched-file Pyright when Python files changed | One focused executable check before widening |
-| Pre-commit | Fast local hygiene before sharing work | `python -m pre_commit run --all-files` | Ruff fix, Ruff format, Pyright on `src/sattlint`, SattLine syntax-check on staged fixtures |
-| Full local | Broader branch health | `python -m ruff check .`, `python -m ruff format --check .`, `python -m pyright src/sattlint`, `python -m pytest -q --tb=short` | Full lint, type, and test pass |
+| Pre-commit | Fast local hygiene before sharing work | `python -m pre_commit run --all-files` | Ruff fix, Ruff format, Pyright on `src/sattlint tests`, SattLine syntax-check on staged fixtures |
+| Full local | Broader branch health | `python -m ruff check .`, `python -m ruff format --check .`, `python -m pyright src/sattlint tests`, `python -m pytest -q --tb=short` | Full lint, type, and test pass |
 | CI | Full trust on PRs and main | `ci.yml`: clean install, the full local set, clean-wheel smokes (Linux + Windows) | Deterministic install and retained-command smokes |
 
 ## Focused Local Contract
@@ -26,13 +26,15 @@ the same gate names.
 `python -m pre_commit run --all-files`
 
 This is the default local safety gate. It is fast and file-scoped: Ruff
-autofix, Ruff format, Pyright on `src/sattlint`, SattLine syntax-check on staged
+autofix, Ruff format, Pyright on `src/sattlint tests` (with the existing per-file
+suppressions in test files), SattLine syntax-check on staged
 SattLine fixtures, and the standard pre-commit-hooks checks.
 
 ## CI Gate
 
 `ci.yml` is the single required workflow. It runs Ruff lint and format, Pyright
-on production code, the full pytest suite, and clean-wheel install smokes on
+on production code and tests, the full pytest suite (with an aggregate coverage
+floor of 80% that only ratchets up), and clean-wheel install smokes on
 Linux and Windows. No required command masks failures.
 
 `publish.yml` builds distributions, checks metadata, smokes a clean wheel, and

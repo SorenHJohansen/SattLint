@@ -303,6 +303,8 @@ class _SfcStepContractCollector(VariablesAnalyzer):
                         "sequence": sequence_name,
                         "step": step.name,
                         "missing_enter_writes": missing_enter,
+                        "site": f"SQ:{sequence_name} > STEP:{step.name}",
+                        "context": ", ".join(missing_enter),
                     },
                 )
             )
@@ -323,6 +325,8 @@ class _SfcStepContractCollector(VariablesAnalyzer):
                         "sequence": sequence_name,
                         "step": step.name,
                         "leaked_state": leaked_state,
+                        "site": f"SQ:{sequence_name} > STEP:{step.name}",
+                        "context": ", ".join(leaked_state),
                     },
                 )
             )
@@ -341,6 +345,8 @@ class _SfcStepContractCollector(VariablesAnalyzer):
                         "sequence": sequence_name,
                         "step": step.name,
                         "missing_exit_writes": missing_exit,
+                        "site": f"SQ:{sequence_name} > STEP:{step.name}",
+                        "context": ", ".join(missing_exit),
                     },
                 )
             )

@@ -106,6 +106,8 @@ class UnsafeDefaultsAnalyzer:
                         "variable": variable.name,
                         "default": True,
                         "reason": reason,
+                        "site": ".".join(module_path),
+                        "context": f"{variable.name} = TRUE",
                     },
                 )
             )

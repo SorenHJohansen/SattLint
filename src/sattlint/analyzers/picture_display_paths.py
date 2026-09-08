@@ -27,6 +27,8 @@ def analyze_picture_display_paths(
                 "record_index": diagnostic.occurrence.record.record_index,
                 "failure_reason": diagnostic.resolution.failure_reason,
                 "detail": diagnostic.resolution.detail,
+                "site": ".".join(diagnostic.occurrence.declaring_module_path),
+                "context": diagnostic.path_row.raw_text,
             },
         )
         for diagnostic in diagnostics

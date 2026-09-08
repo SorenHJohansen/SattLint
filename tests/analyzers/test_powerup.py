@@ -13,12 +13,12 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def test_powerup_analyzer_is_registered_and_in_default_cli_subset() -> None:
+def test_powerup_analyzer_is_registered_and_opt_in() -> None:
     specs = {spec.key: spec for spec in get_default_analyzers()}
 
     assert "powerup" in specs
     assert specs["powerup"].enabled is True
-    assert "powerup" in get_actual_cli_analyzer_keys()
+    assert "powerup" not in get_actual_cli_analyzer_keys()
 
 
 def test_powerup_reports_unsafe_true_default() -> None:

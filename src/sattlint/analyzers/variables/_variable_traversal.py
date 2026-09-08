@@ -24,6 +24,7 @@ from ._variable_traversal_support import (
     _walk_typedef_groupconn,
 )
 from ._variable_traversal_walk import (
+    _set_current_statement,
     _walk_module_code,
     _walk_seq_nodes,
     _walk_sequence,
@@ -168,6 +169,9 @@ class VariablesTraversalMixin:
         is_ui_read: bool = False,
     ) -> None:
         _walk_stmt_or_expr(self, obj, context, path, is_ui_read=is_ui_read)
+
+    def _set_current_statement(self: Any, obj: Any) -> None:
+        _set_current_statement(self, obj)
 
 
 __all__ = [

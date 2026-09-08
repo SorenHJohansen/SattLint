@@ -55,7 +55,9 @@ def test_scan_loop_resource_usage_flags_non_precision_builtin_in_equation_block(
     assert len(issues) == 1
     assert issues[0].data == {
         "call": "assignsystemstring",
-        "context": "equation block 'MainEq'",
+        "scope": "equation block 'MainEq'",
+        "site": "equation block 'MainEq'",
+        "context": "assignsystemstring(...)",
         "precision_scangroup": False,
     }
 
@@ -102,7 +104,9 @@ def test_scan_loop_resource_usage_flags_non_precision_builtin_in_active_step_cod
     assert len(issues) == 1
     assert issues[0].data == {
         "call": "assignsystemstring",
-        "context": "active code of step 'Poll' in sequence 'MainSeq'",
+        "scope": "active code of step 'Poll' in sequence 'MainSeq'",
+        "site": "active code of step 'Poll' in sequence 'MainSeq'",
+        "context": "assignsystemstring(...)",
         "precision_scangroup": False,
     }
 

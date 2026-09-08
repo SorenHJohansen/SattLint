@@ -126,6 +126,26 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             semantic_rule_source="mms-interface",
         ),
         AnalyzerSpecTemplate(
+            key="icf",
+            name="ICF configuration",
+            description=(
+                "Validates every .icf file under the configured icf_dir against the program it "
+                "references.\n"
+                "\n"
+                "Finds:\n"
+                "- An entry that points at a different program than the .icf file.\n"
+                "- A path that cannot be resolved or a field that does not exist.\n"
+                "- A mapped datatype that does not match the target variable.\n"
+                "- A tag mapped with the wrong letter case.\n"
+                "- A group tag suffix that does not match the engineering rule.\n"
+                "- Missing journal parameter fields, drifted unit structures, or mixed value-prefix "
+                "letters."
+            ),
+            analyzer_attr="analyze_icf_configuration",
+            category="correctness",
+            context_kwargs=("config", "debug"),
+        ),
+        AnalyzerSpecTemplate(
             key="sfc",
             name="SFC checks",
             description=(

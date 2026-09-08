@@ -139,6 +139,7 @@ class NumericConstraintsAnalyzer:
                     "minimum": constraint.minimum,
                     "maximum": constraint.maximum,
                     "site": site_label,
+                    "context": f"{target_name} = {value!r}",
                 },
             )
         )

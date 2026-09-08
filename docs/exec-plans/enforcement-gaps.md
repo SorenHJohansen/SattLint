@@ -1,6 +1,7 @@
 # Enforcement Gaps
 
-> Status: Active
+> Status: **Complete** — Phases 1–5 implemented and verified 2026-09-08 on the
+> `profiling` branch.
 > Source: repository review performed 2026-09-05 on branch
 > `refactor/remove-app-facade` — this plan covers the findings that **no other
 > exec-plan tracks**.
@@ -205,3 +206,51 @@ Suggested sequence: **1 → 2 → 3 → 4 → 5**.
 - No behavior change outside the casefold normalization.
 - Update docs in the same commit as the code that invalidates them (#11).
 - Coverage floor only ratchets up; never lower it.
+
+## Completed execution notes
+
+**Phase 1 — done.** `ruff format` drift on `alarm_integrity.py` and
+`spec_compliance.py` was formatted; the three `scripts/*` import-sort errors
+(`I001`) were fixed with `ruff check --fix`. `ruff check .` and
+`ruff format --check .` are green.
+
+**Phase 2 — done.** Identifier `.lower()` normalization was migrated to casefold:
+- `resolution/context_builder.py` env keys, `resolution/scope.py` lookups.
+- `analyzers/variables/__init__.py` index keys (`any_var_index`, `typedef_index`,
+  `root_env`), `_variables_access.py`, `_variables_effect_flow.py`,
+  `_variables_execution.py` (env/param-index keys), `_variables_submodules.py`,
+  `_variables_picture_display_support.py`.
+- `variable_usage_reporting.py` (index + field-path normalization),
+  `analyzers/modules.py`, `same_cycle.py`, `_modules_fingerprints.py`,
+  `sattline_builtins/__init__.py`, `shared/_validators.py`, `project/loader.py`.
+- New `tests/test_casefolding_guard.py` AST guard flags any reintroduced
+  `.lower()` on identifier-carrying attribute receivers or unknown bare names,
+  with a documented allowlist for the remaining non-identifier `.lower()` uses
+  (file suffixes, mode/config strings, CLI prompts).
+- `core-beliefs.md` enforcement line now points at the guard.
+- Test drift updated in `test_execution_and_issue_collection.py`
+  (`used_params_by_typedef` key is now consistently casefolded).
+
+**Phase 3 — done.** `core-beliefs.md` Enforcement Mechanisms reconciled: the
+casefold line points at `tests/test_casefolding_guard.py`; the file-size line
+no longer reads as an enforced cap (reviewed, no mechanical cap); the shared
+utility-reuse line is reworded honestly (no duplication detector exists —
+caught in review).
+
+**Phase 4 — done.** `ci.yml` pytest now runs with `--cov-fail-under=80`
+(current aggregate 83.07%, 3-point margin). `architecture-upgrade-plan.md`
+Phase 23 is marked **superseded by enforcement-gaps Phase 4** with the ratchet
+policy noted. `quality-gates.md` documents the floor.
+
+**Phase 5 — done.** `tests/` added to `[tool.pyright] include`; the two
+`reportArgumentType` errors in
+`test_reset_contamination_ratchet_helpers.py` were fixed by moving the inline
+`# pyright: ignore` onto the argument line; five `reportUnusedFunction`
+false positives on decorator-registered test functions in
+`test_analyzer_architecture.py` were silenced via the file's existing
+per-file suppression header. `ci.yml`, `pre-commit-config.yaml`, and
+`quality-gates.md` now run `pyright src/sattlint tests`.
+
+**Final gate (2026-09-08):** `pyright src/sattlint tests` 0/0/0, `ruff check .`
+clean, `ruff format --check .` clean (443 files), `pytest -q --tb=short
+--cov=sattlint --cov-fail-under=80` → **1359 passed** at 83.07% coverage.

@@ -97,7 +97,7 @@ class FaultHandlingAnalyzer:
                                 f"Fault path {variable.name!r} is raised but never explicitly cleared or acknowledged in this scope."
                             ),
                             module_path=list(scope.module_path),
-                            data={"fault": variable.name},
+                            data={"fault": variable.name, "context": f"{variable.name} = TRUE"},
                         )
                     )
                 if key in writes_true and key not in reads:
@@ -109,7 +109,7 @@ class FaultHandlingAnalyzer:
                                 f"Fault path {variable.name!r} is raised but no reachable logic consumes it in this scope."
                             ),
                             module_path=list(scope.module_path),
-                            data={"fault": variable.name},
+                            data={"fault": variable.name, "context": f"{variable.name} = TRUE"},
                         )
                     )
 

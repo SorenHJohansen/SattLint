@@ -53,6 +53,8 @@ def test_naming_consistency_flags_inconsistent_instance_names():
         "name": "valve_return",
         "actual_style": "snake",
         "expected_style": "pascal",
+        "site": "Root.valve_return",
+        "context": "valve_return",
     }
 
 

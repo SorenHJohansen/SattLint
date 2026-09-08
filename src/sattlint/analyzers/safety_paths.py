@@ -125,6 +125,8 @@ class SafetyPathAnalyzer:
                         "reader_count": trace.reader_count,
                         "writer_module_paths": [list(path) for path in trace.writer_module_paths],
                         "reader_module_paths": [list(path) for path in trace.reader_module_paths],
+                        "site": ".".join(module_path),
+                        "context": trace.canonical_path,
                     },
                 )
             )

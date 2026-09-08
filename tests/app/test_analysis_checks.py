@@ -3,7 +3,7 @@ import json
 import os
 from types import SimpleNamespace
 
-from sattlint.analyzers.framework import Issue
+from sattlint.analyzers.framework import Issue, SimpleReport
 from sattlint.reporting import target_report as analysis_reporting_module
 from tests.helpers import AnalysisGraphStub, named_object
 from tests.helpers.app_analysis_support import *
@@ -333,6 +333,52 @@ def test_collect_run_checks_result_captures_target_and_analyzer_metadata():
     assert analyzer.issue_count == 1
     assert analyzer.selected_issue_kinds == ("unused",)
     assert analyzer.phase_timings_ms == ({"phase": "plan", "duration_ms": 1.25},)
+
+
+def test_collect_run_checks_result_runs_icf_once_as_whole_run_target(monkeypatch) -> None:
+    calls: dict[str, int] = {"n": 0}
+
+    def _fake_icf(base_picture, *, config, debug=False) -> SimpleReport:
+        calls["n"] += 1
+        return SimpleReport(
+            name="ICF configuration",
+            issues=[Issue(kind="icf.unresolved_path", message="Program.icf:1: unresolved path")],
+        )
+
+    monkeypatch.setattr(checks_application, "analyze_icf_configuration", _fake_icf)
+
+    result = checks_application.collect_run_checks_result(
+        app.DEFAULT_CONFIG.copy(),
+        ["icf"],
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        named_object("TargetA"),
+                        AnalysisGraphStub(unavailable_libraries=set()),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(key="icf", name="ICF configuration", supports_selected_issue_kinds=False)
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+    )
+
+    assert calls["n"] == 1
+    assert result.selected_analyzers == ("icf",)
+
+    icf_targets = [target for target in result.targets if target.target_name == "ICF configuration"]
+    assert len(icf_targets) == 1
+
+    analyzer = icf_targets[0].analyzers[0]
+    assert analyzer.key == "icf"
+    assert analyzer.status == "completed"
+    assert analyzer.issue_count == 1
+    assert analyzer.report_kind == "SimpleReport"
 
 
 def test_run_checks_skips_semantic_layer_when_batch_selection_includes_contributors(monkeypatch):

@@ -213,6 +213,7 @@ class VariableIssue:
     target_display_name: str | None = None
     validation_source_variable: Variable | None = None
     validation_source_module_path: list[str] | None = None
+    context: str | None = None
 
     def __str__(self) -> str:
         mp = ".".join(self.module_path)

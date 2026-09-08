@@ -55,7 +55,7 @@ class ScopeContext:
         if cached is not None:
             return cached
 
-        base = var_ref.split(".", 1)[0].lower()
+        base = var_ref.split(".", 1)[0].casefold()
         field_path = var_ref.split(".", 1)[1] if "." in var_ref else ""
 
         # Resolve parameter aliases first (field-aware).
@@ -113,7 +113,7 @@ class ScopeContext:
         if not base_name:
             return None, self.module_path, self.display_module_path
 
-        key = base_name.lower()
+        key = base_name.casefold()
         var = self.env.get(key)
         if var is not None:
             return var, self.module_path, self.display_module_path

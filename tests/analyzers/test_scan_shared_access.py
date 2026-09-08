@@ -22,12 +22,12 @@ def _assign(name: str, value: object) -> Assignment:
     return Assignment(target=VarRef(name=name), value=value)  # pyright: ignore[reportArgumentType]
 
 
-def test_scan_shared_access_analyzer_is_registered_and_in_default_cli() -> None:
+def test_scan_shared_access_analyzer_is_registered_and_opt_in() -> None:
     specs = {spec.key: spec for spec in get_default_analyzers()}
 
     assert "scan-shared-access" in specs
     assert specs["scan-shared-access"].enabled is True
-    assert "scan-shared-access" in get_actual_cli_analyzer_keys()
+    assert "scan-shared-access" not in get_actual_cli_analyzer_keys()
 
 
 def test_scan_shared_access_reports_filtered_same_cycle_hazard() -> None:

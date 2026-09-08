@@ -322,6 +322,8 @@ class NamingConsistencyAnalyzer:
                             "name": declaration.name,
                             "actual_style": actual_style,
                             "expected_style": expected_style,
+                            "site": ".".join(declaration.module_path),
+                            "context": declaration.name,
                         },
                     )
                 )

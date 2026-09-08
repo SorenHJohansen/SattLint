@@ -114,10 +114,10 @@ def _prompt_app_int(self: Any, key: str, subkey: str, *, label: str) -> None:
         try:
             value = int(raw_value)
         except ValueError:
-            self._write_output(f"{label} must be a positive integer.")
+            self._report_error("Invalid value", f"{label} must be a positive integer.")
             return
         if value <= 0:
-            self._write_output(f"{label} must be a positive integer.")
+            self._report_error("Invalid value", f"{label} must be a positive integer.")
             return
         section = cast(object, self._cfg.get(key))
         section_map: dict[str, object]
@@ -150,10 +150,10 @@ def _prompt_app_int_async(self: Any, key: str, subkey: str, *, label: str) -> No
         try:
             value = int(raw_value)
         except ValueError:
-            self._write_output(f"{label} must be a positive integer.")
+            self._report_error("Invalid value", f"{label} must be a positive integer.")
             return
         if value <= 0:
-            self._write_output(f"{label} must be a positive integer.")
+            self._report_error("Invalid value", f"{label} must be a positive integer.")
             return
         section = self._cfg.get(key)
         section_map: dict[str, object]

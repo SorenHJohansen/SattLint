@@ -1,10 +1,11 @@
 # pyright: reportPrivateUsage=false, reportUnusedFunction=false, reportUnusedClass=false
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, cast
 
-from ..application.findings import AnalysisFinding
+from ..application.findings import AnalysisFinding, kind_human_label
 from ..runs import (
     RunAnalyzerRecord,
     RunRecord,
@@ -51,8 +52,34 @@ def _run_summary_label(summary: RunSummary) -> str:
     return label
 
 
+_LEADING_MODULE_PATH_RE = re.compile(r"^\[[^\]]+\]\s*")
+
+
+def _context_label(finding: AnalysisFinding) -> str:
+    """The expression/context to show on the finding leaf.
+
+    Prefers the analyzer-provided ``data["context"]`` (e.g. ``TargetVal =>
+    SourceVal``); otherwise falls back to the message with the leading
+    ``[Module.Path]`` annotation stripped (the path is already shown as tree
+    branch nodes).
+    """
+    data = finding.data
+    context = data.get("context")
+    if context:
+        return str(context)
+    return _LEADING_MODULE_PATH_RE.sub("", finding.message).strip()
+
+
+def _site_label(finding: AnalysisFinding) -> str | None:
+    """The containing EquationBlock / Sequence / step for a finding, if known."""
+    site = finding.data.get("site")
+    if site:
+        return str(site)
+    return None
+
+
 def _finding_label(finding: AnalysisFinding, *, occurrence_count: int = 1) -> str:
-    label = finding.message
+    label = _context_label(finding)
     if finding.severity:
         label += f" — {finding.severity}"
     if finding.rule_id:
@@ -60,6 +87,21 @@ def _finding_label(finding: AnalysisFinding, *, occurrence_count: int = 1) -> st
     if occurrence_count > 1:
         label += f" ({occurrence_count} occurrences)"
     return label
+
+
+def _add_finding_detail_leafs(node: Any, finding: AnalysisFinding) -> None:
+    """Attach the standard Context / Why / Fix leafs to a finding node.
+
+    Each leaf is added only when the corresponding text exists, so a finding
+    with no explanation stays a plain leaf node.
+    """
+    context = _context_label(finding)
+    if context:
+        node.add(f"Context: {context}", data=None)
+    if finding.explanation:
+        node.add(f"Why: {finding.explanation}", data=None)
+    if finding.suggestion:
+        node.add(f"Fix: {finding.suggestion}", data=None)
 
 
 def _hide_leaf_expanders(node: Any) -> None:
@@ -123,23 +165,34 @@ def _populate_analyzer_findings(analyzer_node: Any, analyzer: RunAnalyzerRecord)
     builder = _ModuleTreeBuilder()
     for kind, groups in _finding_groups(analyzer):
         total = sum(count for _finding, count in groups)
-        kind_node = analyzer_node.add(f"{kind} ({total})", data=None)
+        kind_node = analyzer_node.add(f"{kind_human_label(kind)} ({total})", data=None)
+        site_nodes: dict[tuple[int, str], Any] = {}
         for finding, occurrence_count in groups:
             segments = finding.module_path if finding.module_path else (analyzer.name,)
             leaf_parent = builder.add(kind_node, segments)
-            leaf_parent.add(_finding_label(finding, occurrence_count=occurrence_count), data=finding)
+            site = _site_label(finding)
+            if site:
+                site_key = (id(leaf_parent), site)
+                site_node = site_nodes.get(site_key)
+                if site_node is None:
+                    site_node = leaf_parent.add(site, data=None)
+                    site_nodes[site_key] = site_node
+                leaf_parent = site_node
+            finding_node = leaf_parent.add(_finding_label(finding, occurrence_count=occurrence_count), data=finding)
+            _add_finding_detail_leafs(finding_node, finding)
 
 
-def _populate_run_tree(tree: Any, record: RunRecord) -> None:
+def _populate_run_tree(tree: Any, record: RunRecord, *, show_empty_analyzers: bool = False) -> None:
     tree.reset(_run_tree_title(record), data=record)
     root = tree.root
     for target in record.targets:
-        target_issue_count = sum(len(analyzer.findings) for analyzer in target.analyzers)
+        shown_analyzers = [analyzer for analyzer in target.analyzers if show_empty_analyzers or analyzer.findings]
+        target_issue_count = sum(len(analyzer.findings) for analyzer in shown_analyzers)
         target_node = root.add(
-            f"{target.target_name} ({len(target.analyzers)} analyzers, {target_issue_count} issues)",
+            f"{target.target_name} ({len(shown_analyzers)} analyzers, {target_issue_count} issues)",
             data=target,
         )
-        for analyzer in target.analyzers:
+        for analyzer in shown_analyzers:
             analyzer_node = target_node.add(
                 f"{analyzer.name} ({analyzer.key}) — {analyzer.status}",
                 data=analyzer,
@@ -153,11 +206,11 @@ def _populate_run_tree(tree: Any, record: RunRecord) -> None:
             analyzer_node.expand()
 
 
-def _build_run_tree(record: RunRecord) -> Any:
+def _build_run_tree(record: RunRecord, *, show_empty_analyzers: bool = False) -> Any:
     if _TEXTUAL_TREE is None:
         return None
     tree = _TEXTUAL_TREE(_run_tree_title(record), id="results-tree")
-    _populate_run_tree(tree, record)
+    _populate_run_tree(tree, record, show_empty_analyzers=show_empty_analyzers)
     return tree
 
 
@@ -181,9 +234,9 @@ def _target_overview_text(target: RunTargetRecord) -> str:
 
 def _write_finding_detail(self: Any, finding: AnalysisFinding) -> None:
     lines = [
-        f"Finding: {finding.kind}",
+        f"Finding: {kind_human_label(finding.kind)}",
         f"Location: {'.'.join(finding.module_path) if finding.module_path else 'unknown'}",
-        f"Message: {finding.message}",
+        f"Message: {_LEADING_MODULE_PATH_RE.sub('', finding.message).strip()}",
     ]
     if finding.severity:
         lines.append(f"Severity: {finding.severity}")
@@ -260,9 +313,23 @@ def _render_results_tree(self: Any, record: RunRecord) -> None:
         tree_host = _query_required(self, "#results-tree-host", _TEXTUAL_VERTICAL)
         tree_host.mount(tree)
         self._results_tree_widget = tree
-    _populate_run_tree(tree, record)
+    _populate_run_tree(tree, record, show_empty_analyzers=self._results_show_empty_analyzers())
     self._refresh_shell_state()
     self._write_output("Analysis results are shown in the tree. Select a node for details.")
+
+
+def _results_show_empty_analyzers(self: Any) -> bool:
+    return bool(getattr(self, "_results_show_empty_analyzers_flag", False))
+
+
+def _toggle_results_show_empty_analyzers(self: Any) -> None:
+    self._results_show_empty_analyzers_flag = not self._results_show_empty_analyzers()
+    self._write_output(
+        "Now showing analyzers with no findings."
+        if self._results_show_empty_analyzers()
+        else "Hiding analyzers with no findings."
+    )
+    self._render_selected_run()
 
 
 def _expand_all_results(self: Any) -> None:
@@ -306,7 +373,7 @@ def _refresh_results_view(self: Any) -> None:
     summary = summaries[0]
     record = load_run(summary.run_id)
     if record is None:
-        self._write_output("That run could not be loaded.")
+        self._report_error("Could not load run", "That run could not be loaded.")
         return
     self._selected_run_record = record
     self._render_selected_run()
@@ -322,6 +389,8 @@ if TYPE_CHECKING:
         def _render_selected_run(self) -> None: ...
         def _expand_all_results(self) -> None: ...
         def _collapse_all_results(self) -> None: ...
+        def _results_show_empty_analyzers(self) -> bool: ...
+        def _toggle_results_show_empty_analyzers(self) -> None: ...
         def _refresh_results_view(self) -> None: ...
 else:
 
@@ -335,4 +404,6 @@ else:
         _render_selected_run = _render_selected_run
         _expand_all_results = _expand_all_results
         _collapse_all_results = _collapse_all_results
+        _results_show_empty_analyzers = _results_show_empty_analyzers
+        _toggle_results_show_empty_analyzers = _toggle_results_show_empty_analyzers
         _refresh_results_view = _refresh_results_view

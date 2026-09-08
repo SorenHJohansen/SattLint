@@ -30,6 +30,7 @@ from ...reporting.variables_report import (
 from ...resolution import CanonicalSymbolTable, TypeGraph
 from ...resolution.context_builder import ContextBuilder
 from ...resolution.scope import ScopeContext
+from ...utils.casefolding import casefold_key
 from ..framework import (
     AnalysisContext,
     AnalysisSharedArtifacts,
@@ -62,9 +63,9 @@ __all__ = ["ScopeContext", "VariablesAnalyzer", "analyze_variables", "filter_var
 def _collect_module_vars_for_artifacts(module: object, any_var_index: dict[str, list[Variable]]) -> None:
     if isinstance(module, SingleModule):
         for variable in module.moduleparameters or []:
-            any_var_index.setdefault(variable.name.lower(), []).append(variable)
+            any_var_index.setdefault(casefold_key(variable.name), []).append(variable)
         for variable in module.localvariables or []:
-            any_var_index.setdefault(variable.name.lower(), []).append(variable)
+            any_var_index.setdefault(casefold_key(variable.name), []).append(variable)
         for child in module.submodules or []:
             _collect_module_vars_for_artifacts(child, any_var_index)
         return
@@ -85,7 +86,7 @@ def _build_variable_analysis_artifacts(base_picture: BasePicture) -> VariableAna
         dependency_library_display_names[root_origin_lib.casefold()] = root_origin_lib
 
     for moduletype in base_picture.moduletype_defs or []:
-        typedef_index.setdefault(moduletype.name.lower(), []).append(moduletype)
+        typedef_index.setdefault(casefold_key(moduletype.name), []).append(moduletype)
         if moduletype.origin_lib:
             dependency_library_display_names.setdefault(moduletype.origin_lib.casefold(), moduletype.origin_lib)
 
@@ -94,17 +95,17 @@ def _build_variable_analysis_artifacts(base_picture: BasePicture) -> VariableAna
         if origin_lib:
             dependency_library_display_names.setdefault(origin_lib.casefold(), origin_lib)
 
-    root_env = {variable.name.lower(): variable for variable in (base_picture.localvariables or [])}
+    root_env = {casefold_key(variable.name): variable for variable in (base_picture.localvariables or [])}
     any_var_index: dict[str, list[Variable]] = {}
     for variable in base_picture.localvariables or []:
-        any_var_index.setdefault(variable.name.lower(), []).append(variable)
+        any_var_index.setdefault(casefold_key(variable.name), []).append(variable)
     for module in base_picture.submodules or []:
         _collect_module_vars_for_artifacts(module, any_var_index)
     for moduletype in base_picture.moduletype_defs or []:
         for variable in moduletype.moduleparameters or []:
-            any_var_index.setdefault(variable.name.lower(), []).append(variable)
+            any_var_index.setdefault(casefold_key(variable.name), []).append(variable)
         for variable in moduletype.localvariables or []:
-            any_var_index.setdefault(variable.name.lower(), []).append(variable)
+            any_var_index.setdefault(casefold_key(variable.name), []).append(variable)
 
     return VariableAnalysisArtifacts(
         type_graph=TypeGraph.from_basepicture(base_picture),
@@ -282,6 +283,7 @@ class VariablesAnalyzer(
         self._record_component_order_datatypes_seen: set[str] = set()
         self.usage_tracker = UsageTracker()
         self._site_stack: list[str] = []
+        self._current_stmt_text: str = ""
         self._is_contract_session = False
         self._contract_summary_provider = None
         self._cyclic_owner_ids: frozenset[int] | None = None

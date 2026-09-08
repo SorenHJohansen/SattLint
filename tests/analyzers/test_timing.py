@@ -17,12 +17,12 @@ def _state_ref(name: str, state: str) -> VarRef:
     return VarRef(name=name, state=state)
 
 
-def test_timing_analyzer_is_registered_and_in_default_cli_subset() -> None:
+def test_timing_analyzer_is_registered_and_opt_in() -> None:
     specs = {spec.key: spec for spec in get_default_analyzers()}
 
     assert "timing" in specs
     assert specs["timing"].enabled is True
-    assert "timing" in get_actual_cli_analyzer_keys()
+    assert "timing" not in get_actual_cli_analyzer_keys()
 
 
 def test_timing_reports_same_scan_temporal_hazards() -> None:

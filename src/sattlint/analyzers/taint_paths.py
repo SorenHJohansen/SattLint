@@ -137,6 +137,8 @@ class TaintPathAnalyzer:
                         "sink_canonical_path": trace.sink_canonical_path,
                         "path": list(trace.path),
                         "module_paths": [list(path) for path in trace.module_paths],
+                        "site": ".".join(sink_module_path),
+                        "context": f"{trace.source_canonical_path} -> {trace.sink_canonical_path}",
                     },
                 )
             )

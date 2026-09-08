@@ -143,7 +143,9 @@ class ScanLoopResourceUsageAnalyzer:
                     module_path=module_path.copy(),
                     data={
                         "call": signature.name,
-                        "context": context,
+                        "scope": context,
+                        "site": context,
+                        "context": f"{signature.name}(...)",
                         "precision_scangroup": signature.precision_scangroup,
                     },
                 )
@@ -225,7 +227,9 @@ class ScanLoopResourceUsageAnalyzer:
                             module_path=module_path.copy(),
                             data={
                                 "call": signature.name,
-                                "context": context,
+                                "scope": context,
+                                "site": context,
+                                "context": f"{signature.name}(...)",
                                 "precision_scangroup": signature.precision_scangroup,
                             },
                         )

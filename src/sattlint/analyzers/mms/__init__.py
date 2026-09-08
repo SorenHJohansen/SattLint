@@ -97,6 +97,10 @@ def _emit_duplicate_tag_issues(
                     "tag": display_tag,
                     "count": len(group),
                     "locations": locations,
+                    "site": ".".join(group[0].module_path) if group[0].module_path else None,
+                    "context": f"{group[0].source_variable} => {display_tag}"
+                    if group[0].source_variable
+                    else display_tag,
                 },
             )
         )
@@ -134,6 +138,10 @@ def _emit_datatype_mismatch_issues(
                     "source_kind": source_kind,
                     "tag": display_tag,
                     "datatypes": datatypes,
+                    "site": ".".join(group[0].module_path) if group[0].module_path else None,
+                    "context": f"{group[0].source_variable} => {display_tag} ({', '.join(datatypes)})"
+                    if group[0].source_variable
+                    else f"{display_tag} ({', '.join(datatypes)})",
                 },
             )
         )
@@ -168,6 +176,8 @@ def _emit_naming_drift_issues(
                     "source_kind": source_kind,
                     "family": family_key,
                     "spellings": spellings,
+                    "site": ".".join(group[0].module_path) if group[0].module_path else None,
+                    "context": ", ".join(spellings),
                 },
             )
         )
@@ -201,6 +211,8 @@ def _emit_dead_tag_issues(
                     "tag": entry.external_tag,
                     "source_variable": entry.source_variable,
                     "datatype": entry.source_datatype,
+                    "site": ".".join(entry.module_path) if entry.module_path else None,
+                    "context": f"{entry.source_variable} => {entry.external_tag}",
                 },
             )
         )

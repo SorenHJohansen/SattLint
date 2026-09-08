@@ -330,6 +330,8 @@ def _collect_transition_logic_issues(
                     "transition_name": transition_name,
                     "condition": condition_text,
                     "normalized_guard": repr(signature),
+                    "site": f"SQ:{sequence_name} > TRANS:{transition_name}",
+                    "context": condition_text,
                 }
                 if constant_truth is True:
                     issues.append(
@@ -395,6 +397,8 @@ def _collect_transition_logic_issues(
                         "transition_names": transition_names,
                         "conditions": [item["condition"] for item in duplicates],
                         "normalized_guard": duplicates[0]["normalized_guard"],
+                        "site": f"SQ:{sequence_name}{_format_branch_path(branch_path)}",
+                        "context": " OR ".join(item["condition"] for item in duplicates),
                     },
                 )
             )

@@ -34,11 +34,12 @@ from tempfile import TemporaryDirectory
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
+from sattlint._app_analysis_checks import collect_run_checks_result  # noqa: E402
+
 from sattlint import (  # noqa: E402
     app,
     app_analysis,
 )
-from sattlint._app_analysis_checks import collect_run_checks_result  # noqa: E402
 from sattlint.analyzers.variables._variables_execution import (  # noqa: E402
     count_process_root_traversals,
 )

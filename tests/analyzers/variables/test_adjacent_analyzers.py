@@ -526,7 +526,13 @@ def test_cyclomatic_complexity_flags_high_complexity_program_modulecode():
 
     issues = [issue for issue in report.issues if issue.kind == "module.cyclomatic_complexity"]
     assert len(issues) == 1
-    assert issues[0].data == {"scope": "program", "complexity": 11, "threshold": 10}
+    assert issues[0].data == {
+        "scope": "program",
+        "complexity": 11,
+        "threshold": 10,
+        "site": ".".join(issues[0].module_path or []),
+        "context": "complexity 11 > 10",
+    }
     assert "Program" in issues[0].message
 
 
@@ -581,6 +587,8 @@ def test_cyclomatic_complexity_flags_high_complexity_sfc_step():
         "step": "HeatUp",
         "complexity": 7,
         "threshold": 6,
+        "site": "SQ:MainSeq > STEP:HeatUp",
+        "context": "complexity 7 > 6",
     }
     assert "HeatUp" in issues[0].message
     assert "MainSeq" in issues[0].message
@@ -619,7 +627,9 @@ def test_scan_loop_resource_usage_flags_non_precision_builtin_in_equation_block(
     assert len(issues) == 1
     assert issues[0].data == {
         "call": "assignsystemstring",
-        "context": "equation block 'MainEq'",
+        "scope": "equation block 'MainEq'",
+        "site": "equation block 'MainEq'",
+        "context": "assignsystemstring(...)",
         "precision_scangroup": False,
     }
     assert "AssignSystemString" in issues[0].message
@@ -667,7 +677,9 @@ def test_scan_loop_resource_usage_flags_non_precision_builtin_in_active_step_cod
     assert len(issues) == 1
     assert issues[0].data == {
         "call": "assignsystemstring",
-        "context": "active code of step 'Poll' in sequence 'MainSeq'",
+        "scope": "active code of step 'Poll' in sequence 'MainSeq'",
+        "site": "active code of step 'Poll' in sequence 'MainSeq'",
+        "context": "assignsystemstring(...)",
         "precision_scangroup": False,
     }
     assert "Poll" in issues[0].message

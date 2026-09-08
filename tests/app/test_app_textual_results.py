@@ -18,6 +18,7 @@ def _settings_app(cfg: object) -> SimpleNamespace:
         _active_view="settings",
     )
     app_instance._write_output = lambda text: seen_messages.append(str(text))
+    app_instance._report_error = lambda title, message: seen_messages.append(str(message))
     app_instance._mark_settings_changed = lambda message: seen_messages.append(str(message))
     app_instance._refresh_summary = lambda: None
     app_instance._refresh_view = lambda: None
@@ -171,7 +172,7 @@ def test_results_tree_groups_findings_by_kind() -> None:
     assert tree is not None
     analyzer_node = next(iter(tree.root.children[0].children))
     kind_nodes = list(analyzer_node.children)
-    assert [node.label.plain for node in kind_nodes] == ["unused (2)", "shadowed (1)"]
+    assert [node.label.plain for node in kind_nodes] == ["Unused variable (2)", "Shadowed (1)"]
 
     unused_kind, shadowed_kind = kind_nodes
     unused_root = next(iter(unused_kind.children))
@@ -233,7 +234,7 @@ def test_results_tree_collapses_identical_findings_to_one_path() -> None:
     assert tree is not None
     analyzer_node = next(iter(tree.root.children[0].children))
     kind_node = next(iter(analyzer_node.children))
-    assert kind_node.label.plain == "typedef (3)"
+    assert kind_node.label.plain == "Typedef (3)"
     root_branch = next(iter(kind_node.children))
     assert root_branch.data == "RootProgram"
     a_branch = next(iter(root_branch.children))
@@ -243,6 +244,180 @@ def test_results_tree_collapses_identical_findings_to_one_path() -> None:
     leaf = next(iter(pump_nodes[0].children))
     assert leaf.data.kind == "typedef"
     assert "3 occurrences" in leaf.label.plain
+
+
+def test_results_tree_renders_site_node_and_context_leaf() -> None:
+    record = RunRecord(
+        run_id="r1",
+        started_at="s",
+        finished_at="f",
+        project_tag="RootProgram",
+        targets=(
+            RunTargetRecord(
+                target_name="RootProgram",
+                is_library=False,
+                analyzers=(
+                    RunAnalyzerRecord(
+                        key="variables",
+                        name="Variable issues",
+                        status="completed",
+                        findings=(
+                            AnalysisFinding(
+                                kind="contract_mismatch",
+                                message="[RootProgram.Child] parameter mapping type mismatch",
+                                module_path=("RootProgram", "Child"),
+                                data={"site": "Child : ChildType", "context": "TargetVal => SourceVal"},
+                                severity="error",
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    tree = app_textual_results_module._build_run_tree(record)
+
+    assert tree is not None
+    analyzer_node = next(iter(tree.root.children[0].children))
+    kind_node = next(iter(analyzer_node.children))
+    root_branch = next(iter(kind_node.children))
+    module_node = next(iter(root_branch.children))
+    site_node = next(iter(module_node.children))
+    assert site_node.label.plain == "Child : ChildType"
+    leaf = next(iter(site_node.children))
+    assert leaf.data.kind == "contract_mismatch"
+    assert "TargetVal => SourceVal" in leaf.label.plain
+    assert "[RootProgram.Child]" not in leaf.label.plain
+    assert any(child.label.plain == "Context: TargetVal => SourceVal" for child in leaf.children)
+
+
+def test_results_tree_adds_why_and_fix_leafs_when_present() -> None:
+    record = RunRecord(
+        run_id="r1",
+        started_at="s",
+        finished_at="f",
+        project_tag="RootProgram",
+        targets=(
+            RunTargetRecord(
+                target_name="RootProgram",
+                is_library=False,
+                analyzers=(
+                    RunAnalyzerRecord(
+                        key="variables",
+                        name="Variable issues",
+                        status="completed",
+                        findings=(
+                            AnalysisFinding(
+                                kind="unused",
+                                message="declared but never read",
+                                module_path=("RootProgram",),
+                                data={"context": "Spare"},
+                                explanation="Stale declarations add noise.",
+                                suggestion="Delete the declaration.",
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    tree = app_textual_results_module._build_run_tree(record)
+
+    assert tree is not None
+    analyzer_node = next(iter(tree.root.children[0].children))
+    kind_node = next(iter(analyzer_node.children))
+    root_branch = next(iter(kind_node.children))
+    finding_node = next(iter(root_branch.children))
+    assert finding_node.data.kind == "unused"
+    labels = {child.label.plain for child in finding_node.children}
+    assert "Context: Spare" in labels
+    assert "Why: Stale declarations add noise." in labels
+    assert "Fix: Delete the declaration." in labels
+
+
+def test_results_tree_merges_identical_site_nodes_for_separate_findings() -> None:
+    record = RunRecord(
+        run_id="r1",
+        started_at="s",
+        finished_at="f",
+        project_tag="RootProgram",
+        targets=(
+            RunTargetRecord(
+                target_name="RootProgram",
+                is_library=False,
+                analyzers=(
+                    RunAnalyzerRecord(
+                        key="variables",
+                        name="Variable issues",
+                        status="completed",
+                        findings=(
+                            AnalysisFinding(
+                                kind="magic_number",
+                                message="[RootProgram.LoopLogic] magic number 1",
+                                module_path=("RootProgram", "LoopLogic"),
+                                data={"site": "EQ:Control", "context": "Output = 1"},
+                            ),
+                            AnalysisFinding(
+                                kind="magic_number",
+                                message="[RootProgram.LoopLogic] magic number 2",
+                                module_path=("RootProgram", "LoopLogic"),
+                                data={"site": "EQ:Control", "context": "Output = 2"},
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    tree = app_textual_results_module._build_run_tree(record)
+
+    assert tree is not None
+    analyzer_node = next(iter(tree.root.children[0].children))
+    kind_node = next(iter(analyzer_node.children))
+    root_branch = next(iter(kind_node.children))
+    module_node = next(iter(root_branch.children))
+    assert module_node.label.plain == "LoopLogic"
+    site_nodes = list(module_node.children)
+    assert len(site_nodes) == 1
+    assert site_nodes[0].label.plain == "EQ:Control"
+    assert len(list(site_nodes[0].children)) == 2
+
+
+def test_results_tree_hides_empty_analyzers_by_default() -> None:
+    record = RunRecord(
+        run_id="r1",
+        started_at="s",
+        finished_at="f",
+        project_tag="RootProgram",
+        targets=(
+            RunTargetRecord(
+                target_name="RootProgram",
+                is_library=False,
+                analyzers=(
+                    RunAnalyzerRecord(
+                        key="variables",
+                        name="Variable issues",
+                        status="completed",
+                        findings=(AnalysisFinding(kind="unused", message="m", module_path=("RootProgram",)),),
+                    ),
+                    RunAnalyzerRecord(key="sfc", name="SFC checks", status="completed", findings=()),
+                ),
+            ),
+        ),
+    )
+
+    hidden = app_textual_results_module._build_run_tree(record)
+    assert hidden is not None
+    target_node = hidden.root.children[0]
+    assert [child.data.key for child in target_node.children] == ["variables"]
+
+    shown = app_textual_results_module._build_run_tree(record, show_empty_analyzers=True)
+    assert shown is not None
+    target_node = shown.root.children[0]
+    assert [child.data.key for child in target_node.children] == ["variables", "sfc"]
 
 
 def test_results_tree_returns_none_without_textual() -> None:

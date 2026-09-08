@@ -63,7 +63,7 @@ def test_sequence_nodes_after_fork_are_reported_unreachable_with_target_metadata
         "node_index": 1,
         "node_label": "SFCStep:AfterFork",
         "terminated_by": {"kind": "SFCFork", "targets": ["Done"]},
-        "site": "SEQ:SeqMain",
+        "site": "SQ:SeqMain",
     }
 
 
@@ -105,7 +105,7 @@ def test_break_inside_nested_sequence_nodes_marks_inner_followups_unreachable():
         "node_index": 1,
         "node_label": "SFCStep:AfterBreakInSubsequence",
         "terminated_by": {"kind": "SFCBreak"},
-        "site": "SEQ:SeqMain > SUBSEQ:Prepare",
+        "site": "SQ:SeqMain > SUBSEQ:Prepare",
     }
     assert unreachable[1].data == {
         "sequence": "SeqMain",
@@ -113,5 +113,5 @@ def test_break_inside_nested_sequence_nodes_marks_inner_followups_unreachable():
         "node_index": 1,
         "node_label": "SFCStep:AfterBreakInTransitionSub",
         "terminated_by": {"kind": "SFCBreak"},
-        "site": "SEQ:SeqMain > TRANS-SUB:Gate",
+        "site": "SQ:SeqMain > TRANS-SUB:Gate",
     }

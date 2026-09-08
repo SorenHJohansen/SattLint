@@ -703,12 +703,14 @@ all features relying on parser behavior.
 
 #### Phase 23 — Coverage non-regression
 
-> **Phase 23 ⏸ DEFERRED.** A `test_coverage_non_regression.py` measuring
-> core-module coverage floors was drafted but requires running the full
-> analyzer suite recursively (heavy + slow). Revisit later with a lighter
-> approach (e.g., coverage measurement via a single combined run and a
-> precomputed baseline, or `--cov` in CI rather than a recursive pytest).
-> No coverage threshold is currently enforced.
+> **Phase 23 ⏸ DEFERRED — SUPERSEDED by `enforcement-gaps.md` Phase 4.** An
+> aggregate coverage floor (`--cov-fail-under=80`) is now enforced in `ci.yml`
+> (single combined run, the "lighter approach" noted below). The floor only
+> ratchets up; it is never lowered. Optional per-module floors for the vital
+> core (`core/`, `project/`, `analyzers/`) remain a later ratchet step.
+> A `test_coverage_non_regression.py` measuring core-module coverage floors was
+> drafted but requires running the full analyzer suite recursively (heavy + slow);
+> the CI `--cov` floor supersedes it.
 
 Keep coverage as a signal, not a vanity number. After the baseline is
 established: prevent decrease, ensure core/project/analyzer execution paths are
