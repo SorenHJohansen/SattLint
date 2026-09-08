@@ -23,9 +23,10 @@ from sattlint.analysis_dispatch import (  # noqa: E402
     run_registry_analyzer,
     run_variables_registry_report,
 )
-from sattlint.analyzers.framework import build_analysis_context  # noqa: E402
 from sattlint.app_analysis import iter_loaded_projects  # noqa: E402
 from sattlint.config_types import ConfigDict  # noqa: E402
+
+from sattlint.analyzers.framework import build_analysis_context  # noqa: E402
 from sattlint.project import load_project  # noqa: E402
 
 

@@ -23,7 +23,7 @@ from ...resolution.common import resolve_moduletype_def_strict, varname_base, va
 from ...resolution.paths import path_startswith_casefold
 from ...resolution.scope import ScopeContext
 from ...types import VariableId
-from ...utils.casefolding import is_anytype_name
+from ...utils.casefolding import casefold_key, is_anytype_name
 from ..shared.variable_utils import external_mapping_usage, mapping_target_name
 
 if TYPE_CHECKING:
@@ -104,15 +104,19 @@ def _walk_singlemodule_subtree(
     self.walk_module_code(child.modulecode, child_context, child_path)
     _walk_submodules(self, child.submodules or [], child_context, child_path)
 
-    used_reads = {variable.name.lower() for variable in (child.moduleparameters or []) if self.get_usage(variable).read}
+    used_reads = {
+        casefold_key(variable.name) for variable in (child.moduleparameters or []) if self.get_usage(variable).read
+    }
     used_ui_reads = {
-        variable.name.lower() for variable in (child.moduleparameters or []) if self.get_usage(variable).ui_read
+        casefold_key(variable.name) for variable in (child.moduleparameters or []) if self.get_usage(variable).ui_read
     }
     used_non_ui_reads = {
-        variable.name.lower() for variable in (child.moduleparameters or []) if self.get_usage(variable).non_ui_read
+        casefold_key(variable.name)
+        for variable in (child.moduleparameters or [])
+        if self.get_usage(variable).non_ui_read
     }
     used_writes = {
-        variable.name.lower() for variable in (child.moduleparameters or []) if self.get_usage(variable).written
+        casefold_key(variable.name) for variable in (child.moduleparameters or []) if self.get_usage(variable).written
     }
 
     for mapping in child.parametermappings or []:
@@ -234,7 +238,7 @@ def _walk_moduletype_instance_subtree(  # noqa: PLR0915
             external = True
 
     if moduletype:
-        mt_key = child.moduletype_name.lower()
+        mt_key = casefold_key(child.moduletype_name)
         typedef_context = self.context_builder.build_for_typedef(
             moduletype,
             child,
@@ -462,7 +466,7 @@ def _detect_datatype_duplications(self: VariablesAnalyzer) -> None:
 
     by_datatype: dict[tuple[tuple[str, ...], str], list[tuple[Any, list[str], str]]] = {}
     for variable, path, role in complex_vars:
-        datatype_key = variable.datatype_text.lower()
+        datatype_key = casefold_key(variable.datatype_text)
         scope_key = tuple(segment.casefold() for segment in path)
         by_datatype.setdefault((scope_key, datatype_key), []).append((variable, path, role))
 

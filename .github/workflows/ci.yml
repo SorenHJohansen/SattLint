@@ -40,11 +40,11 @@ jobs:
       - name: Ruff format check
         run: python -m ruff format --check .
 
-      - name: Pyright on production code
-        run: python -m pyright src/sattlint
+      - name: Pyright on production code and tests
+        run: python -m pyright src/sattlint tests
 
       - name: Full pytest with coverage
-        run: python -m pytest -q --tb=short --cov=sattlint --cov-report=term-missing
+        run: python -m pytest -q --tb=short --cov=sattlint --cov-report=term-missing --cov-fail-under=80
 
       - name: Analyzer counter regression guardrail
         run: python scripts/benchmark_analyzer_counters.py --target MinimalProgram

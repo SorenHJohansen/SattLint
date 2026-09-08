@@ -353,6 +353,8 @@ def _collect_illegal_state_combination_issues(
                     data={
                         "sequence": sequence.name,
                         "conflicts": [list(combo) for combo in conflicts],
+                        "site": f"SQ:{sequence.name}",
+                        "context": preview,
                     },
                 )
             )
@@ -472,6 +474,8 @@ def analyze_sfc(
                         "sequence": seq_name,
                         "parallel_id": meta.parallel_id if meta else None,
                         "conflicts": conflict_list,
+                        "site": f"SQ:{seq_name} > PAR:BLOCK:{meta.parallel_id}" if meta else f"SQ:{seq_name}",
+                        "context": preview,
                     },
                 )
             )
@@ -487,6 +491,8 @@ def analyze_sfc(
                 "node_label": finding.node_label,
                 "node_type": finding.node_type,
                 "terminated_by": dict(finding.terminated_by),
+                "site": f"SQ:{finding.sequence_name}{branch_context}",
+                "context": finding.node_label,
             }
             if finding.node_type in {"SFCTransition", "SFCTransitionSub"}:
                 issues.append(

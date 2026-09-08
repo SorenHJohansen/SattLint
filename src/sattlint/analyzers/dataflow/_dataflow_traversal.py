@@ -159,7 +159,7 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
 
         current_state = state
         for sequence in modulecode.sequences or []:
-            self._push_site(f"SEQ:{getattr(sequence, 'name', '<unnamed>')}")
+            self._push_site(f"SQ:{getattr(sequence, 'name', '<unnamed>')}")
             try:
                 current_state = self._walk_sequence(sequence, context, module_path, current_state)
             finally:

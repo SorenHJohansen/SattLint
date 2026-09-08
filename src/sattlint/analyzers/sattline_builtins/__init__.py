@@ -37,9 +37,9 @@ __all__ = [
 
 def is_builtin_function(name: str) -> bool:
     """Check if a function name is a built-in."""
-    return name.lower() in SATTLINE_BUILTINS
+    return name.casefold() in SATTLINE_BUILTINS
 
 
 def get_function_signature(name: str) -> BuiltinFunction | None:
     """Get function signature for validation."""
-    return SATTLINE_BUILTINS.get(name.lower())
+    return SATTLINE_BUILTINS.get(name.casefold())

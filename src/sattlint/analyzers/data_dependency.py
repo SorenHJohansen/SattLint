@@ -96,6 +96,7 @@ class DataDependencyAnalyzer:
                     "site": site,
                     "target": path[0],
                     "source": path[-1],
+                    "context": " -> ".join(path),
                 },
             )
         )
@@ -127,6 +128,7 @@ class DataDependencyAnalyzer:
                     "target": write.display_name,
                     "source": read.display_name,
                     "site": fact.site,
+                    "context": f"{write.display_name} = ...{read.display_name}",
                 },
             )
         )

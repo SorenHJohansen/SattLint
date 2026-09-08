@@ -122,7 +122,7 @@ def _walk_modules(
     stats: _ModuleSearchStats | None = None,
 ) -> None:
     """Recursively find all SingleModule instances with the target name (case-insensitive)."""
-    target_name_lower = target_name.lower()
+    target_name_lower = target_name.casefold()
     if stats is not None:
         stats.visited_nodes += 1
 
@@ -130,7 +130,7 @@ def _walk_modules(
         if stats is not None:
             stats.single_modules += 1
         node_name = node.header.name
-        node_name_lower = node_name.lower()
+        node_name_lower = node_name.casefold()
 
         path_with_current = [*current_path, node_name]
 
@@ -430,6 +430,8 @@ def analyze_version_drift(
                     "material_differences": differences,
                     "upgrade_notes": build_upgrade_notes(differences),
                     "location_preview": location_preview,
+                    "site": " -> ".join(instance_paths[0]) if instance_paths else base_picture.header.name,
+                    "context": f"{comparison.module_name} ({label_text})",
                 },
             )
         )

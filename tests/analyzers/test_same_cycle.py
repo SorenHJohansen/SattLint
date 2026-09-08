@@ -97,6 +97,8 @@ def test_same_cycle_reports_parallel_read_write_hazard() -> None:
         "sequence": "SeqMain",
         "parallel_id": 1,
         "conflicts": ["Root.SharedValue"],
+        "site": "SQ:SeqMain > PAR:BLOCK:1",
+        "context": "Root.SharedValue",
     }
 
 
@@ -231,6 +233,8 @@ def test_same_cycle_reports_non_state_multi_site_hazard_across_equations() -> No
                 "evidence_sites": ["EQ:WriteEq"],
             },
         ],
+        "site": "Root:EQ:ReadEq",
+        "context": "Root.SharedValue",
     }
 
 

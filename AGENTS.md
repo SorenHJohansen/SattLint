@@ -86,6 +86,7 @@ Only `trash-put` is an allowed alternative — and only because it is explicitly
 - Do not preserve temporary compatibility seams unless the phase plan still requires them.
 - Do not keep parallel AI workflow docs with independent rules.
 - Do not skip focused validation when a narrower executable check exists.
+- Do not invoke `rg`, `grep`, or `find` for Python source discovery until you have first attempted Semble.
 - Never use `git commit --no-verify` or `git push --no-verify`.
 
 ## Bulk Edit Prohibition

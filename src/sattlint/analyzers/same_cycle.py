@@ -410,7 +410,7 @@ class SameCycleAnalyzer(VariablesAnalyzer):
         with temp_analyzer.divert_issue_collection():
             temp_analyzer.analyze_typedef_with_context(moduletype, temp_context, context_path)
 
-        mt_key = moduletype.name.lower()
+        mt_key = moduletype.name.casefold()
         usage = (
             frozenset(name.casefold() for name in temp_analyzer.param_reads_by_typedef.get(mt_key, set())),
             frozenset(name.casefold() for name in temp_analyzer.param_writes_by_typedef.get(mt_key, set())),
@@ -475,7 +475,7 @@ class SameCycleAnalyzer(VariablesAnalyzer):
             return
 
         for sequence in modulecode.sequences or []:
-            label = f"SEQ:{getattr(sequence, 'name', '<unnamed>')}"
+            label = f"SQ:{getattr(sequence, 'name', '<unnamed>')}"
             self._push_site(label)
             try:
                 self._walk_sequence(sequence, context, path)
@@ -636,24 +636,6 @@ class SameCycleAnalyzer(VariablesAnalyzer):
             module_path = meta.module_path if meta is not None else list(parallel_key[0])
             parallel_id = meta.parallel_id if meta is not None else None
 
-            if write_conflicts and self._should_collect_issue_kind(_SAME_CYCLE_PARALLEL_WRITE_KIND):
-                conflict_list = sorted(str(path) for path in write_conflicts.values())
-                preview = self._preview_list(conflict_list)
-                self._report_issues.append(
-                    Issue(
-                        kind=_SAME_CYCLE_PARALLEL_WRITE_KIND,
-                        message=(
-                            f"Parallel branches in sequence {sequence_name!r} write to the same variable(s): {preview}"
-                        ),
-                        module_path=module_path,
-                        data={
-                            "sequence": sequence_name,
-                            "parallel_id": parallel_id,
-                            "conflicts": conflict_list,
-                        },
-                    )
-                )
-
             if read_write_conflicts and self._should_collect_issue_kind(_SAME_CYCLE_PARALLEL_READ_WRITE_KIND):
                 conflict_list = sorted(str(path) for path in read_write_conflicts.values())
                 preview = self._preview_list(conflict_list)
@@ -668,6 +650,8 @@ class SameCycleAnalyzer(VariablesAnalyzer):
                             "sequence": sequence_name,
                             "parallel_id": parallel_id,
                             "conflicts": conflict_list,
+                            "site": f"SQ:{sequence_name} > PAR:BLOCK:{parallel_id}",
+                            "context": preview,
                         },
                     )
                 )
@@ -740,6 +724,15 @@ class SameCycleAnalyzer(VariablesAnalyzer):
                             }
                             for module_path in sorted(actions, key=self._module_path_sort_key)
                         ],
+                        "site": next(
+                            (
+                                site
+                                for module_path in sorted(actions, key=self._module_path_sort_key)
+                                for site in sorted(site for site in sites[module_path] if site)
+                            ),
+                            None,
+                        ),
+                        "context": str(representative),
                     },
                 )
             )
@@ -826,6 +819,8 @@ class SameCycleAnalyzer(VariablesAnalyzer):
                             for site_key in ordered_site_keys
                             for module_path, site_label in [site_key]
                         ],
+                        "site": ":".join([*ordered_site_keys[0][0], ordered_site_keys[0][1]]),
+                        "context": str(representative),
                     },
                 )
             )

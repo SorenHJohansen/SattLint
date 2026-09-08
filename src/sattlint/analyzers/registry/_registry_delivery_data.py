@@ -85,6 +85,13 @@ def default_delivery_templates(
             min_fixture_set=shared_fixtures,
         ),
         AnalyzerDeliveryTemplate(
+            key="icf",
+            scope="workspace",
+            implementation_bucket="icf-validation",
+            cli_exposed=True,
+            acceptance_tests=("tests/analyzers/test_icf_analyzer.py", *_APP_ACCEPTANCE_TESTS),
+        ),
+        AnalyzerDeliveryTemplate(
             key="sfc",
             scope="single-file",
             implementation_bucket="shared-semantic-core",
@@ -151,10 +158,9 @@ def default_delivery_templates(
             key="powerup",
             scope="workspace",
             implementation_bucket="engineering-rules",
-            cli_exposed=True,
             acceptance_tests=("tests/analyzers/test_powerup.py",),
             min_fixture_set=shared_fixtures,
-            exposed_via=("cli", "pipeline"),
+            exposed_via=("pipeline",),
         ),
         AnalyzerDeliveryTemplate(
             key="naming-consistency",
@@ -282,10 +288,9 @@ def default_delivery_templates(
             key="timing",
             scope="single-file",
             implementation_bucket="shared-semantic-core",
-            cli_exposed=True,
             acceptance_tests=("tests/analyzers/test_timing.py",),
             min_fixture_set=shared_fixtures,
-            exposed_via=("cli", "pipeline"),
+            exposed_via=("pipeline",),
         ),
         AnalyzerDeliveryTemplate(
             key="version-drift",
@@ -350,7 +355,7 @@ def default_delivery_templates(
             acceptance_tests=("tests/test_cli.py",),
             depends_on_analyzers=(semantic_layer_analyzer_key, "dataflow"),
             min_fixture_set=shared_fixtures,
-            exposed_via=("cli",),
+            exposed_via=("pipeline",),
         ),
     )
 

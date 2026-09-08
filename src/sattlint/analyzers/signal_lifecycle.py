@@ -116,7 +116,12 @@ class SignalLifecycleAnalyzer:
                         f"{', '.join(sorted(read_before_write[key]))}."
                     ),
                     module_path=list(module_path),
-                    data={"signal": variable.name, "sites": sorted(read_before_write[key])},
+                    data={
+                        "signal": variable.name,
+                        "sites": sorted(read_before_write[key]),
+                        "site": sorted(read_before_write[key])[0],
+                        "context": variable.name,
+                    },
                 )
             )
 
@@ -131,7 +136,12 @@ class SignalLifecycleAnalyzer:
                         f"writes appear in {', '.join(sorted(write_sites[key]))}."
                     ),
                     module_path=list(module_path),
-                    data={"signal": variable.name, "sites": sorted(write_sites[key])},
+                    data={
+                        "signal": variable.name,
+                        "sites": sorted(write_sites[key]),
+                        "site": sorted(write_sites[key])[0],
+                        "context": variable.name,
+                    },
                 )
             )
 

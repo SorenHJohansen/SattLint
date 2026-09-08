@@ -110,6 +110,7 @@ class SpecComplianceAnalyzer:
                 kind="spec.basepicture_direct_code",
                 message="BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
                 module_path=module_path.copy(),
+                data={"site": ".".join(module_path), "context": "basepicture direct code"},
             )
         )
 
@@ -203,7 +204,12 @@ class SpecComplianceAnalyzer:
                             f"Sequence step {node.name!r} must start with 'ST_' according to the engineering spec."
                         ),
                         module_path=module_path.copy(),
-                        data={"sequence": sequence.name, "step": node.name},
+                        data={
+                            "sequence": sequence.name,
+                            "step": node.name,
+                            "site": f"SQ:{sequence.name} > STEP:{node.name}",
+                            "context": node.name,
+                        },
                     )
                 )
             if isinstance(node, SFCTransition):
@@ -215,7 +221,7 @@ class SpecComplianceAnalyzer:
                                 f"A transition in sequence {sequence.name!r} is missing a name. All transitions must be named."
                             ),
                             module_path=module_path.copy(),
-                            data={"sequence": sequence.name},
+                            data={"sequence": sequence.name, "site": f"SQ:{sequence.name}"},
                         )
                     )
                     continue
@@ -227,7 +233,12 @@ class SpecComplianceAnalyzer:
                                 f"Transition {node.name!r} must start with 'TR_' according to the engineering spec."
                             ),
                             module_path=module_path.copy(),
-                            data={"sequence": sequence.name, "transition": node.name},
+                            data={
+                                "sequence": sequence.name,
+                                "transition": node.name,
+                                "site": f"SQ:{sequence.name} > TRANS:{node.name}",
+                                "context": node.name,
+                            },
                         )
                     )
 
@@ -260,7 +271,12 @@ class SpecComplianceAnalyzer:
                             f"Resolved value from {use_signature.source}."
                         ),
                         module_path=module_path.copy(),
-                        data={"instance": inst.header.name, "moduletype": inst.moduletype_name},
+                        data={
+                            "instance": inst.header.name,
+                            "moduletype": inst.moduletype_name,
+                            "site": ".".join(module_path),
+                            "context": f"UseSignature = True ({use_signature.source})",
+                        },
                     )
                 )
 
@@ -273,7 +289,7 @@ class SpecComplianceAnalyzer:
                     kind="spec.mes_batch_control_name",
                     message=("NNEMESIFLib:MES_BatchControl instance name must be exactly 'MES_BatchControl'."),
                     module_path=module_path.copy(),
-                    data={"instance": inst.header.name},
+                    data={"instance": inst.header.name, "site": ".".join(module_path), "context": inst.header.name},
                 )
             )
 
@@ -324,6 +340,8 @@ class SpecComplianceAnalyzer:
                         "expected": expected_value,
                         "actual": parameter_value.value,
                         "status": parameter_value.status,
+                        "site": ".".join(module_path),
+                        "context": f"{inst.moduletype_name}.{parameter_name} = {parameter_value.value!r}",
                     },
                 )
             )
@@ -342,6 +360,8 @@ class SpecComplianceAnalyzer:
                         "parameter": parameter_name,
                         "expected": expected_value,
                         "status": parameter_value.status,
+                        "site": ".".join(module_path),
+                        "context": f"{inst.moduletype_name}.{parameter_name} not configured",
                     },
                 )
             )
@@ -368,6 +388,8 @@ class SpecComplianceAnalyzer:
                     "parameter": parameter_name,
                     "expected": expected_value,
                     "status": parameter_value.status,
+                    "site": ".".join(module_path),
+                    "context": f"{inst.moduletype_name}.{parameter_name} unresolved",
                 },
             )
         )

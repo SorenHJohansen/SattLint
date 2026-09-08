@@ -53,15 +53,15 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from sattline_parser import parse_source_file  # noqa: E402
+from sattlint._app_analysis_checks import collect_run_checks_result  # noqa: E402
+from sattlint.app_analysis import ChecksRunResult  # noqa: E402
+from sattlint.config_types import ConfigDict  # noqa: E402
 
 from sattlint import (  # noqa: E402
     app,
     app_analysis,
 )
-from sattlint._app_analysis_checks import collect_run_checks_result  # noqa: E402
 from sattlint.analyzers.registry import get_enabled_analyzers  # noqa: E402
-from sattlint.app_analysis import ChecksRunResult  # noqa: E402
-from sattlint.config_types import ConfigDict  # noqa: E402
 from sattlint.project import load_project  # noqa: E402
 
 # The project-level analysis-result cache (separate from the per-file AST cache) replays the

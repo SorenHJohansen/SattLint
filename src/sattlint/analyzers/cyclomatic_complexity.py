@@ -126,6 +126,8 @@ class CyclomaticComplexityAnalyzer:
                     "scope": scope_kind,
                     "complexity": complexity,
                     "threshold": self._module_threshold,
+                    "site": scope_label,
+                    "context": f"complexity {complexity} > {self._module_threshold}",
                 },
             )
         )
@@ -174,6 +176,8 @@ class CyclomaticComplexityAnalyzer:
                                 "step": node.name,
                                 "complexity": step_complexity,
                                 "threshold": self._step_threshold,
+                                "site": f"SQ:{sequence_name} > STEP:{node.name}",
+                                "context": f"complexity {step_complexity} > {self._step_threshold}",
                             },
                         )
                     )

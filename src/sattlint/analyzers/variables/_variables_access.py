@@ -53,7 +53,7 @@ def _mark_ref_access(
     *,
     is_ui_read: bool = False,
 ) -> None:
-    base = full_ref.split(".", 1)[0].lower()
+    base = full_ref.split(".", 1)[0].casefold()
     local_field_path = full_ref.split(".", 1)[1] if "." in full_ref else ""
     local_var = context.env.get(base)
     if local_var is not None and base in context.param_mappings:
@@ -410,7 +410,7 @@ def _mark_record_wide_builtin_access(
 def _lookup_global_variable(self: VariablesAnalyzer, base_name: str | None) -> Variable | None:
     if not base_name:
         return None
-    normalized = base_name.lower()
+    normalized = base_name.casefold()
     variable = self.root_env.get(normalized)
     if variable:
         return variable
@@ -440,10 +440,10 @@ def _extract_field_path(self: VariablesAnalyzer, var_dict: dict[str, Any]) -> tu
     if not isinstance(full_name, str) or not full_name:
         return None, None
     if "." not in full_name:
-        return full_name.lower(), None
+        return full_name.casefold(), None
 
     parts = full_name.split(".", 1)
-    base = parts[0].lower()
+    base = parts[0].casefold()
     field_path = parts[1] if len(parts) > 1 else None
     return base, field_path
 

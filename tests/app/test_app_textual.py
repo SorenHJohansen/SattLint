@@ -554,11 +554,12 @@ def test_textual_question_mark_binding_opens_help() -> None:
             await pilot.pause()
 
             help_dialog = _query_any_screen(app_instance, "#help-dialog")
-            help_body = str(_query_any_screen(app_instance, "#help-dialog-body").renderable)
-            assert "Keyboard shortcuts" in help_body
-            assert "/ filters Analyze and Setup lists" in help_body
-            assert "Ctrl+L clears Session output" in help_body
-            assert "Ctrl+G cancels a running analysis" in help_body
+            help_body = str(_query_any_screen(app_instance, "#help-dialog-body-text").renderable)
+            assert "Keyboard Shortcuts" in help_body
+            assert "Cancel Analysis" in help_body
+            assert "Clear Output" in help_body
+            assert "About SattLint" in help_body
+            assert "█████████" in help_body
             assert help_dialog.region.x > 0
             assert help_dialog.region.y > 0
             assert help_dialog.size.width < app_instance.size.width
@@ -847,6 +848,42 @@ def _make_textual_app(
 def _attach_test_project(app_instance: Any) -> None:
     project_dir = Path(tempfile.mkdtemp(prefix="sattlint-test-project-"))
     app_instance._project = init_project(project_dir / ".slproj", name="TestProject")
+
+
+def _widget_text_lines(widget: Any) -> int | None:
+    renderable = getattr(widget, "renderable", None)
+    if renderable is None:
+        return None
+    return len(str(renderable).splitlines())
+
+
+def _assert_scroll_content_reachable(widget: Any, *, text_lines: int | None = None) -> None:
+    """Assert a scrollable widget's content is fully reachable (not silently clipped)."""
+    if text_lines is None:
+        text_lines = _widget_text_lines(widget)
+    content_height = text_lines if text_lines is not None else widget.virtual_size.height
+    overflow = content_height - widget.region.height
+    assert widget.max_scroll_y >= overflow, (
+        f"{widget.id} ({type(widget).__name__}): {overflow} rows of content are unreachable "
+        f"(region={widget.region.height}, max_scroll_y={widget.max_scroll_y}, content={content_height})"
+    )
+    if overflow > 0:
+        assert widget.max_scroll_y > 0, f"{widget.id} ({type(widget).__name__}): content overflows but has no scrollbar"
+
+
+def _assert_no_content_clipped_outside_visible_area(app_instance: Any) -> None:
+    offenders: list[str] = []
+    for widget in app_instance.screen.query("*"):
+        overflow = getattr(widget.styles, "overflow_y", "visible")
+        if overflow not in ("auto", "scroll"):
+            continue
+        if widget.region.width <= 0 or widget.region.height <= 0:
+            continue
+        try:
+            _assert_scroll_content_reachable(widget)
+        except AssertionError as exc:
+            offenders.append(str(exc))
+    assert not offenders, "Content is clipped outside the visible area:\n" + "\n".join(offenders)
 
 
 def test_textual_shell_defaults_to_truecolor_console() -> None:
@@ -1567,6 +1604,8 @@ def test_textual_start_action_reports_type_errors_from_action(monkeypatch: pytes
     emitted: list[str] = []
     monkeypatch.setattr(app_instance, "_write_output", lambda text: emitted.append(str(text)))
     monkeypatch.setattr(app_instance, "_clear_session_output", lambda: None)
+    popups: list[tuple[str, str]] = []
+    monkeypatch.setattr(app_instance, "_show_error_modal", lambda title, message: popups.append((title, message)))
     monkeypatch.setattr(app_instance, "call_from_thread", lambda callback, *args, **kwargs: callback(*args, **kwargs))
 
     app_instance._start_action(
@@ -1580,6 +1619,7 @@ def test_textual_start_action_reports_type_errors_from_action(monkeypatch: pytes
         "Starting Run selected analyses... Live output is shown in this panel.",
         "Run selected analyses failed: bad action wiring",
     ]
+    assert popups == [("Run selected analyses failed", "Run selected analyses failed: bad action wiring")]
 
 
 def test_textual_open_help_popup_propagates_type_errors(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2846,6 +2886,229 @@ def test_textual_write_output_caps_retained_lines(monkeypatch: pytest.MonkeyPatc
     assert "line 4\n" not in fake_widget.text
 
 
+def test_textual_write_output_promotes_target_load_error_to_popup(monkeypatch: pytest.MonkeyPatch) -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    app_instance = app_textual.SattLintTextualApp(
+        cfg={},
+        summarize_targets_fn=lambda _cfg: "targets",
+        show_help_fn=lambda _cfg: None,
+        save_config_fn=lambda _path, _cfg: None,
+        config_path=None,
+        quit_app_error=RuntimeError,
+    )
+
+    class FakeRichOutput:
+        def __init__(self) -> None:
+            self.text = ""
+            self._plain_text_parts: list[str] = []
+
+        def append_plain_text(self, text: str) -> None:
+            self._plain_text_parts.append(text)
+            self.text += text
+
+        def write(self, _renderable: object, **_kwargs: Any) -> None:
+            return None
+
+        def scroll_end(self, animate: bool = False) -> None:
+            return None
+
+    fake_widget = FakeRichOutput()
+    monkeypatch.setattr(app_instance, "query_one", lambda *_args, **_kwargs: fake_widget)
+
+    shown: list[tuple[str, str]] = []
+    monkeypatch.setattr(app_instance, "_show_error_modal", lambda title, message: shown.append((title, message)))
+
+    app_instance._write_output("=== Target: EveryIssueMain ===")
+    app_instance._write_output("? Failed to load target:")
+    app_instance._write_output("Target 'EveryIssueMain' was not parsed.\nMissing/failed targets: none")
+
+    assert len(shown) == 1
+    title, message = shown[0]
+    assert title == "Failed to load target"
+    assert "EveryIssueMain" in message
+    assert "was not parsed" in message
+    assert "Missing/failed targets" in message
+    assert fake_widget.text.endswith("Missing/failed targets: none\n")
+
+
+def test_textual_write_output_ignores_plain_target_headers(monkeypatch: pytest.MonkeyPatch) -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    app_instance = app_textual.SattLintTextualApp(
+        cfg={},
+        summarize_targets_fn=lambda _cfg: "targets",
+        show_help_fn=lambda _cfg: None,
+        save_config_fn=lambda _path, _cfg: None,
+        config_path=None,
+        quit_app_error=RuntimeError,
+    )
+
+    class FakeRichOutput:
+        def __init__(self) -> None:
+            self.text = ""
+            self._plain_text_parts: list[str] = []
+
+        def append_plain_text(self, text: str) -> None:
+            self._plain_text_parts.append(text)
+            self.text += text
+
+        def write(self, _renderable: object, **_kwargs: Any) -> None:
+            return None
+
+        def scroll_end(self, animate: bool = False) -> None:
+            return None
+
+    fake_widget = FakeRichOutput()
+    monkeypatch.setattr(app_instance, "query_one", lambda *_args, **_kwargs: fake_widget)
+
+    shown: list[tuple[str, str]] = []
+    monkeypatch.setattr(app_instance, "_show_error_modal", lambda title, message: shown.append((title, message)))
+
+    app_instance._write_output("=== Target: DemoLib ===")
+    app_instance._write_output("Report: Variable issues")
+    app_instance._write_output("Status: ok")
+
+    assert shown == []
+    assert fake_widget.text == "=== Target: DemoLib ===\nReport: Variable issues\nStatus: ok\n"
+
+
+def test_textual_show_error_modal_pushes_error_screen(monkeypatch: pytest.MonkeyPatch) -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    app_instance = app_textual.SattLintTextualApp(
+        cfg={},
+        summarize_targets_fn=lambda _cfg: "targets",
+        show_help_fn=lambda _cfg: None,
+        save_config_fn=lambda _path, _cfg: None,
+        config_path=None,
+        quit_app_error=RuntimeError,
+    )
+    pushed: list[tuple[Any, Any]] = []
+    monkeypatch.setattr(app_instance, "push_screen", lambda screen, callback=None: pushed.append((screen, callback)))
+
+    app_instance._show_error_modal("Unable to load target", "Target 'X' failed to load.")
+
+    assert len(pushed) == 1
+    screen, _callback = pushed[0]
+    assert isinstance(screen, app_textual_widgets_module._ErrorScreen)
+    assert screen._error_title == "Unable to load target"
+    assert screen._error_message == "Target 'X' failed to load."
+
+
+def test_textual_error_modal_renders_and_dismisses() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app()
+
+        async with app_instance.run_test() as pilot:
+            await pilot.pause()
+
+            app_instance._show_error_modal("Failed to load target", "Target 'EveryIssueMain' failed to load.")
+
+            await pilot.pause()
+
+            error_dialog = _query_any_screen(app_instance, "#error-dialog")
+            error_title = str(_query_any_screen(app_instance, "#error-dialog-title").renderable)
+            error_body = str(_query_any_screen(app_instance, "#error-dialog-body-text").renderable)
+            assert error_title == "Failed to load target"
+            assert "Target 'EveryIssueMain' failed to load." in error_body
+            assert error_dialog.region.x > 0
+            assert error_dialog.region.y > 0
+            assert error_dialog.size.width < app_instance.size.width
+            assert error_dialog.size.height < app_instance.size.height
+
+            await pilot.press("escape")
+            await pilot.pause()
+
+            with pytest.raises(app_textual_shared_module._TEXTUAL_QUERY_ERRORS):
+                _query_any_screen(app_instance, "#error-dialog")
+
+    asyncio.run(_run())
+
+
+def test_textual_report_error_writes_output_and_shows_modal(monkeypatch: pytest.MonkeyPatch) -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    app_instance = _make_textual_app()
+    written: list[str] = []
+    pushed: list[tuple[Any, Any]] = []
+    monkeypatch.setattr(app_instance, "_write_output", lambda text: written.append(str(text)))
+    monkeypatch.setattr(app_instance, "push_screen", lambda screen, callback=None: pushed.append((screen, callback)))
+
+    app_instance._report_error("Save failed", "Save failed: disk full")
+
+    assert written == ["Save failed: disk full"]
+    assert len(pushed) == 1
+    screen, _callback = pushed[0]
+    assert isinstance(screen, app_textual_widgets_module._ErrorScreen)
+    assert screen._error_title == "Save failed"
+    assert screen._error_message == "Save failed: disk full"
+
+
+def test_textual_save_settings_failure_shows_error_modal(monkeypatch: pytest.MonkeyPatch) -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    app_instance = _make_textual_app()
+    app_instance._active_view = "settings"
+    messages: list[str] = []
+    popups: list[tuple[str, str]] = []
+    monkeypatch.setattr(app_instance, "_write_output", lambda text: messages.append(str(text)))
+    monkeypatch.setattr(app_instance, "_show_error_modal", lambda title, message: popups.append((title, message)))
+    monkeypatch.setattr(
+        "sattlint.config.save_app_settings",
+        lambda _path, _cfg: (_ for _ in ()).throw(ValueError("bad config")),
+    )
+
+    app_instance.action_save_config()
+
+    assert messages == ["Save failed: bad config"]
+    assert popups == [("Save failed", "Save failed: bad config")]
+
+
+def test_textual_new_project_failure_shows_error_modal(monkeypatch: pytest.MonkeyPatch) -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    app_instance = _make_textual_app(project=False)
+    captured: dict[str, object] = {}
+    messages: list[str] = []
+    popups: list[tuple[str, str]] = []
+    monkeypatch.setattr(app_instance, "_refresh_summary", lambda: None)
+    monkeypatch.setattr(app_instance, "_refresh_view", lambda: None)
+    monkeypatch.setattr(app_instance, "_set_active_action", lambda _action_id: None)
+    monkeypatch.setattr(app_instance, "_refresh_shell_state", lambda: None)
+    monkeypatch.setattr(app_instance, "_clear_session_output", lambda: None)
+    monkeypatch.setattr(app_instance, "_write_output", lambda text: messages.append(str(text)))
+    monkeypatch.setattr(app_instance, "_show_error_modal", lambda title, message: popups.append((title, message)))
+    monkeypatch.setattr(
+        app_instance,
+        "present_request",
+        lambda request, on_response_fn=None: captured.update(callback=on_response_fn),
+    )
+    monkeypatch.setattr(
+        app_textual_actions_module,
+        "_init_project",
+        lambda _path, name: (_ for _ in ()).throw(OSError("no space")),
+    )
+
+    app_instance._new_project()
+
+    callback = captured["callback"]
+    assert callable(callback)
+    callback("BrokenProject")
+
+    assert messages == ["Failed to create configuration: no space"]
+    assert popups == [("Failed to create configuration", "Failed to create configuration: no space")]
+
+
 def test_textual_app_uses_explicit_mixins() -> None:
     assert issubclass(app_textual_module.SattLintTextualApp, app_textual_actions_module._TextualActionsMixin)
     assert issubclass(app_textual_module.SattLintTextualApp, app_textual_setup_module._TextualSetupMixin)
@@ -3335,6 +3598,14 @@ def test_sanitize_project_name_preserves_spaces_and_strips_path_separators() -> 
     assert app_textual_actions_module._sanitize_project_name("  ") == "project"
 
 
+def test_textual_make_project_relative_keeps_empty_paths_empty() -> None:
+    assert app_textual_actions_module._make_project_relative("", Path("/tmp/proj")) == ""
+    assert app_textual_actions_module._make_project_relative("   ", Path("/tmp/proj")) == ""
+    assert app_textual_actions_module._make_project_relative("relative/dir", Path("/tmp/proj")) == "relative/dir"
+    assert app_textual_actions_module._make_project_relative("/tmp/proj/icf", Path("/tmp/proj")) == "icf"
+    assert app_textual_actions_module._make_project_relative("/elsewhere", Path("/tmp/proj")) == "/elsewhere"
+
+
 def test_textual_menu_definitions_have_open_and_new_but_not_save() -> None:
     labels = [label for label, _action_id in app_textual_shared_module.MENU_DEFINITIONS]
     assert "Open Configuration" in labels
@@ -3442,3 +3713,32 @@ def test_textual_shell_does_not_crash_within_window(tmp_path: Path) -> None:
             except subprocess.TimeoutExpired:
                 process.kill()
         os.close(master)
+
+
+def test_textual_no_content_clipped_outside_visible_area() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app()
+
+        async with app_instance.run_test(size=(80, 20)) as pilot:
+            await pilot.pause()
+            _assert_no_content_clipped_outside_visible_area(app_instance)
+
+            for key in ("ctrl+2", "ctrl+3", "ctrl+4", "ctrl+1"):
+                await pilot.press(key)
+                await pilot.pause()
+                _assert_no_content_clipped_outside_visible_area(app_instance)
+
+            await pilot.press("?")
+            await pilot.pause()
+            _assert_no_content_clipped_outside_visible_area(app_instance)
+            await pilot.press("escape")
+            await pilot.pause()
+
+            app_instance._show_error_modal("Failed to load target", "\n".join(f"line {i}" for i in range(30)))
+            await pilot.pause()
+            _assert_no_content_clipped_outside_visible_area(app_instance)
+
+    asyncio.run(_run())

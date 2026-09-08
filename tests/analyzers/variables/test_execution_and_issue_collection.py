@@ -175,7 +175,7 @@ def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_pat
     assert collision_issues[0].kind is IssueKind.NAME_COLLISION
     assert collision_issues[0].source_variable is colliding_param
     assert captured_display_paths[0] == ["Root<BP>", "TypeDef:ChildType<TD>"]
-    assert helper.used_params_by_typedef["ChildType"] == {"input"}
+    assert helper.used_params_by_typedef["childtype"] == {"input"}
     assert helper.param_reads_by_typedef["childtype"] == {"input"}
     assert helper.param_ui_reads_by_typedef["childtype"] == set()
     assert helper.param_non_ui_reads_by_typedef["childtype"] == {"input"}

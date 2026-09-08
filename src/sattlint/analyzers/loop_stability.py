@@ -83,6 +83,8 @@ class LoopStabilityAnalyzer:
                             "variable": variable_name,
                             "writes": [{"site": site, "value": value} for site, value in writes],
                             "distinct_values": sorted(distinct_values),
+                            "site": writes[0][0] if writes else None,
+                            "context": f"{variable_name} = {writes[0][1]!r}",
                         },
                     )
                 )

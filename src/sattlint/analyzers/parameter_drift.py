@@ -264,6 +264,8 @@ class ParameterDriftAnalyzer:
                             "moduletype": moduletype_label,
                             "parameter": parameter_name,
                             "locations": locations,
+                            "site": ".".join(value.module_path),
+                            "context": f"{parameter_name} = {value.value_display}",
                         },
                     )
                 )

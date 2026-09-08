@@ -1,7 +1,8 @@
 from types import SimpleNamespace
 
 from sattlint.analyzers.framework import Issue
-from sattlint.application.findings import AnalysisFinding, extract_report_findings
+from sattlint.application.findings import AnalysisFinding, extract_report_findings, kind_human_label
+from sattlint.models._variable_issues import IssueKind
 
 
 def test_extract_report_findings_normalizes_framework_issues() -> None:
@@ -92,3 +93,85 @@ def test_analysis_finding_round_trips_through_dict() -> None:
     restored = AnalysisFinding.from_dict(finding.to_dict())
 
     assert restored == finding
+
+
+def test_extract_report_findings_carries_issue_data_and_sanitizes_values() -> None:
+    report = SimpleNamespace(
+        issues=[
+            Issue(
+                kind="icf.unresolved_path",
+                message="Program.icf:1: unresolved path",
+                module_path=["Program"],
+                data={"site": "Program.icf:1", "context": "X1 = Program:Path.Var", "nested": {"a": 1}},
+            )
+        ]
+    )
+
+    findings = extract_report_findings(report, default_name="Root")
+
+    assert len(findings) == 1
+    assert findings[0].data == {"site": "Program.icf:1", "context": "X1 = Program:Path.Var", "nested": {"a": 1}}
+
+
+def test_extract_report_findings_synthesizes_site_and_context_from_attributes() -> None:
+    variable = SimpleNamespace(name="TargetVal")
+    source_variable = SimpleNamespace(name="SourceVal")
+    report = SimpleNamespace(
+        issues=[
+            SimpleNamespace(
+                kind="contract_mismatch",
+                module_path=["Root", "Child"],
+                variable=variable,
+                source_variable=source_variable,
+                source_display_name="SourceVal",
+                target_display_name="TargetVal",
+            )
+        ]
+    )
+
+    findings = extract_report_findings(report, default_name="Root")
+
+    assert len(findings) == 1
+    assert findings[0].data == {"context": "TargetVal => SourceVal"}
+
+
+def test_kind_human_label_returns_short_phrase() -> None:
+    assert kind_human_label("magic_number") == "Magic number"
+    assert kind_human_label("sfc_parallel_write_race") == "Parallel write race"
+    assert kind_human_label("dataflow.condition_always_false") == "Condition always false"
+    assert kind_human_label("unknown_custom_kind") == "Unknown Custom Kind"
+
+
+def test_extract_report_findings_synthesizes_site_from_sequence_name() -> None:
+    report = SimpleNamespace(issues=[SimpleNamespace(kind="unused", module_path=["Root"], sequence_name="MainSeq")])
+
+    findings = extract_report_findings(report, default_name="Root")
+
+    assert findings[0].data["site"] == "SQ:MainSeq"
+    assert "context" not in findings[0].data
+
+
+def test_extract_report_findings_sources_explanation_and_suggestion_from_variable_metadata() -> None:
+    report = SimpleNamespace(issues=[SimpleNamespace(kind=IssueKind.UNUSED, module_path=["Root"])])
+
+    findings = extract_report_findings(report, default_name="Root")
+
+    assert findings[0].kind == "unused"
+    assert findings[0].explanation
+    assert findings[0].suggestion
+
+
+def test_extract_report_findings_uses_explicit_context_attribute() -> None:
+    report = SimpleNamespace(
+        issues=[
+            SimpleNamespace(
+                kind=IssueKind.MAGIC_NUMBER,
+                module_path=["Root"],
+                context="Output = 1",
+            )
+        ]
+    )
+
+    findings = extract_report_findings(report, default_name="Root")
+
+    assert findings[0].data["context"] == "Output = 1"

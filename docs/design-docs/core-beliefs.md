@@ -32,11 +32,11 @@ Failures must be explicit and actionable.
 
 Every principle must have enforcement:
 
-- Architecture boundaries → import-linter (`tests/test_dependency_guard.py`)
+- Architecture boundaries → `tests/test_dependency_guard.py`
 - Doc freshness → reviewed during each exec-plan pass (no automated stale-doc scanner)
-- Casefold enforcement → custom lint rule
-- Shared utility reuse → duplication detection
-- File size → max lines per file
+- Casefold enforcement → `tests/test_casefolding_guard.py`
+- Shared utility reuse → shared helpers live in `src/sattlint/analyzers/shared/` and `src/sattlint/utils/`; duplication is caught in review (no automated detector)
+- File size → reviewed during each exec-plan pass (no mechanical cap)
 
 ## Repository Knowledge
 

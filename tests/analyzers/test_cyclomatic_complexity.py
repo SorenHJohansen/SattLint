@@ -89,7 +89,13 @@ def test_cyclomatic_complexity_flags_high_complexity_program_modulecode() -> Non
 
     issues = [issue for issue in report.issues if issue.kind == "module.cyclomatic_complexity"]
     assert len(issues) == 1
-    assert issues[0].data == {"scope": "program", "complexity": 11, "threshold": 10}
+    assert issues[0].data == {
+        "scope": "program",
+        "complexity": 11,
+        "threshold": 10,
+        "site": ".".join(issues[0].module_path or []),
+        "context": "complexity 11 > 10",
+    }
 
 
 def test_cyclomatic_complexity_flags_high_complexity_sfc_step() -> None:
@@ -143,6 +149,8 @@ def test_cyclomatic_complexity_flags_high_complexity_sfc_step() -> None:
         "step": "HeatUp",
         "complexity": 7,
         "threshold": 6,
+        "site": "SQ:MainSeq > STEP:HeatUp",
+        "context": "complexity 7 > 6",
     }
 
 

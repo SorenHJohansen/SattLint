@@ -424,12 +424,17 @@ class DataflowAnalyzer(
         module_path: list[str],
         data: dict[str, Any] | None = None,
     ) -> None:
+        issue_data = dict(data or {})
+        if "site" not in issue_data:
+            site = self._site_str()
+            if site:
+                issue_data["site"] = site
         self._issues.append(
             Issue(
                 kind=kind,
                 message=message,
                 module_path=module_path.copy(),
-                data=data or None,
+                data=issue_data or None,
             )
         )
 

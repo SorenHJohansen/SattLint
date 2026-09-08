@@ -19,6 +19,7 @@ from ..data_dependency import analyze_data_dependency
 from ..dataflow import analyze_dataflow
 from ..fault_handling import analyze_fault_handling
 from ..framework import AnalyzerSpec
+from ..icf.analyzer import analyze_icf_configuration
 from ..interface_contracts import analyze_interface_contracts
 from ..loop_stability import analyze_loop_stability
 from ..mms import analyze_mms_interface_variables
@@ -63,8 +64,6 @@ DEFAULT_CLI_ANALYZER_KEYS: tuple[str, ...] = (
     "shadowing",
     "spec-compliance",
     "alarm-integrity",
-    "interface-contracts",
-    "powerup",
     "signal-lifecycle",
     "loop-stability",
     "fault-handling",
@@ -73,15 +72,12 @@ DEFAULT_CLI_ANALYZER_KEYS: tuple[str, ...] = (
     "config-drift",
     "scan-loop-resource-usage",
     "resource-usage",
-    "scan-concurrency",
-    "scan-shared-access",
     "same-cycle",
-    "timing",
     "safety-paths",
     "taint-paths",
     "unsafe-defaults",
     "dataflow",
-    "state-inference",
+    "icf",
 )
 
 
@@ -133,6 +129,7 @@ _REGISTRY_MONKEYPATCH_SURFACE = (
     analyze_interface_contracts,
     analyze_dataflow,
     analyze_fault_handling,
+    analyze_icf_configuration,
     analyze_loop_stability,
     analyze_mms_interface_variables,
     analyze_naming_consistency,
@@ -622,6 +619,7 @@ __all__ = [
     "analyze_data_dependency",
     "analyze_dataflow",
     "analyze_fault_handling",
+    "analyze_icf_configuration",
     "analyze_interface_contracts",
     "analyze_loop_stability",
     "analyze_mms_interface_variables",

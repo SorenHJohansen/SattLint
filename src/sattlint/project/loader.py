@@ -83,7 +83,7 @@ class SattLineProjectLoader(SattLineProjectLoaderLookupMixin):
         requester_dir: Path | None,
         syntax_check: bool = False,
     ) -> None:
-        key = name.lower()
+        key = name.casefold()
         root_key = getattr(self, "_active_root_key", None)
 
         if key in self._visited:
