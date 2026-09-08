@@ -22,6 +22,7 @@ from typing import Any
 from .. import config as config_module
 from .. import console as console_module
 from ..application import analyze as analyze_application
+from ..application import change_review as change_review_application
 from ..application import checks as checks_application
 from ..application import project as project_application
 from ..config.types import ConfigDict
@@ -206,6 +207,7 @@ def analysis_handler_fns() -> dict[str, Callable[..., Any]]:
         "run_mms_interface_analysis": analyze_application.run_mms_interface_analysis,
         "run_icf_validation": analyze_application.run_icf_validation,
         "run_comment_code_analysis": analyze_application.run_comment_code_analysis,
+        "generate_change_review": change_review_application.generate_change_review,
     }
 
 

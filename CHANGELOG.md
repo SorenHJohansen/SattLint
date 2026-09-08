@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Change Review: a TUI-only semantic diff and impact analysis between the
+  official and draft versions of a configured project, producing a compact
+  JSON + Markdown review artifact. Triggered from the Analyze view via the
+  `Generate Change Review` button; output directory configured through the
+  App Settings `review.output_dir` setting.
+
 ## [1.0.0] - 2026-09-05
 
 ### Added

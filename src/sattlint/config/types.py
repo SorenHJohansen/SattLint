@@ -30,6 +30,14 @@ class OutputConfigOverride(TypedDict, total=False):
     retention_lines: int
 
 
+class ReviewConfig(TypedDict):
+    output_dir: ConfigPathValue
+
+
+class ReviewConfigOverride(TypedDict, total=False):
+    output_dir: ConfigPathValue
+
+
 class NamingRuleConfig(TypedDict):
     style: NamingStyle
     allow: list[str]
@@ -119,6 +127,7 @@ class ConfigDict(TypedDict):
     other_lib_dirs: list[ConfigPathValue]
     run_history: RunHistoryConfig
     output: OutputConfig
+    review: ReviewConfig
     analysis: AnalysisConfig
 
 
@@ -133,6 +142,7 @@ class ConfigOverrideDict(TypedDict, total=False):
     other_lib_dirs: list[ConfigPathValue]
     run_history: RunHistoryConfigOverride
     output: OutputConfigOverride
+    review: ReviewConfigOverride
     analysis: AnalysisConfigOverride
 
 
@@ -151,6 +161,8 @@ __all__ = [
     "NamingStyle",
     "OutputConfig",
     "OutputConfigOverride",
+    "ReviewConfig",
+    "ReviewConfigOverride",
     "RuleProfileConfig",
     "RuleProfileConfigOverride",
     "RuleProfilesConfig",

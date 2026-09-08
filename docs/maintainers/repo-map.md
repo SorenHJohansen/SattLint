@@ -14,6 +14,7 @@ Use it before widening into subsystem docs.
 | `src/sattlint/project/` | `.slproj` project model and loading | `tests/project/`, targeted pytest |
 | `src/sattlint/` (ICF, graphics, validation, engine) | ICF analysis, graphics rules, strict syntax validation | Targeted owner pytest |
 | `src/sattlint/ui/` | Textual interactive UI | `tests/app/test_app_textual*.py` |
+| `src/sattlint/change_review/` | Semantic diff + impact analysis between official/draft project versions | `tests/change_review/`, `tests/app/test_app_textual_change_review.py` |
 | `src/sattlint/core/` | Shared semantic snapshot, document helpers, and the engine-internal analysis trace recorder (`core/tracing.py`) | Targeted pytest |
 | `tests/` | Owner suites and regression proofs | Narrow pytest slice first |
 | `.github/` | CI workflows and scoped instructions | Diagnostics or config validation, then workflow run if needed |

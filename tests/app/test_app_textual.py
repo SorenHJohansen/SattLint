@@ -1,4 +1,4 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportUnknownArgumentType=false, reportOptionalCall=false
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportUnknownArgumentType=false, reportOptionalCall=false, reportUnusedFunction=false
 
 from __future__ import annotations
 
@@ -7,12 +7,13 @@ import contextlib
 import os
 import pty
 import select
+import shutil
 import subprocess
 import sys
 import tempfile
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -847,7 +848,25 @@ def _make_textual_app(
 
 def _attach_test_project(app_instance: Any) -> None:
     project_dir = Path(tempfile.mkdtemp(prefix="sattlint-test-project-"))
+    _TEMP_TEST_DIRS.append(str(project_dir))
     app_instance._project = init_project(project_dir / ".slproj", name="TestProject")
+
+
+_TEMP_TEST_DIRS: list[str] = []
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _cleanup_temp_test_dirs() -> Iterator[None]:
+    """Remove temporary project directories created by the Textual app tests.
+
+    The shell attaches a throwaway ``.slproj`` project (and some tests create
+    project/``projects`` dirs directly) under ``/tmp``; without this the full
+    suite leaks hundreds of ``sattlint-test-project-*`` directories.
+    """
+    yield
+    for directory in _TEMP_TEST_DIRS:
+        shutil.rmtree(directory, ignore_errors=True)
+    _TEMP_TEST_DIRS.clear()
 
 
 def _widget_text_lines(widget: Any) -> int | None:
@@ -3437,8 +3456,10 @@ def test_textual_toolbar_actions_are_ignored_while_interaction_screen_is_open(mo
     assert started == []
 
 
-def test_textual_new_project_creates_project_in_projects_dir(monkeypatch: pytest.MonkeyPatch) -> None:
-    projects_dir = Path(tempfile.mkdtemp(prefix="sattlint-projects-"))
+def test_textual_new_project_creates_project_in_projects_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    projects_dir = tmp_path / "projects"
+    projects_dir.mkdir(parents=True, exist_ok=True)
+    _TEMP_TEST_DIRS.append(str(projects_dir))
     monkeypatch.setattr(
         "sattlint.config.paths.get_projects_dir",
         lambda: projects_dir,
@@ -3507,7 +3528,7 @@ def test_textual_setup_change_autosaves_to_slproj(monkeypatch: pytest.MonkeyPatc
     assert "slproj_version" in saved.data
 
 
-def test_textual_open_project_loads_and_unlocks_views(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_textual_open_project_loads_and_unlocks_views(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     app_instance = _make_textual_app(project=False)
     assert app_instance._project_loaded() is False
 
@@ -3516,7 +3537,7 @@ def test_textual_open_project_loads_and_unlocks_views(monkeypatch: pytest.Monkey
     monkeypatch.setattr(app_instance, "_refresh_view", lambda: None)
     monkeypatch.setattr(app_instance, "_refresh_shell_state", lambda: None)
 
-    project_dir = Path(tempfile.mkdtemp(prefix="sattlint-open-project-"))
+    project_dir = tmp_path / "opened-project"
     project = init_project(project_dir / ".slproj", name="OpenedProject")
     project.data["analyzed_programs_and_libraries"] = ["TargetA"]
 
@@ -3527,7 +3548,9 @@ def test_textual_open_project_loads_and_unlocks_views(monkeypatch: pytest.Monkey
     assert app_instance._cfg["analyzed_programs_and_libraries"] == ["TargetA"]
 
 
-def test_textual_open_project_refreshes_ast_cache_before_interaction(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_textual_open_project_refreshes_ast_cache_before_interaction(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     refreshed_cfgs: list[object] = []
     app_instance = _make_textual_app(
         project=False,
@@ -3546,7 +3569,7 @@ def test_textual_open_project_refreshes_ast_cache_before_interaction(monkeypatch
     pushed: list[tuple[Any, Any]] = []
     monkeypatch.setattr(app_instance, "push_screen", lambda screen, callback=None: pushed.append((screen, callback)))
 
-    project_dir = Path(tempfile.mkdtemp(prefix="sattlint-open-project-"))
+    project_dir = tmp_path / "opened-project"
     project = init_project(project_dir / ".slproj", name="OpenedProject")
     project.data["analyzed_programs_and_libraries"] = ["TargetA"]
 
@@ -3569,7 +3592,9 @@ def test_textual_open_project_refreshes_ast_cache_before_interaction(monkeypatch
     assert app_instance._interaction_locked() is False
 
 
-def test_textual_open_project_without_targets_skips_ast_refresh(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_textual_open_project_without_targets_skips_ast_refresh(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     app_instance = _make_textual_app(
         project=False,
         ensure_ast_cache_fn=lambda _cfg, *, emit_output_fn=None: True,
@@ -3581,7 +3606,7 @@ def test_textual_open_project_without_targets_skips_ast_refresh(monkeypatch: pyt
     pushed: list[tuple[Any, Any]] = []
     monkeypatch.setattr(app_instance, "push_screen", lambda screen, callback=None: pushed.append((screen, callback)))
 
-    project_dir = Path(tempfile.mkdtemp(prefix="sattlint-open-project-"))
+    project_dir = tmp_path / "opened-project"
     project = init_project(project_dir / ".slproj", name="EmptyProject")
 
     app_instance._load_project_object(project)
