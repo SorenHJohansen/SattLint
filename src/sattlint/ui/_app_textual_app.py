@@ -114,6 +114,7 @@ if _TEXTUAL_APP is not None:
             self._get_enabled_analyzers_fn = get_enabled_analyzers_fn
             self._ensure_ast_cache_fn = ensure_ast_cache_fn
             self._cfg = cfg
+            self._app_only_cfg = dict(cfg)
             self._summarize_targets_fn = summarize_targets_fn
             self._show_help_fn = show_help_fn
             self._get_help_text_fn = get_help_text_fn
@@ -270,6 +271,12 @@ if _TEXTUAL_APP is not None:
                                                 "Mode", id="setup-toggle-mode", classes="raised-button setup-row-button"
                                             )
                                             yield _TEXTUAL_STATIC("", id="setup-label-mode", classes="setup-row-label")
+                                    with _TEXTUAL_HORIZONTAL(classes="setup-row"):
+                                        yield _TEXTUAL_BUTTON(
+                                            "Delete Configuration",
+                                            id="setup-delete-project",
+                                            classes="raised-button setup-row-button",
+                                        )
                         with _TEXTUAL_HORIZONTAL(id="settings-browser", classes="is-hidden"):  # noqa: SIM117
                             with _TEXTUAL_VERTICAL(id="settings-settings-section"):
                                 yield _TEXTUAL_STATIC("App Settings", id="settings-config-title")

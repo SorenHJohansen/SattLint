@@ -41,8 +41,8 @@ from typing import TYPE_CHECKING
 
 from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef
 
-from ...casefolding import casefold_key
 from ...models.usage import VariableUsage
+from ...utils.casefolding import casefold_key
 from ..shared._contract_index import ModuleTypeContract, ParameterEffect
 
 if TYPE_CHECKING:

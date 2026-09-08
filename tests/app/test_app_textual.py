@@ -2051,7 +2051,10 @@ def test_textual_results_view_lists_runs_and_renders_tree(monkeypatch: pytest.Mo
             assert tree.root.is_expanded is True
             target_node = tree.root.children[0]
             analyzer_node = next(iter(target_node.children))
-            assert target_node.is_expanded is False
+            kind_node = next(iter(analyzer_node.children))
+            assert target_node.is_expanded is True
+            assert analyzer_node.is_expanded is True
+            assert kind_node.is_expanded is False
 
             app_instance._collapse_all_results()
             await pilot.pause()
@@ -2062,6 +2065,7 @@ def test_textual_results_view_lists_runs_and_renders_tree(monkeypatch: pytest.Mo
             assert tree.root.is_expanded is True
             assert target_node.is_expanded is True
             assert analyzer_node.is_expanded is True
+            assert kind_node.is_expanded is True
 
     asyncio.run(_run())
 

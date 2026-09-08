@@ -8,6 +8,7 @@ from sattline_parser.models.ast_model import BasePicture
 from ._wave2_support import as_scalar_literal, iter_assignment_events, iter_statement_sites, walk_module_scopes
 from .framework import Issue
 from .shared._report_defaults import empty_int_summary_data, empty_issue_list
+from .shared.target_origin import build_target_origin_filter_for_basepicture
 
 
 @dataclass
@@ -37,14 +38,19 @@ class LoopStabilityReport:
 
 
 class LoopStabilityAnalyzer:
-    def __init__(self, base_picture: BasePicture) -> None:
+    def __init__(self, base_picture: BasePicture, *, analyzed_target_is_library: bool = False) -> None:
         self._base_picture = base_picture
+        self._analyzed_target_is_library = analyzed_target_is_library
         self._issues: list[Issue] = []
         self._conflict_count = 0
         self._scanned_scope_count = 0
 
     def run(self) -> LoopStabilityReport:
-        for scope in walk_module_scopes(self._base_picture):
+        moduletype_filter = build_target_origin_filter_for_basepicture(
+            self._base_picture,
+            analyzed_target_is_library=self._analyzed_target_is_library,
+        )
+        for scope in walk_module_scopes(self._base_picture, moduletype_filter=moduletype_filter):
             if scope.modulecode is None:
                 continue
             self._scanned_scope_count += 1
@@ -91,5 +97,7 @@ class LoopStabilityAnalyzer:
         )
 
 
-def analyze_loop_stability(base_picture: BasePicture) -> LoopStabilityReport:
-    return LoopStabilityAnalyzer(base_picture).run()
+def analyze_loop_stability(
+    base_picture: BasePicture, *, analyzed_target_is_library: bool = False
+) -> LoopStabilityReport:
+    return LoopStabilityAnalyzer(base_picture, analyzed_target_is_library=analyzed_target_is_library).run()

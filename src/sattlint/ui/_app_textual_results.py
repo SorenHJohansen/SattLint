@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from ..application.findings import AnalysisFinding
 from ..runs import (
@@ -51,13 +51,14 @@ def _run_summary_label(summary: RunSummary) -> str:
     return label
 
 
-def _finding_label(finding: AnalysisFinding, *, default_module: str) -> str:
-    location = ".".join(finding.module_path) if finding.module_path else default_module
-    label = f"[{location}] {finding.message}"
+def _finding_label(finding: AnalysisFinding, *, occurrence_count: int = 1) -> str:
+    label = finding.message
     if finding.severity:
         label += f" — {finding.severity}"
     if finding.rule_id:
         label += f" ({finding.rule_id})"
+    if occurrence_count > 1:
+        label += f" ({occurrence_count} occurrences)"
     return label
 
 
@@ -68,6 +69,65 @@ def _hide_leaf_expanders(node: Any) -> None:
         return
     for child in children:
         _hide_leaf_expanders(child)
+
+
+def _finding_groups(
+    analyzer: RunAnalyzerRecord,
+) -> list[tuple[str, list[tuple[AnalysisFinding, int]]]]:
+    """Group findings by issue kind, collapsing identical (kind, message) pairs.
+
+    Identical findings that repeat at multiple sites (e.g. a moduletype body
+    analyzed at several instance paths) are represented once, with their
+    occurrence count, so a moduletype issue is shown at a single instance path.
+    """
+    counts: dict[tuple[str, str], int] = {}
+    representatives: dict[tuple[str, str], AnalysisFinding] = {}
+    order: list[tuple[str, str]] = []
+    for finding in analyzer.findings:
+        key = (finding.kind, finding.message)
+        if key not in representatives:
+            representatives[key] = finding
+            counts[key] = 0
+            order.append(key)
+        counts[key] += 1
+    groups: list[tuple[str, list[tuple[AnalysisFinding, int]]]] = []
+    kind_index: dict[str, int] = {}
+    for key in order:
+        kind, _message = key
+        if kind not in kind_index:
+            kind_index[kind] = len(groups)
+            groups.append((kind, []))
+        groups[kind_index[kind]][1].append((representatives[key], counts[key]))
+    return groups
+
+
+class _ModuleTreeBuilder:
+    """Builds module-path branch nodes, reusing a branch for identical segments."""
+
+    def __init__(self) -> None:
+        self._branches: dict[tuple[int, str], Any] = {}
+
+    def add(self, parent: Any, segments: tuple[str, ...]) -> Any:
+        current = parent
+        for index, segment in enumerate(segments):
+            key = (id(current), segment)
+            node = self._branches.get(key)
+            if node is None:
+                node = current.add(segment, data=".".join(segments[: index + 1]))
+                self._branches[key] = node
+            current = node
+        return current
+
+
+def _populate_analyzer_findings(analyzer_node: Any, analyzer: RunAnalyzerRecord) -> None:
+    builder = _ModuleTreeBuilder()
+    for kind, groups in _finding_groups(analyzer):
+        total = sum(count for _finding, count in groups)
+        kind_node = analyzer_node.add(f"{kind} ({total})", data=None)
+        for finding, occurrence_count in groups:
+            segments = finding.module_path if finding.module_path else (analyzer.name,)
+            leaf_parent = builder.add(kind_node, segments)
+            leaf_parent.add(_finding_label(finding, occurrence_count=occurrence_count), data=finding)
 
 
 def _populate_run_tree(tree: Any, record: RunRecord) -> None:
@@ -84,13 +144,13 @@ def _populate_run_tree(tree: Any, record: RunRecord) -> None:
                 f"{analyzer.name} ({analyzer.key}) — {analyzer.status}",
                 data=analyzer,
             )
-            for finding in analyzer.findings:
-                analyzer_node.add(
-                    _finding_label(finding, default_module=analyzer.name),
-                    data=finding,
-                )
+            _populate_analyzer_findings(analyzer_node, analyzer)
     _hide_leaf_expanders(root)
     root.expand()
+    for target_node in root.children:
+        target_node.expand()
+        for analyzer_node in target_node.children:
+            analyzer_node.expand()
 
 
 def _build_run_tree(record: RunRecord) -> Any:
@@ -143,6 +203,8 @@ def on_tree_node_selected(self: Any, event: Any) -> None:
     data = getattr(node, "data", None)
     if isinstance(data, AnalysisFinding):
         _write_finding_detail(self, data)
+    elif isinstance(data, str):
+        self._write_output(f"Module: {data}")
     elif isinstance(data, RunAnalyzerRecord):
         self._write_output(data.summary or f"{data.name}: {data.status}")
     elif isinstance(data, RunTargetRecord):
@@ -151,8 +213,20 @@ def on_tree_node_selected(self: Any, event: Any) -> None:
         self._write_output(_run_overview_text(data))
 
 
+def _current_project_tag(self: Any) -> str:
+    program_targets = self._cfg.get("analyzed_programs_and_libraries", [])
+    if isinstance(program_targets, list):
+        values = cast(list[object], program_targets)
+        return ", ".join(str(target) for target in values if str(target).strip())
+    return ""
+
+
 def _results_run_summaries(self: Any) -> tuple[RunSummary, ...]:
-    return list_runs()
+    summaries = list_runs()
+    project_tag = self._current_project_tag()
+    if not project_tag:
+        return ()
+    return tuple(summary for summary in summaries if summary.project_tag == project_tag)
 
 
 def _refresh_results_runs_list(self: Any) -> None:
@@ -224,6 +298,9 @@ def _refresh_results_view(self: Any) -> None:
     summaries = getattr(self, "_results_run_summaries", [])
     if not summaries:
         self._selected_run_record = None
+        tree = getattr(self, "_results_tree_widget", None)
+        if tree is not None:
+            tree.reset("No matching runs", data=None)
         self._write_output("No previous analysis runs are available yet. Run analyses from the Analyze view.")
         return
     summary = summaries[0]
@@ -239,6 +316,7 @@ if TYPE_CHECKING:
 
     class _TextualResultsMixin:
         def on_tree_node_selected(self, event: Any) -> None: ...
+        def _current_project_tag(self) -> str: ...
         def _refresh_results_runs_list(self) -> None: ...
         def _render_results_tree(self, record: RunRecord) -> None: ...
         def _render_selected_run(self) -> None: ...
@@ -251,6 +329,7 @@ else:
         """Provides the Results view: run selection and the results tree."""
 
         on_tree_node_selected = on_tree_node_selected
+        _current_project_tag = _current_project_tag
         _refresh_results_runs_list = _refresh_results_runs_list
         _render_results_tree = _render_results_tree
         _render_selected_run = _render_selected_run

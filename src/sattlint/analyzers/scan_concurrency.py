@@ -35,9 +35,14 @@ class ScanConcurrencyReport:
 def analyze_scan_concurrency(
     base_picture: BasePicture,
     config: dict[str, Any] | None = None,
+    analyzed_target_is_library: bool = False,
 ) -> ScanConcurrencyReport:
     del config
-    report = analyze_same_cycle(base_picture, selected_issue_kinds=_SCAN_CONCURRENCY_ISSUE_KINDS)
+    report = analyze_same_cycle(
+        base_picture,
+        selected_issue_kinds=_SCAN_CONCURRENCY_ISSUE_KINDS,
+        analyzed_target_is_library=analyzed_target_is_library,
+    )
     return ScanConcurrencyReport(
         name=base_picture.header.name,
         issues=[issue for issue in report.issues if issue.kind in _SCAN_CONCURRENCY_ISSUE_KINDS],

@@ -47,9 +47,12 @@ class SpecComplianceAnalyzer:
         self,
         base_picture: BasePicture,
         unavailable_libraries: set[str] | None = None,
+        *,
+        analyzed_target_is_library: bool = False,
     ) -> None:
         self.bp = base_picture
         self._unavailable_libraries = unavailable_libraries or set()
+        self._analyzed_target_is_library = analyzed_target_is_library
         self._issues: list[Issue] = []
 
     @property
@@ -70,14 +73,23 @@ class SpecComplianceAnalyzer:
         )
 
         for moduletype in self.bp.moduletype_defs or []:
-            if not self._is_from_root_origin(getattr(moduletype, "origin_file", None)):
+            if not self._is_from_root_origin(
+                getattr(moduletype, "origin_file", None),
+                getattr(moduletype, "origin_lib", None),
+            ):
                 continue
             self._walk_moduletype_def(moduletype, root_path, base_env)
 
         return self._issues
 
-    def _is_from_root_origin(self, origin_file: str | None) -> bool:
-        return matches_root_origin(origin_file, getattr(self.bp, "origin_file", None))
+    def _is_from_root_origin(self, origin_file: str | None, origin_lib: str | None = None) -> bool:
+        return matches_root_origin(
+            origin_file,
+            getattr(self.bp, "origin_file", None),
+            analyzed_target_is_library=self._analyzed_target_is_library,
+            origin_lib=origin_lib,
+            root_origin_lib=getattr(self.bp, "origin_lib", None),
+        )
 
     def _merge_env(
         self,
@@ -481,11 +493,13 @@ def analyze_spec_compliance(
     base_picture: BasePicture,
     debug: bool = False,
     unavailable_libraries: set[str] | None = None,
+    analyzed_target_is_library: bool = False,
 ) -> SimpleReport:
     _ = debug
     analyzer = SpecComplianceAnalyzer(
         base_picture,
         unavailable_libraries=unavailable_libraries,
+        analyzed_target_is_library=analyzed_target_is_library,
     )
     analyzer.run()
     return SimpleReport(name=base_picture.header.name, issues=analyzer.issues)

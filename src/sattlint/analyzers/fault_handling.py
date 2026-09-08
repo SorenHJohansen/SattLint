@@ -13,6 +13,7 @@ from ._wave2_support import (
 )
 from .framework import Issue
 from .shared._report_defaults import empty_int_summary_data, empty_issue_list
+from .shared.target_origin import build_target_origin_filter_for_basepicture
 
 
 @dataclass
@@ -42,14 +43,19 @@ class FaultHandlingReport:
 
 
 class FaultHandlingAnalyzer:
-    def __init__(self, base_picture: BasePicture) -> None:
+    def __init__(self, base_picture: BasePicture, *, analyzed_target_is_library: bool = False) -> None:
         self._base_picture = base_picture
+        self._analyzed_target_is_library = analyzed_target_is_library
         self._issues: list[Issue] = []
         self._missing_recovery_count = 0
         self._unhandled_fault_count = 0
 
     def run(self) -> FaultHandlingReport:
-        for scope in walk_module_scopes(self._base_picture):
+        moduletype_filter = build_target_origin_filter_for_basepicture(
+            self._base_picture,
+            analyzed_target_is_library=self._analyzed_target_is_library,
+        )
+        for scope in walk_module_scopes(self._base_picture, moduletype_filter=moduletype_filter):
             if scope.modulecode is None:
                 continue
 
@@ -117,5 +123,7 @@ class FaultHandlingAnalyzer:
         )
 
 
-def analyze_fault_handling(base_picture: BasePicture) -> FaultHandlingReport:
-    return FaultHandlingAnalyzer(base_picture).run()
+def analyze_fault_handling(
+    base_picture: BasePicture, *, analyzed_target_is_library: bool = False
+) -> FaultHandlingReport:
+    return FaultHandlingAnalyzer(base_picture, analyzed_target_is_library=analyzed_target_is_library).run()

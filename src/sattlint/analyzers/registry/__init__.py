@@ -19,9 +19,7 @@ from ..data_dependency import analyze_data_dependency
 from ..dataflow import analyze_dataflow
 from ..fault_handling import analyze_fault_handling
 from ..framework import AnalyzerSpec
-from ..initial_values import analyze_initial_values
 from ..interface_contracts import analyze_interface_contracts
-from ..loop_output_refactor import analyze_loop_output_refactor
 from ..loop_stability import analyze_loop_stability
 from ..mms import analyze_mms_interface_variables
 from ..modules import analyze_version_drift
@@ -64,9 +62,7 @@ DEFAULT_CLI_ANALYZER_KEYS: tuple[str, ...] = (
     "comment-code",
     "shadowing",
     "spec-compliance",
-    "loop-output-refactor",
     "alarm-integrity",
-    "initial-values",
     "interface-contracts",
     "powerup",
     "signal-lifecycle",
@@ -119,7 +115,6 @@ _RULE_ANALYZER_ALIASES: dict[str, tuple[str, ...]] = {
     "semantic.required-parameter-connection": ("interface-contracts",),
     "semantic.cross-module-contract-mismatch": ("interface-contracts",),
     "semantic.string-mapping-mismatch": ("interface-contracts",),
-    "semantic.missing-parameter-initial-value": ("powerup",),
     "semantic.unsafe-default-true": ("powerup",),
     "semantic.parallel-write-race": ("scan-concurrency", "same-cycle"),
     "semantic.same-cycle-non-state-multi-site": ("scan-shared-access", "same-cycle"),
@@ -138,9 +133,7 @@ _REGISTRY_MONKEYPATCH_SURFACE = (
     analyze_interface_contracts,
     analyze_dataflow,
     analyze_fault_handling,
-    analyze_initial_values,
     analyze_loop_stability,
-    analyze_loop_output_refactor,
     analyze_mms_interface_variables,
     analyze_naming_consistency,
     analyze_numeric_constraints,
@@ -629,9 +622,7 @@ __all__ = [
     "analyze_data_dependency",
     "analyze_dataflow",
     "analyze_fault_handling",
-    "analyze_initial_values",
     "analyze_interface_contracts",
-    "analyze_loop_output_refactor",
     "analyze_loop_stability",
     "analyze_mms_interface_variables",
     "analyze_naming_consistency",

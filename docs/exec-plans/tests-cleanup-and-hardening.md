@@ -54,8 +54,8 @@ of the analyzer test surface is the natural moment to strengthen it.
    - The corpus exactness harness only selects `semantic.*`-prefixed manifests
      and only runs the semantic analyzer, so ~15 analyzers with committed
      manifests (state-inference, mms, naming, spec, data-dependency,
-     resource-usage, version-drift, picture-display, cyclomatic-complexity,
-     parameter-drift, loop-output-refactor, scan-loop-resource-usage,
+      resource-usage, version-drift, picture-display, cyclomatic-complexity,
+      parameter-drift, scan-loop-resource-usage,
      timing/dataflow) are silently skipped.
    - Assertions are positive-heavy; negative-control coverage is uneven.
    - No FP/FN rate is measured (coverage measures lines, not behavior).

@@ -1,8 +1,8 @@
 "Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
 "Original file date: ---"
 "Program date: 2026-06-19-12:00:00.000, name: PowerUp"
-(* Covers semantic.missing-parameter-initial-value and semantic.unsafe-default-true.
-   Delegates to initial_values + unsafe_defaults sub-analyzers. *)
+(* Covers semantic.unsafe-default-true.
+   Delegates to the unsafe_defaults sub-analyzer. *)
 
 BasePicture Invocation
    ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0

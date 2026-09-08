@@ -244,17 +244,6 @@ _EXTRA_RULES_BY_KIND: dict[str, SemanticRule] = {
         explanation="Version drift across repeated modules makes rollout and troubleshooting harder because the same named unit no longer behaves consistently.",
         suggestion="Realign the variants, or rename the intentionally different module so the divergence is explicit.",
     ),
-    "sorting.loop_output_refactor": SemanticRule(
-        id="semantic.loop-output-refactor",
-        source="loop-output-refactor",
-        category="control-flow",
-        severity="warning",
-        applies_to="equation-block-cycle",
-        description="A dependency loop across sorted equation or active-step blocks should be refactored to make the delay point explicit.",
-        confidence="likely",
-        explanation="Cross-block dependency loops force at least one scan of delay and make execution order harder to reason about from the code alone.",
-        suggestion="Split the participating blocks, move the feedback write to a later block, or make one chosen cycle variable STATE so the delay point is explicit.",
-    ),
 }
 
 _ALL_ISSUE_RULES_BY_KIND: dict[str, SemanticRule] = {

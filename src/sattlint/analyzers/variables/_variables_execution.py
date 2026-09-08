@@ -20,7 +20,6 @@ from sattline_parser.models.ast_model import (
 
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ...resolution.scope import ScopeContext
-from ..layout_geometry import collect_layout_overlap_issues
 from ..reset_contamination import detect_implicit_latching, detect_reset_contamination
 from ..shared.variable_utils import mapping_target_name
 from ._usage_tracker import UsageTracker
@@ -98,7 +97,6 @@ _USAGE_DERIVED_ISSUE_KINDS: frozenset[IssueKind] = _USAGE_VARIABLE_ISSUE_KINDS |
 _POST_TRAVERSAL_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
     {
         IssueKind.DATATYPE_DUPLICATION,
-        IssueKind.LAYOUT_OVERLAP,
         IssueKind.RESET_CONTAMINATION,
         IssueKind.IMPLICIT_LATCH,
         IssueKind.STRING_MAPPING_MISMATCH,
@@ -313,15 +311,6 @@ def _run_post_traversal_analyses(self: VariablesAnalyzer) -> None:
             "implicit-latch-scan",
             added_issue_count=len(self._issues) - issue_count_before_latch,
         )
-
-    if _should_collect_issue_kind(self, IssueKind.LAYOUT_OVERLAP):
-        layout_issues = collect_layout_overlap_issues(
-            self.bp,
-            limit_to_module_path=self._limit_to_module_path,
-        )
-        for issue in layout_issues:
-            self._append_issue(issue)
-        self._trace("layout-overlap-scan", added_issue_count=len(layout_issues))
 
     if _should_collect_issue_kind(self, IssueKind.WRITE_WITHOUT_EFFECT):
         self._effective_output_keys = self._compute_effective_output_keys()

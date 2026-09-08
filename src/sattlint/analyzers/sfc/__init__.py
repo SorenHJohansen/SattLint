@@ -25,6 +25,7 @@ from sattline_parser.models.ast_model import (
 
 from ...resolution.paths import CanonicalPath
 from ..framework import AnalysisContext, Issue, SimpleReport
+from ..shared.target_origin import TargetOriginFilter, build_target_origin_filter_for_basepicture
 from ..variables import VariablesAnalyzer
 from ._sfc_collectors import _SfcAccessCollector
 from ._sfc_guard_logic import (
@@ -250,10 +251,12 @@ def _inspect_sfc_linear_nodes(
 
 def collect_sfc_reachability_findings(
     base_picture: BasePicture,
+    *,
+    moduletype_filter: TargetOriginFilter | None = None,
 ) -> list[SfcReachabilityFinding]:
     findings: list[SfcReachabilityFinding] = []
 
-    for module_path, modulecode in iter_sfc_modulecodes(base_picture):
+    for module_path, modulecode in iter_sfc_modulecodes(base_picture, moduletype_filter=moduletype_filter):
         if modulecode is None:
             continue
         for sequence in modulecode.sequences or []:
@@ -317,13 +320,15 @@ def _find_illegal_state_combinations(
 def _collect_illegal_state_combination_issues(
     base_picture: BasePicture,
     mutually_exclusive_steps: tuple[ExclusiveStepGroup, ...],
+    *,
+    moduletype_filter: TargetOriginFilter | None = None,
 ) -> list[Issue]:
     issues: list[Issue] = []
 
     if not mutually_exclusive_steps:
         return issues
 
-    for module_path, modulecode in iter_sfc_modulecodes(base_picture):
+    for module_path, modulecode in iter_sfc_modulecodes(base_picture, moduletype_filter=moduletype_filter):
         if modulecode is None:
             continue
         for sequence in modulecode.sequences or []:
@@ -415,6 +420,11 @@ def analyze_sfc(
     def _should_collect_any_issue_kinds(issue_kinds: frozenset[str]) -> bool:
         return normalized_selected_issue_kinds is None or bool(normalized_selected_issue_kinds & issue_kinds)
 
+    moduletype_filter = build_target_origin_filter_for_basepicture(
+        base_picture,
+        analyzed_target_is_library=bool(analysis_context is not None and analysis_context.target_is_library),
+    )
+
     collector: _SfcAccessCollector | None = None
     if _should_collect_any_issue_kinds(_SFC_PARALLEL_WRITE_RACE_ISSUE_KINDS):
         collector = _resolve_parallel_write_collector(base_picture, analysis_context)
@@ -467,7 +477,7 @@ def analyze_sfc(
             )
 
     if _should_collect_any_issue_kinds(_SFC_REACHABILITY_ISSUE_KINDS):
-        for finding in collect_sfc_reachability_findings(base_picture):
+        for finding in collect_sfc_reachability_findings(base_picture, moduletype_filter=moduletype_filter):
             branch_context = _format_branch_path(finding.branch_path)
             terminator = _format_terminator(finding.terminated_by)
             data = {
@@ -504,21 +514,33 @@ def analyze_sfc(
                 )
 
     if _should_collect_any_issue_kinds(_SFC_TRANSITION_LOGIC_ISSUE_KINDS):
-        issues.extend(_collect_transition_logic_issues(base_picture))
+        issues.extend(_collect_transition_logic_issues(base_picture, moduletype_filter=moduletype_filter))
 
     if normalized_groups:
-        issues.extend(_collect_illegal_state_combination_issues(base_picture, normalized_groups))
+        issues.extend(
+            _collect_illegal_state_combination_issues(
+                base_picture,
+                normalized_groups,
+                moduletype_filter=moduletype_filter,
+            )
+        )
 
     if normalized_step_contracts:
         sfc_shared_artifacts = analysis_context.shared_artifacts if analysis_context is not None else None
+        target_is_library = bool(analysis_context is not None and analysis_context.target_is_library)
         contract_collector = (
             _SfcStepContractCollector(
                 base_picture,
                 normalized_step_contracts,
+                analyzed_target_is_library=target_is_library,
                 shared_artifacts=sfc_shared_artifacts,
             )
             if sfc_shared_artifacts is not None
-            else _SfcStepContractCollector(base_picture, normalized_step_contracts)
+            else _SfcStepContractCollector(
+                base_picture,
+                normalized_step_contracts,
+                analyzed_target_is_library=target_is_library,
+            )
         )
         issues.extend(contract_collector.collect())
 

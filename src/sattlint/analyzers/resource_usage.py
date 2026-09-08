@@ -50,7 +50,12 @@ class ResourceUsageAnalyzer:
         self._reported_leaks: set[tuple[tuple[str, ...], str]] = set()
 
     def run(self) -> SimpleReport:
-        self._issues.extend(analyze_scan_loop_resource_usage(self._base_picture).issues)
+        self._issues.extend(
+            analyze_scan_loop_resource_usage(
+                self._base_picture,
+                analyzed_target_is_library=self._analyzed_target_is_library,
+            ).issues
+        )
         facts = collect_statement_facts(
             self._base_picture,
             unavailable_libraries=self._unavailable_libraries,

@@ -1,4 +1,6 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportIndexIssue=false, reportAttributeAccessIssue=false
+import json
+
 import pytest
 
 from tests.helpers.analyzers_suites_support import *
@@ -68,120 +70,6 @@ def test_version_drift_analyzer_is_enabled_by_default():
 
     assert "version-drift" in specs
     assert specs["version-drift"].enabled is True
-
-
-def test_initial_value_validation_flags_recipe_parameter_without_value_default():
-    recipe_parameter = ModuleTypeDef(
-        name="RecParReal",
-        moduleparameters=[
-            Variable(name="Value", datatype=Simple_DataType.REAL),
-            Variable(name="MinValue", datatype=Simple_DataType.REAL, init_value=0.0),
-            Variable(name="MaxValue", datatype=Simple_DataType.REAL, init_value=100.0),
-        ],
-        localvariables=[],
-        submodules=[],
-        moduledef=None,
-        modulecode=None,
-        parametermappings=[],
-        origin_file="Root.s",
-    )
-    bp = BasePicture(
-        header=_hdr("Root"),
-        datatype_defs=[],
-        moduletype_defs=[recipe_parameter],
-        localvariables=[],
-        submodules=[
-            ModuleTypeInstance(
-                header=_hdr("RecipeSP"),
-                moduletype_name="RecParReal",
-                parametermappings=[],
-            )
-        ],
-        modulecode=None,
-        moduledef=None,
-        origin_file="Root.s",
-    )
-
-    report = analyze_initial_values(bp)
-
-    issues = [issue for issue in report.issues if issue.kind == "initial-values.missing_required_default"]
-    assert len(issues) == 1
-    assert issues[0].module_path == ["Root", "RecipeSP"]
-    assert issues[0].data == {
-        "parameter_category": "recipe",
-        "instance": "RecipeSP",
-        "moduletype": "RecParReal",
-        "moduletype_label": "RecParReal",
-        "required_parameters": ["Value"],
-        "parameter_statuses": {"Value": "not_configured"},
-    }
-
-
-def test_initial_value_validation_accepts_engineering_parameter_mapped_from_initialized_variable():
-    engineering_parameter = ModuleTypeDef(
-        name="EngParReal",
-        moduleparameters=[
-            Variable(name="Value", datatype=Simple_DataType.REAL),
-            Variable(name="MinValue", datatype=Simple_DataType.REAL, init_value=0.0),
-            Variable(name="MaxValue", datatype=Simple_DataType.REAL, init_value=100.0),
-        ],
-        localvariables=[],
-        submodules=[],
-        moduledef=None,
-        modulecode=None,
-        parametermappings=[],
-        origin_file="Root.s",
-    )
-    bp = BasePicture(
-        header=_hdr("Root"),
-        datatype_defs=[],
-        moduletype_defs=[engineering_parameter],
-        localvariables=[Variable(name="ConfiguredLimit", datatype=Simple_DataType.REAL, init_value=42.5)],
-        submodules=[
-            ModuleTypeInstance(
-                header=_hdr("EngineeringLimit"),
-                moduletype_name="EngParReal",
-                parametermappings=[
-                    ParameterMapping(
-                        target=_varref("Value"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
-                        is_duration=False,
-                        is_source_global=False,
-                        source=_varref("ConfiguredLimit"),
-                        source_literal=None,
-                    ),
-                    ParameterMapping(
-                        target=_varref("MinValue"),
-                        source_type=const.KEY_VALUE,
-                        is_duration=False,
-                        is_source_global=False,
-                        source_literal=0.0,
-                    ),
-                    ParameterMapping(
-                        target=_varref("MaxValue"),
-                        source_type=const.KEY_VALUE,
-                        is_duration=False,
-                        is_source_global=False,
-                        source_literal=100.0,
-                    ),
-                ],
-            )
-        ],
-        modulecode=None,
-        moduledef=None,
-        origin_file="Root.s",
-    )
-
-    report = analyze_initial_values(bp)
-
-    assert report.issues == []
-
-
-def test_initial_value_validation_analyzer_is_enabled_by_default():
-    specs = {spec.key: spec for spec in get_default_analyzers()}
-
-    assert "initial-values" in specs
-    assert specs["initial-values"].enabled is True
 
 
 def test_registry_catalog_report_and_key_helpers_cover_metadata_branches():
@@ -259,9 +147,7 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
     monkeypatch.setattr(registry_module, "analyze_sfc", _record("sfc"))
     monkeypatch.setattr(registry_module, "analyze_shadowing", _record("shadowing"))
     monkeypatch.setattr(registry_module, "analyze_spec_compliance", _record("spec-compliance"))
-    monkeypatch.setattr(registry_module, "analyze_loop_output_refactor", _record("loop-output-refactor"))
     monkeypatch.setattr(registry_module, "analyze_alarm_integrity", _record("alarm-integrity"))
-    monkeypatch.setattr(registry_module, "analyze_initial_values", _record("initial-values"))
     monkeypatch.setattr(registry_module, "analyze_interface_contracts", _record("interface-contracts"))
     monkeypatch.setattr(registry_module, "analyze_naming_consistency", _record("naming-consistency"))
     monkeypatch.setattr(registry_module, "analyze_cyclomatic_complexity", _record("cyclomatic-complexity"))
@@ -308,9 +194,7 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
         "sfc",
         "shadowing",
         "spec-compliance",
-        "loop-output-refactor",
         "alarm-integrity",
-        "initial-values",
         "interface-contracts",
         "naming-consistency",
         "cyclomatic-complexity",
@@ -396,7 +280,6 @@ def test_run_registry_analyzer_passes_include_dependency_usage_override(monkeypa
         )
         is report
     )
-    assert seen["args"] == ("bp",)
     assert seen["kwargs"] == {
         "analysis_context": context,
         "debug": True,
@@ -436,7 +319,6 @@ def test_run_registry_analyzer_passes_shared_artifacts_to_dataflow(monkeypatch):
     )
 
     assert run_registry_analyzer(spec, context) is report
-    assert seen["args"] == ("bp",)
     assert seen["kwargs"] == {
         "unavailable_libraries": {"MissingLib"},
         "analyzed_target_is_library": True,
@@ -631,107 +513,3 @@ def test_analyze_sattline_semantics_builds_context_with_config_and_shared_artifa
     assert context.shared_artifacts is not None
     assert context.unavailable_libraries == {"MissingLib"}
     assert seen["kwargs"]["use_shared_artifacts"] is True
-
-
-def test_naming_consistency_flags_inconsistent_variable_names():
-    bp = BasePicture(
-        header=_hdr("Root"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[Variable(name="FlowRate", datatype=Simple_DataType.INTEGER)],
-        submodules=[
-            SingleModule(
-                header=_hdr("MixerUnit"),
-                moduledef=None,
-                moduleparameters=[],
-                localvariables=[Variable(name="PumpSpeed", datatype=Simple_DataType.INTEGER)],
-                submodules=[],
-                modulecode=None,
-                parametermappings=[],
-            ),
-            SingleModule(
-                header=_hdr("HoldingUnit"),
-                moduledef=None,
-                moduleparameters=[],
-                localvariables=[Variable(name="tank_level", datatype=Simple_DataType.INTEGER)],
-                submodules=[],
-                modulecode=None,
-                parametermappings=[],
-            ),
-        ],
-        modulecode=None,
-        moduledef=None,
-    )
-
-    report = analyze_naming_consistency(bp)
-
-    issues = [
-        issue
-        for issue in report.issues
-        if issue.kind == "naming.inconsistent_style"
-        and issue.data is not None
-        and issue.data.get("symbol_kind") == "variable"
-    ]
-    assert len(issues) == 1
-    assert issues[0].module_path == ["Root", "HoldingUnit"]
-    assert issues[0].data == {
-        "symbol_kind": "variable",
-        "name": "tank_level",
-        "actual_style": "snake",
-        "expected_style": "pascal",
-    }
-
-
-def test_naming_consistency_flags_inconsistent_module_names():
-    bp = BasePicture(
-        header=_hdr("Root"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[
-            SingleModule(
-                header=_hdr("MixerUnit"),
-                moduledef=None,
-                moduleparameters=[],
-                localvariables=[],
-                submodules=[],
-                modulecode=None,
-                parametermappings=[],
-            ),
-            FrameModule(
-                header=_hdr("HoldingFrame"),
-                submodules=[],
-                moduledef=None,
-                modulecode=None,
-            ),
-            SingleModule(
-                header=_hdr("cooling_stage"),
-                moduledef=None,
-                moduleparameters=[],
-                localvariables=[],
-                submodules=[],
-                modulecode=None,
-                parametermappings=[],
-            ),
-        ],
-        modulecode=None,
-        moduledef=None,
-    )
-
-    report = analyze_naming_consistency(bp)
-
-    issues = [
-        issue
-        for issue in report.issues
-        if issue.kind == "naming.inconsistent_style"
-        and issue.data is not None
-        and issue.data.get("symbol_kind") == "module"
-    ]
-    assert len(issues) == 1
-    assert issues[0].module_path == ["Root", "cooling_stage"]
-    assert issues[0].data == {
-        "symbol_kind": "module",
-        "name": "cooling_stage",
-        "actual_style": "snake",
-        "expected_style": "pascal",
-    }

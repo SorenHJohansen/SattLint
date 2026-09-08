@@ -1,8 +1,6 @@
 from sattline_parser.models.ast_model import (
     BasePicture,
     ModuleHeader,
-    ModuleTypeDef,
-    ModuleTypeInstance,
     Simple_DataType,
     Variable,
 )
@@ -21,40 +19,6 @@ def test_powerup_analyzer_is_registered_and_in_default_cli_subset() -> None:
     assert "powerup" in specs
     assert specs["powerup"].enabled is True
     assert "powerup" in get_actual_cli_analyzer_keys()
-
-
-def test_powerup_reports_missing_startup_value() -> None:
-    recipe_parameter = ModuleTypeDef(
-        name="RecParReal",
-        moduleparameters=[Variable(name="Value", datatype=Simple_DataType.REAL)],
-        localvariables=[],
-        submodules=[],
-        moduledef=None,
-        modulecode=None,
-        parametermappings=[],
-        origin_file="Root.s",
-    )
-    bp = BasePicture(
-        header=_hdr("Root"),
-        datatype_defs=[],
-        moduletype_defs=[recipe_parameter],
-        localvariables=[],
-        submodules=[
-            ModuleTypeInstance(
-                header=_hdr("RecipeSP"),
-                moduletype_name="RecParReal",
-                parametermappings=[],
-            )
-        ],
-        modulecode=None,
-        moduledef=None,
-        origin_file="Root.s",
-    )
-
-    report = analyze_powerup(bp)
-
-    assert any(issue.kind == "initial-values.missing_required_default" for issue in report.issues)
-    assert report.summary().startswith("Report: Power-up")
 
 
 def test_powerup_reports_unsafe_true_default() -> None:

@@ -20,6 +20,7 @@ from sattline_parser.models.ast_model import (
 from ...grammar import constants as const
 from ...resolution.paths import CanonicalPath
 from ..framework import Issue
+from ..shared.target_origin import TargetOriginFilter
 from ._sfc_module_walk import iter_sfc_modulecodes
 
 GuardLiteral = bool | int | float | str
@@ -302,7 +303,11 @@ def _guard_constant_truth(signature: object) -> bool | None:
     return None
 
 
-def _collect_transition_logic_issues(base_picture: BasePicture) -> list[Issue]:
+def _collect_transition_logic_issues(
+    base_picture: BasePicture,
+    *,
+    moduletype_filter: TargetOriginFilter | None = None,
+) -> list[Issue]:
     issues: list[Issue] = []
 
     def inspect_nodes(
@@ -394,7 +399,7 @@ def _collect_transition_logic_issues(base_picture: BasePicture) -> list[Issue]:
                 )
             )
 
-    for module_path, modulecode in iter_sfc_modulecodes(base_picture):
+    for module_path, modulecode in iter_sfc_modulecodes(base_picture, moduletype_filter=moduletype_filter):
         if modulecode is None:
             continue
         for sequence in modulecode.sequences or []:

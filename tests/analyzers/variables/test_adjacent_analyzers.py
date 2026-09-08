@@ -26,7 +26,6 @@ from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStm
 
 from sattlint import constants as const
 from sattlint.analyzers.cyclomatic_complexity import analyze_cyclomatic_complexity
-from sattlint.analyzers.loop_output_refactor import analyze_loop_output_refactor
 from sattlint.analyzers.mms import analyze_mms_interface_variables
 from sattlint.analyzers.parameter_drift import analyze_parameter_drift
 from sattlint.analyzers.scan_loop_resource_usage import analyze_scan_loop_resource_usage
@@ -358,98 +357,6 @@ def test_mms_interface_uses_moduletype_default_tags_for_duplicate_and_dead_tag_c
     assert duplicate_issues[0].data["tag"] == "Plant.Default.Tag"
     assert len(dead_tag_issues) == 2
     assert all("Plant.Default.Tag" in issue.message for issue in dead_tag_issues)
-
-
-def test_loop_output_refactor_detects_cycle_across_equations_and_active_step():
-    eq_input = Equation(
-        name="Input",
-        position=(0.0, 0.0),
-        size=(1.0, 1.0),
-        code=[Assignment(target=_varref("A"), value=_varref("B"))],
-    )
-    eq_feedback = Equation(
-        name="Feedback",
-        position=(1.0, 0.0),
-        size=(1.0, 1.0),
-        code=[Assignment(target=_varref("B"), value=_varref("C"))],
-    )
-    seq = Sequence(
-        name="MainSeq",
-        type="sequence",
-        position=(0.0, 1.0),
-        size=(1.0, 1.0),
-        code=[
-            SFCStep(
-                kind="step",
-                name="Transfer",
-                code=SFCCodeBlocks(active=[Assignment(target=_varref("C"), value=_varref("A"))]),
-            )
-        ],
-    )
-    bp = BasePicture(
-        header=_hdr("BasePicture"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[
-            Variable(name="A", datatype=Simple_DataType.INTEGER),
-            Variable(name="B", datatype=Simple_DataType.INTEGER),
-            Variable(name="C", datatype=Simple_DataType.INTEGER),
-        ],
-        submodules=[],
-        modulecode=ModuleCode(equations=[eq_input, eq_feedback], sequences=[seq]),
-        moduledef=None,
-    )
-
-    report = analyze_loop_output_refactor(bp)
-
-    issues = [issue for issue in report.issues if issue.kind == "sorting.loop_output_refactor"]
-    assert len(issues) == 1
-    issue = issues[0]
-    assert issue.data is not None
-    assert issue.data["dependency_variables"] == ["a", "b", "c"]
-    assert issue.data["blocks"] == [
-        "EquationBlock 'Input'",
-        "EquationBlock 'Feedback'",
-        "Sequence 'MainSeq' step 'Transfer' ACTIVE",
-    ]
-    assert "Sequence 'MainSeq' step 'Transfer' ACTIVE" in issue.data["loop_text"]
-    assert "At least one dependency in this cycle is delayed by one scan" in issue.data["loop_text"]
-
-    summary = report.summary()
-    assert "semantic.loop-output-refactor" in summary
-    assert "Suggested fix:" in summary
-
-
-def test_loop_output_refactor_ignores_acyclic_sorted_blocks():
-    eq_source = Equation(
-        name="Source",
-        position=(0.0, 0.0),
-        size=(1.0, 1.0),
-        code=[Assignment(target=_varref("A"), value=_varref("B"))],
-    )
-    eq_sink = Equation(
-        name="Sink",
-        position=(1.0, 0.0),
-        size=(1.0, 1.0),
-        code=[Assignment(target=_varref("C"), value=_varref("A"))],
-    )
-    bp = BasePicture(
-        header=_hdr("BasePicture"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[
-            Variable(name="A", datatype=Simple_DataType.INTEGER),
-            Variable(name="B", datatype=Simple_DataType.INTEGER),
-            Variable(name="C", datatype=Simple_DataType.INTEGER),
-        ],
-        submodules=[],
-        modulecode=ModuleCode(equations=[eq_source, eq_sink], sequences=[]),
-        moduledef=None,
-    )
-
-    report = analyze_loop_output_refactor(bp)
-
-    assert not any(issue.kind == "sorting.loop_output_refactor" for issue in report.issues)
 
 
 def test_parameter_drift_flags_diverging_literal_parameter_values():

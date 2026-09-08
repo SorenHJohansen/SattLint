@@ -24,6 +24,7 @@ from sattline_parser.models.ast_model import (
 from ...resolution import AccessKind
 from ...resolution.paths import CanonicalPath
 from ..framework import Issue
+from ..shared.target_origin import build_target_origin_filter_for_basepicture
 from ..variables import ScopeContext, VariablesAnalyzer
 from ._sfc_collectors import iter_step_phase_statements
 
@@ -403,7 +404,13 @@ class _SfcStepContractCollector(VariablesAnalyzer):
                 )
 
     def _walk_typedef_contracts(self, root_context: ScopeContext) -> None:
+        moduletype_filter = build_target_origin_filter_for_basepicture(
+            self.bp,
+            analyzed_target_is_library=self._analyzed_target_is_library,
+        )
         for moduletype in self.bp.moduletype_defs or []:
+            if not moduletype_filter(moduletype):
+                continue
             module_path = [self.bp.header.name, f"TypeDef:{moduletype.name}"]
             display_path = [*root_context.display_module_path, f"TypeDef:{moduletype.name}"]
             env: dict[str, Variable] = {}

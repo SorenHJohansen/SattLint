@@ -4,8 +4,7 @@
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.data-dependency-path",
-            "semantic.loop-output-refactor"
+            "semantic.data-dependency-path"
         ],
         "artifact_fragments": {
             "status.json": {
@@ -14,8 +13,7 @@
             },
             "summary.json": {
                 "rule_counts": {
-                    "semantic.data-dependency-path": 1,
-                    "semantic.loop-output-refactor": 1
+                    "semantic.data-dependency-path": 1
                 }
             }
         },

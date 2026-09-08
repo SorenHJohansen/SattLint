@@ -45,8 +45,6 @@ from tests.analyzers.variables.test_adjacent_analyzers import (  # noqa: F401
     test_cyclomatic_complexity_flags_high_complexity_program_modulecode,
     test_cyclomatic_complexity_flags_high_complexity_sfc_step,
     test_cyclomatic_complexity_ignores_low_complexity_program_modulecode,
-    test_loop_output_refactor_detects_cycle_across_equations_and_active_step,
-    test_loop_output_refactor_ignores_acyclic_sorted_blocks,
     test_mms_interface_collects_nested_typedef_mappings_and_write_locations,
     test_mms_interface_flags_dead_tags_for_unwritten_outgoing_variables,
     test_mms_interface_flags_duplicate_tags_and_datatype_mismatch_from_icf_entries,
