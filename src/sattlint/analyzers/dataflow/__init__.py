@@ -71,7 +71,6 @@ class DataflowAnalyzer(
         self._final_root_state: StateMap = {}
         self._site_stack: list[str] = []
         self._active_typedefs: set[str] = set()
-        self._reported_read_before_write: set[tuple[tuple[str, ...], str, str]] = set()
         self._reported_dead_overwrite: set[tuple[tuple[str, ...], str, str]] = set()
         self._reported_scan_cycle_stale_read: set[tuple[tuple[str, ...], str, str]] = set()
         self._reported_scan_cycle_implicit_new: set[tuple[tuple[str, ...], str, str]] = set()
@@ -236,7 +235,6 @@ class DataflowAnalyzer(
             value = state.get(resolved.root_key, UNKNOWN)
 
         if value is UNKNOWN:
-            self._report_read_before_write(resolved, module_path)
             return UNKNOWN
 
         if value is INITIALIZED:

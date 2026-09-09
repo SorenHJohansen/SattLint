@@ -4,7 +4,7 @@
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.read-before-write"
+            "semantic.signal-lifecycle-read-before-write"
         ],
         "artifact_fragments": {
             "status.json": {
@@ -13,7 +13,7 @@
             },
             "summary.json": {
                 "rule_counts": {
-                    "semantic.read-before-write": 1
+                    "semantic.signal-lifecycle-read-before-write": 1
                 }
             }
         },

@@ -148,11 +148,13 @@ Change Review is a TUI-only capability that turns two versions of a project —
 an **official** (baseline) version and a **draft** (modified) version — into a
 single compact review artifact for humans and external AI reviewers.
 
-The comparison is **semantic**: SattLint parses both versions once, diffs the
-semantic indexes, and selects the smallest useful context by the *semantic role*
-of each entity (referenced symbols, data origins, outputs and their consumers,
-callers/callees, and sequence/S88 state context), each with an explicit reason
-for inclusion. Formatting-only differences are ignored. Static analysis is not
+The comparison is **semantic**: SattLint parses both versions once and diffs
+the semantic indexes. For each change it then selects a **local slice of the
+actual program** — the complete containing equation block or sequence, the
+other equation blocks/sequences that read or write the changed variables, and
+the definitions of every variable involved — each with an explicit reason for
+inclusion. Context expansion is bounded to one level so unrelated project code
+is excluded. Formatting-only differences are ignored. Static analysis is not
 involved: no analyzers run and no findings are collected.
 
 ### Generate a review
@@ -227,14 +229,14 @@ CI runs automatically on PR and push to `main`.
 Per-command behavior: `syntax-check` returns `1` when the file fails to parse
 or validate; `analyze` reports issues in its output but exits `0` once the
 analysis runs; `validate-config` returns `2` on invalid configuration. See
-[cli-commands.md](cli-commands.md) for the full reference.
+[CLI_COMMANDS.md](CLI_COMMANDS.md) for the full reference.
 
 ---
 
 ## See Also
 
-- [CLI commands](cli-commands.md) — authoritative command reference
-- [Architecture overview](architecture.md) — system layering and runtime entry points
-- [SUPPORT.md](../../SUPPORT.md) — support contract, stable vs preview status, removed surfaces
-- [CONTRIBUTING.md](../../CONTRIBUTING.md) — development setup and workflow
-- [README.md](../../README.md) — source checkout quick start
+- [CLI commands](CLI_COMMANDS.md) — authoritative command reference
+- [Architecture overview](ARCHITECTURE.md) — system layering and runtime entry points
+- [SUPPORT.md](SUPPORT.md) — support contract, stable vs preview status, removed surfaces
+- [CONTRIBUTING.md](CONTRIBUTING.md) — development setup and workflow
+- [README.md](README.md) — source checkout quick start

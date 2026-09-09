@@ -6,8 +6,8 @@ from copy import deepcopy
 from pathlib import Path
 from typing import cast
 
-from sattlint import app
 from sattlint.change_review import VersionSnapshot, load_version_snapshot
+from sattlint.config import DEFAULT_CONFIG
 from sattlint.config.types import ConfigDict
 
 OFFICIAL_PROGRAM = """\
@@ -184,7 +184,7 @@ def build_cfg(
         )
     for sub in ("abb", "icf"):
         (tmp_path / sub).mkdir(parents=True, exist_ok=True)
-    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg = deepcopy(DEFAULT_CONFIG)
     cfg.update(
         {
             "program_dir": str(selected_program_dir),

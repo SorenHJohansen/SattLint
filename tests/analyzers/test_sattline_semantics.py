@@ -140,7 +140,7 @@ def test_sattline_semantics_includes_read_before_write_rule():
 
     report = analyze_sattline_semantics(bp)
 
-    assert any(issue.rule.id == "semantic.read-before-write" for issue in report.issues)
+    assert any(issue.rule.id == "semantic.signal-lifecycle-read-before-write" for issue in report.issues)
 
 
 def test_sattline_semantics_includes_same_cycle_shared_access_rule() -> None:
@@ -442,126 +442,6 @@ def test_sattline_semantics_includes_parallel_write_race_rule():
     assert issues[0].data["conflicts"] == ["Root.Rec"]
 
 
-def test_sattline_semantics_includes_step_state_leakage_rule():
-    bp = BasePicture(
-        header=_hdr("Root"),
-        localvariables=[
-            Variable(name="StepValue", datatype=Simple_DataType.INTEGER),
-            Variable(name="Output", datatype=Simple_DataType.INTEGER),
-        ],
-        modulecode=ModuleCode(
-            sequences=[
-                _sequence(
-                    SFCStep(
-                        kind="step",
-                        name="Prime",
-                        code=SFCCodeBlocks(
-                            active=[
-                                (
-                                    const.KEY_ASSIGN,
-                                    _varref("StepValue"),
-                                    1,
-                                )
-                            ]
-                        ),
-                    ),
-                    SFCStep(
-                        kind="step",
-                        name="Run",
-                        code=SFCCodeBlocks(
-                            enter=[],
-                            active=[
-                                (
-                                    const.KEY_ASSIGN,
-                                    _varref("Output"),
-                                    _varref("StepValue"),
-                                )
-                            ],
-                            exit=[],
-                        ),
-                    ),
-                )
-            ],
-            equations=[],
-        ),
-    )
-
-    report = analyze_sattline_semantics(
-        bp,
-        sfc_step_contracts={
-            "Run": {"required_enter_writes": ["StepValue"]},
-        },
-    )
-
-    issues = [issue for issue in report.issues if issue.rule.id == "semantic.step-state-leakage"]
-    assert len(issues) == 1
-    assert issues[0].data["leaked_state"] == ["StepValue"]
-
-
-def test_sattline_semantics_uses_step_contracts_from_config():
-    bp = BasePicture(
-        header=_hdr("Root"),
-        localvariables=[
-            Variable(name="StepValue", datatype=Simple_DataType.INTEGER),
-            Variable(name="Output", datatype=Simple_DataType.INTEGER),
-        ],
-        modulecode=ModuleCode(
-            sequences=[
-                _sequence(
-                    SFCStep(
-                        kind="step",
-                        name="Prime",
-                        code=SFCCodeBlocks(
-                            active=[
-                                (
-                                    const.KEY_ASSIGN,
-                                    _varref("StepValue"),
-                                    1,
-                                )
-                            ]
-                        ),
-                    ),
-                    SFCStep(
-                        kind="step",
-                        name="Run",
-                        code=SFCCodeBlocks(
-                            enter=[],
-                            active=[
-                                (
-                                    const.KEY_ASSIGN,
-                                    _varref("Output"),
-                                    _varref("StepValue"),
-                                )
-                            ],
-                            exit=[],
-                        ),
-                    ),
-                )
-            ],
-            equations=[],
-        ),
-    )
-
-    report = analyze_sattline_semantics(
-        bp,
-        config={
-            "analysis": {
-                "sfc": {
-                    "step_contracts": {
-                        "Run": {
-                            "required_enter_writes": ["StepValue"],
-                        }
-                    }
-                }
-            }
-        },
-    )
-
-    issues = [issue for issue in report.issues if issue.rule.id == "semantic.step-state-leakage"]
-    assert len(issues) == 1
-    assert issues[0].data["leaked_state"] == ["StepValue"]
-
-
 def test_sattline_semantics_includes_implicit_latch_rule():
     bp = BasePicture(
         header=_hdr("Root"),
@@ -775,7 +655,6 @@ def test_sattline_semantics_reuses_precomputed_reports(monkeypatch):
                         name="Variable issues",
                         description="",
                         run=lambda _context: SimpleNamespace(issues=[]),
-                        analyzer_attr="analyze_variables",
                         semantic_mapping_kind="variable",
                     )
                 ),

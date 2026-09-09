@@ -65,6 +65,8 @@ class ChangeChange:
     previous_state: str | None = None
     next_state: str | None = None
     containing_state: str | None = None
+    block_kind: str | None = None
+    block_name: str | None = None
     semantic_context: ChangeSemanticContext | None = None
 
 
@@ -274,6 +276,12 @@ def _read_keys(statement: StatementModel) -> tuple[tuple[str, ...], ...]:
     return tuple(sorted(key for key in statement.referenced_keys if key not in produced))
 
 
+def _block_identity(statement: StatementModel) -> tuple[str | None, str | None]:
+    if not statement.key or statement.key[0] not in {"equation", "sequence"}:
+        return None, None
+    return str(statement.key[0]), str(statement.key[1])
+
+
 def _diff_module_statement_lists(
     official_module: ModuleModel,
     draft_module: ModuleModel,
@@ -336,6 +344,7 @@ def _diff_module_statement_lists(
             continue
         kind = _classify_statement_change(official_statement, draft_statement)
         sequence_name, previous_state, next_state, containing_state = _structural_context(draft_statement, draft_module)
+        block_kind, block_name = _block_identity(draft_statement)
         changes.append(
             ChangeChange(
                 symbol=symbol,
@@ -353,6 +362,8 @@ def _diff_module_statement_lists(
                 previous_state=previous_state,
                 next_state=next_state,
                 containing_state=containing_state,
+                block_kind=block_kind,
+                block_name=block_name,
             )
         )
 
@@ -369,6 +380,7 @@ def _added_or_removed_change(
     snippet_fn: SnippetProvider | None,
 ) -> ChangeChange:
     sequence_name, previous_state, next_state, containing_state = _structural_context(statement, module)
+    block_kind, block_name = _block_identity(statement)
     return ChangeChange(
         symbol=_module_symbol(module.module_path),
         module_path=module.module_path,
@@ -385,6 +397,8 @@ def _added_or_removed_change(
         previous_state=previous_state,
         next_state=next_state,
         containing_state=containing_state,
+        block_kind=block_kind,
+        block_name=block_name,
     )
 
 

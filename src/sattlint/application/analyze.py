@@ -22,7 +22,7 @@ from ..config.types import ConfigDict
 from ..models.project_graph import ProjectGraph
 from ..project import support as support_module
 from . import checks as checks_module
-from . import commands as commands_module
+from . import menu_commands as menu_commands_module
 from . import project as project_application
 
 
@@ -41,7 +41,7 @@ get_selectable_analyzers = _get_selectable_analyzers
 
 
 def run_variable_analysis(cfg: ConfigDict, kinds: set[IssueKind] | None) -> None:
-    commands_module.run_variable_analysis(
+    menu_commands_module.run_variable_analysis(
         cfg,
         kinds,
         iter_loaded_projects_fn=project_application.iter_loaded_projects,
@@ -56,7 +56,7 @@ def run_icf_validation(cfg: ConfigDict) -> None:
     def _load_program_ast(local_cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
         return project_application.load_program_ast(local_cfg, program_name)
 
-    commands_module.run_icf_validation(
+    menu_commands_module.run_icf_validation(
         cfg,
         configured_icf_files_fn=support_module.configured_icf_files,
         load_program_ast_fn=_load_program_ast,
@@ -65,14 +65,14 @@ def run_icf_validation(cfg: ConfigDict) -> None:
 
 
 def run_mms_interface_analysis(cfg: ConfigDict) -> None:
-    commands_module.run_mms_interface_analysis(
+    menu_commands_module.run_mms_interface_analysis(
         cfg,
         iter_loaded_projects_fn=project_application.iter_loaded_projects,
     )
 
 
 def run_comment_code_analysis(cfg: ConfigDict) -> None:
-    commands_module.run_comment_code_analysis(
+    menu_commands_module.run_comment_code_analysis(
         cfg,
         iter_loaded_projects_fn=project_application.iter_loaded_projects,
         source_paths_for_current_target_fn=project_application.source_paths_for_current_target,

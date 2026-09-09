@@ -1,9 +1,9 @@
 """JSON serialization of a ``ChangeReview``.
 
 The JSON payload is a direct, stable projection of the canonical review model:
-metadata, changes (each with its semantic context), relevant symbols with their
-facts and inclusion reasons, selected context, and size statistics. The same
-serializer backs both the file artifact and any machine consumer.
+metadata, changes (each with direct semantic context and containing/related
+blocks), the selected equation blocks/sequences with complete source and
+reasons, variable definitions with real source, and size statistics.
 """
 
 from __future__ import annotations
@@ -14,8 +14,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, cast
 
-from ..facts import ChangeSemanticContext, SymbolFact
-from ..review import ChangeReview
+from ..facts import BlockContext, ChangeSemanticContext, SymbolFact
+from ..review import ChangeReview, ReviewContextBlock
 
 
 def _jsonable(value: Any) -> Any:
@@ -50,29 +50,60 @@ def _symbol_fact_dict(fact: SymbolFact) -> dict[str, Any]:
         "name": fact.name,
         "role": fact.role,
         "reason": fact.reason,
-        "priority": fact.priority,
         "kind": fact.kind,
         "datatype": fact.datatype,
-        "defined_by": fact.defined_by,
-        "produced_by": list(fact.produced_by),
-        "consumed_by": list(fact.consumed_by),
-        "containing_object": fact.containing_object,
+        "declared_by": fact.declared_by,
+        "written_by": list(fact.written_by),
+        "read_by": list(fact.read_by),
+        "declaration_source": fact.declaration_source,
+        "official_definition_source": fact.official_definition_source,
+        "draft_definition_source": fact.draft_definition_source,
+    }
+
+
+def _block_context_dict(block: BlockContext) -> dict[str, Any]:
+    return {
+        "symbol": block.symbol,
+        "role": block.role,
+        "reasons": list(block.reasons),
     }
 
 
 def _semantic_context_dict(context: ChangeSemanticContext) -> dict[str, Any]:
     return {
-        "reads": [_symbol_fact_dict(fact) for fact in context.reads],
-        "produces": [_symbol_fact_dict(fact) for fact in context.produces],
-        "producers": [_symbol_fact_dict(fact) for fact in context.producers],
-        "consumers": [_symbol_fact_dict(fact) for fact in context.consumers],
-        "callers": [_symbol_fact_dict(fact) for fact in context.callers],
-        "callees": [_symbol_fact_dict(fact) for fact in context.callees],
+        "direct_reads": [fact.symbol for fact in context.reads],
+        "direct_writes": [fact.symbol for fact in context.produces],
+        "callees": [fact.symbol for fact in context.callees],
         "containing_object": context.containing_object,
         "sequence_name": context.sequence_name,
         "previous_state": context.previous_state,
         "next_state": context.next_state,
-        "containing_state": context.containing_state,
+        "containing_block": (
+            _block_context_dict(context.containing_block) if context.containing_block is not None else None
+        ),
+        "related_blocks": [_block_context_dict(block) for block in context.related_blocks],
+    }
+
+
+def _context_block_dict(block: ReviewContextBlock) -> dict[str, Any]:
+    return {
+        "symbol": block.symbol,
+        "module_path": list(block.module_path),
+        "kind": block.kind,
+        "name": block.name,
+        "role": block.role,
+        "reasons": list(block.reasons),
+        "reads": list(block.reads),
+        "writes": list(block.writes),
+        "file": block.file,
+        "line_start": block.line_start,
+        "line_end": block.line_end,
+        "official_source": block.official_source,
+        "draft_source": block.draft_source,
+        "source": block.source,
+        "sequence_name": block.sequence_name,
+        "previous_state": block.previous_state,
+        "next_state": block.next_state,
     }
 
 
@@ -87,11 +118,14 @@ def review_to_dict(review: ChangeReview) -> dict[str, Any]:
         },
         "size_stats": {
             "total_project_source_size": review.size_stats.total_project_source_size,
-            "selected_context_size": review.size_stats.selected_context_size,
-            "reduction_percent": review.size_stats.reduction_percent,
+            "selected_source_size": review.size_stats.selected_source_size,
+            "metadata_size": review.size_stats.metadata_size,
+            "artifact_size": review.size_stats.artifact_size,
+            "source_reduction_percent": review.size_stats.source_reduction_percent,
             "semantic_change_count": review.size_stats.semantic_change_count,
-            "relevant_symbol_count": review.size_stats.relevant_symbol_count,
-            "contextual_symbol_count": review.size_stats.contextual_symbol_count,
+            "relevant_block_count": review.size_stats.relevant_block_count,
+            "relevant_variable_count": review.size_stats.relevant_variable_count,
+            "contextual_block_count": review.size_stats.contextual_block_count,
         },
         "changes": [
             {
@@ -111,21 +145,8 @@ def review_to_dict(review: ChangeReview) -> dict[str, Any]:
             }
             for change in review.changes
         ],
-        "relevant_symbols": [_symbol_fact_dict(fact) for fact in review.relevant_symbols],
-        "context": [
-            {
-                "symbol": block.symbol,
-                "role": block.role,
-                "reason": block.reason,
-                "file": block.file,
-                "line_start": block.line_start,
-                "line_end": block.line_end,
-                "official_source": block.official_source,
-                "draft_source": block.draft_source,
-                "source": block.source,
-            }
-            for block in review.context
-        ],
+        "context": [_context_block_dict(block) for block in review.context],
+        "variable_definitions": [_symbol_fact_dict(fact) for fact in review.variable_definitions],
     }
 
 

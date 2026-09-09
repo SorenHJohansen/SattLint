@@ -1,6 +1,21 @@
+"""SattLine semantic rule engine (registry-backed facade).
+
+Owns the analyzer-facing semantic rules: rule groups/definitions
+(``_sattline_semantic_models``, ``_sattline_semantic_rules*``), issue
+mapping (``_sattline_semantic_issue_mapping``), and the
+``analyze_sattline_semantics`` entry point that runs the semantic
+contributor analyzers through the registry and folds their findings into a
+``SattLineSemanticsReport``.
+
+Not to be confused with ``core/semantic.py`` (and ``core/_semantic_*``),
+which owns the shared semantic *snapshot* — symbol index, access graph,
+diagnostics, safety/taint traces — used as cross-cutting infrastructure by
+``change_review`` and the public package surface. This module is the rules
+layer; that module is the data layer.
+"""
+
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import cast
@@ -12,7 +27,6 @@ from ..core.tracing import (
 )
 from ..reporting.variables_report import VariableIssue
 from ._registry_dispatch import get_semantic_contributor_specs, run_registry_analyzer
-from ._registry_specs import build_context_kwargs
 from ._sattline_semantic_issue_mapping import (
     map_framework_issues,
     map_profiled_issues,
@@ -103,8 +117,6 @@ def analyze_sattline_semantics(
     debug: bool = False,
     unavailable_libraries: set[str] | None = None,
     analyzed_target_is_library: bool = False,
-    sfc_mutually_exclusive_steps: list[tuple[str, ...]] | tuple[tuple[str, ...], ...] | None = None,
-    sfc_step_contracts: Mapping[str, object] | None = None,
     config: dict[str, object] | None = None,
 ) -> SattLineSemanticsReport:
     issues: list[SemanticIssue] = []
@@ -137,22 +149,12 @@ def analyze_sattline_semantics(
             shared_artifacts=analysis_context.shared_artifacts,
             create_shared_artifacts=True,
         )
-    overrides: dict[str, object] = {}
-    if sfc_mutually_exclusive_steps is not None:
-        configured_steps = tuple(sfc_mutually_exclusive_steps)
-        overrides["mutually_exclusive_steps"] = configured_steps
-        overrides["sfc_mutually_exclusive_steps"] = configured_steps
-    if sfc_step_contracts is not None:
-        overrides["step_contracts"] = sfc_step_contracts
-        overrides["sfc_step_contracts"] = sfc_step_contracts
 
     for spec in get_semantic_contributor_specs():
         report = run_registry_analyzer(
             spec,
             context,
-            overrides=overrides,
             use_shared_artifacts=True,
-            build_context_kwargs_fn=build_context_kwargs,
         )
 
         report_issues = getattr(report, "issues", None)

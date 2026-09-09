@@ -11,9 +11,9 @@ from typing import Any, cast
 
 import pytest
 
-from sattlint import app as app_module
 from sattlint import ui as app_textual
 from sattlint.application import change_review as change_review_application
+from sattlint.cli import startup as app_module
 from sattlint.cli.startup import analysis_handler_fns
 from sattlint.config.types import ConfigDict
 

@@ -272,9 +272,7 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
         config={"mode": "test"},
     )
     registry_stub = SimpleNamespace(
-        get_configured_mutually_exclusive_step_sets=lambda config: ("step-set", config["mode"]),
         get_configured_naming_rules=lambda config: {"mode": config["mode"]},
-        get_configured_step_contracts=lambda config: ("contract", config["mode"]),
         analyze_direct=lambda analysis_context: SimpleReport(name=analysis_context.base_picture.header.name),
         analyze_picture=lambda base_picture, **kwargs: SimpleReport(name=base_picture.header.name, note=str(kwargs)),
     )
@@ -290,27 +288,19 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
             "config",
             "debug",
             "graph",
-            "mutually_exclusive_steps",
             "rules",
-            "sfc_mutually_exclusive_steps",
-            "sfc_step_contracts",
-            "step_contracts",
             "unavailable_libraries",
         ),
         composed_analyzer_keys=("dataflow", "scan-loop-resource-usage"),
         composed_issue_kind_names=("dataflow.scan_cycle_stale_read",),
     )
-    kwargs = build_context_kwargs(spec, registry_stub, context, overrides={"debug": False})
+    kwargs = build_context_kwargs(spec, registry_stub, context)
     assert kwargs["analysis_context"] is context
     assert kwargs["analyzed_target_is_library"] is True
     assert kwargs["config"] == {"mode": "test"}
-    assert kwargs["debug"] is False
+    assert kwargs["debug"] is True
     assert kwargs["graph"] is context.graph
-    assert kwargs["mutually_exclusive_steps"] == ("step-set", "test")
     assert kwargs["rules"] == {"mode": "test"}
-    assert kwargs["sfc_mutually_exclusive_steps"] == ("step-set", "test")
-    assert kwargs["sfc_step_contracts"] == ("contract", "test")
-    assert kwargs["step_contracts"] == ("contract", "test")
     assert kwargs["unavailable_libraries"] == {"ControlLib"}
 
     direct_template = AnalyzerSpecTemplate(

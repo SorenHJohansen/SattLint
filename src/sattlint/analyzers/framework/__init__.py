@@ -186,6 +186,7 @@ class AnalysisContext:
     config: dict[str, Any] | None = None
     shared_artifacts: AnalysisSharedArtifacts | None = None
     variables_collector_class: type[Any] | None = None
+    include_dependency_moduletype_usage: bool | None = None
 
     @property
     def unavailable_libraries(self) -> set[str]:
@@ -203,6 +204,7 @@ def build_analysis_context(
     shared_artifacts: AnalysisSharedArtifacts | None = None,
     create_shared_artifacts: bool = False,
     variables_collector_class: type[Any] | None = None,
+    include_dependency_moduletype_usage: bool | None = None,
 ) -> AnalysisContext:
     resolved_shared_artifacts = shared_artifacts
     if resolved_shared_artifacts is None and create_shared_artifacts:
@@ -230,6 +232,7 @@ def build_analysis_context(
         config={} if config is None else dict(config),
         shared_artifacts=resolved_shared_artifacts,
         variables_collector_class=variables_collector_class,
+        include_dependency_moduletype_usage=include_dependency_moduletype_usage,
     )
 
 
@@ -243,7 +246,6 @@ class AnalyzerSpec:
     requires: tuple[str, ...] = ()
     enabled: bool = True
     supports_live_diagnostics: bool = False
-    analyzer_attr: str = ""
     context_kwargs: tuple[str, ...] = ()
     direct_context: bool = False
     semantic_mapping_kind: str | None = None

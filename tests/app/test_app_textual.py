@@ -22,9 +22,9 @@ import pytest
 from rich.rule import Rule
 from rich.text import Text
 
-from sattlint import app
 from sattlint import ui as app_textual
 from sattlint.application.findings import AnalysisFinding
+from sattlint.cli import startup as app
 from sattlint.config.types import ConfigDict
 from sattlint.project.io import init_project, load_project
 from sattlint.runs import RunAnalyzerRecord, RunRecord, RunSummary, RunTargetRecord

@@ -151,7 +151,7 @@
         }
 
         #workspace-host.analyze-split #analyze-actions-primary Button.raised-button {
-            width: 1fr;
+            width: auto;
         }
 
         #view-title {
@@ -648,6 +648,26 @@
         Button.raised-button:focus {
             background: #cacaca;
             color: #000000;
+            outline: none;
+            border: none;
+        }
+
+        Button.raised-button:disabled {
+            background: #d1ccbf !important;
+            color: #6a6a6a !important;
+            text-style: bold;
+            opacity: 100%;
+            text-opacity: 100%;
+            tint: transparent;
+            background-tint: transparent;
+            outline: none;
+            border: none;
+        }
+
+        Button.raised-button:disabled:hover,
+        Button.raised-button:disabled:focus {
+            background: #d1ccbf !important;
+            color: #6a6a6a !important;
             outline: none;
             border: none;
         }

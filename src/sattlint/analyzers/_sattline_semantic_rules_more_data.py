@@ -1,16 +1,10 @@
+"""Semantic rule declarations, part 2 (dataflow/safety/alarm/same-cycle/etc.)."""
+
 from __future__ import annotations
 
 from ._sattline_semantic_models import SemanticRule
 
 DATAFLOW_RULES: dict[str, SemanticRule] = {
-    "dataflow.read_before_write": SemanticRule(
-        id="semantic.read-before-write",
-        source="dataflow",
-        category="variable-lifecycle",
-        severity="warning",
-        applies_to="variable",
-        description="Variable reads that can occur before any definite assignment on the current path.",
-    ),
     "dataflow.dead_overwrite": SemanticRule(
         id="semantic.dead-overwrite",
         source="dataflow",
@@ -42,14 +36,6 @@ DATAFLOW_RULES: dict[str, SemanticRule] = {
         severity="warning",
         applies_to="branch",
         description="Branches that cannot execute because control-flow facts make them impossible.",
-    ),
-    "dataflow.unreachable_sequence_node": SemanticRule(
-        id="semantic.unreachable-sequence-node-dataflow",
-        source="dataflow",
-        category="control-flow",
-        severity="warning",
-        applies_to="sequence-node",
-        description="Sequence nodes that cannot execute after an earlier terminating node in the same branch.",
     ),
     "dataflow.self_compare_condition": SemanticRule(
         id="semantic.self-compare-condition",

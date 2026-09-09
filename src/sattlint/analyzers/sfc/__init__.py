@@ -4,11 +4,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
 from collections.abc import Sequence as SequenceABC
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
-from itertools import product
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
@@ -17,9 +15,7 @@ from sattline_parser.models.ast_model import (
     SFCBreak,
     SFCFork,
     SFCParallel,
-    SFCStep,
     SFCSubsequence,
-    SFCTransition,
     SFCTransitionSub,
 )
 
@@ -35,10 +31,6 @@ from ._sfc_guard_logic import (
     paths_conflict,
 )
 from ._sfc_module_walk import iter_sfc_modulecodes
-from ._sfc_step_contracts import StepContract, _SfcStepContractCollector
-
-type StepSet = frozenset[str]
-type ExclusiveStepGroup = tuple[str, ...]
 
 _SFC_PARALLEL_WRITE_RACE_ISSUE_KINDS = frozenset({"sfc_parallel_write_race"})
 _SFC_REACHABILITY_ISSUE_KINDS = frozenset({"sfc_unreachable_transition", "sfc_unreachable_sequence_node"})
@@ -49,18 +41,6 @@ _SFC_TRANSITION_LOGIC_ISSUE_KINDS = frozenset(
         "sfc_duplicate_transition_guard",
     }
 )
-_SFC_ILLEGAL_STATE_COMBINATION_ISSUE_KINDS = frozenset({"sfc_illegal_state_combination"})
-_SFC_STEP_CONTRACT_ISSUE_KINDS = frozenset(
-    {
-        "sfc_missing_step_enter_contract",
-        "sfc_step_state_leakage",
-        "sfc_missing_step_exit_contract",
-    }
-)
-
-
-def _mapping_value(mapping: Mapping[str, object], key: str) -> object:
-    return mapping.get(key)
 
 
 @dataclass(frozen=True)
@@ -72,126 +52,6 @@ class SfcReachabilityFinding:
     node_label: str
     node_type: str
     terminated_by: dict[str, Any]
-
-
-def _normalize_step_groups(
-    step_groups: Iterable[Iterable[object]] | None,
-) -> tuple[ExclusiveStepGroup, ...]:
-    if step_groups is None:
-        return ()
-
-    groups: list[ExclusiveStepGroup] = []
-    for group in step_groups:
-        normalized: list[str] = []
-        seen: set[str] = set()
-        for item in group:
-            if not isinstance(item, str):
-                continue
-            name = item.strip()
-            if not name:
-                continue
-            key = name.casefold()
-            if key in seen:
-                continue
-            seen.add(key)
-            normalized.append(name)
-        if len(normalized) >= 2:
-            groups.append(tuple(normalized))
-
-    return tuple(groups)
-
-
-def normalize_mutually_exclusive_step_sets(raw: object) -> tuple[ExclusiveStepGroup, ...]:
-    if not isinstance(raw, list):
-        return ()
-    groups: list[Iterable[object]] = []
-    for group in cast(list[object], raw):
-        if isinstance(group, list | tuple | set):
-            groups.append(cast(Iterable[object], group))
-    return _normalize_step_groups(groups)
-
-
-def get_configured_mutually_exclusive_step_sets(
-    config: Mapping[str, object] | None,
-) -> tuple[ExclusiveStepGroup, ...]:
-    if config is None:
-        return ()
-    analysis = _mapping_value(config, "analysis")
-    if not isinstance(analysis, Mapping):
-        return ()
-    analysis_map = cast(Mapping[str, object], analysis)
-    sfc_config = _mapping_value(analysis_map, "sfc")
-    if not isinstance(sfc_config, Mapping):
-        return ()
-    sfc_map = cast(Mapping[str, object], sfc_config)
-    return normalize_mutually_exclusive_step_sets(_mapping_value(sfc_map, "mutually_exclusive_steps"))
-
-
-def _normalize_step_contract_refs(raw: object) -> tuple[str, ...]:
-    if not isinstance(raw, list):
-        return ()
-
-    normalized: list[str] = []
-    seen: set[str] = set()
-    for item in cast(list[object], raw):
-        if not isinstance(item, str):
-            continue
-        value = item.strip()
-        if not value:
-            continue
-        key = value.casefold()
-        if key in seen:
-            continue
-        seen.add(key)
-        normalized.append(value)
-    return tuple(normalized)
-
-
-def _normalize_step_contract(raw: object) -> StepContract:
-    if isinstance(raw, StepContract):
-        return raw
-    if not isinstance(raw, dict):
-        return StepContract()
-
-    payload = cast(dict[str, object], raw)
-    return StepContract(
-        required_enter_writes=_normalize_step_contract_refs(payload.get("required_enter_writes", [])),
-        required_exit_writes=_normalize_step_contract_refs(payload.get("required_exit_writes", [])),
-    )
-
-
-def normalize_step_contracts(raw: object) -> dict[str, StepContract]:
-    if not isinstance(raw, Mapping):
-        return {}
-
-    normalized: dict[str, StepContract] = {}
-    for step_name, contract_raw in cast(Mapping[object, object], raw).items():
-        if not isinstance(step_name, str):
-            continue
-        name = step_name.strip()
-        if not name:
-            continue
-        contract = _normalize_step_contract(contract_raw)
-        if not contract.required_enter_writes and not contract.required_exit_writes:
-            continue
-        normalized[name.casefold()] = contract
-    return normalized
-
-
-def get_configured_step_contracts(
-    config: Mapping[str, object] | None,
-) -> dict[str, StepContract]:
-    if config is None:
-        return {}
-    analysis = _mapping_value(config, "analysis")
-    if not isinstance(analysis, Mapping):
-        return {}
-    analysis_map = cast(Mapping[str, object], analysis)
-    sfc_config = _mapping_value(analysis_map, "sfc")
-    if not isinstance(sfc_config, Mapping):
-        return {}
-    sfc_map = cast(Mapping[str, object], sfc_config)
-    return normalize_step_contracts(_mapping_value(sfc_map, "step_contracts"))
 
 
 def _sequence_node_label(node: object) -> str:
@@ -265,103 +125,6 @@ def collect_sfc_reachability_findings(
     return findings
 
 
-def _collect_active_step_sets(nodes: SequenceABC[object] | None) -> set[StepSet]:
-    active_sets: set[StepSet] = set()
-
-    for node in nodes or []:
-        if isinstance(node, SFCStep):
-            active_sets.add(frozenset({node.name or ""}))
-            continue
-
-        if isinstance(node, SFCTransition | SFCFork | SFCBreak):
-            continue
-
-        if isinstance(node, SFCAlternative):
-            for branch in node.branches or []:
-                active_sets.update(_collect_active_step_sets(branch))
-            continue
-
-        if isinstance(node, SFCParallel):
-            branch_sets: list[set[StepSet]] = []
-            for branch in node.branches or []:
-                states = _collect_active_step_sets(branch)
-                branch_sets.append(states or {frozenset()})
-
-            for branch_combo in product(*branch_sets):
-                merged: set[str] = set()
-                for state_set in branch_combo:
-                    merged.update(state_set)
-                if merged:
-                    active_sets.add(frozenset(merged))
-            continue
-
-        if isinstance(node, SFCSubsequence | SFCTransitionSub):
-            active_sets.update(_collect_active_step_sets(node.body))
-
-    return active_sets
-
-
-def _find_illegal_state_combinations(
-    active_step_sets: Iterable[StepSet],
-    mutually_exclusive_steps: tuple[ExclusiveStepGroup, ...],
-) -> list[tuple[str, ...]]:
-    conflicts: dict[tuple[str, ...], None] = {}
-
-    for active_steps in active_step_sets:
-        active_keys = {name.casefold() for name in active_steps}
-        for group in mutually_exclusive_steps:
-            overlap = tuple(name for name in group if name.casefold() in active_keys)
-            if len(overlap) >= 2:
-                conflicts[overlap] = None
-
-    return sorted(conflicts.keys())
-
-
-def _collect_illegal_state_combination_issues(
-    base_picture: BasePicture,
-    mutually_exclusive_steps: tuple[ExclusiveStepGroup, ...],
-    *,
-    moduletype_filter: TargetOriginFilter | None = None,
-) -> list[Issue]:
-    issues: list[Issue] = []
-
-    if not mutually_exclusive_steps:
-        return issues
-
-    for module_path, modulecode in iter_sfc_modulecodes(base_picture, moduletype_filter=moduletype_filter):
-        if modulecode is None:
-            continue
-        for sequence in modulecode.sequences or []:
-            conflicts = _find_illegal_state_combinations(
-                _collect_active_step_sets(sequence.code or []),
-                mutually_exclusive_steps,
-            )
-            if not conflicts:
-                continue
-
-            preview = "; ".join(" + ".join(combo) for combo in conflicts[:4])
-            if len(conflicts) > 4:
-                preview = f"{preview}; ... (+{len(conflicts) - 4} more)"
-
-            issues.append(
-                Issue(
-                    kind="sfc_illegal_state_combination",
-                    message=(
-                        f"Sequence {sequence.name!r} can activate mutually exclusive step combinations: {preview}"
-                    ),
-                    module_path=module_path.copy(),
-                    data={
-                        "sequence": sequence.name,
-                        "conflicts": [list(combo) for combo in conflicts],
-                        "site": f"SQ:{sequence.name}",
-                        "context": preview,
-                    },
-                )
-            )
-
-    return issues
-
-
 def _format_terminator(terminated_by: dict[str, Any]) -> str:
     terminator = str(terminated_by.get("kind", "an earlier terminating node"))
     targets = terminated_by.get("targets")
@@ -413,8 +176,6 @@ def _resolve_parallel_write_collector(
 def analyze_sfc(
     base_picture: BasePicture,
     analysis_context: AnalysisContext | None = None,
-    mutually_exclusive_steps: Iterable[Iterable[str]] | None = None,
-    step_contracts: Mapping[str, object] | None = None,
     selected_issue_kinds: AbstractSet[str] | None = None,
 ) -> SimpleReport:
     normalized_selected_issue_kinds = frozenset(selected_issue_kinds) if selected_issue_kinds is not None else None
@@ -430,17 +191,6 @@ def analyze_sfc(
     collector: _SfcAccessCollector | None = None
     if _should_collect_any_issue_kinds(_SFC_PARALLEL_WRITE_RACE_ISSUE_KINDS):
         collector = _resolve_parallel_write_collector(base_picture, analysis_context)
-
-    normalized_groups = (
-        _normalize_step_groups(mutually_exclusive_steps)
-        if _should_collect_any_issue_kinds(_SFC_ILLEGAL_STATE_COMBINATION_ISSUE_KINDS)
-        else ()
-    )
-    normalized_step_contracts = (
-        normalize_step_contracts(step_contracts)
-        if _should_collect_any_issue_kinds(_SFC_STEP_CONTRACT_ISSUE_KINDS)
-        else {}
-    )
 
     issues: list[Issue] = []
     if collector is not None:
@@ -522,50 +272,15 @@ def analyze_sfc(
     if _should_collect_any_issue_kinds(_SFC_TRANSITION_LOGIC_ISSUE_KINDS):
         issues.extend(_collect_transition_logic_issues(base_picture, moduletype_filter=moduletype_filter))
 
-    if normalized_groups:
-        issues.extend(
-            _collect_illegal_state_combination_issues(
-                base_picture,
-                normalized_groups,
-                moduletype_filter=moduletype_filter,
-            )
-        )
-
-    if normalized_step_contracts:
-        sfc_shared_artifacts = analysis_context.shared_artifacts if analysis_context is not None else None
-        target_is_library = bool(analysis_context is not None and analysis_context.target_is_library)
-        contract_collector = (
-            _SfcStepContractCollector(
-                base_picture,
-                normalized_step_contracts,
-                analyzed_target_is_library=target_is_library,
-                shared_artifacts=sfc_shared_artifacts,
-            )
-            if sfc_shared_artifacts is not None
-            else _SfcStepContractCollector(
-                base_picture,
-                normalized_step_contracts,
-                analyzed_target_is_library=target_is_library,
-            )
-        )
-        issues.extend(contract_collector.collect())
-
     return SimpleReport(name=base_picture.header.name, issues=issues)
 
 
 __all__ = [
-    "ExclusiveStepGroup",
     "SfcReachabilityFinding",
-    "StepContract",
-    "StepSet",
     "analyze_sfc",
     "collect_sfc_reachability_findings",
     "conflict_rep",
-    "get_configured_mutually_exclusive_step_sets",
-    "get_configured_step_contracts",
     "get_variables_collector_class",
     "iter_sfc_modulecodes",
-    "normalize_mutually_exclusive_step_sets",
-    "normalize_step_contracts",
     "paths_conflict",
 ]

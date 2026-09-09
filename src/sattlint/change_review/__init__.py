@@ -1,13 +1,14 @@
-"""SattLint Change Review: semantic diff and impact analysis capability.
+"""SattLint Change Review: semantic diff and block-centric context capability.
 
 The Change Review turns an official (baseline) project version and a draft
 (modified) version into a single compact, self-contained review artifact that
 is equally useful to humans and external AI reviewers.
 
-The review is organized around *understanding the consequences* of each change:
-for every semantic change it exposes the referenced symbols, their definitions
-and data origins, the outputs and their consumers, callers/callees, and the
-surrounding sequence/S88 structure — each with an explicit reason for inclusion.
+The review is organized around equation blocks and sequences as units of
+behavioural context: for every semantic change it includes the complete
+containing block, the related blocks/sequences that read or write the changed
+variables, and the definitions of every variable involved — each with an
+explicit reason for inclusion.
 
 This capability is intentionally independent of static analysis: no analyzers
 run, no diagnostics are collected, and the review never depends on analyzer
@@ -18,19 +19,22 @@ semantic code model as the source of truth.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from ..config.types import ConfigDict
 from .artifacts import write_review_artifacts
-from .facts import ChangeSemanticContext, RelevanceResult, SymbolFact
-from .impact import DEFAULT_MAX_SYMBOLS, compute_relevance
+from .facts import BlockContext, ChangeSemanticContext, RelevanceResult, SymbolFact
+from .impact import compute_relevance
 from .loader import VersionSnapshot, load_version_snapshot
 from .review import ChangeReview, ReviewContextBlock, build_change_review
 from .semantic_diff import ChangeChange, ChangeKind, SourceLocation, compute_semantic_diff
+from .serialization.json_serializer import review_to_json
+from .serialization.markdown_serializer import review_to_markdown
 from .source import SourceTextProvider
 
 __all__ = [
+    "BlockContext",
     "ChangeChange",
     "ChangeKind",
     "ChangeReview",
@@ -73,12 +77,26 @@ def _snippet_fn(provider: SourceTextProvider) -> Callable[[str | None, object], 
     return snippet
 
 
+def _with_artifact_sizes(review: ChangeReview) -> ChangeReview:
+    json_text = review_to_json(review)
+    markdown_text = review_to_markdown(review)
+    artifact_size = len(json_text.encode("utf-8")) + len(markdown_text.encode("utf-8"))
+    metadata_size = max(0, artifact_size - review.size_stats.selected_source_size)
+    return replace(
+        review,
+        size_stats=replace(
+            review.size_stats,
+            artifact_size=artifact_size,
+            metadata_size=metadata_size,
+        ),
+    )
+
+
 def generate_change_review(
     cfg: ConfigDict,
     program_name: str,
     *,
     output_dir: Path,
-    max_symbols: int = DEFAULT_MAX_SYMBOLS,
 ) -> ChangeReviewResult:
     """Load both versions, diff them semantically, and write the artifacts.
 
@@ -92,7 +110,7 @@ def generate_change_review(
     snippet_fn = _snippet_fn(provider)
 
     changes = compute_semantic_diff(official, draft, snippet_fn=snippet_fn)
-    relevance = compute_relevance(official, draft, changes, max_symbols=max_symbols)
+    relevance = compute_relevance(official, draft, changes)
     review = build_change_review(
         official,
         draft,
@@ -100,5 +118,6 @@ def generate_change_review(
         relevance,
         snippet_provider=provider,
     )
+    review = _with_artifact_sizes(review)
     json_path, markdown_path = write_review_artifacts(review, output_dir)
     return ChangeReviewResult(review=review, json_path=json_path, markdown_path=markdown_path)

@@ -28,6 +28,8 @@ __pycache__/
 *$py.class
 .pytest_cache/
 .coverage
+.ruff_cache/
+.venv/
 coverage.xml
 htmlcov/
 *.egg-info/
@@ -50,13 +52,15 @@ probe_results.json
 
 # Generated outputs / local analysis results
 artifacts/
+cache-dir/
+custom-cache-dir/
+report-cache-dir/
 
 # Local library trees (DO NOT COMMIT)
 Libs/
 
 # Local dev config (DO NOT COMMIT)
 config.toml
-mise.toml
 src/config.toml
 
 # IDE / Editor state (DO NOT COMMIT)

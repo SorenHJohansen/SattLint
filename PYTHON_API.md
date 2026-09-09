@@ -51,7 +51,7 @@ The registry provides access to all registered analyzers and their metadata. See
 |--------|-------------|
 | `analyze_sfc` | SFC analysis entrypoint |
 | `SfcReachabilityFinding` | Reachability finding type |
-| `StepContract`, `StepSet`, `ExclusiveStepGroup` | SFC data types |
+| `collect_sfc_reachability_findings` | Reachability collection helper |
 
 ### `sattlint.cli`
 
@@ -107,7 +107,7 @@ See the `sattline-parser` source for the full `__all__` listing.
 
 | Surface | Stability |
 |---------|-----------|
-| `sattlint.app:cli` (entrypoint) | Stable |
+| `sattlint.cli.startup:cli` (entrypoint) | Stable |
 | `sattlint` CLI commands | Stable |
 | `sattline_parser.api` | Stable |
 | `sattlint.analyzers.*` | Preview |

@@ -55,6 +55,10 @@ dev = [
     "pre-commit>=4.0", # Git hooks
 ]
 
+fuzz = [
+    "atheris>=3.1.0", # Coverage-guided fuzzing (Linux, Python 3.11+)
+]
+
 [tool.pytest.ini_options]
 minversion = "7.0"
 testpaths = ["tests"]
@@ -122,6 +126,15 @@ venvPath = "."
 venv = ".venv"
 extraPaths = ["src"]
 reportMissingTypeStubs = false
+
+# src/sattlint/ui/ is a deliberate carve-out from strict analysis: the Textual
+# shell drives Textual's dynamic App/screen/widget runtime APIs that are not
+# practical to express under strict typing. `ignore` suppresses pyright
+# diagnostics for these files while keeping them in the module graph for
+# importers; the shell is exercised by the full pytest suite instead of the
+# type checker. Everything else (src/sattlint + tests) stays strict-clean. See
+# ARCHITECTURE.md (Quality Anchors).
+ignore = ["src/sattlint/ui/**"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

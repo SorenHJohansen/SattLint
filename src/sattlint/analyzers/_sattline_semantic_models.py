@@ -1,3 +1,5 @@
+"""Semantic rule-engine data models (``SemanticRule``, ``SemanticIssue``, groups)."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

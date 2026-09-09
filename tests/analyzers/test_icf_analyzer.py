@@ -160,4 +160,3 @@ def test_icf_is_registered_and_selectable() -> None:
     icf_analyzers = [analyzer for analyzer in catalog.analyzers if analyzer.spec.key == "icf"]
     assert len(icf_analyzers) == 1
     assert icf_analyzers[0].spec.category == "correctness"
-    assert icf_analyzers[0].spec.analyzer_attr == "analyze_icf_configuration"

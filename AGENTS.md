@@ -43,18 +43,17 @@ This rule exists because Semble is the indexed, accurate, and sanctioned way to 
 - For real-target debugging, check `~/.config/sattlint/config.toml` before assuming the repo contains the source file; follow `program_dir`, `ABB_lib_dir`, `icf_dir`, and `other_lib_dirs` to the actual external SattLine libraries.
 - Treat SattLine source files discovered outside this repository root as read-only evidence; inspect them when needed, but do not edit them unless the user explicitly asks to work in that external repository.
 - Read only the matching `.github/instructions/*.md` files for the touched surface.
-- Use `docs/maintainers/repo-map.md` when owner routing is still unclear.
-- Use `docs/public/architecture.md` for layering and runtime boundaries.
-- Use `docs/maintainers/quality-gates.md` for wider validation commands and finish gates.
+- Use `AGENTS_REFERENCE.md` when owner routing, validation routes, or gate details are unclear.
+- Use `ARCHITECTURE.md` for layering and runtime boundaries.
 
 ## Key Docs
 
-- `docs/maintainers/repo-map.md`, `docs/public/architecture.md`, `docs/maintainers/quality-gates.md`
-- `docs/design-docs/`, `.github/instructions/*.md`
+- `AGENTS_REFERENCE.md` (repo map, quality gates, validation map, core beliefs, deferred work), `ARCHITECTURE.md`
+- `.github/instructions/*.md`
 
 ## Critical Invariants
 
-- Keep `AGENTS.md` as the only root AI authority (core-beliefs #2).
+- Keep `AGENTS.md` as the only root AI authority (AGENTS_REFERENCE.md core-beliefs #2).
 - Start from the owning seam. Run focused executable validation before widening.
 - `sattlint syntax-check` stays strict (core-beliefs #4/#10). No silent fallback behavior.
 - Follow core-beliefs typing discipline (#14, #26, #27, #29): objects over dicts/tuples, no avoidable `Any`, Pyright strict-clean, typed dispatch over reflection.
@@ -68,7 +67,7 @@ This rule exists because Semble is the indexed, accurate, and sanctioned way to 
 ## Workflow
 
 - Go from `AGENTS.md` to the owner file or failing command immediately.
-- Load `docs/maintainers/repo-map.md` or `docs/public/architecture.md` only when local routing is still unclear.
+- Load `AGENTS_REFERENCE.md` or `ARCHITECTURE.md` only when local routing is still unclear.
 - Make the smallest grounded edit that tests the current hypothesis.
 - Run the first focused validation immediately after the first substantive edit.
 - Widen to Ruff, Pyright, `ruff format --check`, or pre-commit only after the local check passes.
