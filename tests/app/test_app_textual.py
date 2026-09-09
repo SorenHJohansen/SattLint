@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
-import pty
 import select
 import shutil
 import subprocess
@@ -3695,6 +3694,8 @@ def test_textual_shell_does_not_crash_within_window(tmp_path: Path) -> None:
         pytest.skip("pty-based subprocess smoke test is POSIX-only")
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
+
+    import pty  # noqa: PLC0415 - POSIX-only; guarded by the win32 skip above
 
     window_seconds = 5
 
