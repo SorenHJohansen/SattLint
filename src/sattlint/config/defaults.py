@@ -84,10 +84,6 @@ TOP_LEVEL_CONFIG_FIELDS: dict[str, TopLevelConfigField] = {
     ),
     "analysis": TopLevelConfigField(
         {
-            "sfc": {
-                "mutually_exclusive_steps": [],
-                "step_contracts": {},
-            },
             "naming": {
                 "variables": {"style": "infer", "allow": []},
                 "modules": {"style": "infer", "allow": []},

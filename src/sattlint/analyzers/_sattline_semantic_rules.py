@@ -1,3 +1,5 @@
+"""Semantic rule-group assembly: contracts, rule registries, and group builders."""
+
 from __future__ import annotations
 
 from dataclasses import replace
@@ -89,6 +91,8 @@ RULE_CONTRACTS_BY_ID: dict[str, SemanticRuleContract] = {
         "semantic.min-max-mapping-mismatch",
         "semantic.reset-contamination",
         "semantic.implicit-latch",
+        "semantic.magic-number",
+        "semantic.record-component-order-dependence",
     ),
     **rule_contract_entries(SHADOWING_RULE_CONTRACT, "semantic.shadowing"),
     **rule_contract_entries(
@@ -120,12 +124,10 @@ RULE_CONTRACTS_BY_ID: dict[str, SemanticRuleContract] = {
     ),
     **rule_contract_entries(
         DATAFLOW_RULE_CONTRACT,
-        "semantic.read-before-write",
         "semantic.dead-overwrite",
         "semantic.condition-always-true",
         "semantic.condition-always-false",
         "semantic.unreachable-branch",
-        "semantic.unreachable-sequence-node-dataflow",
         "semantic.self-compare-condition",
         "semantic.scan-cycle-stale-read",
         "semantic.scan-cycle-implicit-new",

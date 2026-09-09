@@ -173,8 +173,6 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
     monkeypatch.setattr(registry_module, "analyze_dataflow", _record("dataflow"))
     monkeypatch.setattr(registry_module, "analyze_state_inference", _record("state-inference"))
     monkeypatch.setattr(registry_module, "analyze_comment_code", _record("comment-code"))
-    monkeypatch.setattr(registry_module, "get_configured_mutually_exclusive_step_sets", lambda config: ("mutex",))
-    monkeypatch.setattr(registry_module, "get_configured_step_contracts", lambda config: ("contracts",))
     monkeypatch.setattr(registry_module, "get_configured_naming_rules", lambda config: ("rules",))
 
     specs = {spec.key: spec for spec in registry_module.get_default_analyzers()}
@@ -185,6 +183,7 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
         unavailable_libraries={"MissingLib"},
         target_is_library=True,
         config={"profile": "test"},
+        include_dependency_moduletype_usage=None,
     )
     expected_keys = {
         registry_module.SEMANTIC_LAYER_ANALYZER_KEY,
@@ -245,69 +244,24 @@ def test_run_registry_analyzer_falls_back_to_spec_runner_without_registry_attr()
     assert seen["context"] is context
 
 
-def test_run_registry_analyzer_passes_include_dependency_usage_override(monkeypatch):
-    from sattlint.analyzers._registry_dispatch import (  # noqa: PLC0415
-        get_registry_analyzer_spec,
-        run_registry_analyzer,
-    )
-
-    report = SimpleNamespace(issues=[])
-    seen: dict[str, object] = {}
-
-    monkeypatch.setattr(
-        registry_module,
-        "analyze_variables",
-        lambda *args, **kwargs: seen.update({"args": args, "kwargs": kwargs}) or report,
-    )
-
-    spec = get_registry_analyzer_spec("variables")
-    context: Any = SimpleNamespace(
-        base_picture="bp",
-        graph=None,
-        debug=True,
-        target_is_library=False,
-        selected_issue_kinds=None,
-        config={"profile": "test"},
-        shared_artifacts=None,
-        unavailable_libraries={"MissingLib"},
-    )
-
-    assert (
-        run_registry_analyzer(
-            spec,
-            context,
-            overrides={"include_dependency_moduletype_usage": True},
-        )
-        is report
-    )
-    assert seen["kwargs"] == {
-        "analysis_context": context,
-        "debug": True,
-        "unavailable_libraries": {"MissingLib"},
-        "analyzed_target_is_library": False,
-        "include_dependency_moduletype_usage": True,
-        "selected_issue_kinds": None,
-        "config": {"profile": "test"},
-    }
-
-
-def test_run_registry_analyzer_passes_shared_artifacts_to_dataflow(monkeypatch):
-    from sattlint.analyzers._registry_dispatch import (  # noqa: PLC0415
-        get_registry_analyzer_spec,
-        run_registry_analyzer,
-    )
+def test_run_registry_analyzer_passes_shared_artifacts_to_dataflow():
+    from sattlint.analyzers._registry_dispatch import run_registry_analyzer  # noqa: PLC0415
+    from sattlint.analyzers.framework import AnalyzerSpec  # noqa: PLC0415
 
     report = SimpleNamespace(issues=[])
     seen: dict[str, object] = {}
     shared_artifacts = object()
 
-    monkeypatch.setattr(
-        registry_module,
-        "analyze_dataflow",
-        lambda *args, **kwargs: seen.update({"args": args, "kwargs": kwargs}) or report,
-    )
+    def _run(context: object) -> object:
+        seen["context"] = context
+        return report
 
-    spec = get_registry_analyzer_spec("dataflow")
+    spec = AnalyzerSpec(
+        key="dataflow",
+        name="Dataflow",
+        description="",
+        run=_run,
+    )
     context: Any = SimpleNamespace(
         base_picture="bp",
         graph=None,
@@ -316,14 +270,11 @@ def test_run_registry_analyzer_passes_shared_artifacts_to_dataflow(monkeypatch):
         config={"profile": "test"},
         shared_artifacts=shared_artifacts,
         unavailable_libraries={"MissingLib"},
+        include_dependency_moduletype_usage=None,
     )
 
     assert run_registry_analyzer(spec, context) is report
-    assert seen["kwargs"] == {
-        "unavailable_libraries": {"MissingLib"},
-        "analyzed_target_is_library": True,
-        "shared_artifacts": shared_artifacts,
-    }
+    assert seen["context"] is context
 
 
 def test_get_cli_dispatch_analyzers_includes_required_variables_for_sfc_selection():
@@ -358,6 +309,7 @@ def test_run_registry_analyzer_requires_variable_artifacts_for_sfc():
         config={},
         shared_artifacts=SimpleNamespace(variable_analysis=None, derived_reports={}),
         unavailable_libraries=set(),
+        include_dependency_moduletype_usage=None,
     )
 
     with pytest.raises(RuntimeError, match="requires analyzer results from: variables"):
@@ -387,8 +339,18 @@ def test_analyze_sattline_semantics_uses_declared_semantic_contributors(monkeypa
                     key="variables",
                     name="Variables",
                     description="",
-                    run=lambda _context: SimpleNamespace(issues=[]),
-                    analyzer_attr="analyze_variables",
+                    run=lambda _context: (
+                        calls.append("variables")
+                        or SimpleNamespace(
+                            issues=[
+                                VariableIssue(
+                                    kind=IssueKind.UNUSED,
+                                    module_path=["Root"],
+                                    variable=Variable(name="UnusedVar", datatype=Simple_DataType.INTEGER),
+                                )
+                            ]
+                        )
+                    ),
                     semantic_mapping_kind="variable",
                     semantic_rule_source="variables",
                 )
@@ -398,8 +360,10 @@ def test_analyze_sattline_semantics_uses_declared_semantic_contributors(monkeypa
                     key="spec-compliance",
                     name="Spec",
                     description="",
-                    run=lambda _context: SimpleNamespace(issues=[]),
-                    analyzer_attr="analyze_spec_compliance",
+                    run=lambda _context: (
+                        calls.append("spec-compliance")
+                        or SimpleNamespace(issues=[Issue(kind="spec.demo", message="spec issue", module_path=["Root"])])
+                    ),
                     semantic_mapping_kind="spec",
                     semantic_rule_source="spec-compliance",
                 )
@@ -409,8 +373,12 @@ def test_analyze_sattline_semantics_uses_declared_semantic_contributors(monkeypa
                     key="mms-interface",
                     name="MMS",
                     description="",
-                    run=lambda _context: SimpleNamespace(issues=[]),
-                    analyzer_attr="analyze_mms_interface_variables",
+                    run=lambda _context: (
+                        calls.append("mms-interface")
+                        or SimpleNamespace(
+                            issues=[Issue(kind="mms.duplicate_tag", message="duplicate tag", module_path=["Root"])]
+                        )
+                    ),
                     semantic_rule_source="mms-interface",
                 )
             ),
@@ -420,45 +388,12 @@ def test_analyze_sattline_semantics_uses_declared_semantic_contributors(monkeypa
                     name="Ignored",
                     description="",
                     run=lambda _context: SimpleNamespace(issues=[]),
-                    analyzer_attr="analyze_alarm_integrity",
                 )
             ),
         )
     )
 
     monkeypatch.setattr(registry_module, "get_default_analyzer_catalog", lambda: fake_catalog)
-    monkeypatch.setattr(
-        registry_module,
-        "analyze_variables",
-        lambda *_args, **_kwargs: (
-            calls.append("variables")
-            or SimpleNamespace(
-                issues=[
-                    VariableIssue(
-                        kind=IssueKind.UNUSED,
-                        module_path=["Root"],
-                        variable=Variable(name="UnusedVar", datatype=Simple_DataType.INTEGER),
-                    )
-                ]
-            )
-        ),
-    )
-    monkeypatch.setattr(
-        registry_module,
-        "analyze_spec_compliance",
-        lambda *_args, **_kwargs: (
-            calls.append("spec-compliance")
-            or SimpleNamespace(issues=[Issue(kind="spec.demo", message="spec issue", module_path=["Root"])])
-        ),
-    )
-    monkeypatch.setattr(
-        registry_module,
-        "analyze_mms_interface_variables",
-        lambda *_args, **_kwargs: (
-            calls.append("mms-interface")
-            or SimpleNamespace(issues=[Issue(kind="mms.duplicate_tag", message="duplicate tag", module_path=["Root"])])
-        ),
-    )
     monkeypatch.setattr(
         "sattlint.analyzers.sattline_semantics.detect_transform_invariant_violations",
         lambda _bp: [],

@@ -8,8 +8,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
-from sattlint import app
+from sattlint import cache as cache_module
 from sattlint import config as config_module
+from sattlint.application import checks as checks_module
+from sattlint.application import project as project_application
+from sattlint.cli import _command_implementations as app_cli_commands_module
+from sattlint.cli import commands as commands_application
+from sattlint.cli._exit_codes import EXIT_SUCCESS, EXIT_USAGE_ERROR
 
 
 def test_run_validate_config_command_delegates_to_cli_owner(monkeypatch, capsys) -> None:
@@ -27,10 +32,10 @@ def test_run_validate_config_command_delegates_to_cli_owner(monkeypatch, capsys)
             ],
         )
 
-    monkeypatch.setattr(app.commands_application, "validate_effective_config", fake_validate_effective_config)
+    monkeypatch.setattr(commands_application, "validate_effective_config", fake_validate_effective_config)
 
     cfg = {"debug": False}
-    result = app.run_validate_config_command(
+    result = commands_application.run_validate_config_command(
         cfg,
         config_path=Path("custom.toml"),
         default_used=True,
@@ -38,8 +43,8 @@ def test_run_validate_config_command_delegates_to_cli_owner(monkeypatch, capsys)
     )
 
     out = json.loads(capsys.readouterr().out)
-    assert result == app.EXIT_USAGE_ERROR
-    assert app.run_validate_config_command is app.commands_application.run_validate_config_command
+    assert result == EXIT_USAGE_ERROR
+    assert commands_application.run_validate_config_command is commands_application.run_validate_config_command
     assert seen["cfg"] is cfg
     assert out["config_path"] == "custom.toml"
     assert out["default_used"] is True
@@ -66,10 +71,10 @@ def test_run_analyze_command_delegates_to_cli_owner(monkeypatch) -> None:
         seen["exit_success"] = exit_success
         return 78
 
-    monkeypatch.setattr(app.app_cli_commands_module, "run_analyze_command", fake_run_analyze_command)
+    monkeypatch.setattr(app_cli_commands_module, "run_analyze_command", fake_run_analyze_command)
 
     cfg = {"debug": False}
-    result = app.run_analyze_command(
+    result = commands_application.run_analyze_command(
         cfg,
         selected_keys=["variables"],
         selected_issue_kinds=frozenset({"unused"}),
@@ -78,12 +83,12 @@ def test_run_analyze_command_delegates_to_cli_owner(monkeypatch) -> None:
     )
 
     assert result == 78
-    assert app.run_analyze_command is app.commands_application.run_analyze_command
+    assert commands_application.run_analyze_command is commands_application.run_analyze_command
     assert seen["cfg"] is cfg
     assert seen["selected_keys"] == ["variables"]
     assert seen["selected_issue_kinds"] == frozenset({"unused"})
     assert seen["output_format"] == "json"
-    assert seen["exit_success"] == app.EXIT_SUCCESS
+    assert seen["exit_success"] == EXIT_SUCCESS
 
 
 def test_run_analyze_command_allows_opt_in_analyzer_keys(monkeypatch) -> None:
@@ -108,10 +113,10 @@ def test_run_analyze_command_allows_opt_in_analyzer_keys(monkeypatch) -> None:
         seen["analyzer_keys"] = [spec.key for spec in get_enabled_analyzers_fn()]
         return SimpleNamespace(output_lines=(), cancelled=False)
 
-    monkeypatch.setattr(app.app_analysis_checks, "collect_run_checks_result", fake_collect_run_checks_result)
-    monkeypatch.setattr(app.project_application, "iter_loaded_projects", lambda _cfg, *, use_cache: iter(()))
+    monkeypatch.setattr(checks_module, "collect_run_checks_result", fake_collect_run_checks_result)
+    monkeypatch.setattr(project_application, "iter_loaded_projects", lambda _cfg, *, use_cache: iter(()))
 
-    result = app.run_analyze_command(
+    result = commands_application.run_analyze_command(
         {"debug": False},
         selected_keys=["timing"],
         selected_issue_kinds=frozenset({"unused"}),
@@ -145,24 +150,24 @@ def test_run_cache_prune_command_delegates_to_cli_owner(monkeypatch):
         seen["exit_usage_error"] = exit_usage_error
         return 80
 
-    monkeypatch.setattr(app.app_cli_commands_module, "run_cache_prune_command", fake_run_cache_prune_command)
+    monkeypatch.setattr(app_cli_commands_module, "run_cache_prune_command", fake_run_cache_prune_command)
 
-    result = app.run_cache_prune_command(cache_dir="custom-cache", output_format="json")
+    result = commands_application.run_cache_prune_command(cache_dir="custom-cache", output_format="json")
 
     assert result == 80
     assert seen["cache_dir"] == "custom-cache"
     assert seen["output_format"] == "json"
-    assert seen["prune_cache_dir_fn"] is app.cache.prune_cache_dir
-    assert seen["get_cache_dir_fn"] is app.cache.get_cache_dir
-    assert seen["exit_success"] == app.EXIT_SUCCESS
-    assert seen["exit_usage_error"] == app.EXIT_USAGE_ERROR
+    assert seen["prune_cache_dir_fn"] is cache_module.prune_cache_dir
+    assert seen["get_cache_dir_fn"] is cache_module.get_cache_dir
+    assert seen["exit_success"] == EXIT_SUCCESS
+    assert seen["exit_usage_error"] == EXIT_USAGE_ERROR
 
 
 def test_cli_owner_run_cache_prune_command_prints_json_output(capsys):
-    exit_code = app.app_cli_commands_module.run_cache_prune_command(
+    exit_code = app_cli_commands_module.run_cache_prune_command(
         cache_dir="custom-cache",
         output_format="json",
-        prune_cache_dir_fn=lambda _path: app.cache.CachePruneResult(
+        prune_cache_dir_fn=lambda _path: cache_module.CachePruneResult(
             file_lookup_entries=1,
             file_ast_entries=1,
             ast_payload_entries=0,
@@ -170,12 +175,12 @@ def test_cli_owner_run_cache_prune_command_prints_json_output(capsys):
             analysis_report_entries=0,
         ),
         get_cache_dir_fn=lambda: Path("unused"),
-        exit_success=app.EXIT_SUCCESS,
-        exit_usage_error=app.EXIT_USAGE_ERROR,
+        exit_success=EXIT_SUCCESS,
+        exit_usage_error=EXIT_USAGE_ERROR,
     )
 
     out = capsys.readouterr().out
-    assert exit_code == app.EXIT_SUCCESS
+    assert exit_code == EXIT_SUCCESS
     assert json.loads(out) == {
         "status": "ok",
         "cache_dir": "custom-cache",
@@ -192,7 +197,7 @@ def test_cli_owner_run_cache_prune_command_prints_json_output(capsys):
 
 def test_startup_run_validate_config_command_warns_on_default_config(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
-        app.commands_application,
+        commands_application,
         "validate_effective_config",
         lambda _cfg: config_module.ConfigValidationResult(
             passed=False,
@@ -205,21 +210,21 @@ def test_startup_run_validate_config_command_warns_on_default_config(monkeypatch
         ),
     )
 
-    exit_code = app.run_validate_config_command(
+    exit_code = commands_application.run_validate_config_command(
         {"debug": False},
         config_path=Path("default.toml"),
         default_used=True,
     )
 
     out = capsys.readouterr().out
-    assert exit_code == app.EXIT_USAGE_ERROR
+    assert exit_code == EXIT_USAGE_ERROR
     assert "Warning: default config loaded from default.toml" in out
     assert "MissingTarget (not found)" in out
 
 
 def test_startup_run_validate_config_command_prints_json(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
-        app.commands_application,
+        commands_application,
         "validate_effective_config",
         lambda _cfg: config_module.ConfigValidationResult(
             passed=False,
@@ -232,7 +237,7 @@ def test_startup_run_validate_config_command_prints_json(monkeypatch, capsys) ->
         ),
     )
 
-    exit_code = app.run_validate_config_command(
+    exit_code = commands_application.run_validate_config_command(
         {"debug": False},
         config_path=Path("default.toml"),
         default_used=True,
@@ -240,7 +245,7 @@ def test_startup_run_validate_config_command_prints_json(monkeypatch, capsys) ->
     )
 
     out = capsys.readouterr().out
-    assert exit_code == app.EXIT_USAGE_ERROR
+    assert exit_code == EXIT_USAGE_ERROR
     assert json.loads(out) == {
         "config_path": "default.toml",
         "default_used": True,
@@ -282,35 +287,35 @@ def test_startup_run_analyze_command_delegates_and_returns_success(monkeypatch) 
         )
         return exit_success
 
-    monkeypatch.setattr(app.app_cli_commands_module, "run_analyze_command", fake_run_analyze_command)
+    monkeypatch.setattr(app_cli_commands_module, "run_analyze_command", fake_run_analyze_command)
     monkeypatch.setattr(
-        app.app_analysis_checks,
+        checks_module,
         "collect_run_checks_result",
         lambda cfg, selected_keys, *, selected_issue_kinds=None, use_cache=True, **_kwargs: SimpleNamespace(
             output_lines=(str(use_cache), str(selected_keys), str(selected_issue_kinds)),
             cancelled=False,
         ),
     )
-    monkeypatch.setattr(app.project_application, "iter_loaded_projects", lambda _cfg, *, use_cache: iter(()))
+    monkeypatch.setattr(project_application, "iter_loaded_projects", lambda _cfg, *, use_cache: iter(()))
 
-    exit_code = app.run_analyze_command(
+    exit_code = commands_application.run_analyze_command(
         {"debug": False},
         selected_keys=["variables"],
         selected_issue_kinds=frozenset({"unused"}),
         use_cache=False,
     )
 
-    assert exit_code == app.EXIT_SUCCESS
+    assert exit_code == EXIT_SUCCESS
     assert seen["cfg"] == {"debug": False}
     assert seen["selected_keys"] == ["variables"]
     assert seen["selected_issue_kinds"] == frozenset({"unused"})
     assert seen["output_format"] == "text"
     assert cast(Any, seen["collected"]).output_lines == ("False", "['variables']", "frozenset({'unused'})")
-    assert seen["exit_success"] == app.EXIT_SUCCESS
+    assert seen["exit_success"] == EXIT_SUCCESS
 
 
 def test_cli_owner_run_analyze_command_renders_collected_output(capsys) -> None:
-    exit_code = app.app_cli_commands_module.run_analyze_command(
+    exit_code = app_cli_commands_module.run_analyze_command(
         {"debug": False},
         selected_keys=["variables"],
         selected_issue_kinds=frozenset({"unused"}),
@@ -319,16 +324,16 @@ def test_cli_owner_run_analyze_command_renders_collected_output(capsys) -> None:
             output_lines=(f"checks={selected_keys}", f"issues={selected_issue_kinds}"),
             cancelled=False,
         ),
-        exit_success=app.EXIT_SUCCESS,
+        exit_success=EXIT_SUCCESS,
     )
 
     out = capsys.readouterr().out.splitlines()
-    assert exit_code == app.EXIT_SUCCESS
+    assert exit_code == EXIT_SUCCESS
     assert out == ["checks=['variables']", "issues=frozenset({'unused'})"]
 
 
 def test_cli_owner_run_analyze_command_prints_json_output(capsys) -> None:
-    exit_code = app.app_cli_commands_module.run_analyze_command(
+    exit_code = app_cli_commands_module.run_analyze_command(
         {"debug": False},
         selected_keys=["variables"],
         selected_issue_kinds=frozenset({"unused"}),
@@ -366,11 +371,11 @@ def test_cli_owner_run_analyze_command_prints_json_output(capsys) -> None:
                 ),
             ),
         ),
-        exit_success=app.EXIT_SUCCESS,
+        exit_success=EXIT_SUCCESS,
     )
 
     out = capsys.readouterr().out
-    assert exit_code == app.EXIT_SUCCESS
+    assert exit_code == EXIT_SUCCESS
     assert json.loads(out) == {
         "cancelled": False,
         "selected_checks": ["variables"],

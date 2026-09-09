@@ -5,7 +5,7 @@ tracks `sattlint --help` and the per-command help; when they disagree, the CLI
 is the source of truth.
 
 The interactive Textual UI (opened by running `sattlint` with no arguments) is
-described in [feature-guide.md](feature-guide.md).
+described in [FEATURE_GUIDE.md](FEATURE_GUIDE.md).
 
 ## Global usage
 

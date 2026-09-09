@@ -60,26 +60,6 @@ class NamingConfigOverride(TypedDict, total=False):
     instances: NamingRuleConfigOverride
 
 
-class StepContractConfig(TypedDict):
-    required_enter_writes: list[str]
-    required_exit_writes: list[str]
-
-
-class StepContractConfigOverride(TypedDict, total=False):
-    required_enter_writes: list[str]
-    required_exit_writes: list[str]
-
-
-class SfcConfig(TypedDict):
-    mutually_exclusive_steps: list[object]
-    step_contracts: dict[str, StepContractConfig]
-
-
-class SfcConfigOverride(TypedDict, total=False):
-    mutually_exclusive_steps: list[object]
-    step_contracts: dict[str, StepContractConfigOverride | ConfigObjectMap]
-
-
 class RuleProfileConfig(TypedDict):
     description: str
     disabled_rules: list[str]
@@ -105,13 +85,11 @@ class RuleProfilesConfigOverride(TypedDict, total=False):
 
 
 class AnalysisConfig(TypedDict):
-    sfc: SfcConfig
     naming: NamingConfig
     rule_profiles: RuleProfilesConfig
 
 
 class AnalysisConfigOverride(TypedDict, total=False):
-    sfc: SfcConfigOverride
     naming: NamingConfigOverride
     rule_profiles: RuleProfilesConfigOverride
 
@@ -169,8 +147,4 @@ __all__ = [
     "RuleProfilesConfigOverride",
     "RunHistoryConfig",
     "RunHistoryConfigOverride",
-    "SfcConfig",
-    "SfcConfigOverride",
-    "StepContractConfig",
-    "StepContractConfigOverride",
 ]

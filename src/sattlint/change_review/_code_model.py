@@ -60,6 +60,31 @@ class StatementModel:
 
 
 @dataclass(frozen=True)
+class BlockModel:
+    """A complete equation block or sequence within a module.
+
+    Equation blocks and sequences are the natural behavioural context boundary
+    for a change: the surrounding statements determine what the changed code
+    means. This model keeps the complete block's statements plus the aggregate
+    set of definition keys it reads and writes.
+    """
+
+    module_path: tuple[str, ...]
+    kind: str  # "equation" | "sequence"
+    name: str
+    statements: tuple[StatementModel, ...]
+    reads_keys: frozenset[_DefinitionKey]
+    writes_keys: frozenset[_DefinitionKey]
+    line_start: int | None
+    last_span: SourceSpan | None
+    source_file: str | None
+
+    @property
+    def identity(self) -> tuple[tuple[str, ...], str, str]:
+        return (self.module_path, self.kind, self.name)
+
+
+@dataclass(frozen=True)
 class ModuleModel:
     """Semantic view of one module/function-block in the project."""
 
@@ -69,6 +94,7 @@ class ModuleModel:
     origin_file: str | None
     origin_library: str | None
     statements: tuple[StatementModel, ...]
+    blocks: tuple[BlockModel, ...]
     dependency_keys: frozenset[_DefinitionKey]
     declaration_span: SourceSpan | None
     sequence_structure: dict[str, tuple[tuple[str, str | None], ...]] = field(compare=False)
@@ -84,6 +110,8 @@ class CodeModel:
     owner_by_site: dict[tuple[str, int], tuple[tuple[str, ...], ...]] = field(compare=False)
     consumers_by_key: dict[_DefinitionKey, tuple[tuple[str, ...], ...]] = field(compare=False)
     producers_by_key: dict[_DefinitionKey, tuple[tuple[str, ...], ...]] = field(compare=False)
+    blocks_by_key: dict[tuple[tuple[str, ...], str, str], BlockModel] = field(compare=False)
+    blocks_touching_key: dict[_DefinitionKey, tuple[tuple[tuple[str, ...], str, str], ...]] = field(compare=False)
 
 
 def _iter_sfc_items(path: _StatementKey, items: list[Any] | None) -> Any:
@@ -217,11 +245,73 @@ def _resolve_ref_keys(
     return frozenset(keys)
 
 
+def _node_declared_variables(
+    node: BasePicture | SingleModule | FrameModule | ModuleTypeDef,
+) -> list[Any]:
+    if isinstance(node, BasePicture):
+        return list(node.localvariables or [])
+    if isinstance(node, SingleModule):
+        return list(node.moduleparameters or []) + list(node.localvariables or [])
+    if isinstance(node, ModuleTypeDef):
+        return list(node.moduleparameters or []) + list(node.localvariables or [])
+    return []
+
+
+def _node_scope_keys(
+    node: BasePicture | SingleModule | FrameModule | ModuleTypeDef,
+    module_path: tuple[str, ...],
+) -> dict[str, _DefinitionKey]:
+    """Map a declared variable name to its canonical definition key.
+
+    Direct reads/writes of a statement are resolved against the module that
+    *declares* the code's variables. For a typedef's code this is the typedef
+    itself (``ValveType``), not the instance path, so a parameter mapping such
+    as ``Open => StartCmd`` is treated as a broader connection rather than a
+    direct read of the changed expression.
+    """
+    if isinstance(node, ModuleTypeDef):
+        scope_base = (node.name.casefold(),)
+    else:
+        scope_base = tuple(segment.casefold() for segment in module_path)
+    scope_keys: dict[str, _DefinitionKey] = {}
+    for variable in _node_declared_variables(node):
+        name = getattr(variable, "name", None)
+        if isinstance(name, str) and name:
+            scope_keys[name.casefold()] = (*scope_base, name.casefold())
+    return scope_keys
+
+
+def _resolve_var_ref(
+    ref: Any,
+    *,
+    scope_keys: dict[str, _DefinitionKey],
+    ref_line_index: dict[str, dict[int, list[ReferenceOccurrence]]],
+    file_key: str,
+) -> frozenset[_DefinitionKey]:
+    """Resolve one variable reference to definition keys.
+
+    Scope resolution is tried first (the variable declared by the code's owning
+    module); the reference-occurrence index is the fallback for references to
+    variables outside the owning scope.
+    """
+    span = getattr(ref, "span", None)
+    if not isinstance(span, SourceSpan):
+        return frozenset()
+    name = getattr(ref, "name", None)
+    if isinstance(name, str):
+        segments = [segment.casefold() for segment in name.split(".") if segment]
+        if segments and segments[0] in scope_keys:
+            base = scope_keys[segments[0]]
+            return frozenset({(*base, *segments[1:])})
+    return _resolve_ref_keys(ref_line_index, file_key, span)
+
+
 def _collect_statements(
     code_node: Any,
     *,
     source_file: str | None,
     ref_line_index: dict[str, dict[int, list[ReferenceOccurrence]]],
+    scope_keys: dict[str, _DefinitionKey],
 ) -> tuple[tuple[StatementModel, ...], frozenset[tuple[str, int, int]], frozenset[str]]:
     statements: list[StatementModel] = []
     ref_sites: set[tuple[str, int, int]] = set()
@@ -238,11 +328,23 @@ def _collect_statements(
                 ref_span = getattr(ref, "span", None)
                 if isinstance(ref_span, SourceSpan):
                     ref_sites.add((file_key, ref_span.line, ref_span.column))
-                    referenced_keys.update(_resolve_ref_keys(ref_line_index, file_key, ref_span))
+                    referenced_keys.update(
+                        _resolve_var_ref(
+                            ref,
+                            scope_keys=scope_keys,
+                            ref_line_index=ref_line_index,
+                            file_key=file_key,
+                        )
+                    )
             for target in _iter_assignment_targets(node):
-                target_span = getattr(target, "span", None)
-                if isinstance(target_span, SourceSpan):
-                    produced_keys.update(_resolve_ref_keys(ref_line_index, file_key, target_span))
+                produced_keys.update(
+                    _resolve_var_ref(
+                        target,
+                        scope_keys=scope_keys,
+                        ref_line_index=ref_line_index,
+                        file_key=file_key,
+                    )
+                )
         statements.append(
             StatementModel(
                 key=key,
@@ -258,6 +360,44 @@ def _collect_statements(
             files.add(source_file)
 
     return tuple(statements), frozenset(ref_sites), frozenset(files)
+
+
+def _group_blocks(
+    module_path: tuple[str, ...],
+    statements: tuple[StatementModel, ...],
+    source_file: str | None,
+) -> tuple[BlockModel, ...]:
+    """Group statements into their containing equation blocks and sequences."""
+    groups: dict[tuple[str, str], list[StatementModel]] = {}
+    for statement in statements:
+        if not statement.key or statement.key[0] not in {"equation", "sequence"}:
+            continue
+        groups.setdefault((str(statement.key[0]), str(statement.key[1])), []).append(statement)
+
+    blocks: list[BlockModel] = []
+    for (kind, name), grouped in groups.items():
+        reads: set[_DefinitionKey] = set()
+        writes: set[_DefinitionKey] = set()
+        for statement in grouped:
+            writes.update(statement.produced_keys)
+            reads.update(key for key in statement.referenced_keys if key not in statement.produced_keys)
+        first = grouped[0]
+        last = grouped[-1]
+        blocks.append(
+            BlockModel(
+                module_path=module_path,
+                kind=kind,
+                name=name,
+                statements=tuple(grouped),
+                reads_keys=frozenset(reads),
+                writes_keys=frozenset(writes),
+                line_start=first.span.line if first.span is not None else None,
+                last_span=last.span if last.span is not None else None,
+                source_file=source_file,
+            )
+        )
+    blocks.sort(key=lambda block: (block.kind, block.name.casefold()))
+    return tuple(blocks)
 
 
 class _ModuleTreeWalker:
@@ -284,10 +424,12 @@ class _ModuleTreeWalker:
             getattr(node, "modulecode", None),
             source_file=origin_file,
             ref_line_index=self._ref_line_index,
+            scope_keys=_node_scope_keys(node, module_path),
         )
         produced: set[_DefinitionKey] = set()
         for statement in statements:
             produced.update(statement.produced_keys)
+        blocks = _group_blocks(module_path, statements, origin_file)
         self._ref_sites_by_module[module_path] = ref_sites
         self._produced_keys_by_module[module_path] = produced
         self._modules.append(
@@ -298,6 +440,7 @@ class _ModuleTreeWalker:
                 origin_file=origin_file,
                 origin_library=origin_library,
                 statements=statements,
+                blocks=blocks,
                 dependency_keys=frozenset(),
                 declaration_span=_module_declaration_span(node),
                 sequence_structure=_collect_sequence_structure(getattr(node, "modulecode", None)),
@@ -413,21 +556,6 @@ class _ModuleTreeWalker:
             origin_file=root_file,
             origin_library=root.origin_lib,
         )
-        for moduletype in self._snapshot.base_picture.moduletype_defs or []:
-            module_path = (moduletype.name,)
-            self._add_module(
-                moduletype,
-                module_path=module_path,
-                kind="MT",
-                origin_file=moduletype.origin_file,
-                origin_library=moduletype.origin_lib,
-            )
-            self._walk_submodules(
-                moduletype.submodules or [],
-                module_path=module_path,
-                origin_file=moduletype.origin_file,
-                origin_library=moduletype.origin_lib,
-            )
 
         owner_by_site, consumers_by_key = self._build_owner_and_consumers()
 
@@ -453,6 +581,7 @@ class _ModuleTreeWalker:
                     origin_file=module.origin_file,
                     origin_library=module.origin_library,
                     statements=module.statements,
+                    blocks=module.blocks,
                     dependency_keys=frozenset(dependency_keys_by_module.get(module.module_path, ())),
                     declaration_span=module.declaration_span,
                     sequence_structure=module.sequence_structure,
@@ -460,12 +589,22 @@ class _ModuleTreeWalker:
                 )
             )
 
+        blocks_by_key: dict[tuple[tuple[str, ...], str, str], BlockModel] = {}
+        blocks_touching_key: dict[_DefinitionKey, set[tuple[tuple[str, ...], str, str]]] = {}
+        for module in modules:
+            for block in module.blocks:
+                blocks_by_key[block.identity] = block
+                for key in (*block.reads_keys, *block.writes_keys):
+                    blocks_touching_key.setdefault(key, set()).add(block.identity)
+
         return CodeModel(
             modules=tuple(modules),
             modules_by_path={module.module_path: module for module in modules},
             owner_by_site={site: tuple(owners) for site, owners in owner_by_site.items()},
             consumers_by_key={key: tuple(owners) for key, owners in consumers_by_key.items()},
             producers_by_key={key: tuple(owners) for key, owners in producers_by_key.items()},
+            blocks_by_key=blocks_by_key,
+            blocks_touching_key={key: tuple(identities) for key, identities in blocks_touching_key.items()},
         )
 
 

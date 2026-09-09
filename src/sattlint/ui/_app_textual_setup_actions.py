@@ -1,4 +1,3 @@
-# pyright: reportPrivateUsage=false, reportUnusedFunction=false
 from __future__ import annotations
 
 from collections.abc import Callable

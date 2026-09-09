@@ -1,3 +1,5 @@
+"""Semantic rule declarations (variable/framework/spec/rule registries)."""
+
 from __future__ import annotations
 
 from ..reporting.variables_report import IssueKind
@@ -198,6 +200,22 @@ VARIABLE_RULES: dict[IssueKind, SemanticRule] = {
         severity="warning",
         applies_to="boolean-variable",
         description="Boolean values that are set on some branches or steps without a matching False write on the complementary path.",
+    ),
+    IssueKind.MAGIC_NUMBER: SemanticRule(
+        id="semantic.magic-number",
+        source="variables",
+        category="engineering-spec",
+        severity="warning",
+        applies_to="literal",
+        description="Raw numeric literals used directly in assignments instead of a named constant.",
+    ),
+    IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE: SemanticRule(
+        id="semantic.record-component-order-dependence",
+        source="variables",
+        category="module-structure",
+        severity="warning",
+        applies_to="record-field",
+        description="Record component reads or writes whose meaning depends on field declaration order.",
     ),
 }
 

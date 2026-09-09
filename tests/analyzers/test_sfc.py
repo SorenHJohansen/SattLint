@@ -32,7 +32,6 @@ from sattlint.analyzers.sfc import _sfc_collectors as sfc_collectors_module
 from sattlint.analyzers.sfc import analyze_sfc
 from sattlint.analyzers.sfc._sfc_collectors import _SfcAccessCollector
 from sattlint.analyzers.sfc._sfc_module_walk import iter_sfc_modulecodes
-from sattlint.analyzers.sfc._sfc_step_contracts import StepContract
 from sattlint.analyzers.variables import analyze_variables
 from sattlint.resolution import AccessKind
 from sattlint.resolution.paths import CanonicalPath
@@ -113,61 +112,6 @@ def test_parallel_branch_distinct_writes_not_reported():
     assert not report.issues
 
 
-def test_illegal_state_combination_detected_for_parallel_steps():
-    seq = _sequence(
-        [
-            SFCParallel(
-                branches=[
-                    [_step("Idle", [])],
-                    [_step("Running", [])],
-                ]
-            )
-        ]
-    )
-
-    bp = BasePicture(
-        header=_hdr("Root"),
-        localvariables=[],
-        modulecode=ModuleCode(sequences=[seq], equations=[]),
-    )
-
-    report = analyze_sfc(
-        bp,
-        mutually_exclusive_steps=[("Idle", "Running")],
-    )
-
-    issues = [issue for issue in report.issues if issue.kind == "sfc_illegal_state_combination"]
-    assert len(issues) == 1
-    assert issues[0].data is not None
-    assert issues[0].data["conflicts"] == [["Idle", "Running"]]
-
-
-def test_valid_parallel_state_combination_not_reported():
-    seq = _sequence(
-        [
-            SFCParallel(
-                branches=[
-                    [_step("Idle", [])],
-                    [_step("Holding", [])],
-                ]
-            )
-        ]
-    )
-
-    bp = BasePicture(
-        header=_hdr("Root"),
-        localvariables=[],
-        modulecode=ModuleCode(sequences=[seq], equations=[]),
-    )
-
-    report = analyze_sfc(
-        bp,
-        mutually_exclusive_steps=[("Idle", "Running")],
-    )
-
-    assert not any(issue.kind == "sfc_illegal_state_combination" for issue in report.issues)
-
-
 def test_analyze_sfc_parallel_write_race_selection_skips_other_issue_collectors(monkeypatch):
     bp = BasePicture(
         header=_hdr("Root"),
@@ -199,22 +143,10 @@ def test_analyze_sfc_parallel_write_race_selection_skips_other_issue_collectors(
         "_collect_transition_logic_issues",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("transition logic should not run")),
     )
-    monkeypatch.setattr(
-        sfc_module,
-        "_collect_illegal_state_combination_issues",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("illegal-state scan should not run")),
-    )
-    monkeypatch.setattr(
-        sfc_module,
-        "_SfcStepContractCollector",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("step contracts should not run")),
-    )
 
     report = analyze_sfc(
         bp,
         selected_issue_kinds={"sfc_parallel_write_race"},
-        mutually_exclusive_steps=[("Left", "Right")],
-        step_contracts={"Left": {"required_enter_writes": ["Output"]}},
     )
 
     assert [issue.kind for issue in report.issues] == ["sfc_parallel_write_race"]
@@ -383,61 +315,6 @@ def test_iter_sfc_modulecodes_covers_root_nested_modules_and_typedefs():
     ]
 
 
-def test_sfc_configuration_helpers_normalize_groups_and_contracts() -> None:
-    assert sfc_module._mapping_value({"analysis": 1}, "analysis") == 1
-    assert sfc_module._normalize_step_groups(None) == ()
-    assert sfc_module._normalize_step_groups([[" Idle ", "Running", "idle", "", 5], ["OnlyOne"]]) == (
-        ("Idle", "Running"),
-    )
-    assert sfc_module.normalize_mutually_exclusive_step_sets("bad") == ()
-    assert sfc_module.normalize_mutually_exclusive_step_sets(
-        [
-            ["Idle", "Running"],
-            "skip",
-            ("Hold", "Run"),
-        ]
-    ) == (("Idle", "Running"), ("Hold", "Run"))
-    assert sfc_module.get_configured_mutually_exclusive_step_sets(None) == ()
-    assert sfc_module.get_configured_mutually_exclusive_step_sets({"analysis": []}) == ()
-    assert sfc_module.get_configured_mutually_exclusive_step_sets({"analysis": {"sfc": []}}) == ()
-    assert sfc_module.get_configured_mutually_exclusive_step_sets(
-        {"analysis": {"sfc": {"mutually_exclusive_steps": [["Idle", "Running"]]}}}
-    ) == (("Idle", "Running"),)
-
-    assert sfc_module._normalize_step_contract_refs("bad") == ()
-    assert sfc_module._normalize_step_contract_refs([" Output ", "output", "", 3, "Done"]) == (
-        "Output",
-        "Done",
-    )
-    assert sfc_module._normalize_step_contract("bad") == StepContract()
-    assert sfc_module._normalize_step_contract(
-        StepContract(required_enter_writes=("Output",), required_exit_writes=("Done",))
-    ) == StepContract(required_enter_writes=("Output",), required_exit_writes=("Done",))
-    assert sfc_module.normalize_step_contracts("bad") == {}
-    assert sfc_module.normalize_step_contracts(
-        {
-            3: {"required_enter_writes": ["Skip"]},
-            " ": {"required_enter_writes": ["Skip"]},
-            "Empty": {},
-            "Main": {
-                "required_enter_writes": [" Output ", "output"],
-                "required_exit_writes": ["Done"],
-            },
-        }
-    ) == {"main": StepContract(required_enter_writes=("Output",), required_exit_writes=("Done",))}
-    assert sfc_module.normalize_step_contracts(
-        {
-            "Main": StepContract(required_enter_writes=("Output",), required_exit_writes=("Done",)),
-        }
-    ) == {"main": StepContract(required_enter_writes=("Output",), required_exit_writes=("Done",))}
-    assert sfc_module.get_configured_step_contracts(None) == {}
-    assert sfc_module.get_configured_step_contracts({"analysis": []}) == {}
-    assert sfc_module.get_configured_step_contracts({"analysis": {"sfc": []}}) == {}
-    assert sfc_module.get_configured_step_contracts(
-        {"analysis": {"sfc": {"step_contracts": {"Main": {"required_enter_writes": ["Output"]}}}}}
-    ) == {"main": StepContract(required_enter_writes=("Output",), required_exit_writes=())}
-
-
 def test_sfc_reachability_and_active_step_helpers_cover_nested_nodes_and_previews(monkeypatch) -> None:
     findings: list[sfc_module.SfcReachabilityFinding] = []
     sfc_module._inspect_sfc_linear_nodes(
@@ -481,29 +358,6 @@ def test_sfc_reachability_and_active_step_helpers_cover_nested_nodes_and_preview
     assert sfc_module._sequence_node_label(SFCFork(targets=("Left", "Right"))) == "SFCFork:Left,Right"
     assert sfc_module._sequence_node_label(SFCBreak()) == "SFCBreak"
 
-    active_sets = sfc_module._collect_active_step_sets(
-        [
-            SFCTransition(name="Gate", condition=True),
-            SFCFork(targets=("Done",)),
-            SFCBreak(),
-            SFCAlternative(branches=[[_step("Alt", [])]]),
-            SFCParallel(branches=[[_step("Left", [])], [_step("Right", [])]]),
-            SFCSubsequence(name="Nested", body=[_step("Nested", [])]),
-            SFCTransitionSub(name="Gate", body=[_step("TransitionBody", [])]),
-        ]
-    )
-    assert active_sets == {
-        frozenset({"Alt"}),
-        frozenset({"Left", "Right"}),
-        frozenset({"Nested"}),
-        frozenset({"TransitionBody"}),
-    }
-    assert sfc_module._find_illegal_state_combinations(
-        [frozenset({"Idle", "Running"}), frozenset({"Idle"})],
-        (("Idle", "Running"),),
-    ) == [("Idle", "Running")]
-    assert sfc_module._collect_illegal_state_combination_issues(BasePicture(header=_hdr("Root")), ()) == []
-
     sequence = _sequence([_step("Idle", []), _step("Running", [])])
     bp = BasePicture(
         header=_hdr("Root"),
@@ -511,21 +365,6 @@ def test_sfc_reachability_and_active_step_helpers_cover_nested_nodes_and_preview
         modulecode=ModuleCode(sequences=[sequence], equations=[]),
     )
     assert sfc_module.collect_sfc_reachability_findings(bp) == []
-    monkeypatch.setattr(
-        sfc_module,
-        "_find_illegal_state_combinations",
-        lambda *_args, **_kwargs: [
-            ("A", "B"),
-            ("C", "D"),
-            ("E", "F"),
-            ("G", "H"),
-            ("I", "J"),
-        ],
-    )
-    issues = sfc_module._collect_illegal_state_combination_issues(bp, (("Idle", "Running"),))
-    assert len(issues) == 1
-    assert "; ... (+1 more)" in issues[0].message
-    assert len(issues[0].data["conflicts"]) == 5
     assert sfc_module._format_terminator({"kind": "SFCFork", "targets": ["Left", 7, "Right"]}) == (
         "SFCFork targeting 'Left', 'Right'"
     )
@@ -554,13 +393,6 @@ def test_analyze_sfc_covers_selected_collectors_reachability_messages_and_step_c
 
         def run(self):
             return None
-
-    class _FakeStepContractCollector:
-        def __init__(self, _bp, contracts, **_kwargs):
-            self.contracts = contracts
-
-        def collect(self):
-            return [Issue(kind="sfc_missing_step_enter_contract", message="contract")]
 
     monkeypatch.setattr(sfc_module, "_SfcAccessCollector", _FakeCollector)
     monkeypatch.setattr(
@@ -592,18 +424,8 @@ def test_analyze_sfc_covers_selected_collectors_reachability_messages_and_step_c
         "_collect_transition_logic_issues",
         lambda _bp, **kwargs: [Issue(kind="sfc_transition_always_true", message="logic")],
     )
-    monkeypatch.setattr(
-        sfc_module,
-        "_collect_illegal_state_combination_issues",
-        lambda _bp, _groups, **kwargs: [Issue(kind="sfc_illegal_state_combination", message="illegal")],
-    )
-    monkeypatch.setattr(sfc_module, "_SfcStepContractCollector", _FakeStepContractCollector)
 
-    report = analyze_sfc(
-        BasePicture(header=_hdr("Root")),
-        mutually_exclusive_steps=[["Idle", "Running"]],
-        step_contracts={"Main": {"required_enter_writes": ["Output"]}},
-    )
+    report = analyze_sfc(BasePicture(header=_hdr("Root")))
 
     kinds = [issue.kind for issue in report.issues]
     assert kinds == [
@@ -611,8 +433,6 @@ def test_analyze_sfc_covers_selected_collectors_reachability_messages_and_step_c
         "sfc_unreachable_transition",
         "sfc_unreachable_sequence_node",
         "sfc_transition_always_true",
-        "sfc_illegal_state_combination",
-        "sfc_missing_step_enter_contract",
     ]
     assert "... (+1 more)" in report.issues[0].message
     assert report.issues[1].data["branch_path"] == [1]

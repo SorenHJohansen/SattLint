@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-type AnalyzerCategory = Literal["correctness", "heuristic", "style", "development"]
+type AnalyzerCategory = Literal["correctness", "heuristic", "style"]
 
 
 @dataclass(frozen=True)
@@ -47,8 +47,6 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "debug",
                 "unavailable_libraries",
                 "analyzed_target_is_library",
-                "sfc_mutually_exclusive_steps",
-                "sfc_step_contracts",
                 "config",
             ),
         ),
@@ -158,13 +156,11 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "- Steps or transitions that can never run, for example a SEQSTEP placed after a "
                 "SEQBREAK.\n"
                 "- Transitions that always fire or never fire.\n"
-                "- Transitions in one branch with the same condition.\n"
-                "- Steps that should not run at the same time but can.\n"
-                "- Missing start or end code that lets an old value carry over between steps."
+                "- Transitions in one branch with the same condition."
             ),
             analyzer_attr="analyze_sfc",
             requires=("variables",),
-            context_kwargs=("analysis_context", "mutually_exclusive_steps", "step_contracts"),
+            context_kwargs=("analysis_context",),
             semantic_mapping_kind="framework",
             semantic_rule_source="sfc",
         ),
@@ -320,7 +316,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "DoseValve moduletype."
             ),
             analyzer_attr="analyze_parameter_drift",
-            category="heuristic",
+            category="correctness",
             context_kwargs=("unavailable_libraries",),
         ),
         AnalyzerSpecTemplate(
@@ -341,7 +337,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
         ),
         AnalyzerSpecTemplate(
             key="loop-stability",
-            name="Loop stability",
+            name="Conflicting setpoints",
             description=(
                 "Finds two different values set on the same variable in one module.\n"
                 "\n"
@@ -550,7 +546,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "2;'."
             ),
             analyzer_attr="analyze_version_drift",
-            category="heuristic",
+            category="correctness",
             context_kwargs=("debug",),
             semantic_rule_source="version-drift",
         ),
@@ -609,7 +605,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
         ),
         AnalyzerSpecTemplate(
             key="dataflow",
-            name="Lightweight dataflow",
+            name="Dataflow",
             description=(
                 "Follows the code path to find values read before they are set, writes that are "
                 "overwritten before they are read, conditions that are always true or false, code that "

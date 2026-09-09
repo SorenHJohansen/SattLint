@@ -9,10 +9,8 @@ from __future__ import annotations
 from collections.abc import Callable, Collection, Mapping
 from typing import Any, cast
 
-from ._registry_specs import build_context_kwargs
-from .framework import AnalysisContext, Report
-
-type BuildContextKwargsFn = Callable[..., dict[str, object]]
+from ..reporting.variables_report import VariablesReport
+from .framework import AnalysisContext, Issue, Report
 
 
 def _registry_module() -> Any:
@@ -143,9 +141,7 @@ def run_registry_analyzer(
     spec: Any,
     context: AnalysisContext,
     *,
-    overrides: Mapping[str, object] | None = None,
     use_shared_artifacts: bool = False,
-    build_context_kwargs_fn: BuildContextKwargsFn = build_context_kwargs,
 ) -> Report:
     _validate_required_analyzers(spec, context)
     shared_artifacts = context.shared_artifacts
@@ -155,35 +151,42 @@ def run_registry_analyzer(
             shared_artifacts.counters.semantic_precomputed_reports_used += 1
             return cast(Report, cached_report)
 
-    analyzer_attr = cast(str, getattr(spec, "analyzer_attr", ""))
-    if analyzer_attr:
-        registry_module = _registry_module()
-
-        analyzer_fn = getattr(registry_module, analyzer_attr)
-        if getattr(spec, "direct_context", False):
-            report = analyzer_fn(context)
-        else:
-            report = analyzer_fn(
-                context.base_picture,
-                **build_context_kwargs_fn(
-                    spec,
-                    registry_module,
-                    context,
-                    overrides=None if overrides is None else dict(overrides),
-                ),
-            )
-    else:
-        report = spec.run(context)
+    report = spec.run(context)
 
     if use_shared_artifacts and shared_artifacts is not None:
         shared_artifacts.counters.semantic_analyzer_reruns += 1
     return cast(Report, report)
 
 
+def collect_lsp_report_issues(context: AnalysisContext) -> tuple[tuple[str, tuple[Issue, ...]], ...]:
+    projected_reports: list[tuple[str, tuple[Issue, ...]]] = []
+
+    for analyzer in get_lsp_projection_analyzers():
+        report = run_registry_analyzer(analyzer.spec, context)
+        issues = getattr(report, "issues", None)
+        if not isinstance(issues, list):
+            continue
+
+        report_issues = tuple(issue for issue in cast(list[object], issues) if isinstance(issue, Issue))
+        if report_issues:
+            projected_reports.append((analyzer.spec.key, report_issues))
+
+    return tuple(projected_reports)
+
+
+def run_variables_registry_report(
+    context: AnalysisContext,
+) -> VariablesReport:
+    variables_spec = get_registry_analyzer_spec("variables")
+    return cast(VariablesReport, run_registry_analyzer(variables_spec, context))
+
+
 __all__ = [
+    "collect_lsp_report_issues",
     "get_cli_dispatch_analyzers",
     "get_lsp_projection_analyzers",
     "get_registry_analyzer_spec",
     "get_semantic_contributor_specs",
     "run_registry_analyzer",
+    "run_variables_registry_report",
 ]

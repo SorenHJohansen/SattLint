@@ -10,12 +10,13 @@ from typing import ClassVar
 
 import pytest
 
-from sattlint import app
 from sattlint import config as config_module
 from sattlint.analyzers import icf as icf_module
-from sattlint.application import commands as commands_application
+from sattlint.application import analyze as analyze_application
+from sattlint.application import menu_commands as commands_application
 from sattlint.application import project as project_application
 from sattlint.cli import startup as startup_module
+from sattlint.config import DEFAULT_CONFIG
 from sattlint.config.defaults import (
     REQUIRED_TOP_LEVEL_CONFIG_KEYS,
     TOP_LEVEL_CONFIG_CONTRACT,
@@ -27,8 +28,8 @@ from sattlint.config.types import ConfigDict, ConfigOverrideDict
 @pytest.fixture
 def noop_screen(monkeypatch):
     monkeypatch.setenv("SATTLINT_UI", "classic")
-    monkeypatch.setattr(app, "clear_screen", lambda: None)
-    monkeypatch.setattr(app, "pause", lambda: None)
+    monkeypatch.setattr(startup_module, "clear_screen", lambda: None)
+    monkeypatch.setattr(startup_module, "pause", lambda: None)
 
 
 def test_validate_config_reports_key_mode_analysis_and_documentation_errors():
@@ -285,7 +286,7 @@ def test_validate_effective_config_reports_unresolved_targets_after_defaults_mer
     for directory_name in ("programs", "abb", "lib"):
         (tmp_path / directory_name).mkdir()
 
-    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg = deepcopy(DEFAULT_CONFIG)
     cfg.update(
         {
             "program_dir": str(tmp_path / "programs"),
@@ -313,7 +314,7 @@ def test_top_level_config_contract_matches_typed_config_definitions() -> None:
 
 
 def test_self_check_uses_full_top_level_config_contract(tmp_path, monkeypatch, capsys):
-    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg = deepcopy(DEFAULT_CONFIG)
     for key in ("include_reverse_library_consumers", "run_history", "analysis"):
         cfg.pop(key)
 
@@ -327,10 +328,10 @@ def test_self_check_uses_full_top_level_config_contract(tmp_path, monkeypatch, c
 
 
 def test_self_check_reports_nested_analysis_shape_errors(tmp_path, monkeypatch, capsys):
-    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg = deepcopy(DEFAULT_CONFIG)
     cfg.update(
         {
-            "analysis": {"sfc": "bad", "naming": "bad"},
+            "analysis": {"naming": "bad"},
         }
     )
 
@@ -338,7 +339,6 @@ def test_self_check_reports_nested_analysis_shape_errors(tmp_path, monkeypatch, 
     bad_out = capsys.readouterr().out
 
     cfg["analysis"] = {
-        "sfc": {"mutually_exclusive_steps": "bad", "step_contracts": []},
         "naming": {
             "variables": {"label_equals": ["Unused"]},
             "modules": {},
@@ -346,15 +346,8 @@ def test_self_check_reports_nested_analysis_shape_errors(tmp_path, monkeypatch, 
         },
     }
 
-    empty_ok = config_module.self_check(cfg)
-    empty_out = capsys.readouterr().out
-
     assert bad_ok is False
-    assert "analysis.sfc must be a table/object" in bad_out
     assert "analysis.naming must be a table/object" in bad_out
-    assert empty_ok is False
-    assert "analysis.sfc.mutually_exclusive_steps must be a list" in empty_out
-    assert "analysis.sfc.step_contracts must be a table/object" in empty_out
 
 
 def test_run_icf_validation_forces_dependency_aware_ast_loading(tmp_path, monkeypatch, capsys, noop_screen):
@@ -363,7 +356,7 @@ def test_run_icf_validation_forces_dependency_aware_ast_loading(tmp_path, monkey
     icf_file = icf_dir / "Program.icf"
     icf_file.write_text("Tag=Program:Root.Value\n", encoding="utf-8")
 
-    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg = deepcopy(DEFAULT_CONFIG)
     cfg.update(
         {
             "icf_dir": str(icf_dir),
@@ -399,7 +392,7 @@ def test_run_icf_validation_forces_dependency_aware_ast_loading(tmp_path, monkey
         lambda *args, **kwargs: FakeReport(),
     )
 
-    app.run_icf_validation(cfg)
+    analyze_application.run_icf_validation(cfg)
 
     assert calls == ["Program"]
     out = capsys.readouterr().out
@@ -409,7 +402,7 @@ def test_run_icf_validation_forces_dependency_aware_ast_loading(tmp_path, monkey
 def test_self_check_reports_invalid_nested_config_errors(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(config_module, "target_exists", lambda *_args, **_kwargs: False)
 
-    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg = deepcopy(DEFAULT_CONFIG)
     cfg.pop("mode")
     cfg.update(
         {
@@ -419,17 +412,6 @@ def test_self_check_reports_invalid_nested_config_errors(tmp_path, monkeypatch, 
             "icf_dir": str(tmp_path / "missing-icf"),
             "other_lib_dirs": [str(tmp_path / "missing-other")],
             "analysis": {
-                "sfc": {
-                    "mutually_exclusive_steps": "bad",
-                    "step_contracts": {
-                        "": {},
-                        "StepA": {
-                            "required_enter_writes": "bad",
-                            "required_exit_writes": [1],
-                        },
-                        "StepB": "bad",
-                    },
-                },
                 "naming": {
                     "variables": {"style": "bad", "allow": "bad"},
                     "modules": "bad",
@@ -449,11 +431,6 @@ def test_self_check_reports_invalid_nested_config_errors(tmp_path, monkeypatch, 
     assert "icf_dir does not exist" in out
     assert "other_lib_dirs entry missing" in out
     assert "MissingTarget (not found)" in out
-    assert "analysis.sfc.mutually_exclusive_steps must be a list" in out
-    assert "analysis.sfc.step_contracts keys must be non-empty strings" in out
-    assert "analysis.sfc.step_contracts.StepA.required_enter_writes must be a list of strings" in out
-    assert "analysis.sfc.step_contracts.StepA.required_exit_writes must be a list of strings" in out
-    assert "analysis.sfc.step_contracts.StepB must be a table/object" in out
     assert "analysis.naming.variables.style must be one of" in out
     assert "analysis.naming.variables.allow must be a list of strings" in out
     assert "analysis.naming.modules must be a table/object" in out
@@ -461,7 +438,7 @@ def test_self_check_reports_invalid_nested_config_errors(tmp_path, monkeypatch, 
 
 
 def test_main_pauses_when_initial_ast_check_fails(monkeypatch):
-    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg = deepcopy(DEFAULT_CONFIG)
     cfg["analyzed_programs_and_libraries"] = ["Broken"]
     calls: list[str] = []
 

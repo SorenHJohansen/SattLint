@@ -4,7 +4,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from sattlint import app
+from sattlint.config import DEFAULT_CONFIG
 
 MINI_PROJECT_SOURCE = """
 "SyntaxVersion"
@@ -42,7 +42,7 @@ def build_mini_project_context(
     target_file = program_dir / f"{target_name}.s"
     target_file.write_text(source_text, encoding="utf-8")
 
-    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg = deepcopy(DEFAULT_CONFIG)
     cfg.update(
         {
             "program_dir": str(program_dir),

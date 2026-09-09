@@ -1,12 +1,11 @@
 # pyright: reportUnusedFunction=false
-"""Command-line command implementations for the CLI layer.
+"""CLI command handlers for the terminal command surface.
 
-Direct replacement for the old ``application.commands`` surface, relocated
-from ``application/`` to ``cli/`` as part of Phase 6 (application-layer
-refactor).  Each command binds the owning implementations
-(:mod:`sattlint.cli.syntax_check`, :mod:`sattlint.app_cli_commands`,
-:mod:`sattlint.cache`) directly, with no dependency on the legacy ``app``
-module.
+Binds the terminal commands (``syntax-check``, ``validate-config``, ``analyze``,
+``cache-prune``) to their owning implementations
+(:mod:`sattlint.cli.syntax_check`, :mod:`sattlint.cli._command_implementations`,
+:mod:`sattlint.cache`) and drives :func:`run_cli`.  The menu-oriented analysis
+workflows live in :mod:`sattlint.application.menu_commands`.
 """
 
 from __future__ import annotations
@@ -28,7 +27,7 @@ from ..config.types import ConfigDict
 from ..config.validation import validate_effective_config
 from ..core.logging import apply_debug
 from ..models.project_graph import ProjectGraph
-from . import app_cli_commands, syntax_check
+from . import _command_implementations, syntax_check
 from . import entry as cli_entry
 from ._exit_codes import EXIT_SUCCESS, EXIT_USAGE_ERROR
 from .cli_output import emit_text_or_json
@@ -39,15 +38,30 @@ LoadedProject = tuple[str, BasePicture, ProjectGraph]
 syntax_check_command = syntax_check.run_syntax_check_command
 
 
+def build_command_handlers(
+    *,
+    defaults: CommandHandlers | None = None,
+    overrides: CommandHandlers | None = None,
+) -> CommandHandlers:
+    resolved: dict[str, object] = {}
+    if defaults is not None:
+        resolved.update(defaults)
+    if overrides is not None:
+        resolved.update(overrides)
+    return cast(CommandHandlers, resolved)
+
+
 def _build_command_handlers() -> CommandHandlers:
-    return cast(
-        CommandHandlers,
-        {
-            "syntax_check": cast(RunSyntaxCheckCommandFn, syntax_check_command),
-            "validate_config": run_validate_config_command,
-            "analyze": run_analyze_command,
-            "cache_prune": run_cache_prune_command,
-        },
+    return build_command_handlers(
+        overrides=cast(
+            CommandHandlers,
+            {
+                "syntax_check": cast(RunSyntaxCheckCommandFn, syntax_check_command),
+                "validate_config": run_validate_config_command,
+                "analyze": run_analyze_command,
+                "cache_prune": run_cache_prune_command,
+            },
+        )
     )
 
 
@@ -124,7 +138,7 @@ def run_analyze_command(
             target_is_library_fn=project_application.target_is_library,
         )
 
-    return app_cli_commands.run_analyze_command(
+    return _command_implementations.run_analyze_command(
         cfg,
         selected_keys=selected_keys,
         selected_issue_kinds=selected_issue_kinds,
@@ -135,7 +149,7 @@ def run_analyze_command(
 
 
 def run_cache_prune_command(*, cache_dir: str | None = None, output_format: str = "text") -> int:
-    return app_cli_commands.run_cache_prune_command(
+    return _command_implementations.run_cache_prune_command(
         cache_dir=cache_dir,
         output_format=output_format,
         prune_cache_dir_fn=cache_module.prune_cache_dir,

@@ -48,10 +48,6 @@ class SattLineProject:
                 "icf_dir": self._maybe_resolve(d["icf_dir"]),
                 "other_lib_dirs": [self._resolve(p) for p in d["other_lib_dirs"] if p.strip()],
                 "analysis": {
-                    "sfc": {
-                        "mutually_exclusive_steps": list(d["analysis"]["sfc"]["mutually_exclusive_steps"]),
-                        "step_contracts": dict(d["analysis"]["sfc"]["step_contracts"]),
-                    },
                     "naming": {
                         "variables": dict(d["analysis"]["naming"]["variables"]),
                         "modules": dict(d["analysis"]["naming"]["modules"]),

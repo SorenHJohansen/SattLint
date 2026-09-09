@@ -1,9 +1,10 @@
-"""Analysis commands for the application layer.
+"""Menu commands for the application layer.
 
-The terminal-independent command flows behind the interactive menus: variable
-analysis, commented-out code, MMS interface variables, and ICF validation.
-Elevated from the old flat ``app_analysis`` / ``_app_analysis_commands`` modules
-as part of the Phase 2 layered refactor.
+The terminal-independent analysis workflows behind the interactive menus:
+variable analysis, commented-out code, MMS interface variables, and ICF
+validation.  This is the menu-oriented counterpart to the CLI command handlers
+in :mod:`sattlint.cli.commands`; the roles are distinct and the name reflects
+that split.
 """
 
 from __future__ import annotations

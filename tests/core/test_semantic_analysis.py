@@ -121,14 +121,14 @@ def test_build_variable_semantic_artifacts_runs_variables_via_registry(monkeypat
     calls: list[dict[str, object]] = []
     projection_calls: list[dict[str, object]] = []
 
-    def _run_variables_registry_report(context, *, include_dependency_moduletype_usage=None):
+    def _run_variables_registry_report(context, **_kwargs):
         calls.append(
             {
-                "include_dependency_moduletype_usage": include_dependency_moduletype_usage,
+                "include_dependency_moduletype_usage": getattr(context, "include_dependency_moduletype_usage", None),
                 "context": context,
             }
         )
-        return usage_report if include_dependency_moduletype_usage else diagnostics_report
+        return usage_report if getattr(context, "include_dependency_moduletype_usage", None) else diagnostics_report
 
     projection_result = SimpleNamespace(
         diagnostics_by_file={"Root.s": ("diagnostic",)},
@@ -172,7 +172,7 @@ def test_build_variable_semantic_artifacts_runs_variables_via_registry(monkeypat
             "include_dependency_moduletype_usage": True,
         },
         {
-            "context": calls[0]["context"],
+            "context": calls[1]["context"],
             "include_dependency_moduletype_usage": None,
         },
     ]

@@ -566,7 +566,7 @@ def test_sattline_semantic_rule_groups_cover_core_analyzers():
     assert "semantic.implicit-latch" in groups["variables"]
     assert "semantic.global-scope-minimization" in groups["variables"]
     assert "semantic.hidden-global-coupling" in groups["variables"]
-    assert "semantic.read-before-write" in groups["dataflow"]
+    assert "semantic.dead-overwrite" in groups["dataflow"]
     assert "semantic.parallel-write-race" in groups["sfc"]
     assert "semantic.parallel-read-write-hazard" in groups["same-cycle"]
     assert "semantic.same-cycle-shared-access" in groups["same-cycle"]

@@ -1,3 +1,10 @@
+"""Dependency-injected implementations of the CLI analyze/cache-prune bodies.
+
+Holds the render helpers and the injected command bodies (:func:`run_analyze_command`,
+:func:`run_cache_prune_command`) that :mod:`sattlint.cli.commands` binds to the
+application layer.  Private to the CLI command surface.
+"""
+
 from __future__ import annotations
 
 import logging

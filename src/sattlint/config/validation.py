@@ -26,7 +26,7 @@ from .types import (
 
 VALID_TOP_LEVEL_KEYS = VALID_TOP_LEVEL_CONFIG_KEYS
 
-VALID_ANALYSIS_KEYS = frozenset({"sfc", "naming", "rule_profiles"})
+VALID_ANALYSIS_KEYS = frozenset({"naming", "rule_profiles"})
 VALID_RUN_HISTORY_KEYS = frozenset({"enabled", "limit"})
 VALID_OUTPUT_KEYS = frozenset({"retention_lines"})
 VALID_REVIEW_KEYS = frozenset({"output_dir"})
@@ -92,7 +92,6 @@ def _deep_merge_dict(base: ConfigObjectMap, override: ConfigObjectMap) -> Config
     return merged
 
 
-_SECTION_SFC_KEYS = frozenset({"mutually_exclusive_steps", "step_contracts"})
 _SECTION_NAMING_RULE_KEYS = frozenset({"style", "allow"})
 _SECTION_RULE_PROFILES_KEYS = frozenset({"active", "profiles"})
 _SECTION_RULE_PROFILE_ENTRY_KEYS = frozenset(
@@ -114,10 +113,6 @@ def _strip_unknown_keys(cfg: ConfigOverrideDict) -> None:
     analysis = _config_dict(cfg_map.get("analysis"))
     if analysis is not None:
         _strip_section_keys(analysis, VALID_ANALYSIS_KEYS)
-
-        sfc = _config_dict(analysis.get("sfc"))
-        if sfc is not None:
-            _strip_section_keys(sfc, _SECTION_SFC_KEYS)
 
         naming = _config_dict(analysis.get("naming"))
         if naming is not None:
@@ -395,64 +390,6 @@ def validate_config(cfg: ConfigDict | ConfigOverrideDict) -> ConfigValidationRes
                             message=f"analysis.naming.{target}.allow must be a list of strings",
                         )
                     )
-
-        sfc_value = analysis.get("sfc")
-        sfc = _config_dict(sfc_value)
-        if sfc_value is not None and sfc is None:
-            errors.append(
-                ConfigValidationError(
-                    key_path="analysis.sfc",
-                    message="analysis.sfc must be a table/object",
-                )
-            )
-        elif sfc is not None:
-            step_groups = sfc.get("mutually_exclusive_steps", [])
-            if not isinstance(step_groups, list):
-                errors.append(
-                    ConfigValidationError(
-                        key_path="analysis.sfc.mutually_exclusive_steps",
-                        message="analysis.sfc.mutually_exclusive_steps must be a list",
-                    )
-                )
-
-            step_contracts = _config_dict(sfc.get("step_contracts", {}))
-            if step_contracts is None:
-                errors.append(
-                    ConfigValidationError(
-                        key_path="analysis.sfc.step_contracts",
-                        message="analysis.sfc.step_contracts must be a table/object",
-                    )
-                )
-            else:
-                for step_name, contract in step_contracts.items():
-                    if not step_name.strip():
-                        errors.append(
-                            ConfigValidationError(
-                                key_path="analysis.sfc.step_contracts",
-                                message="analysis.sfc.step_contracts keys must be non-empty strings",
-                            )
-                        )
-                        continue
-                    typed_contract = _config_dict(contract)
-                    if typed_contract is None:
-                        errors.append(
-                            ConfigValidationError(
-                                key_path=f"analysis.sfc.step_contracts.{step_name}",
-                                message=f"analysis.sfc.step_contracts.{step_name} must be a table/object",
-                            )
-                        )
-                        continue
-                    for key in ("required_enter_writes", "required_exit_writes"):
-                        values = _string_list(typed_contract.get(key, []))
-                        if values is None:
-                            errors.append(
-                                ConfigValidationError(
-                                    key_path=f"analysis.sfc.step_contracts.{step_name}.{key}",
-                                    message=(
-                                        f"analysis.sfc.step_contracts.{step_name}.{key} must be a list of strings"
-                                    ),
-                                )
-                            )
 
         if naming_value is not None and naming is None:
             errors.append(

@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from sattlint import app
 from sattlint.cli import rich_output as app_rich
+from sattlint.cli import startup as app
 from sattlint.cli import startup as startup_application
 
 
@@ -54,7 +54,7 @@ def test_app_print_menu_uses_startup_renderer(monkeypatch) -> None:
         app.set_interactive_ui_mode("rich")
         assert app.get_interactive_ui_mode() == "textual"
 
-        app._print_menu("Menu", [app.MenuOption("1", "One")], intro="Intro", note="Note")
+        startup_application.print_menu("Menu", [app.MenuOption("1", "One")], intro="Intro", note="Note")
 
         assert "startup" in seen
     finally:

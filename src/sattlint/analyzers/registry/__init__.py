@@ -43,7 +43,7 @@ from ..sattline_semantics import (
 from ..scan_concurrency import analyze_scan_concurrency
 from ..scan_loop_resource_usage import analyze_scan_loop_resource_usage
 from ..scan_shared_access import analyze_scan_shared_access
-from ..sfc import analyze_sfc, get_configured_mutually_exclusive_step_sets, get_configured_step_contracts
+from ..sfc import analyze_sfc
 from ..shadowing import analyze_shadowing
 from ..signal_lifecycle import analyze_signal_lifecycle
 from ..spec_compliance import analyze_spec_compliance
@@ -55,6 +55,13 @@ from ..variables import analyze_variables
 from ._registry_delivery import AnalyzerDeliveryMetadata, build_delivery_metadata, summary_output_for_analyzer
 
 SEMANTIC_LAYER_ANALYZER_KEY = "sattline-semantics"
+# Policy (analyzer execution refactor B4.9): every registered analyzer is
+# selectable, and is either in the default CLI set below or deliberately opt-in
+# (naming-consistency, cyclomatic-complexity, parameter-drift, version-drift,
+# and the composed wrappers powerup/timing/scan-concurrency/scan-shared-access/
+# interface-contracts/state-inference). Semantic contributors are categorized
+# correctness; sattline-semantics is the aggregate layer and is intentionally
+# not CLI-exposed as a selectable analyzer.
 DEFAULT_CLI_ANALYZER_KEYS: tuple[str, ...] = (
     "variables",
     "picture-display-paths",
@@ -118,46 +125,6 @@ _RULE_ANALYZER_ALIASES: dict[str, tuple[str, ...]] = {
     "semantic.scan-cycle-implicit-new": ("timing",),
     "semantic.scan-cycle-temporal-misuse": ("timing",),
 }
-
-# Preserve the historical monkeypatch surface that tests and extracted helper modules use.
-_REGISTRY_MONKEYPATCH_SURFACE = (
-    analyze_alarm_integrity,
-    analyze_comment_code,
-    analyze_config_drift,
-    analyze_cyclomatic_complexity,
-    analyze_data_dependency,
-    analyze_interface_contracts,
-    analyze_dataflow,
-    analyze_fault_handling,
-    analyze_icf_configuration,
-    analyze_loop_stability,
-    analyze_mms_interface_variables,
-    analyze_naming_consistency,
-    analyze_numeric_constraints,
-    analyze_parameter_drift,
-    analyze_picture_display_paths,
-    analyze_powerup,
-    analyze_resource_usage,
-    analyze_safety_paths,
-    analyze_same_cycle,
-    analyze_scan_concurrency,
-    analyze_scan_shared_access,
-    analyze_sattline_semantics,
-    analyze_scan_loop_resource_usage,
-    analyze_sfc,
-    analyze_shadowing,
-    analyze_signal_lifecycle,
-    analyze_spec_compliance,
-    analyze_state_inference,
-    analyze_taint_paths,
-    analyze_timing,
-    analyze_unsafe_defaults,
-    analyze_variables,
-    analyze_version_drift,
-    get_configured_mutually_exclusive_step_sets,
-    get_configured_naming_rules,
-    get_configured_step_contracts,
-)
 
 
 @dataclass(frozen=True)
@@ -652,9 +619,7 @@ __all__ = [
     "deterministic_dependency_order",
     "get_actual_cli_analyzer_keys",
     "get_actual_lsp_analyzer_keys",
-    "get_configured_mutually_exclusive_step_sets",
     "get_configured_naming_rules",
-    "get_configured_step_contracts",
     "get_correctness_analyzer_keys",
     "get_declared_cli_analyzer_keys",
     "get_declared_lsp_analyzer_keys",

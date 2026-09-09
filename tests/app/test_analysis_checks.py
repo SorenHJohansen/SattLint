@@ -4,6 +4,7 @@ import os
 from types import SimpleNamespace
 
 from sattlint.analyzers.framework import Issue, SimpleReport
+from sattlint.config import DEFAULT_CONFIG
 from sattlint.reporting import target_report as analysis_reporting_module
 from tests.helpers import AnalysisGraphStub, named_object
 from tests.helpers.app_analysis_support import *
@@ -80,7 +81,7 @@ def test_run_checks_reports_no_matching_checks_and_pauses(monkeypatch):
     monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
 
     checks_application.run_checks(
-        app.DEFAULT_CONFIG.copy(),
+        DEFAULT_CONFIG.copy(),
         ["missing-check"],
         get_enabled_analyzers_fn=lambda: [SimpleNamespace(key="variables", name="Variables")],
         pause_fn=lambda: pauses.append("pause"),
@@ -105,7 +106,7 @@ def test_run_checks_runs_selected_non_default_cli_exposed_analyzer(monkeypatch):
     report = MutableReport()
 
     checks_application.run_checks(
-        app.DEFAULT_CONFIG.copy(),
+        DEFAULT_CONFIG.copy(),
         ["state-inference"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -145,7 +146,7 @@ def test_run_checks_announces_selected_variable_issue_kinds_before_running(monke
     monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
 
     checks_application.run_checks(
-        app.DEFAULT_CONFIG.copy(),
+        DEFAULT_CONFIG.copy(),
         ["variables"],
         selected_issue_kinds={IssueKind.UNUSED.value},
         iter_loaded_projects_fn=cast(
@@ -197,7 +198,7 @@ def test_run_checks_updates_live_status_for_active_analyzer(monkeypatch):
     monkeypatch.setattr(console_module, "live_status_line", lambda: FakeLiveStatusLine())
 
     checks_application.run_checks(
-        app.DEFAULT_CONFIG.copy(),
+        DEFAULT_CONFIG.copy(),
         ["state-inference"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -235,7 +236,7 @@ def test_run_checks_filters_non_variable_report_for_selected_issue_kinds(monkeyp
     monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
 
     checks_application.run_checks(
-        app.DEFAULT_CONFIG.copy(),
+        DEFAULT_CONFIG.copy(),
         ["comment-code"],
         selected_issue_kinds={"comment_code_read_error"},
         iter_loaded_projects_fn=cast(
@@ -279,7 +280,7 @@ def test_run_checks_filters_non_variable_report_for_selected_issue_kinds(monkeyp
 
 def test_collect_run_checks_result_captures_target_and_analyzer_metadata():
     result = checks_application.collect_run_checks_result(
-        app.DEFAULT_CONFIG.copy(),
+        DEFAULT_CONFIG.copy(),
         ["state-inference"],
         selected_issue_kinds={"unused"},
         iter_loaded_projects_fn=cast(
@@ -348,7 +349,7 @@ def test_collect_run_checks_result_runs_icf_once_as_whole_run_target(monkeypatch
     monkeypatch.setattr(checks_application, "analyze_icf_configuration", _fake_icf)
 
     result = checks_application.collect_run_checks_result(
-        app.DEFAULT_CONFIG.copy(),
+        DEFAULT_CONFIG.copy(),
         ["icf"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -405,7 +406,7 @@ def test_run_checks_skips_semantic_layer_when_batch_selection_includes_contribut
     monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
 
     checks_application.run_checks(
-        app.DEFAULT_CONFIG.copy(),
+        DEFAULT_CONFIG.copy(),
         ["variables", "sattline-semantics"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -444,7 +445,7 @@ def test_run_checks_writes_target_profiling_summary(tmp_path, monkeypatch):
     monkeypatch.setattr(profiling_module, "profiling_log_path", lambda: tmp_path / "profile.jsonl")
 
     checks_application.run_checks(
-        app.DEFAULT_CONFIG.copy(),
+        DEFAULT_CONFIG.copy(),
         ["state-inference", "variables"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -553,7 +554,7 @@ def test_run_checks_uses_cached_report_when_available(monkeypatch):
     )
 
     checks_application.run_checks(
-        app.DEFAULT_CONFIG.copy(),
+        DEFAULT_CONFIG.copy(),
         ["state-inference"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -629,7 +630,7 @@ def test_run_checks_rebuilds_report_cache_when_cached_payload_is_stale(monkeypat
     )
 
     checks_application.run_checks(
-        app.DEFAULT_CONFIG.copy(),
+        DEFAULT_CONFIG.copy(),
         ["state-inference"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -680,7 +681,7 @@ def test_run_checks_bypasses_report_cache_when_use_cache_disabled(monkeypatch):
     monkeypatch.setattr(checks_application, "AnalysisReportCache", ForbiddenReportCache)
 
     checks_application.run_checks(
-        app.DEFAULT_CONFIG.copy(),
+        DEFAULT_CONFIG.copy(),
         ["state-inference"],
         use_cache=False,
         iter_loaded_projects_fn=cast(
@@ -723,7 +724,7 @@ def test_run_checks_bypasses_report_cache_when_debug_enabled(monkeypatch):
     monkeypatch.setattr(checks_application, "AnalysisReportCache", ForbiddenReportCache)
 
     checks_application.run_checks(
-        app.DEFAULT_CONFIG.copy() | {"debug": True},
+        DEFAULT_CONFIG.copy() | {"debug": True},
         ["state-inference"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -762,7 +763,7 @@ def test_run_checks_handles_keyboard_interrupt_and_pauses(monkeypatch):
     monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
 
     checks_application.run_checks(
-        app.DEFAULT_CONFIG.copy(),
+        DEFAULT_CONFIG.copy(),
         ["state-inference"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -797,7 +798,7 @@ def test_run_checks_accepts_legacy_underscore_analyzer_key(monkeypatch):
     monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
 
     checks_application.run_checks(
-        app.DEFAULT_CONFIG.copy(),
+        DEFAULT_CONFIG.copy(),
         ["state_inference"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -832,7 +833,7 @@ def test_run_icf_validation_covers_missing_dir_invalid_dir_and_empty_file_list(m
     monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
 
     commands_application.run_icf_validation(
-        app.DEFAULT_CONFIG.copy(),
+        DEFAULT_CONFIG.copy(),
         configured_icf_files_fn=lambda _cfg: (None, []),
         load_program_ast_fn=lambda *_args, **_kwargs: pytest.fail("should not load program"),
         pause_fn=lambda: pauses.append("pause-none"),
@@ -840,7 +841,7 @@ def test_run_icf_validation_covers_missing_dir_invalid_dir_and_empty_file_list(m
 
     missing_dir = tmp_path / "missing-icf"
     commands_application.run_icf_validation(
-        app.DEFAULT_CONFIG.copy(),
+        DEFAULT_CONFIG.copy(),
         configured_icf_files_fn=lambda _cfg: (missing_dir, [missing_dir / "ProgramA.icf"]),
         load_program_ast_fn=lambda *_args, **_kwargs: pytest.fail("should not load program"),
         pause_fn=lambda: pauses.append("pause-missing"),
@@ -849,7 +850,7 @@ def test_run_icf_validation_covers_missing_dir_invalid_dir_and_empty_file_list(m
     valid_dir = tmp_path / "icf"
     valid_dir.mkdir()
     commands_application.run_icf_validation(
-        app.DEFAULT_CONFIG.copy(),
+        DEFAULT_CONFIG.copy(),
         configured_icf_files_fn=lambda _cfg: (valid_dir, []),
         load_program_ast_fn=lambda *_args, **_kwargs: pytest.fail("should not load program"),
         pause_fn=lambda: pauses.append("pause-empty"),
@@ -865,11 +866,11 @@ def test_menu_wrappers_delegate_to_underlying_callbacks():
     calls: list[tuple[str, object]] = []
 
     checks_application.run_checks_menu(
-        app.DEFAULT_CONFIG.copy(),
+        DEFAULT_CONFIG.copy(),
         run_checks_fn=lambda cfg, selected: calls.append(("checks", selected if selected is not None else cfg)),
     )
 
-    assert calls[0] == ("checks", app.DEFAULT_CONFIG.copy())
+    assert calls[0] == ("checks", DEFAULT_CONFIG.copy())
 
 
 def test_run_mms_interface_analysis_reports_summary_and_errors(monkeypatch):
@@ -893,7 +894,7 @@ def test_run_mms_interface_analysis_reports_summary_and_errors(monkeypatch):
     monkeypatch.setattr(commands_application, "analyze_mms_interface_variables", fake_mms)
 
     commands_application.run_mms_interface_analysis(
-        app.DEFAULT_CONFIG.copy(),
+        DEFAULT_CONFIG.copy(),
         iter_loaded_projects_fn=cast(
             Any,
             lambda *_args, **_kwargs: iter(
@@ -948,7 +949,7 @@ def test_run_icf_validation_reports_entryless_files_load_failures_and_summary(mo
         )
 
     commands_application.run_icf_validation(
-        app.DEFAULT_CONFIG.copy(),
+        DEFAULT_CONFIG.copy(),
         configured_icf_files_fn=lambda _cfg: (icf_dir, [empty_file, broken_file, valid_file]),
         load_program_ast_fn=cast(Any, fake_load_program),
         validate_icf_entries_against_program_fn=fake_validate,
@@ -981,7 +982,7 @@ def test_run_comment_code_analysis_reports_success_and_pauses(monkeypatch):
     )
 
     commands_application.run_comment_code_analysis(
-        app.DEFAULT_CONFIG.copy(),
+        DEFAULT_CONFIG.copy(),
         iter_loaded_projects_fn=cast(
             Any,
             lambda *_args, **_kwargs: iter([("TargetA", named_object("Root"), "graph")]),
@@ -1012,7 +1013,7 @@ def test_run_checks_result_returns_structured_result_and_persists_run(tmp_path, 
     )
 
     result = checks_application.run_checks_result(
-        app.DEFAULT_CONFIG.copy(),
+        DEFAULT_CONFIG.copy(),
         ["state-inference"],
         iter_loaded_projects_fn=cast(
             Any,

@@ -1,3 +1,5 @@
+"""Rule contracts (acceptance tests, corpus cases) for the semantic rule engine."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

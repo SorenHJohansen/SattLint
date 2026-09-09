@@ -1,13 +1,10 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportIndexIssue=false, reportMissingTypeArgument=false
 from pathlib import Path
-from types import SimpleNamespace
 
 from sattline_parser.models.ast_model import BasePicture, Equation, ModuleCode, ModuleHeader, Simple_DataType, Variable
 from sattline_parser.models.expressions import Assignment, VarRef
 
-from sattlint.analyzers import registry as registry_module
 from sattlint.analyzers import sattline_semantics as semantics_module
-from sattlint.analyzers.framework import AnalysisContext, AnalysisSharedArtifacts
 from sattlint.analyzers.sattline_semantics import SattLineSemanticsReport, analyze_sattline_semantics
 
 
@@ -88,85 +85,6 @@ def test_sattline_semantics_helpers_cover_rule_lookup_and_empty_summary():
 
     assert report.name == "Root"
     assert "No semantic issues found." in report.summary()
-
-
-def test_analyze_sattline_semantics_handles_overrides_direct_context_and_skipped_reports(monkeypatch):
-    bp = BasePicture(header=_hdr("Root"))
-    captured: dict[str, object] = {}
-    shared_artifacts = AnalysisSharedArtifacts()
-    context = AnalysisContext(base_picture=bp, shared_artifacts=shared_artifacts)
-
-    analyzers = [
-        SimpleNamespace(
-            spec=SimpleNamespace(
-                enabled=True,
-                semantic_mapping_kind="variable",
-                key=registry_module.SEMANTIC_LAYER_ANALYZER_KEY,
-                analyzer_attr="should_not_run",
-                direct_context=True,
-            )
-        ),
-        SimpleNamespace(
-            spec=SimpleNamespace(
-                enabled=True,
-                semantic_mapping_kind="variable",
-                key="direct-context",
-                analyzer_attr="analyze_direct_context",
-                direct_context=True,
-            )
-        ),
-        SimpleNamespace(
-            spec=SimpleNamespace(
-                enabled=True,
-                semantic_mapping_kind="variable",
-                key="bp-analyzer",
-                analyzer_attr="analyze_basepicture",
-                direct_context=False,
-            )
-        ),
-    ]
-
-    monkeypatch.setattr(
-        registry_module,
-        "get_default_analyzer_catalog",
-        lambda: SimpleNamespace(analyzers=analyzers),
-    )
-    monkeypatch.setattr(
-        registry_module,
-        "analyze_direct_context",
-        lambda context: SimpleNamespace(issues="not-a-list", context=context),
-        raising=False,
-    )
-    monkeypatch.setattr(
-        registry_module,
-        "analyze_basepicture",
-        lambda base_picture, **kwargs: SimpleNamespace(issues=[], base_picture=base_picture, kwargs=kwargs),
-        raising=False,
-    )
-    monkeypatch.setattr(
-        semantics_module,
-        "build_context_kwargs",
-        lambda spec, module, context, overrides: captured.setdefault("overrides", overrides) or {"captured": True},
-    )
-    monkeypatch.setattr(semantics_module, "map_variable_issues", lambda issues: [])
-    monkeypatch.setattr(semantics_module, "detect_transform_invariant_violations", lambda _bp: [])
-    monkeypatch.setattr(semantics_module, "map_trace_findings", lambda findings: [])
-
-    report = analyze_sattline_semantics(
-        bp,
-        analysis_context=context,
-        sfc_mutually_exclusive_steps=[("A", "B")],
-        sfc_step_contracts={"Step": object()},
-    )
-
-    assert report.issues == []
-    assert shared_artifacts.counters.semantic_analyzer_reruns == 2
-    assert captured["overrides"] == {
-        "mutually_exclusive_steps": (("A", "B"),),
-        "sfc_mutually_exclusive_steps": (("A", "B"),),
-        "step_contracts": captured["overrides"]["step_contracts"],
-        "sfc_step_contracts": captured["overrides"]["sfc_step_contracts"],
-    }
 
 
 def test_analyzer_order_independence():

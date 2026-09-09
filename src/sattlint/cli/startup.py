@@ -48,7 +48,7 @@ from ..core.logging import apply_debug
 from ..core.terminal import clear_screen as core_clear_screen
 from ..core.terminal import clear_windows_console as core_clear_windows_console
 from ..project import support as support_module
-from . import app_commands as commands_application
+from . import commands as commands_application
 from . import config as cli_config
 from . import menu as cli_menu
 from ._interaction import (

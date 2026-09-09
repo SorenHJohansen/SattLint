@@ -46,8 +46,9 @@ def test_generate_change_review_writes_json_and_markdown(tmp_path: Path):
     assert review.metadata.project == "Demo"
     assert review.size_stats.semantic_change_count >= 1
     assert review.size_stats.total_project_source_size > 0
-    assert review.size_stats.selected_context_size > 0
-    assert review.size_stats.reduction_percent < 100.0
+    assert review.size_stats.selected_source_size > 0
+    assert review.size_stats.artifact_size > review.size_stats.selected_source_size
+    assert review.size_stats.source_reduction_percent < 100.0
 
 
 def test_configured_output_location_is_respected(tmp_path: Path):
@@ -69,44 +70,46 @@ def test_json_and_markdown_correspond_to_same_review(tmp_path: Path):
     assert parsed["metadata"]["project"] == "Demo"
     assert parsed["size_stats"]["semantic_change_count"] == result.review.size_stats.semantic_change_count
     assert len(parsed["changes"]) == len(result.review.changes)
-    assert len(parsed["relevant_symbols"]) == len(result.review.relevant_symbols)
+    assert len(parsed["context"]) == len(result.review.context)
+    assert len(parsed["variable_definitions"]) == len(result.review.variable_definitions)
 
     markdown = result.markdown_path.read_text(encoding="utf-8")
     assert "# SattLint Change Review" in markdown
     assert str(result.review.size_stats.semantic_change_count) in markdown
-    assert "## Changed Source" not in markdown
 
 
-def test_markdown_lists_statement_context_once(tmp_path: Path):
+def test_markdown_shows_block_source(tmp_path: Path):
     cfg = build_cfg(tmp_path)
     result = generate_change_review(cfg, "Demo", output_dir=tmp_path / "out")
     markdown = result.markdown_path.read_text(encoding="utf-8")
     assert "*Context: equation Main*" in markdown
-    assert markdown.count("ValveOpen = Flow > 5") == 1
-    assert markdown.count("#### Official") == markdown.count("#### Draft")
+    assert "## Relevant Blocks / Sequences" in markdown
+    assert "ValveOpen = Flow > 5" in markdown
+    assert "#### Official" in markdown and "#### Draft" in markdown
 
 
 def test_markdown_contains_semantic_context_and_scope(tmp_path: Path):
     cfg = build_cfg(tmp_path)
     result = generate_change_review(cfg, "Demo", output_dir=tmp_path / "out")
     markdown = result.markdown_path.read_text(encoding="utf-8")
-    assert "#### Semantic context" in markdown
+    assert "#### Direct semantic context" in markdown
     assert "## Review Scope" in markdown
-    assert "**Reads:**" in markdown
+    assert "**Direct reads:**" in markdown
     payload = json.loads(result.json_path.read_text(encoding="utf-8"))
     assert all("semantic_context" in change for change in payload["changes"])
 
 
-def test_review_json_schema_separates_changes_impact_and_context(tmp_path: Path):
+def test_review_json_schema_separates_changes_blocks_and_definitions(tmp_path: Path):
     cfg = build_cfg(tmp_path)
     result = generate_change_review(cfg, "Demo", output_dir=tmp_path / "out")
     payload = json.loads(review_to_json(result.review))
-    assert set(payload) == {"metadata", "size_stats", "changes", "relevant_symbols", "context"}
+    assert set(payload) == {"metadata", "size_stats", "changes", "context", "variable_definitions"}
     for change in payload["changes"]:
         assert "symbol" in change and "kind" in change
-    for fact in payload["relevant_symbols"]:
+    for block in payload["context"]:
+        assert block.get("reasons")
+    for fact in payload["variable_definitions"]:
         assert "reason" in fact
-        assert "priority" in fact
 
 
 def test_no_static_analyzer_is_invoked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -132,10 +135,10 @@ def test_function_block_change_produces_compact_review(tmp_path: Path):
     result = generate_change_review(cfg, "Demo", output_dir=tmp_path / "out")
     kinds = {change.kind.value for change in result.review.changes}
     assert "expression_changed" in kinds
-    assert result.review.size_stats.reduction_percent > 50.0
+    assert result.review.size_stats.source_reduction_percent > 50.0
 
 
-def test_context_is_far_smaller_than_project_for_large_program(tmp_path: Path):
+def _large_program() -> str:
     header = (
         '"Syntax version 2.23, date: 2026-04-20-12:00:00.000 N"\n'
         '"Original file date: ---"\n'
@@ -147,15 +150,17 @@ def test_context_is_far_smaller_than_project_for_large_program(tmp_path: Path):
         "\n"
         "LOCALVARIABLES\n"
     )
-    variables = "".join(f"   Var{i}: integer := {i};\n" for i in range(80))
-    code = "".join(f"      Var{i} = Var{i - 1} + 1;\n" for i in range(1, 80))
-    tail = (
-        "\nModuleDef\n"
-        "ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )\n"
-        "ModuleCode\n"
-        "   EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :\n" + code + "\nENDDEF (*BasePicture*);\n"
-    )
-    official = header + variables + tail
+    variables = "".join(f"   Var{i}: integer := {i};\n" for i in range(120))
+    code: list[str] = ["\nModuleDef\nClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )\nModuleCode\n"]
+    code.append("   EQUATIONBLOCK B0 COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :\n      Var0 = 0;\n")
+    for i in range(1, 120):
+        code.append(f"   EQUATIONBLOCK B{i} COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :\n      Var{i} = Var{i - 1} + 1;\n")
+    code.append("\nENDDEF (*BasePicture*);\n")
+    return header + variables + "".join(code)
+
+
+def test_context_is_far_smaller_than_project_for_large_program(tmp_path: Path):
+    official = _large_program()
     draft = official.replace("      Var1 = Var0 + 1;", "      Var1 = Var0 + 2;")
 
     official_version, draft_version, _cfg = load_pair(tmp_path, official, draft)
@@ -164,7 +169,23 @@ def test_context_is_far_smaller_than_project_for_large_program(tmp_path: Path):
     relevance = compute_relevance(official_version, draft_version, changes)
     review = build_change_review(official_version, draft_version, changes, relevance, snippet_provider=provider)
     assert review.size_stats.semantic_change_count == 1
-    assert review.size_stats.selected_context_size < review.size_stats.total_project_source_size / 4
+    assert review.size_stats.selected_source_size < review.size_stats.total_project_source_size / 4
+
+
+def test_metadata_overhead_is_compact(tmp_path: Path):
+    cfg = build_cfg(tmp_path)
+    result = generate_change_review(cfg, "Demo", output_dir=tmp_path / "out")
+    payload = json.loads(result.json_path.read_text(encoding="utf-8"))
+    for change in payload["changes"]:
+        context = change.get("semantic_context")
+        if not context:
+            continue
+        assert all(isinstance(read, str) for read in context["direct_reads"])
+        assert all(isinstance(write, str) for write in context["direct_writes"])
+    facts = payload["variable_definitions"]
+    symbols = [fact["symbol"] for fact in facts]
+    assert len(symbols) == len(set(symbols))
+    assert result.review.size_stats.artifact_size >= result.review.size_stats.selected_source_size
 
 
 def test_draft_and_official_programs_unused_when_unrelated(tmp_path: Path):

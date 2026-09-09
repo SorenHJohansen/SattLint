@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 
 from sattline_parser.models.ast_model import BasePicture
 
@@ -33,21 +34,23 @@ def _run_variables_report(
     target_is_library: bool,
     include_dependency_moduletype_usage: bool | None = None,
 ) -> VariablesReport:
+    effective_context = (
+        context
+        if include_dependency_moduletype_usage is None
+        else replace(context, include_dependency_moduletype_usage=include_dependency_moduletype_usage)
+    )
     try:
-        return run_variables_registry_report(
-            context,
-            include_dependency_moduletype_usage=include_dependency_moduletype_usage,
-        )
+        return run_variables_registry_report(effective_context)
     except KeyError:
         return analyze_variables(
-            context.base_picture,
-            analysis_context=context,
+            effective_context.base_picture,
+            analysis_context=effective_context,
             debug=debug,
-            unavailable_libraries=context.unavailable_libraries,
+            unavailable_libraries=effective_context.unavailable_libraries,
             analyzed_target_is_library=target_is_library,
             include_dependency_moduletype_usage=include_dependency_moduletype_usage,
-            selected_issue_kinds=context.selected_issue_kinds,
-            config=context.config,
+            selected_issue_kinds=effective_context.selected_issue_kinds,
+            config=effective_context.config,
         )
 
 

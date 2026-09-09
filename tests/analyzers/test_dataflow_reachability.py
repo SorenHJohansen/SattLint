@@ -5,6 +5,7 @@ from sattline_parser.models.ast_model import (
     ModuleCode,
     ModuleHeader,
     Sequence,
+    SFCBodyItem,
     SFCBreak,
     SFCCodeBlocks,
     SFCFork,
@@ -14,66 +15,56 @@ from sattline_parser.models.ast_model import (
 )
 
 from sattlint.analyzers.dataflow import analyze_dataflow
+from sattlint.analyzers.sfc import collect_sfc_reachability_findings
 
 
-def test_sequence_nodes_after_break_are_reported_unreachable():
-    sequence = Sequence(
-        name="SeqMain",
-        type="sequence",
-        position=(0.0, 0.0),
-        size=(1.0, 1.0),
-        code=[
+def _make_sequence(code: list[SFCBodyItem]) -> BasePicture:
+    return BasePicture(
+        header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
+        modulecode=ModuleCode(
+            sequences=[Sequence(name="SeqMain", type="sequence", position=(0.0, 0.0), size=(1.0, 1.0), code=code)],
+            equations=[],
+        ),
+    )
+
+
+def _unreachable_labels(bp: BasePicture) -> list[str]:
+    return [
+        f"{finding.node_label}:{finding.terminated_by.get('kind')}" for finding in collect_sfc_reachability_findings(bp)
+    ]
+
+
+def test_sequence_nodes_after_break_are_owned_by_sfc_not_dataflow():
+    bp = _make_sequence(
+        [
             SFCBreak(),
             SFCStep(kind="step", name="AfterBreak", code=SFCCodeBlocks()),
-        ],
-    )
-    bp = BasePicture(
-        header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
-        modulecode=ModuleCode(sequences=[sequence], equations=[]),
+        ]
     )
 
     report = analyze_dataflow(bp)
 
-    assert any(issue.kind == "dataflow.unreachable_sequence_node" for issue in report.issues)
+    assert not any(issue.kind == "dataflow.unreachable_sequence_node" for issue in report.issues)
+    assert _unreachable_labels(bp) == ["SFCStep:AfterBreak:SFCBreak"]
 
 
-def test_sequence_nodes_after_fork_are_reported_unreachable_with_target_metadata():
-    sequence = Sequence(
-        name="SeqMain",
-        type="sequence",
-        position=(0.0, 0.0),
-        size=(1.0, 1.0),
-        code=[
+def test_sequence_nodes_after_fork_are_owned_by_sfc_not_dataflow():
+    bp = _make_sequence(
+        [
             SFCFork(targets=("Done",)),
             SFCStep(kind="step", name="AfterFork", code=SFCCodeBlocks()),
-        ],
-    )
-    bp = BasePicture(
-        header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
-        modulecode=ModuleCode(sequences=[sequence], equations=[]),
+        ]
     )
 
     report = analyze_dataflow(bp)
 
-    issues = [issue for issue in report.issues if issue.kind == "dataflow.unreachable_sequence_node"]
-    assert len(issues) == 1
-    assert issues[0].data == {
-        "sequence": "SeqMain",
-        "branch_path": [],
-        "node_index": 1,
-        "node_label": "SFCStep:AfterFork",
-        "terminated_by": {"kind": "SFCFork", "targets": ["Done"]},
-        "site": "SQ:SeqMain",
-    }
+    assert not any(issue.kind == "dataflow.unreachable_sequence_node" for issue in report.issues)
+    assert _unreachable_labels(bp) == ["SFCStep:AfterFork:SFCFork"]
 
 
-def test_break_inside_nested_sequence_nodes_marks_inner_followups_unreachable():
-    sequence = Sequence(
-        name="SeqMain",
-        type="sequence",
-        position=(0.0, 0.0),
-        size=(1.0, 1.0),
-        code=[
+def test_break_inside_nested_sequence_nodes_is_owned_by_sfc_not_dataflow():
+    bp = _make_sequence(
+        [
             SFCSubsequence(
                 name="Prepare",
                 body=[
@@ -88,30 +79,13 @@ def test_break_inside_nested_sequence_nodes_marks_inner_followups_unreachable():
                     SFCStep(kind="step", name="AfterBreakInTransitionSub", code=SFCCodeBlocks()),
                 ],
             ),
-        ],
-    )
-    bp = BasePicture(
-        header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
-        modulecode=ModuleCode(sequences=[sequence], equations=[]),
+        ]
     )
 
     report = analyze_dataflow(bp)
 
-    unreachable = [issue for issue in report.issues if issue.kind == "dataflow.unreachable_sequence_node"]
-    assert len(unreachable) == 2
-    assert unreachable[0].data == {
-        "sequence": "SeqMain",
-        "branch_path": [],
-        "node_index": 1,
-        "node_label": "SFCStep:AfterBreakInSubsequence",
-        "terminated_by": {"kind": "SFCBreak"},
-        "site": "SQ:SeqMain > SUBSEQ:Prepare",
-    }
-    assert unreachable[1].data == {
-        "sequence": "SeqMain",
-        "branch_path": [],
-        "node_index": 1,
-        "node_label": "SFCStep:AfterBreakInTransitionSub",
-        "terminated_by": {"kind": "SFCBreak"},
-        "site": "SQ:SeqMain > TRANS-SUB:Gate",
-    }
+    assert not any(issue.kind == "dataflow.unreachable_sequence_node" for issue in report.issues)
+    assert _unreachable_labels(bp) == [
+        "SFCStep:AfterBreakInSubsequence:SFCBreak",
+        "SFCStep:AfterBreakInTransitionSub:SFCBreak",
+    ]
