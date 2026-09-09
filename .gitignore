@@ -22,6 +22,9 @@
 *.icf
 *.cfg
 
+# Windows NTFS Zone.Identifier markers (browser/download ADS) — never commit
+*:Zone.Identifier
+
 # Python cache and build artifacts
 __pycache__/
 *.py[cod]
