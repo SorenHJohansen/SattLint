@@ -141,6 +141,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "sattlint.assets" = ["*"]
+"sattlint.ui" = ["*.tcss"]
 
 [tool.setuptools.dynamic]
 version = { attr = "sattlint.__version__.__version__" }

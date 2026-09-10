@@ -16,6 +16,18 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   `Generate Change Review` button; output directory configured through the
   App Settings `review.output_dir` setting.
 
+## [2026.9.2] - 2026-09-10
+
+### Fixed
+
+- The released wheel was missing `sattlint/ui/app_textual.tcss`, so a bare
+  `sattlint` invocation (interactive Textual shell) crashed with
+  `FileNotFoundError`. The UI stylesheet is now declared as package data so it
+  ships in the wheel.
+- Added a clean-wheel smoke check (`import sattlint.ui.app_textual`) to the
+  Linux, Windows, and publish gates so missing package data fails CI instead of
+  breaking installs after release.
+
 ## [2026.9.1] - 2026-09-09
 
 ### Added
@@ -43,4 +55,5 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 - This entry establishes the changelog baseline for future tagged releases.
 
+[2026.9.2]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.9.2
 [2026.9.1]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.9.1

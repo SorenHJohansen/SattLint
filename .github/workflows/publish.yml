@@ -61,6 +61,7 @@ jobs:
           /tmp/clean-venv/bin/sattlint --version
           /tmp/clean-venv/bin/sattlint --help
           /tmp/clean-venv/bin/sattlint syntax-check tests/fixtures/sample_sattline_files/SattLineFullGrammarTest.s
+          /tmp/clean-venv/bin/python -c "import sattlint.ui.app_textual"
 
       - name: Upload distributions
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
