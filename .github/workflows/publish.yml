@@ -39,12 +39,12 @@ jobs:
       - name: Verify version matches tag
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
-          PKG_VERSION=$(python -c "from sattlint.__version__.__version__ import __version__; print(__version__)")
+          PKG_VERSION=$(sed -n 's/__version__ = "\(.*\)"/\1/p' src/sattlint/__version__.py)
           if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "::error::Tag version ($TAG_VERSION) does not match package version ($PKG_VERSION)"
+            echo "::error::Tag version ($TAG_VERSION) does not match source version ($PKG_VERSION)"
             exit 1
           fi
-          WHEEL_VERSION=$(ls dist/*.whl | sed 's/.*sattlint-\(.*\)-py3.*/\1/')
+          WHEEL_VERSION=$(ls dist/sattlint-*.whl | sed 's/.*dist\/sattlint-\(.*\)-py3-none-any\.whl/\1/')
           if [ "$TAG_VERSION" != "$WHEEL_VERSION" ]; then
             echo "::error::Tag version ($TAG_VERSION) does not match wheel version ($WHEEL_VERSION)"
             exit 1
