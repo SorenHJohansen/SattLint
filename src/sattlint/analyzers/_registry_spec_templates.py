@@ -32,14 +32,18 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             key=semantic_layer_analyzer_key,
             name="SattLine semantics",
             description=(
-                "Runs all the checks in one pass and shows every problem in one combined list.\n"
+                "The combined analyzer. Runs transform-invariant trace checks, then every semantic "
+                "contributor, maps issues to semantic rules, and deduplicates by (rule.id, module_path, "
+                "data).\n"
+                "\n"
+                "If an unexpected submodule type is found the whole layer short-circuits (the module tree "
+                "is too broken to analyze). Findings are grouped into five report categories: Variable "
+                "lifecycle, Interface contracts, Module structure, Control flow, Engineering spec.\n"
                 "\n"
                 "Finds:\n"
-                "- Variables that are declared but never used.\n"
-                "- Parameter mappings that point to parameters that do not exist.\n"
-                "- Code that can never run.\n"
-                "- Names that break the engineering rules, for example a step that does not start with "
-                "'ST_'."
+                "- Sibling modules with the same case-insensitive name.\n"
+                "- Unexpected non-module nodes under the submodule tree.\n"
+                "- All issues from contributor analyzers (variables, MMS, SFC, etc.)."
             ),
             analyzer_attr="analyze_sattline_semantics",
             context_kwargs=(
@@ -54,8 +58,12 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             key="variables",
             name="Variable issues",
             description=(
-                "Checks that variables and data type fields are declared, written, and read in a sensible "
-                "way.\n"
+                "Every declaration and every read/write in the module tree: root locals, moduletype "
+                "parameters and locals, submodule locals, datatype fields, parameter mappings, and "
+                "sequence/equation statements.\n"
+                "\n"
+                "Collects variable environment, datatype layouts, and access events, then applies ~26 "
+                "IssueKind checks. Configurable via the interactive variable-analysis menu.\n"
                 "\n"
                 "Finds:\n"
                 "- Unused declarations, for example a local 'Spare: integer;' that is never used.\n"
@@ -65,10 +73,13 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "afterwards.\n"
                 "- Unused or never-read data type fields, for example a RECORD field 'UnusedField' that no "
                 "code touches.\n"
-                "- Values set to True on some paths but never set back to False, for example 'AlarmFlag = "
-                "True;' with no later False write.\n"
+                "- Implicit latches: values set to True on some paths but never set back to False.\n"
                 "- Values only shown on a screen and never used in logic.\n"
-                "- Names that differ only by letter case in the same module, for example 'flow' and 'Flow'."
+                "- Names that differ only by letter case in the same module, for example 'flow' and "
+                "'Flow'.\n"
+                "- Interface contract errors: unknown parameters, required connections left unmapped, "
+                "datatype mismatches across boundaries.\n"
+                "- Unlabeled numeric literals (magic numbers) and positional record-component access."
             ),
             analyzer_attr="analyze_variables",
             context_kwargs=(
@@ -88,8 +99,12 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             key="picture-display-paths",
             name="PictureDisplay paths",
             description=(
-                "Checks that PictureDisplay paths (ComButProc_, ToggleWindow, and picture-display rows) "
-                "point to modules that exist.\n"
+                "PictureDisplay module paths produced by ComButProc_, ToggleWindow, and picture-display "
+                "rows. Walks graphics_picture_display_occurrences and diagnoses each path against the "
+                "loaded module tree.\n"
+                "\n"
+                "Literal paths are resolved directly; variable paths are first resolved by an exact-string "
+                "inference engine that tracks string provenance from initializers and parameter mappings.\n"
                 "\n"
                 "Finds:\n"
                 "- A module that does not exist, for example '+MissingPanel' when no such module exists "
@@ -107,16 +122,21 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             key="mms-interface",
             name="MMS interface mappings",
             description=(
-                "Builds a list of MMSWriteVar/MMSReadVar/MMSReadVarCyc/MMSReadWrite connections "
-                "(including .icf entries) and checks the tags used to talk to other systems.\n"
+                "MMSWriteVar, MMSReadVar, MMSReadVarCyc, MMSReadWrite instances (recursively through "
+                "moduletype typedefs, resolving parameter mappings to source variables and write "
+                "locations) plus external .icf entries.\n"
+                "\n"
+                "Builds an interface inventory of (source variable, datatype, external tag) entries, then "
+                "checks tag uniqueness, datatype consistency, tag family spelling, and whether outgoing "
+                "sources are written.\n"
                 "\n"
                 "Finds:\n"
                 "- The same tag used more than once, for example two connections both using 'MV_1001'.\n"
                 "- A tag connected to different data types, for example an integer on one side and a real "
                 "on the other.\n"
                 "- The same tag written in different ways, for example 'MV-1001' versus 'MV_1001'.\n"
-                "- Tags whose source is never written, for example a tag mapped to 'OtherVal' that is never "
-                "assigned."
+                "- Tags whose source is never written, for example a tag mapped to 'OtherVal' that is "
+                "never assigned."
             ),
             analyzer_attr="analyze_mms_interface_variables",
             context_kwargs=("debug", "config", "analysis_context"),
@@ -128,7 +148,11 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             name="ICF configuration",
             description=(
                 "Validates every .icf file under the configured icf_dir against the program it "
-                "references.\n"
+                "references. Runs once per analysis session across the whole icf_dir regardless of "
+                "configured targets.\n"
+                "\n"
+                "For each file it reuses the in-memory program when it matches, otherwise loads it via "
+                "the project loader.\n"
                 "\n"
                 "Finds:\n"
                 "- An entry that points at a different program than the .icf file.\n"
@@ -147,8 +171,13 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             key="sfc",
             name="SFC checks",
             description=(
-                "Checks SFC sequences for places where code could conflict, can never run, or has "
-                "transition problems.\n"
+                "Every SFC sequence in reachable module code, including alternative, parallel, "
+                "subsequence, and transition-sub branches.\n"
+                "\n"
+                "Walks sequence node lists, checking structural reachability after terminators "
+                "(SFCBreak, SFCFork), simplifying transition guard logic, comparing guards across "
+                "transitions, and applying configured step contracts. Parallel-branch write conflicts "
+                "are detected by collecting writes per branch of an SFCParallel.\n"
                 "\n"
                 "Finds:\n"
                 "- Parallel branches that write the same variable, for example two SFCParallel branches "
@@ -156,7 +185,9 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "- Steps or transitions that can never run, for example a SEQSTEP placed after a "
                 "SEQBREAK.\n"
                 "- Transitions that always fire or never fire.\n"
-                "- Transitions in one branch with the same condition."
+                "- Transitions in one branch with the same condition.\n"
+                "- Mutually exclusive steps that can run at the same time (configurable).\n"
+                "- Missing start or end code that lets an old value carry over between steps."
             ),
             analyzer_attr="analyze_sfc",
             requires=("variables",),
@@ -168,12 +199,15 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             key="comment-code",
             name="Commented-out code",
             description=(
-                "Detects commented-out code inside SattLine comments.\n"
+                "All SattLine source files on the graph (.s, .x, .l, .z). Reads each file "
+                "(decompressing if necessary), finds comment blocks whose content parses as valid "
+                "SattLine code, and classifies each hit with indicators: assignment, call, control, "
+                "comparison.\n"
                 "\n"
                 "Finds:\n"
                 "- Comments that still contain working code, for example "
                 "'(* IF Running THEN Running = False; ENDIF; *)'.\n"
-                "- Files that cannot be read."
+                "- Files that cannot be read or decoded."
             ),
             analyzer_attr="analyze_comment_code",
             category="correctness",
@@ -201,15 +235,17 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             key="spec-compliance",
             name="Engineering spec compliance",
             description=(
-                "Checks code against the engineering rules.\n"
+                "AST-visible engineering constructs: base-picture code placement, SFC step and "
+                "transition names, NNESystem:OPMessage instances, and NNEMESIFLib:MES_BatchControl "
+                "instances.\n"
                 "\n"
-                "Finds:\n"
+                "Finds (all warnings):\n"
                 "- Code in the BasePicture that should be inside a frame module.\n"
                 "- Steps that do not start with 'ST_' or transitions that do not start with 'TR_', for "
                 "example 'SEQSTEP step_mix'.\n"
-                "- Transitions without a name.\n"
-                "- OPMessage instances with UseSignature=True.\n"
-                "- MES_BatchControl instances with the wrong name or wrong Max_TRY/Repeat_TRY values."
+                "- Transitions without a name, for example 'SEQTRANSITION WAIT_FOR Done'.\n"
+                "- OPMessage instances that resolve UseSignature to True.\n"
+                "- MES_BatchControl instances with the wrong name, or Max_TRY not 10 / Repeat_TRY not 20."
             ),
             analyzer_attr="analyze_spec_compliance",
             context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library"),
@@ -220,8 +256,11 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             key="alarm-integrity",
             name="Alarm integrity",
             description=(
-                "Checks alarm tags, conditions, priorities, and whether alarms can turn off, across "
-                "modules.\n"
+                "Alarm function-block instances and alarm boolean writes. An alarm source maps a tag "
+                "parameter (tag/alarmtag/eventtag) plus a priority or condition parameter "
+                "(priority/severity, or condition/alarmcondition/enable). Values are resolved through "
+                "literal mapping, variable init, or moduletype default and compared across all "
+                "candidates.\n"
                 "\n"
                 "Finds:\n"
                 "- The same alarm tag used twice, for example the same tag in two alarm sources.\n"
@@ -240,12 +279,13 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             key="interface-contracts",
             name="Interface contracts",
             description=(
-                "Checks that moduletype instance mappings match what the moduletype declares.\n"
+                "Moduletype instance parameter mappings, restricted to the four contract kinds.\n"
                 "\n"
-                "Finds:\n"
+                "Finds (all errors):\n"
                 "- Mappings to parameters that do not exist, for example 'Child : ChildType "
                 "(BogusParam => 1)'.\n"
-                "- Required parameters that are not mapped.\n"
+                "- Required parameters that are not mapped, for example 'Child : ChildType' while the "
+                "moduletype uses 'RequiredValue' internally.\n"
                 "- Data types that do not match across the boundary, for example an integer mapped to a "
                 "boolean parameter, or a missing required field such as 'Inner.Value'.\n"
                 "- String mappings with mismatched types, for example an identstring parameter mapped from "
@@ -259,10 +299,13 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             key="powerup",
             name="Power-up",
             description=(
-                "Combines unsafe startup defaults into one power-up report.\n"
+                "Combines initial-values and unsafe-defaults into one power-up report.\n"
                 "\n"
-                "Finds Boolean variables set to True at startup whose name contains 'enable' or 'bypass', "
-                "for example 'EnablePump: boolean := True;' or 'SafetyBypass: boolean := True;'."
+                "Finds:\n"
+                "- Recipe/engineering parameter instances missing a required initial value (a value-like "
+                "parameter with no literal mapping, init_value, or moduletype default).\n"
+                "- Boolean variables set to True at startup whose name contains 'enable' or 'bypass', for "
+                "example 'EnablePump: boolean := True;' or 'SafetyBypass: boolean := True;'."
             ),
             analyzer_attr="analyze_powerup",
             context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library"),
