@@ -514,8 +514,6 @@ def _make_project_relative(path: str, anchor: Path) -> str:
     if not path or not path.strip():
         return ""
     p = Path(path)
-    if not p.is_absolute():
-        return p.as_posix()
     try:
         return p.relative_to(anchor).as_posix()
     except ValueError:
