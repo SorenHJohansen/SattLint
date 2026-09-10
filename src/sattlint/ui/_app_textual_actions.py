@@ -515,11 +515,11 @@ def _make_project_relative(path: str, anchor: Path) -> str:
         return ""
     p = Path(path)
     if not p.is_absolute():
-        return str(p)
+        return p.as_posix()
     try:
-        return str(p.relative_to(anchor))
+        return p.relative_to(anchor).as_posix()
     except ValueError:
-        return str(p)
+        return p.as_posix()
 
 
 def action_save_config(self: Any) -> None:
