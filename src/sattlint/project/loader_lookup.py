@@ -454,9 +454,13 @@ class SattLineProjectLoaderLookupMixin(SattLineProjectLoaderBase):
     def _load_or_parse(self, code_path: Path, *, owner_name: str | None = None) -> BasePicture | None:
         resolved_owner_name = owner_name or code_path.stem
         started_at = perf_counter()
+        self._bump_cache_count("ast_requests")
         prefetched_result = self._prefetched_load_results_by_path.pop(code_path, None)
         if prefetched_result is not None:
+            self._bump_cache_count("cache_hits")
+            self._bump_cache_count("prefetch_entries_consumed")
             if prefetched_result.ast_cache_save_required:
+                self._bump_cache_count("invalid_or_stale_entries")
                 cache_save_started_at = perf_counter()
                 self._ast_cache.save(code_path, self.mode.value, prefetched_result.basepicture)
                 self._record_stage_timing(resolved_owner_name, "ast_cache_save", cache_save_started_at)
@@ -467,10 +471,12 @@ class SattLineProjectLoaderLookupMixin(SattLineProjectLoaderBase):
             )
             return prefetched_result.basepicture
         if self.use_file_ast_cache:
-            cached = self._ast_cache.load(code_path, self.mode.value)
+            cached = self._load_ast_cache_memoized(code_path)
             if isinstance(cached, BasePicture):
+                self._bump_cache_count("cache_hits")
                 upgraded_cache_entry = ensure_local_validation(cached)
                 if upgraded_cache_entry:
+                    self._bump_cache_count("invalid_or_stale_entries")
                     cache_save_started_at = perf_counter()
                     self._ast_cache.save(code_path, self.mode.value, cached)
                     self._record_stage_timing(resolved_owner_name, "ast_cache_save", cache_save_started_at)
@@ -480,8 +486,14 @@ class SattLineProjectLoaderLookupMixin(SattLineProjectLoaderBase):
                 return cached
 
         self._update_status(f"Loading {code_path.stem}: parsing {code_path.name}")
-        basepicture = self._parse_one(code_path)
+        try:
+            basepicture = self._parse_one(code_path)
+        except Exception:
+            self._bump_cache_count("parse_failures")
+            raise
+        self._bump_cache_count("parses")
         mark_local_validation(basepicture)
+        self._ast_cache_memo[code_path] = basepicture
         cache_save_started_at = perf_counter()
         self._ast_cache.save(code_path, self.mode.value, basepicture)
         self._record_stage_timing(resolved_owner_name, "ast_cache_save", cache_save_started_at)
@@ -503,8 +515,9 @@ class SattLineProjectLoaderLookupMixin(SattLineProjectLoaderBase):
 
         prefetched: dict[Path, PrefetchedLoadResult] = {}
         for code_path in code_paths:
+            self._bump_cache_count("prefetch_candidates")
             started_at = perf_counter()
-            cached = self._ast_cache.load(code_path, self.mode.value)
+            cached = self._load_ast_cache_memoized(code_path)
             if not isinstance(cached, BasePicture):
                 continue
             save_required = ensure_local_validation(cached)

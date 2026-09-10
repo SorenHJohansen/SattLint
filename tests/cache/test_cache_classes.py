@@ -13,6 +13,7 @@ from sattlint.cache.classes import (
     ASTCache,
     FileASTCache,
     FileLookupCache,
+    FoundationCache,
 )
 
 
@@ -197,3 +198,31 @@ def test_analysis_report_cache_prune_and_drain(tmp_path) -> None:
         path.write_text("junk")
     assert cache.prune_stale_entries() == 1
     assert cache.drain_startup_pruned_entries() >= 0
+
+
+def test_foundation_cache_roundtrip_and_prune(tmp_path) -> None:
+    source = tmp_path / "mod.sl"
+    source.write_text("x := 1;")
+    cache = FoundationCache(tmp_path / "caches")
+    assert cache.load("key") is None
+    cache.save("key", {"foundation": "payload"})
+    assert cache.load("key") == {"foundation": "payload"}
+    assert cache.load("other-key") is None
+    assert cache.prune_stale_entries() == 0
+    for path in cache.cache_dir.glob("*.pickle"):
+        path.write_text("not a pickle")
+    assert cache.prune_stale_entries() == 1
+    assert cache.drain_startup_pruned_entries() >= 0
+
+
+def test_foundation_cache_key_is_content_derived_and_distinct(tmp_path) -> None:
+    source = tmp_path / "mod.sl"
+    source.write_text("x := 1;")
+    manifest_a = {str(source): (1001, 6)}
+    manifest_b = {str(source): (1002, 6)}
+    key_a = cache_module.compute_foundation_cache_key("proj-key", manifest_a)
+    assert key_a == cache_module.compute_foundation_cache_key("proj-key", manifest_a)
+    assert key_a != cache_module.compute_foundation_cache_key("proj-key", manifest_b)
+    assert key_a != cache_module.compute_foundation_cache_key("proj-key-other", manifest_a)
+    report_key = cache_module.compute_analysis_report_cache_key("proj-key", "variables")
+    assert key_a != report_key

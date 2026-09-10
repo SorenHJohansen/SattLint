@@ -9,8 +9,9 @@ from typing import ClassVar
 import pytest
 from sattline_parser.models.ast_model import BasePicture, FrameModule, ModuleTypeInstance, SingleModule
 
-from sattlint import app
 from sattlint.analyzers import variables as variables_module
+from sattlint.application.project import load_project
+from sattlint.config import get_config_path, load_config, self_check
 from sattlint.models.project_graph import ProjectGraph
 from sattlint.reporting.variables_report import (
     DEFAULT_VARIABLE_ANALYSIS_KINDS,
@@ -78,7 +79,7 @@ def make_shadowing_report(basepicture_name: str = "Dummy") -> VariablesReport:
     return VariablesReport(
         basepicture_name=basepicture_name,
         issues=[],
-        visible_kinds=frozenset({app.IssueKind.SHADOWING}),
+        visible_kinds=frozenset({IssueKind.SHADOWING}),
         include_empty_sections=True,
     )
 
@@ -148,11 +149,11 @@ def _pick_any_variable_name(base_picture: BasePicture, graph: ProjectGraph) -> s
 def real_context() -> RealContext | None:
     if os.getenv("SATTLINT_RUN_REAL_CONTEXT") != "1":
         return None
-    cfg, _ = app.load_config(app.CONFIG_PATH)
-    if not app.self_check(cfg):
+    cfg, _ = load_config(get_config_path())
+    if not self_check(cfg):
         return None
 
-    project_bp, graph = app.load_project(cfg)
+    project_bp, graph = load_project(cfg)
 
     var_name = _pick_any_variable_name(project_bp, graph)
     module_info = _find_module_with_localvar(project_bp)

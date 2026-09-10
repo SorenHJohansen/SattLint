@@ -19,9 +19,8 @@ from ..data_dependency import analyze_data_dependency
 from ..dataflow import analyze_dataflow
 from ..fault_handling import analyze_fault_handling
 from ..framework import AnalyzerSpec
-from ..initial_values import analyze_initial_values
+from ..icf.analyzer import analyze_icf_configuration
 from ..interface_contracts import analyze_interface_contracts
-from ..loop_output_refactor import analyze_loop_output_refactor
 from ..loop_stability import analyze_loop_stability
 from ..mms import analyze_mms_interface_variables
 from ..modules import analyze_version_drift
@@ -29,6 +28,7 @@ from ..naming import analyze_naming_consistency, get_configured_naming_rules
 from ..numeric_constraints import analyze_numeric_constraints
 from ..parameter_drift import analyze_parameter_drift
 from ..picture_display_paths import analyze_picture_display_paths
+from ..plugin import get_registered_plugin_analyzers, register_analyzer
 from ..powerup import analyze_powerup
 from ..resource_usage import analyze_resource_usage
 from ..rule_profiles import get_default_rule_profile_report
@@ -43,7 +43,7 @@ from ..sattline_semantics import (
 from ..scan_concurrency import analyze_scan_concurrency
 from ..scan_loop_resource_usage import analyze_scan_loop_resource_usage
 from ..scan_shared_access import analyze_scan_shared_access
-from ..sfc import analyze_sfc, get_configured_mutually_exclusive_step_sets, get_configured_step_contracts
+from ..sfc import analyze_sfc
 from ..shadowing import analyze_shadowing
 from ..signal_lifecycle import analyze_signal_lifecycle
 from ..spec_compliance import analyze_spec_compliance
@@ -55,6 +55,13 @@ from ..variables import analyze_variables
 from ._registry_delivery import AnalyzerDeliveryMetadata, build_delivery_metadata, summary_output_for_analyzer
 
 SEMANTIC_LAYER_ANALYZER_KEY = "sattline-semantics"
+# Policy (analyzer execution refactor B4.9): every registered analyzer is
+# selectable, and is either in the default CLI set below or deliberately opt-in
+# (naming-consistency, cyclomatic-complexity, parameter-drift, version-drift,
+# and the composed wrappers powerup/timing/scan-concurrency/scan-shared-access/
+# interface-contracts/state-inference). Semantic contributors are categorized
+# correctness; sattline-semantics is the aggregate layer and is intentionally
+# not CLI-exposed as a selectable analyzer.
 DEFAULT_CLI_ANALYZER_KEYS: tuple[str, ...] = (
     "variables",
     "picture-display-paths",
@@ -63,11 +70,7 @@ DEFAULT_CLI_ANALYZER_KEYS: tuple[str, ...] = (
     "comment-code",
     "shadowing",
     "spec-compliance",
-    "loop-output-refactor",
     "alarm-integrity",
-    "initial-values",
-    "interface-contracts",
-    "powerup",
     "signal-lifecycle",
     "loop-stability",
     "fault-handling",
@@ -76,15 +79,12 @@ DEFAULT_CLI_ANALYZER_KEYS: tuple[str, ...] = (
     "config-drift",
     "scan-loop-resource-usage",
     "resource-usage",
-    "scan-concurrency",
-    "scan-shared-access",
     "same-cycle",
-    "timing",
     "safety-paths",
     "taint-paths",
     "unsafe-defaults",
     "dataflow",
-    "state-inference",
+    "icf",
 )
 
 
@@ -118,7 +118,6 @@ _RULE_ANALYZER_ALIASES: dict[str, tuple[str, ...]] = {
     "semantic.required-parameter-connection": ("interface-contracts",),
     "semantic.cross-module-contract-mismatch": ("interface-contracts",),
     "semantic.string-mapping-mismatch": ("interface-contracts",),
-    "semantic.missing-parameter-initial-value": ("powerup",),
     "semantic.unsafe-default-true": ("powerup",),
     "semantic.parallel-write-race": ("scan-concurrency", "same-cycle"),
     "semantic.same-cycle-non-state-multi-site": ("scan-shared-access", "same-cycle"),
@@ -126,47 +125,6 @@ _RULE_ANALYZER_ALIASES: dict[str, tuple[str, ...]] = {
     "semantic.scan-cycle-implicit-new": ("timing",),
     "semantic.scan-cycle-temporal-misuse": ("timing",),
 }
-
-# Preserve the historical monkeypatch surface that tests and extracted helper modules use.
-_REGISTRY_MONKEYPATCH_SURFACE = (
-    analyze_alarm_integrity,
-    analyze_comment_code,
-    analyze_config_drift,
-    analyze_cyclomatic_complexity,
-    analyze_data_dependency,
-    analyze_interface_contracts,
-    analyze_dataflow,
-    analyze_fault_handling,
-    analyze_initial_values,
-    analyze_loop_stability,
-    analyze_loop_output_refactor,
-    analyze_mms_interface_variables,
-    analyze_naming_consistency,
-    analyze_numeric_constraints,
-    analyze_parameter_drift,
-    analyze_picture_display_paths,
-    analyze_powerup,
-    analyze_resource_usage,
-    analyze_safety_paths,
-    analyze_same_cycle,
-    analyze_scan_concurrency,
-    analyze_scan_shared_access,
-    analyze_sattline_semantics,
-    analyze_scan_loop_resource_usage,
-    analyze_sfc,
-    analyze_shadowing,
-    analyze_signal_lifecycle,
-    analyze_spec_compliance,
-    analyze_state_inference,
-    analyze_taint_paths,
-    analyze_timing,
-    analyze_unsafe_defaults,
-    analyze_variables,
-    analyze_version_drift,
-    get_configured_mutually_exclusive_step_sets,
-    get_configured_naming_rules,
-    get_configured_step_contracts,
-)
 
 
 @dataclass(frozen=True)
@@ -524,6 +482,16 @@ def _mapped_analyzers_for_rule(
 
 
 def get_default_analyzer_catalog() -> AnalyzerCatalog:
+    return _build_default_analyzer_catalog()
+
+
+@lru_cache(maxsize=1)
+def _build_default_analyzer_catalog() -> AnalyzerCatalog:
+    # Building this from the static rule/analyzer registry costs tens of ms (rule-metadata and
+    # delivery-metadata construction for every rule), and was previously rebuilt from scratch on
+    # every collect_run_checks_result() call. All inputs are static module-level data, so caching
+    # it for the process lifetime is safe; get_default_analyzer_catalog stays the public,
+    # monkeypatch-friendly entry point tests already rely on.
     analyzer_specs = tuple(get_default_analyzers())
     validate_analyzer_dependencies(analyzer_specs)
     analyzer_specs = deterministic_dependency_order(analyzer_specs)
@@ -581,7 +549,10 @@ def get_default_cli_analyzers() -> list[AnalyzerSpec]:
 
 
 def get_default_analyzers() -> list[AnalyzerSpec]:
-    return build_default_analyzers(semantic_layer_analyzer_key=SEMANTIC_LAYER_ANALYZER_KEY)
+    return [
+        *build_default_analyzers(semantic_layer_analyzer_key=SEMANTIC_LAYER_ANALYZER_KEY),
+        *get_registered_plugin_analyzers(),
+    ]
 
 
 def get_correctness_analyzer_keys() -> tuple[str, ...]:
@@ -615,9 +586,8 @@ __all__ = [
     "analyze_data_dependency",
     "analyze_dataflow",
     "analyze_fault_handling",
-    "analyze_initial_values",
+    "analyze_icf_configuration",
     "analyze_interface_contracts",
-    "analyze_loop_output_refactor",
     "analyze_loop_stability",
     "analyze_mms_interface_variables",
     "analyze_naming_consistency",
@@ -649,9 +619,7 @@ __all__ = [
     "deterministic_dependency_order",
     "get_actual_cli_analyzer_keys",
     "get_actual_lsp_analyzer_keys",
-    "get_configured_mutually_exclusive_step_sets",
     "get_configured_naming_rules",
-    "get_configured_step_contracts",
     "get_correctness_analyzer_keys",
     "get_declared_cli_analyzer_keys",
     "get_declared_lsp_analyzer_keys",
@@ -660,8 +628,10 @@ __all__ = [
     "get_default_cli_analyzers",
     "get_default_rule_profile_report",
     "get_enabled_analyzers",
+    "get_registered_plugin_analyzers",
     "get_sattline_semantic_rule_groups",
     "get_selectable_analyzers",
+    "register_analyzer",
     "summary_output_for_analyzer",
     "validate_analyzer_dependencies",
 ]

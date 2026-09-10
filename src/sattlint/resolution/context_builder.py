@@ -254,9 +254,9 @@ class ContextBuilder:
         )
 
         for variable in params:
-            env[variable.name.lower()] = variable
+            env[variable.name.casefold()] = variable
         for variable in locals_:
-            env[variable.name.lower()] = variable
+            env[variable.name.casefold()] = variable
 
         param_mappings: dict[str, tuple[Variable, str, list[str], list[str]]] = {}
         unknown_parameter_targets: list[str] = []
@@ -301,7 +301,7 @@ class ContextBuilder:
         """Build root scope context for BasePicture."""
         env: dict[str, Variable] = {}
         for variable in self.bp.localvariables or []:
-            env[variable.name.lower()] = variable
+            env[variable.name.casefold()] = variable
 
         module_path = [self.bp.header.name]
         display_path = [decorate_segment(self.bp.header.name, "BP")]
@@ -353,7 +353,7 @@ class ContextBuilder:
             )
 
         for variable in params:
-            env[variable.name.lower()] = variable
+            env[variable.name.casefold()] = variable
             self.symbol_table.add_variable_root(
                 module_path=module_path,
                 var=variable,
@@ -361,7 +361,7 @@ class ContextBuilder:
                 type_graph=self.type_graph,
             )
         for variable in locals_:
-            env[variable.name.lower()] = variable
+            env[variable.name.casefold()] = variable
             self.symbol_table.add_variable_root(
                 module_path=module_path,
                 var=variable,

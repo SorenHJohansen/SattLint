@@ -69,7 +69,7 @@ def check_for_modulecode_latching(
             path,
             issues,
             seen,
-            site=f"SEQ:{sequence_name}",
+            site=f"SQ:{sequence_name}",
             sequence_name=sequence_name,
         )
 

@@ -33,6 +33,7 @@ from sattline_parser.models.expressions import (
 from ..grammar import constants as const
 from .framework import Issue, SimpleReport
 from .shared._walk_utils import iter_nested_modules
+from .shared.target_origin import build_target_origin_filter_for_basepicture
 
 DEFAULT_MODULE_COMPLEXITY_THRESHOLD = 10
 DEFAULT_STEP_COMPLEXITY_THRESHOLD = 6
@@ -45,10 +46,12 @@ class CyclomaticComplexityAnalyzer:
         *,
         module_threshold: int = DEFAULT_MODULE_COMPLEXITY_THRESHOLD,
         step_threshold: int = DEFAULT_STEP_COMPLEXITY_THRESHOLD,
+        analyzed_target_is_library: bool = False,
     ) -> None:
         self.bp = base_picture
         self._module_threshold = module_threshold
         self._step_threshold = step_threshold
+        self._analyzed_target_is_library = analyzed_target_is_library
         self._issues: list[Issue] = []
 
     def run(self) -> list[Issue]:
@@ -58,7 +61,13 @@ class CyclomaticComplexityAnalyzer:
             scope_kind="program",
             modulecode=self.bp.modulecode,
         )
+        moduletype_filter = build_target_origin_filter_for_basepicture(
+            self.bp,
+            analyzed_target_is_library=self._analyzed_target_is_library,
+        )
         for moduletype in self.bp.moduletype_defs or []:
+            if not moduletype_filter(moduletype):
+                continue
             self._walk_moduletype(moduletype, parent_path=root_path)
         self._walk_modules(self.bp.submodules or [], parent_path=root_path)
         return self._issues
@@ -117,6 +126,8 @@ class CyclomaticComplexityAnalyzer:
                     "scope": scope_kind,
                     "complexity": complexity,
                     "threshold": self._module_threshold,
+                    "site": scope_label,
+                    "context": f"complexity {complexity} > {self._module_threshold}",
                 },
             )
         )
@@ -165,6 +176,8 @@ class CyclomaticComplexityAnalyzer:
                                 "step": node.name,
                                 "complexity": step_complexity,
                                 "threshold": self._step_threshold,
+                                "site": f"SQ:{sequence_name} > STEP:{node.name}",
+                                "context": f"complexity {step_complexity} > {self._step_threshold}",
                             },
                         )
                     )
@@ -310,10 +323,12 @@ def analyze_cyclomatic_complexity(
     *,
     module_threshold: int = DEFAULT_MODULE_COMPLEXITY_THRESHOLD,
     step_threshold: int = DEFAULT_STEP_COMPLEXITY_THRESHOLD,
+    analyzed_target_is_library: bool = False,
 ) -> SimpleReport:
     analyzer = CyclomaticComplexityAnalyzer(
         base_picture,
         module_threshold=module_threshold,
         step_threshold=step_threshold,
+        analyzed_target_is_library=analyzed_target_is_library,
     )
     return SimpleReport(name=base_picture.header.name, issues=analyzer.run())

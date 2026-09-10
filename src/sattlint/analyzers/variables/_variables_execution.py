@@ -20,7 +20,7 @@ from sattline_parser.models.ast_model import (
 
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ...resolution.scope import ScopeContext
-from ..layout_geometry import collect_layout_overlap_issues
+from ...utils.casefolding import casefold_key
 from ..reset_contamination import detect_implicit_latching, detect_reset_contamination
 from ..shared.variable_utils import mapping_target_name
 from ._usage_tracker import UsageTracker
@@ -39,10 +39,17 @@ from ._variables_picture_display_support import (
     record_graphics_binding_occurrences,
     record_picture_display_variable_occurrences,
 )
-from ._variables_string_overflow import collect_string_operation_overflow_issues
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer
+
+
+_process_root_traversal_count: int = 0
+
+
+def count_process_root_traversals() -> int:
+    """Return the process-wide number of variables root traversals started."""
+    return _process_root_traversal_count
 
 
 log = logging.getLogger("SattLint")
@@ -91,7 +98,6 @@ _USAGE_DERIVED_ISSUE_KINDS: frozenset[IssueKind] = _USAGE_VARIABLE_ISSUE_KINDS |
 _POST_TRAVERSAL_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
     {
         IssueKind.DATATYPE_DUPLICATION,
-        IssueKind.LAYOUT_OVERLAP,
         IssueKind.RESET_CONTAMINATION,
         IssueKind.IMPLICIT_LATCH,
         IssueKind.STRING_MAPPING_MISMATCH,
@@ -276,9 +282,6 @@ def _analyze_root_scope(self: VariablesAnalyzer) -> ScopeContext:
 
 
 def _run_post_traversal_analyses(self: VariablesAnalyzer) -> None:
-    if _should_collect_issue_kind(self, IssueKind.STRING_MAPPING_MISMATCH):
-        collect_string_operation_overflow_issues(self)
-
     if _should_collect_issue_kind(self, IssueKind.DATATYPE_DUPLICATION):
         self._detect_datatype_duplications()
 
@@ -309,15 +312,6 @@ def _run_post_traversal_analyses(self: VariablesAnalyzer) -> None:
             "implicit-latch-scan",
             added_issue_count=len(self._issues) - issue_count_before_latch,
         )
-
-    if _should_collect_issue_kind(self, IssueKind.LAYOUT_OVERLAP):
-        layout_issues = collect_layout_overlap_issues(
-            self.bp,
-            limit_to_module_path=self._limit_to_module_path,
-        )
-        for issue in layout_issues:
-            self._append_issue(issue)
-        self._trace("layout-overlap-scan", added_issue_count=len(layout_issues))
 
     if _should_collect_issue_kind(self, IssueKind.WRITE_WITHOUT_EFFECT):
         self._effective_output_keys = self._compute_effective_output_keys()
@@ -518,6 +512,11 @@ def run(  # noqa: PLR0915
     limit_to_module_path: list[str] | None = None,
 ) -> list[VariableIssue]:
     _reset_analysis_state(self)
+    global _process_root_traversal_count
+    _process_root_traversal_count += 1
+    shared_artifacts = getattr(self, "_shared_artifacts", None)
+    if shared_artifacts is not None:
+        shared_artifacts.counters.variable_root_traversals += 1
     self._unresolved_variable_lookup_total = 0
     self._unresolved_variable_lookup_counts = defaultdict(int)
     self._unresolved_variable_lookup_examples = {}
@@ -659,11 +658,11 @@ reset_analysis_state = _reset_analysis_state
 
 
 def _is_external_typename(self: VariablesAnalyzer, typename: str) -> bool:
-    return typename.lower() not in self.typedef_index
+    return typename.casefold() not in self.typedef_index
 
 
 def _analyze_typedef(self: VariablesAnalyzer, mt: ModuleTypeDef, path: list[str]) -> None:
-    mt_key = mt.name.lower()
+    mt_key = casefold_key(mt.name)
     if mt_key in self._analyzing_typedefs:
         return
 
@@ -688,8 +687,8 @@ def _analyze_typedef(self: VariablesAnalyzer, mt: ModuleTypeDef, path: list[str]
                 )
             )
 
-        env = {variable.name.lower(): variable for variable in params}
-        env.update({variable.name.lower(): variable for variable in locals_})
+        env = {casefold_key(variable.name): variable for variable in params}
+        env.update({casefold_key(variable.name): variable for variable in locals_})
 
         context = build_typedef_root_context(self, mt, path)
 
@@ -699,24 +698,26 @@ def _analyze_typedef(self: VariablesAnalyzer, mt: ModuleTypeDef, path: list[str]
         self._walk_typedef_groupconn(mt, context, path)
 
         used_reads = {
-            variable.name.lower() for variable in (mt.moduleparameters or []) if self._get_usage(variable).read
+            casefold_key(variable.name) for variable in (mt.moduleparameters or []) if self._get_usage(variable).read
         }
         used_ui_reads = {
-            variable.name.lower() for variable in (mt.moduleparameters or []) if self._get_usage(variable).ui_read
+            casefold_key(variable.name) for variable in (mt.moduleparameters or []) if self._get_usage(variable).ui_read
         }
         used_non_ui_reads = {
-            variable.name.lower() for variable in (mt.moduleparameters or []) if self._get_usage(variable).non_ui_read
+            casefold_key(variable.name)
+            for variable in (mt.moduleparameters or [])
+            if self._get_usage(variable).non_ui_read
         }
         used_writes = {
-            variable.name.lower() for variable in (mt.moduleparameters or []) if self._get_usage(variable).written
+            casefold_key(variable.name) for variable in (mt.moduleparameters or []) if self._get_usage(variable).written
         }
 
         used_params = used_reads | used_writes
-        self.used_params_by_typedef[mt.name] = used_params
-        self.param_reads_by_typedef[mt.name.lower()] = used_reads
-        self.param_ui_reads_by_typedef[mt.name.lower()] = used_ui_reads
-        self.param_non_ui_reads_by_typedef[mt.name.lower()] = used_non_ui_reads
-        self.param_writes_by_typedef[mt.name.lower()] = used_writes
+        self.used_params_by_typedef[casefold_key(mt.name)] = used_params
+        self.param_reads_by_typedef[casefold_key(mt.name)] = used_reads
+        self.param_ui_reads_by_typedef[casefold_key(mt.name)] = used_ui_reads
+        self.param_non_ui_reads_by_typedef[casefold_key(mt.name)] = used_non_ui_reads
+        self.param_writes_by_typedef[casefold_key(mt.name)] = used_writes
 
         if _should_collect_any_issue_kinds(self, _PARAM_MAPPING_CHECK_ISSUE_KINDS):
             for mapping in mt.parametermappings or []:
@@ -786,15 +787,19 @@ def _analyze_single_module_with_context(
     self._walk_module_code(mod.modulecode, context, path)
     self._walk_submodules(mod.submodules or [], parent_context=context, parent_path=path)
 
-    used_reads = {variable.name.lower() for variable in (mod.moduleparameters or []) if self._get_usage(variable).read}
+    used_reads = {
+        casefold_key(variable.name) for variable in (mod.moduleparameters or []) if self._get_usage(variable).read
+    }
     used_ui_reads = {
-        variable.name.lower() for variable in (mod.moduleparameters or []) if self._get_usage(variable).ui_read
+        casefold_key(variable.name) for variable in (mod.moduleparameters or []) if self._get_usage(variable).ui_read
     }
     used_non_ui_reads = {
-        variable.name.lower() for variable in (mod.moduleparameters or []) if self._get_usage(variable).non_ui_read
+        casefold_key(variable.name)
+        for variable in (mod.moduleparameters or [])
+        if self._get_usage(variable).non_ui_read
     }
     used_writes = {
-        variable.name.lower() for variable in (mod.moduleparameters or []) if self._get_usage(variable).written
+        casefold_key(variable.name) for variable in (mod.moduleparameters or []) if self._get_usage(variable).written
     }
     return used_reads, used_ui_reads, used_non_ui_reads, used_writes
 
@@ -805,7 +810,7 @@ def _analyze_typedef_with_context(
     context: ScopeContext,
     path: list[str],
 ) -> None:
-    mt_key = mt.name.lower()
+    mt_key = casefold_key(mt.name)
     if mt_key in self._analyzing_typedefs:
         return
 
@@ -824,19 +829,21 @@ def _analyze_typedef_with_context(
                 self._check_param_mapping(mapping, target_var, context.env, context, path)
 
         used_reads = {
-            variable.name.lower() for variable in (mt.moduleparameters or []) if self._get_usage(variable).read
+            casefold_key(variable.name) for variable in (mt.moduleparameters or []) if self._get_usage(variable).read
         }
         used_ui_reads = {
-            variable.name.lower() for variable in (mt.moduleparameters or []) if self._get_usage(variable).ui_read
+            casefold_key(variable.name) for variable in (mt.moduleparameters or []) if self._get_usage(variable).ui_read
         }
         used_non_ui_reads = {
-            variable.name.lower() for variable in (mt.moduleparameters or []) if self._get_usage(variable).non_ui_read
+            casefold_key(variable.name)
+            for variable in (mt.moduleparameters or [])
+            if self._get_usage(variable).non_ui_read
         }
         used_writes = {
-            variable.name.lower() for variable in (mt.moduleparameters or []) if self._get_usage(variable).written
+            casefold_key(variable.name) for variable in (mt.moduleparameters or []) if self._get_usage(variable).written
         }
 
-        self.used_params_by_typedef[mt.name] = used_reads | used_writes
+        self.used_params_by_typedef[mt_key] = used_reads | used_writes
         self.param_reads_by_typedef[mt_key] = used_reads
         self.param_ui_reads_by_typedef[mt_key] = used_ui_reads
         self.param_non_ui_reads_by_typedef[mt_key] = used_non_ui_reads

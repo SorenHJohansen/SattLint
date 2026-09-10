@@ -63,6 +63,8 @@ def test_naming_consistency_flags_inconsistent_variable_names() -> None:
         "name": "tank_level",
         "actual_style": "snake",
         "expected_style": "pascal",
+        "site": "Root.HoldingUnit",
+        "context": "tank_level",
     }
 
 
@@ -118,6 +120,8 @@ def test_naming_consistency_flags_inconsistent_module_names() -> None:
         "name": "cooling_stage",
         "actual_style": "snake",
         "expected_style": "pascal",
+        "site": "Root.cooling_stage",
+        "context": "cooling_stage",
     }
 
 
@@ -173,6 +177,8 @@ def test_naming_consistency_flags_inconsistent_instance_names() -> None:
         "name": "valve_return",
         "actual_style": "snake",
         "expected_style": "pascal",
+        "site": "Root.valve_return",
+        "context": "valve_return",
     }
 
 

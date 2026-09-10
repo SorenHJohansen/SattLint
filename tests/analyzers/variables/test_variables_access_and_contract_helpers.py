@@ -1011,7 +1011,11 @@ def test_variables_contracts_cover_guard_branches(monkeypatch: pytest.MonkeyPatc
         "_make_nested_contract_extractor",
         _make_nested_contract_extractor,
     )
-    owner: Any = _ns(bp=_ns(header=_ns(name="Root")), required_parameter_names_by_owner={})
+    owner: Any = _ns(
+        bp=_ns(header=_ns(name="Root")),
+        required_parameter_names_by_owner={},
+        _is_contract_session=True,
+    )
     assert variables_contracts_impl._get_required_parameter_names_for_typedef(owner, moduletype) == {
         "required": "Required"
     }

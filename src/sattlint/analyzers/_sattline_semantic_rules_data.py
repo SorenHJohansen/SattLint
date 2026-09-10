@@ -1,3 +1,5 @@
+"""Semantic rule declarations (variable/framework/spec/rule registries)."""
+
 from __future__ import annotations
 
 from ..reporting.variables_report import IssueKind
@@ -167,14 +169,6 @@ VARIABLE_RULES: dict[IssueKind, SemanticRule] = {
         applies_to="scope",
         description="Case-insensitive declaration name collisions within a scope.",
     ),
-    IssueKind.LAYOUT_OVERLAP: SemanticRule(
-        id="semantic.layout-overlap",
-        source="variables",
-        category="module-structure",
-        severity="warning",
-        applies_to="layout",
-        description="Sibling module invocations and rectangular graph or interact objects should not overlap in the same layout scope.",
-    ),
     IssueKind.MIN_MAX_MAPPING_MISMATCH: SemanticRule(
         id="semantic.min-max-mapping-mismatch",
         source="variables",
@@ -206,6 +200,22 @@ VARIABLE_RULES: dict[IssueKind, SemanticRule] = {
         severity="warning",
         applies_to="boolean-variable",
         description="Boolean values that are set on some branches or steps without a matching False write on the complementary path.",
+    ),
+    IssueKind.MAGIC_NUMBER: SemanticRule(
+        id="semantic.magic-number",
+        source="variables",
+        category="engineering-spec",
+        severity="warning",
+        applies_to="literal",
+        description="Raw numeric literals used directly in assignments instead of a named constant.",
+    ),
+    IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE: SemanticRule(
+        id="semantic.record-component-order-dependence",
+        source="variables",
+        category="module-structure",
+        severity="warning",
+        applies_to="record-field",
+        description="Record component reads or writes whose meaning depends on field declaration order.",
     ),
 }
 
@@ -354,17 +364,6 @@ ALARM_RULES: dict[str, SemanticRule] = {
     ),
 }
 
-INITIAL_VALUE_RULES: dict[str, SemanticRule] = {
-    "initial-values.missing_required_default": SemanticRule(
-        id="semantic.missing-parameter-initial-value",
-        source="initial-values",
-        category="interface-contracts",
-        severity="warning",
-        applies_to="parameter-module",
-        description="Recipe and engineering parameter modules should resolve a startup value through a default or an explicitly initialized mapping.",
-    ),
-}
-
 SAFETY_PATH_RULES: dict[str, SemanticRule] = {
     "safety-path.unconsumed_signal": SemanticRule(
         id="semantic.unconsumed-safety-signal",
@@ -401,7 +400,6 @@ __all__ = [
     "CONFIG_DRIFT_RULES",
     "DATAFLOW_RULES",
     "FAULT_HANDLING_RULES",
-    "INITIAL_VALUE_RULES",
     "LOOP_STABILITY_RULES",
     "NUMERIC_CONSTRAINT_RULES",
     "SAFETY_PATH_RULES",

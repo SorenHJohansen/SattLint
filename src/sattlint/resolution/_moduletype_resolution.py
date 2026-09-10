@@ -134,9 +134,13 @@ def resolve_moduletype_def_strict(
     current_library: str | None = None,
     current_file: str | None = None,
     unavailable_libraries: set[str] | None = None,
+    moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
 ) -> ModuleTypeDef:
     key = moduletype_name.casefold()
-    matches = [mt for mt in (bp.moduletype_defs or []) if mt.name.casefold() == key]
+    if moduletype_index is not None:
+        matches = moduletype_index.get(key, [])
+    else:
+        matches = [mt for mt in (bp.moduletype_defs or []) if mt.name.casefold() == key]
     return select_moduletype_def_strict(
         bp,
         moduletype_name,

@@ -22,6 +22,7 @@ from .shared.ast_node_helpers import (
 from .shared.ast_node_helpers import (
     statement_children as _statement_children,
 )
+from .shared.target_origin import build_target_origin_filter_for_basepicture
 
 
 @dataclass
@@ -52,15 +53,20 @@ class SignalLifecycleReport:
 
 
 class SignalLifecycleAnalyzer:
-    def __init__(self, base_picture: BasePicture) -> None:
+    def __init__(self, base_picture: BasePicture, *, analyzed_target_is_library: bool = False) -> None:
         self._base_picture = base_picture
+        self._analyzed_target_is_library = analyzed_target_is_library
         self._issues: list[Issue] = []
         self._written_then_read_count = 0
         self._read_before_write_count = 0
         self._unconsumed_write_count = 0
 
     def run(self) -> SignalLifecycleReport:
-        for scope in walk_module_scopes(self._base_picture):
+        moduletype_filter = build_target_origin_filter_for_basepicture(
+            self._base_picture,
+            analyzed_target_is_library=self._analyzed_target_is_library,
+        )
+        for scope in walk_module_scopes(self._base_picture, moduletype_filter=moduletype_filter):
             self._analyze_scope(scope.module_path, scope.env, scope.modulecode)
         return SignalLifecycleReport(
             name=self._base_picture.header.name,
@@ -110,7 +116,12 @@ class SignalLifecycleAnalyzer:
                         f"{', '.join(sorted(read_before_write[key]))}."
                     ),
                     module_path=list(module_path),
-                    data={"signal": variable.name, "sites": sorted(read_before_write[key])},
+                    data={
+                        "signal": variable.name,
+                        "sites": sorted(read_before_write[key]),
+                        "site": sorted(read_before_write[key])[0],
+                        "context": variable.name,
+                    },
                 )
             )
 
@@ -125,7 +136,12 @@ class SignalLifecycleAnalyzer:
                         f"writes appear in {', '.join(sorted(write_sites[key]))}."
                     ),
                     module_path=list(module_path),
-                    data={"signal": variable.name, "sites": sorted(write_sites[key])},
+                    data={
+                        "signal": variable.name,
+                        "sites": sorted(write_sites[key]),
+                        "site": sorted(write_sites[key])[0],
+                        "context": variable.name,
+                    },
                 )
             )
 
@@ -313,5 +329,7 @@ class SignalLifecycleAnalyzer:
                 read_after_write.add(key)
 
 
-def analyze_signal_lifecycle(base_picture: BasePicture) -> SignalLifecycleReport:
-    return SignalLifecycleAnalyzer(base_picture).run()
+def analyze_signal_lifecycle(
+    base_picture: BasePicture, *, analyzed_target_is_library: bool = False
+) -> SignalLifecycleReport:
+    return SignalLifecycleAnalyzer(base_picture, analyzed_target_is_library=analyzed_target_is_library).run()

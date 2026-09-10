@@ -11,8 +11,8 @@ repos:
       - id: pyright
         name: Pyright
         language: system
-        entry: python -m pyright src/sattlint
-        files: ^src/.*\.py$
+        entry: python -m pyright src/sattlint tests
+        files: ^(src|tests)/.*\.py$
         pass_filenames: false
       - id: sattlint-syntax-check
         name: SattLint syntax-check (staged SattLine files)

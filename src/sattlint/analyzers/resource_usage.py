@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from sattline_parser.models.ast_model import BasePicture
 
 from .framework import Issue, SimpleReport
-from .scan_loop_resource_usage import analyze_scan_loop_resource_usage
 from .shared._dependency_usage_facts import CallFact, FactRef, StatementFact, collect_statement_facts
 
 
@@ -50,7 +49,6 @@ class ResourceUsageAnalyzer:
         self._reported_leaks: set[tuple[tuple[str, ...], str]] = set()
 
     def run(self) -> SimpleReport:
-        self._issues.extend(analyze_scan_loop_resource_usage(self._base_picture).issues)
         facts = collect_statement_facts(
             self._base_picture,
             unavailable_libraries=self._unavailable_libraries,
@@ -118,7 +116,12 @@ class ResourceUsageAnalyzer:
                     "without a matching prior acquire in this scope."
                 ),
                 module_path=list(module_path),
-                data={"handle": handle.display_name, "call": call.function_name, "site": site},
+                data={
+                    "handle": handle.display_name,
+                    "call": call.function_name,
+                    "site": site,
+                    "context": f"{handle.display_name} via {call.function_name}",
+                },
             )
         )
 
@@ -148,6 +151,7 @@ class ResourceUsageAnalyzer:
                     "site": site,
                     "previous_call": current.call_name,
                     "previous_site": current.site,
+                    "context": f"{handle.display_name} reacquired via {call.function_name}",
                 },
             )
         )
@@ -174,6 +178,7 @@ class ResourceUsageAnalyzer:
                     "call": resource.call_name,
                     "site": resource.site,
                     "resource_kind": resource.resource_kind,
+                    "context": f"{resource.handle_name} via {resource.call_name}",
                 },
             )
         )

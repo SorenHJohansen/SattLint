@@ -65,6 +65,10 @@ def _timings_by_program_factory() -> dict[str, dict[str, float]]:
     return {}
 
 
+def _ast_cache_counts_factory() -> dict[str, int]:
+    return {}
+
+
 @dataclass(frozen=True)
 class ProjectFailure:
     name: str
@@ -107,6 +111,13 @@ class ProjectGraph:
     load_stage_timings_by_program: dict[str, dict[str, float]] = field(default_factory=_timings_by_program_factory)
     graphics_load_timings: dict[str, float] = field(default_factory=_timings_factory)
     graphics_load_timings_by_program: dict[str, dict[str, float]] = field(default_factory=_timings_by_program_factory)
+    # Counted once, at the single authoritative decision point in _load_or_parse, so a prefetch
+    # hit and its later consumption are never counted as two separate cache events.
+    ast_cache_counts: dict[str, int] = field(default_factory=_ast_cache_counts_factory)
+    # True only when this whole graph was replayed from the project-level analysis-result cache
+    # (see _app_analysis_loading.py); all timing/count fields above are then stale/historical,
+    # not measurements of the current call.
+    loaded_from_cache: bool = False
 
     def add_library_dependencies(self, library_name: str | None, dep_libs: list[str]) -> None:
         if not library_name:

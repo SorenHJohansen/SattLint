@@ -1,3 +1,5 @@
+"""Rule contracts (acceptance tests, corpus cases) for the semantic rule engine."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -38,7 +40,6 @@ _SFC_SOURCE_ACCEPTANCE_TESTS = (
     "tests/analyzers/test_sfc.py",
 )
 _ALARM_SOURCE_ACCEPTANCE_TESTS = (*_ANALYZER_SUITE_ACCEPTANCE_TESTS, "tests/analyzers/test_sattline_semantics.py")
-_INITIAL_VALUES_SOURCE_ACCEPTANCE_TESTS = _ANALYZER_SUITE_ACCEPTANCE_TESTS
 _SAFETY_SOURCE_ACCEPTANCE_TESTS = (
     *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
     "tests/analyzers/test_sattline_semantics.py",
@@ -116,16 +117,6 @@ ALARM_RULE_CONTRACT = SemanticRuleContract(
     acceptance_tests=_merge_acceptance_tests(
         _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
         _ALARM_SOURCE_ACCEPTANCE_TESTS,
-    ),
-    corpus_cases=_WORKSPACE_CORPUS_CASES,
-    mutation_applicability="required",
-    suppression_modes=("baseline",),
-    incremental_safe=False,
-)
-INITIAL_VALUES_RULE_CONTRACT = SemanticRuleContract(
-    acceptance_tests=_merge_acceptance_tests(
-        _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
-        _INITIAL_VALUES_SOURCE_ACCEPTANCE_TESTS,
     ),
     corpus_cases=_WORKSPACE_CORPUS_CASES,
     mutation_applicability="required",
@@ -256,7 +247,6 @@ __all__ = [
     "CONFIG_DRIFT_RULE_CONTRACT",
     "DATAFLOW_RULE_CONTRACT",
     "FAULT_HANDLING_RULE_CONTRACT",
-    "INITIAL_VALUES_RULE_CONTRACT",
     "LOOP_STABILITY_RULE_CONTRACT",
     "NUMERIC_CONSTRAINTS_RULE_CONTRACT",
     "SAFETY_RULE_CONTRACT",

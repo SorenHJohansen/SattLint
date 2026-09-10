@@ -34,7 +34,10 @@
   "mcp": {
     "semble": {
       "type": "local",
-      "command": ["uvx", "--from", "semble[mcp]", "semble"]
+      "command": ["uvx", "--from", "semble[mcp]", "semble"],
+      "environment": {
+        "GIT_CONFIG_GLOBAL": "/dev/null"
+      }
     }
   },
   "lsp": {

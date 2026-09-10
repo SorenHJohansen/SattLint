@@ -9,7 +9,7 @@ from typing import Any, Protocol
 
 from sattline_parser.models.ast_model import BasePicture
 
-from ._shared_analysis import AnalysisSharedArtifacts, VariableAnalysisArtifacts
+from ._shared_analysis import AnalysisSharedArtifacts, CollectedViews, ReportsByKey, VariableAnalysisArtifacts
 from .issue import Findings, Issue, format_report_header
 
 __all__ = [
@@ -20,9 +20,11 @@ __all__ = [
     "AnalyzerLifecycleMixin",
     "AnalyzerSpec",
     "BasePictureAnalyzer",
+    "CollectedViews",
     "Findings",
     "Issue",
     "Report",
+    "ReportsByKey",
     "SimpleReport",
     "VariableAnalysisArtifacts",
     "build_analysis_context",
@@ -183,6 +185,8 @@ class AnalysisContext:
     selected_issue_kinds: Set[str] | None = None
     config: dict[str, Any] | None = None
     shared_artifacts: AnalysisSharedArtifacts | None = None
+    variables_collector_class: type[Any] | None = None
+    include_dependency_moduletype_usage: bool | None = None
 
     @property
     def unavailable_libraries(self) -> set[str]:
@@ -199,6 +203,8 @@ def build_analysis_context(
     config: Mapping[str, Any] | None = None,
     shared_artifacts: AnalysisSharedArtifacts | None = None,
     create_shared_artifacts: bool = False,
+    variables_collector_class: type[Any] | None = None,
+    include_dependency_moduletype_usage: bool | None = None,
 ) -> AnalysisContext:
     resolved_shared_artifacts = shared_artifacts
     if resolved_shared_artifacts is None and create_shared_artifacts:
@@ -225,6 +231,8 @@ def build_analysis_context(
         selected_issue_kinds=(None if selected_issue_kinds is None else frozenset(selected_issue_kinds)),
         config={} if config is None else dict(config),
         shared_artifacts=resolved_shared_artifacts,
+        variables_collector_class=variables_collector_class,
+        include_dependency_moduletype_usage=include_dependency_moduletype_usage,
     )
 
 
@@ -238,13 +246,15 @@ class AnalyzerSpec:
     requires: tuple[str, ...] = ()
     enabled: bool = True
     supports_live_diagnostics: bool = False
-    analyzer_attr: str = ""
     context_kwargs: tuple[str, ...] = ()
     direct_context: bool = False
     semantic_mapping_kind: str | None = None
     semantic_rule_source: str | None = None
     composed_analyzer_keys: tuple[str, ...] = ()
     composed_issue_kind_names: tuple[str, ...] = ()
+    # Phase G: optional discoverability label for the shared artifact this analyzer writes
+    # (e.g. "derived_reports.<key>"), set via the public `register_analyzer` API.
+    contributes: str | None = None
 
     @property
     def supports_selected_issue_kinds(self) -> bool:

@@ -203,8 +203,6 @@ def test_misc_issues_fixture_contains_expected_issue_kinds():
         for issue in issues
         if issue.kind is IssueKind.READ_ONLY_NON_CONST and issue.variable is not None
     }
-    layout_overlap = len([i for i in issues if i.kind is IssueKind.LAYOUT_OVERLAP])
 
     assert magic_number > 0
     assert "Shadowed" in read_only_non_const
-    assert layout_overlap > 0

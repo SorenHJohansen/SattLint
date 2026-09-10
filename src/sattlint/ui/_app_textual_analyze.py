@@ -1,5 +1,3 @@
-# pyright: reportMissingImports=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownLambdaType=false, reportGeneralTypeIssues=false, reportInvalidTypeForm=false, reportConstantRedefinition=false, reportPrivateUsage=false, reportUnusedClass=false, reportUnusedFunction=false, reportUnknownArgumentType=false
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -420,6 +418,35 @@ def _clear_selected_analysis_plan(self: Any) -> None:
     self._write_output("Cleared the analyzer selection and session output.")
 
 
+def _run_generate_change_review(self: Any) -> None:
+    if not self._targets_action_allowed("analysis"):
+        return
+    if not self._setup_has_targets():
+        self._write_output("No configured analysis targets are available for Change Review.")
+        return
+    self._start_action(
+        "Generate Change Review",
+        lambda: self._execute_generate_change_review(),
+        action_id="action-analyze",
+    )
+
+
+def _execute_generate_change_review(self: Any) -> None:
+    self._emit_output_from_thread("Generating Change Review for the configured project...")
+    handler = None
+    if isinstance(getattr(self, "_analysis_handlers", None), dict):
+        handler = self._analysis_handlers.get("generate_change_review")
+    if not callable(handler):
+        self._emit_output_from_thread("The Change Review generator is unavailable in the current Textual session.")
+        return
+    try:
+        summary = handler(self._cfg, list(self._configured_target_names()))
+    except Exception as exc:  # noqa: BLE001
+        self._emit_output_from_thread(f"Change Review failed: {exc}")
+        return
+    self._emit_output_from_thread(str(summary))
+
+
 if TYPE_CHECKING:
 
     class _TextualAnalyzeMixin:
@@ -451,6 +478,8 @@ if TYPE_CHECKING:
         def _execute_analyze_plan(self, plan: _AnalyzeRunPlan) -> None: ...
         def _finish_analysis_run(self, result: Any) -> None: ...
         def _clear_selected_analysis_plan(self) -> None: ...
+        def _run_generate_change_review(self) -> None: ...
+        def _execute_generate_change_review(self) -> None: ...
 else:
 
     class _TextualAnalyzeMixin:
@@ -482,3 +511,5 @@ else:
         _execute_analyze_plan = _execute_analyze_plan
         _finish_analysis_run = _finish_analysis_run
         _clear_selected_analysis_plan = _clear_selected_analysis_plan
+        _run_generate_change_review = _run_generate_change_review
+        _execute_generate_change_review = _execute_generate_change_review

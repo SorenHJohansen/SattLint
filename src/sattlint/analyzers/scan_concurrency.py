@@ -6,7 +6,7 @@ from typing import Any
 from sattline_parser.models.ast_model import BasePicture
 
 from .framework import Issue, empty_issues, format_report_header
-from .same_cycle import analyze_same_cycle
+from .sfc import analyze_sfc
 
 _SCAN_CONCURRENCY_ISSUE_KINDS = frozenset({"sfc_parallel_write_race"})
 
@@ -35,9 +35,13 @@ class ScanConcurrencyReport:
 def analyze_scan_concurrency(
     base_picture: BasePicture,
     config: dict[str, Any] | None = None,
+    analyzed_target_is_library: bool = False,
 ) -> ScanConcurrencyReport:
     del config
-    report = analyze_same_cycle(base_picture, selected_issue_kinds=_SCAN_CONCURRENCY_ISSUE_KINDS)
+    report = analyze_sfc(
+        base_picture,
+        selected_issue_kinds=_SCAN_CONCURRENCY_ISSUE_KINDS,
+    )
     return ScanConcurrencyReport(
         name=base_picture.header.name,
         issues=[issue for issue in report.issues if issue.kind in _SCAN_CONCURRENCY_ISSUE_KINDS],

@@ -1,4 +1,3 @@
-# pyright: reportPrivateUsage=false, reportUnusedFunction=false, reportUnusedClass=false
 from __future__ import annotations
 
 from contextlib import suppress
@@ -31,6 +30,7 @@ def _refresh_settings_labels(self: Any) -> None:
     run_history_limit = _section_value(self, "run_history", "limit", _DEFAULT_RUN_HISTORY_LIMIT)
     retention = _section_value(self, "output", "retention_lines", _DEFAULT_OUTPUT_RETENTION_LINES)
     debug = bool(self._cfg.get("debug", False))
+    review_output_dir = _section_value(self, "review", "output_dir", "")
 
     def _safe_update(widget_id: str, text: object) -> None:
         with suppress(*_TEXTUAL_QUERY_ERRORS):
@@ -60,6 +60,11 @@ def _refresh_settings_labels(self: Any) -> None:
         "settings-label-output-retention",
         _setup_value_text(f"{retention} lines", "Live session output cap"),
     )
+    review_label = str(review_output_dir).strip() or "Default directory"
+    _safe_update(
+        "settings-label-review-output-dir",
+        _setup_value_text(review_label, "Where Change Review artifacts are written"),
+    )
 
 
 def _settings_note_text(self: Any) -> str:
@@ -71,6 +76,9 @@ def _settings_note_text(self: Any) -> str:
 
 def _mark_settings_changed(self: Any, message: str) -> None:
     self._dirty = True
+    for key in ("debug", "run_history", "output", "review"):
+        if key in self._cfg:
+            self._app_only_cfg[key] = self._cfg[key]
     self._refresh_summary()
     self._refresh_view()
     self._set_active_action(None)
@@ -111,10 +119,10 @@ def _prompt_app_int(self: Any, key: str, subkey: str, *, label: str) -> None:
         try:
             value = int(raw_value)
         except ValueError:
-            self._write_output(f"{label} must be a positive integer.")
+            self._report_error("Invalid value", f"{label} must be a positive integer.")
             return
         if value <= 0:
-            self._write_output(f"{label} must be a positive integer.")
+            self._report_error("Invalid value", f"{label} must be a positive integer.")
             return
         section = cast(object, self._cfg.get(key))
         section_map: dict[str, object]
@@ -133,24 +141,24 @@ def _prompt_app_int_async(self: Any, key: str, subkey: str, *, label: str) -> No
     if self._active_request is not None:
         return
     current = _section_value(self, key, subkey, "")
-    response = self.present_request_async(
-        InteractionRequest(
-            kind="prompt",
-            title=f"Set {label}",
-            message=f"Enter a positive integer for {label}.",
-            default="" if current is None else str(current),
-        )
-    )
 
     async def _apply_async() -> None:
-        raw_value = str(await response or "").strip()
+        response = await self.present_request_async(
+            InteractionRequest(
+                kind="prompt",
+                title=f"Set {label}",
+                message=f"Enter a positive integer for {label}.",
+                default="" if current is None else str(current),
+            )
+        )
+        raw_value = str(response or "").strip()
         try:
             value = int(raw_value)
         except ValueError:
-            self._write_output(f"{label} must be a positive integer.")
+            self._report_error("Invalid value", f"{label} must be a positive integer.")
             return
         if value <= 0:
-            self._write_output(f"{label} must be a positive integer.")
+            self._report_error("Invalid value", f"{label} must be a positive integer.")
             return
         section = self._cfg.get(key)
         section_map: dict[str, object]
@@ -172,6 +180,69 @@ def _queue_app_int_prompt(self: Any, key: str, subkey: str, *, label: str) -> No
     )
 
 
+def _prompt_app_text(self: Any, key: str, subkey: str, *, label: str, message: str) -> None:
+    if self._active_request is not None:
+        return
+    current = _section_value(self, key, subkey, "")
+    request = InteractionRequest(
+        kind="prompt",
+        title=f"Set {label}",
+        message=message,
+        default="" if current is None else str(current),
+    )
+
+    def _apply_response(response: object) -> None:
+        value = str(response or "").strip()
+        section = cast(object, self._cfg.get(key))
+        section_map: dict[str, object]
+        if isinstance(section, dict):
+            section_map = cast(dict[str, object], section)
+        else:
+            section_map = {}
+            self._cfg[key] = section_map
+        section_map[subkey] = value
+        self._mark_settings_changed(f"Updated {label}.")
+
+    self.present_request(request, on_response_fn=_apply_response)
+
+
+def _prompt_app_text_async(self: Any, key: str, subkey: str, *, label: str, message: str) -> None:
+    if self._active_request is not None:
+        return
+    current = _section_value(self, key, subkey, "")
+
+    async def _apply_async() -> None:
+        response = await self.present_request_async(
+            InteractionRequest(
+                kind="prompt",
+                title=f"Set {label}",
+                message=message,
+                default="" if current is None else str(current),
+            )
+        )
+        value = str(response or "").strip()
+        section = cast(object, self._cfg.get(key))
+        section_map: dict[str, object]
+        if isinstance(section, dict):
+            section_map = cast(dict[str, object], section)
+        else:
+            section_map = {}
+            self._cfg[key] = section_map
+        section_map[subkey] = value
+        self._mark_settings_changed(f"Updated {label}.")
+
+    self._schedule_ui_coroutine(
+        _apply_async, fallback_fn=lambda: self._prompt_app_text(key, subkey, label=label, message=message)
+    )
+
+
+def _queue_app_text_prompt(self: Any, key: str, subkey: str, *, label: str, message: str) -> None:
+    self._schedule_ui_coroutine(
+        lambda: self._prompt_app_text_async(key, subkey, label=label, message=message),
+        fallback_fn=lambda: self._prompt_app_text(key, subkey, label=label, message=message),
+    )
+
+
 if TYPE_CHECKING:
 
     class _TextualSettingsMixin:
@@ -183,6 +254,9 @@ if TYPE_CHECKING:
         def _prompt_app_int(self, key: str, subkey: str, *, label: str) -> None: ...
         async def _prompt_app_int_async(self, key: str, subkey: str, *, label: str) -> None: ...
         def _queue_app_int_prompt(self, key: str, subkey: str, *, label: str) -> None: ...
+        def _prompt_app_text(self, key: str, subkey: str, *, label: str, message: str) -> None: ...
+        async def _prompt_app_text_async(self, key: str, subkey: str, *, label: str, message: str) -> None: ...
+        def _queue_app_text_prompt(self, key: str, subkey: str, *, label: str, message: str) -> None: ...
 else:
 
     class _TextualSettingsMixin:
@@ -196,3 +270,6 @@ else:
         _prompt_app_int = _prompt_app_int
         _prompt_app_int_async = _prompt_app_int_async
         _queue_app_int_prompt = _queue_app_int_prompt
+        _prompt_app_text = _prompt_app_text
+        _prompt_app_text_async = _prompt_app_text_async
+        _queue_app_text_prompt = _queue_app_text_prompt

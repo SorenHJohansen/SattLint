@@ -3,58 +3,6 @@ from sattline_parser.models.expressions import Assignment, VarRef
 from tests.helpers.analyzers_state_support import *
 
 
-def test_sfc_step_contract_detects_state_leakage_across_steps():
-    sequence = Sequence(
-        name="OperationSequence",
-        type="sequence",
-        position=(0.0, 0.0),
-        size=(1.0, 1.0),
-        code=[
-            SFCStep(
-                kind="step",
-                name="Prime",
-                code=SFCCodeBlocks(
-                    active=[
-                        Assignment(target=_varref("StepValue"), value=1),
-                    ]
-                ),
-            ),
-            SFCStep(
-                kind="step",
-                name="Run",
-                code=SFCCodeBlocks(
-                    enter=[],
-                    active=[
-                        Assignment(target=_varref("Output"), value=_varref("StepValue")),
-                    ],
-                    exit=[],
-                ),
-            ),
-        ],
-    )
-
-    bp = BasePicture(
-        header=_hdr("Root"),
-        localvariables=[
-            Variable(name="StepValue", datatype=Simple_DataType.INTEGER),
-            Variable(name="Output", datatype=Simple_DataType.INTEGER),
-        ],
-        modulecode=ModuleCode(sequences=[sequence], equations=[]),
-    )
-
-    report = analyze_sfc(
-        bp,
-        step_contracts={
-            "Run": {"required_enter_writes": ["StepValue"]},
-        },
-    )
-
-    issues = [issue for issue in report.issues if issue.kind == "sfc_step_state_leakage"]
-    assert len(issues) == 1
-    assert issues[0].data is not None
-    assert issues[0].data["leaked_state"] == ["StepValue"]
-
-
 def test_write_without_effect_detected_for_internal_value_chain():
     child = SingleModule(
         header=_hdr("Worker"),

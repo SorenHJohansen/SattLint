@@ -95,7 +95,7 @@ def save_config(path: Path, cfg: ConfigDict | ConfigOverrideDict) -> None:
         tomli_w.dump(cast(dict[str, Any], serializable_cfg), file_handle)
 
 
-APP_LEVEL_CONFIG_KEYS: tuple[str, ...] = ("debug", "run_history", "output")
+APP_LEVEL_CONFIG_KEYS: tuple[str, ...] = ("debug", "run_history", "output", "review")
 
 
 def save_app_settings(path: Path, cfg: ConfigDict) -> None:

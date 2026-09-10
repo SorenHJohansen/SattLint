@@ -23,39 +23,23 @@ _CONTEXT_VALUE_PROVIDERS: dict[str, ContextValueProvider] = {
     "config": lambda _registry_module, context: context.config,
     "debug": lambda _registry_module, context: context.debug,
     "graph": lambda _registry_module, context: context.graph,
-    "include_dependency_moduletype_usage": lambda _registry_module, context: getattr(
-        context, "include_dependency_moduletype_usage", None
-    ),
-    "mutually_exclusive_steps": lambda registry_module, context: (
-        registry_module.get_configured_mutually_exclusive_step_sets(context.config)
+    "include_dependency_moduletype_usage": lambda _registry_module, context: (
+        context.include_dependency_moduletype_usage
     ),
     "rules": lambda registry_module, context: registry_module.get_configured_naming_rules(context.config),
-    "sfc_mutually_exclusive_steps": lambda registry_module, context: (
-        registry_module.get_configured_mutually_exclusive_step_sets(context.config)
-    ),
-    "sfc_step_contracts": lambda registry_module, context: registry_module.get_configured_step_contracts(
-        context.config
-    ),
     "selected_issue_kinds": lambda _registry_module, context: getattr(context, "selected_issue_kinds", None),
     "shared_artifacts": lambda _registry_module, context: getattr(context, "shared_artifacts", None),
-    "step_contracts": lambda registry_module, context: registry_module.get_configured_step_contracts(context.config),
     "unavailable_libraries": lambda _registry_module, context: context.unavailable_libraries,
 }
 
 
 def build_context_kwargs(
-    spec: object,
+    spec: AnalyzerSpecTemplate,
     registry_module: Any,
     context: AnalysisContext,
-    *,
-    overrides: dict[str, object] | None = None,
 ) -> dict[str, object]:
-    context_kwargs = getattr(spec, "context_kwargs", ())
     return {
-        kwarg_name: overrides[kwarg_name]
-        if overrides and kwarg_name in overrides
-        else _CONTEXT_VALUE_PROVIDERS[kwarg_name](registry_module, context)
-        for kwarg_name in context_kwargs
+        kwarg_name: _CONTEXT_VALUE_PROVIDERS[kwarg_name](registry_module, context) for kwarg_name in spec.context_kwargs
     }
 
 
@@ -75,8 +59,9 @@ def _resolve_registry_module(registry_module: Any | None = None) -> Any:
 
 
 def _build_runner(template: AnalyzerSpecTemplate, registry_module: Any) -> Analyzer:
+    analyzer = getattr(registry_module, template.analyzer_attr)
+
     def _run(context: AnalysisContext) -> Report:
-        analyzer = getattr(registry_module, template.analyzer_attr)
         if template.direct_context:
             return cast(Report, analyzer(context))
 
@@ -103,7 +88,6 @@ def build_default_analyzers(
             requires=template.requires,
             enabled=template.enabled,
             supports_live_diagnostics=template.supports_live_diagnostics,
-            analyzer_attr=template.analyzer_attr,
             context_kwargs=template.context_kwargs,
             direct_context=template.direct_context,
             semantic_mapping_kind=template.semantic_mapping_kind,

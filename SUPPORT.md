@@ -25,7 +25,7 @@ Before opening an issue, check:
 
 - **Platforms:** Windows and Linux with Python 3.13 or newer. macOS contributor workflows may work but are not part of the stable contract.
 - **Configuration:** `.slproj` project files and `~/.config/sattlint/config.toml` (or `%APPDATA%\sattlint\config.toml`).
-- **Public Python API:** importing `sattlint` from Python is supported; details are covered in [docs/public/python-api.md](docs/public/python-api.md). Internal modules may change without notice.
+- **Public Python API:** importing `sattlint` from Python is supported; details are covered in [PYTHON_API.md](PYTHON_API.md). Internal modules may change without notice.
 
 ## Removed surfaces
 
@@ -65,10 +65,12 @@ Include as much of this as you can:
 
 ## Deprecation Policy
 
-SattLint follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Once a feature is part of the stable public surface, the following rules apply:
+SattLint uses calendar versioning (`vYYYY.M.number`) to match
+`sattline-parser`. Once a feature is part of the stable public surface, the
+following rules apply:
 
 - **Deprecation notice**: A feature scheduled for removal is announced in the CHANGELOG with the version in which it became deprecated. A runtime deprecation warning may be emitted when applicable.
-- **Minimum support window**: A deprecated stable feature remains functional for at least one minor release after the deprecation announcement.
-- **Major version bumps**: Breaking changes are reserved for major version releases (e.g., 1.x → 2.0). A minor release may introduce deprecation warnings but must not break the stable API or CLI contract.
+- **Minimum support window**: A deprecated stable feature remains functional for at least one subsequent release after the deprecation announcement.
+- **Breaking changes**: Breaking changes to the stable CLI contract are reserved for a new calendar release (a new `YYYY.M` or a new `number` within the current month) and are always announced in the CHANGELOG. A release may introduce deprecation warnings but must not break the stable API or CLI contract silently.
 - **Preview surfaces**: Features documented as preview may change or be removed without a deprecation cycle. Their status is documented in the "What is supported" table above.
 - **Migration path**: When a stable feature is deprecated, the CHANGELOG entry includes a migration path or recommended alternative.

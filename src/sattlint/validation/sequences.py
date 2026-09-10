@@ -634,9 +634,12 @@ def validate_sequence_nodes(  # noqa: PLR0915
         elif isinstance(node, SFCParallel):
             for branch_index, branch in enumerate(node.branches, start=1):
                 recurse(cast(list[object], branch), f"{context} parallel branch {branch_index}")
+                # A parallel branch may end with a control-transfer element (SEQFORK/SEQBREAK),
+                # which the grammar permits anywhere in a sequence body. Only a branch that
+                # terminates on a bare transition is structurally incomplete.
                 if branch:
                     trailer = parallel_branch_trailer(branch[-1])
-                    if trailer is not None:
+                    if trailer in ("SEQTRANSITION", "SUBSEQTRANSITION"):
                         raise StructuralValidationError(
                             f"{context} parallel branch {branch_index} ends with {trailer}; "
                             f"PARALLELBRANCH/ENDPARALLEL must follow a completed sequence unit"

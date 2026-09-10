@@ -615,6 +615,17 @@ def _scan_for_varrefs(
             self._scan_for_varrefs(child, context, path, is_ui_read=is_ui_read)
 
 
+_EXPRESSION_TAIL_NODE_TYPES: tuple[type[Any], ...] = (
+    BinOp,
+    BoolOp,
+    Compare,
+    FuncCall,
+    NotOp,
+    TernaryOp,
+    UnaryOp,
+)
+
+
 def _is_output_tail(value: Any) -> bool:
     return getattr(value, "data", None) == const.GRAMMAR_VALUE_OUTVAR_PREFIX
 
@@ -662,6 +673,10 @@ def _walk_output_tail(
     if children is not None:
         for child in children:
             self._walk_output_tail(child, context, path, is_ui_read=is_ui_read)
+        return
+
+    if isinstance(tail, _EXPRESSION_TAIL_NODE_TYPES):
+        self._walk_stmt_or_expr(tail, context, path, is_ui_read=is_ui_read)
         return
 
     raise ValueError(f"_walk_output_tail: unexpected tail type {type(tail).__name__}: {tail}")
@@ -738,6 +753,10 @@ def _walk_tail(
                 path,
                 is_ui_read=is_ui_read,
             )
+        return
+
+    if isinstance(tail, _EXPRESSION_TAIL_NODE_TYPES):
+        self._walk_stmt_or_expr(tail, context, path, is_ui_read=is_ui_read)
         return
 
     raise ValueError(f"_walk_tail: unexpected tail type {type(tail).__name__}: {tail}")

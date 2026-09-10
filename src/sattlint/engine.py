@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
@@ -124,6 +125,9 @@ def load_project_graph(
         dependencies=dependencies,
     )
     graph = loader.resolve(target_name, strict=strict)
+    # Test doubles may use slotted graph stubs without this field; counts are diagnostic-only.
+    with contextlib.suppress(AttributeError):
+        graph.ast_cache_counts = dict(getattr(loader, "ast_cache_counts", None) or {})
     root_bp = graph.ast_by_name.get(target_name)
     return loader, root_bp, graph
 

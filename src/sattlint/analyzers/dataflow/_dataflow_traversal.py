@@ -159,7 +159,7 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
 
         current_state = state
         for sequence in modulecode.sequences or []:
-            self._push_site(f"SEQ:{getattr(sequence, 'name', '<unnamed>')}")
+            self._push_site(f"SQ:{getattr(sequence, 'name', '<unnamed>')}")
             try:
                 current_state = self._walk_sequence(sequence, context, module_path, current_state)
             finally:
@@ -203,24 +203,8 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
         current_state = state
         terminated_by: dict[str, Any] | None = None
 
-        for index, node in enumerate(nodes):
+        for node in nodes:
             if terminated_by is not None:
-                self._add_issue(
-                    kind="dataflow.unreachable_sequence_node",
-                    message=(
-                        f"Sequence node {self._sequence_node_label(node)!r} is unreachable because "
-                        f"execution is terminated earlier by {terminated_by['kind']}."
-                    ),
-                    module_path=module_path,
-                    data={
-                        "sequence": sequence_name,
-                        "branch_path": list(branch_path),
-                        "node_index": index,
-                        "node_label": self._sequence_node_label(node),
-                        "terminated_by": terminated_by,
-                        "site": self._site_str(),
-                    },
-                )
                 continue
 
             if isinstance(node, SFCStep):

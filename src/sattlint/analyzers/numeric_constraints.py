@@ -8,6 +8,7 @@ from sattline_parser.models.ast_model import BasePicture, Variable
 from ._wave2_support import as_numeric_literal, iter_assignment_events, iter_statement_sites, walk_module_scopes
 from .framework import Issue
 from .shared._report_defaults import empty_int_summary_data, empty_issue_list
+from .shared.target_origin import build_target_origin_filter_for_basepicture
 
 
 @dataclass(frozen=True)
@@ -44,14 +45,19 @@ class NumericConstraintsReport:
 
 
 class NumericConstraintsAnalyzer:
-    def __init__(self, base_picture: BasePicture) -> None:
+    def __init__(self, base_picture: BasePicture, *, analyzed_target_is_library: bool = False) -> None:
         self._base_picture = base_picture
+        self._analyzed_target_is_library = analyzed_target_is_library
         self._issues: list[Issue] = []
         self._checked_assignment_count = 0
         self._violation_count = 0
 
     def run(self) -> NumericConstraintsReport:
-        for scope in walk_module_scopes(self._base_picture):
+        moduletype_filter = build_target_origin_filter_for_basepicture(
+            self._base_picture,
+            analyzed_target_is_library=self._analyzed_target_is_library,
+        )
+        for scope in walk_module_scopes(self._base_picture, moduletype_filter=moduletype_filter):
             if scope.modulecode is None:
                 continue
             constraints = self._collect_constraints(scope.env)
@@ -133,6 +139,7 @@ class NumericConstraintsAnalyzer:
                     "minimum": constraint.minimum,
                     "maximum": constraint.maximum,
                     "site": site_label,
+                    "context": f"{target_name} = {value!r}",
                 },
             )
         )
@@ -158,5 +165,9 @@ def _limit_binding(name: str) -> tuple[str, str] | None:
     return None
 
 
-def analyze_numeric_constraints(base_picture: BasePicture) -> NumericConstraintsReport:
-    return NumericConstraintsAnalyzer(base_picture).run()
+def analyze_numeric_constraints(
+    base_picture: BasePicture,
+    *,
+    analyzed_target_is_library: bool = False,
+) -> NumericConstraintsReport:
+    return NumericConstraintsAnalyzer(base_picture, analyzed_target_is_library=analyzed_target_is_library).run()

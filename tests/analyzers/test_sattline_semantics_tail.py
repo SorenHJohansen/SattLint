@@ -269,39 +269,6 @@ def test_sattline_semantics_includes_alarm_integrity_rules():
     assert any(issue.rule.id == "semantic.duplicate-alarm-tag" for issue in report.issues)
 
 
-def test_sattline_semantics_includes_initial_value_rule():
-    parameter_type = ModuleTypeDef(
-        name="RecParReal",
-        moduleparameters=[
-            Variable(name="Value", datatype=Simple_DataType.REAL),
-            Variable(name="MinValue", datatype=Simple_DataType.REAL, init_value=0.0),
-            Variable(name="MaxValue", datatype=Simple_DataType.REAL, init_value=100.0),
-        ],
-        localvariables=[],
-        submodules=[],
-        moduledef=None,
-        modulecode=None,
-        parametermappings=[],
-        origin_file="Root.s",
-    )
-    bp = BasePicture(
-        header=_hdr("Root"),
-        moduletype_defs=[parameter_type],
-        submodules=[
-            ModuleTypeInstance(
-                header=_hdr("RecipeSP"),
-                moduletype_name="RecParReal",
-                parametermappings=[],
-            )
-        ],
-        origin_file="Root.s",
-    )
-
-    report = analyze_sattline_semantics(bp)
-
-    assert any(issue.rule.id == "semantic.missing-parameter-initial-value" for issue in report.issues)
-
-
 def test_sattline_semantics_includes_hidden_global_coupling_rule():
     bp = BasePicture(
         header=_hdr("Root"),
@@ -590,7 +557,6 @@ def test_sattline_semantic_rule_groups_cover_core_analyzers():
     assert "sfc" in groups
     assert "same-cycle" in groups
     assert "alarm-integrity" in groups
-    assert "initial-values" in groups
     assert "signal-lifecycle" in groups
     assert "loop-stability" in groups
     assert "fault-handling" in groups
@@ -600,7 +566,7 @@ def test_sattline_semantic_rule_groups_cover_core_analyzers():
     assert "semantic.implicit-latch" in groups["variables"]
     assert "semantic.global-scope-minimization" in groups["variables"]
     assert "semantic.hidden-global-coupling" in groups["variables"]
-    assert "semantic.read-before-write" in groups["dataflow"]
+    assert "semantic.dead-overwrite" in groups["dataflow"]
     assert "semantic.parallel-write-race" in groups["sfc"]
     assert "semantic.parallel-read-write-hazard" in groups["same-cycle"]
     assert "semantic.same-cycle-shared-access" in groups["same-cycle"]
@@ -610,7 +576,6 @@ def test_sattline_semantic_rule_groups_cover_core_analyzers():
     assert "semantic.step-state-leakage" in groups["sfc"]
     assert "semantic.high-fan-in-out-variable" in groups["variables"]
     assert "semantic.duplicate-alarm-tag" in groups["alarm-integrity"]
-    assert "semantic.missing-parameter-initial-value" in groups["initial-values"]
     assert "semantic.signal-lifecycle-read-before-write" in groups["signal-lifecycle"]
     assert "semantic.signal-lifecycle-unconsumed-write" in groups["signal-lifecycle"]
     assert "semantic.loop-conflicting-setpoint" in groups["loop-stability"]

@@ -1,4 +1,16 @@
-"""Canonical shared semantic query and loading helpers."""
+"""Shared semantic snapshot, query, and workspace-loading layer.
+
+Owns the canonical in-memory ``SemanticSnapshot`` (symbol index, access
+graph, diagnostics, safety/taint traces) and the project/source loading
+helpers that build it from a parsed project or workspace. This is shared
+*infrastructure*: it is consumed by ``change_review`` and the public
+``sattlint`` package surface, and it does not implement analyzer rules.
+
+Not to be confused with ``analyzers/sattline_semantics.py`` (and its
+``_sattline_semantic_*`` helpers), which owns the SattLine *rule engine* —
+the registry-backed suite of semantic rules that produces analyzer
+findings. This module is the data layer; that module is the rules layer.
+"""
 
 from __future__ import annotations
 

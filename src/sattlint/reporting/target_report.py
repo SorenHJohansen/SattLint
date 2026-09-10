@@ -44,6 +44,7 @@ def select_report_source_path(
     *,
     source_paths_for_current_target_fn: Callable[[Any, Any], set[Path]],
     casefold_equal_fn: Callable[[str, str], bool],
+    preferred_suffixes: frozenset[str] | None = None,
 ) -> Path | None:
     try:
         source_paths = source_paths_for_current_target_fn(project_bp, graph)
@@ -64,11 +65,14 @@ def select_report_source_path(
     if not candidates:
         candidates = list(source_paths)
 
-    def _candidate_key(path: Path) -> tuple[float, str]:
+    def _candidate_key(path: Path) -> tuple[int, float, str]:
+        suffix = path.suffix.casefold()
+        matches_mode = 1 if preferred_suffixes and suffix in preferred_suffixes else 0
         try:
-            return (path.stat().st_mtime, str(path))
+            mtime = path.stat().st_mtime
         except OSError:
-            return (float("-inf"), str(path))
+            mtime = float("-inf")
+        return (matches_mode, mtime, str(path))
 
     return max(candidates, key=_candidate_key)
 

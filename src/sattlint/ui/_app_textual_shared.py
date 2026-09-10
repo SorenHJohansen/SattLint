@@ -1,5 +1,3 @@
-# pyright: reportMissingImports=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownLambdaType=false, reportGeneralTypeIssues=false, reportInvalidTypeForm=false, reportConstantRedefinition=false, reportPrivateUsage=false, reportUnusedClass=false, reportUnusedFunction=false, reportUnknownArgumentType=false
-
 from __future__ import annotations
 
 import asyncio
@@ -27,6 +25,7 @@ APP_SHELL_BINDINGS: list[tuple[str, str, str]] = [
     ("ctrl+l", "clear_output", "Clear Output"),
     ("ctrl+q", "quit_shell", "Quit"),
     ("ctrl+s", "save_config", "Save Config"),
+    ("ctrl+o", "toggle_results_empty", "Toggle empty analyzers"),
     ("tab", "focus_next_control", "Next"),
     ("shift+tab", "focus_previous_control", "Prev"),
 ]
@@ -152,9 +151,7 @@ _ANALYZE_PLANNER_LIST_ID_PREFIX = "analyze-planner-section-"
 MENU_DEFINITIONS: list[tuple[str, str]] = [
     ("Open Configuration", "menu-file-open-project"),
     ("New Configuration", "menu-file-new-project"),
-    ("Keyboard Shortcuts", "menu-help-shortcuts"),
-    ("Documentation", "menu-help-documentation"),
-    ("About SattLint", "menu-help-about"),
+    ("Help", "menu-help"),
     ("Quit", "action-quit"),
 ]
 

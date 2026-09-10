@@ -144,7 +144,7 @@ class EffectFlowTracker:
         context: ScopeContext,
     ) -> tuple[str, ...] | None:
         """Resolve an effect key for a local variable reference."""
-        base = full_ref.split(".", 1)[0].lower()
+        base = full_ref.split(".", 1)[0].casefold()
         variable = context.env.get(base)
         if variable is None:
             return None
@@ -156,7 +156,7 @@ class EffectFlowTracker:
         context: ScopeContext,
     ) -> tuple[str, ...] | None:
         """Resolve effect key for a mapped parameter's source."""
-        base = full_ref.split(".", 1)[0].lower()
+        base = full_ref.split(".", 1)[0].casefold()
         mapping = context.param_mappings.get(base)
         if mapping is None:
             return None
@@ -374,7 +374,7 @@ class EffectFlowTracker:
             if parent_context is not None:
                 src_var, _decl_path, _decl_display = parent_context.resolve_global_name(source_base)
             else:
-                src_var = parent_env.get(source_base.lower())
+                src_var = parent_env.get(source_base.casefold())
                 if src_var is None:
                     src_var = self._lookup_global_variable(source_base)
 
@@ -442,7 +442,7 @@ class EffectFlowTracker:
 
         # Parse the source to get base and field path
         source_parts = full_source.split(".", 1)
-        source_base = source_parts[0].lower()
+        source_base = source_parts[0].casefold()
         source_field_path = source_parts[1] if len(source_parts) > 1 else ""
 
         # Resolve the actual source variable

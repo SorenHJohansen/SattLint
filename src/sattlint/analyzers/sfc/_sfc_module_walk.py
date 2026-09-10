@@ -14,10 +14,15 @@ from sattline_parser.models.ast_model import (
 )
 
 from ..shared._walk_utils import iter_nested_modules
+from ..shared.target_origin import TargetOriginFilter
 
 
-def iter_sfc_modulecodes(base_picture: BasePicture) -> Iterator[tuple[list[str], ModuleCode | None]]:
-    """Yield (module_path, modulecode) for root, nested modules, and moduletype defs."""
+def iter_sfc_modulecodes(
+    base_picture: BasePicture,
+    *,
+    moduletype_filter: TargetOriginFilter | None = None,
+) -> Iterator[tuple[list[str], ModuleCode | None]]:
+    """Yield (module_path, modulecode) for root, nested modules, and target-origin moduletype defs."""
 
     root_path = [base_picture.header.name]
     yield root_path, base_picture.modulecode
@@ -25,6 +30,8 @@ def iter_sfc_modulecodes(base_picture: BasePicture) -> Iterator[tuple[list[str],
     yield from _iter_nested_modulecodes(base_picture.submodules, root_path)
 
     for moduletype in base_picture.moduletype_defs or ():
+        if moduletype_filter is not None and not moduletype_filter(moduletype):
+            continue
         yield [base_picture.header.name, f"TypeDef:{moduletype.name}"], moduletype.modulecode
 
 

@@ -71,7 +71,6 @@ class DataflowAnalyzer(
         self._final_root_state: StateMap = {}
         self._site_stack: list[str] = []
         self._active_typedefs: set[str] = set()
-        self._reported_read_before_write: set[tuple[tuple[str, ...], str, str]] = set()
         self._reported_dead_overwrite: set[tuple[tuple[str, ...], str, str]] = set()
         self._reported_scan_cycle_stale_read: set[tuple[tuple[str, ...], str, str]] = set()
         self._reported_scan_cycle_implicit_new: set[tuple[tuple[str, ...], str, str]] = set()
@@ -236,7 +235,6 @@ class DataflowAnalyzer(
             value = state.get(resolved.root_key, UNKNOWN)
 
         if value is UNKNOWN:
-            self._report_read_before_write(resolved, module_path)
             return UNKNOWN
 
         if value is INITIALIZED:
@@ -424,12 +422,17 @@ class DataflowAnalyzer(
         module_path: list[str],
         data: dict[str, Any] | None = None,
     ) -> None:
+        issue_data = dict(data or {})
+        if "site" not in issue_data:
+            site = self._site_str()
+            if site:
+                issue_data["site"] = site
         self._issues.append(
             Issue(
                 kind=kind,
                 message=message,
                 module_path=module_path.copy(),
-                data=data or None,
+                data=issue_data or None,
             )
         )
 

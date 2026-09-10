@@ -578,6 +578,7 @@ def _add_magic_number_issue(
             literal_value=value,
             literal_span=span,
             site=self.site_str(),
+            context=getattr(self, "_current_stmt_text", "") or str(value),
         )
     )
 

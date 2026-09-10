@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-type AnalyzerCategory = Literal["correctness", "heuristic", "style", "development"]
+type AnalyzerCategory = Literal["correctness", "heuristic", "style"]
 
 
 @dataclass(frozen=True)
@@ -47,8 +47,6 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "debug",
                 "unavailable_libraries",
                 "analyzed_target_is_library",
-                "sfc_mutually_exclusive_steps",
-                "sfc_step_contracts",
                 "config",
             ),
         ),
@@ -121,8 +119,29 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "assigned."
             ),
             analyzer_attr="analyze_mms_interface_variables",
-            context_kwargs=("debug", "config"),
+            context_kwargs=("debug", "config", "analysis_context"),
+            requires=("variables",),
             semantic_rule_source="mms-interface",
+        ),
+        AnalyzerSpecTemplate(
+            key="icf",
+            name="ICF configuration",
+            description=(
+                "Validates every .icf file under the configured icf_dir against the program it "
+                "references.\n"
+                "\n"
+                "Finds:\n"
+                "- An entry that points at a different program than the .icf file.\n"
+                "- A path that cannot be resolved or a field that does not exist.\n"
+                "- A mapped datatype that does not match the target variable.\n"
+                "- A tag mapped with the wrong letter case.\n"
+                "- A group tag suffix that does not match the engineering rule.\n"
+                "- Missing journal parameter fields, drifted unit structures, or mixed value-prefix "
+                "letters."
+            ),
+            analyzer_attr="analyze_icf_configuration",
+            category="correctness",
+            context_kwargs=("config", "debug"),
         ),
         AnalyzerSpecTemplate(
             key="sfc",
@@ -137,13 +156,11 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "- Steps or transitions that can never run, for example a SEQSTEP placed after a "
                 "SEQBREAK.\n"
                 "- Transitions that always fire or never fire.\n"
-                "- Transitions in one branch with the same condition.\n"
-                "- Steps that should not run at the same time but can.\n"
-                "- Missing start or end code that lets an old value carry over between steps."
+                "- Transitions in one branch with the same condition."
             ),
             analyzer_attr="analyze_sfc",
             requires=("variables",),
-            context_kwargs=("analysis_context", "mutually_exclusive_steps", "step_contracts"),
+            context_kwargs=("analysis_context",),
             semantic_mapping_kind="framework",
             semantic_rule_source="sfc",
         ),
@@ -195,25 +212,9 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "- MES_BatchControl instances with the wrong name or wrong Max_TRY/Repeat_TRY values."
             ),
             analyzer_attr="analyze_spec_compliance",
-            context_kwargs=("debug", "unavailable_libraries"),
+            context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library"),
             semantic_mapping_kind="spec",
             semantic_rule_source="spec-compliance",
-        ),
-        AnalyzerSpecTemplate(
-            key="loop-output-refactor",
-            name="Loop output refactor",
-            description=(
-                "Detects loops between equation blocks and SFC step code in one module, where each block "
-                "needs a value the other block sets.\n"
-                "\n"
-                "Each loop delays at least one value by a full scan until the blocks are reordered or "
-                "split up.\n"
-                "\n"
-                "Example: 'EquationBlock Input: A = B;' and 'EquationBlock Feedback: B = A;' need each "
-                "other's value."
-            ),
-            analyzer_attr="analyze_loop_output_refactor",
-            semantic_rule_source="loop-output-refactor",
         ),
         AnalyzerSpecTemplate(
             key="alarm-integrity",
@@ -231,27 +232,9 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "with no False write."
             ),
             analyzer_attr="analyze_alarm_integrity",
-            context_kwargs=("debug", "unavailable_libraries"),
+            context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library"),
             semantic_mapping_kind="framework",
             semantic_rule_source="alarm-integrity",
-        ),
-        AnalyzerSpecTemplate(
-            key="initial-values",
-            name="Initial value validation",
-            description=(
-                "Detects recipe (recpar) and engineering (engpar) parameter modules whose required value "
-                "has no value at startup.\n"
-                "\n"
-                "A value counts only if it comes from a literal mapping, a variable that has a starting "
-                "value, or a moduletype default.\n"
-                "\n"
-                "Example: RecParReal declares 'Value: real;' with no mapping and no default, while Min_/"
-                "Max_ are configured."
-            ),
-            analyzer_attr="analyze_initial_values",
-            context_kwargs=("debug", "unavailable_libraries"),
-            semantic_mapping_kind="framework",
-            semantic_rule_source="initial-values",
         ),
         AnalyzerSpecTemplate(
             key="interface-contracts",
@@ -269,22 +252,21 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "a string variable."
             ),
             analyzer_attr="analyze_interface_contracts",
-            context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library"),
+            context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library", "analysis_context"),
+            requires=("variables",),
         ),
         AnalyzerSpecTemplate(
             key="powerup",
             name="Power-up",
             description=(
-                "Combines missing startup values and unsafe startup defaults into one power-up report.\n"
+                "Combines unsafe startup defaults into one power-up report.\n"
                 "\n"
-                "Finds:\n"
-                "- Recipe/engineering parameters without a known startup value.\n"
-                "- Boolean variables set to True at startup whose name contains 'enable' or 'bypass', for "
-                "example 'EnablePump: boolean := True;' or 'SafetyBypass: boolean := True;'."
+                "Finds Boolean variables set to True at startup whose name contains 'enable' or 'bypass', "
+                "for example 'EnablePump: boolean := True;' or 'SafetyBypass: boolean := True;'."
             ),
             analyzer_attr="analyze_powerup",
-            context_kwargs=("debug", "unavailable_libraries"),
-            composed_analyzer_keys=("initial-values", "unsafe-defaults"),
+            context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library"),
+            composed_analyzer_keys=("unsafe-defaults",),
         ),
         AnalyzerSpecTemplate(
             key="naming-consistency",
@@ -302,7 +284,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             ),
             analyzer_attr="analyze_naming_consistency",
             category="style",
-            context_kwargs=("rules",),
+            context_kwargs=("rules", "analyzed_target_is_library"),
         ),
         AnalyzerSpecTemplate(
             key="cyclomatic-complexity",
@@ -318,6 +300,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             ),
             analyzer_attr="analyze_cyclomatic_complexity",
             category="style",
+            context_kwargs=("analyzed_target_is_library",),
         ),
         AnalyzerSpecTemplate(
             key="parameter-drift",
@@ -333,7 +316,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "DoseValve moduletype."
             ),
             analyzer_attr="analyze_parameter_drift",
-            category="heuristic",
+            category="correctness",
             context_kwargs=("unavailable_libraries",),
         ),
         AnalyzerSpecTemplate(
@@ -348,12 +331,13 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "- Signals written but never read, for example 'NeverConsumed = False;' with no later read."
             ),
             analyzer_attr="analyze_signal_lifecycle",
+            context_kwargs=("analyzed_target_is_library",),
             semantic_mapping_kind="framework",
             semantic_rule_source="signal-lifecycle",
         ),
         AnalyzerSpecTemplate(
             key="loop-stability",
-            name="Loop stability",
+            name="Conflicting setpoints",
             description=(
                 "Finds two different values set on the same variable in one module.\n"
                 "\n"
@@ -362,6 +346,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "Example: 'Setpoint = 10;' followed by 'Setpoint = 20;' in the same equation block."
             ),
             analyzer_attr="analyze_loop_stability",
+            context_kwargs=("analyzed_target_is_library",),
             semantic_mapping_kind="framework",
             semantic_rule_source="loop-stability",
         ),
@@ -379,6 +364,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "afterwards."
             ),
             analyzer_attr="analyze_fault_handling",
+            context_kwargs=("analyzed_target_is_library",),
             semantic_mapping_kind="framework",
             semantic_rule_source="fault-handling",
         ),
@@ -395,6 +381,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "Example: with 'Min_Output = 0' and 'Max_Output = 10', 'Output = 12;' is flagged."
             ),
             analyzer_attr="analyze_numeric_constraints",
+            context_kwargs=("analyzed_target_is_library",),
             semantic_mapping_kind="framework",
             semantic_rule_source="numeric-constraints",
         ),
@@ -444,6 +431,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "Example: 'AssignSystemString(SysVarId, Value, Status);' inside an equation block."
             ),
             analyzer_attr="analyze_scan_loop_resource_usage",
+            context_kwargs=("analyzed_target_is_library",),
         ),
         AnalyzerSpecTemplate(
             key="resource-usage",
@@ -478,7 +466,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "Example: 'BranchLeft' and 'BranchRight' both setting 'SharedOutput' in their active code."
             ),
             analyzer_attr="analyze_scan_concurrency",
-            context_kwargs=("config",),
+            context_kwargs=("config", "analyzed_target_is_library"),
             composed_analyzer_keys=("same-cycle",),
             composed_issue_kind_names=("sfc_parallel_write_race",),
         ),
@@ -496,7 +484,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "SharedValue not declared State."
             ),
             analyzer_attr="analyze_scan_shared_access",
-            context_kwargs=("config",),
+            context_kwargs=("config", "analyzed_target_is_library"),
             composed_analyzer_keys=("same-cycle",),
             composed_issue_kind_names=("same_cycle_non_state_multi_site_hazard",),
         ),
@@ -558,7 +546,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "2;'."
             ),
             analyzer_attr="analyze_version_drift",
-            category="heuristic",
+            category="correctness",
             context_kwargs=("debug",),
             semantic_rule_source="version-drift",
         ),
@@ -573,7 +561,8 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "read anywhere."
             ),
             analyzer_attr="analyze_safety_paths",
-            context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library"),
+            context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library", "analysis_context"),
+            requires=("variables",),
             semantic_mapping_kind="framework",
             semantic_rule_source="safety-paths",
         ),
@@ -591,7 +580,8 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "through a moduletype mapping."
             ),
             analyzer_attr="analyze_taint_paths",
-            context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library"),
+            context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library", "analysis_context"),
+            requires=("variables",),
             semantic_mapping_kind="framework",
             semantic_rule_source="taint-paths",
         ),
@@ -609,12 +599,13 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "boolean := True;'."
             ),
             analyzer_attr="analyze_unsafe_defaults",
+            context_kwargs=("analyzed_target_is_library",),
             semantic_mapping_kind="framework",
             semantic_rule_source="unsafe-defaults",
         ),
         AnalyzerSpecTemplate(
             key="dataflow",
-            name="Lightweight dataflow",
+            name="Dataflow",
             description=(
                 "Follows the code path to find values read before they are set, writes that are "
                 "overwritten before they are read, conditions that are always true or false, code that "

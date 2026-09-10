@@ -9,7 +9,7 @@ from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef, ModuleT
 from ...reporting.icf_report import ICFEntry
 from ...reporting.mms_report import MMSInterfaceReport
 from ...resolution.type_graph import TypeGraph
-from ..framework import Issue
+from ..framework import AnalysisContext, Issue
 from ..variables import VariablesAnalyzer
 from ._mms_interface_analysis import (
     InterfaceInventoryEntry,
@@ -97,6 +97,10 @@ def _emit_duplicate_tag_issues(
                     "tag": display_tag,
                     "count": len(group),
                     "locations": locations,
+                    "site": ".".join(group[0].module_path) if group[0].module_path else None,
+                    "context": f"{group[0].source_variable} => {display_tag}"
+                    if group[0].source_variable
+                    else display_tag,
                 },
             )
         )
@@ -134,6 +138,10 @@ def _emit_datatype_mismatch_issues(
                     "source_kind": source_kind,
                     "tag": display_tag,
                     "datatypes": datatypes,
+                    "site": ".".join(group[0].module_path) if group[0].module_path else None,
+                    "context": f"{group[0].source_variable} => {display_tag} ({', '.join(datatypes)})"
+                    if group[0].source_variable
+                    else f"{display_tag} ({', '.join(datatypes)})",
                 },
             )
         )
@@ -168,6 +176,8 @@ def _emit_naming_drift_issues(
                     "source_kind": source_kind,
                     "family": family_key,
                     "spellings": spellings,
+                    "site": ".".join(group[0].module_path) if group[0].module_path else None,
+                    "context": ", ".join(spellings),
                 },
             )
         )
@@ -201,6 +211,8 @@ def _emit_dead_tag_issues(
                     "tag": entry.external_tag,
                     "source_variable": entry.source_variable,
                     "datatype": entry.source_datatype,
+                    "site": ".".join(entry.module_path) if entry.module_path else None,
+                    "context": f"{entry.source_variable} => {entry.external_tag}",
                 },
             )
         )
@@ -212,6 +224,7 @@ def analyze_mms_interface_variables(
     debug: bool = False,
     config: dict[str, Any] | None = None,
     icf_entries: list[ICFEntry] | None = None,
+    analysis_context: AnalysisContext | None = None,
 ) -> MMSInterfaceReport:
     """
     Find variables mapped into MMSWriteVar.WriteData or MMSReadVar.Outputvariable.
@@ -219,16 +232,35 @@ def analyze_mms_interface_variables(
     This scans module instances and collects the source variables used in the
     parameter mapping for those module types.
     """
-    analyzer = VariablesAnalyzer(
-        base_picture,
-        debug=debug,
-        fail_loudly=False,
+    shared_artifacts = analysis_context.shared_artifacts if analysis_context is not None else None
+    shared_analyzer = shared_artifacts.variable_analyzer if shared_artifacts is not None else None
+    collected = shared_artifacts.collected_views if shared_artifacts is not None else None
+    if collected is not None and collected.usage_tracker is not None:
+        usage_tracker = collected.usage_tracker
+        alias_links = list(collected.alias_links)
+    elif shared_analyzer is not None:
+        usage_tracker = shared_analyzer.usage_tracker
+        alias_links = list(shared_analyzer.alias_links)
+    else:
+        analyzer = VariablesAnalyzer(
+            base_picture,
+            debug=debug,
+            fail_loudly=False,
+            shared_artifacts=shared_artifacts,
+        )
+        analyzer.run()
+        usage_tracker = analyzer.usage_tracker
+        alias_links = list(analyzer.alias_links)
+    shared_variable_analysis = shared_artifacts.variable_analysis if shared_artifacts is not None else None
+    type_graph = (
+        shared_variable_analysis.type_graph
+        if shared_variable_analysis is not None
+        else TypeGraph.from_basepicture(base_picture)
     )
-    analyzer.run()
-    type_graph = TypeGraph.from_basepicture(base_picture)
     hits, inventory_entries = collect_mms_inventory_entries(
         base_picture,
-        analyzer,
+        usage_tracker,
+        alias_links,
         type_graph,
         debug=debug,
     )

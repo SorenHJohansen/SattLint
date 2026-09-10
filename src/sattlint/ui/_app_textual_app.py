@@ -1,5 +1,3 @@
-# pyright: reportMissingImports=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownLambdaType=false, reportGeneralTypeIssues=false, reportInvalidTypeForm=false, reportConstantRedefinition=false, reportPrivateUsage=false, reportUnusedClass=false, reportUnusedFunction=false, reportUnknownArgumentType=false
-
 from __future__ import annotations
 
 import asyncio
@@ -114,6 +112,7 @@ if _TEXTUAL_APP is not None:
             self._get_enabled_analyzers_fn = get_enabled_analyzers_fn
             self._ensure_ast_cache_fn = ensure_ast_cache_fn
             self._cfg = cfg
+            self._app_only_cfg = dict(cfg)
             self._summarize_targets_fn = summarize_targets_fn
             self._show_help_fn = show_help_fn
             self._get_help_text_fn = get_help_text_fn
@@ -152,6 +151,8 @@ if _TEXTUAL_APP is not None:
             self._last_output_line: str | None = None
             self._session_output_lines: list[str] = []
             self._session_output_dropped_line_count = 0
+            self._pending_error_target_name: str | None = None
+            self._last_output_target_name: str | None = None
 
         def compose(self) -> _TEXTUAL_COMPOSE_RESULT:  # noqa: PLR0915
             with _TEXTUAL_VERTICAL(id="top-bar"):
@@ -176,6 +177,11 @@ if _TEXTUAL_APP is not None:
                                         yield _TEXTUAL_BUTTON(
                                             "Run selected analyses",
                                             id="analyze-run-selected",
+                                            classes="raised-button toolbar-button",
+                                        )
+                                        yield _TEXTUAL_BUTTON(
+                                            "Generate Change Review",
+                                            id="analyze-generate-change-review",
                                             classes="raised-button toolbar-button",
                                         )
                                         yield _TEXTUAL_BUTTON(
@@ -270,10 +276,16 @@ if _TEXTUAL_APP is not None:
                                                 "Mode", id="setup-toggle-mode", classes="raised-button setup-row-button"
                                             )
                                             yield _TEXTUAL_STATIC("", id="setup-label-mode", classes="setup-row-label")
+                                    with _TEXTUAL_HORIZONTAL(classes="setup-row"):
+                                        yield _TEXTUAL_BUTTON(
+                                            "Delete Configuration",
+                                            id="setup-delete-project",
+                                            classes="raised-button setup-row-button",
+                                        )
                         with _TEXTUAL_HORIZONTAL(id="settings-browser", classes="is-hidden"):  # noqa: SIM117
                             with _TEXTUAL_VERTICAL(id="settings-settings-section"):
                                 yield _TEXTUAL_STATIC("App Settings", id="settings-config-title")
-                                with _TEXTUAL_VERTICAL(id="settings-settings-col"):
+                                with _TEXTUAL_HORIZONTAL(id="settings-settings-col"):
                                     with _TEXTUAL_VERTICAL(id="settings-group-run-history", classes="setup-group-box"):
                                         yield _TEXTUAL_STATIC("Run History", classes="setup-group-title")
                                         with _TEXTUAL_HORIZONTAL(classes="setup-row"):
@@ -313,6 +325,17 @@ if _TEXTUAL_APP is not None:
                                             )
                                             yield _TEXTUAL_STATIC(
                                                 "", id="settings-label-output-retention", classes="setup-row-label"
+                                            )
+                                    with _TEXTUAL_VERTICAL(id="settings-group-review", classes="setup-group-box"):
+                                        yield _TEXTUAL_STATIC("Change Review", classes="setup-group-title")
+                                        with _TEXTUAL_HORIZONTAL(classes="setup-row"):
+                                            yield _TEXTUAL_BUTTON(
+                                                "Review output folder",
+                                                id="settings-edit-review-output-dir",
+                                                classes="raised-button setup-row-button",
+                                            )
+                                            yield _TEXTUAL_STATIC(
+                                                "", id="settings-label-review-output-dir", classes="setup-row-label"
                                             )
                         with _TEXTUAL_HORIZONTAL(id="results-browser", classes="is-hidden"):
                             with _TEXTUAL_VERTICAL(id="results-runs-section"):
