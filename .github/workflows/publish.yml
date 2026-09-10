@@ -36,6 +36,20 @@ jobs:
           python -m pip install --upgrade pip build twine
           python -m build
 
+      - name: Verify version matches tag
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION=$(python -c "from sattlint.__version__.__version__ import __version__; print(__version__)")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match package version ($PKG_VERSION)"
+            exit 1
+          fi
+          WHEEL_VERSION=$(ls dist/*.whl | sed 's/.*sattlint-\(.*\)-py3.*/\1/')
+          if [ "$TAG_VERSION" != "$WHEEL_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match wheel version ($WHEEL_VERSION)"
+            exit 1
+          fi
+
       - name: Check distribution metadata
         run: python -m twine check dist/*
 
