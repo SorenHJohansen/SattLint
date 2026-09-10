@@ -216,6 +216,59 @@ class FileASTCache:
         cache_module._save_pickle_payload(self._path(code_path, mode), payload)
 
 
+class FoundationCache:
+    """Persistent store for the cached analysis foundation (Phase E).
+
+    The foundation is a pure, deterministic function of the parsed ASTs, so it can be
+    content-addressed and restored across runs just like the per-file AST cache. Callers compute
+    the key via ``cache_module.compute_foundation_cache_key`` from the same source manifest the
+    AST cache keys on, plus the schema version. A schema-version mismatch (or any source change,
+    which changes the key) simply misses and triggers a rebuild; this is the conservative
+    first-pass invalidation from the architecture doc.
+    """
+
+    def __init__(self, cache_dir: Path):
+        self.cache_dir = cache_dir / "foundation"
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._startup_pruned_entries = self.prune_stale_entries()
+
+    def _path(self, key: str) -> Path:
+        return self.cache_dir / f"{key}.pickle"
+
+    def load(self, key: str) -> object | None:
+        p = self._path(key)
+        if not p.exists():
+            return None
+        payload = cache_module._load_pickle_payload(p)
+        payload_map = cache_module._as_mapping(payload)
+        if payload_map is None or payload_map.get("version") != cache_module.FOUNDATION_CACHE_SCHEMA_VERSION:
+            return None
+        return payload_map.get("foundation")
+
+    def save(self, key: str, foundation: object) -> None:
+        payload: dict[str, object] = {
+            "version": cache_module.FOUNDATION_CACHE_SCHEMA_VERSION,
+            "foundation": foundation,
+        }
+        cache_module._save_pickle_payload(self._path(key), payload)
+
+    def prune_stale_entries(self) -> int:
+        removed = 0
+        for path in self.cache_dir.glob("*.pickle"):
+            payload = cache_module._load_pickle_payload(path)
+            payload_map = cache_module._as_mapping(payload)
+            if payload_map is not None and payload_map.get("version") == cache_module.FOUNDATION_CACHE_SCHEMA_VERSION:
+                continue
+            if cache_module._remove_file(path):
+                removed += 1
+        return removed
+
+    def drain_startup_pruned_entries(self) -> int:
+        removed = self._startup_pruned_entries
+        self._startup_pruned_entries = 0
+        return removed
+
+
 class ASTCache:
     def __init__(self, cache_dir: Path):
         self.cache_dir = cache_dir

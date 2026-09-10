@@ -35,9 +35,14 @@ class ScanSharedAccessReport:
 def analyze_scan_shared_access(
     base_picture: BasePicture,
     config: dict[str, Any] | None = None,
+    analyzed_target_is_library: bool = False,
 ) -> ScanSharedAccessReport:
     del config
-    report = analyze_same_cycle(base_picture, selected_issue_kinds=_SCAN_SHARED_ACCESS_ISSUE_KINDS)
+    report = analyze_same_cycle(
+        base_picture,
+        selected_issue_kinds=_SCAN_SHARED_ACCESS_ISSUE_KINDS,
+        analyzed_target_is_library=analyzed_target_is_library,
+    )
     return ScanSharedAccessReport(
         name=base_picture.header.name,
         issues=[issue for issue in report.issues if issue.kind in _SCAN_SHARED_ACCESS_ISSUE_KINDS],

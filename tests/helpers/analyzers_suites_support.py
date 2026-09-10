@@ -41,7 +41,6 @@ from sattlint.analyzers import registry as registry_module
 from sattlint.analyzers.alarm_integrity import analyze_alarm_integrity
 from sattlint.analyzers.dataflow import analyze_dataflow
 from sattlint.analyzers.framework import AnalyzerSpec
-from sattlint.analyzers.initial_values import analyze_initial_values
 from sattlint.analyzers.mms import (
     _extract_external_tag,
     _find_parameter_mapping,
@@ -150,7 +149,6 @@ __all__ = [
     "_varref",
     "analyze_alarm_integrity",
     "analyze_dataflow",
-    "analyze_initial_values",
     "analyze_naming_consistency",
     "analyze_safety_paths",
     "analyze_sfc",

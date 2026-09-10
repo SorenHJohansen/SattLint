@@ -272,7 +272,7 @@ def test_variables_report_summary_formats_duplication_magic_numbers_and_sequence
     assert "BasePicture.SequenceA :: localvariable Stage1 (boolean) | sequence=MainSeq | reset=ResetCmd" in summary
 
 
-def test_variables_report_summary_includes_required_contract_layout_and_shadowing_sections():
+def test_variables_report_summary_includes_required_contract_and_shadowing_sections():
     report = VariablesReport(
         basepicture_name="BasePicture",
         issues=[
@@ -290,12 +290,6 @@ def test_variables_report_summary_includes_required_contract_layout_and_shadowin
                 role="source and target types differ",
             ),
             VariableIssue(
-                kind=IssueKind.LAYOUT_OVERLAP,
-                module_path=["BasePicture", "TypeDef:Soejle", "Panel"],
-                variable=None,
-                role="TextA overlaps TextB",
-            ),
-            VariableIssue(
                 kind=IssueKind.SHADOWING,
                 module_path=["BasePicture", "TypeDef:Soejle", "ChildC"],
                 variable=Variable(name="Mode", datatype=Simple_DataType.INTEGER),
@@ -306,7 +300,6 @@ def test_variables_report_summary_includes_required_contract_layout_and_shadowin
             {
                 IssueKind.REQUIRED_PARAMETER_CONNECTION,
                 IssueKind.CONTRACT_MISMATCH,
-                IssueKind.LAYOUT_OVERLAP,
                 IssueKind.SHADOWING,
             }
         ),
@@ -322,8 +315,6 @@ def test_variables_report_summary_includes_required_contract_layout_and_shadowin
     assert "      SingleModule:" in summary
     assert "BasePicture.Soejle.ChildB :: TargetValue (integer) | source and target types differ" in summary
     assert "BasePicture.TypeDef:Soejle.ChildB :: TargetValue (integer) | source and target types differ" not in summary
-    assert "Overlapping layout elements" in summary
-    assert "BasePicture.Soejle.Panel :: TextA overlaps TextB" in summary
     assert "Variable shadowing" in summary
     assert "BasePicture.Soejle.ChildC :: Mode (integer) | local shadows moduleparameter" in summary
 
@@ -445,12 +436,6 @@ def test_variables_report_properties_visible_kinds_and_empty_sections_cover_rema
             site="EquationBlock",
         ),
         VariableIssue(
-            kind=IssueKind.LAYOUT_OVERLAP,
-            module_path=["BasePicture", "Layout"],
-            variable=None,
-            role="LabelA overlaps LabelB",
-        ),
-        VariableIssue(
             kind=IssueKind.RESET_CONTAMINATION,
             module_path=["BasePicture", "Reset"],
             variable=Variable("Counter", "integer"),
@@ -492,7 +477,6 @@ def test_variables_report_properties_visible_kinds_and_empty_sections_cover_rema
         "min_max_mapping_mismatch": 1,
         "magic_numbers": 1,
         "name_collisions": 0,
-        "layout_overlaps": 1,
         "shadowing": 0,
         "reset_contamination": 1,
         "implicit_latches": 1,

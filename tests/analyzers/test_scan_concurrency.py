@@ -43,12 +43,12 @@ def _sequence(nodes: list[object]) -> Sequence:
     )
 
 
-def test_scan_concurrency_analyzer_is_registered_and_in_default_cli() -> None:
+def test_scan_concurrency_analyzer_is_registered_and_opt_in() -> None:
     specs = {spec.key: spec for spec in get_default_analyzers()}
 
     assert "scan-concurrency" in specs
     assert specs["scan-concurrency"].enabled is True
-    assert "scan-concurrency" in get_actual_cli_analyzer_keys()
+    assert "scan-concurrency" not in get_actual_cli_analyzer_keys()
 
 
 def test_scan_concurrency_reports_parallel_write_race() -> None:
@@ -84,7 +84,7 @@ def test_scan_concurrency_requests_only_parallel_write_race(monkeypatch) -> None
     bp = BasePicture(header=_hdr("Root"), localvariables=[], modulecode=ModuleCode(sequences=[], equations=[]))
     seen_selected_kinds: list[object] = []
 
-    def _fake_analyze_same_cycle(*_args, **kwargs):
+    def _fake_analyze_sfc(*_args, **kwargs):
         seen_selected_kinds.append(kwargs.get("selected_issue_kinds"))
         return SimpleNamespace(
             issues=[
@@ -93,7 +93,7 @@ def test_scan_concurrency_requests_only_parallel_write_race(monkeypatch) -> None
             ]
         )
 
-    monkeypatch.setattr(scan_concurrency_module, "analyze_same_cycle", _fake_analyze_same_cycle)
+    monkeypatch.setattr(scan_concurrency_module, "analyze_sfc", _fake_analyze_sfc)
 
     report = scan_concurrency_module.analyze_scan_concurrency(bp)
 

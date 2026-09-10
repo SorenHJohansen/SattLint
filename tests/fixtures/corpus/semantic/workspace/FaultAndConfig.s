@@ -1,9 +1,9 @@
 "Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
 "Original file date: ---"
 "Program date: 2026-06-19-12:00:00.000, name: FaultAndConfig"
-(* SEMANTIC: Unhandled fault path, missing initial value, config drift,
+(* SEMANTIC: Unhandled fault path, config drift,
    conflicting loop setpoint.
-   Expected: fault-unhandled-path, missing-parameter-initial-value,
+   Expected: fault-unhandled-path,
    instance-configuration-drift, loop-conflicting-setpoint. *)
 
 BasePicture Invocation

@@ -38,7 +38,6 @@ class IssueKind(Enum):
     STRING_MAPPING_MISMATCH = "string_mapping_mismatch"
     DATATYPE_DUPLICATION = "datatype_duplication"
     NAME_COLLISION = "name_collision"
-    LAYOUT_OVERLAP = "layout_overlap"
     MIN_MAX_MAPPING_MISMATCH = "min_max_mapping_mismatch"
     MAGIC_NUMBER = "magic_number"
     SHADOWING = "shadowing"
@@ -157,11 +156,6 @@ _VARIABLE_ISSUE_METADATA: dict[IssueKind, VariableIssueMetadata] = {
         explanation="Case-insensitive name collisions make the declaration set ambiguous and harder to reason about.",
         suggestion="Rename one of the declarations so the scope has a single canonical name for that concept.",
     ),
-    IssueKind.LAYOUT_OVERLAP: VariableIssueMetadata(
-        label="Layout elements overlap",
-        explanation="Overlapping modules or UI elements make the layout ambiguous and often hide one control or display behind another.",
-        suggestion="Move or resize one of the colliding elements so each rectangle occupies its own visible area.",
-    ),
     IssueKind.MIN_MAX_MAPPING_MISMATCH: VariableIssueMetadata(
         label="Min/Max mapping name mismatch",
         explanation="Mismatched Min_/Max_ mappings suggest the parameter contract no longer describes the same base signal.",
@@ -219,6 +213,7 @@ class VariableIssue:
     target_display_name: str | None = None
     validation_source_variable: Variable | None = None
     validation_source_module_path: list[str] | None = None
+    context: str | None = None
 
     def __str__(self) -> str:
         mp = ".".join(self.module_path)

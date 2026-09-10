@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from sattline_parser.models.ast_model import BasePicture
 
 from ..core.taint_paths import TaintPathTrace, build_taint_path_traces
-from .framework import Issue, empty_issues, format_report_header
+from .framework import AnalysisContext, Issue, empty_issues, format_report_header
 from .variables import VariablesAnalyzer
 
 _ISSUE_LABELS = {
@@ -65,12 +65,14 @@ class TaintPathAnalyzer:
         base_picture: BasePicture,
         unavailable_libraries: set[str] | None = None,
         analyzed_target_is_library: bool = False,
+        analysis_context: AnalysisContext | None = None,
     ) -> None:
         self.bp = base_picture
         self._unavailable_libraries = unavailable_libraries or set()
         self._analyzed_target_is_library = analyzed_target_is_library
         self._issues: list[Issue] = []
         self._traces: list[TaintPathTrace] = []
+        self._analysis_context = analysis_context
 
     @property
     def issues(self) -> list[Issue]:
@@ -80,16 +82,33 @@ class TaintPathAnalyzer:
     def traces(self) -> list[TaintPathTrace]:
         return self._traces
 
-    def run(self) -> list[Issue]:
-        variable_analyzer = VariablesAnalyzer(
+    def _resolve_variable_analyzer(self) -> tuple[VariablesAnalyzer, bool]:
+        if self._analysis_context is not None and self._analysis_context.shared_artifacts is not None:
+            shared = self._analysis_context.shared_artifacts.variable_analyzer
+            if shared is not None:
+                return shared, False
+            return VariablesAnalyzer(
+                self.bp,
+                debug=self._analysis_context.debug,
+                fail_loudly=False,
+                unavailable_libraries=self._unavailable_libraries,
+                analyzed_target_is_library=self._analyzed_target_is_library,
+                include_dependency_moduletype_usage=self._analyzed_target_is_library,
+                shared_artifacts=self._analysis_context.shared_artifacts,
+            ), True
+        return VariablesAnalyzer(
             self.bp,
             debug=False,
             fail_loudly=False,
             unavailable_libraries=self._unavailable_libraries,
             analyzed_target_is_library=self._analyzed_target_is_library,
             include_dependency_moduletype_usage=self._analyzed_target_is_library,
-        )
-        variable_analyzer.run()
+        ), True
+
+    def run(self) -> list[Issue]:
+        variable_analyzer, needs_run = self._resolve_variable_analyzer()
+        if needs_run:
+            variable_analyzer.run()
         self._traces = build_taint_path_traces(
             variable_analyzer.effect_flow_edges,
             {key: tuple(events) for key, events in variable_analyzer.access_graph.by_path_key.items()},
@@ -118,6 +137,8 @@ class TaintPathAnalyzer:
                         "sink_canonical_path": trace.sink_canonical_path,
                         "path": list(trace.path),
                         "module_paths": [list(path) for path in trace.module_paths],
+                        "site": ".".join(sink_module_path),
+                        "context": f"{trace.source_canonical_path} -> {trace.sink_canonical_path}",
                     },
                 )
             )
@@ -130,11 +151,13 @@ def analyze_taint_paths(
     debug: bool = False,
     unavailable_libraries: set[str] | None = None,
     analyzed_target_is_library: bool = False,
+    analysis_context: AnalysisContext | None = None,
 ) -> TaintPathReport:
     analyzer = TaintPathAnalyzer(
         base_picture,
         unavailable_libraries=unavailable_libraries,
         analyzed_target_is_library=analyzed_target_is_library,
+        analysis_context=analysis_context,
     )
     analyzer.run()
     return TaintPathReport(

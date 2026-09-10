@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, cast
 
 from lark import Tree
+from sattline_parser.formatting.formatter import format_expr as _format_expr
 from sattline_parser.models.ast_model import (
     FloatLiteral,
     IntLiteral,
@@ -57,6 +58,14 @@ if TYPE_CHECKING:
     from . import VariablesAnalyzer
 
 
+def _set_current_statement(self: VariablesAnalyzer, obj: Any) -> None:
+    try:
+        text = " ".join(_format_expr(obj).split())
+    except Exception:  # noqa: BLE001 - formatting is best-effort context enrichment
+        text = ""
+    self._current_stmt_text = text
+
+
 def _walk_module_code(
     self: VariablesAnalyzer,
     mc: ModuleCode | None,
@@ -67,8 +76,15 @@ def _walk_module_code(
         return
 
     for eq in mc.equations or []:
-        for stmt in eq.code or []:
-            self._walk_stmt_or_expr(stmt, context, path)
+        if eq.name:
+            self._push_site(f"EQ:{eq.name}")
+        try:
+            for stmt in eq.code or []:
+                self._set_current_statement(stmt)
+                self._walk_stmt_or_expr(stmt, context, path)
+        finally:
+            if eq.name:
+                self._pop_site()
 
     for seq in mc.sequences or []:
         self._walk_sequence(seq, context, path)
@@ -81,7 +97,7 @@ def _walk_sequence(
     path: list[str],
 ) -> None:
     if seq.name:
-        self._push_site(f"seq:{seq.name}")
+        self._push_site(f"SQ:{seq.name}")
     try:
         self._walk_seq_nodes(seq.code or [], context.env, path, context)
     finally:
@@ -99,13 +115,17 @@ def _walk_seq_nodes(
     for node in nodes or []:
         if isinstance(node, SFCStep):
             for stmt in node.code.enter or []:
+                self._set_current_statement(stmt)
                 self._walk_stmt_or_expr(stmt, context, path)
             for stmt in node.code.active or []:
+                self._set_current_statement(stmt)
                 self._walk_stmt_or_expr(stmt, context, path)
             for stmt in node.code.exit or []:
+                self._set_current_statement(stmt)
                 self._walk_stmt_or_expr(stmt, context, path)
             continue
         if isinstance(node, SFCTransition):
+            self._set_current_statement(node.condition)
             self._walk_stmt_or_expr(node.condition, context, path)
             continue
         if isinstance(node, SFCAlternative):
@@ -135,6 +155,7 @@ def _walk_stmt_or_expr(  # noqa: PLR0915
     is_ui_read: bool = False,
 ) -> None:
     if hasattr(obj, "data") and obj.data == const.KEY_STATEMENT:
+        self._set_current_statement(obj)
         for child in _children_of(obj) or []:
             self._walk_stmt_or_expr(child, context, path, is_ui_read=is_ui_read)
         return
@@ -146,12 +167,15 @@ def _walk_stmt_or_expr(  # noqa: PLR0915
         for cond, stmts in obj.branches or []:
             self._walk_stmt_or_expr(cond, context, path, is_ui_read=is_ui_read)
             for stmt in stmts or []:
+                self._set_current_statement(stmt)
                 self._walk_stmt_or_expr(stmt, context, path, is_ui_read=is_ui_read)
         for stmt in obj.else_block or []:
+            self._set_current_statement(stmt)
             self._walk_stmt_or_expr(stmt, context, path, is_ui_read=is_ui_read)
         return
 
     if isinstance(obj, Assignment):
+        self._set_current_statement(obj)
         full_name = _var_name_of(obj.target)
         if full_name is not None:
             value_name = _var_name_of(obj.value)
@@ -171,6 +195,7 @@ def _walk_stmt_or_expr(  # noqa: PLR0915
         return
 
     if isinstance(obj, FuncCallStmt):
+        self._set_current_statement(obj)
         self._handle_function_call(
             obj.call.name,
             list(obj.call.args),
@@ -238,8 +263,10 @@ def _walk_stmt_or_expr(  # noqa: PLR0915
         for cond, stmts in branches or []:
             self._walk_stmt_or_expr(cond, context, path, is_ui_read=is_ui_read)
             for stmt in stmts or []:
+                self._set_current_statement(stmt)
                 self._walk_stmt_or_expr(stmt, context, path, is_ui_read=is_ui_read)
         for stmt in else_block or []:
+            self._set_current_statement(stmt)
             self._walk_stmt_or_expr(stmt, context, path, is_ui_read=is_ui_read)
         return
 
@@ -357,6 +384,7 @@ def _walk_stmt_or_expr(  # noqa: PLR0915
 
 
 __all__ = [
+    "_set_current_statement",
     "_walk_module_code",
     "_walk_seq_nodes",
     "_walk_sequence",

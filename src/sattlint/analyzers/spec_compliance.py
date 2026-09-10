@@ -47,9 +47,12 @@ class SpecComplianceAnalyzer:
         self,
         base_picture: BasePicture,
         unavailable_libraries: set[str] | None = None,
+        *,
+        analyzed_target_is_library: bool = False,
     ) -> None:
         self.bp = base_picture
         self._unavailable_libraries = unavailable_libraries or set()
+        self._analyzed_target_is_library = analyzed_target_is_library
         self._issues: list[Issue] = []
 
     @property
@@ -70,14 +73,23 @@ class SpecComplianceAnalyzer:
         )
 
         for moduletype in self.bp.moduletype_defs or []:
-            if not self._is_from_root_origin(getattr(moduletype, "origin_file", None)):
+            if not self._is_from_root_origin(
+                getattr(moduletype, "origin_file", None),
+                getattr(moduletype, "origin_lib", None),
+            ):
                 continue
             self._walk_moduletype_def(moduletype, root_path, base_env)
 
         return self._issues
 
-    def _is_from_root_origin(self, origin_file: str | None) -> bool:
-        return matches_root_origin(origin_file, getattr(self.bp, "origin_file", None))
+    def _is_from_root_origin(self, origin_file: str | None, origin_lib: str | None = None) -> bool:
+        return matches_root_origin(
+            origin_file,
+            getattr(self.bp, "origin_file", None),
+            analyzed_target_is_library=self._analyzed_target_is_library,
+            origin_lib=origin_lib,
+            root_origin_lib=getattr(self.bp, "origin_lib", None),
+        )
 
     def _merge_env(
         self,
@@ -98,6 +110,7 @@ class SpecComplianceAnalyzer:
                 kind="spec.basepicture_direct_code",
                 message="BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
                 module_path=module_path.copy(),
+                data={"site": ".".join(module_path), "context": "basepicture direct code"},
             )
         )
 
@@ -191,7 +204,12 @@ class SpecComplianceAnalyzer:
                             f"Sequence step {node.name!r} must start with 'ST_' according to the engineering spec."
                         ),
                         module_path=module_path.copy(),
-                        data={"sequence": sequence.name, "step": node.name},
+                        data={
+                            "sequence": sequence.name,
+                            "step": node.name,
+                            "site": f"SQ:{sequence.name} > STEP:{node.name}",
+                            "context": node.name,
+                        },
                     )
                 )
             if isinstance(node, SFCTransition):
@@ -203,7 +221,7 @@ class SpecComplianceAnalyzer:
                                 f"A transition in sequence {sequence.name!r} is missing a name. All transitions must be named."
                             ),
                             module_path=module_path.copy(),
-                            data={"sequence": sequence.name},
+                            data={"sequence": sequence.name, "site": f"SQ:{sequence.name}"},
                         )
                     )
                     continue
@@ -215,7 +233,12 @@ class SpecComplianceAnalyzer:
                                 f"Transition {node.name!r} must start with 'TR_' according to the engineering spec."
                             ),
                             module_path=module_path.copy(),
-                            data={"sequence": sequence.name, "transition": node.name},
+                            data={
+                                "sequence": sequence.name,
+                                "transition": node.name,
+                                "site": f"SQ:{sequence.name} > TRANS:{node.name}",
+                                "context": node.name,
+                            },
                         )
                     )
 
@@ -248,7 +271,12 @@ class SpecComplianceAnalyzer:
                             f"Resolved value from {use_signature.source}."
                         ),
                         module_path=module_path.copy(),
-                        data={"instance": inst.header.name, "moduletype": inst.moduletype_name},
+                        data={
+                            "instance": inst.header.name,
+                            "moduletype": inst.moduletype_name,
+                            "site": ".".join(module_path),
+                            "context": f"UseSignature = True ({use_signature.source})",
+                        },
                     )
                 )
 
@@ -261,7 +289,7 @@ class SpecComplianceAnalyzer:
                     kind="spec.mes_batch_control_name",
                     message=("NNEMESIFLib:MES_BatchControl instance name must be exactly 'MES_BatchControl'."),
                     module_path=module_path.copy(),
-                    data={"instance": inst.header.name},
+                    data={"instance": inst.header.name, "site": ".".join(module_path), "context": inst.header.name},
                 )
             )
 
@@ -312,6 +340,8 @@ class SpecComplianceAnalyzer:
                         "expected": expected_value,
                         "actual": parameter_value.value,
                         "status": parameter_value.status,
+                        "site": ".".join(module_path),
+                        "context": f"{inst.moduletype_name}.{parameter_name} = {parameter_value.value!r}",
                     },
                 )
             )
@@ -330,6 +360,8 @@ class SpecComplianceAnalyzer:
                         "parameter": parameter_name,
                         "expected": expected_value,
                         "status": parameter_value.status,
+                        "site": ".".join(module_path),
+                        "context": f"{inst.moduletype_name}.{parameter_name} not configured",
                     },
                 )
             )
@@ -356,6 +388,8 @@ class SpecComplianceAnalyzer:
                     "parameter": parameter_name,
                     "expected": expected_value,
                     "status": parameter_value.status,
+                    "site": ".".join(module_path),
+                    "context": f"{inst.moduletype_name}.{parameter_name} unresolved",
                 },
             )
         )
@@ -481,11 +515,13 @@ def analyze_spec_compliance(
     base_picture: BasePicture,
     debug: bool = False,
     unavailable_libraries: set[str] | None = None,
+    analyzed_target_is_library: bool = False,
 ) -> SimpleReport:
     _ = debug
     analyzer = SpecComplianceAnalyzer(
         base_picture,
         unavailable_libraries=unavailable_libraries,
+        analyzed_target_is_library=analyzed_target_is_library,
     )
     analyzer.run()
     return SimpleReport(name=base_picture.header.name, issues=analyzer.issues)

@@ -33,17 +33,25 @@ from ..grammar import constants as const
 from .framework import Issue, SimpleReport
 from .sattline_builtins import get_function_signature
 from .shared._walk_utils import iter_nested_modules
+from .shared.target_origin import build_target_origin_filter_for_basepicture
 
 
 class ScanLoopResourceUsageAnalyzer:
-    def __init__(self, base_picture: BasePicture) -> None:
+    def __init__(self, base_picture: BasePicture, *, analyzed_target_is_library: bool = False) -> None:
         self.bp = base_picture
+        self._analyzed_target_is_library = analyzed_target_is_library
         self._issues: list[Issue] = []
 
     def run(self) -> list[Issue]:
         root_path = [self.bp.header.name]
+        moduletype_filter = build_target_origin_filter_for_basepicture(
+            self.bp,
+            analyzed_target_is_library=self._analyzed_target_is_library,
+        )
         self._scan_modulecode(root_path, self.bp.modulecode)
         for moduletype in self.bp.moduletype_defs or []:
+            if not moduletype_filter(moduletype):
+                continue
             self._walk_moduletype(moduletype, parent_path=root_path)
         self._walk_modules(self.bp.submodules or [], parent_path=root_path)
         return self._issues
@@ -135,7 +143,9 @@ class ScanLoopResourceUsageAnalyzer:
                     module_path=module_path.copy(),
                     data={
                         "call": signature.name,
-                        "context": context,
+                        "scope": context,
+                        "site": context,
+                        "context": f"{signature.name}(...)",
                         "precision_scangroup": signature.precision_scangroup,
                     },
                 )
@@ -217,7 +227,9 @@ class ScanLoopResourceUsageAnalyzer:
                             module_path=module_path.copy(),
                             data={
                                 "call": signature.name,
-                                "context": context,
+                                "scope": context,
+                                "site": context,
+                                "context": f"{signature.name}(...)",
                                 "precision_scangroup": signature.precision_scangroup,
                             },
                         )
@@ -242,6 +254,10 @@ class ScanLoopResourceUsageAnalyzer:
                 self._scan_node(child, module_path=module_path, context=context)
 
 
-def analyze_scan_loop_resource_usage(base_picture: BasePicture) -> SimpleReport:
-    analyzer = ScanLoopResourceUsageAnalyzer(base_picture)
+def analyze_scan_loop_resource_usage(
+    base_picture: BasePicture,
+    *,
+    analyzed_target_is_library: bool = False,
+) -> SimpleReport:
+    analyzer = ScanLoopResourceUsageAnalyzer(base_picture, analyzed_target_is_library=analyzed_target_is_library)
     return SimpleReport(name=base_picture.header.name, issues=analyzer.run())

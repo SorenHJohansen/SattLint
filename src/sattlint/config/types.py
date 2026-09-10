@@ -30,6 +30,14 @@ class OutputConfigOverride(TypedDict, total=False):
     retention_lines: int
 
 
+class ReviewConfig(TypedDict):
+    output_dir: ConfigPathValue
+
+
+class ReviewConfigOverride(TypedDict, total=False):
+    output_dir: ConfigPathValue
+
+
 class NamingRuleConfig(TypedDict):
     style: NamingStyle
     allow: list[str]
@@ -50,26 +58,6 @@ class NamingConfigOverride(TypedDict, total=False):
     variables: NamingRuleConfigOverride
     modules: NamingRuleConfigOverride
     instances: NamingRuleConfigOverride
-
-
-class StepContractConfig(TypedDict):
-    required_enter_writes: list[str]
-    required_exit_writes: list[str]
-
-
-class StepContractConfigOverride(TypedDict, total=False):
-    required_enter_writes: list[str]
-    required_exit_writes: list[str]
-
-
-class SfcConfig(TypedDict):
-    mutually_exclusive_steps: list[object]
-    step_contracts: dict[str, StepContractConfig]
-
-
-class SfcConfigOverride(TypedDict, total=False):
-    mutually_exclusive_steps: list[object]
-    step_contracts: dict[str, StepContractConfigOverride | ConfigObjectMap]
 
 
 class RuleProfileConfig(TypedDict):
@@ -97,13 +85,11 @@ class RuleProfilesConfigOverride(TypedDict, total=False):
 
 
 class AnalysisConfig(TypedDict):
-    sfc: SfcConfig
     naming: NamingConfig
     rule_profiles: RuleProfilesConfig
 
 
 class AnalysisConfigOverride(TypedDict, total=False):
-    sfc: SfcConfigOverride
     naming: NamingConfigOverride
     rule_profiles: RuleProfilesConfigOverride
 
@@ -119,6 +105,7 @@ class ConfigDict(TypedDict):
     other_lib_dirs: list[ConfigPathValue]
     run_history: RunHistoryConfig
     output: OutputConfig
+    review: ReviewConfig
     analysis: AnalysisConfig
 
 
@@ -133,6 +120,7 @@ class ConfigOverrideDict(TypedDict, total=False):
     other_lib_dirs: list[ConfigPathValue]
     run_history: RunHistoryConfigOverride
     output: OutputConfigOverride
+    review: ReviewConfigOverride
     analysis: AnalysisConfigOverride
 
 
@@ -151,14 +139,12 @@ __all__ = [
     "NamingStyle",
     "OutputConfig",
     "OutputConfigOverride",
+    "ReviewConfig",
+    "ReviewConfigOverride",
     "RuleProfileConfig",
     "RuleProfileConfigOverride",
     "RuleProfilesConfig",
     "RuleProfilesConfigOverride",
     "RunHistoryConfig",
     "RunHistoryConfigOverride",
-    "SfcConfig",
-    "SfcConfigOverride",
-    "StepContractConfig",
-    "StepContractConfigOverride",
 ]

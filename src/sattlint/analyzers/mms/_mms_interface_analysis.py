@@ -15,6 +15,7 @@ from sattline_parser.models.ast_model import (
     ModuleTypeInstance,
     ParameterMapping,
     SingleModule,
+    Variable,
 )
 
 from ...reporting.mms_report import MMSInterfaceHit, WriteFields
@@ -28,7 +29,7 @@ from ...resolution.common import (
 from ...resolution.context_builder import ContextBuilder
 from ...resolution.type_graph import TypeGraph
 from ..shared.variable_utils import same_origin_file_stem
-from ..variables import VariablesAnalyzer
+from ..variables import UsageTracker
 from . import _mms_icf_inventory as _mms_icf_inventory_module
 from ._mms_interface_helpers import (
     _extract_external_tag,
@@ -75,7 +76,8 @@ def _empty_inventory_entries() -> list[InterfaceInventoryEntry]:
 @dataclass(slots=True)
 class _MMSInterfaceAnalysisState:
     base_picture: BasePicture
-    analyzer: VariablesAnalyzer
+    usage_tracker: UsageTracker
+    alias_links: list[tuple[Variable, Variable, str]]
     type_graph: TypeGraph
     debug: bool
     hits: list[MMSInterfaceHit] = dataclass_field(default_factory=_empty_mms_hits)
@@ -97,15 +99,15 @@ def _collect_write_locations(  # noqa: PLR0915
     if variable is None:
         return None
 
-    aliases = find_all_aliases(variable, state.analyzer._alias_links, debug=state.debug)
+    aliases = find_all_aliases(variable, state.alias_links, debug=state.debug)
     aliases.insert(0, (variable, ""))
-    upstream_aliases = find_all_aliases_upstream(variable, state.analyzer._alias_links)
+    upstream_aliases = find_all_aliases_upstream(variable, state.alias_links)
 
     field_writes: dict[str, list[list[str]]] = {}
     whole_var_writes: list[list[str]] = []
 
     for alias_var, prefix in aliases:
-        usage = state.analyzer.usage_tracker.get_usage(alias_var)
+        usage = state.usage_tracker.get_usage(alias_var)
         for field, locations in (usage.field_writes or {}).items():
             if prefix and field:
                 full_field = f"{prefix}.{field}"
@@ -121,7 +123,7 @@ def _collect_write_locations(  # noqa: PLR0915
                 whole_var_writes.append(location)
 
     for alias_var, strip_prefix in upstream_aliases:
-        usage = state.analyzer.usage_tracker.get_usage(alias_var)
+        usage = state.usage_tracker.get_usage(alias_var)
         for field, locations in (usage.field_writes or {}).items():
             if strip_prefix:
                 if field == strip_prefix:
@@ -393,14 +395,16 @@ def _walk_modules(
 
 def collect_mms_inventory_entries(
     base_picture: BasePicture,
-    analyzer: VariablesAnalyzer,
+    usage_tracker: UsageTracker,
+    alias_links: list[tuple[Variable, Variable, str]],
     type_graph: TypeGraph,
     *,
     debug: bool = False,
 ) -> tuple[list[MMSInterfaceHit], list[InterfaceInventoryEntry]]:
     state = _MMSInterfaceAnalysisState(
         base_picture=base_picture,
-        analyzer=analyzer,
+        usage_tracker=usage_tracker,
+        alias_links=alias_links,
         type_graph=type_graph,
         debug=debug,
     )

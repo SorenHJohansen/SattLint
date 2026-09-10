@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import cache
 from typing import Literal
 
 
 def _cf(s: str) -> str:
     return s.casefold()
+
+
+@cache
+def _key_for_segments(segments: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(_cf(s) for s in segments)
 
 
 type CanonicalPathKey = tuple[str, ...]
@@ -29,7 +35,7 @@ class CanonicalPath:
     segments: tuple[str, ...]
 
     def key(self) -> CanonicalPathKey:
-        return tuple(_cf(s) for s in self.segments)
+        return _key_for_segments(self.segments)
 
     def join(self, *more: str) -> CanonicalPath:
         if not more:

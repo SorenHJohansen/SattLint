@@ -1,5 +1,6 @@
 """Contract, mapping, and index helpers for variable analysis."""
 
+# pyright: reportPrivateUsage=false
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
@@ -22,9 +23,14 @@ from ...utils.casefolding import casefold_key, is_anytype_name
 from ...validation.type_helpers import assignment_type_matches as _assignment_type_matches
 from ...validation.type_helpers import is_string_simple_type as _is_string_simple_type
 from ...validation.type_helpers import resolve_variable_field_datatype as _resolve_variable_field_datatype
+from ..shared._contract_index import (
+    ModuleTypeContract,
+    compute_cyclic_owner_ids,
+)
 from ..shared._validators import AnyTypeFieldContract
 from ..shared._walk_utils import iter_nested_modules
 from ..shared.variable_utils import mapping_target_name
+from ._contract_summary_provider import ContractSummaryProvider
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer
@@ -147,8 +153,21 @@ def _get_required_parameter_names_for_typedef(
     if cached is not None:
         return cached
 
-    # Share recursion-sensitive state across nested extractors so typedef cycles
-    # short-circuit to an in-progress placeholder instead of expanding forever.
+    # Route acyclic typedef summaries through the isolated-session provider. Session
+    # analyzers never reach here (param-mapping validation is suppressed for their whole
+    # lifetime), but we guard on the marker anyway to keep the recursion invariant explicit.
+    if not getattr(self, "_is_contract_session", False):
+        provider = self._ensure_contract_summary_provider()
+        cyclic_owner_ids = self._lift_cyclic_owner_ids(provider)
+        if owner_id not in cyclic_owner_ids:
+            contract = provider.get(moduletype)
+            required_names = _derive_required_names(moduletype, contract)
+            self.required_parameter_names_by_owner[owner_id] = required_names
+            return required_names
+
+    # Recursive (or provider-unavailable) typedef: legacy fresh-extractor path. Share
+    # recursion-sensitive state across nested extractors so typedef cycles short-circuit
+    # to an in-progress placeholder instead of expanding forever.
     self.required_parameter_names_by_owner[owner_id] = {}
 
     extractor = _make_nested_contract_extractor(self)
@@ -170,6 +189,58 @@ def _get_required_parameter_names_for_typedef(
     return required_names
 
 
+def _ensure_contract_summary_provider(self: VariablesAnalyzer) -> ContractSummaryProvider:
+    provider = self.contract_summary_provider
+    if provider is None:
+        provider = ContractSummaryProvider(
+            self.bp,
+            collector_class=type(self),
+            unavailable_libraries=frozenset(self.unavailable_libraries),
+            analyzed_target_is_library=self.analyzed_target_is_library,
+            include_dependency_moduletype_usage=self.include_dependency_moduletype_usage,
+            shared_artifacts=getattr(self, "_shared_artifacts", None),
+        )
+        self.contract_summary_provider = provider
+    return provider
+
+
+def _lift_cyclic_owner_ids(
+    self: VariablesAnalyzer,
+    provider: ContractSummaryProvider,
+) -> frozenset[int]:
+    cyclic_owner_ids = self.cyclic_owner_ids
+    if cyclic_owner_ids is None:
+        cyclic_owner_ids = compute_cyclic_owner_ids(
+            self.bp,
+            list(self.bp.moduletype_defs or []),
+            unavailable_libraries=frozenset(self.unavailable_libraries),
+        )
+        self.cyclic_owner_ids = cyclic_owner_ids
+    return cyclic_owner_ids
+
+
+def _derive_required_names(
+    moduletype: ModuleTypeDef,
+    contract: ModuleTypeContract,
+) -> dict[str, str]:
+    """Project required parameter names from a contract, matching legacy semantics.
+
+    A parameter is required when it is read or written and is not display-only
+    (UI-only). Original spelling is recovered from the typedef's own parameter list.
+    """
+    original_by_key: dict[str, str] = {
+        casefold_key(variable.name): variable.name for variable in (moduletype.moduleparameters or [])
+    }
+    required_names: dict[str, str] = {}
+    for key, effect in contract.effects_by_parameter.items():
+        if not (effect.read or effect.written):
+            continue
+        if effect.ui_read and not effect.non_ui_read:
+            continue
+        required_names[key] = original_by_key.get(key, key)
+    return required_names
+
+
 def _make_nested_contract_extractor(self: VariablesAnalyzer) -> VariablesAnalyzer:
     extractor = type(self)(
         self.bp,
@@ -181,6 +252,7 @@ def _make_nested_contract_extractor(self: VariablesAnalyzer) -> VariablesAnalyze
         selected_issue_kinds=None,
         trace_recorder=None,
         build_anytype_contracts=False,
+        shared_artifacts=getattr(self, "_shared_artifacts", None),
     )
     extractor_any: Any = extractor
     extractor_any._required_parameter_names_by_owner = self.required_parameter_names_by_owner
@@ -257,6 +329,7 @@ def _check_param_mappings_for_type_instance(
             inst.moduletype_name,
             current_library=current_library,
             unavailable_libraries=self.unavailable_libraries,
+            moduletype_index=getattr(self, "typedef_index", None),
         )
     except ValueError:
         return
@@ -708,6 +781,12 @@ class VariablesContractsMixin:
         moduletype: ModuleTypeDef,
     ) -> dict[str, str]:
         return _get_required_parameter_names_for_typedef(self, moduletype)
+
+    def _ensure_contract_summary_provider(self: Any) -> ContractSummaryProvider:
+        return _ensure_contract_summary_provider(self)
+
+    def _lift_cyclic_owner_ids(self: Any, provider: ContractSummaryProvider) -> frozenset[int]:
+        return _lift_cyclic_owner_ids(self, provider)
 
     def _check_param_mappings_for_single(
         self: Any,

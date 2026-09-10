@@ -156,11 +156,11 @@ def test_reset_contamination_remaining_branch_coverage(caplog: Any) -> None:
                         ),
                     ),
                     SFCAlternative(
-                        branches=[[Assignment(target=VarRef(name="Counter"), value=VarRef(name="OpSeq.Reset"))]]
-                    ),  # pyright: ignore[reportArgumentType]
+                        branches=[[Assignment(target=VarRef(name="Counter"), value=VarRef(name="OpSeq.Reset"))]],  # pyright: ignore[reportArgumentType]
+                    ),
                     SFCParallel(
-                        branches=[[Assignment(target=VarRef(name="Counter"), value=VarRef(name="OpSeq.Reset"))]]
-                    ),  # pyright: ignore[reportArgumentType]
+                        branches=[[Assignment(target=VarRef(name="Counter"), value=VarRef(name="OpSeq.Reset"))]],  # pyright: ignore[reportArgumentType]
+                    ),
                 ],
             )
         ],

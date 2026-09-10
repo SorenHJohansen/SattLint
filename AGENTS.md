@@ -3,6 +3,22 @@
 > Single AI control-plane entry for SattLint.
 > Supporting docs are references, not parallel authorities.
 
+## ⚠️ CODEBASE EXPLORATION: SEMBLE ONLY — ABSOLUTE REQUIREMENT
+
+**Semble is the ONLY acceptable tool for exploring the codebase. It is not a preference — it is a hard requirement.**
+
+You MUST use Semble (`semble_search` / `semble_find_related`) for ALL codebase exploration and source discovery. This is the FIRST tool you reach for, always.
+
+You MUST NOT use `rg`, `ripgrep`, `grep`, `read`, `glob`, `find`, `ls`, `cat`, or ANY similar search/read tool to explore the codebase. These are forbidden for discovery — do not reach for them, do not fall back to them, do not "just take a quick look."
+
+- **First attempt is ALWAYS Semble.** If a Semble search is possible for the query, use it. No exceptions.
+- **Never fall back to ripgrep/grep/read/glob** because Semble "seems slower" or you are "already holding a file."
+- **Navigate directly to Semble results** — do not re-search the same content with another tool.
+- **Use `find_related` to discover similar code** elsewhere in the same repo instead of grepping for the pattern.
+- If a Semble search returns nothing useful, refine the query or retry — only then consider a documented exception.
+
+This rule exists because Semble is the indexed, accurate, and sanctioned way to explore this repository. The forbidden tools bypass that index and produce stale or incomplete results.
+
 ## Quick Reference
 
 **Purpose:** SattLint is a parser, analyzer, and validation toolchain for SattLine, with a CLI and a Textual terminal UI.
@@ -27,18 +43,17 @@
 - For real-target debugging, check `~/.config/sattlint/config.toml` before assuming the repo contains the source file; follow `program_dir`, `ABB_lib_dir`, `icf_dir`, and `other_lib_dirs` to the actual external SattLine libraries.
 - Treat SattLine source files discovered outside this repository root as read-only evidence; inspect them when needed, but do not edit them unless the user explicitly asks to work in that external repository.
 - Read only the matching `.github/instructions/*.md` files for the touched surface.
-- Use `docs/maintainers/repo-map.md` when owner routing is still unclear.
-- Use `docs/public/architecture.md` for layering and runtime boundaries.
-- Use `docs/maintainers/quality-gates.md` for wider validation commands and finish gates.
+- Use `AGENTS_REFERENCE.md` when owner routing, validation routes, or gate details are unclear.
+- Use `ARCHITECTURE.md` for layering and runtime boundaries.
 
 ## Key Docs
 
-- `docs/maintainers/repo-map.md`, `docs/public/architecture.md`, `docs/maintainers/quality-gates.md`
-- `docs/design-docs/`, `.github/instructions/*.md`
+- `AGENTS_REFERENCE.md` (repo map, quality gates, validation map, core beliefs, deferred work), `ARCHITECTURE.md`
+- `.github/instructions/*.md`
 
 ## Critical Invariants
 
-- Keep `AGENTS.md` as the only root AI authority (core-beliefs #2).
+- Keep `AGENTS.md` as the only root AI authority (AGENTS_REFERENCE.md core-beliefs #2).
 - Start from the owning seam. Run focused executable validation before widening.
 - `sattlint syntax-check` stays strict (core-beliefs #4/#10). No silent fallback behavior.
 - Follow core-beliefs typing discipline (#14, #26, #27, #29): objects over dicts/tuples, no avoidable `Any`, Pyright strict-clean, typed dispatch over reflection.
@@ -52,7 +67,7 @@
 ## Workflow
 
 - Go from `AGENTS.md` to the owner file or failing command immediately.
-- Load `docs/maintainers/repo-map.md` or `docs/public/architecture.md` only when local routing is still unclear.
+- Load `AGENTS_REFERENCE.md` or `ARCHITECTURE.md` only when local routing is still unclear.
 - Make the smallest grounded edit that tests the current hypothesis.
 - Run the first focused validation immediately after the first substantive edit.
 - Widen to Ruff, Pyright, `ruff format --check`, or pre-commit only after the local check passes.
@@ -86,6 +101,7 @@ Only `trash-put` is an allowed alternative — and only because it is explicitly
 - Do not preserve temporary compatibility seams unless the phase plan still requires them.
 - Do not keep parallel AI workflow docs with independent rules.
 - Do not skip focused validation when a narrower executable check exists.
+- Do NOT invoke `rg`, `grep`, `read`, `glob`, `find`, `ls`, `cat`, or similar tools for codebase exploration — Semble is the only sanctioned tool (see top of file).
 - Never use `git commit --no-verify` or `git push --no-verify`.
 
 ## Bulk Edit Prohibition
@@ -95,4 +111,4 @@ Only `trash-put` is an allowed alternative — and only because it is explicitly
 - Every code change must be made individually with the Edit tool, with verification after each edit.
 - For broad multi-file changes, state the plan and confirm scope before editing.
 
-Last Updated: 2026-09-03
+Last Updated: 2026-09-08

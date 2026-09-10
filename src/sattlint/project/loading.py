@@ -1,6 +1,7 @@
 # pyright: reportPrivateUsage=false
 from __future__ import annotations
 
+import contextlib
 from collections import defaultdict
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import replace
@@ -201,6 +202,9 @@ def load_project(  # noqa: PLR0915
         cached_project_tuple = cast(tuple[object, ...], cached_project) if isinstance(cached_project, tuple) else None
         if cached_project_tuple is not None and len(cached_project_tuple) == 2:
             root_bp, graph = cast(tuple[BasePicture, ProjectGraph], cached_project_tuple)
+            with contextlib.suppress(AttributeError):
+                # Test doubles may use slotted graph stubs without this field; it's diagnostic-only.
+                graph.loaded_from_cache = True
             _attach_analysis_cache_metadata(
                 graph,
                 cache_key=key,

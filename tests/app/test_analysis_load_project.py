@@ -1,4 +1,5 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportIndexIssue=false
+from sattlint.config import DEFAULT_CONFIG
 from tests.helpers import AnalysisGraphStub, named_object
 from tests.helpers.app_analysis_support import *
 
@@ -582,7 +583,7 @@ def test_run_variable_analysis_shadowing_only_uses_shadowing_report_and_pauses(m
 
     pauses: list[str] = []
     commands_application.run_variable_analysis(
-        app.DEFAULT_CONFIG.copy(),
+        DEFAULT_CONFIG.copy(),
         {IssueKind.SHADOWING},
         pause_fn=lambda: pauses.append("pause"),
     )
@@ -604,7 +605,7 @@ def test_run_checks_success_path_pauses(monkeypatch):
     monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
 
     checks_application.run_checks(
-        app.DEFAULT_CONFIG.copy(),
+        DEFAULT_CONFIG.copy(),
         ["state-inference"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -665,7 +666,7 @@ def test_run_icf_validation_builds_moduletype_index(monkeypatch, tmp_path):
         )
 
     commands_application.run_icf_validation(
-        app.DEFAULT_CONFIG.copy(),
+        DEFAULT_CONFIG.copy(),
         configured_icf_files_fn=lambda _cfg: (icf_dir, [valid_file]),
         load_program_ast_fn=cast(Any, lambda _cfg, _program_name: ("bp-valid", graph)),
         validate_icf_entries_against_program_fn=fake_validate,

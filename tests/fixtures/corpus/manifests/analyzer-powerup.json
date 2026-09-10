@@ -1,10 +1,10 @@
 {
     "case_id": "analyzer-powerup",
-    "target_file": "../semantic/analyzer/InitialValuesMissing.s",
+    "target_file": "../semantic/analyzer/UnsafeDefaults.s",
     "mode": "analyzer-powerup",
     "expectation": {
         "expected_finding_ids": [
-            "initial-values.missing_required_default"
+            "unsafe_defaults.true_boolean_default"
         ],
         "artifact_fragments": {
             "status.json": {
@@ -14,9 +14,9 @@
             },
             "summary.json": {
                 "analyzer_key": "powerup",
-                "finding_count": 1,
+                "finding_count": 2,
                 "rule_counts": {
-                    "initial-values.missing_required_default": 1
+                    "unsafe_defaults.true_boolean_default": 2
                 }
             }
         },

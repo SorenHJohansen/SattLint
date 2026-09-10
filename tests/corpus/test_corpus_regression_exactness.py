@@ -91,7 +91,7 @@ def _run_raw_analyzer(target_path: Path, payload: dict[str, object]) -> object:
     for spec in deterministic_dependency_order(_spec_closure(target_spec)):
         report = run_registry_analyzer(spec, context, use_shared_artifacts=True)
         if context.shared_artifacts is not None:
-            context.shared_artifacts.reports_by_analyzer_key[spec.key] = report
+            context.shared_artifacts.derived_reports[spec.key] = report
     return report
 
 

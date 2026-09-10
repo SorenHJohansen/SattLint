@@ -171,7 +171,7 @@ class MinMaxValidator:
                 part,
             )
             tokens.extend(sub_parts or [part])
-        return {t.lower() for t in tokens if t}
+        return {t.casefold() for t in tokens if t}
 
     def _minmax_flags(self, name: str) -> tuple[bool, bool, bool]:
         tokens = self._tokenize_name(name)

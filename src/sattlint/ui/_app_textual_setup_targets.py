@@ -1,10 +1,11 @@
-# pyright: reportPrivateUsage=false, reportUnusedFunction=false
 from __future__ import annotations
 
 from contextlib import suppress
+from importlib.resources import files as _resource_files
 from pathlib import Path
 from typing import Any, cast
 
+from ..__version__ import __version__ as _sattlint_version
 from ..runs import load_run as _load_run
 from ._app_textual_setup_display import (
     _configured_target_names,
@@ -22,6 +23,7 @@ from ._app_textual_shared import (
     _TEXTUAL_LIST_VIEW,
     _TEXTUAL_QUERY_ERRORS,
     _TEXTUAL_STATIC,
+    APP_SHELL_BINDINGS,
     _config_directory_paths,
     _stringify_list_values,
     _stringify_value,
@@ -156,7 +158,7 @@ def on_results_runs_list_highlighted(self: Any, event: Any) -> None:
     summary = summaries[index]
     record = _load_run(summary.run_id)
     if record is None:
-        self._write_output("That run could not be loaded.")
+        self._report_error("Could not load run", "That run could not be loaded.")
         return
     self._selected_run_record = record
     self._render_selected_run()
@@ -365,24 +367,44 @@ def _apply_setup_dir_choice(self: Any, field_key: str, selected_path: Path, *, l
     self._write_output(f"Updated {label} from the Setup view.")
 
 
+def _load_sqhj_banner() -> str:
+    raw_banner = _resource_files("sattlint.assets").joinpath("sqhj").read_text(encoding="utf-8")
+    return raw_banner.replace("\u00a0", " ").strip("\n")
+
+
+_SQHJ_ASCII = _load_sqhj_banner()
+
+
 def _open_help_popup(self: Any) -> None:
     get_help_text_fn = getattr(self, "_get_help_text_fn", None)
     if not callable(get_help_text_fn):
-        self._show_help_modal("No help content available.")
-        return
+        help_text = "No help content available."
+    else:
+        help_text = str(get_help_text_fn(self._cfg)).strip() or "No help content available."
 
-    help_text = str(get_help_text_fn(self._cfg)).strip() or "No help content available."
+    shortcut_lines = ["Keyboard Shortcuts", "=" * 18, ""]
+    for key, _action_name, description in APP_SHELL_BINDINGS:
+        shortcut_lines.append(f"  {key:20s}  {description}")
+
+    about_lines = [
+        "About SattLint",
+        "=" * 14,
+        "",
+        "SattLint — parser, analyzer, editor-facade, and repo-audit",
+        "toolchain for the SattLine language.",
+        "",
+        f"Version: {_sattlint_version}",
+    ]
+
     help_text = (
-        f"{help_text}\n\nKeyboard shortcuts\n"
-        "1-5 switch views\n"
-        "/ filters Analyze and Setup lists\n"
-        "? / Ctrl+H open help\n"
-        "Esc goes back to Analyze from other views\n"
-        "Ctrl+C copies Session output\n"
-        "Ctrl+G cancels a running analysis\n"
-        "Ctrl+L clears Session output\n"
-        "Tab / Shift+Tab move focus\n"
-        "Q quits the shell"
+        f"{help_text}\n\n"
+        + "\n".join(shortcut_lines)
+        + "\n\n"
+        + "\n".join(about_lines)
+        + "\n\n"
+        + "Made by:"
+        + "\n\n"
+        + _SQHJ_ASCII
     )
     self._show_help_modal(help_text)
 

@@ -40,6 +40,20 @@ def _format_line_range(start_line: int, end_line: int) -> str:
     return f"{start_line}-{end_line}"
 
 
+def _comment_code_site(hit: object, path: Path) -> str:
+    equation_name = getattr(hit, "equation_name", None)
+    sequence_name = getattr(hit, "sequence_name", None)
+    step_name = getattr(hit, "step_name", None)
+    if equation_name:
+        return f"EQ:{equation_name}"
+    if sequence_name:
+        site = f"SQ:{sequence_name}"
+        if step_name:
+            return f"{site} > STEP:{step_name}"
+        return site
+    return str(path)
+
+
 def analyze_comment_code_files(
     paths: Iterable[Path],
     basepicture_name: str,
@@ -61,7 +75,7 @@ def analyze_comment_code_files(
                 Issue(
                     kind="comment_code_read_error",
                     message=f"{path.name}: {exc}",
-                    data={"path": str(path)},
+                    data={"path": str(path), "site": str(path), "context": str(exc)},
                 )
             )
             continue
@@ -98,6 +112,8 @@ def analyze_comment_code_files(
                         "equation_name": hit.equation_name,
                         "sequence_name": hit.sequence_name,
                         "step_name": hit.step_name,
+                        "site": _comment_code_site(hit, path),
+                        "context": _comment_preview(hit.text),
                     },
                 )
             )
@@ -112,6 +128,18 @@ def analyze_comment_code_files(
     )
 
 
+def _target_source_paths(context: AnalysisContext) -> set[Path]:
+    graph = context.graph
+    if graph is None:
+        return set()
+    root_source_path_for_basepicture = getattr(graph, "root_source_path_for_basepicture", None)
+    if callable(root_source_path_for_basepicture):
+        root_source_path = root_source_path_for_basepicture(context.base_picture)
+        if isinstance(root_source_path, Path):
+            return {root_source_path}
+    return set(getattr(graph, "source_files", set()) or set())
+
+
 def analyze_comment_code(context: AnalysisContext) -> CommentCodeReport:
-    paths: Iterable[Path] = getattr(context.graph, "source_files", set()) if context.graph else set()
+    paths = _target_source_paths(context)
     return analyze_comment_code_files(paths, context.base_picture.header.name)

@@ -6,7 +6,7 @@
         "expected_finding_ids": [
             "semantic.data-dependency-initialization-order",
             "semantic.never-read-write",
-            "semantic.read-before-write",
+            "semantic.signal-lifecycle-read-before-write",
             "semantic.read-only-datatype-field",
             "semantic.signal-lifecycle-read-before-write",
             "semantic.signal-lifecycle-unconsumed-write",
@@ -22,7 +22,7 @@
                 "rule_counts": {
                     "semantic.data-dependency-initialization-order": 2,
                     "semantic.never-read-write": 1,
-                    "semantic.read-before-write": 2,
+                    "semantic.signal-lifecycle-read-before-write": 2,
                     "semantic.read-only-datatype-field": 1,
                     "semantic.signal-lifecycle-read-before-write": 1,
                     "semantic.signal-lifecycle-unconsumed-write": 1,

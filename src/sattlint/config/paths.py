@@ -36,3 +36,14 @@ def get_projects_dir() -> Path:
     projects_dir = base / "sattlint" / "projects"
     projects_dir.mkdir(parents=True, exist_ok=True)
     return projects_dir
+
+
+def get_change_review_dir() -> Path:
+    """Return the default directory for generated Change Review artifacts.
+
+    The directory sits alongside the user config (``~/.config/sattlint/change-review``
+    or the equivalent per-platform location) and is created on demand.
+    """
+    review_dir = get_config_path().parent / "change-review"
+    review_dir.mkdir(parents=True, exist_ok=True)
+    return review_dir

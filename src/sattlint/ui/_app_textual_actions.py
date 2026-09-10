@@ -1,5 +1,3 @@
-# pyright: reportMissingImports=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownLambdaType=false, reportGeneralTypeIssues=false, reportInvalidTypeForm=false, reportConstantRedefinition=false, reportPrivateUsage=false, reportUnusedClass=false, reportUnusedFunction=false, reportUnknownArgumentType=false
-
 from __future__ import annotations
 
 import asyncio
@@ -39,18 +37,21 @@ from ._app_textual_shared import (
     _TEXTUAL_SELECTION_LIST,
     _TEXTUAL_STATIC,
     _TEXTUAL_VERTICAL,
-    APP_SHELL_BINDINGS,
     NO_PROJECT_NOTICE,
     InteractionRequest,
     _query_required,
     _stringify_list_values,
     _TextualOutput,
 )
-from ._app_textual_widgets import _AstRefreshModalScreen, _FileBrowserScreen, _InteractionPane
+from ._app_textual_widgets import _AstRefreshModalScreen, _ErrorScreen, _FileBrowserScreen, _InteractionPane
 
 _TARGET_HEADER_RE = re.compile(r"^===\s*Target:\s*(?P<name>.+?)\s*===\s*$")
 _PHASE_HEADER_RE = re.compile(r"^\[(?P<index>\d+)/(?P<total>\d+)\]\s+(?P<label>.+)$")
 _NUMBERED_ITEM_RE = re.compile(r"^(?P<indent>\s*)(?P<number>\d+)\.\s+(?P<label>.+)$")
+
+# Marker printed by the shared analysis pipeline right before the exception text of
+# a target that failed to load. The UI surfaces the following output as an error popup.
+_TARGET_LOAD_ERROR_MARKER = "? Failed to load target:"
 
 _OUTPUT_ACCENT = "#001ba3"
 _OUTPUT_MUTED = "#24505f"
@@ -297,6 +298,50 @@ def _rebuild_output_widget(self: Any, output_widget: Any) -> None:
     self._last_output_line = previous_line
 
 
+def _looks_like_section_header(line_text: str) -> bool:
+    stripped = line_text.strip()
+    if _TARGET_HEADER_RE.match(stripped) or _PHASE_HEADER_RE.match(stripped):
+        return True
+    return stripped.startswith("--- ")
+
+
+def _capture_error_modal_output(self: Any, text: str) -> str | None:
+    """Return a user-facing error message to pop up for the given output chunk.
+
+    The shared analysis pipeline prints ``? Failed to load target:`` immediately
+    before the exception text on the next emitted chunk. Detect that marker and
+    capture the following chunk so the UI can surface the failure in a popup
+    instead of burying it in the Session output.
+
+    Returns the message to show, or ``None`` when the chunk is not the body of a
+    pending target-load failure report.
+    """
+    pending = getattr(self, "_pending_error_target_name", None)
+    if pending is not None:
+        self._pending_error_target_name = None
+        stripped = text.strip()
+        if not stripped or _looks_like_section_header(stripped):
+            return None
+        return f"Target {pending!r} failed to load.\n\n{stripped}"
+
+    for line in text.splitlines():
+        header_match = _TARGET_HEADER_RE.match(line.strip())
+        if header_match is not None:
+            self._last_output_target_name = header_match.group("name").strip()
+        if line.strip() == _TARGET_LOAD_ERROR_MARKER:
+            self._pending_error_target_name = getattr(self, "_last_output_target_name", None)
+    return None
+
+
+def _show_error_modal(self: Any, title: str, message: str) -> None:
+    self.push_screen(_ErrorScreen(title=title, message=message))
+
+
+def _report_error(self: Any, title: str, message: str) -> None:
+    self._write_output(message)
+    self._show_error_modal(title, message)
+
+
 def _write_output(self: Any, text: str) -> None:
     output_widget = self.query_one("#output")
     normalized = text.replace("\r\n", "\n").replace("\r", "\n")
@@ -305,6 +350,7 @@ def _write_output(self: Any, text: str) -> None:
 
     follow_output = bool(getattr(output_widget, "is_vertical_scroll_end", True))
     line_texts = [chunk[:-1] if chunk.endswith("\n") else chunk for chunk in normalized.splitlines(keepends=True)]
+    error_message = self._capture_error_modal_output(normalized)
     self._session_output_lines.extend(line_texts)
     trimmed = self._trim_session_output_lines()
     if trimmed:
@@ -316,6 +362,8 @@ def _write_output(self: Any, text: str) -> None:
         self._last_output_line = previous_line
     if follow_output:
         output_widget.scroll_end(animate=False)
+    if error_message is not None:
+        self._show_error_modal("Failed to load target", error_message)
 
 
 def _emit_output_from_thread(self: Any, text: str) -> None:
@@ -392,6 +440,10 @@ def action_show_help(self: Any) -> None:
     self._handle_toolbar_action("action-help")
 
 
+def action_toggle_results_empty(self: Any) -> None:
+    self._toggle_results_show_empty_analyzers()
+
+
 def action_prompt_view_filter(self: Any) -> None:
     if self._interaction_screen_active():
         return
@@ -459,21 +511,21 @@ def action_clear_output(self: Any) -> None:
 
 
 def _make_project_relative(path: str, anchor: Path) -> str:
+    if not path or not path.strip():
+        return ""
     p = Path(path)
-    if not p.is_absolute():
-        return str(p)
     try:
-        return str(p.relative_to(anchor))
+        return p.relative_to(anchor).as_posix()
     except ValueError:
-        return str(p)
+        return p.as_posix()
 
 
 def action_save_config(self: Any) -> None:
     if self._active_view == "settings":
         try:
-            config_module.save_app_settings(config_module.get_config_path(), self._cfg)
+            config_module.save_app_settings(config_module.get_config_path(), self._app_only_cfg)
         except ValueError as exc:
-            self._write_output(f"Save failed: {exc}")
+            self._report_error("Save failed", f"Save failed: {exc}")
             return
         self._dirty = False
         self._write_output("App settings saved to your user config.")
@@ -507,7 +559,7 @@ def action_save_config(self: Any) -> None:
     try:
         self._save_config_fn(self._config_path, self._cfg)
     except ValueError as exc:
-        self._write_output(f"Save failed: {exc}")
+        self._report_error("Save failed", f"Save failed: {exc}")
         return
     self._dirty = False
     self._write_output("Configuration saved.")
@@ -630,7 +682,7 @@ def _start_action(
             else:
                 self._emit_output_from_thread(f"{label} interrupted.")
         except Exception as exc:  # pragma: no cover - runtime-only fallback  # noqa: BLE001
-            self._emit_output_from_thread(f"{label} failed: {exc}")
+            self.call_from_thread(self._report_error, f"{label} failed", f"{label} failed: {exc}")
         finally:
             self.call_from_thread(lambda: self._finish_action(dirty, clear_dirty_on_success=clear_dirty))
 
@@ -736,31 +788,6 @@ def _refresh_view(self: Any) -> None:  # noqa: PLR0915
             self._refresh_results_view()
 
 
-def _show_keyboard_shortcuts(self: Any) -> None:
-    bindings = APP_SHELL_BINDINGS
-    lines: list[str] = ["Keyboard Shortcuts", "=" * 18, ""]
-    for key, _action_name, description in bindings:
-        lines.append(f"  {key:20s}  {description}")
-    lines.append("")
-    lines.append("Press Escape or Enter to close.")
-    self._show_help_modal("\n".join(lines))
-
-
-def _show_about(self: Any) -> None:
-    about_lines = [
-        "About SattLint",
-        "=" * 14,
-        "",
-        "SattLint — parser, analyzer, editor-facade, and repo-audit",
-        "toolchain for the SattLine language.",
-        "",
-        "Version: see pyproject.toml",
-        "",
-        "Press Escape or Enter to close.",
-    ]
-    self._show_help_modal("\n".join(about_lines))
-
-
 def _project_loaded(self: Any) -> bool:
     return getattr(self, "_project", None) is not None
 
@@ -822,7 +849,7 @@ def _open_project_browser(self: Any) -> None:
         try:
             project = _load_project_fn(result)
         except (ValueError, OSError) as exc:
-            self._write_output(f"Failed to load configuration: {exc}")
+            self._report_error("Failed to load configuration", f"Failed to load configuration: {exc}")
             return
         self._load_project_object(project)
         self._write_output(f"Opened configuration: {result.name}")
@@ -861,12 +888,50 @@ def _new_project(self: Any) -> None:
         try:
             project = _init_project(project_path, name=sanitized)
         except (FileExistsError, OSError, ValueError) as exc:
-            self._write_output(f"Failed to create configuration: {exc}")
+            self._report_error("Failed to create configuration", f"Failed to create configuration: {exc}")
             return
         self._load_project_object(project)
         self._write_output(f"Created configuration: {project_path.name}")
 
     self.present_request(request, on_response_fn=_apply_response)
+
+
+def _delete_project(self: Any) -> None:
+    project = getattr(self, "_project", None)
+    if project is None:
+        self._write_output("No configuration is open.")
+        return
+    project_path = project.path
+
+    def _confirm_delete(response: object) -> None:
+        if not bool(response):
+            self._write_output("Delete canceled.")
+            return
+        try:
+            project_path.unlink()
+        except OSError as exc:
+            self._report_error("Failed to delete configuration", f"Failed to delete configuration: {exc}")
+            return
+        self._project = None
+        self._cfg = dict(cast(dict[str, object], getattr(self, "_app_only_cfg", {})))
+        self._config_path = None
+        self._dirty = False
+        self._analyze_selected_entry_ids.clear()
+        self._clear_session_output()
+        self._refresh_summary()
+        self._refresh_view()
+        self._refresh_shell_state()
+        self._write_output(f"Deleted configuration: {project_path.name}")
+
+    self.present_request(
+        InteractionRequest(
+            kind="confirm",
+            title="Delete configuration",
+            message=f"Delete {project_path.name}? This cannot be undone.",
+            note="The configuration file will be permanently removed.",
+        ),
+        on_response_fn=_confirm_delete,
+    )
 
 
 def _persist_project(self: Any) -> None:
@@ -891,7 +956,7 @@ def _persist_project(self: Any) -> None:
     try:
         _save_slproj(project.path, cast(ProjectDict, project_data))
     except (ValueError, OSError) as exc:
-        self._write_output(f"Failed to save configuration: {exc}")
+        self._report_error("Failed to save configuration", f"Failed to save configuration: {exc}")
         return
     self._dirty = False
 
@@ -910,7 +975,7 @@ def _launch_active_view(self: Any) -> None:
     self._write_output(f"{view.title} is not available as a standalone action in the Textual shell.")
 
 
-def _refresh_shell_state(self: Any) -> None:
+def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
     if not tuple(getattr(self, "children", ())):
         return
     output_title_widget = _query_required(self, "#output-title", _TEXTUAL_STATIC)
@@ -918,6 +983,7 @@ def _refresh_shell_state(self: Any) -> None:
     interaction_host = _query_required(self, "#interaction-host", _TEXTUAL_VERTICAL)
     launch_button = _query_required(self, "#view-primary-action", _TEXTUAL_BUTTON)
     analyze_run_selected_button = _query_required(self, "#analyze-run-selected", _TEXTUAL_BUTTON)
+    analyze_generate_change_review_button = _query_required(self, "#analyze-generate-change-review", _TEXTUAL_BUTTON)
     analyze_cancel_running_button = _query_required(self, "#analyze-cancel-running", _TEXTUAL_BUTTON)
     analyze_clear_selection_button = _query_required(self, "#analyze-clear-selection", _TEXTUAL_BUTTON)
     analyze_clear_output_button = _query_required(self, "#analyze-clear-output", _TEXTUAL_BUTTON)
@@ -942,6 +1008,9 @@ def _refresh_shell_state(self: Any) -> None:
         or interaction_locked
         or not self._setup_has_targets()
         or not analyze_plan.is_runnable
+    )
+    analyze_generate_change_review_button.disabled = (
+        toolbar_disabled or not analyze_view or interaction_locked or not self._setup_has_targets()
     )
     analyze_cancel_running_button.disabled = not (
         self._busy and self._active_job_action_id == "action-analyze" and analyze_view
@@ -1001,6 +1070,7 @@ def _refresh_shell_state(self: Any) -> None:
         "settings-edit-run-history-limit",
         "settings-toggle-debug",
         "settings-edit-output-retention",
+        "settings-edit-review-output-dir",
     ):
         _query_required(self, f"#{btn_id}", _TEXTUAL_BUTTON).disabled = toolbar_disabled or not settings_view
     if setup_view and self._project_loaded():
@@ -1034,6 +1104,7 @@ def on_button_pressed(self: Any, event: Any) -> None:
         "setup-target-browse": self._open_file_browser,
         "view-primary-action": self._launch_active_view,
         "analyze-run-selected": self._run_selected_analysis_plan,
+        "analyze-generate-change-review": self._run_generate_change_review,
         "analyze-cancel-running": self.action_cancel_running_analysis,
         "analyze-clear-selection": self._clear_selected_analysis_plan,
         "analyze-clear-output": self._clear_session_output,
@@ -1057,12 +1128,17 @@ def on_button_pressed(self: Any, event: Any) -> None:
         "settings-edit-output-retention": lambda: self._queue_app_int_prompt(
             "output", "retention_lines", label="session output retention"
         ),
+        "settings-edit-review-output-dir": lambda: self._queue_app_text_prompt(
+            "review",
+            "output_dir",
+            label="review output folder",
+            message="Enter the directory where Change Review artifacts are written. Leave blank to use the default directory.",
+        ),
         "menu-file-open-project": self._open_project_browser,
         "menu-file-new-project": self._new_project,
+        "setup-delete-project": self._delete_project,
+        "menu-help": self._open_help_popup,
         "action-quit": self._request_quit_shell,
-        "menu-help-shortcuts": lambda: self._show_keyboard_shortcuts(),
-        "menu-help-documentation": self._open_help_popup,
-        "menu-help-about": lambda: self._show_about(),
     }
     action = button_actions.get(button_id)
     if action is not None:
@@ -1087,6 +1163,9 @@ if TYPE_CHECKING:
         ) -> str: ...
         def _trim_session_output_lines(self) -> bool: ...
         def _rebuild_output_widget(self, output_widget: Any) -> None: ...
+        def _capture_error_modal_output(self, text: str) -> str | None: ...
+        def _show_error_modal(self, title: str, message: str) -> None: ...
+        def _report_error(self, title: str, message: str) -> None: ...
         def _write_output(self, text: str) -> None: ...
         def _emit_output_from_thread(self, text: str) -> None: ...
         def _clear_session_output(self) -> None: ...
@@ -1094,8 +1173,6 @@ if TYPE_CHECKING:
         def _interaction_screen_active(self) -> bool: ...
         def _handle_toolbar_action(self, button_id: str) -> None: ...
         def on_click(self, event: Any) -> None: ...
-        def _show_keyboard_shortcuts(self) -> None: ...
-        def _show_about(self) -> None: ...
         def _project_loaded(self) -> bool: ...
         def _interaction_locked(self) -> bool: ...
         def _load_project_object(self, project: Any) -> None: ...
@@ -1103,6 +1180,7 @@ if TYPE_CHECKING:
         def _finish_project_ast_refresh(self, result: object | None) -> None: ...
         def _open_project_browser(self) -> None: ...
         def _new_project(self) -> None: ...
+        def _delete_project(self) -> None: ...
         def _persist_project(self) -> None: ...
         def _show_setup_no_project(self) -> None: ...
         def _show_results_no_project(self) -> None: ...
@@ -1111,6 +1189,7 @@ if TYPE_CHECKING:
         def action_show_settings(self) -> None: ...
         def action_show_results(self) -> None: ...
         def action_show_help(self) -> None: ...
+        def action_toggle_results_empty(self) -> None: ...
         def action_prompt_view_filter(self) -> None: ...
         def action_copy_output(self) -> None: ...
         def action_cancel_running_analysis(self) -> None: ...
@@ -1153,6 +1232,9 @@ else:
         _append_output_line_to_widget = _append_output_line_to_widget
         _trim_session_output_lines = _trim_session_output_lines
         _rebuild_output_widget = _rebuild_output_widget
+        _capture_error_modal_output = _capture_error_modal_output
+        _show_error_modal = _show_error_modal
+        _report_error = _report_error
         _write_output = _write_output
         _emit_output_from_thread = _emit_output_from_thread
         _clear_session_output = _clear_session_output
@@ -1160,8 +1242,6 @@ else:
         _interaction_screen_active = _interaction_screen_active
         _handle_toolbar_action = _handle_toolbar_action
         on_click = on_click
-        _show_keyboard_shortcuts = _show_keyboard_shortcuts
-        _show_about = _show_about
         _project_loaded = _project_loaded
         _interaction_locked = _interaction_locked
         _load_project_object = _load_project_object
@@ -1169,6 +1249,7 @@ else:
         _finish_project_ast_refresh = _finish_project_ast_refresh
         _open_project_browser = _open_project_browser
         _new_project = _new_project
+        _delete_project = _delete_project
         _persist_project = _persist_project
         _show_setup_no_project = _show_setup_no_project
         _show_results_no_project = _show_results_no_project
@@ -1177,6 +1258,7 @@ else:
         action_show_settings = action_show_settings
         action_show_results = action_show_results
         action_show_help = action_show_help
+        action_toggle_results_empty = action_toggle_results_empty
         action_prompt_view_filter = action_prompt_view_filter
         action_copy_output = action_copy_output
         action_cancel_running_analysis = action_cancel_running_analysis

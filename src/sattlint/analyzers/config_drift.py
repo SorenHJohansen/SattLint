@@ -102,6 +102,8 @@ class ConfigDriftAnalyzer:
                             }
                             for path, values in sorted(instance_map.items())
                         ],
+                        "site": ".".join(sorted(instance_map)[0]),
+                        "context": f"{moduletype_label}: {', '.join(drifting_parameters)}",
                     },
                 )
             )

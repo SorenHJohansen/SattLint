@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Check out repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up Python 3.13
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -40,11 +40,11 @@ jobs:
       - name: Ruff format check
         run: python -m ruff format --check .
 
-      - name: Pyright on production code
-        run: python -m pyright src/sattlint
+      - name: Pyright on production code and tests
+        run: python -m pyright src/sattlint tests
 
       - name: Full pytest with coverage
-        run: python -m pytest -q --tb=short --cov=sattlint --cov-report=term-missing
+        run: python -m pytest -q --tb=short --cov=sattlint --cov-report=term-missing --cov-fail-under=80
 
       - name: Package smoke (clean wheel install)
         run: |
@@ -55,29 +55,67 @@ jobs:
           /tmp/clean-venv/bin/sattlint --help
           /tmp/clean-venv/bin/sattlint syntax-check tests/fixtures/sample_sattline_files/SattLineFullGrammarTest.s
 
-  windows-smoke:
-    name: Windows smoke
+  windows-gate:
+    name: Windows gate
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Check out repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up Python 3.13
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.13"
 
-      - name: Build wheel
+      - name: Install package with dev tooling
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Ruff lint
+        run: python -m ruff check .
+
+      - name: Ruff format check
+        run: python -m ruff format --check .
+
+      - name: Pyright on production code and tests
+        run: python -m pyright src/sattlint tests
+
+      - name: Full pytest
+        run: python -m pytest -q --tb=short
+
+      - name: Package smoke (clean wheel install)
+        shell: bash
         run: |
           python -m pip install --upgrade pip build
           python -m build --wheel --outdir dist
-
-      - name: Install wheel in clean venv
-        shell: bash
-        run: |
           python -m venv /tmp/clean-venv-win
           /tmp/clean-venv-win/Scripts/pip install dist/*.whl
           /tmp/clean-venv-win/Scripts/sattlint --version
           /tmp/clean-venv-win/Scripts/sattlint --help
           /tmp/clean-venv-win/Scripts/sattlint syntax-check tests/fixtures/sample_sattline_files/SattLineFullGrammarTest.s
+
+  fuzz-smoke:
+    name: Fuzz smoke (SattLint-owned readers)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Install package with fuzz tooling
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[fuzz]"
+
+      - name: ICF reader fuzz smoke
+        run: python scripts/fuzz/icf_fuzzer.py -runs=200000 -max_len=4096 -timeout=5
+
+      - name: Graphics validator fuzz smoke
+        run: python scripts/fuzz/graphics_fuzzer.py -runs=200000 -max_len=4096 -timeout=5

@@ -22,6 +22,7 @@ from typing import Any
 from .. import config as config_module
 from .. import console as console_module
 from ..application import analyze as analyze_application
+from ..application import change_review as change_review_application
 from ..application import checks as checks_application
 from ..application import project as project_application
 from ..config.types import ConfigDict
@@ -47,7 +48,7 @@ from ..core.logging import apply_debug
 from ..core.terminal import clear_screen as core_clear_screen
 from ..core.terminal import clear_windows_console as core_clear_windows_console
 from ..project import support as support_module
-from . import app_commands as commands_application
+from . import commands as commands_application
 from . import config as cli_config
 from . import menu as cli_menu
 from ._interaction import (
@@ -206,6 +207,7 @@ def analysis_handler_fns() -> dict[str, Callable[..., Any]]:
         "run_mms_interface_analysis": analyze_application.run_mms_interface_analysis,
         "run_icf_validation": analyze_application.run_icf_validation,
         "run_comment_code_analysis": analyze_application.run_comment_code_analysis,
+        "generate_change_review": change_review_application.generate_change_review,
     }
 
 

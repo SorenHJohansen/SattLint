@@ -22,6 +22,7 @@ from ...graphics.validation import GraphicsCompositeRecord
 from ...resolution import AccessKind, decorate_segment
 from ...resolution.common import resolve_moduletype_def_strict
 from ...resolution.scope import ScopeContext
+from ...utils.casefolding import casefold_key
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer
@@ -37,8 +38,8 @@ def build_typedef_root_context(
     path: list[str],
 ) -> ScopeContext:
     display_path = [decorate_segment(path[0], "BP"), decorate_segment(path[1], "TD")]
-    env = {variable.name.lower(): variable for variable in moduletype.moduleparameters or []}
-    env.update({variable.name.lower(): variable for variable in moduletype.localvariables or []})
+    env = {casefold_key(variable.name): variable for variable in moduletype.moduleparameters or []}
+    env.update({casefold_key(variable.name): variable for variable in moduletype.localvariables or []})
     context = ScopeContext(
         env=env,
         param_mappings={},

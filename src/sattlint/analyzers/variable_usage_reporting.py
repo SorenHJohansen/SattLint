@@ -89,7 +89,7 @@ def debug_variable_usage(
     )
     _ = analyzer.run()
 
-    matches = _analyzer_any_var_index(analyzer).get(var_name.lower(), [])
+    matches = _analyzer_any_var_index(analyzer).get(var_name.casefold(), [])
     if not matches:
         return f"No variables named {var_name!r} found."
 
@@ -172,7 +172,7 @@ def report_datatype_usage(
     )
     _ = analyzer.run()
 
-    matches = _analyzer_any_var_index(analyzer).get(var_name.lower(), [])
+    matches = _analyzer_any_var_index(analyzer).get(var_name.casefold(), [])
     if not matches:
         return f"Variable {var_name!r} not found."
 
@@ -326,7 +326,7 @@ def report_module_localvar_fields(  # noqa: PLR0915
                 full_field_path = field_path
 
             # Normalize to lowercase for case-insensitive comparison.
-            full_field_path_lower = full_field_path.lower()
+            full_field_path_lower = full_field_path.casefold()
             all_field_reads.setdefault(full_field_path_lower, []).extend(locations)
 
         # Merge field writes and reconstruct the full field path (case-insensitive).
@@ -340,7 +340,7 @@ def report_module_localvar_fields(  # noqa: PLR0915
                 full_field_path = field_path
 
             # Normalize to lowercase for case-insensitive comparison.
-            full_field_path_lower = full_field_path.lower()
+            full_field_path_lower = full_field_path.casefold()
             all_field_writes.setdefault(full_field_path_lower, []).extend(locations)
 
         # Merge whole-variable accesses.

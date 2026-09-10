@@ -65,7 +65,10 @@ def analyze_timing(
         unavailable_libraries=unavailable_libraries,
         analyzed_target_is_library=analyzed_target_is_library,
     )
-    scan_loop_report = analyze_scan_loop_resource_usage(base_picture)
+    scan_loop_report = analyze_scan_loop_resource_usage(
+        base_picture,
+        analyzed_target_is_library=analyzed_target_is_library,
+    )
     return TimingReport(
         name=base_picture.header.name,
         issues=[

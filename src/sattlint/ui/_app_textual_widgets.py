@@ -1,5 +1,3 @@
-# pyright: reportMissingImports=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownLambdaType=false, reportGeneralTypeIssues=false, reportInvalidTypeForm=false, reportConstantRedefinition=false, reportPrivateUsage=false, reportUnusedClass=false, reportUnusedFunction=false, reportUnknownArgumentType=false
-
 from __future__ import annotations
 
 import threading
@@ -252,7 +250,8 @@ if _TEXTUAL_APP is not None:
         def compose(self) -> _TEXTUAL_COMPOSE_RESULT:
             with _TEXTUAL_VERTICAL(id="help-dialog"):
                 yield _TEXTUAL_STATIC("Help & Guide", id="help-dialog-title")
-                yield _TEXTUAL_STATIC(self._help_text, id="help-dialog-body")
+                with _TEXTUAL_VERTICAL(id="help-dialog-body"):
+                    yield _TEXTUAL_STATIC(self._help_text, id="help-dialog-body-text")
                 with _TEXTUAL_HORIZONTAL(id="help-dialog-actions"):
                     yield _TEXTUAL_BUTTON("Close guide", id="help-dialog-close", classes="raised-button")
 
@@ -262,6 +261,30 @@ if _TEXTUAL_APP is not None:
                 self.dismiss(None)
 
         def action_dismiss_help(self) -> None:
+            self.dismiss(None)
+
+    class _ErrorScreenImpl(_TEXTUAL_MODAL_SCREEN):
+        BINDINGS: ClassVar[list[tuple[str, str, str]]] = [("escape", "dismiss_error", "Close")]
+
+        def __init__(self, *, title: str = "Error", message: str) -> None:
+            super().__init__()
+            self._error_title = title
+            self._error_message = message
+
+        def compose(self) -> _TEXTUAL_COMPOSE_RESULT:
+            with _TEXTUAL_VERTICAL(id="error-dialog"):
+                yield _TEXTUAL_STATIC(self._error_title, id="error-dialog-title")
+                with _TEXTUAL_VERTICAL(id="error-dialog-body"):
+                    yield _TEXTUAL_STATIC(self._error_message, id="error-dialog-body-text")
+                with _TEXTUAL_HORIZONTAL(id="error-dialog-actions"):
+                    yield _TEXTUAL_BUTTON("Close", id="error-dialog-close", classes="raised-button")
+
+        def on_button_pressed(self, event: Any) -> None:
+            button_id = getattr(event.button, "id", "") or ""
+            if button_id == "error-dialog-close":
+                self.dismiss(None)
+
+        def action_dismiss_error(self) -> None:
             self.dismiss(None)
 
     class _FilteredDirectoryTree(_TEXTUAL_DIRECTORY_TREE):
@@ -589,6 +612,7 @@ if _TEXTUAL_APP is not None:
     _ShellBanner = _ShellBannerImpl
     _InteractionPane = _InteractionPaneImpl
     _HelpScreen = _HelpScreenImpl
+    _ErrorScreen = _ErrorScreenImpl
     _FileBrowserScreen = _FileBrowserScreenImpl
     _AstRefreshModalScreen = _AstRefreshModalScreenImpl
     _MenubarWidget = _MenubarWidgetImpl
@@ -596,6 +620,7 @@ else:  # pragma: no cover - optional dependency path
     _ShellBanner: Any = None
     _InteractionPane: Any = None
     _HelpScreen: Any = None
+    _ErrorScreen: Any = None
     _FileBrowserScreen: Any = None
     _AstRefreshModalScreen: Any = None
     _MenubarWidget: Any = None

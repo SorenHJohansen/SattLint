@@ -1,3 +1,5 @@
+"""Mapping of analyzer issues (variable/framework/spec/trace) to semantic rule issues."""
+
 from __future__ import annotations
 
 from typing import Any, cast
@@ -80,8 +82,6 @@ def describe_variable_issue(issue: VariableIssue) -> str:
         return f"Datatype {datatype_name!r} appears {duplicates} times with the same structure."
     if issue.kind is IssueKind.NAME_COLLISION:
         return issue.role or "Declaration name collision."
-    if issue.kind is IssueKind.LAYOUT_OVERLAP:
-        return issue.role or "Layout elements overlap in the same scope."
     if issue.kind is IssueKind.MIN_MAX_MAPPING_MISMATCH:
         return issue.role or "Min_/Max_ parameter mappings do not align by base name."
     if issue.kind is IssueKind.SHADOWING:
@@ -111,6 +111,21 @@ def variable_issue_data(issue: VariableIssue) -> dict[str, Any]:
         data["reset_variable"] = issue.reset_variable
     if issue.duplicate_count is not None:
         data["duplicate_count"] = issue.duplicate_count
+    if issue.site is not None:
+        data["site"] = issue.site
+    elif issue.sequence_name is not None:
+        data["site"] = f"SQ:{issue.sequence_name}"
+    if issue.context is not None:
+        data["context"] = issue.context
+    elif issue.target_display_name is not None or issue.source_display_name is not None:
+        target = issue.target_display_name or getattr(issue.variable, "name", None)
+        source = issue.source_display_name or getattr(issue.source_variable, "name", None)
+        if target and source:
+            data["context"] = f"{target} => {source}"
+    if "context" not in data and issue.role and " " in issue.role:
+        data["context"] = issue.role
+    if "context" not in data and issue.variable is not None:
+        data["context"] = issue.variable.name
     return data
 
 

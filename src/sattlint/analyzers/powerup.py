@@ -5,16 +5,11 @@ from dataclasses import dataclass, field
 from sattline_parser.models.ast_model import BasePicture
 
 from .framework import Issue, empty_issues, format_report_header
-from .initial_values import analyze_initial_values
 from .unsafe_defaults import analyze_unsafe_defaults
 
-_POWERUP_SECTION_ORDER: tuple[str, ...] = (
-    "initial-values.missing_required_default",
-    "unsafe_defaults.true_boolean_default",
-)
+_POWERUP_SECTION_ORDER: tuple[str, ...] = ("unsafe_defaults.true_boolean_default",)
 
 _POWERUP_SECTION_TITLES: dict[str, str] = {
-    "initial-values.missing_required_default": "Missing startup values",
     "unsafe_defaults.true_boolean_default": "Unsafe startup defaults",
 }
 
@@ -55,14 +50,13 @@ def analyze_powerup(
     base_picture: BasePicture,
     debug: bool = False,
     unavailable_libraries: set[str] | None = None,
+    analyzed_target_is_library: bool = False,
 ) -> PowerupReport:
-    initial_values_report = analyze_initial_values(
+    unsafe_defaults_report = analyze_unsafe_defaults(
         base_picture,
-        debug=debug,
-        unavailable_libraries=unavailable_libraries,
+        analyzed_target_is_library=analyzed_target_is_library,
     )
-    unsafe_defaults_report = analyze_unsafe_defaults(base_picture)
     return PowerupReport(
         name=base_picture.header.name,
-        issues=[*initial_values_report.issues, *unsafe_defaults_report.issues],
+        issues=unsafe_defaults_report.issues,
     )

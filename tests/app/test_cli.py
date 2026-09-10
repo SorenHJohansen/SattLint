@@ -11,23 +11,23 @@ from typing import Any, cast
 import pytest
 
 import sattlint
-from sattlint import app, engine
+from sattlint import engine
 from sattlint.__version__ import __version__ as package_version
-from sattlint.cli import app_commands as commands_application
-from sattlint.cli import command_handlers as cli_command_handlers
+from sattlint.cli import commands as commands_application
 from sattlint.cli import entry as cli_entry
 from sattlint.cli import menu as cli_menu_module
 from sattlint.cli import startup as startup_application
 from sattlint.cli import syntax_check as cli_syntax_check
 from sattlint.cli._exit_codes import EXIT_FAILURE, EXIT_SUCCESS, EXIT_USAGE_ERROR
 from sattlint.config import display as config_display_module
+from sattlint.config import get_config_path
 from sattlint.models import IssueKind
 
 
 def _command_handlers(**overrides: Any) -> dict[str, Any]:
     return cast(
         dict[str, Any],
-        cli_command_handlers.build_command_handlers(
+        commands_application.build_command_handlers(
             overrides=cast(
                 cli_entry.CommandHandlers,
                 {
@@ -53,7 +53,7 @@ def _command_handlers(**overrides: Any) -> dict[str, Any]:
 def _run_base_cli(argv: list[str], **overrides) -> int:
     command_handler_overrides = cast(dict[str, Any], overrides.pop("command_handlers", {}))
     kwargs = {
-        "config_path": app.CONFIG_PATH,
+        "config_path": get_config_path(),
         "build_cli_parser_fn": cli_entry.build_cli_parser,
         "load_config_fn": lambda path: ({"debug": False}, False),
         "apply_debug_fn": lambda _cfg: None,
@@ -553,7 +553,7 @@ def test_package_root_exports_forward_workspace_helpers(monkeypatch):
 
 
 def test_module_entrypoint_exits_with_cli_status(monkeypatch):
-    monkeypatch.setattr(app, "cli", lambda: 7)
+    monkeypatch.setattr(startup_application, "cli", lambda: 7)
 
     with pytest.raises(SystemExit, match="7") as exc_info:
         runpy.run_module("sattlint.__main__", run_name="__main__")
@@ -674,7 +674,7 @@ def test_run_cli_analyze_passes_opt_in_state_inference_key():
 
     exit_code = cli_entry.run_cli(
         ["analyze", "--check", "state-inference"],
-        config_path=app.CONFIG_PATH,
+        config_path=get_config_path(),
         load_config_fn=lambda path: ({"debug": False}, False),
         apply_debug_fn=lambda _cfg: None,
         command_handlers=_command_handlers(
@@ -705,7 +705,7 @@ def test_run_cli_analyze_passes_json_output_format():
 
     exit_code = cli_entry.run_cli(
         ["analyze", "--check", "variables", "--format", "json"],
-        config_path=app.CONFIG_PATH,
+        config_path=get_config_path(),
         load_config_fn=lambda path: ({"debug": False}, False),
         apply_debug_fn=lambda _cfg: None,
         command_handlers=_command_handlers(

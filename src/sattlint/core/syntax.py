@@ -4,6 +4,7 @@ import contextlib
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import Enum
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -132,7 +133,11 @@ def graphics_validation_to_syntax_result(
     )
 
 
+@lru_cache(maxsize=1)
 def create_sl_parser() -> Lark:
+    # Lark parser instances are reusable across parses; building one costs ~100ms+ even with
+    # sattline_parser's own on-disk grammar cache, and every load_project_graph() call built a
+    # fresh one. Cache it for the lifetime of the process instead.
     return parser_core_create_parser()
 
 

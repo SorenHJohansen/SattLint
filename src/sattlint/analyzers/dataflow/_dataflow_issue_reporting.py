@@ -8,22 +8,6 @@ from ._dataflow_common import PendingWrite, ResolvedRef, StateMap
 
 
 class DataflowIssueReportingMixin:
-    def _report_read_before_write(
-        self: Any,
-        resolved: ResolvedRef,
-        module_path: list[str],
-    ) -> None:
-        site = self._site_str()
-        dedupe_key = (tuple(module_path), site, resolved.display_name.casefold())
-        if not remember_once(self._reported_read_before_write, dedupe_key):
-            return
-        self._add_issue(
-            kind="dataflow.read_before_write",
-            message=(f"Variable reference {resolved.display_name!r} may be read before it is assigned on this path."),
-            module_path=module_path,
-            data={"symbol": resolved.display_name, "site": site},
-        )
-
     def _report_dead_overwrite(
         self: Any,
         pending: PendingWrite,

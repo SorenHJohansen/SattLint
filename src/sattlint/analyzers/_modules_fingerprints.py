@@ -84,7 +84,7 @@ def _mapping_var_name(value: object) -> str | None:
 
 def normalize_name(name: str) -> str:
     """Normalize a name for case-insensitive comparison."""
-    return name.lower().strip()
+    return name.casefold().strip()
 
 
 def normalize_ast_value(value: Any) -> NormalizedValue:
