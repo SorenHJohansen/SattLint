@@ -51,6 +51,7 @@ jobs:
           /tmp/clean-venv/bin/sattlint --version
           /tmp/clean-venv/bin/sattlint --help
           /tmp/clean-venv/bin/sattlint syntax-check tests/fixtures/sample_sattline_files/SattLineFullGrammarTest.s
+          /tmp/clean-venv/bin/python -c "import sattlint.ui.app_textual"
 
   windows-gate:
     name: Windows gate
@@ -92,6 +93,7 @@ jobs:
           /tmp/clean-venv-win/Scripts/sattlint --version
           /tmp/clean-venv-win/Scripts/sattlint --help
           /tmp/clean-venv-win/Scripts/sattlint syntax-check tests/fixtures/sample_sattline_files/SattLineFullGrammarTest.s
+          /tmp/clean-venv-win/Scripts/python -c "import sattlint.ui.app_textual"
 
   fuzz-smoke:
     name: Fuzz smoke (SattLint-owned readers)
