@@ -3358,7 +3358,7 @@ def test_textual_file_browser_directory_only_go_up_navigates_to_parent(
 
     browser.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id="file-browser-up")))
 
-    assert str(tree.path) == "/home"
+    assert Path(tree.path) == Path("/home")
     assert browser._current_path == Path("/home")
     assert select_button.label == "Select folder"
     assert select_button.disabled is False
