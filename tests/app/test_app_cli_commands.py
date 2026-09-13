@@ -118,16 +118,16 @@ def test_run_analyze_command_allows_opt_in_analyzer_keys(monkeypatch) -> None:
 
     result = commands_application.run_analyze_command(
         {"debug": False},
-        selected_keys=["timing"],
+        selected_keys=["version-drift"],
         selected_issue_kinds=frozenset({"unused"}),
         use_cache=False,
         output_format="json",
     )
 
     assert result == 0
-    assert seen["selected_keys"] == ["timing"]
+    assert seen["selected_keys"] == ["version-drift"]
     assert seen["selected_issue_kinds"] == frozenset({"unused"})
-    assert "timing" in cast(list[str], seen["analyzer_keys"])
+    assert "version-drift" in cast(list[str], seen["analyzer_keys"])
 
 
 def test_run_cache_prune_command_delegates_to_cli_owner(monkeypatch):

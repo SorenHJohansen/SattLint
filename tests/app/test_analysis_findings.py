@@ -119,7 +119,7 @@ def test_extract_report_findings_synthesizes_site_and_context_from_attributes() 
     report = SimpleNamespace(
         issues=[
             SimpleNamespace(
-                kind="contract_mismatch",
+                kind="string_mapping_mismatch",
                 module_path=["Root", "Child"],
                 variable=variable,
                 source_variable=source_variable,

@@ -134,48 +134,6 @@ def test_required_parameter_name_helper_handles_cyclic_typedef_instances():
     assert analyzer._required_parameter_names_by_owner[id(type_b)] == required_b
 
 
-def test_anytype_contracts_collect_read_and_write_field_paths():
-    typedef = ModuleTypeDef(
-        name="ChildType",
-        moduleparameters=[Variable(name="Payload", datatype="AnyType")],
-        localvariables=[
-            Variable(name="Mirror", datatype=Simple_DataType.INTEGER),
-            Variable(name="Source", datatype=Simple_DataType.INTEGER),
-        ],
-        submodules=[],
-        moduledef=None,
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="UsePayload",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        Assignment(target=_varref("Mirror"), value=_varref("Payload.FieldA")),
-                        Assignment(target=_varref("Payload.FieldB"), value=_varref("Source")),
-                    ],
-                )
-            ]
-        ),
-        parametermappings=[],
-    )
-    bp = BasePicture(
-        header=_hdr("Root"),
-        datatype_defs=[],
-        moduletype_defs=[typedef],
-        localvariables=[],
-        submodules=[],
-        modulecode=None,
-        moduledef=None,
-    )
-
-    analyzer = VariablesAnalyzer(bp)
-
-    contracts = analyzer._anytype_field_contracts_by_owner[id(typedef)]
-
-    assert contracts["payload"].field_paths == ("FieldA", "FieldB")
-
-
 def test_magic_number_detection_in_equations_and_sfc():
     eq = Equation(
         name="Main",

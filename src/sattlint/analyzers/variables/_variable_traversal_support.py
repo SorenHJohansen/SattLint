@@ -472,12 +472,6 @@ def _handle_function_call(  # noqa: PLR0915
         else:
             element_name = None
 
-        if array_name is not None and element_name is not None:
-            if fn_key in {"createarray", "putarray"}:
-                self._bind_dynamic_array_contract(array_name, element_name, context, path)
-            elif fn_key == "getarray":
-                self._validate_dynamic_array_get(array_name, element_name, context, path)
-
         if array_spec.status_index is not None and len(args or []) > array_spec.status_index:
             handled_indexes.add(array_spec.status_index)
             _handle_status_argument(

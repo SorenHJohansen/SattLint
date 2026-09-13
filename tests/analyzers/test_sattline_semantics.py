@@ -210,45 +210,6 @@ def test_sattline_semantics_reports_unexpected_submodule_type_without_crashing()
     assert report.summary().startswith("Report: SattLine semantics")
 
 
-def test_sattline_semantics_includes_cross_module_contract_mismatch_rule():
-    typedef = ModuleTypeDef(
-        name="ChildType",
-        moduleparameters=[Variable(name="ExpectedValue", datatype=Simple_DataType.INTEGER)],
-        localvariables=[],
-        submodules=[],
-        moduledef=None,
-        modulecode=None,
-        parametermappings=[],
-    )
-    bp = BasePicture(
-        header=_hdr("Root"),
-        localvariables=[Variable(name="SourceFlag", datatype=Simple_DataType.BOOLEAN)],
-        moduletype_defs=[typedef],
-        submodules=[
-            ModuleTypeInstance(
-                header=_hdr("Child"),
-                moduletype_name="ChildType",
-                parametermappings=[
-                    ParameterMapping(
-                        target=_varref("ExpectedValue"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
-                        is_duration=False,
-                        is_source_global=False,
-                        source=_varref("SourceFlag"),
-                        source_literal=None,
-                    )
-                ],
-            )
-        ],
-        modulecode=None,
-        moduledef=None,
-    )
-
-    report = analyze_sattline_semantics(bp)
-
-    assert any(issue.rule.id == "semantic.cross-module-contract-mismatch" for issue in report.issues)
-
-
 def test_sattline_semantics_includes_dead_overwrite_rule():
     bp = BasePicture(
         header=_hdr("Root"),
@@ -521,65 +482,6 @@ def test_sattline_semantics_includes_write_without_effect_rule():
     report = analyze_sattline_semantics(bp)
 
     assert any(issue.rule.id == "semantic.write-without-effect" for issue in report.issues)
-
-
-def test_sattline_semantics_includes_external_input_to_critical_sink_rule():
-    guard = SingleModule(
-        header=_hdr("Guard"),
-        moduledef=None,
-        moduleparameters=[
-            Variable(name="InCommand", datatype=Simple_DataType.BOOLEAN),
-        ],
-        localvariables=[
-            Variable(name="ShutdownTrip", datatype=Simple_DataType.BOOLEAN, init_value=False),
-        ],
-        submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="GuardEq",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        (const.KEY_ASSIGN, _varref("ShutdownTrip"), _varref("InCommand")),
-                    ],
-                )
-            ]
-        ),
-        parametermappings=[
-            ParameterMapping(
-                target=_varref("InCommand"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
-                is_duration=False,
-                is_source_global=False,
-                source=_varref("OperatorCommand"),
-                source_literal=None,
-            )
-        ],
-    )
-
-    bp = BasePicture(
-        header=_hdr("Root"),
-        localvariables=[
-            Variable(name="OperatorCommand", datatype=Simple_DataType.BOOLEAN, init_value=False),
-        ],
-        submodules=[guard],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("OperatorCommand"), True)],
-                )
-            ]
-        ),
-        moduledef=None,
-    )
-
-    report = analyze_sattline_semantics(bp)
-
-    assert any(issue.rule.id == "semantic.external-input-to-critical-sink" for issue in report.issues)
 
 
 def test_sattline_semantics_includes_ui_only_variable_rule():

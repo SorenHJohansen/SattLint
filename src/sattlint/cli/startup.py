@@ -222,7 +222,7 @@ def run_interactive_session(cfg: ConfigDict, **kwargs: Any) -> None:
     kwargs.setdefault("set_textual_menu_interaction_fn", set_textual_menu_interaction)
     kwargs.setdefault("clear_textual_menu_interaction_fn", clear_textual_menu_interaction)
     kwargs.setdefault("analysis_handler_fns", analysis_handler_fns())
-    kwargs.setdefault("get_enabled_analyzers_fn", analyze_application.get_enabled_analyzers)
+    kwargs.setdefault("get_enabled_analyzers_fn", analyze_application.get_selectable_analyzers)
     run_textual_shell(cfg, **kwargs)
 
 

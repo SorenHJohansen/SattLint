@@ -109,7 +109,7 @@ def test_build_delivery_metadata_falls_back_for_unknown_analyzer_key():
     assert delivery.output_artifacts == ("custom-analyzer.summary",)
 
 
-def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_paths(tmp_path, monkeypatch):  # noqa: PLR0915
+def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_paths(tmp_path, monkeypatch):
     missing_manifest_dir = tmp_path / "missing-manifests"
     monkeypatch.setattr(registry_module, "DEFAULT_CORPUS_MANIFEST_DIR", missing_manifest_dir)
     registry_module._rule_corpus_cases_by_rule_id.cache_clear()
@@ -148,30 +148,18 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
     monkeypatch.setattr(registry_module, "analyze_shadowing", _record("shadowing"))
     monkeypatch.setattr(registry_module, "analyze_spec_compliance", _record("spec-compliance"))
     monkeypatch.setattr(registry_module, "analyze_alarm_integrity", _record("alarm-integrity"))
-    monkeypatch.setattr(registry_module, "analyze_interface_contracts", _record("interface-contracts"))
     monkeypatch.setattr(registry_module, "analyze_naming_consistency", _record("naming-consistency"))
     monkeypatch.setattr(registry_module, "analyze_cyclomatic_complexity", _record("cyclomatic-complexity"))
     monkeypatch.setattr(registry_module, "analyze_parameter_drift", _record("parameter-drift"))
     monkeypatch.setattr(registry_module, "analyze_picture_display_paths", _record("picture-display-paths"))
     monkeypatch.setattr(registry_module, "analyze_signal_lifecycle", _record("signal-lifecycle"))
     monkeypatch.setattr(registry_module, "analyze_loop_stability", _record("loop-stability"))
-    monkeypatch.setattr(registry_module, "analyze_fault_handling", _record("fault-handling"))
     monkeypatch.setattr(registry_module, "analyze_numeric_constraints", _record("numeric-constraints"))
     monkeypatch.setattr(registry_module, "analyze_data_dependency", _record("data-dependency"))
-    monkeypatch.setattr(registry_module, "analyze_config_drift", _record("config-drift"))
-    monkeypatch.setattr(registry_module, "analyze_powerup", _record("powerup"))
-    monkeypatch.setattr(registry_module, "analyze_scan_concurrency", _record("scan-concurrency"))
-    monkeypatch.setattr(registry_module, "analyze_scan_shared_access", _record("scan-shared-access"))
     monkeypatch.setattr(registry_module, "analyze_same_cycle", _record("same-cycle"))
-    monkeypatch.setattr(registry_module, "analyze_scan_loop_resource_usage", _record("scan-loop-resource-usage"))
-    monkeypatch.setattr(registry_module, "analyze_resource_usage", _record("resource-usage"))
     monkeypatch.setattr(registry_module, "analyze_version_drift", _record("version-drift"))
-    monkeypatch.setattr(registry_module, "analyze_safety_paths", _record("safety-paths"))
-    monkeypatch.setattr(registry_module, "analyze_taint_paths", _record("taint-paths"))
-    monkeypatch.setattr(registry_module, "analyze_timing", _record("timing"))
     monkeypatch.setattr(registry_module, "analyze_unsafe_defaults", _record("unsafe-defaults"))
     monkeypatch.setattr(registry_module, "analyze_dataflow", _record("dataflow"))
-    monkeypatch.setattr(registry_module, "analyze_state_inference", _record("state-inference"))
     monkeypatch.setattr(registry_module, "analyze_comment_code", _record("comment-code"))
     monkeypatch.setattr(registry_module, "get_configured_naming_rules", lambda config: ("rules",))
 
@@ -194,29 +182,17 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
         "shadowing",
         "spec-compliance",
         "alarm-integrity",
-        "interface-contracts",
         "naming-consistency",
         "cyclomatic-complexity",
         "parameter-drift",
         "signal-lifecycle",
         "loop-stability",
-        "fault-handling",
         "numeric-constraints",
         "data-dependency",
-        "config-drift",
-        "powerup",
-        "scan-concurrency",
-        "scan-shared-access",
         "same-cycle",
-        "scan-loop-resource-usage",
-        "resource-usage",
-        "timing",
         "version-drift",
-        "safety-paths",
-        "taint-paths",
         "unsafe-defaults",
         "dataflow",
-        "state-inference",
         "comment-code",
     }
 

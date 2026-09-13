@@ -13,14 +13,11 @@ from ...utils.repo_paths import repo_root_from
 from .._registry_specs import build_default_analyzers
 from ..alarm_integrity import analyze_alarm_integrity
 from ..comment_code import analyze_comment_code
-from ..config_drift import analyze_config_drift
 from ..cyclomatic_complexity import analyze_cyclomatic_complexity
 from ..data_dependency import analyze_data_dependency
 from ..dataflow import analyze_dataflow
-from ..fault_handling import analyze_fault_handling
 from ..framework import AnalyzerSpec
 from ..icf.analyzer import analyze_icf_configuration
-from ..interface_contracts import analyze_interface_contracts
 from ..loop_stability import analyze_loop_stability
 from ..mms import analyze_mms_interface_variables
 from ..modules import analyze_version_drift
@@ -29,10 +26,7 @@ from ..numeric_constraints import analyze_numeric_constraints
 from ..parameter_drift import analyze_parameter_drift
 from ..picture_display_paths import analyze_picture_display_paths
 from ..plugin import get_registered_plugin_analyzers, register_analyzer
-from ..powerup import analyze_powerup
-from ..resource_usage import analyze_resource_usage
 from ..rule_profiles import get_default_rule_profile_report
-from ..safety_paths import analyze_safety_paths
 from ..same_cycle import analyze_same_cycle
 from ..sattline_semantics import (
     SemanticRule,
@@ -40,16 +34,10 @@ from ..sattline_semantics import (
     analyze_sattline_semantics,
     get_sattline_semantic_rule_groups,
 )
-from ..scan_concurrency import analyze_scan_concurrency
-from ..scan_loop_resource_usage import analyze_scan_loop_resource_usage
-from ..scan_shared_access import analyze_scan_shared_access
 from ..sfc import analyze_sfc
 from ..shadowing import analyze_shadowing
 from ..signal_lifecycle import analyze_signal_lifecycle
 from ..spec_compliance import analyze_spec_compliance
-from ..state_inference import analyze_state_inference
-from ..taint_paths import analyze_taint_paths
-from ..timing import analyze_timing
 from ..unsafe_defaults import analyze_unsafe_defaults
 from ..variables import analyze_variables
 from ._registry_delivery import AnalyzerDeliveryMetadata, build_delivery_metadata, summary_output_for_analyzer
@@ -57,9 +45,8 @@ from ._registry_delivery import AnalyzerDeliveryMetadata, build_delivery_metadat
 SEMANTIC_LAYER_ANALYZER_KEY = "sattline-semantics"
 # Policy (analyzer execution refactor B4.9): every registered analyzer is
 # selectable, and is either in the default CLI set below or deliberately opt-in
-# (naming-consistency, cyclomatic-complexity, parameter-drift, version-drift,
-# and the composed wrappers powerup/timing/scan-concurrency/scan-shared-access/
-# interface-contracts/state-inference). Semantic contributors are categorized
+# (naming-consistency, cyclomatic-complexity, version-drift). Semantic
+# contributors are categorized
 # correctness; sattline-semantics is the aggregate layer and is intentionally
 # not CLI-exposed as a selectable analyzer.
 DEFAULT_CLI_ANALYZER_KEYS: tuple[str, ...] = (
@@ -73,15 +60,10 @@ DEFAULT_CLI_ANALYZER_KEYS: tuple[str, ...] = (
     "alarm-integrity",
     "signal-lifecycle",
     "loop-stability",
-    "fault-handling",
     "numeric-constraints",
     "data-dependency",
-    "config-drift",
-    "scan-loop-resource-usage",
-    "resource-usage",
+    "parameter-drift",
     "same-cycle",
-    "safety-paths",
-    "taint-paths",
     "unsafe-defaults",
     "dataflow",
     "icf",
@@ -99,31 +81,11 @@ REPO_ROOT = _registry_repo_root()
 DEFAULT_CORPUS_MANIFEST_DIR = REPO_ROOT / "tests" / "fixtures" / "corpus" / "manifests"
 
 LEGACY_ANALYZER_KEY_ALIASES: dict[str, str] = {
-    "config_drift": "config-drift",
     "data_dependency": "data-dependency",
-    "fault_handling": "fault-handling",
-    "interface_contracts": "interface-contracts",
     "loop_stability": "loop-stability",
     "numeric_constraints": "numeric-constraints",
-    "resource_usage": "resource-usage",
-    "scan_concurrency": "scan-concurrency",
-    "scan_shared_access": "scan-shared-access",
     "same_cycle": "same-cycle",
     "signal_lifecycle": "signal-lifecycle",
-    "state_inference": "state-inference",
-}
-
-_RULE_ANALYZER_ALIASES: dict[str, tuple[str, ...]] = {
-    "semantic.unknown-parameter-target": ("interface-contracts",),
-    "semantic.required-parameter-connection": ("interface-contracts",),
-    "semantic.cross-module-contract-mismatch": ("interface-contracts",),
-    "semantic.string-mapping-mismatch": ("interface-contracts",),
-    "semantic.unsafe-default-true": ("powerup",),
-    "semantic.parallel-write-race": ("scan-concurrency", "same-cycle"),
-    "semantic.same-cycle-non-state-multi-site": ("scan-shared-access", "same-cycle"),
-    "semantic.scan-cycle-stale-read": ("timing",),
-    "semantic.scan-cycle-implicit-new": ("timing",),
-    "semantic.scan-cycle-temporal-misuse": ("timing",),
 }
 
 
@@ -177,6 +139,8 @@ class RuleMetadata:
     mutation_applicability: str | None = None
     suppression_modes: tuple[str, ...] | None = None
     incremental_safe: bool | None = None
+    name: str = ""
+    example: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -196,6 +160,8 @@ class RuleMetadata:
             "mutation_applicability": self.mutation_applicability or "unspecified",
             "suppression_modes": list(self.suppression_modes or ()),
             "incremental_safe": self.incremental_safe,
+            "name": self.name,
+            "example": self.example,
         }
 
 
@@ -453,6 +419,8 @@ def _build_rule_metadata(
         mutation_applicability=rule.mutation_applicability,
         suppression_modes=(None if rule.suppression_modes is None else tuple(sorted(rule.suppression_modes))),
         incremental_safe=rule.incremental_safe,
+        name=rule.name,
+        example=rule.example,
     )
 
 
@@ -473,10 +441,6 @@ def _mapped_analyzers_for_rule(
     canonical_rule_source = canonicalize_analyzer_key(rule.source)
     if canonical_rule_source in registered_keys and canonical_rule_source not in mapped_analyzers:
         mapped_analyzers.append(canonical_rule_source)
-
-    for analyzer_key in _RULE_ANALYZER_ALIASES.get(rule.id, ()):
-        if analyzer_key in registered_keys and analyzer_key not in mapped_analyzers:
-            mapped_analyzers.append(analyzer_key)
 
     return tuple(mapped_analyzers)
 
@@ -581,34 +545,22 @@ __all__ = [
     "SemanticRuleGroup",
     "analyze_alarm_integrity",
     "analyze_comment_code",
-    "analyze_config_drift",
     "analyze_cyclomatic_complexity",
     "analyze_data_dependency",
     "analyze_dataflow",
-    "analyze_fault_handling",
     "analyze_icf_configuration",
-    "analyze_interface_contracts",
     "analyze_loop_stability",
     "analyze_mms_interface_variables",
     "analyze_naming_consistency",
     "analyze_numeric_constraints",
     "analyze_parameter_drift",
     "analyze_picture_display_paths",
-    "analyze_powerup",
-    "analyze_resource_usage",
-    "analyze_safety_paths",
     "analyze_same_cycle",
     "analyze_sattline_semantics",
-    "analyze_scan_concurrency",
-    "analyze_scan_loop_resource_usage",
-    "analyze_scan_shared_access",
     "analyze_sfc",
     "analyze_shadowing",
     "analyze_signal_lifecycle",
     "analyze_spec_compliance",
-    "analyze_state_inference",
-    "analyze_taint_paths",
-    "analyze_timing",
     "analyze_unsafe_defaults",
     "analyze_variables",
     "analyze_version_drift",

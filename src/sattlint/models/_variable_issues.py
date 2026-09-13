@@ -34,7 +34,6 @@ class IssueKind(Enum):
     HIGH_FAN_IN_OUT = "high_fan_in_out"
     UNKNOWN_PARAMETER_TARGET = "unknown_parameter_target"
     REQUIRED_PARAMETER_CONNECTION = "required_parameter_connection"
-    CONTRACT_MISMATCH = "contract_mismatch"
     STRING_MAPPING_MISMATCH = "string_mapping_mismatch"
     DATATYPE_DUPLICATION = "datatype_duplication"
     NAME_COLLISION = "name_collision"
@@ -135,11 +134,6 @@ _VARIABLE_ISSUE_METADATA: dict[IssueKind, VariableIssueMetadata] = {
         label="Required parameter connection missing",
         explanation="A parameter that the moduletype actively reads or writes is part of the module contract and should be wired explicitly by each instance.",
         suggestion="Add a parameter mapping for the required parameter, or make the parameter optional by removing the internal dependency on it.",
-    ),
-    IssueKind.CONTRACT_MISMATCH: VariableIssueMetadata(
-        label="Cross-module contract mismatch",
-        explanation="Incompatible parameter datatypes across module boundaries can break the interface contract or force unsafe coercions.",
-        suggestion="Align the source and target datatypes, or insert an explicit compatible conversion before the mapping.",
     ),
     IssueKind.STRING_MAPPING_MISMATCH: VariableIssueMetadata(
         label="String mapping datatype mismatch",

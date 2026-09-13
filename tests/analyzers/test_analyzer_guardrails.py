@@ -5,7 +5,6 @@ from pathlib import Path
 from sattlint.analyzers.cyclomatic_complexity import analyze_cyclomatic_complexity
 from sattlint.analyzers.naming import analyze_naming_consistency
 from sattlint.analyzers.parameter_drift import analyze_parameter_drift
-from sattlint.analyzers.scan_loop_resource_usage import analyze_scan_loop_resource_usage
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
 from sattlint.engine import parse_source_file
 
@@ -38,14 +37,6 @@ def test_analyzer_guardrail_required_parameter_fixture_triggers_required_mapping
     issues = VariablesAnalyzer(bp).run()
 
     assert any(issue.kind is IssueKind.REQUIRED_PARAMETER_CONNECTION for issue in issues)
-
-
-def test_analyzer_guardrail_scan_loop_fixture_triggers_resource_usage_issue():
-    bp = parse_source_file(_fixture("ScanLoopCost.s"))
-
-    report = analyze_scan_loop_resource_usage(bp)
-
-    assert any(issue.kind == "scan_cycle.resource_usage" for issue in report.issues)
 
 
 def test_analyzer_guardrail_naming_fixture_triggers_naming_style_issue():

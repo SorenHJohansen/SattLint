@@ -11,7 +11,6 @@
       "semantic.read-only-datatype-field",
       "semantic.read-only-non-const",
       "semantic.signal-lifecycle-read-before-write",
-      "semantic.signal-lifecycle-unconsumed-write",
       "spec.basepicture_direct_code",
       "semantic.unused-variable"
     ],
@@ -29,7 +28,6 @@
           "semantic.read-only-datatype-field": 1,
           "semantic.read-only-non-const": 1,
           "semantic.signal-lifecycle-read-before-write": 1,
-          "semantic.signal-lifecycle-unconsumed-write": 1,
           "spec.basepicture_direct_code": 1,
           "semantic.unused-variable": 1
         }

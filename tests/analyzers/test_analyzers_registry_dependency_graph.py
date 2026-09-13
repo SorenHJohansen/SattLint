@@ -49,11 +49,11 @@ def test_duplicate_keys_are_rejected() -> None:
 
 
 def test_colliding_canonical_keys_are_rejected() -> None:
-    # "config_drift" canonicalizes to "config-drift"; a second analyzer with the
+    # "data_dependency" canonicalizes to "data-dependency"; a second analyzer with the
     # canonical key collides.
-    specs = (_spec("config_drift"), _spec("config-drift"))
+    specs = (_spec("data_dependency"), _spec("data-dependency"))
 
-    with pytest.raises(AnalyzerDependencyGraphError, match="collide on canonical key 'config-drift'"):
+    with pytest.raises(AnalyzerDependencyGraphError, match="collide on canonical key 'data-dependency'"):
         validate_analyzer_dependencies(specs)
 
 

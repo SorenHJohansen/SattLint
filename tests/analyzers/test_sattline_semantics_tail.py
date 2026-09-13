@@ -57,39 +57,6 @@ def test_sattline_semantics_includes_loop_stability_rule():
     assert any(issue.rule.id == "semantic.loop-conflicting-setpoint" for issue in report.issues)
 
 
-def test_sattline_semantics_includes_fault_handling_rules():
-    bp = BasePicture(
-        header=_hdr("Program"),
-        localvariables=[
-            Variable(name="HighFault", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="HandledFault", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="Status", datatype=Simple_DataType.BOOLEAN),
-        ],
-        submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        Assignment(target=_varref("HighFault"), value=True),
-                        Assignment(target=_varref("HandledFault"), value=True),
-                        Assignment(target=_varref("Status"), value=_varref("HandledFault")),
-                        Assignment(target=_varref("HandledFault"), value=False),
-                    ],
-                )
-            ]
-        ),
-    )
-
-    report = analyze_sattline_semantics(bp)
-
-    rule_ids = {issue.rule.id for issue in report.issues}
-    assert "semantic.fault-missing-recovery" in rule_ids
-    assert "semantic.fault-unhandled-path" in rule_ids
-
-
 def test_sattline_semantics_includes_numeric_constraints_rule():
     bp = BasePicture(
         header=_hdr("Program"),
@@ -114,57 +81,6 @@ def test_sattline_semantics_includes_numeric_constraints_rule():
     report = analyze_sattline_semantics(bp)
 
     assert any(issue.rule.id == "semantic.numeric-limit-violation" for issue in report.issues)
-
-
-def test_sattline_semantics_includes_config_drift_rule():
-    typedef = ModuleTypeDef(
-        name="DoseValve",
-        moduleparameters=[Variable(name="Timeout", datatype=Simple_DataType.INTEGER, init_value=10)],
-        localvariables=[],
-        submodules=[],
-        moduledef=None,
-        modulecode=None,
-        parametermappings=[],
-    )
-    bp = BasePicture(
-        header=_hdr("Program"),
-        moduletype_defs=[typedef],
-        localvariables=[],
-        submodules=[
-            ModuleTypeInstance(
-                header=_hdr("ValveA"),
-                moduletype_name="DoseValve",
-                parametermappings=[
-                    ParameterMapping(
-                        target=_varref("Timeout"),
-                        source_type=const.KEY_VALUE,
-                        is_duration=False,
-                        is_source_global=False,
-                        source=None,
-                        source_literal=10,
-                    )
-                ],
-            ),
-            ModuleTypeInstance(
-                header=_hdr("ValveB"),
-                moduletype_name="DoseValve",
-                parametermappings=[
-                    ParameterMapping(
-                        target=_varref("Timeout"),
-                        source_type=const.KEY_VALUE,
-                        is_duration=False,
-                        is_source_global=False,
-                        source=None,
-                        source_literal=15,
-                    )
-                ],
-            ),
-        ],
-    )
-
-    report = analyze_sattline_semantics(bp)
-
-    assert any(issue.rule.id == "semantic.instance-configuration-drift" for issue in report.issues)
 
 
 def test_sattline_semantics_includes_duplicate_transition_guard_rule():
@@ -484,7 +400,6 @@ def test_sattline_semantics_includes_signal_lifecycle_rules():
 
     rule_ids = {issue.rule.id for issue in report.issues}
     assert "semantic.signal-lifecycle-read-before-write" in rule_ids
-    assert "semantic.signal-lifecycle-unconsumed-write" in rule_ids
 
 
 def test_detect_unreachable_sequence_logic_walks_nested_subsequence_bodies():
@@ -559,9 +474,7 @@ def test_sattline_semantic_rule_groups_cover_core_analyzers():
     assert "alarm-integrity" in groups
     assert "signal-lifecycle" in groups
     assert "loop-stability" in groups
-    assert "fault-handling" in groups
     assert "numeric-constraints" in groups
-    assert "config-drift" in groups
     assert "semantic.unused-variable" in groups["variables"]
     assert "semantic.implicit-latch" in groups["variables"]
     assert "semantic.global-scope-minimization" in groups["variables"]
@@ -577,12 +490,8 @@ def test_sattline_semantic_rule_groups_cover_core_analyzers():
     assert "semantic.high-fan-in-out-variable" in groups["variables"]
     assert "semantic.duplicate-alarm-tag" in groups["alarm-integrity"]
     assert "semantic.signal-lifecycle-read-before-write" in groups["signal-lifecycle"]
-    assert "semantic.signal-lifecycle-unconsumed-write" in groups["signal-lifecycle"]
     assert "semantic.loop-conflicting-setpoint" in groups["loop-stability"]
-    assert "semantic.fault-missing-recovery" in groups["fault-handling"]
-    assert "semantic.fault-unhandled-path" in groups["fault-handling"]
     assert "semantic.numeric-limit-violation" in groups["numeric-constraints"]
-    assert "semantic.instance-configuration-drift" in groups["config-drift"]
 
     all_rule_ids = [rule_id for rule_ids in groups.values() for rule_id in rule_ids]
     assert len(all_rule_ids) == len(set(all_rule_ids))

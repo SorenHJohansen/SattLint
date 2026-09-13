@@ -6,18 +6,14 @@ from dataclasses import replace
 
 from ._sattline_semantic_contracts import (
     ALARM_RULE_CONTRACT,
-    CONFIG_DRIFT_RULE_CONTRACT,
     DATAFLOW_RULE_CONTRACT,
-    FAULT_HANDLING_RULE_CONTRACT,
     LOOP_STABILITY_RULE_CONTRACT,
     NUMERIC_CONSTRAINTS_RULE_CONTRACT,
-    SAFETY_RULE_CONTRACT,
     SAME_CYCLE_RULE_CONTRACT,
     SFC_RULE_CONTRACT,
     SHADOWING_RULE_CONTRACT,
     SIGNAL_LIFECYCLE_RULE_CONTRACT,
     SPEC_RULE_CONTRACT,
-    TAINT_RULE_CONTRACT,
     TRACE_RULE_CONTRACT,
     UNSAFE_DEFAULTS_RULE_CONTRACT,
     VARIABLE_RULE_CONTRACT,
@@ -26,17 +22,15 @@ from ._sattline_semantic_contracts import (
 from ._sattline_semantic_models import SemanticRule, SemanticRuleGroup
 from ._sattline_semantic_rules_data import (
     ALARM_RULES,
-    CONFIG_DRIFT_RULES,
     DATAFLOW_RULES,
-    FAULT_HANDLING_RULES,
     LOOP_STABILITY_RULES,
     NUMERIC_CONSTRAINT_RULES,
-    SAFETY_PATH_RULES,
     SAME_CYCLE_RULES,
     SFC_RULES,
     SIGNAL_LIFECYCLE_RULES,
     SPEC_RULE_DESCRIPTIONS,
-    TAINT_RULES,
+    SPEC_RULE_EXAMPLES,
+    SPEC_RULE_NAMES,
     TRACE_RULES,
     UNSAFE_DEFAULT_RULES,
     VARIABLE_RULES,
@@ -84,7 +78,6 @@ RULE_CONTRACTS_BY_ID: dict[str, SemanticRuleContract] = {
         "semantic.high-fan-in-out-variable",
         "semantic.unknown-parameter-target",
         "semantic.required-parameter-connection",
-        "semantic.cross-module-contract-mismatch",
         "semantic.string-mapping-mismatch",
         "semantic.duplicated-datatype-layout",
         "semantic.name-collision",
@@ -115,8 +108,6 @@ RULE_CONTRACTS_BY_ID: dict[str, SemanticRuleContract] = {
         "semantic.conflicting-alarm-priority",
         "semantic.never-cleared-alarm",
     ),
-    **rule_contract_entries(SAFETY_RULE_CONTRACT, "semantic.unconsumed-safety-signal"),
-    **rule_contract_entries(TAINT_RULE_CONTRACT, "semantic.external-input-to-critical-sink"),
     **rule_contract_entries(
         TRACE_RULE_CONTRACT,
         "semantic.duplicate-sibling-name",
@@ -143,19 +134,12 @@ RULE_CONTRACTS_BY_ID: dict[str, SemanticRuleContract] = {
     **rule_contract_entries(
         SIGNAL_LIFECYCLE_RULE_CONTRACT,
         "semantic.signal-lifecycle-read-before-write",
-        "semantic.signal-lifecycle-unconsumed-write",
     ),
     **rule_contract_entries(LOOP_STABILITY_RULE_CONTRACT, "semantic.loop-conflicting-setpoint"),
-    **rule_contract_entries(
-        FAULT_HANDLING_RULE_CONTRACT,
-        "semantic.fault-missing-recovery",
-        "semantic.fault-unhandled-path",
-    ),
     **rule_contract_entries(
         NUMERIC_CONSTRAINTS_RULE_CONTRACT,
         "semantic.numeric-limit-violation",
     ),
-    **rule_contract_entries(CONFIG_DRIFT_RULE_CONTRACT, "semantic.instance-configuration-drift"),
     **rule_contract_entries(UNSAFE_DEFAULTS_RULE_CONTRACT, "semantic.unsafe-default-true"),
     **rule_contract_entries(SPEC_RULE_CONTRACT, *SPEC_RULE_DESCRIPTIONS.keys()),
 }
@@ -166,8 +150,6 @@ for kind, rule in list(SFC_RULES.items()):
     SFC_RULES[kind] = attach_rule_contract(rule, RULE_CONTRACTS_BY_ID.get(rule.id))
 for kind, rule in list(ALARM_RULES.items()):
     ALARM_RULES[kind] = attach_rule_contract(rule, RULE_CONTRACTS_BY_ID.get(rule.id))
-for kind, rule in list(SAFETY_PATH_RULES.items()):
-    SAFETY_PATH_RULES[kind] = attach_rule_contract(rule, RULE_CONTRACTS_BY_ID.get(rule.id))
 for kind, rule in list(TRACE_RULES.items()):
     TRACE_RULES[kind] = attach_rule_contract(rule, RULE_CONTRACTS_BY_ID.get(rule.id))
 for kind, rule in list(DATAFLOW_RULES.items()):
@@ -178,14 +160,8 @@ for kind, rule in list(SIGNAL_LIFECYCLE_RULES.items()):
     SIGNAL_LIFECYCLE_RULES[kind] = attach_rule_contract(rule, RULE_CONTRACTS_BY_ID.get(rule.id))
 for kind, rule in list(LOOP_STABILITY_RULES.items()):
     LOOP_STABILITY_RULES[kind] = attach_rule_contract(rule, RULE_CONTRACTS_BY_ID.get(rule.id))
-for kind, rule in list(FAULT_HANDLING_RULES.items()):
-    FAULT_HANDLING_RULES[kind] = attach_rule_contract(rule, RULE_CONTRACTS_BY_ID.get(rule.id))
 for kind, rule in list(NUMERIC_CONSTRAINT_RULES.items()):
     NUMERIC_CONSTRAINT_RULES[kind] = attach_rule_contract(rule, RULE_CONTRACTS_BY_ID.get(rule.id))
-for kind, rule in list(CONFIG_DRIFT_RULES.items()):
-    CONFIG_DRIFT_RULES[kind] = attach_rule_contract(rule, RULE_CONTRACTS_BY_ID.get(rule.id))
-for kind, rule in list(TAINT_RULES.items()):
-    TAINT_RULES[kind] = attach_rule_contract(rule, RULE_CONTRACTS_BY_ID.get(rule.id))
 for kind, rule in list(UNSAFE_DEFAULT_RULES.items()):
     UNSAFE_DEFAULT_RULES[kind] = attach_rule_contract(rule, RULE_CONTRACTS_BY_ID.get(rule.id))
 
@@ -200,6 +176,8 @@ SPEC_FRAMEWORK_RULES: dict[str, SemanticRule] = {
             applies_to="sattline-construct",
             description=description,
             explanation=description,
+            name=SPEC_RULE_NAMES.get(rule_id, rule_id),
+            example=SPEC_RULE_EXAMPLES.get(rule_id),
             suggestion="Rename, reconnect, or restructure the affected construct so it matches the engineering specification.",
         ),
         RULE_CONTRACTS_BY_ID.get(rule_id),
@@ -210,15 +188,11 @@ SPEC_FRAMEWORK_RULES: dict[str, SemanticRule] = {
 FRAMEWORK_RULES_BY_KIND: dict[str, SemanticRule] = {
     **SFC_RULES,
     **ALARM_RULES,
-    **SAFETY_PATH_RULES,
-    **TAINT_RULES,
     **DATAFLOW_RULES,
     **SAME_CYCLE_RULES,
     **SIGNAL_LIFECYCLE_RULES,
     **LOOP_STABILITY_RULES,
-    **FAULT_HANDLING_RULES,
     **NUMERIC_CONSTRAINT_RULES,
-    **CONFIG_DRIFT_RULES,
     **UNSAFE_DEFAULT_RULES,
     **SPEC_FRAMEWORK_RULES,
 }
@@ -229,16 +203,12 @@ def build_semantic_rule_groups() -> tuple[SemanticRuleGroup, ...]:
         SemanticRuleGroup(source="variables", rules=tuple(VARIABLE_RULES.values())),
         SemanticRuleGroup(source="sfc", rules=tuple(SFC_RULES.values())),
         SemanticRuleGroup(source="alarm-integrity", rules=tuple(ALARM_RULES.values())),
-        SemanticRuleGroup(source="safety-paths", rules=tuple(SAFETY_PATH_RULES.values())),
-        SemanticRuleGroup(source="taint-paths", rules=tuple(TAINT_RULES.values())),
         SemanticRuleGroup(source="tracing", rules=tuple(TRACE_RULES.values())),
         SemanticRuleGroup(source="dataflow", rules=tuple(DATAFLOW_RULES.values())),
         SemanticRuleGroup(source="same-cycle", rules=tuple(SAME_CYCLE_RULES.values())),
         SemanticRuleGroup(source="signal-lifecycle", rules=tuple(SIGNAL_LIFECYCLE_RULES.values())),
         SemanticRuleGroup(source="loop-stability", rules=tuple(LOOP_STABILITY_RULES.values())),
-        SemanticRuleGroup(source="fault-handling", rules=tuple(FAULT_HANDLING_RULES.values())),
         SemanticRuleGroup(source="numeric-constraints", rules=tuple(NUMERIC_CONSTRAINT_RULES.values())),
-        SemanticRuleGroup(source="config-drift", rules=tuple(CONFIG_DRIFT_RULES.values())),
         SemanticRuleGroup(source="unsafe-defaults", rules=tuple(UNSAFE_DEFAULT_RULES.values())),
         SemanticRuleGroup(source="spec-compliance", rules=tuple(SPEC_FRAMEWORK_RULES.values())),
     )
@@ -246,20 +216,18 @@ def build_semantic_rule_groups() -> tuple[SemanticRuleGroup, ...]:
 
 __all__ = [
     "ALARM_RULES",
-    "CONFIG_DRIFT_RULES",
     "DATAFLOW_RULES",
-    "FAULT_HANDLING_RULES",
     "FRAMEWORK_RULES_BY_KIND",
     "LOOP_STABILITY_RULES",
     "NUMERIC_CONSTRAINT_RULES",
     "RULE_CONTRACTS_BY_ID",
-    "SAFETY_PATH_RULES",
     "SAME_CYCLE_RULES",
     "SFC_RULES",
     "SIGNAL_LIFECYCLE_RULES",
     "SPEC_FRAMEWORK_RULES",
     "SPEC_RULE_DESCRIPTIONS",
-    "TAINT_RULES",
+    "SPEC_RULE_EXAMPLES",
+    "SPEC_RULE_NAMES",
     "TRACE_RULES",
     "UNSAFE_DEFAULT_RULES",
     "VARIABLE_RULES",

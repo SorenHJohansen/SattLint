@@ -104,7 +104,6 @@ class SameCycleAnalyzer(VariablesAnalyzer):
             unavailable_libraries=unavailable_libraries,
             analyzed_target_is_library=analyzed_target_is_library,
             include_dependency_moduletype_usage=analyzed_target_is_library,
-            build_anytype_contracts=False,
             shared_artifacts=shared_artifacts,
         )
         self._selected_same_cycle_issue_kinds = (
@@ -402,7 +401,6 @@ class SameCycleAnalyzer(VariablesAnalyzer):
             unavailable_libraries=self.unavailable_libraries,
             analyzed_target_is_library=self.analyzed_target_is_library,
             include_dependency_moduletype_usage=True,
-            build_anytype_contracts=False,
             shared_artifacts=self._shared_artifacts,
         )
         context_path = [self.bp.header.name, f"TypeDef:{moduletype.name}"]

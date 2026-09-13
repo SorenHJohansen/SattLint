@@ -3,7 +3,7 @@
 "Program date: 2026-06-19-12:00:00.000, name: Timing"
 (* Covers dataflow scan-cycle timing findings: scan-cycle-stale-read,
    scan-cycle-implicit-new, scan-cycle-temporal-misuse.
-   Delegates to dataflow + scan_loop_resource_usage sub-analyzers. *)
+   Delegates to the dataflow sub-analyzer. *)
 
 BasePicture Invocation
    ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0

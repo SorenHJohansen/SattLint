@@ -799,7 +799,7 @@ def test_run_checks_accepts_legacy_underscore_analyzer_key(monkeypatch):
 
     checks_application.run_checks(
         DEFAULT_CONFIG.copy(),
-        ["state_inference"],
+        ["data_dependency"],
         iter_loaded_projects_fn=cast(
             Any,
             lambda *_args, **_kwargs: iter(
@@ -814,16 +814,16 @@ def test_run_checks_accepts_legacy_underscore_analyzer_key(monkeypatch):
         ),
         get_enabled_analyzers_fn=lambda: [
             SimpleNamespace(
-                key="state-inference",
-                name="State inference",
-                run=lambda _context: SimpleNamespace(summary=lambda: "state inference summary"),
+                key="data-dependency",
+                name="Data dependency",
+                run=lambda _context: SimpleNamespace(summary=lambda: "data dependency summary"),
             )
         ],
         target_is_library_fn=lambda *_args, **_kwargs: False,
         pause_fn=None,
     )
 
-    assert any("State inference (state-inference)" in line for line in lines)
+    assert any("Data dependency (data-dependency)" in line for line in lines)
 
 
 def test_run_icf_validation_covers_missing_dir_invalid_dir_and_empty_file_list(monkeypatch, tmp_path):

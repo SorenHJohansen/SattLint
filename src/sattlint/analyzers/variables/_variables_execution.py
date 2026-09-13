@@ -114,7 +114,6 @@ _FINAL_SYNTHESIS_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
 )
 _PARAM_MAPPING_CHECK_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
     {
-        IssueKind.CONTRACT_MISMATCH,
         IssueKind.STRING_MAPPING_MISMATCH,
         IssueKind.MIN_MAX_MAPPING_MISMATCH,
     }

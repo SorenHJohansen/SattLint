@@ -16,7 +16,6 @@ from sattline_parser.models.ast_model import (
     ModuleTypeDef,
     ModuleTypeInstance,
     ParameterMapping,
-    Simple_DataType,
     SingleModule,
     Variable,
 )
@@ -39,7 +38,7 @@ from ..framework import (
     VariableAnalysisArtifacts,
 )
 from ..shared._dedupe import get_or_register_index
-from ..shared._validators import AnyTypeFieldContract, ContractMappingValidator, MinMaxValidator, StringMappingValidator
+from ..shared._validators import ContractMappingValidator, MinMaxValidator, StringMappingValidator
 from ..shared.variable_utils import VariablesConstMixin
 from ._usage_tracker import UsageTracker
 from ._variable_issue_collection import VariablesIssueCollectionMixin
@@ -291,8 +290,6 @@ class VariablesAnalyzer(
     def _initialize_artifact_state(
         self,
         variable_artifacts: VariableAnalysisArtifacts,
-        *,
-        build_anytype_contracts: bool,
     ) -> None:
         self.typedef_index = {key: list(values) for key, values in variable_artifacts.typedef_index.items()}
         self._used_dependency_libraries: set[str] = set()
@@ -323,19 +320,9 @@ class VariablesAnalyzer(
         self._root_env = dict(variable_artifacts.root_env)
         self._any_var_index = {key: list(values) for key, values in variable_artifacts.any_var_index.items()}
         self._analyzing_typedefs: set[str] = set()
-        self._anytype_field_contracts_by_owner: dict[int, dict[str, AnyTypeFieldContract]] = {}
         self._required_parameter_names_by_owner: dict[int, dict[str, str]] = {}
-        self._array_element_datatypes_by_key: dict[tuple[str, ...], Simple_DataType | str] = {}
-        should_build_anytype_contracts = build_anytype_contracts and (
-            self._selected_issue_kinds is None or IssueKind.CONTRACT_MISMATCH in self._selected_issue_kinds
-        )
-        if should_build_anytype_contracts:
-            self._anytype_field_contracts_by_owner = self._build_anytype_field_contracts()
 
-        self._contract_validator = ContractMappingValidator(
-            self.type_graph,
-            anytype_field_contracts=self._anytype_field_contracts_by_owner,
-        )
+        self._contract_validator = ContractMappingValidator(self.type_graph)
         self._min_max_validator = MinMaxValidator()
         self._string_validator = StringMappingValidator()
 
@@ -349,7 +336,6 @@ class VariablesAnalyzer(
         include_dependency_moduletype_usage: bool = False,
         selected_issue_kinds: AbstractSet[IssueKind | str] | None = None,
         trace_recorder: AnalysisTraceRecorder | None = None,
-        build_anytype_contracts: bool = True,
         config: dict[str, Any] | None = None,
         status_update_fn: Callable[[str], None] | None = None,
         shared_artifacts: AnalysisSharedArtifacts | None = None,
@@ -392,7 +378,6 @@ class VariablesAnalyzer(
         )
         self._initialize_artifact_state(
             variable_artifacts,
-            build_anytype_contracts=build_anytype_contracts,
         )
 
     def _warn(self, message: str) -> None:

@@ -1,7 +1,7 @@
 "Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
 "Original file date: ---"
 "Program date: 2026-06-19-12:00:00.000, name: ParamMappingIssues"
-(* Covers CONTRACT_MISMATCH, REQUIRED_PARAMETER_CONNECTION, MIN_MAX_MAPPING_MISMATCH.
+(* Covers REQUIRED_PARAMETER_CONNECTION, MIN_MAX_MAPPING_MISMATCH.
    Expected: strict syntax-check passes. *)
 
 BasePicture Invocation

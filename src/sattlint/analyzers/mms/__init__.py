@@ -227,7 +227,7 @@ def analyze_mms_interface_variables(
     analysis_context: AnalysisContext | None = None,
 ) -> MMSInterfaceReport:
     """
-    Find variables mapped into MMSWriteVar.WriteData or MMSReadVar.Outputvariable.
+    Find variables mapped into MMSWriteVar.LocalVariable or MMSReadVar.LocalVariable.
 
     This scans module instances and collects the source variables used in the
     parameter mapping for those module types.

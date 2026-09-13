@@ -669,11 +669,11 @@ def test_run_cli_analyze_passes_flags():
     assert cast(dict[str, Any], seen["cfg"])["debug"] is True
 
 
-def test_run_cli_analyze_passes_opt_in_state_inference_key():
+def test_run_cli_analyze_passes_opt_in_version_drift_key():
     seen = {}
 
     exit_code = cli_entry.run_cli(
-        ["analyze", "--check", "state-inference"],
+        ["analyze", "--check", "version-drift"],
         config_path=get_config_path(),
         load_config_fn=lambda path: ({"debug": False}, False),
         apply_debug_fn=lambda _cfg: None,
@@ -694,7 +694,7 @@ def test_run_cli_analyze_passes_opt_in_state_inference_key():
     )
 
     assert exit_code == EXIT_SUCCESS
-    assert seen["selected_keys"] == ["state-inference"]
+    assert seen["selected_keys"] == ["version-drift"]
     assert seen["selected_issue_kinds"] is None
     assert seen["use_cache"] is True
     assert seen["output_format"] == "text"

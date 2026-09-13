@@ -22,6 +22,8 @@ class SemanticRule:
     mutation_applicability: str | None = None
     suppression_modes: tuple[str, ...] | None = None
     incremental_safe: bool | None = None
+    name: str = ""
+    example: str | None = None
 
 
 @dataclass(frozen=True)

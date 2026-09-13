@@ -44,7 +44,6 @@ LOW_CONFIDENCE_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
     IssueKind.GLOBAL_SCOPE_MINIMIZATION,
     IssueKind.HIDDEN_GLOBAL_COUPLING,
     IssueKind.HIGH_FAN_IN_OUT,
-    IssueKind.CONTRACT_MISMATCH,
     IssueKind.IMPLICIT_LATCH,
 )
 
@@ -96,7 +95,6 @@ SECTION_TITLES: dict[IssueKind, str] = {
     IssueKind.HIGH_FAN_IN_OUT: "High fan-in or fan-out variables",
     IssueKind.UNKNOWN_PARAMETER_TARGET: "Unknown parameter mapping targets",
     IssueKind.REQUIRED_PARAMETER_CONNECTION: "Missing required parameter connections",
-    IssueKind.CONTRACT_MISMATCH: "Cross-module contract mismatches",
     IssueKind.STRING_MAPPING_MISMATCH: "String mapping type mismatches",
     IssueKind.DATATYPE_DUPLICATION: "Duplicated complex datatypes (should be RECORD)",
     IssueKind.MIN_MAX_MAPPING_MISMATCH: "Min/Max mapping name mismatches",
@@ -128,7 +126,6 @@ _VARIABLE_ISSUE_LIST_SECTION_KINDS: frozenset[IssueKind] = frozenset(
         IssueKind.HIGH_FAN_IN_OUT,
         IssueKind.UNKNOWN_PARAMETER_TARGET,
         IssueKind.REQUIRED_PARAMETER_CONNECTION,
-        IssueKind.CONTRACT_MISMATCH,
         IssueKind.NAME_COLLISION,
         IssueKind.SHADOWING,
         IssueKind.RESET_CONTAMINATION,
@@ -226,10 +223,6 @@ class VariablesReport:
         return [i for i in self.issues if i.kind is IssueKind.REQUIRED_PARAMETER_CONNECTION]
 
     @property
-    def contract_mismatches(self) -> list[VariableIssue]:
-        return [i for i in self.issues if i.kind is IssueKind.CONTRACT_MISMATCH]
-
-    @property
     def string_mapping_mismatch(self) -> list[VariableIssue]:
         return [i for i in self.issues if i.kind is IssueKind.STRING_MAPPING_MISMATCH]
 
@@ -319,8 +312,6 @@ class VariablesReport:
             return self.unknown_parameter_targets
         if kind is IssueKind.REQUIRED_PARAMETER_CONNECTION:
             return self.required_parameter_connections
-        if kind is IssueKind.CONTRACT_MISMATCH:
-            return self.contract_mismatches
         if kind is IssueKind.STRING_MAPPING_MISMATCH:
             return self.string_mapping_mismatch
         if kind is IssueKind.DATATYPE_DUPLICATION:
