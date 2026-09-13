@@ -41,18 +41,15 @@ from ._mms_interface_helpers import (
 _INTERFACE_TARGETS: dict[str, dict[str, str]] = {
     "mmswritevar": {
         "localvariable": "outgoing",
-        "writedata": "outgoing",
+    },
+    "mmswritevarasarray": {
+        "localvariable": "outgoing",
     },
     "mmsreadvar": {
         "localvariable": "incoming",
-        "outputvariable": "incoming",
     },
-    "mmsreadvarcyc": {
-        "outputvariable": "incoming",
-    },
-    "mmsreadwrite": {
-        "inputvariable": "outgoing",
-        "outputvariable": "incoming",
+    "mmsvaringroup": {
+        "localvariable": "incoming",
     },
 }
 

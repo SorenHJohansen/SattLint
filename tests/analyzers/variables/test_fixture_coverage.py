@@ -160,16 +160,10 @@ def test_parameter_mapping_fixture_contains_expected_issue_kinds():
     bp = parse_source_file(fixture)
     issues = VariablesAnalyzer(bp).run()
 
-    contract_mismatch = {
-        issue.variable.name
-        for issue in issues
-        if issue.kind is IssueKind.CONTRACT_MISMATCH and issue.variable is not None
-    }
     required_param = {
         tuple(issue.module_path) for issue in issues if issue.kind is IssueKind.REQUIRED_PARAMETER_CONNECTION
     }
 
-    assert "Setpoint" in contract_mismatch
     assert len(required_param) > 0
 
 

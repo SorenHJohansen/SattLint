@@ -22,13 +22,12 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
-from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt, IfStmt
+from sattline_parser.models.expressions import Assignment, IfStmt
 
 from sattlint import constants as const
 from sattlint.analyzers.cyclomatic_complexity import analyze_cyclomatic_complexity
 from sattlint.analyzers.mms import analyze_mms_interface_variables
 from sattlint.analyzers.parameter_drift import analyze_parameter_drift
-from sattlint.analyzers.scan_loop_resource_usage import analyze_scan_loop_resource_usage
 from sattlint.reporting.icf_report import ICFEntry
 from tests.helpers.variable_test_support import (
     hdr as _hdr,
@@ -202,7 +201,7 @@ def test_mms_interface_collects_nested_typedef_mappings_and_write_locations():
                 moduletype_name="MMSWriteVar",
                 parametermappings=[
                     ParameterMapping(
-                        target=_varref("WriteData"),
+                        target=_varref("LocalVariable"),
                         source_type=const.TREE_TAG_VARIABLE_NAME,
                         is_duration=False,
                         is_source_global=False,
@@ -309,7 +308,7 @@ def test_mms_interface_uses_moduletype_default_tags_for_duplicate_and_dead_tag_c
                 moduletype_name="MMSWriteVar",
                 parametermappings=[
                     ParameterMapping(
-                        target=_varref("WriteData"),
+                        target=_varref("LocalVariable"),
                         source_type=const.TREE_TAG_VARIABLE_NAME,
                         is_duration=False,
                         is_source_global=False,
@@ -323,7 +322,7 @@ def test_mms_interface_uses_moduletype_default_tags_for_duplicate_and_dead_tag_c
                 moduletype_name="MMSWriteVar",
                 parametermappings=[
                     ParameterMapping(
-                        target=_varref("WriteData"),
+                        target=_varref("LocalVariable"),
                         source_type=const.TREE_TAG_VARIABLE_NAME,
                         is_duration=False,
                         is_source_global=False,
@@ -592,136 +591,3 @@ def test_cyclomatic_complexity_flags_high_complexity_sfc_step():
     }
     assert "HeatUp" in issues[0].message
     assert "MainSeq" in issues[0].message
-
-
-def test_scan_loop_resource_usage_flags_non_precision_builtin_in_equation_block():
-    bp = BasePicture(
-        header=_hdr("Program"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="MainEq",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        FuncCallStmt(
-                            call=FuncCall(
-                                name="AssignSystemString",
-                                args=(_varref("SysVarId"), _varref("Value"), _varref("Status")),
-                            )
-                        )
-                    ],
-                )
-            ]
-        ),
-        moduledef=None,
-    )
-
-    report = analyze_scan_loop_resource_usage(bp)
-
-    issues = [issue for issue in report.issues if issue.kind == "scan_cycle.resource_usage"]
-    assert len(issues) == 1
-    assert issues[0].data == {
-        "call": "assignsystemstring",
-        "scope": "equation block 'MainEq'",
-        "site": "equation block 'MainEq'",
-        "context": "assignsystemstring(...)",
-        "precision_scangroup": False,
-    }
-    assert "AssignSystemString" in issues[0].message
-
-
-def test_scan_loop_resource_usage_flags_non_precision_builtin_in_active_step_code():
-    bp = BasePicture(
-        header=_hdr("Program"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[],
-        modulecode=ModuleCode(
-            sequences=[
-                Sequence(
-                    name="MainSeq",
-                    type="SEQUENCE",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        SFCStep(
-                            kind="step",
-                            name="Poll",
-                            code=SFCCodeBlocks(
-                                active=[
-                                    FuncCallStmt(
-                                        call=FuncCall(
-                                            name="AssignSystemString",
-                                            args=(_varref("SysVarId"), _varref("Value"), _varref("Status")),
-                                        )
-                                    )
-                                ]
-                            ),
-                        )
-                    ],
-                )
-            ]
-        ),
-        moduledef=None,
-    )
-
-    report = analyze_scan_loop_resource_usage(bp)
-
-    issues = [issue for issue in report.issues if issue.kind == "scan_cycle.resource_usage"]
-    assert len(issues) == 1
-    assert issues[0].data == {
-        "call": "assignsystemstring",
-        "scope": "active code of step 'Poll' in sequence 'MainSeq'",
-        "site": "active code of step 'Poll' in sequence 'MainSeq'",
-        "context": "assignsystemstring(...)",
-        "precision_scangroup": False,
-    }
-    assert "Poll" in issues[0].message
-    assert "MainSeq" in issues[0].message
-
-
-def test_scan_loop_resource_usage_ignores_non_precision_builtin_outside_active_scan_context():
-    bp = BasePicture(
-        header=_hdr("Program"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[],
-        modulecode=ModuleCode(
-            sequences=[
-                Sequence(
-                    name="MainSeq",
-                    type="SEQUENCE",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        SFCStep(
-                            kind="step",
-                            name="Setup",
-                            code=SFCCodeBlocks(
-                                enter=[
-                                    FuncCallStmt(
-                                        call=FuncCall(
-                                            name="AssignSystemString",
-                                            args=(_varref("SysVarId"), _varref("Value"), _varref("Status")),
-                                        )
-                                    )
-                                ]
-                            ),
-                        )
-                    ],
-                )
-            ]
-        ),
-        moduledef=None,
-    )
-
-    report = analyze_scan_loop_resource_usage(bp)
-
-    assert not any(issue.kind == "scan_cycle.resource_usage" for issue in report.issues)

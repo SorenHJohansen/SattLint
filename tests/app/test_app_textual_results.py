@@ -263,7 +263,7 @@ def test_results_tree_renders_site_node_and_context_leaf() -> None:
                         status="completed",
                         findings=(
                             AnalysisFinding(
-                                kind="contract_mismatch",
+                                kind="string_mapping_mismatch",
                                 message="[RootProgram.Child] parameter mapping type mismatch",
                                 module_path=("RootProgram", "Child"),
                                 data={"site": "Child : ChildType", "context": "TargetVal => SourceVal"},
@@ -286,7 +286,7 @@ def test_results_tree_renders_site_node_and_context_leaf() -> None:
     site_node = next(iter(module_node.children))
     assert site_node.label.plain == "Child : ChildType"
     leaf = next(iter(site_node.children))
-    assert leaf.data.kind == "contract_mismatch"
+    assert leaf.data.kind == "string_mapping_mismatch"
     assert "TargetVal => SourceVal" in leaf.label.plain
     assert "[RootProgram.Child]" not in leaf.label.plain
     assert any(child.label.plain == "Context: TargetVal => SourceVal" for child in leaf.children)

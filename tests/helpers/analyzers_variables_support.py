@@ -52,9 +52,6 @@ from tests.analyzers.variables.test_adjacent_analyzers import (  # noqa: F401
     test_mms_interface_uses_moduletype_default_tags_for_duplicate_and_dead_tag_checks,
     test_parameter_drift_flags_diverging_literal_parameter_values,
     test_parameter_drift_ignores_aligned_literal_parameter_values,
-    test_scan_loop_resource_usage_flags_non_precision_builtin_in_active_step_code,
-    test_scan_loop_resource_usage_flags_non_precision_builtin_in_equation_block,
-    test_scan_loop_resource_usage_ignores_non_precision_builtin_outside_active_scan_context,
 )
 from tests.helpers.variable_test_support import (
     UsageStub as _UsageStub,

@@ -6,7 +6,6 @@
         "expected_finding_ids": [
             "semantic.data-dependency-path",
             "semantic.never-read-write",
-            "semantic.signal-lifecycle-unconsumed-write",
             "spec.basepicture_direct_code"
         ],
         "artifact_fragments": {
@@ -15,11 +14,10 @@
                 "missing_dependency_count": 0
             },
             "summary.json": {
-                "finding_count": 6,
+                "finding_count": 5,
                 "rule_counts": {
                     "semantic.data-dependency-path": 3,
                     "semantic.never-read-write": 1,
-                    "semantic.signal-lifecycle-unconsumed-write": 1,
                     "spec.basepicture_direct_code": 1
                 }
             }

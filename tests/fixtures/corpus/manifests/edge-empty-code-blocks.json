@@ -11,7 +11,6 @@
             "semantic.naming-role-mismatch",
             "semantic.never-read-write",
             "semantic.same-cycle-non-state-multi-site",
-            "semantic.signal-lifecycle-unconsumed-write",
             "semantic.transition-always-true",
             "spec.basepicture_direct_code",
             "spec.sequence_step_prefix",
@@ -23,7 +22,7 @@
                 "missing_dependency_count": 0
             },
             "summary.json": {
-                "finding_count": 17,
+                "finding_count": 16,
                 "rule_counts": {
                     "semantic.condition-always-false": 1,
                     "semantic.condition-always-true": 2,
@@ -32,7 +31,6 @@
                     "semantic.naming-role-mismatch": 1,
                     "semantic.never-read-write": 1,
                     "semantic.same-cycle-non-state-multi-site": 1,
-                    "semantic.signal-lifecycle-unconsumed-write": 1,
                     "semantic.transition-always-true": 1,
                     "spec.basepicture_direct_code": 1,
                     "spec.sequence_step_prefix": 3,

@@ -67,10 +67,8 @@ from sattlint.analyzers.modules import (
 )
 from sattlint.analyzers.naming import analyze_naming_consistency, get_configured_naming_rules
 from sattlint.analyzers.registry import get_default_analyzers
-from sattlint.analyzers.safety_paths import analyze_safety_paths
 from sattlint.analyzers.sfc import analyze_sfc
 from sattlint.analyzers.sfc._sfc_guard_logic import _normalize_guard_signature
-from sattlint.analyzers.taint_paths import analyze_taint_paths
 from sattlint.analyzers.variable_usage_reporting import (
     _find_module_instances,
     debug_variable_usage,
@@ -150,9 +148,7 @@ __all__ = [
     "analyze_alarm_integrity",
     "analyze_dataflow",
     "analyze_naming_consistency",
-    "analyze_safety_paths",
     "analyze_sfc",
-    "analyze_taint_paths",
     "analyze_version_drift",
     "cast",
     "compare_modules",

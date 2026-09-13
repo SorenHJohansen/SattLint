@@ -40,9 +40,7 @@ from ._semantic_snapshot import (
 )
 from .call_signatures import CallSignatureOccurrence
 from .diagnostics import SemanticDiagnostic
-from .safety_paths import DEFAULT_SAFETY_SIGNAL_KEYWORDS, SafetyPathTrace, SymbolAccess
 from .syntax import CodeMode
-from .taint_paths import TaintPathTrace
 from .workspace_discovery import WorkspaceSourceDiscovery, discover_workspace_sources, single_entry_discovery
 
 _cf = _semantic_helpers.cf
@@ -328,18 +326,14 @@ def load_workspace_snapshot(
 
 
 __all__ = [
-    "DEFAULT_SAFETY_SIGNAL_KEYWORDS",
     "CallSignatureOccurrence",
     "CompletionItem",
-    "SafetyPathTrace",
     "SemanticAnalysisArtifacts",
     "SemanticAnalysisProvider",
     "SemanticDiagnostic",
     "SemanticSnapshot",
-    "SymbolAccess",
     "SymbolDefinition",
     "SymbolReference",
-    "TaintPathTrace",
     "WorkspaceSnapshotError",
     "WorkspaceSourceDiscovery",
     "build_source_snapshot_from_basepicture",

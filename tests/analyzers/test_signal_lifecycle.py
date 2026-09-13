@@ -14,14 +14,13 @@ def _varref(name: str) -> VarRef:
     return VarRef(name=name)
 
 
-def test_signal_lifecycle_reports_reads_before_writes_and_unconsumed_writes():
+def test_signal_lifecycle_reports_reads_before_writes():
     bp = BasePicture(
         header=_hdr("Program"),
         localvariables=[
             Variable(name="InputSignal", datatype=Simple_DataType.BOOLEAN),
             Variable(name="OutputSignal", datatype=Simple_DataType.BOOLEAN),
             Variable(name="ObservedSignal", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="NeverConsumed", datatype=Simple_DataType.BOOLEAN),
         ],
         submodules=[],
         modulecode=ModuleCode(
@@ -34,7 +33,6 @@ def test_signal_lifecycle_reports_reads_before_writes_and_unconsumed_writes():
                         Assignment(target=_varref("OutputSignal"), value=_varref("InputSignal")),
                         Assignment(target=_varref("InputSignal"), value=True),
                         Assignment(target=_varref("ObservedSignal"), value=_varref("OutputSignal")),
-                        Assignment(target=_varref("NeverConsumed"), value=False),
                     ],
                 )
             ]
@@ -45,9 +43,7 @@ def test_signal_lifecycle_reports_reads_before_writes_and_unconsumed_writes():
 
     issue_kinds = {issue.kind for issue in report.issues}
     assert "signal_lifecycle.read_before_write" in issue_kinds
-    assert "signal_lifecycle.unconsumed_write" in issue_kinds
     assert any("InputSignal" in issue.message for issue in report.issues)
-    assert any("NeverConsumed" in issue.message for issue in report.issues)
     assert report.summary_data["written_then_read_count"] >= 1
 
 

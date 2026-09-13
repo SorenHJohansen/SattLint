@@ -51,6 +51,17 @@ _ISSUE_LABELS = {
     "alarm.never_cleared": "Never-cleared alarm writes",
 }
 
+_ALARM_SOURCE_MODULETYPE_NAMES: frozenset[str] = frozenset(
+    {
+        "event1",
+        "event2",
+        "event1advanced",
+        "event2advanced",
+        "eventdetector1",
+        "eventdetector2",
+    }
+)
+
 _AlarmBooleanWriteSummary = _alarm_path_traversal_module.AlarmBooleanWriteSummary
 _as_bool_literal = _alarm_path_traversal_module.as_bool_literal
 _collect_alarm_boolean_writes = _alarm_path_traversal_module.collect_alarm_boolean_writes
@@ -261,6 +272,8 @@ class AlarmIntegrityAnalyzer:
         current_library: str | None,
     ) -> _AlarmCandidate | None:
         mt_def = self._resolve_moduletype(inst, current_library)
+        if mt_def is None or casefold_key(mt_def.name) not in _ALARM_SOURCE_MODULETYPE_NAMES:
+            return None
         parameter_names = self._parameter_names(inst, mt_def)
         if not any(name in parameter_names for name in _TAG_PARAMETER_NAMES):
             return None
@@ -288,7 +301,7 @@ class AlarmIntegrityAnalyzer:
         if tag_key is None and priority_key is None and condition_key is None:
             return None
 
-        moduletype_label = format_moduletype_label(mt_def) if mt_def is not None else inst.moduletype_name
+        moduletype_label = format_moduletype_label(mt_def)
         return _AlarmCandidate(
             module_path=module_path.copy(),
             instance_name=inst.header.name,

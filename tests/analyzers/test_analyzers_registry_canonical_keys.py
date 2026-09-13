@@ -10,9 +10,8 @@ from sattlint.analyzers import registry as registry_module
 
 
 def test_canonicalize_analyzer_key_maps_legacy_aliases() -> None:
-    assert registry_module.canonicalize_analyzer_key("config_drift") == "config-drift"
     assert registry_module.canonicalize_analyzer_key("data_dependency") == "data-dependency"
-    assert registry_module.canonicalize_analyzer_key("CONFIG_DRIFT") == "config-drift"
+    assert registry_module.canonicalize_analyzer_key("DATA_DEPENDENCY") == "data-dependency"
     assert registry_module.canonicalize_analyzer_key("variables") == "variables"
 
 
@@ -25,15 +24,15 @@ def test_default_cli_analyzers_are_keyed_by_canonical_keys() -> None:
 
 
 def test_registry_analyzer_spec_lookup_accepts_legacy_aliases() -> None:
-    spec = dispatch_module.get_registry_analyzer_spec("config_drift")
+    spec = dispatch_module.get_registry_analyzer_spec("data_dependency")
 
-    assert spec.key == "config-drift"
+    assert spec.key == "data-dependency"
 
 
 def test_registry_analyzer_spec_lookup_accepts_uppercase_alias() -> None:
-    spec = dispatch_module.get_registry_analyzer_spec("CONFIG_DRIFT")
+    spec = dispatch_module.get_registry_analyzer_spec("DATA_DEPENDENCY")
 
-    assert spec.key == "config-drift"
+    assert spec.key == "data-dependency"
 
 
 def test_registry_analyzer_spec_lookup_unknown_key_raises() -> None:
@@ -43,11 +42,11 @@ def test_registry_analyzer_spec_lookup_unknown_key_raises() -> None:
 
 def test_cli_dispatch_selection_canonicalizes_legacy_alias_keys() -> None:
     analyzers = dispatch_module.get_cli_dispatch_analyzers(
-        selected_keys=("config_drift",),
+        selected_keys=("data_dependency",),
         get_enabled_analyzers_fn=registry_module.get_enabled_analyzers,
     )
 
-    assert [spec.key for spec in analyzers] == ["config-drift"]
+    assert [spec.key for spec in analyzers] == ["data-dependency"]
 
 
 def test_internal_requirement_maps_use_canonical_keys() -> None:

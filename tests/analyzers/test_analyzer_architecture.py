@@ -291,7 +291,7 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
             "rules",
             "unavailable_libraries",
         ),
-        composed_analyzer_keys=("dataflow", "scan-loop-resource-usage"),
+        composed_analyzer_keys=("dataflow",),
         composed_issue_kind_names=("dataflow.scan_cycle_stale_read",),
     )
     kwargs = build_context_kwargs(spec, registry_stub, context)
@@ -341,7 +341,7 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
     assert built_specs[0].direct_context is True
     assert built_specs[0].requires == ()
     assert built_specs[1].context_kwargs == spec.context_kwargs
-    assert built_specs[1].composed_analyzer_keys == ("dataflow", "scan-loop-resource-usage")
+    assert built_specs[1].composed_analyzer_keys == ("dataflow",)
     assert built_specs[1].composed_issue_kind_names == ("dataflow.scan_cycle_stale_read",)
     assert built_specs[1].requires == ()
 

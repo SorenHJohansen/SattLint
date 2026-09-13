@@ -30,15 +30,14 @@ VARIABLE_ANALYSES: VariableAnalysisMap = {
     "15": ("UI/display-only variables", {IssueKind.UI_ONLY}),
     "16": ("Procedure status handling", {IssueKind.PROCEDURE_STATUS}),
     "17": ("Write-without-effect variables", {IssueKind.WRITE_WITHOUT_EFFECT}),
-    "18": ("Cross-module contract mismatches", {IssueKind.CONTRACT_MISMATCH}),
-    "19": ("Implicit latching", {IssueKind.IMPLICIT_LATCH}),
-    "20": ("Global scope minimization", {IssueKind.GLOBAL_SCOPE_MINIMIZATION}),
-    "21": ("Hidden global coupling", {IssueKind.HIDDEN_GLOBAL_COUPLING}),
-    "22": ("High fan-in or fan-out variables", {IssueKind.HIGH_FAN_IN_OUT}),
-    "23": ("Naming-to-behavior mismatches", {IssueKind.NAMING_ROLE_MISMATCH}),
-    "24": ("Name collisions", {IssueKind.NAME_COLLISION}),
-    "25": ("Read-only fields", {IssueKind.FIELD_READ_ONLY}),
-    "26": ("Written but never read fields", {IssueKind.FIELD_NEVER_READ}),
+    "18": ("Implicit latching", {IssueKind.IMPLICIT_LATCH}),
+    "19": ("Global scope minimization", {IssueKind.GLOBAL_SCOPE_MINIMIZATION}),
+    "20": ("Hidden global coupling", {IssueKind.HIDDEN_GLOBAL_COUPLING}),
+    "21": ("High fan-in or fan-out variables", {IssueKind.HIGH_FAN_IN_OUT}),
+    "22": ("Naming-to-behavior mismatches", {IssueKind.NAMING_ROLE_MISMATCH}),
+    "23": ("Name collisions", {IssueKind.NAME_COLLISION}),
+    "24": ("Read-only fields", {IssueKind.FIELD_READ_ONLY}),
+    "25": ("Written but never read fields", {IssueKind.FIELD_NEVER_READ}),
 }
 
 HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = (
@@ -55,13 +54,13 @@ HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = (
     "12",
     "13",
     "14",
+    "22",
     "23",
     "24",
-    "25",
 )
 
 LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = (
-    "26",
+    "25",
     "15",
     "16",
     "17",
@@ -69,5 +68,4 @@ LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = (
     "19",
     "20",
     "21",
-    "22",
 )

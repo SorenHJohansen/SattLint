@@ -45,7 +45,7 @@ def _inventory_entry(**overrides: object) -> InterfaceInventoryEntry:
         "source_kind": "mms",
         "module_path": ["Program", "Unit"],
         "moduletype_name": "MMSWriteVar",
-        "parameter_name": "WriteData",
+        "parameter_name": "LocalVariable",
         "source_variable": "ExportValue",
         "source_datatype": "INTEGER",
         "source_leaf_name": "ExportValue",
@@ -215,7 +215,7 @@ def test_mms_interface_collects_nested_typedef_mappings_and_write_locations() ->
                 moduletype_name="MMSWriteVar",
                 parametermappings=[
                     ParameterMapping(
-                        target=_varref("WriteData"),
+                        target=_varref("LocalVariable"),
                         source_type=const.TREE_TAG_VARIABLE_NAME,
                         is_duration=False,
                         is_source_global=False,

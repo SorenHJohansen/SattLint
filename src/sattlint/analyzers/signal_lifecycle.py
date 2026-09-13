@@ -37,8 +37,7 @@ class SignalLifecycleReport:
         lines.append(
             "Summary: "
             f"{self.summary_data.get('written_then_read_count', 0)} written-then-read, "
-            f"{self.summary_data.get('read_before_write_count', 0)} read-before-write, "
-            f"{self.summary_data.get('unconsumed_write_count', 0)} unconsumed writes"
+            f"{self.summary_data.get('read_before_write_count', 0)} read-before-write"
         )
         if not self.issues:
             lines.append("No issues found.")
@@ -59,7 +58,6 @@ class SignalLifecycleAnalyzer:
         self._issues: list[Issue] = []
         self._written_then_read_count = 0
         self._read_before_write_count = 0
-        self._unconsumed_write_count = 0
 
     def run(self) -> SignalLifecycleReport:
         moduletype_filter = build_target_origin_filter_for_basepicture(
@@ -74,7 +72,6 @@ class SignalLifecycleAnalyzer:
             summary_data={
                 "written_then_read_count": self._written_then_read_count,
                 "read_before_write_count": self._read_before_write_count,
-                "unconsumed_write_count": self._unconsumed_write_count,
             },
         )
 
@@ -91,7 +88,6 @@ class SignalLifecycleAnalyzer:
         explicit_writes: set[str] = set()
         read_after_write: set[str] = set()
         read_before_write: dict[str, set[str]] = defaultdict(set)
-        write_sites: dict[str, set[str]] = defaultdict(set)
 
         for site in iter_statement_sites(modulecode):
             written = self._process_node(
@@ -101,7 +97,6 @@ class SignalLifecycleAnalyzer:
                 explicit_writes=explicit_writes,
                 read_after_write=read_after_write,
                 read_before_write=read_before_write,
-                write_sites=write_sites,
                 site_label=site.label,
             )
 
@@ -125,26 +120,6 @@ class SignalLifecycleAnalyzer:
                 )
             )
 
-        for key in sorted(explicit_writes - read_after_write):
-            variable = env[key]
-            self._unconsumed_write_count += 1
-            self._issues.append(
-                Issue(
-                    kind="signal_lifecycle.unconsumed_write",
-                    message=(
-                        f"Signal {variable.name!r} is written but never consumed later in this scope; "
-                        f"writes appear in {', '.join(sorted(write_sites[key]))}."
-                    ),
-                    module_path=list(module_path),
-                    data={
-                        "signal": variable.name,
-                        "sites": sorted(write_sites[key]),
-                        "site": sorted(write_sites[key])[0],
-                        "context": variable.name,
-                    },
-                )
-            )
-
         self._written_then_read_count += len(read_after_write)
 
     def _process_node(  # noqa: PLR0915
@@ -156,7 +131,6 @@ class SignalLifecycleAnalyzer:
         explicit_writes: set[str],
         read_after_write: set[str],
         read_before_write: dict[str, set[str]],
-        write_sites: dict[str, set[str]],
         site_label: str,
     ) -> set[str]:
         statement_children = _statement_children(node)
@@ -170,7 +144,6 @@ class SignalLifecycleAnalyzer:
                     explicit_writes=explicit_writes,
                     read_after_write=read_after_write,
                     read_before_write=read_before_write,
-                    write_sites=write_sites,
                     site_label=site_label,
                 )
             return current
@@ -196,7 +169,6 @@ class SignalLifecycleAnalyzer:
                         next_written = set(written)
                         next_written.add(key)
                         explicit_writes.add(key)
-                        write_sites[key].add(site_label)
                         return next_written
             return written
 
@@ -219,7 +191,6 @@ class SignalLifecycleAnalyzer:
             next_written = set(written)
             next_written.add(key)
             explicit_writes.add(key)
-            write_sites[key].add(site_label)
             return next_written
 
         tuple_node = _object_tuple(node)
@@ -246,7 +217,6 @@ class SignalLifecycleAnalyzer:
                 next_written = set(written)
                 next_written.add(key)
                 explicit_writes.add(key)
-                write_sites[key].add(site_label)
                 return next_written
 
             if tag == const.GRAMMAR_VALUE_IF and len(tuple_node) == 3:
@@ -272,7 +242,6 @@ class SignalLifecycleAnalyzer:
                             explicit_writes=explicit_writes,
                             read_after_write=read_after_write,
                             read_before_write=read_before_write,
-                            write_sites=write_sites,
                             site_label=site_label,
                         )
                     branch_written.append(branch_state)
@@ -285,7 +254,6 @@ class SignalLifecycleAnalyzer:
                         explicit_writes=explicit_writes,
                         read_after_write=read_after_write,
                         read_before_write=read_before_write,
-                        write_sites=write_sites,
                         site_label=site_label,
                     )
                 branch_written.append(else_state)

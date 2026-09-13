@@ -283,13 +283,6 @@ def test_variables_report_summary_includes_required_contract_and_shadowing_secti
                 role="required parameter 'Mode' is not connected",
             ),
             VariableIssue(
-                kind=IssueKind.CONTRACT_MISMATCH,
-                module_path=["BasePicture", "TypeDef:Soejle", "ChildB"],
-                variable=Variable(name="TargetValue", datatype=Simple_DataType.INTEGER),
-                source_variable=Variable(name="SourceValue", datatype=Simple_DataType.REAL),
-                role="source and target types differ",
-            ),
-            VariableIssue(
                 kind=IssueKind.SHADOWING,
                 module_path=["BasePicture", "TypeDef:Soejle", "ChildC"],
                 variable=Variable(name="Mode", datatype=Simple_DataType.INTEGER),
@@ -299,7 +292,6 @@ def test_variables_report_summary_includes_required_contract_and_shadowing_secti
         visible_kinds=frozenset(
             {
                 IssueKind.REQUIRED_PARAMETER_CONNECTION,
-                IssueKind.CONTRACT_MISMATCH,
                 IssueKind.SHADOWING,
             }
         ),
@@ -311,10 +303,6 @@ def test_variables_report_summary_includes_required_contract_and_shadowing_secti
     assert "Missing required parameter connections" in summary
     assert "      Moduletype:" in summary
     assert "BasePicture.TypeDef:WorkerType :: required parameter 'Mode' is not connected" in summary
-    assert "Cross-module contract mismatches" in summary
-    assert "      SingleModule:" in summary
-    assert "BasePicture.Soejle.ChildB :: TargetValue (integer) | source and target types differ" in summary
-    assert "BasePicture.TypeDef:Soejle.ChildB :: TargetValue (integer) | source and target types differ" not in summary
     assert "Variable shadowing" in summary
     assert "BasePicture.Soejle.ChildC :: Mode (integer) | local shadows moduleparameter" in summary
 
@@ -401,13 +389,6 @@ def test_variables_report_properties_visible_kinds_and_empty_sections_cover_rema
             role="required parameter 'Enable' is not connected",
         ),
         VariableIssue(
-            kind=IssueKind.CONTRACT_MISMATCH,
-            module_path=["BasePicture", "Contract"],
-            variable=Variable("Target", Simple_DataType.INTEGER),
-            source_variable=Variable("Source", Simple_DataType.REAL),
-            role="contract mismatch",
-        ),
-        VariableIssue(
             kind=IssueKind.STRING_MAPPING_MISMATCH,
             module_path=["BasePicture", "Strings"],
             variable=Variable("TargetText", Simple_DataType.TAGSTRING),
@@ -471,7 +452,6 @@ def test_variables_report_properties_visible_kinds_and_empty_sections_cover_rema
         "high_fan_in_out": 1,
         "unknown_parameter_targets": 1,
         "required_parameter_connections": 1,
-        "contract_mismatches": 1,
         "string_mapping_mismatch": 1,
         "datatype_duplication": 1,
         "min_max_mapping_mismatch": 1,

@@ -9,7 +9,7 @@ from ..analyzers.framework import AnalysisContext, Issue
 from ..reporting.comment_code_report import CommentCodeHit, CommentCodeReport
 from ..utils.text_processing import find_comments_with_code
 
-_SOURCE_SUFFIXES = {".s", ".x", ".l", ".z"}
+_SOURCE_SUFFIXES = {".s", ".x"}
 _COMMENT_PREVIEW_MAX_LEN = 120
 
 

@@ -19,15 +19,12 @@ from sattline_parser.models.expressions import VarRef
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ...resolution.common import resolve_moduletype_def_strict, varname_base, varname_full
 from ...resolution.scope import ScopeContext
-from ...utils.casefolding import casefold_key, is_anytype_name
-from ...validation.type_helpers import assignment_type_matches as _assignment_type_matches
-from ...validation.type_helpers import is_string_simple_type as _is_string_simple_type
+from ...utils.casefolding import casefold_key
 from ...validation.type_helpers import resolve_variable_field_datatype as _resolve_variable_field_datatype
 from ..shared._contract_index import (
     ModuleTypeContract,
     compute_cyclic_owner_ids,
 )
-from ..shared._validators import AnyTypeFieldContract
 from ..shared._walk_utils import iter_nested_modules
 from ..shared.variable_utils import mapping_target_name
 from ._contract_summary_provider import ContractSummaryProvider
@@ -39,14 +36,12 @@ if TYPE_CHECKING:
 _PARAM_MAPPING_VALIDATION_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
     {
         IssueKind.REQUIRED_PARAMETER_CONNECTION,
-        IssueKind.CONTRACT_MISMATCH,
         IssueKind.STRING_MAPPING_MISMATCH,
         IssueKind.MIN_MAX_MAPPING_MISMATCH,
     }
 )
 _PARAM_MAPPING_CHECK_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
     {
-        IssueKind.CONTRACT_MISMATCH,
         IssueKind.STRING_MAPPING_MISMATCH,
         IssueKind.MIN_MAX_MAPPING_MISMATCH,
     }
@@ -85,63 +80,11 @@ def _collect_module_vars(
             index.setdefault(casefold_key(variable.name), []).append(variable)
 
 
-def _iter_anytype_typedefs(self: VariablesAnalyzer) -> list[ModuleTypeDef]:
-    return [
-        typedef
-        for typedef in (self.bp.moduletype_defs or [])
-        if any(is_anytype_name(variable.datatype) for variable in (typedef.moduleparameters or []))
-    ]
-
-
 def _mapping_source_ref(mapping: ParameterMapping) -> object:
     source = getattr(mapping, "source", None)
     if isinstance(source, VarRef):
         return source.name
     return source
-
-
-def _build_anytype_parameter_contract(
-    self: VariablesAnalyzer,
-    extractor: VariablesAnalyzer,
-    variable: Variable,
-) -> AnyTypeFieldContract | None:
-    if not is_anytype_name(variable.datatype):
-        return None
-
-    usage = extractor.get_usage(variable)
-    field_paths = sorted(set((usage.field_reads or {}).keys()) | set((usage.field_writes or {}).keys()))
-    if not field_paths:
-        return None
-
-    return AnyTypeFieldContract(field_paths=tuple(field_paths))
-
-
-def _build_anytype_field_contracts(self: VariablesAnalyzer) -> dict[int, dict[str, AnyTypeFieldContract]]:
-    typedefs_with_anytype = self.iter_anytype_typedefs()
-    if not typedefs_with_anytype:
-        return {}
-
-    extractor = _make_nested_contract_extractor(self)
-    contracts: dict[int, dict[str, AnyTypeFieldContract]] = {}
-
-    for typedef in typedefs_with_anytype:
-        extractor.analyze_typedef(
-            typedef,
-            path=[self.bp.header.name, f"TypeDef:{typedef.name}"],
-        )
-
-        parameter_contracts: dict[str, AnyTypeFieldContract] = {}
-        for variable in typedef.moduleparameters or []:
-            contract = self.build_anytype_parameter_contract(extractor, variable)
-            if contract is None:
-                continue
-
-            parameter_contracts[casefold_key(variable.name)] = contract
-
-        if parameter_contracts:
-            contracts[id(typedef)] = parameter_contracts
-
-    return contracts
 
 
 def _get_required_parameter_names_for_typedef(
@@ -251,7 +194,6 @@ def _make_nested_contract_extractor(self: VariablesAnalyzer) -> VariablesAnalyze
         include_dependency_moduletype_usage=self.include_dependency_moduletype_usage,
         selected_issue_kinds=None,
         trace_recorder=None,
-        build_anytype_contracts=False,
         shared_artifacts=getattr(self, "_shared_artifacts", None),
     )
     extractor_any: Any = extractor
@@ -474,15 +416,6 @@ def _check_param_mapping(
         source_base = varname_base(source_ref)
         src_var = self.root_env.get(source_base) if source_base is not None else None
 
-    for issue in self.contract_validator.check_contract_mapping(
-        pm,
-        tgt_var,
-        src_var,
-        path,
-        owner_contract_id=owner_contract_id,
-    ):
-        self.append_param_mapping_issue(pm, issue)
-
     target_name = varname_full(getattr(pm, "target", None)) or tgt_var.name
     target_datatype: Simple_DataType | str | None = None
     target_field_path: str | None = None
@@ -563,190 +496,6 @@ def _check_param_mapping(
         self.append_param_mapping_issue(pm, issue)
 
 
-def _array_contract_key_for_ref(
-    self: VariablesAnalyzer,
-    array_ref: str,
-    context: ScopeContext,
-) -> tuple[tuple[str, ...], Variable, str] | None:
-    array_var, _field_path, decl_path, _decl_display = context.resolve_variable(array_ref)
-    if array_var is None:
-        return None
-    display_name = ".".join([*decl_path, array_var.name])
-    key = tuple(segment.casefold() for segment in [*decl_path, array_var.name])
-    return key, array_var, display_name
-
-
-def _resolve_reference_datatype(
-    self: VariablesAnalyzer,
-    full_ref: str,
-    context: ScopeContext,
-) -> tuple[Variable | None, Simple_DataType | str | None, str]:
-    variable, field_path, _decl_path, _decl_display = context.resolve_variable(full_ref)
-    if variable is None:
-        return None, None, full_ref
-    if not field_path:
-        return variable, variable.datatype, full_ref
-    datatype = _resolve_variable_field_datatype(
-        variable,
-        tuple(segment for segment in field_path.split(".") if segment),
-        self.type_graph,
-    )
-    return variable, datatype, full_ref
-
-
-def _format_datatype_text(datatype: Simple_DataType | str | None) -> str:
-    if datatype is None:
-        return "unknown"
-    if isinstance(datatype, Simple_DataType):
-        return datatype.value
-    return str(datatype)
-
-
-def _datatype_key(datatype: Simple_DataType | str | None) -> str | None:
-    if datatype is None:
-        return None
-    if isinstance(datatype, Simple_DataType):
-        return datatype.value.casefold()
-    return str(datatype).casefold()
-
-
-def _append_array_contract_mismatch(
-    self: VariablesAnalyzer,
-    *,
-    source_name: str,
-    source_datatype: Simple_DataType | str | None,
-    source_variable: Variable | None,
-    target_name: str,
-    target_datatype: Simple_DataType | str | None,
-    target_variable: Variable | None,
-    path: list[str],
-) -> None:
-    issue = VariableIssue(
-        kind=IssueKind.CONTRACT_MISMATCH,
-        module_path=list(path),
-        variable=(
-            target_variable
-            if target_variable is not None
-            else Variable(name=target_name, datatype=target_datatype or Simple_DataType.STRING)
-        ),
-        role=(
-            "dynamic array element mismatch: "
-            f"{source_name} ({_format_datatype_text(source_datatype)}) => "
-            f"{target_name} ({_format_datatype_text(target_datatype)})"
-        ),
-        source_variable=(
-            source_variable
-            if source_variable is not None
-            else Variable(name=source_name, datatype=source_datatype or Simple_DataType.STRING)
-        ),
-    )
-    issue.source_display_name = source_name
-    issue.target_display_name = target_name
-    self.append_issue(issue)
-
-
-def _check_array_contract_assignment(
-    self: VariablesAnalyzer,
-    *,
-    source_name: str,
-    source_datatype: Simple_DataType | str | None,
-    source_variable: Variable | None,
-    target_name: str,
-    target_datatype: Simple_DataType | str | None,
-    target_variable: Variable | None,
-    path: list[str],
-) -> None:
-    source_key = _datatype_key(source_datatype)
-    target_key = _datatype_key(target_datatype)
-    if source_key is None or target_key is None or source_key == target_key:
-        return
-    if is_anytype_name(source_key) or is_anytype_name(target_key):
-        return
-    if _is_string_simple_type(source_datatype) and _is_string_simple_type(target_datatype):
-        issues = self.string_validator.check_string_mapping(
-            Variable(name=target_name, datatype=target_datatype or Simple_DataType.STRING),
-            Variable(name=source_name, datatype=source_datatype or Simple_DataType.STRING),
-            path,
-        )
-        if not issues:
-            return
-    elif _assignment_type_matches(source_datatype, target_datatype):
-        return
-
-    _append_array_contract_mismatch(
-        self,
-        source_name=source_name,
-        source_datatype=source_datatype,
-        source_variable=source_variable,
-        target_name=target_name,
-        target_datatype=target_datatype,
-        target_variable=target_variable,
-        path=path,
-    )
-
-
-def _bind_dynamic_array_contract(
-    self: VariablesAnalyzer,
-    array_ref: str,
-    element_ref: str,
-    context: ScopeContext,
-    path: list[str],
-) -> Simple_DataType | str | None:
-    array_key_data = _array_contract_key_for_ref(self, array_ref, context)
-    if array_key_data is None:
-        return None
-    array_key, array_var, array_display_name = array_key_data
-    element_var, element_datatype, element_display_name = _resolve_reference_datatype(self, element_ref, context)
-    if element_datatype is None:
-        return self.array_element_datatypes_by_key.get(array_key)
-
-    existing_datatype = self.array_element_datatypes_by_key.get(array_key)
-    if existing_datatype is None:
-        self.array_element_datatypes_by_key[array_key] = element_datatype
-        return element_datatype
-
-    _check_array_contract_assignment(
-        self,
-        source_name=element_display_name,
-        source_datatype=element_datatype,
-        source_variable=element_var,
-        target_name=f"{array_display_name}[element]",
-        target_datatype=existing_datatype,
-        target_variable=array_var,
-        path=path,
-    )
-    return existing_datatype
-
-
-def _validate_dynamic_array_get(
-    self: VariablesAnalyzer,
-    array_ref: str,
-    element_ref: str,
-    context: ScopeContext,
-    path: list[str],
-) -> Simple_DataType | str | None:
-    array_key_data = _array_contract_key_for_ref(self, array_ref, context)
-    if array_key_data is None:
-        return None
-    array_key, _array_var, array_display_name = array_key_data
-    existing_datatype = self.array_element_datatypes_by_key.get(array_key)
-    if existing_datatype is None:
-        return None
-
-    element_var, element_datatype, element_display_name = _resolve_reference_datatype(self, element_ref, context)
-    _check_array_contract_assignment(
-        self,
-        source_name=f"{array_display_name}[element]",
-        source_datatype=existing_datatype,
-        source_variable=Variable(name=f"{array_display_name}[element]", datatype=existing_datatype),
-        target_name=element_display_name,
-        target_datatype=element_datatype,
-        target_variable=element_var,
-        path=path,
-    )
-    return existing_datatype
-
-
 def _index_all_variables(self: VariablesAnalyzer) -> None:
     index = self.any_var_index
 
@@ -763,19 +512,6 @@ def _index_all_variables(self: VariablesAnalyzer) -> None:
 
 
 class VariablesContractsMixin:
-    def _iter_anytype_typedefs(self: Any) -> list[ModuleTypeDef]:
-        return _iter_anytype_typedefs(self)
-
-    def _build_anytype_parameter_contract(
-        self: Any,
-        extractor: VariablesAnalyzer,
-        variable: Variable,
-    ) -> AnyTypeFieldContract | None:
-        return _build_anytype_parameter_contract(self, extractor, variable)
-
-    def _build_anytype_field_contracts(self: Any) -> dict[int, dict[str, AnyTypeFieldContract]]:
-        return _build_anytype_field_contracts(self)
-
     def _get_required_parameter_names_for_typedef(
         self: Any,
         moduletype: ModuleTypeDef,
@@ -835,51 +571,23 @@ class VariablesContractsMixin:
             owner_contract_id=owner_contract_id,
         )
 
-    def _bind_dynamic_array_contract(
-        self: Any,
-        array_ref: str,
-        element_ref: str,
-        context: ScopeContext,
-        path: list[str],
-    ) -> Simple_DataType | str | None:
-        return _bind_dynamic_array_contract(self, array_ref, element_ref, context, path)
-
-    def _validate_dynamic_array_get(
-        self: Any,
-        array_ref: str,
-        element_ref: str,
-        context: ScopeContext,
-        path: list[str],
-    ) -> Simple_DataType | str | None:
-        return _validate_dynamic_array_get(self, array_ref, element_ref, context, path)
-
     def _index_all_variables(self: Any) -> None:
         _index_all_variables(self)
 
 
-build_anytype_field_contracts = _build_anytype_field_contracts
-build_anytype_parameter_contract = _build_anytype_parameter_contract
-bind_dynamic_array_contract = _bind_dynamic_array_contract
 check_param_mapping = _check_param_mapping
 check_param_mappings_for_single = _check_param_mappings_for_single
 check_param_mappings_for_type_instance = _check_param_mappings_for_type_instance
 get_required_parameter_names_for_typedef = _get_required_parameter_names_for_typedef
 index_all_variables = _index_all_variables
-iter_anytype_typedefs = _iter_anytype_typedefs
 make_nested_contract_extractor = _make_nested_contract_extractor
-validate_dynamic_array_get = _validate_dynamic_array_get
 
 __all__ = [
     "VariablesContractsMixin",
-    "bind_dynamic_array_contract",
-    "build_anytype_field_contracts",
-    "build_anytype_parameter_contract",
     "check_param_mapping",
     "check_param_mappings_for_single",
     "check_param_mappings_for_type_instance",
     "get_required_parameter_names_for_typedef",
     "index_all_variables",
-    "iter_anytype_typedefs",
     "make_nested_contract_extractor",
-    "validate_dynamic_array_get",
 ]

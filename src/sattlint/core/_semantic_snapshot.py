@@ -29,14 +29,6 @@ from ._semantic_helpers import (
 )
 from .call_signatures import CallSignatureOccurrence
 from .diagnostics import DroppedDiagnosticIssue, SemanticDiagnostic
-from .safety_paths import (
-    DEFAULT_SAFETY_SIGNAL_KEYWORDS,
-    SafetyPathTrace,
-    SymbolAccess,
-    build_safety_path_traces,
-    build_symbol_accesses,
-)
-from .taint_paths import TaintPathTrace, build_taint_path_traces
 from .workspace_discovery import WorkspaceSourceDiscovery
 
 __all__ = [
@@ -340,25 +332,6 @@ class SemanticSnapshot:
             return references[:limit]
         return references
 
-    def find_accesses_to(
-        self,
-        query: str | SymbolDefinition,
-        *,
-        limit: int | None = None,
-    ) -> list[SymbolAccess]:
-        if isinstance(query, SymbolDefinition):
-            definition_key = tuple(cf(segment) for segment in query.canonical_path.split("."))
-        else:
-            definitions = self.find_definitions(query, limit=1)
-            if not definitions:
-                return []
-            definition_key = tuple(cf(segment) for segment in definitions[0].canonical_path.split("."))
-
-        accesses = list(build_symbol_accesses(self._accesses_by_definition_key.get(definition_key, ())))
-        if limit is not None:
-            return accesses[:limit]
-        return accesses
-
     def iter_access_events_by_definition(
         self,
         *,
@@ -369,34 +342,6 @@ class SemanticSnapshot:
                 continue
             definition_key = tuple(cf(segment) for segment in definition.canonical_path.split("."))
             yield definition, self._accesses_by_definition_key.get(definition_key, ())
-
-    def find_safety_paths(
-        self,
-        query: str = "",
-        *,
-        limit: int | None = None,
-        keywords: tuple[str, ...] = DEFAULT_SAFETY_SIGNAL_KEYWORDS,
-    ) -> list[SafetyPathTrace]:
-        return build_safety_path_traces(
-            self._accesses_by_definition_key,
-            query=query,
-            limit=limit,
-            keywords=keywords,
-        )
-
-    def find_taint_paths(
-        self,
-        query: str = "",
-        *,
-        limit: int | None = None,
-    ) -> list[TaintPathTrace]:
-        return build_taint_path_traces(
-            self._effect_flow_edges,
-            self._accesses_by_definition_key,
-            query=query,
-            limit=limit,
-            display_names_by_key=self._effect_flow_display_names,
-        )
 
     def find_references_at(
         self,

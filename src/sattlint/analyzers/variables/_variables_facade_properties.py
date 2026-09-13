@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, Protocol, cast
 
-from sattline_parser.models.ast_model import Simple_DataType, Variable
+from sattline_parser.models.ast_model import Variable
 
 from ...reporting.variables_report import VariableIssue
 from ...resolution import AccessGraph
@@ -32,7 +32,6 @@ class _VariablesAnalyzerFacadeState(Protocol):
     _naming_role_patterns: dict[str, Any]
     _any_var_index: dict[str, list[Variable]]
     _required_parameter_names_by_owner: dict[int, dict[str, str]]
-    _array_element_datatypes_by_key: dict[tuple[str, ...], Simple_DataType | str]
     _contract_validator: ContractMappingValidator
     _min_max_validator: MinMaxValidator
     _string_validator: StringMappingValidator
@@ -99,10 +98,6 @@ class VariablesAnalyzerFacadePropertiesMixin:
     @property
     def required_parameter_names_by_owner(self) -> dict[int, dict[str, str]]:
         return self._state()._required_parameter_names_by_owner
-
-    @property
-    def array_element_datatypes_by_key(self) -> dict[tuple[str, ...], Simple_DataType | str]:
-        return self._state()._array_element_datatypes_by_key
 
     @property
     def contract_validator(self) -> ContractMappingValidator:

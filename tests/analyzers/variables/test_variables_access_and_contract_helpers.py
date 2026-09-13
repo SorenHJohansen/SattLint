@@ -973,22 +973,6 @@ def test_dependency_scope_support_walk_helpers_cover_branches(monkeypatch: pytes
 
 
 def test_variables_contracts_cover_guard_branches(monkeypatch: pytest.MonkeyPatch) -> None:
-    non_any = Variable(name="Scalar", datatype=Simple_DataType.INTEGER)
-    any_param = Variable(name="AnyParam", datatype="AnyType")
-
-    def _get_empty_usage(_variable: Variable) -> _UsageStub:
-        return _UsageStub()
-
-    def _iter_no_typedefs() -> list[object]:
-        return []
-
-    extractor: Any = _ns(get_usage=_get_empty_usage)
-    assert variables_contracts_impl._build_anytype_parameter_contract(_ns(), extractor, non_any) is None
-    assert variables_contracts_impl._build_anytype_parameter_contract(_ns(), extractor, any_param) is None
-
-    helper: Any = SimpleNamespace(iter_anytype_typedefs=_iter_no_typedefs)
-    assert variables_contracts_impl._build_anytype_field_contracts(helper) == {}
-
     display_only = Variable(name="DisplayOnly", datatype=Simple_DataType.INTEGER)
     required = Variable(name="Required", datatype=Simple_DataType.INTEGER)
     moduletype: Any = _ns(moduleparameters=[display_only, required], name="Worker")
@@ -1084,20 +1068,6 @@ def test_variables_contracts_cover_guard_branches(monkeypatch: pytest.MonkeyPatc
 def test_variables_contracts_cover_remaining_collection_and_index_branches(  # noqa: PLR0915
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    any_param = Variable(name="AnyParam", datatype="AnyType")
-    any_usage = _UsageStub(field_reads={"Leaf": [object()]}, field_writes={"Other": [object()]})
-
-    def _get_any_usage(_variable: Variable) -> _UsageStub:
-        return any_usage
-
-    contract = variables_contracts_impl._build_anytype_parameter_contract(
-        _ns(),
-        _ns(get_usage=_get_any_usage),
-        any_param,
-    )
-    assert contract is not None
-    assert contract.field_paths == ("Leaf", "Other")
-
     nested_param = Variable(name="NestedParam", datatype=Simple_DataType.INTEGER)
     nested_local = Variable(name="NestedLocal", datatype=Simple_DataType.INTEGER)
     root_local = Variable(name="RootLocal", datatype=Simple_DataType.INTEGER)
@@ -1229,9 +1199,6 @@ def test_variables_contracts_cover_remaining_collection_and_index_branches(  # n
     def _lookup_env_var(_source_ref: object, _env: object) -> None:
         return None
 
-    def _check_contract_mapping(*_args: object, **_kwargs: object) -> list[SimpleNamespace]:
-        return [SimpleNamespace(label="contract")]
-
     def _check_string_mapping(*_args: object, **_kwargs: object) -> list[SimpleNamespace]:
         return [
             SimpleNamespace(
@@ -1249,10 +1216,10 @@ def test_variables_contracts_cover_remaining_collection_and_index_branches(  # n
         mapping_calls.append((pm.source["var_name"], issue.label))
 
     mapping_helper: Any = SimpleNamespace(
-        _selected_issue_kinds={IssueKind.CONTRACT_MISMATCH},
+        _selected_issue_kinds={IssueKind.STRING_MAPPING_MISMATCH},
         lookup_env_var_from_varname_dict=_lookup_env_var,
         root_env={"rootsource": src_var},
-        contract_validator=_ns(check_contract_mapping=_check_contract_mapping),
+        contract_validator=_ns(),
         string_validator=_ns(check_string_mapping=_check_string_mapping),
         min_max_validator=_ns(check_min_max_mapping=_check_min_max_mapping),
         append_param_mapping_issue=_append_mapping_issue,
@@ -1282,44 +1249,23 @@ def test_variables_contracts_cover_remaining_collection_and_index_branches(  # n
         ["Root"],
     )
     assert mapping_calls == [
-        ("RootSource", "contract"),
         ("RootSource", "string"),
         ("RootSource", "range"),
     ]
 
 
 def test_variables_contracts_cover_remaining_loop_and_guard_branches(monkeypatch: pytest.MonkeyPatch) -> None:
-    any_typedef = _ns(
-        name="AnyTypeHolder",
-        moduleparameters=[Variable(name="Payload", datatype="AnyType")],
-    )
-    build_calls: list[str] = []
-
-    def _iter_anytype_typedefs() -> list[Any]:
-        return [any_typedef]
-
-    def _build_anytype_parameter_contract(_extractor: object, variable: Variable) -> None:
-        build_calls.append(variable.name)
-        return None
-
     def _analyze_typedef_noop(*_args: object, **_kwargs: object) -> None:
         return None
 
     def _make_nested_contract_extractor(_self: object) -> Any:
         return _ns(analyze_typedef=_analyze_typedef_noop)
 
-    contract_owner: Any = SimpleNamespace(
-        bp=_ns(header=_ns(name="Root")),
-        iter_anytype_typedefs=_iter_anytype_typedefs,
-        build_anytype_parameter_contract=_build_anytype_parameter_contract,
-    )
     monkeypatch.setattr(
         variables_contracts_module,
         "_make_nested_contract_extractor",
         _make_nested_contract_extractor,
     )
-    assert variables_contracts_impl._build_anytype_field_contracts(contract_owner) == {}
-    assert build_calls == ["Payload"]
 
     guard_calls: list[str] = []
     mapped_parameter = Variable(name="Mapped", datatype=Simple_DataType.INTEGER)
@@ -1354,7 +1300,7 @@ def test_variables_contracts_cover_remaining_loop_and_guard_branches(monkeypatch
 
     single_helper._selected_issue_kinds = {
         IssueKind.REQUIRED_PARAMETER_CONNECTION,
-        IssueKind.CONTRACT_MISMATCH,
+        IssueKind.STRING_MAPPING_MISMATCH,
     }
 
     def _get_no_guard_usage(_variable: Variable) -> _UsageStub:
@@ -1376,9 +1322,6 @@ def test_variables_contracts_cover_remaining_loop_and_guard_branches(monkeypatch
     def _lookup_env_var(_source_ref: object, _env: object) -> None:
         return None
 
-    def _check_contract_mapping(*_args: object, **_kwargs: object) -> list[str]:
-        return ["contract"]
-
     def _check_string_mapping(*_args: object, **_kwargs: object) -> list[str]:
         return ["string"]
 
@@ -1389,10 +1332,10 @@ def test_variables_contracts_cover_remaining_loop_and_guard_branches(monkeypatch
         param_check_calls.append((pm.source["var_name"], issue))
 
     check_helper: Any = SimpleNamespace(
-        _selected_issue_kinds={IssueKind.CONTRACT_MISMATCH},
+        _selected_issue_kinds={IssueKind.STRING_MAPPING_MISMATCH},
         lookup_env_var_from_varname_dict=_lookup_env_var,
         root_env={},
-        contract_validator=_ns(check_contract_mapping=_check_contract_mapping),
+        contract_validator=_ns(),
         string_validator=_ns(check_string_mapping=_check_string_mapping),
         min_max_validator=_ns(check_min_max_mapping=_check_min_max_mapping),
         append_param_mapping_issue=_append_param_check_issue,
@@ -1413,4 +1356,4 @@ def test_variables_contracts_cover_remaining_loop_and_guard_branches(monkeypatch
         cast(Any, None),
         ["Root"],
     )
-    assert param_check_calls == [("Unknown", "contract")]
+    assert param_check_calls == []

@@ -4,8 +4,7 @@
     "mode": "analyzer-signal-lifecycle",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.signal-lifecycle-read-before-write",
-            "semantic.signal-lifecycle-unconsumed-write"
+            "semantic.signal-lifecycle-read-before-write"
         ],
         "artifact_fragments": {
             "status.json": {
@@ -15,10 +14,9 @@
             },
             "summary.json": {
                 "analyzer_key": "signal-lifecycle",
-                "finding_count": 3,
+                "finding_count": 1,
                 "rule_counts": {
-                    "semantic.signal-lifecycle-read-before-write": 1,
-                    "semantic.signal-lifecycle-unconsumed-write": 2
+                    "semantic.signal-lifecycle-read-before-write": 1
                 }
             }
         },

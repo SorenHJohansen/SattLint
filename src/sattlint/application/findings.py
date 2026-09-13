@@ -249,7 +249,6 @@ _KIND_HUMAN_LABELS: dict[str, str] = {
     "min_max_mapping_mismatch": "Min/Max mapping mismatch",
     "unknown_parameter_target": "Unknown parameter target",
     "required_parameter_connection": "Required parameter connection",
-    "contract_mismatch": "Contract mismatch",
     "string_mapping_mismatch": "String mapping mismatch",
     "procedure_status": "Procedure status",
     "shadowing": "Variable shadowing",
@@ -273,22 +272,11 @@ _KIND_HUMAN_LABELS: dict[str, str] = {
     "dataflow.scan_cycle_implicit_new": "Implicit :NEW read",
     "dataflow.scan_cycle_temporal_misuse": ":OLD misuse",
     "dataflow.invalid_state_access": "Invalid state access",
-    "state_inference.condition_always_true": "Condition always true",
-    "state_inference.condition_always_false": "Condition always false",
-    "state_inference.unreachable_branch": "Unreachable branch",
     "signal_lifecycle.read_before_write": "Read before write",
-    "signal_lifecycle.unconsumed_write": "Unconsumed write",
     "loop_stability.conflicting_setpoint": "Conflicting setpoint",
     "numeric_constraints.limit_violation": "Limit violation",
     "data_dependency.path": "Dependency path",
     "data_dependency.initialization_order": "Initialization order",
-    "resource_usage.acquire_without_release": "Acquire without release",
-    "resource_usage.release_without_acquire": "Release without acquire",
-    "resource_usage.leaked_resource": "Leaked resource",
-    "scan_cycle.resource_usage": "Scan-cycle resource usage",
-    "fault_handling.missing_recovery": "Missing fault recovery",
-    "fault_handling.unhandled_fault": "Unhandled fault",
-    "config_drift.instance_configuration": "Instance configuration drift",
     "module.parameter_drift": "Parameter drift",
     "module.version_drift": "Version drift",
     "naming.inconsistent_style": "Inconsistent naming style",
@@ -312,8 +300,6 @@ _KIND_HUMAN_LABELS: dict[str, str] = {
     "spec.mes_batch_control_name": "MES_BatchControl name",
     "spec.mes_batch_control_max_try": "MES_BatchControl Max_TRY",
     "spec.mes_batch_control_repeat_try": "MES_BatchControl Repeat_TRY",
-    "safety-path.unconsumed_signal": "Unconsumed safety signal",
-    "taint-path.external_input_to_critical_sink": "External input to critical sink",
     "unsafe_defaults.true_boolean_default": "Unsafe boolean default",
     "same_cycle_shared_access_hazard": "Same-cycle shared access",
     "same_cycle_parallel_read_write_hazard": "Parallel read/write hazard",
@@ -354,4 +340,8 @@ def kind_human_label(kind: str) -> str:
     return " ".join(word[:1].upper() + word[1:] for word in words)
 
 
-__all__ = ["AnalysisFinding", "extract_report_findings", "kind_human_label"]
+__all__ = [
+    "AnalysisFinding",
+    "extract_report_findings",
+    "kind_human_label",
+]

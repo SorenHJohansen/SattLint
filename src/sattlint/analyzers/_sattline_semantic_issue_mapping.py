@@ -9,6 +9,8 @@ from ._sattline_semantic_models import SemanticIssue, SemanticRule
 from ._sattline_semantic_rules import (
     RULE_CONTRACTS_BY_ID,
     SPEC_RULE_DESCRIPTIONS,
+    SPEC_RULE_EXAMPLES,
+    SPEC_RULE_NAMES,
     TRACE_RULES,
     VARIABLE_RULES,
     attach_rule_contract,
@@ -70,8 +72,6 @@ def describe_variable_issue(issue: VariableIssue) -> str:
         return issue.role or f"Global variable {variable_name!r} acts as an implicit interface across multiple modules."
     if issue.kind is IssueKind.UNKNOWN_PARAMETER_TARGET:
         return issue.role or "Unknown parameter mapping target."
-    if issue.kind is IssueKind.CONTRACT_MISMATCH:
-        return issue.role or "Connected module parameters use incompatible datatypes."
     if issue.kind is IssueKind.STRING_MAPPING_MISMATCH:
         source_name = issue.source_variable.name if issue.source_variable is not None else "<unknown source>"
         target_name = variable_name or "<unknown target>"
@@ -229,6 +229,8 @@ def map_spec_issues(issues: list[Issue]) -> list[SemanticIssue]:
                         severity="warning",
                         applies_to="sattline-construct",
                         description=SPEC_RULE_DESCRIPTIONS.get(issue.kind, issue.kind),
+                        name=SPEC_RULE_NAMES.get(issue.kind, issue.kind),
+                        example=SPEC_RULE_EXAMPLES.get(issue.kind),
                     ),
                     RULE_CONTRACTS_BY_ID.get(issue.kind),
                 ),

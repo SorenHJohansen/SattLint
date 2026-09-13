@@ -585,8 +585,7 @@ def test_alarm_integrity_candidate_and_issue_emitters_cover_suppression_and_dedu
     )
     monkeypatch.setattr(analyzer, "_resolve_moduletype", lambda *_args, **_kwargs: None)
     unknown_candidate = analyzer._collect_alarm_candidate(unknown_type_instance, ["Root", "AlarmUnknown"], env, None)
-    assert unknown_candidate is not None
-    assert unknown_candidate.moduletype_label == "MissingType"
+    assert unknown_candidate is None
     suppressed_candidate = analyzer._collect_alarm_candidate(
         ModuleTypeInstance(
             header=_hdr("Suppressed"),
@@ -714,6 +713,77 @@ def test_alarm_integrity_candidate_and_issue_emitters_cover_suppression_and_dedu
         "Root.AlarmD",
         "Root.Ignored",
     ]
+
+
+def test_alarm_integrity_only_accepts_known_eventlib_detector_moduletypes(monkeypatch) -> None:
+    bp = BasePicture(header=_hdr("Root"), origin_file="Root.s")
+    analyzer = alarm_integrity_module.AlarmIntegrityAnalyzer(bp)
+    env = {"conda": Variable(name="CondA", datatype=Simple_DataType.BOOLEAN, init_value=True)}
+    instance = ModuleTypeInstance(
+        header=_hdr("Detector"),
+        moduletype_name="Whatever",
+        parametermappings=[
+            ParameterMapping(
+                target=_varref("Tag"),
+                source_type=const.KEY_VALUE,
+                is_duration=False,
+                is_source_global=False,
+                source_literal="Alarm.Tag",
+            ),
+            ParameterMapping(
+                target=_varref("Condition"),
+                source_type=const.TREE_TAG_VARIABLE_NAME,
+                is_duration=False,
+                is_source_global=False,
+                source=_varref("CondA"),
+                source_literal=None,
+            ),
+        ],
+    )
+
+    def _typedef_for(name: str) -> ModuleTypeDef:
+        return ModuleTypeDef(
+            name=name,
+            moduleparameters=[
+                Variable(name="Tag", datatype=Simple_DataType.TAGSTRING),
+                Variable(name="Severity", datatype=Simple_DataType.INTEGER, init_value=2),
+                Variable(name="Condition", datatype=Simple_DataType.BOOLEAN),
+            ],
+            localvariables=[],
+            submodules=[],
+            moduledef=None,
+            modulecode=None,
+            parametermappings=[],
+            origin_file="Root.s",
+        )
+
+    known_detectors = {
+        "Event1",
+        "Event2",
+        "Event1Advanced",
+        "Event2Advanced",
+        "EventDetector1",
+        "EventDetector2",
+    }
+    for name in known_detectors:
+        monkeypatch.setattr(analyzer, "_resolve_moduletype", lambda *_a, name=name, **_kw: _typedef_for(name))
+        candidate = analyzer._collect_alarm_candidate(instance, ["Root", "Detector"], env, None)
+        assert candidate is not None
+        assert candidate.moduletype_label == name
+
+    non_detectors = {
+        "EventLine",
+        "EventLineCore",
+        "EventLogger",
+        "EventLoggerMaster",
+        "EventPrinter",
+        "Alarm4RealS",
+        "RelativeAlarm2",
+        "EventAnnunciator",
+    }
+    for name in non_detectors:
+        monkeypatch.setattr(analyzer, "_resolve_moduletype", lambda *_a, name=name, **_kw: _typedef_for(name))
+        assert analyzer._collect_alarm_candidate(instance, ["Root", "Detector"], env, None) is None
 
 
 def test_alarm_integrity_run_walks_supported_nodes_and_module_code_filters_clear_writes(monkeypatch) -> None:

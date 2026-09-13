@@ -87,7 +87,6 @@ class ContractExtractionSession:
             include_dependency_moduletype_usage=policy.include_dependency_moduletype_usage,
             selected_issue_kinds=frozenset(),
             trace_recorder=None,
-            build_anytype_contracts=False,
             shared_artifacts=shared_artifacts,
         )
         # Marker guarding the requesting analyzer against accidental provider recursion:

@@ -9,7 +9,6 @@
             "semantic.loop-conflicting-setpoint",
             "semantic.never-read-write",
             "semantic.read-only-non-const",
-            "semantic.signal-lifecycle-unconsumed-write",
             "semantic.unreachable-branch",
             "spec.basepicture_direct_code"
         ],
@@ -19,14 +18,13 @@
                 "missing_dependency_count": 0
             },
             "summary.json": {
-                "finding_count": 12,
+                "finding_count": 11,
                 "rule_counts": {
                     "semantic.condition-always-false": 3,
                     "semantic.data-dependency-path": 1,
                     "semantic.loop-conflicting-setpoint": 1,
                     "semantic.never-read-write": 1,
                     "semantic.read-only-non-const": 1,
-                    "semantic.signal-lifecycle-unconsumed-write": 1,
                     "semantic.unreachable-branch": 3,
                     "spec.basepicture_direct_code": 1
                 }
