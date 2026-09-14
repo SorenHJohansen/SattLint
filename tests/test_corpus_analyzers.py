@@ -24,6 +24,7 @@ from sattlint.analyzers._registry_dispatch import (
     get_registry_analyzer_spec,
     run_registry_analyzer,
 )
+from sattlint.analyzers._sattline_semantic_issue_metadata import materialize_issue_metadata
 from sattlint.analyzers._sattline_semantic_rules import VARIABLE_RULES
 from sattlint.analyzers.framework import (
     AnalysisContext,
@@ -31,7 +32,6 @@ from sattlint.analyzers.framework import (
     Issue,
     build_analysis_context,
 )
-from sattlint.analyzers.rule_profiles import materialize_issue_metadata
 from sattlint.analyzers.variables import analyze_variables
 from sattlint.engine import (
     CodeMode,

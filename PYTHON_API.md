@@ -30,8 +30,7 @@ The analyzers package does not export any public symbols directly. Individual an
 | Export | Description |
 |--------|-------------|
 | `validate_icf_entries_against_program` | Validate ICF entries against a base picture |
-| `ICFFormatResult` | ICF formatting result type |
-| `format_icf_file`, `format_icf_text`, `parse_icf_file` | ICF formatting and parsing |
+| `parse_icf_file` | Parse `.icf` key/value entries |
 | `resolve_leaf_datatype`, `resolve_record_datatype` | Datatype resolution helpers |
 
 ### `sattlint.analyzers.mms`

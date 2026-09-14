@@ -8,8 +8,10 @@ layered refactor.
 
 from __future__ import annotations
 
+import io
 import os
 from collections.abc import Callable, Iterator, Set
+from contextlib import redirect_stdout
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from time import perf_counter
@@ -17,6 +19,7 @@ from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
+from .. import config as config_module
 from ..analyzers import catalog as analysis_catalog_module
 from ..analyzers import dispatch as analysis_dispatch_module
 from ..analyzers.framework import (
@@ -26,7 +29,6 @@ from ..analyzers.framework import (
     build_analysis_context,
 )
 from ..analyzers.icf.analyzer import analyze_icf_configuration
-from ..analyzers.rule_profiles import apply_rule_profile_to_report
 from ..analyzers.shared.instance_paths import rewrite_typedef_paths
 from ..analyzers.variables import IssueKind
 from ..cache import AnalysisReportCache, compute_analysis_report_cache_key, get_cache_dir
@@ -278,7 +280,6 @@ def _run_whole_run_analyzer(
             issue_count=0,
             duration_ms=round((perf_counter() - started_at) * 1000, 3),
         )
-    report = apply_rule_profile_to_report(spec.key, report, cfg)
     report = _filter_report_for_selected_issue_kinds(report, selected_issue_kinds)
     typed_report = cast(SimpleReport, report)
     summary_text = typed_report.summary()
@@ -305,6 +306,20 @@ def _rewrite_typedef_issue_paths(report: object, base_picture: BasePicture, grap
         rewrite_typedef_paths(cast(list[object], issues), base_picture, graph)
 
 
+def _run_self_check_preflight(
+    cfg: ConfigDict,
+    *,
+    self_check_fn: Callable[[ConfigDict], bool] | None,
+) -> tuple[bool, list[str]]:
+    if self_check_fn is None:
+        return True, []
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        ok = self_check_fn(cfg)
+    lines = [line for line in buffer.getvalue().splitlines() if line.strip()]
+    return ok, lines
+
+
 def collect_run_checks_result(  # noqa: PLR0915
     cfg: ConfigDict,
     selected_keys: list[str] | None,
@@ -315,6 +330,7 @@ def collect_run_checks_result(  # noqa: PLR0915
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
     get_enabled_analyzers_fn: Callable[[], list[Any]] | None = None,
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
+    self_check_fn: Callable[[ConfigDict], bool] | None = None,
 ) -> ChecksRunResult:
     if iter_loaded_projects_fn is None:
         iter_loaded_projects_fn = _iter_loaded_projects
@@ -350,6 +366,24 @@ def collect_run_checks_result(  # noqa: PLR0915
 
     batch_analyzers = [spec for spec in analyzers if getattr(spec, "key", None) != ICF_ANALYZER_KEY]
     whole_run_analyzers = [spec for spec in analyzers if getattr(spec, "key", None) == ICF_ANALYZER_KEY]
+
+    if self_check_fn is None:
+        self_check_fn = config_module.self_check
+    self_check_ok, self_check_lines = _run_self_check_preflight(cfg, self_check_fn=self_check_fn)
+    if not self_check_ok:
+        output_lines.extend(self_check_lines)
+        output_lines.extend(
+            [
+                "❌ Self-check failed. Analysis aborted before the checks pipeline started.",
+                "Fix the reported issues and rerun.",
+            ]
+        )
+        flush_stdout()
+        return ChecksRunResult(
+            output_lines=tuple(output_lines),
+            selected_analyzers=selected_analyzer_keys,
+            selected_issue_kinds=selected_issue_kind_tuple_result,
+        )
 
     emit_line("\n--- Running checks ---")
     flush_stdout()
@@ -469,7 +503,6 @@ def collect_run_checks_result(  # noqa: PLR0915
                 phase_timings_ms = profiling_module.normalize_phase_timings_ms(getattr(report, "phase_timings", None))
                 if phase_timings_ms:
                     analyzer_phase_timings_ms[spec.key] = phase_timings_ms
-                report = apply_rule_profile_to_report(spec.key, report, cfg)
                 report = _filter_report_for_selected_issue_kinds(report, normalized_selected_issue_kinds)
                 report = normalize_report_target_name(report, target_name)
                 summary_text = report.summary()
@@ -588,6 +621,7 @@ def run_checks_result(
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
     get_enabled_analyzers_fn: Callable[[], list[Any]] | None = None,
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
+    self_check_fn: Callable[[ConfigDict], bool] | None = None,
 ) -> ChecksRunResult:
     result = collect_run_checks_result(
         cfg,
@@ -598,6 +632,7 @@ def run_checks_result(
         iter_loaded_projects_fn=iter_loaded_projects_fn,
         get_enabled_analyzers_fn=get_enabled_analyzers_fn,
         target_is_library_fn=target_is_library_fn,
+        self_check_fn=self_check_fn,
     )
     for line in result.output_lines:
         output_module.emit_output(line)
@@ -614,6 +649,7 @@ def run_checks(
     get_enabled_analyzers_fn: Callable[[], list[Any]] | None = None,
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
     pause_fn: Callable[[], None] | None = None,
+    self_check_fn: Callable[[ConfigDict], bool] | None = None,
 ) -> None:
     result = run_checks_result(
         cfg,
@@ -624,13 +660,10 @@ def run_checks(
         iter_loaded_projects_fn=iter_loaded_projects_fn,
         get_enabled_analyzers_fn=get_enabled_analyzers_fn,
         target_is_library_fn=target_is_library_fn,
+        self_check_fn=self_check_fn,
     )
     if result.cancelled:
         output_module.handle_analysis_cancellation(pause_fn=pause_fn)
         return
     if pause_fn is not None:
         pause_fn()
-
-
-def run_checks_menu(cfg: ConfigDict, *, run_checks_fn: Callable[[ConfigDict, list[str] | None], None]) -> None:
-    run_checks_fn(cfg, None)

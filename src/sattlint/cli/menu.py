@@ -27,9 +27,6 @@ Recommended first run:
 Main areas:
 - Analyze: run curated reports, the full analyzer suite, or registry-backed checks.
 - Setup: edit directories, targets, and mode (saved automatically to the configuration).
-
-Quick single-file validation:
-    sattlint syntax-check /path/to/Program.s
 """
 
 

@@ -58,7 +58,11 @@ def test_library_typedef_moduleparameter_unused_fields_are_suppressed():
         origin_lib="ProjectLib",
     )
 
-    program_analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=False)
+    program_analyzer = VariablesAnalyzer(
+        bp,
+        analyzed_target_is_library=False,
+        selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS),
+    )
     program_analyzer.run()
     assert any(
         issue.kind is IssueKind.UNUSED_DATATYPE_FIELD
@@ -67,7 +71,11 @@ def test_library_typedef_moduleparameter_unused_fields_are_suppressed():
         for issue in program_analyzer.issues
     )
 
-    library_analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True)
+    library_analyzer = VariablesAnalyzer(
+        bp,
+        analyzed_target_is_library=True,
+        selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS),
+    )
     library_analyzer.run()
     assert not any(
         issue.kind is IssueKind.UNUSED_DATATYPE_FIELD

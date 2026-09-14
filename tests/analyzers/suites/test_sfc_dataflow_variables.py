@@ -291,67 +291,6 @@ def test_variables_analyzer_ignores_safe_naming_role_counterexamples():
     assert not any(issue.kind is IssueKind.NAMING_ROLE_MISMATCH for issue in issues)
 
 
-def test_variables_analyzer_supports_configured_naming_role_prefixes():
-    unit = SingleModule(
-        header=_hdr("Unit"),
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[
-            Variable(name="CmdStart", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="StatusValve", datatype=Simple_DataType.INTEGER),
-            Variable(name="Hold", datatype=Simple_DataType.BOOLEAN),
-        ],
-        submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        Assignment(target=_varref("CmdStart"), value=True),
-                        Assignment(target=_varref("Hold"), value=_varref("CmdStart")),
-                        Assignment(target=_varref("StatusValve"), value=IntLiteral(1)),
-                    ],
-                )
-            ]
-        ),
-        parametermappings=[],
-    )
-    bp = BasePicture(
-        header=_hdr("Root"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[unit],
-        modulecode=None,
-        moduledef=None,
-    )
-
-    default_issues = VariablesAnalyzer(bp).run()
-    configured_issues = VariablesAnalyzer(
-        bp,
-        config={
-            "analysis": {
-                "naming": {
-                    "role_patterns": {
-                        "command": {"prefixes": ["cmd"]},
-                        "status": {"prefixes": ["status"]},
-                    }
-                }
-            }
-        },
-    ).run()
-
-    assert not any(issue.kind is IssueKind.NAMING_ROLE_MISMATCH for issue in default_issues)
-    configured_names = {
-        issue.variable.name
-        for issue in configured_issues
-        if issue.kind is IssueKind.NAMING_ROLE_MISMATCH and issue.variable is not None
-    }
-    assert configured_names == {"CmdStart", "StatusValve"}
-
-
 def test_variables_analyzer_treats_dependency_mapped_status_as_handled_when_read_in_logic():
     bridge = ModuleTypeInstance(
         header=_hdr("Bridge"),

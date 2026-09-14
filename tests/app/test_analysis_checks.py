@@ -91,6 +91,76 @@ def test_run_checks_reports_no_matching_checks_and_pauses(monkeypatch):
     assert pauses == ["pause"]
 
 
+def test_collect_run_checks_result_aborts_when_self_check_fails():
+    run_calls: list[str] = []
+
+    result = checks_application.collect_run_checks_result(
+        DEFAULT_CONFIG.copy(),
+        ["state-inference"],
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        named_object("TargetA"),
+                        AnalysisGraphStub(unavailable_libraries=set()),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                run=lambda _context: run_calls.append("run") or SimpleNamespace(issues=[], summary=lambda: "summary"),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: False,
+    )
+
+    assert run_calls == []
+    assert result.targets == ()
+    assert result.selected_analyzers == ("state-inference",)
+    assert any("Self-check failed. Analysis aborted" in line for line in result.output_lines)
+    assert not any("Running checks" in line for line in result.output_lines)
+
+
+def test_collect_run_checks_result_runs_analyzers_when_self_check_passes():
+    run_calls: list[str] = []
+
+    result = checks_application.collect_run_checks_result(
+        DEFAULT_CONFIG.copy(),
+        ["state-inference"],
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        named_object("TargetA"),
+                        AnalysisGraphStub(unavailable_libraries=set()),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                run=lambda _context: run_calls.append("run") or SimpleNamespace(issues=[], summary=lambda: "summary"),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+    )
+
+    assert run_calls == ["run"]
+    assert len(result.targets) == 1
+    del result
+
+
 def test_run_checks_runs_selected_non_default_cli_exposed_analyzer(monkeypatch):
     lines: list[str] = []
 
@@ -862,57 +932,6 @@ def test_run_icf_validation_covers_missing_dir_invalid_dir_and_empty_file_list(m
     assert pauses == ["pause-none", "pause-missing", "pause-empty"]
 
 
-def test_menu_wrappers_delegate_to_underlying_callbacks():
-    calls: list[tuple[str, object]] = []
-
-    checks_application.run_checks_menu(
-        DEFAULT_CONFIG.copy(),
-        run_checks_fn=lambda cfg, selected: calls.append(("checks", selected if selected is not None else cfg)),
-    )
-
-    assert calls[0] == ("checks", DEFAULT_CONFIG.copy())
-
-
-def test_run_mms_interface_analysis_reports_summary_and_errors(monkeypatch):
-    lines: list[str] = []
-    pauses: list[str] = []
-
-    monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
-
-    class MutableReport:
-        def __init__(self) -> None:
-            self.basepicture_name = "BasePicture"
-
-        def summary(self) -> str:
-            return f"mms summary for {self.basepicture_name}"
-
-    def fake_mms(project_bp, debug=False, config=None):
-        if project_bp == "bp-b":
-            raise RuntimeError("boom")
-        return MutableReport()
-
-    monkeypatch.setattr(commands_application, "analyze_mms_interface_variables", fake_mms)
-
-    commands_application.run_mms_interface_analysis(
-        DEFAULT_CONFIG.copy(),
-        iter_loaded_projects_fn=cast(
-            Any,
-            lambda *_args, **_kwargs: iter(
-                [
-                    ("TargetA", "bp-a", AnalysisGraphStub()),
-                    ("TargetB", "bp-b", AnalysisGraphStub()),
-                ]
-            ),
-        ),
-        pause_fn=lambda: pauses.append("pause"),
-    )
-
-    assert any("mms summary for TargetA" in line for line in lines)
-    assert not any("mms summary for BasePicture" in line for line in lines)
-    assert any("Error during analysis for TargetB: boom" in line for line in lines)
-    assert pauses == ["pause"]
-
-
 def test_run_icf_validation_reports_entryless_files_load_failures_and_summary(monkeypatch, tmp_path):
     lines: list[str] = []
     pauses: list[str] = []
@@ -966,33 +985,6 @@ def test_run_icf_validation_reports_entryless_files_load_failures_and_summary(mo
     assert any("Invalid: 1" in line for line in lines)
     assert any("Skipped: 1" in line for line in lines)
     assert pauses == ["pause"]
-
-
-def test_run_comment_code_analysis_reports_success_and_pauses(monkeypatch):
-    lines: list[str] = []
-    pauses: list[str] = []
-
-    monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
-    monkeypatch.setattr(
-        commands_application,
-        "analyze_comment_code_files",
-        lambda paths, root_name: SimpleNamespace(
-            summary=lambda: f"comment:{root_name}:{sorted(str(path) for path in paths)}"
-        ),
-    )
-
-    commands_application.run_comment_code_analysis(
-        DEFAULT_CONFIG.copy(),
-        iter_loaded_projects_fn=cast(
-            Any,
-            lambda *_args, **_kwargs: iter([("TargetA", named_object("Root"), "graph")]),
-        ),
-        source_paths_for_current_target_fn=lambda _project_bp, _graph: {Path("A.s"), Path("B.s")},
-        pause_fn=lambda: pauses.append("pause-comment"),
-    )
-
-    assert any("comment:TargetA:['A.s', 'B.s']" in line for line in lines)
-    assert pauses == ["pause-comment"]
 
 
 def test_run_checks_result_returns_structured_result_and_persists_run(tmp_path, monkeypatch) -> None:

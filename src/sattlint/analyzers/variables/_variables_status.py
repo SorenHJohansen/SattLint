@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
@@ -40,61 +39,8 @@ _IGNORABLE_OUTPUT_PARAMETERS: dict[str, frozenset[str]] = {
 }
 
 
-def _normalize_role_pattern_values(raw: object) -> tuple[str, ...]:
-    if not isinstance(raw, list):
-        return ()
-    raw_values = cast(list[object], raw)
-    values: list[str] = []
-    seen: set[str] = set()
-    for item in raw_values:
-        if not isinstance(item, str):
-            continue
-        value = item.strip().casefold()
-        if not value or value in seen:
-            continue
-        seen.add(value)
-        values.append(value)
-    return tuple(values)
-
-
-def _as_string_object_mapping(raw: object) -> Mapping[str, object] | None:
-    if not isinstance(raw, Mapping):
-        return None
-    return cast(Mapping[str, object], raw)
-
-
-def _configured_naming_role_patterns(
-    config: Mapping[str, object] | None,
-) -> dict[str, _NamingRolePatterns]:
-    patterns = dict(_DEFAULT_NAMING_ROLE_PATTERNS)
-    if config is None:
-        return patterns
-
-    analysis = _as_string_object_mapping(config.get("analysis"))
-    if analysis is None:
-        return patterns
-
-    naming = _as_string_object_mapping(analysis.get("naming"))
-    if naming is None:
-        return patterns
-
-    raw_role_patterns = _as_string_object_mapping(naming.get("role_patterns"))
-    if raw_role_patterns is None:
-        return patterns
-
-    for role_name, defaults in _DEFAULT_NAMING_ROLE_PATTERNS.items():
-        raw_rule = _as_string_object_mapping(raw_role_patterns.get(role_name))
-        if raw_rule is None:
-            continue
-        prefixes = tuple(
-            dict.fromkeys((*defaults.prefixes, *_normalize_role_pattern_values(raw_rule.get("prefixes", []))))
-        )
-        suffixes = tuple(
-            dict.fromkeys((*defaults.suffixes, *_normalize_role_pattern_values(raw_rule.get("suffixes", []))))
-        )
-        patterns[role_name] = _NamingRolePatterns(prefixes=prefixes, suffixes=suffixes)
-
-    return patterns
+def _configured_naming_role_patterns() -> dict[str, _NamingRolePatterns]:
+    return dict(_DEFAULT_NAMING_ROLE_PATTERNS)
 
 
 @dataclass(frozen=True)

@@ -32,16 +32,6 @@ def _run_app_module_cfg_action(
     )
 
 
-def _run_analyze_checks(self: Any) -> None:
-    self._run_app_module_cfg_action(
-        "run_checks_menu",
-        "Analyzer checks",
-        action_id="action-analyze",
-        require_targets=True,
-        action_text="analysis checks",
-    )
-
-
 def _prompt_setup_value(self: Any, field_key: str, *, label: str, is_list: bool = False) -> None:
     if self._active_request is not None:
         return

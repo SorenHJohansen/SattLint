@@ -13,7 +13,7 @@ def test_sample_fixture_contains_common_variable_quality_issues():
     )
 
     bp = parse_source_file(fixture)
-    issues = VariablesAnalyzer(bp).run()
+    issues = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(ALL_VARIABLE_ANALYSIS_KINDS)).run()
 
     unused = {issue.variable.name for issue in issues if issue.kind is IssueKind.UNUSED and issue.variable is not None}
     read_only_non_const = {
@@ -38,7 +38,7 @@ def test_sample_fixture_catches_outletprod_sibling_field_miswire():
     fixture = Path(__file__).resolve().parents[2] / "fixtures" / "sample_sattline_files" / "OutletProdSiblingMiswire.s"
 
     bp = parse_source_file(fixture)
-    issues = VariablesAnalyzer(bp).run()
+    issues = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(ALL_VARIABLE_ANALYSIS_KINDS)).run()
 
     field_read_only = {
         (issue.variable.name, issue.field_path)
@@ -118,7 +118,7 @@ def _build_record_field_asymmetry_basepicture(*, include_whole_read: bool) -> Ba
 def test_whole_record_write_does_not_hide_field_never_read_issue():
     bp = _build_record_field_asymmetry_basepicture(include_whole_read=False)
 
-    issues = VariablesAnalyzer(bp).run()
+    issues = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS)).run()
 
     field_read_only = {
         (issue.variable.name, issue.field_path)
@@ -138,7 +138,7 @@ def test_whole_record_write_does_not_hide_field_never_read_issue():
 def test_whole_record_read_does_not_hide_field_read_only_issue():
     bp = _build_record_field_asymmetry_basepicture(include_whole_read=True)
 
-    issues = VariablesAnalyzer(bp).run()
+    issues = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS)).run()
 
     field_read_only = {
         (issue.variable.name, issue.field_path)

@@ -20,10 +20,7 @@ from ._variables_report_rendering import (
 
 DEFAULT_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
     IssueKind.UNUSED,
-    IssueKind.UNUSED_DATATYPE_FIELD,
-    IssueKind.FIELD_READ_ONLY,
     IssueKind.READ_ONLY_NON_CONST,
-    IssueKind.FIELD_NEVER_READ,
     IssueKind.NEVER_READ,
     IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE,
     IssueKind.UNKNOWN_PARAMETER_TARGET,
@@ -34,6 +31,12 @@ DEFAULT_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
     IssueKind.MAGIC_NUMBER,
     IssueKind.NAME_COLLISION,
     IssueKind.RESET_CONTAMINATION,
+)
+
+DATATYPE_FIELD_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
+    IssueKind.UNUSED_DATATYPE_FIELD,
+    IssueKind.FIELD_READ_ONLY,
+    IssueKind.FIELD_NEVER_READ,
 )
 
 LOW_CONFIDENCE_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
@@ -49,6 +52,7 @@ LOW_CONFIDENCE_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
 
 ALL_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
     *DEFAULT_VARIABLE_ANALYSIS_KINDS,
+    *DATATYPE_FIELD_ANALYSIS_KINDS,
     *LOW_CONFIDENCE_VARIABLE_ANALYSIS_KINDS,
 )
 

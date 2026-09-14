@@ -356,7 +356,6 @@ def test_variables_execution_run_records_phase_timings() -> None:
         "base-picture-issue-scan",
         "typedef-scan",
         "final-issue-synthesis",
-        "datatype-field-scan",
     ]
 
 

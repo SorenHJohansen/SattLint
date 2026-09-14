@@ -8,9 +8,8 @@ Comprehensive guide to the SattLint tools, CLI commands, and TUI workflows.
 
 SattLint is a Python toolkit for SattLine projects. It provides:
 
-- **Syntax validation** — strict single-file parsing
 - **Static analysis** — semantic checks, variable analysis, dataflow, architecture validation
-- **ICF and graphics analysis** — validate and format ICF files and check graphics rules
+- **ICF and graphics analysis** — validate ICF files and check graphics rules
 - **Interactive TUI** — Textual-based menu for guided workflows
 
 ---
@@ -45,16 +44,6 @@ Print the installed version.
 sattlint --version
 ```
 
-### `sattlint syntax-check`
-
-Validate a single SattLine file for syntax errors. Accepts `.s`, `.x`, `.g`, `.y` files. When validating `.s` or `.x`, automatically checks the matching graphics sidecar.
-
-```bash
-sattlint syntax-check path/to/Program.s
-```
-
-Exit codes: 0 = valid, 1 = problem found, 2 = invalid arguments.
-
 ---
 
 ## Preview CLI Commands
@@ -68,26 +57,9 @@ arguments are required; use `--list-checks` to see the available analyzers.
 
 ```bash
 sattlint analyze --list-checks
-sattlint analyze --check naming-consistency
-sattlint --config path/to/config.toml analyze --check naming-consistency
-sattlint --no-cache analyze --check naming-consistency
-```
-
-### `sattlint init`
-
-Scaffold a `.slproj` project file in the current directory.
-
-```bash
-sattlint init
-```
-
-### `sattlint validate-config`
-
-Validate the SattLint configuration file.
-
-```bash
-sattlint validate-config
-sattlint --config path/to/config.toml validate-config
+sattlint analyze --check variables
+sattlint --config path/to/config.toml analyze --check variables
+sattlint --no-cache analyze --check variables
 ```
 
 ### `sattlint cache-prune`
@@ -128,7 +100,6 @@ Running `sattlint` with no arguments opens the Textual interactive shell.
 3. Use `equipment:` selectors (e.g., `equipment:L1.L2.EquipModPanelShort`) for equipment-scoped rules.
 4. Moduletype rules identify modules by resolved `ModuleType` name, optionally narrowed with `unit:`, `equipment:`, or exact-path selectors.
 5. Run **Analyze > Validate graphics rules** to report modules not matching spec.
-6. Run `sattlint validate-config` to confirm the graphics rules JSON path is valid.
 
 ### Keyboard & Mouse
 
@@ -196,7 +167,6 @@ Override with `--config path/to/custom.toml`. Project analysis uses `.slproj` pr
 | `other_lib_dirs` | Additional library directories |
 | `analyzed_programs_and_libraries` | Analysis targets |
 | `mode` | `"official"` or `"draft"` |
-| `include_reverse_library_consumers` | Expand analysis scope for library consumers |
 | `review.output_dir` | Directory where Change Review artifacts are written |
 
 Use names without file extensions: `MyProgram`, not `MyProgram.s`.
@@ -223,13 +193,12 @@ CI runs automatically on PR and push to `main`.
 | Code | Meaning |
 |------|---------|
 | 0 | Success |
-| 1 | A real problem was found (for example `syntax-check` found a syntax error) |
 | 2 | Invalid arguments or configuration |
 
-Per-command behavior: `syntax-check` returns `1` when the file fails to parse
-or validate; `analyze` reports issues in its output but exits `0` once the
-analysis runs; `validate-config` returns `2` on invalid configuration. See
-[CLI_COMMANDS.md](CLI_COMMANDS.md) for the full reference.
+Per-command behavior: `analyze` reports issues in its output but exits `0` once
+the analysis runs; `cache-prune` returns `0` on success and `2` on usage or
+configuration errors. See [CLI_COMMANDS.md](CLI_COMMANDS.md) for the full
+reference.
 
 ---
 

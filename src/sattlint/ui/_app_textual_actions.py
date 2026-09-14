@@ -110,9 +110,6 @@ def _render_output_line(line_text: str) -> object:
             style=_OUTPUT_MUTED,
         )
 
-    if stripped in {"Analyze planner queue", "Execution order"}:
-        return _styled_output_text((stripped, f"bold {_OUTPUT_ACCENT}"))
-
     if stripped.startswith("Validation warnings"):
         return _styled_output_text((stripped, f"bold {_OUTPUT_WARNING}"))
 
@@ -542,7 +539,6 @@ def action_save_config(self: Any) -> None:
             "analyzed_programs_and_libraries": list(
                 cast(list[str], cfg_raw.get("analyzed_programs_and_libraries") or [])
             ),
-            "include_reverse_library_consumers": bool(cfg_raw.get("include_reverse_library_consumers", False)),
             "mode": str(cfg_raw.get("mode", "official")),
             "program_dir": _make_project_relative(str(cfg_raw.get("program_dir", "")), root),
             "ABB_lib_dir": _make_project_relative(str(cfg_raw.get("ABB_lib_dir", "")), root),
@@ -943,7 +939,6 @@ def _persist_project(self: Any) -> None:
     project_data: dict[str, object] = {
         "slproj_version": 1,
         "analyzed_programs_and_libraries": list(cast(list[str], cfg_raw.get("analyzed_programs_and_libraries") or [])),
-        "include_reverse_library_consumers": bool(cfg_raw.get("include_reverse_library_consumers", False)),
         "mode": str(cfg_raw.get("mode", "official")),
         "program_dir": _make_project_relative(str(cfg_raw.get("program_dir", "")), root),
         "ABB_lib_dir": _make_project_relative(str(cfg_raw.get("ABB_lib_dir", "")), root),

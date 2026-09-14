@@ -1,7 +1,7 @@
 {
-    "case_id": "analyzer-variables-never-read-datatype-field",
+    "case_id": "analyzer-datatype-fields-never-read-datatype-field",
     "target_file": "../../sample_sattline_files/SequenceLifetimeIssues.s",
-    "mode": "analyzer-variables",
+    "mode": "analyzer-datatype-fields",
     "expectation": {
         "expected_finding_ids": [
             "semantic.never-read-datatype-field"
@@ -10,7 +10,7 @@
             "status.json": {
                 "execution_status": "ok",
                 "missing_dependency_count": 0,
-                "analyzer_key": "variables"
+                "analyzer_key": "datatype-fields"
             }
         },
         "forbidden_finding_ids": [

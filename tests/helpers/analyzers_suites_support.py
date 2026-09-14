@@ -3,8 +3,7 @@
 """Tests for full-suite analyzers.
 
 Covers SFC parallel write race, dataflow, variables analyzer suites,
-version drift, initial values, naming consistency, alarm integrity,
-safety paths, and taint paths.
+version drift, initial values, and alarm integrity.
 """
 
 import json
@@ -65,7 +64,6 @@ from sattlint.analyzers.modules import (
     compare_modules,
     create_fingerprint,
 )
-from sattlint.analyzers.naming import analyze_naming_consistency, get_configured_naming_rules
 from sattlint.analyzers.registry import get_default_analyzers
 from sattlint.analyzers.sfc import analyze_sfc
 from sattlint.analyzers.sfc._sfc_guard_logic import _normalize_guard_signature
@@ -147,7 +145,6 @@ __all__ = [
     "_varref",
     "analyze_alarm_integrity",
     "analyze_dataflow",
-    "analyze_naming_consistency",
     "analyze_sfc",
     "analyze_version_drift",
     "cast",
@@ -155,7 +152,6 @@ __all__ = [
     "const",
     "create_fingerprint",
     "debug_variable_usage",
-    "get_configured_naming_rules",
     "get_default_analyzers",
     "json",
     "registry_module",

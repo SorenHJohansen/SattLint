@@ -566,38 +566,6 @@ def test_ensure_ast_cache_covers_cache_hit_stale_missing_and_failure(monkeypatch
     assert any("Failed to build AST cache for TargetE: boom" in line for line in lines)
 
 
-def test_run_variable_analysis_shadowing_only_uses_shadowing_report_and_pauses(monkeypatch, capsys):
-    analyze_variables_calls: list[str] = []
-
-    monkeypatch.setattr(
-        project_application,
-        "_iter_loaded_projects",
-        lambda *_args, **_kwargs: iter([("ProgramA", "bp", AnalysisGraphStub())]),
-    )
-    monkeypatch.setattr(
-        commands_application,
-        "analyze_variables",
-        lambda *_, **__: analyze_variables_calls.append("called") or make_variable_report(),
-    )
-    monkeypatch.setattr(commands_application, "analyze_shadowing", lambda *_, **__: make_shadowing_report("ShadowOnly"))
-
-    pauses: list[str] = []
-    commands_application.run_variable_analysis(
-        DEFAULT_CONFIG.copy(),
-        {IssueKind.SHADOWING},
-        pause_fn=lambda: pauses.append("pause"),
-    )
-
-    out = capsys.readouterr().out
-    assert analyze_variables_calls == []
-    assert "=== Target: ProgramA ===" in out
-    assert pauses == ["pause"]
-
-
-def test_parse_index_selection_ignores_malformed_range_tokens():
-    assert commands_application.parse_index_selection("1-a, 2", 4) == [2]
-
-
 def test_run_checks_success_path_pauses(monkeypatch):
     lines: list[str] = []
     pauses: list[str] = []

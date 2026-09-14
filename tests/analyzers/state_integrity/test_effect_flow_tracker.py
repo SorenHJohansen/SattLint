@@ -13,6 +13,16 @@ def test_variables_report_coerces_visible_kinds_and_handles_unknown_selector_kin
     assert report._issues_for_kind(cast(Any, object())) == []
 
 
+def test_variables_report_coerces_mutable_visible_kinds_to_frozenset():
+    report = VariablesReport(
+        basepicture_name="Dummy",
+        issues=[],
+        visible_kinds=[IssueKind.UNUSED],
+    )
+
+    assert report.visible_kinds == frozenset({IssueKind.UNUSED})
+
+
 def test_variables_report_summary_formats_string_mapping_and_minmax_tables():
     string_source = Variable(name="SourceText", datatype=Simple_DataType.STRING)
     string_target = Variable(name="TargetText", datatype=Simple_DataType.TAGSTRING)

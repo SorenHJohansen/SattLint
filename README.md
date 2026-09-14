@@ -2,7 +2,7 @@
 
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/SorenHJohansen/SattLint/badge)](https://securityscorecards.dev/viewer/?uri=github.com/SorenHJohansen/SattLint)
 
-SattLint is a Python toolkit for SattLine projects. It provides syntax-checking, configurable static analysis, ICF validation and formatting, graphics-rule analysis, and an interactive terminal UI.
+SattLint is a Python toolkit for SattLine projects. It provides configurable static analysis, ICF validation, graphics-rule analysis, and an interactive terminal UI.
 
 ---
 
@@ -66,48 +66,50 @@ This installs SattLint globally in an isolated environment.
 
 ```bash
 sattlint --version
-sattlint syntax-check tests/fixtures/sample_sattline_files/SattLineFullGrammarTest.s
+sattlint analyze --list-checks
 ```
 
 ---
 
 ## Quick Start
 
+Start the interactive terminal UI:
+
 ```bash
-sattlint syntax-check path/to/Program.s
+sattlint
 ```
 
-Output:
+Open the **Analyze** view to pick analyzers and run checks.
 
-- `OK` — valid file
-- Error message — invalid file
+For non-interactive runs:
+
+```bash
+sattlint analyze --list-checks
+sattlint analyze --check variables
+```
 
 Exit codes:
 
 - `0` — success
-- `1` — a real problem was found (e.g. `syntax-check` found a syntax error)
 - `2` — invalid arguments or configuration
 
-`analyze` reports issues in its output but exits `0` once the analysis runs;
-among the CLI commands, only `syntax-check` uses exit code `1` for findings.
+`analyze` reports issues in its output but exits `0` once the analysis runs.
 
 ### Available Commands
 
 ```bash
-sattlint syntax-check path/to/Program.s
-sattlint init                    # scaffold a .slproj project file
 sattlint analyze --list-checks   # list available analyzers
-sattlint analyze --check naming-consistency
-sattlint validate-config
-sattlint cache-prune
+sattlint analyze --check variables
+sattlint cache-prune             # remove stale cache artifacts
+sattlint --refresh-caches analyze --check variables  # force a cache rebuild
 ```
 
 Shared flags for config-driven commands:
 
 ```bash
-sattlint --config path/to/config.toml analyze --check naming-consistency
-sattlint --config path/to/config.toml --no-cache analyze --check naming-consistency
-sattlint --project path/to/project.slproj analyze --check naming-consistency
+sattlint --config path/to/config.toml analyze --check variables
+sattlint --config path/to/config.toml --no-cache analyze --check variables
+sattlint --project path/to/project.slproj analyze --check variables
 ```
 
 For the full command reference, run `sattlint --help`.
@@ -135,7 +137,8 @@ checked-in file: targets, directories, mode, and output/cache paths. Paths
 inside a `.slproj` are relative to the file itself, so projects are portable
 across machines.
 
-- `sattlint init` scaffolds a new `.slproj` in the current directory.
+- Use the **Setup → New configuration** action in the UI to scaffold a new
+  `.slproj` in the current directory.
 - `sattlint --project PATH <command>` uses an explicit project file.
 - Without `--project` or `--config`, SattLint auto-discovers a `.slproj` by
   walking up from the current working directory.
@@ -153,9 +156,9 @@ The first time SattLint runs, it creates a config file automatically:
 - **Windows:** `%APPDATA%\sattlint\config.toml`
 - **Linux:** `~/.config/sattlint/config.toml`
 
-For a portable, checked-in setup, create a `.slproj` project file with
-`sattlint init` instead; project settings merge over these config defaults
-(see [Project Files](#project-files-slproj)).
+For a portable, checked-in setup, create a `.slproj` project file from the
+UI's **File → New Configuration** action instead; project settings merge over
+these config defaults (see [Project Files](#project-files-slproj)).
 
 ### Configuration
 
@@ -191,7 +194,6 @@ pipx install --force .
 2. Use `unit:` selectors when a module should look the same in every detected unit (e.g. `unit:L1` or `unit:L1.L2.UnitControl`)
 3. Use `equipment:` selectors when a module should look the same inside every equipment module (e.g. `equipment:L1.L2.EquipModPanelShort`)
 4. Open **Analyze**, then run **Validate graphics rules** from **Structure & modules** to report modules that are not to spec
-5. Run `sattlint validate-config` to confirm the graphics rules JSON path is valid
 
 ---
 

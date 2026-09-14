@@ -10,10 +10,7 @@ from typing import Any
 import pytest
 
 from sattlint import config as config_module
-from sattlint import engine
 from sattlint.cli import config as cli_config
-from sattlint.cli import syntax_check as syntax_check_module
-from sattlint.cli._exit_codes import EXIT_SUCCESS
 from sattlint.core import interaction as interaction_module
 from sattlint.core import terminal as terminal_module
 from sattlint.core.logging import apply_debug
@@ -129,48 +126,6 @@ def test_apply_debug_switches_log_levels(monkeypatch: pytest.MonkeyPatch) -> Non
     finally:
         root_logger.setLevel(original_root_level)
         sattlint_logger.setLevel(original_log_level)
-
-
-def test_syntax_helpers_cover_line_only_unknown_error_and_warning() -> None:
-    result = engine.SyntaxValidationResult(
-        file_path=Path("Program.s"),
-        ok=False,
-        stage="validation",
-        message=None,
-        line=4,
-    )
-
-    assert syntax_check_module._format_syntax_error(result) == "ERROR [validation] Program.s:4: Unknown error"
-    assert (
-        syntax_check_module._format_syntax_warning(Path("Program.s"), "Watch this")
-        == "WARNING [validation] Program.s: Watch this"
-    )
-
-
-def test_run_syntax_check_command_prints_warnings_before_ok(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    source_path = tmp_path / "Program.s"
-    source_path.write_text("BasePicture\n", encoding="utf-8")
-    monkeypatch.setattr(
-        engine,
-        "validate_single_file_syntax",
-        lambda _path: engine.SyntaxValidationResult(
-            file_path=source_path,
-            ok=True,
-            stage="validation",
-            warnings=["Heads up"],
-        ),
-    )
-
-    assert syntax_check_module.run_syntax_check_command(str(source_path)) == EXIT_SUCCESS
-
-    captured = capsys.readouterr()
-    assert captured.out == "OK\n"
-    assert "WARNING [validation]" in captured.err
-    assert "Heads up" in captured.err
 
 
 def test_configure_windows_console_api_wrapper_delegates(monkeypatch: pytest.MonkeyPatch) -> None:

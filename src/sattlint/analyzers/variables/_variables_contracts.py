@@ -62,9 +62,15 @@ def should_collect_any_issue_kinds(self: object, kinds: frozenset[IssueKind]) ->
     return selected_kinds is None or bool(selected_kinds & kinds)
 
 
+def explicitly_selected_issue_kinds(self: object, kinds: frozenset[IssueKind]) -> bool:
+    selected_kinds = selected_issue_kinds(self)
+    return selected_kinds is not None and bool(selected_kinds & kinds)
+
+
 _selected_issue_kinds = selected_issue_kinds
 _should_collect_issue_kind = should_collect_issue_kind
 _should_collect_any_issue_kinds = should_collect_any_issue_kinds
+_explicitly_selected_issue_kinds = explicitly_selected_issue_kinds
 
 
 def _collect_module_vars(

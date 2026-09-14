@@ -8,15 +8,13 @@ import traceback
 from collections.abc import Callable
 from contextlib import nullcontext, redirect_stdout
 from pathlib import Path
-from typing import Any, Protocol, TypedDict, cast
+from typing import Protocol, TypedDict, cast
 
 from ..__version__ import __version__
 from ..config.types import ConfigDict
 from ..console import print_output
 from ..project import (
-    SLPROJ_FILENAME,
     discover_project,
-    init_project,
     project_status,
 )
 from ..project import (
@@ -34,13 +32,7 @@ ApplyDebugFn = Callable[[ConfigDict], None]
 AppCommandFn = Callable[..., int | None]
 
 
-class RunSyntaxCheckCommandFn(Protocol):
-    def __call__(self, file: str, *, output_format: str = "text") -> int: ...
-
-
 class CommandHandlers(TypedDict, total=False):
-    syntax_check: RunSyntaxCheckCommandFn
-    validate_config: AppCommandFn
     analyze: AppCommandFn
     cache_prune: AppCommandFn
 
@@ -108,7 +100,7 @@ def _is_version_request(argv: list[str]) -> bool:
 def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sattlint",
-        description="Interactive SattLine analysis app with non-interactive syntax-check, analysis, validation, and formatting commands.",
+        description="Interactive SattLine analysis app with non-interactive analysis commands.",
     )
     parser.add_argument("--version", action="version", version=f"sattlint {version}")
     parser.add_argument("--config", default=None, metavar="PATH", help="Path to a SattLint config file")
@@ -128,42 +120,6 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         help="Interactive UI mode to use when no subcommand is selected (Textual only)",
     )
     subparsers = parser.add_subparsers(dest="command")
-
-    init_parser = subparsers.add_parser(
-        "init",
-        help="Scaffold a new .slproj project file",
-        description="Create a new .slproj project file in the current or specified directory.",
-    )
-    init_parser.add_argument(
-        "--dir",
-        default=".",
-        help="Directory to create the project file in (default: current directory)",
-    )
-    init_parser.add_argument("--name", default=None, help="Optional project display name")
-    init_parser.add_argument("--program-dir", default="", help="Path to program source files (relative to project)")
-    init_parser.add_argument("--abb-lib-dir", default="", help="Path to ABB library files (relative to project)")
-    init_parser.add_argument("--icf-dir", default="", help="Path to ICF files (relative to project)")
-    init_parser.add_argument(
-        "--other-lib-dirs",
-        action="append",
-        default=[],
-        help="Additional library directories (repeatable, relative to project)",
-    )
-
-    syntax_parser = subparsers.add_parser(
-        "syntax-check",
-        help="Validate a single SattLine file with the parser and transformer",
-        description="Validate one SattLine source file and report a compact syntax or validation error.",
-    )
-    syntax_parser.add_argument("file", help="Path to the SattLine source file")
-    add_output_format_argument(syntax_parser)
-
-    validate_config_parser = subparsers.add_parser(
-        "validate-config",
-        help="Validate the SattLint configuration file",
-        description="Validate and report any issues with the current configuration.",
-    )
-    add_output_format_argument(validate_config_parser)
 
     cache_prune_parser = subparsers.add_parser(
         "cache-prune",
@@ -217,6 +173,12 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         "--profile",
         action="store_true",
         help="Record run diagnostics for this invocation (JSONL profile log under the cache dir)",
+    )
+    analyze_parser.add_argument(
+        "--refresh-caches",
+        action="store_true",
+        dest="refresh_caches",
+        help="Force a full rebuild of the AST and report caches for this run",
     )
 
     return parser
@@ -285,24 +247,6 @@ def run_cli(  # noqa: PLR0915
         print_output(f"sattlint: error: unrecognized arguments: {' '.join(leftover)}", file=sys.stderr)
         return exit_usage_error
 
-    # --- init command (short-circuits everything) ---
-    if command == "init":
-        target_dir = Path(getattr(args, "dir", ".")).resolve()
-        slproj_path = target_dir / SLPROJ_FILENAME
-        if slproj_path.exists():
-            print_output(f"Project already exists: {slproj_path}", file=sys.stderr)
-            return exit_usage_error
-        project = init_project(
-            slproj_path,
-            program_dir=getattr(args, "program_dir", ""),
-            ABB_lib_dir=getattr(args, "abb_lib_dir", ""),
-            icf_dir=getattr(args, "icf_dir", ""),
-            other_lib_dirs=getattr(args, "other_lib_dirs", None),
-        )
-        print_output(f"Created project: {slproj_path}")
-        print_output(project_status(project))
-        return exit_success
-
     # --- resolve project / config source ---
     project_path, resolved_config_path = _resolve_config_and_project(args, default_config_path=config_path)
 
@@ -318,16 +262,6 @@ def run_cli(  # noqa: PLR0915
         except (FileNotFoundError, ValueError) as exc:
             print_output(f"ERROR [project] {exc}", file=sys.stderr)
             return exit_usage_error
-
-    if command == "syntax-check":
-        syntax_check_handler = None if command_handlers is None else command_handlers.get("syntax_check")
-        if syntax_check_handler is None:
-            raise RuntimeError("syntax-check handler is required")
-        context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
-        with context:
-            if cli_output.resolve_output_format(args) == "json":
-                return syntax_check_handler(args.file, output_format="json")
-            return syntax_check_handler(args.file)
 
     if command == "analyze" and getattr(args, "list_checks", False):
         context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
@@ -368,42 +302,29 @@ def run_cli(  # noqa: PLR0915
             fallback=exit_success,
         )
 
-    if command in ("validate-config", "analyze"):
-        debug_requested = bool(getattr(args, "debug", False))
+    if command == "analyze":
+        context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
+        with context:
+            debug_requested = bool(getattr(args, "debug", False))
 
-        if project_config is not None:
-            cfg = project_config
-            default_used = False
-        else:
-            if load_config_fn is None or apply_debug_fn is None:
-                raise RuntimeError("CLI config handlers are required for this command")
-            try:
-                cfg, default_used = load_config_fn(resolved_config_path)
-            except _CONFIG_LOAD_EXCEPTIONS as exc:
-                print_output(f"ERROR [config] {exc}", file=sys.stderr)
-                if debug_requested:
-                    traceback.print_exc(file=sys.stderr)
-                return exit_usage_error
-        debug_requested = debug_requested or bool(cfg.get("debug", False))
-        if getattr(args, "debug", False):
-            cfg["debug"] = True
-        if apply_debug_fn is not None:
-            apply_debug_fn(cfg)
+            if project_config is not None:
+                cfg = project_config
+            else:
+                if load_config_fn is None or apply_debug_fn is None:
+                    raise RuntimeError("CLI config handlers are required for this command")
+                try:
+                    cfg, _default_used = load_config_fn(resolved_config_path)
+                except _CONFIG_LOAD_EXCEPTIONS as exc:
+                    print_output(f"ERROR [config] {exc}", file=sys.stderr)
+                    if debug_requested:
+                        traceback.print_exc(file=sys.stderr)
+                    return exit_usage_error
+            debug_requested = debug_requested or bool(cfg.get("debug", False))
+            if getattr(args, "debug", False):
+                cfg["debug"] = True
+            if apply_debug_fn is not None:
+                apply_debug_fn(cfg)
 
-        if command == "validate-config":
-            validate_config_handler = None if command_handlers is None else command_handlers.get("validate_config")
-            if validate_config_handler is None:
-                raise RuntimeError("validate-config handler is required")
-            effective_config_path = project_path if project_path is not None else resolved_config_path
-            validate_config_kwargs: dict[str, Any] = {
-                "config_path": effective_config_path,
-                "default_used": default_used,
-            }
-            if cli_output.resolve_output_format(args) == "json":
-                validate_config_kwargs["output_format"] = "json"
-            return _exit_code(validate_config_handler(cfg, **validate_config_kwargs), fallback=exit_success)
-
-        if command == "analyze":
             analyze_handler = None if command_handlers is None else command_handlers.get("analyze")
             if analyze_handler is None:
                 raise RuntimeError("analyze handler is required")
@@ -417,6 +338,7 @@ def run_cli(  # noqa: PLR0915
                     selected_keys=selected_keys,
                     selected_issue_kinds=selected_issue_kinds,
                     use_cache=use_cache,
+                    refresh_caches=bool(getattr(args, "refresh_caches", False)),
                     output_format=cli_output.resolve_output_format(args),
                 ),
                 fallback=exit_success,

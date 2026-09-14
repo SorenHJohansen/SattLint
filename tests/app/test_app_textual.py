@@ -1296,7 +1296,7 @@ def test_textual_analyze_running_state_calls_out_output_location(monkeypatch: py
                     category="code-quality",
                 ),
             ],
-            analysis_handlers={"run_comment_code_analysis": lambda _cfg: None},
+            analysis_handlers={"run_checks_result": lambda _cfg: None},
         )
 
         async with app_instance.run_test() as pilot:
@@ -1340,7 +1340,7 @@ def test_textual_analyze_running_state_uses_60fps_output_title_spinner(monkeypat
         resume=lambda: timer_calls.__setitem__("resume", timer_calls["resume"] + 1),
         pause=lambda: timer_calls.__setitem__("pause", timer_calls["pause"] + 1),
     )
-    app_instance = _make_textual_app(analysis_handlers={"run_comment_code_analysis": lambda _cfg: None})
+    app_instance = _make_textual_app(analysis_handlers={"run_checks_result": lambda _cfg: None})
     app_instance._busy = True
     app_instance._active_job_action_id = "action-analyze"
     app_instance._active_job_label = "Run selected analyses"
@@ -1387,7 +1387,7 @@ def test_textual_analyze_buttons_unlock_after_finish_action() -> None:
                     category="code-quality",
                 ),
             ],
-            analysis_handlers={"run_comment_code_analysis": lambda _cfg: None},
+            analysis_handlers={"run_checks_result": lambda _cfg: None},
         )
 
         async with app_instance.run_test() as pilot:
@@ -1432,7 +1432,7 @@ def test_textual_analyze_cancel_button_enables_for_running_queue() -> None:
     async def _run() -> None:
         app_instance = _make_textual_app(
             cfg={"analyzed_programs_and_libraries": ["DemoTarget.s"]},
-            analysis_handlers={"run_comment_code_analysis": lambda _cfg: None},
+            analysis_handlers={"run_checks_result": lambda _cfg: None},
         )
 
         async with app_instance.run_test() as pilot:
@@ -1668,7 +1668,7 @@ def test_textual_ctrl_g_cancel_binding_requests_stop_for_running_analysis() -> N
                     category="code-quality",
                 ),
             ],
-            analysis_handlers={"run_comment_code_analysis": lambda _cfg: None},
+            analysis_handlers={"run_checks_result": lambda _cfg: None},
         )
 
         async with app_instance.run_test() as pilot:
@@ -1718,7 +1718,7 @@ def test_textual_analyze_clear_selection_resets_planner_state() -> None:
                     category="code-quality",
                 ),
             ],
-            analysis_handlers={"run_comment_code_analysis": lambda _cfg: None},
+            analysis_handlers={"run_checks_result": lambda _cfg: None},
         )
 
         async with app_instance.run_test() as pilot:
@@ -1757,7 +1757,7 @@ def test_textual_analyze_clear_output_clears_session_log_only() -> None:
                     category="code-quality",
                 ),
             ],
-            analysis_handlers={"run_comment_code_analysis": lambda _cfg: None},
+            analysis_handlers={"run_checks_result": lambda _cfg: None},
         )
 
         async with app_instance.run_test() as pilot:
@@ -1798,7 +1798,7 @@ def test_textual_analyze_clear_selection_also_clears_output() -> None:
                     category="code-quality",
                 ),
             ],
-            analysis_handlers={"run_comment_code_analysis": lambda _cfg: None},
+            analysis_handlers={"run_checks_result": lambda _cfg: None},
         )
 
         async with app_instance.run_test() as pilot:

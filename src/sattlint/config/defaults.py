@@ -5,22 +5,6 @@ from typing import Any, cast
 
 from .types import ConfigDict, ConfigOverrideDict
 
-NAMING_STYLE_KEYS = (
-    "infer",
-    "pascal",
-    "camel",
-    "snake",
-    "upper_snake",
-    "lower",
-    "upper",
-)
-
-NAMING_RULE_TARGETS = (
-    "variables",
-    "modules",
-    "instances",
-)
-
 
 @dataclass(frozen=True, slots=True)
 class TopLevelConfigField:
@@ -33,15 +17,6 @@ TOP_LEVEL_CONFIG_FIELDS: dict[str, TopLevelConfigField] = {
     "analyzed_programs_and_libraries": TopLevelConfigField(
         [],
         "Names of program or library units to analyze.",
-        affects_project_cache=True,
-    ),
-    "include_reverse_library_consumers": TopLevelConfigField(
-        False,
-        (
-            "Whether library analysis should also load configured libraries that depend on the selected library "
-            "target. Enable this for checks that need reverse-consumer context, such as unused datatype-field "
-            "analysis."
-        ),
         affects_project_cache=True,
     ),
     "mode": TopLevelConfigField(
@@ -83,25 +58,8 @@ TOP_LEVEL_CONFIG_FIELDS: dict[str, TopLevelConfigField] = {
         ),
     ),
     "analysis": TopLevelConfigField(
-        {
-            "naming": {
-                "variables": {"style": "infer", "allow": []},
-                "modules": {"style": "infer", "allow": []},
-                "instances": {"style": "infer", "allow": []},
-            },
-            "rule_profiles": {
-                "active": "default",
-                "profiles": {
-                    "default": {
-                        "description": "Default profile that runs only correctness checks.",
-                        "disabled_rules": [],
-                        "severity_overrides": {},
-                        "confidence_overrides": {},
-                    },
-                },
-            },
-        },
-        "Analyzer-specific configuration for SFC contracts, naming policy, and rule profiles.",
+        {},
+        "Analyzer-specific configuration.",
     ),
 }
 

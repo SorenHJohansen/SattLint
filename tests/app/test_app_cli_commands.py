@@ -8,47 +8,14 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
+import pytest
+
 from sattlint import cache as cache_module
-from sattlint import config as config_module
 from sattlint.application import checks as checks_module
 from sattlint.application import project as project_application
 from sattlint.cli import _command_implementations as app_cli_commands_module
 from sattlint.cli import commands as commands_application
 from sattlint.cli._exit_codes import EXIT_SUCCESS, EXIT_USAGE_ERROR
-
-
-def test_run_validate_config_command_delegates_to_cli_owner(monkeypatch, capsys) -> None:
-    seen: dict[str, object] = {}
-
-    def fake_validate_effective_config(local_cfg):
-        seen["cfg"] = local_cfg
-        return config_module.ConfigValidationResult(
-            passed=False,
-            errors=[
-                config_module.ConfigValidationError(
-                    key_path="analyzed_programs_and_libraries[0]",
-                    message="MissingTarget (not found)",
-                )
-            ],
-        )
-
-    monkeypatch.setattr(commands_application, "validate_effective_config", fake_validate_effective_config)
-
-    cfg = {"debug": False}
-    result = commands_application.run_validate_config_command(
-        cfg,
-        config_path=Path("custom.toml"),
-        default_used=True,
-        output_format="json",
-    )
-
-    out = json.loads(capsys.readouterr().out)
-    assert result == EXIT_USAGE_ERROR
-    assert commands_application.run_validate_config_command is commands_application.run_validate_config_command
-    assert seen["cfg"] is cfg
-    assert out["config_path"] == "custom.toml"
-    assert out["default_used"] is True
-    assert out["passed"] is False
 
 
 def test_run_analyze_command_delegates_to_cli_owner(monkeypatch) -> None:
@@ -89,6 +56,58 @@ def test_run_analyze_command_delegates_to_cli_owner(monkeypatch) -> None:
     assert seen["selected_issue_kinds"] == frozenset({"unused"})
     assert seen["output_format"] == "json"
     assert seen["exit_success"] == EXIT_SUCCESS
+
+
+def test_run_analyze_command_refresh_caches_calls_refresh_analysis_caches(monkeypatch) -> None:
+    seen: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        project_application,
+        "refresh_analysis_caches",
+        lambda local_cfg: seen.update({"cfg": local_cfg}) or None,
+    )
+    monkeypatch.setattr(
+        app_cli_commands_module,
+        "run_analyze_command",
+        lambda cfg, *, selected_keys, selected_issue_kinds=None, output_format, collect_analyze_result_fn, exit_success: (
+            0
+        ),
+    )
+
+    result = commands_application.run_analyze_command(
+        {"debug": False},
+        selected_keys=["variables"],
+        use_cache=False,
+        refresh_caches=True,
+        output_format="text",
+    )
+
+    assert result == 0
+    assert seen["cfg"] == {"debug": False}
+
+
+def test_run_analyze_command_without_refresh_caches_skips_cache_refresh(monkeypatch) -> None:
+    monkeypatch.setattr(
+        project_application,
+        "refresh_analysis_caches",
+        lambda _cfg: pytest.fail("refresh_analysis_caches should not run by default"),
+    )
+    monkeypatch.setattr(
+        app_cli_commands_module,
+        "run_analyze_command",
+        lambda cfg, *, selected_keys, selected_issue_kinds=None, output_format, collect_analyze_result_fn, exit_success: (
+            0
+        ),
+    )
+
+    result = commands_application.run_analyze_command(
+        {"debug": False},
+        selected_keys=["variables"],
+        use_cache=True,
+        output_format="text",
+    )
+
+    assert result == 0
 
 
 def test_run_analyze_command_allows_opt_in_analyzer_keys(monkeypatch) -> None:
@@ -192,70 +211,6 @@ def test_cli_owner_run_cache_prune_command_prints_json_output(capsys):
             "ast_manifest": 0,
             "analysis_report": 0,
         },
-    }
-
-
-def test_startup_run_validate_config_command_warns_on_default_config(monkeypatch, capsys) -> None:
-    monkeypatch.setattr(
-        commands_application,
-        "validate_effective_config",
-        lambda _cfg: config_module.ConfigValidationResult(
-            passed=False,
-            errors=[
-                config_module.ConfigValidationError(
-                    key_path="analyzed_programs_and_libraries[0]",
-                    message="MissingTarget (not found)",
-                )
-            ],
-        ),
-    )
-
-    exit_code = commands_application.run_validate_config_command(
-        {"debug": False},
-        config_path=Path("default.toml"),
-        default_used=True,
-    )
-
-    out = capsys.readouterr().out
-    assert exit_code == EXIT_USAGE_ERROR
-    assert "Warning: default config loaded from default.toml" in out
-    assert "MissingTarget (not found)" in out
-
-
-def test_startup_run_validate_config_command_prints_json(monkeypatch, capsys) -> None:
-    monkeypatch.setattr(
-        commands_application,
-        "validate_effective_config",
-        lambda _cfg: config_module.ConfigValidationResult(
-            passed=False,
-            errors=[
-                config_module.ConfigValidationError(
-                    key_path="analyzed_programs_and_libraries[0]",
-                    message="MissingTarget (not found)",
-                )
-            ],
-        ),
-    )
-
-    exit_code = commands_application.run_validate_config_command(
-        {"debug": False},
-        config_path=Path("default.toml"),
-        default_used=True,
-        output_format="json",
-    )
-
-    out = capsys.readouterr().out
-    assert exit_code == EXIT_USAGE_ERROR
-    assert json.loads(out) == {
-        "config_path": "default.toml",
-        "default_used": True,
-        "errors": [
-            {
-                "key_path": "analyzed_programs_and_libraries[0]",
-                "message": "MissingTarget (not found)",
-            }
-        ],
-        "passed": False,
     }
 
 

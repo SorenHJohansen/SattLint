@@ -49,7 +49,7 @@ _DEFAULT_VIEW_REGISTRY: dict[str, _ShellViewState] = {
         action_id="action-results",
         title="Results",
         description="Browse previous analysis runs and inspect their results.",
-        note="Select a run on the left, then switch between the results tree and the raw output.",
+        note="Select a run on the left, then browse the results tree.",
         launch_label="Open Results",
     ),
     "setup": _ShellViewState(
