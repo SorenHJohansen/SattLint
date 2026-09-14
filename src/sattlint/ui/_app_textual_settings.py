@@ -137,40 +137,36 @@ def _prompt_app_int(self: Any, key: str, subkey: str, *, label: str) -> None:
     self.present_request(request, on_response_fn=_apply_response)
 
 
-def _prompt_app_int_async(self: Any, key: str, subkey: str, *, label: str) -> None:
+async def _prompt_app_int_async(self: Any, key: str, subkey: str, *, label: str) -> None:
     if self._active_request is not None:
         return
     current = _section_value(self, key, subkey, "")
-
-    async def _apply_async() -> None:
-        response = await self.present_request_async(
-            InteractionRequest(
-                kind="prompt",
-                title=f"Set {label}",
-                message=f"Enter a positive integer for {label}.",
-                default="" if current is None else str(current),
-            )
+    response = await self.present_request_async(
+        InteractionRequest(
+            kind="prompt",
+            title=f"Set {label}",
+            message=f"Enter a positive integer for {label}.",
+            default="" if current is None else str(current),
         )
-        raw_value = str(response or "").strip()
-        try:
-            value = int(raw_value)
-        except ValueError:
-            self._report_error("Invalid value", f"{label} must be a positive integer.")
-            return
-        if value <= 0:
-            self._report_error("Invalid value", f"{label} must be a positive integer.")
-            return
-        section = self._cfg.get(key)
-        section_map: dict[str, object]
-        if isinstance(section, dict):
-            section_map = cast(dict[str, object], section)
-        else:
-            section_map = {}
-            self._cfg[key] = section_map
-        section_map[subkey] = value
-        self._mark_settings_changed(f"Updated {label} to {value}.")
-
-    self._schedule_ui_coroutine(_apply_async, fallback_fn=lambda: self._prompt_app_int(key, subkey, label=label))
+    )
+    raw_value = str(response or "").strip()
+    try:
+        value = int(raw_value)
+    except ValueError:
+        self._report_error("Invalid value", f"{label} must be a positive integer.")
+        return
+    if value <= 0:
+        self._report_error("Invalid value", f"{label} must be a positive integer.")
+        return
+    section = cast(object, self._cfg.get(key))
+    section_map: dict[str, object]
+    if isinstance(section, dict):
+        section_map = cast(dict[str, object], section)
+    else:
+        section_map = {}
+        self._cfg[key] = section_map
+    section_map[subkey] = value
+    self._mark_settings_changed(f"Updated {label} to {value}.")
 
 
 def _queue_app_int_prompt(self: Any, key: str, subkey: str, *, label: str) -> None:
@@ -206,34 +202,28 @@ def _prompt_app_text(self: Any, key: str, subkey: str, *, label: str, message: s
     self.present_request(request, on_response_fn=_apply_response)
 
 
-def _prompt_app_text_async(self: Any, key: str, subkey: str, *, label: str, message: str) -> None:
+async def _prompt_app_text_async(self: Any, key: str, subkey: str, *, label: str, message: str) -> None:
     if self._active_request is not None:
         return
     current = _section_value(self, key, subkey, "")
-
-    async def _apply_async() -> None:
-        response = await self.present_request_async(
-            InteractionRequest(
-                kind="prompt",
-                title=f"Set {label}",
-                message=message,
-                default="" if current is None else str(current),
-            )
+    response = await self.present_request_async(
+        InteractionRequest(
+            kind="prompt",
+            title=f"Set {label}",
+            message=message,
+            default="" if current is None else str(current),
         )
-        value = str(response or "").strip()
-        section = cast(object, self._cfg.get(key))
-        section_map: dict[str, object]
-        if isinstance(section, dict):
-            section_map = cast(dict[str, object], section)
-        else:
-            section_map = {}
-            self._cfg[key] = section_map
-        section_map[subkey] = value
-        self._mark_settings_changed(f"Updated {label}.")
-
-    self._schedule_ui_coroutine(
-        _apply_async, fallback_fn=lambda: self._prompt_app_text(key, subkey, label=label, message=message)
     )
+    value = str(response or "").strip()
+    section = cast(object, self._cfg.get(key))
+    section_map: dict[str, object]
+    if isinstance(section, dict):
+        section_map = cast(dict[str, object], section)
+    else:
+        section_map = {}
+        self._cfg[key] = section_map
+    section_map[subkey] = value
+    self._mark_settings_changed(f"Updated {label}.")
 
 
 def _queue_app_text_prompt(self: Any, key: str, subkey: str, *, label: str, message: str) -> None:
