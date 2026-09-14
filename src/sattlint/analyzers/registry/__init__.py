@@ -16,17 +16,16 @@ from ..comment_code import analyze_comment_code
 from ..cyclomatic_complexity import analyze_cyclomatic_complexity
 from ..data_dependency import analyze_data_dependency
 from ..dataflow import analyze_dataflow
+from ..datatype_fields import analyze_datatype_fields
 from ..framework import AnalyzerSpec
 from ..icf.analyzer import analyze_icf_configuration
 from ..loop_stability import analyze_loop_stability
 from ..mms import analyze_mms_interface_variables
 from ..modules import analyze_version_drift
-from ..naming import analyze_naming_consistency, get_configured_naming_rules
 from ..numeric_constraints import analyze_numeric_constraints
 from ..parameter_drift import analyze_parameter_drift
 from ..picture_display_paths import analyze_picture_display_paths
 from ..plugin import get_registered_plugin_analyzers, register_analyzer
-from ..rule_profiles import get_default_rule_profile_report
 from ..same_cycle import analyze_same_cycle
 from ..sattline_semantics import (
     SemanticRule,
@@ -45,8 +44,7 @@ from ._registry_delivery import AnalyzerDeliveryMetadata, build_delivery_metadat
 SEMANTIC_LAYER_ANALYZER_KEY = "sattline-semantics"
 # Policy (analyzer execution refactor B4.9): every registered analyzer is
 # selectable, and is either in the default CLI set below or deliberately opt-in
-# (naming-consistency, cyclomatic-complexity, version-drift). Semantic
-# contributors are categorized
+# (datatype-fields, cyclomatic-complexity, version-drift). Semantic contributors are categorized
 # correctness; sattline-semantics is the aggregate layer and is intentionally
 # not CLI-exposed as a selectable analyzer.
 DEFAULT_CLI_ANALYZER_KEYS: tuple[str, ...] = (
@@ -187,7 +185,6 @@ class AnalyzerCatalog:
                     canonicalize_analyzer_key(group.source): len(group.rules) for group in self.semantic_rule_groups
                 },
             },
-            "rule_profiles": get_default_rule_profile_report(),
             "rules": [rule.to_dict() for rule in self.rules],
         }
 
@@ -548,10 +545,10 @@ __all__ = [
     "analyze_cyclomatic_complexity",
     "analyze_data_dependency",
     "analyze_dataflow",
+    "analyze_datatype_fields",
     "analyze_icf_configuration",
     "analyze_loop_stability",
     "analyze_mms_interface_variables",
-    "analyze_naming_consistency",
     "analyze_numeric_constraints",
     "analyze_parameter_drift",
     "analyze_picture_display_paths",
@@ -571,14 +568,12 @@ __all__ = [
     "deterministic_dependency_order",
     "get_actual_cli_analyzer_keys",
     "get_actual_lsp_analyzer_keys",
-    "get_configured_naming_rules",
     "get_correctness_analyzer_keys",
     "get_declared_cli_analyzer_keys",
     "get_declared_lsp_analyzer_keys",
     "get_default_analyzer_catalog",
     "get_default_analyzers",
     "get_default_cli_analyzers",
-    "get_default_rule_profile_report",
     "get_enabled_analyzers",
     "get_registered_plugin_analyzers",
     "get_sattline_semantic_rule_groups",

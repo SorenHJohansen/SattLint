@@ -9,8 +9,8 @@ from typing import Protocol
 
 from sattline_parser.models.ast_model import BasePicture, FrameModule, ModuleTypeInstance, SingleModule
 
+from ..analyzers._sattline_semantic_issue_metadata import materialize_issue_metadata
 from ..analyzers.framework import Issue
-from ..analyzers.rule_profiles import materialize_issue_metadata
 from ..models._variable_issues import VariableIssue, materialize_variable_issue_metadata
 from ..types import ProjectPath, TargetName
 

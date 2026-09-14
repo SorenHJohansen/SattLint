@@ -11,7 +11,6 @@ from sattline_parser.models.ast_model import (
 )
 
 from sattlint.analyzers.icf import (
-    format_icf_text,
     parse_icf_file,
     validate_icf_entries_against_program,
 )
@@ -60,29 +59,6 @@ def test_parse_icf_file_tracks_unit_journal_and_group_context(tmp_path) -> None:
     assert entries[0].unit == "KaHA221A"
     assert entries[0].journal == "HygienicStatus"
     assert entries[0].group == "JournalData_DCStoMES"
-
-
-def test_format_icf_text_preserves_nonblank_content_and_distinguishes_major_headers() -> None:
-    source = (
-        "; header\n"
-        "\n"
-        "[Unit UnitA]\n"
-        "[Journal JournalA]\n"
-        "[Group JournalData_DCStoMES]\n"
-        "OPR_ID=F::Program:UnitA.JournalA.T.OPR_ID\n"
-        "[Operation OpStart]\n"
-        "[Group StateChange_DCStoMES]\n"
-        "STATE_NO=F::Program:UnitA.OpStart.STATE_NO\n"
-    )
-
-    formatted = format_icf_text(source)
-
-    assert [line for line in formatted.splitlines() if line.strip()] == [
-        line for line in source.splitlines() if line.strip()
-    ]
-    assert "\n\n[Journal JournalA]" in formatted
-    assert "\n\n[Operation OpStart]" in formatted
-    assert format_icf_text(formatted) == formatted
 
 
 def test_icf_validation_reports_valid_and_invalid_entries() -> None:

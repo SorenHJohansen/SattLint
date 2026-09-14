@@ -371,7 +371,7 @@ def test_sfc_reachability_and_active_step_helpers_cover_nested_nodes_and_preview
     assert sfc_module._format_terminator({}) == "an earlier terminating node"
 
 
-def test_analyze_sfc_covers_selected_collectors_reachability_messages_and_step_contracts(monkeypatch) -> None:
+def test_analyze_sfc_covers_selected_collectors_and_reachability_messages(monkeypatch) -> None:
     class _FakeCollector:
         def __init__(self, _bp):
             shared_paths = {CanonicalPath(("Root", f"Var{index}")) for index in range(7)}

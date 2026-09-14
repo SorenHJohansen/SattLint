@@ -11,15 +11,12 @@ from typing import Any, cast
 import pytest
 
 import sattlint
-from sattlint import engine
 from sattlint.__version__ import __version__ as package_version
 from sattlint.cli import commands as commands_application
 from sattlint.cli import entry as cli_entry
 from sattlint.cli import menu as cli_menu_module
 from sattlint.cli import startup as startup_application
-from sattlint.cli import syntax_check as cli_syntax_check
-from sattlint.cli._exit_codes import EXIT_FAILURE, EXIT_SUCCESS, EXIT_USAGE_ERROR
-from sattlint.config import display as config_display_module
+from sattlint.cli._exit_codes import EXIT_SUCCESS, EXIT_USAGE_ERROR
 from sattlint.config import get_config_path
 from sattlint.models import IssueKind
 
@@ -31,14 +28,7 @@ def _command_handlers(**overrides: Any) -> dict[str, Any]:
             overrides=cast(
                 cli_entry.CommandHandlers,
                 {
-                    "syntax_check": lambda file_path, *, output_format="text": (
-                        cli_syntax_check.run_syntax_check_command(
-                            file_path,
-                            output_format=output_format,
-                        )
-                    ),
-                    "validate_config": lambda cfg, *, config_path, default_used: EXIT_SUCCESS,
-                    "analyze": lambda cfg, *, selected_keys, selected_issue_kinds=None, use_cache, output_format="text": (
+                    "analyze": lambda cfg, *, selected_keys, selected_issue_kinds=None, use_cache, output_format="text", refresh_caches=False: (
                         EXIT_SUCCESS
                     ),
                     "docgen": lambda cfg, *, use_cache, output_format="text", output_dir, output_path: EXIT_SUCCESS,
@@ -69,40 +59,10 @@ def test_build_cli_parser_has_descriptions():
     assert parser.description
     action = next(action for action in parser._actions if isinstance(getattr(action, "choices", None), Mapping))
     choices = cast(dict[str, object], action.choices)
-    syntax_parser = choices["syntax-check"]
     assert {
-        "syntax-check",
         "analyze",
         "cache-prune",
-        "validate-config",
     } <= set(choices)
-    assert getattr(syntax_parser, "description", None)
-
-
-def test_build_cli_parser_syntax_check_includes_output_format():
-    parser = cli_entry.build_cli_parser()
-
-    action = next(action for action in parser._actions if isinstance(getattr(action, "choices", None), Mapping))
-    choices = cast(dict[str, object], action.choices)
-    syntax_parser = cast(Any, choices["syntax-check"])
-    option_strings = {
-        option for parser_action in syntax_parser._actions for option in getattr(parser_action, "option_strings", [])
-    }
-
-    assert {"--format", "--output-format"} <= option_strings
-
-
-def test_build_cli_parser_validate_config_includes_output_format():
-    parser = cli_entry.build_cli_parser()
-
-    action = next(action for action in parser._actions if isinstance(getattr(action, "choices", None), Mapping))
-    choices = cast(dict[str, object], action.choices)
-    validate_parser = cast(Any, choices["validate-config"])
-    option_strings = {
-        option for parser_action in validate_parser._actions for option in getattr(parser_action, "option_strings", [])
-    }
-
-    assert {"--format", "--output-format"} <= option_strings
 
 
 def test_build_cli_parser_analyze_includes_output_format():
@@ -489,20 +449,6 @@ def test_startup_menu_helpers_reach_owner_functions(monkeypatch) -> None:
     assert seen["help_text_cfg"] is cfg
 
 
-def test_show_config_command_reaches_config_display_owner(monkeypatch) -> None:
-    seen: dict[str, object] = {}
-    cfg = {"debug": False}
-
-    monkeypatch.setattr(
-        config_display_module,
-        "show_config",
-        lambda local_cfg, **kwargs: seen.update({"show_config_cfg": local_cfg, **kwargs}),
-    )
-    commands_application.show_config(cfg)
-
-    assert seen["show_config_cfg"] is cfg
-
-
 def test_package_exports_version():
     assert sattlint.__version__ == package_version
 
@@ -581,51 +527,6 @@ def test_run_cli_version_flag_skips_full_parser_build(capsys):
     assert captured.err == ""
 
 
-def test_run_cli_validate_config_uses_custom_path(monkeypatch):
-    seen = {}
-
-    exit_code = _run_base_cli(
-        ["--config", "custom.toml", "validate-config"],
-        load_config_fn=lambda path: ({"debug": False}, False),
-        apply_debug_fn=lambda _cfg: None,
-        command_handlers={
-            "validate_config": lambda cfg, *, config_path, default_used: (
-                seen.update({"cfg": cfg, "config_path": config_path, "default_used": default_used}) or EXIT_SUCCESS
-            )
-        },
-    )
-
-    assert exit_code == EXIT_SUCCESS
-    assert str(seen["config_path"]).endswith("custom.toml")
-    assert seen["default_used"] is False
-
-
-def test_run_cli_validate_config_passes_json_output_format():
-    seen = {}
-
-    exit_code = _run_base_cli(
-        ["validate-config", "--format", "json"],
-        load_config_fn=lambda path: ({"debug": False}, False),
-        apply_debug_fn=lambda _cfg: None,
-        command_handlers={
-            "validate_config": lambda cfg, *, config_path, default_used, output_format: (
-                seen.update(
-                    {
-                        "cfg": cfg,
-                        "config_path": config_path,
-                        "default_used": default_used,
-                        "output_format": output_format,
-                    }
-                )
-                or EXIT_SUCCESS
-            )
-        },
-    )
-
-    assert exit_code == EXIT_SUCCESS
-    assert seen["output_format"] == "json"
-
-
 def test_run_cli_analyze_passes_flags():
     seen = {}
 
@@ -642,17 +543,19 @@ def test_run_cli_analyze_passes_flags():
             "unused",
             "--issue-kind",
             "shadowing",
+            "--refresh-caches",
         ],
         load_config_fn=lambda path: ({"debug": False}, False),
         apply_debug_fn=lambda _cfg: None,
         command_handlers={
-            "analyze": lambda cfg, *, selected_keys, selected_issue_kinds, use_cache, output_format="text": (
+            "analyze": lambda cfg, *, selected_keys, selected_issue_kinds, use_cache, refresh_caches, output_format="text": (
                 seen.update(
                     {
                         "cfg": cfg,
                         "selected_keys": selected_keys,
                         "selected_issue_kinds": selected_issue_kinds,
                         "use_cache": use_cache,
+                        "refresh_caches": refresh_caches,
                         "output_format": output_format,
                     }
                 )
@@ -665,6 +568,7 @@ def test_run_cli_analyze_passes_flags():
     assert seen["selected_keys"] == ["variables", "shadowing"]
     assert seen["selected_issue_kinds"] == frozenset({"unused", "shadowing"})
     assert seen["use_cache"] is False
+    assert seen["refresh_caches"] is True
     assert seen["output_format"] == "text"
     assert cast(dict[str, Any], seen["cfg"])["debug"] is True
 
@@ -678,7 +582,7 @@ def test_run_cli_analyze_passes_opt_in_version_drift_key():
         load_config_fn=lambda path: ({"debug": False}, False),
         apply_debug_fn=lambda _cfg: None,
         command_handlers=_command_handlers(
-            analyze=lambda cfg, *, selected_keys, selected_issue_kinds=None, use_cache, output_format="text": (
+            analyze=lambda cfg, *, selected_keys, selected_issue_kinds=None, use_cache, refresh_caches=False, output_format="text": (
                 seen.update(
                     {
                         "cfg": cfg,
@@ -700,6 +604,22 @@ def test_run_cli_analyze_passes_opt_in_version_drift_key():
     assert seen["output_format"] == "text"
 
 
+def test_run_cli_analyze_refresh_caches_defaults_to_false():
+    seen = {}
+
+    exit_code = _run_base_cli(
+        ["analyze", "--check", "variables"],
+        command_handlers={
+            "analyze": lambda cfg, *, selected_keys, selected_issue_kinds=None, use_cache, refresh_caches=False, output_format="text": (
+                seen.update({"refresh_caches": refresh_caches}) or EXIT_SUCCESS
+            )
+        },
+    )
+
+    assert exit_code == EXIT_SUCCESS
+    assert seen["refresh_caches"] is False
+
+
 def test_run_cli_analyze_passes_json_output_format():
     seen = {}
 
@@ -709,7 +629,7 @@ def test_run_cli_analyze_passes_json_output_format():
         load_config_fn=lambda path: ({"debug": False}, False),
         apply_debug_fn=lambda _cfg: None,
         command_handlers=_command_handlers(
-            analyze=lambda cfg, *, selected_keys, selected_issue_kinds=None, use_cache, output_format="text": (
+            analyze=lambda cfg, *, selected_keys, selected_issue_kinds=None, use_cache, refresh_caches=False, output_format="text": (
                 seen.update(
                     {
                         "cfg": cfg,
@@ -826,154 +746,19 @@ def test_run_cli_cache_prune_passes_cache_dir_without_loading_config():
     assert seen == {"cache_dir": "custom-cache", "output_format": "json"}
 
 
-def test_run_cli_quiet_suppresses_stdout(monkeypatch, capsys):
-    monkeypatch.setattr(
-        cli_syntax_check,
-        "run_syntax_check_command",
-        lambda _path, *, output_format="text": print("visible") or EXIT_SUCCESS,
+def test_run_cli_quiet_suppresses_stdout(capsys):
+    exit_code = _run_base_cli(
+        ["--quiet", "analyze", "--check", "variables"],
+        command_handlers={
+            "analyze": lambda cfg, *, selected_keys, selected_issue_kinds=None, use_cache, refresh_caches=False, output_format="text": (
+                print("visible") or EXIT_SUCCESS
+            )
+        },
     )
-
-    exit_code = _run_base_cli(["--quiet", "syntax-check", "dummy.s"])
 
     captured = capsys.readouterr()
     assert exit_code == EXIT_SUCCESS
     assert captured.out == ""
-
-
-def test_run_syntax_check_command_prints_ok_for_valid_file(monkeypatch, tmp_path, capsys):
-    source_path = tmp_path / "Program.s"
-    source_path.write_text("BasePicture\n", encoding="utf-8")
-
-    monkeypatch.setattr(
-        engine,
-        "validate_single_file_syntax",
-        lambda _path: engine.SyntaxValidationResult(file_path=source_path, ok=True, stage="validation"),
-    )
-
-    exit_code = cli_syntax_check.run_syntax_check_command(str(source_path))
-
-    captured = capsys.readouterr()
-    assert exit_code == EXIT_SUCCESS
-    assert captured.out == "OK\n"
-    assert captured.err == ""
-
-
-def test_run_syntax_check_command_prints_json_for_valid_file(monkeypatch, tmp_path, capsys):
-    source_path = tmp_path / "Program.s"
-    source_path.write_text("BasePicture\n", encoding="utf-8")
-
-    monkeypatch.setattr(
-        engine,
-        "validate_single_file_syntax",
-        lambda _path: engine.SyntaxValidationResult(
-            file_path=source_path,
-            ok=True,
-            stage="validation",
-            warnings=("legacy warning",),
-        ),
-    )
-
-    exit_code = cli_syntax_check.run_syntax_check_command(str(source_path), output_format="json")
-
-    captured = capsys.readouterr()
-    assert exit_code == EXIT_SUCCESS
-    assert captured.err == ""
-    assert json.loads(captured.out) == {
-        "column": None,
-        "file_path": str(source_path),
-        "line": None,
-        "message": None,
-        "ok": True,
-        "stage": "validation",
-        "warnings": ["legacy warning"],
-    }
-
-
-def test_run_syntax_check_command_returns_domain_failure_for_invalid_file(monkeypatch, tmp_path, capsys):
-    source_path = tmp_path / "Broken.s"
-    source_path.write_text("BasePicture\n", encoding="utf-8")
-
-    monkeypatch.setattr(
-        engine,
-        "validate_single_file_syntax",
-        lambda _path: engine.SyntaxValidationResult(
-            file_path=source_path,
-            ok=False,
-            stage="validation",
-            message="bad syntax",
-            line=7,
-            column=3,
-        ),
-    )
-
-    exit_code = cli_syntax_check.run_syntax_check_command(str(source_path))
-
-    captured = capsys.readouterr()
-    assert exit_code == EXIT_FAILURE
-    assert "ERROR [validation]" in captured.err
-    assert "bad syntax" in captured.err
-
-
-def test_run_syntax_check_command_prints_json_for_invalid_file(monkeypatch, tmp_path, capsys):
-    source_path = tmp_path / "Broken.s"
-    source_path.write_text("BasePicture\n", encoding="utf-8")
-
-    monkeypatch.setattr(
-        engine,
-        "validate_single_file_syntax",
-        lambda _path: engine.SyntaxValidationResult(
-            file_path=source_path,
-            ok=False,
-            stage="validation",
-            message="bad syntax",
-            line=7,
-            column=3,
-        ),
-    )
-
-    exit_code = cli_syntax_check.run_syntax_check_command(str(source_path), output_format="json")
-
-    captured = capsys.readouterr()
-    assert exit_code == EXIT_FAILURE
-    assert captured.err == ""
-    assert json.loads(captured.out) == {
-        "column": 3,
-        "file_path": str(source_path),
-        "line": 7,
-        "message": "bad syntax",
-        "ok": False,
-        "stage": "validation",
-        "warnings": [],
-    }
-
-
-def test_run_syntax_check_command_returns_usage_error_for_missing_file(capsys, tmp_path):
-    missing_path = tmp_path / "Missing.s"
-
-    exit_code = cli_syntax_check.run_syntax_check_command(str(missing_path))
-
-    captured = capsys.readouterr()
-    assert exit_code == EXIT_USAGE_ERROR
-    assert "ERROR [io]" in captured.err
-
-
-def test_run_syntax_check_command_prints_json_for_missing_file(capsys, tmp_path):
-    missing_path = tmp_path / "Missing.s"
-
-    exit_code = cli_syntax_check.run_syntax_check_command(str(missing_path), output_format="json")
-
-    captured = capsys.readouterr()
-    assert exit_code == EXIT_USAGE_ERROR
-    assert captured.err == ""
-    assert json.loads(captured.out) == {
-        "column": None,
-        "file_path": str(missing_path),
-        "line": None,
-        "message": "File not found",
-        "ok": False,
-        "stage": "io",
-        "warnings": [],
-    }
 
 
 class _FakeParser:
@@ -1004,19 +789,6 @@ def test_cli_entry_returns_parser_system_exit_code():
     assert exit_code == 2
 
 
-def test_cli_entry_syntax_check_requires_handler():
-    parser = _FakeParser(
-        args=SimpleNamespace(command="syntax-check", file="prog.s", config=None, no_cache=False, quiet=False)
-    )
-
-    with pytest.raises(RuntimeError, match="syntax-check handler is required"):
-        cli_entry.run_cli(
-            ["syntax-check", "prog.s"],
-            config_path=Path("config.toml"),
-            build_cli_parser_fn=lambda: parser,
-        )
-
-
 def test_cli_entry_reports_leftover_arguments(capsys):
     parser = _FakeParser(
         args=SimpleNamespace(command="analyze", checks=[], config=None, no_cache=False, quiet=False),
@@ -1036,11 +808,11 @@ def test_cli_entry_reports_leftover_arguments(capsys):
 
 def test_cli_entry_returns_usage_error_when_config_load_fails(capsys):
     parser = _FakeParser(
-        args=SimpleNamespace(command="validate-config", checks=[], config=None, no_cache=False, quiet=False),
+        args=SimpleNamespace(command="analyze", checks=["variables"], config=None, no_cache=False, quiet=False),
     )
 
     exit_code = cli_entry.run_cli(
-        ["validate-config"],
+        ["analyze", "--check", "variables"],
         config_path=Path("config.toml"),
         build_cli_parser_fn=lambda: parser,
         load_config_fn=lambda _path: (_ for _ in ()).throw(ValueError("bad config")),
@@ -1054,60 +826,17 @@ def test_cli_entry_returns_usage_error_when_config_load_fails(capsys):
 
 def test_cli_entry_reraises_unexpected_config_load_exceptions() -> None:
     parser = _FakeParser(
-        args=SimpleNamespace(command="validate-config", checks=[], config=None, no_cache=False, quiet=False),
+        args=SimpleNamespace(command="analyze", checks=["variables"], config=None, no_cache=False, quiet=False),
     )
 
     with pytest.raises(RuntimeError, match="bad config"):
         cli_entry.run_cli(
-            ["validate-config"],
+            ["analyze", "--check", "variables"],
             config_path=Path("config.toml"),
             build_cli_parser_fn=lambda: parser,
             load_config_fn=lambda _path: (_ for _ in ()).throw(RuntimeError("bad config")),
             apply_debug_fn=lambda _cfg: None,
         )
-
-
-def test_cli_entry_validate_config_requires_handler():
-    parser = _FakeParser(
-        args=SimpleNamespace(command="validate-config", checks=[], config=None, no_cache=False, quiet=False),
-    )
-
-    with pytest.raises(RuntimeError, match="validate-config handler is required"):
-        cli_entry.run_cli(
-            ["validate-config"],
-            config_path=Path("config.toml"),
-            build_cli_parser_fn=lambda: parser,
-            load_config_fn=lambda _path: ({"debug": False}, False),
-            apply_debug_fn=lambda _cfg: None,
-        )
-
-
-def test_cli_entry_syntax_check_passes_json_output_format():
-    seen: dict[str, object] = {}
-    parser = _FakeParser(
-        args=SimpleNamespace(
-            command="syntax-check",
-            file="prog.s",
-            config=None,
-            no_cache=False,
-            quiet=False,
-            format="json",
-        )
-    )
-
-    exit_code = cli_entry.run_cli(
-        ["syntax-check", "prog.s", "--format", "json"],
-        config_path=Path("config.toml"),
-        build_cli_parser_fn=lambda: parser,
-        command_handlers={
-            "syntax_check": lambda file_path, *, output_format="text": (
-                seen.update({"file_path": file_path, "output_format": output_format}) or 0
-            )
-        },
-    )
-
-    assert exit_code == cli_entry.EXIT_SUCCESS
-    assert seen == {"file_path": "prog.s", "output_format": "json"}
 
 
 def test_cli_entry_analyze_requires_handler():

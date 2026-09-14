@@ -12,7 +12,6 @@ from ..config.types import AnalysisConfig, ConfigMode
 class ProjectDict(TypedDict):
     slproj_version: int
     analyzed_programs_and_libraries: list[str]
-    include_reverse_library_consumers: bool
     mode: ConfigMode
     program_dir: str
     ABB_lib_dir: str
@@ -24,7 +23,6 @@ class ProjectDict(TypedDict):
 DEFAULT_PROJECT_DICT: ProjectDict = {
     "slproj_version": 1,
     "analyzed_programs_and_libraries": [],
-    "include_reverse_library_consumers": False,
     "mode": "official",
     "program_dir": "",
     "ABB_lib_dir": "",

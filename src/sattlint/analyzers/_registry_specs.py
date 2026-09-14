@@ -26,7 +26,6 @@ _CONTEXT_VALUE_PROVIDERS: dict[str, ContextValueProvider] = {
     "include_dependency_moduletype_usage": lambda _registry_module, context: (
         context.include_dependency_moduletype_usage
     ),
-    "rules": lambda registry_module, context: registry_module.get_configured_naming_rules(context.config),
     "selected_issue_kinds": lambda _registry_module, context: getattr(context, "selected_issue_kinds", None),
     "shared_artifacts": lambda _registry_module, context: getattr(context, "shared_artifacts", None),
     "unavailable_libraries": lambda _registry_module, context: context.unavailable_libraries,

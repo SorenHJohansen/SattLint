@@ -14,8 +14,6 @@ from sattline_parser.models.ast_model import (
 )
 
 from sattlint.analyzers.icf import (
-    format_icf_file,
-    format_icf_text,
     parse_icf_file,
     validate_icf_entries_against_program,
 )
@@ -70,83 +68,6 @@ def test_parse_icf_file_tracks_unit_journal_and_group_context(tmp_path):
     assert entries[0].unit == "KaHA221A"
     assert entries[0].journal == "HygienicStatus"
     assert entries[0].group == "JournalData_DCStoMES"
-
-
-def test_format_icf_text_preserves_nonblank_content_and_distinguishes_major_headers():
-    source = (
-        "; header\n"
-        "\n"
-        "[Unit UnitA]\n"
-        "[Journal JournalA]\n"
-        "[Group JournalData_DCStoMES]\n"
-        "OPR_ID=F::Program:UnitA.JournalA.T.OPR_ID\n"
-        "[Operation OpStart]\n"
-        "[Group StateChange_DCStoMES]\n"
-        "STATE_NO=F::Program:UnitA.OpStart.STATE_NO\n"
-        "[Unit UnitB]\n"
-        "[Journal JournalB]\n"
-        "[Group JournalData_DCStoMES]\n"
-        "OPR_ID=F::Program:UnitB.JournalB.T.OPR_ID\n"
-    )
-
-    formatted = format_icf_text(source)
-
-    assert [line for line in formatted.splitlines() if line.strip()] == [
-        line for line in source.splitlines() if line.strip()
-    ]
-    assert formatted == (
-        "; header\n"
-        "\n"
-        "[Unit UnitA]\n"
-        "\n"
-        "\n"
-        "[Journal JournalA]\n"
-        "\n"
-        "[Group JournalData_DCStoMES]\n"
-        "OPR_ID=F::Program:UnitA.JournalA.T.OPR_ID\n"
-        "\n"
-        "\n"
-        "[Operation OpStart]\n"
-        "\n"
-        "[Group StateChange_DCStoMES]\n"
-        "STATE_NO=F::Program:UnitA.OpStart.STATE_NO\n"
-        "\n"
-        "\n"
-        "[Unit UnitB]\n"
-        "\n"
-        "\n"
-        "[Journal JournalB]\n"
-        "\n"
-        "[Group JournalData_DCStoMES]\n"
-        "OPR_ID=F::Program:UnitB.JournalB.T.OPR_ID\n"
-    )
-    assert format_icf_text(formatted) == formatted
-
-
-def test_format_icf_file_preserves_nonblank_content_encoding_and_newline_style(tmp_path):
-    icf_file = tmp_path / "Program.icf"
-    original = (
-        "; S\u00f8jle\r\n"
-        "\r\n"
-        "[Unit UnitA]\r\n"
-        "[Operation Op\u00c6]\r\n"
-        "[Group JournalData_Parameters]\r\n"
-        "L\u00f8bS\u00f8jle1=F::Program:UnitA.Op\u00c6.Value.Data.L\u00f8b_S\u00f8jle1\r\n"
-    )
-    icf_file.write_bytes(original.encode("cp1252"))
-
-    result = format_icf_file(icf_file)
-    raw = icf_file.read_bytes()
-    formatted = raw.decode("cp1252")
-
-    assert result.changed is True
-    assert b"\r\n" in raw
-    assert "S\u00f8jle" in formatted
-    assert "L\u00f8bS\u00f8jle1=F::Program:UnitA.Op\u00c6.Value.Data.L\u00f8b_S\u00f8jle1" in formatted
-    assert [line for line in formatted.splitlines() if line.strip()] == [
-        line for line in original.splitlines() if line.strip()
-    ]
-    assert format_icf_file(icf_file, check=True).changed is False
 
 
 def test_icf_validation_reports_valid_and_invalid_entries():

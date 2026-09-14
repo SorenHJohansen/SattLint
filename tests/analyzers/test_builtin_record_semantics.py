@@ -16,7 +16,7 @@ from sattline_parser.models.ast_model import (
 from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt, VarRef
 
 from sattlint.analyzers.variables import VariablesAnalyzer
-from sattlint.reporting.variables_report import IssueKind
+from sattlint.reporting.variables_report import DATATYPE_FIELD_ANALYSIS_KINDS, IssueKind
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -218,7 +218,7 @@ def test_partial_record_usage_reports_unused_leaf_fields():
         moduledef=None,
     )
 
-    analyzer = VariablesAnalyzer(bp)
+    analyzer = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS))
     analyzer.run()
 
     unused_fields = {
@@ -278,7 +278,7 @@ def test_whole_record_access_does_not_report_unused_leaf_fields():
         moduledef=None,
     )
 
-    analyzer = VariablesAnalyzer(bp)
+    analyzer = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS))
     analyzer.run()
 
     assert not any(

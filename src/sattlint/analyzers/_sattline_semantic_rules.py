@@ -96,10 +96,6 @@ RULE_CONTRACTS_BY_ID: dict[str, SemanticRuleContract] = {
         "semantic.transition-always-true",
         "semantic.transition-always-false",
         "semantic.duplicate-transition-guard",
-        "semantic.illegal-state-combination",
-        "semantic.missing-step-enter-contract",
-        "semantic.missing-step-exit-contract",
-        "semantic.step-state-leakage",
     ),
     **rule_contract_entries(
         ALARM_RULE_CONTRACT,

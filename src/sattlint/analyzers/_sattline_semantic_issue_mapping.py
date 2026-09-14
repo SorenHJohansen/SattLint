@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 from ..reporting.variables_report import IssueKind, VariableIssue
+from ._sattline_semantic_issue_metadata import get_issue_rules_for_source
 from ._sattline_semantic_models import SemanticIssue, SemanticRule
 from ._sattline_semantic_rules import (
     RULE_CONTRACTS_BY_ID,
@@ -16,7 +17,6 @@ from ._sattline_semantic_rules import (
     attach_rule_contract,
 )
 from .framework import Issue
-from .rule_profiles import get_issue_rules_for_source
 
 
 def map_variable_issues(issues: list[VariableIssue]) -> list[SemanticIssue]:

@@ -55,7 +55,7 @@ class _ReplaceOnlyBytes(bytes):
         raise UnicodeDecodeError(encoding, b"\xff", 0, 1, "forced failure")
 
 
-def test_icf_helper_decode_and_format_edges(tmp_path):
+def test_icf_helper_decode_edges(tmp_path):
     text, encoding, has_bom = icf_module._decode_icf_text(codecs.BOM_UTF8 + b"\xff")
     assert text == "ÿ"
     assert encoding == "cp1252"
@@ -65,20 +65,6 @@ def test_icf_helper_decode_and_format_edges(tmp_path):
     assert replace_text == "ÿ"
     assert replace_encoding == "latin-1"
     assert replace_bom is False
-
-    assert icf_module._header_spacing("Unknown") == 1
-    assert icf_module.format_icf_text("no headers here") == "no headers here"
-
-    formatted = icf_module.format_icf_text("\n\n[Unit UnitA]\nValue=1\n\n\n[Group G]\n")
-    assert formatted == "[Unit UnitA]\nValue=1\n\n[Group G]\n"
-
-    icf_file = tmp_path / "Program.icf"
-    icf_file.write_bytes(codecs.BOM_UTF8 + b"[Unit UnitA]\r\n[Group G]\r\n")
-    result = icf_module.format_icf_file(icf_file)
-
-    assert result.changed is True
-    assert icf_file.read_bytes().startswith(codecs.BOM_UTF8)
-    assert b"\r\n\r\n[Group G]\r\n" in icf_file.read_bytes()
 
 
 def test_icf_helper_parse_and_extract_edge_cases(tmp_path):
@@ -415,10 +401,7 @@ def test_icf_helper_parameter_completeness_and_unit_structure_edges():
     assert structure_issues[0].reason == "unit structure drift"
 
 
-def test_icf_helper_additional_format_summary_and_parse_branches(tmp_path, monkeypatch):
-    formatted = icf_module.format_icf_text("[Unit U]\n[Group G]\n[Operation O]\n")
-    assert formatted == "[Unit U]\n\n[Group G]\n\n\n[Operation O]\n"
-
+def test_icf_helper_additional_summary_and_parse_branches(tmp_path, monkeypatch):
     parse_file = tmp_path / "Ops.icf"
     parse_file.write_text(
         "[Unit KaHA221A]\n[Operation Start]\n[Journal HygienicStatus]\nKey=Program:KaHA221A.Value\n",

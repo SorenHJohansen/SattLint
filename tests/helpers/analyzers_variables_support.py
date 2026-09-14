@@ -37,6 +37,8 @@ from sattlint.analyzers.variables import _variable_issue_collection as variable_
 from sattlint.analyzers.variables import _variables_execution as variables_execution_module
 from sattlint.engine import parse_source_file
 from sattlint.reporting.variables_report import (
+    ALL_VARIABLE_ANALYSIS_KINDS,
+    DATATYPE_FIELD_ANALYSIS_KINDS,
     VariableIssue,
     VariablesReport,
 )
@@ -76,6 +78,8 @@ from tests.helpers.variable_test_support import (
 )
 
 __all__ = [
+    "ALL_VARIABLE_ANALYSIS_KINDS",
+    "DATATYPE_FIELD_ANALYSIS_KINDS",
     "Any",
     "Assignment",
     "BasePicture",

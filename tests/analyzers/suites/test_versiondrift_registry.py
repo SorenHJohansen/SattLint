@@ -148,7 +148,6 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
     monkeypatch.setattr(registry_module, "analyze_shadowing", _record("shadowing"))
     monkeypatch.setattr(registry_module, "analyze_spec_compliance", _record("spec-compliance"))
     monkeypatch.setattr(registry_module, "analyze_alarm_integrity", _record("alarm-integrity"))
-    monkeypatch.setattr(registry_module, "analyze_naming_consistency", _record("naming-consistency"))
     monkeypatch.setattr(registry_module, "analyze_cyclomatic_complexity", _record("cyclomatic-complexity"))
     monkeypatch.setattr(registry_module, "analyze_parameter_drift", _record("parameter-drift"))
     monkeypatch.setattr(registry_module, "analyze_picture_display_paths", _record("picture-display-paths"))
@@ -161,7 +160,6 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
     monkeypatch.setattr(registry_module, "analyze_unsafe_defaults", _record("unsafe-defaults"))
     monkeypatch.setattr(registry_module, "analyze_dataflow", _record("dataflow"))
     monkeypatch.setattr(registry_module, "analyze_comment_code", _record("comment-code"))
-    monkeypatch.setattr(registry_module, "get_configured_naming_rules", lambda config: ("rules",))
 
     specs = {spec.key: spec for spec in registry_module.get_default_analyzers()}
     context: Any = SimpleNamespace(
@@ -182,7 +180,6 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
         "shadowing",
         "spec-compliance",
         "alarm-integrity",
-        "naming-consistency",
         "cyclomatic-complexity",
         "parameter-drift",
         "signal-lifecycle",

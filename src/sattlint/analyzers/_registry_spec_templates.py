@@ -67,16 +67,9 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "\n"
                 "- Unused variable - declared but never read or written.\n"
                 "\n"
-                "- Unused datatype field - a field of a record is never read or "
-                "written.\n"
-                "\n"
-                "- Field never written - a field is only read, never set.\n"
-                "\n"
                 "- Read-only non-const - a variable is only read but is not CONST.\n"
                 "  Example: 'SensorInput' is only read in an equation, never "
                 "written.\n"
-                "\n"
-                "- Field never read - a field is set but never read.\n"
                 "\n"
                 "- Written but never read - a variable is set but never read.\n"
                 "\n"
@@ -160,7 +153,9 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "- Record order dependence - the order of record fields is "
                 "used.\n"
                 "  Example: the meaning of a record read depends on the declared "
-                "field order."
+                "field order.\n"
+                "\n"
+                "Datatype-field findings move to the dedicated opt-in 'datatype-fields' analyzer."
             ),
             analyzer_attr="analyze_variables",
             context_kwargs=(
@@ -172,6 +167,36 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "selected_issue_kinds",
                 "config",
             ),
+            supports_live_diagnostics=True,
+            semantic_mapping_kind="variable",
+            semantic_rule_source="variables",
+        ),
+        AnalyzerSpecTemplate(
+            key="datatype-fields",
+            name="Datatype field usage",
+            description=(
+                "The three datatype-field findings: unused, read-only, and never-read RECORD fields.\n"
+                "\n"
+                "Split from the 'variables' analyzer. When the analyzed target is a library, the files "
+                "that depend on it are always loaded so a field is only flagged when no consumer uses it. "
+                "Because of that dependency loading this analyzer is more expensive than a plain "
+                "'variables' run, so it is opt-in.\n"
+                "\n"
+                "Finds:\n"
+                "- A datatype field no code ever touches, for example 'UnusedField' with no code path.\n"
+                "- A field that is only read for a specific record variable, for example a received "
+                "record whose 'Status' field is never written.\n"
+                "- A field that is only written but never read back, for example dead output logic."
+            ),
+            analyzer_attr="analyze_datatype_fields",
+            context_kwargs=(
+                "analysis_context",
+                "debug",
+                "unavailable_libraries",
+                "analyzed_target_is_library",
+                "config",
+            ),
+            requires=("variables",),
             supports_live_diagnostics=True,
             semantic_mapping_kind="variable",
             semantic_rule_source="variables",
@@ -308,25 +333,7 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "\n"
                 "- Duplicate transition guard - two transitions have the same "
                 "condition.\n"
-                "  Example: TrA and TrB both wait for 'Ready == True'.\n"
-                "\n"
-                "- Illegal state combination - two steps that must not run "
-                "together can be active at the same time.\n"
-                "  Example: 'Extend' and 'Retract' can both become active.\n"
-                "\n"
-                "- Missing step enter write - a step does not set the values it "
-                "must set when entering.\n"
-                "  Example: a step reads 'StepValue' but no ENTERCODE "
-                "initializes it.\n"
-                "\n"
-                "- Missing step exit write - a step does not clear the values it "
-                "must clear when leaving.\n"
-                "  Example: a step never clears a 'Mutex' variable in EXITCODE.\n"
-                "\n"
-                "- Step state leakage - a step reads values left behind by an "
-                "earlier step.\n"
-                "  Example: a step reads 'StepValue' with the value the 'Prime' "
-                "step left behind."
+                "  Example: TrA and TrB both wait for 'Ready == True'."
             ),
             analyzer_attr="analyze_sfc",
             requires=("variables",),
@@ -446,24 +453,6 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library"),
             semantic_mapping_kind="framework",
             semantic_rule_source="alarm-integrity",
-        ),
-        AnalyzerSpecTemplate(
-            key="naming-consistency",
-            name="Naming consistency",
-            description=(
-                "Checks that all declaration names use the same style "
-                "(like FlowRate or tank_level).\n"
-                "\n"
-                "Finds:\n"
-                "\n"
-                "- Inconsistent naming style - one name does not match the most "
-                "common style used for that kind of symbol.\n"
-                "  Example: most variables are PascalCase (FlowRate) but one is "
-                "snake_case (tank_level)."
-            ),
-            analyzer_attr="analyze_naming_consistency",
-            category="style",
-            context_kwargs=("rules", "analyzed_target_is_library"),
         ),
         AnalyzerSpecTemplate(
             key="cyclomatic-complexity",

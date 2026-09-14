@@ -62,7 +62,10 @@ def test_unused_datatype_fields_are_aggregated_across_variables():
         origin_lib="ProjectLib",
     )
 
-    analyzer = VariablesAnalyzer(bp)
+    analyzer = VariablesAnalyzer(
+        bp,
+        selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS),
+    )
     analyzer.run()
 
     unused_fields = {
@@ -154,7 +157,10 @@ def test_unused_datatype_fields_count_nested_record_field_accesses():
         origin_lib="ProjectLib",
     )
 
-    analyzer = VariablesAnalyzer(bp)
+    analyzer = VariablesAnalyzer(
+        bp,
+        selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS),
+    )
     analyzer.run()
 
     unused_fields = {
@@ -248,7 +254,12 @@ def test_library_target_dependency_mapping_counts_root_record_field_usage_withou
         origin_lib="KaHASoejleLib",
     )
 
-    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True, include_dependency_moduletype_usage=True)
+    analyzer = VariablesAnalyzer(
+        bp,
+        analyzed_target_is_library=True,
+        include_dependency_moduletype_usage=True,
+        selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS),
+    )
     analyzer.run()
 
     unused_fields = {
@@ -323,7 +334,11 @@ def test_picture_display_variable_rows_count_as_field_usage_for_datatype_reporti
         )
     ]
 
-    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True)
+    analyzer = VariablesAnalyzer(
+        bp,
+        analyzed_target_is_library=True,
+        selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS),
+    )
     analyzer.run()
 
     unused_fields = {

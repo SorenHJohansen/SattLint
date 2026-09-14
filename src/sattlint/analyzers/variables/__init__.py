@@ -360,7 +360,7 @@ class VariablesAnalyzer(
         self._unresolved_variable_lookup_total = 0
         self._unresolved_variable_lookup_counts: dict[str, int] = defaultdict(int)
         self._unresolved_variable_lookup_examples: dict[str, tuple[int, str]] = {}
-        self._naming_role_patterns = configured_naming_role_patterns(config)
+        self._naming_role_patterns = configured_naming_role_patterns()
         self._root_variable_access_summary_cache_token: tuple[int, int] | None = None
         self._root_variable_access_summary_cache: dict[str, Any] = {}
         self._initialize_usage_state()

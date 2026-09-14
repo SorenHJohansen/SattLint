@@ -402,7 +402,11 @@ def test_library_target_direct_typedef_code_counts_field_usage_for_datatype_repo
         origin_lib="KaHAXDiluteLib",
     )
 
-    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True)
+    analyzer = VariablesAnalyzer(
+        bp,
+        analyzed_target_is_library=True,
+        selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS),
+    )
     analyzer.run()
 
     unused_fields = {

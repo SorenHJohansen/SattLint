@@ -41,23 +41,12 @@ class SattLineProject:
             ConfigDict,
             {
                 "analyzed_programs_and_libraries": list(d["analyzed_programs_and_libraries"]),
-                "include_reverse_library_consumers": d["include_reverse_library_consumers"],
                 "mode": d["mode"],
                 "program_dir": self._maybe_resolve(d["program_dir"]),
                 "ABB_lib_dir": self._maybe_resolve(d["ABB_lib_dir"]),
                 "icf_dir": self._maybe_resolve(d["icf_dir"]),
                 "other_lib_dirs": [self._resolve(p) for p in d["other_lib_dirs"] if p.strip()],
-                "analysis": {
-                    "naming": {
-                        "variables": dict(d["analysis"]["naming"]["variables"]),
-                        "modules": dict(d["analysis"]["naming"]["modules"]),
-                        "instances": dict(d["analysis"]["naming"]["instances"]),
-                    },
-                    "rule_profiles": {
-                        "active": d["analysis"]["rule_profiles"]["active"],
-                        "profiles": dict(d["analysis"]["rule_profiles"]["profiles"]),
-                    },
-                },
+                "analysis": {},
             },
         )
         return cfg

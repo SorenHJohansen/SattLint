@@ -170,7 +170,7 @@ def test_parameter_mapping_fixture_contains_expected_issue_kinds():
 def test_sequence_lifetime_fixture_contains_expected_issue_kinds():
     fixture = Path(__file__).resolve().parents[2] / "fixtures" / "sample_sattline_files" / "SequenceLifetimeIssues.s"
     bp = parse_source_file(fixture)
-    issues = VariablesAnalyzer(bp).run()
+    issues = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(ALL_VARIABLE_ANALYSIS_KINDS)).run()
 
     implicit_latch = {
         issue.variable.name for issue in issues if issue.kind is IssueKind.IMPLICIT_LATCH and issue.variable is not None

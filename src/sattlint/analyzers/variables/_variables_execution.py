@@ -26,6 +26,9 @@ from ..shared.variable_utils import mapping_target_name
 from ._usage_tracker import UsageTracker
 from ._variable_traversal_support import _IGNORED_GRAPHICS_TAIL_BASENAMES
 from ._variables_contracts import (
+    explicitly_selected_issue_kinds as _explicitly_selected_issue_kinds,
+)
+from ._variables_contracts import (
     selected_issue_kinds as _selected_issue_kinds,
 )
 from ._variables_contracts import (
@@ -102,6 +105,13 @@ _POST_TRAVERSAL_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
         IssueKind.IMPLICIT_LATCH,
         IssueKind.STRING_MAPPING_MISMATCH,
         IssueKind.WRITE_WITHOUT_EFFECT,
+    }
+)
+_DATATYPE_FIELD_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
+    {
+        IssueKind.UNUSED_DATATYPE_FIELD,
+        IssueKind.FIELD_READ_ONLY,
+        IssueKind.FIELD_NEVER_READ,
     }
 )
 _FINAL_SYNTHESIS_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
@@ -319,7 +329,7 @@ def _run_post_traversal_analyses(self: VariablesAnalyzer) -> None:
 def _analyze_library_dependency_typedef_usage(self: VariablesAnalyzer) -> None:
     if self._limit_to_module_path is not None:
         return
-    if not self.analyzed_target_is_library or not self.include_dependency_moduletype_usage:
+    if not self.analyzed_target_is_library:
         return
 
     diverted_issues = self._issues
@@ -410,15 +420,18 @@ def _collect_typedef_issues(self: VariablesAnalyzer) -> None:  # noqa: PLR0915
     collect_never_read = _should_collect_issue_kind(self, IssueKind.NEVER_READ)
     collect_write_without_effect = _should_collect_issue_kind(self, IssueKind.WRITE_WITHOUT_EFFECT)
     collect_name_collisions = _should_collect_issue_kind(self, IssueKind.NAME_COLLISION)
-
-    if not collect_name_collisions and not (
+    collect_datatype_fields = _explicitly_selected_issue_kinds(self, _DATATYPE_FIELD_ISSUE_KINDS)
+    collect_any_typedef_issue = (
         collect_unused
         or collect_procedure_status
         or collect_ui_only
         or collect_read_only_non_const
         or collect_never_read
         or collect_write_without_effect
-    ):
+        or collect_name_collisions
+    )
+
+    if not collect_any_typedef_issue and not collect_datatype_fields:
         return
 
     for moduletype in self.bp.moduletype_defs or []:
@@ -578,8 +591,10 @@ def run(  # noqa: PLR0915
     is_library_target = bool(getattr(self, "_analyzed_target_is_library", False))
     includes_dependency_typedef_usage = bool(getattr(self, "_include_dependency_moduletype_usage", False))
     should_record_display_bindings = _should_collect_any_issue_kinds(self, _USAGE_DERIVED_ISSUE_KINDS)
+    datatype_field_selected = _explicitly_selected_issue_kinds(self, _DATATYPE_FIELD_ISSUE_KINDS)
     should_analyze_dependency_typedef_usage = _should_collect_any_issue_kinds(self, _USAGE_DERIVED_ISSUE_KINDS) and (
-        _selected_issue_kinds(self) is None or (is_library_target and includes_dependency_typedef_usage)
+        _selected_issue_kinds(self) is None
+        or (is_library_target and (includes_dependency_typedef_usage or datatype_field_selected))
     )
     should_propagate_aliases = apply_alias_back_propagation and _should_collect_any_issue_kinds(
         self,
@@ -587,18 +602,12 @@ def run(  # noqa: PLR0915
     )
     should_run_post_traversal_checks = _should_collect_any_issue_kinds(self, _POST_TRAVERSAL_ISSUE_KINDS)
     should_collect_basepicture_issues = _should_collect_any_issue_kinds(self, _USAGE_VARIABLE_ISSUE_KINDS)
-    should_collect_typedef_issues = _should_collect_any_issue_kinds(self, _TYPEDEF_SCAN_ISSUE_KINDS)
-    should_finalize_issues = _should_collect_any_issue_kinds(self, _FINAL_SYNTHESIS_ISSUE_KINDS)
-    should_collect_datatype_field_issues = _should_collect_any_issue_kinds(
+    should_collect_typedef_issues = _should_collect_any_issue_kinds(
         self,
-        frozenset(
-            {
-                IssueKind.UNUSED_DATATYPE_FIELD,
-                IssueKind.FIELD_READ_ONLY,
-                IssueKind.FIELD_NEVER_READ,
-            }
-        ),
+        _TYPEDEF_SCAN_ISSUE_KINDS | _DATATYPE_FIELD_ISSUE_KINDS,
     )
+    should_finalize_issues = _should_collect_any_issue_kinds(self, _FINAL_SYNTHESIS_ISSUE_KINDS)
+    should_collect_datatype_field_issues = datatype_field_selected
 
     _maybe_update_status(self, "building root scope")
     _run_timed_phase(self, "root-traversal", self._analyze_root_scope)

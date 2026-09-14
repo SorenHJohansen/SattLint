@@ -272,7 +272,6 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
         config={"mode": "test"},
     )
     registry_stub = SimpleNamespace(
-        get_configured_naming_rules=lambda config: {"mode": config["mode"]},
         analyze_direct=lambda analysis_context: SimpleReport(name=analysis_context.base_picture.header.name),
         analyze_picture=lambda base_picture, **kwargs: SimpleReport(name=base_picture.header.name, note=str(kwargs)),
     )
@@ -288,7 +287,6 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
             "config",
             "debug",
             "graph",
-            "rules",
             "unavailable_libraries",
         ),
         composed_analyzer_keys=("dataflow",),
@@ -300,7 +298,6 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
     assert kwargs["config"] == {"mode": "test"}
     assert kwargs["debug"] is True
     assert kwargs["graph"] is context.graph
-    assert kwargs["rules"] == {"mode": "test"}
     assert kwargs["unavailable_libraries"] == {"ControlLib"}
 
     direct_template = AnalyzerSpecTemplate(

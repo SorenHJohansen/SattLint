@@ -4,9 +4,8 @@
 Direct replacement for the old ``application.startup`` surface, relocated
 from ``application/`` to ``cli/`` as part of Phase 6 (application-layer
 refactor).  This module owns the interactive startup orchestration (``main``)
-and the menu composition helpers (:mod:`sattlint.cli.menu`,
-:mod:`sattlint.config.display`), keeping the interactive loop independent of
-the legacy ``app`` module.
+and the interactive-shell dispatch helpers (:mod:`sattlint.cli.menu`), keeping
+the interactive loop independent of the legacy ``app`` module.
 """
 
 from __future__ import annotations
@@ -23,7 +22,6 @@ from .. import config as config_module
 from .. import console as console_module
 from ..application import analyze as analyze_application
 from ..application import change_review as change_review_application
-from ..application import checks as checks_application
 from ..application import project as project_application
 from ..config.types import ConfigDict
 from ..core.interaction import (
@@ -200,13 +198,9 @@ def resolve_interactive_ui_mode(cfg: ConfigDict, override_ui_mode: str | None = 
 
 def analysis_handler_fns() -> dict[str, Callable[..., Any]]:
     return {
-        "run_variable_analysis": analyze_application.run_variable_analysis,
         "_run_checks": analyze_application.run_checks,
         "run_checks_result": analyze_application.run_checks_result,
-        "run_checks_menu": run_checks_menu,
-        "run_mms_interface_analysis": analyze_application.run_mms_interface_analysis,
         "run_icf_validation": analyze_application.run_icf_validation,
-        "run_comment_code_analysis": analyze_application.run_comment_code_analysis,
         "generate_change_review": change_review_application.generate_change_review,
     }
 
@@ -250,10 +244,6 @@ def get_help_text(cfg: ConfigDict) -> str:
         get_analyzed_targets_fn=support_module.get_analyzed_targets,
         summarize_targets_fn=summarize_targets,
     )
-
-
-def run_checks_menu(cfg: ConfigDict) -> None:
-    checks_application.run_checks_menu(cfg, run_checks_fn=analyze_application.run_checks)
 
 
 def build_cli_parser() -> argparse.ArgumentParser:

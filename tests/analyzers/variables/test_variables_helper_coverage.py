@@ -39,18 +39,11 @@ def _returns_true(*_args: object, **_kwargs: object) -> bool:
     return True
 
 
-def test_variables_status_cover_pattern_and_binding_branches(monkeypatch: pytest.MonkeyPatch) -> None:
-    assert variables_status_impl._normalize_role_pattern_values("bad") == ()
-    assert variables_status_impl._normalize_role_pattern_values([" Cmd ", "cmd", 1, ""]) == ("cmd",)
-    defaults = variables_status_impl._configured_naming_role_patterns(None)
+def test_variables_status_cover_naming_defaults_and_binding_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+    defaults = variables_status_impl._configured_naming_role_patterns()
     assert defaults["status"].suffixes == ("status",)
-    assert variables_status_impl._configured_naming_role_patterns({"analysis": "bad"}) == defaults
-    assert variables_status_impl._configured_naming_role_patterns({"analysis": {}}) == defaults
-    assert variables_status_impl._configured_naming_role_patterns({"analysis": {"naming": {}}}) == defaults
-    configured = variables_status_impl._configured_naming_role_patterns(
-        {"analysis": {"naming": {"role_patterns": {"command": {"prefixes": ["Start", "start"]}}}}}
-    )
-    assert "start" in configured["command"].prefixes
+    assert defaults["command"].suffixes == ("cmd",)
+    assert defaults["alarm"].suffixes == ("alarm",)
 
     variable = Variable(name="StatusVar", datatype=Simple_DataType.INTEGER)
     helper: Any = SimpleNamespace(

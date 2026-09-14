@@ -108,14 +108,13 @@ def test_validate_config_reports_none_values_at_top_level_and_nested_paths():
     }
 
 
-def test_validate_config_reports_unknown_analysis_naming_targets_and_style():
+def test_validate_config_reports_unknown_analysis_namespace_keys():
     result = config_module.validate_config(
         {
             "analysis": {
                 "unknown_analyzer": {},
                 "naming": {
-                    "unknown_target": {"style": "snake"},
-                    "variables": {"style": "bad_style"},
+                    "variables": {"style": "snake"},
                 },
             }
         }
@@ -124,8 +123,7 @@ def test_validate_config_reports_unknown_analysis_naming_targets_and_style():
     assert result.passed is False
     assert {error.key_path for error in result.errors} == {
         "analysis.unknown_analyzer",
-        "analysis.naming.unknown_target",
-        "analysis.naming.variables.style",
+        "analysis.naming",
     }
 
 
@@ -134,7 +132,7 @@ def test_validate_config_passes_valid_config_and_serializes_result():
         {
             "mode": "draft",
             "run_history": {"enabled": True, "limit": 50},
-            "analysis": {"naming": {"variables": {"style": "snake"}}},
+            "analysis": {},
         }
     )
     invalid = config_module.validate_config({"bad_key": True})
@@ -315,14 +313,13 @@ def test_top_level_config_contract_matches_typed_config_definitions() -> None:
 
 def test_self_check_uses_full_top_level_config_contract(tmp_path, monkeypatch, capsys):
     cfg = deepcopy(DEFAULT_CONFIG)
-    for key in ("include_reverse_library_consumers", "run_history", "analysis"):
+    for key in ("run_history", "analysis"):
         cfg.pop(key)
 
     ok = config_module.self_check(cfg)
 
     out = capsys.readouterr().out
     assert ok is False
-    assert "Missing config key: include_reverse_library_consumers" in out
     assert "Missing config key: run_history" in out
     assert "Missing config key: analysis" in out
 
@@ -338,16 +335,8 @@ def test_self_check_reports_nested_analysis_shape_errors(tmp_path, monkeypatch, 
     bad_ok = config_module.self_check(cfg)
     bad_out = capsys.readouterr().out
 
-    cfg["analysis"] = {
-        "naming": {
-            "variables": {"label_equals": ["Unused"]},
-            "modules": {},
-            "instances": {},
-        },
-    }
-
     assert bad_ok is False
-    assert "analysis.naming must be a table/object" in bad_out
+    assert "Unknown analysis key 'naming'" in bad_out
 
 
 def test_run_icf_validation_forces_dependency_aware_ast_loading(tmp_path, monkeypatch, capsys, noop_screen):
@@ -411,13 +400,6 @@ def test_self_check_reports_invalid_nested_config_errors(tmp_path, monkeypatch, 
             "ABB_lib_dir": "",
             "icf_dir": str(tmp_path / "missing-icf"),
             "other_lib_dirs": [str(tmp_path / "missing-other")],
-            "analysis": {
-                "naming": {
-                    "variables": {"style": "bad", "allow": "bad"},
-                    "modules": "bad",
-                    "instances": {"allow": [1]},
-                },
-            },
         }
     )
 
@@ -431,10 +413,6 @@ def test_self_check_reports_invalid_nested_config_errors(tmp_path, monkeypatch, 
     assert "icf_dir does not exist" in out
     assert "other_lib_dirs entry missing" in out
     assert "MissingTarget (not found)" in out
-    assert "analysis.naming.variables.style must be one of" in out
-    assert "analysis.naming.variables.allow must be a list of strings" in out
-    assert "analysis.naming.modules must be a table/object" in out
-    assert "analysis.naming.instances.allow must be a list of strings" in out
 
 
 def test_main_pauses_when_initial_ast_check_fails(monkeypatch):

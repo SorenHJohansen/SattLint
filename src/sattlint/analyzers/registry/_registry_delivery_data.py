@@ -69,6 +69,17 @@ def default_delivery_templates(
             exposed_via=(semantic_layer_analyzer_key,),
         ),
         AnalyzerDeliveryTemplate(
+            key="datatype-fields",
+            scope="workspace",
+            implementation_bucket="variables-reporting",
+            acceptance_tests=(
+                *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
+                "tests/analyzers/test_datatype_fields_analyzer.py",
+            ),
+            min_fixture_set=shared_fixtures,
+            exposed_via=(semantic_layer_analyzer_key, "pipeline"),
+        ),
+        AnalyzerDeliveryTemplate(
             key="picture-display-paths",
             scope="workspace",
             implementation_bucket="workspace-navigation",
@@ -145,14 +156,6 @@ def default_delivery_templates(
             depends_on_analyzers=(semantic_layer_analyzer_key,),
             min_fixture_set=shared_fixtures,
             exposed_via=(semantic_layer_analyzer_key,),
-        ),
-        AnalyzerDeliveryTemplate(
-            key="naming-consistency",
-            scope="workspace",
-            implementation_bucket="engineering-rules",
-            acceptance_tests=_ANALYZER_SUITE_ACCEPTANCE_TESTS,
-            min_fixture_set=shared_fixtures,
-            exposed_via=("pipeline",),
         ),
         AnalyzerDeliveryTemplate(
             key="cyclomatic-complexity",
