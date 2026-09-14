@@ -2056,6 +2056,46 @@ def test_textual_settings_view_shows_app_settings_and_edits_config() -> None:
     asyncio.run(_run())
 
 
+def test_textual_settings_prompt_buttons_open_dialog_and_apply_values() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        cfg: dict[str, Any] = {
+            "analyzed_programs_and_libraries": ["TargetA"],
+            "debug": False,
+            "run_history": {"enabled": True, "limit": 50},
+            "output": {"retention_lines": 4000},
+        }
+        app_instance = _make_textual_app(cfg=cfg)
+
+        async def _edit(button_id: str, input_value: str, section: str, subkey: str, expected: object) -> None:
+            app_instance.query_one(f"#{button_id}").press()
+            await pilot.pause()
+            assert app_instance._active_request is not None
+            app_instance.query_one("#interaction-input").value = input_value
+            await pilot.click("#submit")
+            await pilot.pause()
+            assert cfg[section][subkey] == expected  # type: ignore[index]
+            assert app_instance._dirty is True
+
+        async with app_instance.run_test() as pilot:
+            await pilot.press("ctrl+2")
+            await pilot.pause()
+
+            await _edit("settings-edit-run-history-limit", "80", "run_history", "limit", 80)
+            await _edit("settings-edit-output-retention", "2500", "output", "retention_lines", 2500)
+            await _edit(
+                "settings-edit-review-output-dir",
+                "/tmp/reviews",
+                "review",
+                "output_dir",
+                "/tmp/reviews",
+            )
+
+    asyncio.run(_run())
+
+
 def test_textual_results_view_lists_runs_and_renders_tree(monkeypatch: pytest.MonkeyPatch) -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
