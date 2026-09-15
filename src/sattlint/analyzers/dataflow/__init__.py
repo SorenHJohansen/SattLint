@@ -28,6 +28,7 @@ from ._dataflow_common import (
     OLD_PREFIX,
     PENDING_PREFIX,
     UNKNOWN,
+    ConstantTrace,
     ResolvedRef,
     ScalarValue,
     StateMap,
@@ -72,10 +73,9 @@ class DataflowAnalyzer(
         self._site_stack: list[str] = []
         self._active_typedefs: set[str] = set()
         self._reported_dead_overwrite: set[tuple[tuple[str, ...], str, str]] = set()
+        self._reported_conflicting_constants: set[tuple[tuple[str, ...], str, str]] = set()
         self._reported_scan_cycle_stale_read: set[tuple[tuple[str, ...], str, str]] = set()
         self._reported_scan_cycle_implicit_new: set[tuple[tuple[str, ...], str, str]] = set()
-        self._reported_scan_cycle_temporal_misuse: set[tuple[tuple[str, ...], str, str, str]] = set()
-        self._reported_invalid_state_access: set[tuple[tuple[str, ...], str, str]] = set()
 
     @property
     def issues(self) -> list[Issue]:
@@ -163,21 +163,14 @@ class DataflowAnalyzer(
         array_spec = get_dynamic_array_builtin_spec(function_name)
         if array_spec is not None and array_spec.dataflow_mutates_array and len(args) > array_spec.array_index:
             resolved_array = self._resolve_ref(args[array_spec.array_index], context)
-            if resolved_array is not None:
-                if resolved_array.state_access == "old":
-                    self._report_invalid_old_write(
-                        resolved_array,
-                        context.module_path,
-                        operation="array element write",
-                    )
-                else:
-                    next_state = self._apply_write_target(
-                        resolved_array,
-                        UNKNOWN,
-                        next_state,
-                        module_path=context.module_path,
-                        treat_as_root_overwrite=True,
-                    )
+            if resolved_array is not None and resolved_array.state_access != "old":
+                next_state = self._apply_write_target(
+                    resolved_array,
+                    UNKNOWN,
+                    next_state,
+                    module_path=context.module_path,
+                    treat_as_root_overwrite=True,
+                )
 
         for index, argument in enumerate(args):
             direction = "in"
@@ -189,11 +182,6 @@ class DataflowAnalyzer(
             if resolved is None:
                 continue
             if resolved.state_access == "old":
-                self._report_invalid_old_write(
-                    resolved,
-                    context.module_path,
-                    operation=f"{direction} parameter",
-                )
                 continue
             next_state = self._apply_write_target(
                 resolved,
@@ -230,6 +218,7 @@ class DataflowAnalyzer(
     ) -> ScalarValue | object:
         if resolved.state_access != "old":
             self._consume_pending_reads(state, resolved.symbol_root_key)
+            self._mark_constant_trace_read(state, resolved.symbol_root_key)
         value = state.get(resolved.key, UNKNOWN)
         if value is UNKNOWN and resolved.key != resolved.root_key:
             value = state.get(resolved.root_key, UNKNOWN)
@@ -266,7 +255,6 @@ class DataflowAnalyzer(
         display_name = full_name if not requested_state_access else f"{full_name}:{requested_state_access.title()}"
         state_access = requested_state_access
         if requested_state_access and resolved_state is not None and not resolved_state:
-            self._report_invalid_state_access(display_name, full_name, requested_state_access, context.module_path)
             state_access = None
         symbol_key = self._state_key(decl_path, variable.name, field_path)
         symbol_root_key = self._state_key(decl_path, variable.name, "")
@@ -458,6 +446,7 @@ __all__ = [
     "OLD_PREFIX",
     "PENDING_PREFIX",
     "UNKNOWN",
+    "ConstantTrace",
     "DataflowAnalyzer",
     "DataflowConditionMixin",
     "DataflowIssueReportingMixin",

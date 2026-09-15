@@ -19,7 +19,6 @@ from sattline_parser.models.ast_model import (
     SFCTransitionSub,
 )
 
-from ...resolution.paths import CanonicalPath
 from ..framework import AnalysisContext, Issue, SimpleReport
 from ..shared.target_origin import TargetOriginFilter, build_target_origin_filter_for_basepicture
 from ..variables import VariablesAnalyzer
@@ -27,20 +26,11 @@ from ._sfc_collectors import _SfcAccessCollector
 from ._sfc_guard_logic import (
     _collect_transition_logic_issues,
     _format_branch_path,
-    conflict_rep,
-    paths_conflict,
 )
 from ._sfc_module_walk import iter_sfc_modulecodes
 
-_SFC_PARALLEL_WRITE_RACE_ISSUE_KINDS = frozenset({"sfc_parallel_write_race"})
 _SFC_REACHABILITY_ISSUE_KINDS = frozenset({"sfc_unreachable_transition", "sfc_unreachable_sequence_node"})
-_SFC_TRANSITION_LOGIC_ISSUE_KINDS = frozenset(
-    {
-        "sfc_transition_always_true",
-        "sfc_transition_always_false",
-        "sfc_duplicate_transition_guard",
-    }
-)
+_SFC_TRANSITION_LOGIC_ISSUE_KINDS = frozenset({"sfc_duplicate_transition_guard"})
 
 
 @dataclass(frozen=True)
@@ -149,30 +139,6 @@ def get_variables_collector_class() -> type[VariablesAnalyzer]:
     return _SfcAccessCollector
 
 
-def _resolve_parallel_write_collector(
-    base_picture: BasePicture,
-    analysis_context: AnalysisContext | None,
-) -> _SfcAccessCollector | None:
-    """Return a collector with ``parallel_writes`` populated.
-
-    Prefers the canonical, already-run SFC-aware ``variables`` analyzer captured in
-    shared artifacts (recorded during the single canonical traversal). Falls back to
-    a fresh SFC-aware collector run here when no shared canonical run is available.
-    """
-    shared = analysis_context.shared_artifacts if analysis_context is not None else None
-    if shared is not None:
-        canonical = shared.variable_analyzer
-        if isinstance(canonical, _SfcAccessCollector):
-            return canonical
-    collector = (
-        _SfcAccessCollector(base_picture, shared_artifacts=shared)
-        if shared is not None
-        else _SfcAccessCollector(base_picture)
-    )
-    collector.run()
-    return collector
-
-
 def analyze_sfc(
     base_picture: BasePicture,
     analysis_context: AnalysisContext | None = None,
@@ -188,48 +154,7 @@ def analyze_sfc(
         analyzed_target_is_library=bool(analysis_context is not None and analysis_context.target_is_library),
     )
 
-    collector: _SfcAccessCollector | None = None
-    if _should_collect_any_issue_kinds(_SFC_PARALLEL_WRITE_RACE_ISSUE_KINDS):
-        collector = _resolve_parallel_write_collector(base_picture, analysis_context)
-
     issues: list[Issue] = []
-    if collector is not None:
-        for key, branch_writes in collector.parallel_writes.items():
-            conflicts: dict[tuple[str, ...], CanonicalPath] = {}
-            branch_ids = sorted(branch_writes.keys())
-            for index, left in enumerate(branch_ids):
-                for right in branch_ids[index + 1 :]:
-                    for left_path in branch_writes[left]:
-                        for right_path in branch_writes[right]:
-                            if paths_conflict(left_path, right_path):
-                                rep = conflict_rep(left_path, right_path)
-                                conflicts.setdefault(rep.key(), rep)
-
-            if not conflicts:
-                continue
-
-            meta = collector.parallel_meta.get(key)
-            seq_name = meta.sequence_name if meta else "<unnamed>"
-            conflict_list = sorted(str(path) for path in conflicts.values())
-            preview = ", ".join(conflict_list[:6])
-            if len(conflict_list) > 6:
-                preview = f"{preview}, ... (+{len(conflict_list) - 6} more)"
-
-            issues.append(
-                Issue(
-                    kind="sfc_parallel_write_race",
-                    message=(f"Parallel branches in sequence {seq_name!r} write to the same variable(s): {preview}"),
-                    module_path=meta.module_path if meta else None,
-                    data={
-                        "sequence": seq_name,
-                        "parallel_id": meta.parallel_id if meta else None,
-                        "conflicts": conflict_list,
-                        "site": f"SQ:{seq_name} > PAR:BLOCK:{meta.parallel_id}" if meta else f"SQ:{seq_name}",
-                        "context": preview,
-                    },
-                )
-            )
-
     if _should_collect_any_issue_kinds(_SFC_REACHABILITY_ISSUE_KINDS):
         for finding in collect_sfc_reachability_findings(base_picture, moduletype_filter=moduletype_filter):
             branch_context = _format_branch_path(finding.branch_path)
@@ -279,8 +204,6 @@ __all__ = [
     "SfcReachabilityFinding",
     "analyze_sfc",
     "collect_sfc_reachability_findings",
-    "conflict_rep",
     "get_variables_collector_class",
     "iter_sfc_modulecodes",
-    "paths_conflict",
 ]

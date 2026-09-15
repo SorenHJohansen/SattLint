@@ -15,7 +15,7 @@ from sattline_parser.models.ast_model import (
 from sattline_parser.models.expressions import Assignment, VarRef
 
 from sattlint import constants as const
-from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
+from sattlint.analyzers.variables import VariablesAnalyzer
 from sattlint.resolution.access_graph import AccessEvent, AccessGraph, AccessKind
 from sattlint.resolution.paths import CanonicalPath, ModuleSegment, decorate_segment
 from sattlint.resolution.type_graph import TypeGraph
@@ -118,41 +118,6 @@ def test_resolves_submodule_parameter_access_to_canonical_parent_path():
 
     canonical_strs = {str(e.canonical_path) for e in write_events}
     assert "Root.Dv.I.WT001.comp_signal.value" in canonical_strs
-
-
-def test_disallows_param_and_local_name_collision_in_same_scope():
-    bp_header = ModuleHeader(
-        name="Root",
-        invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0),
-    )
-
-    child = SingleModule(
-        header=ModuleHeader(
-            name="M1",
-            invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0),
-        ),
-        moduledef=None,
-        moduleparameters=[Variable(name="X", datatype=Simple_DataType.INTEGER)],
-        localvariables=[Variable(name="x", datatype=Simple_DataType.INTEGER)],
-        submodules=[],
-        modulecode=None,
-        parametermappings=[],
-    )
-
-    bp = BasePicture(
-        header=bp_header,
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[child],
-        modulecode=None,
-        moduledef=None,
-    )
-
-    analyzer = VariablesAnalyzer(bp)
-    analyzer.run()
-
-    assert any(i.kind is IssueKind.NAME_COLLISION for i in analyzer.issues)
 
 
 def test_access_graph_indexes_events_by_casefolded_canonical_path():

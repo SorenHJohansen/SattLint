@@ -21,7 +21,6 @@ from sattlint.analyzers.mms import (
     _emit_datatype_mismatch_issues,
     _emit_dead_tag_issues,
     _emit_duplicate_tag_issues,
-    _emit_naming_drift_issues,
     analyze_mms_interface_variables,
 )
 from sattlint.analyzers.registry import get_default_analyzers
@@ -51,7 +50,6 @@ def _inventory_entry(**overrides: object) -> InterfaceInventoryEntry:
         "source_leaf_name": "ExportValue",
         "external_tag": "Plant.Result",
         "external_tag_key": "plant.result",
-        "tag_family_key": "plant|result",
         "direction": "outgoing",
         "write_fields": (),
         "write_note": None,
@@ -160,50 +158,6 @@ def test_mms_interface_flags_duplicate_tags_and_datatype_mismatch_from_icf_entri
     assert "mms.datatype_mismatch" in _issue_kinds(report)
 
 
-def test_mms_interface_flags_naming_drift_from_icf_entries() -> None:
-    unit = SingleModule(
-        header=_hdr("Unit"),
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[Variable(name="ResultText", datatype=Simple_DataType.STRING)],
-        submodules=[],
-        modulecode=None,
-        parametermappings=[],
-    )
-    bp = BasePicture(
-        header=_hdr("Program"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[unit],
-        modulecode=None,
-        moduledef=None,
-    )
-    entries = [
-        ICFEntry(
-            file_path=Path("Program.icf"),
-            line_no=1,
-            section="JournalData_DCStoMES",
-            key="ResultText",
-            value="Program:Unit.ResultText",
-        ),
-        ICFEntry(
-            file_path=Path("Program.icf"),
-            line_no=2,
-            section="JournalData_DCStoMES",
-            key="RESULT_TEXT",
-            value="Program:Unit.ResultText",
-        ),
-    ]
-
-    report = analyze_mms_interface_variables(bp, icf_entries=entries)
-
-    naming_drift_issues = [issue for issue in report.issues if issue.kind == "mms.naming_drift"]
-    assert len(naming_drift_issues) == 1
-    assert "ResultText" in naming_drift_issues[0].message
-    assert "RESULT_TEXT" in naming_drift_issues[0].message
-
-
 def test_mms_interface_collects_nested_typedef_mappings_and_write_locations() -> None:
     wrapper = ModuleTypeDef(
         name="WriterWrapper",
@@ -298,14 +252,11 @@ def test_mms_interface_analyzer_is_enabled_by_default() -> None:
     assert specs["mms-interface"].enabled is True
 
 
-def test_mms_helper_emitters_skip_entries_without_required_tag_keys() -> None:
+def test_mms_helper_emitters_skip_entries_without_external_tag_key() -> None:
     missing_external_key = _inventory_entry(external_tag_key=None)
-    missing_family_key = _inventory_entry(tag_family_key=None)
-    missing_external_tag = _inventory_entry(external_tag=None)
 
     assert _emit_duplicate_tag_issues([missing_external_key]) == []
     assert _emit_datatype_mismatch_issues([missing_external_key]) == []
-    assert _emit_naming_drift_issues([missing_family_key, missing_external_tag]) == []
 
 
 def test_mms_dead_tag_helper_skips_missing_tags_and_unknown_write_notes() -> None:

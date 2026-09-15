@@ -85,20 +85,6 @@ class VariablesAnalyzerFacadeMixin(VariablesAnalyzerFacadePropertiesMixin):
     ) -> None:
         self._bind_ignorable_output(full_ref, context=context)
 
-    def matches_naming_role(self, name_key: str, role_name: str) -> bool:
-        return self._matches_naming_role(name_key, role_name)
-
-    def naming_role_mismatch_reason(
-        self,
-        variable: Variable,
-        usage: VariableUsage,
-        decl_path: list[str],
-    ) -> str | None:
-        return self._naming_role_mismatch_reason(variable, usage, decl_path)
-
-    def get_required_parameter_names_for_typedef(self, moduletype: ModuleTypeDef) -> dict[str, str]:
-        return self._get_required_parameter_names_for_typedef(moduletype)
-
     def analyze_typedef(self, moduletype: ModuleTypeDef, path: list[str]) -> None:
         self._analyze_typedef(moduletype, path)
 

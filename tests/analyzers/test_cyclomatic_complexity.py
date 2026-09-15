@@ -159,3 +159,93 @@ def test_cyclomatic_complexity_analyzer_is_enabled_by_default() -> None:
 
     assert "cyclomatic-complexity" in specs
     assert specs["cyclomatic-complexity"].enabled is True
+
+
+def test_cyclomatic_complexity_flags_high_equation_block_complexity() -> None:
+    decision_statements: list[CodeItem] = [
+        IfStmt(
+            branches=(
+                (
+                    _varref(f"EqCond{index}"),
+                    (Assignment(target=_varref("Output"), value=IntLiteral(index)),),
+                ),
+            ),
+            else_block=(),
+        )
+        for index in range(10)
+    ]
+    bp = BasePicture(
+        header=_hdr("Program"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[Variable(name=f"EqCond{index}", datatype=Simple_DataType.BOOLEAN) for index in range(10)],
+        submodules=[],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="BusyBlock",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=decision_statements,
+                )
+            ]
+        ),
+        moduledef=None,
+    )
+
+    report = analyze_cyclomatic_complexity(bp)
+
+    issues = [issue for issue in report.issues if issue.kind == "equation.cyclomatic_complexity"]
+    assert len(issues) == 1
+    assert issues[0].data == {
+        "scope": "equation-block",
+        "equation": "BusyBlock",
+        "complexity": 11,
+        "threshold": 10,
+        "site": "EQ:BusyBlock",
+        "context": "complexity 11 > 10",
+    }
+
+
+def test_cyclomatic_complexity_honors_configured_thresholds() -> None:
+    decision_statements: list[CodeItem] = [
+        IfStmt(
+            branches=(
+                (
+                    _varref(f"EqCond{index}"),
+                    (Assignment(target=_varref("Output"), value=IntLiteral(index)),),
+                ),
+            ),
+            else_block=(),
+        )
+        for index in range(3)
+    ]
+    bp = BasePicture(
+        header=_hdr("Program"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[Variable(name=f"EqCond{index}", datatype=Simple_DataType.BOOLEAN) for index in range(3)],
+        submodules=[],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="SmallBlock",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=decision_statements,
+                )
+            ]
+        ),
+        moduledef=None,
+    )
+
+    report = analyze_cyclomatic_complexity(
+        bp,
+        config={"analysis": {"cyclomatic_equation_block_threshold": 2}},
+    )
+
+    issues = [issue for issue in report.issues if issue.kind == "equation.cyclomatic_complexity"]
+    assert len(issues) == 1
+    assert issues[0].data is not None
+    assert issues[0].data["complexity"] == 4
+    assert issues[0].data["threshold"] == 2

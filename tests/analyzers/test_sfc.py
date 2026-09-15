@@ -28,6 +28,7 @@ from sattlint import constants as const
 from sattlint.analyzers import sfc as sfc_module
 from sattlint.analyzers import variables as variables_module
 from sattlint.analyzers.framework import AnalysisContext, AnalysisSharedArtifacts, Issue
+from sattlint.analyzers.same_cycle import analyze_same_cycle
 from sattlint.analyzers.sfc import _sfc_collectors as sfc_collectors_module
 from sattlint.analyzers.sfc import analyze_sfc
 from sattlint.analyzers.sfc._sfc_collectors import _SfcAccessCollector
@@ -81,7 +82,7 @@ def test_parallel_branch_write_race_detected():
         modulecode=ModuleCode(sequences=[seq], equations=[]),
     )
 
-    report = analyze_sfc(bp)
+    report = analyze_same_cycle(bp)
 
     assert any(i.kind == "sfc_parallel_write_race" for i in report.issues)
 
@@ -107,12 +108,12 @@ def test_parallel_branch_distinct_writes_not_reported():
         modulecode=ModuleCode(sequences=[seq], equations=[]),
     )
 
-    report = analyze_sfc(bp)
+    report = analyze_same_cycle(bp)
 
     assert not report.issues
 
 
-def test_analyze_sfc_parallel_write_race_selection_skips_other_issue_collectors(monkeypatch):
+def test_analyze_same_cycle_parallel_write_race_selection_skips_other_issue_collectors(monkeypatch):
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
@@ -133,18 +134,7 @@ def test_analyze_sfc_parallel_write_race_selection_skips_other_issue_collectors(
         ),
     )
 
-    monkeypatch.setattr(
-        sfc_module,
-        "collect_sfc_reachability_findings",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("reachability should not run")),
-    )
-    monkeypatch.setattr(
-        sfc_module,
-        "_collect_transition_logic_issues",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("transition logic should not run")),
-    )
-
-    report = analyze_sfc(
+    report = analyze_same_cycle(
         bp,
         selected_issue_kinds={"sfc_parallel_write_race"},
     )
@@ -372,29 +362,6 @@ def test_sfc_reachability_and_active_step_helpers_cover_nested_nodes_and_preview
 
 
 def test_analyze_sfc_covers_selected_collectors_and_reachability_messages(monkeypatch) -> None:
-    class _FakeCollector:
-        def __init__(self, _bp):
-            shared_paths = {CanonicalPath(("Root", f"Var{index}")) for index in range(7)}
-            self.parallel_writes = {
-                (("Root",), "SeqMain", 1): {0: shared_paths, 1: shared_paths},
-                (("Root",), "SeqOther", 2): {
-                    0: {CanonicalPath(("Root", "OnlyLeft"))},
-                    1: {CanonicalPath(("Root", "OnlyRight"))},
-                },
-            }
-            self.parallel_meta = {
-                (("Root",), "SeqMain", 1): SimpleNamespace(
-                    module_path=["Root"], sequence_name="SeqMain", parallel_id=1
-                ),
-                (("Root",), "SeqOther", 2): SimpleNamespace(
-                    module_path=["Root"], sequence_name="SeqOther", parallel_id=2
-                ),
-            }
-
-        def run(self):
-            return None
-
-    monkeypatch.setattr(sfc_module, "_SfcAccessCollector", _FakeCollector)
     monkeypatch.setattr(
         sfc_module,
         "collect_sfc_reachability_findings",
@@ -422,21 +389,19 @@ def test_analyze_sfc_covers_selected_collectors_and_reachability_messages(monkey
     monkeypatch.setattr(
         sfc_module,
         "_collect_transition_logic_issues",
-        lambda _bp, **kwargs: [Issue(kind="sfc_transition_always_true", message="logic")],
+        lambda _bp, **kwargs: [Issue(kind="sfc_duplicate_transition_guard", message="logic")],
     )
 
     report = analyze_sfc(BasePicture(header=_hdr("Root")))
 
     kinds = [issue.kind for issue in report.issues]
     assert kinds == [
-        "sfc_parallel_write_race",
         "sfc_unreachable_transition",
         "sfc_unreachable_sequence_node",
-        "sfc_transition_always_true",
+        "sfc_duplicate_transition_guard",
     ]
-    assert "... (+1 more)" in report.issues[0].message
-    assert report.issues[1].data["branch_path"] == [1]
-    assert "targeting 'Done'" in report.issues[2].message
+    assert report.issues[0].data["branch_path"] == [1]
+    assert "targeting 'Done'" in report.issues[1].message
 
 
 def test_analyze_sfc_reuses_variable_artifacts_when_available(monkeypatch):
@@ -472,7 +437,7 @@ def test_analyze_sfc_reuses_variable_artifacts_when_available(monkeypatch):
     context = AnalysisContext(base_picture=bp, shared_artifacts=shared_artifacts)
 
     analyze_variables(bp, analysis_context=context)
-    analyze_sfc(bp, analysis_context=context, selected_issue_kinds={"sfc_parallel_write_race"})
+    analyze_sfc(bp, analysis_context=context, selected_issue_kinds={"sfc_unreachable_transition"})
 
     assert build_calls == ["Root"]
     assert shared_artifacts.counters.variable_foundation_builds == 1

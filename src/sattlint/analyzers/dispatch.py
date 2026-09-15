@@ -13,6 +13,7 @@ from ._registry_dispatch import (
     get_lsp_projection_analyzers,
     get_registry_analyzer_spec,
     get_semantic_contributor_specs,
+    resolve_selected_analyzers,
     run_registry_analyzer,
     run_variables_registry_report,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "get_lsp_projection_analyzers",
     "get_registry_analyzer_spec",
     "get_semantic_contributor_specs",
+    "resolve_selected_analyzers",
     "run_registry_analyzer",
     "run_variables_registry_report",
 ]

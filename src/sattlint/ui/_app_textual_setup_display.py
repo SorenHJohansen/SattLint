@@ -229,7 +229,7 @@ def _analyze_note_text(self: Any) -> str:
     filter_suffix = (
         f' Filter: "{filter_text}". Press / to change or clear it.'
         if filter_text
-        else " Press / to filter the planner."
+        else " Press / to filter the analyzers."
     )
     if self._busy and self._active_job_action_id == "action-analyze":
         if self._active_job_cancel_requested:
@@ -239,22 +239,11 @@ def _analyze_note_text(self: Any) -> str:
             "Use Cancel running or Ctrl+G to stop."
         )
     if not self._setup_has_targets():
-        return f"No analysis targets are configured yet. Add one in Setup to enable the planner queue runner.{filter_suffix}"
+        return f"No analysis targets are configured yet. Add one in Setup first.{filter_suffix}"
     if filter_text and not self._planner_entry_ids():
         return f'No analyses match "{filter_text}". Press / to change or clear the filter.'
-    plan = self._analyze_plan()
-    if not self._ordered_selected_analyze_entry_ids():
-        return (
-            "Select one or more analyses below. Suites collapse overlapping leaf checks when the queue is planned."
-            f"{filter_suffix}"
-        )
-    if plan.missing_handlers:
-        return (
-            "Some selected analyses are unavailable in the current Textual session. Review the queue summary before running anything."
-            f"{filter_suffix}"
-        )
-    return (
-        f"{len(plan.executable_steps)} queued step(s) are ready to run. "
-        "Use Run selected analyses to execute the normalized plan in catalog order."
-        f"{filter_suffix}"
-    )
+    selected = self._ordered_selected_analyze_entry_ids()
+    if not selected:
+        return f"Select one or more analyzers below to run.{filter_suffix}"
+    label = "analyzer" if len(selected) == 1 else "analyzers"
+    return f"{len(selected)} {label} selected. Use Run selected analyzers.{filter_suffix}"

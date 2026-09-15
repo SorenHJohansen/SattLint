@@ -36,7 +36,7 @@ def test_sfc_parallel_write_race_detected_for_same_variable():
         modulecode=ModuleCode(sequences=[sequence], equations=[]),
     )
 
-    report = analyze_sfc(bp)
+    report = analyze_same_cycle(bp)
 
     issues = [issue for issue in report.issues if issue.kind == "sfc_parallel_write_race"]
     assert len(issues) == 1
@@ -78,33 +78,6 @@ def test_dataflow_flags_implicit_same_scan_state_read_in_sequence_step():
         issue.kind == "dataflow.scan_cycle_implicit_new"
         and issue.data is not None
         and issue.data.get("symbol") == "Flag"
-        for issue in report.issues
-    )
-
-
-def test_dataflow_flags_old_as_out_parameter_temporal_misuse():
-    bp = BasePicture(
-        header=_hdr("Root"),
-        localvariables=[Variable(name="Flag", datatype=Simple_DataType.BOOLEAN, state=True)],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[FuncCallStmt(call=FuncCall(name="MaxLim", args=(1.0, 2.0, 0.1, _state_ref("Flag", "old"))))],
-                )
-            ]
-        ),
-    )
-
-    report = analyze_dataflow(bp)
-
-    assert any(
-        issue.kind == "dataflow.scan_cycle_temporal_misuse"
-        and issue.data is not None
-        and issue.data.get("symbol") == "Flag:Old"
-        and issue.data.get("operation") == "out parameter"
         for issue in report.issues
     )
 
@@ -183,112 +156,6 @@ def test_variables_analyzer_flags_dependency_mapped_status_that_only_reaches_ui(
     ]
     assert len(status_issues) == 1
     assert "UI" in (status_issues[0].role or "")
-
-
-def test_variables_analyzer_flags_naming_to_behavior_mismatches():
-    unit = SingleModule(
-        header=_hdr("Unit"),
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[
-            Variable(name="StartCmd", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="CmdLatch", datatype=Simple_DataType.BOOLEAN),
-        ],
-        submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="LocalLogic",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        Assignment(target=_varref("StartCmd"), value=True),
-                        Assignment(target=_varref("CmdLatch"), value=_varref("StartCmd")),
-                    ],
-                )
-            ]
-        ),
-        parametermappings=[],
-    )
-    bp = BasePicture(
-        header=_hdr("Root"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[
-            Variable(name="ValveStatus", datatype=Simple_DataType.INTEGER),
-            Variable(name="HighAlarm", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="Shutdown", datatype=Simple_DataType.BOOLEAN),
-        ],
-        submodules=[unit],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        Assignment(target=_varref("ValveStatus"), value=IntLiteral(1)),
-                        Assignment(target=_varref("Shutdown"), value=_varref("HighAlarm")),
-                    ],
-                )
-            ]
-        ),
-        moduledef=None,
-    )
-
-    issues = VariablesAnalyzer(bp).run()
-
-    naming_issues = [issue for issue in issues if issue.kind is IssueKind.NAMING_ROLE_MISMATCH]
-    assert {
-        (issue.variable.name, tuple(issue.module_path)) for issue in naming_issues if issue.variable is not None
-    } == {
-        ("StartCmd", ("Root", "Unit")),
-        ("ValveStatus", ("Root",)),
-        ("HighAlarm", ("Root",)),
-    }
-    roles_by_name = {issue.variable.name: (issue.role or "") for issue in naming_issues if issue.variable is not None}
-    assert "internal state" in roles_by_name["StartCmd"]
-    assert "written directly" in roles_by_name["ValveStatus"]
-    assert "control input" in roles_by_name["HighAlarm"]
-
-
-def test_variables_analyzer_ignores_safe_naming_role_counterexamples():
-    bp = BasePicture(
-        header=_hdr("Root"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[
-            Variable(name="StartCmd", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="Output", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="Status", datatype=Simple_DataType.INTEGER),
-            Variable(name="Source", datatype=Simple_DataType.INTEGER),
-            Variable(name="Destination", datatype=Simple_DataType.INTEGER),
-            Variable(name="HighAlarm", datatype=Simple_DataType.BOOLEAN),
-        ],
-        submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        Assignment(target=_varref("Output"), value=_varref("StartCmd")),
-                        FuncCallStmt(
-                            call=FuncCall(
-                                name="CopyVariable", args=(_varref("Source"), _varref("Destination"), _varref("Status"))
-                            )
-                        ),
-                    ],
-                )
-            ]
-        ),
-        moduledef=ModuleDef(graph_objects=[GraphObject(type="TextObject", properties={"text_vars": ["HighAlarm"]})]),
-    )
-
-    issues = VariablesAnalyzer(bp).run()
-
-    assert not any(issue.kind is IssueKind.NAMING_ROLE_MISMATCH for issue in issues)
 
 
 def test_variables_analyzer_treats_dependency_mapped_status_as_handled_when_read_in_logic():

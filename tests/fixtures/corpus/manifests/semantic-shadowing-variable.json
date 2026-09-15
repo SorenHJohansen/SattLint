@@ -1,7 +1,7 @@
 {
     "case_id": "semantic-shadowing-variable",
     "target_file": "../semantic/analyzer/ShadowingVariable.s",
-    "mode": "analyzer-shadowing",
+    "mode": "analyzer-variables",
     "expectation": {
         "expected_finding_ids": [
             "semantic.shadowing"
@@ -10,10 +10,10 @@
             "status.json": {
                 "execution_status": "ok",
                 "missing_dependency_count": 0,
-                "analyzer_key": "shadowing"
+                "analyzer_key": "variables"
             },
             "summary.json": {
-                "analyzer_key": "shadowing",
+                "analyzer_key": "variables",
                 "rule_counts": {
                     "semantic.shadowing": 1
                 }

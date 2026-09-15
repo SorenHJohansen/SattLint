@@ -52,7 +52,6 @@ def test_full_analysis_pipeline_does_not_crash_on_real_fixture(stem: str) -> Non
 
     for spec in analyzers:
         try:
-            report = run_registry_analyzer(spec, context)
+            run_registry_analyzer(spec, context)
         except Exception as exc:
             raise AssertionError(f"{stem}.s: analyzer '{spec.key}' raised {type(exc).__name__}: {exc}") from exc
-        context.shared_artifacts.derived_reports[spec.key] = report

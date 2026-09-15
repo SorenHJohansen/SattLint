@@ -28,7 +28,6 @@ from ..analyzers.framework import (
     SimpleReport,
     build_analysis_context,
 )
-from ..analyzers.icf.analyzer import analyze_icf_configuration
 from ..analyzers.shared.instance_paths import rewrite_typedef_paths
 from ..analyzers.variables import IssueKind
 from ..cache import AnalysisReportCache, compute_analysis_report_cache_key, get_cache_dir
@@ -55,8 +54,6 @@ from .findings import AnalysisFinding, extract_report_findings
 
 LoadedProject = project_application.LoadedProject
 LIBRARY_SUPPRESSED_ANALYZER_KEYS = frozenset({"picture-display-paths"})
-ICF_ANALYZER_KEY = "icf"
-ICF_TARGET_NAME = "ICF configuration"
 
 
 @dataclass(frozen=True, slots=True)
@@ -251,8 +248,7 @@ def _shared_artifact_profile_text(target_name: str, shared_artifacts: AnalysisSh
         "Analyzer reuse profile for "
         f"{target_name}: shared-artifact-holders={counters.shared_artifact_holders_created}, "
         f"variable-foundation-builds={counters.variable_foundation_builds}, "
-        f"semantic-precomputed-reports={counters.semantic_precomputed_reports_used}, "
-        f"semantic-reruns={counters.semantic_analyzer_reruns}, "
+        f"variable-root-traversals={counters.variable_root_traversals}, "
         f"local-env-builds={counters.local_env_builds}"
     )
 
@@ -261,32 +257,36 @@ def _iter_loaded_projects(cfg: ConfigDict) -> Iterator[LoadedProject]:
     return project_application.iter_loaded_projects(cfg)
 
 
-def _run_whole_run_analyzer(
+def _run_per_run_analyzer(
     spec: Any,
     cfg: ConfigDict,
     selected_issue_kinds: frozenset[str] | None,
 ) -> ChecksAnalyzerResult | None:
-    if getattr(spec, "key", None) != ICF_ANALYZER_KEY:
-        return None
     started_at = perf_counter()
     try:
-        report = analyze_icf_configuration(None, config=cfg, debug=debug_enabled(cfg))
-    except Exception as exc:  # noqa: BLE001 - a whole-run failure should not abort the run
+        context = build_analysis_context(
+            cast(BasePicture, None),
+            debug=debug_enabled(cfg),
+            config=cfg,
+            create_shared_artifacts=True,
+        )
+        report = analysis_dispatch_module.run_registry_analyzer(spec, context)
+    except Exception as exc:  # noqa: BLE001 - a per-run failure should not abort the run
         return ChecksAnalyzerResult(
-            key=ICF_ANALYZER_KEY,
-            name=str(getattr(spec, "name", ICF_ANALYZER_KEY)),
+            key=spec.key,
+            name=str(getattr(spec, "name", spec.key)),
             status="failed",
-            summary=f"ICF validation failed: {exc}",
+            summary=f"{getattr(spec, 'name', spec.key)} failed: {exc}",
             issue_count=0,
             duration_ms=round((perf_counter() - started_at) * 1000, 3),
         )
     report = _filter_report_for_selected_issue_kinds(report, selected_issue_kinds)
     typed_report = cast(SimpleReport, report)
     summary_text = typed_report.summary()
-    findings = extract_report_findings(typed_report, default_name=ICF_TARGET_NAME)
+    findings = extract_report_findings(typed_report, default_name=str(getattr(spec, "name", spec.key)))
     return ChecksAnalyzerResult(
-        key=ICF_ANALYZER_KEY,
-        name=str(getattr(spec, "name", ICF_ANALYZER_KEY)),
+        key=spec.key,
+        name=str(getattr(spec, "name", spec.key)),
         status="completed",
         summary=summary_text,
         report_kind=type(report).__name__,
@@ -364,8 +364,8 @@ def collect_run_checks_result(  # noqa: PLR0915
             selected_issue_kinds=selected_issue_kind_tuple_result,
         )
 
-    batch_analyzers = [spec for spec in analyzers if getattr(spec, "key", None) != ICF_ANALYZER_KEY]
-    whole_run_analyzers = [spec for spec in analyzers if getattr(spec, "key", None) == ICF_ANALYZER_KEY]
+    per_target_analyzers = [spec for spec in analyzers if getattr(spec, "scope", "per-target") == "per-target"]
+    per_run_analyzers = [spec for spec in analyzers if getattr(spec, "scope", "per-target") == "per-run"]
 
     if self_check_fn is None:
         self_check_fn = config_module.self_check
@@ -420,7 +420,7 @@ def collect_run_checks_result(  # noqa: PLR0915
             )
             emit_line(f"\n=== Target: {target_name} ===")
             flush_stdout()
-            for spec in batch_analyzers:
+            for spec in per_target_analyzers:
                 if is_library and spec.key in LIBRARY_SUPPRESSED_ANALYZER_KEYS:
                     target_analyzers.append(
                         ChecksAnalyzerResult(
@@ -498,8 +498,6 @@ def collect_run_checks_result(  # noqa: PLR0915
                     )
                 analyzer_timings_ms[spec.key] = round((perf_counter() - analyzer_started_at) * 1000, 3)
                 _rewrite_typedef_issue_paths(report, context.base_picture, graph)
-                if context.shared_artifacts is not None:
-                    context.shared_artifacts.derived_reports[spec.key] = report
                 phase_timings_ms = profiling_module.normalize_phase_timings_ms(getattr(report, "phase_timings", None))
                 if phase_timings_ms:
                     analyzer_phase_timings_ms[spec.key] = phase_timings_ms
@@ -577,18 +575,18 @@ def collect_run_checks_result(  # noqa: PLR0915
                     shared_artifact_profile=shared_artifact_profile,
                 )
             )
-        for whole_run_spec in whole_run_analyzers:
-            whole_run_result = _run_whole_run_analyzer(whole_run_spec, cfg, normalized_selected_issue_kinds)
-            if whole_run_result is None:
+        for per_run_spec in per_run_analyzers:
+            per_run_result = _run_per_run_analyzer(per_run_spec, cfg, normalized_selected_issue_kinds)
+            if per_run_result is None:
                 continue
-            emit_line(f"\n=== {whole_run_result.name} ({whole_run_result.key}) ===")
-            if whole_run_result.summary:
-                emit_line(whole_run_result.summary)
+            emit_line(f"\n=== {per_run_result.name} ({per_run_result.key}) ===")
+            if per_run_result.summary:
+                emit_line(per_run_result.summary)
             target_results.append(
                 ChecksTargetResult(
-                    target_name=ICF_TARGET_NAME,
+                    target_name=str(getattr(per_run_spec, "name", per_run_spec.key)),
                     is_library=False,
-                    analyzers=(whole_run_result,),
+                    analyzers=(per_run_result,),
                 )
             )
     except KeyboardInterrupt:

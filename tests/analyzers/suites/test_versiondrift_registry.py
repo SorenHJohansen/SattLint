@@ -1,8 +1,6 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportIndexIssue=false, reportAttributeAccessIssue=false
 import json
 
-import pytest
-
 from tests.helpers.analyzers_suites_support import *
 
 
@@ -145,19 +143,12 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
     monkeypatch.setattr(registry_module, "analyze_sattline_semantics", _record("sattline-semantics"))
     monkeypatch.setattr(registry_module, "analyze_mms_interface_variables", _record("mms-interface"))
     monkeypatch.setattr(registry_module, "analyze_sfc", _record("sfc"))
-    monkeypatch.setattr(registry_module, "analyze_shadowing", _record("shadowing"))
     monkeypatch.setattr(registry_module, "analyze_spec_compliance", _record("spec-compliance"))
     monkeypatch.setattr(registry_module, "analyze_alarm_integrity", _record("alarm-integrity"))
     monkeypatch.setattr(registry_module, "analyze_cyclomatic_complexity", _record("cyclomatic-complexity"))
-    monkeypatch.setattr(registry_module, "analyze_parameter_drift", _record("parameter-drift"))
     monkeypatch.setattr(registry_module, "analyze_picture_display_paths", _record("picture-display-paths"))
-    monkeypatch.setattr(registry_module, "analyze_signal_lifecycle", _record("signal-lifecycle"))
-    monkeypatch.setattr(registry_module, "analyze_loop_stability", _record("loop-stability"))
-    monkeypatch.setattr(registry_module, "analyze_numeric_constraints", _record("numeric-constraints"))
-    monkeypatch.setattr(registry_module, "analyze_data_dependency", _record("data-dependency"))
     monkeypatch.setattr(registry_module, "analyze_same_cycle", _record("same-cycle"))
     monkeypatch.setattr(registry_module, "analyze_version_drift", _record("version-drift"))
-    monkeypatch.setattr(registry_module, "analyze_unsafe_defaults", _record("unsafe-defaults"))
     monkeypatch.setattr(registry_module, "analyze_dataflow", _record("dataflow"))
     monkeypatch.setattr(registry_module, "analyze_comment_code", _record("comment-code"))
 
@@ -177,18 +168,11 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
         "picture-display-paths",
         "mms-interface",
         "sfc",
-        "shadowing",
         "spec-compliance",
         "alarm-integrity",
         "cyclomatic-complexity",
-        "parameter-drift",
-        "signal-lifecycle",
-        "loop-stability",
-        "numeric-constraints",
-        "data-dependency",
         "same-cycle",
         "version-drift",
-        "unsafe-defaults",
         "dataflow",
         "comment-code",
     }
@@ -248,45 +232,6 @@ def test_run_registry_analyzer_passes_shared_artifacts_to_dataflow():
 
     assert run_registry_analyzer(spec, context) is report
     assert seen["context"] is context
-
-
-def test_get_cli_dispatch_analyzers_includes_required_variables_for_sfc_selection():
-    from sattlint.analyzers._registry_dispatch import (  # noqa: PLC0415
-        get_cli_dispatch_analyzers,
-        get_registry_analyzer_spec,
-    )
-
-    variables_spec = get_registry_analyzer_spec("variables")
-    sfc_spec = get_registry_analyzer_spec("sfc")
-
-    analyzers = get_cli_dispatch_analyzers(
-        selected_keys=["sfc"],
-        get_enabled_analyzers_fn=lambda: [sfc_spec, variables_spec],
-    )
-
-    assert [spec.key for spec in analyzers] == ["variables", "sfc"]
-
-
-def test_run_registry_analyzer_requires_variable_artifacts_for_sfc():
-    from sattlint.analyzers._registry_dispatch import (  # noqa: PLC0415
-        get_registry_analyzer_spec,
-        run_registry_analyzer,
-    )
-
-    spec = get_registry_analyzer_spec("sfc")
-    context: Any = SimpleNamespace(
-        base_picture="bp",
-        graph=None,
-        debug=False,
-        target_is_library=False,
-        config={},
-        shared_artifacts=SimpleNamespace(variable_analysis=None, derived_reports={}),
-        unavailable_libraries=set(),
-        include_dependency_moduletype_usage=None,
-    )
-
-    with pytest.raises(RuntimeError, match="requires analyzer results from: variables"):
-        run_registry_analyzer(spec, context)
 
 
 def test_analyze_sattline_semantics_uses_declared_semantic_contributors(monkeypatch):
@@ -420,4 +365,4 @@ def test_analyze_sattline_semantics_builds_context_with_config_and_shared_artifa
     assert context.target_is_library is True
     assert context.shared_artifacts is not None
     assert context.unavailable_libraries == {"MissingLib"}
-    assert seen["kwargs"]["use_shared_artifacts"] is True
+    assert seen["kwargs"] == {}

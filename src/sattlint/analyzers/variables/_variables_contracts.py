@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, cast
 
 from sattline_parser.models.ast_model import (
     FrameModule,
-    ModuleTypeDef,
     ModuleTypeInstance,
     ParameterMapping,
     Simple_DataType,
@@ -16,30 +15,18 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import VarRef
 
-from ...reporting.variables_report import IssueKind, VariableIssue
+from ...reporting.variables_report import IssueKind
 from ...resolution.common import resolve_moduletype_def_strict, varname_base, varname_full
 from ...resolution.scope import ScopeContext
 from ...utils.casefolding import casefold_key
 from ...validation.type_helpers import resolve_variable_field_datatype as _resolve_variable_field_datatype
-from ..shared._contract_index import (
-    ModuleTypeContract,
-    compute_cyclic_owner_ids,
-)
 from ..shared._walk_utils import iter_nested_modules
 from ..shared.variable_utils import mapping_target_name
-from ._contract_summary_provider import ContractSummaryProvider
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer
 
 
-_PARAM_MAPPING_VALIDATION_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
-    {
-        IssueKind.REQUIRED_PARAMETER_CONNECTION,
-        IssueKind.STRING_MAPPING_MISMATCH,
-        IssueKind.MIN_MAX_MAPPING_MISMATCH,
-    }
-)
 _PARAM_MAPPING_CHECK_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
     {
         IssueKind.STRING_MAPPING_MISMATCH,
@@ -93,121 +80,6 @@ def _mapping_source_ref(mapping: ParameterMapping) -> object:
     return source
 
 
-def _get_required_parameter_names_for_typedef(
-    self: VariablesAnalyzer,
-    moduletype: ModuleTypeDef,
-) -> dict[str, str]:
-    owner_id = id(moduletype)
-    cached = self.required_parameter_names_by_owner.get(owner_id)
-    if cached is not None:
-        return cached
-
-    # Route acyclic typedef summaries through the isolated-session provider. Session
-    # analyzers never reach here (param-mapping validation is suppressed for their whole
-    # lifetime), but we guard on the marker anyway to keep the recursion invariant explicit.
-    if not getattr(self, "_is_contract_session", False):
-        provider = self._ensure_contract_summary_provider()
-        cyclic_owner_ids = self._lift_cyclic_owner_ids(provider)
-        if owner_id not in cyclic_owner_ids:
-            contract = provider.get(moduletype)
-            required_names = _derive_required_names(moduletype, contract)
-            self.required_parameter_names_by_owner[owner_id] = required_names
-            return required_names
-
-    # Recursive (or provider-unavailable) typedef: legacy fresh-extractor path. Share
-    # recursion-sensitive state across nested extractors so typedef cycles short-circuit
-    # to an in-progress placeholder instead of expanding forever.
-    self.required_parameter_names_by_owner[owner_id] = {}
-
-    extractor = _make_nested_contract_extractor(self)
-    extractor.analyze_typedef(
-        moduletype,
-        path=[self.bp.header.name, f"TypeDef:{moduletype.name}"],
-    )
-
-    required_names: dict[str, str] = {}
-    for variable in moduletype.moduleparameters or []:
-        usage = extractor.get_usage(variable)
-        if not (usage.read or usage.written):
-            continue
-        if usage.is_display_only:
-            continue
-        required_names[casefold_key(variable.name)] = variable.name
-
-    self.required_parameter_names_by_owner[owner_id] = required_names
-    return required_names
-
-
-def _ensure_contract_summary_provider(self: VariablesAnalyzer) -> ContractSummaryProvider:
-    provider = self.contract_summary_provider
-    if provider is None:
-        provider = ContractSummaryProvider(
-            self.bp,
-            collector_class=type(self),
-            unavailable_libraries=frozenset(self.unavailable_libraries),
-            analyzed_target_is_library=self.analyzed_target_is_library,
-            include_dependency_moduletype_usage=self.include_dependency_moduletype_usage,
-            shared_artifacts=getattr(self, "_shared_artifacts", None),
-        )
-        self.contract_summary_provider = provider
-    return provider
-
-
-def _lift_cyclic_owner_ids(
-    self: VariablesAnalyzer,
-    provider: ContractSummaryProvider,
-) -> frozenset[int]:
-    cyclic_owner_ids = self.cyclic_owner_ids
-    if cyclic_owner_ids is None:
-        cyclic_owner_ids = compute_cyclic_owner_ids(
-            self.bp,
-            list(self.bp.moduletype_defs or []),
-            unavailable_libraries=frozenset(self.unavailable_libraries),
-        )
-        self.cyclic_owner_ids = cyclic_owner_ids
-    return cyclic_owner_ids
-
-
-def _derive_required_names(
-    moduletype: ModuleTypeDef,
-    contract: ModuleTypeContract,
-) -> dict[str, str]:
-    """Project required parameter names from a contract, matching legacy semantics.
-
-    A parameter is required when it is read or written and is not display-only
-    (UI-only). Original spelling is recovered from the typedef's own parameter list.
-    """
-    original_by_key: dict[str, str] = {
-        casefold_key(variable.name): variable.name for variable in (moduletype.moduleparameters or [])
-    }
-    required_names: dict[str, str] = {}
-    for key, effect in contract.effects_by_parameter.items():
-        if not (effect.read or effect.written):
-            continue
-        if effect.ui_read and not effect.non_ui_read:
-            continue
-        required_names[key] = original_by_key.get(key, key)
-    return required_names
-
-
-def _make_nested_contract_extractor(self: VariablesAnalyzer) -> VariablesAnalyzer:
-    extractor = type(self)(
-        self.bp,
-        debug=False,
-        fail_loudly=False,
-        unavailable_libraries=self.unavailable_libraries,
-        analyzed_target_is_library=self.analyzed_target_is_library,
-        include_dependency_moduletype_usage=self.include_dependency_moduletype_usage,
-        selected_issue_kinds=None,
-        trace_recorder=None,
-        shared_artifacts=getattr(self, "_shared_artifacts", None),
-    )
-    extractor_any: Any = extractor
-    extractor_any._required_parameter_names_by_owner = self.required_parameter_names_by_owner
-    extractor_any._analyzing_typedefs = self.analyzing_typedefs
-    return extractor
-
-
 def _check_param_mappings_for_single(
     self: VariablesAnalyzer,
     mod: SingleModule,
@@ -219,38 +91,10 @@ def _check_param_mappings_for_single(
     if getattr(self, "_suppress_param_mapping_validation_depth", 0) > 0:
         return
 
-    if not _should_collect_any_issue_kinds(self, _PARAM_MAPPING_VALIDATION_ISSUE_KINDS):
-        return
-
-    params_by_name = {casefold_key(v.name): v for v in (mod.moduleparameters or [])}
-    if _should_collect_issue_kind(self, IssueKind.REQUIRED_PARAMETER_CONNECTION):
-        mapped_target_keys = {
-            casefold_key(target_name)
-            for pm in mod.parametermappings or []
-            for target_name in [mapping_target_name(pm)]
-            if target_name and casefold_key(target_name) in params_by_name
-        }
-
-        for parameter in mod.moduleparameters or []:
-            if casefold_key(parameter.name) in mapped_target_keys:
-                continue
-            usage = self.get_usage(parameter)
-            if not (usage.read or usage.written):
-                continue
-            if usage.is_display_only:
-                continue
-            self.append_issue(
-                VariableIssue(
-                    kind=IssueKind.REQUIRED_PARAMETER_CONNECTION,
-                    module_path=list(parent_path),
-                    variable=parameter,
-                    role=(f"required parameter connection missing for {parameter.name!r}"),
-                )
-            )
-
     if not _should_collect_any_issue_kinds(self, _PARAM_MAPPING_CHECK_ISSUE_KINDS):
         return
 
+    params_by_name = {casefold_key(v.name): v for v in (mod.moduleparameters or [])}
     for pm in mod.parametermappings or []:
         tgt_name = mapping_target_name(pm)
         tgt_var = params_by_name.get(tgt_name) if tgt_name else None
@@ -268,7 +112,7 @@ def _check_param_mappings_for_type_instance(
     if getattr(self, "_suppress_param_mapping_validation_depth", 0) > 0:
         return
 
-    if not _should_collect_any_issue_kinds(self, _PARAM_MAPPING_VALIDATION_ISSUE_KINDS):
+    if not _should_collect_any_issue_kinds(self, _PARAM_MAPPING_CHECK_ISSUE_KINDS):
         return
 
     try:
@@ -282,32 +126,6 @@ def _check_param_mappings_for_type_instance(
     except ValueError:
         return
     params_by_name = {casefold_key(v.name): v for v in (mt.moduleparameters or [])}
-    if _should_collect_issue_kind(self, IssueKind.REQUIRED_PARAMETER_CONNECTION):
-        mapped_target_keys = {
-            casefold_key(target_name)
-            for pm in inst.parametermappings or []
-            for target_name in [mapping_target_name(pm)]
-            if target_name and casefold_key(target_name) in params_by_name
-        }
-        required_parameter_names = self.get_required_parameter_names_for_typedef(mt)
-        for required_key in sorted(required_parameter_names):
-            if required_key in mapped_target_keys:
-                continue
-            required_variable = params_by_name.get(required_key)
-            if required_variable is None:
-                continue
-            self.append_issue(
-                VariableIssue(
-                    kind=IssueKind.REQUIRED_PARAMETER_CONNECTION,
-                    module_path=list(parent_path),
-                    variable=required_variable,
-                    role=(f"required parameter connection missing for {required_variable.name!r}"),
-                )
-            )
-
-    if not _should_collect_any_issue_kinds(self, _PARAM_MAPPING_CHECK_ISSUE_KINDS):
-        return
-
     for pm in inst.parametermappings or []:
         tgt_name = mapping_target_name(pm)
         tgt_var = params_by_name.get(tgt_name) if tgt_name else None
@@ -518,18 +336,6 @@ def _index_all_variables(self: VariablesAnalyzer) -> None:
 
 
 class VariablesContractsMixin:
-    def _get_required_parameter_names_for_typedef(
-        self: Any,
-        moduletype: ModuleTypeDef,
-    ) -> dict[str, str]:
-        return _get_required_parameter_names_for_typedef(self, moduletype)
-
-    def _ensure_contract_summary_provider(self: Any) -> ContractSummaryProvider:
-        return _ensure_contract_summary_provider(self)
-
-    def _lift_cyclic_owner_ids(self: Any, provider: ContractSummaryProvider) -> frozenset[int]:
-        return _lift_cyclic_owner_ids(self, provider)
-
     def _check_param_mappings_for_single(
         self: Any,
         mod: SingleModule,
@@ -584,16 +390,12 @@ class VariablesContractsMixin:
 check_param_mapping = _check_param_mapping
 check_param_mappings_for_single = _check_param_mappings_for_single
 check_param_mappings_for_type_instance = _check_param_mappings_for_type_instance
-get_required_parameter_names_for_typedef = _get_required_parameter_names_for_typedef
 index_all_variables = _index_all_variables
-make_nested_contract_extractor = _make_nested_contract_extractor
 
 __all__ = [
     "VariablesContractsMixin",
     "check_param_mapping",
     "check_param_mappings_for_single",
     "check_param_mappings_for_type_instance",
-    "get_required_parameter_names_for_typedef",
     "index_all_variables",
-    "make_nested_contract_extractor",
 ]

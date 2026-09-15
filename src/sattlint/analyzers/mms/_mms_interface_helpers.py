@@ -32,7 +32,6 @@ _TAG_PARAMETER_NAMES: tuple[str, ...] = (
     "name",
 )
 _NUMERIC_TAG_RE = re.compile(r"^\d+$")
-_TAG_TOKEN_RE = re.compile(r"[A-Z]+(?=[A-Z][a-z]|\d|$)|[A-Z]?[a-z]+|\d+")
 
 
 def _datatype_label(datatype: Simple_DataType | str | None) -> str | None:
@@ -50,30 +49,6 @@ def _normalize_external_tag(tag: str | None) -> str | None:
     if not cleaned or _NUMERIC_TAG_RE.fullmatch(cleaned):
         return None
     return cleaned.casefold()
-
-
-def _tag_family_key(tag: str | None) -> str | None:
-    if not isinstance(tag, str):
-        return None
-    cleaned = tag.strip()
-    if not cleaned or _NUMERIC_TAG_RE.fullmatch(cleaned):
-        return None
-
-    normalized = cleaned.replace(".", "_").replace("-", "_").replace(" ", "_")
-    tokens: list[str] = []
-    for chunk in normalized.split("_"):
-        chunk = chunk.strip()
-        if not chunk:
-            continue
-        matches = _TAG_TOKEN_RE.findall(chunk)
-        if matches:
-            tokens.extend(match.casefold() for match in matches)
-            continue
-        tokens.append(chunk.casefold())
-
-    if not tokens:
-        return None
-    return "|".join(tokens)
 
 
 def _build_moduletype_index(base_picture: BasePicture) -> dict[str, list[ModuleTypeDef]]:
@@ -262,7 +237,6 @@ extract_external_tag = _extract_external_tag
 find_parameter_mapping = _find_parameter_mapping
 find_variable = _find_variable
 normalize_external_tag = _normalize_external_tag
-tag_family_key = _tag_family_key
 
 
 __all__ = [
@@ -270,5 +244,4 @@ __all__ = [
     "find_parameter_mapping",
     "find_variable",
     "normalize_external_tag",
-    "tag_family_key",
 ]

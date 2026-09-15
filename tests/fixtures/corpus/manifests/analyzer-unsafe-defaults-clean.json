@@ -1,17 +1,17 @@
 {
     "case_id": "analyzer-unsafe-defaults-clean",
     "target_file": "../valid/MinimalProgram.s",
-    "mode": "analyzer-unsafe-defaults",
+    "mode": "analyzer-variables",
     "expectation": {
         "expected_finding_ids": [],
         "artifact_fragments": {
             "status.json": {
                 "execution_status": "ok",
                 "missing_dependency_count": 0,
-                "analyzer_key": "unsafe-defaults"
+                "analyzer_key": "variables"
             },
             "summary.json": {
-                "analyzer_key": "unsafe-defaults",
+                "analyzer_key": "variables",
                 "finding_count": 0,
                 "rule_counts": {}
             }

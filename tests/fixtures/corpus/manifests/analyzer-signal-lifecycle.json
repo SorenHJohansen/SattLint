@@ -1,22 +1,22 @@
 {
     "case_id": "analyzer-signal-lifecycle",
     "target_file": "../semantic/workspace/SignalLifecycle.s",
-    "mode": "analyzer-signal-lifecycle",
+    "mode": "analyzer-variables",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.signal-lifecycle-read-before-write"
+            "semantic.read-before-write"
         ],
         "artifact_fragments": {
             "status.json": {
                 "execution_status": "ok",
                 "missing_dependency_count": 0,
-                "analyzer_key": "signal-lifecycle"
+                "analyzer_key": "variables"
             },
             "summary.json": {
-                "analyzer_key": "signal-lifecycle",
+                "analyzer_key": "variables",
                 "finding_count": 1,
                 "rule_counts": {
-                    "semantic.signal-lifecycle-read-before-write": 1
+                    "semantic.read-before-write": 1
                 }
             }
         },

@@ -117,24 +117,6 @@ def test_comment_code_analysis_skips_missing_and_unsupported_paths(tmp_path: Pat
     assert report.issues == []
 
 
-def test_comment_code_analysis_reports_read_errors(tmp_path: Path, monkeypatch) -> None:
-    path = tmp_path / "Broken.s"
-    path.write_text("placeholder", encoding="utf-8")
-
-    def _raise_read_error(_path: Path) -> str:
-        raise OSError("boom")
-
-    monkeypatch.setattr(comment_code_module, "_read_source_text", _raise_read_error)
-
-    report = analyze_comment_code_files([path], basepicture_name="Program")
-
-    assert report.files_scanned == 1
-    assert report.hits == []
-    assert len(report.issues) == 1
-    assert report.issues[0].kind == "comment_code_read_error"
-    assert report.issues[0].message == "Broken.s: boom"
-
-
 def test_comment_code_read_source_text_preprocesses_compressed(monkeypatch, tmp_path: Path) -> None:
     path = tmp_path / "Compressed.s"
     path.write_text("compressed", encoding="utf-8")
@@ -790,17 +772,6 @@ def test_comment_code_report_summary_with_multi_line_hit():
     assert "BasePicture.WorkerType (Main.s:5-8) [equation=MainEq]" in result
     assert "<empty>" in result
     assert "unknown" in result
-
-
-def test_comment_code_report_summary_with_read_error():
-    from sattlint.analyzers.framework import Issue  # noqa: PLC0415
-    from sattlint.reporting.comment_code_report import CommentCodeReport  # noqa: PLC0415
-
-    err_issue = Issue(kind="comment_code_read_error", message="Could not read Foo.s")
-    report = CommentCodeReport(basepicture_name="Main", hits=[], issues=[err_issue], files_scanned=1)
-    result = report.summary()
-    assert "Read errors:" in result
-    assert "Could not read Foo.s" in result
 
 
 def test_comment_code_report_summary_without_module_path_uses_source_location_only():

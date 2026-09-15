@@ -5,12 +5,14 @@ from __future__ import annotations
 from collections.abc import Callable, Collection, Mapping, Set
 from dataclasses import dataclass, field, replace
 from time import perf_counter
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from sattline_parser.models.ast_model import BasePicture
 
-from ._shared_analysis import AnalysisSharedArtifacts, CollectedViews, ReportsByKey, VariableAnalysisArtifacts
+from ._shared_analysis import AnalysisSharedArtifacts, CollectedViews, VariableAnalysisArtifacts
 from .issue import Findings, Issue, format_report_header
+
+type AnalyzerScope = Literal["per-target", "per-run"]
 
 __all__ = [
     "AnalysisContext",
@@ -18,13 +20,13 @@ __all__ = [
     "AnalysisSharedArtifacts",
     "Analyzer",
     "AnalyzerLifecycleMixin",
+    "AnalyzerScope",
     "AnalyzerSpec",
     "BasePictureAnalyzer",
     "CollectedViews",
     "Findings",
     "Issue",
     "Report",
-    "ReportsByKey",
     "SimpleReport",
     "VariableAnalysisArtifacts",
     "build_analysis_context",
@@ -153,7 +155,6 @@ class SimpleReport:
         for issue in sorted(
             materialized_issues,
             key=lambda item: (
-                item.severity or "",
                 item.kind,
                 tuple(item.module_path or ()),
                 item.message,
@@ -161,10 +162,6 @@ class SimpleReport:
         ):
             location = ".".join(issue.module_path or [self.name])
             metadata: list[str] = []
-            if issue.severity:
-                metadata.append(issue.severity)
-            if issue.confidence:
-                metadata.append(issue.confidence)
             if issue.rule_id:
                 metadata.append(issue.rule_id)
             metadata_text = f" [{' | '.join(metadata)}]" if metadata else ""
@@ -243,9 +240,8 @@ class AnalyzerSpec:
     description: str
     run: Analyzer
     category: str = "correctness"
-    requires: tuple[str, ...] = ()
     enabled: bool = True
-    supports_live_diagnostics: bool = False
+    scope: AnalyzerScope = "per-target"
     context_kwargs: tuple[str, ...] = ()
     direct_context: bool = False
     semantic_mapping_kind: str | None = None
@@ -253,7 +249,7 @@ class AnalyzerSpec:
     composed_analyzer_keys: tuple[str, ...] = ()
     composed_issue_kind_names: tuple[str, ...] = ()
     # Phase G: optional discoverability label for the shared artifact this analyzer writes
-    # (e.g. "derived_reports.<key>"), set via the public `register_analyzer` API.
+    # (e.g. "my-analyzer-artifacts"), set via the public `register_analyzer` API.
     contributes: str | None = None
 
     @property

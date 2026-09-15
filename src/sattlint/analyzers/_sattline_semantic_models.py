@@ -10,11 +10,7 @@ from typing import Any
 class SemanticRule:
     id: str
     source: str
-    category: str
-    severity: str
-    applies_to: str
     description: str
-    confidence: str = "likely"
     explanation: str | None = None
     suggestion: str | None = None
     acceptance_tests: tuple[str, ...] | None = None
@@ -41,26 +37,7 @@ class SemanticRuleGroup:
     rules: tuple[SemanticRule, ...]
 
 
-CATEGORY_ORDER: tuple[str, ...] = (
-    "variable-lifecycle",
-    "interface-contracts",
-    "module-structure",
-    "control-flow",
-    "engineering-spec",
-)
-
-CATEGORY_LABELS: dict[str, str] = {
-    "variable-lifecycle": "Variable lifecycle",
-    "interface-contracts": "Interface contracts",
-    "module-structure": "Module structure",
-    "control-flow": "Control flow",
-    "engineering-spec": "Engineering spec",
-}
-
-
 __all__ = [
-    "CATEGORY_LABELS",
-    "CATEGORY_ORDER",
     "SemanticIssue",
     "SemanticRule",
     "SemanticRuleGroup",

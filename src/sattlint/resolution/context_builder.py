@@ -27,7 +27,6 @@ class _TypedefContextTemplate:
     env: dict[str, Variable]
     moduleparameter_keys: frozenset[str]
     param_mappings: dict[str, tuple[Variable, str, list[str], list[str]]]
-    name_collisions: tuple[tuple[Variable, Variable], ...]
     unknown_parameter_targets: tuple[str, ...]
 
 
@@ -200,17 +199,6 @@ class ContextBuilder:
         template: _TypedefContextTemplate,
         module_path: list[str],
     ) -> None:
-        for parameter, local_variable in template.name_collisions:
-            self.issues.append(
-                VariableIssue(
-                    kind=IssueKind.NAME_COLLISION,
-                    module_path=module_path.copy(),
-                    variable=local_variable,
-                    role=f"name collision with parameter {parameter.name!r}",
-                    source_variable=parameter,
-                )
-            )
-
         for target_display_name in template.unknown_parameter_targets:
             self.issues.append(
                 VariableIssue(
@@ -248,10 +236,6 @@ class ContextBuilder:
         locals_ = list(moduletype.localvariables or [])
 
         param_keys = {variable.name.casefold(): variable for variable in params}
-        local_keys = {variable.name.casefold(): variable for variable in locals_}
-        name_collisions = tuple(
-            (param_keys[key], local_keys[key]) for key in sorted(set(param_keys.keys()) & set(local_keys.keys()))
-        )
 
         for variable in params:
             env[variable.name.casefold()] = variable
@@ -293,7 +277,6 @@ class ContextBuilder:
             env=env,
             moduleparameter_keys=frozenset(param_keys.keys()),
             param_mappings=param_mappings,
-            name_collisions=name_collisions,
             unknown_parameter_targets=tuple(unknown_parameter_targets),
         )
 
@@ -338,19 +321,6 @@ class ContextBuilder:
         locals_ = list(mod.localvariables or [])
 
         param_keys = {variable.name.casefold(): variable for variable in params}
-        local_keys = {variable.name.casefold(): variable for variable in locals_}
-        for key in set(param_keys.keys()) & set(local_keys.keys()):
-            parameter = param_keys[key]
-            local_variable = local_keys[key]
-            self.issues.append(
-                VariableIssue(
-                    kind=IssueKind.NAME_COLLISION,
-                    module_path=module_path.copy(),
-                    variable=local_variable,
-                    role=f"name collision with parameter {parameter.name!r}",
-                    source_variable=parameter,
-                )
-            )
 
         for variable in params:
             env[variable.name.casefold()] = variable

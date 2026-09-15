@@ -12,8 +12,6 @@ def test_materialize_issue_metadata_covers_fallbacks() -> None:
     materialized = issue_metadata_module.materialize_issue_metadata(issue)
 
     assert materialized.rule_id == "semantic.commented-code"
-    assert materialized.severity == "warning"
-    assert materialized.confidence == "style"
     assert materialized.explanation is not None
     assert materialized.suggestion is not None
 
@@ -22,8 +20,6 @@ def test_materialize_issue_metadata_covers_fallbacks() -> None:
     none_kind_issue = SimpleNamespace(
         kind=None,
         rule_id=None,
-        severity=None,
-        confidence=None,
         explanation=None,
         suggestion=None,
     )
@@ -36,4 +32,4 @@ def test_simple_report_summary_uses_registered_issue_metadata_materializer() -> 
     summary = SimpleReport(name="Dummy", issues=[Issue(kind="comment_code", message="Commented code")]).summary()
 
     assert "semantic.commented-code" in summary
-    assert "warning" in summary
+    assert "Commented-out code" in summary

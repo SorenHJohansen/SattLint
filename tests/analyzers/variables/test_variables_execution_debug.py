@@ -67,7 +67,6 @@ def test_variables_execution_filters_noisy_unresolved_debug_names(
         _run_post_traversal_analyses=lambda: None,
         _collect_basepicture_issues=_collect_basepicture_issues,
         _collect_typedef_issues=lambda: None,
-        _add_naming_role_mismatch_issues=lambda: None,
         _add_global_scope_minimization_issues=lambda: None,
         _add_hidden_global_coupling_issues=lambda: None,
         _add_high_fan_in_out_issues=lambda: None,

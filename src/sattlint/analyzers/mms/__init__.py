@@ -23,9 +23,6 @@ from ._mms_interface_analysis import (
 from ._mms_interface_analysis import (
     normalize_external_tag as normalize_external_tag_impl,
 )
-from ._mms_interface_analysis import (
-    tag_family_key as tag_family_key_impl,
-)
 from ._mms_interface_helpers import (
     find_parameter_mapping as find_parameter_mapping_impl,
 )
@@ -45,10 +42,6 @@ def _extract_external_tag(
 
 def _normalize_external_tag(tag: str | None) -> str | None:
     return normalize_external_tag_impl(tag)
-
-
-def _tag_family_key(tag: str | None) -> str | None:
-    return tag_family_key_impl(tag)
 
 
 def _find_parameter_mapping(
@@ -142,42 +135,6 @@ def _emit_datatype_mismatch_issues(
                     "context": f"{group[0].source_variable} => {display_tag} ({', '.join(datatypes)})"
                     if group[0].source_variable
                     else f"{display_tag} ({', '.join(datatypes)})",
-                },
-            )
-        )
-
-    return issues
-
-
-def _emit_naming_drift_issues(
-    entries: list[InterfaceInventoryEntry],
-) -> list[Issue]:
-    grouped: dict[tuple[str, str], list[InterfaceInventoryEntry]] = defaultdict(list)
-    for entry in entries:
-        if entry.tag_family_key is None or entry.external_tag is None:
-            continue
-        grouped[(entry.source_kind, entry.tag_family_key)].append(entry)
-
-    issues: list[Issue] = []
-    for (source_kind, family_key), group in grouped.items():
-        spellings = sorted({entry.external_tag for entry in group if entry.external_tag})
-        if len(spellings) < 2:
-            continue
-
-        issues.append(
-            Issue(
-                kind="mms.naming_drift",
-                message=(
-                    f"{_source_label(source_kind)} tag family {family_key!r} appears with "
-                    f"multiple spellings: {', '.join(spellings)}."
-                ),
-                module_path=group[0].module_path,
-                data={
-                    "source_kind": source_kind,
-                    "family": family_key,
-                    "spellings": spellings,
-                    "site": ".".join(group[0].module_path) if group[0].module_path else None,
-                    "context": ", ".join(spellings),
                 },
             )
         )
@@ -280,7 +237,6 @@ def analyze_mms_interface_variables(
     issues.extend(_emit_duplicate_tag_issues(inventory_entries))
     issues.extend(_emit_dead_tag_issues(inventory_entries))
     issues.extend(_emit_datatype_mismatch_issues(inventory_entries))
-    issues.extend(_emit_naming_drift_issues(inventory_entries))
 
     return MMSInterfaceReport(
         basepicture_name=base_picture.header.name,

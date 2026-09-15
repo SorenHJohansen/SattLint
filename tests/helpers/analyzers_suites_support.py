@@ -45,7 +45,6 @@ from sattlint.analyzers.mms import (
     _find_parameter_mapping,
     _find_variable,
     _normalize_external_tag,
-    _tag_family_key,
 )
 from sattlint.analyzers.modules import (
     AstDiffDetail,
@@ -65,6 +64,7 @@ from sattlint.analyzers.modules import (
     create_fingerprint,
 )
 from sattlint.analyzers.registry import get_default_analyzers
+from sattlint.analyzers.same_cycle import analyze_same_cycle
 from sattlint.analyzers.sfc import analyze_sfc
 from sattlint.analyzers.sfc._sfc_guard_logic import _normalize_guard_signature
 from sattlint.analyzers.variable_usage_reporting import (
@@ -141,10 +141,10 @@ __all__ = [
     "_normalize_guard_signature",
     "_state_ref",
     "_status_bridge_typedef",
-    "_tag_family_key",
     "_varref",
     "analyze_alarm_integrity",
     "analyze_dataflow",
+    "analyze_same_cycle",
     "analyze_sfc",
     "analyze_version_drift",
     "cast",

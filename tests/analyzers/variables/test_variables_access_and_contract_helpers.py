@@ -30,7 +30,6 @@ from tests.helpers.variable_access_contract_support import (
     variables_access_impl,
     variables_contracts_impl,
 )
-from tests.helpers.variable_test_support import UsageStub as _UsageStub
 from tests.helpers.variable_test_support import ns as _ns
 
 
@@ -697,7 +696,6 @@ def test_dataflow_facade_and_scalar_helpers_cover_remaining_branches(monkeypatch
     monkeypatch.setattr(dataflow_module, "get_function_signature", _resolve_no_signature)
     assert delegate_probe._apply_call_side_effects("Fn", [], context, state) is state
 
-    invalid_old_writes: list[tuple[str | None, tuple[str, ...], str]] = []
     applied_writes: list[tuple[str | None, object, tuple[str, ...], bool]] = []
     resolved_map = {
         "skip": None,
@@ -721,20 +719,15 @@ def test_dataflow_facade_and_scalar_helpers_cover_remaining_branches(monkeypatch
     def _resolve_ref(arg: str, _context: object) -> object:
         return resolved_map[arg]
 
-    def _report_invalid_old_write(resolved: object, module_path: list[str], operation: str) -> None:
-        invalid_old_writes.append((getattr(resolved, "state_access", None), tuple(module_path), operation))
-
     def _resolve_signature(_name: object) -> Any:
         return _ns(parameters=[_ns(direction="out"), _ns(direction="inout"), _ns(direction="out")])
 
     delegate_probe._resolve_ref = _resolve_ref
-    delegate_probe._report_invalid_old_write = _report_invalid_old_write
     delegate_probe._apply_write_target = _apply_write_target
     monkeypatch.setattr(dataflow_module, "get_function_signature", _resolve_signature)
 
     next_state = delegate_probe._apply_call_side_effects("Fn", ["skip", "old", "new"], context, state)
 
-    assert invalid_old_writes == [("old", ("Root",), "inout parameter")]
     assert applied_writes == [(None, dataflow_module.UNKNOWN, ("Root",), True)]
     assert next_state[("written",)] is dataflow_module.UNKNOWN
 
@@ -973,99 +966,114 @@ def test_dependency_scope_support_walk_helpers_cover_branches(monkeypatch: pytes
 
 
 def test_variables_contracts_cover_guard_branches(monkeypatch: pytest.MonkeyPatch) -> None:
-    display_only = Variable(name="DisplayOnly", datatype=Simple_DataType.INTEGER)
-    required = Variable(name="Required", datatype=Simple_DataType.INTEGER)
-    moduletype: Any = _ns(moduleparameters=[display_only, required], name="Worker")
-    usage_by_id = {
-        id(display_only): _UsageStub(read=True, is_display_only=True),
-        id(required): _UsageStub(read=True),
-    }
-
-    def _analyze_typedef_noop(*_args: object, **_kwargs: object) -> None:
-        return None
-
-    def _lookup_usage(variable: Variable) -> _UsageStub:
-        return usage_by_id[id(variable)]
-
-    def _make_nested_contract_extractor(_self: object) -> SimpleNamespace:
-        return SimpleNamespace(analyze_typedef=_analyze_typedef_noop, get_usage=_lookup_usage)
-
-    monkeypatch.setattr(
-        variables_contracts_module,
-        "_make_nested_contract_extractor",
-        _make_nested_contract_extractor,
-    )
-    owner: Any = _ns(
-        bp=_ns(header=_ns(name="Root")),
-        required_parameter_names_by_owner={},
-        _is_contract_session=True,
-    )
-    assert variables_contracts_impl._get_required_parameter_names_for_typedef(owner, moduletype) == {
-        "required": "Required"
-    }
-
-    issues: list[str] = []
     parameter = Variable(name="Required", datatype=Simple_DataType.INTEGER)
-
-    def _get_parameter_usage(variable: Variable) -> _UsageStub:
-        return _UsageStub(read=True, is_display_only=variable is not parameter)
-
-    def _append_issue(issue: Any) -> None:
-        issues.append(cast(str, issue.role))
+    mapping: Any = _ns(target={"var_name": "Required"})
+    mod: Any = _ns(moduleparameters=[parameter], parametermappings=[mapping])
+    calls: list[str] = []
 
     def _record_checked(*_args: object, **_kwargs: object) -> None:
-        issues.append("checked")
-
-    self_single: Any = SimpleNamespace(
-        get_usage=_get_parameter_usage,
-        append_issue=_append_issue,
-        check_param_mapping=_record_checked,
-    )
-    mod: Any = _ns(
-        moduleparameters=[Variable(name="Display", datatype=Simple_DataType.INTEGER), parameter], parametermappings=[]
-    )
-    variables_contracts_impl._check_param_mappings_for_single(self_single, mod, {}, {}, cast(Any, None), ["Root"])
-    assert issues == ["required parameter connection missing for 'Required'"]
-
-    inst: Any = _ns(moduletype_name="Missing", parametermappings=[])
-
-    def _required_parameter_names(_mt: object) -> dict[str, str]:
-        return {"missing": "Missing"}
+        calls.append("checked")
 
     def _raise_unexpected_issue(_issue: object) -> None:
         raise AssertionError("unexpected issue")
 
-    def _noop_mapping_check(*_args: object, **_kwargs: object) -> None:
-        return None
+    suppressed_single: Any = SimpleNamespace(
+        _suppress_param_mapping_validation_depth=1,
+        check_param_mapping=_record_checked,
+    )
+    variables_contracts_impl._check_param_mappings_for_single(suppressed_single, mod, {}, {}, cast(Any, None), ["Root"])
+    assert calls == []
+
+    unrelated_kinds_single: Any = SimpleNamespace(
+        _selected_issue_kinds={IssueKind.IMPLICIT_LATCH},
+        check_param_mapping=_record_checked,
+    )
+    variables_contracts_impl._check_param_mappings_for_single(
+        unrelated_kinds_single, mod, {}, {}, cast(Any, None), ["Root"]
+    )
+    assert calls == []
+
+    active_single: Any = SimpleNamespace(
+        _selected_issue_kinds={IssueKind.STRING_MAPPING_MISMATCH},
+        check_param_mapping=_record_checked,
+    )
+    variables_contracts_impl._check_param_mappings_for_single(active_single, mod, {}, {}, cast(Any, None), ["Root"])
+    assert calls == ["checked"]
+
+    inst: Any = _ns(moduletype_name="Missing", parametermappings=[mapping])
+
+    def _raise_should_not_resolve(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("should not resolve")
 
     def _raise_missing_typedef(*_args: object, **_kwargs: object) -> object:
         raise ValueError("missing")
 
-    def _resolve_empty_typedef(*_args: object, **_kwargs: object) -> SimpleNamespace:
-        return SimpleNamespace(moduleparameters=[])
+    def _resolve_typedef(*_args: object, **_kwargs: object) -> Any:
+        return _ns(moduleparameters=[parameter])
 
-    self_inst: Any = SimpleNamespace(
+    monkeypatch.setattr(
+        variables_contracts_module,
+        "resolve_moduletype_def_strict",
+        _raise_should_not_resolve,
+    )
+    suppressed_inst: Any = SimpleNamespace(
+        _suppress_param_mapping_validation_depth=1,
         bp=_ns(),
         unavailable_libraries=set(),
-        get_required_parameter_names_for_typedef=_required_parameter_names,
         append_issue=_raise_unexpected_issue,
-        check_param_mapping=_noop_mapping_check,
+        check_param_mapping=_record_checked,
     )
+    variables_contracts_impl._check_param_mappings_for_type_instance(
+        suppressed_inst, inst, {}, cast(Any, None), ["Root"]
+    )
+
+    unrelated_kinds_inst: Any = SimpleNamespace(
+        _selected_issue_kinds={IssueKind.IMPLICIT_LATCH},
+        bp=_ns(),
+        unavailable_libraries=set(),
+        append_issue=_raise_unexpected_issue,
+        check_param_mapping=_record_checked,
+    )
+    variables_contracts_impl._check_param_mappings_for_type_instance(
+        unrelated_kinds_inst, inst, {}, cast(Any, None), ["Root"]
+    )
+
     monkeypatch.setattr(
         variables_contracts_module,
         "resolve_moduletype_def_strict",
         _raise_missing_typedef,
     )
-    variables_contracts_impl._check_param_mappings_for_type_instance(self_inst, inst, {}, cast(Any, None), ["Root"])
+    missing_typedef_inst: Any = SimpleNamespace(
+        _selected_issue_kinds={IssueKind.STRING_MAPPING_MISMATCH},
+        bp=_ns(),
+        unavailable_libraries=set(),
+        append_issue=_raise_unexpected_issue,
+        check_param_mapping=_record_checked,
+    )
+    calls.clear()
+    variables_contracts_impl._check_param_mappings_for_type_instance(
+        missing_typedef_inst, inst, {}, cast(Any, None), ["Root"]
+    )
+    assert calls == []
+
     monkeypatch.setattr(
         variables_contracts_module,
         "resolve_moduletype_def_strict",
-        _resolve_empty_typedef,
+        _resolve_typedef,
     )
-    variables_contracts_impl._check_param_mappings_for_type_instance(self_inst, inst, {}, cast(Any, None), ["Root"])
+    resolved_inst: Any = SimpleNamespace(
+        _selected_issue_kinds={IssueKind.STRING_MAPPING_MISMATCH},
+        bp=_ns(),
+        unavailable_libraries=set(),
+        append_issue=_raise_unexpected_issue,
+        check_param_mapping=_record_checked,
+    )
+    calls.clear()
+    variables_contracts_impl._check_param_mappings_for_type_instance(resolved_inst, inst, {}, cast(Any, None), ["Root"])
+    assert calls == ["checked"]
 
 
-def test_variables_contracts_cover_remaining_collection_and_index_branches(  # noqa: PLR0915
+def test_variables_contracts_cover_remaining_collection_and_index_branches(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     nested_param = Variable(name="NestedParam", datatype=Simple_DataType.INTEGER)
@@ -1101,38 +1109,9 @@ def test_variables_contracts_cover_remaining_collection_and_index_branches(  # n
         "typelocal": [typedef_local],
     }
 
-    single_calls: list[str] = []
-    single_param = Variable(name="Required", datatype=Simple_DataType.INTEGER)
-    single_mod: Any = _ns(moduleparameters=[single_param], parametermappings=[])
-
-    def _get_single_usage(_variable: Variable) -> _UsageStub:
-        return _UsageStub(read=True)
-
-    def _append_single_issue(issue: Any) -> None:
-        single_calls.append(cast(str, issue.role))
-
-    def _append_single_checked(*_args: object, **_kwargs: object) -> None:
-        single_calls.append("checked")
-
-    single_helper: Any = SimpleNamespace(
-        _selected_issue_kinds={IssueKind.REQUIRED_PARAMETER_CONNECTION},
-        get_usage=_get_single_usage,
-        append_issue=_append_single_issue,
-        check_param_mapping=_append_single_checked,
-    )
-    variables_contracts_impl._check_param_mappings_for_single(
-        single_helper,
-        single_mod,
-        {},
-        {},
-        cast(Any, None),
-        ["Root"],
-    )
-    assert single_calls == ["required parameter connection missing for 'Required'"]
-
     inst: Any = _ns(moduletype_name="Worker", parametermappings=[])
     disabled_type_helper: Any = SimpleNamespace(
-        _selected_issue_kinds={IssueKind.UI_ONLY},
+        _selected_issue_kinds={IssueKind.IMPLICIT_LATCH},
         bp=_ns(),
         unavailable_libraries=set(),
     )
@@ -1152,43 +1131,6 @@ def test_variables_contracts_cover_remaining_collection_and_index_branches(  # n
         cast(Any, None),
         ["Root"],
     )
-
-    type_calls: list[str] = []
-    missing_param = Variable(name="Missing", datatype=Simple_DataType.INTEGER)
-
-    def _required_names(_mt: object) -> dict[str, str]:
-        return {"missing": "Missing", "ghost": "Ghost"}
-
-    def _append_type_issue(issue: Any) -> None:
-        type_calls.append(cast(str, issue.role))
-
-    def _append_type_checked(*_args: object, **_kwargs: object) -> None:
-        type_calls.append("checked")
-
-    def _resolve_type_instance(*_args: object, **_kwargs: object) -> Any:
-        return _ns(moduleparameters=[missing_param])
-
-    type_helper: Any = SimpleNamespace(
-        _selected_issue_kinds={IssueKind.REQUIRED_PARAMETER_CONNECTION},
-        bp=_ns(),
-        unavailable_libraries=set(),
-        get_required_parameter_names_for_typedef=_required_names,
-        append_issue=_append_type_issue,
-        check_param_mapping=_append_type_checked,
-    )
-    monkeypatch.setattr(
-        variables_contracts_module,
-        "resolve_moduletype_def_strict",
-        _resolve_type_instance,
-    )
-    variables_contracts_impl._check_param_mappings_for_type_instance(
-        type_helper,
-        inst,
-        {},
-        cast(Any, None),
-        ["Root"],
-    )
-    assert type_calls == ["required parameter connection missing for 'Missing'"]
 
     mapping_calls: list[tuple[str, object]] = []
     src_var = Variable(name="Source", datatype=Simple_DataType.INTEGER)
@@ -1225,7 +1167,7 @@ def test_variables_contracts_cover_remaining_collection_and_index_branches(  # n
         append_param_mapping_issue=_append_mapping_issue,
     )
     variables_contracts_impl._check_param_mapping(
-        cast(Any, SimpleNamespace(_selected_issue_kinds={IssueKind.REQUIRED_PARAMETER_CONNECTION})),
+        cast(Any, SimpleNamespace(_selected_issue_kinds={IssueKind.UNUSED})),
         pm_local,
         tgt_var,
         {},
@@ -1254,37 +1196,17 @@ def test_variables_contracts_cover_remaining_collection_and_index_branches(  # n
     ]
 
 
-def test_variables_contracts_cover_remaining_loop_and_guard_branches(monkeypatch: pytest.MonkeyPatch) -> None:
-    def _analyze_typedef_noop(*_args: object, **_kwargs: object) -> None:
-        return None
-
-    def _make_nested_contract_extractor(_self: object) -> Any:
-        return _ns(analyze_typedef=_analyze_typedef_noop)
-
-    monkeypatch.setattr(
-        variables_contracts_module,
-        "_make_nested_contract_extractor",
-        _make_nested_contract_extractor,
-    )
-
+def test_variables_contracts_cover_remaining_loop_and_guard_branches() -> None:
     guard_calls: list[str] = []
     mapped_parameter = Variable(name="Mapped", datatype=Simple_DataType.INTEGER)
     idle_parameter = Variable(name="Idle", datatype=Simple_DataType.INTEGER)
     mapping = _ns(target={"var_name": "Mapped"})
 
-    def _get_guard_usage(_variable: Variable) -> _UsageStub:
-        return _UsageStub(read=True)
-
-    def _append_guard_issue(issue: Any) -> None:
-        guard_calls.append(cast(str, issue.role))
-
     def _append_guard_checked(*_args: object, **_kwargs: object) -> None:
         guard_calls.append("checked")
 
     single_helper: Any = SimpleNamespace(
-        _selected_issue_kinds={IssueKind.UI_ONLY},
-        get_usage=_get_guard_usage,
-        append_issue=_append_guard_issue,
+        _selected_issue_kinds={IssueKind.IMPLICIT_LATCH},
         check_param_mapping=_append_guard_checked,
     )
     single_mod: Any = _ns(moduleparameters=[mapped_parameter, idle_parameter], parametermappings=[mapping])
@@ -1299,14 +1221,9 @@ def test_variables_contracts_cover_remaining_loop_and_guard_branches(monkeypatch
     assert guard_calls == []
 
     single_helper._selected_issue_kinds = {
-        IssueKind.REQUIRED_PARAMETER_CONNECTION,
         IssueKind.STRING_MAPPING_MISMATCH,
+        IssueKind.MIN_MAX_MAPPING_MISMATCH,
     }
-
-    def _get_no_guard_usage(_variable: Variable) -> _UsageStub:
-        return _UsageStub(read=False, written=False)
-
-    single_helper.get_usage = _get_no_guard_usage
     variables_contracts_impl._check_param_mappings_for_single(
         single_helper,
         single_mod,
@@ -1315,7 +1232,7 @@ def test_variables_contracts_cover_remaining_loop_and_guard_branches(monkeypatch
         cast(Any, None),
         ["Root"],
     )
-    assert guard_calls == [("checked")]
+    assert guard_calls == ["checked"]
 
     param_check_calls: list[tuple[str, object | None]] = []
 

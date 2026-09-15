@@ -127,6 +127,59 @@ def test_validate_config_reports_unknown_analysis_namespace_keys():
     }
 
 
+def test_validate_config_reports_invalid_analysis_knob_shapes():
+    result = config_module.validate_config(
+        {
+            "analysis": {
+                "spec_compliance": {
+                    "extra_prefix": "X_",
+                    "step_prefix": 42,
+                },
+                "unsafe_default_tokens": ["bypass", 7, ""],
+                "cyclomatic_module_threshold": -1,
+                "cyclomatic_step_threshold": "high",
+                "cyclomatic_equation_block_threshold": 0,
+                "fan_in_out_threshold": True,
+            }
+        }
+    )
+
+    assert result.passed is False
+    assert {error.key_path for error in result.errors} == {
+        "analysis.spec_compliance.extra_prefix",
+        "analysis.spec_compliance.step_prefix",
+        "analysis.unsafe_default_tokens[1]",
+        "analysis.unsafe_default_tokens[2]",
+        "analysis.cyclomatic_module_threshold",
+        "analysis.cyclomatic_step_threshold",
+        "analysis.cyclomatic_equation_block_threshold",
+        "analysis.fan_in_out_threshold",
+    }
+
+
+def test_validate_config_accepts_valid_analysis_knobs():
+    result = config_module.validate_config(
+        {
+            "analysis": {
+                "spec_compliance": {
+                    "step_prefix": "ST_",
+                    "transition_prefix": "TR_",
+                    "sequence_prefix": "SEQ_",
+                    "equation_prefix": "EQ_",
+                },
+                "unsafe_default_tokens": ["bypass", "enable", "override"],
+                "cyclomatic_module_threshold": 12,
+                "cyclomatic_step_threshold": 8,
+                "cyclomatic_equation_block_threshold": 10,
+                "fan_in_out_threshold": 5,
+            }
+        }
+    )
+
+    assert result.passed is True
+    assert result.errors == ()
+
+
 def test_validate_config_passes_valid_config_and_serializes_result():
     valid = config_module.validate_config(
         {

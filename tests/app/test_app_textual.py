@@ -1490,6 +1490,49 @@ def test_textual_analyze_run_selected_reports_missing_handlers(monkeypatch: pyte
     assert any("The analyzer runner is unavailable" in line for line in lines)
 
 
+def test_textual_analyze_note_text_no_stale_planner_references() -> None:
+    app_instance = _make_textual_app(
+        cfg={"analyzed_programs_and_libraries": ["TargetA"]},
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="comment-code",
+                name="Commented-out code",
+                description="Detect commented-out code.",
+                category="code-quality",
+            ),
+        ],
+    )
+    app_instance._analyze_selected_entry_ids = {"comment-code"}
+    app_instance._analyze_focused_entry_id = "comment-code"
+
+    note = app_instance._analyze_note_text()
+
+    assert "1 analyzer selected. Use Run selected analyzers." in note
+
+    app_instance._analyze_selected_entry_ids.clear()
+    assert "Select one or more analyzers below to run." in app_instance._analyze_note_text()
+
+
+def test_textual_analyze_note_text_running_state_avoids_stale_plan() -> None:
+    app_instance = _make_textual_app(
+        cfg={"analyzed_programs_and_libraries": ["TargetA"]},
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="comment-code",
+                name="Commented-out code",
+                description="Detect commented-out code.",
+                category="code-quality",
+            ),
+        ],
+    )
+    app_instance._analyze_selected_entry_ids = {"comment-code"}
+    app_instance._busy = True
+    app_instance._active_job_action_id = "action-analyze"
+
+    note = app_instance._analyze_note_text()
+    assert "Selected analyses are running." in note
+
+
 def test_textual_execute_analyze_plan_dispatches_to_run_checks(monkeypatch: pytest.MonkeyPatch) -> None:
     emitted: list[str] = []
     called: list[list[str] | None] = []

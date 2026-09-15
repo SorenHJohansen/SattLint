@@ -32,7 +32,6 @@ from sattlint.analyzers.framework import (
     Issue,
     build_analysis_context,
 )
-from sattlint.analyzers.variables import analyze_variables
 from sattlint.engine import (
     CodeMode,
     SattLineProjectLoader,
@@ -137,10 +136,6 @@ def _run_analyzer(manifest: dict[str, Any]) -> set[str]:
     shared = AnalysisSharedArtifacts()
     analyzer_key = str(manifest["expectation"]["artifact_fragments"]["status.json"]["analyzer_key"])
     spec = get_registry_analyzer_spec(analyzer_key)
-
-    if "variables" in (spec.requires or ()):
-        variables_context = _build_context(base_picture, graph, shared)
-        analyze_variables(base_picture, analysis_context=variables_context)
 
     context = _build_context(base_picture, graph, shared)
     report = run_registry_analyzer(spec, context)

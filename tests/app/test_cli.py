@@ -537,8 +537,6 @@ def test_run_cli_analyze_passes_flags():
             "analyze",
             "--check",
             "variables",
-            "--check",
-            "shadowing",
             "--issue-kind",
             "unused",
             "--issue-kind",
@@ -565,7 +563,7 @@ def test_run_cli_analyze_passes_flags():
     )
 
     assert exit_code == EXIT_SUCCESS
-    assert seen["selected_keys"] == ["variables", "shadowing"]
+    assert seen["selected_keys"] == ["variables"]
     assert seen["selected_issue_kinds"] == frozenset({"unused", "shadowing"})
     assert seen["use_cache"] is False
     assert seen["refresh_caches"] is True

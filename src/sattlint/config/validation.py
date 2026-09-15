@@ -20,7 +20,17 @@ from .types import (
 
 VALID_TOP_LEVEL_KEYS = VALID_TOP_LEVEL_CONFIG_KEYS
 
-VALID_ANALYSIS_KEYS: frozenset[str] = frozenset()
+VALID_ANALYSIS_KEYS: frozenset[str] = frozenset(
+    {
+        "spec_compliance",
+        "unsafe_default_tokens",
+        "cyclomatic_module_threshold",
+        "cyclomatic_step_threshold",
+        "cyclomatic_equation_block_threshold",
+        "fan_in_out_threshold",
+    }
+)
+VALID_SPEC_COMPLIANCE_KEYS = frozenset({"step_prefix", "transition_prefix", "sequence_prefix", "equation_prefix"})
 VALID_RUN_HISTORY_KEYS = frozenset({"enabled", "limit"})
 VALID_OUTPUT_KEYS = frozenset({"retention_lines"})
 VALID_REVIEW_KEYS = frozenset({"output_dir"})
@@ -81,6 +91,13 @@ def _strip_section_keys(cfg: ConfigObjectMap, valid_keys: frozenset[str]) -> Non
             del cfg[key]
 
 
+def _strip_analysis_keys(analysis: ConfigObjectMap) -> None:
+    _strip_section_keys(analysis, VALID_ANALYSIS_KEYS)
+    spec_compliance = _config_dict(analysis.get("spec_compliance"))
+    if spec_compliance is not None:
+        _strip_section_keys(spec_compliance, VALID_SPEC_COMPLIANCE_KEYS)
+
+
 def _strip_unknown_keys(cfg: ConfigOverrideDict) -> None:
     cfg_map = cast(ConfigObjectMap, cfg)
 
@@ -88,7 +105,7 @@ def _strip_unknown_keys(cfg: ConfigOverrideDict) -> None:
 
     analysis = _config_dict(cfg_map.get("analysis"))
     if analysis is not None:
-        _strip_section_keys(analysis, VALID_ANALYSIS_KEYS)
+        _strip_analysis_keys(analysis)
 
     run_history = _config_dict(cfg_map.get("run_history"))
     if run_history is not None:
@@ -305,8 +322,81 @@ def validate_config(cfg: ConfigDict | ConfigOverrideDict) -> ConfigValidationRes
                         message=f"Unknown analysis key '{key}'. Expected one of: {', '.join(sorted(VALID_ANALYSIS_KEYS))}",
                     )
                 )
+        errors.extend(_analysis_validation_errors(analysis))
 
     return _build_validation_result(errors)
+
+
+def _analysis_validation_errors(analysis: ConfigObjectMap) -> list[ConfigValidationError]:
+    errors: list[ConfigValidationError] = []
+
+    spec_compliance_value = analysis.get("spec_compliance")
+    spec_compliance = _config_dict(spec_compliance_value)
+    if spec_compliance_value is not None and spec_compliance is None:
+        errors.append(
+            ConfigValidationError(
+                key_path="analysis.spec_compliance",
+                message="analysis.spec_compliance must be a table/object.",
+            )
+        )
+    elif spec_compliance is not None:
+        for key in spec_compliance:
+            if key not in VALID_SPEC_COMPLIANCE_KEYS:
+                errors.append(
+                    ConfigValidationError(
+                        key_path=f"analysis.spec_compliance.{key}",
+                        message=(
+                            f"Unknown analysis.spec_compliance key '{key}'. "
+                            f"Expected one of: {', '.join(sorted(VALID_SPEC_COMPLIANCE_KEYS))}"
+                        ),
+                    )
+                )
+        for key, value in spec_compliance.items():
+            if not isinstance(value, str):
+                errors.append(
+                    ConfigValidationError(
+                        key_path=f"analysis.spec_compliance.{key}",
+                        message=f"analysis.spec_compliance.{key} must be a string prefix",
+                    )
+                )
+
+    unsafe_default_tokens = analysis.get("unsafe_default_tokens")
+    if unsafe_default_tokens is not None:
+        if not isinstance(unsafe_default_tokens, list):
+            errors.append(
+                ConfigValidationError(
+                    key_path="analysis.unsafe_default_tokens",
+                    message="analysis.unsafe_default_tokens must be a list of tokens",
+                )
+            )
+        else:
+            for index, token in enumerate(cast(list[object], unsafe_default_tokens)):
+                if not isinstance(token, str) or not token.strip():
+                    errors.append(
+                        ConfigValidationError(
+                            key_path=f"analysis.unsafe_default_tokens[{index}]",
+                            message="analysis.unsafe_default_tokens entries must be non-empty strings",
+                        )
+                    )
+
+    for threshold_key in (
+        "cyclomatic_module_threshold",
+        "cyclomatic_step_threshold",
+        "cyclomatic_equation_block_threshold",
+        "fan_in_out_threshold",
+    ):
+        threshold = analysis.get(threshold_key)
+        if threshold is None:
+            continue
+        if not isinstance(threshold, int) or isinstance(threshold, bool) or threshold <= 0:
+            errors.append(
+                ConfigValidationError(
+                    key_path=f"analysis.{threshold_key}",
+                    message=f"analysis.{threshold_key} must be a positive integer",
+                )
+            )
+
+    return errors
 
 
 def target_exists(target: str, cfg: ConfigDict | ConfigOverrideDict) -> bool:

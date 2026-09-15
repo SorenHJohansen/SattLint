@@ -35,7 +35,6 @@ from ._mms_interface_helpers import (
     _extract_external_tag,
     _normalize_external_tag,
     _resolve_source_details,
-    _tag_family_key,
 )
 
 _INTERFACE_TARGETS: dict[str, dict[str, str]] = {
@@ -59,7 +58,6 @@ collect_icf_inventory_entries = _mms_icf_inventory_module.collect_icf_inventory_
 load_icf_entries_from_config = _mms_icf_inventory_module.load_icf_entries_from_config
 extract_external_tag = _extract_external_tag
 normalize_external_tag = _normalize_external_tag
-tag_family_key = _tag_family_key
 
 
 def _empty_mms_hits() -> list[MMSInterfaceHit]:
@@ -263,7 +261,6 @@ def _record_interface_hit(
             source_leaf_name=source_leaf_name,
             external_tag=external_tag,
             external_tag_key=_normalize_external_tag(external_tag),
-            tag_family_key=_tag_family_key(external_tag),
             direction=direction,
             write_fields=write_fields,
             write_note=write_note,
@@ -413,11 +410,9 @@ __all__ = [
     "InterfaceInventoryEntry",
     "_extract_external_tag",
     "_normalize_external_tag",
-    "_tag_family_key",
     "collect_icf_inventory_entries",
     "collect_mms_inventory_entries",
     "extract_external_tag",
     "load_icf_entries_from_config",
     "normalize_external_tag",
-    "tag_family_key",
 ]

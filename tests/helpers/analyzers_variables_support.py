@@ -31,8 +31,7 @@ from sattline_parser.models.ast_model import (
 )
 
 from sattlint import constants as const
-from sattlint.analyzers.shadowing import analyze_shadowing
-from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
+from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer, analyze_variables
 from sattlint.analyzers.variables import _variable_issue_collection as variable_issue_collection_module
 from sattlint.analyzers.variables import _variables_execution as variables_execution_module
 from sattlint.engine import parse_source_file
@@ -50,10 +49,7 @@ from tests.analyzers.variables.test_adjacent_analyzers import (  # noqa: F401
     test_mms_interface_collects_nested_typedef_mappings_and_write_locations,
     test_mms_interface_flags_dead_tags_for_unwritten_outgoing_variables,
     test_mms_interface_flags_duplicate_tags_and_datatype_mismatch_from_icf_entries,
-    test_mms_interface_flags_naming_drift_from_icf_entries,
     test_mms_interface_uses_moduletype_default_tags_for_duplicate_and_dead_tag_checks,
-    test_parameter_drift_flags_diverging_literal_parameter_values,
-    test_parameter_drift_ignores_aligned_literal_parameter_values,
 )
 from tests.helpers.variable_test_support import (
     UsageStub as _UsageStub,
@@ -115,7 +111,7 @@ __all__ = [
     "_state_ref",
     "_status_bridge_typedef",
     "_varref",
-    "analyze_shadowing",
+    "analyze_variables",
     "cast",
     "const",
     "logging",

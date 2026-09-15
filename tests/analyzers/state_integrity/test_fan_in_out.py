@@ -220,21 +220,84 @@ def test_high_fan_in_out_is_not_reported_below_threshold():
     assert not any(issue.kind is IssueKind.HIGH_FAN_IN_OUT and issue.variable is shared for issue in analyzer.issues)
 
 
-def test_variables_report_summary_includes_name_collisions():
-    variable = Variable(name="Value", datatype=Simple_DataType.INTEGER)
-    issue = VariableIssue(
-        kind=IssueKind.NAME_COLLISION,
-        module_path=["BasePicture", "TypeDef:Unit"],
-        variable=variable,
-        role="name collision with parameter 'Value'",
+def test_high_fan_in_out_honors_configured_threshold():
+    shared = Variable(name="SharedValue", datatype=Simple_DataType.INTEGER)
+
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[shared],
+        submodules=[
+            SingleModule(
+                header=_hdr("Writer"),
+                moduledef=None,
+                moduleparameters=[],
+                localvariables=[],
+                submodules=[],
+                modulecode=ModuleCode(
+                    equations=[
+                        Equation(
+                            name="WriteShared",
+                            position=(0.0, 0.0),
+                            size=(1.0, 1.0),
+                            code=[Assignment(target=_varref("SharedValue"), value=1)],
+                        )
+                    ],
+                    sequences=[],
+                ),
+                parametermappings=[],
+            ),
+            SingleModule(
+                header=_hdr("ReaderA"),
+                moduledef=None,
+                moduleparameters=[],
+                localvariables=[Variable(name="Observed", datatype=Simple_DataType.INTEGER)],
+                submodules=[],
+                modulecode=ModuleCode(
+                    equations=[
+                        Equation(
+                            name="ReadSharedA",
+                            position=(0.0, 0.0),
+                            size=(1.0, 1.0),
+                            code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
+                        )
+                    ],
+                    sequences=[],
+                ),
+                parametermappings=[],
+            ),
+            SingleModule(
+                header=_hdr("ReaderB"),
+                moduledef=None,
+                moduleparameters=[],
+                localvariables=[Variable(name="Observed", datatype=Simple_DataType.INTEGER)],
+                submodules=[],
+                modulecode=ModuleCode(
+                    equations=[
+                        Equation(
+                            name="ReadSharedB",
+                            position=(0.0, 0.0),
+                            size=(1.0, 1.0),
+                            code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
+                        )
+                    ],
+                    sequences=[],
+                ),
+                parametermappings=[],
+            ),
+        ],
+        modulecode=None,
+        moduledef=None,
     )
 
-    summary = VariablesReport(basepicture_name="BasePicture", issues=[issue]).summary()
+    analyzer = VariablesAnalyzer(bp, config={"analysis": {"fan_in_out_threshold": 2}})
+    analyzer.run()
 
-    assert "Sections:" in summary
-    assert "  - Name collisions: 1" in summary
-    assert "Name collisions" in summary
-    assert ("BasePicture.TypeDef:Unit :: Value (integer) | name collision with parameter 'Value'") in summary
+    issues = [
+        issue for issue in analyzer.issues if issue.kind is IssueKind.HIGH_FAN_IN_OUT and issue.variable is shared
+    ]
+
+    assert len(issues) == 1
+    assert "high fan-in with 2 readers" in (issues[0].role or "")
 
 
 def test_variables_report_summary_includes_write_without_effect_section():
@@ -298,21 +361,6 @@ def test_variables_report_summary_includes_global_scope_minimization_section():
     assert "ConfinedValue" in summary
 
 
-def test_variables_report_summary_includes_ui_only_section():
-    variable = Variable(name="DisplayValue", datatype=Simple_DataType.INTEGER)
-    issue = VariableIssue(
-        kind=IssueKind.UI_ONLY,
-        module_path=["BasePicture", "Panel"],
-        variable=variable,
-        role="localvariable",
-    )
-
-    summary = VariablesReport(basepicture_name="BasePicture", issues=[issue]).summary()
-
-    assert "UI/display-only variables" in summary
-    assert "DisplayValue" in summary
-
-
 def test_variables_report_summary_includes_unknown_parameter_targets():
     issue = VariableIssue(
         kind=IssueKind.UNKNOWN_PARAMETER_TARGET,
@@ -343,7 +391,6 @@ def test_variables_report_summary_lists_all_requested_categories_when_empty():
     assert "Unused variables" in summary
     assert "Unused fields in datatypes" in summary
     assert "Read-only but not Const variables" in summary
-    assert "UI/display-only variables" in summary
     assert "Procedure status handling" in summary
     assert "Written but never read variables" in summary
     assert "Global scope minimization candidates" in summary
@@ -353,7 +400,6 @@ def test_variables_report_summary_lists_all_requested_categories_when_empty():
     assert "Duplicated complex datatypes (should be RECORD)" in summary
     assert "Min/Max mapping name mismatches" in summary
     assert "Magic numbers in code" in summary
-    assert "Name collisions" in summary
     assert "Reset contamination (missing reset writes)" in summary
     assert "Implicit latching (missing matching False writes)" in summary
     assert summary.count("      none") == len(ALL_VARIABLE_ANALYSIS_KINDS)

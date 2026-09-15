@@ -6,8 +6,7 @@
         "expected_finding_ids": [
             "semantic.duplicated-datatype-layout",
             "semantic.hidden-global-coupling",
-            "semantic.high-fan-in-out-variable",
-            "semantic.name-collision"
+            "semantic.high-fan-in-out-variable"
         ],
         "artifact_fragments": {
             "status.json": {

@@ -101,4 +101,3 @@ def test_datatype_fields_is_registered_selectable_but_not_default_cli():
     catalog = get_default_analyzer_catalog()
     entries = [analyzer for analyzer in catalog.analyzers if analyzer.spec.key == "datatype-fields"]
     assert len(entries) == 1
-    assert entries[0].spec.requires == ("variables",)

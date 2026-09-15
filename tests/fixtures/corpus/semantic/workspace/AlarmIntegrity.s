@@ -1,10 +1,9 @@
 "Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
 "Original file date: ---"
 "Program date: 2026-06-19-12:00:00.000, name: AlarmIntegrity"
-(* SEMANTIC: Duplicate alarm tags, duplicate conditions, conflicting priorities,
-   never-cleared alarms.
+(* SEMANTIC: Duplicate alarm tags, duplicate conditions, never-cleared alarms.
    Expected: duplicate-alarm-tag, duplicate-alarm-condition,
-   conflicting-alarm-priority, never-cleared-alarm. *)
+   never-cleared-alarm. *)
 
 BasePicture Invocation
    ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0

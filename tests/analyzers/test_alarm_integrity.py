@@ -172,82 +172,6 @@ def test_alarm_integrity_detects_duplicate_conditions_across_instances() -> None
     assert all("SharedCondition" in issue.message for issue in duplicate_condition_issues)
 
 
-def test_alarm_integrity_detects_conflicting_priorities_for_same_tag() -> None:
-    bp = BasePicture(
-        header=_hdr("Root"),
-        localvariables=[
-            Variable(name="CondA", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="CondB", datatype=Simple_DataType.BOOLEAN),
-        ],
-        moduletype_defs=[_event_detector_typedef(with_default_priority=False)],
-        submodules=[
-            ModuleTypeInstance(
-                header=_hdr("AlarmA"),
-                moduletype_name="EventDetector1",
-                parametermappings=[
-                    ParameterMapping(
-                        target=_varref("Tag"),
-                        source_type=const.KEY_VALUE,
-                        is_duration=False,
-                        is_source_global=False,
-                        source_literal="Unit.Temp.High",
-                    ),
-                    ParameterMapping(
-                        target=_varref("Severity"),
-                        source_type=const.KEY_VALUE,
-                        is_duration=False,
-                        is_source_global=False,
-                        source_literal=1,
-                    ),
-                    ParameterMapping(
-                        target=_varref("Condition"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
-                        is_duration=False,
-                        is_source_global=False,
-                        source=_varref("CondA"),
-                        source_literal=None,
-                    ),
-                ],
-            ),
-            ModuleTypeInstance(
-                header=_hdr("AlarmB"),
-                moduletype_name="EventDetector1",
-                parametermappings=[
-                    ParameterMapping(
-                        target=_varref("Tag"),
-                        source_type=const.KEY_VALUE,
-                        is_duration=False,
-                        is_source_global=False,
-                        source_literal="Unit.Temp.High",
-                    ),
-                    ParameterMapping(
-                        target=_varref("Severity"),
-                        source_type=const.KEY_VALUE,
-                        is_duration=False,
-                        is_source_global=False,
-                        source_literal=3,
-                    ),
-                    ParameterMapping(
-                        target=_varref("Condition"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
-                        is_duration=False,
-                        is_source_global=False,
-                        source=_varref("CondB"),
-                        source_literal=None,
-                    ),
-                ],
-            ),
-        ],
-        origin_file="Root.s",
-    )
-
-    report = analyze_alarm_integrity(bp)
-
-    conflicting_priority_issues = [issue for issue in report.issues if issue.kind == "alarm.conflicting_priority"]
-    assert len(conflicting_priority_issues) == 2
-    assert all("1" in issue.message and "3" in issue.message for issue in conflicting_priority_issues)
-
-
 def test_alarm_integrity_detects_never_cleared_alarm_variable() -> None:
     bp = BasePicture(
         header=_hdr("Root"),
@@ -702,10 +626,6 @@ def test_alarm_integrity_candidate_and_issue_emitters_cover_suppression_and_dedu
     ]
     analyzer._emit_duplicate_tag_issues()
     analyzer._emit_duplicate_condition_issues()
-    analyzer._emit_conflicting_priority_issues()
-    conflict_issues = [issue for issue in analyzer.issues if issue.kind == "alarm.conflicting_priority"]
-    assert len(conflict_issues) == 6
-    assert any("Alarm condition 'ref:missingdisplay'" in issue.message for issue in conflict_issues)
     assert analyzer._location_list(analyzer._candidates) == [
         "Root.AlarmA",
         "Root.AlarmB",
@@ -883,11 +803,6 @@ def test_alarm_integrity_run_walks_supported_nodes_and_module_code_filters_clear
         "_emit_duplicate_condition_issues",
         lambda: analyzer._issues.append(Issue(kind="alarm.duplicate_condition", message="cond")),
     )
-    monkeypatch.setattr(
-        analyzer,
-        "_emit_conflicting_priority_issues",
-        lambda: analyzer._issues.append(Issue(kind="alarm.conflicting_priority", message="prio")),
-    )
 
     issues = analyzer.run()
 
@@ -900,7 +815,6 @@ def test_alarm_integrity_run_walks_supported_nodes_and_module_code_filters_clear
     assert {issue.kind for issue in issues} == {
         "alarm.duplicate_tag",
         "alarm.duplicate_condition",
-        "alarm.conflicting_priority",
     }
     assert len(analyzer._candidates) == 1
 

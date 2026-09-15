@@ -32,10 +32,13 @@ def _varref(name: str) -> VarRef:
     return VarRef(name=name)
 
 
-def test_sattline_semantics_includes_loop_stability_rule():
+def test_sattline_semantics_includes_conflicting_constants_rule():
     bp = BasePicture(
         header=_hdr("Program"),
-        localvariables=[Variable(name="Setpoint", datatype=Simple_DataType.INTEGER)],
+        localvariables=[
+            Variable(name="Setpoint", datatype=Simple_DataType.INTEGER),
+            Variable(name="Copy", datatype=Simple_DataType.INTEGER),
+        ],
         submodules=[],
         modulecode=ModuleCode(
             equations=[
@@ -45,6 +48,7 @@ def test_sattline_semantics_includes_loop_stability_rule():
                     size=(1.0, 1.0),
                     code=[
                         Assignment(target=_varref("Setpoint"), value=10),
+                        Assignment(target=_varref("Copy"), value=_varref("Setpoint")),
                         Assignment(target=_varref("Setpoint"), value=20),
                     ],
                 )
@@ -54,33 +58,7 @@ def test_sattline_semantics_includes_loop_stability_rule():
 
     report = analyze_sattline_semantics(bp)
 
-    assert any(issue.rule.id == "semantic.loop-conflicting-setpoint" for issue in report.issues)
-
-
-def test_sattline_semantics_includes_numeric_constraints_rule():
-    bp = BasePicture(
-        header=_hdr("Program"),
-        localvariables=[
-            Variable(name="Min_Output", datatype=Simple_DataType.INTEGER, init_value=0),
-            Variable(name="Max_Output", datatype=Simple_DataType.INTEGER, init_value=10),
-            Variable(name="Output", datatype=Simple_DataType.INTEGER),
-        ],
-        submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("Output"), value=12)],
-                )
-            ]
-        ),
-    )
-
-    report = analyze_sattline_semantics(bp)
-
-    assert any(issue.rule.id == "semantic.numeric-limit-violation" for issue in report.issues)
+    assert any(issue.rule.id == "semantic.conflicting-constants" for issue in report.issues)
 
 
 def test_sattline_semantics_includes_duplicate_transition_guard_rule():
@@ -369,7 +347,7 @@ def test_sattline_semantics_includes_high_fan_in_out_rule():
     assert any(issue.rule.id == "semantic.high-fan-in-out-variable" for issue in report.issues)
 
 
-def test_sattline_semantics_includes_signal_lifecycle_rules():
+def test_sattline_semantics_includes_read_before_write_rule():
     bp = BasePicture(
         header=_hdr("Program"),
         localvariables=[
@@ -399,7 +377,7 @@ def test_sattline_semantics_includes_signal_lifecycle_rules():
     report = analyze_sattline_semantics(bp)
 
     rule_ids = {issue.rule.id for issue in report.issues}
-    assert "semantic.signal-lifecycle-read-before-write" in rule_ids
+    assert "semantic.read-before-write" in rule_ids
 
 
 def test_detect_unreachable_sequence_logic_walks_nested_subsequence_bodies():
@@ -472,23 +450,19 @@ def test_sattline_semantic_rule_groups_cover_core_analyzers():
     assert "sfc" in groups
     assert "same-cycle" in groups
     assert "alarm-integrity" in groups
-    assert "signal-lifecycle" in groups
-    assert "loop-stability" in groups
-    assert "numeric-constraints" in groups
     assert "semantic.unused-variable" in groups["variables"]
     assert "semantic.implicit-latch" in groups["variables"]
     assert "semantic.global-scope-minimization" in groups["variables"]
     assert "semantic.hidden-global-coupling" in groups["variables"]
     assert "semantic.dead-overwrite" in groups["dataflow"]
-    assert "semantic.parallel-write-race" in groups["sfc"]
+    assert "semantic.conflicting-constants" in groups["dataflow"]
+    assert "semantic.parallel-write-race" in groups["same-cycle"]
     assert "semantic.parallel-read-write-hazard" in groups["same-cycle"]
     assert "semantic.same-cycle-shared-access" in groups["same-cycle"]
     assert "semantic.duplicate-transition-guard" in groups["sfc"]
     assert "semantic.high-fan-in-out-variable" in groups["variables"]
     assert "semantic.duplicate-alarm-tag" in groups["alarm-integrity"]
-    assert "semantic.signal-lifecycle-read-before-write" in groups["signal-lifecycle"]
-    assert "semantic.loop-conflicting-setpoint" in groups["loop-stability"]
-    assert "semantic.numeric-limit-violation" in groups["numeric-constraints"]
+    assert "semantic.read-before-write" in groups["variables"]
 
     all_rule_ids = [rule_id for rule_ids in groups.values() for rule_id in rule_ids]
     assert len(all_rule_ids) == len(set(all_rule_ids))
