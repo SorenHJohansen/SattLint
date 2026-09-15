@@ -240,7 +240,7 @@ def _analyze_note_text(self: Any) -> str:
         )
     if not self._setup_has_targets():
         return f"No analysis targets are configured yet. Add one in Setup first.{filter_suffix}"
-    if filter_text and not self._planner_entry_ids():
+    if filter_text and not self._analyzer_entry_ids():
         return f'No analyses match "{filter_text}". Press / to change or clear the filter.'
     selected = self._ordered_selected_analyze_entry_ids()
     if not selected:

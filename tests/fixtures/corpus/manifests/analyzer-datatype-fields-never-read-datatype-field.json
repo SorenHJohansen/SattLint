@@ -4,7 +4,7 @@
     "mode": "analyzer-datatype-fields",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.never-read-datatype-field"
+            "field_never_read"
         ],
         "artifact_fragments": {
             "status.json": {

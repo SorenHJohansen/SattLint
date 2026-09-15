@@ -135,7 +135,7 @@ if _TEXTUAL_APP is not None:
             self._analyze_selected_entry_ids: set[str] = set()
             self._analyze_filter_text = ""
             self._analyze_help_shown = False
-            self._suppress_analyze_planner_events = False
+            self._suppress_analyze_events = False
             self._selected_run_record = None
             self._results_run_summaries: list[object] = []
             self._results_tree_widget = None

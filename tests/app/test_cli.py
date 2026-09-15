@@ -18,7 +18,6 @@ from sattlint.cli import menu as cli_menu_module
 from sattlint.cli import startup as startup_application
 from sattlint.cli._exit_codes import EXIT_SUCCESS, EXIT_USAGE_ERROR
 from sattlint.config import get_config_path
-from sattlint.models import IssueKind
 
 
 def _command_handlers(**overrides: Any) -> dict[str, Any]:
@@ -28,7 +27,7 @@ def _command_handlers(**overrides: Any) -> dict[str, Any]:
             overrides=cast(
                 cli_entry.CommandHandlers,
                 {
-                    "analyze": lambda cfg, *, selected_keys, selected_issue_kinds=None, use_cache, output_format="text", refresh_caches=False: (
+                    "analyze": lambda cfg, *, selected_keys, use_cache, output_format="text", refresh_caches=False: (
                         EXIT_SUCCESS
                     ),
                     "docgen": lambda cfg, *, use_cache, output_format="text", output_dir, output_path: EXIT_SUCCESS,
@@ -453,51 +452,6 @@ def test_package_exports_version():
     assert sattlint.__version__ == package_version
 
 
-def test_package_root_exports_forward_workspace_helpers(monkeypatch):
-    discovery = SimpleNamespace(tag="discovery")
-    snapshot = SimpleNamespace(tag="snapshot")
-    seen = {}
-
-    def fake_discover_workspace_sources(workspace_root):
-        seen["workspace_root"] = workspace_root
-        return discovery
-
-    def fake_load_workspace_snapshot(entry_file, **kwargs):
-        seen["entry_file"] = entry_file
-        seen["kwargs"] = kwargs
-        return snapshot
-
-    monkeypatch.setattr(sattlint, "_discover_workspace_sources", fake_discover_workspace_sources)
-    monkeypatch.setattr(sattlint, "_load_workspace_snapshot", fake_load_workspace_snapshot)
-
-    workspace_root = Path("workspace")
-    entry_file = Path("program.s")
-    result_discovery = sattlint.discover_workspace_sources(workspace_root)
-    result_snapshot = sattlint.load_workspace_snapshot(
-        entry_file,
-        workspace_root=workspace_root,
-        discovery=cast(Any, discovery),
-        mode="strict",
-        other_lib_dirs=[Path("lib")],
-        abb_lib_dir=Path("abb"),
-        debug=True,
-        collect_variable_diagnostics=False,
-    )
-
-    assert result_discovery is discovery
-    assert result_snapshot is snapshot
-    assert seen["workspace_root"] == workspace_root
-    assert seen["entry_file"] == entry_file
-    assert seen["kwargs"]["workspace_root"] == workspace_root
-    assert seen["kwargs"]["discovery"] is discovery
-    assert seen["kwargs"]["mode"] == "strict"
-    assert seen["kwargs"]["other_lib_dirs"] == [Path("lib")]
-    assert seen["kwargs"]["abb_lib_dir"] == Path("abb")
-    assert seen["kwargs"]["debug"] is True
-    assert seen["kwargs"]["collect_variable_diagnostics"] is False
-    assert seen["kwargs"]["_analysis_provider"] is sattlint.build_variable_semantic_artifacts
-
-
 def test_module_entrypoint_exits_with_cli_status(monkeypatch):
     monkeypatch.setattr(startup_application, "cli", lambda: 7)
 
@@ -537,21 +491,16 @@ def test_run_cli_analyze_passes_flags():
             "analyze",
             "--check",
             "variables",
-            "--issue-kind",
-            "unused",
-            "--issue-kind",
-            "shadowing",
             "--refresh-caches",
         ],
         load_config_fn=lambda path: ({"debug": False}, False),
         apply_debug_fn=lambda _cfg: None,
         command_handlers={
-            "analyze": lambda cfg, *, selected_keys, selected_issue_kinds, use_cache, refresh_caches, output_format="text": (
+            "analyze": lambda cfg, *, selected_keys, use_cache, refresh_caches, output_format="text": (
                 seen.update(
                     {
                         "cfg": cfg,
                         "selected_keys": selected_keys,
-                        "selected_issue_kinds": selected_issue_kinds,
                         "use_cache": use_cache,
                         "refresh_caches": refresh_caches,
                         "output_format": output_format,
@@ -564,7 +513,6 @@ def test_run_cli_analyze_passes_flags():
 
     assert exit_code == EXIT_SUCCESS
     assert seen["selected_keys"] == ["variables"]
-    assert seen["selected_issue_kinds"] == frozenset({"unused", "shadowing"})
     assert seen["use_cache"] is False
     assert seen["refresh_caches"] is True
     assert seen["output_format"] == "text"
@@ -580,12 +528,11 @@ def test_run_cli_analyze_passes_opt_in_version_drift_key():
         load_config_fn=lambda path: ({"debug": False}, False),
         apply_debug_fn=lambda _cfg: None,
         command_handlers=_command_handlers(
-            analyze=lambda cfg, *, selected_keys, selected_issue_kinds=None, use_cache, refresh_caches=False, output_format="text": (
+            analyze=lambda cfg, *, selected_keys, use_cache, refresh_caches=False, output_format="text": (
                 seen.update(
                     {
                         "cfg": cfg,
                         "selected_keys": selected_keys,
-                        "selected_issue_kinds": selected_issue_kinds,
                         "use_cache": use_cache,
                         "output_format": output_format,
                     }
@@ -597,7 +544,6 @@ def test_run_cli_analyze_passes_opt_in_version_drift_key():
 
     assert exit_code == EXIT_SUCCESS
     assert seen["selected_keys"] == ["version-drift"]
-    assert seen["selected_issue_kinds"] is None
     assert seen["use_cache"] is True
     assert seen["output_format"] == "text"
 
@@ -608,7 +554,7 @@ def test_run_cli_analyze_refresh_caches_defaults_to_false():
     exit_code = _run_base_cli(
         ["analyze", "--check", "variables"],
         command_handlers={
-            "analyze": lambda cfg, *, selected_keys, selected_issue_kinds=None, use_cache, refresh_caches=False, output_format="text": (
+            "analyze": lambda cfg, *, selected_keys, use_cache, refresh_caches=False, output_format="text": (
                 seen.update({"refresh_caches": refresh_caches}) or EXIT_SUCCESS
             )
         },
@@ -627,12 +573,11 @@ def test_run_cli_analyze_passes_json_output_format():
         load_config_fn=lambda path: ({"debug": False}, False),
         apply_debug_fn=lambda _cfg: None,
         command_handlers=_command_handlers(
-            analyze=lambda cfg, *, selected_keys, selected_issue_kinds=None, use_cache, refresh_caches=False, output_format="text": (
+            analyze=lambda cfg, *, selected_keys, use_cache, refresh_caches=False, output_format="text": (
                 seen.update(
                     {
                         "cfg": cfg,
                         "selected_keys": selected_keys,
-                        "selected_issue_kinds": selected_issue_kinds,
                         "use_cache": use_cache,
                         "output_format": output_format,
                     }
@@ -644,7 +589,6 @@ def test_run_cli_analyze_passes_json_output_format():
 
     assert exit_code == EXIT_SUCCESS
     assert seen["selected_keys"] == ["variables"]
-    assert seen["selected_issue_kinds"] is None
     assert seen["use_cache"] is True
     assert seen["output_format"] == "json"
 
@@ -697,34 +641,6 @@ def test_run_cli_analyze_list_checks_supports_json_output(monkeypatch, capsys):
     assert captured.err == ""
 
 
-def test_run_cli_analyze_list_issue_kinds_prints_values_without_loading_config(capsys):
-    exit_code = cli_entry.run_cli(
-        ["analyze", "--list-issue-kinds"],
-        config_path=Path("config.toml"),
-        load_config_fn=lambda _path: pytest.fail("load_config should not run for --list-issue-kinds"),
-        apply_debug_fn=lambda _cfg: pytest.fail("apply_debug should not run for --list-issue-kinds"),
-    )
-
-    captured = capsys.readouterr()
-    assert exit_code == EXIT_SUCCESS
-    assert captured.out.splitlines() == [issue_kind.value for issue_kind in IssueKind]
-    assert captured.err == ""
-
-
-def test_run_cli_analyze_list_issue_kinds_supports_json_without_loading_config(capsys):
-    exit_code = cli_entry.run_cli(
-        ["analyze", "--list-issue-kinds", "--format", "json"],
-        config_path=Path("config.toml"),
-        load_config_fn=lambda _path: pytest.fail("load_config should not run for --list-issue-kinds"),
-        apply_debug_fn=lambda _cfg: pytest.fail("apply_debug should not run for --list-issue-kinds"),
-    )
-
-    captured = capsys.readouterr()
-    assert exit_code == EXIT_SUCCESS
-    assert json.loads(captured.out) == {"issue_kinds": [issue_kind.value for issue_kind in IssueKind]}
-    assert captured.err == ""
-
-
 def test_run_cli_cache_prune_passes_cache_dir_without_loading_config():
     seen = {}
 
@@ -748,7 +664,7 @@ def test_run_cli_quiet_suppresses_stdout(capsys):
     exit_code = _run_base_cli(
         ["--quiet", "analyze", "--check", "variables"],
         command_handlers={
-            "analyze": lambda cfg, *, selected_keys, selected_issue_kinds=None, use_cache, refresh_caches=False, output_format="text": (
+            "analyze": lambda cfg, *, selected_keys, use_cache, refresh_caches=False, output_format="text": (
                 print("visible") or EXIT_SUCCESS
             )
         },

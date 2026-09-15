@@ -1,6 +1,4 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportIndexIssue=false, reportAttributeAccessIssue=false
-import json
-
 from tests.helpers.analyzers_suites_support import *
 
 
@@ -78,18 +76,12 @@ def test_registry_catalog_report_and_key_helpers_cover_metadata_branches():
     assert catalog.enabled_specs()
     assert report["generated_by"] == "test-suite"
     assert report["analyzers"]
-    assert report["rules"]
-    assert report["semantic_layer"]["analyzer_key"] == registry_module.SEMANTIC_LAYER_ANALYZER_KEY
     assert registry_module.get_declared_cli_analyzer_keys() == tuple(
         sorted(analyzer.spec.key for analyzer in catalog.analyzers if analyzer.delivery.cli_exposed)
     )
     assert registry_module.get_actual_cli_analyzer_keys() == tuple(
         spec.key for spec in registry_module.get_default_cli_analyzers()
     )
-    assert registry_module.get_declared_lsp_analyzer_keys() == tuple(
-        sorted(analyzer.spec.key for analyzer in catalog.analyzers if analyzer.delivery.lsp_exposed)
-    )
-    assert registry_module.get_actual_lsp_analyzer_keys()
 
 
 def test_build_delivery_metadata_falls_back_for_unknown_analyzer_key():
@@ -100,36 +92,14 @@ def test_build_delivery_metadata_falls_back_for_unknown_analyzer_key():
         run=lambda context: cast(Any, "custom-analyzer"),
     )
 
-    delivery = registry_module._build_delivery_metadata(spec, ())
+    delivery = registry_module.build_delivery_metadata(spec, ())
 
     assert delivery.scope == "workspace"
     assert delivery.implementation_bucket == "analyzers"
     assert delivery.output_artifacts == ("custom-analyzer.summary",)
 
 
-def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_paths(tmp_path, monkeypatch):
-    missing_manifest_dir = tmp_path / "missing-manifests"
-    monkeypatch.setattr(registry_module, "DEFAULT_CORPUS_MANIFEST_DIR", missing_manifest_dir)
-    registry_module._rule_corpus_cases_by_rule_id.cache_clear()
-    assert registry_module._rule_corpus_cases_by_rule_id() == {}
-
-    manifest_dir = tmp_path / "manifests"
-    manifest_dir.mkdir()
-    (manifest_dir / "skip.json").mkdir()
-    (manifest_dir / "broken.json").write_text("{not-json", encoding="utf-8")
-    (manifest_dir / "invalid-expected-finding-ids.json").write_text(
-        json.dumps({"expectation": {"expected_finding_ids": "rule-B"}}),
-        encoding="utf-8",
-    )
-    (manifest_dir / "case-a.json").write_text(
-        json.dumps({"expectation": {"expected_finding_ids": ["rule-A"]}}),
-        encoding="utf-8",
-    )
-
-    monkeypatch.setattr(registry_module, "DEFAULT_CORPUS_MANIFEST_DIR", manifest_dir)
-    registry_module._rule_corpus_cases_by_rule_id.cache_clear()
-    assert registry_module._rule_corpus_cases_by_rule_id() == {"rule-A": ("case-a",)}
-
+def test_default_runner_closures_cover_remaining_paths(monkeypatch):
     calls: list[str] = []
 
     def _record(name: str):
@@ -140,7 +110,6 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
         return _runner
 
     monkeypatch.setattr(registry_module, "analyze_variables", _record("variables"))
-    monkeypatch.setattr(registry_module, "analyze_sattline_semantics", _record("sattline-semantics"))
     monkeypatch.setattr(registry_module, "analyze_mms_interface_variables", _record("mms-interface"))
     monkeypatch.setattr(registry_module, "analyze_sfc", _record("sfc"))
     monkeypatch.setattr(registry_module, "analyze_spec_compliance", _record("spec-compliance"))
@@ -163,7 +132,6 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
         include_dependency_moduletype_usage=None,
     )
     expected_keys = {
-        registry_module.SEMANTIC_LAYER_ANALYZER_KEY,
         "variables",
         "picture-display-paths",
         "mms-interface",
@@ -181,7 +149,6 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
         assert specs[key].run(context) == key
 
     assert set(calls) == expected_keys
-    registry_module._rule_corpus_cases_by_rule_id.cache_clear()
 
 
 def test_run_registry_analyzer_falls_back_to_spec_runner_without_registry_attr():
@@ -232,137 +199,3 @@ def test_run_registry_analyzer_passes_shared_artifacts_to_dataflow():
 
     assert run_registry_analyzer(spec, context) is report
     assert seen["context"] is context
-
-
-def test_analyze_sattline_semantics_uses_declared_semantic_contributors(monkeypatch):
-    from sattlint.analyzers.framework import Issue  # noqa: PLC0415
-    from sattlint.analyzers.sattline_semantics import analyze_sattline_semantics  # noqa: PLC0415
-    from sattlint.reporting.variables_report import VariableIssue  # noqa: PLC0415
-
-    calls: list[str] = []
-    bp = BasePicture(
-        header=_hdr("Root"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[Variable(name="UnusedVar", datatype=Simple_DataType.INTEGER)],
-        submodules=[],
-        modulecode=None,
-        moduledef=None,
-    )
-
-    fake_catalog = SimpleNamespace(
-        analyzers=(
-            SimpleNamespace(
-                spec=AnalyzerSpec(
-                    key="variables",
-                    name="Variables",
-                    description="",
-                    run=lambda _context: (
-                        calls.append("variables")
-                        or SimpleNamespace(
-                            issues=[
-                                VariableIssue(
-                                    kind=IssueKind.UNUSED,
-                                    module_path=["Root"],
-                                    variable=Variable(name="UnusedVar", datatype=Simple_DataType.INTEGER),
-                                )
-                            ]
-                        )
-                    ),
-                    semantic_mapping_kind="variable",
-                    semantic_rule_source="variables",
-                )
-            ),
-            SimpleNamespace(
-                spec=AnalyzerSpec(
-                    key="spec-compliance",
-                    name="Spec",
-                    description="",
-                    run=lambda _context: (
-                        calls.append("spec-compliance")
-                        or SimpleNamespace(issues=[Issue(kind="spec.demo", message="spec issue", module_path=["Root"])])
-                    ),
-                    semantic_mapping_kind="spec",
-                    semantic_rule_source="spec-compliance",
-                )
-            ),
-            SimpleNamespace(
-                spec=AnalyzerSpec(
-                    key="mms-interface",
-                    name="MMS",
-                    description="",
-                    run=lambda _context: (
-                        calls.append("mms-interface")
-                        or SimpleNamespace(
-                            issues=[Issue(kind="mms.duplicate_tag", message="duplicate tag", module_path=["Root"])]
-                        )
-                    ),
-                    semantic_rule_source="mms-interface",
-                )
-            ),
-            SimpleNamespace(
-                spec=AnalyzerSpec(
-                    key="ignored-analyzer",
-                    name="Ignored",
-                    description="",
-                    run=lambda _context: SimpleNamespace(issues=[]),
-                )
-            ),
-        )
-    )
-
-    monkeypatch.setattr(registry_module, "get_default_analyzer_catalog", lambda: fake_catalog)
-    monkeypatch.setattr(
-        "sattlint.analyzers.sattline_semantics.detect_transform_invariant_violations",
-        lambda _bp: [],
-    )
-
-    report = analyze_sattline_semantics(bp)
-
-    assert calls == ["variables", "spec-compliance", "mms-interface"]
-    assert {issue.rule.source for issue in report.issues} == {"variables", "spec-compliance", "mms-interface"}
-    assert "semantic.mms-duplicate-tag" in {issue.rule.id for issue in report.issues}
-
-
-def test_analyze_sattline_semantics_builds_context_with_config_and_shared_artifacts(monkeypatch):
-    from sattlint.analyzers.sattline_semantics import analyze_sattline_semantics  # noqa: PLC0415
-
-    seen: dict[str, object] = {}
-    bp = BasePicture(
-        header=_hdr("Root"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[],
-        modulecode=None,
-        moduledef=None,
-    )
-
-    monkeypatch.setattr(
-        "sattlint.analyzers.sattline_semantics.get_semantic_contributor_specs",
-        lambda: (SimpleNamespace(key="variables", semantic_mapping_kind="variable"),),
-    )
-
-    def _run_registry_analyzer(spec, context, **kwargs):
-        seen["spec"] = spec
-        seen["context"] = context
-        seen["kwargs"] = kwargs
-        return SimpleNamespace(issues=[])
-
-    monkeypatch.setattr("sattlint.analyzers.sattline_semantics.run_registry_analyzer", _run_registry_analyzer)
-    monkeypatch.setattr("sattlint.analyzers.sattline_semantics.detect_transform_invariant_violations", lambda _bp: [])
-
-    report = analyze_sattline_semantics(
-        bp,
-        unavailable_libraries={"MissingLib"},
-        analyzed_target_is_library=True,
-        config={"mode": "workspace"},
-    )
-
-    assert report.issues == []
-    context = seen["context"]
-    assert context.config == {"mode": "workspace"}
-    assert context.target_is_library is True
-    assert context.shared_artifacts is not None
-    assert context.unavailable_libraries == {"MissingLib"}
-    assert seen["kwargs"] == {}

@@ -210,50 +210,6 @@ def test_run_checks_runs_selected_non_default_cli_exposed_analyzer(monkeypatch):
     assert not any("state inference summary for BasePicture" in line for line in lines)
 
 
-def test_run_checks_announces_selected_variable_issue_kinds_before_running(monkeypatch):
-    lines: list[str] = []
-
-    monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
-
-    checks_application.run_checks(
-        DEFAULT_CONFIG.copy(),
-        ["variables"],
-        selected_issue_kinds={IssueKind.UNUSED.value},
-        iter_loaded_projects_fn=cast(
-            Any,
-            lambda *_args, **_kwargs: iter(
-                [
-                    (
-                        "TargetA",
-                        named_object("TargetA"),
-                        AnalysisGraphStub(
-                            unavailable_libraries=set(),
-                            load_stage_timings={},
-                            graphics_load_timings={},
-                        ),
-                    )
-                ]
-            ),
-        ),
-        get_enabled_analyzers_fn=lambda: [
-            SimpleNamespace(
-                key="variables",
-                name="Variable issues",
-                run=lambda _context: SimpleNamespace(summary=lambda: "variables summary", phase_timings=[]),
-            )
-        ],
-        target_is_library_fn=lambda *_args, **_kwargs: False,
-        pause_fn=None,
-    )
-
-    assert lines[:4] == [
-        "\n--- Running checks ---",
-        "\n=== Target: TargetA ===",
-        "\n=== Variable issues (variables) ===",
-        "Running variables analyzer for issue kinds: unused",
-    ]
-
-
 def test_run_checks_updates_live_status_for_active_analyzer(monkeypatch):
     updates: list[str] = []
 
@@ -300,59 +256,10 @@ def test_run_checks_updates_live_status_for_active_analyzer(monkeypatch):
     assert updates == ["Analyzing TargetA: State inference (state-inference)"]
 
 
-def test_run_checks_filters_non_variable_report_for_selected_issue_kinds(monkeypatch):
-    lines: list[str] = []
-
-    monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
-
-    checks_application.run_checks(
-        DEFAULT_CONFIG.copy(),
-        ["comment-code"],
-        selected_issue_kinds={"comment_code_read_error"},
-        iter_loaded_projects_fn=cast(
-            Any,
-            lambda *_args, **_kwargs: iter(
-                [
-                    (
-                        "TargetA",
-                        named_object("TargetA"),
-                        AnalysisGraphStub(
-                            unavailable_libraries=set(),
-                            load_stage_timings={},
-                            graphics_load_timings={},
-                        ),
-                    )
-                ]
-            ),
-        ),
-        get_enabled_analyzers_fn=lambda: [
-            SimpleNamespace(
-                key="comment-code",
-                name="Commented-out code",
-                run=lambda _context: SimpleReport(
-                    name="TargetA",
-                    issues=[
-                        Issue(kind="comment_code", message="inactive code"),
-                        Issue(kind="comment_code_read_error", message="scan read failed"),
-                    ],
-                ),
-            )
-        ],
-        target_is_library_fn=lambda *_args, **_kwargs: False,
-        pause_fn=None,
-    )
-
-    assert any("Issues: 1" in line for line in lines)
-    assert not any("Issues: 2" in line for line in lines)
-    assert any("scan read failed" in line for line in lines)
-    assert not any("inactive code" in line for line in lines)
-
-
 def test_collect_run_checks_result_captures_target_and_analyzer_metadata():
     result = checks_application.collect_run_checks_result(
         DEFAULT_CONFIG.copy(),
         ["state-inference"],
-        selected_issue_kinds={"unused"},
         iter_loaded_projects_fn=cast(
             Any,
             lambda *_args, **_kwargs: iter(
@@ -373,7 +280,6 @@ def test_collect_run_checks_result_captures_target_and_analyzer_metadata():
             SimpleNamespace(
                 key="state-inference",
                 name="State inference",
-                supports_selected_issue_kinds=True,
                 run=lambda _context: SimpleNamespace(
                     summary=lambda: "state inference summary",
                     issues=[Issue(kind="unused", message="unused state")],
@@ -386,7 +292,6 @@ def test_collect_run_checks_result_captures_target_and_analyzer_metadata():
 
     assert result.cancelled is False
     assert result.selected_analyzers == ("state-inference",)
-    assert result.selected_issue_kinds == ("unused",)
     assert result.output_lines[0] == "\n--- Running checks ---"
     assert len(result.targets) == 1
 
@@ -399,10 +304,9 @@ def test_collect_run_checks_result_captures_target_and_analyzer_metadata():
     assert analyzer.key == "state-inference"
     assert analyzer.name == "State inference"
     assert analyzer.status == "completed"
-    assert "unused state" in cast(str, analyzer.summary)
-    assert analyzer.report_kind == "SimpleReport"
+    assert analyzer.summary == "state inference summary"
+    assert analyzer.report_kind == "SimpleNamespace"
     assert analyzer.issue_count == 1
-    assert analyzer.selected_issue_kinds == ("unused",)
     assert analyzer.phase_timings_ms == ({"phase": "plan", "duration_ms": 1.25},)
 
 
@@ -435,7 +339,6 @@ def test_collect_run_checks_result_runs_icf_once_as_whole_run_target(monkeypatch
             SimpleNamespace(
                 key="icf",
                 name="ICF configuration",
-                supports_selected_issue_kinds=False,
                 scope="per-run",
                 run=_fake_icf,
             )
@@ -456,19 +359,13 @@ def test_collect_run_checks_result_runs_icf_once_as_whole_run_target(monkeypatch
     assert analyzer.report_kind == "SimpleReport"
 
 
-def test_run_checks_skips_semantic_layer_when_batch_selection_includes_contributors(monkeypatch):
+def test_run_checks_selection_is_exact_and_drops_unregistered_keys(monkeypatch):
     lines: list[str] = []
     run_order: list[str] = []
     shared_ids: list[int] = []
 
     def _report(name: str):
         return SimpleNamespace(summary=lambda: name, issues=[])
-
-    def _semantic_run(context):
-        run_order.append("sattline-semantics")
-        shared_ids.append(id(context.shared_artifacts))
-        assert context.shared_artifacts is not None
-        return _report("semantics summary")
 
     def _variables_run(context):
         run_order.append("variables")
@@ -498,7 +395,6 @@ def test_run_checks_skips_semantic_layer_when_batch_selection_includes_contribut
             ),
         ),
         get_enabled_analyzers_fn=lambda: [
-            SimpleNamespace(key="sattline-semantics", name="SattLine semantics", run=_semantic_run),
             SimpleNamespace(key="variables", name="Variable issues", run=_variables_run),
         ],
         target_is_library_fn=lambda *_args, **_kwargs: False,
@@ -508,7 +404,6 @@ def test_run_checks_skips_semantic_layer_when_batch_selection_includes_contribut
     assert run_order == ["variables"]
     assert len(set(shared_ids)) == 1
     assert any("variables summary" in line for line in lines)
-    assert not any("semantics summary" in line for line in lines)
 
 
 def test_run_checks_writes_target_profiling_summary(tmp_path, monkeypatch):

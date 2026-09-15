@@ -54,8 +54,6 @@ class _ParsedCliArgs(Protocol):
     other_lib_dirs: list[str]
     checks: list[str]
     list_checks: bool
-    issue_kinds: list[str]
-    list_issue_kinds: bool
     mode: str
     format: str
     output: str | None
@@ -70,16 +68,6 @@ def _collect_analyzer_keys() -> tuple[str, ...]:
     from ..analyzers.catalog import get_selectable_analyzers  # noqa: PLC0415
 
     return tuple(spec.key for spec in get_selectable_analyzers())
-
-
-def _issue_kind_values() -> tuple[str, ...]:
-    from ..models import IssueKind  # noqa: PLC0415
-
-    return tuple(issue_kind.value for issue_kind in IssueKind)
-
-
-def _collect_issue_kind_values() -> tuple[str, ...]:
-    return _issue_kind_values()
 
 
 def _emit_value_list(*, values: tuple[str, ...], payload_key: str, output_format: str) -> None:
@@ -150,20 +138,6 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         "--list-checks",
         action="store_true",
         help="List available analysis check keys and exit",
-    )
-    analyze_parser.add_argument(
-        "--issue-kind",
-        action="append",
-        dest="issue_kinds",
-        default=[],
-        metavar="KIND",
-        choices=_issue_kind_values(),
-        help="Filter variable analysis to this issue kind (repeatable; use --list-issue-kinds to see choices)",
-    )
-    analyze_parser.add_argument(
-        "--list-issue-kinds",
-        action="store_true",
-        help="List available issue kind values for --issue-kind and exit",
     )
     add_output_format_argument(
         analyze_parser,
@@ -273,16 +247,6 @@ def run_cli(  # noqa: PLR0915
             )
         return exit_success
 
-    if command == "analyze" and getattr(args, "list_issue_kinds", False):
-        context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
-        with context:
-            _emit_value_list(
-                values=_collect_issue_kind_values(),
-                payload_key="issue_kinds",
-                output_format=cli_output.resolve_output_format(args),
-            )
-        return exit_success
-
     if command == "analyze" and not getattr(args, "checks", []):
         print_output(
             "sattlint analyze: error: at least one --check KEY is required; use --list-checks to see available analyzers",
@@ -331,12 +295,10 @@ def run_cli(  # noqa: PLR0915
             if getattr(args, "profile", False):
                 os.environ.setdefault("SATTLINT_PROFILE", "1")
             selected_keys = args.checks
-            selected_issue_kinds = frozenset(getattr(args, "issue_kinds", [])) or None
             return _exit_code(
                 analyze_handler(
                     cfg,
                     selected_keys=selected_keys,
-                    selected_issue_kinds=selected_issue_kinds,
                     use_cache=use_cache,
                     refresh_caches=bool(getattr(args, "refresh_caches", False)),
                     output_format=cli_output.resolve_output_format(args),

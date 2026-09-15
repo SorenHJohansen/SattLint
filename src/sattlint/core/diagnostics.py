@@ -9,7 +9,6 @@ from typing import Protocol
 
 from sattline_parser.models.ast_model import BasePicture, FrameModule, ModuleTypeInstance, SingleModule
 
-from ..analyzers._sattline_semantic_issue_metadata import materialize_issue_metadata
 from ..analyzers.framework import Issue
 from ..models._variable_issues import VariableIssue, materialize_variable_issue_metadata
 from ..types import ProjectPath, TargetName
@@ -110,12 +109,11 @@ def _format_semantic_diagnostic_message(issue: VariableIssue) -> str:
 
 
 def _format_issue_diagnostic_message(issue: Issue) -> str:
-    materialized = materialize_issue_metadata(issue)
-    lines = [materialized.message]
-    if materialized.explanation:
-        lines.append(f"Why it matters: {materialized.explanation}")
-    if materialized.suggestion:
-        lines.append(f"Suggested fix: {materialized.suggestion}")
+    lines = [issue.message]
+    if issue.explanation:
+        lines.append(f"Why it matters: {issue.explanation}")
+    if issue.suggestion:
+        lines.append(f"Suggested fix: {issue.suggestion}")
     return "\n".join(lines)
 
 

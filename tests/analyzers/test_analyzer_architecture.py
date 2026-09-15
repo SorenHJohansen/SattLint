@@ -147,7 +147,7 @@ def _imports_banned_analyzer_boundary(module: ast.Module) -> bool:
 
 
 def test_registry_keys_are_kebab_case_or_explicit_legacy_allowlist() -> None:
-    templates = default_spec_templates(registry_module.SEMANTIC_LAYER_ANALYZER_KEY)
+    templates = default_spec_templates()
     underscore_keys = {template.key for template in templates if "_" in template.key}
     assert underscore_keys == LEGACY_UNDERSCORE_ANALYZER_KEYS
 
@@ -161,9 +161,7 @@ def test_registry_keys_are_kebab_case_or_explicit_legacy_allowlist() -> None:
 
 def test_public_analyze_functions_are_registry_backed_or_explicit_exceptions() -> None:
     registry_backed_functions = {
-        template.analyzer_attr
-        for template in default_spec_templates(registry_module.SEMANTIC_LAYER_ANALYZER_KEY)
-        if template.analyzer_attr.startswith("analyze_")
+        template.analyzer_attr for template in default_spec_templates() if template.analyzer_attr.startswith("analyze_")
     }
 
     public_analyze_defs = _public_analyze_defs()
@@ -289,8 +287,6 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
             "graph",
             "unavailable_libraries",
         ),
-        composed_analyzer_keys=("dataflow",),
-        composed_issue_kind_names=("dataflow.scan_cycle_stale_read",),
     )
     kwargs = build_context_kwargs(spec, registry_stub, context)
     assert kwargs["analysis_context"] is context
@@ -307,7 +303,7 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
         analyzer_attr="analyze_direct",
         direct_context=True,
     )
-    direct_runner = build_default_analyzers(semantic_layer_analyzer_key=registry_module.SEMANTIC_LAYER_ANALYZER_KEY)
+    direct_runner = build_default_analyzers()
     assert any(spec.key == "variables" for spec in direct_runner)
 
     from sattlint.analyzers import _registry_specs as registry_specs_module  # noqa: PLC0415
@@ -318,27 +314,19 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
     standard_report = registry_specs_module._build_runner(spec, registry_stub)(context)
     assert "ControlLib" in (standard_report.note or "")
 
-    deliveries = default_delivery_templates(
-        registry_module.SEMANTIC_LAYER_ANALYZER_KEY,
-        shared_fixtures=("fixture-a", "fixture-b"),
-    )
-    assert deliveries[0].key == registry_module.SEMANTIC_LAYER_ANALYZER_KEY
+    deliveries = default_delivery_templates(shared_fixtures=("fixture-a", "fixture-b"))
+    assert deliveries[0].key == "variables"
     assert deliveries[0].min_fixture_set == ("fixture-a", "fixture-b")
 
     monkeypatch.setattr(
         registry_specs_module,
         "default_spec_templates",
-        lambda _key: (direct_template, spec),
+        lambda: (direct_template, spec),
     )
-    built_specs = registry_specs_module.build_default_analyzers(
-        semantic_layer_analyzer_key="semantic-demo",
-        registry_module=registry_stub,
-    )
+    built_specs = registry_specs_module.build_default_analyzers(registry_module=registry_stub)
     assert [built.key for built in built_specs] == ["direct", "demo"]
     assert built_specs[0].direct_context is True
     assert built_specs[1].context_kwargs == spec.context_kwargs
-    assert built_specs[1].composed_analyzer_keys == ("dataflow",)
-    assert built_specs[1].composed_issue_kind_names == ("dataflow.scan_cycle_stale_read",)
 
 
 def test_build_analysis_context_normalizes_config_and_shared_artifacts() -> None:
@@ -356,14 +344,12 @@ def test_build_analysis_context_normalizes_config_and_shared_artifacts() -> None
     context = build_analysis_context(
         base_picture,
         graph=SimpleNamespace(unavailable_libraries={"ControlLib"}),
-        selected_issue_kinds={"unused", "shadowing"},
         config=config,
         create_shared_artifacts=True,
     )
 
     assert context.config == {"mode": "workspace"}
     assert context.config is not config
-    assert context.selected_issue_kinds == frozenset({"unused", "shadowing"})
     assert context.shared_artifacts is not None
     assert context.shared_artifacts.counters.shared_artifact_holders_created == 1
     assert context.unavailable_libraries == {"ControlLib"}

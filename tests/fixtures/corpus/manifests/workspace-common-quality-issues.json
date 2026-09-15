@@ -4,11 +4,11 @@
   "mode": "workspace",
   "expectation": {
     "expected_finding_ids": [
-      "semantic.never-read-write",
-      "semantic.read-before-write",
-      "semantic.read-only-datatype-field",
-      "semantic.read-only-non-const",
-      "semantic.unused-variable"
+      "never_read",
+      "read_before_write",
+      "field_read_only",
+      "read_only_non_const",
+      "unused"
     ],
     "artifact_fragments": {
       "status.json": {
@@ -17,11 +17,11 @@
       },
       "summary.json": {
         "rule_counts": {
-          "semantic.never-read-write": 1,
-          "semantic.read-before-write": 2,
-          "semantic.read-only-datatype-field": 1,
-          "semantic.read-only-non-const": 1,
-          "semantic.unused-variable": 1
+          "never_read": 1,
+          "read_before_write": 2,
+          "field_read_only": 1,
+          "read_only_non_const": 1,
+          "unused": 1
         }
       }
     },

@@ -503,7 +503,7 @@
             color: #58787e;
         }
 
-        .planner-section-note {
+        .analyze-section-note {
             margin: 0 0 1 0;
             color: #58787e;
         }

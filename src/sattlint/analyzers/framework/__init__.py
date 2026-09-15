@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Collection, Mapping, Set
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from time import perf_counter
 from typing import Any, Literal, Protocol
@@ -32,7 +32,6 @@ __all__ = [
     "build_analysis_context",
     "empty_issues",
     "format_report_header",
-    "register_issue_metadata_materializer",
 ]
 
 
@@ -107,18 +106,6 @@ class AnalyzerLifecycleMixin:
         status_update_fn(text)
 
 
-def _identity_issue_metadata(issue: Issue) -> Issue:
-    return issue
-
-
-_issue_metadata_materializer: Callable[[Issue], Issue] = _identity_issue_metadata
-
-
-def register_issue_metadata_materializer(materializer: Callable[[Issue], Issue]) -> None:
-    global _issue_metadata_materializer
-    _issue_metadata_materializer = materializer
-
-
 class Report(Protocol):
     issues: Findings[Any]
 
@@ -150,10 +137,9 @@ class SimpleReport:
         lines.append(f"Issues: {len(self.issues)}")
         lines.append("")
         lines.append("Findings:")
-        materialized_issues: list[Issue] = [_issue_metadata_materializer(issue) for issue in self.issues]
 
         for issue in sorted(
-            materialized_issues,
+            self.issues,
             key=lambda item: (
                 item.kind,
                 tuple(item.module_path or ()),
@@ -161,11 +147,7 @@ class SimpleReport:
             ),
         ):
             location = ".".join(issue.module_path or [self.name])
-            metadata: list[str] = []
-            if issue.rule_id:
-                metadata.append(issue.rule_id)
-            metadata_text = f" [{' | '.join(metadata)}]" if metadata else ""
-            lines.append(f"  - [{location}] {issue.message}{metadata_text}")
+            lines.append(f"  - [{location}] {issue.message}")
             if issue.explanation:
                 lines.append(f"      Why it matters: {issue.explanation}")
             if issue.suggestion:
@@ -179,7 +161,6 @@ class AnalysisContext:
     graph: Any | None = None
     debug: bool = False
     target_is_library: bool = False
-    selected_issue_kinds: Set[str] | None = None
     config: dict[str, Any] | None = None
     shared_artifacts: AnalysisSharedArtifacts | None = None
     variables_collector_class: type[Any] | None = None
@@ -196,7 +177,6 @@ def build_analysis_context(
     graph: Any | None = None,
     debug: bool = False,
     target_is_library: bool = False,
-    selected_issue_kinds: Collection[str] | None = None,
     config: Mapping[str, Any] | None = None,
     shared_artifacts: AnalysisSharedArtifacts | None = None,
     create_shared_artifacts: bool = False,
@@ -225,7 +205,6 @@ def build_analysis_context(
         graph=graph,
         debug=debug,
         target_is_library=target_is_library,
-        selected_issue_kinds=(None if selected_issue_kinds is None else frozenset(selected_issue_kinds)),
         config={} if config is None else dict(config),
         shared_artifacts=resolved_shared_artifacts,
         variables_collector_class=variables_collector_class,
@@ -244,17 +223,9 @@ class AnalyzerSpec:
     scope: AnalyzerScope = "per-target"
     context_kwargs: tuple[str, ...] = ()
     direct_context: bool = False
-    semantic_mapping_kind: str | None = None
-    semantic_rule_source: str | None = None
-    composed_analyzer_keys: tuple[str, ...] = ()
-    composed_issue_kind_names: tuple[str, ...] = ()
     # Phase G: optional discoverability label for the shared artifact this analyzer writes
     # (e.g. "my-analyzer-artifacts"), set via the public `register_analyzer` API.
     contributes: str | None = None
-
-    @property
-    def supports_selected_issue_kinds(self) -> bool:
-        return "selected_issue_kinds" in self.context_kwargs
 
 
 @dataclass(frozen=True)

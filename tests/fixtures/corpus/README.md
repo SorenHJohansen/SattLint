@@ -90,7 +90,7 @@ CI path:
 
 Current workspace manifest expectations:
 
-- `workspace-common-quality-issues` asserts `semantic.read-before-write`, `semantic.unused-variable`, and the matching `summary.json` rule counts.
+- `workspace-common-quality-issues` asserts `read_before_write`, `unused`, and the matching `summary.json` rule counts.
 
 Current analyzer manifest expectations:
 

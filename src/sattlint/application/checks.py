@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import io
 import os
-from collections.abc import Callable, Iterator, Set
+from collections.abc import Callable, Iterator
 from contextlib import redirect_stdout
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -24,12 +24,10 @@ from ..analyzers import catalog as analysis_catalog_module
 from ..analyzers import dispatch as analysis_dispatch_module
 from ..analyzers.framework import (
     AnalysisSharedArtifacts,
-    Issue,
     SimpleReport,
     build_analysis_context,
 )
 from ..analyzers.shared.instance_paths import rewrite_typedef_paths
-from ..analyzers.variables import IssueKind
 from ..cache import AnalysisReportCache, compute_analysis_report_cache_key, get_cache_dir
 from ..config.types import ConfigDict
 from ..core import profiling as profiling_module
@@ -38,7 +36,6 @@ from ..core.terminal import flush_stdout
 from ..models.project_graph import ProjectGraph
 from ..project import cache as report_cache_module
 from ..reporting.target_report import normalize_report_target_name
-from ..reporting.variables_report import VariablesReport
 from ..runs import (
     DEFAULT_RUN_HISTORY_LIMIT,
     RunAnalyzerRecord,
@@ -53,7 +50,6 @@ from . import project as project_application
 from .findings import AnalysisFinding, extract_report_findings
 
 LoadedProject = project_application.LoadedProject
-LIBRARY_SUPPRESSED_ANALYZER_KEYS = frozenset({"picture-display-paths"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,7 +63,6 @@ class ChecksAnalyzerResult:
     findings: tuple[AnalysisFinding, ...] = ()
     duration_ms: float | None = None
     phase_timings_ms: tuple[dict[str, object], ...] = ()
-    selected_issue_kinds: tuple[str, ...] | None = None
     skip_reason: str | None = None
 
 
@@ -88,39 +83,7 @@ class ChecksRunResult:
     output_lines: tuple[str, ...]
     targets: tuple[ChecksTargetResult, ...] = ()
     selected_analyzers: tuple[str, ...] = ()
-    selected_issue_kinds: tuple[str, ...] | None = None
     cancelled: bool = False
-
-
-def _normalized_issue_kind_value(raw_kind: object) -> str | None:
-    if isinstance(raw_kind, IssueKind):
-        return raw_kind.value
-    value = getattr(raw_kind, "value", raw_kind)
-    text = str(value).strip() if value is not None else ""
-    return text or None
-
-
-def normalize_selected_issue_kind_values(selected_issue_kinds: Set[str] | None) -> frozenset[str] | None:
-    if selected_issue_kinds is None:
-        return None
-    normalized = {
-        issue_kind
-        for raw_kind in selected_issue_kinds
-        if (issue_kind := _normalized_issue_kind_value(raw_kind)) is not None
-    }
-    return frozenset(normalized)
-
-
-def format_selected_issue_kind_values(selected_issue_kinds: frozenset[str] | None) -> str | None:
-    if not selected_issue_kinds:
-        return None
-    return ", ".join(sorted(selected_issue_kinds))
-
-
-def selected_issue_kind_tuple(selected_issue_kinds: frozenset[str] | None) -> tuple[str, ...] | None:
-    if not selected_issue_kinds:
-        return None
-    return tuple(sorted(selected_issue_kinds))
 
 
 def _issue_count_for_report(report: object) -> int | None:
@@ -170,7 +133,6 @@ def _run_analyzer_record(result: ChecksAnalyzerResult) -> RunAnalyzerRecord:
         findings=result.findings,
         duration_ms=result.duration_ms,
         phase_timings_ms=result.phase_timings_ms,
-        selected_issue_kinds=result.selected_issue_kinds,
         skip_reason=result.skip_reason,
     )
 
@@ -193,7 +155,6 @@ def build_run_record(result: ChecksRunResult, cfg: ConfigDict, *, started_at: st
         finished_at=_utc_now_iso(),
         project_tag=_project_tag(cfg),
         selected_analyzers=result.selected_analyzers,
-        selected_issue_kinds=result.selected_issue_kinds,
         targets=tuple(_run_target_record(target) for target in result.targets),
         output_lines=result.output_lines,
     )
@@ -206,28 +167,6 @@ def _persist_run_result(result: ChecksRunResult, cfg: ConfigDict, *, started_at:
     record = build_run_record(result, cfg, started_at=started_at)
     save_run(record, runs_dir=runs_dir)
     prune_runs(runs_dir, limit=_run_history_limit(cfg))
-
-
-def _filter_report_for_selected_issue_kinds(
-    report: object,
-    selected_issue_kinds: frozenset[str] | None,
-) -> object:
-    if not selected_issue_kinds or isinstance(report, VariablesReport):
-        return report
-
-    issues = getattr(report, "issues", None)
-    if not isinstance(issues, list):
-        return report
-
-    typed_issues = cast(list[object], issues)
-    filtered_issues: list[Issue] = [
-        issue
-        for issue in typed_issues
-        if isinstance(issue, Issue)
-        and _normalized_issue_kind_value(getattr(issue, "kind", None)) in selected_issue_kinds
-    ]
-    report_name = str(getattr(report, "name", getattr(report, "basepicture_name", "Analysis")) or "Analysis")
-    return SimpleReport(name=report_name, issues=filtered_issues)
 
 
 def _get_enabled_analyzers() -> list[Any]:
@@ -260,7 +199,6 @@ def _iter_loaded_projects(cfg: ConfigDict) -> Iterator[LoadedProject]:
 def _run_per_run_analyzer(
     spec: Any,
     cfg: ConfigDict,
-    selected_issue_kinds: frozenset[str] | None,
 ) -> ChecksAnalyzerResult | None:
     started_at = perf_counter()
     try:
@@ -280,7 +218,6 @@ def _run_per_run_analyzer(
             issue_count=0,
             duration_ms=round((perf_counter() - started_at) * 1000, 3),
         )
-    report = _filter_report_for_selected_issue_kinds(report, selected_issue_kinds)
     typed_report = cast(SimpleReport, report)
     summary_text = typed_report.summary()
     findings = extract_report_findings(typed_report, default_name=str(getattr(spec, "name", spec.key)))
@@ -323,7 +260,6 @@ def _run_self_check_preflight(
 def collect_run_checks_result(  # noqa: PLR0915
     cfg: ConfigDict,
     selected_keys: list[str] | None,
-    selected_issue_kinds: Set[str] | None = None,
     *,
     use_cache: bool = True,
     persist_run: bool = False,
@@ -352,16 +288,13 @@ def collect_run_checks_result(  # noqa: PLR0915
             get_enabled_analyzers_fn=get_enabled_analyzers_fn,
         )
     )
-    normalized_selected_issue_kinds = normalize_selected_issue_kind_values(selected_issue_kinds)
     selected_analyzer_keys = tuple(spec.key for spec in analyzers)
-    selected_issue_kind_tuple_result = selected_issue_kind_tuple(normalized_selected_issue_kinds)
 
     if not analyzers:
         emit_line("❌ No matching checks found")
         return ChecksRunResult(
             output_lines=tuple(output_lines),
             selected_analyzers=selected_analyzer_keys,
-            selected_issue_kinds=selected_issue_kind_tuple_result,
         )
 
     per_target_analyzers = [spec for spec in analyzers if getattr(spec, "scope", "per-target") == "per-target"]
@@ -382,7 +315,6 @@ def collect_run_checks_result(  # noqa: PLR0915
         return ChecksRunResult(
             output_lines=tuple(output_lines),
             selected_analyzers=selected_analyzer_keys,
-            selected_issue_kinds=selected_issue_kind_tuple_result,
         )
 
     emit_line("\n--- Running checks ---")
@@ -414,35 +346,14 @@ def collect_run_checks_result(  # noqa: PLR0915
                 graph=graph,
                 debug=debug_enabled(cfg),
                 target_is_library=is_library,
-                selected_issue_kinds=normalized_selected_issue_kinds,
                 config=cfg,
                 create_shared_artifacts=True,
             )
             emit_line(f"\n=== Target: {target_name} ===")
             flush_stdout()
             for spec in per_target_analyzers:
-                if is_library and spec.key in LIBRARY_SUPPRESSED_ANALYZER_KEYS:
-                    target_analyzers.append(
-                        ChecksAnalyzerResult(
-                            key=spec.key,
-                            name=str(spec.name),
-                            status="skipped",
-                            skip_reason="suppressed for library targets",
-                        )
-                    )
-                    continue
                 emit_line(f"\n=== {spec.name} ({spec.key}) ===")
                 flush_stdout()
-                analyzer_selected_issue_kinds = (
-                    selected_issue_kind_tuple_result
-                    if spec.key == "variables" or getattr(spec, "supports_selected_issue_kinds", False)
-                    else None
-                )
-                if spec.key == "variables" or getattr(spec, "supports_selected_issue_kinds", False):
-                    selected_issue_kind_values = format_selected_issue_kind_values(normalized_selected_issue_kinds)
-                    if selected_issue_kind_values is not None:
-                        emit_line(f"Running {spec.key} analyzer for issue kinds: {selected_issue_kind_values}")
-                        flush_stdout()
                 analyzer_started_at = perf_counter()
                 try:
                     report = output_module.run_with_live_status(
@@ -467,7 +378,6 @@ def collect_run_checks_result(  # noqa: PLR0915
                             name=str(spec.name),
                             status="cancelled",
                             duration_ms=analyzer_timings_ms[spec.key],
-                            selected_issue_kinds=analyzer_selected_issue_kinds,
                         )
                     )
                     profiler.emit(
@@ -493,7 +403,6 @@ def collect_run_checks_result(  # noqa: PLR0915
                         output_lines=tuple(output_lines),
                         targets=tuple(target_results),
                         selected_analyzers=selected_analyzer_keys,
-                        selected_issue_kinds=selected_issue_kind_tuple_result,
                         cancelled=True,
                     )
                 analyzer_timings_ms[spec.key] = round((perf_counter() - analyzer_started_at) * 1000, 3)
@@ -501,7 +410,6 @@ def collect_run_checks_result(  # noqa: PLR0915
                 phase_timings_ms = profiling_module.normalize_phase_timings_ms(getattr(report, "phase_timings", None))
                 if phase_timings_ms:
                     analyzer_phase_timings_ms[spec.key] = phase_timings_ms
-                report = _filter_report_for_selected_issue_kinds(report, normalized_selected_issue_kinds)
                 report = normalize_report_target_name(report, target_name)
                 summary_text = report.summary()
                 findings = extract_report_findings(report, default_name=target_name)
@@ -517,7 +425,6 @@ def collect_run_checks_result(  # noqa: PLR0915
                         findings=findings,
                         duration_ms=analyzer_timings_ms[spec.key],
                         phase_timings_ms=tuple(analyzer_phase_timings_ms.get(spec.key, [])),
-                        selected_issue_kinds=analyzer_selected_issue_kinds,
                     )
                 )
             analyzer_bottleneck = profiling_module.bottleneck_from_named_timings(analyzer_timings_ms, kind="analyzer")
@@ -576,7 +483,7 @@ def collect_run_checks_result(  # noqa: PLR0915
                 )
             )
         for per_run_spec in per_run_analyzers:
-            per_run_result = _run_per_run_analyzer(per_run_spec, cfg, normalized_selected_issue_kinds)
+            per_run_result = _run_per_run_analyzer(per_run_spec, cfg)
             if per_run_result is None:
                 continue
             emit_line(f"\n=== {per_run_result.name} ({per_run_result.key}) ===")
@@ -594,7 +501,6 @@ def collect_run_checks_result(  # noqa: PLR0915
             output_lines=tuple(output_lines),
             targets=tuple(target_results),
             selected_analyzers=selected_analyzer_keys,
-            selected_issue_kinds=selected_issue_kind_tuple_result,
             cancelled=True,
         )
 
@@ -602,7 +508,6 @@ def collect_run_checks_result(  # noqa: PLR0915
         output_lines=tuple(output_lines),
         targets=tuple(target_results),
         selected_analyzers=selected_analyzer_keys,
-        selected_issue_kinds=selected_issue_kind_tuple_result,
     )
     if persist_run:
         _persist_run_result(result, cfg, started_at=run_started_at)
@@ -612,7 +517,6 @@ def collect_run_checks_result(  # noqa: PLR0915
 def run_checks_result(
     cfg: ConfigDict,
     selected_keys: list[str] | None,
-    selected_issue_kinds: Set[str] | None = None,
     *,
     use_cache: bool = True,
     persist_run: bool = True,
@@ -624,7 +528,6 @@ def run_checks_result(
     result = collect_run_checks_result(
         cfg,
         selected_keys,
-        selected_issue_kinds,
         use_cache=use_cache,
         persist_run=persist_run,
         iter_loaded_projects_fn=iter_loaded_projects_fn,
@@ -640,7 +543,6 @@ def run_checks_result(
 def run_checks(
     cfg: ConfigDict,
     selected_keys: list[str] | None,
-    selected_issue_kinds: Set[str] | None = None,
     *,
     use_cache: bool = True,
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
@@ -652,7 +554,6 @@ def run_checks(
     result = run_checks_result(
         cfg,
         selected_keys,
-        selected_issue_kinds,
         use_cache=use_cache,
         persist_run=True,
         iter_loaded_projects_fn=iter_loaded_projects_fn,

@@ -72,12 +72,11 @@ flowchart LR
 ## Analyzer Workflow
 
 Analyzers live in `src/sattlint/analyzers/` and are described by `AnalyzerSpec`
-(key, name, description, a `run(context) -> Report` callable, `requires` deps, and
-semantic mapping metadata). The registry at `src/sattlint/analyzers/registry/__init__.py`
-is the single rule catalog; it builds the `AnalyzerCatalog` once, validates the
-dependency graph, and orders specs deterministically. The framework primitives
-(`AnalysisContext`, `AnalysisSharedArtifacts`, `AnalyzerSpec`, `Report`) live in
-`src/sattlint/analyzers/framework/`.
+(key, name, description, a `run(context) -> Report` callable, category, enabled,
+and scope). The registry at `src/sattlint/analyzers/registry/__init__.py`
+builds the `AnalyzerCatalog` once from the static spec templates. The framework
+primitives (`AnalysisContext`, `AnalysisSharedArtifacts`, `AnalyzerSpec`,
+`Report`) live in `src/sattlint/analyzers/framework/`.
 
 ### Mental model — select an analyzer, get its output
 
@@ -85,16 +84,15 @@ dependency graph, and orders specs deterministically. The framework primitives
 flowchart LR
     Select["You select an analyzer<br/>(CLI `--check KEY` or UI checkbox)"]
     Registry["Registry<br/>key -> AnalyzerSpec (catalog)"]
-    Ordered["Ordered batch<br/>(required analyzers first)"]
     Run["Run analyzer<br/>run(context) -> Report"]
     Output["Your output<br/>summary + findings"]
 
-    Select --> Registry --> Ordered --> Run --> Output
+    Select --> Registry --> Run --> Output
 ```
 
-Under the hood the "select and run" is two stages: **selection/dispatch**
-(resolve the selected keys into an ordered batch) and **per-target execution**
-(load each target, run the batch, fold results into one `ChecksRunResult`).
+Selection is exact: the analyzers that run are exactly the ones selected — no
+analyzer is added, dropped, reordered, or collapsed into another. Each analyzer
+is self-contained; it never depends on another analyzer having run first.
 
 ### Stage 1 — Selection and dispatch
 
@@ -105,14 +103,12 @@ Entry: `sattlint analyze` (CLI) or the Textual Analyze view. Both end up at
 flowchart TB
     Keys["Selected keys<br/>(or the default CLI set, `DEFAULT_CLI_ANALYZER_KEYS`)"]
     Canon["canonicalize_analyzer_keys<br/>(legacy aliases, casefold)"]
-    Filter["get_cli_dispatch_analyzers<br/>filter enabled batch analyzers"]
-    Req["_with_required_analyzers<br/>pull in requires= deps (topological)"]
-    Order["_order_analyzers_for_batch<br/>(semantic layer last)"]
-    Split{"checks.py splits the batch"}
-    Batch["batch_analyzers<br/>(run once per target)"]
-    Whole["whole_run_analyzers<br/>(icf — runs once per whole run)"]
+    Filter["get_cli_dispatch_analyzers<br/>resolve_selected_analyzers (exact filter)"]
+    Split{"checks.py splits by scope"}
+    Batch["per-target analyzers<br/>(run once per target)"]
+    Whole["per-run analyzers<br/>(icf — runs once per whole run)"]
 
-    Keys --> Canon --> Filter --> Req --> Order --> Split
+    Keys --> Canon --> Filter --> Split
     Split --> Batch
     Split --> Whole
 ```
@@ -120,68 +116,63 @@ flowchart TB
 ### Stage 2 — Per-target execution pipeline
 
 For every loaded target, `collect_run_checks_result` builds one `AnalysisContext`
-(shared across all analyzers of that target) and then runs the batch in order.
-Each analyzer's `Report` is post-processed before it becomes a result.
+(shared across all analyzers of that target) and then runs each per-target
+analyzer. Each analyzer's `Report` is post-processed before it becomes a result.
 
 ```mermaid
 flowchart TB
     Load["iter_loaded_projects(cfg)<br/>(target_name, BasePicture, ProjectGraph)"]
     Ctx["build_analysis_context<br/>+ AnalysisSharedArtifacts"]
-    Loop{"for each batch analyzer"}
-    Skip["record 'skipped'<br/>(library-suppressed only)"]
+    Loop{"for each per-target analyzer"}
     Cache["run_with_analysis_report_cache<br/>(disk cache hit -> reuse Report)"]
-    Run["run_registry_analyzer<br/>validate requires, spec.run(context)"]
-    Post["Post-process<br/>rewrite typedef paths -> memoize to<br/>derived_reports -> apply rule profile<br/>-> filter issue kinds -> normalize target<br/>name -> extract findings"]
+    Run["run_registry_analyzer<br/>spec.run(context)"]
+    Post["Post-process<br/>rewrite typedef paths -> normalize target<br/>name -> extract findings"]
     Res["ChecksAnalyzerResult"]
     Target["ChecksTargetResult (one per target)"]
     RunResult["ChecksRunResult<br/>output_lines + findings"]
 
     Load --> Ctx --> Loop
-    Loop -->|"library target & suppressed"| Skip
     Loop --> Cache --> Run --> Post --> Res --> Loop
     Loop -->|"all analyzers done"| Target --> RunResult
     RunResult -->|"persisted"| RunRecord["RunRecord (runs history)"]
 ```
 
-### Shared artifacts — why `requires=("variables",)` does not re-run
+### Shared artifacts — opportunistic, not a dependency contract
 
-The `variables` analyzer runs once per target and fills `AnalysisSharedArtifacts`
+The `variables` analyzer fills `AnalysisSharedArtifacts`
 (`src/sattlint/analyzers/framework/_shared_analysis.py`): the **foundation**
 (type graph, indices, root env, any-variable index) and the **collected views**
-(access graph, usage tracker, alias links, effect flow). Downstream analyzers such
-as `mms-interface` and `sfc` declare `requires=("variables",)` and consume those
-memoized artifacts instead of re-running the instance traversal. Every analyzer
-also memoizes its `Report` into `derived_reports`, so a later consumer can reuse it.
+(access graph, usage tracker, alias links, effect flow). Downstream analyzers
+such as `mms-interface` and `sfc` may reuse those memoized artifacts when they
+happen to run together; otherwise they build what they need themselves. The
+cache is opportunistic — there is no `requires` validation and no analyzer
+reads another analyzer's `Report`.
 
 ```mermaid
 flowchart LR
-    V["variables<br/>(runs first)"]
+    V["variables"]
     F["foundation<br/>type graph, indices,<br/>root env, any-var index"]
     CV["collected views<br/>access graph, usage tracker,<br/>alias links, effect flow"]
-    DR["derived_reports<br/>memoized per-analyzer Report"]
-    MMS["mms-interface<br/>requires=(variables,)"]
-    SFC["sfc<br/>requires=(variables,)"]
+    MMS["mms-interface<br/>(may reuse)"]
+    SFC["sfc<br/>(may reuse)"]
     ICF["icf<br/>(whole-run, config-based)"]
 
     V --> F
     V --> CV
-    V --> DR
     F --> MMS
     CV --> MMS
+    F --> SFC
     CV --> SFC
-    DR --> MMS
-    DR --> SFC
+    ICF
 ```
 
 Two special cases worth knowing before changing anything:
 
-- **`sattline-semantics`** is an aggregate layer (not CLI-selectable). It runs every
-  *semantic contributor* analyzer (those with `semantic_mapping_kind` / `semantic_rule_source`
-  set), maps their issues onto semantic rules, dedupes, and folds them into one
-  `SattLineSemanticsReport` — the surface the LSP server uses.
-  See `src/sattlint/analyzers/sattline_semantics.py`.
 - **`icf`** is a whole-run analyzer: it does not run per target. `checks.py` pulls it
   out of the batch and runs it once over the whole config after all targets are done.
+- **`datatype-fields`** is an opt-in split of the `variables` analyzer that always
+  scans the reverse consumers of the analyzed target, so it is more expensive than
+  a plain `variables` run and must be chosen explicitly.
 
 ## Critical Boundaries
 

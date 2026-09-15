@@ -33,13 +33,11 @@ class AnalyzeCommandResult:
     output_lines: tuple[str, ...]
     cancelled: bool = False
     selected_keys: tuple[str, ...] | None = None
-    selected_issue_kinds: tuple[str, ...] | None = None
     selected_analyzers: tuple[str, ...] = ()
     targets: tuple[object, ...] = ()
 
 
 def _serialize_analyze_analyzer_result(result: object) -> dict[str, Any]:
-    selected_issue_kinds = getattr(result, "selected_issue_kinds", None)
     findings = cast(tuple[object, ...], getattr(result, "findings", ()))
     return {
         "key": getattr(result, "key", None),
@@ -51,9 +49,6 @@ def _serialize_analyze_analyzer_result(result: object) -> dict[str, Any]:
         "findings": [finding.to_dict() for finding in findings if isinstance(finding, AnalysisFinding)],
         "duration_ms": getattr(result, "duration_ms", None),
         "phase_timings_ms": list(getattr(result, "phase_timings_ms", ())),
-        "selected_issue_kinds": None
-        if selected_issue_kinds is None
-        else list(cast(tuple[str, ...], selected_issue_kinds)),
         "skip_reason": getattr(result, "skip_reason", None),
     }
 
@@ -81,7 +76,6 @@ def _analyze_command_json_payload(result: AnalyzeCommandResult) -> dict[str, Any
     return {
         "cancelled": result.cancelled,
         "selected_checks": None if result.selected_keys is None else list(result.selected_keys),
-        "selected_issue_kinds": None if result.selected_issue_kinds is None else list(result.selected_issue_kinds),
         "selected_analyzers": list(result.selected_analyzers),
         "targets": [_serialize_analyze_target_result(target) for target in result.targets],
     }
@@ -127,7 +121,6 @@ def run_analyze_command(
     cfg: ConfigDict,
     *,
     selected_keys: list[str] | None,
-    selected_issue_kinds: frozenset[str] | None,
     output_format: str = "text",
     collect_analyze_result_fn: Callable[..., Any],
     emit_output_fn: Callable[[str], None] = emit_output,
@@ -136,13 +129,11 @@ def run_analyze_command(
     collected = collect_analyze_result_fn(
         cfg,
         selected_keys=selected_keys,
-        selected_issue_kinds=selected_issue_kinds,
     )
     result = AnalyzeCommandResult(
         output_lines=tuple(getattr(collected, "output_lines", ())),
         cancelled=bool(getattr(collected, "cancelled", False)),
         selected_keys=None if selected_keys is None else tuple(selected_keys),
-        selected_issue_kinds=None if selected_issue_kinds is None else tuple(sorted(selected_issue_kinds)),
         selected_analyzers=tuple(getattr(collected, "selected_analyzers", ())),
         targets=tuple(getattr(collected, "targets", ())),
     )

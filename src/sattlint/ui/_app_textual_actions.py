@@ -28,7 +28,7 @@ from ..project.io import (
 )
 from ..project.types import ProjectDict
 from ._app_textual_shared import (
-    _ANALYZE_PLANNER_LIST_ID_PREFIX,
+    _ANALYZER_LIST_ID_PREFIX,
     _TEXTUAL_BUTTON,
     _TEXTUAL_HORIZONTAL,
     _TEXTUAL_LIST_ITEM,
@@ -765,7 +765,7 @@ def _refresh_view(self: Any) -> None:  # noqa: PLR0915
     no_project = not self._project_loaded()
 
     if analyze_view:
-        self._refresh_analyze_planner()
+        self._refresh_analyze_list()
 
     if setup_view:
         if no_project:
@@ -959,7 +959,7 @@ def _persist_project(self: Any) -> None:
 def _launch_active_view(self: Any) -> None:
     view = self._view_state(self._active_view)
     if view.action_id == "action-analyze":
-        self._write_output("The analyze planner is available directly in the Analyze view.")
+        self._write_output("The analyzer list is available directly in the Analyze view.")
         return
     if view.action_id == "action-setup":
         self._write_output("Setup actions are available directly in the Setup view.")
@@ -995,14 +995,10 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
     settings_view = self._active_view == "settings"
     results_view = self._active_view == "results"
     interaction_locked = self._interaction_locked()
-    analyze_plan = self._analyze_plan()
+    selected_keys = self._selected_analyzer_keys()
 
     analyze_run_selected_button.disabled = (
-        toolbar_disabled
-        or not analyze_view
-        or interaction_locked
-        or not self._setup_has_targets()
-        or not analyze_plan.is_runnable
+        toolbar_disabled or not analyze_view or interaction_locked or not self._setup_has_targets() or not selected_keys
     )
     analyze_generate_change_review_button.disabled = (
         toolbar_disabled or not analyze_view or interaction_locked or not self._setup_has_targets()
@@ -1025,7 +1021,7 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
         pass
     for selection_list in self.query(_TEXTUAL_SELECTION_LIST):
         widget_id = str(getattr(selection_list, "id", "") or "")
-        if widget_id.startswith(_ANALYZE_PLANNER_LIST_ID_PREFIX):
+        if widget_id.startswith(_ANALYZER_LIST_ID_PREFIX):
             selection_list.disabled = toolbar_disabled or not analyze_view or interaction_locked
     focused_widget = getattr(self, "focused", None)
     if (
@@ -1098,10 +1094,10 @@ def on_button_pressed(self: Any, event: Any) -> None:
         "setup-target-remove": lambda: self._remove_selected_setup_target(self._selected_configured_target),
         "setup-target-browse": self._open_file_browser,
         "view-primary-action": self._launch_active_view,
-        "analyze-run-selected": self._run_selected_analysis_plan,
+        "analyze-run-selected": self._run_selected_analyzers,
         "analyze-generate-change-review": self._run_generate_change_review,
         "analyze-cancel-running": self.action_cancel_running_analysis,
-        "analyze-clear-selection": self._clear_selected_analysis_plan,
+        "analyze-clear-selection": self._clear_selected_analyzers,
         "analyze-clear-output": self._clear_session_output,
         "results-expand-all": self._expand_all_results,
         "results-collapse-all": self._collapse_all_results,

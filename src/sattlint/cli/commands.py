@@ -72,7 +72,6 @@ def run_analyze_command(
     cfg: ConfigDict,
     *,
     selected_keys: list[str] | None,
-    selected_issue_kinds: frozenset[str] | None = None,
     use_cache: bool,
     refresh_caches: bool = False,
     output_format: str = "text",
@@ -84,7 +83,6 @@ def run_analyze_command(
         local_cfg: ConfigDict,
         *,
         selected_keys: list[str] | None,
-        selected_issue_kinds: frozenset[str] | None = None,
     ) -> Any:
         def _iter_nested_projects(nested_cfg: ConfigDict) -> Iterator[LoadedProject]:
             return project_application.iter_loaded_projects(nested_cfg, use_cache=use_cache)
@@ -92,7 +90,6 @@ def run_analyze_command(
         return app_analysis_checks_module.collect_run_checks_result(
             local_cfg,
             selected_keys,
-            selected_issue_kinds=selected_issue_kinds,
             use_cache=use_cache,
             persist_run=True,
             iter_loaded_projects_fn=_iter_nested_projects,
@@ -107,7 +104,6 @@ def run_analyze_command(
     return _command_implementations.run_analyze_command(
         cfg,
         selected_keys=selected_keys,
-        selected_issue_kinds=selected_issue_kinds,
         output_format=output_format,
         collect_analyze_result_fn=_collect_result,
         exit_success=EXIT_SUCCESS,

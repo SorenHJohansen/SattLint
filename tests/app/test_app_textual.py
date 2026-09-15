@@ -591,7 +591,7 @@ def test_textual_pause_requests_are_noop() -> None:
     assert seen_kinds == []
 
 
-def test_textual_slash_binding_filters_analyze_planner() -> None:
+def test_textual_slash_binding_filters_analyze_list() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
@@ -627,7 +627,7 @@ def test_textual_slash_binding_filters_analyze_planner() -> None:
 
             assert app_instance.query_one("#interaction-host").has_class("active") is False
             assert app_instance._analyze_filter_text == "comment"
-            assert app_instance._planner_entry_ids() == ("comment-code",)
+            assert app_instance._analyzer_entry_ids() == ("comment-code",)
             assert 'Filter: "comment"' not in str(app_instance.query_one("#view-note").renderable)
 
     asyncio.run(_run())
@@ -913,7 +913,7 @@ def test_textual_shell_defaults_to_truecolor_console() -> None:
     assert app_instance.console.color_system == "truecolor"
 
 
-def test_textual_analyze_view_shows_planner_controls() -> None:
+def test_textual_analyze_view_shows_analyzer_controls() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
@@ -951,16 +951,16 @@ def test_textual_analyze_view_shows_planner_controls() -> None:
             assert getattr(app_instance.query_one("#analyze-run-selected"), "disabled", False) is True
             assert getattr(app_instance.query_one("#analyze-clear-selection"), "disabled", False) is True
             assert str(app_instance.query_one("#view-note").renderable) == ""
-            assert len(list(app_instance.query("#analyze-planner-section-top-level"))) == 0
-            assert len(list(app_instance.query("#analyze-planner-section-variable-suite"))) == 0
+            assert len(list(app_instance.query("#analyze-section-top-level"))) == 0
+            assert len(list(app_instance.query("#analyze-section-variable-suite"))) == 0
             assert str(app_instance.query_one("#output-title").renderable) == "Session output"
 
-            assert len(list(app_instance.query("#analyze-planner-detail"))) == 0
+            assert len(list(app_instance.query("#analyze-detail"))) == 0
 
     asyncio.run(_run())
 
 
-def test_textual_analyze_view_keeps_planner_panes_visible_on_small_terminal() -> None:
+def test_textual_analyze_view_keeps_analyzer_panes_visible_on_small_terminal() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
@@ -1001,7 +1001,7 @@ def test_textual_analyze_selection_lists_expand_instead_of_scrolling_individuall
             await pilot.pause()
 
             analyze_left = app_instance.query_one("#analyze-browser-left")
-            analyzers_list = app_instance.query_one("#analyze-planner-section-analyzers")
+            analyzers_list = app_instance.query_one("#analyze-section-analyzers")
 
             assert analyze_left.virtual_size.height > analyze_left.size.height
             assert analyzers_list.size.height >= analyzers_list.virtual_size.height
@@ -1048,7 +1048,7 @@ def test_textual_analyze_selection_styles_hide_unselected_marker_and_highlight_c
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
-            selection_list = app_instance.query_one("#analyze-planner-section-analyzers")
+            selection_list = app_instance.query_one("#analyze-section-analyzers")
             option_style = selection_list.get_component_rich_style("option-list--option")
             option_highlighted_style = selection_list.get_component_rich_style("option-list--option-highlighted")
             unselected_button_style = selection_list.get_component_rich_style("selection-list--button")
@@ -1085,7 +1085,7 @@ def test_textual_analyze_selection_styles_hide_unselected_marker_and_highlight_c
     asyncio.run(_run())
 
 
-def test_textual_analyze_planner_renders_grouped_sections_and_detail() -> None:
+def test_textual_analyze_renders_single_section_and_detail() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
@@ -1105,13 +1105,13 @@ def test_textual_analyze_planner_renders_grouped_sections_and_detail() -> None:
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
-            assert len(list(app_instance.query("#analyze-planner-section-top-level"))) == 0
-            assert len(list(app_instance.query("#analyze-planner-section-variable-suite"))) == 0
-            assert len(list(app_instance.query("#analyze-planner-section-investigation"))) == 0
-            assert app_instance.query_one("#analyze-planner-section-analyzers") is not None
-            assert len(list(app_instance.query("#analyze-planner-section-catalog-issue-checks"))) == 0
-            assert len(list(app_instance.query("#analyze-planner-section-catalog-analyzers"))) == 0
-            assert "timing" in app_instance._planner_entry_ids()
+            assert len(list(app_instance.query("#analyze-section-top-level"))) == 0
+            assert len(list(app_instance.query("#analyze-section-variable-suite"))) == 0
+            assert len(list(app_instance.query("#analyze-section-investigation"))) == 0
+            assert app_instance.query_one("#analyze-section-analyzers") is not None
+            assert len(list(app_instance.query("#analyze-section-catalog-issue-checks"))) == 0
+            assert len(list(app_instance.query("#analyze-section-catalog-analyzers"))) == 0
+            assert "timing" in app_instance._analyzer_entry_ids()
 
             app_instance._analyze_focused_entry_id = "timing"
             app_instance._write_focused_entry_to_output()
@@ -1123,7 +1123,7 @@ def test_textual_analyze_planner_renders_grouped_sections_and_detail() -> None:
     asyncio.run(_run())
 
 
-def test_textual_analyze_planner_selection_updates_summary_and_enables_run() -> None:
+def test_textual_analyze_selection_updates_summary_and_enables_run() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
@@ -1149,7 +1149,7 @@ def test_textual_analyze_planner_selection_updates_summary_and_enables_run() -> 
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
-            analyzers_list = app_instance.query_one("#analyze-planner-section-analyzers")
+            analyzers_list = app_instance.query_one("#analyze-section-analyzers")
 
             analyzers_list.select("timing")
             analyzers_list.select("state-inference")
@@ -1206,7 +1206,7 @@ def test_textual_analyze_run_selected_executes_planned_steps_in_catalog_order(
     )
     monkeypatch.setattr(app_instance, "_emit_output_from_thread", lambda _text: None)
 
-    app_instance._run_selected_analysis_plan()
+    app_instance._run_selected_analyzers()
 
     assert launched == [("Run selected analyzers", "action-analyze")]
     assert calls == [("checks", ("alpha-analyzer", "beta-analyzer"))]
@@ -1254,7 +1254,7 @@ def test_textual_analyze_run_selected_surfaces_variable_issue_output_from_real_a
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
-            analyzers_list = app_instance.query_one("#analyze-planner-section-analyzers")
+            analyzers_list = app_instance.query_one("#analyze-section-analyzers")
             analyzers_list.select("state-inference")
             app_instance._sync_analyze_selection_from_selection_list(analyzers_list)
             app_instance._write_focused_entry_to_output()
@@ -1302,7 +1302,7 @@ def test_textual_analyze_running_state_calls_out_output_location(monkeypatch: py
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
-            analyzers_list = app_instance.query_one("#analyze-planner-section-analyzers")
+            analyzers_list = app_instance.query_one("#analyze-section-analyzers")
             analyzers_list.select("comment-code")
             app_instance._sync_analyze_selection_from_selection_list(analyzers_list)
             app_instance._busy = True
@@ -1393,7 +1393,7 @@ def test_textual_analyze_buttons_unlock_after_finish_action() -> None:
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
-            analyzers_list = app_instance.query_one("#analyze-planner-section-analyzers")
+            analyzers_list = app_instance.query_one("#analyze-section-analyzers")
             analyzers_list.select("comment-code")
             app_instance._sync_analyze_selection_from_selection_list(analyzers_list)
             app_instance._write_focused_entry_to_output()
@@ -1484,7 +1484,7 @@ def test_textual_analyze_run_selected_reports_missing_handlers(monkeypatch: pyte
         lambda text: lines.extend(text.splitlines()),
     )
 
-    app_instance._run_selected_analysis_plan()
+    app_instance._run_selected_analyzers()
 
     assert started == [("Run selected analyzers", "action-analyze")]
     assert any("The analyzer runner is unavailable" in line for line in lines)
@@ -1533,7 +1533,7 @@ def test_textual_analyze_note_text_running_state_avoids_stale_plan() -> None:
     assert "Selected analyses are running." in note
 
 
-def test_textual_execute_analyze_plan_dispatches_to_run_checks(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_textual_execute_analyzers_dispatches_to_run_checks(monkeypatch: pytest.MonkeyPatch) -> None:
     emitted: list[str] = []
     called: list[list[str] | None] = []
 
@@ -1544,11 +1544,11 @@ def test_textual_execute_analyze_plan_dispatches_to_run_checks(monkeypatch: pyte
             )
         }
     )
-    plan = SimpleNamespace(selected_analyzer_keys=("alpha-analyzer", "beta-analyzer"))
+    selected_keys = ("alpha-analyzer", "beta-analyzer")
 
     monkeypatch.setattr(app_instance, "_emit_output_from_thread", lambda text: emitted.append(text))
 
-    app_instance._execute_analyze_plan(plan)
+    app_instance._execute_analyzers(selected_keys)
 
     assert emitted == [
         "Running 2 selected analyzer(s).",
@@ -1717,7 +1717,7 @@ def test_textual_ctrl_g_cancel_binding_requests_stop_for_running_analysis() -> N
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
-            analyzers_list = app_instance.query_one("#analyze-planner-section-analyzers")
+            analyzers_list = app_instance.query_one("#analyze-section-analyzers")
             analyzers_list.select("comment-code")
             app_instance._sync_analyze_selection_from_selection_list(analyzers_list)
             app_instance._write_focused_entry_to_output()
@@ -1747,7 +1747,7 @@ def test_textual_ctrl_g_cancel_binding_requests_stop_for_running_analysis() -> N
     asyncio.run(_run())
 
 
-def test_textual_analyze_clear_selection_resets_planner_state() -> None:
+def test_textual_analyze_clear_selection_resets_analyze_state() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
@@ -1767,7 +1767,7 @@ def test_textual_analyze_clear_selection_resets_planner_state() -> None:
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
-            analyzers_list = app_instance.query_one("#analyze-planner-section-analyzers")
+            analyzers_list = app_instance.query_one("#analyze-section-analyzers")
             analyzers_list.select("comment-code")
             app_instance._sync_analyze_selection_from_selection_list(analyzers_list)
             app_instance._write_focused_entry_to_output()
@@ -1806,7 +1806,7 @@ def test_textual_analyze_clear_output_clears_session_log_only() -> None:
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
-            analyzers_list = app_instance.query_one("#analyze-planner-section-analyzers")
+            analyzers_list = app_instance.query_one("#analyze-section-analyzers")
             analyzers_list.select("comment-code")
             app_instance._sync_analyze_selection_from_selection_list(analyzers_list)
             app_instance._write_focused_entry_to_output()
@@ -1847,7 +1847,7 @@ def test_textual_analyze_clear_selection_also_clears_output() -> None:
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
-            analyzers_list = app_instance.query_one("#analyze-planner-section-analyzers")
+            analyzers_list = app_instance.query_one("#analyze-section-analyzers")
             analyzers_list.select("comment-code")
             app_instance._sync_analyze_selection_from_selection_list(analyzers_list)
             app_instance._write_focused_entry_to_output()
@@ -2230,7 +2230,6 @@ def test_textual_analysis_completion_switches_to_results_view(monkeypatch: pytes
                 output_lines=("=== Target: TargetA ===", "state inference summary"),
                 targets=(),
                 selected_analyzers=("state-inference",),
-                selected_issue_kinds=None,
             )
             app_instance._finish_analysis_run(result)
             await pilot.pause()
@@ -2935,12 +2934,12 @@ def test_textual_write_output_inserts_spacing_before_target_headers(monkeypatch:
 
     monkeypatch.setattr(app_instance, "query_one", lambda *_args, **_kwargs: fake_widget)
 
-    app_instance._write_output("Analyze planner queue")
+    app_instance._write_output("Analyze output")
     app_instance._write_output("=== Target: DemoLib ===")
 
-    assert fake_widget.text == "Analyze planner queue\n=== Target: DemoLib ===\n"
+    assert fake_widget.text == "Analyze output\n=== Target: DemoLib ===\n"
     assert isinstance(written[0], Text)
-    assert str(written[0]) == "Analyze planner queue"
+    assert str(written[0]) == "Analyze output"
     assert written[1] == ""
     assert isinstance(written[2], Rule)
 
@@ -3735,8 +3734,8 @@ def test_textual_no_project_gates_analyze_setup_and_results() -> None:
             await pilot.pause()
 
             assert app_instance._project_loaded() is False
-            planner_notice = str(next(iter(app_instance.query_one("#analyze-browser-left").children)).renderable)
-            assert "No configuration is open" in planner_notice
+            analyzer_notice = str(next(iter(app_instance.query_one("#analyze-browser-left").children)).renderable)
+            assert "No configuration is open" in analyzer_notice
             assert getattr(app_instance.query_one("#analyze-run-selected"), "disabled", False) is True
 
             await pilot.press("ctrl+4")

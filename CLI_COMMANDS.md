@@ -48,17 +48,14 @@ sattlint cache-prune [--cache-dir CACHE_DIR] [--output-format {text,json}]
 Run explicitly selected analysis checks against configured targets.
 
 ```text
-sattlint analyze [--check KEY] [--list-checks] [--issue-kind KIND]
-                 [--list-issue-kinds] [--refresh-caches]
+sattlint analyze [--check KEY] [--list-checks] [--refresh-caches]
                  [--output-format {text,json}]
 ```
 
 | Option | Description |
 |--------|-------------|
-| `--check KEY` | Analysis check key to run (repeatable; required unless listing checks or issue kinds) |
+| `--check KEY` | Analysis check key to run (repeatable; required unless listing checks) |
 | `--list-checks` | List available analysis check keys and exit |
-| `--issue-kind KIND` | Filter variable analysis to this issue kind (repeatable; use `--list-issue-kinds` to see choices) |
-| `--list-issue-kinds` | List available issue kind values for `--issue-kind` and exit |
 | `--refresh-caches` | Force a full rebuild of the AST and report caches for this run |
 | `--output-format`, `--format {text,json}` | Output format for analyze list commands |
 

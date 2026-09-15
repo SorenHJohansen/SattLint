@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from typing import cast
 
 from ...utils.repo_paths import repo_root_from
 from .._registry_specs import build_default_analyzers
@@ -22,23 +20,14 @@ from ..modules import analyze_version_drift
 from ..picture_display_paths import analyze_picture_display_paths
 from ..plugin import get_registered_plugin_analyzers, register_analyzer
 from ..same_cycle import analyze_same_cycle
-from ..sattline_semantics import (
-    SemanticRule,
-    SemanticRuleGroup,
-    analyze_sattline_semantics,
-    get_sattline_semantic_rule_groups,
-)
 from ..sfc import analyze_sfc
 from ..spec_compliance import analyze_spec_compliance
 from ..variables import analyze_variables
 from ._registry_delivery import AnalyzerDeliveryMetadata, build_delivery_metadata, summary_output_for_analyzer
 
-SEMANTIC_LAYER_ANALYZER_KEY = "sattline-semantics"
 # Policy (analyzer execution refactor B4.9): every registered analyzer is
 # selectable, and is either in the default CLI set below or deliberately opt-in
-# (datatype-fields, cyclomatic-complexity, version-drift). Semantic contributors are categorized
-# correctness; sattline-semantics is the aggregate layer and is intentionally
-# not CLI-exposed as a selectable analyzer.
+# (datatype-fields, cyclomatic-complexity, version-drift).
 DEFAULT_CLI_ANALYZER_KEYS: tuple[str, ...] = (
     "variables",
     "picture-display-paths",
@@ -90,8 +79,6 @@ class AnalyzerMetadata:
             "description": self.spec.description,
             "category": self.spec.category,
             "enabled": self.spec.enabled,
-            "semantic_mapping_kind": self.spec.semantic_mapping_kind,
-            "semantic_rule_source": self.spec.semantic_rule_source,
             "summary_output": self.summary_output,
             "rule_ids": list(self.rule_ids),
         }
@@ -100,71 +87,17 @@ class AnalyzerMetadata:
 
 
 @dataclass(frozen=True)
-class RuleMetadata:
-    id: str
-    source: str
-    description: str
-    explanation: str | None
-    suggestion: str | None
-    analyzers: tuple[str, ...]
-    outputs: tuple[str, ...]
-    acceptance_tests: tuple[str, ...] | None = None
-    corpus_cases: tuple[str, ...] = ()
-    mutation_applicability: str | None = None
-    suppression_modes: tuple[str, ...] | None = None
-    incremental_safe: bool | None = None
-    name: str = ""
-    example: str | None = None
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "id": self.id,
-            "source": self.source,
-            "description": self.description,
-            "explanation": self.explanation,
-            "suggestion": self.suggestion,
-            "analyzers": list(self.analyzers),
-            "outputs": list(self.outputs),
-            "acceptance_tests": list(self.acceptance_tests or ()),
-            "corpus_cases": list(self.corpus_cases),
-            "mutation_applicability": self.mutation_applicability or "unspecified",
-            "suppression_modes": list(self.suppression_modes or ()),
-            "incremental_safe": self.incremental_safe,
-            "name": self.name,
-            "example": self.example,
-        }
-
-
-@dataclass(frozen=True)
 class AnalyzerCatalog:
     analyzers: tuple[AnalyzerMetadata, ...]
-    semantic_rule_groups: tuple[SemanticRuleGroup, ...]
-    rules: tuple[RuleMetadata, ...]
-    semantic_layer_analyzer_key: str = SEMANTIC_LAYER_ANALYZER_KEY
 
     def enabled_specs(self) -> tuple[AnalyzerSpec, ...]:
         return tuple(analyzer.spec for analyzer in self.analyzers if analyzer.spec.enabled)
 
     def to_report(self, *, generated_by: str) -> dict[str, object]:
-        semantic_sources = tuple(canonicalize_analyzer_key(group.source) for group in self.semantic_rule_groups)
         return {
             "generated_by": generated_by,
             "analyzers": [analyzer.to_dict() for analyzer in self.analyzers],
-            "semantic_layer": {
-                "analyzer_key": self.semantic_layer_analyzer_key,
-                "sources": list(semantic_sources),
-                "source_rule_counts": {
-                    canonicalize_analyzer_key(group.source): len(group.rules) for group in self.semantic_rule_groups
-                },
-            },
-            "rules": [rule.to_dict() for rule in self.rules],
         }
-
-
-def _is_batch_dispatch_analyzer(spec: AnalyzerSpec) -> bool:
-    # The semantic layer aggregates semantic contributors and is only safe via
-    # explicit direct-call surfaces such as corpus reporting.
-    return spec.key != SEMANTIC_LAYER_ANALYZER_KEY
 
 
 def canonicalize_analyzer_key(key: str) -> str:
@@ -187,169 +120,37 @@ def get_actual_cli_analyzer_keys() -> tuple[str, ...]:
     return tuple(spec.key for spec in get_default_cli_analyzers())
 
 
-def get_declared_lsp_analyzer_keys() -> tuple[str, ...]:
-    return tuple(
-        sorted(
-            analyzer.spec.key for analyzer in get_default_analyzer_catalog().analyzers if analyzer.delivery.lsp_exposed
-        )
-    )
-
-
-def get_actual_lsp_analyzer_keys() -> tuple[str, ...]:
-    catalog = get_default_analyzer_catalog()
-    registry_keys = {analyzer.spec.key for analyzer in catalog.analyzers}
-    return tuple(
-        sorted(
-            (
-                {catalog.semantic_layer_analyzer_key}
-                | {canonicalize_analyzer_key(group.source) for group in catalog.semantic_rule_groups}
-            )
-            & registry_keys
-        )
-    )
-
-
-def _iter_semantic_rules(
-    semantic_rule_groups: tuple[SemanticRuleGroup, ...],
-) -> tuple[SemanticRule, ...]:
-    return tuple(rule for group in semantic_rule_groups for rule in group.rules)
-
-
 @lru_cache(maxsize=1)
-def _rule_corpus_cases_by_rule_id() -> dict[str, tuple[str, ...]]:
-    if not DEFAULT_CORPUS_MANIFEST_DIR.exists():
-        return {}
+def _build_default_analyzer_catalog() -> AnalyzerCatalog:
+    # Building this from the static rule/analyzer registry costs tens of ms (delivery-metadata
+    # construction for every analyzer), and was previously rebuilt from scratch on every
+    # collect_run_checks_result() call. All inputs are static module-level data, so caching it for
+    # the process lifetime is safe; get_default_analyzer_catalog stays the public, monkeypatch-friendly
+    # entry point tests already rely on.
+    analyzer_specs = tuple(get_default_analyzers())
 
-    linked_cases: dict[str, set[str]] = {}
-    for manifest_path in sorted(DEFAULT_CORPUS_MANIFEST_DIR.rglob("*.json")):
-        if not manifest_path.is_file():
-            continue
-
-        try:
-            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-            continue
-        case_id = str(payload.get("case_id") or manifest_path.stem)
-        expectation_payload = payload.get("expectation")
-        expectation: dict[str, object] = (
-            cast(dict[str, object], expectation_payload) if isinstance(expectation_payload, dict) else {}
+    analyzers = tuple(
+        AnalyzerMetadata(
+            spec=spec,
+            rule_ids=(),
+            delivery=build_delivery_metadata(spec, ()),
         )
-        expected_finding_ids = expectation.get("expected_finding_ids", [])
-        if not isinstance(expected_finding_ids, list):
-            continue
-        for rule_id in cast(list[object], expected_finding_ids):
-            linked_cases.setdefault(str(rule_id), set()).add(case_id)
-
-    return {rule_id: tuple(sorted(case_ids)) for rule_id, case_ids in linked_cases.items()}
-
-
-def _build_rule_metadata(
-    rule: SemanticRule,
-    *,
-    mapped_analyzers: tuple[str, ...],
-    analyzer_metadata_by_key: dict[str, AnalyzerMetadata],
-) -> RuleMetadata:
-    corpus_cases = tuple(sorted(set(rule.corpus_cases) | set(_rule_corpus_cases_by_rule_id().get(rule.id, ()))))
-    return RuleMetadata(
-        id=rule.id,
-        source=canonicalize_analyzer_key(rule.source),
-        description=rule.description,
-        explanation=rule.explanation or rule.description,
-        suggestion=rule.suggestion,
-        analyzers=mapped_analyzers,
-        outputs=tuple(
-            analyzer_metadata_by_key[analyzer_key].summary_output
-            if analyzer_key in analyzer_metadata_by_key
-            else summary_output_for_analyzer(analyzer_key)
-            for analyzer_key in mapped_analyzers
-        ),
-        acceptance_tests=(None if rule.acceptance_tests is None else tuple(sorted(rule.acceptance_tests))),
-        corpus_cases=corpus_cases,
-        mutation_applicability=rule.mutation_applicability,
-        suppression_modes=(None if rule.suppression_modes is None else tuple(sorted(rule.suppression_modes))),
-        incremental_safe=rule.incremental_safe,
-        name=rule.name,
-        example=rule.example,
+        for spec in analyzer_specs
     )
 
-
-def _build_delivery_metadata(spec: AnalyzerSpec, rule_ids: tuple[str, ...]) -> AnalyzerDeliveryMetadata:
-    return build_delivery_metadata(
-        spec,
-        rule_ids,
-        semantic_layer_analyzer_key=SEMANTIC_LAYER_ANALYZER_KEY,
-    )
-
-
-def _mapped_analyzers_for_rule(
-    rule: SemanticRule,
-    *,
-    registered_keys: set[str],
-) -> tuple[str, ...]:
-    mapped_analyzers: list[str] = [SEMANTIC_LAYER_ANALYZER_KEY]
-    canonical_rule_source = canonicalize_analyzer_key(rule.source)
-    if canonical_rule_source in registered_keys and canonical_rule_source not in mapped_analyzers:
-        mapped_analyzers.append(canonical_rule_source)
-
-    return tuple(mapped_analyzers)
+    return AnalyzerCatalog(analyzers=analyzers)
 
 
 def get_default_analyzer_catalog() -> AnalyzerCatalog:
     return _build_default_analyzer_catalog()
 
 
-@lru_cache(maxsize=1)
-def _build_default_analyzer_catalog() -> AnalyzerCatalog:
-    # Building this from the static rule/analyzer registry costs tens of ms (rule-metadata and
-    # delivery-metadata construction for every rule), and was previously rebuilt from scratch on
-    # every collect_run_checks_result() call. All inputs are static module-level data, so caching
-    # it for the process lifetime is safe; get_default_analyzer_catalog stays the public,
-    # monkeypatch-friendly entry point tests already rely on.
-    analyzer_specs = tuple(get_default_analyzers())
-    semantic_rule_groups = get_sattline_semantic_rule_groups()
-    registered_keys = {spec.key for spec in analyzer_specs}
-    rule_ids_by_analyzer: dict[str, list[str]] = {spec.key: [] for spec in analyzer_specs}
-    rule_ids_by_analyzer.setdefault(SEMANTIC_LAYER_ANALYZER_KEY, [])
-
-    mapped_rules: list[tuple[SemanticRule, tuple[str, ...]]] = []
-    for rule in sorted(_iter_semantic_rules(semantic_rule_groups), key=lambda item: item.id):
-        mapped_analyzers = _mapped_analyzers_for_rule(rule, registered_keys=registered_keys)
-
-        for analyzer_key in mapped_analyzers:
-            rule_ids_by_analyzer.setdefault(analyzer_key, []).append(rule.id)
-        mapped_rules.append((rule, mapped_analyzers))
-
-    analyzers = tuple(
-        AnalyzerMetadata(
-            spec=spec,
-            rule_ids=tuple(sorted(rule_ids_by_analyzer.get(spec.key, []))),
-            delivery=_build_delivery_metadata(spec, tuple(sorted(rule_ids_by_analyzer.get(spec.key, [])))),
-        )
-        for spec in analyzer_specs
-    )
-    analyzer_metadata_by_key = {analyzer.spec.key: analyzer for analyzer in analyzers}
-    rules = tuple(
-        _build_rule_metadata(
-            rule,
-            mapped_analyzers=mapped_analyzers,
-            analyzer_metadata_by_key=analyzer_metadata_by_key,
-        )
-        for rule, mapped_analyzers in mapped_rules
-    )
-
-    return AnalyzerCatalog(
-        analyzers=analyzers,
-        semantic_rule_groups=semantic_rule_groups,
-        rules=rules,
-    )
-
-
 def get_enabled_analyzers() -> list[AnalyzerSpec]:
-    return [spec for spec in get_default_analyzer_catalog().enabled_specs() if _is_batch_dispatch_analyzer(spec)]
+    return list(get_default_analyzer_catalog().enabled_specs())
 
 
 def get_selectable_analyzers() -> list[AnalyzerSpec]:
-    return [spec for spec in get_default_analyzers() if _is_batch_dispatch_analyzer(spec)]
+    return list(get_default_analyzers())
 
 
 def get_default_cli_analyzers() -> list[AnalyzerSpec]:
@@ -361,7 +162,7 @@ def get_default_cli_analyzers() -> list[AnalyzerSpec]:
 
 def get_default_analyzers() -> list[AnalyzerSpec]:
     return [
-        *build_default_analyzers(semantic_layer_analyzer_key=SEMANTIC_LAYER_ANALYZER_KEY),
+        *build_default_analyzers(),
         *get_registered_plugin_analyzers(),
     ]
 
@@ -381,14 +182,10 @@ __all__ = [
     "DEFAULT_CORPUS_MANIFEST_DIR",
     "LEGACY_ANALYZER_KEY_ALIASES",
     "REPO_ROOT",
-    "SEMANTIC_LAYER_ANALYZER_KEY",
     "AnalyzerCatalog",
     "AnalyzerDeliveryMetadata",
     "AnalyzerMetadata",
     "AnalyzerSpec",
-    "RuleMetadata",
-    "SemanticRule",
-    "SemanticRuleGroup",
     "analyze_alarm_integrity",
     "analyze_comment_code",
     "analyze_cyclomatic_complexity",
@@ -398,7 +195,6 @@ __all__ = [
     "analyze_mms_interface_variables",
     "analyze_picture_display_paths",
     "analyze_same_cycle",
-    "analyze_sattline_semantics",
     "analyze_sfc",
     "analyze_spec_compliance",
     "analyze_variables",
@@ -408,16 +204,13 @@ __all__ = [
     "canonicalize_analyzer_key",
     "canonicalize_analyzer_keys",
     "get_actual_cli_analyzer_keys",
-    "get_actual_lsp_analyzer_keys",
     "get_correctness_analyzer_keys",
     "get_declared_cli_analyzer_keys",
-    "get_declared_lsp_analyzer_keys",
     "get_default_analyzer_catalog",
     "get_default_analyzers",
     "get_default_cli_analyzers",
     "get_enabled_analyzers",
     "get_registered_plugin_analyzers",
-    "get_sattline_semantic_rule_groups",
     "get_selectable_analyzers",
     "register_analyzer",
     "summary_output_for_analyzer",
