@@ -15,11 +15,9 @@ from collections import Counter
 from pathlib import Path
 
 import pytest
-from sattline_parser import parse_source_file as parser_core_parse_source_file
 
 from sattlint.analyzers.dispatch import get_registry_analyzer_spec, run_registry_analyzer
 from sattlint.analyzers.framework import build_analysis_context
-from sattlint.analyzers.sattline_semantics import analyze_sattline_semantics
 from sattlint.engine import CodeMode, SattLineProjectLoader, SattLineProjectLoaderConfig, merge_project_basepicture
 
 CORPUS_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "corpus"
@@ -40,16 +38,6 @@ def _iter_analyzer_manifests() -> list[tuple[Path, dict[str, object]]]:
 def _resolve_target(manifest: dict[str, object]) -> Path:
     target_file = str(manifest["target_file"])
     return (MANIFEST_DIR / target_file).resolve()
-
-
-def _uses_semantic_runner(payload: dict[str, object]) -> bool:
-    if str(payload.get("mode") or "") == "analyzer-sattline-semantics":
-        return True
-    expectation = payload.get("expectation")
-    if not isinstance(expectation, dict):
-        return True
-    expected_ids = expectation.get("expected_finding_ids", [])
-    return all(str(finding_id).startswith("semantic.") for finding_id in expected_ids)
 
 
 def _run_raw_analyzer(target_path: Path, payload: dict[str, object]) -> object:
@@ -76,9 +64,6 @@ def _run_raw_analyzer(target_path: Path, payload: dict[str, object]) -> object:
 
 
 def _run_analyzer(target_path: Path, payload: dict[str, object]) -> object:
-    if _uses_semantic_runner(payload):
-        base_picture = parser_core_parse_source_file(target_path)
-        return analyze_sattline_semantics(base_picture, debug=True)
     return _run_raw_analyzer(target_path, payload)
 
 

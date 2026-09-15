@@ -53,13 +53,11 @@ def run_checks(
     cfg: ConfigDict,
     selected_keys: list[str] | None,
     *,
-    selected_issue_kinds: set[str] | frozenset[str] | None = None,
     use_cache: bool = True,
 ) -> None:
     checks_module.run_checks(
         cfg,
         selected_keys,
-        selected_issue_kinds=selected_issue_kinds,
         use_cache=use_cache,
         iter_loaded_projects_fn=project_application.iter_loaded_projects,
         get_enabled_analyzers_fn=_get_selectable_analyzers if selected_keys else _get_enabled_analyzers,
@@ -71,13 +69,11 @@ def run_checks_result(
     cfg: ConfigDict,
     selected_keys: list[str] | None,
     *,
-    selected_issue_kinds: set[str] | frozenset[str] | None = None,
     use_cache: bool = True,
 ) -> checks_module.ChecksRunResult:
     return checks_module.run_checks_result(
         cfg,
         selected_keys,
-        selected_issue_kinds=selected_issue_kinds,
         use_cache=use_cache,
         iter_loaded_projects_fn=project_application.iter_loaded_projects,
         get_enabled_analyzers_fn=_get_selectable_analyzers if selected_keys else _get_enabled_analyzers,

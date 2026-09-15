@@ -4,7 +4,7 @@
     "mode": "analyzer-variables",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.read-before-write"
+            "read_before_write"
         ],
         "artifact_fragments": {
             "status.json": {

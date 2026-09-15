@@ -21,43 +21,29 @@ class AnalyzerDeliveryTemplate:
     scope: str
     implementation_bucket: str
     cli_exposed: bool = False
-    lsp_exposed: bool = False
     acceptance_tests: tuple[str, ...] = ()
     depends_on_analyzers: tuple[str, ...] = ()
     depends_on_artifacts: tuple[str, ...] = ()
     supports_baselines: bool = True
     supports_incremental: bool = False
     min_fixture_set: tuple[str, ...] = ()
-    exposed_via: tuple[str, ...] = ()
 
 
 def default_delivery_templates(
-    semantic_layer_analyzer_key: str,
     shared_fixtures: tuple[str, ...],
 ) -> tuple[AnalyzerDeliveryTemplate, ...]:
     return (
-        AnalyzerDeliveryTemplate(
-            key=semantic_layer_analyzer_key,
-            scope="workspace",
-            implementation_bucket="shared-semantic-core",
-            lsp_exposed=True,
-            acceptance_tests=("tests/analyzers/test_sattline_semantics.py",),
-            min_fixture_set=shared_fixtures,
-        ),
         AnalyzerDeliveryTemplate(
             key="variables",
             scope="workspace",
             implementation_bucket="variables-reporting",
             cli_exposed=True,
-            lsp_exposed=True,
             acceptance_tests=(
                 *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
-                "tests/analyzers/test_sattline_semantics.py",
                 *_APP_ACCEPTANCE_TESTS,
             ),
             supports_incremental=True,
             min_fixture_set=shared_fixtures,
-            exposed_via=(semantic_layer_analyzer_key,),
         ),
         AnalyzerDeliveryTemplate(
             key="datatype-fields",
@@ -68,7 +54,6 @@ def default_delivery_templates(
                 "tests/analyzers/test_datatype_fields_analyzer.py",
             ),
             min_fixture_set=shared_fixtures,
-            exposed_via=(semantic_layer_analyzer_key, "pipeline"),
         ),
         AnalyzerDeliveryTemplate(
             key="picture-display-paths",
@@ -98,15 +83,11 @@ def default_delivery_templates(
             scope="single-file",
             implementation_bucket="shared-semantic-core",
             cli_exposed=True,
-            lsp_exposed=True,
             acceptance_tests=(
                 "tests/analyzers/test_sfc.py",
                 *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
-                "tests/analyzers/test_sattline_semantics.py",
             ),
-            depends_on_analyzers=(semantic_layer_analyzer_key,),
             min_fixture_set=shared_fixtures,
-            exposed_via=(semantic_layer_analyzer_key,),
         ),
         AnalyzerDeliveryTemplate(
             key="comment-code",
@@ -120,7 +101,6 @@ def default_delivery_templates(
             scope="workspace",
             implementation_bucket="engineering-rules",
             cli_exposed=True,
-            lsp_exposed=True,
             acceptance_tests=("tests/analyzers/test_spec_compliance.py", *_APP_ACCEPTANCE_TESTS),
             min_fixture_set=shared_fixtures,
         ),
@@ -128,14 +108,8 @@ def default_delivery_templates(
             key="alarm-integrity",
             scope="cross-module",
             implementation_bucket="shared-semantic-core",
-            lsp_exposed=True,
-            acceptance_tests=(
-                *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
-                "tests/analyzers/test_sattline_semantics.py",
-            ),
-            depends_on_analyzers=(semantic_layer_analyzer_key,),
+            acceptance_tests=(*_ANALYZER_SUITE_ACCEPTANCE_TESTS,),
             min_fixture_set=shared_fixtures,
-            exposed_via=(semantic_layer_analyzer_key,),
         ),
         AnalyzerDeliveryTemplate(
             key="cyclomatic-complexity",
@@ -143,20 +117,13 @@ def default_delivery_templates(
             implementation_bucket="engineering-rules",
             acceptance_tests=_ANALYZER_SUITE_ACCEPTANCE_TESTS,
             min_fixture_set=shared_fixtures,
-            exposed_via=("pipeline",),
         ),
         AnalyzerDeliveryTemplate(
             key="same-cycle",
             scope="cross-module",
             implementation_bucket="shared-semantic-core",
-            lsp_exposed=True,
-            acceptance_tests=(
-                "tests/analyzers/test_same_cycle.py",
-                "tests/analyzers/test_sattline_semantics.py",
-            ),
-            depends_on_analyzers=(semantic_layer_analyzer_key,),
+            acceptance_tests=("tests/analyzers/test_same_cycle.py",),
             min_fixture_set=shared_fixtures,
-            exposed_via=(semantic_layer_analyzer_key,),
         ),
         AnalyzerDeliveryTemplate(
             key="version-drift",
@@ -167,21 +134,16 @@ def default_delivery_templates(
                 "tests/test_analyzers_version_drift.py",
             ),
             min_fixture_set=shared_fixtures,
-            exposed_via=("pipeline",),
         ),
         AnalyzerDeliveryTemplate(
             key="dataflow",
             scope="workspace",
             implementation_bucket="shared-semantic-core",
-            lsp_exposed=True,
             acceptance_tests=(
                 *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
                 "tests/analyzers/test_dataflow_conflicting_constants.py",
-                "tests/analyzers/test_sattline_semantics.py",
             ),
-            depends_on_analyzers=(semantic_layer_analyzer_key,),
             min_fixture_set=shared_fixtures,
-            exposed_via=(semantic_layer_analyzer_key,),
         ),
     )
 

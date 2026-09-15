@@ -4,8 +4,8 @@
     "mode": "analyzer-alarm-integrity",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.duplicate-alarm-condition",
-            "semantic.duplicate-alarm-tag"
+            "alarm.duplicate_condition",
+            "alarm.duplicate_tag"
         ],
         "artifact_fragments": {
             "status.json": {
@@ -17,8 +17,8 @@
                 "analyzer_key": "alarm-integrity",
                 "finding_count": 8,
                 "rule_counts": {
-                    "semantic.duplicate-alarm-condition": 4,
-                    "semantic.duplicate-alarm-tag": 4
+                    "alarm.duplicate_condition": 4,
+                    "alarm.duplicate_tag": 4
                 }
             }
         },

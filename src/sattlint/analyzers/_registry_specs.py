@@ -1,9 +1,4 @@
-"""Shared analyzer registry helpers owned by the analyzer package.
-
-This module lives outside the ``registry`` package so semantic-layer imports can
-reuse context providers and registry spec builders without triggering registry
-package initialization.
-"""
+"""Shared analyzer registry helpers owned by the analyzer package."""
 
 from __future__ import annotations
 
@@ -26,7 +21,6 @@ _CONTEXT_VALUE_PROVIDERS: dict[str, ContextValueProvider] = {
     "include_dependency_moduletype_usage": lambda _registry_module, context: (
         context.include_dependency_moduletype_usage
     ),
-    "selected_issue_kinds": lambda _registry_module, context: getattr(context, "selected_issue_kinds", None),
     "shared_artifacts": lambda _registry_module, context: getattr(context, "shared_artifacts", None),
     "unavailable_libraries": lambda _registry_module, context: context.unavailable_libraries,
 }
@@ -71,8 +65,6 @@ def _build_runner(template: AnalyzerSpecTemplate, registry_module: Any) -> Analy
 
 
 def build_default_analyzers(
-    *,
-    semantic_layer_analyzer_key: str,
     registry_module: Any | None = None,
 ) -> list[AnalyzerSpec]:
     resolved_registry_module = _resolve_registry_module(registry_module)
@@ -88,12 +80,8 @@ def build_default_analyzers(
             scope=template.scope,
             context_kwargs=template.context_kwargs,
             direct_context=template.direct_context,
-            semantic_mapping_kind=template.semantic_mapping_kind,
-            semantic_rule_source=template.semantic_rule_source,
-            composed_analyzer_keys=template.composed_analyzer_keys,
-            composed_issue_kind_names=template.composed_issue_kind_names,
         )
-        for template in default_spec_templates(semantic_layer_analyzer_key)
+        for template in default_spec_templates()
     ]
 
 

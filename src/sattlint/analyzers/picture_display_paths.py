@@ -7,6 +7,16 @@ from ..models.project_graph import ProjectGraph
 from .framework import Issue, SimpleReport
 
 
+def _is_library_suppressed(diagnostic: object, *, analyzed_target_is_library: bool) -> bool:
+    if not analyzed_target_is_library:
+        return False
+    resolution = getattr(diagnostic, "resolution", None)
+    failure_reason = getattr(resolution, "failure_reason", None)
+    if failure_reason == "missing_program":
+        return True
+    return failure_reason == "missing_parent"
+
+
 def analyze_picture_display_paths(
     base_picture: BasePicture,
     *,
@@ -17,6 +27,8 @@ def analyze_picture_display_paths(
     diagnostics = diagnose_picture_display_paths(base_picture, occurrences, graph=graph)
     issues: list[Issue] = []
     for diagnostic in diagnostics:
+        if _is_library_suppressed(diagnostic, analyzed_target_is_library=analyzed_target_is_library):
+            continue
         module_path = list(diagnostic.occurrence.declaring_module_path)
         is_above_base = (
             diagnostic.resolution.failure_reason == "missing_parent"

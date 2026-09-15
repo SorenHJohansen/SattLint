@@ -1,6 +1,6 @@
 # Analyzer Plan
 
-Status: proposal
+Status: implemented
 Supersedes: [`ANALYZER_PIPELINE_PLAN.md`](ANALYZER_PIPELINE_PLAN.md), [`ANALYZER_CONSOLIDATION_PLAN.md`](ANALYZER_CONSOLIDATION_PLAN.md)
 Related: [`TUI_PRUNING_PLAN.md`](TUI_PRUNING_PLAN.md), [`PARSER_PROJECT_LAYER_PLAN.md`](PARSER_PROJECT_LAYER_PLAN.md)
 
@@ -629,13 +629,26 @@ Phase status is tracked inline below (`[done]` = complete and validated).
    **[done]** — `ReportsByKey`/`derived_reports` and the dead semantic counters removed; the
    foundation/collected-views cache stays.
 9. **Remove `sattline-semantics` + LSP surface** (Part B §B6) with `TUI_PRUNING_PLAN.md`; remove
-   `LIBRARY_SUPPRESSED_ANALYZER_KEYS` (empty after A4).
-10. **UI de-planner** (Part B §B5).
-11. **issue-kind cleanup** (Part B §B7) with `TUI_PRUNING_PLAN.md`.
+   `LIBRARY_SUPPRESSED_ANALYZER_KEYS` (empty after A4). **[done]** — sattline-semantics and the
+   `_sattline_semantic_*` engine deleted; LSP dispatch helpers, `get_*_lsp_analyzer_keys`,
+   `_is_batch_dispatch_analyzer`, `SEMANTIC_LAYER_ANALYZER_KEY`, `lsp_exposed`/`exposed_via`,
+   and the package-root editor snapshot API removed; picture-display-paths runs for library
+   targets (intra-library failures reported, `missing_program`/`missing_parent` suppressed);
+   skip-list mechanism deleted.
+10. **UI de-planner** (Part B §B5). **[done]** — `_AnalyzeRunPlan` deleted; selected keys passed
+    directly as `tuple[str, ...]`; `_planner_*` renamed to `_analyzer_*`/`_analyze_*`;
+    `_run_selected_analysis_plan` → `_run_selected_analyzers`; `_ANALYZE_PLANNER_LIST_ID_PREFIX`
+    and `analyze-planner-*` ids/text renamed; `/` filter kept.
+11. **issue-kind cleanup** (Part B §B7) with `TUI_PRUNING_PLAN.md`. **[done]** — `--issue-kind` /
+    `--list-issue-kinds` removed; `normalize_selected_issue_kind_values`,
+    `_filter_report_for_selected_issue_kinds`, the `variables`/`VariablesReport` special-cases,
+    `AnalyzerSpec.supports_selected_issue_kinds`, and the `"selected_issue_kinds"` context
+    provider removed; `AnalysisContext.selected_issue_kinds` removed; `variable_analyses.py`
+    deleted; run-record `selected_issue_kinds` fields removed.
 12. **Docs + dead-code sweep**: `ARCHITECTURE.md`, `AGENTS_REFERENCE.md`, `FEATURE_GUIDE.md`,
     `CLI_COMMANDS.md`, `CHANGELOG.md`, `plugin.py` docstring,
     `.github/instructions/analyzer-architecture.instructions.md`, and remaining
-    "planner"/"requires"/"batch"/"severity" references.
+    "planner"/"requires"/"batch"/"severity" references. **[done]**
 
 ## D3. Tests
 
@@ -708,9 +721,6 @@ Each single-check run must succeed with no other analyzer's output and no
 1. MMS datatype mismatch: is the tag-side datatype resolvable inside the target (MMS library /
    external tag config)? If not, the "two ends" check needs a declaration source.
 2. MMS "outgoing tag written but never read": what exactly should it catch?
-3. dataflow :OLD misuse / invalid state access: confirm the vendor toolchain rejects these before
-   removal.
-4. picture-display "above base picture": define the exact path syntax to flag.
 5. datatype-fields extension: which additional field-level lifecycle kinds are worth the cost?
 6. picture-display library `Program:`-coupling: on by default or opt-in?
 7. `depends_on_analyzers` delivery metadata: keep as documentation or delete with the graph?

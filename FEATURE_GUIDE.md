@@ -89,7 +89,7 @@ Running `sattlint` with no arguments opens the Textual interactive shell.
 
 | View | Purpose |
 |------|---------|
-| **Analyze** | Queue reports and analyzers. Start with the planner for a broad pass, then add focused reports. |
+| **Analyze** | Queue reports and analyzers. Select one or more analyzers and run them, or generate a Change Review. |
 | **Setup** | Configure paths (program_dir, ABB_lib_dir, icf_dir, other_lib_dirs), targets, mode, cache settings. |
 | **Help** | First-run guidance, workflow explanations. |
 

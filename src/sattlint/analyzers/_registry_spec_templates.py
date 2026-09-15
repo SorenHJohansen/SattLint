@@ -20,42 +20,10 @@ class AnalyzerSpecTemplate:
     context_kwargs: tuple[str, ...] = ()
     enabled: bool = True
     direct_context: bool = False
-    semantic_mapping_kind: str | None = None
-    semantic_rule_source: str | None = None
-    composed_analyzer_keys: tuple[str, ...] = ()
-    composed_issue_kind_names: tuple[str, ...] = ()
 
 
-def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSpecTemplate, ...]:
+def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
     return (
-        AnalyzerSpecTemplate(
-            key=semantic_layer_analyzer_key,
-            name="SattLine semantics",
-            description=(
-                "Combines all issue kinds into one analyzer. It runs the other "
-                "SattLine checks, collects their issues, and removes duplicates by "
-                "rule, file, and data.\n"
-                "\n"
-                "Finds:\n"
-                "\n"
-                "- Duplicate sibling name - two sibling modules have the same name.\n"
-                "  Example: two 'Boiler1' invocations under the same parent.\n"
-                "\n"
-                "- Unexpected submodule type - a submodule is not a real module.\n"
-                "  Example: a TextLabel inside a SUBMODULES block.\n"
-                "\n"
-                "You normally do not run this analyzer yourself. It is the surface "
-                "used by the LSP server."
-            ),
-            analyzer_attr="analyze_sattline_semantics",
-            context_kwargs=(
-                "analysis_context",
-                "debug",
-                "unavailable_libraries",
-                "analyzed_target_is_library",
-                "config",
-            ),
-        ),
         AnalyzerSpecTemplate(
             key="variables",
             name="Variable issues",
@@ -157,11 +125,8 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "unavailable_libraries",
                 "analyzed_target_is_library",
                 "include_dependency_moduletype_usage",
-                "selected_issue_kinds",
                 "config",
             ),
-            semantic_mapping_kind="variable",
-            semantic_rule_source="variables",
         ),
         AnalyzerSpecTemplate(
             key="datatype-fields",
@@ -194,8 +159,6 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "analyzed_target_is_library",
                 "config",
             ),
-            semantic_mapping_kind="variable",
-            semantic_rule_source="variables",
         ),
         AnalyzerSpecTemplate(
             key="picture-display-paths",
@@ -239,7 +202,6 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             ),
             analyzer_attr="analyze_mms_interface_variables",
             context_kwargs=("debug", "config", "analysis_context"),
-            semantic_rule_source="mms-interface",
         ),
         AnalyzerSpecTemplate(
             key="icf",
@@ -317,8 +279,6 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             ),
             analyzer_attr="analyze_sfc",
             context_kwargs=("analysis_context",),
-            semantic_mapping_kind="framework",
-            semantic_rule_source="sfc",
         ),
         AnalyzerSpecTemplate(
             key="comment-code",
@@ -335,7 +295,6 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             analyzer_attr="analyze_comment_code",
             category="correctness",
             direct_context=True,
-            semantic_rule_source="comment-code",
         ),
         AnalyzerSpecTemplate(
             key="spec-compliance",
@@ -364,8 +323,6 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             ),
             analyzer_attr="analyze_spec_compliance",
             context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library", "config"),
-            semantic_mapping_kind="spec",
-            semantic_rule_source="spec-compliance",
         ),
         AnalyzerSpecTemplate(
             key="alarm-integrity",
@@ -389,8 +346,6 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             ),
             analyzer_attr="analyze_alarm_integrity",
             context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library"),
-            semantic_mapping_kind="framework",
-            semantic_rule_source="alarm-integrity",
         ),
         AnalyzerSpecTemplate(
             key="cyclomatic-complexity",
@@ -440,8 +395,6 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             ),
             analyzer_attr="analyze_same_cycle",
             context_kwargs=("analysis_context", "debug", "unavailable_libraries", "analyzed_target_is_library"),
-            semantic_mapping_kind="framework",
-            semantic_rule_source="same-cycle",
         ),
         AnalyzerSpecTemplate(
             key="version-drift",
@@ -460,7 +413,6 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             analyzer_attr="analyze_version_drift",
             category="correctness",
             context_kwargs=("debug",),
-            semantic_rule_source="version-drift",
         ),
         AnalyzerSpecTemplate(
             key="dataflow",
@@ -506,8 +458,6 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             ),
             analyzer_attr="analyze_dataflow",
             context_kwargs=("unavailable_libraries", "analyzed_target_is_library", "shared_artifacts"),
-            semantic_mapping_kind="framework",
-            semantic_rule_source="dataflow",
         ),
     )
 

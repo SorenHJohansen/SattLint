@@ -146,7 +146,7 @@ def _query_required(widget_owner: Any, selector: str, expected_type: Any | None 
 
 
 DEFAULT_SHELL_TITLE = "SattLint"
-_ANALYZE_PLANNER_LIST_ID_PREFIX = "analyze-planner-section-"
+_ANALYZER_LIST_ID_PREFIX = "analyze-section-"
 
 MENU_DEFINITIONS: list[tuple[str, str]] = [
     ("Open Configuration", "menu-file-open-project"),

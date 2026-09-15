@@ -207,7 +207,7 @@ Enforced architecture with freedom inside boundaries.
 
 Reports serve both humans and agents.
 
-- Findings: structured (severity, confidence, location)
+- Findings: structured (kind, location, message, rule id)
 - Logs: key=value, issue-scoped
 - No pretty-printed tables that hide structure
 

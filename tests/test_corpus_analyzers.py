@@ -24,12 +24,9 @@ from sattlint.analyzers._registry_dispatch import (
     get_registry_analyzer_spec,
     run_registry_analyzer,
 )
-from sattlint.analyzers._sattline_semantic_issue_metadata import materialize_issue_metadata
-from sattlint.analyzers._sattline_semantic_rules import VARIABLE_RULES
 from sattlint.analyzers.framework import (
     AnalysisContext,
     AnalysisSharedArtifacts,
-    Issue,
     build_analysis_context,
 )
 from sattlint.engine import (
@@ -93,11 +90,10 @@ def _build_context(
 def _candidate_finding_ids(issue: Any) -> set[str]:
     """All canonical ids an issue may be asserted against.
 
-    Different analyzers report findings under different conventions: some expose a
-    semantic rule id (``SemanticIssue.rule.id``), some a raw ``kind`` string, and
-    the ``variables`` analyzer emits ``VariableIssue`` enums mapped through
-    ``VARIABLE_RULES``. Collect the union so manifest expectations can use either
-    convention.
+    Analyzers report findings under different conventions: some expose a
+    ``rule_id``, some a ``rule.id`` (for rule-shaped issues), and the
+    ``variables`` analyzer emits ``VariableIssue`` enums. Collect the union so
+    manifest expectations can use either convention.
     """
     ids: set[str] = set()
 
@@ -110,18 +106,9 @@ def _candidate_finding_ids(issue: Any) -> set[str]:
         ids.add(rule.id)
 
     if isinstance(issue, VariableIssue):
-        mapped = VARIABLE_RULES.get(issue.kind)
-        if mapped is not None and getattr(mapped, "id", None):
-            ids.add(mapped.id)
         kind_value = getattr(issue.kind, "value", None)
         if isinstance(kind_value, str):
             ids.add(kind_value)
-
-    if isinstance(issue, Issue):
-        materialized = materialize_issue_metadata(issue)
-        materialized_id = getattr(materialized, "rule_id", None)
-        if materialized_id:
-            ids.add(materialized_id)
 
     kind = getattr(issue, "kind", None)
     if isinstance(kind, str):
