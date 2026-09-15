@@ -70,14 +70,7 @@ def analyze_comment_code_files(
         files_scanned += 1
         try:
             text = _read_source_text(path)
-        except (OSError, UnicodeError, ValueError) as exc:
-            issues.append(
-                Issue(
-                    kind="comment_code_read_error",
-                    message=f"{path.name}: {exc}",
-                    data={"path": str(path), "site": str(path), "context": str(exc)},
-                )
-            )
+        except (OSError, UnicodeError, ValueError):
             continue
 
         for hit in find_comments_with_code(text):

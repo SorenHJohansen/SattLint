@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -14,16 +13,12 @@ from .._registry_specs import build_default_analyzers
 from ..alarm_integrity import analyze_alarm_integrity
 from ..comment_code import analyze_comment_code
 from ..cyclomatic_complexity import analyze_cyclomatic_complexity
-from ..data_dependency import analyze_data_dependency
 from ..dataflow import analyze_dataflow
 from ..datatype_fields import analyze_datatype_fields
 from ..framework import AnalyzerSpec
 from ..icf.analyzer import analyze_icf_configuration
-from ..loop_stability import analyze_loop_stability
 from ..mms import analyze_mms_interface_variables
 from ..modules import analyze_version_drift
-from ..numeric_constraints import analyze_numeric_constraints
-from ..parameter_drift import analyze_parameter_drift
 from ..picture_display_paths import analyze_picture_display_paths
 from ..plugin import get_registered_plugin_analyzers, register_analyzer
 from ..same_cycle import analyze_same_cycle
@@ -34,10 +29,7 @@ from ..sattline_semantics import (
     get_sattline_semantic_rule_groups,
 )
 from ..sfc import analyze_sfc
-from ..shadowing import analyze_shadowing
-from ..signal_lifecycle import analyze_signal_lifecycle
 from ..spec_compliance import analyze_spec_compliance
-from ..unsafe_defaults import analyze_unsafe_defaults
 from ..variables import analyze_variables
 from ._registry_delivery import AnalyzerDeliveryMetadata, build_delivery_metadata, summary_output_for_analyzer
 
@@ -53,16 +45,9 @@ DEFAULT_CLI_ANALYZER_KEYS: tuple[str, ...] = (
     "mms-interface",
     "sfc",
     "comment-code",
-    "shadowing",
     "spec-compliance",
     "alarm-integrity",
-    "signal-lifecycle",
-    "loop-stability",
-    "numeric-constraints",
-    "data-dependency",
-    "parameter-drift",
     "same-cycle",
-    "unsafe-defaults",
     "dataflow",
     "icf",
 )
@@ -79,11 +64,7 @@ REPO_ROOT = _registry_repo_root()
 DEFAULT_CORPUS_MANIFEST_DIR = REPO_ROOT / "tests" / "fixtures" / "corpus" / "manifests"
 
 LEGACY_ANALYZER_KEY_ALIASES: dict[str, str] = {
-    "data_dependency": "data-dependency",
-    "loop_stability": "loop-stability",
-    "numeric_constraints": "numeric-constraints",
     "same_cycle": "same-cycle",
-    "signal_lifecycle": "signal-lifecycle",
 }
 
 
@@ -109,7 +90,6 @@ class AnalyzerMetadata:
             "description": self.spec.description,
             "category": self.spec.category,
             "enabled": self.spec.enabled,
-            "supports_live_diagnostics": self.spec.supports_live_diagnostics,
             "semantic_mapping_kind": self.spec.semantic_mapping_kind,
             "semantic_rule_source": self.spec.semantic_rule_source,
             "summary_output": self.summary_output,
@@ -123,10 +103,6 @@ class AnalyzerMetadata:
 class RuleMetadata:
     id: str
     source: str
-    category: str
-    severity: str
-    confidence: str
-    applies_to: str
     description: str
     explanation: str | None
     suggestion: str | None
@@ -144,10 +120,6 @@ class RuleMetadata:
         return {
             "id": self.id,
             "source": self.source,
-            "category": self.category,
-            "severity": self.severity,
-            "confidence": self.confidence,
-            "applies_to": self.applies_to,
             "description": self.description,
             "explanation": self.explanation,
             "suggestion": self.suggestion,
@@ -201,122 +173,6 @@ def canonicalize_analyzer_key(key: str) -> str:
 
 def canonicalize_analyzer_keys(keys: tuple[str, ...] | list[str] | set[str]) -> tuple[str, ...]:
     return tuple(canonicalize_analyzer_key(key) for key in keys if key.strip())
-
-
-class AnalyzerDependencyGraphError(ValueError):
-    """Raised when the analyzer dependency graph is invalid at construction."""
-
-
-def _duplicate_and_canonical_collisions(specs: Sequence[AnalyzerSpec]) -> list[str]:
-    seen_raw: set[str] = set()
-    canonical_to_first: dict[str, str] = {}
-    errors: list[str] = []
-    for spec in specs:
-        if spec.key in seen_raw:
-            errors.append(f"duplicate analyzer key {spec.key!r}")
-        seen_raw.add(spec.key)
-        canonical_key = canonicalize_analyzer_key(spec.key)
-        if canonical_key in canonical_to_first and canonical_to_first[canonical_key] != spec.key:
-            errors.append(
-                f"analyzer keys {canonical_to_first[canonical_key]!r} and {spec.key!r} "
-                f"collide on canonical key {canonical_key!r}"
-            )
-        canonical_to_first.setdefault(canonical_key, spec.key)
-    return errors
-
-
-def _unknown_and_self_dependencies(specs: Sequence[AnalyzerSpec]) -> list[str]:
-    registered_keys = {canonicalize_analyzer_key(spec.key) for spec in specs}
-    errors: list[str] = []
-    for spec in specs:
-        canonical_self = canonicalize_analyzer_key(spec.key)
-        for required_key in spec.requires:
-            canonical_required = canonicalize_analyzer_key(required_key)
-            if canonical_required == canonical_self:
-                errors.append(f"analyzer {spec.key!r} depends on itself")
-            elif canonical_required not in registered_keys:
-                errors.append(f"analyzer {spec.key!r} requires unknown analyzer {required_key!r}")
-    return errors
-
-
-def _detect_dependency_cycle(specs: Sequence[AnalyzerSpec]) -> list[str] | None:
-    by_key = {canonicalize_analyzer_key(spec.key): spec for spec in specs}
-    visiting: set[str] = set()
-    visited: set[str] = set()
-    stack: list[str] = []
-
-    def visit(key: str) -> list[str] | None:
-        if key in visited:
-            return None
-        if key in visiting:
-            cycle_start = stack.index(key)
-            return [*stack[cycle_start:], key]
-        visiting.add(key)
-        stack.append(key)
-        spec = by_key.get(key)
-        if spec is None:
-            stack.pop()
-            visiting.remove(key)
-            visited.add(key)
-            return None
-        for required_key in spec.requires:
-            cycle = visit(canonicalize_analyzer_key(required_key))
-            if cycle is not None:
-                return cycle
-        stack.pop()
-        visiting.remove(key)
-        visited.add(key)
-        return None
-
-    for spec in specs:
-        cycle = visit(canonicalize_analyzer_key(spec.key))
-        if cycle is not None:
-            return cycle
-    return None
-
-
-def validate_analyzer_dependencies(specs: Sequence[AnalyzerSpec]) -> None:
-    """Reject invalid analyzer dependency graphs once, at construction.
-
-    Raises :class:`AnalyzerDependencyGraphError` on duplicate keys, colliding
-    canonical keys, unknown required analyzers, self-dependencies, or cycles.
-    """
-    errors: list[str] = []
-    errors.extend(_duplicate_and_canonical_collisions(specs))
-    errors.extend(_unknown_and_self_dependencies(specs))
-    cycle = _detect_dependency_cycle(specs)
-    if cycle is not None:
-        errors.append(f"analyzer dependency cycle: {' -> '.join(cycle)}")
-    if errors:
-        detail = "\n".join(f"  - {error}" for error in errors)
-        raise AnalyzerDependencyGraphError(f"Invalid analyzer dependency graph:\n{detail}")
-
-
-def deterministic_dependency_order(specs: Sequence[AnalyzerSpec]) -> tuple[AnalyzerSpec, ...]:
-    """Return analyzers ordered by dependencies (dependencies first).
-
-    Assumes :func:`validate_analyzer_dependencies` has already passed; keeps
-    input order for analyzers with no dependency relationship, yielding a
-    deterministic order.
-    """
-    by_key = {canonicalize_analyzer_key(spec.key): spec for spec in specs}
-    visited: set[str] = set()
-    ordered: list[AnalyzerSpec] = []
-
-    def visit(spec: AnalyzerSpec) -> None:
-        key = canonicalize_analyzer_key(spec.key)
-        if key in visited:
-            return
-        visited.add(key)
-        for required_key in spec.requires:
-            required_spec = by_key.get(canonicalize_analyzer_key(required_key))
-            if required_spec is not None:
-                visit(required_spec)
-        ordered.append(spec)
-
-    for spec in specs:
-        visit(spec)
-    return tuple(ordered)
 
 
 def get_declared_cli_analyzer_keys() -> tuple[str, ...]:
@@ -397,10 +253,6 @@ def _build_rule_metadata(
     return RuleMetadata(
         id=rule.id,
         source=canonicalize_analyzer_key(rule.source),
-        category=rule.category,
-        severity=rule.severity,
-        confidence=rule.confidence,
-        applies_to=rule.applies_to,
         description=rule.description,
         explanation=rule.explanation or rule.description,
         suggestion=rule.suggestion,
@@ -454,8 +306,6 @@ def _build_default_analyzer_catalog() -> AnalyzerCatalog:
     # it for the process lifetime is safe; get_default_analyzer_catalog stays the public,
     # monkeypatch-friendly entry point tests already rely on.
     analyzer_specs = tuple(get_default_analyzers())
-    validate_analyzer_dependencies(analyzer_specs)
-    analyzer_specs = deterministic_dependency_order(analyzer_specs)
     semantic_rule_groups = get_sattline_semantic_rule_groups()
     registered_keys = {spec.key for spec in analyzer_specs}
     rule_ids_by_analyzer: dict[str, list[str]] = {spec.key: [] for spec in analyzer_specs}
@@ -534,7 +384,6 @@ __all__ = [
     "SEMANTIC_LAYER_ANALYZER_KEY",
     "AnalyzerCatalog",
     "AnalyzerDeliveryMetadata",
-    "AnalyzerDependencyGraphError",
     "AnalyzerMetadata",
     "AnalyzerSpec",
     "RuleMetadata",
@@ -543,29 +392,21 @@ __all__ = [
     "analyze_alarm_integrity",
     "analyze_comment_code",
     "analyze_cyclomatic_complexity",
-    "analyze_data_dependency",
     "analyze_dataflow",
     "analyze_datatype_fields",
     "analyze_icf_configuration",
-    "analyze_loop_stability",
     "analyze_mms_interface_variables",
-    "analyze_numeric_constraints",
-    "analyze_parameter_drift",
     "analyze_picture_display_paths",
     "analyze_same_cycle",
     "analyze_sattline_semantics",
     "analyze_sfc",
-    "analyze_shadowing",
-    "analyze_signal_lifecycle",
     "analyze_spec_compliance",
-    "analyze_unsafe_defaults",
     "analyze_variables",
     "analyze_version_drift",
     "build_default_analyzers",
     "build_delivery_metadata",
     "canonicalize_analyzer_key",
     "canonicalize_analyzer_keys",
-    "deterministic_dependency_order",
     "get_actual_cli_analyzer_keys",
     "get_actual_lsp_analyzer_keys",
     "get_correctness_analyzer_keys",
@@ -580,5 +421,4 @@ __all__ = [
     "get_selectable_analyzers",
     "register_analyzer",
     "summary_output_for_analyzer",
-    "validate_analyzer_dependencies",
 ]

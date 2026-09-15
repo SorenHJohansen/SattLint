@@ -17,7 +17,6 @@ from ._mms_interface_helpers import (
     _datatype_label,
     _load_icf_entries_from_config,
     _normalize_external_tag,
-    _tag_family_key,
 )
 
 
@@ -32,7 +31,6 @@ class InterfaceInventoryEntry:
     source_leaf_name: str | None
     external_tag: str | None
     external_tag_key: str | None
-    tag_family_key: str | None
     direction: str | None = None
     write_fields: WriteFields = ()
     write_note: str | None = None
@@ -74,7 +72,6 @@ def collect_icf_inventory_entries(
                 source_leaf_name=resolved.leaf_name,
                 external_tag=tag_name,
                 external_tag_key=_normalize_external_tag(tag_name),
-                tag_family_key=_tag_family_key(tag_name),
             )
         )
     return inventory_entries

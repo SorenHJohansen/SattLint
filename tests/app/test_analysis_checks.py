@@ -409,14 +409,12 @@ def test_collect_run_checks_result_captures_target_and_analyzer_metadata():
 def test_collect_run_checks_result_runs_icf_once_as_whole_run_target(monkeypatch) -> None:
     calls: dict[str, int] = {"n": 0}
 
-    def _fake_icf(base_picture, *, config, debug=False) -> SimpleReport:
+    def _fake_icf(context) -> SimpleReport:
         calls["n"] += 1
         return SimpleReport(
             name="ICF configuration",
             issues=[Issue(kind="icf.unresolved_path", message="Program.icf:1: unresolved path")],
         )
-
-    monkeypatch.setattr(checks_application, "analyze_icf_configuration", _fake_icf)
 
     result = checks_application.collect_run_checks_result(
         DEFAULT_CONFIG.copy(),
@@ -434,7 +432,13 @@ def test_collect_run_checks_result_runs_icf_once_as_whole_run_target(monkeypatch
             ),
         ),
         get_enabled_analyzers_fn=lambda: [
-            SimpleNamespace(key="icf", name="ICF configuration", supports_selected_issue_kinds=False)
+            SimpleNamespace(
+                key="icf",
+                name="ICF configuration",
+                supports_selected_issue_kinds=False,
+                scope="per-run",
+                run=_fake_icf,
+            )
         ],
         target_is_library_fn=lambda *_args, **_kwargs: False,
     )
@@ -464,7 +468,6 @@ def test_run_checks_skips_semantic_layer_when_batch_selection_includes_contribut
         run_order.append("sattline-semantics")
         shared_ids.append(id(context.shared_artifacts))
         assert context.shared_artifacts is not None
-        assert "variables" in context.shared_artifacts.derived_reports
         return _report("semantics summary")
 
     def _variables_run(context):
@@ -869,7 +872,7 @@ def test_run_checks_accepts_legacy_underscore_analyzer_key(monkeypatch):
 
     checks_application.run_checks(
         DEFAULT_CONFIG.copy(),
-        ["data_dependency"],
+        ["same_cycle"],
         iter_loaded_projects_fn=cast(
             Any,
             lambda *_args, **_kwargs: iter(
@@ -884,16 +887,16 @@ def test_run_checks_accepts_legacy_underscore_analyzer_key(monkeypatch):
         ),
         get_enabled_analyzers_fn=lambda: [
             SimpleNamespace(
-                key="data-dependency",
-                name="Data dependency",
-                run=lambda _context: SimpleNamespace(summary=lambda: "data dependency summary"),
+                key="same-cycle",
+                name="Same-cycle hazards",
+                run=lambda _context: SimpleNamespace(summary=lambda: "same-cycle summary"),
             )
         ],
         target_is_library_fn=lambda *_args, **_kwargs: False,
         pause_fn=None,
     )
 
-    assert any("Data dependency (data-dependency)" in line for line in lines)
+    assert any("Same-cycle hazards (same-cycle)" in line for line in lines)
 
 
 def test_run_icf_validation_covers_missing_dir_invalid_dir_and_empty_file_list(monkeypatch, tmp_path):
@@ -999,7 +1002,6 @@ def test_run_checks_result_returns_structured_result_and_persists_run(tmp_path, 
                 kind="unused",
                 message="declared but never read",
                 module_path=["TargetA"],
-                severity="warning",
             )
         ],
     )

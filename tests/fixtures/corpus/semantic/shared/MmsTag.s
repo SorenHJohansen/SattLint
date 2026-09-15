@@ -1,9 +1,8 @@
 "Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
 "Original file date: ---"
 "Program date: 2026-06-19-12:00:00.000, name: MmsTag"
-(* SEMANTIC: Duplicate MMS tags, datatype mismatch, naming drift, dead tags.
-   Expected: mms-duplicate-tag, mms-datatype-mismatch, mms-naming-drift,
-   mms-dead-tag. *)
+(* SEMANTIC: Duplicate MMS tags, datatype mismatch, dead tags.
+   Expected: mms-duplicate-tag, mms-datatype-mismatch, mms-dead-tag. *)
 
 BasePicture Invocation
    ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0

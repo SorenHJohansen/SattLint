@@ -23,6 +23,7 @@ from sattline_parser.models.ast_model import (
 from sattline_parser.models.expressions import Assignment, SLExpression, VarRef
 
 from sattlint import constants as const
+from sattlint.analyzers.dataflow import analyze_dataflow
 from sattlint.analyzers.registry import get_actual_cli_analyzer_keys, get_default_analyzers
 from sattlint.analyzers.same_cycle import analyze_same_cycle
 
@@ -196,7 +197,7 @@ def test_same_cycle_reports_external_invocation_mapping_shared_access_hazard() -
     assert "Writer (write)" in issue.message
 
 
-def test_same_cycle_reports_non_state_multi_site_hazard_across_equations() -> None:
+def test_dataflow_non_state_multi_site_across_equations() -> None:
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[
@@ -212,9 +213,9 @@ def test_same_cycle_reports_non_state_multi_site_hazard_across_equations() -> No
         ),
     )
 
-    report = analyze_same_cycle(bp)
+    report = analyze_dataflow(bp)
 
-    issue = next(issue for issue in report.issues if issue.kind == "same_cycle_non_state_multi_site_hazard")
+    issue = next(issue for issue in report.issues if issue.kind == "dataflow.non_state_multi_site")
     assert "Root.SharedValue" in issue.message
     assert issue.data == {
         "symbol": "Root.SharedValue",
@@ -238,7 +239,7 @@ def test_same_cycle_reports_non_state_multi_site_hazard_across_equations() -> No
     }
 
 
-def test_same_cycle_ignores_non_state_multi_site_hazard_within_single_equation() -> None:
+def test_dataflow_non_state_multi_site_ignores_single_equation() -> None:
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[
@@ -259,12 +260,12 @@ def test_same_cycle_ignores_non_state_multi_site_hazard_within_single_equation()
         ),
     )
 
-    report = analyze_same_cycle(bp)
+    report = analyze_dataflow(bp)
 
-    assert not any(issue.kind == "same_cycle_non_state_multi_site_hazard" for issue in report.issues)
+    assert not any(issue.kind == "dataflow.non_state_multi_site" for issue in report.issues)
 
 
-def test_same_cycle_ignores_non_state_multi_site_hazard_within_single_active_step() -> None:
+def test_dataflow_non_state_multi_site_ignores_single_active_step() -> None:
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[
@@ -289,12 +290,12 @@ def test_same_cycle_ignores_non_state_multi_site_hazard_within_single_active_ste
         ),
     )
 
-    report = analyze_same_cycle(bp)
+    report = analyze_dataflow(bp)
 
-    assert not any(issue.kind == "same_cycle_non_state_multi_site_hazard" for issue in report.issues)
+    assert not any(issue.kind == "dataflow.non_state_multi_site" for issue in report.issues)
 
 
-def test_same_cycle_reports_non_state_multi_site_hazard_for_direct_transition_self_loop() -> None:
+def test_dataflow_non_state_multi_site_transition_self_loop() -> None:
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[Variable(name="SharedFlag", datatype=Simple_DataType.BOOLEAN)],
@@ -315,9 +316,9 @@ def test_same_cycle_reports_non_state_multi_site_hazard_for_direct_transition_se
         ),
     )
 
-    report = analyze_same_cycle(bp)
+    report = analyze_dataflow(bp)
 
-    issue = next(issue for issue in report.issues if issue.kind == "same_cycle_non_state_multi_site_hazard")
+    issue = next(issue for issue in report.issues if issue.kind == "dataflow.non_state_multi_site")
     assert issue.data is not None
     assert [site["site"] for site in issue.data["continuous_sites"]] == [
         "STEP:Loop:ENTER",
@@ -325,7 +326,7 @@ def test_same_cycle_reports_non_state_multi_site_hazard_for_direct_transition_se
     ]
 
 
-def test_same_cycle_reports_non_state_multi_site_hazard_for_direct_fork_self_loop() -> None:
+def test_dataflow_non_state_multi_site_fork_self_loop() -> None:
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[
@@ -352,9 +353,9 @@ def test_same_cycle_reports_non_state_multi_site_hazard_for_direct_fork_self_loo
         ),
     )
 
-    report = analyze_same_cycle(bp)
+    report = analyze_dataflow(bp)
 
-    issue = next(issue for issue in report.issues if issue.kind == "same_cycle_non_state_multi_site_hazard")
+    issue = next(issue for issue in report.issues if issue.kind == "dataflow.non_state_multi_site")
     assert issue.data is not None
     assert [site["site"] for site in issue.data["continuous_sites"]] == [
         "STEP:Loop:ENTER",
@@ -362,7 +363,7 @@ def test_same_cycle_reports_non_state_multi_site_hazard_for_direct_fork_self_loo
     ]
 
 
-def test_same_cycle_ignores_single_active_site_in_direct_self_loop() -> None:
+def test_dataflow_non_state_multi_site_ignores_single_active_site_in_self_loop() -> None:
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[
@@ -388,6 +389,6 @@ def test_same_cycle_ignores_single_active_site_in_direct_self_loop() -> None:
         ),
     )
 
-    report = analyze_same_cycle(bp)
+    report = analyze_dataflow(bp)
 
-    assert not any(issue.kind == "same_cycle_non_state_multi_site_hazard" for issue in report.issues)
+    assert not any(issue.kind == "dataflow.non_state_multi_site" for issue in report.issues)

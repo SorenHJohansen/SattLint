@@ -6,7 +6,6 @@
         "expected_finding_ids": [
             "semantic.mms-duplicate-tag",
             "semantic.mms-datatype-mismatch",
-            "semantic.mms-naming-drift",
             "semantic.mms-dead-tag"
         ],
         "artifact_fragments": {
@@ -18,7 +17,6 @@
                 "rule_counts": {
                     "semantic.mms-duplicate-tag": 1,
                     "semantic.mms-datatype-mismatch": 1,
-                    "semantic.mms-naming-drift": 1,
                     "semantic.mms-dead-tag": 2
                 }
             }

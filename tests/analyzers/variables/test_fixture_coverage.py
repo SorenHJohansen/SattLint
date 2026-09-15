@@ -63,7 +63,6 @@ def test_variables_execution_collect_typedef_issues_covers_branchy_typedef_roles
 
     variables_execution_module._collect_typedef_issues(helper)
 
-    assert (IssueKind.UI_ONLY, ("Root", "TypeDef:WorkerType"), "DisplayParam", "moduleparameter", None) in issues
     assert (
         IssueKind.WRITE_WITHOUT_EFFECT,
         ("Root", "TypeDef:WorkerType"),
@@ -78,7 +77,13 @@ def test_variables_execution_collect_typedef_issues_covers_branchy_typedef_roles
         "procedure-status",
         "Status",
     ) in issues
-    assert (IssueKind.UI_ONLY, ("Root", "TypeDef:WorkerType"), "DisplayLocal", "localvariable", None) in issues
+    assert (
+        IssueKind.READ_ONLY_NON_CONST,
+        ("Root", "TypeDef:WorkerType"),
+        "DisplayLocal",
+        "localvariable",
+        None,
+    ) in issues
     assert (
         IssueKind.READ_ONLY_NON_CONST,
         ("Root", "TypeDef:WorkerType"),
@@ -110,11 +115,6 @@ def test_variable_quality_issues_fixture_contains_expected_issue_kinds():
     never_read = {
         issue.variable.name for issue in issues if issue.kind is IssueKind.NEVER_READ and issue.variable is not None
     }
-    naming_mismatch = {
-        issue.variable.name
-        for issue in issues
-        if issue.kind is IssueKind.NAMING_ROLE_MISMATCH and issue.variable is not None
-    }
 
     assert "DisplayValue" in never_read
     assert "UnusedWrite" in never_read
@@ -122,8 +122,6 @@ def test_variable_quality_issues_fixture_contains_expected_issue_kinds():
     assert "ReadValue" not in never_read
     assert "EffectWrite" not in never_read
     assert "StatusWord" not in never_read
-    assert "ActiveStatus" in naming_mismatch
-    assert "StatusWord" not in naming_mismatch
 
 
 def test_module_structure_issues_fixture_contains_expected_issue_kinds():
@@ -160,11 +158,11 @@ def test_parameter_mapping_fixture_contains_expected_issue_kinds():
     bp = parse_source_file(fixture)
     issues = VariablesAnalyzer(bp).run()
 
-    required_param = {
-        tuple(issue.module_path) for issue in issues if issue.kind is IssueKind.REQUIRED_PARAMETER_CONNECTION
+    min_max_mismatch = {
+        tuple(issue.module_path) for issue in issues if issue.kind is IssueKind.MIN_MAX_MAPPING_MISMATCH
     }
 
-    assert len(required_param) > 0
+    assert len(min_max_mismatch) > 0
 
 
 def test_sequence_lifetime_fixture_contains_expected_issue_kinds():

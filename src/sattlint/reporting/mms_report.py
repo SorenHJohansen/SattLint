@@ -13,7 +13,6 @@ _ISSUE_LABELS = {
     "mms.duplicate_tag": "Duplicate external tags",
     "mms.dead_tag": "Dead outgoing tags",
     "mms.datatype_mismatch": "Datatype mismatches",
-    "mms.naming_drift": "Naming drift",
 }
 
 

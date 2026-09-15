@@ -35,8 +35,6 @@ from ._sattline_semantic_issue_mapping import (
     map_variable_issues,
 )
 from ._sattline_semantic_models import (
-    CATEGORY_LABELS,
-    CATEGORY_ORDER,
     SemanticIssue,
     SemanticRule,
     SemanticRuleGroup,
@@ -89,24 +87,18 @@ class SattLineSemanticsReport:
 
         lines = format_report_header("SattLine semantics", self.basepicture_name, status="issues")
         lines.append(f"Issues: {len(self.issues)}")
-
-        for category in CATEGORY_ORDER:
-            category_issues = [issue for issue in self.issues if issue.rule.category == category]
-            if not category_issues:
-                continue
-
-            lines.append("")
-            lines.append(f"  - {CATEGORY_LABELS[category]}:")
-            for issue in sorted(
-                category_issues,
-                key=lambda item: (
-                    item.module_path or [],
-                    item.rule.id,
-                    item.message,
-                ),
-            ):
-                location = ".".join(issue.module_path or [self.basepicture_name])
-                lines.append(f"      * [{location}] {issue.rule.id}: {issue.message}")
+        lines.append("")
+        lines.append("Findings:")
+        for issue in sorted(
+            self.issues,
+            key=lambda item: (
+                item.module_path or [],
+                item.rule.id,
+                item.message,
+            ),
+        ):
+            location = ".".join(issue.module_path or [self.basepicture_name])
+            lines.append(f"  - [{location}] {issue.rule.id}: {issue.message}")
 
         return "\n".join(lines)
 
@@ -151,11 +143,7 @@ def analyze_sattline_semantics(
         )
 
     for spec in get_semantic_contributor_specs():
-        report = run_registry_analyzer(
-            spec,
-            context,
-            use_shared_artifacts=True,
-        )
+        report = run_registry_analyzer(spec, context)
 
         report_issues = getattr(report, "issues", None)
         if not isinstance(report_issues, list):

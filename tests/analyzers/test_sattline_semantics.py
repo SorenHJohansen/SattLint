@@ -1,7 +1,6 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false, reportMissingTypeArgument=false
 from types import SimpleNamespace
 
-from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -104,13 +103,12 @@ def test_sattline_semantics_aggregates_domain_checks():
     assert "semantic.unused-variable" in rule_ids
     assert "semantic.unknown-parameter-target" in rule_ids
     assert "semantic.unreachable-sequence-node" in rule_ids
-    assert "spec.basepicture_direct_code" in rule_ids
 
     summary = report.summary()
-    assert "Variable lifecycle" in summary
-    assert "Interface contracts" in summary
-    assert "Control flow" in summary
-    assert "Engineering spec" in summary
+    assert "Findings:" in summary
+    assert "semantic.unused-variable" in summary
+    assert "semantic.unknown-parameter-target" in summary
+    assert "semantic.unreachable-sequence-node" in summary
 
 
 def test_sattline_semantics_includes_read_before_write_rule():
@@ -140,7 +138,7 @@ def test_sattline_semantics_includes_read_before_write_rule():
 
     report = analyze_sattline_semantics(bp)
 
-    assert any(issue.rule.id == "semantic.signal-lifecycle-read-before-write" for issue in report.issues)
+    assert any(issue.rule.id == "semantic.read-before-write" for issue in report.issues)
 
 
 def test_sattline_semantics_includes_same_cycle_shared_access_rule() -> None:
@@ -267,77 +265,6 @@ def test_sattline_semantics_includes_scan_cycle_implicit_new_rule():
     report = analyze_sattline_semantics(bp)
 
     assert any(issue.rule.id == "semantic.scan-cycle-implicit-new" for issue in report.issues)
-
-
-def test_sattline_semantics_includes_scan_cycle_temporal_misuse_rule():
-    bp = BasePicture(
-        header=_hdr("Root"),
-        localvariables=[Variable(name="Flag", datatype=Simple_DataType.BOOLEAN, state=True)],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "MaxLim",
-                            [1.0, 2.0, 0.1, {const.KEY_VAR_NAME: "Flag", "state": "old"}],
-                        )
-                    ],
-                )
-            ],
-        ),
-    )
-
-    report = analyze_sattline_semantics(bp)
-
-    assert any(issue.rule.id == "semantic.scan-cycle-temporal-misuse" for issue in report.issues)
-
-
-def test_sattline_semantics_includes_invalid_state_access_rule():
-    bp = BasePicture(
-        header=_hdr("Root"),
-        datatype_defs=[
-            DataType(
-                name="RegressionType",
-                description=None,
-                datecode=None,
-                var_list=[Variable(name="Running", datatype=Simple_DataType.BOOLEAN)],
-            ),
-            DataType(
-                name="SelfType",
-                description=None,
-                datecode=None,
-                var_list=[Variable(name="Regression", datatype="RegressionType")],
-            ),
-        ],
-        localvariables=[
-            Variable(name="Self", datatype="SelfType"),
-            Variable(name="Output", datatype=Simple_DataType.BOOLEAN),
-        ],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("Output"),
-                            {const.KEY_VAR_NAME: "Self.Regression.Running", "state": "old"},
-                        )
-                    ],
-                )
-            ],
-        ),
-    )
-
-    report = analyze_sattline_semantics(bp)
-
-    assert any(issue.rule.id == "semantic.invalid-state-access" for issue in report.issues)
 
 
 def test_sattline_semantics_includes_parallel_write_race_rule():
@@ -484,28 +411,6 @@ def test_sattline_semantics_includes_write_without_effect_rule():
     assert any(issue.rule.id == "semantic.write-without-effect" for issue in report.issues)
 
 
-def test_sattline_semantics_includes_ui_only_variable_rule():
-    bp = parser_core_parse_source_text(
-        """
-"SyntaxVersion"
-"OriginalFileDate"
-"ProgramDate"
-BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
-LOCALVARIABLES
-    DisplayValue: integer := 0;
-ModuleDef
-    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
-    GraphObjects :
-        TextObject ( 0.0 , 0.0 ) ( 1.0 , 1.0 )
-            "Value" VarName Width_ = 5 : InVar_ "DisplayValue"
-ENDDEF (*BasePicture*);
-"""
-    )
-    report = analyze_sattline_semantics(bp)
-
-    assert any(issue.rule.id == "semantic.ui-only-variable" for issue in report.issues)
-
-
 def test_sattline_semantics_includes_unreachable_transition_rule():
     bp = BasePicture(
         header=_hdr("Root"),
@@ -528,22 +433,25 @@ def test_sattline_semantics_includes_unreachable_transition_rule():
     )
 
 
-def test_sattline_semantics_reuses_precomputed_reports(monkeypatch):
+def test_sattline_semantics_reruns_contributors(monkeypatch):
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[Variable(name="UnusedFlag", datatype=Simple_DataType.BOOLEAN)],
         submodules=[],
     )
     shared_artifacts = AnalysisSharedArtifacts()
-    shared_artifacts.derived_reports["variables"] = SimpleNamespace(
-        issues=[
-            VariableIssue(
-                kind=IssueKind.UNUSED,
-                module_path=["Root"],
-                variable=Variable(name="UnusedFlag", datatype=Simple_DataType.BOOLEAN),
-            )
-        ]
-    )
+
+    def _fake_run(_context):
+        return SimpleNamespace(
+            issues=[
+                VariableIssue(
+                    kind=IssueKind.UNUSED,
+                    module_path=["Root"],
+                    variable=Variable(name="UnusedFlag", datatype=Simple_DataType.BOOLEAN),
+                )
+            ]
+        )
+
     context = AnalysisContext(base_picture=bp, shared_artifacts=shared_artifacts)
 
     monkeypatch.setattr(
@@ -556,21 +464,14 @@ def test_sattline_semantics_reuses_precomputed_reports(monkeypatch):
                         key="variables",
                         name="Variable issues",
                         description="",
-                        run=lambda _context: SimpleNamespace(issues=[]),
+                        run=_fake_run,
                         semantic_mapping_kind="variable",
                     )
                 ),
             )
         ),
     )
-    monkeypatch.setattr(
-        registry_module,
-        "analyze_variables",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("should reuse precomputed report")),
-    )
 
     report = analyze_sattline_semantics(bp, analysis_context=context)
 
     assert any(issue.rule.id == "semantic.unused-variable" for issue in report.issues)
-    assert shared_artifacts.counters.semantic_precomputed_reports_used == 1
-    assert shared_artifacts.counters.semantic_analyzer_reruns == 0

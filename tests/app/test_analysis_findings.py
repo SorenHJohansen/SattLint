@@ -12,8 +12,6 @@ def test_extract_report_findings_normalizes_framework_issues() -> None:
                 kind="unused",
                 message="declared but never read",
                 module_path=["Root", "Mod"],
-                severity="warning",
-                confidence="high",
                 rule_id="unused.variable",
                 explanation="Stale declarations add noise.",
                 suggestion="Delete the declaration.",
@@ -29,8 +27,6 @@ def test_extract_report_findings_normalizes_framework_issues() -> None:
     assert first.kind == "unused"
     assert first.message == "declared but never read"
     assert first.module_path == ("Root", "Mod")
-    assert first.severity == "warning"
-    assert first.confidence == "high"
     assert first.rule_id == "unused.variable"
     assert first.explanation is not None
     assert first.suggestion is not None
@@ -83,8 +79,6 @@ def test_analysis_finding_round_trips_through_dict() -> None:
         kind="unused",
         message="declared but never read",
         module_path=("Root", "Mod"),
-        severity="warning",
-        confidence="high",
         rule_id="unused.variable",
         explanation="Explains.",
         suggestion="Fixes.",

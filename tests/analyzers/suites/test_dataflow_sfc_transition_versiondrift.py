@@ -136,7 +136,7 @@ def test_sfc_parallel_write_race_detected_for_record_field_overlap():
         moduledef=None,
     )
 
-    report = analyze_sfc(bp)
+    report = analyze_same_cycle(bp)
 
     issues = [issue for issue in report.issues if issue.kind == "sfc_parallel_write_race"]
     assert len(issues) == 1
@@ -144,7 +144,7 @@ def test_sfc_parallel_write_race_detected_for_record_field_overlap():
     assert issues[0].data["conflicts"] == ["Root.Rec"]
 
 
-def test_sfc_transition_logic_detects_always_true_guard():
+def test_dataflow_detects_always_true_transition_guard():
     sequence = Sequence(
         name="SeqMain",
         type="sequence",
@@ -163,15 +163,13 @@ def test_sfc_transition_logic_detects_always_true_guard():
         modulecode=ModuleCode(sequences=[sequence], equations=[]),
     )
 
-    report = analyze_sfc(bp)
+    report = analyze_dataflow(bp)
 
-    issues = [issue for issue in report.issues if issue.kind == "sfc_transition_always_true"]
+    issues = [issue for issue in report.issues if issue.kind == "dataflow.condition_always_true"]
     assert len(issues) == 1
-    assert issues[0].data is not None
-    assert issues[0].data["transition_name"] == "AlwaysOpen"
 
 
-def test_sfc_transition_logic_detects_always_false_guard():
+def test_dataflow_detects_always_false_transition_guard():
     sequence = Sequence(
         name="SeqMain",
         type="sequence",
@@ -190,12 +188,10 @@ def test_sfc_transition_logic_detects_always_false_guard():
         modulecode=ModuleCode(sequences=[sequence], equations=[]),
     )
 
-    report = analyze_sfc(bp)
+    report = analyze_dataflow(bp)
 
-    issues = [issue for issue in report.issues if issue.kind == "sfc_transition_always_false"]
+    issues = [issue for issue in report.issues if issue.kind == "dataflow.condition_always_false"]
     assert len(issues) == 1
-    assert issues[0].data is not None
-    assert issues[0].data["transition_name"] == "NeverOpen"
 
 
 def test_sfc_transition_logic_detects_duplicate_guards_after_normalization():

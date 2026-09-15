@@ -581,31 +581,53 @@ fan-in/out thresholds. Config removals: none.
 ## D2. Phases
 
 Each phase keeps `ruff`, `pyright`, and the focused analyzer tests green.
+Phase status is tracked inline below (`[done]` = complete and validated).
 
 1. **Fix the live stale-planner crash** (independent, shippable now): `_app_textual_setup_display.py`
-   `plan.missing_handlers` / `plan.executable_steps`.
+   `plan.missing_handlers` / `plan.executable_steps`. **[done]**
 2. **Content removals + metadata layer** (Part A §A1 removals, §A3): conflicting alarm priority,
    comment-code read error, dependency path, dataflow :OLD misuse + invalid state access,
    spec-compliance removals, MMS naming drift, numeric-constraints, parameter-drift, variables
    UI-only / naming role / name collision / layout overlap / required-parameter,
-   `symbolic_lite.py`; hard-delete `semantic.*` ids; update corpus manifests + `CHANGELOG.md`.
+   `symbolic_lite.py`; hard-delete `semantic.*` ids; update corpus manifests + `CHANGELOG.md`. **[done]**
 3. **Moves/merges** (Part A §A2): parallel race → same-cycle; transition truth → dataflow;
    non-state multi-site → dataflow; read-before-write + init-order + shadowing + unsafe-defaults →
-   variables.
+   variables. **[done]**
+   - shadowing → variables; unsafe-defaults → variables; read-before-write + init-order → variables
+     (merged `read_before_write` kind + `semantic.read-before-write` rule);
+   - transition always-true/false folded into dataflow `condition_always_true/false` (sfc truth
+     engine removed; `semantic.transition-always-*` hard-deleted);
+   - parallel write-race → same-cycle (sfc drops the race; no double `_SfcAccessCollector` run);
+   - non-state multi-site → dataflow (`dataflow.non_state_multi_site`; `semantic.non-state-multi-site`).
 4. **New checks + config schema** (Part A §A2.7–A2.11, §A5): dataflow conflicting-constants,
    same-cycle write race, cyclomatic equation-block, spec prefix config + new prefix checks,
    picture-display above-base, MMS outgoing-tag-written-never-read, unsafe-default tokens,
-   thresholds.
+   thresholds. **[done]**
+   - dataflow `conflicting_constants` (path-sensitive; replaces `loop_stability.conflicting_setpoint`;
+     the `loop-stability` analyzer is removed, `semantic.loop-conflicting-setpoint` hard-deleted);
+   - cyclomatic `equation.cyclomatic_complexity` + configured module/step/equation-block thresholds;
+   - spec-compliance `step_prefix`/`transition_prefix`/`sequence_prefix`/`equation_prefix` config,
+     opt-in sequence-name and equation-block-name prefix checks;
+   - picture-display `picture_display_paths.above_base` for ascent past the base picture;
+   - `analysis.unsafe_default_tokens` and `analysis.fan_in_out_threshold` config;
+   - **MMS outgoing-tag-written-never-read deferred**: D6 #2 semantics still open; a literal
+     "written but never read internally" check flags every legitimate write-only export, so it is
+     not implemented.
 5. **Description rewrite** (Part C) with registry/findings/semantic-rule updates in the same change.
+   **[done]** — all analyzer descriptions rewritten per Part C; version-drift and MMS
+   datatype-mismatch semantic rules reframed; spec rules gained the sequence/equation prefix entries.
 6. **Execution — remove the dependency graph** (Part B): `AnalyzerSpec.requires`,
    `_registry_spec_templates` `requires=`, `_registry_dispatch` helpers, `registry`
    validation/order helpers, `plugin.requires`. Selecting `mms`/`sfc`/`datatype-fields` alone must
-   work (they already fall back).
+   work (they already fall back). **[done]**
 7. **Selection dispatch + batch split** (Part B §B3): `get_cli_dispatch_analyzers` → exact filter;
    add `scope`; icf → `scope="per-run"`; simplify `collect_run_checks_result`; remove
-   `_run_whole_run_analyzer`.
+   `_run_whole_run_analyzer`. **[done]** — `resolve_selected_analyzers` added; per-target/per-run
+   split driven by `AnalyzerSpec.scope`; `_run_per_run_analyzer` replaced `_run_whole_run_analyzer`.
 8. **Shared-artifact decoupling** (Part B §B4): delete `derived_reports` and
    `run_registry_analyzer(use_shared_artifacts=...)`; keep the opportunistic foundation cache.
+   **[done]** — `ReportsByKey`/`derived_reports` and the dead semantic counters removed; the
+   foundation/collected-views cache stays.
 9. **Remove `sattline-semantics` + LSP surface** (Part B §B6) with `TUI_PRUNING_PLAN.md`; remove
    `LIBRARY_SUPPRESSED_ANALYZER_KEYS` (empty after A4).
 10. **UI de-planner** (Part B §B5).

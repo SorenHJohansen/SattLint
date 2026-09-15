@@ -48,19 +48,6 @@ _SAME_CYCLE_SOURCE_ACCEPTANCE_TESTS = (
     "tests/analyzers/test_same_cycle.py",
     "tests/analyzers/test_sattline_semantics.py",
 )
-_SIGNAL_LIFECYCLE_SOURCE_ACCEPTANCE_TESTS = (
-    "tests/analyzers/test_signal_lifecycle.py",
-    "tests/analyzers/test_sattline_semantics.py",
-)
-_LOOP_STABILITY_SOURCE_ACCEPTANCE_TESTS = (
-    "tests/analyzers/test_loop_stability.py",
-    "tests/analyzers/test_sattline_semantics.py",
-)
-_NUMERIC_CONSTRAINTS_SOURCE_ACCEPTANCE_TESTS = (
-    "tests/analyzers/test_numeric_constraints.py",
-    "tests/analyzers/test_sattline_semantics.py",
-)
-_UNSAFE_DEFAULTS_SOURCE_ACCEPTANCE_TESTS = ("tests/analyzers/test_sattline_semantics.py",)
 _SPEC_SOURCE_ACCEPTANCE_TESTS = (
     *_APP_ACCEPTANCE_TESTS,
     "tests/analyzers/test_spec_compliance.py",
@@ -77,17 +64,6 @@ VARIABLE_RULE_CONTRACT = SemanticRuleContract(
     mutation_applicability="required",
     suppression_modes=("baseline",),
     incremental_safe=True,
-)
-SHADOWING_RULE_CONTRACT = SemanticRuleContract(
-    acceptance_tests=_merge_acceptance_tests(
-        _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
-        _ANALYZER_SUITE_ACCEPTANCE_TESTS,
-        _APP_ACCEPTANCE_TESTS,
-    ),
-    corpus_cases=_WORKSPACE_CORPUS_CASES,
-    mutation_applicability="required",
-    suppression_modes=("baseline",),
-    incremental_safe=False,
 )
 SFC_RULE_CONTRACT = SemanticRuleContract(
     acceptance_tests=_merge_acceptance_tests(
@@ -136,46 +112,6 @@ SAME_CYCLE_RULE_CONTRACT = SemanticRuleContract(
     suppression_modes=("baseline",),
     incremental_safe=False,
 )
-SIGNAL_LIFECYCLE_RULE_CONTRACT = SemanticRuleContract(
-    acceptance_tests=_merge_acceptance_tests(
-        _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
-        _SIGNAL_LIFECYCLE_SOURCE_ACCEPTANCE_TESTS,
-    ),
-    corpus_cases=(),
-    mutation_applicability="required",
-    suppression_modes=("baseline",),
-    incremental_safe=False,
-)
-LOOP_STABILITY_RULE_CONTRACT = SemanticRuleContract(
-    acceptance_tests=_merge_acceptance_tests(
-        _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
-        _LOOP_STABILITY_SOURCE_ACCEPTANCE_TESTS,
-    ),
-    corpus_cases=(),
-    mutation_applicability="required",
-    suppression_modes=("baseline",),
-    incremental_safe=False,
-)
-NUMERIC_CONSTRAINTS_RULE_CONTRACT = SemanticRuleContract(
-    acceptance_tests=_merge_acceptance_tests(
-        _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
-        _NUMERIC_CONSTRAINTS_SOURCE_ACCEPTANCE_TESTS,
-    ),
-    corpus_cases=(),
-    mutation_applicability="required",
-    suppression_modes=("baseline",),
-    incremental_safe=False,
-)
-UNSAFE_DEFAULTS_RULE_CONTRACT = SemanticRuleContract(
-    acceptance_tests=_merge_acceptance_tests(
-        _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
-        _UNSAFE_DEFAULTS_SOURCE_ACCEPTANCE_TESTS,
-    ),
-    corpus_cases=_WORKSPACE_CORPUS_CASES,
-    mutation_applicability="required",
-    suppression_modes=("baseline",),
-    incremental_safe=False,
-)
 SPEC_RULE_CONTRACT = SemanticRuleContract(
     acceptance_tests=_merge_acceptance_tests(
         _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
@@ -191,15 +127,10 @@ SPEC_RULE_CONTRACT = SemanticRuleContract(
 __all__ = [
     "ALARM_RULE_CONTRACT",
     "DATAFLOW_RULE_CONTRACT",
-    "LOOP_STABILITY_RULE_CONTRACT",
-    "NUMERIC_CONSTRAINTS_RULE_CONTRACT",
     "SAME_CYCLE_RULE_CONTRACT",
     "SFC_RULE_CONTRACT",
-    "SHADOWING_RULE_CONTRACT",
-    "SIGNAL_LIFECYCLE_RULE_CONTRACT",
     "SPEC_RULE_CONTRACT",
     "TRACE_RULE_CONTRACT",
-    "UNSAFE_DEFAULTS_RULE_CONTRACT",
     "VARIABLE_RULE_CONTRACT",
     "SemanticRuleContract",
 ]

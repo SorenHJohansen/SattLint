@@ -35,16 +35,7 @@ def _returns_false(*_args: object, **_kwargs: object) -> bool:
     return False
 
 
-def _returns_true(*_args: object, **_kwargs: object) -> bool:
-    return True
-
-
-def test_variables_status_cover_naming_defaults_and_binding_branches(monkeypatch: pytest.MonkeyPatch) -> None:
-    defaults = variables_status_impl._configured_naming_role_patterns()
-    assert defaults["status"].suffixes == ("status",)
-    assert defaults["command"].suffixes == ("cmd",)
-    assert defaults["alarm"].suffixes == ("alarm",)
-
+def test_variables_status_cover_binding_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     variable = Variable(name="StatusVar", datatype=Simple_DataType.INTEGER)
     helper: Any = SimpleNamespace(
         procedure_status_bindings=defaultdict(list),
@@ -245,9 +236,9 @@ def test_variables_status_propagation_and_variables_helpers(monkeypatch: pytest.
         include_empty_sections=True,
     )
     assert variables_module.filter_variable_report(report, set()) is report
-    filtered = variables_module.filter_variable_report(report, {IssueKind.UI_ONLY})
+    filtered = variables_module.filter_variable_report(report, {IssueKind.IMPLICIT_LATCH})
     assert filtered.issues == []
-    assert filtered.visible_kinds == frozenset({IssueKind.UI_ONLY})
+    assert filtered.visible_kinds == frozenset({IssueKind.IMPLICIT_LATCH})
 
     warning_log: list[str] = []
     traces: list[tuple[str, dict[str, str]]] = []
@@ -266,12 +257,7 @@ def test_variables_status_propagation_and_variables_helpers(monkeypatch: pytest.
     assert traces == [("warning", {"message": "demo warning"})]
 
 
-def test_variables_status_naming_role_and_issue_helpers_cover_remaining_branches(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    command_var = Variable(name="StartCmd", datatype=Simple_DataType.INTEGER)
-    status_var = Variable(name="PumpStatus", datatype=Simple_DataType.INTEGER)
-    alarm_var = Variable(name="TripAlarm", datatype=Simple_DataType.INTEGER)
+def test_variables_status_procedure_status_issue_covers_remaining_branches() -> None:
     bound_var = Variable(name="BoundStatus", datatype=Simple_DataType.INTEGER)
     binding = variables_status_module.ProcedureStatusBinding(
         call_name="RunProc",
@@ -280,23 +266,8 @@ def test_variables_status_naming_role_and_issue_helpers_cover_remaining_branches
         field_path="Leaf",
     )
     helper: Any = SimpleNamespace(
-        naming_role_patterns={},
+        procedure_status_bindings={id(bound_var): [binding]},
     )
-
-    def _matches_naming_role(name_key: str, role_name: str) -> bool:
-        return (name_key, role_name) in {
-            (command_var.name.casefold(), "command"),
-            (status_var.name.casefold(), "status"),
-            (alarm_var.name.casefold(), "alarm"),
-        }
-
-    def _has_bound_status(variable: Variable) -> bool:
-        return variable is bound_var
-
-    helper.matches_naming_role = _matches_naming_role
-    helper.has_output_effect = _returns_false
-    helper.has_procedure_status_binding = _has_bound_status
-    helper.procedure_status_bindings = {id(bound_var): [binding]}
 
     assert variables_status_impl._procedure_status_issue(
         helper,
@@ -322,127 +293,6 @@ def test_variables_status_naming_role_and_issue_helpers_cover_remaining_branches
         )
         is None
     )
-    assert (
-        variables_status_impl._naming_role_mismatch_reason(
-            helper,
-            command_var,
-            cast(Any, _UsageStub(read=True, written=True)),
-            ["Root"],
-        )
-        == "Cmd-suffixed variable behaves like internal state instead of a one-way command signal."
-    )
-    assert (
-        variables_status_impl._naming_role_mismatch_reason(
-            helper,
-            status_var,
-            cast(Any, _UsageStub(written=True)),
-            ["Root"],
-        )
-        == "Status-suffixed variable is written directly in logic instead of being treated as observed status."
-    )
-    assert (
-        variables_status_impl._naming_role_mismatch_reason(
-            helper,
-            alarm_var,
-            cast(Any, _UsageStub(non_ui_read=True)),
-            ["Root"],
-        )
-        == "Alarm-suffixed variable is consumed in non-UI logic and behaves like a control input."
-    )
-    command_ok_helper: Any = SimpleNamespace(
-        **{
-            **helper.__dict__,
-            "has_output_effect": _returns_true,
-        }
-    )
-    assert (
-        variables_status_impl._naming_role_mismatch_reason(
-            command_ok_helper,
-            command_var,
-            cast(Any, _UsageStub(read=True, written=True)),
-            ["Root"],
-        )
-        is None
-    )
-    bound_helper: Any = SimpleNamespace(
-        **helper.__dict__,
-    )
-
-    def _has_status_binding(variable: Variable) -> bool:
-        return variable is status_var
-
-    bound_helper.has_procedure_status_binding = _has_status_binding
-    assert (
-        variables_status_impl._naming_role_mismatch_reason(
-            bound_helper,
-            status_var,
-            cast(Any, _UsageStub(written=True)),
-            ["Root"],
-        )
-        is None
-    )
-    assert (
-        variables_status_impl._naming_role_mismatch_reason(
-            helper,
-            alarm_var,
-            cast(Any, _UsageStub(non_ui_read=False)),
-            ["Root"],
-        )
-        is None
-    )
-    assert (
-        variables_status_impl._naming_role_mismatch_reason(
-            helper,
-            Variable(name="PlainVar", datatype=Simple_DataType.INTEGER),
-            cast(Any, _UsageStub()),
-            ["Root"],
-        )
-        is None
-    )
-    assert (
-        variables_status_impl._matches_naming_role(
-            cast(Any, SimpleNamespace(naming_role_patterns={})),
-            "plain_name",
-            "status",
-        )
-        is False
-    )
-
-    added_issues: list[tuple[IssueKind, list[str], Variable, str]] = []
-
-    def _get_usage(_variable: Variable) -> _UsageStub:
-        return _UsageStub(read=True, written=True)
-
-    def _naming_role_mismatch_reason(
-        variable: Variable,
-        _usage: _UsageStub,
-        _decl_path: list[str],
-    ) -> str | None:
-        if variable is alarm_var:
-            return None
-        return "mismatch"
-
-    def _add_issue(kind: IssueKind, decl_path: list[str], variable: Variable, role: str = "") -> None:
-        added_issues.append((kind, decl_path, variable, role))
-
-    analyzer: Any = SimpleNamespace(
-        get_usage=_get_usage,
-        naming_role_mismatch_reason=_naming_role_mismatch_reason,
-        add_issue=_add_issue,
-    )
-
-    def iter_variables_for_datatype_field_analysis(
-        _self: object,
-    ) -> list[tuple[list[str], Variable, None, bool]]:
-        return [(["Root"], command_var, None, True), (["Root"], alarm_var, None, True)]
-
-    monkeypatch.setattr(
-        variables_status_module,
-        "iter_variables_for_datatype_field_analysis",
-        iter_variables_for_datatype_field_analysis,
-    )
-    variables_status_impl._add_naming_role_mismatch_issues(analyzer)
-    assert added_issues == [(IssueKind.NAMING_ROLE_MISMATCH, ["Root"], command_var, "mismatch")]
 
 
 def test_variables_analyzer_warn_trace_and_status_helpers_cover_remaining_branches() -> None:
@@ -739,7 +589,6 @@ def test_variable_issue_collection_and_variables_cover_remaining_branches(monkey
     variable_issue_collection_impl._collect_issues_from_module(helper, mod, ["Root"])
     assert issues == [
         (IssueKind.PROCEDURE_STATUS, "status-role", "Field"),
-        (IssueKind.UI_ONLY, "moduleparameter", None),
         (IssueKind.WRITE_WITHOUT_EFFECT, "moduleparameter", None),
     ]
 

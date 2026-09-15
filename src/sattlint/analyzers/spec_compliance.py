@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from collections.abc import Sequence as SequenceABC
-from dataclasses import dataclass
+from typing import Any
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -10,7 +10,6 @@ from sattline_parser.models.ast_model import (
     ModuleCode,
     ModuleTypeDef,
     ModuleTypeInstance,
-    ParameterMapping,
     Sequence,
     SFCAlternative,
     SFCParallel,
@@ -19,27 +18,12 @@ from sattline_parser.models.ast_model import (
     SFCTransition,
     SFCTransitionSub,
     SingleModule,
-    Variable,
 )
 
-from ..grammar import constants as const
-from ..resolution.common import format_moduletype_label, resolve_moduletype_def_strict, varname_base, varname_full
-from ..utils.casefolding import casefold_equal, casefold_key
+from ..config.analysis import spec_compliance_prefixes
 from .framework import Issue, SimpleReport
-from .shared._walk_utils import walk_nested_modules_with_state
-from .shared.variable_utils import matches_root_origin, merge_variable_env
-
-_OPMESSAGE_NAME = "OPMessage"
-_OPMESSAGE_LIB = "NNESystem"
-_MES_BATCH_CONTROL_NAME = "MES_BatchControl"
-_MES_BATCH_CONTROL_LIB = "NNEMESIFLib"
-
-
-@dataclass(frozen=True)
-class _ParameterValue:
-    status: str
-    value: object | None = None
-    source: str | None = None
+from .shared._walk_utils import iter_nested_modules
+from .shared.variable_utils import matches_root_origin
 
 
 class SpecComplianceAnalyzer:
@@ -49,11 +33,17 @@ class SpecComplianceAnalyzer:
         unavailable_libraries: set[str] | None = None,
         *,
         analyzed_target_is_library: bool = False,
+        config: dict[str, Any] | None = None,
     ) -> None:
         self.bp = base_picture
         self._unavailable_libraries = unavailable_libraries or set()
         self._analyzed_target_is_library = analyzed_target_is_library
         self._issues: list[Issue] = []
+        prefixes = spec_compliance_prefixes(config)
+        self._step_prefix = prefixes["step_prefix"]
+        self._transition_prefix = prefixes["transition_prefix"]
+        self._sequence_prefix = prefixes["sequence_prefix"]
+        self._equation_prefix = prefixes["equation_prefix"]
 
     @property
     def issues(self) -> list[Issue]:
@@ -61,16 +51,9 @@ class SpecComplianceAnalyzer:
 
     def run(self) -> list[Issue]:
         root_path = [self.bp.header.name]
-        base_env = self._merge_env({}, self.bp.localvariables)
 
-        self._check_basepicture_code(self.bp.modulecode, root_path)
         self._check_module_code(self.bp.modulecode, root_path)
-        self._walk_modules(
-            self.bp.submodules or [],
-            parent_path=root_path,
-            env=base_env,
-            current_library=self.bp.origin_lib,
-        )
+        self._walk_modules(self.bp.submodules or [], root_path)
 
         for moduletype in self.bp.moduletype_defs or []:
             if not self._is_from_root_origin(
@@ -78,7 +61,7 @@ class SpecComplianceAnalyzer:
                 getattr(moduletype, "origin_lib", None),
             ):
                 continue
-            self._walk_moduletype_def(moduletype, root_path, base_env)
+            self._walk_moduletype_def(moduletype, root_path)
 
         return self._issues
 
@@ -91,117 +74,80 @@ class SpecComplianceAnalyzer:
             root_origin_lib=getattr(self.bp, "origin_lib", None),
         )
 
-    def _merge_env(
-        self,
-        parent_env: dict[str, Variable],
-        variables: list[Variable] | None,
-    ) -> dict[str, Variable]:
-        return merge_variable_env(parent_env, variables)
-
-    def _check_basepicture_code(
-        self,
-        modulecode: ModuleCode | None,
-        module_path: list[str],
-    ) -> None:
-        if not self._has_code(modulecode):
-            return
-        self._issues.append(
-            Issue(
-                kind="spec.basepicture_direct_code",
-                message="BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
-                module_path=module_path.copy(),
-                data={"site": ".".join(module_path), "context": "basepicture direct code"},
-            )
-        )
-
-    def _has_code(self, modulecode: ModuleCode | None) -> bool:
-        if modulecode is None:
-            return False
-        return bool(modulecode.equations or modulecode.sequences)
-
     def _walk_moduletype_def(
         self,
         moduletype: ModuleTypeDef,
         root_path: list[str],
-        base_env: dict[str, Variable],
     ) -> None:
         path = [*root_path, moduletype.name]
-        env = self._merge_env(base_env, moduletype.moduleparameters)
-        env = self._merge_env(env, moduletype.localvariables)
         self._check_module_code(moduletype.modulecode, path)
-        self._walk_modules(
-            moduletype.submodules or [],
-            parent_path=path,
-            env=env,
-            current_library=moduletype.origin_lib or self.bp.origin_lib,
-        )
+        self._walk_modules(moduletype.submodules or [], path)
 
     def _walk_modules(
         self,
-        children: list[SingleModule | FrameModule | ModuleTypeInstance],
+        children: list[SingleModule | FrameModule | ModuleTypeInstance] | None,
         parent_path: list[str],
-        env: dict[str, Variable],
-        current_library: str | None,
     ) -> None:
-        def _build_single_state(
-            child: SingleModule,
-            _child_path: list[str],
-            state: tuple[dict[str, Variable], str | None],
-        ) -> tuple[dict[str, Variable], str | None]:
-            child_env = self._merge_env(state[0], child.moduleparameters)
-            child_env = self._merge_env(child_env, child.localvariables)
-            return child_env, state[1]
-
-        def _visit_single(
-            child: SingleModule,
-            child_path: list[str],
-            _state: tuple[dict[str, Variable], str | None],
-        ) -> None:
-            self._check_module_code(child.modulecode, child_path)
-
-        def _visit_frame(
-            child: FrameModule,
-            child_path: list[str],
-            _state: tuple[dict[str, Variable], str | None],
-        ) -> None:
-            self._check_module_code(child.modulecode, child_path)
-
-        def _visit_instance(
-            child: ModuleTypeInstance,
-            child_path: list[str],
-            state: tuple[dict[str, Variable], str | None],
-        ) -> None:
-            self._check_instance_contracts(
-                child,
-                module_path=child_path,
-                env=state[0],
-                current_library=state[1],
-            )
-
-        walk_nested_modules_with_state(
-            children,
-            parent_path=parent_path,
-            state=(env, current_library),
-            build_single_state=_build_single_state,
-            visit_single=_visit_single,
-            visit_frame=_visit_frame,
-            visit_instance=_visit_instance,
-        )
+        for module, child_path in iter_nested_modules(children, parent_path=parent_path):
+            if isinstance(module, (SingleModule, FrameModule)):
+                self._check_module_code(module.modulecode, child_path)
 
     def _check_module_code(self, modulecode: ModuleCode | None, module_path: list[str]) -> None:
         if modulecode is None:
             return
+        for equation in modulecode.equations or []:
+            self._check_equation_block(equation, module_path)
         for sequence in modulecode.sequences or []:
             self._check_sequence(sequence, module_path)
 
+    def _check_equation_block(self, equation: object, module_path: list[str]) -> None:
+        if not self._equation_prefix:
+            return
+        name = getattr(equation, "name", None)
+        if isinstance(name, str) and name and not name.startswith(self._equation_prefix):
+            self._issues.append(
+                Issue(
+                    kind="spec.equation_block_prefix",
+                    message=(
+                        f"Equation block {name!r} must start with {self._equation_prefix!r} "
+                        "according to the engineering spec."
+                    ),
+                    module_path=module_path.copy(),
+                    data={
+                        "equation": name,
+                        "prefix": self._equation_prefix,
+                        "site": f"EQ:{name}",
+                        "context": name,
+                    },
+                )
+            )
+
     def _check_sequence(self, sequence: Sequence, module_path: list[str]) -> None:
+        if self._sequence_prefix and (sequence.name or "") and not sequence.name.startswith(self._sequence_prefix):
+            self._issues.append(
+                Issue(
+                    kind="spec.sequence_name_prefix",
+                    message=(
+                        f"Sequence {sequence.name!r} must start with {self._sequence_prefix!r} "
+                        "according to the engineering spec."
+                    ),
+                    module_path=module_path.copy(),
+                    data={
+                        "sequence": sequence.name,
+                        "prefix": self._sequence_prefix,
+                        "site": f"SQ:{sequence.name}",
+                        "context": sequence.name,
+                    },
+                )
+            )
         for node in self._iter_sequence_nodes(sequence.code or []):
-            if isinstance(node, SFCStep) and not (node.name or "").startswith("ST_"):
+            if isinstance(node, SFCStep) and not (node.name or "").startswith(self._step_prefix):
                 self._issues.append(
                     Issue(
                         kind="spec.sequence_step_prefix",
                         message=(
-                            f"Sequence step {node.name!r} must start with 'ST_' according to the engineering spec."
+                            f"Sequence step {node.name!r} must start with {self._step_prefix!r} "
+                            "according to the engineering spec."
                         ),
                         module_path=module_path.copy(),
                         data={
@@ -225,12 +171,13 @@ class SpecComplianceAnalyzer:
                         )
                     )
                     continue
-                if not node.name.startswith("TR_"):
+                if not node.name.startswith(self._transition_prefix):
                     self._issues.append(
                         Issue(
                             kind="spec.transition_prefix",
                             message=(
-                                f"Transition {node.name!r} must start with 'TR_' according to the engineering spec."
+                                f"Transition {node.name!r} must start with {self._transition_prefix!r} "
+                                "according to the engineering spec."
                             ),
                             module_path=module_path.copy(),
                             data={
@@ -251,277 +198,20 @@ class SpecComplianceAnalyzer:
             elif isinstance(node, SFCSubsequence | SFCTransitionSub):
                 yield from self._iter_sequence_nodes(node.body or [])
 
-    def _check_instance_contracts(
-        self,
-        inst: ModuleTypeInstance,
-        module_path: list[str],
-        env: dict[str, Variable],
-        current_library: str | None,
-    ) -> None:
-        mt_def = self._resolve_moduletype(inst, current_library)
-
-        if self._matches_moduletype(inst, mt_def, _OPMESSAGE_NAME, _OPMESSAGE_LIB):
-            use_signature = self._get_parameter_value(inst, mt_def, env, "UseSignature")
-            if use_signature.status == "resolved" and use_signature.value is True:
-                self._issues.append(
-                    Issue(
-                        kind="spec.opmessage_use_signature",
-                        message=(
-                            "NNESystem:OPMessage must not enable UseSignature=True. "
-                            f"Resolved value from {use_signature.source}."
-                        ),
-                        module_path=module_path.copy(),
-                        data={
-                            "instance": inst.header.name,
-                            "moduletype": inst.moduletype_name,
-                            "site": ".".join(module_path),
-                            "context": f"UseSignature = True ({use_signature.source})",
-                        },
-                    )
-                )
-
-        if not self._matches_moduletype(inst, mt_def, _MES_BATCH_CONTROL_NAME, _MES_BATCH_CONTROL_LIB):
-            return
-
-        if inst.header.name != _MES_BATCH_CONTROL_NAME:
-            self._issues.append(
-                Issue(
-                    kind="spec.mes_batch_control_name",
-                    message=("NNEMESIFLib:MES_BatchControl instance name must be exactly 'MES_BatchControl'."),
-                    module_path=module_path.copy(),
-                    data={"instance": inst.header.name, "site": ".".join(module_path), "context": inst.header.name},
-                )
-            )
-
-        self._check_required_parameter(
-            inst,
-            mt_def,
-            env,
-            module_path,
-            parameter_name="Max_TRY",
-            expected_value=10,
-            issue_kind="spec.mes_batch_control_max_try",
-        )
-        self._check_required_parameter(
-            inst,
-            mt_def,
-            env,
-            module_path,
-            parameter_name="Repeat_TRY",
-            expected_value=20,
-            issue_kind="spec.mes_batch_control_repeat_try",
-        )
-
-    def _check_required_parameter(
-        self,
-        inst: ModuleTypeInstance,
-        mt_def: ModuleTypeDef | None,
-        env: dict[str, Variable],
-        module_path: list[str],
-        parameter_name: str,
-        expected_value: object,
-        issue_kind: str,
-    ) -> None:
-        parameter_value = self._get_parameter_value(inst, mt_def, env, parameter_name)
-        if parameter_value.status == "resolved":
-            if parameter_value.value == expected_value:
-                return
-            self._issues.append(
-                Issue(
-                    kind=issue_kind,
-                    message=(
-                        f"{inst.moduletype_name} parameter {parameter_name} must resolve to {expected_value!r}, "
-                        f"but resolved to {parameter_value.value!r} from {parameter_value.source}."
-                    ),
-                    module_path=module_path.copy(),
-                    data={
-                        "instance": inst.header.name,
-                        "parameter": parameter_name,
-                        "expected": expected_value,
-                        "actual": parameter_value.value,
-                        "status": parameter_value.status,
-                        "site": ".".join(module_path),
-                        "context": f"{inst.moduletype_name}.{parameter_name} = {parameter_value.value!r}",
-                    },
-                )
-            )
-            return
-
-        if parameter_value.status == "not_configured":
-            self._issues.append(
-                Issue(
-                    kind=issue_kind,
-                    message=(
-                        f"{inst.moduletype_name} parameter {parameter_name} is not configured with a default or explicit mapping."
-                    ),
-                    module_path=module_path.copy(),
-                    data={
-                        "instance": inst.header.name,
-                        "parameter": parameter_name,
-                        "expected": expected_value,
-                        "status": parameter_value.status,
-                        "site": ".".join(module_path),
-                        "context": f"{inst.moduletype_name}.{parameter_name} not configured",
-                    },
-                )
-            )
-            return
-
-        if parameter_value.status == "unresolved_mapping":
-            message = (
-                f"{inst.moduletype_name} parameter {parameter_name} is mapped, "
-                "but the configured value could not be resolved statically."
-            )
-        else:
-            message = (
-                f"{inst.moduletype_name} parameter {parameter_name} could not be verified "
-                "because its definition or configured value is unavailable."
-            )
-
-        self._issues.append(
-            Issue(
-                kind=issue_kind,
-                message=message,
-                module_path=module_path.copy(),
-                data={
-                    "instance": inst.header.name,
-                    "parameter": parameter_name,
-                    "expected": expected_value,
-                    "status": parameter_value.status,
-                    "site": ".".join(module_path),
-                    "context": f"{inst.moduletype_name}.{parameter_name} unresolved",
-                },
-            )
-        )
-
-    def _matches_moduletype(
-        self,
-        inst: ModuleTypeInstance,
-        mt_def: ModuleTypeDef | None,
-        expected_name: str,
-        expected_lib: str,
-    ) -> bool:
-        if not casefold_equal(inst.moduletype_name, expected_name):
-            return False
-        if mt_def is None or not mt_def.origin_lib:
-            return True
-        return casefold_equal(mt_def.origin_lib, expected_lib)
-
-    def _resolve_moduletype(
-        self,
-        inst: ModuleTypeInstance,
-        current_library: str | None,
-    ) -> ModuleTypeDef | None:
-        try:
-            return resolve_moduletype_def_strict(
-                self.bp,
-                inst.moduletype_name,
-                current_library=current_library,
-                unavailable_libraries=self._unavailable_libraries,
-            )
-        except ValueError:
-            return None
-
-    def _get_parameter_value(
-        self,
-        inst: ModuleTypeInstance,
-        mt_def: ModuleTypeDef | None,
-        env: dict[str, Variable],
-        parameter_name: str,
-    ) -> _ParameterValue:
-        mapping = self._find_parameter_mapping(inst.parametermappings, parameter_name)
-        if mapping is not None:
-            resolved = self._resolve_mapping_value(mapping, env)
-            if resolved is not None:
-                return resolved
-            return _ParameterValue(status="unresolved_mapping")
-
-        if mt_def is None:
-            return _ParameterValue(status="unknown")
-
-        param = self._find_variable(mt_def.moduleparameters, parameter_name)
-        if param is None:
-            return _ParameterValue(status="unknown")
-        if param.init_value is not None:
-            label = format_moduletype_label(mt_def)
-            return _ParameterValue(
-                status="resolved",
-                value=param.init_value,
-                source=f"default parameter value on {label}",
-            )
-        return _ParameterValue(status="not_configured")
-
-    def _find_parameter_mapping(
-        self,
-        mappings: list[ParameterMapping] | None,
-        parameter_name: str,
-    ) -> ParameterMapping | None:
-        wanted = casefold_key(parameter_name)
-        for mapping in mappings or []:
-            target_name = self._mapping_target_name(mapping)
-            if target_name is not None and casefold_key(target_name) == wanted:
-                return mapping
-        return None
-
-    def _mapping_target_name(self, mapping: ParameterMapping) -> str | None:
-        return varname_base(getattr(mapping, "target", None))
-
-    def _resolve_mapping_value(
-        self,
-        mapping: ParameterMapping,
-        env: dict[str, Variable],
-    ) -> _ParameterValue | None:
-        if mapping.is_source_global:
-            return None
-
-        if mapping.source_type == const.KEY_VALUE:
-            return _ParameterValue(
-                status="resolved",
-                value=mapping.source_literal,
-                source="literal parameter mapping",
-            )
-
-        full_ref = self._mapping_source_name(mapping)
-        if not full_ref:
-            return None
-        if "." in full_ref or ":" in full_ref:
-            return None
-
-        variable = env.get(casefold_key(full_ref))
-        if variable is None or variable.init_value is None:
-            return None
-
-        return _ParameterValue(
-            status="resolved",
-            value=variable.init_value,
-            source=f"init value of variable {variable.name}",
-        )
-
-    def _mapping_source_name(self, mapping: ParameterMapping) -> str | None:
-        return varname_full(getattr(mapping, "source", None))
-
-    def _find_variable(
-        self,
-        variables: list[Variable] | None,
-        wanted_name: str,
-    ) -> Variable | None:
-        for variable in variables or []:
-            if casefold_equal(variable.name, wanted_name):
-                return variable
-        return None
-
 
 def analyze_spec_compliance(
     base_picture: BasePicture,
     debug: bool = False,
     unavailable_libraries: set[str] | None = None,
     analyzed_target_is_library: bool = False,
+    config: dict[str, Any] | None = None,
 ) -> SimpleReport:
     _ = debug
     analyzer = SpecComplianceAnalyzer(
         base_picture,
         unavailable_libraries=unavailable_libraries,
         analyzed_target_is_library=analyzed_target_is_library,
+        config=config,
     )
     analyzer.run()
     return SimpleReport(name=base_picture.header.name, issues=analyzer.issues)

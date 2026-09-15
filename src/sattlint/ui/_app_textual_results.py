@@ -79,8 +79,6 @@ def _site_label(finding: AnalysisFinding) -> str | None:
 
 def _finding_label(finding: AnalysisFinding, *, occurrence_count: int = 1) -> str:
     label = _context_label(finding)
-    if finding.severity:
-        label += f" — {finding.severity}"
     if finding.rule_id:
         label += f" ({finding.rule_id})"
     if occurrence_count > 1:
@@ -237,10 +235,6 @@ def _write_finding_detail(self: Any, finding: AnalysisFinding) -> None:
         f"Location: {'.'.join(finding.module_path) if finding.module_path else 'unknown'}",
         f"Message: {_LEADING_MODULE_PATH_RE.sub('', finding.message).strip()}",
     ]
-    if finding.severity:
-        lines.append(f"Severity: {finding.severity}")
-    if finding.confidence:
-        lines.append(f"Confidence: {finding.confidence}")
     if finding.rule_id:
         lines.append(f"Rule: {finding.rule_id}")
     if finding.explanation:

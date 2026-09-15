@@ -48,7 +48,7 @@ from ._variables_analyzer_facade import VariablesAnalyzerFacadeMixin
 from ._variables_contracts import VariablesContractsMixin
 from ._variables_effect_flow import EffectFlowTracker
 from ._variables_execution import VariablesExecutionMixin
-from ._variables_status import ProcedureStatusBinding, VariablesStatusMixin, configured_naming_role_patterns
+from ._variables_status import ProcedureStatusBinding, VariablesStatusMixin
 from ._variables_submodules import VariablesSubmodulesMixin
 
 if TYPE_CHECKING:
@@ -283,9 +283,6 @@ class VariablesAnalyzer(
         self.usage_tracker = UsageTracker()
         self._site_stack: list[str] = []
         self._current_stmt_text: str = ""
-        self._is_contract_session = False
-        self._contract_summary_provider = None
-        self._cyclic_owner_ids: frozenset[int] | None = None
 
     def _initialize_artifact_state(
         self,
@@ -320,7 +317,6 @@ class VariablesAnalyzer(
         self._root_env = dict(variable_artifacts.root_env)
         self._any_var_index = {key: list(values) for key, values in variable_artifacts.any_var_index.items()}
         self._analyzing_typedefs: set[str] = set()
-        self._required_parameter_names_by_owner: dict[int, dict[str, str]] = {}
 
         self._contract_validator = ContractMappingValidator(self.type_graph)
         self._min_max_validator = MinMaxValidator()
@@ -355,12 +351,12 @@ class VariablesAnalyzer(
             status_prefix="Analyzing variable issues",
         )
         self._shared_artifacts = shared_artifacts
+        self._config = config
         self._suppress_param_mapping_validation_depth = 0
         self._limit_to_module_path: list[str] | None = None
         self._unresolved_variable_lookup_total = 0
         self._unresolved_variable_lookup_counts: dict[str, int] = defaultdict(int)
         self._unresolved_variable_lookup_examples: dict[str, tuple[int, str]] = {}
-        self._naming_role_patterns = configured_naming_role_patterns()
         self._root_variable_access_summary_cache_token: tuple[int, int] | None = None
         self._root_variable_access_summary_cache: dict[str, Any] = {}
         self._initialize_usage_state()

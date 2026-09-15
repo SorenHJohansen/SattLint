@@ -23,7 +23,6 @@ _MODULE_VARIABLE_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
     {
         IssueKind.UNUSED,
         IssueKind.READ_ONLY_NON_CONST,
-        IssueKind.UI_ONLY,
         IssueKind.PROCEDURE_STATUS,
         IssueKind.NEVER_READ,
         IssueKind.WRITE_WITHOUT_EFFECT,
@@ -59,7 +58,6 @@ def _collect_variable_issues(
 ) -> None:
     collect_unused = _should_collect_issue_kind(self, IssueKind.UNUSED)
     collect_procedure_status = _should_collect_issue_kind(self, IssueKind.PROCEDURE_STATUS)
-    collect_ui_only = _should_collect_issue_kind(self, IssueKind.UI_ONLY)
     collect_read_only_non_const = _should_collect_issue_kind(self, IssueKind.READ_ONLY_NON_CONST)
     collect_never_read = _should_collect_issue_kind(self, IssueKind.NEVER_READ)
     collect_write_without_effect = _should_collect_issue_kind(self, IssueKind.WRITE_WITHOUT_EFFECT)
@@ -67,7 +65,6 @@ def _collect_variable_issues(
     if not (
         collect_unused
         or collect_procedure_status
-        or collect_ui_only
         or collect_read_only_non_const
         or collect_never_read
         or collect_write_without_effect
@@ -91,10 +88,6 @@ def _collect_variable_issues(
                 role=status_role,
                 field_path=field_path,
             )
-            continue
-
-        if collect_ui_only and usage.is_display_only:
-            _append_issue(self, IssueKind.UI_ONLY, path, variable, role=role)
             continue
 
         if (

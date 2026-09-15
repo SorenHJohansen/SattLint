@@ -6,7 +6,7 @@ can execute without triggering registry package initialization.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Callable, Collection
 from typing import Any, cast
 
 from ..reporting.variables_report import VariablesReport
@@ -23,66 +23,21 @@ def _canonical_key(key: str) -> str:
     return _registry_module().canonicalize_analyzer_key(key)
 
 
-def _with_required_analyzers(
-    analyzers: tuple[Any, ...], *, available_analyzers: tuple[Any, ...] | None = None
+def resolve_selected_analyzers(
+    *,
+    selected_keys: Collection[str] | None,
+    get_enabled_analyzers_fn: Callable[[], list[Any]],
 ) -> tuple[Any, ...]:
-    keyed_specs = {
-        _canonical_key(cast(str, getattr(spec, "key", ""))): spec
-        for spec in (available_analyzers or analyzers)
-        if getattr(spec, "key", "")
-    }
-    ordered_specs: list[Any] = []
-    seen_keys: set[str] = set()
+    """Return exactly the selected analyzers, in their declared order.
 
-    def _append_with_requirements(spec: Any) -> None:
-        spec_key = _canonical_key(cast(str, getattr(spec, "key", "")))
-        if spec_key in seen_keys:
-            return
-        for required_key in cast(tuple[str, ...], getattr(spec, "requires", ())):
-            required_spec = keyed_specs.get(_canonical_key(required_key))
-            if required_spec is not None:
-                _append_with_requirements(required_spec)
-        seen_keys.add(spec_key)
-        ordered_specs.append(spec)
-
-    for spec in analyzers:
-        _append_with_requirements(spec)
-
-    return tuple(ordered_specs)
-
-
-def _requirement_satisfied(required_key: str, shared_artifacts: Any | None) -> bool:
-    if shared_artifacts is None:
-        return False
-    canonical_required = _canonical_key(required_key)
-    if canonical_required == "variables":
-        return getattr(shared_artifacts, "variable_analysis", None) is not None
-    reports_by_key = getattr(shared_artifacts, "derived_reports", None)
-    if not isinstance(reports_by_key, Mapping):
-        return False
-    return canonical_required in reports_by_key
-
-
-def _validate_required_analyzers(spec: Any, context: AnalysisContext) -> None:
-    missing = [
-        required_key
-        for required_key in cast(tuple[str, ...], getattr(spec, "requires", ()))
-        if _canonical_key(required_key) != _canonical_key(cast(str, getattr(spec, "key", "")))
-        and not _requirement_satisfied(required_key, getattr(context, "shared_artifacts", None))
-    ]
-    if missing:
-        required = ", ".join(sorted(missing))
-        raise RuntimeError(f"Analyzer '{spec.key}' requires analyzer results from: {required}")
-
-
-def _order_analyzers_for_batch(analyzers: tuple[Any, ...], *, semantic_layer_analyzer_key: str) -> tuple[Any, ...]:
-    semantic_analyzers = tuple(spec for spec in analyzers if getattr(spec, "key", None) == semantic_layer_analyzer_key)
-    if not semantic_analyzers:
-        return analyzers
-    return (
-        tuple(spec for spec in analyzers if getattr(spec, "key", None) != semantic_layer_analyzer_key)
-        + semantic_analyzers
-    )
+    With no selection the enabled set is returned unchanged. Selection is exact:
+    no analyzer is added, dropped, reordered, or collapsed.
+    """
+    enabled = get_enabled_analyzers_fn()
+    if not selected_keys:
+        return tuple(enabled)
+    selected = {_canonical_key(key) for key in selected_keys}
+    return tuple(spec for spec in enabled if _canonical_key(getattr(spec, "key", "")) in selected)
 
 
 def get_cli_dispatch_analyzers(
@@ -92,15 +47,10 @@ def get_cli_dispatch_analyzers(
 ) -> tuple[Any, ...]:
     registry_module = _registry_module()
 
-    analyzers = tuple(spec for spec in get_enabled_analyzers_fn() if registry_module._is_batch_dispatch_analyzer(spec))
-    available_analyzers = analyzers
-    if selected_keys:
-        selected = {registry_module.canonicalize_analyzer_key(key) for key in selected_keys}
-        analyzers = tuple(spec for spec in analyzers if _canonical_key(getattr(spec, "key", "")) in selected)
-    analyzers = _with_required_analyzers(analyzers, available_analyzers=available_analyzers)
-    return _order_analyzers_for_batch(
-        analyzers,
-        semantic_layer_analyzer_key=registry_module.SEMANTIC_LAYER_ANALYZER_KEY,
+    enabled = tuple(spec for spec in get_enabled_analyzers_fn() if registry_module._is_batch_dispatch_analyzer(spec))
+    return resolve_selected_analyzers(
+        selected_keys=selected_keys,
+        get_enabled_analyzers_fn=lambda: list(enabled),
     )
 
 
@@ -140,22 +90,8 @@ def get_lsp_projection_analyzers() -> tuple[Any, ...]:
 def run_registry_analyzer(
     spec: Any,
     context: AnalysisContext,
-    *,
-    use_shared_artifacts: bool = False,
 ) -> Report:
-    _validate_required_analyzers(spec, context)
-    shared_artifacts = context.shared_artifacts
-    if use_shared_artifacts and shared_artifacts is not None:
-        cached_report = shared_artifacts.derived_reports.get(spec.key)
-        if cached_report is not None:
-            shared_artifacts.counters.semantic_precomputed_reports_used += 1
-            return cast(Report, cached_report)
-
-    report = spec.run(context)
-
-    if use_shared_artifacts and shared_artifacts is not None:
-        shared_artifacts.counters.semantic_analyzer_reruns += 1
-    return cast(Report, report)
+    return cast(Report, spec.run(context))
 
 
 def collect_lsp_report_issues(context: AnalysisContext) -> tuple[tuple[str, tuple[Issue, ...]], ...]:
@@ -187,6 +123,7 @@ __all__ = [
     "get_lsp_projection_analyzers",
     "get_registry_analyzer_spec",
     "get_semantic_contributor_specs",
+    "resolve_selected_analyzers",
     "run_registry_analyzer",
     "run_variables_registry_report",
 ]

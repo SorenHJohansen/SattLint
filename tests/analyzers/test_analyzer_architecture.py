@@ -336,14 +336,9 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
     )
     assert [built.key for built in built_specs] == ["direct", "demo"]
     assert built_specs[0].direct_context is True
-    assert built_specs[0].requires == ()
     assert built_specs[1].context_kwargs == spec.context_kwargs
     assert built_specs[1].composed_analyzer_keys == ("dataflow",)
     assert built_specs[1].composed_issue_kind_names == ("dataflow.scan_cycle_stale_read",)
-    assert built_specs[1].requires == ()
-
-    sfc_template = next(template for template in default_spec_templates("semantic-demo") if template.key == "sfc")
-    assert sfc_template.requires == ("variables",)
 
 
 def test_build_analysis_context_normalizes_config_and_shared_artifacts() -> None:
@@ -470,8 +465,7 @@ def _clean_plugin_registry():
 def test_register_analyzer_builds_direct_context_spec_with_contributes() -> None:
     @register_analyzer(
         key="my-plugin",
-        requires=("variables",),
-        contributes="derived_reports.my-plugin",
+        contributes="my-plugin-artifacts",
         name="My Plugin",
         description="A plugin analyzer",
     )
@@ -484,8 +478,7 @@ def test_register_analyzer_builds_direct_context_spec_with_contributes() -> None
     assert spec.key == "my-plugin"
     assert spec.name == "My Plugin"
     assert spec.description == "A plugin analyzer"
-    assert spec.requires == ("variables",)
-    assert spec.contributes == "derived_reports.my-plugin"
+    assert spec.contributes == "my-plugin-artifacts"
     assert spec.direct_context is True
     assert spec.enabled is True
     assert spec.run is run
@@ -498,7 +491,6 @@ def test_register_analyzer_defaults_and_casefold_key() -> None:
 
     (spec,) = get_registered_plugin_analyzers()
     assert spec.name == "My-Upper"
-    assert spec.requires == ()
     assert spec.contributes is None
     assert spec.direct_context is True
 
@@ -524,7 +516,7 @@ def test_clear_registered_plugin_analyzers_resets_registry() -> None:
 
 
 def test_plugin_analyzers_merged_into_default_analyzers() -> None:
-    @register_analyzer(key="merged-plugin", requires=("variables",))
+    @register_analyzer(key="merged-plugin")
     def run(context: AnalysisContext) -> SimpleReport:
         return SimpleReport(name="x")
 
@@ -535,7 +527,7 @@ def test_plugin_analyzers_merged_into_default_analyzers() -> None:
 def test_plugin_analyzer_runs_with_full_context_and_shared_artifacts() -> None:
     context_sa: list[AnalysisSharedArtifacts | None] = []
 
-    @register_analyzer(key="context-consumer", requires=("variables",))
+    @register_analyzer(key="context-consumer")
     def run(context: AnalysisContext) -> SimpleReport:
         context_sa.append(context.shared_artifacts)
         return SimpleReport(name="context-consumer")
@@ -553,9 +545,7 @@ def test_plugin_analyzer_runs_with_full_context_and_shared_artifacts() -> None:
     shared = AnalysisSharedArtifacts()
     shared.variable_analysis = _make_foundation()
     context = build_analysis_context(base_picture, shared_artifacts=shared)
-    report = run_registry_analyzer(spec, context, use_shared_artifacts=True)
+    report = run_registry_analyzer(spec, context)
 
     assert isinstance(report, SimpleReport)
     assert context_sa == [shared]
-    # requires=("variables",) is satisfied by the shared foundation without re-running.
-    assert shared.counters.variable_root_traversals == 0

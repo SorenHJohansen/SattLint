@@ -9,11 +9,9 @@ def test_opt_in_analyzer_is_not_in_default_cli_keys():
     assert "version-drift" not in get_actual_cli_analyzer_keys()
 
 
-def test_mms_tag_helpers_normalize_external_tags_and_family_keys():
+def test_mms_tag_helpers_normalize_external_tags():
     assert _normalize_external_tag("  Unit.Area.Tag42  ") == "unit.area.tag42"
     assert _normalize_external_tag("12345") is None
-    assert _tag_family_key("Plant-AB12.PV") == "plant|ab|12|pv"
-    assert _tag_family_key("   ") is None
 
 
 def test_mms_mapping_helpers_match_casefold_names():

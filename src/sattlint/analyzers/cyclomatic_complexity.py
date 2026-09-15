@@ -30,6 +30,11 @@ from sattline_parser.models.expressions import (
     VarRef,
 )
 
+from ..config.analysis import (
+    cyclomatic_equation_block_threshold,
+    cyclomatic_module_threshold,
+    cyclomatic_step_threshold,
+)
 from ..grammar import constants as const
 from .framework import Issue, SimpleReport
 from .shared._walk_utils import iter_nested_modules
@@ -37,6 +42,7 @@ from .shared.target_origin import build_target_origin_filter_for_basepicture
 
 DEFAULT_MODULE_COMPLEXITY_THRESHOLD = 10
 DEFAULT_STEP_COMPLEXITY_THRESHOLD = 6
+DEFAULT_EQUATION_BLOCK_COMPLEXITY_THRESHOLD = 10
 
 
 class CyclomaticComplexityAnalyzer:
@@ -44,13 +50,20 @@ class CyclomaticComplexityAnalyzer:
         self,
         base_picture: BasePicture,
         *,
-        module_threshold: int = DEFAULT_MODULE_COMPLEXITY_THRESHOLD,
-        step_threshold: int = DEFAULT_STEP_COMPLEXITY_THRESHOLD,
+        module_threshold: int | None = None,
+        step_threshold: int | None = None,
+        equation_block_threshold: int | None = None,
         analyzed_target_is_library: bool = False,
+        config: dict[str, object] | None = None,
     ) -> None:
         self.bp = base_picture
-        self._module_threshold = module_threshold
-        self._step_threshold = step_threshold
+        self._module_threshold = cyclomatic_module_threshold(config) if module_threshold is None else module_threshold
+        self._step_threshold = cyclomatic_step_threshold(config) if step_threshold is None else step_threshold
+        self._equation_block_threshold = (
+            cyclomatic_equation_block_threshold(config)
+            if equation_block_threshold is None
+            else equation_block_threshold
+        )
         self._analyzed_target_is_library = analyzed_target_is_library
         self._issues: list[Issue] = []
 
@@ -139,6 +152,12 @@ class CyclomaticComplexityAnalyzer:
     ) -> int:
         complexity = 1
         for equation in modulecode.equations or []:
+            equation_name = getattr(equation, "name", "") or "<unnamed>"
+            self._record_equation_block_complexity_issue(
+                module_path=module_path,
+                equation_name=equation_name,
+                equation_code=cast(list[object], equation.code or []),
+            )
             complexity += self._count_statement_list(cast(list[object], equation.code or []))
         for sequence in modulecode.sequences or []:
             complexity += self._count_sequence_nodes(
@@ -147,6 +166,35 @@ class CyclomaticComplexityAnalyzer:
                 nodes=cast(list[object], sequence.code or []),
             )
         return complexity
+
+    def _record_equation_block_complexity_issue(
+        self,
+        *,
+        module_path: list[str],
+        equation_name: str,
+        equation_code: list[object],
+    ) -> None:
+        equation_complexity = 1 + self._count_statement_list(equation_code)
+        if equation_complexity <= self._equation_block_threshold:
+            return
+        self._issues.append(
+            Issue(
+                kind="equation.cyclomatic_complexity",
+                message=(
+                    f"Equation block {equation_name!r} at {'.'.join(module_path)!r} "
+                    f"has cyclomatic complexity {equation_complexity}, exceeding threshold {self._equation_block_threshold}."
+                ),
+                module_path=module_path.copy(),
+                data={
+                    "scope": "equation-block",
+                    "equation": equation_name,
+                    "complexity": equation_complexity,
+                    "threshold": self._equation_block_threshold,
+                    "site": f"EQ:{equation_name}",
+                    "context": f"complexity {equation_complexity} > {self._equation_block_threshold}",
+                },
+            )
+        )
 
     def _count_sequence_nodes(
         self,
@@ -321,14 +369,18 @@ class CyclomaticComplexityAnalyzer:
 def analyze_cyclomatic_complexity(
     base_picture: BasePicture,
     *,
-    module_threshold: int = DEFAULT_MODULE_COMPLEXITY_THRESHOLD,
-    step_threshold: int = DEFAULT_STEP_COMPLEXITY_THRESHOLD,
+    module_threshold: int | None = None,
+    step_threshold: int | None = None,
+    equation_block_threshold: int | None = None,
     analyzed_target_is_library: bool = False,
+    config: dict[str, object] | None = None,
 ) -> SimpleReport:
     analyzer = CyclomaticComplexityAnalyzer(
         base_picture,
         module_threshold=module_threshold,
         step_threshold=step_threshold,
+        equation_block_threshold=equation_block_threshold,
         analyzed_target_is_library=analyzed_target_is_library,
+        config=config,
     )
     return SimpleReport(name=base_picture.header.name, issues=analyzer.run())

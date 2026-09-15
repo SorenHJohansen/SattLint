@@ -282,16 +282,10 @@ def test_variables_report_summary_formats_duplication_magic_numbers_and_sequence
     assert "BasePicture.SequenceA :: localvariable Stage1 (boolean) | sequence=MainSeq | reset=ResetCmd" in summary
 
 
-def test_variables_report_summary_includes_required_contract_and_shadowing_sections():
+def test_variables_report_summary_includes_shadowing_section():
     report = VariablesReport(
         basepicture_name="BasePicture",
         issues=[
-            VariableIssue(
-                kind=IssueKind.REQUIRED_PARAMETER_CONNECTION,
-                module_path=["BasePicture", "TypeDef:WorkerType"],
-                variable=None,
-                role="required parameter 'Mode' is not connected",
-            ),
             VariableIssue(
                 kind=IssueKind.SHADOWING,
                 module_path=["BasePicture", "TypeDef:Soejle", "ChildC"],
@@ -301,7 +295,6 @@ def test_variables_report_summary_includes_required_contract_and_shadowing_secti
         ],
         visible_kinds=frozenset(
             {
-                IssueKind.REQUIRED_PARAMETER_CONNECTION,
                 IssueKind.SHADOWING,
             }
         ),
@@ -310,9 +303,6 @@ def test_variables_report_summary_includes_required_contract_and_shadowing_secti
     summary = report.summary()
 
     assert isinstance(report.visible_kinds, frozenset)
-    assert "Missing required parameter connections" in summary
-    assert "      Moduletype:" in summary
-    assert "BasePicture.TypeDef:WorkerType :: required parameter 'Mode' is not connected" in summary
     assert "Variable shadowing" in summary
     assert "BasePicture.Soejle.ChildC :: Mode (integer) | local shadows moduleparameter" in summary
 
@@ -337,17 +327,6 @@ def test_variables_report_properties_visible_kinds_and_empty_sections_cover_rema
             kind=IssueKind.READ_ONLY_NON_CONST,
             module_path=["BasePicture", "ReadOnly"],
             variable=Variable("B", "integer"),
-        ),
-        VariableIssue(
-            kind=IssueKind.NAMING_ROLE_MISMATCH,
-            module_path=["BasePicture", "Naming"],
-            variable=Variable("ValveStatus", "boolean"),
-            role="name suggests state but only drives command",
-        ),
-        VariableIssue(
-            kind=IssueKind.UI_ONLY,
-            module_path=["BasePicture", "Display"],
-            variable=Variable("Caption", Simple_DataType.STRING),
         ),
         VariableIssue(
             kind=IssueKind.PROCEDURE_STATUS,
@@ -391,12 +370,6 @@ def test_variables_report_properties_visible_kinds_and_empty_sections_cover_rema
             module_path=["BasePicture", "Mapping"],
             variable=None,
             role="unknown target parameter 'Mode'",
-        ),
-        VariableIssue(
-            kind=IssueKind.REQUIRED_PARAMETER_CONNECTION,
-            module_path=["BasePicture", "Required"],
-            variable=None,
-            role="required parameter 'Enable' is not connected",
         ),
         VariableIssue(
             kind=IssueKind.STRING_MAPPING_MISMATCH,
@@ -443,7 +416,7 @@ def test_variables_report_properties_visible_kinds_and_empty_sections_cover_rema
     report = VariablesReport(
         basepicture_name="BasePicture",
         issues=issues,
-        visible_kinds=frozenset((*ALL_VARIABLE_ANALYSIS_KINDS, IssueKind.NAME_COLLISION, IssueKind.SHADOWING)),
+        visible_kinds=frozenset((*ALL_VARIABLE_ANALYSIS_KINDS, IssueKind.SHADOWING)),
     )
 
     selector_expectations = {
@@ -451,8 +424,6 @@ def test_variables_report_properties_visible_kinds_and_empty_sections_cover_rema
         "unused_datatype_fields": 1,
         "field_read_only": 1,
         "read_only_non_const": 1,
-        "naming_role_mismatch": 1,
-        "ui_only": 1,
         "procedure_status": 1,
         "field_never_read": 1,
         "never_read": 1,
@@ -461,12 +432,10 @@ def test_variables_report_properties_visible_kinds_and_empty_sections_cover_rema
         "hidden_global_coupling": 1,
         "high_fan_in_out": 1,
         "unknown_parameter_targets": 1,
-        "required_parameter_connections": 1,
         "string_mapping_mismatch": 1,
         "datatype_duplication": 1,
         "min_max_mapping_mismatch": 1,
         "magic_numbers": 1,
-        "name_collisions": 0,
         "shadowing": 0,
         "reset_contamination": 1,
         "implicit_latches": 1,
@@ -480,12 +449,9 @@ def test_variables_report_properties_visible_kinds_and_empty_sections_cover_rema
     assert report.name == "BasePicture"
     assert summary.startswith("Report: Variable issues")
     assert "Status: issues" in summary
-    assert "Name collisions: 0" in summary
     assert "Variable shadowing: 0" in summary
     assert "Read-only fields" in summary
     assert "Read-only but not Const variables" in summary
-    assert "Naming-to-behavior mismatches" in summary
-    assert "UI/display-only variables" in summary
     assert "Written but never read fields" in summary
     assert "Procedure status handling" in summary
     assert "Written but never read variables" in summary

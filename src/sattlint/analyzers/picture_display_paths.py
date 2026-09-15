@@ -15,24 +15,35 @@ def analyze_picture_display_paths(
 ) -> SimpleReport:
     occurrences = tuple(getattr(base_picture, "graphics_picture_display_occurrences", ()) or ())
     diagnostics = diagnose_picture_display_paths(base_picture, occurrences, graph=graph)
-    issues = [
-        Issue(
-            kind="picture_display_paths.unresolved",
-            message=format_picture_display_path_diagnostic(diagnostic),
-            module_path=list(diagnostic.occurrence.declaring_module_path),
-            severity="info" if analyzed_target_is_library else None,
-            data={
-                "program_name": diagnostic.occurrence.program_name,
-                "path": diagnostic.path_row.raw_text,
-                "record_index": diagnostic.occurrence.record.record_index,
-                "failure_reason": diagnostic.resolution.failure_reason,
-                "detail": diagnostic.resolution.detail,
-                "site": ".".join(diagnostic.occurrence.declaring_module_path),
-                "context": diagnostic.path_row.raw_text,
-            },
+    issues: list[Issue] = []
+    for diagnostic in diagnostics:
+        module_path = list(diagnostic.occurrence.declaring_module_path)
+        is_above_base = (
+            diagnostic.resolution.failure_reason == "missing_parent"
+            and diagnostic.resolution.detail == "path stepped above BasePicture"
         )
-        for diagnostic in diagnostics
-    ]
+        kind = "picture_display_paths.above_base" if is_above_base else "picture_display_paths.unresolved"
+        issues.append(
+            Issue(
+                kind=kind,
+                message=(
+                    f"PictureDisplay path {diagnostic.path_row.raw_text!r} escapes above the base picture "
+                    "of the declaring module."
+                    if is_above_base
+                    else format_picture_display_path_diagnostic(diagnostic)
+                ),
+                module_path=module_path,
+                data={
+                    "program_name": diagnostic.occurrence.program_name,
+                    "path": diagnostic.path_row.raw_text,
+                    "record_index": diagnostic.occurrence.record.record_index,
+                    "failure_reason": diagnostic.resolution.failure_reason,
+                    "detail": diagnostic.resolution.detail,
+                    "site": ".".join(module_path),
+                    "context": diagnostic.path_row.raw_text,
+                },
+            )
+        )
     return SimpleReport(name=base_picture.header.name, issues=issues)
 
 

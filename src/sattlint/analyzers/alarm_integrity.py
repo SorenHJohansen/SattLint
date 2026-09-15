@@ -47,7 +47,6 @@ _CONDITION_PARAMETER_NAMES: tuple[str, ...] = (
 _ISSUE_LABELS = {
     "alarm.duplicate_tag": "Duplicate alarm tags",
     "alarm.duplicate_condition": "Duplicate alarm conditions",
-    "alarm.conflicting_priority": "Conflicting alarm priorities",
     "alarm.never_cleared": "Never-cleared alarm writes",
 }
 
@@ -174,7 +173,6 @@ class AlarmIntegrityAnalyzer:
 
         self._emit_duplicate_tag_issues()
         self._emit_duplicate_condition_issues()
-        self._emit_conflicting_priority_issues()
         return self._issues
 
     def _is_from_root_origin(self, origin_file: str | None, origin_lib: str | None = None) -> bool:
@@ -541,63 +539,6 @@ class AlarmIntegrityAnalyzer:
                         },
                     )
                 )
-
-    def _emit_conflicting_priority_issues(self) -> None:
-        by_tag: dict[str, list[_AlarmCandidate]] = defaultdict(list)
-        by_condition: dict[str, list[_AlarmCandidate]] = defaultdict(list)
-        for candidate in self._candidates:
-            if candidate.priority_key is None:
-                continue
-            if candidate.tag_key is not None:
-                by_tag[candidate.tag_key].append(candidate)
-            if candidate.condition_key is not None:
-                by_condition[candidate.condition_key].append(candidate)
-
-        seen_groups: set[tuple[str, tuple[tuple[str, ...], ...]]] = set()
-
-        for scope_name, groups in (("tag", by_tag), ("condition", by_condition)):
-            for scope_key, candidates in groups.items():
-                priorities = {candidate.priority_key for candidate in candidates if candidate.priority_key is not None}
-                if len(candidates) < 2 or len(priorities) < 2:
-                    continue
-
-                group_id = (
-                    scope_name,
-                    tuple(sorted(tuple(candidate.module_path) for candidate in candidates)),
-                )
-                if group_id in seen_groups:
-                    continue
-                seen_groups.add(group_id)
-
-                if scope_name == "tag":
-                    scope_label = candidates[0].tag_display or scope_key
-                    detail = f"Alarm tag {scope_label!r}"
-                else:
-                    scope_label = candidates[0].condition_display or scope_key
-                    detail = f"Alarm condition {scope_label!r}"
-
-                priorities_label = ", ".join(
-                    sorted({candidate.priority_display or "<unknown priority>" for candidate in candidates})
-                )
-                locations = self._location_list(candidates)
-                for candidate in candidates:
-                    self._issues.append(
-                        Issue(
-                            kind="alarm.conflicting_priority",
-                            message=(
-                                f"{detail} is configured with conflicting priorities or severities ({priorities_label}) across: {locations}."
-                            ),
-                            module_path=candidate.module_path.copy(),
-                            data={
-                                "scope": scope_name,
-                                "scope_value": scope_label,
-                                "priorities": sorted(priorities),
-                                "locations": locations,
-                                "site": ".".join(candidate.module_path),
-                                "context": f"{scope_label} = {priorities_label}",
-                            },
-                        )
-                    )
 
     def _check_module_code(
         self,

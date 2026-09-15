@@ -1,17 +1,17 @@
 {
     "case_id": "analyzer-data-dependency-clean",
     "target_file": "../valid/MinimalProgram.s",
-    "mode": "analyzer-data-dependency",
+    "mode": "analyzer-variables",
     "expectation": {
         "expected_finding_ids": [],
         "artifact_fragments": {
             "status.json": {
                 "execution_status": "ok",
                 "missing_dependency_count": 0,
-                "analyzer_key": "data-dependency"
+                "analyzer_key": "variables"
             },
             "summary.json": {
-                "analyzer_key": "data-dependency",
+                "analyzer_key": "variables",
                 "finding_count": 0,
                 "rule_counts": {}
             }

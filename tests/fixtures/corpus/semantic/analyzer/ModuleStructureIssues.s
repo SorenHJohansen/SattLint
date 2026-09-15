@@ -1,7 +1,7 @@
 "Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
 "Original file date: ---"
 "Program date: 2026-06-19-12:00:00.000, name: ModStructIssues"
-(* Covers HIDDEN_GLOBAL_COUPLING, HIGH_FAN_IN_OUT, UNKNOWN_PARAMETER_TARGET, NAME_COLLISION.
+(* Covers HIDDEN_GLOBAL_COUPLING, HIGH_FAN_IN_OUT, UNKNOWN_PARAMETER_TARGET.
    Expected: strict syntax-check passes. *)
 
 BasePicture Invocation

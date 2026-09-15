@@ -27,7 +27,6 @@ from sattline_parser.models.expressions import Assignment, IfStmt
 from sattlint import constants as const
 from sattlint.analyzers.cyclomatic_complexity import analyze_cyclomatic_complexity
 from sattlint.analyzers.mms import analyze_mms_interface_variables
-from sattlint.analyzers.parameter_drift import analyze_parameter_drift
 from sattlint.reporting.icf_report import ICFEntry
 from tests.helpers.variable_test_support import (
     hdr as _hdr,
@@ -142,52 +141,6 @@ def test_mms_interface_flags_duplicate_tags_and_datatype_mismatch_from_icf_entri
 
     assert "mms.duplicate_tag" in _issue_kinds(report)
     assert "mms.datatype_mismatch" in _issue_kinds(report)
-
-
-def test_mms_interface_flags_naming_drift_from_icf_entries():
-    unit = SingleModule(
-        header=_hdr("Unit"),
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[Variable(name="ResultText", datatype=Simple_DataType.STRING)],
-        submodules=[],
-        modulecode=None,
-        parametermappings=[],
-    )
-
-    bp = BasePicture(
-        header=_hdr("Program"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[unit],
-        modulecode=None,
-        moduledef=None,
-    )
-
-    entries = [
-        ICFEntry(
-            file_path=Path("Program.icf"),
-            line_no=1,
-            section="JournalData_DCStoMES",
-            key="ResultText",
-            value="Program:Unit.ResultText",
-        ),
-        ICFEntry(
-            file_path=Path("Program.icf"),
-            line_no=2,
-            section="JournalData_DCStoMES",
-            key="RESULT_TEXT",
-            value="Program:Unit.ResultText",
-        ),
-    ]
-
-    report = analyze_mms_interface_variables(bp, icf_entries=entries)
-
-    naming_drift_issues = [issue for issue in report.issues if issue.kind == "mms.naming_drift"]
-    assert len(naming_drift_issues) == 1
-    assert "ResultText" in naming_drift_issues[0].message
-    assert "RESULT_TEXT" in naming_drift_issues[0].message
 
 
 def test_mms_interface_collects_nested_typedef_mappings_and_write_locations():
@@ -356,111 +309,6 @@ def test_mms_interface_uses_moduletype_default_tags_for_duplicate_and_dead_tag_c
     assert duplicate_issues[0].data["tag"] == "Plant.Default.Tag"
     assert len(dead_tag_issues) == 2
     assert all("Plant.Default.Tag" in issue.message for issue in dead_tag_issues)
-
-
-def test_parameter_drift_flags_diverging_literal_parameter_values():
-    typedef = ModuleTypeDef(
-        name="DoseValve",
-        moduleparameters=[Variable(name="Timeout", datatype=Simple_DataType.INTEGER, init_value=10)],
-        localvariables=[],
-        submodules=[],
-        moduledef=None,
-        modulecode=None,
-        parametermappings=[],
-    )
-
-    bp = BasePicture(
-        header=_hdr("Program"),
-        datatype_defs=[],
-        moduletype_defs=[typedef],
-        localvariables=[],
-        submodules=[
-            ModuleTypeInstance(
-                header=_hdr("ValveA"),
-                moduletype_name="DoseValve",
-                parametermappings=[
-                    ParameterMapping(
-                        target=_varref("Timeout"),
-                        source_type=const.KEY_VALUE,
-                        is_duration=False,
-                        is_source_global=False,
-                        source=None,
-                        source_literal=10,
-                    )
-                ],
-            ),
-            ModuleTypeInstance(
-                header=_hdr("ValveB"),
-                moduletype_name="DoseValve",
-                parametermappings=[
-                    ParameterMapping(
-                        target=_varref("Timeout"),
-                        source_type=const.KEY_VALUE,
-                        is_duration=False,
-                        is_source_global=False,
-                        source=None,
-                        source_literal=15,
-                    )
-                ],
-            ),
-        ],
-        modulecode=None,
-        moduledef=None,
-    )
-
-    report = analyze_parameter_drift(bp)
-
-    drift_issues = [issue for issue in report.issues if issue.kind == "module.parameter_drift"]
-    assert len(drift_issues) == 2
-    assert all("Timeout" in issue.message for issue in drift_issues)
-    assert any("Program.ValveA=10" in issue.message for issue in drift_issues)
-    assert any("Program.ValveB=15" in issue.message for issue in drift_issues)
-
-
-def test_parameter_drift_ignores_aligned_literal_parameter_values():
-    typedef = ModuleTypeDef(
-        name="DoseValve",
-        moduleparameters=[Variable(name="Timeout", datatype=Simple_DataType.INTEGER, init_value=10)],
-        localvariables=[],
-        submodules=[],
-        moduledef=None,
-        modulecode=None,
-        parametermappings=[],
-    )
-
-    bp = BasePicture(
-        header=_hdr("Program"),
-        datatype_defs=[],
-        moduletype_defs=[typedef],
-        localvariables=[],
-        submodules=[
-            ModuleTypeInstance(
-                header=_hdr("ValveA"),
-                moduletype_name="DoseValve",
-                parametermappings=[
-                    ParameterMapping(
-                        target=_varref("Timeout"),
-                        source_type=const.KEY_VALUE,
-                        is_duration=False,
-                        is_source_global=False,
-                        source=None,
-                        source_literal=10,
-                    )
-                ],
-            ),
-            ModuleTypeInstance(
-                header=_hdr("ValveB"),
-                moduletype_name="DoseValve",
-                parametermappings=[],
-            ),
-        ],
-        modulecode=None,
-        moduledef=None,
-    )
-
-    report = analyze_parameter_drift(bp)
-
-    assert not any(issue.kind == "module.parameter_drift" for issue in report.issues)
 
 
 def test_cyclomatic_complexity_ignores_low_complexity_program_modulecode():

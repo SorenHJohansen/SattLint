@@ -17,12 +17,24 @@ recorded next to it:
 
 | Exception | Meaning | Examples |
 |---|---|---|
-| **KEEP CLI-ONLY** | Non-interactive automation/CI needs it. The CLI is a supported surface (`PYTHON_API.md` stability table). | `analyze --check`, `--list-checks`, `--output-format json`, `cache-prune` |
+| **KEEP CLI-ONLY** | A test of another feature needs it — the CLI command is the vehicle that drives that feature's test. Tests of the CLI command itself do not count. The CLI is a supported surface (`PYTHON_API.md` stability table). | *(none currently proven — see §4)* |
 | **KEEP INTERNAL** | A building block used by a TUI feature. Not a user-facing surface; not independently invokable. | project loader, AST cache, `SemanticSnapshot` used by Change Review |
 | **KEEP LIBRARY-API** | A documented public API with a real external consumer. | *(none currently proven — see §8)* |
 
 Everything else goes. "It might be useful later", "it was here before", and
 "someone could import it" are **not** good reasons.
+
+**CLI commands are kept only because a test of another feature needs them.** A
+CLI command whose only consumers are tests of the CLI feature itself is pruned
+like anything else. Confirm the cross-feature test-usage (a test of some other
+feature driving it through the CLI) before marking anything `KEEP CLI-ONLY`.
+
+Surveyed today: **no CLI command or flag currently qualifies.** `analyze` and
+`cache-prune` are exercised only by their own CLI tests
+(`tests/app/test_cli.py`, `test_app_cli_commands.py`, `test_cli_debug.py`); every
+other feature (cache pruning, analyzer pipeline, project loading) is tested
+directly against its owning module, never through the CLI. `--ui textual` is a
+redundant alias for the no-args TUI launch. See §4.
 
 ### What "in the TUI" means (the reachable surface)
 
@@ -133,22 +145,36 @@ goes too.
 
 ---
 
-## 4. CLI flag review
+## 4. CLI command review
 
-Global flags (`--config`, `--project`, `--no-cache`, `--quiet`, `--debug`,
-`--version`) and `--ui` stay: standard automation surface.
+The global flags are not exempt from the test-vitality rule. Surveyed against
+the test suite, **nothing in the CLI flag surface survives**: both subcommands
+and every flag are consumed only by tests of the CLI feature itself, or are
+redundant aliases for the default. The one thing the test suite genuinely needs
+is the no-args TUI launch (`python -m sattlint`), which is the default behavior,
+not a flag.
 
-| Flag | Verdict | Reason |
+| Command / flag | Verdict | Reason |
 |---|---|---|
-| `analyze --check KEY` | KEEP CLI-ONLY | The core CI entry point; the TUI is interactive-only |
-| `analyze --list-checks` | KEEP CLI-ONLY | Discovery for CI scripts |
-| `analyze --output-format json` | KEEP CLI-ONLY | Machine-readable CI output |
-| `analyze --refresh-caches` | KEEP CLI-ONLY | Cache maintenance; deliberately no TUI button (UI_PLAN 2.4) |
-| `cache-prune` | KEEP CLI-ONLY | Maintenance/reporting pass; auto-pruned at startup already |
-| `--ui textual` | **REMOVE** | Interactive is Textual-only; the flag can only accept `textual` and `resolve_interactive_ui_mode` already rejects anything else. Keep the `SATTLINT_UI` validation or drop it too. |
-| `analyze --profile` | **OPEN** (recommend KEEP CLI-ONLY) | Developer performance diagnostics (`SATTLINT_PROFILE`, JSONL under the cache dir). No TUI counterpart; keep only if performance debugging is still wanted. |
-| `analyze --issue-kind` / `--list-issue-kinds` | **REMOVE** (recommended) | Only consumer of the removed `variable_analyses` catalog; the TUI already selects analyzers. Removes `selected_issue_kinds` plumbing across `checks.py`, `AnalysisContext`, and the variables analyzer. See §5. |
-| `analyze --format` alias for list commands | KEEP CLI-ONLY | Same as `--output-format` |
+| `analyze` (whole command) | **REMOVE** | Only its own CLI tests exercise it (`tests/app/test_cli.py`, `test_app_cli_commands.py`, `test_cli_debug.py`). Analyzer/cache/project tests drive the owning functions directly. All `analyze --*` flags below go with it. |
+| `analyze --check KEY` | **REMOVE** | Moot once `analyze` is gone; no other feature's test drives it. |
+| `analyze --list-checks` | **REMOVE** | Moot once `analyze` is gone; no other feature's test drives it. |
+| `analyze --output-format json` / `--format` | **REMOVE** | Moot once `analyze` is gone; JSON rendering is only asserted by CLI tests. |
+| `analyze --refresh-caches` | **REMOVE** | Moot once `analyze` is gone; the cache is tested directly (`tests/cache/*`). |
+| `analyze --profile` | **REMOVE** | Moot once `analyze` is gone; no other feature's test drives it. See §6. |
+| `analyze --issue-kind` / `--list-issue-kinds` | **REMOVE** | Moot once `analyze` is gone; also the only consumer of the removed `variable_analyses` catalog (§2.4). See §5. |
+| `cache-prune` | **REMOVE** | Pruning is auto-run at startup and tested directly (`tests/cache/test_cache_classes.py` calls `prune_stale_entries()` / `prune_cache_dir`); no other feature's test needs the subcommand. |
+| `--config` | **REMOVE** | Only CLI-feature tests (`test_cli.py` startup routing) use it; no project/config test drives it through the CLI (`tests/project/*` call `load_project` directly). |
+| `--project` | **REMOVE** | Same as `--config`; `.slproj` loading is tested via the project API, not the flag. |
+| `--no-cache` | **REMOVE** | Only CLI-feature tests use it; the cache is tested directly. |
+| `--quiet` | **REMOVE** | Only CLI-feature tests use it (stdout suppression is a CLI-console concern). |
+| `--debug` | **REMOVE** | Only CLI-feature tests use it; debug behavior is config-driven, not a test-required surface. |
+| `--version` | **REMOVE** | Only CLI-feature tests assert it (`test_cli.py`); no other feature's test needs it. |
+| `--ui textual` | **REMOVE** | Redundant alias — no-args `sattlint` already launches the TUI (`resolve_interactive_ui_mode` defaults to `textual`). The TUI subprocess smoke test (`tests/app/test_app_textual.py`) currently passes it, but works identically with `python -m sattlint`; update the test to drop the flag. |
+
+After this, the CLI surface is a single behavior: `sattlint` (no arguments)
+launches the TUI. The subprocess smoke test keeps exercising the real launch
+path; everything else is the direct owning functions.
 
 ---
 
@@ -178,9 +204,9 @@ plan lands first.
 
 - Not in the TUI.
 - Used to emit JSONL performance events and extra output lines when profiling is on.
-- **Verdict: OPEN.** Recommend KEEP CLI-ONLY (developer diagnostics) because it has a
-  concrete, written purpose and zero TUI surface. If maximum pruning is wanted,
-  REMOVE it and the timing/bottleneck plumbing it feeds.
+- **Verdict: REMOVE.** It exists only to feed `analyze --profile` (§4), which no
+  test of another feature drives. Remove it and the timing/bottleneck plumbing it
+  feeds.
 
 ---
 
@@ -230,9 +256,14 @@ Each step must leave `ruff`, `pyright`, and the focused tests green.
 3. **Remove the editor/LSP public API** (§2.2) down to the Change Review keep-set.
    Update `PYTHON_API.md`.
 4. **Remove stale handlers and menu commands** (§2.3, §7). Fix `analysis_handler_fns`.
-5. **Decide the CLI flags** (§4): remove `--ui`, and `--issue-kind` /
-   `--list-issue-kinds` if the decision is to drop issue-kind selection. If dropped,
-   do §5 in the same change.
+5. **Remove the CLI commands and all flags** (§4): `analyze`, `cache-prune`,
+   and every flag (`--check`, `--list-checks`, `--issue-kind` /
+   `--list-issue-kinds`, `--refresh-caches`, `--output-format`, `--profile`,
+   `--config`, `--project`, `--no-cache`, `--quiet`, `--debug`, `--version`,
+   `--ui`). The no-args `sattlint` TUI launch stays; update the TUI subprocess
+   smoke test to drop `--ui textual`. Remove the `selected_issue_kinds` plumbing
+   (§5) in the same change, then delete the CLI-only tests and rewrite
+   `CLI_COMMANDS.md`.
 6. **Remove the legacy variable-analysis catalog** (§2.4).
 7. **Decide profiling** (§6) and the service API (§8).
 8. **Dead-code sweep**: search for every symbol removed here; delete tests, docs, and
@@ -251,9 +282,15 @@ Likely removals/rewrites (confirm by search, do not bulk-delete):
   what Change Review covers.
 - `tests/analyzers/test_icf_validation.py` menu-command cases (the analyzer cases stay).
 - Any test importing `variable_analyses`.
-- `tests/app/test_cli.py` cases for `--issue-kind` / `--list-issue-kinds` / `--ui`.
-- `PYTHON_API.md`, `ARCHITECTURE.md`, `FEATURE_GUIDE.md`, `CLI_COMMANDS.md`,
-  `SUPPORT.md` references to removed surfaces.
+- `tests/app/test_cli.py`, `tests/app/test_app_cli_commands.py`,
+  `tests/app/test_cli_debug.py`: CLI command/flag tests — delete wholesale,
+  keeping only the routing cases that cover the no-args TUI launch.
+- `tests/app/test_app_textual.py` subprocess smoke test: change
+  `python -m sattlint --ui textual` to `python -m sattlint` (no args).
+- `CLI_COMMANDS.md`: reduce to the single TUI-launch invocation (`sattlint`); drop
+  the `analyze` / `cache-prune` chapters and the global-options table.
+- `PYTHON_API.md`, `ARCHITECTURE.md`, `FEATURE_GUIDE.md`, `SUPPORT.md` references
+  to removed surfaces.
 
 ---
 
@@ -273,8 +310,10 @@ Behavioral smoke:
 
 ```
 sattlint                      # TUI opens, Analyze/Setup/Results/Help work
-sattlint analyze --check variables --list-checks
 ```
+
+The CLI smoke command is gone with `analyze`; replace it with a direct call to
+the owning function if a non-TUI smoke is still wanted.
 
 Change Review must still generate from the TUI after the semantic core is trimmed.
 
@@ -293,13 +332,14 @@ Change Review must still generate from the TUI after the semantic core is trimme
 
 **Open questions (need a decision before the matching phase)**
 
-1. `analyze --profile` and `core/profiling.py`: keep as CLI-only developer
-   diagnostics, or remove?
-2. `analyze --issue-kind` / `--list-issue-kinds`: remove (recommended) or keep
-   CLI-only? This decides §5.
+1. ~~`analyze --profile` and `core/profiling.py`: keep or remove?~~ **Decided: REMOVE**
+   (goes with `analyze`; §6).
+2. ~~`analyze --issue-kind` / `--list-issue-kinds`: remove or keep CLI-only?~~ **Decided:
+   REMOVE** (goes with `analyze`; §4). §5 is executed with it.
 3. `application/service.py`: is there a real external consumer, or does it go?
-4. `--ui textual`: remove the flag outright, or keep it as an explicit
-   "interactive is Textual-only" guard?
+4. ~~`--ui textual`: remove outright, or keep as an explicit guard?~~ **Decided:
+   REMOVE** — redundant alias; no-args `sattlint` already launches the TUI, so
+   there is only ever one way to start it. §4.
 5. Is the `AnalyzerCatalog.to_report` / delivery-metadata surface (buckets,
    `lsp_exposed`, acceptance-test lists, corpus links) used by anything outside
    tests? If not, it is a candidate for the same sweep.

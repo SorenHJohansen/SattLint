@@ -2,7 +2,7 @@
 "Original file date: ---"
 "Program date: 2026-06-19-12:00:00.000, name: Timing"
 (* Covers dataflow scan-cycle timing findings: scan-cycle-stale-read,
-   scan-cycle-implicit-new, scan-cycle-temporal-misuse.
+   scan-cycle-implicit-new.
    Delegates to the dataflow sub-analyzer. *)
 
 BasePicture Invocation

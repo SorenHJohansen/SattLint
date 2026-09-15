@@ -4,8 +4,6 @@
     "mode": "analyzer-sfc",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.transition-always-true",
-            "semantic.transition-always-false",
             "semantic.duplicate-transition-guard"
         ],
         "artifact_fragments": {
@@ -17,8 +15,6 @@
             "summary.json": {
                 "analyzer_key": "sfc",
                 "rule_counts": {
-                    "semantic.transition-always-true": 1,
-                    "semantic.transition-always-false": 1,
                     "semantic.duplicate-transition-guard": 1
                 }
             }

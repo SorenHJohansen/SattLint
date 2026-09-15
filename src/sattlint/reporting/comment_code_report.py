@@ -94,12 +94,4 @@ class CommentCodeReport:
                 else:
                     lines.append(f"  - {source_location}{context_details} [{indicator_txt}] {preview}")
 
-        # Only show actual read errors (not duplicate comment code entries)
-        read_errors = [issue for issue in self.issues if issue.kind == "comment_code_read_error"]
-        if read_errors:
-            lines.append("")
-            lines.append("Read errors:")
-            for issue in read_errors:
-                lines.append(f"  - {issue.message}")
-
         return "\n".join(lines)

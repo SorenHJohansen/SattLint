@@ -50,8 +50,6 @@ def describe_variable_issue(issue: VariableIssue) -> str:
         return f"Field {variable_name!r}.{field_path} is read but never written."
     if issue.kind is IssueKind.READ_ONLY_NON_CONST and variable_name is not None:
         return f"Variable {variable_name!r} is read but never written, yet it is not CONST."
-    if issue.kind is IssueKind.UI_ONLY and variable_name is not None:
-        return f"Variable {variable_name!r} is only read through graphics or interact UI wiring."
     if issue.kind is IssueKind.PROCEDURE_STATUS and variable_name is not None:
         return issue.role or f"Procedure status output {variable_name!r} is not handled in control logic."
     if issue.kind is IssueKind.FIELD_NEVER_READ and variable_name is not None:
@@ -80,8 +78,6 @@ def describe_variable_issue(issue: VariableIssue) -> str:
         datatype_name = issue.datatype_name or "<unknown datatype>"
         duplicates = issue.duplicate_count or 0
         return f"Datatype {datatype_name!r} appears {duplicates} times with the same structure."
-    if issue.kind is IssueKind.NAME_COLLISION:
-        return issue.role or "Declaration name collision."
     if issue.kind is IssueKind.MIN_MAX_MAPPING_MISMATCH:
         return issue.role or "Min_/Max_ parameter mappings do not align by base name."
     if issue.kind is IssueKind.SHADOWING:
@@ -225,9 +221,6 @@ def map_spec_issues(issues: list[Issue]) -> list[SemanticIssue]:
                     SemanticRule(
                         id=issue.kind,
                         source="spec-compliance",
-                        category="engineering-spec",
-                        severity="warning",
-                        applies_to="sattline-construct",
                         description=SPEC_RULE_DESCRIPTIONS.get(issue.kind, issue.kind),
                         name=SPEC_RULE_NAMES.get(issue.kind, issue.kind),
                         example=SPEC_RULE_EXAMPLES.get(issue.kind),

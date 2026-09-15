@@ -59,6 +59,10 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
             typedef_context, typedef_state = self._build_typedef_seed(moduletype, typedef_path)
             self._walk_typedef(moduletype, typedef_context, typedef_path, typedef_state)
 
+        from ._dataflow_non_state_sites import collect_non_state_multi_site_issues  # noqa: PLC0415
+
+        collect_non_state_multi_site_issues(self)
+
         return self._issues
 
     def _walk_typedef(

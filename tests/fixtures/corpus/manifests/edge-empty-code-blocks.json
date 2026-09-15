@@ -7,12 +7,8 @@
             "semantic.condition-always-false",
             "semantic.condition-always-true",
             "semantic.dead-overwrite",
-            "semantic.loop-conflicting-setpoint",
-            "semantic.naming-role-mismatch",
             "semantic.never-read-write",
-            "semantic.same-cycle-non-state-multi-site",
-            "semantic.transition-always-true",
-            "spec.basepicture_direct_code",
+            "semantic.non-state-multi-site",
             "spec.sequence_step_prefix",
             "spec.transition_prefix"
         ],
@@ -22,17 +18,13 @@
                 "missing_dependency_count": 0
             },
             "summary.json": {
-                "finding_count": 16,
+                "finding_count": 13,
                 "rule_counts": {
                     "semantic.condition-always-false": 1,
                     "semantic.condition-always-true": 2,
                     "semantic.dead-overwrite": 1,
-                    "semantic.loop-conflicting-setpoint": 1,
-                    "semantic.naming-role-mismatch": 1,
                     "semantic.never-read-write": 1,
-                    "semantic.same-cycle-non-state-multi-site": 1,
-                    "semantic.transition-always-true": 1,
-                    "spec.basepicture_direct_code": 1,
+                    "semantic.non-state-multi-site": 1,
                     "spec.sequence_step_prefix": 3,
                     "spec.transition_prefix": 3
                 }
