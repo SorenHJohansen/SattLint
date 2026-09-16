@@ -70,7 +70,6 @@ def load_version_snapshot(
         graph,
         entry_file=entry_path,
         workspace_root=workspace_root,
-        collect_variable_diagnostics=False,
     )
     code_model = build_code_model(snapshot)
 

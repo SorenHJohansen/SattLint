@@ -66,7 +66,7 @@ flowchart LR
 
 ## Actual Runtime Entry Map
 
-- `sattlint` enters at `src/sattlint/cli/startup.py`. With a subcommand it dispatches to the non-interactive handlers in `src/sattlint/cli/commands.py` (`syntax-check`, `analyze`, `validate-config`, `cache-prune`); with no subcommand it starts the interactive Textual shell from `src/sattlint/ui/`.
+- `sattlint` enters at `src/sattlint/cli/startup.py`. It takes no arguments and starts the interactive Textual shell from `src/sattlint/ui/`.
 - The interactive UI (`sattlint` with no arguments) provides Analyze, Setup, and Help views.
 
 ## Analyzer Workflow
@@ -82,7 +82,7 @@ primitives (`AnalysisContext`, `AnalysisSharedArtifacts`, `AnalyzerSpec`,
 
 ```mermaid
 flowchart LR
-    Select["You select an analyzer<br/>(CLI `--check KEY` or UI checkbox)"]
+    Select["You select an analyzer<br/>(UI checkbox)"]
     Registry["Registry<br/>key -> AnalyzerSpec (catalog)"]
     Run["Run analyzer<br/>run(context) -> Report"]
     Output["Your output<br/>summary + findings"]

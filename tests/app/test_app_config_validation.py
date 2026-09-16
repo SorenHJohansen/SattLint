@@ -5,16 +5,11 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
-from types import SimpleNamespace
 from typing import ClassVar
 
 import pytest
 
 from sattlint import config as config_module
-from sattlint.analyzers import icf as icf_module
-from sattlint.application import analyze as analyze_application
-from sattlint.application import menu_commands as commands_application
-from sattlint.application import project as project_application
 from sattlint.cli import startup as startup_module
 from sattlint.config import DEFAULT_CONFIG
 from sattlint.config.defaults import (
@@ -392,55 +387,6 @@ def test_self_check_reports_nested_analysis_shape_errors(tmp_path, monkeypatch, 
     assert "Unknown analysis key 'naming'" in bad_out
 
 
-def test_run_icf_validation_forces_dependency_aware_ast_loading(tmp_path, monkeypatch, capsys, noop_screen):
-    icf_dir = tmp_path / "icf"
-    icf_dir.mkdir()
-    icf_file = icf_dir / "Program.icf"
-    icf_file.write_text("Tag=Program:Root.Value\n", encoding="utf-8")
-
-    cfg = deepcopy(DEFAULT_CONFIG)
-    cfg.update(
-        {
-            "icf_dir": str(icf_dir),
-            "program_dir": str(tmp_path),
-            "ABB_lib_dir": str(tmp_path),
-            "other_lib_dirs": [],
-            "debug": False,
-        }
-    )
-
-    calls: list[tuple[str, bool]] = []
-
-    def fake_load_program_ast(_cfg, program_name):
-        calls.append(program_name)
-        root_bp = SimpleNamespace(moduletype_defs=[])
-        graph = SimpleNamespace(ast_by_name={program_name: SimpleNamespace(moduletype_defs=[])})
-        return root_bp, graph
-
-    class FakeReport:
-        total_entries = 1
-        valid_entries = 1
-        skipped_entries = 0
-        issues: ClassVar[list[object]] = []
-
-        def summary(self):
-            return "summary"
-
-    monkeypatch.setattr(project_application, "load_program_ast", fake_load_program_ast)
-    monkeypatch.setattr(commands_application, "merge_project_basepicture", lambda bp, _graph: bp)
-    monkeypatch.setattr(
-        icf_module,
-        "validate_icf_entries_against_program",
-        lambda *args, **kwargs: FakeReport(),
-    )
-
-    analyze_application.run_icf_validation(cfg)
-
-    assert calls == ["Program"]
-    out = capsys.readouterr().out
-    assert "summary" in out
-
-
 def test_self_check_reports_invalid_nested_config_errors(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(config_module, "target_exists", lambda *_args, **_kwargs: False)
 
@@ -478,8 +424,6 @@ def test_main_pauses_when_initial_ast_check_fails(monkeypatch):
     exit_code = startup_module.main(
         load_config_fn=lambda *_: (cfg, False),
         apply_debug_fn=lambda *_: None,
-        self_check_fn=lambda *_: pytest.fail("textual startup should skip terminal self-check"),
-        ensure_ast_cache_fn=lambda *_: pytest.fail("textual startup should skip terminal AST cache preflight"),
         pause_fn=lambda: pytest.fail("textual startup should not pause before launching"),
         run_main_loop_fn=lambda *_args, **_kwargs: calls.append("session"),
     )

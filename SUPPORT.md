@@ -16,12 +16,8 @@ Before opening an issue, check:
 
 | Surface | Status | Notes |
 | --- | --- | --- |
-| `sattlint --version` | Stable | Confirms the installed package boots and reports a version |
-| `sattlint syntax-check` | Stable | Strict single-file syntax validation for SattLine source |
-| `sattlint analyze` (`.slproj` project analysis) | Stable | Analyzes a program or library with its dependencies using the heuristic analyzers |
-| ICF and graphics analysis | Stable | Validates and formats ICF files and checks graphics rules |
+| `sattlint` (no-args TUI launch) | Stable | Launches the Textual interactive UI; the only CLI behavior |
 | Textual interactive UI | Preview | Guided setup and menu-driven analysis workflows; layout and wording may evolve |
-| `sattlint validate-config`, `sattlint cache-prune` | Preview | Config-driven helpers that are useful today but not part of the smallest stable contract |
 
 - **Platforms:** Windows and Linux with Python 3.13 or newer. macOS contributor workflows may work but are not part of the stable contract.
 - **Configuration:** `.slproj` project files and `~/.config/sattlint/config.toml` (or `%APPDATA%\sattlint\config.toml`).
@@ -50,7 +46,7 @@ used:
 
 Include as much of this as you can:
 
-- SattLint version from `sattlint --version`
+- SattLint version from the TUI Help modal or the package version
 - install method (`pipx`, editable install, or source checkout)
 - operating system and Python version
 - the exact command you ran

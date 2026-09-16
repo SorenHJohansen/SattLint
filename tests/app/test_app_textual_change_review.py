@@ -43,7 +43,6 @@ def _make_textual_app(analysis_handlers: dict[str, Any] | None = None) -> Any:
             "review": {"output_dir": ""},
         },
         summarize_targets_fn=_noop_cfg,
-        show_help_fn=_noop_cfg,
         get_help_text_fn=_help_text,
         save_config_fn=_noop_save,
         config_path=None,
@@ -140,10 +139,4 @@ def test_change_review_ui_controls_present() -> None:
 
 def test_no_cli_command_introduced_for_change_review() -> None:
     parser = app_module.build_cli_parser()
-    commands: set[str] = set()
-    for action in parser._actions:
-        choices = getattr(action, "choices", None)
-        if choices:
-            commands.update(str(choice) for choice in choices)
-    assert "change-review" not in commands
-    assert "change_review" not in commands
+    assert parser is None

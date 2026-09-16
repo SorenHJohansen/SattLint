@@ -221,7 +221,6 @@ def test_run_textual_shell_passes_ensure_ast_cache_fn_to_app(monkeypatch: pytest
         set_textual_menu_interaction_fn=lambda interaction: events.append(("set-interaction", interaction is not None)),
         clear_textual_menu_interaction_fn=lambda: events.append(("clear-interaction", True)),
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=Path("config.toml"),
         quit_app_error=RuntimeError,
@@ -307,7 +306,6 @@ def test_run_textual_shell_passes_app_config_without_startup_refresh(monkeypatch
         set_textual_menu_interaction_fn=lambda _interaction: None,
         clear_textual_menu_interaction_fn=lambda: None,
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=Path("config.toml"),
         quit_app_error=RuntimeError,
@@ -423,7 +421,6 @@ def test_textual_top_chrome_removes_banner_and_summary_boxes() -> None:
         app_instance = app_textual.SattLintTextualApp(
             cfg={},
             summarize_targets_fn=lambda _cfg: "targets",
-            show_help_fn=lambda _cfg: None,
             save_config_fn=lambda _path, _cfg: None,
             config_path=None,
             quit_app_error=RuntimeError,
@@ -447,7 +444,6 @@ def test_textual_toolbar_is_available_without_summary_box() -> None:
         app_instance = app_textual.SattLintTextualApp(
             cfg={"analyzed_programs_and_libraries": ["Target1", "Target2"]},
             summarize_targets_fn=lambda _cfg: "targets",
-            show_help_fn=lambda _cfg: None,
             save_config_fn=lambda _path, _cfg: None,
             config_path=None,
             quit_app_error=RuntimeError,
@@ -474,7 +470,6 @@ def test_textual_quit_keybinding_does_not_crash() -> None:
         app_instance = app_textual.SattLintTextualApp(
             cfg={},
             summarize_targets_fn=lambda _cfg: "targets",
-            show_help_fn=lambda _cfg: None,
             save_config_fn=lambda _path, _cfg: None,
             config_path=None,
             quit_app_error=RuntimeError,
@@ -496,7 +491,6 @@ def test_textual_ctrl_c_copy_binding_copies_session_output() -> None:
         app_instance = app_textual.SattLintTextualApp(
             cfg={},
             summarize_targets_fn=lambda _cfg: "targets",
-            show_help_fn=lambda _cfg: None,
             save_config_fn=lambda _path, _cfg: None,
             config_path=None,
             quit_app_error=RuntimeError,
@@ -667,7 +661,6 @@ def test_textual_session_output_preserves_manual_scroll_position_on_new_output()
         app_instance = app_textual.SattLintTextualApp(
             cfg={},
             summarize_targets_fn=lambda _cfg: "targets",
-            show_help_fn=lambda _cfg: None,
             save_config_fn=lambda _path, _cfg: None,
             config_path=None,
             quit_app_error=RuntimeError,
@@ -702,7 +695,6 @@ def test_textual_session_output_keeps_following_when_already_at_bottom() -> None
         app_instance = app_textual.SattLintTextualApp(
             cfg={},
             summarize_targets_fn=lambda _cfg: "targets",
-            show_help_fn=lambda _cfg: None,
             save_config_fn=lambda _path, _cfg: None,
             config_path=None,
             quit_app_error=RuntimeError,
@@ -735,7 +727,6 @@ def test_textual_present_request_uses_inline_host_and_preserves_shell_chrome() -
         app_instance = app_textual.SattLintTextualApp(
             cfg={},
             summarize_targets_fn=lambda _cfg: "targets",
-            show_help_fn=lambda _cfg: None,
             save_config_fn=lambda _path, _cfg: None,
             config_path=None,
             quit_app_error=RuntimeError,
@@ -776,7 +767,6 @@ def test_textual_toolbar_navigation_switches_view_without_starting_action(monkey
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
         quit_app_error=RuntimeError,
@@ -796,7 +786,6 @@ def test_textual_view_primary_action_launches_active_view(monkeypatch: pytest.Mo
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
         quit_app_error=RuntimeError,
@@ -831,7 +820,6 @@ def _make_textual_app(
     app_instance = app_textual.SattLintTextualApp(
         cfg=cfg or {"analyzed_programs_and_libraries": ["TargetA"]},
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         get_help_text_fn=lambda _cfg: "Help text",
         save_config_fn=save_config_fn or (lambda _path, _cfg: None),
         config_path=None,
@@ -1575,7 +1563,6 @@ def test_textual_start_action_tracks_active_worker_thread(monkeypatch: pytest.Mo
     app_instance = FakeTextualApp(
         cfg={"analyzed_programs_and_libraries": ["TargetA"]},
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         get_help_text_fn=lambda _cfg: "Help text",
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
@@ -1648,7 +1635,6 @@ def test_textual_start_action_reports_type_errors_from_action(monkeypatch: pytes
     app_instance = FakeTextualApp(
         cfg={"analyzed_programs_and_libraries": ["TargetA"]},
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         get_help_text_fn=lambda _cfg: "Help text",
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
@@ -1878,7 +1864,6 @@ def test_textual_toolbar_key_switches_routed_view() -> None:
         app_instance = app_textual.SattLintTextualApp(
             cfg={},
             summarize_targets_fn=lambda _cfg: "targets",
-            show_help_fn=lambda _cfg: None,
             save_config_fn=lambda _path, _cfg: None,
             config_path=None,
             quit_app_error=RuntimeError,
@@ -1906,7 +1891,6 @@ def test_textual_toolbar_keys_respect_busy_guard() -> None:
         app_instance = app_textual.SattLintTextualApp(
             cfg={},
             summarize_targets_fn=lambda _cfg: "targets",
-            show_help_fn=lambda _cfg: None,
             save_config_fn=lambda _path, _cfg: None,
             config_path=None,
             quit_app_error=RuntimeError,
@@ -1974,7 +1958,6 @@ def test_textual_setup_view_shows_selected_target_preview(tmp_path: Path) -> Non
         app_instance = app_textual.SattLintTextualApp(
             cfg=cfg,
             summarize_targets_fn=lambda _cfg: "targets",
-            show_help_fn=lambda _cfg: None,
             save_config_fn=lambda _path, _cfg: None,
             config_path=None,
             quit_app_error=RuntimeError,
@@ -2040,7 +2023,6 @@ def test_textual_setup_shows_empty_dirs_when_no_configuration_is_open() -> None:
         app_instance = app_textual.SattLintTextualApp(
             cfg=cfg,
             summarize_targets_fn=lambda _cfg: "targets",
-            show_help_fn=lambda _cfg: None,
             save_config_fn=lambda _path, _cfg: None,
             config_path=None,
             quit_app_error=RuntimeError,
@@ -2328,7 +2310,6 @@ def test_textual_setup_target_button_click_adds_and_removes_target(tmp_path: Pat
         app_instance = app_textual.SattLintTextualApp(
             cfg=cfg,
             summarize_targets_fn=lambda _cfg: "targets",
-            show_help_fn=lambda _cfg: None,
             save_config_fn=lambda _path, _cfg: None,
             config_path=None,
             quit_app_error=RuntimeError,
@@ -2376,7 +2357,6 @@ def test_textual_setup_add_selected_target_marks_dirty(tmp_path: Path, monkeypat
     app_instance = app_textual.SattLintTextualApp(
         cfg=cfg,
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
         quit_app_error=RuntimeError,
@@ -2414,7 +2394,6 @@ def test_textual_setup_remove_selected_target_marks_dirty(tmp_path: Path, monkey
     app_instance = app_textual.SattLintTextualApp(
         cfg=cfg,
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
         quit_app_error=RuntimeError,
@@ -2448,7 +2427,6 @@ def test_textual_setup_remove_other_lib_dir_presents_menu(monkeypatch: pytest.Mo
     app_instance = app_textual.SattLintTextualApp(
         cfg=cfg,
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
         quit_app_error=RuntimeError,
@@ -2499,7 +2477,6 @@ def test_textual_setup_remove_other_lib_dir_ignores_invalid_choice(
     app_instance = app_textual.SattLintTextualApp(
         cfg=cfg,
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
         quit_app_error=RuntimeError,
@@ -2542,7 +2519,6 @@ def test_textual_setup_remove_other_lib_dir_empty_writes_message(monkeypatch: py
     app_instance = app_textual.SattLintTextualApp(
         cfg=cfg,
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
         quit_app_error=RuntimeError,
@@ -2614,7 +2590,6 @@ def test_textual_setup_prompt_updates_program_dir(monkeypatch: pytest.MonkeyPatc
     app_instance = app_textual.SattLintTextualApp(
         cfg=cfg,
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
         quit_app_error=RuntimeError,
@@ -2664,7 +2639,6 @@ def test_textual_setup_prompt_replaces_whole_other_lib_dirs_list(monkeypatch: py
     app_instance = app_textual.SattLintTextualApp(
         cfg=cfg,
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
         quit_app_error=RuntimeError,
@@ -2721,7 +2695,6 @@ def test_textual_setup_dir_picker_pushes_browser_and_applies_program_dir(
     app_instance = app_textual.SattLintTextualApp(
         cfg=cfg,
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
         quit_app_error=RuntimeError,
@@ -2763,7 +2736,6 @@ def test_textual_setup_dir_picker_ignores_non_path_result(tmp_path: Path, monkey
     app_instance = app_textual.SattLintTextualApp(
         cfg=cfg,
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
         quit_app_error=RuntimeError,
@@ -2792,7 +2764,6 @@ def test_textual_setup_dir_picker_appends_to_other_lib_dirs(tmp_path: Path, monk
     app_instance = app_textual.SattLintTextualApp(
         cfg=cfg,
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
         quit_app_error=RuntimeError,
@@ -2835,7 +2806,6 @@ def test_textual_finish_action_clears_dirty_after_success() -> None:
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
         quit_app_error=RuntimeError,
@@ -2853,7 +2823,6 @@ def test_textual_quit_action_respects_busy_guard(monkeypatch: pytest.MonkeyPatch
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
         quit_app_error=RuntimeError,
@@ -2875,7 +2844,6 @@ def test_textual_write_output_preserves_blank_lines(monkeypatch: pytest.MonkeyPa
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
         quit_app_error=RuntimeError,
@@ -2909,7 +2877,6 @@ def test_textual_write_output_inserts_spacing_before_target_headers(monkeypatch:
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
         quit_app_error=RuntimeError,
@@ -2948,7 +2915,6 @@ def test_textual_write_output_caps_retained_lines(monkeypatch: pytest.MonkeyPatc
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
         quit_app_error=RuntimeError,
@@ -2993,7 +2959,6 @@ def test_textual_write_output_promotes_target_load_error_to_popup(monkeypatch: p
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
         quit_app_error=RuntimeError,
@@ -3040,7 +3005,6 @@ def test_textual_write_output_ignores_plain_target_headers(monkeypatch: pytest.M
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
         quit_app_error=RuntimeError,
@@ -3082,7 +3046,6 @@ def test_textual_show_error_modal_pushes_error_screen(monkeypatch: pytest.Monkey
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
         quit_app_error=RuntimeError,
@@ -3502,7 +3465,6 @@ def test_textual_setup_dir_buttons_push_directory_only_picker(
     app_instance = app_textual.SattLintTextualApp(
         cfg=cfg,
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
         quit_app_error=RuntimeError,
@@ -3522,7 +3484,6 @@ def test_textual_toolbar_actions_are_ignored_while_interaction_screen_is_open(mo
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
-        show_help_fn=lambda _cfg: None,
         save_config_fn=lambda _path, _cfg: None,
         config_path=None,
         quit_app_error=RuntimeError,
@@ -3788,7 +3749,7 @@ def test_textual_shell_does_not_crash_within_window(tmp_path: Path) -> None:
         env["COLUMNS"] = "100"
         env["LINES"] = "30"
         process = subprocess.Popen(
-            [sys.executable, "-m", "sattlint", "--ui", "textual"],
+            [sys.executable, "-m", "sattlint"],
             stdin=slave,
             stdout=slave,
             stderr=slave,

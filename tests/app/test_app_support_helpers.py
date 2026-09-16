@@ -68,18 +68,6 @@ def test_print_validation_warnings_and_target_helpers_cover_edge_cases(tmp_path:
     with pytest.raises(RuntimeError):
         support_module.require_analyzed_targets({"analyzed_programs_and_libraries": []})
 
-    paused: list[str] = []
-    menu_module.show_help(
-        {"analyzed_programs_and_libraries": ["A"]},
-        clear_screen_fn=lambda: printed.append("clear"),
-        get_analyzed_targets_fn=lambda cfg: ["A"],
-        summarize_targets_fn=lambda cfg: "1 target configured: A",
-        print_fn=printed.append,
-        pause_fn=lambda: paused.append("pause"),
-    )
-    assert "Current target status: 1 target configured: A" in printed
-    assert paused == ["pause"]
-
 
 def test_configured_icf_files_cover_error_paths(tmp_path: Path) -> None:
     assert support_module.configured_icf_files({"icf_dir": ""}) == (None, [])

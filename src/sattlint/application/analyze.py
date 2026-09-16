@@ -11,15 +11,9 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from sattline_parser.models.ast_model import BasePicture
-
 from ..analyzers import catalog as analysis_catalog_module
-from ..analyzers import icf as icf_module
 from ..config.types import ConfigDict
-from ..models.project_graph import ProjectGraph
-from ..project import support as support_module
 from . import checks as checks_module
-from . import menu_commands as menu_commands_module
 from . import project as project_application
 
 
@@ -35,18 +29,6 @@ def _get_selectable_analyzers() -> list[Any]:
 
 
 get_selectable_analyzers = _get_selectable_analyzers
-
-
-def run_icf_validation(cfg: ConfigDict) -> None:
-    def _load_program_ast(local_cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
-        return project_application.load_program_ast(local_cfg, program_name)
-
-    menu_commands_module.run_icf_validation(
-        cfg,
-        configured_icf_files_fn=support_module.configured_icf_files,
-        load_program_ast_fn=_load_program_ast,
-        validate_icf_entries_against_program_fn=icf_module.validate_icf_entries_against_program,
-    )
 
 
 def run_checks(

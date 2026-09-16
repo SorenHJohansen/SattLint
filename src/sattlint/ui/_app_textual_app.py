@@ -98,7 +98,6 @@ if _TEXTUAL_APP is not None:
             *,
             cfg: ConfigDict,
             summarize_targets_fn: Any,
-            show_help_fn: Any,
             get_help_text_fn: Any | None = None,
             save_config_fn: Any,
             config_path: Any,
@@ -114,7 +113,6 @@ if _TEXTUAL_APP is not None:
             self._cfg = cfg
             self._app_only_cfg = dict(cfg)
             self._summarize_targets_fn = summarize_targets_fn
-            self._show_help_fn = show_help_fn
             self._get_help_text_fn = get_help_text_fn
             self._save_config_fn = save_config_fn
             self._config_path = config_path
@@ -397,7 +395,6 @@ def run_textual_shell(
     cfg: ConfigDict,
     *,
     summarize_targets_fn: Any,
-    show_help_fn: Any,
     get_help_text_fn: Any | None = None,
     save_config_fn: Any,
     config_path: Any,
@@ -418,7 +415,6 @@ def run_textual_shell(
         analysis_handlers=analysis_handler_fns,
         get_enabled_analyzers_fn=get_enabled_analyzers_fn,
         ensure_ast_cache_fn=ensure_ast_cache_fn,
-        show_help_fn=show_help_fn,
         get_help_text_fn=get_help_text_fn,
         save_config_fn=save_config_fn,
         config_path=config_path,
