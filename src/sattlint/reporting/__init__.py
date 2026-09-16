@@ -1,7 +1,7 @@
 """Stable reporting boundary for SattLint.
 
 Analyzers emit structured results (model types such as ``IssueKind``,
-``VariableIssue``, ``ICFEntry``, ``MMSInterfaceHit``) and ``reporting/`` owns
+``VariableIssue``, ``ICFEntry``) and ``reporting/`` owns
 their public model types plus rendering.  The boundary rules:
 
 - Analyzers import only the public reporting surface (``reporting.*``), never

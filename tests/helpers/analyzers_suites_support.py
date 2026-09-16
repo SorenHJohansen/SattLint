@@ -40,12 +40,6 @@ from sattlint.analyzers import registry as registry_module
 from sattlint.analyzers.alarm_integrity import analyze_alarm_integrity
 from sattlint.analyzers.dataflow import analyze_dataflow
 from sattlint.analyzers.framework import AnalyzerSpec
-from sattlint.analyzers.mms import (
-    _extract_external_tag,
-    _find_parameter_mapping,
-    _find_variable,
-    _normalize_external_tag,
-)
 from sattlint.analyzers.modules import (
     AstDiffDetail,
     CodeDiff,
@@ -129,15 +123,11 @@ __all__ = [
     "_common_module_prefix",
     "_compact_diff",
     "_diff_normalized_variants",
-    "_extract_external_tag",
     "_find_module_instances",
-    "_find_parameter_mapping",
-    "_find_variable",
     "_group_instances_by_variant",
     "_hdr",
     "_issue_kinds",
     "_normalize_ast_value",
-    "_normalize_external_tag",
     "_normalize_guard_signature",
     "_state_ref",
     "_status_bridge_typedef",

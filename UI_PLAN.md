@@ -32,12 +32,13 @@ invokes them**, and none has a CLI subcommand.
 - **What they are.** The pre-registry, per-feature analysis commands
   (`application/commands.py:71/287/314`).
 - **Why obsolete.** The registered analyzers (`variables` + `shadowing`,
-  `comment-code`, `mms-interface`) provide the same checks and are reachable in
+  `comment-code`) provide the same checks and are reachable in
   the Analyze planner and via `analyze --check KEY`. Two parallel implementations
   have already diverged: the legacy `run_variable_analysis` auto-sets
   `include_reverse_library_consumers` from the requested kinds
   (`commands.py:139-145`), the registry pipeline does not (§5.1).
-- **Verdict: REMOVE.**
+- **Verdict: REMOVE.** (`mms-interface` itself is gone as of the analyzer-plan
+  D6 decisions.)
 
 ### 1.4 `run_icf_validation`
 
@@ -46,8 +47,7 @@ invokes them**, and none has a CLI subcommand.
   loaded program (program match, resolvable paths, field/datatype, group-key
   suffixes, journal fields, unit drift, value-prefix consistency).
 - **Why it must exist in the UI.** It is the only feature whose whole purpose is
-  checking `.icf` files, and nothing calls it. The `mms-interface` analyzer uses
-  the same validator for tag resolution but never surfaces its findings.
+  checking `.icf` files, and nothing calls it.
 - **Verdict: ADD** as a registered `icf` analyzer (see
   `analyzer-reference-and-rework.md` Part C, phases I1–I4).
 

@@ -22,7 +22,6 @@ class AnalyzerDeliveryTemplate:
     implementation_bucket: str
     cli_exposed: bool = False
     acceptance_tests: tuple[str, ...] = ()
-    depends_on_analyzers: tuple[str, ...] = ()
     depends_on_artifacts: tuple[str, ...] = ()
     supports_baselines: bool = True
     supports_incremental: bool = False
@@ -61,14 +60,6 @@ def default_delivery_templates(
             implementation_bucket="workspace-navigation",
             cli_exposed=True,
             acceptance_tests=("tests/analyzers/test_picture_display_paths.py", *_APP_ACCEPTANCE_TESTS),
-            min_fixture_set=shared_fixtures,
-        ),
-        AnalyzerDeliveryTemplate(
-            key="mms-interface",
-            scope="workspace",
-            implementation_bucket="interface-mapping",
-            cli_exposed=True,
-            acceptance_tests=(*_ANALYZER_SUITE_ACCEPTANCE_TESTS, *_APP_ACCEPTANCE_TESTS),
             min_fixture_set=shared_fixtures,
         ),
         AnalyzerDeliveryTemplate(

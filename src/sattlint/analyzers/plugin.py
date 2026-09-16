@@ -7,8 +7,7 @@ requires touching ``context_kwargs``/provider plumbing.
 
 Every registered analyzer is wired with ``direct_context=True``: its runnable always
 receives the full :class:`~.framework.AnalysisContext`, so there is no way for a spec to
-(accidentally) omit access to ``shared_artifacts`` — the exact bug class that previously
-cost ``mms-interface`` ~114s.
+(accidentally) omit access to ``shared_artifacts``.
 """
 
 from __future__ import annotations

@@ -178,32 +178,6 @@ def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
             context_kwargs=("graph", "analyzed_target_is_library"),
         ),
         AnalyzerSpecTemplate(
-            key="mms-interface",
-            name="MMS interface mappings",
-            description=(
-                "Checks the MMS connections (read and write blocks) between the "
-                "program and external systems.\n"
-                "\n"
-                "Finds:\n"
-                "\n"
-                "- Duplicate MMS tag - the same external tag is used more than "
-                "once.\n"
-                "  Example: two write blocks both send to tag 'MV_1001'.\n"
-                "\n"
-                "- MMS datatype mismatch - the two ends of one MMS connection "
-                "use different datatypes.\n"
-                "  Example: the SattLine variable is integer but the external "
-                "tag is real.\n"
-                "\n"
-                "- Dead MMS tag - an outgoing tag is never written by the "
-                "program.\n"
-                "  Example: tag 'LEVEL.SENSOR' is configured but never referenced "
-                "in the code."
-            ),
-            analyzer_attr="analyze_mms_interface_variables",
-            context_kwargs=("debug", "config", "analysis_context"),
-        ),
-        AnalyzerSpecTemplate(
             key="icf",
             name="ICF configuration",
             description=(

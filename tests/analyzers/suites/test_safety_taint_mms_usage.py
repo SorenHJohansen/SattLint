@@ -9,58 +9,6 @@ def test_opt_in_analyzer_is_not_in_default_cli_keys():
     assert "version-drift" not in get_actual_cli_analyzer_keys()
 
 
-def test_mms_tag_helpers_normalize_external_tags():
-    assert _normalize_external_tag("  Unit.Area.Tag42  ") == "unit.area.tag42"
-    assert _normalize_external_tag("12345") is None
-
-
-def test_mms_mapping_helpers_match_casefold_names():
-    mapping = ParameterMapping(
-        target=_varref("LocalVariable"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
-        is_duration=False,
-        is_source_global=False,
-        source=_varref("OutTag"),
-        source_literal=None,
-    )
-    variables = [Variable(name="RemoteVarName", datatype=Simple_DataType.TAGSTRING, init_value="TagA")]
-
-    found_mapping = _find_parameter_mapping([mapping], "localvariable")
-    found_variable = _find_variable(variables, "remotevarname")
-
-    assert found_mapping is mapping
-    assert found_variable is variables[0]
-
-
-def test_mms_extract_external_tag_uses_literal_parameter_mapping_value():
-    instance = ModuleTypeInstance(
-        header=_hdr("MmsWrite"),
-        moduletype_name="MMSWriteVar",
-        parametermappings=[
-            ParameterMapping(
-                target=_varref("Tag"),
-                source_type=const.KEY_VALUE,
-                is_duration=False,
-                is_source_global=False,
-                source_literal="Plant.Unit.Tag01",
-            )
-        ],
-    )
-    bp = BasePicture(
-        header=_hdr("Root"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[instance],
-        modulecode=None,
-        moduledef=None,
-    )
-
-    tag = _extract_external_tag(bp, ["Root", "MmsWrite"], instance, None)
-
-    assert tag == "Plant.Unit.Tag01"
-
-
 def test_variable_usage_datatype_report_returns_not_found_message():
     bp = BasePicture(
         header=_hdr("Root"),

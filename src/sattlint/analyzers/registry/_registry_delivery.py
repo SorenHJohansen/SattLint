@@ -16,7 +16,6 @@ class AnalyzerDeliveryMetadata:
     output_artifacts: tuple[str, ...] = ()
     cli_exposed: bool = False
     acceptance_tests: tuple[str, ...] = ()
-    depends_on_analyzers: tuple[str, ...] = ()
     depends_on_artifacts: tuple[str, ...] = ()
     supports_baselines: bool = True
     supports_incremental: bool = False
@@ -29,7 +28,6 @@ class AnalyzerDeliveryMetadata:
             "output_artifacts": list(self.output_artifacts),
             "cli_exposed": self.cli_exposed,
             "acceptance_tests": list(self.acceptance_tests),
-            "depends_on_analyzers": list(self.depends_on_analyzers),
             "depends_on_artifacts": list(self.depends_on_artifacts),
             "supports_baselines": self.supports_baselines,
             "supports_incremental": self.supports_incremental,
@@ -50,7 +48,6 @@ def _base_delivery_metadata_by_analyzer() -> dict[str, AnalyzerDeliveryMetadata]
             implementation_bucket=template.implementation_bucket,
             cli_exposed=template.cli_exposed,
             acceptance_tests=template.acceptance_tests,
-            depends_on_analyzers=template.depends_on_analyzers,
             depends_on_artifacts=template.depends_on_artifacts,
             supports_baselines=template.supports_baselines,
             supports_incremental=template.supports_incremental,
@@ -79,7 +76,6 @@ def build_delivery_metadata(
         output_artifacts=(summary_output_for_analyzer(spec.key),),
         cli_exposed=base.cli_exposed,
         acceptance_tests=base.acceptance_tests,
-        depends_on_analyzers=base.depends_on_analyzers,
         depends_on_artifacts=base.depends_on_artifacts,
         supports_baselines=base.supports_baselines,
         supports_incremental=base.supports_incremental,

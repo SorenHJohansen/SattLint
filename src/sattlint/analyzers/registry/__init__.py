@@ -15,7 +15,6 @@ from ..dataflow import analyze_dataflow
 from ..datatype_fields import analyze_datatype_fields
 from ..framework import AnalyzerSpec
 from ..icf.analyzer import analyze_icf_configuration
-from ..mms import analyze_mms_interface_variables
 from ..modules import analyze_version_drift
 from ..picture_display_paths import analyze_picture_display_paths
 from ..plugin import get_registered_plugin_analyzers, register_analyzer
@@ -31,7 +30,6 @@ from ._registry_delivery import AnalyzerDeliveryMetadata, build_delivery_metadat
 DEFAULT_CLI_ANALYZER_KEYS: tuple[str, ...] = (
     "variables",
     "picture-display-paths",
-    "mms-interface",
     "sfc",
     "comment-code",
     "spec-compliance",
@@ -192,7 +190,6 @@ __all__ = [
     "analyze_dataflow",
     "analyze_datatype_fields",
     "analyze_icf_configuration",
-    "analyze_mms_interface_variables",
     "analyze_picture_display_paths",
     "analyze_same_cycle",
     "analyze_sfc",

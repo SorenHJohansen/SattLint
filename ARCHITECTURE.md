@@ -143,7 +143,7 @@ The `variables` analyzer fills `AnalysisSharedArtifacts`
 (`src/sattlint/analyzers/framework/_shared_analysis.py`): the **foundation**
 (type graph, indices, root env, any-variable index) and the **collected views**
 (access graph, usage tracker, alias links, effect flow). Downstream analyzers
-such as `mms-interface` and `sfc` may reuse those memoized artifacts when they
+such as `sfc` may reuse those memoized artifacts when they
 happen to run together; otherwise they build what they need themselves. The
 cache is opportunistic — there is no `requires` validation and no analyzer
 reads another analyzer's `Report`.
@@ -153,14 +153,11 @@ flowchart LR
     V["variables"]
     F["foundation<br/>type graph, indices,<br/>root env, any-var index"]
     CV["collected views<br/>access graph, usage tracker,<br/>alias links, effect flow"]
-    MMS["mms-interface<br/>(may reuse)"]
     SFC["sfc<br/>(may reuse)"]
     ICF["icf<br/>(whole-run, config-based)"]
 
     V --> F
     V --> CV
-    F --> MMS
-    CV --> MMS
     F --> SFC
     CV --> SFC
     ICF
