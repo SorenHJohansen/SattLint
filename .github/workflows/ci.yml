@@ -48,10 +48,9 @@ jobs:
           python -m build --wheel --outdir /tmp/dist
           python -m venv /tmp/clean-venv
           /tmp/clean-venv/bin/pip install /tmp/dist/*.whl
-          /tmp/clean-venv/bin/sattlint --version
-          /tmp/clean-venv/bin/sattlint --help
-          /tmp/clean-venv/bin/sattlint syntax-check tests/fixtures/sample_sattline_files/SattLineFullGrammarTest.s
-          /tmp/clean-venv/bin/python -c "import sattlint.ui.app_textual"
+          /tmp/clean-venv/bin/python -c "import sattlint; assert sattlint.__version__; print('version', sattlint.__version__)"
+          /tmp/clean-venv/bin/python -c "import sattlint.ui; print('ui package importable')"
+          /tmp/clean-venv/bin/python -c "from sattlint.cli.startup import cli; print('entry point reachable')"
 
   windows-gate:
     name: Windows gate
@@ -90,10 +89,9 @@ jobs:
           python -m build --wheel --outdir dist
           python -m venv /tmp/clean-venv-win
           /tmp/clean-venv-win/Scripts/pip install dist/*.whl
-          /tmp/clean-venv-win/Scripts/sattlint --version
-          /tmp/clean-venv-win/Scripts/sattlint --help
-          /tmp/clean-venv-win/Scripts/sattlint syntax-check tests/fixtures/sample_sattline_files/SattLineFullGrammarTest.s
-          /tmp/clean-venv-win/Scripts/python -c "import sattlint.ui.app_textual"
+          /tmp/clean-venv-win/Scripts/python -c "import sattlint; assert sattlint.__version__; print('version', sattlint.__version__)"
+          /tmp/clean-venv-win/Scripts/python -c "import sattlint.ui; print('ui package importable')"
+          /tmp/clean-venv-win/Scripts/python -c "from sattlint.cli.startup import cli; print('entry point reachable')"
 
   fuzz-smoke:
     name: Fuzz smoke (SattLint-owned readers)

@@ -5,6 +5,11 @@ import time
 from pathlib import Path
 from typing import Any, cast
 
+try:
+    from rich.text import Text as _RichText  # type: ignore[import-untyped]
+except ImportError:  # pragma: no cover - optional dependency path
+    _RichText = None
+
 from ._app_textual_shared import (
     _TEXTUAL_QUERY_ERRORS,
     _TEXTUAL_STATIC,
@@ -16,21 +21,27 @@ from ._app_textual_shared import (
 _OUTPUT_TITLE_SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
 _OUTPUT_TITLE_SPINNER_INTERVAL_SECONDS = 1.0 / 60.0
 _DEFAULT_SESSION_OUTPUT_RETENTION_LINES = 4000
+_SETUP_VALUE_STYLE = "bold #001ba3"
+_SETUP_DETAIL_STYLE = "#58787e"
 
 
 def _output_title_spinner_timestamp() -> float:
     return time.monotonic()
 
 
-def _setup_value_text(primary: str, secondary: str | None = None) -> str:
+def _setup_value_text(primary: str, secondary: str | None = None) -> object:
     primary_text = primary.strip()
     secondary_text = secondary.strip() if secondary is not None else ""
-    if not secondary_text:
-        return primary_text
-    return f"{primary_text}\n{secondary_text}"
+    if _RichText is None:
+        return f"{primary_text}\n{secondary_text}" if secondary_text else primary_text
+    text = _RichText()
+    text.append(primary_text, style=_SETUP_VALUE_STYLE)
+    if secondary_text:
+        text.append(f"\n{secondary_text}", style=_SETUP_DETAIL_STYLE)
+    return text
 
 
-def _setup_path_text(value: str, *, empty_label: str = "Not configured") -> str:
+def _setup_path_text(value: str, *, empty_label: str = "Not configured") -> object:
     stripped = value.strip()
     if not stripped:
         return empty_label
@@ -39,7 +50,7 @@ def _setup_path_text(value: str, *, empty_label: str = "Not configured") -> str:
     return _setup_value_text(folder_name or stripped, stripped)
 
 
-def _setup_other_dirs_text(values: object) -> str:
+def _setup_other_dirs_text(values: object) -> object:
     entries = _stringify_list_values(values)
     if not entries:
         return "No extra libraries"
@@ -47,7 +58,7 @@ def _setup_other_dirs_text(values: object) -> str:
     return _setup_value_text(f"{len(entries)} {folder_word} configured", ", ".join(entries))
 
 
-def _setup_mode_text(mode: str) -> str:
+def _setup_mode_text(mode: str) -> object:
     normalized_mode = mode.strip().casefold()
     if normalized_mode == "draft":
         return _setup_value_text("Draft mode", ".s and .l files")
@@ -56,7 +67,7 @@ def _setup_mode_text(mode: str) -> str:
     return _setup_value_text(mode.strip().replace("_", " ").title(), "Custom mode")
 
 
-def _setup_toggle_text(enabled: bool, *, enabled_detail: str, disabled_detail: str) -> str:
+def _setup_toggle_text(enabled: bool, *, enabled_detail: str, disabled_detail: str) -> object:
     return _setup_value_text(
         "Enabled" if enabled else "Disabled",
         enabled_detail if enabled else disabled_detail,

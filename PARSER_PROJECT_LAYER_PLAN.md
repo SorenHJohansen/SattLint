@@ -111,10 +111,10 @@ class LoadMode(Enum):
 @dataclass(frozen=True)
 class SattLineProgram:
     name: str
-    code: BasePicture                 # existing synthetic AST, wrapped not replaced
-    graphics: GraphicsModel | None    # parsed companion model (see §3.5)
-    dependencies: tuple[str, ...]     # declared names from .l/.z
-    format: ProgramFormat             # DRAFT/OFFICIAL + which artifacts were found
+    code: BasePicture  # existing synthetic AST, wrapped not replaced
+    graphics: GraphicsModel | None  # parsed companion model (see §3.5)
+    dependencies: tuple[str, ...]  # declared names from .l/.z
+    format: ProgramFormat  # DRAFT/OFFICIAL + which artifacts were found
     # provenance metadata (not the primary API):
     #   source file names / library, for diagnostics and SattLint indexing
 ```
@@ -136,7 +136,7 @@ class SattLineProject:
         targets: Sequence[str],
         *,
         strict: bool = True,
-        lookup_hook: LookupHook | None = None,   # optional discovery override
+        lookup_hook: LookupHook | None = None,  # optional discovery override
         debug: Callable[[str], None] | None = None,
     ) -> "SattLineProject": ...
 
@@ -175,9 +175,15 @@ SattLint's correlation (`correlate_composite_records`,
 ### 3.6 Errors
 
 ```python
-class ProjectLoadError(Exception): ...          # base; carries program + dependency
+class ProjectLoadError(Exception): ...  # base; carries program + dependency
+
+
 class DependencyNotFoundError(ProjectLoadError): ...
+
+
 class DependencyParseError(ProjectLoadError): ...
+
+
 class ArtifactLoadError(ProjectLoadError): ...
 ```
 
@@ -281,12 +287,12 @@ project = SattLineProject.load(
 )
 
 program = project.get("BasePicture")
-program.code            # BasePicture (existing synthetic AST)
-program.graphics        # parser graphics model
-program.dependencies    # declared names from .l/.z
+program.code  # BasePicture (existing synthetic AST)
+program.graphics  # parser graphics model
+program.dependencies  # declared names from .l/.z
 
-dep = project.get("SomeReachableLib")   # no path knowledge required
-project.graph()                          # resolved dependency edges
+dep = project.get("SomeReachableLib")  # no path knowledge required
+project.graph()  # resolved dependency edges
 ```
 
 ### 8.2 SattLint adapter (thin)

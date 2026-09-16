@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses calendar versioning (`vYYYY.M.number`) to match
 `sattline-parser`.
 
-## [Unreleased]
+## [2026.9.3] - 2026-09-16
 
 ### Added
 
@@ -49,6 +49,10 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Removed
 
+- All CLI subcommands and flags: `sattlint` is now a single no-argument TUI
+  launch. `analyze`, `cache-prune`, `syntax-check`, `init`, `--project`,
+  `--config`, `--no-cache`, `--quiet`, `--debug`, `--version`, `--ui`, and the
+  rest are gone; every capability is reachable from the Textual UI.
 - The cross-analyzer `derived_reports` memoization compartment
   (`ReportsByKey`) and `run_registry_analyzer(use_shared_artifacts=...)`, along
   with the now-dead semantic reuse counters. The opportunistic per-target
@@ -147,5 +151,6 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 - This entry establishes the changelog baseline for future tagged releases.
 
+[2026.9.3]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.9.3
 [2026.9.2]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.9.2
 [2026.9.1]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.9.1
