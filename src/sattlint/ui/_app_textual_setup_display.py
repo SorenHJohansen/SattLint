@@ -11,22 +11,16 @@ except ImportError:  # pragma: no cover - optional dependency path
     _RichText = None
 
 from ._app_textual_shared import (
-    _TEXTUAL_QUERY_ERRORS,
-    _TEXTUAL_STATIC,
     _SetupTargetCandidate,
     _stringify_list_values,
     discover_setup_target_candidates,
 )
 
-_OUTPUT_TITLE_SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
-_OUTPUT_TITLE_SPINNER_INTERVAL_SECONDS = 1.0 / 60.0
+_OUTPUT_TITLE_SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸")
+_OUTPUT_TITLE_SPINNER_INTERVAL_SECONDS = 0.1
 _DEFAULT_SESSION_OUTPUT_RETENTION_LINES = 4000
 _SETUP_VALUE_STYLE = "bold #001ba3"
 _SETUP_DETAIL_STYLE = "#58787e"
-
-
-def _output_title_spinner_timestamp() -> float:
-    return time.monotonic()
 
 
 def _setup_value_text(primary: str, secondary: str | None = None) -> object:
@@ -166,73 +160,6 @@ def _output_retention_note(self: Any) -> str:
     if dropped_line_count <= 0:
         return ""
     return f" - retaining last {self._output_retention_lines()} lines"
-
-
-def _output_title_spinner_frame(self: Any) -> str | None:
-    if not self._busy or self._active_job_action_id != "action-analyze":
-        return None
-    spinner_started_at = getattr(self, "_output_title_spinner_started_at", None)
-    if spinner_started_at is None:
-        return _OUTPUT_TITLE_SPINNER_FRAMES[0]
-    elapsed_seconds = max(0.0, _output_title_spinner_timestamp() - float(spinner_started_at))
-    spinner_index = int(elapsed_seconds / _OUTPUT_TITLE_SPINNER_INTERVAL_SECONDS)
-    return _OUTPUT_TITLE_SPINNER_FRAMES[spinner_index % len(_OUTPUT_TITLE_SPINNER_FRAMES)]
-
-
-def _output_title_text(self: Any) -> str:
-    active_job_text = self._active_job_text()
-    if active_job_text is None:
-        return f"Session output{self._output_retention_note()}"
-    spinner_frame = self._output_title_spinner_frame()
-    elapsed_text = self._active_job_elapsed_text()
-    elapsed_suffix = f" ({elapsed_text})" if elapsed_text is not None else ""
-    if spinner_frame is None:
-        return f"Session output - {active_job_text} in progress{elapsed_suffix}{self._output_retention_note()}"
-    return (
-        f"Session output {spinner_frame} - {active_job_text} in progress{elapsed_suffix}{self._output_retention_note()}"
-    )
-
-
-def _advance_output_title_spinner(self: Any) -> None:
-    if not self._busy or self._active_job_action_id != "action-analyze":
-        return
-    spinner_frame = self._output_title_spinner_frame()
-    if spinner_frame is None:
-        return
-    if spinner_frame == getattr(self, "_output_title_spinner_last_frame", None):
-        return
-    self._output_title_spinner_last_frame = spinner_frame
-    try:
-        self.query_one("#output-title", _TEXTUAL_STATIC).update(self._output_title_text())
-    except _TEXTUAL_QUERY_ERRORS:
-        return
-
-
-def _sync_output_title_spinner(self: Any) -> None:
-    spinner_timer = getattr(self, "_output_title_spinner_timer", None)
-    animate_spinner = self._busy and self._active_job_action_id == "action-analyze"
-    created_timer = spinner_timer is None
-    if spinner_timer is None:
-        spinner_timer = self.set_interval(
-            _OUTPUT_TITLE_SPINNER_INTERVAL_SECONDS,
-            self._advance_output_title_spinner,
-            pause=not animate_spinner,
-        )
-        self._output_title_spinner_timer = spinner_timer
-    was_animating = bool(getattr(self, "_output_title_spinner_running", False))
-    if animate_spinner:
-        if not was_animating:
-            self._output_title_spinner_started_at = _output_title_spinner_timestamp()
-            self._output_title_spinner_last_frame = None
-            if not created_timer:
-                spinner_timer.resume()
-        self._output_title_spinner_running = True
-        return
-    self._output_title_spinner_started_at = None
-    self._output_title_spinner_last_frame = None
-    self._output_title_spinner_running = False
-    if was_animating:
-        spinner_timer.pause()
 
 
 def _analyze_note_text(self: Any) -> str:
