@@ -235,7 +235,7 @@ def test_picture_display_path_analyzer_library_target_reports_intra_library_fail
     assert (report.issues[0].data or {}).get("failure_reason") == "missing_named_child"
 
 
-def test_picture_display_path_analyzer_library_target_suppresses_above_base_and_external_program() -> None:
+def test_picture_display_path_analyzer_library_target_suppresses_above_base_but_reports_program_coupling() -> None:
     base_picture = base_picture_with_single_chain()
     base_picture.graphics_picture_display_occurrences = [
         PictureDisplayOccurrence(
@@ -269,7 +269,9 @@ def test_picture_display_path_analyzer_library_target_suppresses_above_base_and_
 
     report = analyze_picture_display_paths(base_picture, analyzed_target_is_library=True)
 
-    assert report.issues == []
+    assert len(report.issues) == 1
+    assert report.issues[0].kind == "picture_display_paths.unresolved"
+    assert (report.issues[0].data or {}).get("failure_reason") == "missing_program"
 
 
 def test_picture_display_path_analyzer_ignores_resolved_paths() -> None:

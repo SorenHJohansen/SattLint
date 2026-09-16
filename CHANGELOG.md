@@ -35,9 +35,9 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 - Analyzer descriptions rewritten for plain-English clarity and concrete
   examples across the whole catalog (variables, datatype-fields,
-  picture-display-paths, mms-interface, icf, sfc, comment-code,
+  picture-display-paths, icf, sfc, comment-code,
   spec-compliance, alarm-integrity, cyclomatic-complexity, same-cycle,
-  dataflow, version-drift), with the version-drift and MMS datatype-mismatch
+  dataflow, version-drift), with the version-drift and datatype-mismatch
   semantic rules reframed to match.
 - Analyzer execution no longer has a dependency graph: `AnalyzerSpec.requires`,
   the registry validation/order helpers, the dispatcher requirement-expansion
@@ -56,6 +56,16 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 - The `loop-stability` analyzer (conflicting-setpoint findings): superseded by
   the dataflow `conflicting-constants` finding, its semantic rule
   (`semantic.loop-conflicting-setpoint`) is hard-deleted.
+- The `mms-interface` analyzer (duplicate-tag / datatype-mismatch / dead-tag
+  findings) along with its registry spec/delivery templates, `mms` package,
+  `mms_report`, corpus manifests, and fixtures. Its MMS datatype-mismatch and
+  version-drift semantic-rule reframes followed.
+- The `depends_on_analyzers` delivery metadata field (both template and
+  `AnalyzerDeliveryMetadata`); it had no consumers.
+- `picture-display-paths` no longer suppresses `missing_program` findings for
+  library targets: `Program:`-coupling references in libraries are always
+  reported (`picture_display_paths.unresolved`). `missing_parent` (above-base)
+  stays suppressed for library targets.
 - Variables findings that duplicated the parameter-mapping contract layer:
   UI/display-only variables, naming-to-behavior role mismatches, name
   collisions, and required-but-unconnected parameters (display-only variables

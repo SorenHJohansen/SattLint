@@ -50,11 +50,7 @@ Legend: **KEEP** · **REMOVE** · **MERGE** (fold into owner) · **MOVE** (repar
 | | Wrong MES_BatchControl name / Max_TRY / Repeat_TRY | **REMOVE** (all 3) |
 | | *(new)* Sequence + equation block name prefix check | **NEW** (configurable) |
 | **icf** | All findings | KEEP, except value-prefix example **REWORD** |
-| **mms-interface** | Duplicate MMS tag | KEEP |
-| | MMS datatype mismatch | **REWORD + REFRAME** to anytype-ends check |
-| | MMS naming drift | **REMOVE** |
-| | Dead MMS tag | KEEP |
-| | *(new)* Outgoing tag written-but-never-read | **NEW** (semantics to clarify) |
+| **mms-interface** | All findings | **REMOVE analyzer** (D6 #1/#2 — tag-side datatype not resolvable; analyzer deleted instead) |
 | **numeric-constraints** | Limit violation | **REMOVE analyzer** |
 | **parameter-drift** | Parameter drift | **REMOVE analyzer** |
 | **picture-display-paths** | Unresolved display path | KEEP; **REWORD** intro (drop vendor names); library targets run but only intra-library failures are findings (see A4) |
@@ -104,11 +100,11 @@ Legend: **KEEP** · **REMOVE** · **MERGE** (fold into owner) · **MOVE** (repar
 | **sattline-semantics** | Aggregate layer | **REMOVE** with LSP surface (see B6) — resolved: remove, do not fold |
 
 **Resulting analyzer set:** **variables** (now includes lifecycle, read-before-write, shadowing,
-unsafe defaults), **datatype-fields**, **picture-display-paths**, **mms-interface**, **icf**,
+unsafe defaults), **datatype-fields**, **picture-display-paths**, **icf**,
 **sfc**, **comment-code**, **spec-compliance**, **alarm-integrity**, **cyclomatic-complexity**,
 **same-cycle**, **dataflow**, **version-drift**. Removed: loop-stability, data-dependency,
 numeric-constraints, parameter-drift, shadowing, signal-lifecycle, unsafe-defaults,
-sattline-semantics.
+mms-interface, sattline-semantics.
 
 ## A2. Moves and merges (details)
 
@@ -152,14 +148,14 @@ different DateCode in the same project**.
 ### A2.9 spec-compliance config
 `ST_`/`TR_` prefixes become config. Add a configurable sequence-name and equation-block-name prefix check.
 
-### A2.10 MMS datatype mismatch reframe
-Change from "same tag resolves to different source datatypes" to **per-connection**: the anytype on
-the SattLine side and the anytype on the tag side must resolve to the same datatype. Requires
-resolving the tag-side datatype (see D6).
+### A2.10 MMS datatype mismatch reframe — SUPERSEDED (D6 #1/#2)
+
+The planned per-connection anytype-ends reframe is dropped: the `mms-interface`
+analyzer is removed outright, so no tag-side datatype resolution is needed.
 
 ### A2.11 New checks
 - picture-display-paths: "path escapes above the base picture" (e.g. `-------*Test`).
-- mms-interface: outgoing tag written but never read (semantics to clarify, D6).
+- ~~mms-interface: outgoing tag written but never read~~ — **REMOVED** with the analyzer (D6).
 
 ## A3. Metadata layer removal (severity / confidence / category / applies_to)
 
@@ -288,13 +284,13 @@ No `_with_required_analyzers`, no `_order_analyzers_for_batch`, no analyzer-key 
 ## B4. Shared computation stays, dependency enforcement goes
 
 `AnalysisSharedArtifacts` remains an **opportunistic per-target cache**, not a contract:
-- `variables` may publish its foundation/collected views when it happens to run; `mms`/`sfc`/
+- `variables` may publish its foundation/collected views when it happens to run; `sfc`/
   `datatype-fields` may reuse them, otherwise they build what they need (all three already fall back).
 - `requires` validation is deleted; a consumer selected alone always runs.
 - `derived_reports` is deleted — no analyzer reads another analyzer's `Report`.
 
-Selecting `mms-interface` alone runs it; selecting `variables` + `mms-interface` together lets
-`mms-interface` reuse the foundation. Neither is a dependency.
+Selecting `sfc` alone runs it; selecting `variables` + `sfc` together lets
+`sfc` reuse the foundation. Neither is a dependency.
 
 ## B5. UI de-planner
 
@@ -410,20 +406,9 @@ Finds:
   Example: a button that opens '+MissingPanel' when no module with that name exists.
 ```
 
-## C4. mms-interface — REWORD + remove naming drift
+## C4. mms-interface — REMOVED (D6 #1/#2)
 
-```
-Checks the MMS connections (read and write blocks) between the program and external systems.
-
-Finds:
-- Duplicate MMS tag - the same external tag is used more than once.
-  Example: two write blocks both send to tag 'MV_1001'.
-- MMS datatype mismatch - the two ends of one MMS connection use different datatypes.
-  Example: the SattLine variable is integer but the external tag is real.
-- Dead MMS tag - an outgoing tag is never written by the program.
-  Example: tag 'LEVEL.SENSOR' is configured but never referenced in the code.
-```
-(Reframe note: "the two ends" is the target semantics; requires tag-side datatype, D6.)
+The `mms-interface` analyzer is deleted; it has no description.
 
 ## C5. icf — REWORD one example only
 
@@ -610,15 +595,14 @@ Phase status is tracked inline below (`[done]` = complete and validated).
      opt-in sequence-name and equation-block-name prefix checks;
    - picture-display `picture_display_paths.above_base` for ascent past the base picture;
    - `analysis.unsafe_default_tokens` and `analysis.fan_in_out_threshold` config;
-   - **MMS outgoing-tag-written-never-read deferred**: D6 #2 semantics still open; a literal
-     "written but never read internally" check flags every legitimate write-only export, so it is
-     not implemented.
+   - **MMS outgoing-tag-written-never-read: REMOVED** with the `mms-interface`
+     analyzer (D6 #1/#2); no semantics to clarify.
 5. **Description rewrite** (Part C) with registry/findings/semantic-rule updates in the same change.
    **[done]** — all analyzer descriptions rewritten per Part C; version-drift and MMS
    datatype-mismatch semantic rules reframed; spec rules gained the sequence/equation prefix entries.
 6. **Execution — remove the dependency graph** (Part B): `AnalyzerSpec.requires`,
    `_registry_spec_templates` `requires=`, `_registry_dispatch` helpers, `registry`
-   validation/order helpers, `plugin.requires`. Selecting `mms`/`sfc`/`datatype-fields` alone must
+   validation/order helpers, `plugin.requires`. Selecting `sfc`/`datatype-fields` alone must
    work (they already fall back). **[done]**
 7. **Selection dispatch + batch split** (Part B §B3): `get_cli_dispatch_analyzers` → exact filter;
    add `scope`; icf → `scope="per-run"`; simplify `collect_run_checks_result`; remove
@@ -685,7 +669,6 @@ python -m pytest -q
 
 Behavioral smoke:
 ```
-sattlint analyze --check mms-interface
 sattlint analyze --check sfc
 sattlint analyze --check datatype-fields
 sattlint analyze --check icf
@@ -714,13 +697,19 @@ Each single-check run must succeed with no other analyzer's output and no
    per-finding on/off toggles.
 4. **Severity / confidence / rule-metadata: remove** (A3).
 5. **PictureDisplay library handling: run for library targets; report intra-library failures only,
-   suppress `missing_program` / `missing_parent`; optional `Program:`-coupling check** (A4).
+   suppress `missing_parent`; `Program:`-coupling (`missing_program`) is always reported** (A4, D6 #6).
 6. **sattline-semantics: remove** (B6) — not folded.
-
 ### Still open
-1. MMS datatype mismatch: is the tag-side datatype resolvable inside the target (MMS library /
-   external tag config)? If not, the "two ends" check needs a declaration source.
-2. MMS "outgoing tag written but never read": what exactly should it catch?
-5. datatype-fields extension: which additional field-level lifecycle kinds are worth the cost?
-6. picture-display library `Program:`-coupling: on by default or opt-in?
-7. `depends_on_analyzers` delivery metadata: keep as documentation or delete with the graph?
+
+1. ~~MMS datatype mismatch~~ — **DECIDED: REMOVE** the `mms-interface` analyzer
+   entirely (D6 #1/#2). No tag-side datatype resolution is implemented.
+2. ~~MMS "outgoing tag written but never read"~~ — **DECIDED: REMOVE** with the
+   analyzer (D6 #1/#2).
+5. datatype-fields extension — **DECIDED (D6 #5):** datatype-fields covers
+   exactly `UNUSED_DATATYPE_FIELD`, `FIELD_READ_ONLY` (read-only non-Const), and
+   `FIELD_NEVER_READ` (fields with writes that are never read). No further
+   field-level lifecycle kinds.
+6. picture-display library `Program:`-coupling — **DECIDED (D6 #6):** always on.
+   Library targets no longer suppress `missing_program` findings; the existing
+   `picture_display_paths.unresolved` finding fires for `Program:` references.
+7. `depends_on_analyzers` delivery metadata — **DECIDED (D6 #7):** delete.

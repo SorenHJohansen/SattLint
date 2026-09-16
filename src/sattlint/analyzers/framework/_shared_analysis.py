@@ -40,7 +40,7 @@ class CollectedViews:
     """The one instance-aware collection pass, exposed for derived analyzers.
 
     Populated once by the canonical ``variables`` analyzer after ``run()`` so layered
-    consumers (mms, sfc, and cheap derived issue-kind analyzers) read typed collected
+    consumers (sfc, and cheap derived issue-kind analyzers) read typed collected
     state instead of re-running the instance traversal or reaching into analyzer internals.
     """
 
@@ -61,7 +61,7 @@ class AnalysisSharedArtifacts:
     local_variable_envs: dict[int, dict[str, Variable]] = field(default_factory=lambda: {})
     counters: AnalysisPerformanceCounters = field(default_factory=AnalysisPerformanceCounters)
     # The canonical, fully-run VariablesAnalyzer for the current target (populated by the
-    # `variables` analyzer). Consumers such as mms-interface and sfc read its collected state
+    # `variables` analyzer). Consumers such as sfc read its collected state
     # (`usage_tracker`, `_alias_links`, `access_graph`, ...) instead of re-running the instance
     # traversal. Typed as Any to avoid a framework -> variables dependency cycle.
     variable_analyzer: Any = None

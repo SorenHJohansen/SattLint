@@ -12,8 +12,6 @@ def _is_library_suppressed(diagnostic: object, *, analyzed_target_is_library: bo
         return False
     resolution = getattr(diagnostic, "resolution", None)
     failure_reason = getattr(resolution, "failure_reason", None)
-    if failure_reason == "missing_program":
-        return True
     return failure_reason == "missing_parent"
 
 

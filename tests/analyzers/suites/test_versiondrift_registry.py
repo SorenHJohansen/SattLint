@@ -110,7 +110,6 @@ def test_default_runner_closures_cover_remaining_paths(monkeypatch):
         return _runner
 
     monkeypatch.setattr(registry_module, "analyze_variables", _record("variables"))
-    monkeypatch.setattr(registry_module, "analyze_mms_interface_variables", _record("mms-interface"))
     monkeypatch.setattr(registry_module, "analyze_sfc", _record("sfc"))
     monkeypatch.setattr(registry_module, "analyze_spec_compliance", _record("spec-compliance"))
     monkeypatch.setattr(registry_module, "analyze_alarm_integrity", _record("alarm-integrity"))
@@ -134,7 +133,6 @@ def test_default_runner_closures_cover_remaining_paths(monkeypatch):
     expected_keys = {
         "variables",
         "picture-display-paths",
-        "mms-interface",
         "sfc",
         "spec-compliance",
         "alarm-integrity",

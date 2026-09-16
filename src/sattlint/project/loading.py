@@ -151,7 +151,7 @@ def cache_manifest_files(
             if deps_path is not None:
                 manifest_files.add(deps_path)
 
-    # ICF inputs participate in analysis-input tracking so ICF/MMS analysis
+    # ICF inputs participate in analysis-input tracking so ICF analysis
     # results go stale when configured ICF files change.
     _, icf_files = configured_icf_files(cfg)
     manifest_files.update(icf_files)

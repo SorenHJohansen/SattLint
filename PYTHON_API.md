@@ -33,13 +33,6 @@ The analyzers package does not export any public symbols directly. Individual an
 | `parse_icf_file` | Parse `.icf` key/value entries |
 | `resolve_leaf_datatype`, `resolve_record_datatype` | Datatype resolution helpers |
 
-### `sattlint.analyzers.mms`
-
-| Export | Description |
-|--------|-------------|
-| `analyze_mms_interface_variables` | MMS interface variable analysis |
-| `collect_icf_inventory_entries`, `collect_mms_inventory_entries`, `load_icf_entries_from_config` | Inventory collection |
-
 ### `sattlint.analyzers.registry`
 
 The registry provides access to all registered analyzers and their metadata. See source for the full `__all__` list.
