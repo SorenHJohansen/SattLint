@@ -65,8 +65,7 @@ This installs SattLint globally in an isolated environment.
 ### 4. Verify
 
 ```bash
-sattlint --version
-sattlint analyze --list-checks
+sattlint
 ```
 
 ---
@@ -81,38 +80,14 @@ sattlint
 
 Open the **Analyze** view to pick analyzers and run checks.
 
-For non-interactive runs:
-
-```bash
-sattlint analyze --list-checks
-sattlint analyze --check variables
-```
+`sattlint` takes no arguments; all CLI subcommands and flags have been removed
+and every capability is reachable from the Textual UI. Supplying arguments
+returns a usage error (exit code `2`).
 
 Exit codes:
 
-- `0` — success
-- `2` — invalid arguments or configuration
-
-`analyze` reports issues in its output but exits `0` once the analysis runs.
-
-### Available Commands
-
-```bash
-sattlint analyze --list-checks   # list available analyzers
-sattlint analyze --check variables
-sattlint cache-prune             # remove stale cache artifacts
-sattlint --refresh-caches analyze --check variables  # force a cache rebuild
-```
-
-Shared flags for config-driven commands:
-
-```bash
-sattlint --config path/to/config.toml analyze --check variables
-sattlint --config path/to/config.toml --no-cache analyze --check variables
-sattlint --project path/to/project.slproj analyze --check variables
-```
-
-For the full command reference, run `sattlint --help`.
+- `0` — success (the TUI launched and quit cleanly)
+- `2` — arguments were supplied to `sattlint`
 
 ---
 
@@ -219,7 +194,8 @@ Add missing folders to `ABB_lib_dir` or `other_lib_dirs`.
 
 ### Results look outdated
 
-Use `sattlint --no-cache analyze` to skip the AST cache, or run `sattlint cache-prune` to remove stale cache artifacts before re-analyzing.
+Open **App Settings** in the TUI and force a cache refresh, or run
+`python -m sattlint` and clear/rebuild from the shell.
 
 ---
 

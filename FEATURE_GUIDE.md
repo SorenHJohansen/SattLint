@@ -32,52 +32,18 @@ Requirements: Python 3.13+, Windows or Linux.
 
 ---
 
-## Stable CLI Commands
+## CLI
 
-These commands carry the SattLint v1.0 compatibility promise.
-
-### `sattlint --version`
-
-Print the installed version.
-
-```bash
-sattlint --version
-```
-
----
-
-## Preview CLI Commands
-
-These commands are functional but may change in future releases.
-
-### `sattlint analyze`
-
-Run semantic analysis on the configured project. One or more `--check KEY`
-arguments are required; use `--list-checks` to see the available analyzers.
+The `sattlint` command takes no arguments and launches the interactive Textual
+UI. All CLI subcommands and flags (`analyze`, `cache-prune`, `--version`,
+`--config`, `--no-cache`, `--quiet`, `--debug`, `--ui`, and the rest) have been
+removed; every capability is reachable from the Textual shell.
 
 ```bash
-sattlint analyze --list-checks
-sattlint analyze --check variables
-sattlint --config path/to/config.toml analyze --check variables
-sattlint --no-cache analyze --check variables
+sattlint
 ```
 
-### `sattlint cache-prune`
-
-Prune the AST analysis cache.
-
-```bash
-sattlint cache-prune
-```
-
-### Shared Flags
-
-```bash
-sattlint --config path/to/config.toml <subcommand>
-sattlint --project path/to/project.slproj <subcommand>
-sattlint --quiet <subcommand>
-sattlint --no-cache <subcommand>
-```
+Supplying any arguments returns a usage error (exit code `2`).
 
 ---
 
@@ -192,13 +158,10 @@ CI runs automatically on PR and push to `main`.
 
 | Code | Meaning |
 |------|---------|
-| 0 | Success |
-| 2 | Invalid arguments or configuration |
+| 0 | TUI launch succeeded (or the session quit cleanly) |
+| 2 | Arguments were supplied to `sattlint` |
 
-Per-command behavior: `analyze` reports issues in its output but exits `0` once
-the analysis runs; `cache-prune` returns `0` on success and `2` on usage or
-configuration errors. See [CLI_COMMANDS.md](CLI_COMMANDS.md) for the full
-reference.
+See [CLI_COMMANDS.md](CLI_COMMANDS.md) for the authoritative reference.
 
 ---
 

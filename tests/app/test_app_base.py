@@ -10,7 +10,6 @@ from typing import Any
 import pytest
 
 from sattlint import config as config_module
-from sattlint.cli import config as cli_config
 from sattlint.core import interaction as interaction_module
 from sattlint.core import terminal as terminal_module
 from sattlint.core.logging import apply_debug
@@ -71,13 +70,13 @@ def test_config_save_emits_confirmation(monkeypatch: pytest.MonkeyPatch, capsys:
         lambda path, data: seen.update({"save_path": path, "save_cfg": data}),
     )
 
-    cli_config.save_config(config_path, cfg)
+    config_module.save_config(config_path, cfg)
 
     assert seen == {
         "save_path": config_path,
         "save_cfg": cfg,
     }
-    assert capsys.readouterr().out == "Config saved\n"
+    assert capsys.readouterr().out == ""
 
 
 def test_load_self_check_and_target_exists_delegate(monkeypatch: pytest.MonkeyPatch) -> None:

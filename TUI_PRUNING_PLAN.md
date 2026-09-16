@@ -1,7 +1,8 @@
 # TUI-First Pruning Plan — Remove Everything Not Reachable From the Textual UI
 
-Status: proposal
-Scope: the whole `sattlint` package
+Status: **executed through §2.2–§4 and §7 on the `analyzer_cleaning` branch,
+2026-09-16; §5 already done by the same pass; §6 kept by decision; §8 done
+(service API removed, no consumers found).** Scope: the whole `sattlint` package.
 Decision rule: **if a capability is not reachable from the Textual UI, remove it —
 unless there is a very good, written reason to keep it.**
 Related: [`UI_PLAN.md`](UI_PLAN.md) (earlier UI-surface pass), [`ANALYZER_PIPELINE_PLAN.md`](ANALYZER_PIPELINE_PLAN.md)
@@ -204,9 +205,11 @@ plan lands first.
 
 - Not in the TUI.
 - Used to emit JSONL performance events and extra output lines when profiling is on.
-- **Verdict: REMOVE.** It exists only to feed `analyze --profile` (§4), which no
-  test of another feature drives. Remove it and the timing/bottleneck plumbing it
-  feeds.
+- **Verdict: KEPT by decision (2026-09-16).** The `--profile` CLI flag is gone
+  with §4, but `core/profiling.py` and its env-gated (`SATTLINT_PROFILE`) JSONL
+  recording were explicitly retained. The `stage_timings_ms` / `phase_timings_ms`
+  fields also feed persisted run records, so the plumbing is not purely
+  `--profile`-driven. Revisit only if the run-record schema is pruned later.
 
 ---
 
@@ -220,10 +223,10 @@ leftovers from the removed terminal menu.
 | Item | Verdict | Reason |
 |---|---|---|
 | `cli/menu.py: get_help_text`, `summarize_targets` | KEEP INTERNAL | Used by the TUI Help modal (`startup.get_help_text`) |
-| `cli/menu.py: print_menu`, `_HELP_TEXT`, `choose_menu_option` paths | REMOVE after verification | No TUI caller; only the removed terminal menu used them |
-| `cli/startup.py`: `print_menu`, `_choose_menu_option`, `menu_option`, `build_menu_interaction`, `show_help` print path | REMOVE after verification | Only used by the deleted terminal loop |
-| `cli/_interaction.py` non-textual interaction helpers | REMOVE after verification | Textual bridge is the only live path |
-| `application/menu_commands.py` | REMOVE | Replaced by the `icf` analyzer (§2.3) |
+| `cli/menu.py: print_menu`, `_HELP_TEXT`, `choose_menu_option` paths | **EXECUTED (2026-09-16):** `print_menu` and `show_help` removed; `_HELP_TEXT` kept because `get_help_text` (TUI Help) reads it | No TUI caller; only the removed terminal menu used them |
+| `cli/startup.py`: `print_menu`, `_choose_menu_option`, `menu_option`, `build_menu_interaction`, `show_help` print path | **EXECUTED (2026-09-16)** — all removed, plus the dead `show_help_fn` DI seam through `run_textual_shell`/`SattLintTextualApp`; `main()` trimmed to the live kwargs | Only used by the deleted terminal loop |
+| `cli/_interaction.py` non-textual interaction helpers | **EXECUTED (2026-09-16)** — `print_menu`/`_choose_menu_option`/`menu_interaction` removed; Textual bridge state kept. `cli/interaction.py` reduced to the `MenuInteraction` dataclass (the TUI constructs it via `as_menu_interaction`) | Textual bridge is the only live path |
+| `application/menu_commands.py` | **EXECUTED (with §2.3)** | Replaced by the `icf` analyzer (§2.3) |
 
 Verification: trace every symbol with a search before deleting; keep anything the
 Textual Help/Setup paths actually call.

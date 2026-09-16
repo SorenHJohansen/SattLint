@@ -1,53 +1,25 @@
-"""Shared semantic snapshot, query, and workspace-loading layer.
+"""Shared semantic snapshot and project/source loading layer.
 
 Owns the canonical in-memory ``SemanticSnapshot`` (symbol index, access
-graph, diagnostics, safety/taint traces) and the project/source loading
-helpers that build it from a parsed project or workspace. This is shared
-*infrastructure*: it is consumed by ``change_review`` and the public
-``sattlint`` package surface, and it does not implement analyzer rules.
+graph) and the project/source loading helpers that build it from a parsed
+project. This is shared *infrastructure*: it is consumed by
+``change_review`` and the public ``sattlint`` package surface, and it does
+not implement analyzer rules.
 """
 
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from pathlib import Path
 
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.models.ast_model import BasePicture
 
-from ..models.project_graph import ProjectGraph, merge_project_basepicture
-from ..project.loader import SattLineProjectLoader
-from ..project.loader_config import (
-    SattLineProjectLoaderConfig,
-    SattLineProjectLoaderRuntime,
-)
-from . import _semantic_helpers as _semantic_helpers
-from . import workspace_discovery as _workspace_discovery
+from ..models.project_graph import ProjectGraph
 from ._semantic_index import SemanticIndexBuilder
-from ._semantic_snapshot import (
-    CompletionItem,
-    SemanticAnalysisArtifacts,
-    SemanticAnalysisProvider,
-    SemanticSnapshot,
-    SymbolDefinition,
-    SymbolReference,
-)
+from ._semantic_snapshot import SemanticSnapshot, SymbolDefinition, SymbolReference
 from .call_signatures import CallSignatureOccurrence
-from .diagnostics import SemanticDiagnostic
-from .syntax import CodeMode
-from .workspace_discovery import WorkspaceSourceDiscovery, discover_workspace_sources, single_entry_discovery
-
-_cf = _semantic_helpers.cf
-_format_datatype = _semantic_helpers.format_datatype
-_format_name_list = _semantic_helpers.format_name_list
-_format_workspace_snapshot_failure = _semantic_helpers.format_workspace_snapshot_failure
-_identifier_contains_column = _semantic_helpers.identifier_contains_column
-_normalize_mode = _semantic_helpers.normalize_mode
-_path_startswith = _semantic_helpers.path_startswith
-_source_file_key = _semantic_helpers.source_file_key
-_first_branch_under = _workspace_discovery.first_branch_under
-_resolved_path = _workspace_discovery.resolved_path
+from .workspace_discovery import WorkspaceSourceDiscovery, single_entry_discovery
 
 log = logging.getLogger("SattLint")
 
@@ -60,37 +32,8 @@ def _string_attr(value: object, attr_name: str) -> str | None:
     return None
 
 
-class WorkspaceSnapshotError(RuntimeError):
-    def __init__(
-        self,
-        message: str,
-        *,
-        line: int | None = None,
-        column: int | None = None,
-        length: int | None = None,
-    ):
-        super().__init__(message)
-        self.line = line
-        self.column = column
-        self.length = length
-
-
 def _emit_parser_debug(message: str) -> None:
     log.debug("Semantic snapshot parser: %s", message)
-
-
-def _build_lsp_workspace_lookup(
-    discovery: WorkspaceSourceDiscovery,
-) -> Callable[[str, list[str], Path | None, str], Path | None]:
-    def lookup(name: str, extensions: list[str], requester_dir: Path | None, kind: str) -> Path | None:
-        candidate = discovery.locate_source_file(
-            name,
-            extensions=extensions,
-            requester_dir=requester_dir,
-        )
-        return candidate
-
-    return lookup
 
 
 def _build_semantic_snapshot(
@@ -100,9 +43,7 @@ def _build_semantic_snapshot(
     workspace_root: Path,
     discovery: WorkspaceSourceDiscovery,
     project_graph: ProjectGraph,
-    collect_variable_diagnostics: bool,
     debug: bool,
-    analysis_provider: SemanticAnalysisProvider | None = None,
 ) -> SemanticSnapshot:
     root_origin_for_basepicture = getattr(project_graph, "root_origin_for_basepicture", None)
     root_origin = root_origin_for_basepicture(base_picture) if callable(root_origin_for_basepicture) else None
@@ -140,16 +81,6 @@ def _build_semantic_snapshot(
     references_by_definition_key = builder_result.references_by_definition_key
     call_signatures = builder_result.call_signatures
 
-    analysis = SemanticAnalysisArtifacts()
-    if analysis_provider is not None:
-        analysis = analysis_provider(
-            base_picture,
-            project_graph,
-            collect_variable_diagnostics,
-            debug,
-            definitions_by_key,
-        )
-
     return SemanticSnapshot(
         workspace_root=workspace_root,
         entry_file=entry_path,
@@ -159,17 +90,11 @@ def _build_semantic_snapshot(
         symbol_table=symbol_table,
         type_graph=type_graph,
         definitions=definitions,
-        diagnostics=analysis.diagnostics,
         call_signatures=call_signatures,
         _definitions_by_key=definitions_by_key,
         _moduletype_index=moduletype_index,
         _references_by_file=references_by_file,
         _references_by_definition_key=references_by_definition_key,
-        _accesses_by_definition_key=analysis.accesses_by_definition_key,
-        _effect_flow_edges=analysis.effect_flow_edges,
-        _effect_flow_display_names=analysis.effect_flow_display_names,
-        _semantic_diagnostics_by_file=analysis.semantic_diagnostics_by_file,
-        _semantic_diagnostic_drops=analysis.semantic_diagnostic_drops,
     )
 
 
@@ -178,18 +103,14 @@ def load_source_snapshot(
     source_text: str,
     *,
     workspace_root: Path | None = None,
-    collect_variable_diagnostics: bool = False,
     debug: bool = False,
-    _analysis_provider: SemanticAnalysisProvider | None = None,
 ) -> SemanticSnapshot:
     base_picture = parser_core_parse_source_text(source_text, debug=(_emit_parser_debug if debug else None))
     return build_source_snapshot_from_basepicture(
         base_picture,
         source_file,
         workspace_root=workspace_root,
-        collect_variable_diagnostics=collect_variable_diagnostics,
         debug=debug,
-        _analysis_provider=_analysis_provider,
     )
 
 
@@ -198,9 +119,7 @@ def build_source_snapshot_from_basepicture(
     source_file: Path,
     *,
     workspace_root: Path | None = None,
-    collect_variable_diagnostics: bool = False,
     debug: bool = False,
-    _analysis_provider: SemanticAnalysisProvider | None = None,
 ) -> SemanticSnapshot:
     entry_path = Path(source_file).resolve()
     root = Path(workspace_root).resolve() if workspace_root else entry_path.parent
@@ -219,9 +138,7 @@ def build_source_snapshot_from_basepicture(
         workspace_root=root,
         discovery=discovery,
         project_graph=project_graph,
-        collect_variable_diagnostics=collect_variable_diagnostics,
         debug=debug,
-        analysis_provider=_analysis_provider,
     )
 
 
@@ -231,9 +148,7 @@ def build_snapshot_from_loaded_project(
     *,
     entry_file: Path,
     workspace_root: Path,
-    collect_variable_diagnostics: bool = False,
     debug: bool = False,
-    _analysis_provider: SemanticAnalysisProvider | None = None,
 ) -> SemanticSnapshot:
     resolved_entry_path = Path(entry_file).resolve()
     resolved_workspace_root = Path(workspace_root).resolve()
@@ -244,95 +159,16 @@ def build_snapshot_from_loaded_project(
         workspace_root=resolved_workspace_root,
         discovery=discovery,
         project_graph=project_graph,
-        collect_variable_diagnostics=collect_variable_diagnostics,
         debug=debug,
-        analysis_provider=_analysis_provider,
-    )
-
-
-def load_workspace_snapshot(
-    entry_file: Path,
-    *,
-    workspace_root: Path | None = None,
-    discovery: WorkspaceSourceDiscovery | None = None,
-    mode: CodeMode | str = CodeMode.OFFICIAL,
-    other_lib_dirs: list[Path] | None = None,
-    abb_lib_dir: Path | None = None,
-    debug: bool = False,
-    collect_variable_diagnostics: bool = True,
-    _analysis_provider: SemanticAnalysisProvider | None = None,
-) -> SemanticSnapshot:
-    entry_path = Path(entry_file).resolve()
-    if not entry_path.exists():
-        raise FileNotFoundError(f"Entry file does not exist: {entry_path}")
-
-    root = Path(workspace_root).resolve() if workspace_root else entry_path.parent
-    resolved_discovery = discovery or discover_workspace_sources(root)
-    normalized_mode = _normalize_mode(mode)
-    selected_other_lib_dirs = (
-        list(other_lib_dirs) if other_lib_dirs is not None else list(resolved_discovery.other_lib_dirs_for(entry_path))
-    )
-    selected_abb_lib_dir = abb_lib_dir or resolved_discovery.abb_lib_dir
-
-    loader = SattLineProjectLoader(
-        SattLineProjectLoaderConfig(
-            program_dir=entry_path.parent,
-            other_lib_dirs=selected_other_lib_dirs,
-            abb_lib_dir=selected_abb_lib_dir,
-            mode=normalized_mode,
-            debug=debug,
-        ),
-        runtime=SattLineProjectLoaderRuntime(
-            contextual_lookup=_build_lsp_workspace_lookup(resolved_discovery),
-        ),
-    )
-
-    graph = loader.resolve(entry_path.stem, strict=False)
-    root_bp = graph.ast_by_name.get(entry_path.stem)
-    if root_bp is None:
-        target_prefix = f"{entry_path.stem} parse/transform error:"
-        target_failure = next(
-            (message for message in graph.missing if message.casefold().startswith(target_prefix.casefold())),
-            None,
-        )
-        if target_failure is not None:
-            detail = target_failure[len(target_prefix) :].strip()
-            failure = graph.failures.get(entry_path.stem.casefold())
-            raise WorkspaceSnapshotError(
-                _format_workspace_snapshot_failure(entry_path.stem, graph, detail=detail),
-                line=failure.line if failure is not None else None,
-                column=failure.column if failure is not None else None,
-                length=failure.length if failure is not None else None,
-            )
-        raise WorkspaceSnapshotError(_format_workspace_snapshot_failure(entry_path.stem, graph))
-
-    project_bp = merge_project_basepicture(root_bp, graph)
-
-    return _build_semantic_snapshot(
-        project_bp,
-        entry_path=entry_path,
-        workspace_root=root,
-        discovery=resolved_discovery,
-        project_graph=graph,
-        collect_variable_diagnostics=collect_variable_diagnostics,
-        debug=debug,
-        analysis_provider=_analysis_provider,
     )
 
 
 __all__ = [
     "CallSignatureOccurrence",
-    "CompletionItem",
-    "SemanticAnalysisArtifacts",
-    "SemanticAnalysisProvider",
-    "SemanticDiagnostic",
     "SemanticSnapshot",
     "SymbolDefinition",
     "SymbolReference",
-    "WorkspaceSnapshotError",
     "WorkspaceSourceDiscovery",
     "build_source_snapshot_from_basepicture",
-    "discover_workspace_sources",
     "load_source_snapshot",
-    "load_workspace_snapshot",
 ]

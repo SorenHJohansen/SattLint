@@ -2,30 +2,12 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import overload
 
-from sattline_parser.api import read_text_with_fallback
-
-_SOURCE_EXTENSIONS = {".s", ".x", ".l", ".z"}
 _PROGRAM_EXTENSIONS = {".s", ".x"}
 _DEPENDENCY_EXTENSIONS = {".l", ".z"}
-_IGNORED_DISCOVERY_DIRS = {
-    ".git",
-    ".hg",
-    ".svn",
-    ".venv",
-    "__pycache__",
-    "build",
-    "dist",
-    "htmlcov",
-    "artifacts",
-    "node_modules",
-    ".pytest_cache",
-    ".mypy_cache",
-}
 
 
 def _path_key(path: Path) -> str:
@@ -79,14 +61,6 @@ def _index_source_files(paths: tuple[Path, ...]) -> dict[str, tuple[Path, ...]]:
 
 def _path_stem_index_factory() -> dict[str, tuple[Path, ...]]:
     return {}
-
-
-def _read_dependency_names(path: Path) -> tuple[str, ...]:
-    try:
-        text = read_text_with_fallback(path)
-    except OSError:
-        return ()
-    return tuple(line.strip().casefold() for line in text.splitlines() if line.strip())
 
 
 def _referenced_program_names_factory() -> frozenset[str]:
@@ -250,49 +224,6 @@ class WorkspaceSourceDiscovery:
         return None
 
 
-def discover_workspace_sources(workspace_root: Path) -> WorkspaceSourceDiscovery:
-    root = Path(workspace_root).resolve()
-    if not root.exists() or not root.is_dir():
-        raise FileNotFoundError(f"Workspace root does not exist: {root}")
-
-    source_dirs: set[Path] = set()
-    program_files: list[Path] = []
-    dependency_files: list[Path] = []
-    referenced_program_names: set[str] = set()
-
-    for current_root, dir_names, file_names in os.walk(root):
-        dir_names[:] = [name for name in dir_names if name.casefold() not in _IGNORED_DISCOVERY_DIRS]
-
-        current_dir = Path(current_root)
-        for file_name in file_names:
-            path = current_dir / file_name
-            suffix = path.suffix.lower()
-            if suffix not in _SOURCE_EXTENSIONS:
-                continue
-            source_dirs.add(current_dir)
-            if suffix in _PROGRAM_EXTENSIONS:
-                program_files.append(path)
-            elif suffix in _DEPENDENCY_EXTENSIONS:
-                dependency_files.append(path)
-                referenced_program_names.update(_read_dependency_names(path))
-
-    abb_lib_dir = None
-
-    sorted_program_files = tuple(sorted(program_files, key=_path_key))
-    sorted_dependency_files = tuple(sorted(dependency_files, key=_path_key))
-
-    return WorkspaceSourceDiscovery(
-        workspace_root=root,
-        source_dirs=tuple(sorted(source_dirs, key=_path_key)),
-        program_files=sorted_program_files,
-        dependency_files=sorted_dependency_files,
-        abb_lib_dir=abb_lib_dir,
-        program_files_by_stem=_index_source_files(sorted_program_files),
-        dependency_files_by_stem=_index_source_files(sorted_dependency_files),
-        referenced_program_names=frozenset(referenced_program_names),
-    )
-
-
 def single_entry_discovery(entry_path: Path, workspace_root: Path) -> WorkspaceSourceDiscovery:
     suffix = entry_path.suffix.lower()
     program_files = (entry_path,) if suffix in _PROGRAM_EXTENSIONS else ()
@@ -310,7 +241,6 @@ def single_entry_discovery(entry_path: Path, workspace_root: Path) -> WorkspaceS
 
 __all__ = [
     "WorkspaceSourceDiscovery",
-    "discover_workspace_sources",
     "single_entry_discovery",
 ]
 

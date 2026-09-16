@@ -54,10 +54,8 @@ No public exports. Import submodules directly.
 | Export | Description |
 |--------|-------------|
 | `SemanticSnapshot`, `SymbolDefinition`, `SymbolReference` | Core semantic types |
-| `CompletionItem`, `SemanticDiagnostic` | Editor-facing helper types |
 | `WorkspaceSourceDiscovery` | Source discovery |
-| `build_source_snapshot_from_basepicture`, `discover_workspace_sources`, `load_source_snapshot`, `load_workspace_snapshot` | Snapshot loading |
-| `LineIndex`, `utf16_index_to_codepoint_offset` | Document text helpers |
+| `build_source_snapshot_from_basepicture`, `load_source_snapshot` | Snapshot loading |
 
 ### `sattlint.resolution`
 
