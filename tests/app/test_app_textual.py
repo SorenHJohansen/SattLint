@@ -1266,15 +1266,11 @@ def test_textual_analyze_run_selected_surfaces_variable_issue_output_from_real_a
     assert seen_keys == [["state-inference"]]
 
 
-def test_textual_analyze_running_state_calls_out_output_location(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_textual_analyze_running_state_calls_out_output_location() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
-    current_time = 100.0
-    monkeypatch.setattr(app_textual_setup_module, "_output_title_spinner_timestamp", lambda: current_time)
-
     async def _run() -> None:
-        nonlocal current_time
         app_instance = _make_textual_app(
             get_enabled_analyzers_fn=lambda: [
                 SimpleNamespace(
@@ -1305,7 +1301,6 @@ def test_textual_analyze_running_state_calls_out_output_location(monkeypatch: py
                 "Session output ⠋ - Run selected analyzers in progress"
             )
 
-            current_time += (1.0 / 60.0) + 0.001
             app_instance._advance_output_title_spinner()
             assert str(app_instance.query_one("#output-title").renderable) == (
                 "Session output ⠙ - Run selected analyzers in progress"
@@ -1318,7 +1313,7 @@ def test_textual_analyze_running_state_calls_out_output_location(monkeypatch: py
     asyncio.run(_run())
 
 
-def test_textual_analyze_running_state_uses_60fps_output_title_spinner(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_textual_analyze_running_state_uses_calm_output_title_spinner(monkeypatch: pytest.MonkeyPatch) -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
@@ -1343,7 +1338,7 @@ def test_textual_analyze_running_state_uses_60fps_output_title_spinner(monkeypat
 
     app_instance._sync_output_title_spinner()
 
-    assert captured["interval"] == pytest.approx(1.0 / 60.0)
+    assert captured["interval"] == app_textual_setup_module._OUTPUT_TITLE_SPINNER_INTERVAL_SECONDS
     assert captured["callback"] == app_instance._advance_output_title_spinner
     assert captured["pause"] is False
     assert timer_calls == {"resume": 0, "pause": 0}
@@ -1358,6 +1353,44 @@ def test_textual_analyze_running_state_uses_60fps_output_title_spinner(monkeypat
     app_instance._busy = True
     app_instance._sync_output_title_spinner()
     assert timer_calls == {"resume": 1, "pause": 1}
+
+
+def test_textual_analyze_output_title_spinner_advances_one_frame_per_tick() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    frames = app_textual_setup_module._OUTPUT_TITLE_SPINNER_FRAMES
+
+    async def _run() -> None:
+        app_instance = _make_textual_app(analysis_handlers={"run_checks_result": lambda _cfg: None})
+        async with app_instance.run_test() as pilot:
+            await pilot.pause()
+            app_instance._busy = True
+            app_instance._active_job_action_id = "action-analyze"
+            app_instance._active_job_label = "Run selected analyses"
+            app_instance.set_interval = lambda *_args, **_kwargs: SimpleNamespace(
+                resume=lambda: None, pause=lambda: None
+            )
+            app_instance._refresh_shell_state()
+
+            assert str(app_instance.query_one("#output-title").renderable).startswith(f"Session output {frames[0]}")
+            for expected in (*frames[1:], frames[0]):
+                app_instance._advance_output_title_spinner()
+                assert str(app_instance.query_one("#output-title").renderable).startswith(f"Session output {expected}")
+
+            app_instance._advance_output_title_spinner()
+            assert str(app_instance.query_one("#output-title").renderable).startswith(f"Session output {frames[1]}")
+
+            app_instance._refresh_shell_state()
+            assert str(app_instance.query_one("#output-title").renderable).startswith(f"Session output {frames[1]}")
+
+            app_instance._busy = False
+            app_instance._refresh_shell_state()
+            app_instance._busy = True
+            app_instance._refresh_shell_state()
+            assert str(app_instance.query_one("#output-title").renderable).startswith(f"Session output {frames[0]}")
+
+    asyncio.run(_run())
 
 
 def test_textual_analyze_buttons_unlock_after_finish_action() -> None:

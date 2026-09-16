@@ -20,7 +20,6 @@ from ._app_textual_setup_display import (
     _configured_target_names,
     _output_retention_lines,
     _output_retention_note,
-    _output_title_spinner_timestamp,
     _selected_setup_candidate,
     _setup_candidate_display_paths,
     _setup_candidate_status,
@@ -58,12 +57,8 @@ from ._app_textual_shared import _TEXTUAL_QUERY_ERRORS, _TEXTUAL_STATIC, _SetupT
 def _output_title_spinner_frame(self: Any) -> str | None:
     if not self._busy or self._active_job_action_id != "action-analyze":
         return None
-    spinner_started_at = getattr(self, "_output_title_spinner_started_at", None)
-    if spinner_started_at is None:
-        return _OUTPUT_TITLE_SPINNER_FRAMES[0]
-    elapsed_seconds = max(0.0, _output_title_spinner_timestamp() - float(spinner_started_at))
-    spinner_index = int(elapsed_seconds / _OUTPUT_TITLE_SPINNER_INTERVAL_SECONDS)
-    return _OUTPUT_TITLE_SPINNER_FRAMES[spinner_index % len(_OUTPUT_TITLE_SPINNER_FRAMES)]
+    frame_index = int(getattr(self, "_output_title_spinner_frame_index", 0))
+    return _OUTPUT_TITLE_SPINNER_FRAMES[frame_index % len(_OUTPUT_TITLE_SPINNER_FRAMES)]
 
 
 def _output_title_text(self: Any) -> str:
@@ -83,12 +78,8 @@ def _output_title_text(self: Any) -> str:
 def _advance_output_title_spinner(self: Any) -> None:
     if not self._busy or self._active_job_action_id != "action-analyze":
         return
-    spinner_frame = self._output_title_spinner_frame()
-    if spinner_frame is None:
-        return
-    if spinner_frame == getattr(self, "_output_title_spinner_last_frame", None):
-        return
-    self._output_title_spinner_last_frame = spinner_frame
+    frame_index = int(getattr(self, "_output_title_spinner_frame_index", 0)) + 1
+    self._output_title_spinner_frame_index = frame_index
     try:
         self.query_one("#output-title", _TEXTUAL_STATIC).update(self._output_title_text())
     except _TEXTUAL_QUERY_ERRORS:
@@ -109,14 +100,12 @@ def _sync_output_title_spinner(self: Any) -> None:
     was_animating = bool(getattr(self, "_output_title_spinner_running", False))
     if animate_spinner:
         if not was_animating:
-            self._output_title_spinner_started_at = _output_title_spinner_timestamp()
-            self._output_title_spinner_last_frame = None
+            self._output_title_spinner_frame_index = 0
             if not created_timer:
                 spinner_timer.resume()
         self._output_title_spinner_running = True
         return
-    self._output_title_spinner_started_at = None
-    self._output_title_spinner_last_frame = None
+    self._output_title_spinner_frame_index = 0
     self._output_title_spinner_running = False
     if was_animating:
         spinner_timer.pause()
@@ -135,7 +124,6 @@ if TYPE_CHECKING:
         def _summary_text(self) -> str: ...
         def _active_job_text(self) -> str | None: ...
         def _active_job_elapsed_text(self) -> str | None: ...
-        def _output_title_spinner_timestamp(self) -> float: ...
         def _output_title_spinner_frame(self) -> str | None: ...
         def _output_title_text(self) -> str: ...
         def _output_retention_note(self) -> str: ...
@@ -203,7 +191,6 @@ else:
         _summary_text = _summary_text
         _active_job_text = _active_job_text
         _active_job_elapsed_text = _active_job_elapsed_text
-        _output_title_spinner_timestamp = staticmethod(_output_title_spinner_timestamp)
         _output_title_spinner_frame = _output_title_spinner_frame
         _output_title_text = _output_title_text
         _output_retention_note = _output_retention_note
