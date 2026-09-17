@@ -11,8 +11,7 @@ SattLint is a Python toolkit for SattLine projects. It provides configurable sta
 - Check whether a SattLine file parses correctly
 - Analyze a full program or library together with its dependencies
 - Find issues such as unused variables, written-but-never-read variables, and shadowing
-- Validate and format ICF files and check graphics rules
-- Inspect parser outputs when something looks wrong
+- Validate ICF configuration files and graphics companion files
 
 ---
 
@@ -20,52 +19,44 @@ SattLint is a Python toolkit for SattLine projects. It provides configurable sta
 
 - **Windows** or **Linux**
 - **Python 3.13 or newer**
-- **pipx** (for clean, isolated installation)
 - A local copy of your SattLine code
 
 ---
 
 ## Installation
 
-### 1. Get the source
+### 1. Install SattLint
 
-```bash
-git clone https://github.com/SorenHJohansen/SattLint.git
-cd SattLint
-```
-
-### 2. Install pipx
+Install the released package with pip.
 
 #### Linux
 
 ```bash
-python3 -m pip install --user pipx
-python3 -m pipx ensurepath
+python3 -m pip install --user sattlint
 ```
-
-Restart your terminal after this.
 
 #### Windows
 
 ```powershell
-py -m pip install --user pipx
-py -m pipx ensurepath
+py -m pip install --user sattlint
 ```
 
-Restart your terminal after this.
+This installs the `sattlint` command for your user account.
 
-### 3. Install SattLint
-
-```bash
-pipx install .
-```
-
-This installs SattLint globally in an isolated environment.
-
-### 4. Verify
+### 2. Verify
 
 ```bash
 sattlint
+```
+
+### From source (for development)
+
+To run the latest code from the repository instead of the released package:
+
+```bash
+git clone https://github.com/SorenHJohansen/SattLint.git
+cd SattLint
+python3 -m pip install --user .
 ```
 
 ---
@@ -78,7 +69,9 @@ Start the interactive terminal UI:
 sattlint
 ```
 
-Open the **Analyze** view to pick analyzers and run checks.
+Open a configuration first (**File → Open Configuration** or **File → New
+Configuration**), then use the **Analyze** view to pick analyzers and run
+checks.
 
 `sattlint` takes no arguments; all CLI subcommands and flags have been removed
 and every capability is reachable from the Textual UI. Supplying arguments
@@ -97,11 +90,20 @@ Exit codes:
 sattlint
 ```
 
-Opens the Textual interactive terminal UI with the following views:
+Opens the Textual interactive terminal UI. The app starts with no
+configuration loaded; use **File → Open Configuration** or **File → New
+Configuration** to load or create a project.
 
-- **Analyze** — queue curated reports and additional analyzers
-- **Setup** — configure paths, targets, mode, and cache settings
-- **Help** — first-time guidance and workflow explanation
+Views (switch with `Ctrl+1`…`Ctrl+5` or the tabs at the top):
+
+- **Analyze** — select analyzers to run and start checks
+- **Results** — browse and inspect previous analysis runs
+- **Configuration Settings** — set directories, targets, and mode
+- **App Settings** — run history, logging, and Change Review output
+- **Output** — generate Change Review artifacts
+
+The **File** menu also offers **Help** (first-run guidance and keyboard
+shortcuts) and **Quit**.
 
 ---
 
@@ -112,11 +114,9 @@ checked-in file: targets, directories, mode, and output/cache paths. Paths
 inside a `.slproj` are relative to the file itself, so projects are portable
 across machines.
 
-- Use the **Setup → New configuration** action in the UI to scaffold a new
+- Use **File → New Configuration** in the UI to scaffold a new
   `.slproj` in the current directory.
-- `sattlint --project PATH <command>` uses an explicit project file.
-- Without `--project` or `--config`, SattLint auto-discovers a `.slproj` by
-  walking up from the current working directory.
+- Use **File → Open Configuration** to load an existing `.slproj`.
 - Project settings merge over `~/.config/sattlint/config.toml` defaults.
 
 Prefer a `.slproj` project file over editing `~/.config/sattlint/config.toml`
@@ -138,18 +138,18 @@ these config defaults (see [Project Files](#project-files-slproj)).
 ### Configuration
 
 1. Start SattLint with `sattlint`
-2. Select **Setup**
-3. Configure the following:
+2. Use **File → Open Configuration** or **File → New Configuration** to load a project
+3. Select **Configuration Settings** (or press `Ctrl+3`) and configure:
 
    - `program_dir` — your SattLine program folder
    - `ABB_lib_dir` — shared or ABB libraries
    - `other_lib_dirs` — any additional libraries
    - `analyzed_programs_and_libraries` — what to analyze
-   - `icf_dir` — directory used for ICF validation and formatting
-   - `Edit graphics rules` — define expected module invocation or clipping rules (saved as JSON)
+   - `icf_dir` — directory containing ICF files used for ICF validation
 
-4. Save with **Save configuration**
-5. Select **Analyze** to run checks
+   Changes are saved automatically to the configuration file.
+
+4. Select **Analyze** to run checks
 
 > **Note:** Use names without file extensions (e.g. `MyProgram`, not `MyProgram.s`).
 
@@ -157,18 +157,29 @@ these config defaults (see [Project Files](#project-files-slproj)).
 
 ## Updating
 
+Update the released package from PyPI:
+
 ```bash
-pipx install --force .
+python3 -m pip install --user --upgrade sattlint
 ```
+
+For a source checkout, reinstall with `python3 -m pip install --user .`.
 
 ---
 
-## Graphics Rule Configuration
+## Graphics Validation
 
-1. Open **Setup**, then **Edit graphics rules** to add or update expected invocation coordinates, flags, and clipping-related values
-2. Use `unit:` selectors when a module should look the same in every detected unit (e.g. `unit:L1` or `unit:L1.L2.UnitControl`)
-3. Use `equipment:` selectors when a module should look the same inside every equipment module (e.g. `equipment:L1.L2.EquipModPanelShort`)
-4. Open **Analyze**, then run **Validate graphics rules** from **Structure & modules** to report modules that are not to spec
+SattLint validates graphics companion files (`.g`) automatically whenever it
+loads a program or library. Graphics issues — invalid bindings,
+composite-record mismatches, and unresolved picture display paths — are
+reported alongside the validation output for the affected target.
+
+To dig deeper from the UI:
+
+- Open **Analyze** and run **PictureDisplay paths** to check that every
+  PictureDisplay button path points to a real screen or module.
+- Run **ICF configuration** to validate the `.icf` connection files under
+  `icf_dir` against their referenced programs.
 
 ---
 
@@ -176,11 +187,14 @@ pipx install --force .
 
 ### `sattlint` not found
 
-pipx is not on your PATH. Run `pipx ensurepath` and restart your terminal.
+The `sattlint` script is not on your PATH. After a `pip install --user`,
+scripts are placed in `~/.local/bin` on Linux (or
+`%APPDATA%\Python\Python313\Scripts` on Windows); add that directory to your
+PATH and restart your terminal.
 
 ### Python version error
 
-Install Python 3.13+ and reinstall with `pipx install --force .`.
+Install Python 3.13+ and reinstall with `python3 -m pip install --user --upgrade sattlint`.
 
 ### Targets not found
 
@@ -194,8 +208,10 @@ Add missing folders to `ABB_lib_dir` or `other_lib_dirs`.
 
 ### Results look outdated
 
-Open **App Settings** in the TUI and force a cache refresh, or run
-`python -m sattlint` and clear/rebuild from the shell.
+Results are cached per configuration. Opening a configuration refreshes the
+cached ASTs automatically; if results still look stale, re-run the analysis
+from the **Analyze** view. Completed runs are kept in the **Results** view,
+and **App Settings → Run History** controls how many runs are retained.
 
 ---
 
