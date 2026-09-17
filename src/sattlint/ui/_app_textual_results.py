@@ -10,6 +10,7 @@ from ..runs import (
     RunRecord,
     RunSummary,
     RunTargetRecord,
+    delete_run,
     list_runs,
     load_run,
 )
@@ -35,20 +36,8 @@ def _format_run_timestamp(iso_text: str) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _run_tree_title(record: RunRecord) -> str:
-    label = f"Run {_format_run_timestamp(record.finished_at)}"
-    if record.project_tag:
-        label += f" — {record.project_tag}"
-    label += f" ({record.target_count} targets, {record.issue_count} issues)"
-    return label
-
-
 def _run_summary_label(summary: RunSummary) -> str:
-    label = _format_run_timestamp(summary.finished_at)
-    if summary.project_tag:
-        label += f" — {summary.project_tag}"
-    label += f" ({summary.issue_count} issues)"
-    return label
+    return f"{_format_run_timestamp(summary.finished_at)} ({summary.issue_count} issues)"
 
 
 _LEADING_MODULE_PATH_RE = re.compile(r"^\[[^\]]+\]\s*")
@@ -180,7 +169,8 @@ def _populate_analyzer_findings(analyzer_node: Any, analyzer: RunAnalyzerRecord)
 
 
 def _populate_run_tree(tree: Any, record: RunRecord, *, show_empty_analyzers: bool = False) -> None:
-    tree.reset(_run_tree_title(record), data=record)
+    tree.reset("", data=record)
+    tree.show_root = False
     root = tree.root
     for target in record.targets:
         shown_analyzers = [analyzer for analyzer in target.analyzers if show_empty_analyzers or analyzer.findings]
@@ -197,16 +187,12 @@ def _populate_run_tree(tree: Any, record: RunRecord, *, show_empty_analyzers: bo
             _populate_analyzer_findings(analyzer_node, analyzer)
     _hide_leaf_expanders(root)
     root.expand()
-    for target_node in root.children:
-        target_node.expand()
-        for analyzer_node in target_node.children:
-            analyzer_node.expand()
 
 
 def _build_run_tree(record: RunRecord, *, show_empty_analyzers: bool = False) -> Any:
     if _TEXTUAL_TREE is None:
         return None
-    tree = _TEXTUAL_TREE(_run_tree_title(record), id="results-tree")
+    tree = _TEXTUAL_TREE("", id="results-tree")
     _populate_run_tree(tree, record, show_empty_analyzers=show_empty_analyzers)
     return tree
 
@@ -275,6 +261,19 @@ def _results_run_summaries(self: Any) -> tuple[RunSummary, ...]:
     return tuple(summary for summary in summaries if summary.project_tag == project_tag)
 
 
+def _apply_results_list_index(list_view: Any, index: int) -> None:
+    """Sync the ListView index once the rebuilt items are mounted.
+
+    ``ListView.append`` mounts items asynchronously, so assigning ``index``
+    during the rebuild can target a still-empty list. This runs after a refresh
+    (when the items are present) so arrow-key navigation starts from the
+    highlighted run; the ``-highlight`` class is applied at creation in
+    ``_refresh_results_runs_list`` and is not affected by this.
+    """
+    if 0 <= index < len(list_view.children):
+        list_view.index = index
+
+
 def _refresh_results_runs_list(self: Any) -> None:
     try:
         list_view = self.query_one("#results-runs-list", _TEXTUAL_LIST_VIEW)
@@ -283,9 +282,37 @@ def _refresh_results_runs_list(self: Any) -> None:
 
     summaries = _results_run_summaries(self)
     self._results_run_summaries = list(summaries)
-    list_view.clear()
-    for summary in summaries:
-        list_view.append(_TEXTUAL_LIST_ITEM(_TEXTUAL_STATIC(_run_summary_label(summary))))
+    selected_id = getattr(self._selected_run_record, "run_id", None) if self._selected_run_record is not None else None
+    highlight_index = None
+    if selected_id is not None:
+        for index, summary in enumerate(summaries):
+            if summary.run_id == selected_id:
+                highlight_index = index
+                break
+    if highlight_index is None and summaries:
+        highlight_index = 0
+
+    # Keep the already-mounted items when the content is unchanged so the
+    # selected run stays highlighted; only rebuild when the labels differ.
+    existing_labels = [
+        str(getattr(next(iter(child.children), _TEXTUAL_STATIC("")), "renderable", "")) for child in list_view.children
+    ]
+    new_labels = [_run_summary_label(summary) for summary in summaries]
+    if existing_labels != new_labels:
+        # ``ListView.append`` mounts items asynchronously, so ``index`` alone
+        # cannot highlight the freshly appended run reliably. Applying the
+        # ``-highlight`` class at creation keeps the selected run visible even
+        # when the index assignment runs before the items are mounted.
+        list_view.clear()
+        for index, summary in enumerate(summaries):
+            item = _TEXTUAL_LIST_ITEM(_TEXTUAL_STATIC(_run_summary_label(summary)))
+            if index == highlight_index:
+                item.set_class(True, "-highlight")
+            list_view.append(item)
+        if highlight_index is not None:
+            list_view.call_after_refresh(_apply_results_list_index, list_view, highlight_index)
+    elif highlight_index is not None:
+        list_view.index = highlight_index
 
 
 def _render_selected_run(self: Any) -> None:
@@ -302,11 +329,13 @@ def _render_results_tree(self: Any, record: RunRecord) -> None:
     self._selected_run_record = record
     tree = getattr(self, "_results_tree_widget", None)
     if tree is None:
-        tree = _TEXTUAL_TREE(_run_tree_title(record), id="results-tree")
+        tree = _TEXTUAL_TREE("", id="results-tree")
         tree_host = _query_required(self, "#results-tree-host", _TEXTUAL_VERTICAL)
         tree_host.mount(tree)
         self._results_tree_widget = tree
-    _populate_run_tree(tree, record, show_empty_analyzers=self._results_show_empty_analyzers())
+    if getattr(self, "_results_tree_run_id", None) != record.run_id:
+        _populate_run_tree(tree, record, show_empty_analyzers=self._results_show_empty_analyzers())
+        self._results_tree_run_id = record.run_id
     self._refresh_shell_state()
     self._write_output("Analysis results are shown in the tree. Select a node for details.")
 
@@ -358,18 +387,35 @@ def _refresh_results_view(self: Any) -> None:
     summaries = getattr(self, "_results_run_summaries", [])
     if not summaries:
         self._selected_run_record = None
+        self._results_tree_run_id = None
         tree = getattr(self, "_results_tree_widget", None)
         if tree is not None:
             tree.reset("No matching runs", data=None)
         self._write_output("No previous analysis runs are available yet. Run analyses from the Analyze view.")
         return
-    summary = summaries[0]
-    record = load_run(summary.run_id)
-    if record is None:
-        self._report_error("Could not load run", "That run could not be loaded.")
-        return
-    self._selected_run_record = record
+    current_id = getattr(self._selected_run_record, "run_id", None)
+    if current_id is None or not any(summary.run_id == current_id for summary in summaries):
+        summary = summaries[0]
+        record = load_run(summary.run_id)
+        if record is None:
+            self._report_error("Could not load run", "That run could not be loaded.")
+            return
+        self._selected_run_record = record
     self._render_selected_run()
+
+
+def _delete_selected_run(self: Any) -> None:
+    record = getattr(self, "_selected_run_record", None)
+    if record is None:
+        self._write_output("No run is selected.")
+        return
+    if not delete_run(record.run_id):
+        self._write_output("That run could not be deleted.")
+        return
+    self._write_output(f"Deleted run {_format_run_timestamp(record.finished_at)}.")
+    self._selected_run_record = None
+    self._refresh_results_view()
+    self._refresh_shell_state()
 
 
 if TYPE_CHECKING:
@@ -384,6 +430,7 @@ if TYPE_CHECKING:
         def _collapse_all_results(self) -> None: ...
         def _results_show_empty_analyzers(self) -> bool: ...
         def _toggle_results_show_empty_analyzers(self) -> None: ...
+        def _delete_selected_run(self) -> None: ...
         def _refresh_results_view(self) -> None: ...
 else:
 
@@ -399,4 +446,5 @@ else:
         _collapse_all_results = _collapse_all_results
         _results_show_empty_analyzers = _results_show_empty_analyzers
         _toggle_results_show_empty_analyzers = _toggle_results_show_empty_analyzers
+        _delete_selected_run = _delete_selected_run
         _refresh_results_view = _refresh_results_view

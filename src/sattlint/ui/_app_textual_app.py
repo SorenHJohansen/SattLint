@@ -61,6 +61,12 @@ _DEFAULT_VIEW_REGISTRY: dict[str, _ShellViewState] = {
         description="See first-run guidance and the recommended workflow for setup and analysis.",
         note="Open the guide to review the recommended setup and analysis workflow.",
     ),
+    "output": _ShellViewState(
+        action_id="action-output",
+        title="Output",
+        description="Generate Change Review artifacts for the configured project.",
+        note="",
+    ),
 }
 
 
@@ -149,14 +155,12 @@ if _TEXTUAL_APP is not None:
         def compose(self) -> _TEXTUAL_COMPOSE_RESULT:  # noqa: PLR0915
             with _TEXTUAL_VERTICAL(id="top-bar"):
                 yield _MenubarWidget(menus=MENU_DEFINITIONS)
-                with _TEXTUAL_HORIZONTAL(id="chrome-bar"):
-                    yield _TEXTUAL_STATIC("", id="chrome-project")
-                    yield _TEXTUAL_STATIC("", id="summary", classes="summary-strip")
                 with _TEXTUAL_HORIZONTAL(id="nav-tabs"):
                     yield _TEXTUAL_STATIC("Analyze", id="nav-tab-analyze", classes="nav-tab")
                     yield _TEXTUAL_STATIC("Results", id="nav-tab-results", classes="nav-tab")
                     yield _TEXTUAL_STATIC("Configuration Settings", id="nav-tab-setup", classes="nav-tab")
                     yield _TEXTUAL_STATIC("App Settings", id="nav-tab-settings", classes="nav-tab")
+                    yield _TEXTUAL_STATIC("Output", id="nav-tab-output", classes="nav-tab")
             with _TEXTUAL_VERTICAL(id="content-host"):
                 with _TEXTUAL_VERTICAL(id="workspace-host"):  # noqa: SIM117
                     with _TEXTUAL_VERTICAL(id="view-pane"):
@@ -178,16 +182,6 @@ if _TEXTUAL_APP is not None:
                                             )
                                         with _TEXTUAL_HORIZONTAL(id="analyze-selection-zone"):
                                             yield _TEXTUAL_BUTTON(
-                                                "Select all",
-                                                id="analyze-select-all",
-                                                classes="raised-button toolbar-button",
-                                            )
-                                            yield _TEXTUAL_BUTTON(
-                                                "Clear selection",
-                                                id="analyze-clear-selection",
-                                                classes="raised-button toolbar-button",
-                                            )
-                                            yield _TEXTUAL_BUTTON(
                                                 "Clear output",
                                                 id="analyze-clear-output",
                                                 classes="raised-button toolbar-button",
@@ -198,125 +192,148 @@ if _TEXTUAL_APP is not None:
                             with _TEXTUAL_HORIZONTAL(id="analyze-split-body"):
                                 with _TEXTUAL_VERTICAL(id="analyze-browser", classes="is-hidden"):  # noqa: SIM117
                                     with _TEXTUAL_VERTICAL(id="analyze-browser-left"):
-                                        pass
+                                        with _TEXTUAL_HORIZONTAL(id="analyze-list-actions", classes="is-hidden"):
+                                            yield _TEXTUAL_BUTTON(
+                                                "Select all",
+                                                id="analyze-select-all",
+                                                classes="raised-button",
+                                            )
+                                            yield _TEXTUAL_BUTTON(
+                                                "Clear selection",
+                                                id="analyze-clear-selection",
+                                                classes="raised-button",
+                                            )
+                                        with _TEXTUAL_VERTICAL(id="analyze-list-host"):
+                                            pass
                                 with _TEXTUAL_VERTICAL(id="output-pane"):
                                     yield _TEXTUAL_STATIC("Session output", id="output-title")
                                     yield _SessionOutputWidget(id="output")
                         with _TEXTUAL_HORIZONTAL(id="setup-browser", classes="is-hidden"):
                             with _TEXTUAL_VERTICAL(id="setup-targets-section"):
-                                yield _TEXTUAL_STATIC("Analysis Targets", id="setup-targets-title")
+                                with _TEXTUAL_HORIZONTAL(id="setup-targets-actions"):
+                                    yield _TEXTUAL_BUTTON("Add", id="setup-target-browse", classes="raised-button")
+                                    yield _TEXTUAL_BUTTON(
+                                        "Remove", id="setup-target-remove", classes="raised-button", disabled=True
+                                    )
                                 with _TEXTUAL_VERTICAL(id="setup-targets-col"):
+                                    yield _TEXTUAL_STATIC("Analysis Targets", id="setup-targets-title")
                                     with _TEXTUAL_VERTICAL(id="setup-target-inner"):
                                         yield _TEXTUAL_LIST_VIEW(id="setup-target-listview")
-                                    with _TEXTUAL_HORIZONTAL(id="setup-target-actions"):
-                                        yield _TEXTUAL_BUTTON(
-                                            "Remove", id="setup-target-remove", classes="raised-button", disabled=True
-                                        )
-                                        yield _TEXTUAL_BUTTON(
-                                            "Add from file...", id="setup-target-browse", classes="raised-button"
-                                        )
-                            with _TEXTUAL_VERTICAL(id="setup-settings-section"):
-                                yield _TEXTUAL_STATIC("Configuration", id="setup-config-title")
+                            with _TEXTUAL_VERTICAL(id="setup-settings-section"):  # noqa: SIM117
                                 with _TEXTUAL_VERTICAL(id="setup-settings-col"):
-                                    with _TEXTUAL_VERTICAL(id="setup-group-dirs", classes="setup-group-box"):
-                                        yield _TEXTUAL_STATIC("Directories", classes="setup-group-title")
+                                    with _TEXTUAL_VERTICAL(id="setup-group-program", classes="settings-group-box"):
+                                        yield _TEXTUAL_STATIC("Program Folder", classes="settings-card-title")
                                         with _TEXTUAL_HORIZONTAL(classes="setup-row"):
                                             yield _TEXTUAL_BUTTON(
-                                                "Program folder",
+                                                "Change folder",
                                                 id="setup-edit-program-dir",
                                                 classes="raised-button setup-row-button",
                                             )
                                             yield _TEXTUAL_STATIC(
                                                 "", id="setup-label-program-dir", classes="setup-row-label"
                                             )
+                                    with _TEXTUAL_VERTICAL(id="setup-group-abb", classes="settings-group-box"):
+                                        yield _TEXTUAL_STATIC("ABB Library", classes="settings-card-title")
                                         with _TEXTUAL_HORIZONTAL(classes="setup-row"):
                                             yield _TEXTUAL_BUTTON(
-                                                "ABB library",
+                                                "Change folder",
                                                 id="setup-edit-abb-dir",
                                                 classes="raised-button setup-row-button",
                                             )
                                             yield _TEXTUAL_STATIC(
                                                 "", id="setup-label-abb-dir", classes="setup-row-label"
                                             )
+                                    with _TEXTUAL_VERTICAL(id="setup-group-other", classes="settings-group-box"):
+                                        yield _TEXTUAL_STATIC("Other Libraries", classes="settings-card-title")
                                         with _TEXTUAL_HORIZONTAL(classes="setup-row"):
                                             yield _TEXTUAL_BUTTON(
-                                                "Other libraries",
+                                                "Add",
                                                 id="setup-edit-other-lib-dirs",
+                                                classes="raised-button setup-row-button",
+                                            )
+                                            yield _TEXTUAL_BUTTON(
+                                                "Remove",
+                                                id="setup-edit-other-lib-dirs-remove",
                                                 classes="raised-button setup-row-button",
                                             )
                                             yield _TEXTUAL_STATIC(
                                                 "", id="setup-label-other-dirs", classes="setup-row-label"
                                             )
+                                    with _TEXTUAL_VERTICAL(id="setup-group-icf", classes="settings-group-box"):
+                                        yield _TEXTUAL_STATIC("ICF Folder", classes="settings-card-title")
                                         with _TEXTUAL_HORIZONTAL(classes="setup-row"):
                                             yield _TEXTUAL_BUTTON(
-                                                "Remove...",
-                                                id="setup-edit-other-lib-dirs-remove",
-                                                classes="raised-button setup-row-button-compact",
-                                            )
-                                        with _TEXTUAL_HORIZONTAL(classes="setup-row"):
-                                            yield _TEXTUAL_BUTTON(
-                                                "ICF folder",
+                                                "Change folder",
                                                 id="setup-edit-icf-dir",
                                                 classes="raised-button setup-row-button",
                                             )
                                             yield _TEXTUAL_STATIC(
                                                 "", id="setup-label-icf-dir", classes="setup-row-label"
                                             )
-                                    with _TEXTUAL_VERTICAL(id="setup-group-mode", classes="setup-group-box"):
-                                        yield _TEXTUAL_STATIC("Mode & Config", classes="setup-group-title")
+                                    with _TEXTUAL_VERTICAL(id="setup-group-mode", classes="settings-group-box"):
+                                        yield _TEXTUAL_STATIC("Mode & Config", classes="settings-card-title")
                                         with _TEXTUAL_HORIZONTAL(classes="setup-row"):
                                             yield _TEXTUAL_BUTTON(
-                                                "Mode", id="setup-toggle-mode", classes="raised-button setup-row-button"
+                                                "Switch mode",
+                                                id="setup-toggle-mode",
+                                                classes="raised-button setup-row-button",
                                             )
                                             yield _TEXTUAL_STATIC("", id="setup-label-mode", classes="setup-row-label")
                         with _TEXTUAL_HORIZONTAL(id="settings-browser", classes="is-hidden"):  # noqa: SIM117
                             with _TEXTUAL_VERTICAL(id="settings-settings-section"):
                                 with _TEXTUAL_VERTICAL(id="settings-settings-col"):
-                                    with _TEXTUAL_VERTICAL(
-                                        id="settings-group-run-history", classes="settings-group-box"
-                                    ):
-                                        yield _TEXTUAL_STATIC("Run History", classes="settings-card-title")
-                                        with _TEXTUAL_HORIZONTAL(classes="settings-row"):
-                                            yield _TEXTUAL_BUTTON(
-                                                "Save run history",
-                                                id="settings-toggle-run-history",
-                                                classes="raised-button settings-row-button",
-                                            )
-                                            yield _TEXTUAL_STATIC(
-                                                "", id="settings-label-run-history", classes="setup-row-label"
-                                            )
-                                        with _TEXTUAL_HORIZONTAL(classes="settings-row"):
-                                            yield _TEXTUAL_BUTTON(
-                                                "Keep last N runs",
-                                                id="settings-edit-run-history-limit",
-                                                classes="raised-button settings-row-button",
-                                            )
-                                            yield _TEXTUAL_STATIC(
-                                                "", id="settings-label-run-history-limit", classes="setup-row-label"
-                                            )
-                                    with _TEXTUAL_VERTICAL(id="settings-group-output", classes="settings-group-box"):
-                                        yield _TEXTUAL_STATIC("Output & Logging", classes="settings-card-title")
-                                        with _TEXTUAL_HORIZONTAL(classes="settings-row"):
-                                            yield _TEXTUAL_BUTTON(
-                                                "Debug logging",
-                                                id="settings-toggle-debug",
-                                                classes="raised-button settings-row-button",
-                                            )
-                                            yield _TEXTUAL_STATIC(
-                                                "", id="settings-label-debug", classes="setup-row-label"
-                                            )
-                                        with _TEXTUAL_HORIZONTAL(classes="settings-row"):
-                                            yield _TEXTUAL_BUTTON(
-                                                "Session output retention",
-                                                id="settings-edit-output-retention",
-                                                classes="raised-button settings-row-button",
-                                            )
-                                            yield _TEXTUAL_STATIC(
-                                                "", id="settings-label-output-retention", classes="setup-row-label"
-                                            )
+                                    with _TEXTUAL_HORIZONTAL(id="settings-cards-row"):
+                                        with _TEXTUAL_VERTICAL(
+                                            id="settings-group-run-history", classes="settings-group-box"
+                                        ):
+                                            yield _TEXTUAL_STATIC("Run History", classes="settings-card-title")
+                                            with _TEXTUAL_VERTICAL(classes="settings-row"):
+                                                yield _TEXTUAL_BUTTON(
+                                                    "Save run history",
+                                                    id="settings-toggle-run-history",
+                                                    classes="raised-button settings-row-button",
+                                                )
+                                                yield _TEXTUAL_STATIC(
+                                                    "", id="settings-label-run-history", classes="setup-row-label"
+                                                )
+                                            with _TEXTUAL_VERTICAL(classes="settings-row"):
+                                                yield _TEXTUAL_BUTTON(
+                                                    "Keep last N runs",
+                                                    id="settings-edit-run-history-limit",
+                                                    classes="raised-button settings-row-button",
+                                                )
+                                                yield _TEXTUAL_STATIC(
+                                                    "",
+                                                    id="settings-label-run-history-limit",
+                                                    classes="setup-row-label",
+                                                )
+                                        with _TEXTUAL_VERTICAL(
+                                            id="settings-group-output", classes="settings-group-box"
+                                        ):
+                                            yield _TEXTUAL_STATIC("Output & Logging", classes="settings-card-title")
+                                            with _TEXTUAL_VERTICAL(classes="settings-row"):
+                                                yield _TEXTUAL_BUTTON(
+                                                    "Debug logging",
+                                                    id="settings-toggle-debug",
+                                                    classes="raised-button settings-row-button",
+                                                )
+                                                yield _TEXTUAL_STATIC(
+                                                    "", id="settings-label-debug", classes="setup-row-label"
+                                                )
+                                            with _TEXTUAL_VERTICAL(classes="settings-row"):
+                                                yield _TEXTUAL_BUTTON(
+                                                    "Session output retention",
+                                                    id="settings-edit-output-retention",
+                                                    classes="raised-button settings-row-button",
+                                                )
+                                                yield _TEXTUAL_STATIC(
+                                                    "",
+                                                    id="settings-label-output-retention",
+                                                    classes="setup-row-label",
+                                                )
                                     with _TEXTUAL_VERTICAL(id="settings-group-review", classes="settings-group-box"):
                                         yield _TEXTUAL_STATIC("Change Review", classes="settings-card-title")
-                                        with _TEXTUAL_HORIZONTAL(classes="settings-row"):
+                                        with _TEXTUAL_VERTICAL(classes="settings-row"):
                                             yield _TEXTUAL_BUTTON(
                                                 "Review output folder",
                                                 id="settings-edit-review-output-dir",
@@ -327,8 +344,15 @@ if _TEXTUAL_APP is not None:
                                             )
                         with _TEXTUAL_HORIZONTAL(id="results-browser", classes="is-hidden"):
                             with _TEXTUAL_VERTICAL(id="results-runs-section"):
-                                yield _TEXTUAL_STATIC("Previous Runs", id="results-runs-title")
+                                with _TEXTUAL_HORIZONTAL(id="results-runs-actions"):
+                                    yield _TEXTUAL_BUTTON(
+                                        "Delete run",
+                                        id="results-delete-run",
+                                        classes="raised-button results-header-button",
+                                        disabled=True,
+                                    )
                                 with _TEXTUAL_VERTICAL(id="results-runs-col"):
+                                    yield _TEXTUAL_STATIC("Previous Runs", id="results-runs-title")
                                     yield _TEXTUAL_LIST_VIEW(id="results-runs-list")
                             with _TEXTUAL_VERTICAL(id="results-detail-section"):
                                 with _TEXTUAL_HORIZONTAL(id="results-tabs"):
@@ -342,15 +366,29 @@ if _TEXTUAL_APP is not None:
                                         id="results-collapse-all",
                                         classes="raised-button results-header-button",
                                     )
-                                    yield _TEXTUAL_BUTTON(
-                                        "Generate Change Review",
-                                        id="results-generate-change-review",
-                                        classes="raised-button results-header-button results-change-review-button",
-                                    )
                                 with _TEXTUAL_VERTICAL(id="results-tree-host"):
                                     pass
+                        with _TEXTUAL_HORIZONTAL(id="output-browser", classes="is-hidden"):  # noqa: SIM117
+                            with _TEXTUAL_VERTICAL(id="output-section"):
+                                with _TEXTUAL_VERTICAL(id="output-group", classes="settings-group-box"):
+                                    yield _TEXTUAL_STATIC("Change Review", classes="settings-card-title")
+                                    yield _TEXTUAL_STATIC(
+                                        "Generate a Change Review for the configured project. The review "
+                                        "summarizes what changed across the analyzed targets and is written "
+                                        "as JSON and Markdown into the configured review output folder.",
+                                        id="output-description",
+                                    )
+                                    with _TEXTUAL_VERTICAL(classes="settings-row"):
+                                        yield _TEXTUAL_BUTTON(
+                                            "Generate Change Review",
+                                            id="output-generate-change-review",
+                                            classes="raised-button settings-row-button",
+                                        )
                 with _TEXTUAL_VERTICAL(id="interaction-host"):
                     pass
+            with _TEXTUAL_HORIZONTAL(id="status-bar"):
+                yield _TEXTUAL_STATIC("", id="status-project")
+                yield _TEXTUAL_STATIC("", id="status-summary", classes="summary-strip")
             yield _TEXTUAL_FOOTER()
 
         def on_mount(self) -> None:

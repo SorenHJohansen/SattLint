@@ -126,6 +126,24 @@ def _summary_text(self: Any) -> str:
     return "\n".join(configured_targets)
 
 
+def _status_text(self: Any) -> str:
+    parts: list[str] = []
+    if not self._project_loaded():
+        parts.append("No configuration open")
+    else:
+        target_count = len(self._configured_target_names())
+        if target_count == 1:
+            parts.append("1 target configured")
+        else:
+            parts.append(f"{target_count} targets configured")
+    if bool(getattr(self, "_dirty", False)):
+        parts.append("Unsaved changes")
+    active_job_text = self._active_job_text()
+    if active_job_text is not None:
+        parts.append(f"Running: {active_job_text}")
+    return "   ·   ".join(parts)
+
+
 def _active_job_text(self: Any) -> str | None:
     if not self._busy:
         return None
