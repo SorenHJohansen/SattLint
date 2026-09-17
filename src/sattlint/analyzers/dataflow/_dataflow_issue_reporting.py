@@ -4,10 +4,36 @@ from typing import Any
 
 from ...resolution.scope import ScopeContext
 from ..shared._dedupe import remember_once
-from ._dataflow_common import PendingWrite, ResolvedRef, StateMap
+from ._dataflow_common import PendingWrite, ResolvedRef, ScalarValue, StateMap
 
 
 class DataflowIssueReportingMixin:
+    def _report_conflicting_constants(
+        self: Any,
+        resolved: ResolvedRef,
+        value: ScalarValue,
+        previous_value: ScalarValue,
+        module_path: list[str],
+    ) -> None:
+        site = self._site_str()
+        dedupe_key = (tuple(module_path), site, resolved.display_name.casefold())
+        if not remember_once(self._reported_conflicting_constants, dedupe_key):
+            return
+        self._add_issue(
+            kind="dataflow.conflicting_constants",
+            message=(
+                f"Variable reference {resolved.display_name!r} is assigned conflicting constants "
+                f"({previous_value!r} then {value!r}) within one path."
+            ),
+            module_path=module_path,
+            data={
+                "symbol": resolved.display_name,
+                "previous_value": previous_value,
+                "value": value,
+                "site": site,
+            },
+        )
+
     def _report_dead_overwrite(
         self: Any,
         pending: PendingWrite,
@@ -72,57 +98,6 @@ class DataflowIssueReportingMixin:
             data={
                 "symbol": resolved.display_name,
                 "state_symbol": resolved.base_display_name,
-                "site": site,
-            },
-        )
-
-    def _report_invalid_old_write(
-        self: Any,
-        resolved: ResolvedRef,
-        module_path: list[str],
-        *,
-        operation: str,
-    ) -> None:
-        site = self._site_str()
-        dedupe_key = (tuple(module_path), site, resolved.display_name.casefold(), operation)
-        if not remember_once(self._reported_scan_cycle_temporal_misuse, dedupe_key):
-            return
-        self._add_issue(
-            kind="dataflow.scan_cycle_temporal_misuse",
-            message=(
-                f"State reference {resolved.display_name!r} cannot be written via {operation}; "
-                ":OLD is read-only and always refers to the previous scan."
-            ),
-            module_path=module_path,
-            data={
-                "symbol": resolved.display_name,
-                "state_symbol": resolved.base_display_name,
-                "operation": operation,
-                "site": site,
-            },
-        )
-
-    def _report_invalid_state_access(
-        self: Any,
-        display_name: str,
-        base_display_name: str,
-        state_access: str,
-        module_path: list[str],
-    ) -> None:
-        site = self._site_str()
-        dedupe_key = (tuple(module_path), site, display_name.casefold())
-        if not remember_once(self._reported_invalid_state_access, dedupe_key):
-            return
-        self._add_issue(
-            kind="dataflow.invalid_state_access",
-            message=(
-                f"Variable reference {display_name!r} uses {state_access.upper()} on non-STATE variable "
-                f"{base_display_name!r}."
-            ),
-            module_path=module_path,
-            data={
-                "symbol": display_name,
-                "state_symbol": base_display_name,
                 "site": site,
             },
         )

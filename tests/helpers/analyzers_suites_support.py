@@ -3,8 +3,7 @@
 """Tests for full-suite analyzers.
 
 Covers SFC parallel write race, dataflow, variables analyzer suites,
-version drift, initial values, naming consistency, alarm integrity,
-safety paths, and taint paths.
+version drift, initial values, and alarm integrity.
 """
 
 import json
@@ -41,13 +40,6 @@ from sattlint.analyzers import registry as registry_module
 from sattlint.analyzers.alarm_integrity import analyze_alarm_integrity
 from sattlint.analyzers.dataflow import analyze_dataflow
 from sattlint.analyzers.framework import AnalyzerSpec
-from sattlint.analyzers.mms import (
-    _extract_external_tag,
-    _find_parameter_mapping,
-    _find_variable,
-    _normalize_external_tag,
-    _tag_family_key,
-)
 from sattlint.analyzers.modules import (
     AstDiffDetail,
     CodeDiff,
@@ -65,12 +57,10 @@ from sattlint.analyzers.modules import (
     compare_modules,
     create_fingerprint,
 )
-from sattlint.analyzers.naming import analyze_naming_consistency, get_configured_naming_rules
 from sattlint.analyzers.registry import get_default_analyzers
-from sattlint.analyzers.safety_paths import analyze_safety_paths
+from sattlint.analyzers.same_cycle import analyze_same_cycle
 from sattlint.analyzers.sfc import analyze_sfc
 from sattlint.analyzers.sfc._sfc_guard_logic import _normalize_guard_signature
-from sattlint.analyzers.taint_paths import analyze_taint_paths
 from sattlint.analyzers.variable_usage_reporting import (
     _find_module_instances,
     debug_variable_usage,
@@ -133,33 +123,25 @@ __all__ = [
     "_common_module_prefix",
     "_compact_diff",
     "_diff_normalized_variants",
-    "_extract_external_tag",
     "_find_module_instances",
-    "_find_parameter_mapping",
-    "_find_variable",
     "_group_instances_by_variant",
     "_hdr",
     "_issue_kinds",
     "_normalize_ast_value",
-    "_normalize_external_tag",
     "_normalize_guard_signature",
     "_state_ref",
     "_status_bridge_typedef",
-    "_tag_family_key",
     "_varref",
     "analyze_alarm_integrity",
     "analyze_dataflow",
-    "analyze_naming_consistency",
-    "analyze_safety_paths",
+    "analyze_same_cycle",
     "analyze_sfc",
-    "analyze_taint_paths",
     "analyze_version_drift",
     "cast",
     "compare_modules",
     "const",
     "create_fingerprint",
     "debug_variable_usage",
-    "get_configured_naming_rules",
     "get_default_analyzers",
     "json",
     "registry_module",

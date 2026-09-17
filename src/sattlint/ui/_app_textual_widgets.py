@@ -11,6 +11,11 @@ try:
 except ImportError:  # pragma: no cover - optional dependency path
     _NoActiveAppError = RuntimeError
 
+try:
+    from textual.widgets._directory_tree import DirEntry as _DirEntry  # type: ignore[import-untyped]
+except ImportError:  # pragma: no cover - optional dependency path
+    _DirEntry = None
+
 from ._app_textual_shared import (
     _TEXTUAL_APP,
     _TEXTUAL_BUTTON,
@@ -38,20 +43,6 @@ class _AstRefreshModalResult:
 
 
 if _TEXTUAL_APP is not None:
-
-    class _ShellBannerImpl(_TEXTUAL_VERTICAL):
-        def __init__(self) -> None:
-            super().__init__(id="shell-banner")
-
-        def compose(self) -> _TEXTUAL_COMPOSE_RESULT:
-            yield _TEXTUAL_STATIC("", id="shell-banner-title")
-            yield _TEXTUAL_STATIC("", id="shell-banner-subtitle")
-
-        def on_mount(self) -> None:
-            title_widget = self.query_one("#shell-banner-title", _TEXTUAL_STATIC)
-            subtitle_widget = self.query_one("#shell-banner-subtitle", _TEXTUAL_STATIC)
-            title_widget.update("")
-            subtitle_widget.update("Analysis, docs, and setup")
 
     class _InteractionPaneImpl(_TEXTUAL_VERTICAL):
         BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
@@ -289,19 +280,42 @@ if _TEXTUAL_APP is not None:
 
     class _FilteredDirectoryTree(_TEXTUAL_DIRECTORY_TREE):
         def __init__(
-            self, path: str, *, file_suffix: str | None = None, directory_only: bool = False, **kwargs: Any
+            self,
+            path: str,
+            *,
+            file_suffix: str | None = None,
+            file_suffixes: Iterable[str] | None = None,
+            directory_only: bool = False,
+            show_stem: bool = False,
+            **kwargs: Any,
         ) -> None:
             super().__init__(path, **kwargs)
-            self._file_suffix = file_suffix
+            self._file_suffix = file_suffix.lower() if file_suffix else None
+            self._file_suffixes = tuple(suffix.lower() for suffix in (file_suffixes or ())) if file_suffixes else None
             self._directory_only = directory_only
+            self._show_stem = show_stem
 
         def filter_paths(self, paths: Iterable[Path]) -> Iterable[Path]:
             if self._directory_only:
                 return (p for p in paths if p.is_dir())
+            if self._file_suffixes:
+                return (p for p in paths if not p.is_file() or p.suffix.lower() in self._file_suffixes)
             if self._file_suffix is None:
                 return paths
-            suffix = self._file_suffix.lower()
-            return (p for p in paths if not p.is_file() or p.suffix.lower() == suffix)
+            return (p for p in paths if not p.is_file() or p.suffix.lower() == self._file_suffix)
+
+        def _populate_node(self: Any, node: Any, content: Iterable[Path]) -> None:
+            node.remove_children()
+            seen_stems: set[str] = set()
+            for path in content:
+                if self._show_stem and path.is_file():
+                    stem = path.stem.casefold()
+                    if stem in seen_stems:
+                        continue
+                    seen_stems.add(stem)
+                label = path.stem if self._show_stem and path.is_file() else path.name
+                node.add(label, data=_DirEntry(path), allow_expand=self._safe_is_dir(path))
+            node.expand()
 
     class _FileBrowserScreenImpl(_TEXTUAL_MODAL_SCREEN):
         BINDINGS: ClassVar[list[tuple[str, str, str]]] = [("escape", "dismiss_cancel", "Cancel")]
@@ -312,7 +326,9 @@ if _TEXTUAL_APP is not None:
             start_paths: list[Path],
             candidates: tuple[tuple[str, tuple[str, ...]], ...] = (),
             file_suffix: str | None = None,
+            file_suffixes: Iterable[str] | None = None,
             directory_only: bool = False,
+            show_stem: bool = False,
         ) -> None:
             super().__init__()
             self._start_paths = start_paths if start_paths else [Path.home()]
@@ -321,7 +337,9 @@ if _TEXTUAL_APP is not None:
             self._candidate_name: str | None = None
             self._show_candidate_list = bool(candidates)
             self._file_suffix = file_suffix
+            self._file_suffixes = tuple(file_suffixes) if file_suffixes else None
             self._directory_only = directory_only
+            self._show_stem = show_stem
 
         def compose(self) -> _TEXTUAL_COMPOSE_RESULT:
             with _TEXTUAL_VERTICAL(id="file-browser-dialog"):
@@ -345,7 +363,9 @@ if _TEXTUAL_APP is not None:
                         str(self._start_paths[0]),
                         id="file-browser-tree",
                         file_suffix=self._file_suffix,
+                        file_suffixes=self._file_suffixes,
                         directory_only=self._directory_only,
+                        show_stem=self._show_stem,
                     )
                 with _TEXTUAL_HORIZONTAL(id="file-browser-actions"):
                     if self._directory_only:
@@ -397,7 +417,7 @@ if _TEXTUAL_APP is not None:
             if self._directory_only:
                 select_button.label = "Select folder"
                 select_button.disabled = not path.is_dir()
-            elif self._file_suffix is not None and path.is_dir():
+            elif (self._file_suffix is not None or self._file_suffixes is not None) and path.is_dir():
                 select_button.label = "Open folder"
                 select_button.disabled = False
             else:
@@ -489,6 +509,81 @@ if _TEXTUAL_APP is not None:
                 self._current_path = None
                 _query_required(self, "#file-browser-selection", _TEXTUAL_STATIC).update("Highlighted: (none)")
                 _query_required(self, "#file-browser-select", _TEXTUAL_BUTTON).disabled = True
+
+        def action_dismiss_cancel(self) -> None:
+            self.dismiss(None)
+
+    class _ProjectPickerScreenImpl(_TEXTUAL_MODAL_SCREEN):
+        """Modal to pick a ``.slproj`` configuration and Open/Delete it.
+
+        Lists only ``.slproj`` files (never folders). Highlighting a file never
+        opens it; the user must press Open (or Enter) to load it, or Delete to
+        remove it after confirmation.
+        """
+
+        BINDINGS: ClassVar[list[tuple[str, str, str]]] = [("escape", "dismiss_cancel", "Cancel")]
+
+        def __init__(self, *, projects_dir: Path) -> None:
+            super().__init__()
+            self._projects_dir = projects_dir
+            self._project_paths: list[Path] = []
+            self._selected_path: Path | None = None
+
+        def compose(self) -> _TEXTUAL_COMPOSE_RESULT:
+            with _TEXTUAL_VERTICAL(id="project-picker-dialog"):
+                yield _TEXTUAL_STATIC("Open Configuration", id="project-picker-title")
+                yield _TEXTUAL_STATIC(
+                    "Select a configuration, then choose Open or Delete.",
+                    id="project-picker-intro",
+                )
+                yield _TEXTUAL_LIST_VIEW(id="project-picker-list")
+                with _TEXTUAL_HORIZONTAL(id="project-picker-actions"):
+                    yield _TEXTUAL_BUTTON("Open", id="project-picker-open", classes="raised-button", disabled=True)
+                    yield _TEXTUAL_BUTTON("Delete", id="project-picker-delete", classes="raised-button", disabled=True)
+                    yield _TEXTUAL_BUTTON("Cancel", id="project-picker-cancel", classes="raised-button")
+
+        def on_mount(self) -> None:
+            self._refresh_list()
+
+        def _refresh_list(self) -> None:
+            self._project_paths = sorted(
+                (p for p in self._projects_dir.glob("*.slproj") if p.is_file()),
+                key=lambda p: p.name.casefold(),
+            )
+            list_view = _query_required(self, "#project-picker-list", _TEXTUAL_LIST_VIEW)
+            list_view.clear()
+            for path in self._project_paths:
+                list_view.append(_TEXTUAL_LIST_ITEM(_TEXTUAL_STATIC(path.stem)))
+            self._set_selection(None)
+            if self._project_paths:
+                list_view.index = 0
+                list_view.focus()
+
+        def _set_selection(self, path: Path | None) -> None:
+            self._selected_path = path
+            _query_required(self, "#project-picker-open", _TEXTUAL_BUTTON).disabled = path is None
+            _query_required(self, "#project-picker-delete", _TEXTUAL_BUTTON).disabled = path is None
+
+        def on_list_view_highlighted(self, event: Any) -> None:
+            list_view = getattr(event, "list_view", None)
+            if list_view is None or getattr(list_view, "id", None) != "project-picker-list":
+                return
+            index = getattr(list_view, "index", None)
+            if isinstance(index, int) and 0 <= index < len(self._project_paths):
+                self._set_selection(self._project_paths[index])
+            else:
+                self._set_selection(None)
+
+        def on_button_pressed(self, event: Any) -> None:
+            button_id = getattr(event.button, "id", "") or ""
+            if button_id == "project-picker-open":
+                if self._selected_path is not None:
+                    self.dismiss(self._selected_path)
+            elif button_id == "project-picker-delete":
+                if self._selected_path is not None:
+                    self.dismiss(("delete", self._selected_path))
+            elif button_id == "project-picker-cancel":
+                self.dismiss(None)
 
         def action_dismiss_cancel(self) -> None:
             self.dismiss(None)
@@ -609,18 +704,18 @@ if _TEXTUAL_APP is not None:
             for label, action_id in self._menu_items:
                 actions.mount(_TEXTUAL_BUTTON(label, id=action_id, classes="menubar-button"))
 
-    _ShellBanner = _ShellBannerImpl
     _InteractionPane = _InteractionPaneImpl
     _HelpScreen = _HelpScreenImpl
     _ErrorScreen = _ErrorScreenImpl
     _FileBrowserScreen = _FileBrowserScreenImpl
+    _ProjectPickerScreen = _ProjectPickerScreenImpl
     _AstRefreshModalScreen = _AstRefreshModalScreenImpl
     _MenubarWidget = _MenubarWidgetImpl
 else:  # pragma: no cover - optional dependency path
-    _ShellBanner: Any = None
     _InteractionPane: Any = None
     _HelpScreen: Any = None
     _ErrorScreen: Any = None
     _FileBrowserScreen: Any = None
+    _ProjectPickerScreen: Any = None
     _AstRefreshModalScreen: Any = None
     _MenubarWidget: Any = None

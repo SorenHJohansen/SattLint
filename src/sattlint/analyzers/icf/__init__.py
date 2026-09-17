@@ -29,28 +29,13 @@ from ...resolution.common import (
 from ...resolution.type_graph import TypeGraph
 from ._icf_datatype_resolution import resolve_leaf_datatype, resolve_record_datatype
 from ._icf_file_io import (
-    ICFFormatResult as _ICFFormatResult,
-)
-from ._icf_file_io import (
     decode_icf_text as _decode_icf_text_impl,
-)
-from ._icf_file_io import (
-    detect_icf_newline as _detect_icf_newline_impl,
 )
 from ._icf_file_io import (
     extract_icf_sattline_ref as _extract_icf_sattline_ref,
 )
 from ._icf_file_io import (
     extract_icf_value_prefix as _extract_icf_value_prefix,
-)
-from ._icf_file_io import (
-    format_icf_file as _format_icf_file,
-)
-from ._icf_file_io import (
-    format_icf_text as _format_icf_text,
-)
-from ._icf_file_io import (
-    header_spacing as _header_spacing_impl,
 )
 from ._icf_file_io import (
     is_placeholder_icf_value as _is_placeholder_icf_value,
@@ -105,12 +90,7 @@ _OPTIONAL_PARAMETER_RECORD_FIELDS: dict[str, set[str]] = {
 }
 
 
-ICFFormatResult = _ICFFormatResult
 _decode_icf_text = _decode_icf_text_impl
-_detect_icf_newline = _detect_icf_newline_impl
-_header_spacing = _header_spacing_impl
-format_icf_text = _format_icf_text
-format_icf_file = _format_icf_file
 parse_icf_file = _parse_icf_file
 
 
@@ -685,9 +665,6 @@ def _validate_unit_structure(
 
 
 __all__ = [
-    "ICFFormatResult",
-    "format_icf_file",
-    "format_icf_text",
     "parse_icf_file",
     "resolve_leaf_datatype",
     "resolve_record_datatype",

@@ -1,7 +1,7 @@
 "Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
 "Original file date: ---"
 "Program date: 2026-06-19-12:00:00.000, name: ParamMappingIssues"
-(* Covers CONTRACT_MISMATCH, REQUIRED_PARAMETER_CONNECTION, MIN_MAX_MAPPING_MISMATCH.
+(* Covers MIN_MAX_MAPPING_MISMATCH.
    Expected: strict syntax-check passes. *)
 
 BasePicture Invocation
@@ -50,6 +50,7 @@ LOCALVARIABLES
    CloseCmd: boolean  := False;
    PosValue: real  := 0.0;
    RawValue: integer  := 0;
+   MaxPos: real  := 100.0;
 
 SUBMODULES
    ValveOk Invocation
@@ -72,13 +73,12 @@ SUBMODULES
       Enable => OpenCmd,
       Setpoint => RawValue);
 
-   ValveMinMax Invocation
-      ( 0.5 , 0.5 , 0.0 , 0.4 , 0.4
-       ) : ValveType (
-      CmdOpen => OpenCmd,
-      CmdClose => CloseCmd,
-      LimitMin => 200.0,
-      LimitMax => -10.0);
+ValveMinMax Invocation
+       ( 0.5 , 0.5 , 0.0 , 0.4 , 0.4
+        ) : ValveType (
+       CmdOpen => OpenCmd,
+       CmdClose => CloseCmd,
+       LimitMin => MaxPos);
 
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )

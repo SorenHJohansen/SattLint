@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Literal, TypedDict
 
 type ConfigMode = Literal["official", "draft"]
-type NamingStyle = Literal["infer", "pascal", "camel", "snake", "upper_snake", "lower", "upper"]
 type ConfigPathValue = str | PathLike[str] | Path
 type ConfigObjectMap = dict[str, object]
 
@@ -38,65 +37,40 @@ class ReviewConfigOverride(TypedDict, total=False):
     output_dir: ConfigPathValue
 
 
-class NamingRuleConfig(TypedDict):
-    style: NamingStyle
-    allow: list[str]
+class SpecComplianceConfig(TypedDict):
+    step_prefix: str
+    transition_prefix: str
+    sequence_prefix: str
+    equation_prefix: str
 
 
-class NamingRuleConfigOverride(TypedDict, total=False):
-    style: str
-    allow: list[str]
-
-
-class NamingConfig(TypedDict):
-    variables: NamingRuleConfig
-    modules: NamingRuleConfig
-    instances: NamingRuleConfig
-
-
-class NamingConfigOverride(TypedDict, total=False):
-    variables: NamingRuleConfigOverride
-    modules: NamingRuleConfigOverride
-    instances: NamingRuleConfigOverride
-
-
-class RuleProfileConfig(TypedDict):
-    description: str
-    disabled_rules: list[str]
-    severity_overrides: dict[str, str]
-    confidence_overrides: dict[str, str]
-
-
-class RuleProfileConfigOverride(TypedDict, total=False):
-    description: str
-    disabled_rules: list[str]
-    severity_overrides: dict[str, str]
-    confidence_overrides: dict[str, str]
-
-
-class RuleProfilesConfig(TypedDict):
-    active: str
-    profiles: dict[str, RuleProfileConfig]
-
-
-class RuleProfilesConfigOverride(TypedDict, total=False):
-    active: str
-    profiles: dict[str, RuleProfileConfigOverride | ConfigObjectMap]
+class SpecComplianceConfigOverride(TypedDict, total=False):
+    step_prefix: str
+    transition_prefix: str
+    sequence_prefix: str
+    equation_prefix: str
 
 
 class AnalysisConfig(TypedDict):
-    naming: NamingConfig
-    rule_profiles: RuleProfilesConfig
+    spec_compliance: SpecComplianceConfig
+    unsafe_default_tokens: list[str]
+    cyclomatic_module_threshold: int
+    cyclomatic_step_threshold: int
+    cyclomatic_equation_block_threshold: int
+    fan_in_out_threshold: int
 
 
 class AnalysisConfigOverride(TypedDict, total=False):
-    naming: NamingConfigOverride
-    rule_profiles: RuleProfilesConfigOverride
+    spec_compliance: SpecComplianceConfigOverride
+    unsafe_default_tokens: list[str]
+    cyclomatic_module_threshold: int
+    cyclomatic_step_threshold: int
+    cyclomatic_equation_block_threshold: int
+    fan_in_out_threshold: int
 
 
 class ConfigDict(TypedDict):
     analyzed_programs_and_libraries: list[str]
-    include_reverse_library_consumers: bool
     mode: ConfigMode
     debug: bool
     program_dir: ConfigPathValue
@@ -111,7 +85,6 @@ class ConfigDict(TypedDict):
 
 class ConfigOverrideDict(TypedDict, total=False):
     analyzed_programs_and_libraries: list[str]
-    include_reverse_library_consumers: bool
     mode: str
     debug: bool
     program_dir: ConfigPathValue
@@ -132,19 +105,12 @@ __all__ = [
     "ConfigObjectMap",
     "ConfigOverrideDict",
     "ConfigPathValue",
-    "NamingConfig",
-    "NamingConfigOverride",
-    "NamingRuleConfig",
-    "NamingRuleConfigOverride",
-    "NamingStyle",
     "OutputConfig",
     "OutputConfigOverride",
     "ReviewConfig",
     "ReviewConfigOverride",
-    "RuleProfileConfig",
-    "RuleProfileConfigOverride",
-    "RuleProfilesConfig",
-    "RuleProfilesConfigOverride",
     "RunHistoryConfig",
     "RunHistoryConfigOverride",
+    "SpecComplianceConfig",
+    "SpecComplianceConfigOverride",
 ]

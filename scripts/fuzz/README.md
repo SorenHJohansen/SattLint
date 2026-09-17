@@ -10,7 +10,7 @@ format end-to-end.
 
 | Target | Entry points | Format |
 |--------|--------------|--------|
-| `icf_fuzzer.py` | `analyzers/icf/_icf_file_io.py` (`decode_icf_text`, `format_icf_text`, `parse_icf_file`) | `.icf` config files |
+| `icf_fuzzer.py` | `analyzers/icf/_icf_file_io.py` (`decode_icf_text`, `parse_icf_file`) | `.icf` config files |
 | `graphics_fuzzer.py` | `graphics/validation.py` (`validate_graphics_text`) | Serialized `.g`/`.y` graphics files |
 
 Both readers are tolerant by design, so an exception escaping a target is a

@@ -1,7 +1,7 @@
 """Configuration management for SattLint.
 
-Owns config types, defaults, validation, TOML I/O, path resolution, display,
-and self-check.  ``ConfigDict``/``TOP_LEVEL_CONFIG_FIELDS`` is the single source
+Owns config types, defaults, validation, TOML I/O, path resolution, and
+self-check.  ``ConfigDict``/``TOP_LEVEL_CONFIG_FIELDS`` is the single source
 of truth for the top-level config contract (asserted at import in
 :mod:`sattlint.config.defaults`).
 """

@@ -23,7 +23,6 @@ from sattlint.analyzers import variable_usage_reporting as variables_reporting_m
 from sattlint.analyzers import variables as variables_module
 from sattlint.analyzers.framework import SimpleReport
 from sattlint.application import checks as checks_application
-from sattlint.application import menu_commands as commands_application
 from sattlint.application import output as output_module
 from sattlint.application import project as project_application
 from sattlint.cli import startup as app_startup

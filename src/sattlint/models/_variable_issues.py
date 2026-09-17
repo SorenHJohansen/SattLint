@@ -22,8 +22,6 @@ class IssueKind(Enum):
     UNUSED_DATATYPE_FIELD = "unused_datatype_field"
     FIELD_READ_ONLY = "field_read_only"
     READ_ONLY_NON_CONST = "read_only_non_const"
-    NAMING_ROLE_MISMATCH = "naming_role_mismatch"
-    UI_ONLY = "ui_only"
     PROCEDURE_STATUS = "procedure_status"
     FIELD_NEVER_READ = "field_never_read"
     NEVER_READ = "never_read"
@@ -33,14 +31,13 @@ class IssueKind(Enum):
     HIDDEN_GLOBAL_COUPLING = "hidden_global_coupling"
     HIGH_FAN_IN_OUT = "high_fan_in_out"
     UNKNOWN_PARAMETER_TARGET = "unknown_parameter_target"
-    REQUIRED_PARAMETER_CONNECTION = "required_parameter_connection"
-    CONTRACT_MISMATCH = "contract_mismatch"
     STRING_MAPPING_MISMATCH = "string_mapping_mismatch"
     DATATYPE_DUPLICATION = "datatype_duplication"
-    NAME_COLLISION = "name_collision"
     MIN_MAX_MAPPING_MISMATCH = "min_max_mapping_mismatch"
     MAGIC_NUMBER = "magic_number"
     SHADOWING = "shadowing"
+    UNSAFE_BOOLEAN_DEFAULT = "unsafe_boolean_default"
+    READ_BEFORE_WRITE = "read_before_write"
     RESET_CONTAMINATION = "reset_contamination"
     IMPLICIT_LATCH = "implicit_latch"
 
@@ -75,16 +72,6 @@ _VARIABLE_ISSUE_METADATA: dict[IssueKind, VariableIssueMetadata] = {
         label="Read-only variable should be CONST",
         explanation="A writable declaration that is only read obscures intent and weakens constant-safety checks.",
         suggestion="Mark the declaration CONST, or add the write path that is supposed to update it.",
-    ),
-    IssueKind.NAMING_ROLE_MISMATCH: VariableIssueMetadata(
-        label="Naming-to-behavior mismatch",
-        explanation="A name that suggests one role while the code uses the variable differently makes the control intent harder to trust.",
-        suggestion="Rename the variable to match its real behavior, or change the implementation so it matches the intended role.",
-    ),
-    IssueKind.UI_ONLY: VariableIssueMetadata(
-        label="Variable is only used by UI or display wiring",
-        explanation="The variable is only consumed through graphics or interact display wiring, not through control logic or module contracts.",
-        suggestion="Rename or document it as display-only state, or connect it to the control path that is expected to use it.",
     ),
     IssueKind.PROCEDURE_STATUS: VariableIssueMetadata(
         label="Procedure status output is not handled",
@@ -131,16 +118,6 @@ _VARIABLE_ISSUE_METADATA: dict[IssueKind, VariableIssueMetadata] = {
         explanation="A mapping that points at a parameter name the target module does not declare leaves the intended interface unresolved.",
         suggestion="Fix the target parameter name, or update the moduletype so the declared contract matches the mapping.",
     ),
-    IssueKind.REQUIRED_PARAMETER_CONNECTION: VariableIssueMetadata(
-        label="Required parameter connection missing",
-        explanation="A parameter that the moduletype actively reads or writes is part of the module contract and should be wired explicitly by each instance.",
-        suggestion="Add a parameter mapping for the required parameter, or make the parameter optional by removing the internal dependency on it.",
-    ),
-    IssueKind.CONTRACT_MISMATCH: VariableIssueMetadata(
-        label="Cross-module contract mismatch",
-        explanation="Incompatible parameter datatypes across module boundaries can break the interface contract or force unsafe coercions.",
-        suggestion="Align the source and target datatypes, or insert an explicit compatible conversion before the mapping.",
-    ),
     IssueKind.STRING_MAPPING_MISMATCH: VariableIssueMetadata(
         label="String mapping datatype mismatch",
         explanation="Mismatched string-like datatypes can truncate values or break parameter expectations between modules.",
@@ -150,11 +127,6 @@ _VARIABLE_ISSUE_METADATA: dict[IssueKind, VariableIssueMetadata] = {
         label="Datatype duplication",
         explanation="Duplicate datatype layouts are easy to let drift apart and make structural changes harder to maintain.",
         suggestion="Promote the shared layout to one named RECORD datatype and reuse that definition.",
-    ),
-    IssueKind.NAME_COLLISION: VariableIssueMetadata(
-        label="Name collision",
-        explanation="Case-insensitive name collisions make the declaration set ambiguous and harder to reason about.",
-        suggestion="Rename one of the declarations so the scope has a single canonical name for that concept.",
     ),
     IssueKind.MIN_MAX_MAPPING_MISMATCH: VariableIssueMetadata(
         label="Min/Max mapping name mismatch",
@@ -170,6 +142,16 @@ _VARIABLE_ISSUE_METADATA: dict[IssueKind, VariableIssueMetadata] = {
         label="Variable shadows outer scope",
         explanation="Shadowing hides which declaration is actually being referenced and increases the risk of accidental scope capture.",
         suggestion="Rename the inner declaration, or reference the intended outer symbol more explicitly.",
+    ),
+    IssueKind.UNSAFE_BOOLEAN_DEFAULT: VariableIssueMetadata(
+        label="Unsafe boolean default",
+        explanation="A boolean that enables logic or bypasses safeguards from startup can activate equipment without an explicit command.",
+        suggestion="Default the flag to False and require an explicit operator or logic path to enable it.",
+    ),
+    IssueKind.READ_BEFORE_WRITE: VariableIssueMetadata(
+        label="Read before write",
+        explanation="A local value consumed before any known write in the same scope can depend on undefined startup state or scan order.",
+        suggestion="Initialize the value at declaration, or write it before the consuming read.",
     ),
     IssueKind.RESET_CONTAMINATION: VariableIssueMetadata(
         label="Variable is contaminated across reset",

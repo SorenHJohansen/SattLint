@@ -1,7 +1,7 @@
 "Syntax version 2.23, date: 2026-06-25-12:00:00.000 N"
 "Original file date: ---"
 "Program date: 2026-06-25-12:00:00.000, name: VarStructCover"
-(* Covers HIDDEN_GLOBAL_COUPLING, HIGH_FAN_IN_OUT, NAME_COLLISION,
+(* Covers HIDDEN_GLOBAL_COUPLING, HIGH_FAN_IN_OUT,
    DATATYPE_DUPLICATION. *)
 
 BasePicture Invocation

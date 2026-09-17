@@ -4,10 +4,7 @@
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.data-dependency-path",
-            "semantic.never-read-write",
-            "semantic.signal-lifecycle-unconsumed-write",
-            "spec.basepicture_direct_code"
+            "semantic.never-read-write"
         ],
         "artifact_fragments": {
             "status.json": {
@@ -15,12 +12,9 @@
                 "missing_dependency_count": 0
             },
             "summary.json": {
-                "finding_count": 5,
+                "finding_count": 1,
                 "rule_counts": {
-                    "semantic.data-dependency-path": 2,
-                    "semantic.never-read-write": 1,
-                    "semantic.signal-lifecycle-unconsumed-write": 1,
-                    "spec.basepicture_direct_code": 1
+                    "semantic.never-read-write": 1
                 }
             }
         },

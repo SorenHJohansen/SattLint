@@ -22,7 +22,5 @@ class Issue:
     module_path: list[str] | None = None
     data: dict[str, Any] | None = None
     rule_id: str | None = None
-    severity: str | None = None
-    confidence: str | None = None
     explanation: str | None = None
     suggestion: str | None = None

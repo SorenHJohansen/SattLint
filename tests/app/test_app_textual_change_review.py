@@ -43,7 +43,6 @@ def _make_textual_app(analysis_handlers: dict[str, Any] | None = None) -> Any:
             "review": {"output_dir": ""},
         },
         summarize_targets_fn=_noop_cfg,
-        show_help_fn=_noop_cfg,
         get_help_text_fn=_help_text,
         save_config_fn=_noop_save,
         config_path=None,
@@ -119,7 +118,7 @@ def test_change_review_button_dispatch() -> None:
     calls: list[str] = []
     app_instance._run_generate_change_review = lambda: calls.append("pressed")
 
-    app_instance.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id="analyze-generate-change-review")))
+    app_instance.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id="output-generate-change-review")))
     assert calls == ["pressed"]
 
 
@@ -131,7 +130,7 @@ def test_change_review_ui_controls_present() -> None:
         app_instance = _make_textual_app()
         async with app_instance.run_test() as pilot:
             await pilot.pause()
-            assert app_instance.query_one("#analyze-generate-change-review") is not None
+            assert app_instance.query_one("#output-generate-change-review") is not None
             assert app_instance.query_one("#settings-edit-review-output-dir") is not None
             assert app_instance.query_one("#settings-label-review-output-dir") is not None
 
@@ -140,10 +139,4 @@ def test_change_review_ui_controls_present() -> None:
 
 def test_no_cli_command_introduced_for_change_review() -> None:
     parser = app_module.build_cli_parser()
-    commands: set[str] = set()
-    for action in parser._actions:
-        choices = getattr(action, "choices", None)
-        if choices:
-            commands.update(str(choice) for choice in choices)
-    assert "change-review" not in commands
-    assert "change_review" not in commands
+    assert parser is None

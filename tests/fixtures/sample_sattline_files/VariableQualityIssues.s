@@ -1,7 +1,7 @@
 "Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
 "Original file date: ---"
 "Program date: 2026-06-19-12:00:00.000, name: VarQualityIssues"
-(* Covers NEVER_READ, NAMING_ROLE_MISMATCH.
+(* Covers NEVER_READ.
    Each kind has one triggering variable and one clean variable that does not trigger.
    Expected: strict syntax-check passes. *)
 

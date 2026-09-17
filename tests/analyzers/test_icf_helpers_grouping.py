@@ -109,32 +109,7 @@ def test_icf_helper_additional_parameter_record_skip_branches(monkeypatch):
     assert icf_module._validate_parameter_record_completeness(type_graph, [grouped_entry]) == []
 
 
-def test_icf_helper_remaining_format_and_summary_branches(monkeypatch):
-    class _HeaderGhost(str):
-        _stripped: str
-
-        def __new__(cls, rendered: str, stripped: str):
-            obj = super().__new__(cls, rendered)
-            obj._stripped = stripped
-            return obj
-
-        def strip(self) -> str:
-            return self._stripped
-
-    class _GhostText(str):
-        def splitlines(self) -> list[str]:
-            return [
-                _HeaderGhost("[Unit U]", "[Unit U]"),
-                _HeaderGhost("", "[Group G]"),
-                _HeaderGhost("", "[Operation O]"),
-            ]
-
-        def endswith(self, suffix) -> bool:  # type: ignore[override]
-            return True
-
-    formatted = icf_module.format_icf_text(_GhostText("ignored"))
-    assert formatted == "[Unit U]\n"
-
+def test_icf_helper_remaining_summary_branches(monkeypatch):
     identical = (("", "", "", "key", "value"),)
     assert icf_module._summarize_signature_diff(identical, identical) == "entry ordering differs"
     assert icf_module._extract_icf_sattline_ref("Program:   ") == (None, None)

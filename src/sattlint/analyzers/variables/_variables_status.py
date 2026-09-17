@@ -1,8 +1,7 @@
-"""Naming-role and procedure-status helpers for variable analysis."""
+"""Procedure-status helpers for variable analysis."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
@@ -12,25 +11,11 @@ from sattline_parser.models.expressions import VarRef
 from ...core.call_signatures import CallParameterSignature, resolve_call_signature
 from ...grammar import constants as const
 from ...models.usage import VariableUsage
-from ...reporting.variables_report import IssueKind
 from ...resolution.scope import ScopeContext
-from ._variable_issue_collection import iter_variables_for_datatype_field_analysis
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer
 
-
-@dataclass(frozen=True)
-class _NamingRolePatterns:
-    prefixes: tuple[str, ...] = ()
-    suffixes: tuple[str, ...] = ()
-
-
-_DEFAULT_NAMING_ROLE_PATTERNS: dict[str, _NamingRolePatterns] = {
-    "command": _NamingRolePatterns(suffixes=("cmd",)),
-    "status": _NamingRolePatterns(suffixes=("status",)),
-    "alarm": _NamingRolePatterns(suffixes=("alarm",)),
-}
 
 _IGNORABLE_OUTPUT_PARAMETERS: dict[str, frozenset[str]] = {
     # SearchRecComponent returns the boolean success signal directly.
@@ -38,63 +23,6 @@ _IGNORABLE_OUTPUT_PARAMETERS: dict[str, frozenset[str]] = {
     # commonly use it as a scratch sink when they only care whether a match exists.
     "searchreccomponent": frozenset({"foundrec"}),
 }
-
-
-def _normalize_role_pattern_values(raw: object) -> tuple[str, ...]:
-    if not isinstance(raw, list):
-        return ()
-    raw_values = cast(list[object], raw)
-    values: list[str] = []
-    seen: set[str] = set()
-    for item in raw_values:
-        if not isinstance(item, str):
-            continue
-        value = item.strip().casefold()
-        if not value or value in seen:
-            continue
-        seen.add(value)
-        values.append(value)
-    return tuple(values)
-
-
-def _as_string_object_mapping(raw: object) -> Mapping[str, object] | None:
-    if not isinstance(raw, Mapping):
-        return None
-    return cast(Mapping[str, object], raw)
-
-
-def _configured_naming_role_patterns(
-    config: Mapping[str, object] | None,
-) -> dict[str, _NamingRolePatterns]:
-    patterns = dict(_DEFAULT_NAMING_ROLE_PATTERNS)
-    if config is None:
-        return patterns
-
-    analysis = _as_string_object_mapping(config.get("analysis"))
-    if analysis is None:
-        return patterns
-
-    naming = _as_string_object_mapping(analysis.get("naming"))
-    if naming is None:
-        return patterns
-
-    raw_role_patterns = _as_string_object_mapping(naming.get("role_patterns"))
-    if raw_role_patterns is None:
-        return patterns
-
-    for role_name, defaults in _DEFAULT_NAMING_ROLE_PATTERNS.items():
-        raw_rule = _as_string_object_mapping(raw_role_patterns.get(role_name))
-        if raw_rule is None:
-            continue
-        prefixes = tuple(
-            dict.fromkeys((*defaults.prefixes, *_normalize_role_pattern_values(raw_rule.get("prefixes", []))))
-        )
-        suffixes = tuple(
-            dict.fromkeys((*defaults.suffixes, *_normalize_role_pattern_values(raw_rule.get("suffixes", []))))
-        )
-        patterns[role_name] = _NamingRolePatterns(prefixes=prefixes, suffixes=suffixes)
-
-    return patterns
 
 
 @dataclass(frozen=True)
@@ -268,49 +196,6 @@ def _has_ignorable_output_binding(self: VariablesAnalyzer, variable: Variable) -
     return id(variable) in self.ignorable_output_variable_ids
 
 
-def _naming_role_mismatch_reason(
-    self: VariablesAnalyzer,
-    variable: Variable,
-    usage: VariableUsage,
-    decl_path: list[str],
-) -> str | None:
-    name_key = variable.name.casefold()
-    if self.matches_naming_role(name_key, "command"):
-        if usage.read and usage.written and not self.has_output_effect(variable, decl_path):
-            return "Cmd-suffixed variable behaves like internal state instead of a one-way command signal."
-        return None
-    if self.matches_naming_role(name_key, "status"):
-        if usage.written and not self.has_procedure_status_binding(variable):
-            return "Status-suffixed variable is written directly in logic instead of being treated as observed status."
-        return None
-    if self.matches_naming_role(name_key, "alarm"):
-        if usage.non_ui_read:
-            return "Alarm-suffixed variable is consumed in non-UI logic and behaves like a control input."
-        return None
-    return None
-
-
-def _matches_naming_role(self: VariablesAnalyzer, name_key: str, role_name: str) -> bool:
-    patterns = self.naming_role_patterns.get(role_name, _NamingRolePatterns())
-    return any(name_key.startswith(prefix) for prefix in patterns.prefixes) or any(
-        name_key.endswith(suffix) for suffix in patterns.suffixes
-    )
-
-
-def _add_naming_role_mismatch_issues(self: VariablesAnalyzer) -> None:
-    for decl_path, variable, _decl_role, _root_owned_decl in iter_variables_for_datatype_field_analysis(self):
-        usage = self.get_usage(variable)
-        reason = self.naming_role_mismatch_reason(variable, usage, decl_path)
-        if reason is None:
-            continue
-        self.add_issue(
-            IssueKind.NAMING_ROLE_MISMATCH,
-            decl_path,
-            variable,
-            role=reason,
-        )
-
-
 class VariablesStatusMixin:
     def _bind_procedure_status(
         self: Any,
@@ -362,30 +247,12 @@ class VariablesStatusMixin:
     def _has_ignorable_output_binding(self: Any, variable: Variable) -> bool:
         return _has_ignorable_output_binding(self, variable)
 
-    def _naming_role_mismatch_reason(
-        self: Any,
-        variable: Variable,
-        usage: VariableUsage,
-        decl_path: list[str],
-    ) -> str | None:
-        return _naming_role_mismatch_reason(self, variable, usage, decl_path)
-
-    def _matches_naming_role(self: Any, name_key: str, role_name: str) -> bool:
-        return _matches_naming_role(self, name_key, role_name)
-
-    def _add_naming_role_mismatch_issues(self: Any) -> None:
-        _add_naming_role_mismatch_issues(self)
-
 
 ProcedureStatusBinding = _ProcedureStatusBinding
-add_naming_role_mismatch_issues = _add_naming_role_mismatch_issues
 bind_ignorable_output = _bind_ignorable_output
 bind_procedure_status = _bind_procedure_status
-configured_naming_role_patterns = _configured_naming_role_patterns
 has_ignorable_output_binding = _has_ignorable_output_binding
 has_procedure_status_binding = _has_procedure_status_binding
-matches_naming_role = _matches_naming_role
-naming_role_mismatch_reason = _naming_role_mismatch_reason
 procedure_status_issue = _procedure_status_issue
 propagate_procedure_status_bindings = _propagate_procedure_status_bindings
 record_ignorable_output_bindings = _record_ignorable_output_bindings
@@ -394,14 +261,10 @@ record_procedure_status_bindings = _record_procedure_status_bindings
 __all__ = [
     "ProcedureStatusBinding",
     "VariablesStatusMixin",
-    "add_naming_role_mismatch_issues",
     "bind_ignorable_output",
     "bind_procedure_status",
-    "configured_naming_role_patterns",
     "has_ignorable_output_binding",
     "has_procedure_status_binding",
-    "matches_naming_role",
-    "naming_role_mismatch_reason",
     "procedure_status_issue",
     "propagate_procedure_status_bindings",
     "record_ignorable_output_bindings",

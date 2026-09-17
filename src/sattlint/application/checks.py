@@ -8,8 +8,10 @@ layered refactor.
 
 from __future__ import annotations
 
+import io
 import os
-from collections.abc import Callable, Iterator, Set
+from collections.abc import Callable, Iterator
+from contextlib import redirect_stdout
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from time import perf_counter
@@ -17,18 +19,15 @@ from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
+from .. import config as config_module
 from ..analyzers import catalog as analysis_catalog_module
 from ..analyzers import dispatch as analysis_dispatch_module
 from ..analyzers.framework import (
     AnalysisSharedArtifacts,
-    Issue,
     SimpleReport,
     build_analysis_context,
 )
-from ..analyzers.icf.analyzer import analyze_icf_configuration
-from ..analyzers.rule_profiles import apply_rule_profile_to_report
 from ..analyzers.shared.instance_paths import rewrite_typedef_paths
-from ..analyzers.variables import IssueKind
 from ..cache import AnalysisReportCache, compute_analysis_report_cache_key, get_cache_dir
 from ..config.types import ConfigDict
 from ..core import profiling as profiling_module
@@ -37,7 +36,6 @@ from ..core.terminal import flush_stdout
 from ..models.project_graph import ProjectGraph
 from ..project import cache as report_cache_module
 from ..reporting.target_report import normalize_report_target_name
-from ..reporting.variables_report import VariablesReport
 from ..runs import (
     DEFAULT_RUN_HISTORY_LIMIT,
     RunAnalyzerRecord,
@@ -52,9 +50,6 @@ from . import project as project_application
 from .findings import AnalysisFinding, extract_report_findings
 
 LoadedProject = project_application.LoadedProject
-LIBRARY_SUPPRESSED_ANALYZER_KEYS = frozenset({"picture-display-paths"})
-ICF_ANALYZER_KEY = "icf"
-ICF_TARGET_NAME = "ICF configuration"
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,7 +63,6 @@ class ChecksAnalyzerResult:
     findings: tuple[AnalysisFinding, ...] = ()
     duration_ms: float | None = None
     phase_timings_ms: tuple[dict[str, object], ...] = ()
-    selected_issue_kinds: tuple[str, ...] | None = None
     skip_reason: str | None = None
 
 
@@ -89,39 +83,7 @@ class ChecksRunResult:
     output_lines: tuple[str, ...]
     targets: tuple[ChecksTargetResult, ...] = ()
     selected_analyzers: tuple[str, ...] = ()
-    selected_issue_kinds: tuple[str, ...] | None = None
     cancelled: bool = False
-
-
-def _normalized_issue_kind_value(raw_kind: object) -> str | None:
-    if isinstance(raw_kind, IssueKind):
-        return raw_kind.value
-    value = getattr(raw_kind, "value", raw_kind)
-    text = str(value).strip() if value is not None else ""
-    return text or None
-
-
-def normalize_selected_issue_kind_values(selected_issue_kinds: Set[str] | None) -> frozenset[str] | None:
-    if selected_issue_kinds is None:
-        return None
-    normalized = {
-        issue_kind
-        for raw_kind in selected_issue_kinds
-        if (issue_kind := _normalized_issue_kind_value(raw_kind)) is not None
-    }
-    return frozenset(normalized)
-
-
-def format_selected_issue_kind_values(selected_issue_kinds: frozenset[str] | None) -> str | None:
-    if not selected_issue_kinds:
-        return None
-    return ", ".join(sorted(selected_issue_kinds))
-
-
-def selected_issue_kind_tuple(selected_issue_kinds: frozenset[str] | None) -> tuple[str, ...] | None:
-    if not selected_issue_kinds:
-        return None
-    return tuple(sorted(selected_issue_kinds))
 
 
 def _issue_count_for_report(report: object) -> int | None:
@@ -171,7 +133,6 @@ def _run_analyzer_record(result: ChecksAnalyzerResult) -> RunAnalyzerRecord:
         findings=result.findings,
         duration_ms=result.duration_ms,
         phase_timings_ms=result.phase_timings_ms,
-        selected_issue_kinds=result.selected_issue_kinds,
         skip_reason=result.skip_reason,
     )
 
@@ -194,7 +155,6 @@ def build_run_record(result: ChecksRunResult, cfg: ConfigDict, *, started_at: st
         finished_at=_utc_now_iso(),
         project_tag=_project_tag(cfg),
         selected_analyzers=result.selected_analyzers,
-        selected_issue_kinds=result.selected_issue_kinds,
         targets=tuple(_run_target_record(target) for target in result.targets),
         output_lines=result.output_lines,
     )
@@ -207,28 +167,6 @@ def _persist_run_result(result: ChecksRunResult, cfg: ConfigDict, *, started_at:
     record = build_run_record(result, cfg, started_at=started_at)
     save_run(record, runs_dir=runs_dir)
     prune_runs(runs_dir, limit=_run_history_limit(cfg))
-
-
-def _filter_report_for_selected_issue_kinds(
-    report: object,
-    selected_issue_kinds: frozenset[str] | None,
-) -> object:
-    if not selected_issue_kinds or isinstance(report, VariablesReport):
-        return report
-
-    issues = getattr(report, "issues", None)
-    if not isinstance(issues, list):
-        return report
-
-    typed_issues = cast(list[object], issues)
-    filtered_issues: list[Issue] = [
-        issue
-        for issue in typed_issues
-        if isinstance(issue, Issue)
-        and _normalized_issue_kind_value(getattr(issue, "kind", None)) in selected_issue_kinds
-    ]
-    report_name = str(getattr(report, "name", getattr(report, "basepicture_name", "Analysis")) or "Analysis")
-    return SimpleReport(name=report_name, issues=filtered_issues)
 
 
 def _get_enabled_analyzers() -> list[Any]:
@@ -249,8 +187,7 @@ def _shared_artifact_profile_text(target_name: str, shared_artifacts: AnalysisSh
         "Analyzer reuse profile for "
         f"{target_name}: shared-artifact-holders={counters.shared_artifact_holders_created}, "
         f"variable-foundation-builds={counters.variable_foundation_builds}, "
-        f"semantic-precomputed-reports={counters.semantic_precomputed_reports_used}, "
-        f"semantic-reruns={counters.semantic_analyzer_reruns}, "
+        f"variable-root-traversals={counters.variable_root_traversals}, "
         f"local-env-builds={counters.local_env_builds}"
     )
 
@@ -259,33 +196,34 @@ def _iter_loaded_projects(cfg: ConfigDict) -> Iterator[LoadedProject]:
     return project_application.iter_loaded_projects(cfg)
 
 
-def _run_whole_run_analyzer(
+def _run_per_run_analyzer(
     spec: Any,
     cfg: ConfigDict,
-    selected_issue_kinds: frozenset[str] | None,
 ) -> ChecksAnalyzerResult | None:
-    if getattr(spec, "key", None) != ICF_ANALYZER_KEY:
-        return None
     started_at = perf_counter()
     try:
-        report = analyze_icf_configuration(None, config=cfg, debug=debug_enabled(cfg))
-    except Exception as exc:  # noqa: BLE001 - a whole-run failure should not abort the run
+        context = build_analysis_context(
+            cast(BasePicture, None),
+            debug=debug_enabled(cfg),
+            config=cfg,
+            create_shared_artifacts=True,
+        )
+        report = analysis_dispatch_module.run_registry_analyzer(spec, context)
+    except Exception as exc:  # noqa: BLE001 - a per-run failure should not abort the run
         return ChecksAnalyzerResult(
-            key=ICF_ANALYZER_KEY,
-            name=str(getattr(spec, "name", ICF_ANALYZER_KEY)),
+            key=spec.key,
+            name=str(getattr(spec, "name", spec.key)),
             status="failed",
-            summary=f"ICF validation failed: {exc}",
+            summary=f"{getattr(spec, 'name', spec.key)} failed: {exc}",
             issue_count=0,
             duration_ms=round((perf_counter() - started_at) * 1000, 3),
         )
-    report = apply_rule_profile_to_report(spec.key, report, cfg)
-    report = _filter_report_for_selected_issue_kinds(report, selected_issue_kinds)
     typed_report = cast(SimpleReport, report)
     summary_text = typed_report.summary()
-    findings = extract_report_findings(typed_report, default_name=ICF_TARGET_NAME)
+    findings = extract_report_findings(typed_report, default_name=str(getattr(spec, "name", spec.key)))
     return ChecksAnalyzerResult(
-        key=ICF_ANALYZER_KEY,
-        name=str(getattr(spec, "name", ICF_ANALYZER_KEY)),
+        key=spec.key,
+        name=str(getattr(spec, "name", spec.key)),
         status="completed",
         summary=summary_text,
         report_kind=type(report).__name__,
@@ -305,16 +243,30 @@ def _rewrite_typedef_issue_paths(report: object, base_picture: BasePicture, grap
         rewrite_typedef_paths(cast(list[object], issues), base_picture, graph)
 
 
+def _run_self_check_preflight(
+    cfg: ConfigDict,
+    *,
+    self_check_fn: Callable[[ConfigDict], bool] | None,
+) -> tuple[bool, list[str]]:
+    if self_check_fn is None:
+        return True, []
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        ok = self_check_fn(cfg)
+    lines = [line for line in buffer.getvalue().splitlines() if line.strip()]
+    return ok, lines
+
+
 def collect_run_checks_result(  # noqa: PLR0915
     cfg: ConfigDict,
     selected_keys: list[str] | None,
-    selected_issue_kinds: Set[str] | None = None,
     *,
     use_cache: bool = True,
     persist_run: bool = False,
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
     get_enabled_analyzers_fn: Callable[[], list[Any]] | None = None,
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
+    self_check_fn: Callable[[ConfigDict], bool] | None = None,
 ) -> ChecksRunResult:
     if iter_loaded_projects_fn is None:
         iter_loaded_projects_fn = _iter_loaded_projects
@@ -336,20 +288,34 @@ def collect_run_checks_result(  # noqa: PLR0915
             get_enabled_analyzers_fn=get_enabled_analyzers_fn,
         )
     )
-    normalized_selected_issue_kinds = normalize_selected_issue_kind_values(selected_issue_kinds)
     selected_analyzer_keys = tuple(spec.key for spec in analyzers)
-    selected_issue_kind_tuple_result = selected_issue_kind_tuple(normalized_selected_issue_kinds)
 
     if not analyzers:
         emit_line("❌ No matching checks found")
         return ChecksRunResult(
             output_lines=tuple(output_lines),
             selected_analyzers=selected_analyzer_keys,
-            selected_issue_kinds=selected_issue_kind_tuple_result,
         )
 
-    batch_analyzers = [spec for spec in analyzers if getattr(spec, "key", None) != ICF_ANALYZER_KEY]
-    whole_run_analyzers = [spec for spec in analyzers if getattr(spec, "key", None) == ICF_ANALYZER_KEY]
+    per_target_analyzers = [spec for spec in analyzers if getattr(spec, "scope", "per-target") == "per-target"]
+    per_run_analyzers = [spec for spec in analyzers if getattr(spec, "scope", "per-target") == "per-run"]
+
+    if self_check_fn is None:
+        self_check_fn = config_module.self_check
+    self_check_ok, self_check_lines = _run_self_check_preflight(cfg, self_check_fn=self_check_fn)
+    if not self_check_ok:
+        output_lines.extend(self_check_lines)
+        output_lines.extend(
+            [
+                "❌ Self-check failed. Analysis aborted before the checks pipeline started.",
+                "Fix the reported issues and rerun.",
+            ]
+        )
+        flush_stdout()
+        return ChecksRunResult(
+            output_lines=tuple(output_lines),
+            selected_analyzers=selected_analyzer_keys,
+        )
 
     emit_line("\n--- Running checks ---")
     flush_stdout()
@@ -380,35 +346,14 @@ def collect_run_checks_result(  # noqa: PLR0915
                 graph=graph,
                 debug=debug_enabled(cfg),
                 target_is_library=is_library,
-                selected_issue_kinds=normalized_selected_issue_kinds,
                 config=cfg,
                 create_shared_artifacts=True,
             )
             emit_line(f"\n=== Target: {target_name} ===")
             flush_stdout()
-            for spec in batch_analyzers:
-                if is_library and spec.key in LIBRARY_SUPPRESSED_ANALYZER_KEYS:
-                    target_analyzers.append(
-                        ChecksAnalyzerResult(
-                            key=spec.key,
-                            name=str(spec.name),
-                            status="skipped",
-                            skip_reason="suppressed for library targets",
-                        )
-                    )
-                    continue
+            for spec in per_target_analyzers:
                 emit_line(f"\n=== {spec.name} ({spec.key}) ===")
                 flush_stdout()
-                analyzer_selected_issue_kinds = (
-                    selected_issue_kind_tuple_result
-                    if spec.key == "variables" or getattr(spec, "supports_selected_issue_kinds", False)
-                    else None
-                )
-                if spec.key == "variables" or getattr(spec, "supports_selected_issue_kinds", False):
-                    selected_issue_kind_values = format_selected_issue_kind_values(normalized_selected_issue_kinds)
-                    if selected_issue_kind_values is not None:
-                        emit_line(f"Running {spec.key} analyzer for issue kinds: {selected_issue_kind_values}")
-                        flush_stdout()
                 analyzer_started_at = perf_counter()
                 try:
                     report = output_module.run_with_live_status(
@@ -433,7 +378,6 @@ def collect_run_checks_result(  # noqa: PLR0915
                             name=str(spec.name),
                             status="cancelled",
                             duration_ms=analyzer_timings_ms[spec.key],
-                            selected_issue_kinds=analyzer_selected_issue_kinds,
                         )
                     )
                     profiler.emit(
@@ -459,18 +403,13 @@ def collect_run_checks_result(  # noqa: PLR0915
                         output_lines=tuple(output_lines),
                         targets=tuple(target_results),
                         selected_analyzers=selected_analyzer_keys,
-                        selected_issue_kinds=selected_issue_kind_tuple_result,
                         cancelled=True,
                     )
                 analyzer_timings_ms[spec.key] = round((perf_counter() - analyzer_started_at) * 1000, 3)
                 _rewrite_typedef_issue_paths(report, context.base_picture, graph)
-                if context.shared_artifacts is not None:
-                    context.shared_artifacts.derived_reports[spec.key] = report
                 phase_timings_ms = profiling_module.normalize_phase_timings_ms(getattr(report, "phase_timings", None))
                 if phase_timings_ms:
                     analyzer_phase_timings_ms[spec.key] = phase_timings_ms
-                report = apply_rule_profile_to_report(spec.key, report, cfg)
-                report = _filter_report_for_selected_issue_kinds(report, normalized_selected_issue_kinds)
                 report = normalize_report_target_name(report, target_name)
                 summary_text = report.summary()
                 findings = extract_report_findings(report, default_name=target_name)
@@ -486,7 +425,6 @@ def collect_run_checks_result(  # noqa: PLR0915
                         findings=findings,
                         duration_ms=analyzer_timings_ms[spec.key],
                         phase_timings_ms=tuple(analyzer_phase_timings_ms.get(spec.key, [])),
-                        selected_issue_kinds=analyzer_selected_issue_kinds,
                     )
                 )
             analyzer_bottleneck = profiling_module.bottleneck_from_named_timings(analyzer_timings_ms, kind="analyzer")
@@ -544,18 +482,18 @@ def collect_run_checks_result(  # noqa: PLR0915
                     shared_artifact_profile=shared_artifact_profile,
                 )
             )
-        for whole_run_spec in whole_run_analyzers:
-            whole_run_result = _run_whole_run_analyzer(whole_run_spec, cfg, normalized_selected_issue_kinds)
-            if whole_run_result is None:
+        for per_run_spec in per_run_analyzers:
+            per_run_result = _run_per_run_analyzer(per_run_spec, cfg)
+            if per_run_result is None:
                 continue
-            emit_line(f"\n=== {whole_run_result.name} ({whole_run_result.key}) ===")
-            if whole_run_result.summary:
-                emit_line(whole_run_result.summary)
+            emit_line(f"\n=== {per_run_result.name} ({per_run_result.key}) ===")
+            if per_run_result.summary:
+                emit_line(per_run_result.summary)
             target_results.append(
                 ChecksTargetResult(
-                    target_name=ICF_TARGET_NAME,
+                    target_name=str(getattr(per_run_spec, "name", per_run_spec.key)),
                     is_library=False,
-                    analyzers=(whole_run_result,),
+                    analyzers=(per_run_result,),
                 )
             )
     except KeyboardInterrupt:
@@ -563,7 +501,6 @@ def collect_run_checks_result(  # noqa: PLR0915
             output_lines=tuple(output_lines),
             targets=tuple(target_results),
             selected_analyzers=selected_analyzer_keys,
-            selected_issue_kinds=selected_issue_kind_tuple_result,
             cancelled=True,
         )
 
@@ -571,7 +508,6 @@ def collect_run_checks_result(  # noqa: PLR0915
         output_lines=tuple(output_lines),
         targets=tuple(target_results),
         selected_analyzers=selected_analyzer_keys,
-        selected_issue_kinds=selected_issue_kind_tuple_result,
     )
     if persist_run:
         _persist_run_result(result, cfg, started_at=run_started_at)
@@ -581,23 +517,23 @@ def collect_run_checks_result(  # noqa: PLR0915
 def run_checks_result(
     cfg: ConfigDict,
     selected_keys: list[str] | None,
-    selected_issue_kinds: Set[str] | None = None,
     *,
     use_cache: bool = True,
     persist_run: bool = True,
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
     get_enabled_analyzers_fn: Callable[[], list[Any]] | None = None,
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
+    self_check_fn: Callable[[ConfigDict], bool] | None = None,
 ) -> ChecksRunResult:
     result = collect_run_checks_result(
         cfg,
         selected_keys,
-        selected_issue_kinds,
         use_cache=use_cache,
         persist_run=persist_run,
         iter_loaded_projects_fn=iter_loaded_projects_fn,
         get_enabled_analyzers_fn=get_enabled_analyzers_fn,
         target_is_library_fn=target_is_library_fn,
+        self_check_fn=self_check_fn,
     )
     for line in result.output_lines:
         output_module.emit_output(line)
@@ -607,30 +543,26 @@ def run_checks_result(
 def run_checks(
     cfg: ConfigDict,
     selected_keys: list[str] | None,
-    selected_issue_kinds: Set[str] | None = None,
     *,
     use_cache: bool = True,
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
     get_enabled_analyzers_fn: Callable[[], list[Any]] | None = None,
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
     pause_fn: Callable[[], None] | None = None,
+    self_check_fn: Callable[[ConfigDict], bool] | None = None,
 ) -> None:
     result = run_checks_result(
         cfg,
         selected_keys,
-        selected_issue_kinds,
         use_cache=use_cache,
         persist_run=True,
         iter_loaded_projects_fn=iter_loaded_projects_fn,
         get_enabled_analyzers_fn=get_enabled_analyzers_fn,
         target_is_library_fn=target_is_library_fn,
+        self_check_fn=self_check_fn,
     )
     if result.cancelled:
         output_module.handle_analysis_cancellation(pause_fn=pause_fn)
         return
     if pause_fn is not None:
         pause_fn()
-
-
-def run_checks_menu(cfg: ConfigDict, *, run_checks_fn: Callable[[ConfigDict, list[str] | None], None]) -> None:
-    run_checks_fn(cfg, None)

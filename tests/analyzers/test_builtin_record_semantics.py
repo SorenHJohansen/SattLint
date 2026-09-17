@@ -16,7 +16,7 @@ from sattline_parser.models.ast_model import (
 from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt, VarRef
 
 from sattlint.analyzers.variables import VariablesAnalyzer
-from sattlint.reporting.variables_report import IssueKind
+from sattlint.reporting.variables_report import DATATYPE_FIELD_ANALYSIS_KINDS, IssueKind
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -218,7 +218,7 @@ def test_partial_record_usage_reports_unused_leaf_fields():
         moduledef=None,
     )
 
-    analyzer = VariablesAnalyzer(bp)
+    analyzer = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS))
     analyzer.run()
 
     unused_fields = {
@@ -278,7 +278,7 @@ def test_whole_record_access_does_not_report_unused_leaf_fields():
         moduledef=None,
     )
 
-    analyzer = VariablesAnalyzer(bp)
+    analyzer = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS))
     analyzer.run()
 
     assert not any(
@@ -451,58 +451,3 @@ def test_array_builtins_bind_record_element_contracts_and_mark_whole_record_acce
     assert array_usage.written is True
     assert {key.casefold() for key in seed_usage.field_reads or {}} >= {"a", "b"}
     assert {key.casefold() for key in out_usage.field_writes or {}} >= {"a", "b"}
-
-
-def test_getarray_reports_dynamic_array_contract_mismatch_for_incompatible_target() -> None:
-    array_var = Variable(name="Arr", datatype="ArrayObject")
-    seed = Variable(name="Seed", datatype=Simple_DataType.INTEGER)
-    out = Variable(name="Out", datatype=Simple_DataType.BOOLEAN)
-    status = Variable(name="Status", datatype=Simple_DataType.INTEGER)
-
-    module = SingleModule(
-        header=_hdr("M1"),
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[array_var, seed, out, status],
-        submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                _eq(
-                    [
-                        FuncCallStmt(
-                            call=FuncCall(
-                                name="CreateArray",
-                                args=(_varref("Arr"), 1, 2, _varref("Seed"), _varref("Status")),
-                            )
-                        ),
-                        FuncCallStmt(
-                            call=FuncCall(
-                                name="GetArray",
-                                args=(_varref("Arr"), 1, _varref("Out"), _varref("Status")),
-                            )
-                        ),
-                    ]
-                )
-            ]
-        ),
-        parametermappings=[],
-    )
-
-    bp = BasePicture(
-        header=_hdr("Root"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[module],
-        modulecode=None,
-        moduledef=None,
-    )
-
-    analyzer = VariablesAnalyzer(bp)
-    analyzer.run()
-
-    issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.CONTRACT_MISMATCH]
-
-    assert len(issues) == 1
-    assert issues[0].role is not None
-    assert "dynamic array element mismatch" in issues[0].role

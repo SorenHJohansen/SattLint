@@ -1,14 +1,14 @@
 """Internal semantic snapshot model types and query helpers.
 
 The model types (``SymbolDefinition``, ``SymbolReference``,
-``ReferenceOccurrence``, ``CompletionItem``, ``SemanticAnalysisArtifacts``, and
-the frozen ``SemanticSnapshot`` base) and the query facade live together here:
-they form one cohesive snapshot model with a single import boundary.
+``ReferenceOccurrence``, and the frozen ``SemanticSnapshot`` base) and the
+query facade live together here: they form one cohesive snapshot model with a
+single import boundary.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -19,31 +19,16 @@ from ..models._variable_issues import VariableIssue
 from ..models.project_graph import ProjectGraph
 from ..resolution import CanonicalPathKey, CanonicalSymbolTable, TypeGraph
 from ..resolution.access_graph import AccessEvent
-from ..resolution.common import resolve_module_by_strict_path
 from ._semantic_helpers import (
     cf,
-    child_module_items,
     identifier_contains_column,
-    path_startswith,
     source_file_key,
 )
 from .call_signatures import CallSignatureOccurrence
-from .diagnostics import DroppedDiagnosticIssue, SemanticDiagnostic
-from .safety_paths import (
-    DEFAULT_SAFETY_SIGNAL_KEYWORDS,
-    SafetyPathTrace,
-    SymbolAccess,
-    build_safety_path_traces,
-    build_symbol_accesses,
-)
-from .taint_paths import TaintPathTrace, build_taint_path_traces
 from .workspace_discovery import WorkspaceSourceDiscovery
 
 __all__ = [
-    "CompletionItem",
     "ReferenceOccurrence",
-    "SemanticAnalysisArtifacts",
-    "SemanticAnalysisProvider",
     "SemanticSnapshot",
     "SymbolDefinition",
     "SymbolReference",
@@ -121,7 +106,6 @@ ReferencesByDefinitionKey = dict[DefinitionKey, tuple[SymbolReference, ...]]
 AccessesByDefinitionKey = dict[DefinitionKey, tuple[AccessEvent, ...]]
 EffectFlowEdges = dict[DefinitionKey, tuple[DefinitionKey, ...]]
 EffectFlowDisplayNames = dict[DefinitionKey, str]
-SemanticDiagnosticsByFile = dict[str, tuple[SemanticDiagnostic, ...]]
 
 
 def _accesses_by_definition_key_factory() -> AccessesByDefinitionKey:
@@ -148,44 +132,8 @@ def _references_by_file_factory() -> ReferencesByFile:
     return {}
 
 
-def _semantic_diagnostics_by_file_factory() -> SemanticDiagnosticsByFile:
-    return {}
-
-
-def _semantic_diagnostic_drops_factory() -> tuple[DroppedDiagnosticIssue, ...]:
-    return ()
-
-
 def _symbol_definition_map_factory() -> dict[DefinitionKey, SymbolDefinition]:
     return {}
-
-
-@dataclass(frozen=True, slots=True)
-class CompletionItem:
-    label: str
-    kind: str
-    detail: str | None = None
-    declaration_module_path: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class SemanticAnalysisArtifacts:
-    diagnostics: tuple[VariableIssue, ...] = ()
-    accesses_by_definition_key: AccessesByDefinitionKey = field(default_factory=_accesses_by_definition_key_factory)
-    effect_flow_edges: EffectFlowEdges = field(default_factory=_effect_flow_edges_factory)
-    effect_flow_display_names: EffectFlowDisplayNames = field(default_factory=_effect_flow_display_names_factory)
-    semantic_diagnostics_by_file: SemanticDiagnosticsByFile = field(
-        default_factory=_semantic_diagnostics_by_file_factory
-    )
-    semantic_diagnostic_drops: tuple[DroppedDiagnosticIssue, ...] = field(
-        default_factory=_semantic_diagnostic_drops_factory
-    )
-
-
-SemanticAnalysisProvider = Callable[
-    [BasePicture, ProjectGraph, bool, bool, dict[DefinitionKey, SymbolDefinition]],
-    SemanticAnalysisArtifacts,
-]
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,16 +187,6 @@ class SemanticSnapshot:
     )
     _effect_flow_display_names: EffectFlowDisplayNames = field(
         default_factory=_effect_flow_display_names_factory,
-        repr=False,
-        compare=False,
-    )
-    _semantic_diagnostics_by_file: SemanticDiagnosticsByFile = field(
-        default_factory=_semantic_diagnostics_by_file_factory,
-        repr=False,
-        compare=False,
-    )
-    _semantic_diagnostic_drops: tuple[DroppedDiagnosticIssue, ...] = field(
-        default_factory=_semantic_diagnostic_drops_factory,
         repr=False,
         compare=False,
     )
@@ -340,25 +278,6 @@ class SemanticSnapshot:
             return references[:limit]
         return references
 
-    def find_accesses_to(
-        self,
-        query: str | SymbolDefinition,
-        *,
-        limit: int | None = None,
-    ) -> list[SymbolAccess]:
-        if isinstance(query, SymbolDefinition):
-            definition_key = tuple(cf(segment) for segment in query.canonical_path.split("."))
-        else:
-            definitions = self.find_definitions(query, limit=1)
-            if not definitions:
-                return []
-            definition_key = tuple(cf(segment) for segment in definitions[0].canonical_path.split("."))
-
-        accesses = list(build_symbol_accesses(self._accesses_by_definition_key.get(definition_key, ())))
-        if limit is not None:
-            return accesses[:limit]
-        return accesses
-
     def iter_access_events_by_definition(
         self,
         *,
@@ -369,34 +288,6 @@ class SemanticSnapshot:
                 continue
             definition_key = tuple(cf(segment) for segment in definition.canonical_path.split("."))
             yield definition, self._accesses_by_definition_key.get(definition_key, ())
-
-    def find_safety_paths(
-        self,
-        query: str = "",
-        *,
-        limit: int | None = None,
-        keywords: tuple[str, ...] = DEFAULT_SAFETY_SIGNAL_KEYWORDS,
-    ) -> list[SafetyPathTrace]:
-        return build_safety_path_traces(
-            self._accesses_by_definition_key,
-            query=query,
-            limit=limit,
-            keywords=keywords,
-        )
-
-    def find_taint_paths(
-        self,
-        query: str = "",
-        *,
-        limit: int | None = None,
-    ) -> list[TaintPathTrace]:
-        return build_taint_path_traces(
-            self._effect_flow_edges,
-            self._accesses_by_definition_key,
-            query=query,
-            limit=limit,
-            display_names_by_key=self._effect_flow_display_names,
-        )
 
     def find_references_at(
         self,
@@ -430,36 +321,6 @@ class SemanticSnapshot:
                     return matches
         return matches
 
-    def semantic_diagnostics_for_path(
-        self,
-        source_path: Path | str,
-    ) -> tuple[SemanticDiagnostic, ...]:
-        path = Path(str(source_path))
-        file_key = path.name.casefold()
-        candidates = self._semantic_diagnostics_by_file.get(file_key, ())
-        if not candidates:
-            return ()
-
-        library_key = path.parent.name.casefold()
-        exact_matches = tuple(
-            candidate
-            for candidate in candidates
-            if candidate.source_library is not None and candidate.source_library.casefold() == library_key
-        )
-        if exact_matches:
-            return exact_matches
-
-        unscoped = tuple(candidate for candidate in candidates if candidate.source_library is None)
-        if unscoped:
-            return unscoped
-
-        if len(candidates) == 1:
-            return candidates
-        return ()
-
-    def semantic_diagnostic_drops(self) -> tuple[DroppedDiagnosticIssue, ...]:
-        return self._semantic_diagnostic_drops
-
     def to_snapshot_dict(self) -> dict[str, Any]:
         """Serialize symbol resolution state for invariant verification."""
         return {
@@ -487,18 +348,6 @@ class SemanticSnapshot:
                     "source_library": c.source_library,
                 }
                 for c in self.call_signatures
-            ],
-            "semantic_diagnostic_drop_count": len(self._semantic_diagnostic_drops),
-            "semantic_diagnostic_drops": [
-                {
-                    "analyzer_key": drop.analyzer_key,
-                    "reason": drop.reason,
-                    "module_path": list(drop.module_path),
-                    "variable_name": drop.variable_name,
-                    "field_path": drop.field_path,
-                    "message": drop.message,
-                }
-                for drop in self._semantic_diagnostic_drops
             ],
         }
 
@@ -532,72 +381,3 @@ class SemanticSnapshot:
         if limit is not None:
             return matches[:limit]
         return matches
-
-    def complete(
-        self,
-        prefix: str = "",
-        *,
-        module_path: str | None = None,
-        limit: int | None = None,
-    ) -> list[CompletionItem]:
-        prefix_cf = prefix.casefold()
-        if module_path:
-            try:
-                resolved = resolve_module_by_strict_path(
-                    self.base_picture,
-                    module_path,
-                    moduletype_index=self._moduletype_index,
-                )
-                visible_path = tuple(resolved.path)
-                current_node: Any | None = resolved.node
-            except ValueError:
-                visible_path = tuple(segment for segment in module_path.split(".") if segment)
-                if visible_path and cf(visible_path[0]) == cf(self.base_picture.header.name):
-                    visible_path = visible_path[1:]
-                current_node = None
-        else:
-            visible_path = (self.base_picture.header.name,)
-            current_node = self.base_picture
-
-        items_by_label: dict[str, CompletionItem] = {}
-
-        for definition in self.definitions:
-            if definition.field_path is not None:
-                continue
-            if not path_startswith(visible_path, definition.declaration_module_path):
-                continue
-            if prefix_cf and not definition.canonical_path.split(".")[-1].casefold().startswith(prefix_cf):
-                continue
-
-            label = definition.canonical_path.split(".")[-1]
-            existing = items_by_label.get(label.casefold())
-            current = CompletionItem(
-                label=label,
-                kind=definition.kind,
-                detail=definition.datatype,
-                declaration_module_path=definition.declaration_module_path,
-            )
-            if existing is None or len(current.declaration_module_path) > len(existing.declaration_module_path):
-                items_by_label[label.casefold()] = current
-
-        if current_node is not None:
-            for child_name, child_kind in child_module_items(
-                self.base_picture,
-                current_node,
-                self._moduletype_index,
-                self.project_graph.unavailable_libraries,
-            ):
-                if prefix_cf and not child_name.casefold().startswith(prefix_cf):
-                    continue
-                items_by_label.setdefault(
-                    child_name.casefold(),
-                    CompletionItem(label=child_name, kind=child_kind, detail=None),
-                )
-
-        items = sorted(
-            items_by_label.values(),
-            key=lambda item: (item.label.casefold(), item.kind),
-        )
-        if limit is not None:
-            return items[:limit]
-        return items

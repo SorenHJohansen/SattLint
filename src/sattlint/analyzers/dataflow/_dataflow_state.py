@@ -18,7 +18,17 @@ from ..shared.ast_node_helpers import (
 from ..shared.ast_node_helpers import (
     string_key_dict as _string_key_dict,
 )
-from ._dataflow_common import INITIALIZED, UNKNOWN, PendingWrite, ResolvedRef, ScalarValue, StateMap
+from ._dataflow_common import (
+    CONSTANT_TRACE_PREFIX,
+    INITIALIZED,
+    UNKNOWN,
+    ConstantTrace,
+    PendingWrite,
+    ResolvedRef,
+    ScalarValue,
+    StateMap,
+    is_scalar_value,
+)
 
 
 class _DataflowStateMixin:
@@ -85,7 +95,6 @@ class _DataflowStateMixin:
         treat_as_root_overwrite: bool = False,
     ) -> StateMap:
         if resolved.state_access == "old":
-            self._report_invalid_old_write(resolved, module_path, operation="assignment target")
             return state
 
         next_state = state.copy()
@@ -110,7 +119,38 @@ class _DataflowStateMixin:
             display_name=resolved.base_display_name,
             sites=(self._site_str(),),
         )
+        if is_scalar_value(value):
+            self._track_constant_write(resolved, value, next_state, module_path)
+        else:
+            next_state.pop(self._constant_trace_key(resolved.symbol_root_key), None)
         return next_state
+
+    def _constant_trace_key(self: Any, root_key: tuple[str, ...]) -> tuple[str, ...]:
+        return CONSTANT_TRACE_PREFIX + root_key
+
+    def _is_constant_trace_key(self: Any, key: tuple[str, ...]) -> bool:
+        return key[: len(CONSTANT_TRACE_PREFIX)] == CONSTANT_TRACE_PREFIX
+
+    def _track_constant_write(
+        self: Any,
+        resolved: ResolvedRef,
+        value: ScalarValue,
+        state: StateMap,
+        module_path: list[str],
+    ) -> None:
+        if resolved.state_access == "old":
+            return
+        trace_key = self._constant_trace_key(resolved.symbol_root_key)
+        trace = state.get(trace_key)
+        if isinstance(trace, ConstantTrace) and trace.read_since_write and trace.last_value != value:
+            self._report_conflicting_constants(resolved, value, trace.last_value, module_path)
+        state[trace_key] = ConstantTrace(last_value=value, read_since_write=False)
+
+    def _mark_constant_trace_read(self: Any, state: StateMap, root_key: tuple[str, ...]) -> None:
+        trace_key = self._constant_trace_key(root_key)
+        trace = state.get(trace_key)
+        if isinstance(trace, ConstantTrace):
+            state[trace_key] = ConstantTrace(last_value=trace.last_value, read_since_write=True)
 
     def _has_pending_write_for_symbol(
         self: Any,
@@ -192,7 +232,9 @@ class _DataflowStateMixin:
         merged: StateMap = {}
         value_keys: set[tuple[str, ...]] = set()
         for state in states:
-            value_keys.update(key for key in state if not self._is_pending_state_key(key))
+            value_keys.update(
+                key for key in state if not self._is_pending_state_key(key) and not self._is_constant_trace_key(key)
+            )
         pending_keys_per_state: list[set[tuple[str, ...]]] = [
             {key for key in state if self._is_pending_state_key(key)} for state in states
         ]
@@ -206,6 +248,22 @@ class _DataflowStateMixin:
                 continue
             if all(value is not UNKNOWN for value in values):
                 merged[key] = INITIALIZED
+
+        constant_trace_keys_per_state: list[set[tuple[str, ...]]] = [
+            {key for key in state if self._is_constant_trace_key(key)} for state in states
+        ]
+        common_constant_trace_keys: set[tuple[str, ...]] = (
+            set(constant_trace_keys_per_state[0]) if constant_trace_keys_per_state else set()
+        )
+        for trace_keys in constant_trace_keys_per_state[1:]:
+            common_constant_trace_keys.intersection_update(trace_keys)
+        for trace_key in common_constant_trace_keys:
+            trace_values = [state.get(trace_key) for state in states]
+            if not all(isinstance(value, ConstantTrace) for value in trace_values):
+                continue
+            first_trace = cast(ConstantTrace, trace_values[0])
+            if all(value == first_trace for value in trace_values[1:]):
+                merged[trace_key] = first_trace
 
         common_pending_keys: set[tuple[str, ...]] = set(pending_keys_per_state[0]) if pending_keys_per_state else set()
         for pending_keys in pending_keys_per_state[1:]:

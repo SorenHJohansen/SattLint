@@ -14,6 +14,7 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
+from ...config.analysis import fan_in_out_threshold
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ...resolution import AccessEvent, AccessKind
 from ...resolution.common import resolve_moduletype_def_strict
@@ -36,8 +37,6 @@ __all__ = [
     "_collect_issues_from_module",
     "iter_variables_for_datatype_field_analysis",
 ]
-
-_HIGH_FAN_IN_OUT_THRESHOLD = 3
 
 
 def _empty_access_by_module() -> dict[tuple[str, ...], set[AccessKind]]:
@@ -463,6 +462,7 @@ def _add_high_fan_in_out_issues(self: VariablesAnalyzer) -> None:
         self.trace("high-fan-in-out-scan", added_issue_count=0)
         return
 
+    threshold = fan_in_out_threshold(getattr(self, "_config", None))
     added_issue_count = 0
     summaries = _build_root_variable_access_summaries(self)
 
@@ -471,20 +471,17 @@ def _add_high_fan_in_out_issues(self: VariablesAnalyzer) -> None:
         if summary is None:
             continue
 
-        if (
-            len(summary.reader_modules) < _HIGH_FAN_IN_OUT_THRESHOLD
-            and len(summary.writer_modules) < _HIGH_FAN_IN_OUT_THRESHOLD
-        ):
+        if len(summary.reader_modules) < threshold and len(summary.writer_modules) < threshold:
             continue
 
         role_parts: list[str] = []
-        if len(summary.reader_modules) >= _HIGH_FAN_IN_OUT_THRESHOLD:
+        if len(summary.reader_modules) >= threshold:
             reader_labels = [
                 ".".join(summary.display_paths.get(module_key, module_key)[1:])
                 for module_key in sorted(summary.reader_modules)
             ]
             role_parts.append(f"high fan-in with {len(summary.reader_modules)} readers: " + ", ".join(reader_labels))
-        if len(summary.writer_modules) >= _HIGH_FAN_IN_OUT_THRESHOLD:
+        if len(summary.writer_modules) >= threshold:
             writer_labels = [
                 ".".join(summary.display_paths.get(module_key, module_key)[1:])
                 for module_key in sorted(summary.writer_modules)

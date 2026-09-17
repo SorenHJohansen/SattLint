@@ -28,12 +28,6 @@ def _tuple_str(values: object) -> tuple[str, ...]:
     return tuple(str(item) for item in cast(Sequence[object], values) if item)
 
 
-def _optional_tuple_str(values: object) -> tuple[str, ...] | None:
-    if values is None:
-        return None
-    return _tuple_str(values)
-
-
 def _phase_timings_value(values: object) -> tuple[dict[str, object], ...]:
     if not isinstance(values, (list, tuple)):
         return ()
@@ -68,7 +62,6 @@ class RunAnalyzerRecord:
     findings: tuple[AnalysisFinding, ...] = ()
     duration_ms: float | None = None
     phase_timings_ms: tuple[dict[str, object], ...] = ()
-    selected_issue_kinds: tuple[str, ...] | None = None
     skip_reason: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -82,7 +75,6 @@ class RunAnalyzerRecord:
             "findings": [finding.to_dict() for finding in self.findings],
             "duration_ms": self.duration_ms,
             "phase_timings_ms": [dict(phase) for phase in self.phase_timings_ms],
-            "selected_issue_kinds": None if self.selected_issue_kinds is None else list(self.selected_issue_kinds),
             "skip_reason": self.skip_reason,
         }
 
@@ -108,7 +100,6 @@ class RunAnalyzerRecord:
             findings=findings,
             duration_ms=_optional_float(payload.get("duration_ms")),
             phase_timings_ms=_phase_timings_value(payload.get("phase_timings_ms")),
-            selected_issue_kinds=_optional_tuple_str(payload.get("selected_issue_kinds")),
             skip_reason=_optional_str(payload.get("skip_reason")),
         )
 
@@ -174,7 +165,6 @@ class RunRecord:
     finished_at: str
     project_tag: str
     selected_analyzers: tuple[str, ...] = ()
-    selected_issue_kinds: tuple[str, ...] | None = None
     cancelled: bool = False
     targets: tuple[RunTargetRecord, ...] = ()
     output_lines: tuple[str, ...] = ()
@@ -199,7 +189,6 @@ class RunRecord:
             "finished_at": self.finished_at,
             "project_tag": self.project_tag,
             "selected_analyzers": list(self.selected_analyzers),
-            "selected_issue_kinds": None if self.selected_issue_kinds is None else list(self.selected_issue_kinds),
             "cancelled": self.cancelled,
             "targets": [target.to_dict() for target in self.targets],
             "output_lines": list(self.output_lines),
@@ -223,7 +212,6 @@ class RunRecord:
             finished_at=str(payload.get("finished_at") or ""),
             project_tag=str(payload.get("project_tag") or ""),
             selected_analyzers=_tuple_str(payload.get("selected_analyzers")),
-            selected_issue_kinds=_optional_tuple_str(payload.get("selected_issue_kinds")),
             cancelled=bool(payload.get("cancelled", False)),
             targets=targets,
             output_lines=_tuple_str(payload.get("output_lines")),

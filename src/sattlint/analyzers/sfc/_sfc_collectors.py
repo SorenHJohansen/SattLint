@@ -1,4 +1,4 @@
-"""SFC variable-access and step-contract collector classes."""
+"""SFC variable-access collector classes."""
 
 from __future__ import annotations
 

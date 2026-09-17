@@ -12,7 +12,6 @@ from .framework import AnalyzerSpec
 from .registry import (
     AnalyzerCatalog,
     AnalyzerMetadata,
-    RuleMetadata,
 )
 
 
@@ -28,16 +27,8 @@ def get_actual_cli_analyzer_keys() -> tuple[str, ...]:
     return analyzer_registry.get_actual_cli_analyzer_keys()
 
 
-def get_actual_lsp_analyzer_keys() -> tuple[str, ...]:
-    return analyzer_registry.get_actual_lsp_analyzer_keys()
-
-
 def get_declared_cli_analyzer_keys() -> tuple[str, ...]:
     return analyzer_registry.get_declared_cli_analyzer_keys()
-
-
-def get_declared_lsp_analyzer_keys() -> tuple[str, ...]:
-    return analyzer_registry.get_declared_lsp_analyzer_keys()
 
 
 def get_default_analyzer_catalog() -> AnalyzerCatalog:
@@ -55,13 +46,10 @@ def get_selectable_analyzers() -> list[AnalyzerSpec]:
 __all__ = [
     "AnalyzerCatalog",
     "AnalyzerMetadata",
-    "RuleMetadata",
     "canonicalize_analyzer_key",
     "canonicalize_analyzer_keys",
     "get_actual_cli_analyzer_keys",
-    "get_actual_lsp_analyzer_keys",
     "get_declared_cli_analyzer_keys",
-    "get_declared_lsp_analyzer_keys",
     "get_default_analyzer_catalog",
     "get_default_cli_analyzers",
     "get_selectable_analyzers",

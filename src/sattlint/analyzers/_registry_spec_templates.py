@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 type AnalyzerCategory = Literal["correctness", "heuristic", "style"]
+type AnalyzerScope = Literal["per-target", "per-run"]
 
 
 @dataclass(frozen=True)
@@ -15,60 +16,107 @@ class AnalyzerSpecTemplate:
     description: str
     analyzer_attr: str
     category: AnalyzerCategory = "correctness"
-    requires: tuple[str, ...] = ()
+    scope: AnalyzerScope = "per-target"
     context_kwargs: tuple[str, ...] = ()
     enabled: bool = True
-    supports_live_diagnostics: bool = False
     direct_context: bool = False
-    semantic_mapping_kind: str | None = None
-    semantic_rule_source: str | None = None
-    composed_analyzer_keys: tuple[str, ...] = ()
-    composed_issue_kind_names: tuple[str, ...] = ()
 
 
-def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSpecTemplate, ...]:
+def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
     return (
-        AnalyzerSpecTemplate(
-            key=semantic_layer_analyzer_key,
-            name="SattLine semantics",
-            description=(
-                "Runs all the checks in one pass and shows every problem in one combined list.\n"
-                "\n"
-                "Finds:\n"
-                "- Variables that are declared but never used.\n"
-                "- Parameter mappings that point to parameters that do not exist.\n"
-                "- Code that can never run.\n"
-                "- Names that break the engineering rules, for example a step that does not start with "
-                "'ST_'."
-            ),
-            analyzer_attr="analyze_sattline_semantics",
-            context_kwargs=(
-                "analysis_context",
-                "debug",
-                "unavailable_libraries",
-                "analyzed_target_is_library",
-                "config",
-            ),
-        ),
         AnalyzerSpecTemplate(
             key="variables",
             name="Variable issues",
             description=(
-                "Checks that variables and data type fields are declared, written, and read in a sensible "
-                "way.\n"
+                "Checks every variable, datatype field, and input/output mapping "
+                "in the project.\n"
                 "\n"
                 "Finds:\n"
-                "- Unused declarations, for example a local 'Spare: integer;' that is never used.\n"
-                "- Read-only non-Const variables, for example 'ReadOnly: integer := 5;' that is read but "
-                "never changed.\n"
-                "- Writes that are never read, for example 'Counter = 1;' when Counter is never read "
-                "afterwards.\n"
-                "- Unused or never-read data type fields, for example a RECORD field 'UnusedField' that no "
-                "code touches.\n"
-                "- Values set to True on some paths but never set back to False, for example 'AlarmFlag = "
-                "True;' with no later False write.\n"
-                "- Values only shown on a screen and never used in logic.\n"
-                "- Names that differ only by letter case in the same module, for example 'flow' and 'Flow'."
+                "\n"
+                "- Unused variable - declared but never read or written.\n"
+                "\n"
+                "- Read-only but not CONST - only read, never written, and not "
+                "marked CONST.\n"
+                "\n"
+                "- Written but never read - written but never read.\n"
+                "\n"
+                "- Write without effect - written and read, but the value never "
+                "reaches an output.\n"
+                "  Example: 'Scaled = RawInput * 2;' then 'Temp = Scaled + 1;' - "
+                "Scaled only feeds another local value.\n"
+                "\n"
+                "- Implicit latch - a flag is set on one path, never cleared on "
+                "another.\n"
+                "  Example: 'IF StartCmd THEN Running = True; ENDIF;' with no "
+                "'Running = False' on the other path.\n"
+                "\n"
+                "- Reset contamination - a value written during normal operation "
+                "is not reset on reset paths.\n"
+                "  Example: a step writes 'Output', but no step clears it when "
+                "ResetCmd arrives.\n"
+                "\n"
+                "- Read before write - a variable is read before it is written "
+                "or initialized in the same scope.\n"
+                "  Example: 'Output = InputSignal;' when InputSignal has no init "
+                "value and is never written first.\n"
+                "\n"
+                "- Procedure status ignored - a procedure status output is never "
+                "checked.\n"
+                "  Example: 'RunHomingProcedure(HomingStatus);' and HomingStatus "
+                "is never checked in logic.\n"
+                "\n"
+                "- Shadowing - a local variable hides a variable with the same "
+                "name in an outer scope.\n"
+                "  Example: a child module declares local 'Level' while a global "
+                "'Level' already exists.\n"
+                "\n"
+                "- Unsafe default - a bypass or enable flag starts as True.\n"
+                "  Example: 'SafetyBypass: boolean := True;'\n"
+                "\n"
+                "- Global can be localized - a global is only used in one module.\n"
+                "  Example: 'SharedCount' is only touched inside PumpModule.\n"
+                "\n"
+                "- Hidden global coupling - modules share a global without an "
+                "interface.\n"
+                "  Example: 'EngineOil' is written in EngineModule and read in "
+                "DisplayModule.\n"
+                "\n"
+                "- High fan-in/out - too many modules read or write the same "
+                "root-level variable.\n"
+                "  Example: 'RunningState' is read or written by more than ten "
+                "modules.\n"
+                "\n"
+                "- Duplicated datatype - two datatypes have the same structure.\n"
+                "  Example: two RECORDs with the same fields but different "
+                "names.\n"
+                "\n"
+                "- Min/Max mapping mismatch - Min_/Max_ mappings do not match by "
+                "name.\n"
+                "  Example: 'MaxValue => MaxValue' is fine, but 'MinValue => "
+                "MinLimit' points to a different name.\n"
+                "\n"
+                "- Unknown parameter target - a mapping points to a parameter "
+                "that does not exist.\n"
+                "  Example: 'NotDeclared => RawInput' but the type has no "
+                "'NotDeclared' parameter.\n"
+                "\n"
+                "- Contract mismatch - connected parameters have different "
+                "types.\n"
+                "  Example: 'SetPoint => RawCounter' where RawCounter is integer "
+                "but SetPoint expects real.\n"
+                "\n"
+                "- String mapping mismatch - two string-like types do not match.\n"
+                "  Example: 'BatchName => RawString' where RawString is string "
+                "but BatchName expects identstring.\n"
+                "\n"
+                "- Magic number - a number is used without a name.\n"
+                "  Example: 'Scaled = RawInput * 0.95 + 100.0;' - 0.95 and 100.0 "
+                "have no meaning.\n"
+                "\n"
+                "- Record order dependence - the meaning of a record read depends "
+                "on the declared field order.\n"
+                "\n"
+                "Datatype-field findings move to the dedicated opt-in 'datatype-fields' analyzer."
             ),
             analyzer_attr="analyze_variables",
             context_kwargs=(
@@ -77,566 +125,313 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
                 "unavailable_libraries",
                 "analyzed_target_is_library",
                 "include_dependency_moduletype_usage",
-                "selected_issue_kinds",
                 "config",
             ),
-            supports_live_diagnostics=True,
-            semantic_mapping_kind="variable",
-            semantic_rule_source="variables",
+        ),
+        AnalyzerSpecTemplate(
+            key="datatype-fields",
+            name="Datatype field usage",
+            description=(
+                "Checks three things about RECORD fields: unused, read-only, and "
+                "never-read fields.\n"
+                "\n"
+                "Finds:\n"
+                "\n"
+                "- A field no code ever touches.\n"
+                "  Example: 'UnusedField' with no code path.\n"
+                "\n"
+                "- A field that is only read, never written.\n"
+                "  Example: a received record whose 'Status' field is never "
+                "written.\n"
+                "\n"
+                "- A field that is only written, never read back.\n"
+                "  Example: dead output logic.\n"
+                "\n"
+                "This analyzer always loads the files that use the datatype, so "
+                "it is slower than a plain 'variables' run. Because of that it "
+                "is opt-in."
+            ),
+            analyzer_attr="analyze_datatype_fields",
+            context_kwargs=(
+                "analysis_context",
+                "debug",
+                "unavailable_libraries",
+                "analyzed_target_is_library",
+                "config",
+            ),
         ),
         AnalyzerSpecTemplate(
             key="picture-display-paths",
             name="PictureDisplay paths",
             description=(
-                "Checks that PictureDisplay paths (ComButProc_, ToggleWindow, and picture-display rows) "
-                "point to modules that exist.\n"
+                "Checks that the paths used by PictureDisplay buttons point to a "
+                "real screen or module.\n"
                 "\n"
                 "Finds:\n"
-                "- A module that does not exist, for example '+MissingPanel' when no such module exists "
-                "under 'Root'.\n"
-                "- A name that matches more than one module.\n"
-                "- A program that is not loaded, for example 'OtherProg:+Panel' with OtherProg missing.\n"
-                "- A wildcard such as '*X' with no matching module.\n"
-                "- A path that goes above the BasePicture.\n"
-                "- Unimplemented .emf/.wmf asset references."
+                "\n"
+                "- Unresolved display path - a path points to a screen or module "
+                "that cannot be found in the project.\n"
+                "  Example: a button that opens '+MissingPanel' when no module "
+                "with that name exists."
             ),
             analyzer_attr="analyze_picture_display_paths",
             context_kwargs=("graph", "analyzed_target_is_library"),
         ),
         AnalyzerSpecTemplate(
-            key="mms-interface",
-            name="MMS interface mappings",
-            description=(
-                "Builds a list of MMSWriteVar/MMSReadVar/MMSReadVarCyc/MMSReadWrite connections "
-                "(including .icf entries) and checks the tags used to talk to other systems.\n"
-                "\n"
-                "Finds:\n"
-                "- The same tag used more than once, for example two connections both using 'MV_1001'.\n"
-                "- A tag connected to different data types, for example an integer on one side and a real "
-                "on the other.\n"
-                "- The same tag written in different ways, for example 'MV-1001' versus 'MV_1001'.\n"
-                "- Tags whose source is never written, for example a tag mapped to 'OtherVal' that is never "
-                "assigned."
-            ),
-            analyzer_attr="analyze_mms_interface_variables",
-            context_kwargs=("debug", "config", "analysis_context"),
-            requires=("variables",),
-            semantic_rule_source="mms-interface",
-        ),
-        AnalyzerSpecTemplate(
             key="icf",
             name="ICF configuration",
             description=(
-                "Validates every .icf file under the configured icf_dir against the program it "
-                "references.\n"
+                "Checks every .icf connection file in the project. Each entry links "
+                "an external value to a path inside a program.\n"
                 "\n"
                 "Finds:\n"
-                "- An entry that points at a different program than the .icf file.\n"
-                "- A path that cannot be resolved or a field that does not exist.\n"
-                "- A mapped datatype that does not match the target variable.\n"
-                "- A tag mapped with the wrong letter case.\n"
-                "- A group tag suffix that does not match the engineering rule.\n"
-                "- Missing journal parameter fields, drifted unit structures, or mixed value-prefix "
-                "letters."
+                "\n"
+                "- ICF program mismatch - the entry points to the wrong program.\n"
+                "  Example: in UnitA.icf an entry references 'Program:UnitB'.\n"
+                "\n"
+                "- ICF unresolved path - the path does not exist in the program.\n"
+                "  Example: an entry points to 'OpStart.MissingSignal.STATE_NO' "
+                "which does not exist.\n"
+                "\n"
+                "- ICF invalid field path - the field path does not exist.\n"
+                "  Example: 'Record.Nested.Nope' where 'Nope' is not a field of "
+                "Record.\n"
+                "\n"
+                "- ICF reference case mismatch - the name uses the wrong letter "
+                "case.\n"
+                "  Example: a reference 'logValue' but the declared name is "
+                "'LogValue'.\n"
+                "\n"
+                "- ICF unit tag mismatch - the unit tag does not match the "
+                "unit.\n"
+                "  Example: in [Unit UnitB] an entry points at 'Program:UnitA'.\n"
+                "\n"
+                "- ICF group tag mismatch - the group suffix is wrong.\n"
+                "  Example: a group tag uses 'JournalData_Wrong' instead of "
+                "'JournalData_DCStoMES'.\n"
+                "\n"
+                "- ICF missing journal field - a needed report field is missing.\n"
+                "  Example: a journal entry has CR_ID but no OPR_ID.\n"
+                "\n"
+                "- ICF unit structure drift - the unit layout has changed.\n"
+                "  Example: a unit changed from SingleUnit to MultiUnit layout.\n"
+                "\n"
+                "- ICF value prefix inconsistency - the file uses different single-letter "
+                "prefixes on different lines.\n"
+                "  Example: one line uses 'A::Program:...' and another uses "
+                "'B::Program:...'.\n"
+                "\n"
+                "- ICF program load failed - the referenced program could not be "
+                "loaded.\n"
+                "  Example: an .icf file references a program that cannot be "
+                "read."
             ),
             analyzer_attr="analyze_icf_configuration",
             category="correctness",
+            scope="per-run",
             context_kwargs=("config", "debug"),
         ),
         AnalyzerSpecTemplate(
             key="sfc",
             name="SFC checks",
             description=(
-                "Checks SFC sequences for places where code could conflict, can never run, or has "
-                "transition problems.\n"
+                "Checks all SFC sequences (step diagrams).\n"
                 "\n"
                 "Finds:\n"
-                "- Parallel branches that write the same variable, for example two SFCParallel branches "
-                "both writing 'SharedOutput'.\n"
-                "- Steps or transitions that can never run, for example a SEQSTEP placed after a "
-                "SEQBREAK.\n"
-                "- Transitions that always fire or never fire.\n"
-                "- Transitions in one branch with the same condition."
+                "\n"
+                "- Unreachable sequence node - a step can never run.\n"
+                "  Example: a step placed after a step that already ended the "
+                "branch.\n"
+                "\n"
+                "- Unreachable transition - a transition can never fire.\n"
+                "  Example: a transition placed after a step that already ended "
+                "the branch.\n"
+                "\n"
+                "- Duplicate transition guard - two transitions have the same "
+                "condition.\n"
+                "  Example: TrA and TrB both wait for 'Ready == True'."
             ),
             analyzer_attr="analyze_sfc",
-            requires=("variables",),
             context_kwargs=("analysis_context",),
-            semantic_mapping_kind="framework",
-            semantic_rule_source="sfc",
         ),
         AnalyzerSpecTemplate(
             key="comment-code",
             name="Commented-out code",
             description=(
-                "Detects commented-out code inside SattLine comments.\n"
+                "Reads the source files and looks for SattLine code hidden inside "
+                "comments.\n"
                 "\n"
                 "Finds:\n"
-                "- Comments that still contain working code, for example "
-                "'(* IF Running THEN Running = False; ENDIF; *)'.\n"
-                "- Files that cannot be read."
+                "\n"
+                "- Commented-out code - a comment contains real code.\n"
+                "  Example: '(* IF Running THEN Running = False; ENDIF; *)'."
             ),
             analyzer_attr="analyze_comment_code",
             category="correctness",
             direct_context=True,
-            semantic_rule_source="comment-code",
-        ),
-        AnalyzerSpecTemplate(
-            key="shadowing",
-            name="Variable shadowing",
-            description=(
-                "Finds local declarations that hide a name already declared further out, which makes "
-                "references unclear.\n"
-                "\n"
-                "Only declarations from the main program are considered; library types are ignored.\n"
-                "\n"
-                "Example: a child moduletype declares local 'Setting' while the parent declares 'setting', "
-                "so 'Mirror = Setting;' may point to the wrong one."
-            ),
-            analyzer_attr="analyze_shadowing",
-            context_kwargs=("debug", "unavailable_libraries"),
-            semantic_mapping_kind="variable",
-            semantic_rule_source="variables",
         ),
         AnalyzerSpecTemplate(
             key="spec-compliance",
             name="Engineering spec compliance",
             description=(
-                "Checks code against the engineering rules.\n"
+                "Checks the code against the engineering style rules.\n"
                 "\n"
                 "Finds:\n"
-                "- Code in the BasePicture that should be inside a frame module.\n"
-                "- Steps that do not start with 'ST_' or transitions that do not start with 'TR_', for "
-                "example 'SEQSTEP step_mix'.\n"
-                "- Transitions without a name.\n"
-                "- OPMessage instances with UseSignature=True.\n"
-                "- MES_BatchControl instances with the wrong name or wrong Max_TRY/Repeat_TRY values."
+                "\n"
+                "- Transition has no name - a transition has no name.\n"
+                "  Example: 'SEQTRANSITION WAIT_FOR Done'.\n"
+                "\n"
+                "- Wrong sequence step prefix - a step name does not start with "
+                "the configured prefix (default 'ST_').\n"
+                "  Example: 'SEQSTEP step_mix'.\n"
+                "\n"
+                "- Wrong transition prefix - a transition name does not start "
+                "with the configured prefix (default 'TR_').\n"
+                "  Example: 'SEQTRANSITION MyTrans'.\n"
+                "\n"
+                "- Wrong sequence name prefix - a sequence name does not start "
+                "with the configured prefix.\n"
+                "\n"
+                "- Wrong equation block name prefix - an equation block name "
+                "does not start with the configured prefix."
             ),
             analyzer_attr="analyze_spec_compliance",
-            context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library"),
-            semantic_mapping_kind="spec",
-            semantic_rule_source="spec-compliance",
+            context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library", "config"),
         ),
         AnalyzerSpecTemplate(
             key="alarm-integrity",
             name="Alarm integrity",
             description=(
-                "Checks alarm tags, conditions, priorities, and whether alarms can turn off, across "
-                "modules.\n"
+                "Checks the alarm blocks and the alarm flag writes.\n"
                 "\n"
                 "Finds:\n"
-                "- The same alarm tag used twice, for example the same tag in two alarm sources.\n"
-                "- The same condition used by several alarms.\n"
-                "- The same tag or condition with different priorities or severities, for example "
-                "priorities 1 and 3.\n"
-                "- Alarms that are only ever set True and never set False, for example 'AlarmTrip = True;' "
-                "with no False write."
+                "\n"
+                "- Duplicate alarm tag - the same alarm tag is used by two "
+                "alarms.\n"
+                "  Example: Alarm1 and Alarm2 both use tag 'TEMP_HIGH'.\n"
+                "\n"
+                "- Duplicate alarm condition - two alarms use the same "
+                "condition.\n"
+                "  Example: Alarm2 reuses the exact condition of Alarm1.\n"
+                "\n"
+                "- Alarm never cleared - an alarm flag is set but never reset.\n"
+                "  Example: 'TempHigh = True;' with no later 'TempHigh = "
+                "False;'."
             ),
             analyzer_attr="analyze_alarm_integrity",
             context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library"),
-            semantic_mapping_kind="framework",
-            semantic_rule_source="alarm-integrity",
-        ),
-        AnalyzerSpecTemplate(
-            key="interface-contracts",
-            name="Interface contracts",
-            description=(
-                "Checks that moduletype instance mappings match what the moduletype declares.\n"
-                "\n"
-                "Finds:\n"
-                "- Mappings to parameters that do not exist, for example 'Child : ChildType "
-                "(BogusParam => 1)'.\n"
-                "- Required parameters that are not mapped.\n"
-                "- Data types that do not match across the boundary, for example an integer mapped to a "
-                "boolean parameter, or a missing required field such as 'Inner.Value'.\n"
-                "- String mappings with mismatched types, for example an identstring parameter mapped from "
-                "a string variable."
-            ),
-            analyzer_attr="analyze_interface_contracts",
-            context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library", "analysis_context"),
-            requires=("variables",),
-        ),
-        AnalyzerSpecTemplate(
-            key="powerup",
-            name="Power-up",
-            description=(
-                "Combines unsafe startup defaults into one power-up report.\n"
-                "\n"
-                "Finds Boolean variables set to True at startup whose name contains 'enable' or 'bypass', "
-                "for example 'EnablePump: boolean := True;' or 'SafetyBypass: boolean := True;'."
-            ),
-            analyzer_attr="analyze_powerup",
-            context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library"),
-            composed_analyzer_keys=("unsafe-defaults",),
-        ),
-        AnalyzerSpecTemplate(
-            key="naming-consistency",
-            name="Naming consistency",
-            description=(
-                "Finds declarations that do not follow the configured naming style for variables, modules, "
-                "and instances.\n"
-                "\n"
-                "With the default 'infer' mode the tool picks the most common style for each kind of name "
-                "and flags the odd ones out. Explicit styles (pascal, camel, snake, upper_snake, lower, "
-                "upper) and lists of allowed names are configurable.\n"
-                "\n"
-                "Example: with Pascal as the dominant style, 'tank_level: integer' is flagged while "
-                "'FlowRate' and 'PumpSpeed' are accepted."
-            ),
-            analyzer_attr="analyze_naming_consistency",
-            category="style",
-            context_kwargs=("rules", "analyzed_target_is_library"),
         ),
         AnalyzerSpecTemplate(
             key="cyclomatic-complexity",
             name="Cyclomatic complexity",
             description=(
-                "Reports programs, module types, nested modules, and SFC steps that have too many decision "
-                "points (default limit 10 for modules, 6 for SFC steps).\n"
+                "Counts how many different paths the logic can take.\n"
                 "\n"
-                "Each IF/ELSIF branch, AND/OR connector, ternary branch, and SFC alternative or parallel "
-                "branch adds one.\n"
+                "Finds:\n"
                 "\n"
-                "Example: an equation block with 10 'IF CondN THEN ...' blocks reaches 11 and is reported."
+                "- High module complexity - a program or module has too many "
+                "paths.\n"
+                "  Example: a program with 11 paths when the limit is 10.\n"
+                "\n"
+                "- High step complexity - an SFC step has too many paths.\n"
+                "  Example: a step with many nested IF branches.\n"
+                "\n"
+                "- High equation block complexity - an equation block has too "
+                "many paths.\n"
+                "  Example: an equation block with 12 paths when the limit is 10."
             ),
             analyzer_attr="analyze_cyclomatic_complexity",
             category="style",
-            context_kwargs=("analyzed_target_is_library",),
-        ),
-        AnalyzerSpecTemplate(
-            key="parameter-drift",
-            name="Parameter drift",
-            description=(
-                "Finds moduletype instances whose actual parameter values differ across the analyzed "
-                "target.\n"
-                "\n"
-                "Instances are grouped by moduletype and parameter. When two or more instances end up "
-                "with two or more different values, each drifting instance is reported.\n"
-                "\n"
-                "Example: ValveA with 'Timeout => 10' and ValveB with 'Timeout => 15' on the same "
-                "DoseValve moduletype."
-            ),
-            analyzer_attr="analyze_parameter_drift",
-            category="correctness",
-            context_kwargs=("unavailable_libraries",),
-        ),
-        AnalyzerSpecTemplate(
-            key="signal-lifecycle",
-            name="Signal lifecycle",
-            description=(
-                "Tracks when signals are read and written in each module.\n"
-                "\n"
-                "Finds:\n"
-                "- Signals read before any value is set, for example 'OutputSignal = InputSignal;' when "
-                "InputSignal is never set earlier.\n"
-                "- Signals written but never read, for example 'NeverConsumed = False;' with no later read."
-            ),
-            analyzer_attr="analyze_signal_lifecycle",
-            context_kwargs=("analyzed_target_is_library",),
-            semantic_mapping_kind="framework",
-            semantic_rule_source="signal-lifecycle",
-        ),
-        AnalyzerSpecTemplate(
-            key="loop-stability",
-            name="Conflicting setpoints",
-            description=(
-                "Finds two different values set on the same variable in one module.\n"
-                "\n"
-                "The same variable is set to two or more different literal values on the same path.\n"
-                "\n"
-                "Example: 'Setpoint = 10;' followed by 'Setpoint = 20;' in the same equation block."
-            ),
-            analyzer_attr="analyze_loop_stability",
-            context_kwargs=("analyzed_target_is_library",),
-            semantic_mapping_kind="framework",
-            semantic_rule_source="loop-stability",
-        ),
-        AnalyzerSpecTemplate(
-            key="fault-handling",
-            name="Fault handling",
-            description=(
-                "Checks fault and alarm booleans to see if a raised fault is ever cleared or handled in "
-                "the same module.\n"
-                "\n"
-                "Finds:\n"
-                "- Faults set True but never set False or acknowledged, for example 'HighFault = True;' "
-                "with no False write.\n"
-                "- Faults set True but never read by any code, for example the same variable is never used "
-                "afterwards."
-            ),
-            analyzer_attr="analyze_fault_handling",
-            context_kwargs=("analyzed_target_is_library",),
-            semantic_mapping_kind="framework",
-            semantic_rule_source="fault-handling",
-        ),
-        AnalyzerSpecTemplate(
-            key="numeric-constraints",
-            name="Numeric constraints",
-            description=(
-                "Checks literal assignments against the Min_/Max_ limits declared for the target "
-                "variable.\n"
-                "\n"
-                "Limits are taken from sibling variables named 'Min_<name>' or 'Max_<name>'. Assignments "
-                "outside the range are reported.\n"
-                "\n"
-                "Example: with 'Min_Output = 0' and 'Max_Output = 10', 'Output = 12;' is flagged."
-            ),
-            analyzer_attr="analyze_numeric_constraints",
-            context_kwargs=("analyzed_target_is_library",),
-            semantic_mapping_kind="framework",
-            semantic_rule_source="numeric-constraints",
-        ),
-        AnalyzerSpecTemplate(
-            key="data-dependency",
-            name="Data dependency",
-            description=(
-                "Reports long chains of assignments and code that uses a value before it is set.\n"
-                "\n"
-                "Finds:\n"
-                "- A chain of three or more assignments, for example 'Mid = Input; Output = Mid;'.\n"
-                "- A value used before it is set in the same module, for example 'Output = Source; "
-                "Source = 3;'."
-            ),
-            analyzer_attr="analyze_data_dependency",
-            context_kwargs=("unavailable_libraries", "analyzed_target_is_library"),
-            semantic_rule_source="data-dependency",
-        ),
-        AnalyzerSpecTemplate(
-            key="config-drift",
-            name="Config drift",
-            description=(
-                "Finds moduletype instances whose configuration settings drift across the analyzed "
-                "target.\n"
-                "\n"
-                "When two or more instances of the same moduletype set a configuration parameter to "
-                "different values, the drifting parameter is reported for the group.\n"
-                "\n"
-                "Example: ValveA with 'Timeout => 10' and ValveB with 'Timeout => 15' on the same "
-                "DoseValve moduletype."
-            ),
-            analyzer_attr="analyze_config_drift",
-            context_kwargs=("unavailable_libraries",),
-            semantic_mapping_kind="framework",
-            semantic_rule_source="config-drift",
-        ),
-        AnalyzerSpecTemplate(
-            key="scan-loop-resource-usage",
-            name="Scan-loop resource usage",
-            description=(
-                "Finds builtin calls that are not safe to run every scan inside continuously running "
-                "code: every equation block and every SFC step's active code.\n"
-                "\n"
-                "Calls in one-time start or end code are not flagged. String, time, status, and system "
-                "builtins are common offenders.\n"
-                "\n"
-                "Example: 'AssignSystemString(SysVarId, Value, Status);' inside an equation block."
-            ),
-            analyzer_attr="analyze_scan_loop_resource_usage",
-            context_kwargs=("analyzed_target_is_library",),
-        ),
-        AnalyzerSpecTemplate(
-            key="resource-usage",
-            name="Resource usage",
-            description=(
-                "Tracks resource handles that are opened (OpenDevice/OpenReadFile/OpenWriteFile) and "
-                "closed (CloseDevice/CloseFile) in each module.\n"
-                "\n"
-                "Finds:\n"
-                "- Closing a handle that was never opened, for example 'CloseFile(FileRef, ...)' with no "
-                "prior open.\n"
-                "- Opening a handle twice before closing it, for example opening 'FileRef' twice without a "
-                "close.\n"
-                "- Opening a handle and never closing it, for example 'OpenReadFile(FileRef, ...)' with no "
-                "CloseFile.\n"
-                "- Also reports scan-loop resource hazards."
-            ),
-            analyzer_attr="analyze_resource_usage",
-            context_kwargs=("unavailable_libraries", "analyzed_target_is_library"),
-            semantic_rule_source="resource-usage",
-        ),
-        AnalyzerSpecTemplate(
-            key="scan-concurrency",
-            name="Scan concurrency",
-            description=(
-                "Finds parallel SFC branches that write the same variable without a rule for which one "
-                "wins.\n"
-                "\n"
-                "A write/write conflict across two SFCParallel branches is reported as a parallel write "
-                "race.\n"
-                "\n"
-                "Example: 'BranchLeft' and 'BranchRight' both setting 'SharedOutput' in their active code."
-            ),
-            analyzer_attr="analyze_scan_concurrency",
-            context_kwargs=("config", "analyzed_target_is_library"),
-            composed_analyzer_keys=("same-cycle",),
-            composed_issue_kind_names=("sfc_parallel_write_race",),
-        ),
-        AnalyzerSpecTemplate(
-            key="scan-shared-access",
-            name="Scan shared access",
-            description=(
-                "Finds non-STATE variables that are read in one scan point and written in another within "
-                "the same scan.\n"
-                "\n"
-                "Equation blocks and step active-code phases are separate scan points. Reading and "
-                "writing in the same point does not trigger it.\n"
-                "\n"
-                "Example: 'Output = SharedValue;' in ReadEq and 'SharedValue = 2;' in WriteEq, with "
-                "SharedValue not declared State."
-            ),
-            analyzer_attr="analyze_scan_shared_access",
-            context_kwargs=("config", "analyzed_target_is_library"),
-            composed_analyzer_keys=("same-cycle",),
-            composed_issue_kind_names=("same_cycle_non_state_multi_site_hazard",),
+            context_kwargs=("analyzed_target_is_library", "config"),
         ),
         AnalyzerSpecTemplate(
             key="same-cycle",
             name="Same-cycle hazards",
             description=(
-                "Finds shared-variable problems that happen in the same scan across modules and parallel "
-                "SFC branches.\n"
+                "Checks that the same variable is not read and written at the "
+                "same time in one scan cycle.\n"
                 "\n"
                 "Finds:\n"
-                "- A variable read in one module and written in another in one scan, for example module "
-                "Reader does 'Output = SharedValue;' while module Writer does 'SharedValue = 0;'.\n"
-                "- Parallel branches where one reads and another writes the same variable.\n"
-                "- Parallel branches that both write the same variable, a write race.\n"
-                "- Non-STATE variables used at more than one continuous scan point."
+                "\n"
+                "- Same-cycle shared access - a shared variable is read and "
+                "written in the same scan by different modules.\n"
+                "  Example: module Reader does 'Output = SharedValue;' while "
+                "module Writer does 'SharedValue = 0;'.\n"
+                "\n"
+                "- Parallel read/write hazard - one parallel branch reads and "
+                "another writes the same variable.\n"
+                "  Example: a Writer branch does 'Shared = 1;' while a Reader "
+                "branch does 'Temp = Shared;'.\n"
+                "\n"
+                "- Parallel write race - two parallel branches write the same "
+                "variable.\n"
+                "  Example: two PARALLELSEQ branches both write 'SharedOutput'."
             ),
             analyzer_attr="analyze_same_cycle",
             context_kwargs=("analysis_context", "debug", "unavailable_libraries", "analyzed_target_is_library"),
-            supports_live_diagnostics=True,
-            semantic_mapping_kind="framework",
-            semantic_rule_source="same-cycle",
-        ),
-        AnalyzerSpecTemplate(
-            key="timing",
-            name="Timing",
-            description=(
-                "Finds timing problems in the scan cycle: using :OLD after a value was written in the "
-                "same scan, reading without :NEW after a write, writing to :OLD, and calls that are not "
-                "safe to run every scan.\n"
-                "\n"
-                "Combines dataflow timing checks with scan-loop resource usage.\n"
-                "\n"
-                "Examples: 'PrevAccum = Accum:Old;' right after 'Accum = Accum + Smoothed;', or "
-                "'MaxLim(1.0, 2.0, 0.1, Flag:Old);' passing :OLD as an output."
-            ),
-            analyzer_attr="analyze_timing",
-            context_kwargs=("unavailable_libraries", "analyzed_target_is_library"),
-            composed_analyzer_keys=("dataflow", "scan-loop-resource-usage"),
-            composed_issue_kind_names=(
-                "dataflow.scan_cycle_stale_read",
-                "dataflow.scan_cycle_implicit_new",
-                "dataflow.scan_cycle_temporal_misuse",
-                "scan_cycle.resource_usage",
-            ),
         ),
         AnalyzerSpecTemplate(
             key="version-drift",
             name="Version drift",
             description=(
-                "Finds modules with the same name that have drifted apart, beyond just a different date "
-                "code.\n"
+                "Checks that two module types with the same name are really the "
+                "same version.\n"
                 "\n"
-                "Modules with the same name (ignoring letter case) are compared. When two or more "
-                "versions differ, drift in module parameters, local variables, submodule structure, or "
-                "module code is reported.\n"
+                "Finds:\n"
                 "\n"
-                "Example: two 'Mixer' modules whose code differs only in 'Output = 1;' versus 'Output = "
-                "2;'."
+                "- Version drift - two module types have the same name but "
+                "different DateCodes.\n"
+                "  Example: two 'Mixer' module types, one dated 2026-01-01 and "
+                "one dated 2026-06-01."
             ),
             analyzer_attr="analyze_version_drift",
             category="correctness",
             context_kwargs=("debug",),
-            semantic_rule_source="version-drift",
-        ),
-        AnalyzerSpecTemplate(
-            key="safety-paths",
-            name="Safety paths",
-            description=(
-                "Tracks safety-critical signals (paths containing emergency, shutdown, or estop) and "
-                "reports ones that are written but never read.\n"
-                "\n"
-                "Example: 'EmergencyShutdown = InCommand;' written inside GuardType but the path is never "
-                "read anywhere."
-            ),
-            analyzer_attr="analyze_safety_paths",
-            context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library", "analysis_context"),
-            requires=("variables",),
-            semantic_mapping_kind="framework",
-            semantic_rule_source="safety-paths",
-        ),
-        AnalyzerSpecTemplate(
-            key="taint-paths",
-            name="Taint paths",
-            description=(
-                "Tracks external MES, operator, or sensor inputs as they flow into safety-critical "
-                "outputs (emergency, shutdown, estop, interlock, trip) across modules.\n"
-                "\n"
-                "Only paths that cross more than one module are reported. Wiring inside a single module "
-                "is not flagged.\n"
-                "\n"
-                "Example: operator input 'Root.OperatorCommand' reaching 'Root.Guard.EmergencyShutdown' "
-                "through a moduletype mapping."
-            ),
-            analyzer_attr="analyze_taint_paths",
-            context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library", "analysis_context"),
-            requires=("variables",),
-            semantic_mapping_kind="framework",
-            semantic_rule_source="taint-paths",
-        ),
-        AnalyzerSpecTemplate(
-            key="unsafe-defaults",
-            name="Unsafe defaults",
-            description=(
-                "Flags boolean variables that start as True and whose name contains 'enable' or "
-                "'bypass'.\n"
-                "\n"
-                "Finds:\n"
-                "- 'Enable' names that can start equipment or logic on power-up, for example 'EnablePump: "
-                "boolean := True;'.\n"
-                "- 'Bypass' names that can turn off safety checks on power-up, for example 'SafetyBypass: "
-                "boolean := True;'."
-            ),
-            analyzer_attr="analyze_unsafe_defaults",
-            context_kwargs=("analyzed_target_is_library",),
-            semantic_mapping_kind="framework",
-            semantic_rule_source="unsafe-defaults",
         ),
         AnalyzerSpecTemplate(
             key="dataflow",
             name="Dataflow",
             description=(
-                "Follows the code path to find values read before they are set, writes that are "
-                "overwritten before they are read, conditions that are always true or false, code that "
-                "can never run, and comparisons where something is compared to itself.\n"
+                "Follows the values of variables through the code step by step.\n"
                 "\n"
-                "Also checks :OLD/:NEW use on State variables. :OLD is read-only, and both markers are "
-                "only allowed on State variables.\n"
+                "Finds:\n"
                 "\n"
-                "Examples: 'Output = Uninitialized;' (read before set), 'Flag AND NOT Flag' (always "
-                "false), or 'Flag = True; Flag = Condition;' (first write is overwritten)."
+                "- Dead overwrite - a write is replaced before its value is ever "
+                "read.\n"
+                "  Example: 'Flag = True; Flag = Condition;'.\n"
+                "\n"
+                "- Conflicting constants - the same variable gets two different "
+                "constant values in one path.\n"
+                "  Example: 'Setpoint = 10;' then 'Setpoint = 20;'.\n"
+                "\n"
+                "- Condition always true - a condition is always true.\n"
+                "  Example: 'IF RawInput >= 0 OR RawInput < 0'.\n"
+                "\n"
+                "- Condition always false - a condition is always false.\n"
+                "  Example: 'IF RawInput < RawInput'.\n"
+                "\n"
+                "- Unreachable branch - a branch can never run.\n"
+                "  Example: 'IF Level > 100 AND Level < 50'.\n"
+                "\n"
+                "- Self-compare condition - a variable is compared with itself.\n"
+                "  Example: 'IF RawInput == RawInput'.\n"
+                "\n"
+                "- Stale :OLD read - :OLD is read after the value was written in "
+                "this scan, so it still means the previous scan.\n"
+                "  Example: 'Counter = Counter + 1; IF Counter:Old == 0'.\n"
+                "\n"
+                "- Implicit :NEW read - a State value is read after a write, but "
+                ":NEW is missing.\n"
+                "  Example: a transition waits for 'Level == 5' after an "
+                "ENTERCODE wrote 'Level = 5;'.\n"
+                "\n"
+                "- Non-state multi-site access - a non-State variable is read "
+                "and written in more than one place in one scan.\n"
+                "  Example: 'Temp' is read and written in two equation blocks in "
+                "the same scan."
             ),
             analyzer_attr="analyze_dataflow",
             context_kwargs=("unavailable_libraries", "analyzed_target_is_library", "shared_artifacts"),
-            semantic_mapping_kind="framework",
-            semantic_rule_source="dataflow",
-        ),
-        AnalyzerSpecTemplate(
-            key="state-inference",
-            name="State inference",
-            description=(
-                "Works out the stable boolean, number, and string values on each path and reports "
-                "conditions that can never be true.\n"
-                "\n"
-                "Finds:\n"
-                "- Conditions that are always true or always false, for example with 'Count: integer := "
-                "5;', 'Count < 0' can never be true.\n"
-                "- Branches that can never run, for example the IF branch of that condition.\n"
-                "- A summary of the values it worked out."
-            ),
-            analyzer_attr="analyze_state_inference",
-            context_kwargs=("unavailable_libraries", "analyzed_target_is_library"),
         ),
     )
 

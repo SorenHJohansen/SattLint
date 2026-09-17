@@ -48,7 +48,7 @@ This rule exists because Semble is the indexed, accurate, and sanctioned way to 
 
 ## Key Docs
 
-- `AGENTS_REFERENCE.md` (repo map, quality gates, validation map, core beliefs, deferred work), `ARCHITECTURE.md`
+- `AGENTS_REFERENCE.md` (repo map, quality gates, validation map, core beliefs), `ARCHITECTURE.md`
 - `.github/instructions/*.md`
 
 ## Critical Invariants

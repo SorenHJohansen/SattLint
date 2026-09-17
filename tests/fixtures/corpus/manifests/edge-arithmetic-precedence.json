@@ -5,9 +5,7 @@
     "expectation": {
         "expected_finding_ids": [
             "semantic.never-read-write",
-            "semantic.read-only-non-const",
-            "semantic.signal-lifecycle-unconsumed-write",
-            "spec.basepicture_direct_code"
+            "semantic.read-only-non-const"
         ],
         "artifact_fragments": {
             "status.json": {
@@ -15,12 +13,10 @@
                 "missing_dependency_count": 0
             },
             "summary.json": {
-                "finding_count": 16,
+                "finding_count": 9,
                 "rule_counts": {
                     "semantic.never-read-write": 6,
-                    "semantic.read-only-non-const": 3,
-                    "semantic.signal-lifecycle-unconsumed-write": 6,
-                    "spec.basepicture_direct_code": 1
+                    "semantic.read-only-non-const": 3
                 }
             }
         },

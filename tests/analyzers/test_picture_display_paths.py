@@ -202,7 +202,76 @@ def test_picture_display_path_analyzer_marks_library_target_findings_as_info() -
     report = analyze_picture_display_paths(base_picture, analyzed_target_is_library=True)
 
     assert len(report.issues) == 1
-    assert report.issues[0].severity == "info"
+
+
+def test_picture_display_path_analyzer_library_target_reports_intra_library_failures() -> None:
+    base_picture = base_picture_with_single_chain()
+    base_picture.graphics_picture_display_occurrences = [
+        PictureDisplayOccurrence(
+            program_name="Root",
+            declaring_module_path=("Root",),
+            record=PictureDisplayRecord(
+                record_index=1,
+                record_start_line=1,
+                record_end_line=5,
+                path_rows=(
+                    PictureDisplayPathRow(
+                        record_index=1,
+                        index_token=ROOT_PATH_STEP,
+                        index_value=0,
+                        kind="literal",
+                        raw_text="+MissingPanel",
+                        span=SourceSpan(start=0, end=0, line=1, column=1),
+                    ),
+                ),
+            ),
+        )
+    ]
+
+    report = analyze_picture_display_paths(base_picture, analyzed_target_is_library=True)
+
+    assert len(report.issues) == 1
+    assert report.issues[0].kind == "picture_display_paths.unresolved"
+    assert (report.issues[0].data or {}).get("failure_reason") == "missing_named_child"
+
+
+def test_picture_display_path_analyzer_library_target_suppresses_above_base_but_reports_program_coupling() -> None:
+    base_picture = base_picture_with_single_chain()
+    base_picture.graphics_picture_display_occurrences = [
+        PictureDisplayOccurrence(
+            program_name="Root",
+            declaring_module_path=("Root",),
+            record=PictureDisplayRecord(
+                record_index=1,
+                record_start_line=1,
+                record_end_line=5,
+                path_rows=(
+                    PictureDisplayPathRow(
+                        record_index=1,
+                        index_token="-",
+                        index_value=0,
+                        kind="literal",
+                        raw_text="-Test",
+                        span=SourceSpan(start=0, end=0, line=1, column=1),
+                    ),
+                    PictureDisplayPathRow(
+                        record_index=2,
+                        index_token="+",
+                        index_value=0,
+                        kind="literal",
+                        raw_text="+External:Program:*Panel",
+                        span=SourceSpan(start=0, end=0, line=1, column=1),
+                    ),
+                ),
+            ),
+        )
+    ]
+
+    report = analyze_picture_display_paths(base_picture, analyzed_target_is_library=True)
+
+    assert len(report.issues) == 1
+    assert report.issues[0].kind == "picture_display_paths.unresolved"
+    assert (report.issues[0].data or {}).get("failure_reason") == "missing_program"
 
 
 def test_picture_display_path_analyzer_ignores_resolved_paths() -> None:
@@ -339,6 +408,66 @@ def test_picture_display_path_analyzer_reports_unresolved_operationpath_candidat
     assert "Paths.OperationPath" in report.issues[0].message
     assert "+L2+Operations+L2*FyldAppl" in report.issues[0].message
     assert "FyldAppl" in report.issues[0].message
+
+
+def test_picture_display_path_analyzer_reports_above_base_as_distinct_kind() -> None:
+    base_picture = base_picture_with_single_chain()
+    base_picture.graphics_picture_display_occurrences = [
+        PictureDisplayOccurrence(
+            program_name="Root",
+            declaring_module_path=("Root",),
+            record=PictureDisplayRecord(
+                record_index=1,
+                record_start_line=1,
+                record_end_line=5,
+                path_rows=(
+                    PictureDisplayPathRow(
+                        record_index=1,
+                        index_token="-",
+                        index_value=0,
+                        kind="literal",
+                        raw_text="-Test",
+                        span=SourceSpan(start=0, end=0, line=1, column=1),
+                    ),
+                ),
+            ),
+        )
+    ]
+
+    report = analyze_picture_display_paths(base_picture)
+
+    above_base = [issue for issue in report.issues if issue.kind == "picture_display_paths.above_base"]
+    assert len(above_base) == 1
+    assert "above the base picture" in above_base[0].message
+    assert not any(issue.kind == "picture_display_paths.unresolved" for issue in report.issues)
+
+
+def test_resolve_picture_display_path_stepping_above_base_uses_missing_parent() -> None:
+    base_picture = base_picture_with_single_chain()
+
+    resolution = resolve_picture_display_path(
+        "-Test",
+        base_picture=base_picture,
+        declaring_module_path=("Root",),
+    )
+
+    assert resolution.ok is False
+    assert resolution.failure_reason == "missing_parent"
+    assert resolution.detail == "path stepped above BasePicture"
+
+
+def test_resolve_picture_display_path_stepping_above_base_supports_wildcard() -> None:
+    base_picture = base_picture_with_single_chain()
+
+    resolution = resolve_picture_display_path(
+        "-------*Test",
+        base_picture=base_picture,
+        declaring_module_path=("Root",),
+    )
+
+    assert resolution.ok is False
+    assert resolution.failure_reason == "missing_parent"
+    assert resolution.detail == "path stepped above BasePicture"
 
 
 def test_exact_string_inference_tracks_provenance_segments_across_mapped_module_writes() -> None:

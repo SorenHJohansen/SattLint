@@ -6,12 +6,11 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, Protocol, cast
 
-from sattline_parser.models.ast_model import Simple_DataType, Variable
+from sattline_parser.models.ast_model import Variable
 
 from ...reporting.variables_report import VariableIssue
 from ...resolution import AccessGraph
 from ..shared._validators import ContractMappingValidator, MinMaxValidator, StringMappingValidator
-from ._contract_summary_provider import ContractSummaryProvider
 from ._variables_effect_flow import EffectFlowTracker
 from ._variables_status import ProcedureStatusBinding
 
@@ -29,16 +28,11 @@ class _VariablesAnalyzerFacadeState(Protocol):
     _alias_links: list[tuple[Variable, Variable, str]]
     _procedure_status_bindings: dict[int, list[ProcedureStatusBinding]]
     _ignorable_output_variable_ids: set[int]
-    _naming_role_patterns: dict[str, Any]
     _any_var_index: dict[str, list[Variable]]
-    _required_parameter_names_by_owner: dict[int, dict[str, str]]
-    _array_element_datatypes_by_key: dict[tuple[str, ...], Simple_DataType | str]
     _contract_validator: ContractMappingValidator
     _min_max_validator: MinMaxValidator
     _string_validator: StringMappingValidator
     _analyzing_typedefs: set[str]
-    _contract_summary_provider: ContractSummaryProvider | None
-    _cyclic_owner_ids: frozenset[int] | None
     _effect_flow_tracker: EffectFlowTracker
     _effective_output_keys: set[tuple[str, ...]]
     _site_stack: list[str]
@@ -89,20 +83,8 @@ class VariablesAnalyzerFacadePropertiesMixin:
         return self._state()._ignorable_output_variable_ids
 
     @property
-    def naming_role_patterns(self) -> dict[str, Any]:
-        return self._state()._naming_role_patterns
-
-    @property
     def any_var_index(self) -> dict[str, list[Variable]]:
         return self._state()._any_var_index
-
-    @property
-    def required_parameter_names_by_owner(self) -> dict[int, dict[str, str]]:
-        return self._state()._required_parameter_names_by_owner
-
-    @property
-    def array_element_datatypes_by_key(self) -> dict[tuple[str, ...], Simple_DataType | str]:
-        return self._state()._array_element_datatypes_by_key
 
     @property
     def contract_validator(self) -> ContractMappingValidator:
@@ -119,22 +101,6 @@ class VariablesAnalyzerFacadePropertiesMixin:
     @property
     def analyzing_typedefs(self) -> set[str]:
         return self._state()._analyzing_typedefs
-
-    @property
-    def contract_summary_provider(self) -> ContractSummaryProvider | None:
-        return self._state()._contract_summary_provider
-
-    @contract_summary_provider.setter
-    def contract_summary_provider(self, value: ContractSummaryProvider | None) -> None:
-        self._state()._contract_summary_provider = value
-
-    @property
-    def cyclic_owner_ids(self) -> frozenset[int] | None:
-        return self._state()._cyclic_owner_ids
-
-    @cyclic_owner_ids.setter
-    def cyclic_owner_ids(self, value: frozenset[int] | None) -> None:
-        self._state()._cyclic_owner_ids = value
 
     @property
     def effect_flow_tracker(self) -> EffectFlowTracker:

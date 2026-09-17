@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from ..__version__ import __version__ as _sattlint_version
+from ..core.syntax import CodeMode, code_ext, deps_ext, normalize_code_mode
 from ..runs import load_run as _load_run
 from ._app_textual_setup_display import (
     _configured_target_names,
@@ -75,7 +76,7 @@ def _setup_note_text(self: Any) -> str:
         return f'No configured targets match "{filter_text}". Press / to change or clear the filter.'
     base_text = (
         "Click a target in the list to select it, then use Remove to delete it. "
-        "Use Add from file to add a new target. Settings on the right update immediately."
+        "Use Add to browse for a new target. Settings on the right update immediately."
     )
     if filter_text:
         return f'{base_text} Filter: "{filter_text}". Press / to change or clear it.'
@@ -95,9 +96,14 @@ def _refresh_setup_target_list(self: Any) -> None:
         self._selected_configured_target = None
 
     self._setup_target_names_list = configured_targets
-    lv.clear()
-    for target in configured_targets:
-        lv.append(_TEXTUAL_LIST_ITEM(_TEXTUAL_STATIC(target)))
+
+    existing_labels = [
+        str(getattr(next(iter(child.children), _TEXTUAL_STATIC("")), "renderable", "")) for child in lv.children
+    ]
+    if existing_labels != configured_targets:
+        lv.clear()
+        for target in configured_targets:
+            lv.append(_TEXTUAL_LIST_ITEM(_TEXTUAL_STATIC(target)))
 
     if self._selected_configured_target is not None:
         for i, name in enumerate(configured_targets):
@@ -302,18 +308,17 @@ def _open_raw_file_browser(self: Any) -> None:
     if not start_paths:
         start_paths = [Path.home()]
 
-    candidates = tuple(
-        (candidate.name, tuple(str(path) for path in _setup_candidate_display_paths(candidate)))
-        for candidate in self._setup_candidates()
-    )
+    mode = normalize_code_mode(str(self._cfg.get("mode", "official")).strip().casefold()) or CodeMode.OFFICIAL
+    suffixes = (code_ext(mode), deps_ext(mode))
 
     def _on_browser_result(result: object) -> None:
-        if isinstance(result, str):
-            self._add_selected_setup_target(result)
-        elif isinstance(result, Path):
+        if isinstance(result, Path):
             self._add_target_from_path(result)
 
-    self.push_screen(_FileBrowserScreen(start_paths=start_paths, candidates=candidates), _on_browser_result)
+    self.push_screen(
+        _FileBrowserScreen(start_paths=start_paths, file_suffixes=suffixes, show_stem=True),
+        _on_browser_result,
+    )
 
 
 def _open_dir_picker(self: Any, field_key: str, *, label: str, is_list: bool = False) -> None:

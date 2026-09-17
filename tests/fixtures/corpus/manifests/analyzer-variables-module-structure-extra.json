@@ -4,8 +4,8 @@
     "mode": "analyzer-variables",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.unknown-parameter-target",
-            "semantic.write-without-effect"
+            "unknown_parameter_target",
+            "write_without_effect"
         ],
         "artifact_fragments": {
             "status.json": {

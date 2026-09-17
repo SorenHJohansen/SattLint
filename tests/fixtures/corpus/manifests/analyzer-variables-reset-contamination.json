@@ -4,7 +4,7 @@
     "mode": "analyzer-variables",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.reset-contamination"
+            "reset_contamination"
         ],
         "artifact_fragments": {
             "status.json": {

@@ -33,9 +33,10 @@ _IDENTIFIER_CARRYING_ATTRS: frozenset[str] = frozenset(
 )
 
 # Bare-name receivers of ``.lower()`` that are NOT SattLine identifiers. These are
-# documented, non-identifier uses (file extensions, mode/config strings) that stay
-# as-is. Any other bare-name receiver is treated as an identifier carry.
-_ALLOWED_NON_IDENTIFIER_NAMES: frozenset[str] = frozenset({"extension"})
+# documented, non-identifier uses (file extensions, file suffixes, mode/config
+# strings) that stay as-is. Any other bare-name receiver is treated as an
+# identifier carry.
+_ALLOWED_NON_IDENTIFIER_NAMES: frozenset[str] = frozenset({"extension", "file_suffix", "suffix"})
 
 
 def _lower_call_sites(module: ast.AST) -> list[ast.Call]:

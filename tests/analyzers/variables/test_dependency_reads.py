@@ -181,7 +181,12 @@ def test_analyze_variables_library_target_counts_dependency_typedef_field_reads(
         origin_lib="KaHAApplSupportLib",
     )
 
-    report = analyze_variables(bp, analyzed_target_is_library=True)
+    report = analyze_variables(
+        bp,
+        analyzed_target_is_library=True,
+        include_dependency_moduletype_usage=True,
+        selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS),
+    )
 
     unused_fields = {
         issue.field_path
@@ -260,7 +265,12 @@ def test_analyze_variables_library_target_counts_reverse_consumer_typedef_field_
         origin_lib="KaHAApplSupportLib",
     )
 
-    report = analyze_variables(bp, analyzed_target_is_library=True)
+    report = analyze_variables(
+        bp,
+        analyzed_target_is_library=True,
+        include_dependency_moduletype_usage=True,
+        selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS),
+    )
 
     unused_fields = {
         issue.field_path

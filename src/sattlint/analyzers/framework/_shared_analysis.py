@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, MutableMapping
 from dataclasses import dataclass, field
 from threading import Lock
 from typing import TYPE_CHECKING, Any
@@ -22,51 +21,9 @@ if TYPE_CHECKING:
 @dataclass(slots=True)
 class AnalysisPerformanceCounters:
     shared_artifact_holders_created: int = 0
-    semantic_analyzer_reruns: int = 0
-    semantic_precomputed_reports_used: int = 0
     variable_foundation_builds: int = 0
     variable_root_traversals: int = 0
     local_env_builds: int = 0
-
-
-@dataclass(frozen=True, slots=True)
-class ReportsByKey(MutableMapping[str, Any]):
-    """Typed ``derived_reports`` compartment: memoized per-analyzer ``Report``s.
-
-    This is one of the three typed shared-artifact compartments (§2.1) alongside
-    ``foundation`` and ``collected_views``. Each analyzer writes its result **once** here
-    (``derived_reports.set(key, report)``) and dependent analyzers / the dispatcher read it,
-    so a ``requires=("variables",)`` consumer reuses the memoized result instead of re-running
-    the underlying computation.
-
-    Keyed by analyzer key (case-sensitively, matching the registry); values are the analyzer's
-    ``Report``. Loose dictionaries are deliberately *not* the cross-analyzer contract — this
-    wrapper gives a discoverable, named type with ``get``/``set``/``contains`` accessors.
-    """
-
-    _store: dict[str, Any] = field(default_factory=lambda: {}, init=False)
-
-    def __getitem__(self, key: str) -> Any:
-        return self._store[key]
-
-    def __setitem__(self, key: str, value: Any) -> None:
-        self._store[key] = value
-
-    def __delitem__(self, key: str) -> None:
-        del self._store[key]
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self._store)
-
-    def __len__(self) -> int:
-        return len(self._store)
-
-    def set(self, key: str, report: Any) -> None:
-        """Store an analyzer's memoized ``Report`` under ``key`` (idempotent by key)."""
-        self._store[key] = report
-
-    def get_report(self, key: str) -> Any | None:
-        return self._store.get(key)
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,7 +40,7 @@ class CollectedViews:
     """The one instance-aware collection pass, exposed for derived analyzers.
 
     Populated once by the canonical ``variables`` analyzer after ``run()`` so layered
-    consumers (mms, sfc, and cheap derived issue-kind analyzers) read typed collected
+    consumers (sfc, and cheap derived issue-kind analyzers) read typed collected
     state instead of re-running the instance traversal or reaching into analyzer internals.
     """
 
@@ -99,13 +56,12 @@ class CollectedViews:
 
 @dataclass(slots=True)
 class AnalysisSharedArtifacts:
-    derived_reports: ReportsByKey = field(default_factory=ReportsByKey)
     variable_analysis: VariableAnalysisArtifacts | None = None
     collected_views: CollectedViews | None = None
     local_variable_envs: dict[int, dict[str, Variable]] = field(default_factory=lambda: {})
     counters: AnalysisPerformanceCounters = field(default_factory=AnalysisPerformanceCounters)
     # The canonical, fully-run VariablesAnalyzer for the current target (populated by the
-    # `variables` analyzer). Consumers such as mms-interface and sfc read its collected state
+    # `variables` analyzer). Consumers such as sfc read its collected state
     # (`usage_tracker`, `_alias_links`, `access_graph`, ...) instead of re-running the instance
     # traversal. Typed as Any to avoid a framework -> variables dependency cycle.
     variable_analyzer: Any = None
@@ -194,6 +150,5 @@ __all__ = [
     "AnalysisPerformanceCounters",
     "AnalysisSharedArtifacts",
     "CollectedViews",
-    "ReportsByKey",
     "VariableAnalysisArtifacts",
 ]

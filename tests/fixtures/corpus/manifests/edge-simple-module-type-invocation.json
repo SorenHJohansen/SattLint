@@ -6,8 +6,7 @@
         "expected_finding_ids": [
             "semantic.global-scope-minimization",
             "semantic.read-only-non-const",
-            "semantic.signal-lifecycle-read-before-write",
-            "semantic.signal-lifecycle-unconsumed-write"
+            "semantic.read-before-write"
         ],
         "artifact_fragments": {
             "status.json": {
@@ -15,12 +14,11 @@
                 "missing_dependency_count": 0
             },
             "summary.json": {
-                "finding_count": 4,
+                "finding_count": 3,
                 "rule_counts": {
                     "semantic.global-scope-minimization": 1,
                     "semantic.read-only-non-const": 1,
-                    "semantic.signal-lifecycle-read-before-write": 1,
-                    "semantic.signal-lifecycle-unconsumed-write": 1
+                    "semantic.read-before-write": 1
                 }
             }
         },

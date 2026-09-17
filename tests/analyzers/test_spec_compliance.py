@@ -1,12 +1,12 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false, reportMissingTypeArgument=false
 from sattline_parser.models.ast_model import (
     BasePicture,
+    Equation,
     FrameModule,
     ModuleCode,
     ModuleHeader,
     ModuleTypeDef,
     ModuleTypeInstance,
-    ParameterMapping,
     Sequence,
     SFCAlternative,
     SFCBodyItem,
@@ -16,24 +16,16 @@ from sattline_parser.models.ast_model import (
     SFCSubsequence,
     SFCTransition,
     SFCTransitionSub,
-    Simple_DataType,
     SingleModule,
-    Variable,
 )
-from sattline_parser.models.expressions import VarRef
+from sattline_parser.models.expressions import Assignment, VarRef
 
-from sattlint import constants as const
-from sattlint.analyzers import spec_compliance as spec_compliance_module
 from sattlint.analyzers.registry import get_default_analyzers
 from sattlint.analyzers.spec_compliance import SpecComplianceAnalyzer, analyze_spec_compliance
 
 
 def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
-
-
-def _varref(name: str) -> VarRef:
-    return VarRef(name=name)
 
 
 def _sequence(*nodes: SFCBodyItem) -> Sequence:
@@ -44,32 +36,6 @@ def _sequence(*nodes: SFCBodyItem) -> Sequence:
         size=(1.0, 1.0),
         code=list(nodes),
     )
-
-
-def test_basepicture_direct_code_is_reported():
-    bp = BasePicture(
-        header=_hdr("Root"),
-        modulecode=ModuleCode(sequences=[_sequence()]),
-    )
-
-    report = analyze_spec_compliance(bp)
-
-    assert any(issue.kind == "spec.basepicture_direct_code" for issue in report.issues)
-
-
-def test_basepicture_code_inside_frame_module_is_allowed():
-    frame = FrameModule(
-        header=_hdr("CodeFrame"),
-        modulecode=ModuleCode(sequences=[_sequence()]),
-    )
-    bp = BasePicture(
-        header=_hdr("Root"),
-        submodules=[frame],
-    )
-
-    report = analyze_spec_compliance(bp)
-
-    assert not any(issue.kind == "spec.basepicture_direct_code" for issue in report.issues)
 
 
 def test_sequence_step_prefix_is_reported():
@@ -124,158 +90,6 @@ def test_transition_prefix_is_reported():
     report = analyze_spec_compliance(bp)
 
     assert any(issue.kind == "spec.transition_prefix" for issue in report.issues)
-
-
-def test_opmessage_use_signature_true_is_reported():
-    opmessage = ModuleTypeDef(
-        name="OPMessage",
-        origin_lib="NNESystem",
-        origin_file="Root.s",
-        moduleparameters=[Variable(name="UseSignature", datatype=Simple_DataType.BOOLEAN, init_value=False)],
-    )
-    instance = ModuleTypeInstance(
-        header=_hdr("Prompt"),
-        moduletype_name="OPMessage",
-        parametermappings=[
-            ParameterMapping(
-                target=_varref("UseSignature"),
-                source_type=const.KEY_VALUE,
-                is_duration=False,
-                is_source_global=False,
-                source_literal=True,
-            )
-        ],
-    )
-    bp = BasePicture(
-        header=_hdr("Root"),
-        origin_file="Root.s",
-        moduletype_defs=[opmessage],
-        submodules=[instance],
-    )
-
-    report = analyze_spec_compliance(bp)
-
-    assert any(issue.kind == "spec.opmessage_use_signature" for issue in report.issues)
-
-
-def test_mes_batch_control_contract_is_reported():
-    mes = ModuleTypeDef(
-        name="MES_BatchControl",
-        origin_lib="NNEMESIFLib",
-        origin_file="Root.s",
-        moduleparameters=[
-            Variable(name="Max_TRY", datatype=Simple_DataType.INTEGER, init_value=5),
-            Variable(name="Repeat_TRY", datatype=Simple_DataType.INTEGER),
-        ],
-    )
-    instance = ModuleTypeInstance(
-        header=_hdr("BatchCtrl"),
-        moduletype_name="MES_BatchControl",
-        parametermappings=[],
-    )
-    bp = BasePicture(
-        header=_hdr("Root"),
-        origin_file="Root.s",
-        moduletype_defs=[mes],
-        submodules=[instance],
-    )
-
-    report = analyze_spec_compliance(bp)
-
-    kinds = {issue.kind for issue in report.issues}
-    assert "spec.mes_batch_control_name" in kinds
-    assert "spec.mes_batch_control_max_try" in kinds
-    assert "spec.mes_batch_control_repeat_try" in kinds
-
-
-def test_mes_batch_control_variable_init_mapping_is_accepted():
-    mes = ModuleTypeDef(
-        name="MES_BatchControl",
-        origin_lib="NNEMESIFLib",
-        origin_file="Root.s",
-        moduleparameters=[
-            Variable(name="Max_TRY", datatype=Simple_DataType.INTEGER),
-            Variable(name="Repeat_TRY", datatype=Simple_DataType.INTEGER),
-        ],
-    )
-    instance = ModuleTypeInstance(
-        header=_hdr("MES_BatchControl"),
-        moduletype_name="MES_BatchControl",
-        parametermappings=[
-            ParameterMapping(
-                target=_varref("Max_TRY"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
-                is_duration=False,
-                is_source_global=False,
-                source=_varref("ConfiguredMaxTry"),
-            ),
-            ParameterMapping(
-                target=_varref("Repeat_TRY"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
-                is_duration=False,
-                is_source_global=False,
-                source=_varref("ConfiguredRepeatTry"),
-            ),
-        ],
-    )
-    bp = BasePicture(
-        header=_hdr("Root"),
-        origin_file="Root.s",
-        localvariables=[
-            Variable(name="ConfiguredMaxTry", datatype=Simple_DataType.INTEGER, init_value=10),
-            Variable(name="ConfiguredRepeatTry", datatype=Simple_DataType.INTEGER, init_value=20),
-        ],
-        moduletype_defs=[mes],
-        submodules=[instance],
-    )
-
-    report = analyze_spec_compliance(bp)
-
-    assert not any(issue.kind.startswith("spec.mes_batch_control_") for issue in report.issues)
-
-
-def test_mes_batch_control_unresolved_mapping_is_reported():
-    mes = ModuleTypeDef(
-        name="MES_BatchControl",
-        origin_lib="NNEMESIFLib",
-        origin_file="Root.s",
-        moduleparameters=[
-            Variable(name="Max_TRY", datatype=Simple_DataType.INTEGER),
-            Variable(name="Repeat_TRY", datatype=Simple_DataType.INTEGER),
-        ],
-    )
-    instance = ModuleTypeInstance(
-        header=_hdr("MES_BatchControl"),
-        moduletype_name="MES_BatchControl",
-        parametermappings=[
-            ParameterMapping(
-                target=_varref("Max_TRY"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
-                is_duration=False,
-                is_source_global=False,
-                source=_varref("RuntimeConfiguredMaxTry"),
-            ),
-            ParameterMapping(
-                target=_varref("Repeat_TRY"),
-                source_type=const.KEY_VALUE,
-                is_duration=False,
-                is_source_global=False,
-                source_literal=20,
-            ),
-        ],
-    )
-    bp = BasePicture(
-        header=_hdr("Root"),
-        origin_file="Root.s",
-        moduletype_defs=[mes],
-        submodules=[instance],
-    )
-
-    report = analyze_spec_compliance(bp)
-
-    issues = [issue for issue in report.issues if issue.kind == "spec.mes_batch_control_max_try"]
-    assert len(issues) == 1
-    assert "could not be resolved statically" in issues[0].message
 
 
 def test_external_moduletype_sequence_rules_are_skipped_for_program_target():
@@ -347,83 +161,11 @@ def test_single_module_sequences_cover_nested_branch_nodes():
     assert "spec.transition_name_missing" in kinds
 
 
-def test_spec_compliance_helper_origin_and_resolution_fallbacks(monkeypatch):
+def test_spec_compliance_helper_origin_fallback():
     analyzer = SpecComplianceAnalyzer(BasePicture(header=_hdr("Root"), localvariables=[]))
-    instance = ModuleTypeInstance(header=_hdr("Prompt"), moduletype_name="OPMessage", parametermappings=[])
 
     assert analyzer._is_from_root_origin(None) is True
     assert analyzer._is_from_root_origin("OtherLib.s") is False
-    assert analyzer._matches_moduletype(instance, None, "OPMessage", "NNESystem") is True
-
-    def _raise_value_error(*_args, **_kwargs):
-        raise ValueError("missing moduletype")
-
-    monkeypatch.setattr(spec_compliance_module, "resolve_moduletype_def_strict", _raise_value_error)
-
-    assert analyzer._resolve_moduletype(instance, current_library=None) is None
-    assert analyzer._find_variable([], "Missing") is None
-
-
-def test_spec_compliance_parameter_helpers_cover_unknown_and_mapping_fallbacks():
-    analyzer = SpecComplianceAnalyzer(BasePicture(header=_hdr("Root"), localvariables=[]))
-    instance = ModuleTypeInstance(
-        header=_hdr("MES_BatchControl"),
-        moduletype_name="MES_BatchControl",
-        parametermappings=[],
-    )
-    moduletype = ModuleTypeDef(name="MES_BatchControl", moduleparameters=[])
-
-    assert analyzer._get_parameter_value(instance, None, {}, "Max_TRY").status == "unknown"
-    assert analyzer._get_parameter_value(instance, moduletype, {}, "Max_TRY").status == "unknown"
-
-    analyzer._check_required_parameter(
-        instance,
-        None,
-        {},
-        ["Root", "MES_BatchControl"],
-        parameter_name="Max_TRY",
-        expected_value=10,
-        issue_kind="spec.mes_batch_control_max_try",
-    )
-
-    assert analyzer.issues[-1].data == {
-        "instance": "MES_BatchControl",
-        "parameter": "Max_TRY",
-        "expected": 10,
-        "status": "unknown",
-        "site": ".".join(analyzer.issues[-1].module_path or []),
-        "context": "MES_BatchControl.Max_TRY unresolved",
-    }
-    assert "could not be verified" in analyzer.issues[-1].message
-
-    global_mapping = ParameterMapping(
-        target=_varref("Max_TRY"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
-        is_duration=False,
-        is_source_global=True,
-        source=_varref("GlobalValue"),
-        source_literal=None,
-    )
-    missing_source_mapping = ParameterMapping(
-        target=_varref("Max_TRY"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
-        is_duration=False,
-        is_source_global=False,
-        source=None,
-        source_literal=None,
-    )
-    dotted_source_mapping = ParameterMapping(
-        target=_varref("Max_TRY"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
-        is_duration=False,
-        is_source_global=False,
-        source=_varref("Config.MaxTry"),
-        source_literal=None,
-    )
-
-    assert analyzer._resolve_mapping_value(global_mapping, {}) is None
-    assert analyzer._resolve_mapping_value(missing_source_mapping, {}) is None
-    assert analyzer._resolve_mapping_value(dotted_source_mapping, {}) is None
 
 
 def test_spec_compliance_analyzer_is_enabled_by_default():
@@ -431,3 +173,95 @@ def test_spec_compliance_analyzer_is_enabled_by_default():
 
     assert "spec-compliance" in specs
     assert specs["spec-compliance"].enabled is True
+
+
+def test_step_prefix_is_configurable():
+    step = SFCStep(kind="init", name="START_Init", code=SFCCodeBlocks())
+    bp = BasePicture(
+        header=_hdr("Root"),
+        submodules=[
+            FrameModule(
+                header=_hdr("Logic"),
+                modulecode=ModuleCode(sequences=[_sequence(step)]),
+            )
+        ],
+    )
+
+    report = analyze_spec_compliance(bp, config={"analysis": {"spec_compliance": {"step_prefix": "START_"}}})
+
+    assert not any(issue.kind == "spec.sequence_step_prefix" for issue in report.issues)
+
+
+def test_transition_prefix_is_configurable():
+    step = SFCStep(kind="init", name="ST_Start", code=SFCCodeBlocks())
+    transition = SFCTransition(name="G_Next", condition=True)
+    bp = BasePicture(
+        header=_hdr("Root"),
+        submodules=[
+            FrameModule(
+                header=_hdr("Logic"),
+                modulecode=ModuleCode(sequences=[_sequence(step, transition)]),
+            )
+        ],
+    )
+
+    report = analyze_spec_compliance(bp, config={"analysis": {"spec_compliance": {"transition_prefix": "G_"}}})
+
+    assert not any(issue.kind == "spec.transition_prefix" for issue in report.issues)
+
+
+def test_sequence_name_prefix_check_is_opt_in():
+    sequence = Sequence(
+        name="MixSeq",
+        type="sequence",
+        position=(0.0, 0.0),
+        size=(1.0, 1.0),
+        code=[SFCStep(kind="init", name="ST_Start", code=SFCCodeBlocks())],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        submodules=[FrameModule(header=_hdr("Logic"), modulecode=ModuleCode(sequences=[sequence]))],
+    )
+
+    default_report = analyze_spec_compliance(bp)
+    assert not any(issue.kind == "spec.sequence_name_prefix" for issue in default_report.issues)
+
+    configured_report = analyze_spec_compliance(
+        bp, config={"analysis": {"spec_compliance": {"sequence_prefix": "SEQ_"}}}
+    )
+    issues = [issue for issue in configured_report.issues if issue.kind == "spec.sequence_name_prefix"]
+    assert len(issues) == 1
+    assert issues[0].data is not None
+    assert issues[0].data["sequence"] == "MixSeq"
+
+
+def test_equation_block_name_prefix_check_is_opt_in():
+    bp = BasePicture(
+        header=_hdr("Root"),
+        submodules=[
+            FrameModule(
+                header=_hdr("Logic"),
+                modulecode=ModuleCode(
+                    equations=[
+                        Equation(
+                            name="MainEq",
+                            position=(0.0, 0.0),
+                            size=(1.0, 1.0),
+                            code=[Assignment(target=VarRef(name="Out"), value=True)],
+                        )
+                    ]
+                ),
+            )
+        ],
+    )
+
+    default_report = analyze_spec_compliance(bp)
+    assert not any(issue.kind == "spec.equation_block_prefix" for issue in default_report.issues)
+
+    configured_report = analyze_spec_compliance(
+        bp, config={"analysis": {"spec_compliance": {"equation_prefix": "EQ_"}}}
+    )
+    issues = [issue for issue in configured_report.issues if issue.kind == "spec.equation_block_prefix"]
+    assert len(issues) == 1
+    assert issues[0].data is not None
+    assert issues[0].data["equation"] == "MainEq"
