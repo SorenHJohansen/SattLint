@@ -291,7 +291,7 @@ if _TEXTUAL_APP is not None:
         ) -> None:
             super().__init__(path, **kwargs)
             self._file_suffix = file_suffix.lower() if file_suffix else None
-            self._file_suffixes = tuple(s.lower() for s in (file_suffixes or ())) if file_suffixes else None
+            self._file_suffixes = tuple(suffix.lower() for suffix in (file_suffixes or ())) if file_suffixes else None
             self._directory_only = directory_only
             self._show_stem = show_stem
 
