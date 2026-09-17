@@ -97,6 +97,10 @@
             min-width: 0;
         }
 
+        #workspace-host.analyze-split #view-copy {
+            display: none;
+        }
+
         #workspace-host.analyze-split #view-side-actions {
             width: 1fr;
             min-width: 0;
@@ -114,8 +118,18 @@
             border: none;
         }
 
+        #workspace-host.analyze-split #view-host {
+            border: none;
+            background: transparent;
+            padding: 0;
+            margin: 1 0 0 0;
+            height: 1fr;
+            min-height: 0;
+            overflow-y: auto;
+        }
+
         #workspace-host.no-output #setup-browser {
-            margin-top: 0;
+            margin-top: 1;
         }
 
         #output-pane {
@@ -130,6 +144,7 @@
         #workspace-host.analyze-split #analyze-split-body {
             height: 1fr;
             min-height: 0;
+            margin-top: 1;
             layout: horizontal;
         }
 
@@ -155,6 +170,7 @@
         }
 
         #view-title {
+            display: none;
             margin: 0 1 0 1;
             padding: 0 1;
             color: #16323b;
@@ -214,22 +230,36 @@
             content-align: left middle;
         }
 
+        #analyze-list-actions {
+            height: auto;
+            margin-bottom: 1;
+            layout: horizontal;
+        }
+
+        #analyze-list-actions Button.raised-button {
+            width: auto;
+            margin: 0 1 0 0;
+            content-align: center middle;
+        }
+
         #setup-targets-section {
             width: 1fr;
-            min-width: 36;
+            min-width: 30;
             height: 1fr;
         }
 
         #setup-settings-section {
-            width: 1fr;
+            width: 2fr;
             height: 1fr;
             margin-left: 1;
+            padding-top: 4;
         }
 
         #settings-browser {
             width: 100%;
             height: 1fr;
-            padding: 0 1;
+            margin-top: 1;
+            padding: 0;
         }
 
         #settings-settings-section {
@@ -243,8 +273,22 @@
             max-width: 100%;
             height: 1fr;
             overflow-y: auto;
-            padding: 1;
+            padding: 1 0;
             layout: vertical;
+        }
+
+        #settings-cards-row {
+            height: auto;
+            layout: horizontal;
+            margin-bottom: 1;
+        }
+
+        #settings-cards-row .settings-group-box {
+            margin-bottom: 0;
+        }
+
+        #settings-group-review {
+            width: 1fr;
         }
 
         .settings-group-box {
@@ -271,19 +315,56 @@
             height: auto;
             min-height: 5;
             margin-top: 0;
-            align: left middle;
+            margin-bottom: 1;
+            align: left top;
         }
 
         .settings-row-button {
             width: auto;
             min-width: 0;
+            max-width: 100%;
+            height: 3;
             content-align: center middle;
+        }
+
+        #settings-browser .setup-row-label {
+            width: 1fr;
+            height: auto;
+            min-height: 2;
+            padding: 0 2;
+            margin-top: 1;
+            content-align: left middle;
         }
 
         #results-browser {
             width: 100%;
             height: 1fr;
-            padding: 0 1;
+            margin-top: 1;
+            padding: 0;
+        }
+
+        #output-browser {
+            width: 100%;
+            height: 1fr;
+            margin-top: 1;
+            padding: 0;
+        }
+
+        #output-section {
+            width: 1fr;
+            height: 1fr;
+            layout: vertical;
+            align: center top;
+            padding: 1 0;
+        }
+
+        #output-group {
+            width: 1fr;
+        }
+
+        #output-description {
+            padding: 0 2 1 2;
+            color: #58787e;
         }
 
         #results-runs-section {
@@ -292,9 +373,14 @@
             height: 1fr;
         }
 
+        #results-runs-actions {
+            height: auto;
+            margin-bottom: 1;
+        }
+
         #results-runs-title {
             text-style: bold;
-            padding: 1 2;
+            padding: 0 0 1 0;
         }
 
         #results-runs-col {
@@ -326,7 +412,7 @@
             color: #001ba3;
         }
 
-        #results-runs-list > ListItem.--highlight {
+        #results-runs-list > ListItem.-highlight {
             background: #0077b3;
             color: #fbfbee;
         }
@@ -390,9 +476,9 @@
             color: #fbfbee;
         }
 
-        #setup-targets-title,
-        #setup-config-title {
+        #setup-targets-title {
             text-style: bold;
+            padding: 0 0 1 0;
         }
 
         #setup-targets-col {
@@ -422,6 +508,10 @@
 
         .setup-group-box .setup-group-title {
             margin-top: 0;
+        }
+
+        #setup-browser .settings-group-box {
+            padding: 0 2;
         }
 
         #setup-settings-col {
@@ -457,18 +547,17 @@
             color: #001ba3;
         }
 
-        #setup-target-listview > ListItem.--highlight {
+        #setup-target-listview > ListItem.-highlight {
             background: #0077b3;
             color: #fbfbee;
         }
 
-        #setup-target-actions {
+        #setup-targets-actions {
             height: auto;
-            margin-top: 1;
-            background: #b9d9df;
+            margin-bottom: 1;
         }
 
-        #setup-target-actions Button.raised-button {
+        #setup-targets-actions Button.raised-button {
             width: auto;
             margin-right: 1;
         }
@@ -508,6 +597,10 @@
             min-width: 15;
             max-width: 15;
             content-align: center middle;
+        }
+
+        #setup-edit-other-lib-dirs {
+            margin-right: 1;
         }
 
         .setup-row-button-compact {
@@ -585,33 +678,35 @@
             height: auto;
         }
 
-        #chrome-bar {
-            height: auto;
-            background: #d5cdb8;
+        #status-bar {
+            height: 1;
+            layout: horizontal;
+            background: #e6decb;
+            align: left middle;
         }
 
-        #chrome-project {
+        #status-project {
             width: auto;
             padding: 0 2;
+            color: #16323b;
             text-style: bold;
         }
 
-        #summary {
+        #status-summary {
             width: 1fr;
-            height: auto;
-            max-height: 4;
-            overflow-y: auto;
             padding: 0 2;
+            color: #58787e;
+            content-align: right middle;
         }
 
         #menubar {
             height: auto;
-            background: #e6decb;
+            background: #d5cdb8;
         }
 
         #nav-tabs {
             height: 3;
-            background: #d5cdb8;
+            background: #0077b3;
             align: left middle;
         }
 
@@ -619,19 +714,18 @@
             width: auto;
             height: 3;
             padding: 0 2;
-            color: #373737;
-            background: #d5cdb8;
+            color: #fbfbee;
+            background: #0077b3;
             text-style: bold;
         }
 
         .nav-tab:hover {
-            background: #bfb7a2;
+            background: #005d8f;
         }
 
         .nav-tab.nav-tab-active {
             background: #f4efde;
             color: #001ba3;
-            border-top: tall #0077b3;
         }
 
         #menubar-actions {
@@ -645,7 +739,7 @@
             height: 3;
             padding: 0 1;
             color: #373737;
-            background: #e6decb;
+            background: #d5cdb8;
             text-style: bold;
             border: none !important;
             border-top: none !important;
@@ -930,7 +1024,7 @@
             color: #001ba3;
         }
 
-        #file-browser-targets > ListItem.--highlight {
+        #file-browser-targets > ListItem.-highlight {
             background: #0077b3;
             color: #fbfbee;
         }
@@ -938,6 +1032,71 @@
         #file-browser-actions {
             height: auto;
             padding: 0 2 1 2;
+        }
+
+        _ProjectPickerScreenImpl {
+            align: center middle;
+            background: #121212 45% !important;
+        }
+
+        #project-picker-dialog {
+            width: 72;
+            max-width: 88%;
+            height: 70%;
+            max-height: 70%;
+            padding-bottom: 1;
+            background: #f4efde;
+            color: #001ba3;
+            border: thick #0077b3;
+        }
+
+        #project-picker-title {
+            text-style: bold;
+            height: 3;
+            padding: 0 2;
+            content-align: left middle;
+            background: #0077b3;
+            color: #fbfbee;
+        }
+
+        #project-picker-intro {
+            padding: 1 2;
+            color: #58787e;
+        }
+
+        #project-picker-list {
+            height: 1fr;
+            margin: 0 2;
+            background: #b9d9df;
+            color: #001ba3;
+            border: tall #0077b3;
+            scrollbar-background: #b9d9df;
+            scrollbar-background-hover: #c2c2c2;
+            scrollbar-background-active: #ebebeb;
+            scrollbar-color: #58787e;
+            scrollbar-color-hover: #0077b3;
+            scrollbar-color-active: #0077b3;
+            scrollbar-corner-color: #b9d9df;
+        }
+
+        #project-picker-list > ListItem {
+            background: #b9d9df;
+            color: #001ba3;
+        }
+
+        #project-picker-list > ListItem.-highlight {
+            background: #0077b3;
+            color: #fbfbee;
+        }
+
+        #project-picker-actions {
+            height: auto;
+            padding: 1 2 0 2;
+        }
+
+        #project-picker-actions Button.raised-button {
+            width: auto;
+            margin-right: 1;
         }
 
         _HelpScreenImpl {

@@ -1,17 +1,22 @@
 from __future__ import annotations
 
 from contextlib import suppress
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+from .. import config as config_module
+from ..change_review.settings import resolve_review_output_dir
 from ._app_textual_setup_display import (
     _setup_toggle_text,
     _setup_value_text,
 )
 from ._app_textual_shared import (
+    _TEXTUAL_DIRECTORY_TREE,
     _TEXTUAL_QUERY_ERRORS,
     _TEXTUAL_STATIC,
     InteractionRequest,
 )
+from ._app_textual_widgets import _FileBrowserScreen
 
 _DEFAULT_RUN_HISTORY_LIMIT = 50
 _DEFAULT_OUTPUT_RETENTION_LINES = 4000
@@ -30,7 +35,7 @@ def _refresh_settings_labels(self: Any) -> None:
     run_history_limit = _section_value(self, "run_history", "limit", _DEFAULT_RUN_HISTORY_LIMIT)
     retention = _section_value(self, "output", "retention_lines", _DEFAULT_OUTPUT_RETENTION_LINES)
     debug = bool(self._cfg.get("debug", False))
-    review_output_dir = _section_value(self, "review", "output_dir", "")
+    review_dir = resolve_review_output_dir(self._cfg)
 
     def _safe_update(widget_id: str, text: object) -> None:
         with suppress(*_TEXTUAL_QUERY_ERRORS):
@@ -60,30 +65,58 @@ def _refresh_settings_labels(self: Any) -> None:
         "settings-label-output-retention",
         _setup_value_text(f"{retention} lines", "Live session output cap"),
     )
-    review_label = str(review_output_dir).strip() or "Default directory"
     _safe_update(
         "settings-label-review-output-dir",
-        _setup_value_text(review_label, "Where Change Review artifacts are written"),
+        _setup_value_text(str(review_dir), "Where Change Review artifacts are written"),
     )
 
 
 def _settings_note_text(self: Any) -> str:
     return (
-        "App-level settings are saved to your user config (config.toml) and apply to every configuration. "
-        "Configuration settings stay in the Setup view and are saved automatically. Press Ctrl+S to save app settings."
+        "App-level settings are saved automatically to your user config (config.toml) and apply to every "
+        "configuration. Configuration settings stay in the Setup view and are saved automatically."
     )
 
 
 def _mark_settings_changed(self: Any, message: str) -> None:
-    self._dirty = True
     for key in ("debug", "run_history", "output", "review"):
         if key in self._cfg:
             self._app_only_cfg[key] = self._cfg[key]
+    try:
+        config_module.save_app_settings(config_module.get_config_path(), self._app_only_cfg)
+    except (OSError, ValueError) as exc:
+        self._dirty = True
+        self._report_error("Save failed", f"App settings could not be saved: {exc}")
+    else:
+        self._dirty = False
     self._refresh_summary()
     self._refresh_view()
     self._set_active_action(None)
     self._refresh_shell_state()
     self._write_output(message)
+
+
+def _open_review_output_dir_picker(self: Any) -> None:
+    if _TEXTUAL_DIRECTORY_TREE is None:
+        self._queue_app_text_prompt(
+            "review",
+            "output_dir",
+            label="review output folder",
+            message="Enter the directory where Change Review artifacts are written. Leave blank to use the default directory.",
+        )
+        return
+    current = resolve_review_output_dir(self._cfg)
+    start_paths = [current] if current.is_dir() else [Path.home()]
+
+    def _on_dir_result(result: object) -> None:
+        if not isinstance(result, Path):
+            return
+        review = dict(cast(dict[str, object], self._cfg.get("review") or {}))
+        review["output_dir"] = str(result)
+        self._cfg["review"] = review
+        self._mark_settings_changed("Updated review output folder.")
+
+    self.push_screen(_FileBrowserScreen(start_paths=start_paths, directory_only=True), _on_dir_result)
 
 
 def _toggle_app_section_flag(self: Any, key: str, subkey: str, *, label: str) -> None:
@@ -239,6 +272,7 @@ if TYPE_CHECKING:
         def _refresh_settings_labels(self) -> None: ...
         def _settings_note_text(self) -> str: ...
         def _mark_settings_changed(self, message: str) -> None: ...
+        def _open_review_output_dir_picker(self) -> None: ...
         def _toggle_app_section_flag(self, key: str, subkey: str, *, label: str) -> None: ...
         def _toggle_app_debug(self) -> None: ...
         def _prompt_app_int(self, key: str, subkey: str, *, label: str) -> None: ...
@@ -255,6 +289,7 @@ else:
         _refresh_settings_labels = _refresh_settings_labels
         _settings_note_text = _settings_note_text
         _mark_settings_changed = _mark_settings_changed
+        _open_review_output_dir_picker = _open_review_output_dir_picker
         _toggle_app_section_flag = _toggle_app_section_flag
         _toggle_app_debug = _toggle_app_debug
         _prompt_app_int = _prompt_app_int

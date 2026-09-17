@@ -64,6 +64,9 @@ def _focus_startup_control(self: Any) -> None:
     try:
         selection_list = self.query_one(f"#{_ANALYZER_LIST_ID_PREFIX}analyzers", _TEXTUAL_SELECTION_LIST)
     except _TEXTUAL_QUERY_ERRORS:
+        # No analyzers (no project open): do not leave focus on the menubar.
+        # Defer past mount so Textual's initial auto-focus cannot override it.
+        self.call_after_refresh(self.set_focus, None)
         return
     self._suppress_analyze_events = True
     try:
@@ -226,7 +229,7 @@ def _update_analyze_selection_list(
 
 
 def _refresh_analyze_list(self: Any) -> None:  # noqa: PLR0915
-    container = _query_required(self, "#analyze-browser-left", _TEXTUAL_VERTICAL)
+    container = _query_required(self, "#analyze-list-host", _TEXTUAL_VERTICAL)
 
     if not self._project_loaded():
         for child in list(getattr(container, "children", [])):

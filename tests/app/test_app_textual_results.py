@@ -422,7 +422,7 @@ def test_results_tree_returns_none_without_textual() -> None:
         app_textual_results_module._TEXTUAL_TREE = original
 
 
-def test_run_tree_title_includes_counts() -> None:
+def test_run_tree_top_level_is_one_node_per_target() -> None:
     record = RunRecord(
         run_id="r1",
         started_at="s",
@@ -444,8 +444,7 @@ def test_run_tree_title_includes_counts() -> None:
         ),
     )
 
-    title = app_textual_results_module._run_tree_title(record)
-
-    assert "RootProgram" in title
-    assert "1 targets" in title
-    assert "1 issues" in title
+    tree = app_textual_results_module._build_run_tree(record)
+    assert tree is not None
+    assert str(tree.root.label) == ""
+    assert [child.data.target_name for child in tree.root.children] == ["RootProgram"]

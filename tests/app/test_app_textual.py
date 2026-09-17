@@ -21,6 +21,7 @@ import pytest
 from rich.rule import Rule
 from rich.text import Text
 
+from sattlint import config as config_module
 from sattlint import ui as app_textual
 from sattlint.application.findings import AnalysisFinding
 from sattlint.cli import startup as app
@@ -430,8 +431,8 @@ def test_textual_top_chrome_removes_banner_and_mounts_summary_strip() -> None:
             await pilot.pause()
 
             assert len(list(app_instance.query("#shell-banner"))) == 0
-            assert len(list(app_instance.query("#summary"))) == 1
-            assert app_instance.query_one("#chrome-project") is not None
+            assert len(list(app_instance.query("#status-summary"))) == 1
+            assert app_instance.query_one("#status-project") is not None
             assert app_instance.query_one("#nav-tab-analyze") is not None
 
     asyncio.run(_run())
@@ -453,9 +454,9 @@ def test_textual_toolbar_is_available_with_summary_strip() -> None:
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
-            summary_text = str(app_instance.query_one("#summary").renderable)
-            assert "Target1" in summary_text
-            assert "Target2" in summary_text
+            summary_text = str(app_instance.query_one("#status-summary").renderable)
+            assert "No configuration open" in summary_text
+            assert str(app_instance.query_one("#status-project").renderable) == "No configuration"
             assert app_instance.query_one("#nav-tabs") is not None
             assert app_instance.query_one("#nav-tab-analyze") is not None
             output_pane = app_instance.query_one("#output-pane")
@@ -528,7 +529,7 @@ def test_textual_ctrl_l_clear_binding_clears_session_output() -> None:
             await pilot.pause()
             assert "Extra output" in getattr(app_instance.query_one("#output"), "text", "")
 
-            await pilot.press("ctrl+l")
+            app_instance.action_clear_output()
             await pilot.pause()
 
             assert getattr(app_instance.query_one("#output"), "text", "") == ""
@@ -537,7 +538,7 @@ def test_textual_ctrl_l_clear_binding_clears_session_output() -> None:
     asyncio.run(_run())
 
 
-def test_textual_question_mark_binding_opens_help() -> None:
+def test_textual_help_menu_opens_help_dialog() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
@@ -547,14 +548,13 @@ def test_textual_question_mark_binding_opens_help() -> None:
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
-            await pilot.press("?")
+            app_instance.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id="menu-help")))
             await pilot.pause()
 
             help_dialog = _query_any_screen(app_instance, "#help-dialog")
             help_body = str(_query_any_screen(app_instance, "#help-dialog-body-text").renderable)
             assert "Keyboard Shortcuts" in help_body
-            assert "Cancel Analysis" in help_body
-            assert "Clear Output" in help_body
+            assert "Copy Output" in help_body
             assert "About SattLint" in help_body
             assert "█████████" in help_body
             assert help_dialog.region.x > 0
@@ -586,48 +586,6 @@ def test_textual_pause_requests_are_noop() -> None:
     asyncio.run(bridge.pause_async())
 
     assert seen_kinds == []
-
-
-def test_textual_slash_binding_filters_analyze_list() -> None:
-    if not app_textual.has_textual():
-        pytest.skip("Textual not installed")
-
-    async def _run() -> None:
-        app_instance = _make_textual_app(
-            cfg={"analyzed_programs_and_libraries": ["TargetA"]},
-            get_enabled_analyzers_fn=lambda: [
-                SimpleNamespace(
-                    key="comment-code",
-                    name="Commented out code",
-                    description="Detect commented-out code.",
-                    category="code-quality",
-                ),
-                SimpleNamespace(
-                    key="timing",
-                    name="Timing",
-                    description="Scan-cycle timing hazards.",
-                    category="correctness",
-                ),
-            ],
-        )
-
-        async with app_instance.run_test() as pilot:
-            await pilot.pause()
-
-            await pilot.press("/")
-            await pilot.pause()
-
-            assert app_instance.query_one("#interaction-host").has_class("active") is True
-
-            await pilot.press("c", "o", "m", "m", "e", "n", "t", "enter")
-            await pilot.pause()
-
-            assert app_instance.query_one("#interaction-host").has_class("active") is False
-            assert app_instance._analyze_filter_text == "comment"
-            assert app_instance._analyzer_entry_ids() == ("comment-code",)
-            assert 'Filter: "comment"' not in str(app_instance.query_one("#view-note").renderable)
-
-    asyncio.run(_run())
 
 
 def test_textual_select_all_analyzers_selects_all_visible() -> None:
@@ -750,7 +708,7 @@ def test_textual_chrome_project_label_shows_project_name() -> None:
 
         async with app_instance.run_test() as pilot:
             await pilot.pause()
-            label = str(app_instance.query_one("#chrome-project").renderable)
+            label = str(app_instance.query_one("#status-project").renderable)
             assert "sattlint-test-project-" in label
 
     asyncio.run(_run())
@@ -765,7 +723,7 @@ def test_textual_chrome_project_label_falls_back_without_project() -> None:
 
         async with app_instance.run_test() as pilot:
             await pilot.pause()
-            assert str(app_instance.query_one("#chrome-project").renderable) == "No configuration"
+            assert str(app_instance.query_one("#status-project").renderable) == "No configuration"
 
     asyncio.run(_run())
 
@@ -779,13 +737,13 @@ def test_textual_settings_layout_uses_vertical_cards() -> None:
 
         async with app_instance.run_test() as pilot:
             await pilot.pause()
-            await pilot.press("ctrl+2")
+            await pilot.press("ctrl+4")
             await pilot.pause()
 
-            assert len(list(app_instance.query("#settings-config-title"))) == 0
-            assert len(list(app_instance.query(".settings-group-box"))) == 3
-            assert len(list(app_instance.query(".settings-card-title"))) == 3
-            assert len(list(app_instance.query(".settings-row"))) == 5
+            assert app_instance._active_view == "settings"
+            assert len(list(app_instance.query("#settings-browser .settings-group-box"))) == 3
+            assert len(list(app_instance.query("#settings-browser .settings-card-title"))) == 3
+            assert len(list(app_instance.query("#settings-browser .settings-row"))) == 5
             assert app_instance.query_one("#settings-toggle-run-history") is not None
             assert app_instance.query_one("#settings-edit-run-history-limit") is not None
             assert app_instance.query_one("#settings-edit-output-retention") is not None
@@ -818,47 +776,22 @@ def test_textual_setup_browser_gains_config_mode_class_when_dirty() -> None:
     asyncio.run(_run())
 
 
-def test_textual_delete_configuration_menu_dispatches_delete_project(
+def test_textual_open_configuration_menu_pushes_project_picker(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     app_instance = _make_textual_app()
-    deleted: list[str] = []
-    monkeypatch.setattr(app_instance, "_delete_project", lambda: deleted.append("deleted"))
+    pushed: list[object] = []
+    monkeypatch.setattr(app_instance, "push_screen", lambda screen, callback=None: pushed.append(screen))
 
-    app_instance.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id="menu-file-delete-project")))
-    assert deleted == ["deleted"]
+    app_instance.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id="menu-file-open-project")))
+    assert len(pushed) == 1
+    assert type(pushed[0]).__name__ == "_ProjectPickerScreenImpl"
 
 
 def test_textual_shell_bindings_exclude_save_and_toggle_hotkeys() -> None:
     keys = {key for key, _action, _desc in app_textual_shared_module.APP_SHELL_BINDINGS}
     assert "ctrl+s" not in keys
     assert "ctrl+o" not in keys
-
-
-def test_textual_slash_binding_filters_setup_targets() -> None:
-    if not app_textual.has_textual():
-        pytest.skip("Textual not installed")
-
-    async def _run() -> None:
-        app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": ["Alpha", "Beta", "Gamma"]})
-
-        async with app_instance.run_test() as pilot:
-            await pilot.press("ctrl+4")
-            await pilot.pause()
-
-            await pilot.press("/")
-            await pilot.pause()
-
-            assert app_instance.query_one("#interaction-host").has_class("active") is True
-
-            await pilot.press("b", "e", "t", "a", "enter")
-            await pilot.pause()
-
-            assert app_instance.query_one("#interaction-host").has_class("active") is False
-            assert app_instance._setup_filter_text == "beta"
-            assert app_instance._setup_target_names_list == ["Beta"]
-
-    asyncio.run(_run())
 
 
 def test_textual_session_output_preserves_manual_scroll_position_on_new_output() -> None:
@@ -953,7 +886,7 @@ def test_textual_present_request_uses_inline_host_and_preserves_shell_chrome() -
             await pilot.pause()
 
             assert len(list(app_instance.query("#shell-banner"))) == 0
-            assert len(list(app_instance.query("#summary"))) == 1
+            assert len(list(app_instance.query("#status-summary"))) == 1
             assert app_instance.query_one("#interaction-host").has_class("active")
             assert app_instance.query_one("#output").has_class("interaction-active")
 
@@ -1046,6 +979,18 @@ def _attach_test_project(app_instance: Any) -> None:
 
 
 _TEMP_TEST_DIRS: list[str] = []
+
+
+@pytest.fixture(autouse=True)
+def _isolate_app_config_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Redirect the user config path to a temp file for these app tests.
+
+    App settings are saved automatically on change; without this, the tests
+    would read and write the real ``~/.config/sattlint/config.toml``.
+    """
+    config_path = tmp_path / "config.toml"
+    monkeypatch.setattr("sattlint.config.paths.get_config_path", lambda: config_path)
+    yield
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -1215,8 +1160,8 @@ def test_textual_analyze_header_buttons_fit_without_clipping() -> None:
             run_button = app_instance.query_one("#analyze-run-selected")
             clear_button = app_instance.query_one("#analyze-clear-selection")
 
-            assert run_button.size.width >= run_button.virtual_size.width
-            assert clear_button.size.width >= clear_button.virtual_size.width
+            assert run_button.region.width >= run_button.virtual_size.width
+            assert clear_button.region.width >= clear_button.virtual_size.width
 
     asyncio.run(_run())
 
@@ -1956,7 +1901,7 @@ def test_textual_ctrl_g_cancel_binding_requests_stop_for_running_analysis() -> N
             app_instance._refresh_view()
             await pilot.pause()
 
-            assert ("ctrl+g", "cancel_running_analysis", "Cancel Analysis") in app_textual.SattLintTextualApp.BINDINGS
+            assert app_instance.query_one("#analyze-cancel-running") is not None
             app_instance.action_cancel_running_analysis()
 
             output_text = getattr(app_instance.query_one("#output"), "text", "")
@@ -2110,7 +2055,7 @@ def test_textual_toolbar_key_switches_routed_view() -> None:
         async with app_instance.run_test() as pilot:
             assert str(app_instance.query_one("#view-title").renderable) == "Analyze"
 
-            await pilot.press("ctrl+4")
+            await pilot.press("ctrl+3")
             await pilot.pause()
 
             assert app_instance._active_view == "setup"
@@ -2202,7 +2147,7 @@ def test_textual_setup_view_shows_selected_target_preview(tmp_path: Path) -> Non
         _attach_test_project(app_instance)
 
         async with app_instance.run_test() as pilot:
-            await pilot.press("ctrl+4")
+            await pilot.press("ctrl+3")
             await pilot.pause()
 
             workspace_host = app_instance.query_one("#workspace-host")
@@ -2218,8 +2163,8 @@ def test_textual_setup_view_shows_selected_target_preview(tmp_path: Path) -> Non
             assert str(view_title.renderable) == "Configuration Settings"
             assert output_pane.has_class("is-hidden") is True
             assert app_instance.query_one("#setup-browser").has_class("is-hidden") is False
-            assert str(getattr(browse_button, "label", "")) == "Add from file..."
-            assert str(getattr(program_button, "label", "")) == "Program folder"
+            assert str(getattr(browse_button, "label", "")) == "Add"
+            assert str(getattr(program_button, "label", "")) == "Change folder"
             assert targets_col is not None
             assert settings_col is not None
             assert str(app_instance.query_one("#setup-label-program-dir").renderable) == (
@@ -2294,7 +2239,7 @@ def test_textual_settings_view_shows_app_settings_and_edits_config() -> None:
         app_instance = _make_textual_app(cfg=cfg)
 
         async with app_instance.run_test() as pilot:
-            await pilot.press("ctrl+2")
+            await pilot.press("ctrl+4")
             await pilot.pause()
 
             assert app_instance._active_view == "settings"
@@ -2311,7 +2256,7 @@ def test_textual_settings_view_shows_app_settings_and_edits_config() -> None:
             await pilot.pause()
 
             assert cfg["debug"] is True
-            assert app_instance._dirty is True
+            assert app_instance._dirty is False
             assert str(app_instance.query_one("#settings-label-debug").renderable).startswith("Enabled")
 
     asyncio.run(_run())
@@ -2338,21 +2283,30 @@ def test_textual_settings_prompt_buttons_open_dialog_and_apply_values() -> None:
             await pilot.click("#submit")
             await pilot.pause()
             assert cfg[section][subkey] == expected  # type: ignore[index]
-            assert app_instance._dirty is True
+            assert app_instance._dirty is False
 
         async with app_instance.run_test() as pilot:
-            await pilot.press("ctrl+2")
+            await pilot.press("ctrl+4")
             await pilot.pause()
 
             await _edit("settings-edit-run-history-limit", "80", "run_history", "limit", 80)
             await _edit("settings-edit-output-retention", "2500", "output", "retention_lines", 2500)
-            await _edit(
-                "settings-edit-review-output-dir",
-                "/tmp/reviews",
-                "review",
-                "output_dir",
-                "/tmp/reviews",
-            )
+
+    asyncio.run(_run())
+
+
+def test_textual_review_output_dir_button_opens_folder_picker() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app()
+        async with app_instance.run_test() as pilot:
+            await pilot.press("ctrl+4")
+            await pilot.pause()
+            app_instance.query_one("#settings-edit-review-output-dir").press()
+            await pilot.pause()
+            assert type(app_instance.screen).__name__ == "_FileBrowserScreenImpl"
 
     asyncio.run(_run())
 
@@ -2397,7 +2351,7 @@ def test_textual_results_view_lists_runs_and_renders_tree(monkeypatch: pytest.Mo
         monkeypatch.setattr(app_textual_results_module, "load_run", lambda run_id: record if run_id == "run1" else None)
 
         async with app_instance.run_test() as pilot:
-            await pilot.press("ctrl+3")
+            await pilot.press("ctrl+2")
             await pilot.pause()
 
             assert app_instance._active_view == "results"
@@ -2411,8 +2365,8 @@ def test_textual_results_view_lists_runs_and_renders_tree(monkeypatch: pytest.Mo
             target_node = tree.root.children[0]
             analyzer_node = next(iter(target_node.children))
             kind_node = next(iter(analyzer_node.children))
-            assert target_node.is_expanded is True
-            assert analyzer_node.is_expanded is True
+            assert target_node.is_expanded is False
+            assert analyzer_node.is_expanded is False
             assert kind_node.is_expanded is False
 
             app_instance._collapse_all_results()
@@ -2459,7 +2413,7 @@ def test_textual_analysis_completion_switches_to_results_view(monkeypatch: pytes
     asyncio.run(_run())
 
 
-def test_textual_setup_browse_shows_discovered_targets_once(tmp_path: Path) -> None:
+def test_textual_setup_browse_filters_targets_by_mode_without_extensions(tmp_path: Path) -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
@@ -2471,6 +2425,7 @@ def test_textual_setup_browse_shows_discovered_targets_once(tmp_path: Path) -> N
         (program_dir / "TargetA.s").write_text("draft")
         (program_dir / "TargetA.l").write_text("deps")
         (abb_dir / "TargetA.x").write_text("official")
+        (abb_dir / "Other.z").write_text("other")
 
         app_instance = _make_textual_app(
             cfg={
@@ -2483,28 +2438,24 @@ def test_textual_setup_browse_shows_discovered_targets_once(tmp_path: Path) -> N
         )
 
         async with app_instance.run_test() as pilot:
-            await pilot.press("ctrl+4")
+            await pilot.press("ctrl+3")
             await pilot.pause()
 
             browse_button = app_instance.query_one("#setup-target-browse")
             app_instance.on_button_pressed(SimpleNamespace(button=browse_button))
             await pilot.pause()
 
-            target_list = _query_any_screen(app_instance, "#file-browser-targets")
-            list_items = list(target_list.query("ListItem"))
-            selection_text = str(_query_any_screen(app_instance, "#file-browser-selection").renderable)
-
             assert _query_any_screen(app_instance, "#file-browser-dialog") is not None
-            assert len(list_items) == 1
-            assert "TargetA" in str(getattr(list_items[0].query_one("Static"), "renderable", ""))
-            assert "TargetA.s" not in selection_text
-            assert "TargetA.l" not in selection_text
-            assert "TargetA.x" not in selection_text
-            assert "TargetA" in selection_text
-            assert (
-                str(getattr(_query_any_screen(app_instance, "#file-browser-browse-filesystem"), "label", ""))
-                == "Browse filesystem"
-            )
+            tree = _query_any_screen(app_instance, "#file-browser-tree")
+            assert tree is not None
+
+            await pilot.pause(0.5)
+            labels = [str(getattr(child, "label", "")) for child in tree.root.children]
+
+            # Draft mode shows .s/.l targets as stems only, never the .x/.z files.
+            assert "TargetA" in labels
+            assert "TargetA.s" not in labels and "TargetA.l" not in labels
+            assert "Other" not in labels
 
     asyncio.run(_run())
 
@@ -2808,7 +2759,7 @@ def test_textual_setup_remove_other_lib_dir_button_enabled_with_entries() -> Non
             }
         )
         async with app_instance.run_test() as pilot:
-            await pilot.press("ctrl+4")
+            await pilot.press("ctrl+3")
             await pilot.pause()
             assert getattr(app_instance.query_one("#setup-edit-other-lib-dirs-remove"), "disabled", False) is False
 
@@ -3806,6 +3757,23 @@ def test_textual_setup_change_autosaves_to_slproj(monkeypatch: pytest.MonkeyPatc
     assert "slproj_version" in saved.data
 
 
+def test_textual_settings_change_autosaves_to_app_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    app_instance = _make_textual_app()
+    monkeypatch.setattr(app_instance, "_refresh_summary", lambda: None)
+    monkeypatch.setattr(app_instance, "_refresh_view", lambda: None)
+    monkeypatch.setattr(app_instance, "_set_active_action", lambda _action_id: None)
+    monkeypatch.setattr(app_instance, "_refresh_shell_state", lambda: None)
+    monkeypatch.setattr(app_instance, "_write_output", lambda text: None)
+
+    app_instance._cfg["run_history"] = {"enabled": True, "limit": 80}
+    app_instance._mark_settings_changed("updated run history")
+
+    assert app_instance._dirty is False
+    saved_cfg, _default_used = config_module.load_config(config_module.get_config_path())
+    assert saved_cfg["run_history"]["limit"] == 80
+    assert saved_cfg["run_history"]["enabled"] is True
+
+
 def test_textual_open_project_loads_and_unlocks_views(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     app_instance = _make_textual_app(project=False)
     assert app_instance._project_loaded() is False
@@ -3931,11 +3899,11 @@ def test_textual_no_project_gates_analyze_setup_and_results() -> None:
             await pilot.pause()
 
             assert app_instance._project_loaded() is False
-            analyzer_notice = str(next(iter(app_instance.query_one("#analyze-browser-left").children)).renderable)
+            analyzer_notice = str(next(iter(app_instance.query_one("#analyze-list-host").children)).renderable)
             assert "No configuration is open" in analyzer_notice
             assert getattr(app_instance.query_one("#analyze-run-selected"), "disabled", False) is True
 
-            await pilot.press("ctrl+4")
+            await pilot.press("ctrl+3")
             await pilot.pause()
             setup_item = next(iter(app_instance.query_one("#setup-target-listview").children))
             setup_notice = str(next(iter(setup_item.children)).renderable)
@@ -3946,14 +3914,14 @@ def test_textual_no_project_gates_analyze_setup_and_results() -> None:
             assert getattr(app_instance.query_one("#setup-edit-icf-dir"), "disabled", False) is True
             assert getattr(app_instance.query_one("#setup-toggle-mode"), "disabled", False) is True
 
-            await pilot.press("ctrl+3")
+            await pilot.press("ctrl+2")
             await pilot.pause()
             results_item = next(iter(app_instance.query_one("#results-runs-list").children))
             results_notice = str(next(iter(results_item.children)).renderable)
             assert "No configuration is open" in results_notice
 
             # Settings stays usable without a project.
-            await pilot.press("ctrl+2")
+            await pilot.press("ctrl+4")
             await pilot.pause()
             assert getattr(app_instance.query_one("#settings-toggle-run-history"), "disabled", False) is False
 
@@ -4031,7 +3999,7 @@ def test_textual_no_content_clipped_outside_visible_area() -> None:
             await pilot.pause()
             _assert_no_content_clipped_outside_visible_area(app_instance)
 
-            for key in ("ctrl+2", "ctrl+3", "ctrl+4", "ctrl+1"):
+            for key in ("ctrl+2", "ctrl+3", "ctrl+4", "ctrl+5", "ctrl+1"):
                 await pilot.press(key)
                 await pilot.pause()
                 _assert_no_content_clipped_outside_visible_area(app_instance)

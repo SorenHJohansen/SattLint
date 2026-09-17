@@ -25,6 +25,7 @@ from ._app_textual_setup_display import (
     _setup_candidate_status,
     _setup_candidates,
     _setup_filter_value,
+    _status_text,
     _summary_text,
     _visible_configured_target_names,
 )
@@ -122,6 +123,7 @@ if TYPE_CHECKING:
         def _setup_filter_value(self) -> str: ...
         def _visible_configured_target_names(self) -> tuple[str, ...]: ...
         def _summary_text(self) -> str: ...
+        def _status_text(self) -> str: ...
         def _active_job_text(self) -> str | None: ...
         def _active_job_elapsed_text(self) -> str | None: ...
         def _output_title_spinner_frame(self) -> str | None: ...
@@ -189,6 +191,7 @@ else:
         _setup_filter_value = _setup_filter_value
         _visible_configured_target_names = _visible_configured_target_names
         _summary_text = _summary_text
+        _status_text = _status_text
         _active_job_text = _active_job_text
         _active_job_elapsed_text = _active_job_elapsed_text
         _output_title_spinner_frame = _output_title_spinner_frame

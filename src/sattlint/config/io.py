@@ -104,12 +104,16 @@ def save_app_settings(path: Path, cfg: ConfigDict) -> None:
     Loads the existing config file (or defaults when missing) and overwrites
     only the user-scoped app keys (``debug``, ``run_history``, ``output``), so
     writing app settings never pollutes a project file with project keys.
+    Unknown/stale keys in the existing file are stripped, mirroring
+    :func:`load_config`, so an out-of-sync file does not fail the save.
     """
     if path.exists():
         with path.open("rb") as file_handle:
             existing: ConfigObjectMap = cast(ConfigObjectMap, tomllib.load(file_handle))
     else:
         existing = cast(ConfigObjectMap, deepcopy(DEFAULT_CONFIG))
+
+    strip_unknown_keys(cast(ConfigOverrideDict, existing))
 
     for key in APP_LEVEL_CONFIG_KEYS:
         if key in cfg:

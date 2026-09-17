@@ -92,6 +92,19 @@ def load_run(run_id: str, *, runs_dir: Path | None = None) -> RunRecord | None:
     return _load_run_file(_run_path(resolved_runs_dir, run_id))
 
 
+def delete_run(run_id: str, *, runs_dir: Path | None = None) -> bool:
+    """Delete a persisted run by id, returning True when a file was removed."""
+    resolved_runs_dir = get_runs_dir() if runs_dir is None else runs_dir
+    path = _run_path(resolved_runs_dir, run_id)
+    if not path.exists():
+        return False
+    try:
+        path.unlink()
+    except OSError:
+        return False
+    return True
+
+
 def _load_run_file(path: Path) -> RunRecord | None:
     if not path.exists():
         return None
@@ -110,6 +123,7 @@ def _load_run_file(path: Path) -> RunRecord | None:
 
 __all__ = [
     "DEFAULT_RUN_HISTORY_LIMIT",
+    "delete_run",
     "get_runs_dir",
     "list_runs",
     "load_run",
