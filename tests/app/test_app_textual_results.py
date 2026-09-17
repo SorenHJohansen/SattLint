@@ -98,7 +98,6 @@ def test_results_tree_builds_run_hierarchy() -> None:
                                 kind="unused",
                                 message="declared but never read",
                                 module_path=("RootProgram", "StartMaster"),
-                                severity="warning",
                             ),
                         ),
                     ),
@@ -146,19 +145,16 @@ def test_results_tree_groups_findings_by_kind() -> None:
                                 kind="unused",
                                 message="declared but never read",
                                 module_path=("RootProgram", "A"),
-                                severity="warning",
                             ),
                             AnalysisFinding(
                                 kind="unused",
                                 message="assigned but never read",
                                 module_path=("RootProgram", "B"),
-                                severity="warning",
                             ),
                             AnalysisFinding(
                                 kind="shadowed",
                                 message="shadows an outer variable",
                                 module_path=("RootProgram", "B"),
-                                severity="warning",
                             ),
                         ),
                     ),
@@ -208,19 +204,16 @@ def test_results_tree_collapses_identical_findings_to_one_path() -> None:
                                 kind="typedef",
                                 message="never used",
                                 module_path=("RootProgram", "A", "Pump_1"),
-                                severity="warning",
                             ),
                             AnalysisFinding(
                                 kind="typedef",
                                 message="never used",
                                 module_path=("RootProgram", "A", "Pump_2"),
-                                severity="warning",
                             ),
                             AnalysisFinding(
                                 kind="typedef",
                                 message="never used",
                                 module_path=("RootProgram", "A", "Pump_3"),
-                                severity="warning",
                             ),
                         ),
                     ),
@@ -263,11 +256,10 @@ def test_results_tree_renders_site_node_and_context_leaf() -> None:
                         status="completed",
                         findings=(
                             AnalysisFinding(
-                                kind="contract_mismatch",
+                                kind="string_mapping_mismatch",
                                 message="[RootProgram.Child] parameter mapping type mismatch",
                                 module_path=("RootProgram", "Child"),
                                 data={"site": "Child : ChildType", "context": "TargetVal => SourceVal"},
-                                severity="error",
                             ),
                         ),
                     ),
@@ -286,7 +278,7 @@ def test_results_tree_renders_site_node_and_context_leaf() -> None:
     site_node = next(iter(module_node.children))
     assert site_node.label.plain == "Child : ChildType"
     leaf = next(iter(site_node.children))
-    assert leaf.data.kind == "contract_mismatch"
+    assert leaf.data.kind == "string_mapping_mismatch"
     assert "TargetVal => SourceVal" in leaf.label.plain
     assert "[RootProgram.Child]" not in leaf.label.plain
     assert any(child.label.plain == "Context: TargetVal => SourceVal" for child in leaf.children)
@@ -430,7 +422,7 @@ def test_results_tree_returns_none_without_textual() -> None:
         app_textual_results_module._TEXTUAL_TREE = original
 
 
-def test_run_tree_title_includes_counts() -> None:
+def test_run_tree_top_level_is_one_node_per_target() -> None:
     record = RunRecord(
         run_id="r1",
         started_at="s",
@@ -452,8 +444,7 @@ def test_run_tree_title_includes_counts() -> None:
         ),
     )
 
-    title = app_textual_results_module._run_tree_title(record)
-
-    assert "RootProgram" in title
-    assert "1 targets" in title
-    assert "1 issues" in title
+    tree = app_textual_results_module._build_run_tree(record)
+    assert tree is not None
+    assert str(tree.root.label) == ""
+    assert [child.data.target_name for child in tree.root.children] == ["RootProgram"]

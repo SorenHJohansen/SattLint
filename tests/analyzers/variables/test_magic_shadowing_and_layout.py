@@ -4,178 +4,6 @@ from sattline_parser.models.expressions import BoolOp, Compare, UnaryOp
 from tests.helpers.analyzers_variables_support import *
 
 
-def test_required_parameter_name_helper_caches_only_runtime_used_parameters():
-    typedef = ModuleTypeDef(
-        name="ChildType",
-        moduleparameters=[
-            Variable(name="RequiredValue", datatype=Simple_DataType.INTEGER),
-            Variable(name="UnusedValue", datatype=Simple_DataType.INTEGER),
-        ],
-        localvariables=[Variable(name="Mirror", datatype=Simple_DataType.INTEGER)],
-        submodules=[],
-        moduledef=None,
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="UseParam",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("Mirror"), value=_varref("RequiredValue"))],
-                )
-            ]
-        ),
-        parametermappings=[],
-    )
-    bp = BasePicture(
-        header=_hdr("Root"),
-        datatype_defs=[],
-        moduletype_defs=[typedef],
-        localvariables=[],
-        submodules=[],
-        modulecode=None,
-        moduledef=None,
-    )
-
-    analyzer = VariablesAnalyzer(bp)
-
-    first = analyzer._get_required_parameter_names_for_typedef(typedef)
-    second = analyzer._get_required_parameter_names_for_typedef(typedef)
-
-    assert first == {"requiredvalue": "RequiredValue"}
-    assert second == first
-    assert analyzer._required_parameter_names_by_owner[id(typedef)] == first
-
-
-def test_required_parameter_name_helper_handles_cyclic_typedef_instances():
-    type_a = ModuleTypeDef(
-        name="TypeA",
-        moduleparameters=[Variable(name="AParam", datatype=Simple_DataType.INTEGER)],
-        localvariables=[Variable(name="AMirror", datatype=Simple_DataType.INTEGER)],
-        submodules=[
-            ModuleTypeInstance(
-                header=_hdr("UseB"),
-                moduletype_name="TypeB",
-                parametermappings=[
-                    ParameterMapping(
-                        target=_varref("BParam"),
-                        source_type=const.KEY_VALUE,
-                        is_duration=False,
-                        is_source_global=False,
-                        source=_varref("AParam"),
-                        source_literal=None,
-                    )
-                ],
-            )
-        ],
-        moduledef=None,
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="ReadAParam",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("AMirror"), value=_varref("AParam"))],
-                )
-            ]
-        ),
-        parametermappings=[],
-    )
-    type_b = ModuleTypeDef(
-        name="TypeB",
-        moduleparameters=[Variable(name="BParam", datatype=Simple_DataType.INTEGER)],
-        localvariables=[Variable(name="BMirror", datatype=Simple_DataType.INTEGER)],
-        submodules=[
-            ModuleTypeInstance(
-                header=_hdr("UseA"),
-                moduletype_name="TypeA",
-                parametermappings=[
-                    ParameterMapping(
-                        target=_varref("AParam"),
-                        source_type=const.KEY_VALUE,
-                        is_duration=False,
-                        is_source_global=False,
-                        source=_varref("BParam"),
-                        source_literal=None,
-                    )
-                ],
-            )
-        ],
-        moduledef=None,
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="ReadBParam",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("BMirror"), value=_varref("BParam"))],
-                )
-            ]
-        ),
-        parametermappings=[],
-    )
-    bp = BasePicture(
-        header=_hdr("Root"),
-        datatype_defs=[],
-        moduletype_defs=[type_a, type_b],
-        localvariables=[],
-        submodules=[],
-        modulecode=None,
-        moduledef=None,
-    )
-
-    analyzer = VariablesAnalyzer(bp)
-
-    required_a = analyzer._get_required_parameter_names_for_typedef(type_a)
-    required_b = analyzer._get_required_parameter_names_for_typedef(type_b)
-
-    assert required_a == {"aparam": "AParam"}
-    assert required_b == {"bparam": "BParam"}
-    assert analyzer._required_parameter_names_by_owner[id(type_a)] == required_a
-    assert analyzer._required_parameter_names_by_owner[id(type_b)] == required_b
-
-
-def test_anytype_contracts_collect_read_and_write_field_paths():
-    typedef = ModuleTypeDef(
-        name="ChildType",
-        moduleparameters=[Variable(name="Payload", datatype="AnyType")],
-        localvariables=[
-            Variable(name="Mirror", datatype=Simple_DataType.INTEGER),
-            Variable(name="Source", datatype=Simple_DataType.INTEGER),
-        ],
-        submodules=[],
-        moduledef=None,
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="UsePayload",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        Assignment(target=_varref("Mirror"), value=_varref("Payload.FieldA")),
-                        Assignment(target=_varref("Payload.FieldB"), value=_varref("Source")),
-                    ],
-                )
-            ]
-        ),
-        parametermappings=[],
-    )
-    bp = BasePicture(
-        header=_hdr("Root"),
-        datatype_defs=[],
-        moduletype_defs=[typedef],
-        localvariables=[],
-        submodules=[],
-        modulecode=None,
-        moduledef=None,
-    )
-
-    analyzer = VariablesAnalyzer(bp)
-
-    contracts = analyzer._anytype_field_contracts_by_owner[id(typedef)]
-
-    assert contracts["payload"].field_paths == ("FieldA", "FieldB")
-
-
 def test_magic_number_detection_in_equations_and_sfc():
     eq = Equation(
         name="Main",
@@ -263,7 +91,7 @@ def test_shadowing_detected_for_nested_locals():
         moduledef=None,
     )
 
-    report = analyze_shadowing(bp)
+    report = analyze_variables(bp, selected_issue_kinds=frozenset({IssueKind.SHADOWING}))
 
     assert any(i.kind is IssueKind.SHADOWING for i in report.issues)
 
@@ -295,7 +123,7 @@ def test_shadowing_detected_for_moduletype_instance_locals():
         moduledef=None,
     )
 
-    report = analyze_shadowing(bp)
+    report = analyze_variables(bp, selected_issue_kinds=frozenset({IssueKind.SHADOWING}))
 
     assert any(i.kind is IssueKind.SHADOWING for i in report.issues)
 

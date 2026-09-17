@@ -2,8 +2,8 @@
 "Original file date: ---"
 "Program date: 2026-04-23-12:00:00.000, name: SignalLifecycle"
 (* SEMANTIC: Signal lifecycle coverage for the wave-2 analyzer.
-   - InputSignal is consumed before any definite write in the scope.
-   - NeverConsumed is written but never consumed later in the scope.
+   - InputSignal is written, then read in a later equation.
+   - OutputSignal is read before its first definite write in the scope.
    Expected findings include the signal-lifecycle semantic rules. *)
 
 BasePicture Invocation

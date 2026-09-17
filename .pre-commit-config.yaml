@@ -14,13 +14,6 @@ repos:
         entry: python -m pyright src/sattlint tests
         files: ^(src|tests)/.*\.py$
         pass_filenames: false
-      - id: sattlint-syntax-check
-        name: SattLint syntax-check (staged SattLine files)
-        language: system
-        entry: python -m sattlint syntax-check
-        files: \.(g|l|s)$
-        exclude: ^tests/fixtures/
-        pass_filenames: true
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0

@@ -47,9 +47,19 @@ _CONDITION_PARAMETER_NAMES: tuple[str, ...] = (
 _ISSUE_LABELS = {
     "alarm.duplicate_tag": "Duplicate alarm tags",
     "alarm.duplicate_condition": "Duplicate alarm conditions",
-    "alarm.conflicting_priority": "Conflicting alarm priorities",
     "alarm.never_cleared": "Never-cleared alarm writes",
 }
+
+_ALARM_SOURCE_MODULETYPE_NAMES: frozenset[str] = frozenset(
+    {
+        "event1",
+        "event2",
+        "event1advanced",
+        "event2advanced",
+        "eventdetector1",
+        "eventdetector2",
+    }
+)
 
 _AlarmBooleanWriteSummary = _alarm_path_traversal_module.AlarmBooleanWriteSummary
 _as_bool_literal = _alarm_path_traversal_module.as_bool_literal
@@ -163,7 +173,6 @@ class AlarmIntegrityAnalyzer:
 
         self._emit_duplicate_tag_issues()
         self._emit_duplicate_condition_issues()
-        self._emit_conflicting_priority_issues()
         return self._issues
 
     def _is_from_root_origin(self, origin_file: str | None, origin_lib: str | None = None) -> bool:
@@ -261,6 +270,8 @@ class AlarmIntegrityAnalyzer:
         current_library: str | None,
     ) -> _AlarmCandidate | None:
         mt_def = self._resolve_moduletype(inst, current_library)
+        if mt_def is None or casefold_key(mt_def.name) not in _ALARM_SOURCE_MODULETYPE_NAMES:
+            return None
         parameter_names = self._parameter_names(inst, mt_def)
         if not any(name in parameter_names for name in _TAG_PARAMETER_NAMES):
             return None
@@ -288,7 +299,7 @@ class AlarmIntegrityAnalyzer:
         if tag_key is None and priority_key is None and condition_key is None:
             return None
 
-        moduletype_label = format_moduletype_label(mt_def) if mt_def is not None else inst.moduletype_name
+        moduletype_label = format_moduletype_label(mt_def)
         return _AlarmCandidate(
             module_path=module_path.copy(),
             instance_name=inst.header.name,
@@ -528,63 +539,6 @@ class AlarmIntegrityAnalyzer:
                         },
                     )
                 )
-
-    def _emit_conflicting_priority_issues(self) -> None:
-        by_tag: dict[str, list[_AlarmCandidate]] = defaultdict(list)
-        by_condition: dict[str, list[_AlarmCandidate]] = defaultdict(list)
-        for candidate in self._candidates:
-            if candidate.priority_key is None:
-                continue
-            if candidate.tag_key is not None:
-                by_tag[candidate.tag_key].append(candidate)
-            if candidate.condition_key is not None:
-                by_condition[candidate.condition_key].append(candidate)
-
-        seen_groups: set[tuple[str, tuple[tuple[str, ...], ...]]] = set()
-
-        for scope_name, groups in (("tag", by_tag), ("condition", by_condition)):
-            for scope_key, candidates in groups.items():
-                priorities = {candidate.priority_key for candidate in candidates if candidate.priority_key is not None}
-                if len(candidates) < 2 or len(priorities) < 2:
-                    continue
-
-                group_id = (
-                    scope_name,
-                    tuple(sorted(tuple(candidate.module_path) for candidate in candidates)),
-                )
-                if group_id in seen_groups:
-                    continue
-                seen_groups.add(group_id)
-
-                if scope_name == "tag":
-                    scope_label = candidates[0].tag_display or scope_key
-                    detail = f"Alarm tag {scope_label!r}"
-                else:
-                    scope_label = candidates[0].condition_display or scope_key
-                    detail = f"Alarm condition {scope_label!r}"
-
-                priorities_label = ", ".join(
-                    sorted({candidate.priority_display or "<unknown priority>" for candidate in candidates})
-                )
-                locations = self._location_list(candidates)
-                for candidate in candidates:
-                    self._issues.append(
-                        Issue(
-                            kind="alarm.conflicting_priority",
-                            message=(
-                                f"{detail} is configured with conflicting priorities or severities ({priorities_label}) across: {locations}."
-                            ),
-                            module_path=candidate.module_path.copy(),
-                            data={
-                                "scope": scope_name,
-                                "scope_value": scope_label,
-                                "priorities": sorted(priorities),
-                                "locations": locations,
-                                "site": ".".join(candidate.module_path),
-                                "context": f"{scope_label} = {priorities_label}",
-                            },
-                        )
-                    )
 
     def _check_module_code(
         self,

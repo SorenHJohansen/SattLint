@@ -566,38 +566,6 @@ def test_ensure_ast_cache_covers_cache_hit_stale_missing_and_failure(monkeypatch
     assert any("Failed to build AST cache for TargetE: boom" in line for line in lines)
 
 
-def test_run_variable_analysis_shadowing_only_uses_shadowing_report_and_pauses(monkeypatch, capsys):
-    analyze_variables_calls: list[str] = []
-
-    monkeypatch.setattr(
-        project_application,
-        "_iter_loaded_projects",
-        lambda *_args, **_kwargs: iter([("ProgramA", "bp", AnalysisGraphStub())]),
-    )
-    monkeypatch.setattr(
-        commands_application,
-        "analyze_variables",
-        lambda *_, **__: analyze_variables_calls.append("called") or make_variable_report(),
-    )
-    monkeypatch.setattr(commands_application, "analyze_shadowing", lambda *_, **__: make_shadowing_report("ShadowOnly"))
-
-    pauses: list[str] = []
-    commands_application.run_variable_analysis(
-        DEFAULT_CONFIG.copy(),
-        {IssueKind.SHADOWING},
-        pause_fn=lambda: pauses.append("pause"),
-    )
-
-    out = capsys.readouterr().out
-    assert analyze_variables_calls == []
-    assert "=== Target: ProgramA ===" in out
-    assert pauses == ["pause"]
-
-
-def test_parse_index_selection_ignores_malformed_range_tokens():
-    assert commands_application.parse_index_selection("1-a, 2", 4) == [2]
-
-
 def test_run_checks_success_path_pauses(monkeypatch):
     lines: list[str] = []
     pauses: list[str] = []
@@ -631,49 +599,4 @@ def test_run_checks_success_path_pauses(monkeypatch):
     )
 
     assert any("state inference summary" in line for line in lines)
-    assert pauses == ["pause"]
-
-
-def test_run_icf_validation_builds_moduletype_index(monkeypatch, tmp_path):
-    lines: list[str] = []
-    pauses: list[str] = []
-    captured: dict[str, object] = {}
-    icf_dir = tmp_path / "icf"
-    icf_dir.mkdir()
-    valid_file = icf_dir / "Valid.icf"
-    valid_file.write_text("dummy", encoding="utf-8")
-
-    monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
-    monkeypatch.setattr(commands_application, "parse_icf_file", lambda _path: [SimpleNamespace()])
-    monkeypatch.setattr(commands_application, "merge_project_basepicture", lambda bp, _graph: bp)
-
-    graph = SimpleNamespace(
-        ast_by_name={
-            "Valid": SimpleNamespace(
-                moduletype_defs=[SimpleNamespace(name="PumpType"), SimpleNamespace(name="ValveType")]
-            )
-        }
-    )
-
-    def fake_validate(program_bp, entries, expected_program, debug=False, moduletype_index=None):
-        captured["moduletype_index"] = moduletype_index
-        return SimpleNamespace(
-            total_entries=1,
-            valid_entries=1,
-            issues=[],
-            skipped_entries=0,
-            summary=lambda: "icf report",
-        )
-
-    commands_application.run_icf_validation(
-        DEFAULT_CONFIG.copy(),
-        configured_icf_files_fn=lambda _cfg: (icf_dir, [valid_file]),
-        load_program_ast_fn=cast(Any, lambda _cfg, _program_name: ("bp-valid", graph)),
-        validate_icf_entries_against_program_fn=fake_validate,
-        pause_fn=lambda: pauses.append("pause"),
-    )
-
-    moduletype_index = cast(dict[str, list[object]], captured["moduletype_index"])
-    assert list(moduletype_index) == ["pumptype", "valvetype"]
-    assert any("icf report" in line for line in lines)
     assert pauses == ["pause"]

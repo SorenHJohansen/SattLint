@@ -24,7 +24,6 @@ def snapshot(tmp_path: Path) -> SemanticSnapshot:
         entry_file,
         VALID_SINGLE_FILE,
         workspace_root=tmp_path,
-        collect_variable_diagnostics=True,
         debug=True,
     )
 
@@ -35,13 +34,11 @@ def test_repeated_builds_are_equivalent(tmp_path: Path) -> None:
         entry_file,
         VALID_SINGLE_FILE,
         workspace_root=tmp_path,
-        collect_variable_diagnostics=True,
     )
     second = semantic_core_module.load_source_snapshot(
         entry_file,
         VALID_SINGLE_FILE,
         workspace_root=tmp_path,
-        collect_variable_diagnostics=True,
     )
 
     assert [definition.canonical_path for definition in first.definitions] == [

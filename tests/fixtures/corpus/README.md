@@ -19,13 +19,6 @@ Minimal manifest shape:
   "case_id": "unused-variable",
   "target_file": "tests/fixtures/corpus/valid/UnusedVariable.s",
   "mode": "workspace",
-  "analysis_config": {
-    "analysis": {
-      "sfc": {
-        "mutually_exclusive_steps": [["Idle", "Running"]]
-      }
-    }
-  },
   "expectation": {
     "expected_finding_ids": ["unused"],
     "forbidden_finding_ids": ["secret-assignment"],
@@ -44,7 +37,7 @@ Minimal manifest shape:
 }
 ```
 
-`analysis_config` is optional and is merged into the workspace analysis config for that case. Use it when a checked-in fixture depends on analyzer settings such as `analysis.sfc.mutually_exclusive_steps` or `analysis.sfc.step_contracts`.
+`analysis_config` is optional and is merged into the workspace analysis config for that case. Use it when a checked-in fixture depends on analyzer settings exposed by the current configuration schema.
 
 `load_strategy` is optional. The default is `workspace`, which loads the target through the project graph. Use `direct-parse` only when a dedicated fixture must exercise parser-AST behavior that the workspace loader rejects earlier, such as rules around invalid temporal access. Use `python-factory` sparingly for synthetic `BasePicture` fixtures that cannot be produced from valid source text, such as transform-invariant violations inside the submodule tree.
 
@@ -97,7 +90,7 @@ CI path:
 
 Current workspace manifest expectations:
 
-- `workspace-common-quality-issues` asserts `semantic.read-before-write`, `semantic.unused-variable`, and the matching `summary.json` rule counts.
+- `workspace-common-quality-issues` asserts `read_before_write`, `unused`, and the matching `summary.json` rule counts.
 
 Current analyzer manifest expectations:
 

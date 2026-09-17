@@ -1,22 +1,16 @@
 {
     "case_id": "analyzer-data-dependency",
     "target_file": "../semantic/analyzer/DataDependency.s",
-    "mode": "analyzer-data-dependency",
+    "mode": "analyzer-variables",
     "expectation": {
         "expected_finding_ids": [
-            "data_dependency.path"
+            "read_before_write"
         ],
         "artifact_fragments": {
             "status.json": {
                 "execution_status": "ok",
                 "missing_dependency_count": 0,
-                "analyzer_key": "data-dependency"
-            },
-            "summary.json": {
-                "analyzer_key": "data-dependency",
-                "rule_counts": {
-                    "data_dependency.path": 3
-                }
+                "analyzer_key": "variables"
             }
         },
         "forbidden_finding_ids": [

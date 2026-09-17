@@ -13,7 +13,7 @@ def test_sample_fixture_contains_common_variable_quality_issues():
     )
 
     bp = parse_source_file(fixture)
-    issues = VariablesAnalyzer(bp).run()
+    issues = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(ALL_VARIABLE_ANALYSIS_KINDS)).run()
 
     unused = {issue.variable.name for issue in issues if issue.kind is IssueKind.UNUSED and issue.variable is not None}
     read_only_non_const = {
@@ -38,7 +38,7 @@ def test_sample_fixture_catches_outletprod_sibling_field_miswire():
     fixture = Path(__file__).resolve().parents[2] / "fixtures" / "sample_sattline_files" / "OutletProdSiblingMiswire.s"
 
     bp = parse_source_file(fixture)
-    issues = VariablesAnalyzer(bp).run()
+    issues = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(ALL_VARIABLE_ANALYSIS_KINDS)).run()
 
     field_read_only = {
         (issue.variable.name, issue.field_path)
@@ -118,7 +118,7 @@ def _build_record_field_asymmetry_basepicture(*, include_whole_read: bool) -> Ba
 def test_whole_record_write_does_not_hide_field_never_read_issue():
     bp = _build_record_field_asymmetry_basepicture(include_whole_read=False)
 
-    issues = VariablesAnalyzer(bp).run()
+    issues = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS)).run()
 
     field_read_only = {
         (issue.variable.name, issue.field_path)
@@ -138,7 +138,7 @@ def test_whole_record_write_does_not_hide_field_never_read_issue():
 def test_whole_record_read_does_not_hide_field_read_only_issue():
     bp = _build_record_field_asymmetry_basepicture(include_whole_read=True)
 
-    issues = VariablesAnalyzer(bp).run()
+    issues = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS)).run()
 
     field_read_only = {
         (issue.variable.name, issue.field_path)
@@ -241,21 +241,16 @@ ENDDEF (*BasePicture*);
     bp = merge_project_basepicture(graph.ast_by_name[fixture.stem], graph)
     analyzer = VariablesAnalyzer(bp)
     issues = analyzer.run()
-    issue_tuples = {
-        (
-            issue.kind,
-            tuple(issue.module_path),
-            issue.variable.name if issue.variable is not None else None,
-            issue.role,
-            issue.field_path,
-        )
-        for issue in issues
-    }
 
-    assert (IssueKind.UI_ONLY, ("BasePicture", "Panel"), "NestedOnly", "localvariable", None) in issue_tuples
-    assert (IssueKind.UI_ONLY, ("BasePicture", "Panel"), "Shared", "localvariable", None) in issue_tuples
     assert not any(
-        issue.kind is IssueKind.UI_ONLY
+        issue.kind is IssueKind.UNUSED
+        and issue.variable is not None
+        and issue.variable.name in {"NestedOnly", "Shared"}
+        and issue.module_path == ["BasePicture", "Panel"]
+        for issue in issues
+    )
+    assert any(
+        issue.kind is IssueKind.UNUSED
         and issue.variable is not None
         and issue.variable.name == "Shared"
         and issue.module_path == ["BasePicture"]
@@ -306,16 +301,6 @@ def test_nested_composite_gfile_bindings_use_declaring_module_scope():
 
     analyzer = VariablesAnalyzer(bp)
     issues = analyzer.run()
-    issue_tuples = {
-        (
-            issue.kind,
-            tuple(issue.module_path),
-            issue.variable.name if issue.variable is not None else None,
-            issue.role,
-            issue.field_path,
-        )
-        for issue in issues
-    }
 
     assert not any(
         issue.kind is IssueKind.UNUSED and issue.variable is not None and issue.variable.name == "NestedOnly"
@@ -328,15 +313,13 @@ def test_nested_composite_gfile_bindings_use_declaring_module_scope():
         and issue.module_path == ["BasePicture", "Panel"]
         for issue in issues
     )
-    assert not any(
-        issue.kind is IssueKind.UI_ONLY
+    assert any(
+        issue.kind is IssueKind.UNUSED
         and issue.variable is not None
         and issue.variable.name == "Shared"
         and issue.module_path == ["BasePicture"]
         for issue in issues
     )
-    assert (IssueKind.UI_ONLY, ("BasePicture", "Panel"), "NestedOnly", "localvariable", None) in issue_tuples
-    assert (IssueKind.UI_ONLY, ("BasePicture", "Panel"), "Shared", "localvariable", None) in issue_tuples
 
 
 def test_unparsed_gfile_expr_still_counts_named_variables_as_reads():
@@ -363,23 +346,11 @@ def test_unparsed_gfile_expr_still_counts_named_variables_as_reads():
 
     analyzer = VariablesAnalyzer(bp)
     issues = analyzer.run()
-    issue_tuples = {
-        (
-            issue.kind,
-            tuple(issue.module_path),
-            issue.variable.name if issue.variable is not None else None,
-            issue.role,
-            issue.field_path,
-        )
-        for issue in issues
-    }
 
     assert not any(
         issue.kind is IssueKind.UNUSED and issue.variable is not None and issue.variable.name in {"Alpha", "Beta"}
         for issue in issues
     )
-    assert (IssueKind.UI_ONLY, ("BasePicture",), "Alpha", "localvariable", None) in issue_tuples
-    assert (IssueKind.UI_ONLY, ("BasePicture",), "Beta", "localvariable", None) in issue_tuples
 
 
 def test_search_rec_component_found_record_output_is_not_flagged_never_read():

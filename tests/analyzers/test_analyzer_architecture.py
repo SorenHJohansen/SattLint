@@ -147,7 +147,7 @@ def _imports_banned_analyzer_boundary(module: ast.Module) -> bool:
 
 
 def test_registry_keys_are_kebab_case_or_explicit_legacy_allowlist() -> None:
-    templates = default_spec_templates(registry_module.SEMANTIC_LAYER_ANALYZER_KEY)
+    templates = default_spec_templates()
     underscore_keys = {template.key for template in templates if "_" in template.key}
     assert underscore_keys == LEGACY_UNDERSCORE_ANALYZER_KEYS
 
@@ -161,9 +161,7 @@ def test_registry_keys_are_kebab_case_or_explicit_legacy_allowlist() -> None:
 
 def test_public_analyze_functions_are_registry_backed_or_explicit_exceptions() -> None:
     registry_backed_functions = {
-        template.analyzer_attr
-        for template in default_spec_templates(registry_module.SEMANTIC_LAYER_ANALYZER_KEY)
-        if template.analyzer_attr.startswith("analyze_")
+        template.analyzer_attr for template in default_spec_templates() if template.analyzer_attr.startswith("analyze_")
     }
 
     public_analyze_defs = _public_analyze_defs()
@@ -272,7 +270,6 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
         config={"mode": "test"},
     )
     registry_stub = SimpleNamespace(
-        get_configured_naming_rules=lambda config: {"mode": config["mode"]},
         analyze_direct=lambda analysis_context: SimpleReport(name=analysis_context.base_picture.header.name),
         analyze_picture=lambda base_picture, **kwargs: SimpleReport(name=base_picture.header.name, note=str(kwargs)),
     )
@@ -288,11 +285,8 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
             "config",
             "debug",
             "graph",
-            "rules",
             "unavailable_libraries",
         ),
-        composed_analyzer_keys=("dataflow", "scan-loop-resource-usage"),
-        composed_issue_kind_names=("dataflow.scan_cycle_stale_read",),
     )
     kwargs = build_context_kwargs(spec, registry_stub, context)
     assert kwargs["analysis_context"] is context
@@ -300,7 +294,6 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
     assert kwargs["config"] == {"mode": "test"}
     assert kwargs["debug"] is True
     assert kwargs["graph"] is context.graph
-    assert kwargs["rules"] == {"mode": "test"}
     assert kwargs["unavailable_libraries"] == {"ControlLib"}
 
     direct_template = AnalyzerSpecTemplate(
@@ -310,7 +303,7 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
         analyzer_attr="analyze_direct",
         direct_context=True,
     )
-    direct_runner = build_default_analyzers(semantic_layer_analyzer_key=registry_module.SEMANTIC_LAYER_ANALYZER_KEY)
+    direct_runner = build_default_analyzers()
     assert any(spec.key == "variables" for spec in direct_runner)
 
     from sattlint.analyzers import _registry_specs as registry_specs_module  # noqa: PLC0415
@@ -321,32 +314,19 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
     standard_report = registry_specs_module._build_runner(spec, registry_stub)(context)
     assert "ControlLib" in (standard_report.note or "")
 
-    deliveries = default_delivery_templates(
-        registry_module.SEMANTIC_LAYER_ANALYZER_KEY,
-        shared_fixtures=("fixture-a", "fixture-b"),
-    )
-    assert deliveries[0].key == registry_module.SEMANTIC_LAYER_ANALYZER_KEY
+    deliveries = default_delivery_templates(shared_fixtures=("fixture-a", "fixture-b"))
+    assert deliveries[0].key == "variables"
     assert deliveries[0].min_fixture_set == ("fixture-a", "fixture-b")
 
     monkeypatch.setattr(
         registry_specs_module,
         "default_spec_templates",
-        lambda _key: (direct_template, spec),
+        lambda: (direct_template, spec),
     )
-    built_specs = registry_specs_module.build_default_analyzers(
-        semantic_layer_analyzer_key="semantic-demo",
-        registry_module=registry_stub,
-    )
+    built_specs = registry_specs_module.build_default_analyzers(registry_module=registry_stub)
     assert [built.key for built in built_specs] == ["direct", "demo"]
     assert built_specs[0].direct_context is True
-    assert built_specs[0].requires == ()
     assert built_specs[1].context_kwargs == spec.context_kwargs
-    assert built_specs[1].composed_analyzer_keys == ("dataflow", "scan-loop-resource-usage")
-    assert built_specs[1].composed_issue_kind_names == ("dataflow.scan_cycle_stale_read",)
-    assert built_specs[1].requires == ()
-
-    sfc_template = next(template for template in default_spec_templates("semantic-demo") if template.key == "sfc")
-    assert sfc_template.requires == ("variables",)
 
 
 def test_build_analysis_context_normalizes_config_and_shared_artifacts() -> None:
@@ -364,14 +344,12 @@ def test_build_analysis_context_normalizes_config_and_shared_artifacts() -> None
     context = build_analysis_context(
         base_picture,
         graph=SimpleNamespace(unavailable_libraries={"ControlLib"}),
-        selected_issue_kinds={"unused", "shadowing"},
         config=config,
         create_shared_artifacts=True,
     )
 
     assert context.config == {"mode": "workspace"}
     assert context.config is not config
-    assert context.selected_issue_kinds == frozenset({"unused", "shadowing"})
     assert context.shared_artifacts is not None
     assert context.shared_artifacts.counters.shared_artifact_holders_created == 1
     assert context.unavailable_libraries == {"ControlLib"}
@@ -473,8 +451,7 @@ def _clean_plugin_registry():
 def test_register_analyzer_builds_direct_context_spec_with_contributes() -> None:
     @register_analyzer(
         key="my-plugin",
-        requires=("variables",),
-        contributes="derived_reports.my-plugin",
+        contributes="my-plugin-artifacts",
         name="My Plugin",
         description="A plugin analyzer",
     )
@@ -487,8 +464,7 @@ def test_register_analyzer_builds_direct_context_spec_with_contributes() -> None
     assert spec.key == "my-plugin"
     assert spec.name == "My Plugin"
     assert spec.description == "A plugin analyzer"
-    assert spec.requires == ("variables",)
-    assert spec.contributes == "derived_reports.my-plugin"
+    assert spec.contributes == "my-plugin-artifacts"
     assert spec.direct_context is True
     assert spec.enabled is True
     assert spec.run is run
@@ -501,7 +477,6 @@ def test_register_analyzer_defaults_and_casefold_key() -> None:
 
     (spec,) = get_registered_plugin_analyzers()
     assert spec.name == "My-Upper"
-    assert spec.requires == ()
     assert spec.contributes is None
     assert spec.direct_context is True
 
@@ -527,7 +502,7 @@ def test_clear_registered_plugin_analyzers_resets_registry() -> None:
 
 
 def test_plugin_analyzers_merged_into_default_analyzers() -> None:
-    @register_analyzer(key="merged-plugin", requires=("variables",))
+    @register_analyzer(key="merged-plugin")
     def run(context: AnalysisContext) -> SimpleReport:
         return SimpleReport(name="x")
 
@@ -538,7 +513,7 @@ def test_plugin_analyzers_merged_into_default_analyzers() -> None:
 def test_plugin_analyzer_runs_with_full_context_and_shared_artifacts() -> None:
     context_sa: list[AnalysisSharedArtifacts | None] = []
 
-    @register_analyzer(key="context-consumer", requires=("variables",))
+    @register_analyzer(key="context-consumer")
     def run(context: AnalysisContext) -> SimpleReport:
         context_sa.append(context.shared_artifacts)
         return SimpleReport(name="context-consumer")
@@ -556,9 +531,7 @@ def test_plugin_analyzer_runs_with_full_context_and_shared_artifacts() -> None:
     shared = AnalysisSharedArtifacts()
     shared.variable_analysis = _make_foundation()
     context = build_analysis_context(base_picture, shared_artifacts=shared)
-    report = run_registry_analyzer(spec, context, use_shared_artifacts=True)
+    report = run_registry_analyzer(spec, context)
 
     assert isinstance(report, SimpleReport)
     assert context_sa == [shared]
-    # requires=("variables",) is satisfied by the shared foundation without re-running.
-    assert shared.counters.variable_root_traversals == 0

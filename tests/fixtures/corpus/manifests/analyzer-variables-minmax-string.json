@@ -4,8 +4,8 @@
     "mode": "analyzer-variables",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.min-max-mapping-mismatch",
-            "semantic.string-mapping-mismatch"
+            "min_max_mapping_mismatch",
+            "string_mapping_mismatch"
         ],
         "artifact_fragments": {
             "status.json": {

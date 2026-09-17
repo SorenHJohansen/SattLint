@@ -283,9 +283,9 @@ def test_variables_execution_dependency_and_typedef_early_returns_cover_remainin
     def _collect_issues_from_module(module: object, **_kwargs: object) -> None:
         collected_modules.append(module)
 
-    name_collision_only_helper: Any = _ns(
+    field_never_read_only_helper: Any = _ns(
         _limit_to_module_path=None,
-        _selected_issue_kinds=frozenset({IssueKind.NAME_COLLISION}),
+        _selected_issue_kinds=frozenset({IssueKind.FIELD_NEVER_READ}),
         bp=BasePicture(
             header=_hdr("Root"),
             datatype_defs=[],
@@ -302,7 +302,7 @@ def test_variables_execution_dependency_and_typedef_early_returns_cover_remainin
         _collect_issues_from_module=_collect_issues_from_module,
     )
 
-    assert variables_execution_impl._collect_typedef_issues(name_collision_only_helper) is None
+    assert variables_execution_impl._collect_typedef_issues(field_never_read_only_helper) is None
     assert analyze_calls == ["TypeDef:WorkerType"]
     assert collected_modules == []
 
@@ -329,7 +329,6 @@ def test_variables_execution_run_records_phase_timings() -> None:
         _run_post_traversal_analyses=_noop,
         _collect_basepicture_issues=_noop,
         _collect_typedef_issues=_noop,
-        _add_naming_role_mismatch_issues=_noop,
         _add_global_scope_minimization_issues=_noop,
         _add_hidden_global_coupling_issues=_noop,
         _add_high_fan_in_out_issues=_noop,
@@ -356,7 +355,6 @@ def test_variables_execution_run_records_phase_timings() -> None:
         "base-picture-issue-scan",
         "typedef-scan",
         "final-issue-synthesis",
-        "datatype-field-scan",
     ]
 
 
@@ -385,7 +383,6 @@ def test_variables_execution_run_skips_irrelevant_phases_for_unused_only() -> No
         _run_post_traversal_analyses=_noop,
         _collect_basepicture_issues=_noop,
         _collect_typedef_issues=_noop,
-        _add_naming_role_mismatch_issues=_noop,
         _add_global_scope_minimization_issues=_noop,
         _add_hidden_global_coupling_issues=_noop,
         _add_high_fan_in_out_issues=_noop,
@@ -494,7 +491,6 @@ def test_variables_execution_run_debug_logs_phase_counts_and_aggregated_unresolv
         _propagate_procedure_status_bindings=_noop,
         _run_post_traversal_analyses=_noop,
         _collect_typedef_issues=_noop,
-        _add_naming_role_mismatch_issues=_noop,
         _add_global_scope_minimization_issues=_noop,
         _add_hidden_global_coupling_issues=_noop,
         _add_high_fan_in_out_issues=_noop,

@@ -26,6 +26,9 @@ from ..shared.variable_utils import mapping_target_name
 from ._usage_tracker import UsageTracker
 from ._variable_traversal_support import _IGNORED_GRAPHICS_TAIL_BASENAMES
 from ._variables_contracts import (
+    explicitly_selected_issue_kinds as _explicitly_selected_issue_kinds,
+)
+from ._variables_contracts import (
     selected_issue_kinds as _selected_issue_kinds,
 )
 from ._variables_contracts import (
@@ -39,6 +42,9 @@ from ._variables_picture_display_support import (
     record_graphics_binding_occurrences,
     record_picture_display_variable_occurrences,
 )
+from ._variables_read_before_write import collect_read_before_write_issues as _collect_read_before_write_issues
+from ._variables_shadowing import collect_shadowing_issues as _collect_shadowing_issues
+from ._variables_unsafe_defaults import collect_unsafe_default_issues as _collect_unsafe_default_issues
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer
@@ -77,18 +83,16 @@ _USAGE_VARIABLE_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
     {
         IssueKind.UNUSED,
         IssueKind.READ_ONLY_NON_CONST,
-        IssueKind.UI_ONLY,
         IssueKind.PROCEDURE_STATUS,
         IssueKind.NEVER_READ,
         IssueKind.WRITE_WITHOUT_EFFECT,
     }
 )
-_TYPEDEF_SCAN_ISSUE_KINDS: frozenset[IssueKind] = _USAGE_VARIABLE_ISSUE_KINDS | frozenset({IssueKind.NAME_COLLISION})
+_TYPEDEF_SCAN_ISSUE_KINDS: frozenset[IssueKind] = _USAGE_VARIABLE_ISSUE_KINDS
 _USAGE_DERIVED_ISSUE_KINDS: frozenset[IssueKind] = _USAGE_VARIABLE_ISSUE_KINDS | frozenset(
     {
         IssueKind.UNUSED_DATATYPE_FIELD,
         IssueKind.FIELD_READ_ONLY,
-        IssueKind.NAMING_ROLE_MISMATCH,
         IssueKind.FIELD_NEVER_READ,
         IssueKind.GLOBAL_SCOPE_MINIMIZATION,
         IssueKind.HIDDEN_GLOBAL_COUPLING,
@@ -102,11 +106,20 @@ _POST_TRAVERSAL_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
         IssueKind.IMPLICIT_LATCH,
         IssueKind.STRING_MAPPING_MISMATCH,
         IssueKind.WRITE_WITHOUT_EFFECT,
+        IssueKind.SHADOWING,
+        IssueKind.UNSAFE_BOOLEAN_DEFAULT,
+        IssueKind.READ_BEFORE_WRITE,
+    }
+)
+_DATATYPE_FIELD_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
+    {
+        IssueKind.UNUSED_DATATYPE_FIELD,
+        IssueKind.FIELD_READ_ONLY,
+        IssueKind.FIELD_NEVER_READ,
     }
 )
 _FINAL_SYNTHESIS_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
     {
-        IssueKind.NAMING_ROLE_MISMATCH,
         IssueKind.GLOBAL_SCOPE_MINIMIZATION,
         IssueKind.HIDDEN_GLOBAL_COUPLING,
         IssueKind.HIGH_FAN_IN_OUT,
@@ -114,7 +127,6 @@ _FINAL_SYNTHESIS_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
 )
 _PARAM_MAPPING_CHECK_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
     {
-        IssueKind.CONTRACT_MISMATCH,
         IssueKind.STRING_MAPPING_MISMATCH,
         IssueKind.MIN_MAX_MAPPING_MISMATCH,
     }
@@ -316,11 +328,35 @@ def _run_post_traversal_analyses(self: VariablesAnalyzer) -> None:
     if _should_collect_issue_kind(self, IssueKind.WRITE_WITHOUT_EFFECT):
         self._effective_output_keys = self._compute_effective_output_keys()
 
+    if _should_collect_issue_kind(self, IssueKind.SHADOWING):
+        issue_count_before_shadowing = len(self._issues)
+        _collect_shadowing_issues(self)
+        self._trace(
+            "shadowing-scan",
+            added_issue_count=len(self._issues) - issue_count_before_shadowing,
+        )
+
+    if _should_collect_issue_kind(self, IssueKind.UNSAFE_BOOLEAN_DEFAULT):
+        issue_count_before_unsafe_defaults = len(self._issues)
+        _collect_unsafe_default_issues(self)
+        self._trace(
+            "unsafe-default-scan",
+            added_issue_count=len(self._issues) - issue_count_before_unsafe_defaults,
+        )
+
+    if _should_collect_issue_kind(self, IssueKind.READ_BEFORE_WRITE):
+        issue_count_before_read_before_write = len(self._issues)
+        _collect_read_before_write_issues(self)
+        self._trace(
+            "read-before-write-scan",
+            added_issue_count=len(self._issues) - issue_count_before_read_before_write,
+        )
+
 
 def _analyze_library_dependency_typedef_usage(self: VariablesAnalyzer) -> None:
     if self._limit_to_module_path is not None:
         return
-    if not self.analyzed_target_is_library or not self.include_dependency_moduletype_usage:
+    if not self.analyzed_target_is_library:
         return
 
     diverted_issues = self._issues
@@ -350,7 +386,6 @@ def _analyze_library_dependency_typedef_usage(self: VariablesAnalyzer) -> None:
 def _collect_basepicture_issues(self: VariablesAnalyzer, bp_path: list[str]) -> None:
     collect_unused = _should_collect_issue_kind(self, IssueKind.UNUSED)
     collect_procedure_status = _should_collect_issue_kind(self, IssueKind.PROCEDURE_STATUS)
-    collect_ui_only = _should_collect_issue_kind(self, IssueKind.UI_ONLY)
     collect_read_only_non_const = _should_collect_issue_kind(self, IssueKind.READ_ONLY_NON_CONST)
     collect_never_read = _should_collect_issue_kind(self, IssueKind.NEVER_READ)
     collect_write_without_effect = _should_collect_issue_kind(self, IssueKind.WRITE_WITHOUT_EFFECT)
@@ -366,9 +401,7 @@ def _collect_basepicture_issues(self: VariablesAnalyzer, bp_path: list[str]) -> 
             status_role, field_path = procedure_status
             self._add_issue(IssueKind.PROCEDURE_STATUS, bp_path, variable, role=status_role, field_path=field_path)
             continue
-        if collect_ui_only and usage.is_display_only:
-            self._add_issue(IssueKind.UI_ONLY, bp_path, variable, role=role)
-        elif (
+        if (
             collect_read_only_non_const
             and usage.is_read_only
             and not bool(variable.const)
@@ -390,7 +423,6 @@ def _collect_basepicture_issues(self: VariablesAnalyzer, bp_path: list[str]) -> 
     if (
         collect_unused
         or collect_procedure_status
-        or collect_ui_only
         or collect_read_only_non_const
         or collect_never_read
         or collect_write_without_effect
@@ -400,26 +432,25 @@ def _collect_basepicture_issues(self: VariablesAnalyzer, bp_path: list[str]) -> 
             self._collect_issues_from_module(module, path=bp_path, current_library=current_library)
 
 
-def _collect_typedef_issues(self: VariablesAnalyzer) -> None:  # noqa: PLR0915
+def _collect_typedef_issues(self: VariablesAnalyzer) -> None:
     if self._limit_to_module_path is not None:
         return
 
     collect_unused = _should_collect_issue_kind(self, IssueKind.UNUSED)
     collect_procedure_status = _should_collect_issue_kind(self, IssueKind.PROCEDURE_STATUS)
-    collect_ui_only = _should_collect_issue_kind(self, IssueKind.UI_ONLY)
     collect_read_only_non_const = _should_collect_issue_kind(self, IssueKind.READ_ONLY_NON_CONST)
     collect_never_read = _should_collect_issue_kind(self, IssueKind.NEVER_READ)
     collect_write_without_effect = _should_collect_issue_kind(self, IssueKind.WRITE_WITHOUT_EFFECT)
-    collect_name_collisions = _should_collect_issue_kind(self, IssueKind.NAME_COLLISION)
-
-    if not collect_name_collisions and not (
+    collect_datatype_fields = _explicitly_selected_issue_kinds(self, _DATATYPE_FIELD_ISSUE_KINDS)
+    collect_any_typedef_issue = (
         collect_unused
         or collect_procedure_status
-        or collect_ui_only
         or collect_read_only_non_const
         or collect_never_read
         or collect_write_without_effect
-    ):
+    )
+
+    if not collect_any_typedef_issue and not collect_datatype_fields:
         return
 
     for moduletype in self.bp.moduletype_defs or []:
@@ -439,7 +470,6 @@ def _collect_typedef_issues(self: VariablesAnalyzer) -> None:  # noqa: PLR0915
         if not (
             collect_unused
             or collect_procedure_status
-            or collect_ui_only
             or collect_read_only_non_const
             or collect_never_read
             or collect_write_without_effect
@@ -457,9 +487,7 @@ def _collect_typedef_issues(self: VariablesAnalyzer) -> None:  # noqa: PLR0915
                 status_role, field_path = procedure_status
                 self._add_issue(IssueKind.PROCEDURE_STATUS, td_path, variable, role=status_role, field_path=field_path)
                 continue
-            if collect_ui_only and usage.is_display_only:
-                self._add_issue(IssueKind.UI_ONLY, td_path, variable, role=role)
-            elif collect_write_without_effect and (
+            if collect_write_without_effect and (
                 usage.read
                 and usage.written
                 and not self._has_output_effect(variable, td_path)
@@ -481,9 +509,7 @@ def _collect_typedef_issues(self: VariablesAnalyzer) -> None:  # noqa: PLR0915
                 status_role, field_path = procedure_status
                 self._add_issue(IssueKind.PROCEDURE_STATUS, td_path, variable, role=status_role, field_path=field_path)
                 continue
-            if collect_ui_only and usage.is_display_only:
-                self._add_issue(IssueKind.UI_ONLY, td_path, variable, role=role)
-            elif (
+            if (
                 collect_read_only_non_const
                 and usage.is_read_only
                 and not bool(variable.const)
@@ -567,8 +593,6 @@ def run(  # noqa: PLR0915
                     "root-variable-access-summary-build",
                     build_root_variable_access_summaries,
                 )
-        if _should_collect_issue_kind(self, IssueKind.NAMING_ROLE_MISMATCH):
-            self._add_naming_role_mismatch_issues()
         if _should_collect_issue_kind(self, IssueKind.GLOBAL_SCOPE_MINIMIZATION):
             self._add_global_scope_minimization_issues()
         if _should_collect_issue_kind(self, IssueKind.HIDDEN_GLOBAL_COUPLING):
@@ -579,8 +603,10 @@ def run(  # noqa: PLR0915
     is_library_target = bool(getattr(self, "_analyzed_target_is_library", False))
     includes_dependency_typedef_usage = bool(getattr(self, "_include_dependency_moduletype_usage", False))
     should_record_display_bindings = _should_collect_any_issue_kinds(self, _USAGE_DERIVED_ISSUE_KINDS)
+    datatype_field_selected = _explicitly_selected_issue_kinds(self, _DATATYPE_FIELD_ISSUE_KINDS)
     should_analyze_dependency_typedef_usage = _should_collect_any_issue_kinds(self, _USAGE_DERIVED_ISSUE_KINDS) and (
-        _selected_issue_kinds(self) is None or (is_library_target and includes_dependency_typedef_usage)
+        _selected_issue_kinds(self) is None
+        or (is_library_target and (includes_dependency_typedef_usage or datatype_field_selected))
     )
     should_propagate_aliases = apply_alias_back_propagation and _should_collect_any_issue_kinds(
         self,
@@ -588,18 +614,12 @@ def run(  # noqa: PLR0915
     )
     should_run_post_traversal_checks = _should_collect_any_issue_kinds(self, _POST_TRAVERSAL_ISSUE_KINDS)
     should_collect_basepicture_issues = _should_collect_any_issue_kinds(self, _USAGE_VARIABLE_ISSUE_KINDS)
-    should_collect_typedef_issues = _should_collect_any_issue_kinds(self, _TYPEDEF_SCAN_ISSUE_KINDS)
-    should_finalize_issues = _should_collect_any_issue_kinds(self, _FINAL_SYNTHESIS_ISSUE_KINDS)
-    should_collect_datatype_field_issues = _should_collect_any_issue_kinds(
+    should_collect_typedef_issues = _should_collect_any_issue_kinds(
         self,
-        frozenset(
-            {
-                IssueKind.UNUSED_DATATYPE_FIELD,
-                IssueKind.FIELD_READ_ONLY,
-                IssueKind.FIELD_NEVER_READ,
-            }
-        ),
+        _TYPEDEF_SCAN_ISSUE_KINDS | _DATATYPE_FIELD_ISSUE_KINDS,
     )
+    should_finalize_issues = _should_collect_any_issue_kinds(self, _FINAL_SYNTHESIS_ISSUE_KINDS)
+    should_collect_datatype_field_issues = datatype_field_selected
 
     _maybe_update_status(self, "building root scope")
     _run_timed_phase(self, "root-traversal", self._analyze_root_scope)
@@ -671,21 +691,6 @@ def _analyze_typedef(self: VariablesAnalyzer, mt: ModuleTypeDef, path: list[str]
     try:
         params = list(mt.moduleparameters or [])
         locals_ = list(mt.localvariables or [])
-
-        param_keys = {variable.name.casefold(): variable for variable in params}
-        local_keys = {variable.name.casefold(): variable for variable in locals_}
-        for key in set(param_keys.keys()) & set(local_keys.keys()):
-            parameter_var = param_keys[key]
-            local_var = local_keys[key]
-            self._append_issue(
-                VariableIssue(
-                    kind=IssueKind.NAME_COLLISION,
-                    module_path=path.copy(),
-                    variable=local_var,
-                    role=f"name collision with parameter {parameter_var.name!r}",
-                    source_variable=parameter_var,
-                )
-            )
 
         env = {casefold_key(variable.name): variable for variable in params}
         env.update({casefold_key(variable.name): variable for variable in locals_})

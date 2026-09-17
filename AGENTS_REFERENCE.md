@@ -1,7 +1,7 @@
 # Agent Reference
 
 Consolidated operating reference for SattLint agents: repository map,
-quality gates, validation map, core beliefs, and deferred-work tracking.
+quality gates, validation map, and core beliefs.
 `AGENTS.md` is the table of contents; this file is the depth behind it.
 
 ## Repository Map
@@ -207,7 +207,7 @@ Enforced architecture with freedom inside boundaries.
 
 Reports serve both humans and agents.
 
-- Findings: structured (severity, confidence, location)
+- Findings: structured (kind, location, message, rule id)
 - Logs: key=value, issue-scoped
 - No pretty-printed tables that hide structure
 
@@ -432,53 +432,3 @@ Do the correct, root-cause fix even when a compatibility shim lands faster.
 - Uncertainty must be surfaced explicitly
 
 ---
-
-## Deferred Work
-
-Tracking items the team decided to defer. Each entry records the decision, the
-reason, and any pointers to the affected surface so it can be picked up later.
-
-### Remove the `contract-mismatch` detection kind
-
-**Status:** deferred by user request.
-
-**Decision (2026-09-08):** SattLint's `CONTRACT_MISMATCH` (`contract_mismatch`)
-detector should be **removed**, because it duplicates / shadows SattLine's own
-mismatch detection. Keep `STRING_MAPPING_MISMATCH` (SattLine does **not** detect
-string mapping mismatches, so that one stays).
-
-**Scope considered** — `IssueKind.CONTRACT_MISMATCH` is referenced from:
-- `src/sattlint/reporting/variables_report.py`
-- `src/sattlint/models/_variable_issues.py`
-- `src/sattlint/analyzers/_sattline_semantic_rules_data.py`
-- `src/sattlint/analyzers/variable_analyses.py`
-- `src/sattlint/analyzers/_sattline_semantic_issue_mapping.py`
-- `src/sattlint/analyzers/variables/_variables_contracts.py`
-- `src/sattlint/analyzers/variables/_variables_execution.py`
-- `src/sattlint/analyzers/variables/__init__.py`
-- `src/sattlint/analyzers/shared/_validators.py`
-- `src/sattlint/analyzers/interface_contracts.py`
-
-**Open questions before implementing:**
-- Confirm whether `CONTRACT_MISMATCH` overlaps SattLine fully or only in the
-  array/dynamic-array and validator emission paths.
-- Whether `interface-contracts` should keep `UNKNOWN_PARAMETER_TARGET` and
-  `REQUIRED_PARAMETER_CONNECTION`.
-
-Also related fixture note: `ValveMissing` omitting `CmdClose` triggered both
-SattLine ("parameter CmdClose not connected") and the SattLint
-`REQUIRED_PARAMETER_CONNECTION` finding — another possible overlap to revisit.
-
-### `scan_cycle.resource_usage` triple-reporting dedup
-
-**Status:** deferred by user request (earlier session).
-
-Do **not** dedup the triple-reporting of `scan_cycle.resource_usage` for now.
-Revisit if it becomes a correctness issue.
-
-### Completed: Remove the `sorting.loop_output_refactor` analyzer (2026-09-08)
-
-**Status:** done. SattLine already detects the combinatorial/logic loop, so
-SattLint should not re-report it. Removed across the full surface (module,
-registry wiring, rule profiles, tests, corpus manifests, fixtures). Gates: full
-suite 1316 passed, ruff + format clean, pyright 0 errors.

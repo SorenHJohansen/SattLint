@@ -34,7 +34,6 @@ def test_load_source_snapshot_routes_parser_debug_to_logger_not_stdout(
             entry_file,
             _source_text(),
             workspace_root=tmp_path,
-            collect_variable_diagnostics=False,
             debug=True,
         )
 

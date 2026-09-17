@@ -1,10 +1,8 @@
 "Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
 "Original file date: ---"
 "Program date: 2026-06-19-12:00:00.000, name: SpecComplianceIssues"
-(* Covers all 8 spec.* finding IDs: basepicture_direct_code,
-   sequence_step_prefix, transition_name_missing, transition_prefix,
-   opmessage_use_signature, mes_batch_control_name, mes_batch_control_max_try,
-   mes_batch_control_repeat_try. *)
+(* Covers the spec.* finding IDs: sequence_step_prefix,
+   transition_name_missing, transition_prefix. *)
 
 BasePicture Invocation
    ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0

@@ -30,16 +30,8 @@ The analyzers package does not export any public symbols directly. Individual an
 | Export | Description |
 |--------|-------------|
 | `validate_icf_entries_against_program` | Validate ICF entries against a base picture |
-| `ICFFormatResult` | ICF formatting result type |
-| `format_icf_file`, `format_icf_text`, `parse_icf_file` | ICF formatting and parsing |
+| `parse_icf_file` | Parse `.icf` key/value entries |
 | `resolve_leaf_datatype`, `resolve_record_datatype` | Datatype resolution helpers |
-
-### `sattlint.analyzers.mms`
-
-| Export | Description |
-|--------|-------------|
-| `analyze_mms_interface_variables` | MMS interface variable analysis |
-| `collect_icf_inventory_entries`, `collect_mms_inventory_entries`, `load_icf_entries_from_config` | Inventory collection |
 
 ### `sattlint.analyzers.registry`
 
@@ -62,10 +54,8 @@ No public exports. Import submodules directly.
 | Export | Description |
 |--------|-------------|
 | `SemanticSnapshot`, `SymbolDefinition`, `SymbolReference` | Core semantic types |
-| `CompletionItem`, `SemanticDiagnostic` | Editor-facing helper types |
 | `WorkspaceSourceDiscovery` | Source discovery |
-| `build_source_snapshot_from_basepicture`, `discover_workspace_sources`, `load_source_snapshot`, `load_workspace_snapshot` | Snapshot loading |
-| `LineIndex`, `utf16_index_to_codepoint_offset` | Document text helpers |
+| `build_source_snapshot_from_basepicture`, `load_source_snapshot` | Snapshot loading |
 
 ### `sattlint.resolution`
 

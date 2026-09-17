@@ -92,7 +92,6 @@ def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_pat
         _collect_basepicture_issues=lambda bp_path: None,
         _collect_typedef_issues=lambda: None,
         _analyze_library_dependency_typedef_usage=lambda: None,
-        _add_naming_role_mismatch_issues=lambda: None,
         _add_global_scope_minimization_issues=lambda: None,
         _add_hidden_global_coupling_issues=lambda: None,
         _add_high_fan_in_out_issues=lambda: None,
@@ -172,8 +171,7 @@ def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_pat
 
     helper._analyzing_typedefs = set()
     variables_execution_module._analyze_typedef(helper, moduletype, ["Root", "TypeDef:ChildType", "Nested"])
-    assert collision_issues[0].kind is IssueKind.NAME_COLLISION
-    assert collision_issues[0].source_variable is colliding_param
+    assert collision_issues == []
     assert captured_display_paths[0] == ["Root<BP>", "TypeDef:ChildType<TD>"]
     assert helper.used_params_by_typedef["childtype"] == {"input"}
     assert helper.param_reads_by_typedef["childtype"] == {"input"}
@@ -730,7 +728,6 @@ def test_variable_issue_collection_collect_module_issue_helper_covers_remaining_
         "procedure-status",
         "Status",
     ) in issues
-    assert (IssueKind.UI_ONLY, ("Root", "Worker"), "UiParam", "moduleparameter", None) in issues
     assert (
         IssueKind.WRITE_WITHOUT_EFFECT,
         ("Root", "Worker"),
@@ -745,7 +742,7 @@ def test_variable_issue_collection_collect_module_issue_helper_covers_remaining_
         "procedure-status",
         "Status",
     ) in issues
-    assert (IssueKind.UI_ONLY, ("Root", "Worker"), "UiLocal", "localvariable", None) in issues
+    assert (IssueKind.READ_ONLY_NON_CONST, ("Root", "Worker"), "UiLocal", "localvariable", None) in issues
     assert (
         IssueKind.READ_ONLY_NON_CONST,
         ("Root", "Worker"),

@@ -14,18 +14,11 @@ from ..core.syntax import CodeMode, code_ext_candidates, normalize_code_mode
 
 APP_SHELL_BINDINGS: list[tuple[str, str, str]] = [
     ("ctrl+1", "show_analyze", "Analyze"),
-    ("ctrl+2", "show_settings", "App Settings"),
-    ("ctrl+3", "show_results", "Results"),
-    ("ctrl+4", "show_setup", "Configuration Settings"),
-    ("slash", "prompt_view_filter", "Filter"),
-    ("question_mark", "show_help", "Help"),
-    ("ctrl+h", "show_help", "Help"),
+    ("ctrl+2", "show_results", "Results"),
+    ("ctrl+3", "show_setup", "Configuration Settings"),
+    ("ctrl+4", "show_settings", "App Settings"),
+    ("ctrl+5", "show_output", "Output"),
     ("ctrl+c", "copy_output", "Copy Output"),
-    ("ctrl+g", "cancel_running_analysis", "Cancel Analysis"),
-    ("ctrl+l", "clear_output", "Clear Output"),
-    ("ctrl+q", "quit_shell", "Quit"),
-    ("ctrl+s", "save_config", "Save Config"),
-    ("ctrl+o", "toggle_results_empty", "Toggle empty analyzers"),
     ("tab", "focus_next_control", "Next"),
     ("shift+tab", "focus_previous_control", "Prev"),
 ]
@@ -146,7 +139,7 @@ def _query_required(widget_owner: Any, selector: str, expected_type: Any | None 
 
 
 DEFAULT_SHELL_TITLE = "SattLint"
-_ANALYZE_PLANNER_LIST_ID_PREFIX = "analyze-planner-section-"
+_ANALYZER_LIST_ID_PREFIX = "analyze-section-"
 
 MENU_DEFINITIONS: list[tuple[str, str]] = [
     ("Open Configuration", "menu-file-open-project"),
@@ -169,7 +162,6 @@ class _ShellViewState:
     title: str
     description: str
     note: str
-    launch_label: str
 
 
 @dataclass(frozen=True)

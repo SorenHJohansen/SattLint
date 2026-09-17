@@ -14,6 +14,7 @@ UNKNOWN = object()
 INITIALIZED = object()
 PENDING_PREFIX = ("__pending__",)
 OLD_PREFIX = ("__old__",)
+CONSTANT_TRACE_PREFIX = ("__constant_trace__",)
 
 
 def is_scalar_value(value: ScalarValue | object) -> TypeGuard[ScalarValue]:
@@ -47,3 +48,16 @@ class PendingWrite:
     root_key: tuple[str, ...]
     display_name: str
     sites: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ConstantTrace:
+    """Per-symbol trace of the last constant write on the current path.
+
+    ``read_since_write`` records whether the constant value was observed by a
+    read before the next write, which distinguishes a conflicting-constants
+    finding from a plain dead overwrite.
+    """
+
+    last_value: ScalarValue
+    read_since_write: bool

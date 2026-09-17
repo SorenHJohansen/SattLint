@@ -4,7 +4,7 @@
     "mode": "analyzer-alarm-integrity",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.never-cleared-alarm"
+            "alarm.never_cleared"
         ],
         "artifact_fragments": {
             "status.json": {

@@ -4,18 +4,15 @@
 Direct replacement for the old ``application.startup`` surface, relocated
 from ``application/`` to ``cli/`` as part of Phase 6 (application-layer
 refactor).  This module owns the interactive startup orchestration (``main``)
-and the menu composition helpers (:mod:`sattlint.cli.menu`,
-:mod:`sattlint.config.display`), keeping the interactive loop independent of
-the legacy ``app`` module.
+and the interactive-shell dispatch helpers (:mod:`sattlint.cli.menu`), keeping
+the interactive loop independent of the legacy ``app`` module.
 """
 
 from __future__ import annotations
 
-import argparse
 import os
 import sys
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -23,14 +20,10 @@ from .. import config as config_module
 from .. import console as console_module
 from ..application import analyze as analyze_application
 from ..application import change_review as change_review_application
-from ..application import checks as checks_application
 from ..application import project as project_application
 from ..config.types import ConfigDict
 from ..core.interaction import (
     QuitAppError,
-)
-from ..core.interaction import (
-    choose_menu_option as core_choose_menu_option,
 )
 from ..core.interaction import (
     confirm as core_confirm,
@@ -41,15 +34,11 @@ from ..core.interaction import (
 from ..core.interaction import (
     prompt as core_prompt,
 )
-from ..core.interaction import (
-    quit_app as core_quit_app,
-)
 from ..core.logging import apply_debug
 from ..core.terminal import clear_screen as core_clear_screen
 from ..core.terminal import clear_windows_console as core_clear_windows_console
 from ..project import support as support_module
-from . import commands as commands_application
-from . import config as cli_config
+from . import entry as cli_entry
 from . import menu as cli_menu
 from ._interaction import (
     clear_textual_menu_interaction as _ui_clear_textual_menu_interaction,
@@ -59,17 +48,6 @@ from ._interaction import reset_interactive_ui_mode as _ui_reset_interactive_ui_
 from ._interaction import set_interactive_ui_mode as _ui_set_interactive_ui_mode
 from ._interaction import set_textual_menu_interaction as _ui_set_textual_menu_interaction
 from ._interaction import textual_menu_interaction as _ui_textual_menu_interaction
-
-
-@dataclass(frozen=True)
-class MenuOption:
-    key: str
-    label: str
-    description: str = ""
-
-
-def menu_option(key: str, label: str, description: str) -> MenuOption:
-    return MenuOption(key, label, description)
 
 
 def get_interactive_ui_mode() -> str:
@@ -124,67 +102,6 @@ def prompt(msg: str, default: str | None = None) -> str:
     return core_prompt(msg, default)
 
 
-def quit_app() -> None:
-    core_quit_app(clear_screen_fn=clear_screen)
-
-
-def print_menu(
-    title: str,
-    options: Sequence[Any],
-    *,
-    intro: str | None = None,
-    note: str | None = None,
-) -> None:
-    cli_menu.print_menu(
-        title,
-        options,
-        print_fn=print,
-        intro=intro,
-        note=note,
-    )
-
-
-def _choose_menu_option(
-    title: str,
-    options: Sequence[Any],
-    *,
-    intro: str | None = None,
-    note: str | None = None,
-) -> str:
-    return core_choose_menu_option(
-        title,
-        options,
-        print_menu_fn=print_menu,
-        intro=intro,
-        note=note,
-    )
-
-
-def require_targets_for_menu_action(cfg: ConfigDict, action: str) -> bool:
-    return support_module.require_targets_for_menu_action(
-        cfg,
-        action,
-        has_analyzed_targets_fn=support_module.has_analyzed_targets,
-        print_fn=print,
-        pause_fn=pause,
-    )
-
-
-def build_menu_interaction() -> Any:
-    from .interaction import build_menu_interaction as _build_menu_interaction  # noqa: PLC0415
-
-    interaction = _ui_textual_menu_interaction()
-    if interaction is not None:
-        return interaction
-    return _build_menu_interaction(
-        print_menu_fn=print_menu,
-        choose_menu_option_fn=_choose_menu_option,
-        prompt_fn=prompt,
-        confirm_fn=confirm,
-        pause_fn=pause,
-    )
-
-
 def resolve_interactive_ui_mode(cfg: ConfigDict, override_ui_mode: str | None = None) -> str:
     del cfg
     requested_ui = override_ui_mode or os.environ.get("SATTLINT_UI")
@@ -200,13 +117,8 @@ def resolve_interactive_ui_mode(cfg: ConfigDict, override_ui_mode: str | None = 
 
 def analysis_handler_fns() -> dict[str, Callable[..., Any]]:
     return {
-        "run_variable_analysis": analyze_application.run_variable_analysis,
         "_run_checks": analyze_application.run_checks,
         "run_checks_result": analyze_application.run_checks_result,
-        "run_checks_menu": run_checks_menu,
-        "run_mms_interface_analysis": analyze_application.run_mms_interface_analysis,
-        "run_icf_validation": analyze_application.run_icf_validation,
-        "run_comment_code_analysis": analyze_application.run_comment_code_analysis,
         "generate_change_review": change_review_application.generate_change_review,
     }
 
@@ -222,7 +134,7 @@ def run_interactive_session(cfg: ConfigDict, **kwargs: Any) -> None:
     kwargs.setdefault("set_textual_menu_interaction_fn", set_textual_menu_interaction)
     kwargs.setdefault("clear_textual_menu_interaction_fn", clear_textual_menu_interaction)
     kwargs.setdefault("analysis_handler_fns", analysis_handler_fns())
-    kwargs.setdefault("get_enabled_analyzers_fn", analyze_application.get_enabled_analyzers)
+    kwargs.setdefault("get_enabled_analyzers_fn", analyze_application.get_selectable_analyzers)
     run_textual_shell(cfg, **kwargs)
 
 
@@ -230,17 +142,6 @@ def summarize_targets(cfg: ConfigDict) -> str:
     return cli_menu.summarize_targets(
         cfg,
         get_analyzed_targets_fn=support_module.get_analyzed_targets,
-    )
-
-
-def show_help(cfg: ConfigDict) -> None:
-    cli_menu.show_help(
-        cfg,
-        clear_screen_fn=clear_screen,
-        get_analyzed_targets_fn=support_module.get_analyzed_targets,
-        summarize_targets_fn=summarize_targets,
-        print_fn=print,
-        pause_fn=pause,
     )
 
 
@@ -252,74 +153,20 @@ def get_help_text(cfg: ConfigDict) -> str:
     )
 
 
-def run_checks_menu(cfg: ConfigDict) -> None:
-    checks_application.run_checks_menu(cfg, run_checks_fn=analyze_application.run_checks)
-
-
-def build_cli_parser() -> argparse.ArgumentParser:
+def build_cli_parser() -> object:
     from .entry import build_cli_parser as _build_cli_parser  # noqa: PLC0415
 
     return _build_cli_parser()
 
 
-@dataclass(frozen=True)
-class InteractiveCliOverrides:
-    config_path: Path
-    debug: bool
-    ui_mode: str | None = None
-
-
-def _build_interactive_override_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
-    parser.add_argument("--config", default=None)
-    parser.add_argument("--no-cache", action="store_true", dest="no_cache")
-    parser.add_argument("--quiet", action="store_true")
-    parser.add_argument("--debug", action="store_true")
-    parser.add_argument("--ui", default=None)
-    return parser
-
-
-def resolve_interactive_cli_overrides(
-    argv: list[str],
-    *,
-    default_config_path: Path,
-) -> InteractiveCliOverrides | None:
-    if not argv:
-        return None
-
-    try:
-        parser = _build_interactive_override_parser()
-        parsed_namespace, leftover = parser.parse_known_args(argv)
-    except SystemExit:
-        return None
-
-    if leftover:
-        return None
-
-    command = getattr(parsed_namespace, "command", None)
-    if command is not None:
-        return None
-
-    quiet = bool(getattr(parsed_namespace, "quiet", False))
-    no_cache = bool(getattr(parsed_namespace, "no_cache", False))
-    if quiet or no_cache:
-        return None
-
-    debug = bool(getattr(parsed_namespace, "debug", False))
-    ui_mode = getattr(parsed_namespace, "ui", None)
-    config_path_text = getattr(parsed_namespace, "config", None)
-    if not debug and config_path_text is None and ui_mode is None:
-        return None
-
-    config_path = Path(config_path_text) if config_path_text else default_config_path
-    return InteractiveCliOverrides(config_path=config_path, debug=debug, ui_mode=ui_mode)
+def _run_cli(argv: list[str]) -> int:
+    return cli_entry.run_cli(argv, config_path=config_module.get_config_path())
 
 
 def main(
     argv: list[str] | None = None,
     *,
-    run_cli_fn: Callable[[list[str]], int] = commands_application.run_cli,
-    build_cli_parser_fn: Callable[[], Any] | None = build_cli_parser,
+    run_cli_fn: Callable[[list[str]], int] = _run_cli,
     load_config_fn: Callable[[Path], tuple[ConfigDict, bool]] = config_module.load_config,
     config_path: Path | None = None,
     apply_debug_fn: Callable[[ConfigDict], None] = apply_debug,
@@ -328,21 +175,9 @@ def main(
     reset_interactive_ui_mode_fn: Callable[[], None] | None = reset_interactive_ui_mode,
     emit_output_fn: Callable[..., None] = console_module.print_output,
     pause_fn: Callable[[], None] = pause,
-    self_check_fn: Callable[[ConfigDict], bool] = config_module.self_check,
-    confirm_fn: Callable[[str], bool] = confirm,
-    has_analyzed_targets_fn: Callable[[ConfigDict], bool] = support_module.has_analyzed_targets,
-    ensure_ast_cache_fn: Callable[[ConfigDict], bool] = project_application.ensure_ast_cache,
     run_main_loop_fn: Callable[..., None] | None = None,
-    clear_screen_fn: Callable[[], None] = clear_screen,
-    print_menu_fn: Callable[..., None] = print_menu,
-    choose_menu_option_fn: Callable[..., str] | None = _choose_menu_option,
-    interaction: Any | None = None,
-    menu_option_factory: Callable[[str, str, str], Any] = menu_option,
     summarize_targets_fn: Callable[[ConfigDict], str] = summarize_targets,
-    require_targets_for_menu_action_fn: Callable[[ConfigDict, str], bool] = require_targets_for_menu_action,
-    show_help_fn: Callable[[ConfigDict], None] = show_help,
-    save_config_fn: Callable[[Path, ConfigDict], None] = cli_config.save_config,
-    quit_app_fn: Callable[[], None] = quit_app,
+    save_config_fn: Callable[[Path, ConfigDict], None] = config_module.save_config,
     quit_app_error: type[BaseException] = QuitAppError,
 ) -> int:
     if config_path is None:
@@ -351,31 +186,18 @@ def main(
         run_main_loop_fn = run_interactive_session
 
     cli_args = [] if argv is None else argv
-    interactive_cli_overrides = resolve_interactive_cli_overrides(
-        cli_args,
-        default_config_path=config_path,
-    )
-    if cli_args and interactive_cli_overrides is None:
+    if cli_args:
         return run_cli_fn(cli_args)
 
     try:
-        effective_config_path = config_path
-        if interactive_cli_overrides is not None:
-            effective_config_path = interactive_cli_overrides.config_path
-
         # The Textual shell always opens with no project loaded. Projects are
         # opened or created from within the shell via Open Project / New Project.
-        cfg, default_used = load_config_fn(effective_config_path)
+        cfg, default_used = load_config_fn(config_path)
 
-        if interactive_cli_overrides is not None and interactive_cli_overrides.debug:
-            cfg["debug"] = True
         apply_debug_fn(cfg)
         resolved_ui_mode = "textual"
         if resolve_interactive_ui_mode_fn is not None:
-            resolved_ui_mode = resolve_interactive_ui_mode_fn(
-                cfg,
-                interactive_cli_overrides.ui_mode if interactive_cli_overrides is not None else None,
-            )
+            resolved_ui_mode = resolve_interactive_ui_mode_fn(cfg, None)
         if default_used:
             emit_output_fn("Warning: Default config created. Open Setup before running analysis.")
             pause_fn()
@@ -384,9 +206,8 @@ def main(
         try:
             run_main_loop_kwargs: dict[str, Any] = {
                 "summarize_targets_fn": summarize_targets_fn,
-                "show_help_fn": show_help_fn,
                 "save_config_fn": save_config_fn,
-                "config_path": effective_config_path,
+                "config_path": config_path,
                 "quit_app_error": quit_app_error,
             }
             run_main_loop_fn(cfg, **run_main_loop_kwargs)

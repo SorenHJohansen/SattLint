@@ -11,21 +11,21 @@ from collections import Counter
 
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 
-from sattlint.analyzers.sattline_semantics import (
-    SattLineSemanticsReport,
-    analyze_sattline_semantics,
-)
+from sattlint.analyzers.framework import Issue, SimpleReport
 from sattlint.reporting.corpus_diff import CountChange, diff_corpus_findings
 from tests.helpers.app_menus_support import VALID_SINGLE_FILE
 
 
-def _report_for_source(source: str) -> SattLineSemanticsReport:
+def _report_for_source(source: str) -> SimpleReport:
     base_picture = parser_core_parse_source_text(source)
-    return analyze_sattline_semantics(base_picture, debug=True)
+    issues = [
+        Issue(kind="unused", message="Unused variable", module_path=[base_picture.header.name]),
+    ]
+    return SimpleReport(name=base_picture.header.name, issues=issues)
 
 
-def _finding_ids(report: SattLineSemanticsReport) -> list[str]:
-    return [issue.rule.id for issue in report.issues]
+def _finding_ids(report: SimpleReport) -> list[str]:
+    return [issue.kind for issue in report.issues]
 
 
 def test_diff_between_identical_runs_is_empty() -> None:

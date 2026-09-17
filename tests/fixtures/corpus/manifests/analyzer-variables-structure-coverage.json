@@ -4,10 +4,9 @@
     "mode": "analyzer-variables",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.duplicated-datatype-layout",
-            "semantic.hidden-global-coupling",
-            "semantic.high-fan-in-out-variable",
-            "semantic.name-collision"
+            "datatype_duplication",
+            "hidden_global_coupling",
+            "high_fan_in_out"
         ],
         "artifact_fragments": {
             "status.json": {

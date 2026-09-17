@@ -5,16 +5,11 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
-from types import SimpleNamespace
 from typing import ClassVar
 
 import pytest
 
 from sattlint import config as config_module
-from sattlint.analyzers import icf as icf_module
-from sattlint.application import analyze as analyze_application
-from sattlint.application import menu_commands as commands_application
-from sattlint.application import project as project_application
 from sattlint.cli import startup as startup_module
 from sattlint.config import DEFAULT_CONFIG
 from sattlint.config.defaults import (
@@ -108,14 +103,13 @@ def test_validate_config_reports_none_values_at_top_level_and_nested_paths():
     }
 
 
-def test_validate_config_reports_unknown_analysis_naming_targets_and_style():
+def test_validate_config_reports_unknown_analysis_namespace_keys():
     result = config_module.validate_config(
         {
             "analysis": {
                 "unknown_analyzer": {},
                 "naming": {
-                    "unknown_target": {"style": "snake"},
-                    "variables": {"style": "bad_style"},
+                    "variables": {"style": "snake"},
                 },
             }
         }
@@ -124,9 +118,61 @@ def test_validate_config_reports_unknown_analysis_naming_targets_and_style():
     assert result.passed is False
     assert {error.key_path for error in result.errors} == {
         "analysis.unknown_analyzer",
-        "analysis.naming.unknown_target",
-        "analysis.naming.variables.style",
+        "analysis.naming",
     }
+
+
+def test_validate_config_reports_invalid_analysis_knob_shapes():
+    result = config_module.validate_config(
+        {
+            "analysis": {
+                "spec_compliance": {
+                    "extra_prefix": "X_",
+                    "step_prefix": 42,
+                },
+                "unsafe_default_tokens": ["bypass", 7, ""],
+                "cyclomatic_module_threshold": -1,
+                "cyclomatic_step_threshold": "high",
+                "cyclomatic_equation_block_threshold": 0,
+                "fan_in_out_threshold": True,
+            }
+        }
+    )
+
+    assert result.passed is False
+    assert {error.key_path for error in result.errors} == {
+        "analysis.spec_compliance.extra_prefix",
+        "analysis.spec_compliance.step_prefix",
+        "analysis.unsafe_default_tokens[1]",
+        "analysis.unsafe_default_tokens[2]",
+        "analysis.cyclomatic_module_threshold",
+        "analysis.cyclomatic_step_threshold",
+        "analysis.cyclomatic_equation_block_threshold",
+        "analysis.fan_in_out_threshold",
+    }
+
+
+def test_validate_config_accepts_valid_analysis_knobs():
+    result = config_module.validate_config(
+        {
+            "analysis": {
+                "spec_compliance": {
+                    "step_prefix": "ST_",
+                    "transition_prefix": "TR_",
+                    "sequence_prefix": "SEQ_",
+                    "equation_prefix": "EQ_",
+                },
+                "unsafe_default_tokens": ["bypass", "enable", "override"],
+                "cyclomatic_module_threshold": 12,
+                "cyclomatic_step_threshold": 8,
+                "cyclomatic_equation_block_threshold": 10,
+                "fan_in_out_threshold": 5,
+            }
+        }
+    )
+
+    assert result.passed is True
+    assert result.errors == ()
 
 
 def test_validate_config_passes_valid_config_and_serializes_result():
@@ -134,7 +180,7 @@ def test_validate_config_passes_valid_config_and_serializes_result():
         {
             "mode": "draft",
             "run_history": {"enabled": True, "limit": 50},
-            "analysis": {"naming": {"variables": {"style": "snake"}}},
+            "analysis": {},
         }
     )
     invalid = config_module.validate_config({"bad_key": True})
@@ -315,14 +361,13 @@ def test_top_level_config_contract_matches_typed_config_definitions() -> None:
 
 def test_self_check_uses_full_top_level_config_contract(tmp_path, monkeypatch, capsys):
     cfg = deepcopy(DEFAULT_CONFIG)
-    for key in ("include_reverse_library_consumers", "run_history", "analysis"):
+    for key in ("run_history", "analysis"):
         cfg.pop(key)
 
     ok = config_module.self_check(cfg)
 
     out = capsys.readouterr().out
     assert ok is False
-    assert "Missing config key: include_reverse_library_consumers" in out
     assert "Missing config key: run_history" in out
     assert "Missing config key: analysis" in out
 
@@ -338,65 +383,8 @@ def test_self_check_reports_nested_analysis_shape_errors(tmp_path, monkeypatch, 
     bad_ok = config_module.self_check(cfg)
     bad_out = capsys.readouterr().out
 
-    cfg["analysis"] = {
-        "naming": {
-            "variables": {"label_equals": ["Unused"]},
-            "modules": {},
-            "instances": {},
-        },
-    }
-
     assert bad_ok is False
-    assert "analysis.naming must be a table/object" in bad_out
-
-
-def test_run_icf_validation_forces_dependency_aware_ast_loading(tmp_path, monkeypatch, capsys, noop_screen):
-    icf_dir = tmp_path / "icf"
-    icf_dir.mkdir()
-    icf_file = icf_dir / "Program.icf"
-    icf_file.write_text("Tag=Program:Root.Value\n", encoding="utf-8")
-
-    cfg = deepcopy(DEFAULT_CONFIG)
-    cfg.update(
-        {
-            "icf_dir": str(icf_dir),
-            "program_dir": str(tmp_path),
-            "ABB_lib_dir": str(tmp_path),
-            "other_lib_dirs": [],
-            "debug": False,
-        }
-    )
-
-    calls: list[tuple[str, bool]] = []
-
-    def fake_load_program_ast(_cfg, program_name):
-        calls.append(program_name)
-        root_bp = SimpleNamespace(moduletype_defs=[])
-        graph = SimpleNamespace(ast_by_name={program_name: SimpleNamespace(moduletype_defs=[])})
-        return root_bp, graph
-
-    class FakeReport:
-        total_entries = 1
-        valid_entries = 1
-        skipped_entries = 0
-        issues: ClassVar[list[object]] = []
-
-        def summary(self):
-            return "summary"
-
-    monkeypatch.setattr(project_application, "load_program_ast", fake_load_program_ast)
-    monkeypatch.setattr(commands_application, "merge_project_basepicture", lambda bp, _graph: bp)
-    monkeypatch.setattr(
-        icf_module,
-        "validate_icf_entries_against_program",
-        lambda *args, **kwargs: FakeReport(),
-    )
-
-    analyze_application.run_icf_validation(cfg)
-
-    assert calls == ["Program"]
-    out = capsys.readouterr().out
-    assert "summary" in out
+    assert "Unknown analysis key 'naming'" in bad_out
 
 
 def test_self_check_reports_invalid_nested_config_errors(tmp_path, monkeypatch, capsys):
@@ -411,13 +399,6 @@ def test_self_check_reports_invalid_nested_config_errors(tmp_path, monkeypatch, 
             "ABB_lib_dir": "",
             "icf_dir": str(tmp_path / "missing-icf"),
             "other_lib_dirs": [str(tmp_path / "missing-other")],
-            "analysis": {
-                "naming": {
-                    "variables": {"style": "bad", "allow": "bad"},
-                    "modules": "bad",
-                    "instances": {"allow": [1]},
-                },
-            },
         }
     )
 
@@ -431,10 +412,6 @@ def test_self_check_reports_invalid_nested_config_errors(tmp_path, monkeypatch, 
     assert "icf_dir does not exist" in out
     assert "other_lib_dirs entry missing" in out
     assert "MissingTarget (not found)" in out
-    assert "analysis.naming.variables.style must be one of" in out
-    assert "analysis.naming.variables.allow must be a list of strings" in out
-    assert "analysis.naming.modules must be a table/object" in out
-    assert "analysis.naming.instances.allow must be a list of strings" in out
 
 
 def test_main_pauses_when_initial_ast_check_fails(monkeypatch):
@@ -447,8 +424,6 @@ def test_main_pauses_when_initial_ast_check_fails(monkeypatch):
     exit_code = startup_module.main(
         load_config_fn=lambda *_: (cfg, False),
         apply_debug_fn=lambda *_: None,
-        self_check_fn=lambda *_: pytest.fail("textual startup should skip terminal self-check"),
-        ensure_ast_cache_fn=lambda *_: pytest.fail("textual startup should skip terminal AST cache preflight"),
         pause_fn=lambda: pytest.fail("textual startup should not pause before launching"),
         run_main_loop_fn=lambda *_args, **_kwargs: calls.append("session"),
     )

@@ -10,13 +10,16 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
-from sattlint.analyzers.registry import get_default_analyzers
-from sattlint.analyzers.shadowing import ShadowingAnalyzer, analyze_shadowing
-from sattlint.reporting.variables_report import IssueKind
+from sattlint.analyzers.variables import analyze_variables
+from sattlint.reporting.variables_report import DEFAULT_VARIABLE_ANALYSIS_KINDS, IssueKind
 
 
 def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
+
+
+def _shadowing_only_report(bp: BasePicture):
+    return analyze_variables(bp, selected_issue_kinds=frozenset({IssueKind.SHADOWING}))
 
 
 def test_shadowing_detected_for_nested_locals() -> None:
@@ -40,7 +43,7 @@ def test_shadowing_detected_for_nested_locals() -> None:
         moduledef=None,
     )
 
-    report = analyze_shadowing(bp)
+    report = _shadowing_only_report(bp)
 
     assert any(issue.kind is IssueKind.SHADOWING for issue in report.issues)
 
@@ -72,7 +75,7 @@ def test_shadowing_detected_for_moduletype_instance_locals() -> None:
         moduledef=None,
     )
 
-    report = analyze_shadowing(bp)
+    report = _shadowing_only_report(bp)
 
     assert any(issue.kind is IssueKind.SHADOWING for issue in report.issues)
 
@@ -108,16 +111,13 @@ def test_shadowing_ignores_external_moduletype_instance_locals_for_program_targe
         origin_lib="ProgramLib",
     )
 
-    report = analyze_shadowing(bp)
+    report = _shadowing_only_report(bp)
 
     assert not any(issue.kind is IssueKind.SHADOWING for issue in report.issues)
 
 
-def test_shadowing_analyzer_is_enabled_by_default() -> None:
-    specs = {spec.key: spec for spec in get_default_analyzers()}
-
-    assert "shadowing" in specs
-    assert specs["shadowing"].enabled is True
+def test_shadowing_is_default_variable_analysis_kind() -> None:
+    assert IssueKind.SHADOWING in DEFAULT_VARIABLE_ANALYSIS_KINDS
 
 
 def test_shadowing_traverses_frames_and_nested_single_modules() -> None:
@@ -150,7 +150,7 @@ def test_shadowing_traverses_frames_and_nested_single_modules() -> None:
         moduledef=None,
     )
 
-    report = analyze_shadowing(bp)
+    report = _shadowing_only_report(bp)
 
     assert [issue.module_path for issue in report.issues] == [["Root", "Frame", "Child", "Grandchild"]]
 
@@ -181,7 +181,7 @@ def test_shadowing_ignores_moduletype_instances_when_root_origin_is_unknown() ->
         moduledef=None,
     )
 
-    assert analyze_shadowing(bp).issues == []
+    assert _shadowing_only_report(bp).issues == []
 
 
 def test_shadowing_ignores_unresolvable_moduletype_instances() -> None:
@@ -200,7 +200,7 @@ def test_shadowing_ignores_unresolvable_moduletype_instances() -> None:
         moduledef=None,
     )
 
-    assert analyze_shadowing(bp).issues == []
+    assert _shadowing_only_report(bp).issues == []
 
 
 def test_shadowing_report_is_empty_without_collisions() -> None:
@@ -224,21 +224,4 @@ def test_shadowing_report_is_empty_without_collisions() -> None:
         moduledef=None,
     )
 
-    assert analyze_shadowing(bp).issues == []
-
-
-def test_shadowing_analyzer_exposes_empty_issue_property() -> None:
-    analyzer = ShadowingAnalyzer(
-        BasePicture(
-            header=_hdr("Root"),
-            datatype_defs=[],
-            moduletype_defs=[],
-            localvariables=[],
-            submodules=[],
-            modulecode=None,
-            moduledef=None,
-        )
-    )
-
-    assert analyzer.issues == []
-    assert ShadowingAnalyzer.issues.fget(analyzer) == []
+    assert _shadowing_only_report(bp).issues == []

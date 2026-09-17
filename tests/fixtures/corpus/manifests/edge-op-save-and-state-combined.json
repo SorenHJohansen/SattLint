@@ -5,9 +5,7 @@
     "expectation": {
         "expected_finding_ids": [
             "semantic.condition-always-false",
-            "semantic.signal-lifecycle-unconsumed-write",
-            "semantic.unreachable-branch",
-            "spec.basepicture_direct_code"
+            "semantic.unreachable-branch"
         ],
         "artifact_fragments": {
             "status.json": {
@@ -15,12 +13,10 @@
                 "missing_dependency_count": 0
             },
             "summary.json": {
-                "finding_count": 7,
+                "finding_count": 2,
                 "rule_counts": {
                     "semantic.condition-always-false": 1,
-                    "semantic.signal-lifecycle-unconsumed-write": 4,
-                    "semantic.unreachable-branch": 1,
-                    "spec.basepicture_direct_code": 1
+                    "semantic.unreachable-branch": 1
                 }
             }
         },

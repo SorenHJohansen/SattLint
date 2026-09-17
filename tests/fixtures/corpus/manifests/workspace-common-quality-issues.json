@@ -4,16 +4,11 @@
   "mode": "workspace",
   "expectation": {
     "expected_finding_ids": [
-      "semantic.data-dependency-initialization-order",
-      "semantic.data-dependency-path",
-      "semantic.never-read-write",
-      "semantic.signal-lifecycle-read-before-write",
-      "semantic.read-only-datatype-field",
-      "semantic.read-only-non-const",
-      "semantic.signal-lifecycle-read-before-write",
-      "semantic.signal-lifecycle-unconsumed-write",
-      "spec.basepicture_direct_code",
-      "semantic.unused-variable"
+      "never_read",
+      "read_before_write",
+      "field_read_only",
+      "read_only_non_const",
+      "unused"
     ],
     "artifact_fragments": {
       "status.json": {
@@ -22,16 +17,11 @@
       },
       "summary.json": {
         "rule_counts": {
-          "semantic.data-dependency-initialization-order": 1,
-          "semantic.data-dependency-path": 2,
-          "semantic.never-read-write": 1,
-          "semantic.signal-lifecycle-read-before-write": 1,
-          "semantic.read-only-datatype-field": 1,
-          "semantic.read-only-non-const": 1,
-          "semantic.signal-lifecycle-read-before-write": 1,
-          "semantic.signal-lifecycle-unconsumed-write": 1,
-          "spec.basepicture_direct_code": 1,
-          "semantic.unused-variable": 1
+          "never_read": 1,
+          "read_before_write": 2,
+          "field_read_only": 1,
+          "read_only_non_const": 1,
+          "unused": 1
         }
       }
     },

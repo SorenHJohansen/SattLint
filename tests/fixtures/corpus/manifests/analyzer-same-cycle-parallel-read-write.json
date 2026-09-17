@@ -4,7 +4,7 @@
     "mode": "analyzer-same-cycle",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.parallel-read-write-hazard"
+            "same_cycle_parallel_read_write_hazard"
         ],
         "artifact_fragments": {
             "status.json": {

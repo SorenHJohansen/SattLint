@@ -296,13 +296,6 @@ def _normalize_guard_signature(expr: object) -> object:
     return ("text", _expr_text(cast(object, expr)).casefold())
 
 
-def _guard_constant_truth(signature: object) -> bool | None:
-    parts = _tuple_parts(signature)
-    if parts is not None and len(parts) == 2 and parts[0] == "bool":
-        return bool(parts[1])
-    return None
-
-
 def _collect_transition_logic_issues(
     base_picture: BasePicture,
     *,
@@ -322,41 +315,7 @@ def _collect_transition_logic_issues(
             if isinstance(node, SFCTransition):
                 condition_text = _expr_text(cast(object, node.condition))
                 signature = _normalize_guard_signature(node.condition)
-                constant_truth = _guard_constant_truth(signature)
                 transition_name = node.name or f"<unnamed:{index + 1}>"
-                data = {
-                    "sequence": sequence_name,
-                    "branch_path": list(branch_path),
-                    "transition_name": transition_name,
-                    "condition": condition_text,
-                    "normalized_guard": repr(signature),
-                    "site": f"SQ:{sequence_name} > TRANS:{transition_name}",
-                    "context": condition_text,
-                }
-                if constant_truth is True:
-                    issues.append(
-                        Issue(
-                            kind="sfc_transition_always_true",
-                            message=(
-                                f"Transition {transition_name!r} in sequence {sequence_name!r}{_format_branch_path(branch_path)} "
-                                f"has a guard that is always true: {condition_text}."
-                            ),
-                            module_path=module_path.copy(),
-                            data=data,
-                        )
-                    )
-                elif constant_truth is False:
-                    issues.append(
-                        Issue(
-                            kind="sfc_transition_always_false",
-                            message=(
-                                f"Transition {transition_name!r} in sequence {sequence_name!r}{_format_branch_path(branch_path)} "
-                                f"has a guard that is always false: {condition_text}."
-                            ),
-                            module_path=module_path.copy(),
-                            data=data,
-                        )
-                    )
 
                 duplicate = _DuplicateTransition(
                     name=transition_name,

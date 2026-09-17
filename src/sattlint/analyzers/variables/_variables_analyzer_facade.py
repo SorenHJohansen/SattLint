@@ -9,7 +9,6 @@ from sattline_parser.models.ast_model import ModuleTypeDef, ParameterMapping, Va
 from ...models.usage import VariableUsage
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ...resolution.scope import ScopeContext
-from ..shared._validators import AnyTypeFieldContract
 from ._variables_facade_properties import VariablesAnalyzerFacadePropertiesMixin
 
 
@@ -85,30 +84,6 @@ class VariablesAnalyzerFacadeMixin(VariablesAnalyzerFacadePropertiesMixin):
         context: ScopeContext,
     ) -> None:
         self._bind_ignorable_output(full_ref, context=context)
-
-    def matches_naming_role(self, name_key: str, role_name: str) -> bool:
-        return self._matches_naming_role(name_key, role_name)
-
-    def naming_role_mismatch_reason(
-        self,
-        variable: Variable,
-        usage: VariableUsage,
-        decl_path: list[str],
-    ) -> str | None:
-        return self._naming_role_mismatch_reason(variable, usage, decl_path)
-
-    def iter_anytype_typedefs(self) -> list[ModuleTypeDef]:
-        return self._iter_anytype_typedefs()
-
-    def build_anytype_parameter_contract(
-        self,
-        extractor: Any,
-        variable: Variable,
-    ) -> AnyTypeFieldContract | None:
-        return self._build_anytype_parameter_contract(extractor, variable)
-
-    def get_required_parameter_names_for_typedef(self, moduletype: ModuleTypeDef) -> dict[str, str]:
-        return self._get_required_parameter_names_for_typedef(moduletype)
 
     def analyze_typedef(self, moduletype: ModuleTypeDef, path: list[str]) -> None:
         self._analyze_typedef(moduletype, path)

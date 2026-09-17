@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from .io import (
     DEFAULT_RUN_HISTORY_LIMIT,
+    delete_run,
     get_runs_dir,
     list_runs,
     load_run,
@@ -19,6 +20,7 @@ __all__ = [
     "RunRecord",
     "RunSummary",
     "RunTargetRecord",
+    "delete_run",
     "get_runs_dir",
     "list_runs",
     "load_run",

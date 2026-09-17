@@ -10,12 +10,6 @@ from typing import Any, TypeGuard, cast
 
 from ..types import TargetName
 from .defaults import (
-    NAMING_RULE_TARGETS as _NAMING_RULE_TARGETS,
-)
-from .defaults import (
-    NAMING_STYLE_KEYS as _NAMING_STYLE_KEYS,
-)
-from .defaults import (
     VALID_TOP_LEVEL_CONFIG_KEYS,
 )
 from .types import (
@@ -26,12 +20,20 @@ from .types import (
 
 VALID_TOP_LEVEL_KEYS = VALID_TOP_LEVEL_CONFIG_KEYS
 
-VALID_ANALYSIS_KEYS = frozenset({"naming", "rule_profiles"})
+VALID_ANALYSIS_KEYS: frozenset[str] = frozenset(
+    {
+        "spec_compliance",
+        "unsafe_default_tokens",
+        "cyclomatic_module_threshold",
+        "cyclomatic_step_threshold",
+        "cyclomatic_equation_block_threshold",
+        "fan_in_out_threshold",
+    }
+)
+VALID_SPEC_COMPLIANCE_KEYS = frozenset({"step_prefix", "transition_prefix", "sequence_prefix", "equation_prefix"})
 VALID_RUN_HISTORY_KEYS = frozenset({"enabled", "limit"})
 VALID_OUTPUT_KEYS = frozenset({"retention_lines"})
 VALID_REVIEW_KEYS = frozenset({"output_dir"})
-VALID_NAMING_TARGETS = frozenset({"variables", "modules", "instances"})
-VALID_NAMING_STYLES = frozenset({"infer", "pascal", "camel", "snake", "upper_snake", "lower", "upper"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,15 +73,6 @@ def _object_list(value: object) -> list[object]:
     return []
 
 
-def _string_list(value: object) -> list[str] | None:
-    if not isinstance(value, list):
-        return None
-    items = list(cast(list[object], value))
-    if not all(isinstance(item, str) for item in items):
-        return None
-    return [item for item in items if isinstance(item, str)]
-
-
 def _deep_merge_dict(base: ConfigObjectMap, override: ConfigObjectMap) -> ConfigObjectMap:
     merged = deepcopy(base)
     for key, value in override.items():
@@ -92,17 +85,17 @@ def _deep_merge_dict(base: ConfigObjectMap, override: ConfigObjectMap) -> Config
     return merged
 
 
-_SECTION_NAMING_RULE_KEYS = frozenset({"style", "allow"})
-_SECTION_RULE_PROFILES_KEYS = frozenset({"active", "profiles"})
-_SECTION_RULE_PROFILE_ENTRY_KEYS = frozenset(
-    {"description", "disabled_rules", "severity_overrides", "confidence_overrides"}
-)
-
-
 def _strip_section_keys(cfg: ConfigObjectMap, valid_keys: frozenset[str]) -> None:
     for key in list(cfg):
         if key not in valid_keys:
             del cfg[key]
+
+
+def _strip_analysis_keys(analysis: ConfigObjectMap) -> None:
+    _strip_section_keys(analysis, VALID_ANALYSIS_KEYS)
+    spec_compliance = _config_dict(analysis.get("spec_compliance"))
+    if spec_compliance is not None:
+        _strip_section_keys(spec_compliance, VALID_SPEC_COMPLIANCE_KEYS)
 
 
 def _strip_unknown_keys(cfg: ConfigOverrideDict) -> None:
@@ -112,28 +105,7 @@ def _strip_unknown_keys(cfg: ConfigOverrideDict) -> None:
 
     analysis = _config_dict(cfg_map.get("analysis"))
     if analysis is not None:
-        _strip_section_keys(analysis, VALID_ANALYSIS_KEYS)
-
-        naming = _config_dict(analysis.get("naming"))
-        if naming is not None:
-            for key in list(naming):
-                if key not in VALID_NAMING_TARGETS:
-                    del naming[key]
-                else:
-                    target_rule = _config_dict(naming[key])
-                    if target_rule is not None:
-                        _strip_section_keys(target_rule, _SECTION_NAMING_RULE_KEYS)
-
-        rule_profiles = _config_dict(analysis.get("rule_profiles"))
-        if rule_profiles is not None:
-            _strip_section_keys(rule_profiles, _SECTION_RULE_PROFILES_KEYS)
-
-            profiles = _config_dict(rule_profiles.get("profiles"))
-            if profiles is not None:
-                for profile in profiles.values():
-                    profile_cfg = _config_dict(profile)
-                    if profile_cfg is not None:
-                        _strip_section_keys(profile_cfg, _SECTION_RULE_PROFILE_ENTRY_KEYS)
+        _strip_analysis_keys(analysis)
 
     run_history = _config_dict(cfg_map.get("run_history"))
     if run_history is not None:
@@ -217,7 +189,7 @@ def _none_value_errors(value: object, *, key_path: str) -> list[ConfigValidation
     return errors
 
 
-def validate_config(cfg: ConfigDict | ConfigOverrideDict) -> ConfigValidationResult:  # noqa: PLR0915
+def validate_config(cfg: ConfigDict | ConfigOverrideDict) -> ConfigValidationResult:
     errors: list[ConfigValidationError] = []
 
     for key, value in cast(ConfigObjectMap, cfg).items():
@@ -350,56 +322,81 @@ def validate_config(cfg: ConfigDict | ConfigOverrideDict) -> ConfigValidationRes
                         message=f"Unknown analysis key '{key}'. Expected one of: {', '.join(sorted(VALID_ANALYSIS_KEYS))}",
                     )
                 )
+        errors.extend(_analysis_validation_errors(analysis))
 
-        naming_value = analysis.get("naming")
-        naming = _config_dict(naming_value)
-        if naming is not None:
-            for target in naming:
-                if target not in VALID_NAMING_TARGETS:
-                    errors.append(
-                        ConfigValidationError(
-                            key_path=f"analysis.naming.{target}",
-                            message=f"Unknown naming target '{target}'. Expected one of: {', '.join(sorted(VALID_NAMING_TARGETS))}",
-                        )
-                    )
-            for target in _NAMING_RULE_TARGETS:
-                target_rule = _config_dict(naming.get(target, {}))
-                if target_rule is None:
-                    errors.append(
-                        ConfigValidationError(
-                            key_path=f"analysis.naming.{target}",
-                            message=f"analysis.naming.{target} must be a table/object",
-                        )
-                    )
-                    continue
+    return _build_validation_result(errors)
 
-                style = str(target_rule.get("style", "infer")).strip().lower()
-                if style not in _NAMING_STYLE_KEYS:
-                    errors.append(
-                        ConfigValidationError(
-                            key_path=f"analysis.naming.{target}.style",
-                            message=f"analysis.naming.{target}.style must be one of: {', '.join(_NAMING_STYLE_KEYS)}",
-                        )
-                    )
 
-                allow = _string_list(target_rule.get("allow", []))
-                if allow is None:
-                    errors.append(
-                        ConfigValidationError(
-                            key_path=f"analysis.naming.{target}.allow",
-                            message=f"analysis.naming.{target}.allow must be a list of strings",
-                        )
-                    )
+def _analysis_validation_errors(analysis: ConfigObjectMap) -> list[ConfigValidationError]:
+    errors: list[ConfigValidationError] = []
 
-        if naming_value is not None and naming is None:
+    spec_compliance_value = analysis.get("spec_compliance")
+    spec_compliance = _config_dict(spec_compliance_value)
+    if spec_compliance_value is not None and spec_compliance is None:
+        errors.append(
+            ConfigValidationError(
+                key_path="analysis.spec_compliance",
+                message="analysis.spec_compliance must be a table/object.",
+            )
+        )
+    elif spec_compliance is not None:
+        for key in spec_compliance:
+            if key not in VALID_SPEC_COMPLIANCE_KEYS:
+                errors.append(
+                    ConfigValidationError(
+                        key_path=f"analysis.spec_compliance.{key}",
+                        message=(
+                            f"Unknown analysis.spec_compliance key '{key}'. "
+                            f"Expected one of: {', '.join(sorted(VALID_SPEC_COMPLIANCE_KEYS))}"
+                        ),
+                    )
+                )
+        for key, value in spec_compliance.items():
+            if not isinstance(value, str):
+                errors.append(
+                    ConfigValidationError(
+                        key_path=f"analysis.spec_compliance.{key}",
+                        message=f"analysis.spec_compliance.{key} must be a string prefix",
+                    )
+                )
+
+    unsafe_default_tokens = analysis.get("unsafe_default_tokens")
+    if unsafe_default_tokens is not None:
+        if not isinstance(unsafe_default_tokens, list):
             errors.append(
                 ConfigValidationError(
-                    key_path="analysis.naming",
-                    message="analysis.naming must be a table/object",
+                    key_path="analysis.unsafe_default_tokens",
+                    message="analysis.unsafe_default_tokens must be a list of tokens",
+                )
+            )
+        else:
+            for index, token in enumerate(cast(list[object], unsafe_default_tokens)):
+                if not isinstance(token, str) or not token.strip():
+                    errors.append(
+                        ConfigValidationError(
+                            key_path=f"analysis.unsafe_default_tokens[{index}]",
+                            message="analysis.unsafe_default_tokens entries must be non-empty strings",
+                        )
+                    )
+
+    for threshold_key in (
+        "cyclomatic_module_threshold",
+        "cyclomatic_step_threshold",
+        "cyclomatic_equation_block_threshold",
+        "fan_in_out_threshold",
+    ):
+        threshold = analysis.get(threshold_key)
+        if threshold is None:
+            continue
+        if not isinstance(threshold, int) or isinstance(threshold, bool) or threshold <= 0:
+            errors.append(
+                ConfigValidationError(
+                    key_path=f"analysis.{threshold_key}",
+                    message=f"analysis.{threshold_key} must be a positive integer",
                 )
             )
 
-    return _build_validation_result(errors)
+    return errors
 
 
 def target_exists(target: str, cfg: ConfigDict | ConfigOverrideDict) -> bool:

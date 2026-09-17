@@ -1,16 +1,13 @@
 """Public ``register_analyzer`` developer API (Phase G).
 
 New analyzers are written as a plain ``run(context: AnalysisContext) -> Report``
-function and declared with :func:`register_analyzer`. The framework owns dependency
-ordering (``requires`` -> topological), shared-artifact memoization, and telemetry, so
-adding an analyzer no longer requires touching ``context_kwargs``/provider plumbing.
+function and declared with :func:`register_analyzer`. The framework owns
+shared-artifact memoization and telemetry, so adding an analyzer no longer
+requires touching ``context_kwargs``/provider plumbing.
 
 Every registered analyzer is wired with ``direct_context=True``: its runnable always
 receives the full :class:`~.framework.AnalysisContext`, so there is no way for a spec to
-(accidentally) omit access to ``shared_artifacts`` — the exact bug class that previously
-cost ``mms-interface`` ~114s. A ``requires=("variables",)`` declaration means "consume the
-canonical variables collection", *not* "run variables again"; the dispatcher reuses the
-already-collected foundation / collected views.
+(accidentally) omit access to ``shared_artifacts``.
 """
 
 from __future__ import annotations
@@ -25,7 +22,6 @@ _plugin_analyzers: dict[str, AnalyzerSpec] = {}
 def register_analyzer(
     *,
     key: str,
-    requires: tuple[str, ...] = (),
     contributes: str | None = None,
     name: str | None = None,
     description: str = "",
@@ -35,10 +31,8 @@ def register_analyzer(
 
     Args:
         key: Unique analyzer key (matched case-insensitively).
-        requires: Analyzer keys that must run and be collected first (``"variables"`` is the
-            canonical collection pass; other keys map to their memoized result).
         contributes: Optional human/discoverability label for the shared artifact this analyzer
-            writes (e.g. ``"derived_reports.my-analyzer"``).
+            writes (e.g. ``"my-analyzer-artifacts"``).
         name: Display name (defaults to ``key``).
         description: One-line description for registry/tooling output.
         enabled: Whether the analyzer is active by default.
@@ -54,7 +48,6 @@ def register_analyzer(
             name=name or key,
             description=description,
             run=run,
-            requires=tuple(requires),
             enabled=enabled,
             direct_context=True,
             contributes=contributes,

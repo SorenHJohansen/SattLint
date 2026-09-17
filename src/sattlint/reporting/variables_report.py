@@ -20,43 +20,42 @@ from ._variables_report_rendering import (
 
 DEFAULT_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
     IssueKind.UNUSED,
-    IssueKind.UNUSED_DATATYPE_FIELD,
-    IssueKind.FIELD_READ_ONLY,
     IssueKind.READ_ONLY_NON_CONST,
-    IssueKind.FIELD_NEVER_READ,
     IssueKind.NEVER_READ,
     IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE,
     IssueKind.UNKNOWN_PARAMETER_TARGET,
-    IssueKind.REQUIRED_PARAMETER_CONNECTION,
     IssueKind.STRING_MAPPING_MISMATCH,
     IssueKind.DATATYPE_DUPLICATION,
     IssueKind.MIN_MAX_MAPPING_MISMATCH,
     IssueKind.MAGIC_NUMBER,
-    IssueKind.NAME_COLLISION,
     IssueKind.RESET_CONTAMINATION,
+    IssueKind.SHADOWING,
+    IssueKind.UNSAFE_BOOLEAN_DEFAULT,
+    IssueKind.READ_BEFORE_WRITE,
+)
+
+DATATYPE_FIELD_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
+    IssueKind.UNUSED_DATATYPE_FIELD,
+    IssueKind.FIELD_READ_ONLY,
+    IssueKind.FIELD_NEVER_READ,
 )
 
 LOW_CONFIDENCE_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
-    IssueKind.NAMING_ROLE_MISMATCH,
-    IssueKind.UI_ONLY,
     IssueKind.PROCEDURE_STATUS,
     IssueKind.WRITE_WITHOUT_EFFECT,
     IssueKind.GLOBAL_SCOPE_MINIMIZATION,
     IssueKind.HIDDEN_GLOBAL_COUPLING,
     IssueKind.HIGH_FAN_IN_OUT,
-    IssueKind.CONTRACT_MISMATCH,
     IssueKind.IMPLICIT_LATCH,
 )
 
 ALL_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
     *DEFAULT_VARIABLE_ANALYSIS_KINDS,
+    *DATATYPE_FIELD_ANALYSIS_KINDS,
     *LOW_CONFIDENCE_VARIABLE_ANALYSIS_KINDS,
 )
 
-SUMMARY_SECTION_ORDER: tuple[IssueKind, ...] = (
-    *ALL_VARIABLE_ANALYSIS_KINDS,
-    IssueKind.SHADOWING,
-)
+SUMMARY_SECTION_ORDER: tuple[IssueKind, ...] = (*ALL_VARIABLE_ANALYSIS_KINDS,)
 
 AccessesByDefinitionKey = dict[CanonicalPathKey, tuple[AccessEvent, ...]]
 EffectFlowEdges = dict[CanonicalPathKey, tuple[CanonicalPathKey, ...]]
@@ -84,8 +83,6 @@ SECTION_TITLES: dict[IssueKind, str] = {
     IssueKind.UNUSED_DATATYPE_FIELD: "Unused fields in datatypes",
     IssueKind.FIELD_READ_ONLY: "Read-only fields",
     IssueKind.READ_ONLY_NON_CONST: "Read-only but not Const variables",
-    IssueKind.NAMING_ROLE_MISMATCH: "Naming-to-behavior mismatches",
-    IssueKind.UI_ONLY: "UI/display-only variables",
     IssueKind.PROCEDURE_STATUS: "Procedure status handling",
     IssueKind.FIELD_NEVER_READ: "Written but never read fields",
     IssueKind.NEVER_READ: "Written but never read variables",
@@ -95,14 +92,13 @@ SECTION_TITLES: dict[IssueKind, str] = {
     IssueKind.HIDDEN_GLOBAL_COUPLING: "Hidden global coupling",
     IssueKind.HIGH_FAN_IN_OUT: "High fan-in or fan-out variables",
     IssueKind.UNKNOWN_PARAMETER_TARGET: "Unknown parameter mapping targets",
-    IssueKind.REQUIRED_PARAMETER_CONNECTION: "Missing required parameter connections",
-    IssueKind.CONTRACT_MISMATCH: "Cross-module contract mismatches",
     IssueKind.STRING_MAPPING_MISMATCH: "String mapping type mismatches",
     IssueKind.DATATYPE_DUPLICATION: "Duplicated complex datatypes (should be RECORD)",
     IssueKind.MIN_MAX_MAPPING_MISMATCH: "Min/Max mapping name mismatches",
     IssueKind.MAGIC_NUMBER: "Magic numbers in code",
-    IssueKind.NAME_COLLISION: "Name collisions",
     IssueKind.SHADOWING: "Variable shadowing",
+    IssueKind.UNSAFE_BOOLEAN_DEFAULT: "Unsafe boolean defaults",
+    IssueKind.READ_BEFORE_WRITE: "Read before write",
     IssueKind.RESET_CONTAMINATION: "Reset contamination (missing reset writes)",
     IssueKind.IMPLICIT_LATCH: "Implicit latching (missing matching False writes)",
 }
@@ -119,18 +115,15 @@ _VARIABLE_ISSUE_LIST_SECTION_KINDS: frozenset[IssueKind] = frozenset(
     {
         IssueKind.FIELD_READ_ONLY,
         IssueKind.READ_ONLY_NON_CONST,
-        IssueKind.NAMING_ROLE_MISMATCH,
-        IssueKind.UI_ONLY,
         IssueKind.PROCEDURE_STATUS,
         IssueKind.WRITE_WITHOUT_EFFECT,
         IssueKind.GLOBAL_SCOPE_MINIMIZATION,
         IssueKind.HIDDEN_GLOBAL_COUPLING,
         IssueKind.HIGH_FAN_IN_OUT,
         IssueKind.UNKNOWN_PARAMETER_TARGET,
-        IssueKind.REQUIRED_PARAMETER_CONNECTION,
-        IssueKind.CONTRACT_MISMATCH,
-        IssueKind.NAME_COLLISION,
         IssueKind.SHADOWING,
+        IssueKind.UNSAFE_BOOLEAN_DEFAULT,
+        IssueKind.READ_BEFORE_WRITE,
         IssueKind.RESET_CONTAMINATION,
         IssueKind.IMPLICIT_LATCH,
     }
@@ -178,14 +171,6 @@ class VariablesReport:
         return [i for i in self.issues if i.kind is IssueKind.READ_ONLY_NON_CONST]
 
     @property
-    def naming_role_mismatch(self) -> list[VariableIssue]:
-        return [i for i in self.issues if i.kind is IssueKind.NAMING_ROLE_MISMATCH]
-
-    @property
-    def ui_only(self) -> list[VariableIssue]:
-        return [i for i in self.issues if i.kind is IssueKind.UI_ONLY]
-
-    @property
     def procedure_status(self) -> list[VariableIssue]:
         return [i for i in self.issues if i.kind is IssueKind.PROCEDURE_STATUS]
 
@@ -222,14 +207,6 @@ class VariablesReport:
         return [i for i in self.issues if i.kind is IssueKind.UNKNOWN_PARAMETER_TARGET]
 
     @property
-    def required_parameter_connections(self) -> list[VariableIssue]:
-        return [i for i in self.issues if i.kind is IssueKind.REQUIRED_PARAMETER_CONNECTION]
-
-    @property
-    def contract_mismatches(self) -> list[VariableIssue]:
-        return [i for i in self.issues if i.kind is IssueKind.CONTRACT_MISMATCH]
-
-    @property
     def string_mapping_mismatch(self) -> list[VariableIssue]:
         return [i for i in self.issues if i.kind is IssueKind.STRING_MAPPING_MISMATCH]
 
@@ -246,12 +223,16 @@ class VariablesReport:
         return [i for i in self.issues if i.kind is IssueKind.MAGIC_NUMBER]
 
     @property
-    def name_collisions(self) -> list[VariableIssue]:
-        return [i for i in self.issues if i.kind is IssueKind.NAME_COLLISION]
-
-    @property
     def shadowing(self) -> list[VariableIssue]:
         return [i for i in self.issues if i.kind is IssueKind.SHADOWING]
+
+    @property
+    def unsafe_boolean_defaults(self) -> list[VariableIssue]:
+        return [i for i in self.issues if i.kind is IssueKind.UNSAFE_BOOLEAN_DEFAULT]
+
+    @property
+    def read_before_write(self) -> list[VariableIssue]:
+        return [i for i in self.issues if i.kind is IssueKind.READ_BEFORE_WRITE]
 
     @property
     def reset_contamination(self) -> list[VariableIssue]:
@@ -295,10 +276,6 @@ class VariablesReport:
             return self.field_read_only
         if kind is IssueKind.READ_ONLY_NON_CONST:
             return self.read_only_non_const
-        if kind is IssueKind.NAMING_ROLE_MISMATCH:
-            return self.naming_role_mismatch
-        if kind is IssueKind.UI_ONLY:
-            return self.ui_only
         if kind is IssueKind.PROCEDURE_STATUS:
             return self.procedure_status
         if kind is IssueKind.FIELD_NEVER_READ:
@@ -317,10 +294,6 @@ class VariablesReport:
             return self.high_fan_in_out
         if kind is IssueKind.UNKNOWN_PARAMETER_TARGET:
             return self.unknown_parameter_targets
-        if kind is IssueKind.REQUIRED_PARAMETER_CONNECTION:
-            return self.required_parameter_connections
-        if kind is IssueKind.CONTRACT_MISMATCH:
-            return self.contract_mismatches
         if kind is IssueKind.STRING_MAPPING_MISMATCH:
             return self.string_mapping_mismatch
         if kind is IssueKind.DATATYPE_DUPLICATION:
@@ -329,10 +302,12 @@ class VariablesReport:
             return self.min_max_mapping_mismatch
         if kind is IssueKind.MAGIC_NUMBER:
             return self.magic_numbers
-        if kind is IssueKind.NAME_COLLISION:
-            return self.name_collisions
         if kind is IssueKind.SHADOWING:
             return self.shadowing
+        if kind is IssueKind.UNSAFE_BOOLEAN_DEFAULT:
+            return self.unsafe_boolean_defaults
+        if kind is IssueKind.READ_BEFORE_WRITE:
+            return self.read_before_write
         if kind is IssueKind.RESET_CONTAMINATION:
             return self.reset_contamination
         if kind is IssueKind.IMPLICIT_LATCH:

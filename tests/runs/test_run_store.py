@@ -38,7 +38,6 @@ def _sample_record() -> RunRecord:
                                 kind="unused",
                                 message="declared but never read",
                                 module_path=("RootProgram",),
-                                severity="warning",
                             ),
                         ),
                     ),
@@ -61,7 +60,6 @@ def test_run_record_round_trips_through_dict() -> None:
     assert restored.analyzer_count == 1
     assert restored.issue_count == 1
     assert restored.targets[0].analyzers[0].findings[0].message == "declared but never read"
-    assert restored.targets[0].analyzers[0].findings[0].severity == "warning"
 
 
 def test_save_and_load_run(tmp_path: Path) -> None:

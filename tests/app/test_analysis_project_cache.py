@@ -21,6 +21,7 @@ from sattline_parser.models.ast_model import (
 
 import sattlint.cache as cache_mod
 from sattlint import constants as const
+from sattlint.analyzers.datatype_fields import analyze_datatype_fields
 from sattlint.analyzers.variables import IssueKind, analyze_variables
 from sattlint.application import project as project_application
 from sattlint.cache import ANALYSIS_REPORT_CACHE_VERSION, AnalysisReportCache, compute_analysis_report_cache_key
@@ -907,7 +908,7 @@ def test_load_project_library_target_workspace_program_usage_suppresses_unused_d
         get_cache_dir_fn=lambda: tmp_path / "cache-dir",
     )
 
-    report = analyze_variables(project_bp, analyzed_target_is_library=True)
+    report = analyze_datatype_fields(project_bp, analyzed_target_is_library=True)
     unused_fields = {
         issue.field_path
         for issue in report.issues

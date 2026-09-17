@@ -5,32 +5,37 @@ import time
 from pathlib import Path
 from typing import Any, cast
 
+try:
+    from rich.text import Text as _RichText  # type: ignore[import-untyped]
+except ImportError:  # pragma: no cover - optional dependency path
+    _RichText = None
+
 from ._app_textual_shared import (
-    _TEXTUAL_QUERY_ERRORS,
-    _TEXTUAL_STATIC,
     _SetupTargetCandidate,
     _stringify_list_values,
     discover_setup_target_candidates,
 )
 
-_OUTPUT_TITLE_SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
-_OUTPUT_TITLE_SPINNER_INTERVAL_SECONDS = 1.0 / 60.0
+_OUTPUT_TITLE_SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸")
+_OUTPUT_TITLE_SPINNER_INTERVAL_SECONDS = 0.1
 _DEFAULT_SESSION_OUTPUT_RETENTION_LINES = 4000
+_SETUP_VALUE_STYLE = "bold #001ba3"
+_SETUP_DETAIL_STYLE = "#58787e"
 
 
-def _output_title_spinner_timestamp() -> float:
-    return time.monotonic()
-
-
-def _setup_value_text(primary: str, secondary: str | None = None) -> str:
+def _setup_value_text(primary: str, secondary: str | None = None) -> object:
     primary_text = primary.strip()
     secondary_text = secondary.strip() if secondary is not None else ""
-    if not secondary_text:
-        return primary_text
-    return f"{primary_text}\n{secondary_text}"
+    if _RichText is None:
+        return f"{primary_text}\n{secondary_text}" if secondary_text else primary_text
+    text = _RichText()
+    text.append(primary_text, style=_SETUP_VALUE_STYLE)
+    if secondary_text:
+        text.append(f"\n{secondary_text}", style=_SETUP_DETAIL_STYLE)
+    return text
 
 
-def _setup_path_text(value: str, *, empty_label: str = "Not configured") -> str:
+def _setup_path_text(value: str, *, empty_label: str = "Not configured") -> object:
     stripped = value.strip()
     if not stripped:
         return empty_label
@@ -39,7 +44,7 @@ def _setup_path_text(value: str, *, empty_label: str = "Not configured") -> str:
     return _setup_value_text(folder_name or stripped, stripped)
 
 
-def _setup_other_dirs_text(values: object) -> str:
+def _setup_other_dirs_text(values: object) -> object:
     entries = _stringify_list_values(values)
     if not entries:
         return "No extra libraries"
@@ -47,7 +52,7 @@ def _setup_other_dirs_text(values: object) -> str:
     return _setup_value_text(f"{len(entries)} {folder_word} configured", ", ".join(entries))
 
 
-def _setup_mode_text(mode: str) -> str:
+def _setup_mode_text(mode: str) -> object:
     normalized_mode = mode.strip().casefold()
     if normalized_mode == "draft":
         return _setup_value_text("Draft mode", ".s and .l files")
@@ -56,7 +61,7 @@ def _setup_mode_text(mode: str) -> str:
     return _setup_value_text(mode.strip().replace("_", " ").title(), "Custom mode")
 
 
-def _setup_toggle_text(enabled: bool, *, enabled_detail: str, disabled_detail: str) -> str:
+def _setup_toggle_text(enabled: bool, *, enabled_detail: str, disabled_detail: str) -> object:
     return _setup_value_text(
         "Enabled" if enabled else "Disabled",
         enabled_detail if enabled else disabled_detail,
@@ -121,6 +126,24 @@ def _summary_text(self: Any) -> str:
     return "\n".join(configured_targets)
 
 
+def _status_text(self: Any) -> str:
+    parts: list[str] = []
+    if not self._project_loaded():
+        parts.append("No configuration open")
+    else:
+        target_count = len(self._configured_target_names())
+        if target_count == 1:
+            parts.append("1 target configured")
+        else:
+            parts.append(f"{target_count} targets configured")
+    if bool(getattr(self, "_dirty", False)):
+        parts.append("Unsaved changes")
+    active_job_text = self._active_job_text()
+    if active_job_text is not None:
+        parts.append(f"Running: {active_job_text}")
+    return "   ·   ".join(parts)
+
+
 def _active_job_text(self: Any) -> str | None:
     if not self._busy:
         return None
@@ -157,79 +180,12 @@ def _output_retention_note(self: Any) -> str:
     return f" - retaining last {self._output_retention_lines()} lines"
 
 
-def _output_title_spinner_frame(self: Any) -> str | None:
-    if not self._busy or self._active_job_action_id != "action-analyze":
-        return None
-    spinner_started_at = getattr(self, "_output_title_spinner_started_at", None)
-    if spinner_started_at is None:
-        return _OUTPUT_TITLE_SPINNER_FRAMES[0]
-    elapsed_seconds = max(0.0, _output_title_spinner_timestamp() - float(spinner_started_at))
-    spinner_index = int(elapsed_seconds / _OUTPUT_TITLE_SPINNER_INTERVAL_SECONDS)
-    return _OUTPUT_TITLE_SPINNER_FRAMES[spinner_index % len(_OUTPUT_TITLE_SPINNER_FRAMES)]
-
-
-def _output_title_text(self: Any) -> str:
-    active_job_text = self._active_job_text()
-    if active_job_text is None:
-        return f"Session output{self._output_retention_note()}"
-    spinner_frame = self._output_title_spinner_frame()
-    elapsed_text = self._active_job_elapsed_text()
-    elapsed_suffix = f" ({elapsed_text})" if elapsed_text is not None else ""
-    if spinner_frame is None:
-        return f"Session output - {active_job_text} in progress{elapsed_suffix}{self._output_retention_note()}"
-    return (
-        f"Session output {spinner_frame} - {active_job_text} in progress{elapsed_suffix}{self._output_retention_note()}"
-    )
-
-
-def _advance_output_title_spinner(self: Any) -> None:
-    if not self._busy or self._active_job_action_id != "action-analyze":
-        return
-    spinner_frame = self._output_title_spinner_frame()
-    if spinner_frame is None:
-        return
-    if spinner_frame == getattr(self, "_output_title_spinner_last_frame", None):
-        return
-    self._output_title_spinner_last_frame = spinner_frame
-    try:
-        self.query_one("#output-title", _TEXTUAL_STATIC).update(self._output_title_text())
-    except _TEXTUAL_QUERY_ERRORS:
-        return
-
-
-def _sync_output_title_spinner(self: Any) -> None:
-    spinner_timer = getattr(self, "_output_title_spinner_timer", None)
-    animate_spinner = self._busy and self._active_job_action_id == "action-analyze"
-    created_timer = spinner_timer is None
-    if spinner_timer is None:
-        spinner_timer = self.set_interval(
-            _OUTPUT_TITLE_SPINNER_INTERVAL_SECONDS,
-            self._advance_output_title_spinner,
-            pause=not animate_spinner,
-        )
-        self._output_title_spinner_timer = spinner_timer
-    was_animating = bool(getattr(self, "_output_title_spinner_running", False))
-    if animate_spinner:
-        if not was_animating:
-            self._output_title_spinner_started_at = _output_title_spinner_timestamp()
-            self._output_title_spinner_last_frame = None
-            if not created_timer:
-                spinner_timer.resume()
-        self._output_title_spinner_running = True
-        return
-    self._output_title_spinner_started_at = None
-    self._output_title_spinner_last_frame = None
-    self._output_title_spinner_running = False
-    if was_animating:
-        spinner_timer.pause()
-
-
 def _analyze_note_text(self: Any) -> str:
     filter_text = str(getattr(self, "_analyze_filter_text", "") or "").strip()
     filter_suffix = (
         f' Filter: "{filter_text}". Press / to change or clear it.'
         if filter_text
-        else " Press / to filter the planner."
+        else " Press / to filter the analyzers."
     )
     if self._busy and self._active_job_action_id == "action-analyze":
         if self._active_job_cancel_requested:
@@ -239,22 +195,11 @@ def _analyze_note_text(self: Any) -> str:
             "Use Cancel running or Ctrl+G to stop."
         )
     if not self._setup_has_targets():
-        return f"No analysis targets are configured yet. Add one in Setup to enable the planner queue runner.{filter_suffix}"
-    if filter_text and not self._planner_entry_ids():
+        return f"No analysis targets are configured yet. Add one in Setup first.{filter_suffix}"
+    if filter_text and not self._analyzer_entry_ids():
         return f'No analyses match "{filter_text}". Press / to change or clear the filter.'
-    plan = self._analyze_plan()
-    if not self._ordered_selected_analyze_entry_ids():
-        return (
-            "Select one or more analyses below. Suites collapse overlapping leaf checks when the queue is planned."
-            f"{filter_suffix}"
-        )
-    if plan.missing_handlers:
-        return (
-            "Some selected analyses are unavailable in the current Textual session. Review the queue summary before running anything."
-            f"{filter_suffix}"
-        )
-    return (
-        f"{len(plan.executable_steps)} queued step(s) are ready to run. "
-        "Use Run selected analyses to execute the normalized plan in catalog order."
-        f"{filter_suffix}"
-    )
+    selected = self._ordered_selected_analyze_entry_ids()
+    if not selected:
+        return f"Select one or more analyzers below to run.{filter_suffix}"
+    label = "analyzer" if len(selected) == 1 else "analyzers"
+    return f"{len(selected)} {label} selected. Use Run selected analyzers.{filter_suffix}"
