@@ -6,7 +6,9 @@ from typing import TYPE_CHECKING, Any, cast
 from ._app_textual_actions import _label_value_renderable
 from ._app_textual_shared import (
     _ANALYZER_LIST_ID_PREFIX,
+    _TEXTUAL_BUTTON,
     _TEXTUAL_OPTION_LIST_ERRORS,
+    _TEXTUAL_QUERY_ERRORS,
     _TEXTUAL_SELECTION_LIST,
     _TEXTUAL_STATIC,
     _TEXTUAL_VERTICAL,
@@ -56,6 +58,18 @@ def on_selection_list_selection_highlighted(self: Any, event: Any) -> None:
     self._analyze_focused_entry_id = highlighted_entry_id
     self._write_focused_entry_to_output()
     self._refresh_shell_state()
+
+
+def _focus_startup_control(self: Any) -> None:
+    try:
+        selection_list = self.query_one(f"#{_ANALYZER_LIST_ID_PREFIX}analyzers", _TEXTUAL_SELECTION_LIST)
+    except _TEXTUAL_QUERY_ERRORS:
+        return
+    self._suppress_analyze_events = True
+    try:
+        selection_list.focus()
+    finally:
+        self._suppress_analyze_events = False
 
 
 def _available_analyzer_items(self: Any) -> tuple[_AnalyzerItem, ...]:
@@ -211,7 +225,7 @@ def _update_analyze_selection_list(
         selection_list.highlighted = highlighted_index
 
 
-def _refresh_analyze_list(self: Any) -> None:
+def _refresh_analyze_list(self: Any) -> None:  # noqa: PLR0915
     container = _query_required(self, "#analyze-browser-left", _TEXTUAL_VERTICAL)
 
     if not self._project_loaded():
@@ -227,9 +241,19 @@ def _refresh_analyze_list(self: Any) -> None:
         if not section_groups:
             for child in list(getattr(container, "children", [])):
                 child.remove()
+            filter_value = self._analyze_filter_value()
+            if filter_value:
+                container.mount(
+                    _TEXTUAL_STATIC(
+                        f'Analyzers — Filter: "{filter_value}"',
+                        id="analyze-section-title",
+                        classes="browser-section-title",
+                    )
+                )
+                container.mount(_TEXTUAL_BUTTON("Clear filter", id="analyze-clear-filter", classes="raised-button"))
             empty_text = (
-                f'No analyzers match "{self._analyze_filter_value()}".'
-                if self._analyze_filter_value()
+                f'No analyzers match "{filter_value}".'
+                if filter_value
                 else "No analyzers are available in the current Textual session."
             )
             container.mount(_TEXTUAL_STATIC(empty_text, classes="browser-empty-state"))
@@ -242,13 +266,43 @@ def _refresh_analyze_list(self: Any) -> None:
         selection_list: Any = None
         if existing_matching:
             selection_list = _query_required(self, f"#{expected_list_id}", _TEXTUAL_SELECTION_LIST)
+            filter_value = self._analyze_filter_value()
+            title_text = f'{section.label} — Filter: "{filter_value}"' if filter_value else section.label
+            clear_filter_buttons = [
+                child
+                for child in getattr(container, "children", ())
+                if str(getattr(child, "id", "") or "") == "analyze-clear-filter"
+            ]
+            if filter_value and not clear_filter_buttons:
+                container.mount(
+                    _TEXTUAL_BUTTON("Clear filter", id="analyze-clear-filter", classes="raised-button"),
+                    before=selection_list,
+                )
+            elif not filter_value and clear_filter_buttons:
+                for child in clear_filter_buttons:
+                    child.remove()
+            try:
+                title_widget = _query_required(self, "#analyze-section-title", _TEXTUAL_STATIC)
+            except _TEXTUAL_QUERY_ERRORS:
+                title_widget = None
+            if title_widget is None:
+                container.mount(
+                    _TEXTUAL_STATIC(title_text, id="analyze-section-title", classes="browser-section-title"),
+                    before=selection_list,
+                )
+            else:
+                title_widget.update(title_text)
             self._update_analyze_selection_list(selection_list, items)
         else:
             for child in list(getattr(container, "children", [])):
                 child.remove()
-            container.mount(_TEXTUAL_STATIC(section.label, classes="browser-section-title"))
+            filter_value = self._analyze_filter_value()
+            title_text = f'{section.label} — Filter: "{filter_value}"' if filter_value else section.label
+            container.mount(_TEXTUAL_STATIC(title_text, id="analyze-section-title", classes="browser-section-title"))
             if getattr(section, "description", ""):
                 container.mount(_TEXTUAL_STATIC(section.description, classes="analyze-section-note"))
+            if filter_value:
+                container.mount(_TEXTUAL_BUTTON("Clear filter", id="analyze-clear-filter", classes="raised-button"))
             selection_list = _TEXTUAL_SELECTION_LIST(
                 *[(item.label, item.entry_id, item.entry_id in self._analyze_selected_entry_ids) for item in items],
                 id=expected_list_id,
@@ -404,6 +458,19 @@ def _clear_selected_analyzers(self: Any) -> None:
     self._write_output("Cleared the analyzer selection and session output.")
 
 
+def _select_all_analyzers(self: Any) -> None:
+    entry_ids = self._analyzer_entry_ids()
+    if not entry_ids:
+        self._write_output("No analyzers are available to select.")
+        return
+    self._analyze_selected_entry_ids.update(entry_ids)
+    self._refresh_view()
+    self._refresh_shell_state()
+    count = len(entry_ids)
+    label = "analyzer" if count == 1 else "analyzers"
+    self._write_output(f"Selected all {count} {label}.")
+
+
 def _run_generate_change_review(self: Any) -> None:
     if not self._targets_action_allowed("analysis"):
         return
@@ -438,6 +505,7 @@ if TYPE_CHECKING:
     class _TextualAnalyzeMixin:
         def on_selection_list_selection_toggled(self, event: Any) -> None: ...
         def on_selection_list_selection_highlighted(self, event: Any) -> None: ...
+        def _focus_startup_control(self) -> None: ...
         def _available_analyzer_items(self) -> tuple[_AnalyzerItem, ...]: ...
         def _analyze_filter_value(self) -> str: ...
         def _item_matches_filter(self, item: _AnalyzerItem) -> bool: ...
@@ -462,6 +530,7 @@ if TYPE_CHECKING:
         def _execute_analyzers(self, selected_keys: tuple[str, ...]) -> None: ...
         def _finish_analysis_run(self, result: Any) -> None: ...
         def _clear_selected_analyzers(self) -> None: ...
+        def _select_all_analyzers(self) -> None: ...
         def _run_generate_change_review(self) -> None: ...
         def _execute_generate_change_review(self) -> None: ...
 else:
@@ -471,6 +540,7 @@ else:
 
         on_selection_list_selection_toggled = on_selection_list_selection_toggled
         on_selection_list_selection_highlighted = on_selection_list_selection_highlighted
+        _focus_startup_control = _focus_startup_control
         _available_analyzer_items = _available_analyzer_items
         _analyze_filter_value = _analyze_filter_value
         _item_matches_filter = _item_matches_filter
@@ -495,5 +565,6 @@ else:
         _execute_analyzers = _execute_analyzers
         _finish_analysis_run = _finish_analysis_run
         _clear_selected_analyzers = _clear_selected_analyzers
+        _select_all_analyzers = _select_all_analyzers
         _run_generate_change_review = _run_generate_change_review
         _execute_generate_change_review = _execute_generate_change_review

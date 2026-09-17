@@ -413,7 +413,7 @@ def test_textual_app_title_defaults_to_banner_title() -> None:
     assert app_textual.SattLintTextualApp.TITLE == app_textual.DEFAULT_SHELL_TITLE
 
 
-def test_textual_top_chrome_removes_banner_and_summary_boxes() -> None:
+def test_textual_top_chrome_removes_banner_and_mounts_summary_strip() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
@@ -430,13 +430,14 @@ def test_textual_top_chrome_removes_banner_and_summary_boxes() -> None:
             await pilot.pause()
 
             assert len(list(app_instance.query("#shell-banner"))) == 0
-            assert len(list(app_instance.query("#summary"))) == 0
+            assert len(list(app_instance.query("#summary"))) == 1
+            assert app_instance.query_one("#chrome-project") is not None
             assert app_instance.query_one("#nav-tab-analyze") is not None
 
     asyncio.run(_run())
 
 
-def test_textual_toolbar_is_available_without_summary_box() -> None:
+def test_textual_toolbar_is_available_with_summary_strip() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
@@ -452,7 +453,9 @@ def test_textual_toolbar_is_available_without_summary_box() -> None:
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
-            assert len(list(app_instance.query("#summary"))) == 0
+            summary_text = str(app_instance.query_one("#summary").renderable)
+            assert "Target1" in summary_text
+            assert "Target2" in summary_text
             assert app_instance.query_one("#nav-tabs") is not None
             assert app_instance.query_one("#nav-tab-analyze") is not None
             output_pane = app_instance.query_one("#output-pane")
@@ -627,6 +630,211 @@ def test_textual_slash_binding_filters_analyze_list() -> None:
     asyncio.run(_run())
 
 
+def test_textual_select_all_analyzers_selects_all_visible() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app(
+            cfg={"analyzed_programs_and_libraries": ["TargetA"]},
+            get_enabled_analyzers_fn=lambda: [
+                SimpleNamespace(key="comment-code", name="Commented out code", description="", category="code-quality"),
+                SimpleNamespace(
+                    key="timing", name="Timing", description="Scan-cycle timing hazards.", category="correctness"
+                ),
+            ],
+        )
+
+        async with app_instance.run_test() as pilot:
+            await pilot.pause()
+
+            app_instance.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id="analyze-select-all")))
+            await pilot.pause()
+
+            assert app_instance._analyze_selected_entry_ids == {"comment-code", "timing"}
+            selection_list = app_instance.query_one("#analyze-section-analyzers")
+            assert set(selection_list.selected) == {"comment-code", "timing"}
+            assert app_instance.query_one("#analyze-run-selected").disabled is False
+
+    asyncio.run(_run())
+
+
+def test_textual_select_all_analyzers_is_noop_without_analyzers() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app(
+            cfg={"analyzed_programs_and_libraries": ["TargetA"]},
+            get_enabled_analyzers_fn=lambda: [],
+        )
+
+        async with app_instance.run_test() as pilot:
+            await pilot.pause()
+
+            app_instance.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id="analyze-select-all")))
+            await pilot.pause()
+
+            assert app_instance._analyze_selected_entry_ids == set()
+            output_text = getattr(app_instance.query_one("#output"), "text", "")
+            assert "No analyzers are available to select" in output_text
+
+    asyncio.run(_run())
+
+
+def test_textual_analyze_filter_section_title_and_clear_filter_button() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app(
+            cfg={"analyzed_programs_and_libraries": ["TargetA"]},
+            get_enabled_analyzers_fn=lambda: [
+                SimpleNamespace(key="comment-code", name="Commented out code", description="", category="code-quality"),
+                SimpleNamespace(
+                    key="timing", name="Timing", description="Scan-cycle timing hazards.", category="correctness"
+                ),
+            ],
+        )
+
+        async with app_instance.run_test() as pilot:
+            await pilot.pause()
+
+            app_instance._set_analyze_filter_text("timing")
+            await pilot.pause()
+
+            title_text = str(app_instance.query_one("#analyze-section-title").renderable)
+            assert 'Filter: "timing"' in title_text
+            assert app_instance.query_one("#analyze-clear-filter") is not None
+            assert app_instance._analyzer_entry_ids() == ("timing",)
+
+            app_instance.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id="analyze-clear-filter")))
+            await pilot.pause()
+
+            assert app_instance._analyze_filter_text == ""
+            assert "Filter:" not in str(app_instance.query_one("#analyze-section-title").renderable)
+            assert len(list(app_instance.query("#analyze-clear-filter"))) == 0
+            assert set(app_instance._analyzer_entry_ids()) == {"comment-code", "timing"}
+
+    asyncio.run(_run())
+
+
+def test_textual_startup_focuses_analyzer_list_when_project_loaded() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app(
+            cfg={"analyzed_programs_and_libraries": ["TargetA"]},
+            get_enabled_analyzers_fn=lambda: [
+                SimpleNamespace(key="comment-code", name="Commented out code", description="", category="code-quality"),
+            ],
+        )
+
+        async with app_instance.run_test() as pilot:
+            await pilot.pause()
+
+            focused = getattr(app_instance, "focused", None)
+            assert focused is not None
+            assert getattr(focused, "id", None) == "analyze-section-analyzers"
+
+    asyncio.run(_run())
+
+
+def test_textual_chrome_project_label_shows_project_name() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app()
+
+        async with app_instance.run_test() as pilot:
+            await pilot.pause()
+            label = str(app_instance.query_one("#chrome-project").renderable)
+            assert "sattlint-test-project-" in label
+
+    asyncio.run(_run())
+
+
+def test_textual_chrome_project_label_falls_back_without_project() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app(project=False)
+
+        async with app_instance.run_test() as pilot:
+            await pilot.pause()
+            assert str(app_instance.query_one("#chrome-project").renderable) == "No configuration"
+
+    asyncio.run(_run())
+
+
+def test_textual_settings_layout_uses_vertical_cards() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app()
+
+        async with app_instance.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("ctrl+2")
+            await pilot.pause()
+
+            assert len(list(app_instance.query("#settings-config-title"))) == 0
+            assert len(list(app_instance.query(".settings-group-box"))) == 3
+            assert len(list(app_instance.query(".settings-card-title"))) == 3
+            assert len(list(app_instance.query(".settings-row"))) == 5
+            assert app_instance.query_one("#settings-toggle-run-history") is not None
+            assert app_instance.query_one("#settings-edit-run-history-limit") is not None
+            assert app_instance.query_one("#settings-edit-output-retention") is not None
+            assert app_instance.query_one("#settings-edit-review-output-dir") is not None
+            assert app_instance.query_one("#settings-label-run-history") is not None
+
+    asyncio.run(_run())
+
+
+def test_textual_setup_browser_gains_config_mode_class_when_dirty() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app()
+
+        async with app_instance.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("ctrl+4")
+            await pilot.pause()
+
+            setup_browser = app_instance.query_one("#setup-browser")
+            assert setup_browser.has_class("config-mode") is False
+
+            app_instance._dirty = True
+            app_instance._refresh_view()
+            await pilot.pause()
+            assert setup_browser.has_class("config-mode") is True
+
+    asyncio.run(_run())
+
+
+def test_textual_delete_configuration_menu_dispatches_delete_project(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app_instance = _make_textual_app()
+    deleted: list[str] = []
+    monkeypatch.setattr(app_instance, "_delete_project", lambda: deleted.append("deleted"))
+
+    app_instance.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id="menu-file-delete-project")))
+    assert deleted == ["deleted"]
+
+
+def test_textual_shell_bindings_exclude_save_and_toggle_hotkeys() -> None:
+    keys = {key for key, _action, _desc in app_textual_shared_module.APP_SHELL_BINDINGS}
+    assert "ctrl+s" not in keys
+    assert "ctrl+o" not in keys
+
+
 def test_textual_slash_binding_filters_setup_targets() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -745,10 +953,9 @@ def test_textual_present_request_uses_inline_host_and_preserves_shell_chrome() -
             await pilot.pause()
 
             assert len(list(app_instance.query("#shell-banner"))) == 0
-            assert len(list(app_instance.query("#summary"))) == 0
+            assert len(list(app_instance.query("#summary"))) == 1
             assert app_instance.query_one("#interaction-host").has_class("active")
             assert app_instance.query_one("#output").has_class("interaction-active")
-            assert getattr(app_instance.query_one("#view-primary-action"), "disabled", False) is True
 
             await pilot.press("escape")
             await pilot.pause()
@@ -758,7 +965,6 @@ def test_textual_present_request_uses_inline_host_and_preserves_shell_chrome() -
             assert request.response == "b"
             assert app_instance.query_one("#interaction-host").has_class("active") is False
             assert app_instance.query_one("#output").has_class("interaction-active") is False
-            assert getattr(app_instance.query_one("#view-primary-action"), "disabled", True) is False
 
     asyncio.run(_run())
 
@@ -782,7 +988,7 @@ def test_textual_toolbar_navigation_switches_view_without_starting_action(monkey
     assert started == []
 
 
-def test_textual_view_primary_action_launches_active_view(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_textual_toolbar_help_action_opens_help_popup(monkeypatch: pytest.MonkeyPatch) -> None:
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
@@ -932,7 +1138,6 @@ def test_textual_analyze_view_shows_analyzer_controls() -> None:
             assert getattr(output_widget, "read_only", False) is True
             assert getattr(output_widget, "show_line_numbers", True) is False
             assert "Welcome to SattLint." in getattr(output_widget, "text", "")
-            assert app_instance.query_one("#view-actions").has_class("is-hidden") is True
             assert app_instance.query_one("#analyze-actions-primary").has_class("is-hidden") is False
             assert app_instance.query_one("#analyze-browser").has_class("is-hidden") is False
             assert app_instance.query_one("#view-side-actions") is not None
@@ -1910,7 +2115,6 @@ def test_textual_toolbar_key_switches_routed_view() -> None:
 
             assert app_instance._active_view == "setup"
             assert str(app_instance.query_one("#view-title").renderable) == "Configuration Settings"
-            assert app_instance.query_one("#view-actions").has_class("is-hidden") is True
             assert app_instance.query_one("#nav-tab-setup").has_class("nav-tab-active") is True
 
     asyncio.run(_run())
@@ -2014,7 +2218,6 @@ def test_textual_setup_view_shows_selected_target_preview(tmp_path: Path) -> Non
             assert str(view_title.renderable) == "Configuration Settings"
             assert output_pane.has_class("is-hidden") is True
             assert app_instance.query_one("#setup-browser").has_class("is-hidden") is False
-            assert app_instance.query_one("#view-actions").has_class("is-hidden") is True
             assert str(getattr(browse_button, "label", "")) == "Add from file..."
             assert str(getattr(program_button, "label", "")) == "Program folder"
             assert targets_col is not None

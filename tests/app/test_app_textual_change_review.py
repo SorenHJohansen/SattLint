@@ -118,7 +118,7 @@ def test_change_review_button_dispatch() -> None:
     calls: list[str] = []
     app_instance._run_generate_change_review = lambda: calls.append("pressed")
 
-    app_instance.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id="analyze-generate-change-review")))
+    app_instance.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id="results-generate-change-review")))
     assert calls == ["pressed"]
 
 
@@ -130,7 +130,7 @@ def test_change_review_ui_controls_present() -> None:
         app_instance = _make_textual_app()
         async with app_instance.run_test() as pilot:
             await pilot.pause()
-            assert app_instance.query_one("#analyze-generate-change-review") is not None
+            assert app_instance.query_one("#results-generate-change-review") is not None
             assert app_instance.query_one("#settings-edit-review-output-dir") is not None
             assert app_instance.query_one("#settings-label-review-output-dir") is not None
 

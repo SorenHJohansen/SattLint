@@ -251,6 +251,15 @@ def _refresh_summary(self: Any) -> None:
     except _TEXTUAL_QUERY_ERRORS:
         return
     summary_widget.update(f"{summary}{running_suffix}")
+    try:
+        project_widget = self.query_one("#chrome-project", _TEXTUAL_STATIC)
+    except _TEXTUAL_QUERY_ERRORS:
+        return
+    project = getattr(self, "_project", None)
+    project_name = ""
+    if project is not None:
+        project_name = str(getattr(getattr(project, "root", None), "name", "") or "")
+    project_widget.update(project_name or "No configuration")
 
 
 def _set_active_action(self: Any, action_id: str | None) -> None:
@@ -718,8 +727,6 @@ def _refresh_view(self: Any) -> None:  # noqa: PLR0915
     title_widget = _query_required(self, "#view-title", _TEXTUAL_STATIC)
     description_widget = _query_required(self, "#view-description", _TEXTUAL_STATIC)
     note_widget = _query_required(self, "#view-note", _TEXTUAL_STATIC)
-    view_actions = _query_required(self, "#view-actions", _TEXTUAL_HORIZONTAL)
-    launch_button = _query_required(self, "#view-primary-action", _TEXTUAL_BUTTON)
     analyze_actions_primary = _query_required(self, "#analyze-actions-primary", _TEXTUAL_HORIZONTAL)
     analyze_browser = _query_required(self, "#analyze-browser", _TEXTUAL_VERTICAL)
     analyze_split_body = _query_required(self, "#analyze-split-body", _TEXTUAL_HORIZONTAL)
@@ -733,7 +740,6 @@ def _refresh_view(self: Any) -> None:  # noqa: PLR0915
     settings_view = self._active_view == "settings"
     results_view = self._active_view == "results"
 
-    title_widget.set_class(setup_view or results_view, "is-hidden")
     description_widget.set_class(setup_view or results_view, "is-hidden")
     note_widget.set_class(setup_view or results_view, "is-hidden")
     view_host.set_class(settings_view or results_view, "no-view-box")
@@ -743,13 +749,11 @@ def _refresh_view(self: Any) -> None:  # noqa: PLR0915
         note_widget.update("")
     else:
         note_widget.update(view.note)
-    launch_button.label = view.launch_label
     workspace_host.set_class(analyze_view, "analyze-split")
     workspace_host.set_class(setup_view or settings_view or results_view, "no-output")
     setup_browser.set_class(self._dirty, "config-mode")
     view_host.set_class(setup_view, "is-hidden")
     output_pane.set_class(setup_view or settings_view or results_view, "is-hidden")
-    view_actions.set_class(self._active_view not in ("help",), "is-hidden")
     analyze_actions_primary.set_class(not analyze_view, "is-hidden")
     analyze_browser.set_class(not analyze_view, "is-hidden")
     analyze_split_body.set_class(not analyze_view, "is-hidden")
@@ -956,29 +960,15 @@ def _persist_project(self: Any) -> None:
     self._dirty = False
 
 
-def _launch_active_view(self: Any) -> None:
-    view = self._view_state(self._active_view)
-    if view.action_id == "action-analyze":
-        self._write_output("The analyzer list is available directly in the Analyze view.")
-        return
-    if view.action_id == "action-setup":
-        self._write_output("Setup actions are available directly in the Setup view.")
-        return
-    if view.action_id == "action-help":
-        self._open_help_popup()
-        return
-    self._write_output(f"{view.title} is not available as a standalone action in the Textual shell.")
-
-
 def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
     if not tuple(getattr(self, "children", ())):
         return
     output_title_widget = _query_required(self, "#output-title", _TEXTUAL_STATIC)
     output_widget = _query_required(self, "#output")
     interaction_host = _query_required(self, "#interaction-host", _TEXTUAL_VERTICAL)
-    launch_button = _query_required(self, "#view-primary-action", _TEXTUAL_BUTTON)
     analyze_run_selected_button = _query_required(self, "#analyze-run-selected", _TEXTUAL_BUTTON)
-    analyze_generate_change_review_button = _query_required(self, "#analyze-generate-change-review", _TEXTUAL_BUTTON)
+    analyze_select_all_button = _query_required(self, "#analyze-select-all", _TEXTUAL_BUTTON)
+    results_generate_change_review_button = _query_required(self, "#results-generate-change-review", _TEXTUAL_BUTTON)
     analyze_cancel_running_button = _query_required(self, "#analyze-cancel-running", _TEXTUAL_BUTTON)
     analyze_clear_selection_button = _query_required(self, "#analyze-clear-selection", _TEXTUAL_BUTTON)
     analyze_clear_output_button = _query_required(self, "#analyze-clear-output", _TEXTUAL_BUTTON)
@@ -989,7 +979,6 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
     output_widget.set_class(interaction_active, "interaction-active")
     interaction_host.set_class(interaction_active, "active")
     toolbar_disabled = self._busy or interaction_active
-    launch_button.disabled = toolbar_disabled
     analyze_view = self._active_view == "analyze"
     setup_view = self._active_view == "setup"
     settings_view = self._active_view == "settings"
@@ -1000,8 +989,11 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
     analyze_run_selected_button.disabled = (
         toolbar_disabled or not analyze_view or interaction_locked or not self._setup_has_targets() or not selected_keys
     )
-    analyze_generate_change_review_button.disabled = (
-        toolbar_disabled or not analyze_view or interaction_locked or not self._setup_has_targets()
+    analyze_select_all_button.disabled = (
+        toolbar_disabled or not analyze_view or interaction_locked or not bool(self._analyzer_entry_ids())
+    )
+    results_generate_change_review_button.disabled = (
+        toolbar_disabled or not results_view or interaction_locked or not self._setup_has_targets()
     )
     analyze_cancel_running_button.disabled = not (
         self._busy and self._active_job_action_id == "action-analyze" and analyze_view
@@ -1010,6 +1002,11 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
         toolbar_disabled or not analyze_view or interaction_locked or not bool(self._analyze_selected_entry_ids)
     )
     analyze_clear_output_button.disabled = toolbar_disabled or not analyze_view
+    try:
+        analyze_clear_filter_button = self.query_one("#analyze-clear-filter", _TEXTUAL_BUTTON)
+        analyze_clear_filter_button.disabled = toolbar_disabled or not analyze_view or interaction_locked
+    except _TEXTUAL_QUERY_ERRORS:
+        pass
     results_expand_button = _query_required(self, "#results-expand-all", _TEXTUAL_BUTTON)
     results_collapse_button = _query_required(self, "#results-collapse-all", _TEXTUAL_BUTTON)
     results_expand_button.disabled = toolbar_disabled or not results_view or interaction_locked
@@ -1093,14 +1090,15 @@ def on_button_pressed(self: Any, event: Any) -> None:
     button_actions: dict[str, Any] = {
         "setup-target-remove": lambda: self._remove_selected_setup_target(self._selected_configured_target),
         "setup-target-browse": self._open_file_browser,
-        "view-primary-action": self._launch_active_view,
         "analyze-run-selected": self._run_selected_analyzers,
-        "analyze-generate-change-review": self._run_generate_change_review,
+        "analyze-select-all": self._select_all_analyzers,
+        "analyze-clear-filter": lambda: self._set_analyze_filter_text(""),
         "analyze-cancel-running": self.action_cancel_running_analysis,
         "analyze-clear-selection": self._clear_selected_analyzers,
         "analyze-clear-output": self._clear_session_output,
         "results-expand-all": self._expand_all_results,
         "results-collapse-all": self._collapse_all_results,
+        "results-generate-change-review": self._run_generate_change_review,
         "setup-edit-program-dir": lambda: self._open_dir_picker("program_dir", label="program_dir"),
         "setup-edit-abb-dir": lambda: self._open_dir_picker("ABB_lib_dir", label="ABB_lib_dir"),
         "setup-edit-other-lib-dirs": lambda: self._open_dir_picker(
@@ -1127,7 +1125,7 @@ def on_button_pressed(self: Any, event: Any) -> None:
         ),
         "menu-file-open-project": self._open_project_browser,
         "menu-file-new-project": self._new_project,
-        "setup-delete-project": self._delete_project,
+        "menu-file-delete-project": self._delete_project,
         "menu-help": self._open_help_popup,
         "action-quit": self._request_quit_shell,
     }
@@ -1204,7 +1202,6 @@ if TYPE_CHECKING:
             clear_dirty_on_success: bool = False,
         ) -> None: ...
         def _refresh_view(self) -> None: ...
-        def _launch_active_view(self) -> None: ...
         def _refresh_shell_state(self) -> None: ...
         def on_button_pressed(self, event: Any) -> None: ...
 else:
@@ -1265,6 +1262,5 @@ else:
         _start_managed_action_worker = _start_managed_action_worker
         _start_action = _start_action
         _refresh_view = _refresh_view
-        _launch_active_view = _launch_active_view
         _refresh_shell_state = _refresh_shell_state
         on_button_pressed = on_button_pressed

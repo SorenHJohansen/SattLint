@@ -24,8 +24,6 @@ APP_SHELL_BINDINGS: list[tuple[str, str, str]] = [
     ("ctrl+g", "cancel_running_analysis", "Cancel Analysis"),
     ("ctrl+l", "clear_output", "Clear Output"),
     ("ctrl+q", "quit_shell", "Quit"),
-    ("ctrl+s", "save_config", "Save Config"),
-    ("ctrl+o", "toggle_results_empty", "Toggle empty analyzers"),
     ("tab", "focus_next_control", "Next"),
     ("shift+tab", "focus_previous_control", "Prev"),
 ]
@@ -151,6 +149,7 @@ _ANALYZER_LIST_ID_PREFIX = "analyze-section-"
 MENU_DEFINITIONS: list[tuple[str, str]] = [
     ("Open Configuration", "menu-file-open-project"),
     ("New Configuration", "menu-file-new-project"),
+    ("Delete Configuration", "menu-file-delete-project"),
     ("Help", "menu-help"),
     ("Quit", "action-quit"),
 ]
@@ -169,7 +168,6 @@ class _ShellViewState:
     title: str
     description: str
     note: str
-    launch_label: str
 
 
 @dataclass(frozen=True)

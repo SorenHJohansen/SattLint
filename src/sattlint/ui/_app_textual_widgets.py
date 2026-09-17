@@ -39,20 +39,6 @@ class _AstRefreshModalResult:
 
 if _TEXTUAL_APP is not None:
 
-    class _ShellBannerImpl(_TEXTUAL_VERTICAL):
-        def __init__(self) -> None:
-            super().__init__(id="shell-banner")
-
-        def compose(self) -> _TEXTUAL_COMPOSE_RESULT:
-            yield _TEXTUAL_STATIC("", id="shell-banner-title")
-            yield _TEXTUAL_STATIC("", id="shell-banner-subtitle")
-
-        def on_mount(self) -> None:
-            title_widget = self.query_one("#shell-banner-title", _TEXTUAL_STATIC)
-            subtitle_widget = self.query_one("#shell-banner-subtitle", _TEXTUAL_STATIC)
-            title_widget.update("")
-            subtitle_widget.update("Analysis, docs, and setup")
-
     class _InteractionPaneImpl(_TEXTUAL_VERTICAL):
         BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
             ("enter", "submit_or_activate", "Select"),
@@ -609,7 +595,6 @@ if _TEXTUAL_APP is not None:
             for label, action_id in self._menu_items:
                 actions.mount(_TEXTUAL_BUTTON(label, id=action_id, classes="menubar-button"))
 
-    _ShellBanner = _ShellBannerImpl
     _InteractionPane = _InteractionPaneImpl
     _HelpScreen = _HelpScreenImpl
     _ErrorScreen = _ErrorScreenImpl
@@ -617,7 +602,6 @@ if _TEXTUAL_APP is not None:
     _AstRefreshModalScreen = _AstRefreshModalScreenImpl
     _MenubarWidget = _MenubarWidgetImpl
 else:  # pragma: no cover - optional dependency path
-    _ShellBanner: Any = None
     _InteractionPane: Any = None
     _HelpScreen: Any = None
     _ErrorScreen: Any = None
