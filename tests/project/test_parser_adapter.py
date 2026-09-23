@@ -299,3 +299,44 @@ def test_emit_status_dedupes_consecutive_messages() -> None:
     parser_adapter_module._emit_status(binding, "hello")
     parser_adapter_module._emit_status(binding, "world")
     assert seen == ["hello", "world"]
+
+
+def test_convert_batched_extra_roots_indexes_each_once() -> None:
+    prg = Path("/tmp/base/prg")
+    a = _program("A", source_path=prg / "A.s")
+    r1 = _program("R1", dependencies=("A",), source_path=prg / "R1.s")
+    r2 = _program("R2", dependencies=("A",), source_path=prg / "R2.s")
+    project = SattLineProject._from_programs({p.name: p for p in (a, r1, r2)})
+    graph = ProjectGraph()
+    convert_project_into_graph(
+        project,
+        graph,
+        binding=_binding(prg),
+        root_name="R1",
+        strict=False,
+        extra_roots=("R2",),
+    )
+
+    assert set(graph.ast_by_name) == {"A", "R1", "R2"}
+    assert graph.ast_by_name["R1"] is r1.code
+    assert graph.ast_by_name["R2"] is r2.code
+    assert graph.library_dependencies["prg"] == {"prg"}
+
+
+def test_convert_extra_roots_records_each_missing_root() -> None:
+    prg = Path("/tmp/base/prg")
+    a = _program("A", source_path=prg / "A.s")
+    project = SattLineProject._from_programs({"A": a})
+    graph = ProjectGraph()
+    convert_project_into_graph(
+        project,
+        graph,
+        binding=_binding(prg),
+        root_name="R1",
+        strict=False,
+        extra_roots=("R2",),
+    )
+
+    assert set(graph.ast_by_name) == {"A"}
+    assert any("'R1'" in entry for entry in graph.missing)
+    assert any("'R2'" in entry for entry in graph.missing)

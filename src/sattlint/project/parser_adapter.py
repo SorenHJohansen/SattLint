@@ -227,6 +227,7 @@ def convert_project_into_graph(
     root_name: str,
     strict: bool,
     lib_names: dict[str, str] | None = None,
+    extra_roots: Sequence[str] = (),
 ) -> None:
     """Translate a loaded parser project into a populated ``ProjectGraph``.
 
@@ -236,6 +237,11 @@ def convert_project_into_graph(
     checks see its dependencies already indexed. Programs already present in
     ``graph.ast_by_name`` (e.g. reverse-library consumers loaded earlier) are
     skipped rather than re-validated.
+
+    ``extra_roots`` lets one batched parser load treat several reverse-library
+    consumers as roots in a single pass: each is validated as a root (matching
+    the per-target flow) while shared dependency programs are parsed and
+    indexed exactly once.
 
     ``lib_names`` mirrors the old loader's ``_lib_by_name`` cache: a
     name-to-library mapping owned by the calling loader that carries across
@@ -251,6 +257,8 @@ def convert_project_into_graph(
     _raise_on_cycle(project)
     local_lib_names = {} if lib_names is None else lib_names
     indexed_names = binding._indexed_names
+    root_names = [root_name, *extra_roots]
+    root_keys = frozenset(name.casefold() for name in root_names)
     for program in project.programs().values():
         if _graph_has_name(graph, program.name, indexed_names):
             continue
@@ -258,16 +266,18 @@ def convert_project_into_graph(
             program,
             graph,
             binding=binding,
-            root_key=root_name.casefold(),
+            root_keys=root_keys,
             strict=strict,
             lib_names=local_lib_names,
             indexed_names=indexed_names,
         )
     _record_missing_dependencies(project, graph, binding=binding, strict=strict)
-    if not _graph_has_name(graph, root_name, indexed_names) and root_name.casefold() not in graph.unavailable_libraries:
+    for name in root_names:
+        if _graph_has_name(graph, name, indexed_names) or name.casefold() in graph.unavailable_libraries:
+            continue
         record_missing_library(
             graph,
-            name=root_name,
+            name=name,
             mode=binding.mode.value,
             strict=strict,
             requester=None,
@@ -279,7 +289,7 @@ def _index_program(
     graph: ProjectGraph,
     *,
     binding: ParserProjectBinding,
-    root_key: str,
+    root_keys: frozenset[str],
     strict: bool,
     lib_names: dict[str, str],
     indexed_names: set[str],
@@ -288,7 +298,7 @@ def _index_program(
     code_path = program.source_path
     if code_path is None:
         return
-    is_root = name.casefold() == root_key
+    is_root = name.casefold() in root_keys
     validation_warnings: list[ValidationWarning] = []
     try:
         try:

@@ -621,11 +621,12 @@ def test_load_project_library_target_includes_configured_reverse_consumers(monke
             graphics_timing_sink=graphics_timing_sink,
         )
 
-    def fake_visit_target_into_graph(binding, graph, target_name, *, requester_dir, lib_names):
+    def fake_visit_targets_into_graph(binding, graph, targets, *, lib_names):
         del binding, lib_names
-        visit_calls.append((target_name, requester_dir, False))
-        graph.ast_by_name[target_name] = named_object(target_name)
-        graph.source_files.add(Path(f"ProjectLib/{target_name}.s"))
+        for target_name, requester_dir in targets:
+            visit_calls.append((target_name, requester_dir, False))
+            graph.ast_by_name[target_name] = named_object(target_name)
+            graph.source_files.add(Path(f"ProjectLib/{target_name}.s"))
 
     monkeypatch.setattr(project_application, "ASTCache", FakeCache)
     monkeypatch.setattr(analysis_loading_module, "build_parser_binding", fake_build_parser_binding)
@@ -641,7 +642,7 @@ def test_load_project_library_target_includes_configured_reverse_consumers(monke
     )
     monkeypatch.setattr(analysis_loading_module, "find_dependency_path", fake_find_dependency_path)
     monkeypatch.setattr(analysis_loading_module, "read_dependency_names", fake_read_dependency_names)
-    monkeypatch.setattr(analysis_loading_module, "_visit_target_into_graph", fake_visit_target_into_graph)
+    monkeypatch.setattr(analysis_loading_module, "_visit_targets_into_graph", fake_visit_targets_into_graph)
     monkeypatch.setattr(
         analysis_loading_module,
         "merge_project_basepicture",
@@ -712,11 +713,12 @@ def test_load_project_library_target_includes_workspace_reverse_consumers(monkey
             graphics_timing_sink=graphics_timing_sink,
         )
 
-    def fake_visit_target_into_graph(binding, graph, target_name, *, requester_dir, lib_names):
+    def fake_visit_targets_into_graph(binding, graph, targets, *, lib_names):
         del binding, lib_names
-        visit_calls.append((target_name, requester_dir, False))
-        graph.ast_by_name[target_name] = named_object(target_name)
-        graph.source_files.add(requester_dir / f"{target_name}.s")
+        for target_name, requester_dir in targets:
+            visit_calls.append((target_name, requester_dir, False))
+            graph.ast_by_name[target_name] = named_object(target_name)
+            graph.source_files.add(requester_dir / f"{target_name}.s")
 
     monkeypatch.setattr(project_application, "ASTCache", FakeCache)
     monkeypatch.setattr(analysis_loading_module, "build_parser_binding", fake_build_parser_binding)
@@ -732,7 +734,7 @@ def test_load_project_library_target_includes_workspace_reverse_consumers(monkey
     )
     monkeypatch.setattr(analysis_loading_module, "find_dependency_path", fake_find_dependency_path)
     monkeypatch.setattr(analysis_loading_module, "read_dependency_names", fake_read_dependency_names)
-    monkeypatch.setattr(analysis_loading_module, "_visit_target_into_graph", fake_visit_target_into_graph)
+    monkeypatch.setattr(analysis_loading_module, "_visit_targets_into_graph", fake_visit_targets_into_graph)
     monkeypatch.setattr(
         analysis_loading_module,
         "merge_project_basepicture",
@@ -851,11 +853,12 @@ def test_load_project_library_target_workspace_program_usage_suppresses_unused_d
             graphics_timing_sink=graphics_timing_sink,
         )
 
-    def fake_visit_target_into_graph(binding, graph, target_name, *, requester_dir, lib_names):
+    def fake_visit_targets_into_graph(binding, graph, targets, *, lib_names):
         del binding, lib_names
-        assert target_name == "ProgramConsumer"
-        graph.ast_by_name[target_name] = program_bp
-        graph.source_files.add(requester_dir / f"{target_name}.s")
+        for target_name, _requester_dir in targets:
+            assert target_name == "ProgramConsumer"
+            graph.ast_by_name[target_name] = program_bp
+            graph.source_files.add(Path(f"{target_name}.s"))
 
     def _merge_project_basepicture(bp, graph):
         consumer_bp = graph.ast_by_name.get("ProgramConsumer")
@@ -885,7 +888,7 @@ def test_load_project_library_target_workspace_program_usage_suppresses_unused_d
     )
     monkeypatch.setattr(analysis_loading_module, "find_dependency_path", fake_find_dependency_path)
     monkeypatch.setattr(analysis_loading_module, "read_dependency_names", fake_read_dependency_names)
-    monkeypatch.setattr(analysis_loading_module, "_visit_target_into_graph", fake_visit_target_into_graph)
+    monkeypatch.setattr(analysis_loading_module, "_visit_targets_into_graph", fake_visit_targets_into_graph)
     monkeypatch.setattr(analysis_loading_module, "merge_project_basepicture", _merge_project_basepicture)
 
     project_bp, _graph = project_application.load_project(
