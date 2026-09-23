@@ -10,7 +10,7 @@ from typing import Any, cast
 import tomli_w
 
 from ..config.types import ConfigObjectMap
-from .models import SattLineProject
+from .models import SattLintProjectFile
 from .types import DEFAULT_PROJECT_DICT, ProjectDict
 
 SLPROJ_FILENAME = ".slproj"
@@ -39,8 +39,8 @@ def discover_project(start: Path | None = None) -> Path | None:
     return None
 
 
-def load_project(path: Path) -> SattLineProject:
-    """Load a .slproj file and return an ``SattLineProject``.
+def load_project(path: Path) -> SattLintProjectFile:
+    """Load a .slproj file and return an ``SattLintProjectFile``.
 
     Raises ``FileNotFoundError`` if the path does not exist.
     Raises ``ValueError`` if the path is a directory or the file is malformed
@@ -64,7 +64,7 @@ def load_project(path: Path) -> SattLineProject:
             f"This tool supports version {SLPROJ_VERSION}."
         )
 
-    return SattLineProject(path=path, data=cfg)
+    return SattLintProjectFile(path=path, data=cfg)
 
 
 def save_project(path: Path, data: ProjectDict) -> None:
@@ -107,7 +107,7 @@ def init_project(
     ABB_lib_dir: str = "",  # noqa: N803
     icf_dir: str = "",
     other_lib_dirs: list[str] | None = None,
-) -> SattLineProject:
+) -> SattLintProjectFile:
     """Scaffold a new .slproj file with defaults.
 
     If *name* is provided it is used for display; otherwise the parent
@@ -131,10 +131,10 @@ def init_project(
     data["analysis"] = deepcopy(DEFAULT_PROJECT_DICT["analysis"])
 
     save_project(path, cast(ProjectDict, data))
-    return SattLineProject(path=path, data=cast(ProjectDict, data))
+    return SattLintProjectFile(path=path, data=cast(ProjectDict, data))
 
 
-def project_status(project: SattLineProject) -> str:
+def project_status(project: SattLintProjectFile) -> str:
     """Return a one-line summary of the project."""
     d = project.data
     targets = d.get("analyzed_programs_and_libraries", [])

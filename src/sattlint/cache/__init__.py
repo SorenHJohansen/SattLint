@@ -13,10 +13,10 @@ import shutil
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import cast
 
 from ..config.defaults import PROJECT_CACHE_CONFIG_KEYS
-from .classes import AnalysisReportCache, ASTCache, FileASTCache, FileLookupCache, FoundationCache
+from .classes import AnalysisReportCache, ASTCache, FoundationCache
 from .manager import (
     CacheManager,
     build_analysis_report_cache,
@@ -28,13 +28,10 @@ from .manager import (
 __all__ = [
     "ANALYSIS_REPORT_CACHE_VERSION",
     "CACHE_VERSION",
-    "LOOKUP_CACHE_VERSION",
     "ASTCache",
     "AnalysisReportCache",
     "CacheManager",
     "CachePruneResult",
-    "FileASTCache",
-    "FileLookupCache",
     "FoundationCache",
     "build_analysis_report_cache",
     "build_ast_cache",
@@ -47,39 +44,23 @@ __all__ = [
 
 CACHE_VERSION = 15  # Bump when cached AST semantics or attached graphics companion record shapes change.
 ANALYSIS_REPORT_CACHE_VERSION = 3
-LOOKUP_CACHE_VERSION = 1
 _PICKLE_CACHE_MAGIC = b"SATTLINT-PICKLE-V1\n"
 _PICKLE_HMAC_KEY_NAME = ".pickle-hmac-key"
 _PICKLE_HMAC_SIZE = 32
 
 
-class _FileLookupEntry(TypedDict):
-    base_dir: str
-    ext: str
-
-
 @dataclass(frozen=True)
 class CachePruneResult:
-    file_lookup_entries: int = 0
-    file_ast_entries: int = 0
     ast_payload_entries: int = 0
     ast_manifest_entries: int = 0
     analysis_report_entries: int = 0
 
     @property
     def removed_entries(self) -> int:
-        return (
-            self.file_lookup_entries
-            + self.file_ast_entries
-            + self.ast_payload_entries
-            + self.ast_manifest_entries
-            + self.analysis_report_entries
-        )
+        return self.ast_payload_entries + self.ast_manifest_entries + self.analysis_report_entries
 
     def combine(self, other: CachePruneResult) -> CachePruneResult:
         return CachePruneResult(
-            file_lookup_entries=self.file_lookup_entries + other.file_lookup_entries,
-            file_ast_entries=self.file_ast_entries + other.file_ast_entries,
             ast_payload_entries=self.ast_payload_entries + other.ast_payload_entries,
             ast_manifest_entries=self.ast_manifest_entries + other.ast_manifest_entries,
             analysis_report_entries=self.analysis_report_entries + other.analysis_report_entries,
@@ -106,32 +87,6 @@ def _matches_stat_snapshot(path: Path, *, mtime_ns: object, size: object) -> boo
     if stat_result is None:
         return False
     return stat_result.st_mtime_ns == mtime_ns and stat_result.st_size == size
-
-
-def _as_file_lookup_entry(value: object) -> _FileLookupEntry | None:
-    entry = _as_mapping(value)
-    if entry is None:
-        return None
-    base_dir = entry.get("base_dir")
-    ext = entry.get("ext")
-    if not isinstance(base_dir, str) or not isinstance(ext, str):
-        return None
-    return {"base_dir": base_dir, "ext": ext}
-
-
-def _load_file_lookup_entries(value: object) -> dict[str, _FileLookupEntry] | None:
-    if not isinstance(value, dict):
-        return None
-
-    entries: dict[str, _FileLookupEntry] = {}
-    for raw_key, raw_entry in cast(dict[object, object], value).items():
-        if not isinstance(raw_key, str):
-            return None
-        entry = _as_file_lookup_entry(raw_entry)
-        if entry is None:
-            return None
-        entries[raw_key] = entry
-    return entries
 
 
 def _snapshot_manifest(files: Iterable[Path]) -> dict[str, tuple[int, int]] | None:
@@ -372,10 +327,6 @@ def _normalize_cache_dir(cache_dir: Path) -> Path:
         return expanded.resolve()
     except OSError:
         return expanded
-
-
-def _normalize_lookup_base_dir(base_dir: Path) -> str:
-    return str(_normalize_cache_dir(base_dir))
 
 
 PROJECT_CACHE_SCHEMA_VERSION = "2026-06-11-project-graph-root-origin-schema"

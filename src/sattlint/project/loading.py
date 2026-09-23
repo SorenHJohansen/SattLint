@@ -18,8 +18,7 @@ from ..core.debug import log_debug_exception
 from ..graphics.graphics_context_helpers import resolve_graphics_companion_path
 from ..models.project_graph import ProjectGraph, RootOrigin, merge_project_basepicture
 from ..utils.casefolding import casefold_equal, casefold_key
-from .loader import SattLineProjectLoader
-from .loader_config import build_project_loader_from_type, validate_loader_config
+from .loader_config import build_parser_binding, validate_loader_config
 from .loading_support import (
     _attach_analysis_cache_metadata,
     _call_load_project_compat,
@@ -27,11 +26,15 @@ from .loading_support import (
     _emit_debug_load_summary,
     _format_refresh_stage_timings,
     _include_reverse_library_consumers,
-    _loader_find_dependency_path,
-    _loader_flush_lookup_cache,
-    _loader_read_dependency_names,
     _with_status_line,
     log,
+)
+from .parser_adapter import (
+    ParserProjectBinding,
+    convert_project_into_graph,
+    find_dependency_path,
+    load_parser_project,
+    read_dependency_names,
 )
 from .support import configured_icf_files
 
@@ -159,12 +162,40 @@ def cache_manifest_files(
     return manifest_files
 
 
+def _load_parser_graph(
+    binding: ParserProjectBinding,
+    target_name: str,
+    *,
+    strict: bool,
+    lib_names: dict[str, str],
+) -> ProjectGraph:
+    graph = ProjectGraph()
+    project = load_parser_project(binding, [target_name], strict=strict)
+    convert_project_into_graph(
+        project, graph, binding=binding, root_name=target_name, strict=strict, lib_names=lib_names
+    )
+    return graph
+
+
+def _visit_target_into_graph(
+    binding: ParserProjectBinding,
+    graph: ProjectGraph,
+    target_name: str,
+    *,
+    requester_dir: Path | None,
+    lib_names: dict[str, str],
+) -> None:
+    project = load_parser_project(binding, [target_name], strict=False)
+    convert_project_into_graph(
+        project, graph, binding=binding, root_name=target_name, strict=False, lib_names=lib_names
+    )
+
+
 def load_project(  # noqa: PLR0915
     cfg: ConfigDict,
     target_name: str | None = None,
     *,
     use_cache: bool,
-    use_file_ast_cache: bool,
     refresh_mode: str = "full",
     collect_stage_timings: bool = False,
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
@@ -227,22 +258,18 @@ def load_project(  # noqa: PLR0915
         owner_timings = graphics_timings_by_program.setdefault(owner_name, {})
         owner_timings[phase_name] = owner_timings.get(phase_name, 0.0) + duration
 
-    loader = build_project_loader_from_type(
-        SattLineProjectLoader,
+    binding = build_parser_binding(
         cfg,
-        use_file_ast_cache=use_file_ast_cache,
         status_update_fn=status_update_fn,
         refresh_mode=refresh_mode,
         stage_timing_sink=record_stage_timing if collect_stage_timings else None,
         graphics_timing_sink=record_graphics_timing if collect_stage_timings else None,
     )
-    graph = loader.resolve(selected_target, strict=False)
+    lib_names: dict[str, str] = {}
+    graph = _load_parser_graph(binding, selected_target, strict=False, lib_names=lib_names)
     root_bp = graph.ast_by_name.get(selected_target)
-    try:
-        deps_path = _loader_find_dependency_path(loader, selected_target, Path(cfg["program_dir"]))
-        direct_dependencies = _loader_read_dependency_names(loader, deps_path)
-    finally:
-        _loader_flush_lookup_cache(loader)
+    deps_path = find_dependency_path(binding, selected_target, Path(cfg["program_dir"]))
+    direct_dependencies = list(read_dependency_names(deps_path)) if deps_path is not None else []
 
     if not root_bp:
         if target_load_error_factory is None:
@@ -275,7 +302,17 @@ def load_project(  # noqa: PLR0915
         selected_target=selected_target,
         root_bp=root_bp,
         graph=graph,
-        loader=loader,
+        find_dependency_path_fn=lambda name, requester_dir: find_dependency_path(binding, name, requester_dir),
+        read_dependency_names_fn=lambda deps_path: (
+            list(read_dependency_names(deps_path)) if deps_path is not None else []
+        ),
+        visit_target_fn=lambda target_name, requester_dir: _visit_target_into_graph(
+            binding,
+            graph,
+            target_name,
+            requester_dir=requester_dir,
+            lib_names=lib_names,
+        ),
         require_analyzed_targets_fn=require_analyzed_targets_fn,
         is_within_directory_fn=is_within_directory,
         target_is_library_fn=target_is_library,
@@ -291,7 +328,7 @@ def load_project(  # noqa: PLR0915
     manifest_files = cache_manifest_files(
         cfg,
         graph,
-        find_dependency_path_fn=lambda name, requester_dir: _loader_find_dependency_path(loader, name, requester_dir),
+        find_dependency_path_fn=lambda name, requester_dir: find_dependency_path(binding, name, requester_dir),
         resolve_graphics_companion_path_fn=resolve_graphics_companion_path,
         casefold_equal_fn=casefold_equal,
         casefold_key_fn=casefold_key,
@@ -314,7 +351,6 @@ def load_project_with_live_status(
     target_name: str | None = None,
     *,
     use_cache: bool,
-    use_file_ast_cache: bool,
     refresh_mode: str,
     collect_stage_timings: bool,
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
@@ -330,7 +366,6 @@ def load_project_with_live_status(
             cfg,
             target_name=target_name,
             use_cache=use_cache,
-            use_file_ast_cache=use_file_ast_cache,
             refresh_mode=refresh_mode,
             collect_stage_timings=collect_stage_timings,
             require_analyzed_targets_fn=require_analyzed_targets_fn,
@@ -349,13 +384,10 @@ def load_program_ast(
     *,
     status_update_fn: Callable[[str], None] | None = None,
 ) -> tuple[BasePicture, ProjectGraph]:
-    loader = build_project_loader_from_type(
-        SattLineProjectLoader,
-        cfg,
-        status_update_fn=status_update_fn,
-    )
+    binding = build_parser_binding(cfg, status_update_fn=status_update_fn)
 
-    graph = loader.resolve(program_name, strict=False)
+    lib_names: dict[str, str] = {}
+    graph = _load_parser_graph(binding, program_name, strict=False, lib_names=lib_names)
     root_bp = graph.ast_by_name.get(program_name)
     if not root_bp:
         raise RuntimeError(f"Program '{program_name}' not parsed. Resolved: {list(graph.ast_by_name.keys())}")
@@ -408,7 +440,6 @@ def force_refresh_ast(
             cfg,
             target_name=target_name,
             use_cache=False,
-            use_file_ast_cache=False,
             refresh_mode="ast-only",
             collect_stage_timings=collect_stage_timings,
         )

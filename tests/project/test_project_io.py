@@ -19,7 +19,7 @@ from sattlint.project.io import (
     project_status,
     save_project,
 )
-from sattlint.project.models import SattLineProject
+from sattlint.project.models import SattLintProjectFile
 from sattlint.project.types import DEFAULT_PROJECT_DICT, ProjectDict
 
 
@@ -39,7 +39,7 @@ def test_load_project_roundtrip(tmp_path: Path) -> None:
     path.parent.mkdir()
     path.write_text("slproj_version = 1\nmode = 'official'\n")
     project = load_project(path)
-    assert isinstance(project, SattLineProject)
+    assert isinstance(project, SattLintProjectFile)
     assert project.data["mode"] == "official"
     assert project.path == path.resolve()
 

@@ -122,6 +122,11 @@ across machines.
 Prefer a `.slproj` project file over editing `~/.config/sattlint/config.toml`
 directly.
 
+When SattLint analyzes a target, all SattLine discovery, dependency resolution,
+and parsing run in `sattline-parser`'s project layer (`SattLineProject.load`);
+SattLint then re-validates and re-indexes the result into its `ProjectGraph`
+analysis index before running analyzers.
+
 ---
 
 ## First-Time Setup

@@ -14,7 +14,7 @@ quality gates, validation map, and core beliefs.
 | `src/sattlint/cli/` | CLI entrypoints and command handlers | Targeted owner pytest, then Ruff and Pyright |
 | `src/sattlint/analyzers/` | Heuristic analyzers and the rule registry | Targeted analyzer pytest |
 | `src/sattlint/core/` | Shared semantic snapshot, document helpers, and the engine-internal analysis trace recorder (`core/tracing.py`) | Targeted pytest |
-| `src/sattlint/project/` | `.slproj` project model and loading | `tests/project/`, targeted pytest |
+| `src/sattlint/project/` | `.slproj` project model + parser-adapted loading (`loader_config.build_parser_binding` → `parser_adapter.py` over `sattline-parser`'s project layer; orchestration in `loading.py`/`support.py`) | `tests/project/`, targeted pytest |
 | `src/sattlint/` (ICF, graphics, validation, engine) | ICF analysis, graphics rules, strict syntax validation | Targeted owner pytest |
 | `src/sattlint/ui/` | Textual interactive UI | `tests/app/test_app_textual*.py` |
 | `src/sattlint/change_review/` | Semantic diff + impact analysis between official/draft project versions | `tests/change_review/`, `tests/app/test_app_textual_change_review.py` |
@@ -33,7 +33,10 @@ quality gates, validation map, and core beliefs.
 
 - Stable CLI commands enter at `src/sattlint/cli/startup.py` and dispatch
   through `src/sattlint/cli/commands.py` into the shared app helpers, analyzers,
-  reporting, and parser-backed semantic loaders.
+  reporting, and the parser-backed semantic loaders (project loads route
+  through `loader_config.build_parser_binding` + `parser_adapter`
+  `load_parser_project`/`convert_project_into_graph`, resolving via
+  `sattline-parser`'s project layer and re-indexing into `ProjectGraph`).
 - The interactive Textual menu also starts at `src/sattlint/cli/startup.py`
   (no subcommand) and runs the `ui/` shell; its UX contract is looser than the
   stable CLI commands.

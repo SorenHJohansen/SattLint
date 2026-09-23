@@ -18,7 +18,7 @@ import pytest
 
 from sattlint.analyzers.dispatch import get_registry_analyzer_spec, run_registry_analyzer
 from sattlint.analyzers.framework import build_analysis_context
-from sattlint.engine import CodeMode, SattLineProjectLoader, SattLineProjectLoaderConfig, merge_project_basepicture
+from sattlint.engine import CodeMode, load_project_graph, merge_project_basepicture
 
 CORPUS_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "corpus"
 MANIFEST_DIR = CORPUS_DIR / "manifests"
@@ -42,17 +42,15 @@ def _resolve_target(manifest: dict[str, object]) -> Path:
 
 def _run_raw_analyzer(target_path: Path, payload: dict[str, object]) -> object:
     shared_dir = target_path.parent.parent / "shared"
-    loader = SattLineProjectLoader(
-        SattLineProjectLoaderConfig(
-            program_dir=target_path.parent,
-            other_lib_dirs=[],
-            abb_lib_dir=str(shared_dir) if shared_dir.is_dir() else str(target_path.parent),
-            mode=CodeMode.DRAFT,
-            debug=False,
-            use_file_ast_cache=False,
-        )
-    )
-    graph = loader.resolve(target_path.stem, strict=False)
+    cfg: dict[str, object] = {
+        "program_dir": target_path.parent,
+        "other_lib_dirs": [],
+        "ABB_lib_dir": str(shared_dir) if shared_dir.is_dir() else str(target_path.parent),
+        "mode": CodeMode.DRAFT,
+        "debug": False,
+    }
+    _, root_bp, graph = load_project_graph(cfg, target_path.stem, strict=False)
+    assert root_bp is not None
     base_picture = merge_project_basepicture(graph.ast_by_name[target_path.stem], graph)
     context = build_analysis_context(base_picture, graph=graph, debug=False, create_shared_artifacts=True)
 

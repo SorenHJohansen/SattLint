@@ -14,7 +14,7 @@ from .types import ProjectDict
 
 
 @dataclass(frozen=True)
-class SattLineProject:
+class SattLintProjectFile:
     path: Path
     data: ProjectDict = field(repr=False)
 
@@ -59,4 +59,4 @@ class SattLineProject:
         return cast(ConfigDict, merged)
 
 
-__all__ = ["SattLineProject"]
+__all__ = ["SattLintProjectFile"]

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
@@ -53,19 +52,20 @@ from .graphics.picture_display_paths import correlate_picture_display_records
 from .graphics.validation import validate_graphics_file
 from .models.project_graph import ProjectGraph
 from .models.project_graph import merge_project_basepicture as _merge_project_basepicture_core
-from .project.loader import SattLineProjectLoader
-from .project.loader_base import CircularDependencyError, DependencyVersionCompatibilityError
 from .project.loader_config import (
-    ContextualFileLookup,
     GraphicsLoadTimingSink,
     LoadStageTimingSink,
-    SattLineProjectLoaderConfig,
-    SattLineProjectLoaderDependencies,
-    SattLineProjectLoaderRuntime,
-    build_project_loader_from_type,
+    build_parser_binding,
     validate_loader_config,
 )
 from .project.loading import is_within_directory
+from .project.parser_adapter import (
+    CircularDependencyError,
+    DependencyVersionCompatibilityError,
+    ParserProjectBinding,
+    convert_project_into_graph,
+    load_parser_project,
+)
 from .utils.text_processing import find_disallowed_comments
 from .validation import (
     LOCAL_STRUCTURE_VALIDATION_SCHEMA_VERSION,
@@ -80,24 +80,17 @@ from .validation.shared import ValidationNotice, coerce_validation_notice
 def build_project_loader(
     cfg: Mapping[str, object],
     *,
-    contextual_lookup: ContextualFileLookup | None = None,
-    use_file_ast_cache: bool = True,
     status_update_fn: Callable[[str], None] | None = None,
     refresh_mode: str = "full",
     stage_timing_sink: LoadStageTimingSink | None = None,
     graphics_timing_sink: GraphicsLoadTimingSink | None = None,
-    dependencies: SattLineProjectLoaderDependencies | None = None,
-) -> SattLineProjectLoader:
-    return build_project_loader_from_type(
-        SattLineProjectLoader,
+) -> ParserProjectBinding:
+    return build_parser_binding(
         cfg,
-        contextual_lookup=contextual_lookup,
-        use_file_ast_cache=use_file_ast_cache,
         status_update_fn=status_update_fn,
         refresh_mode=refresh_mode,
         stage_timing_sink=stage_timing_sink,
         graphics_timing_sink=graphics_timing_sink,
-        dependencies=dependencies,
     )
 
 
@@ -105,31 +98,27 @@ def load_project_graph(
     cfg: Mapping[str, object],
     target_name: str,
     *,
-    contextual_lookup: ContextualFileLookup | None = None,
-    use_file_ast_cache: bool = True,
     status_update_fn: Callable[[str], None] | None = None,
     refresh_mode: str = "full",
     stage_timing_sink: LoadStageTimingSink | None = None,
     graphics_timing_sink: GraphicsLoadTimingSink | None = None,
-    dependencies: SattLineProjectLoaderDependencies | None = None,
     strict: bool = False,
-) -> tuple[SattLineProjectLoader, BasePicture | None, ProjectGraph]:
-    loader = build_project_loader(
+) -> tuple[ParserProjectBinding, BasePicture | None, ProjectGraph]:
+    binding = build_project_loader(
         cfg,
-        contextual_lookup=contextual_lookup,
-        use_file_ast_cache=use_file_ast_cache,
         status_update_fn=status_update_fn,
         refresh_mode=refresh_mode,
         stage_timing_sink=stage_timing_sink,
         graphics_timing_sink=graphics_timing_sink,
-        dependencies=dependencies,
     )
-    graph = loader.resolve(target_name, strict=strict)
-    # Test doubles may use slotted graph stubs without this field; counts are diagnostic-only.
-    with contextlib.suppress(AttributeError):
-        graph.ast_cache_counts = dict(getattr(loader, "ast_cache_counts", None) or {})
+    graph = ProjectGraph()
+    lib_names: dict[str, str] = {}
+    project = load_parser_project(binding, [target_name], strict=strict)
+    convert_project_into_graph(
+        project, graph, binding=binding, root_name=target_name, strict=strict, lib_names=lib_names
+    )
     root_bp = graph.ast_by_name.get(target_name)
-    return loader, root_bp, graph
+    return binding, root_bp, graph
 
 
 def _load_source_text(
@@ -216,14 +205,10 @@ __all__ = [
     "LOCAL_STRUCTURE_VALIDATION_SCHEMA_VERSION",
     "CircularDependencyError",
     "CodeMode",
-    "ContextualFileLookup",
     "DependencyVersionCompatibilityError",
     "GraphicsLoadTimingSink",
     "LoadStageTimingSink",
-    "SattLineProjectLoader",
-    "SattLineProjectLoaderConfig",
-    "SattLineProjectLoaderDependencies",
-    "SattLineProjectLoaderRuntime",
+    "ParserProjectBinding",
     "StructuralValidationError",
     "SyntaxValidationResult",
     "ValidationNotice",

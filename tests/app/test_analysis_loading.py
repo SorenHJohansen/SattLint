@@ -49,12 +49,9 @@ def test_analysis_loading_helpers_cover_target_accessors_and_refresh_formatting(
     assert loading_support_module._workspace_dependency_suffixes("draft") == (".l", ".z")
     assert loading_support_module._workspace_dependency_suffixes("official") == (".z",)
     assert analysis_loading_module._format_refresh_stage_timings(
-        {"load_or_parse": 0.1, "validate": 0.2, "ast_cache_save": 0.3},
+        {"load_or_parse": 0.1, "validate": 0.2},
         refresh_mode="ast-only",
-    ) == (
-        "AST refresh stage totals: "
-        "load_or_parse=0.1000s, validate=0.2000s, graphics=skipped, index=skipped, ast_cache_save=0.3000s"
-    )
+    ) == ("AST refresh stage totals: load_or_parse=0.1000s, validate=0.2000s, graphics=skipped, index=skipped")
 
 
 def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monkeypatch, tmp_path):
@@ -130,13 +127,25 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
             return self._read_deps(deps_path)
 
     loader = FakeLoader()
+
+    def find_dependency_path_fn(target_name, requester_dir):
+        return loader.find_dependency_path(target_name, requester_dir=requester_dir)
+
+    def read_dependency_names_fn(deps_path):
+        return loader.read_dependency_names(deps_path)
+
+    def visit_target_fn(target_name, requester_dir):
+        return loader.visit_target(target_name, "graph", False, requester_dir, False)
+
     monkeypatch.setattr(analysis_loading_module, "target_is_library", lambda *args, **kwargs: False)
     analysis_loading_module._include_reverse_library_consumers(
         cfg,
         selected_target="Selected",
         root_bp=cast(Any, SimpleNamespace(header=SimpleNamespace(name="BasePicture"))),
         graph=cast(Any, "graph"),
-        loader=loader,
+        find_dependency_path_fn=find_dependency_path_fn,
+        read_dependency_names_fn=read_dependency_names_fn,
+        visit_target_fn=visit_target_fn,
         require_analyzed_targets_fn=lambda _cfg: ["Selected", "CandidateA", "NoDeps", "NoPath", "DupLocal"],
         is_within_directory_fn=lambda *_args: False,
         target_is_library_fn=lambda *_a, **_kw: False,
@@ -164,7 +173,9 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
         selected_target="Selected",
         root_bp=cast(Any, SimpleNamespace(header=SimpleNamespace(name="BasePicture"))),
         graph=cast(Any, "graph"),
-        loader=loader,
+        find_dependency_path_fn=find_dependency_path_fn,
+        read_dependency_names_fn=read_dependency_names_fn,
+        visit_target_fn=visit_target_fn,
         require_analyzed_targets_fn=lambda _cfg: ["Selected", "CandidateA", "NoDeps", "NoPath", "DupLocal"],
         is_within_directory_fn=lambda *_args: False,
         target_is_library_fn=lambda *_a, **_kw: True,

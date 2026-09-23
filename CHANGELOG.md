@@ -6,6 +6,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses calendar versioning (`vYYYY.M.number`) to match
 `sattline-parser`.
 
+## [Unreleased]
+
+### Changed
+
+- Final parser project-layer milestone: the `SattLineProjectLoader` shell is
+  fully retired. `project/loader.py`, `project/loader_base.py`, and the final
+  loader seams are deleted; all loads now route through
+  `loader_config.build_parser_binding` (returns a `ParserProjectBinding`) into
+  `parser_adapter.load_parser_project`/`convert_project_into_graph`. `loading.py`
+  owns the `_load_parser_graph`/`_visit_target_into_graph` seams and reads
+  dependency names via `parser_adapter.find_dependency_path`/`read_dependency_names`;
+  reverse-consumer resolution passes injected callables into
+  `loading_support._include_reverse_library_consumers`. `engine.py` re-exports
+  `ParserProjectBinding` and the parser-adapter errors.
+- Phase 6 of the parser project layer: retired the old recursive-loader
+  machinery from SattLint. `loader_lookup.py` is deleted; `CacheManager`,
+  `cache/classes.py`, and `cache/__init__.py` no longer track the parser-owned
+  `FileLookupCache`/`FileASTCache` (the parser owns those behind its own
+  `cache_dir=None` contract, keeping the SattLint adapter hermetic); the
+  `use_file_ast_cache` seam, `ast_cache_counts`, the `ast_cache_save` refresh
+  stage, the `contextual_lookup`/`SattLineProjectLoaderDependencies` plumbing,
+  and the legacy `**kwargs` loader-factory path are all removed.
+- Phase 7 docs and cleanup: `ARCHITECTURE.md`, `AGENTS_REFERENCE.md`,
+  `PYTHON_API.md`, and the `README.md` project-files section describe the
+  parser-adapted project loading (`loader_config.build_parser_binding` +
+  `parser_adapter` → parser project layer → `ProjectGraph` reindex) and the
+  parser-owned cache split.
+
+### Added
+
+- Phase 5 parser project layer: the SattLint project loader delegates all
+  SattLine discovery, dependency resolution, and parsing to `sattline-parser`'s
+  project layer through `sattlint.project.parser_adapter`, with
+  `SattLineProjectLoader` in `sattlint.project.loader` reduced to a thin
+  temporary compatibility shell. Per-program semantic validation, graphics
+  companion handling, dependency version-conflict detection, library naming,
+  and indexing behavior are preserved; the corpus, app-loader, analyzer, and
+  new adapter test suites all pass.
+
 ## [2026.9.3] - 2026-09-16
 
 ### Added

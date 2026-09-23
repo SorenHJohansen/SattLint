@@ -57,7 +57,7 @@ flowchart LR
   producing a compact JSON + Markdown review artifact. It reuses the semantic snapshot
   and is fully independent of static analysis.
 - `src/sattlint/analyzers/` owns the heuristic analyzers and the registry.
-- `sattline-parser` (external dependency, `sattline-parser>=2026.9.1`) owns the SattLine grammar, parse tree transformation, and AST models.
+- `sattline-parser` (external dependency, `sattline-parser>=2026.9.1`) owns the SattLine grammar, parse tree transformation, AST models, **and the SattLine project layer**: `SattLineProject` owns search roots, load mode, file discovery, dependency resolution, and the resolved dependency graph (`SattLineProgram` per logical program/library). SattLint routes project loading directly through `sattlint.project.loader_config.build_parser_binding` + `parser_adapter` (`load_parser_project`/`convert_project_into_graph`), which re-validates and re-indexes the parser result into the SattLint `ProjectGraph` analysis index.
 
 ## Operational Layer
 
@@ -137,6 +137,28 @@ flowchart TB
     RunResult -->|"persisted"| RunRecord["RunRecord (runs history)"]
 ```
 
+#### How a project loads (parser-adapted)
+
+`iter_loaded_projects` and `load_project` resolve one target through the
+parser project layer, then re-validate and re-index it back into the SattLint
+analysis index. `loading.py` builds the parser binding
+(`loader_config.build_parser_binding`) and drives both the recursive load-graph
+seam (`loading._load_parser_graph`/`_visit_target_into_graph`) and reads
+dependency names via `parser_adapter.find_dependency_path`/`read_dependency_names`.
+
+```mermaid
+flowchart LR
+Loading["loader_config.build_parser_binding<br/>+ loading.load_project / load_program_ast"]
+    Adapter["parser_adapter.py<br/>load_parser_project,<br/>convert_project_into_graph"]
+    Parser["sattline-parser project layer<br/>SattLineProject.load(cache_dir=None)<br/>discovery, resolution, parse"]
+    Graph["ProjectGraph<br/>(analysis index + timings)"]
+    SattLint["sattlint caches<br/>ASTCache / AnalysisReportCache"]
+
+    Loading --> Adapter --> Parser
+    Adapter --> Graph
+    Graph --> SattLint
+```
+
 ### Shared artifacts — opportunistic, not a dependency contract
 
 The `variables` analyzer fills `AnalysisSharedArtifacts`
@@ -174,6 +196,13 @@ Two special cases worth knowing before changing anything:
 ## Critical Boundaries
 
 - Parser core ships as the external `sattline-parser` package and does not depend on application layers.
+- All SattLine discovery, `.s/.g/.l/.x/.y/.z` reading, dependency resolution, and parsing happen in
+  `sattline-parser`'s project layer (`SattLineProject.load`, hermetic via `cache_dir=None`); SattLint
+  routes every load through `loader_config.build_parser_binding` + `src/sattlint/project/parser_adapter.py`
+  (`load_parser_project`/`convert_project_into_graph`), then re-validates and re-indexes into `ProjectGraph`.
+  Cache ownership is split: the parser owns its per-file lookup/AST caches
+  (`FileLookupCache`/`FileASTCache`); SattLint owns the analysis caches
+  (`ASTCache`/`AnalysisReportCache`/foundation).
 - All retained analyzers use the same semantic engine and findings model.
 - The analyzer registry is the single rule catalog; CLI, UI, and reporting read from it rather than duplicating rule lists.
 

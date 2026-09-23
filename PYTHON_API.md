@@ -71,6 +71,16 @@ No public exports. Import submodules directly.
 
 No public exports. Import submodules directly.
 
+### `sattlint.project`
+
+| Export | Description |
+|--------|-------------|
+| `ParserProjectBinding` | Frozen parser binding (config roots, load mode, `debug_fn`, status/timing hooks); produced by `loader_config.build_parser_binding` and consumed by `load_project`/`load_program_ast`/`parser-loader.cache_manifest_files` |
+| `load_project`, `load_program_ast`, `iter_loaded_projects`, `ensure_ast_cache`, `force_refresh_ast` | Orchestration entry points (project-view merge, timings, reverse-consumer loading, analysis-cache handling). Loads route through `loader_config.build_parser_binding` + `parser_adapter.load_parser_project`/`convert_project_into_graph` — the retired `SattLineProjectLoader` shell is gone |
+| `loader_config` | `build_parser_binding(cfg, *, status_update_fn, refresh_mode, stage_timing_sink, graphics_timing_sink)` plus `validate_loader_config` and the load-timing sink types |
+| `SattLintProjectFile` | `.slproj` wrapper model |
+| `CircularDependencyError`, `DependencyVersionCompatibilityError` | Project-layer errors re-exported through `sattlint.engine` |
+
 ### `sattlint.transformer`
 
 No public exports. Import submodules directly.
@@ -89,6 +99,20 @@ No public exports. Import submodules directly.
 | `fuzz_parse_text` | Fuzz-targeted parse with timeout |
 | `run_random_fuzz` | Run random fuzz rounds |
 
+#### Project layer (`sattline_parser.project`)
+
+| Export | Description |
+|--------|-------------|
+| `SattLineProject` | Owns search roots, load mode, file discovery, dependency resolution, and the resolved dependency graph (`load(roots, mode, targets, *, strict, debug, cache_dir)`); `cache_dir=None` keeps loads hermetic |
+| `SattLineProgram` | One logical SattLine program/library: parsed code AST, graphics model, declared dependency names, source/format info |
+| `ProjectLoader`, `read_dependency_names` | Recursive resolution and `.l`/`.z` dependency-name reading |
+| `DependencyGraph` | Resolved, casefolded dependency graph |
+| `LoadMode`, `ProgramFormat`, `ArtifactKind` | Mode / format / artifact-kind enums |
+| `ProjectLookup`, `SourceIndex`, `ordered_lookup_bases`, `shared_lookup_root_for` | Discovery and ordered search-root lookup |
+| `FileASTCache`, `FileLookupCache` | Parser-owned per-file AST and lookup caches (behind `cache_dir`) |
+| `parse_graphics_text`, `parse_graphics_file`, `resolve_graphics_companion_path` | `.g`/`.y` graphics companion parsing |
+| `ProjectLoadError`, `ArtifactLoadError`, `DependencyNotFoundError`, `DependencyParseError` | Structured project-layer errors |
+
 See the `sattline-parser` source for the full `__all__` listing.
 
 ---
@@ -100,4 +124,5 @@ See the `sattline-parser` source for the full `__all__` listing.
 | `sattlint.cli.startup:cli` (entrypoint) | Stable |
 | `sattlint` CLI commands | Stable |
 | `sattline_parser.api` | Stable |
+| `sattline_parser.project` (project layer) | Preview |
 | `sattlint.analyzers.*` | Preview |

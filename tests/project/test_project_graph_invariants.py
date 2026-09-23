@@ -14,7 +14,7 @@ import pytest
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 
 from sattlint.models.project_graph import ProjectGraph, merge_project_basepicture
-from sattlint.project.loader_base import record_missing_library
+from sattlint.project.parser_adapter import record_missing_library
 from tests.helpers.app_menus_support import VALID_SINGLE_FILE
 
 
