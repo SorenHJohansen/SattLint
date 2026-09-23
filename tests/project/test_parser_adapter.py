@@ -24,6 +24,7 @@ from sattline_parser.project import (
 
 from sattlint.core.syntax import CodeMode
 from sattlint.models.project_graph import ProjectGraph
+from sattlint.project import parser_adapter as parser_adapter_module
 from sattlint.project.parser_adapter import (
     CircularDependencyError,
     ParserProjectBinding,
@@ -226,3 +227,75 @@ def test_library_name_falls_through_to_program_root() -> None:
     convert_project_into_graph(project, graph, binding=_bound(prg), root_name="Root", strict=False)
 
     assert graph.library_dependencies["prg"] == {"abb", "liba", "libb"}
+
+
+def test_load_parser_project_memoizes_single_target(tmp_path: Path) -> None:
+    program_dir = tmp_path / "prg"
+    program_dir.mkdir()
+    (program_dir / "Main.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
+
+    binding = _binding(program_dir)
+    first = load_parser_project(binding, ["Main"], strict=False)
+    second = load_parser_project(binding, ["Main"], strict=False)
+    assert second is first
+
+
+def test_load_parser_project_memo_ignores_strict_variants(tmp_path: Path) -> None:
+    program_dir = tmp_path / "prg"
+    program_dir.mkdir()
+    (program_dir / "Main.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
+
+    binding = _binding(program_dir)
+    non_strict = load_parser_project(binding, ["Main"], strict=False)
+    strict = load_parser_project(binding, ["Main"], strict=True)
+    assert strict is not non_strict
+
+
+def test_convert_reuses_indexed_names_within_one_binding() -> None:
+    prg = Path("/tmp/base/prg")
+    binding = _binding(prg)
+    a = _program("A", source_path=prg / "A.s")
+    b = _program("B", dependencies=("A",), source_path=prg / "B.s")
+    graph = ProjectGraph()
+    convert_project_into_graph(
+        SattLineProject._from_programs({"A": a, "B": b}),
+        graph,
+        binding=binding,
+        root_name="B",
+        strict=False,
+    )
+    indexed_before = len(graph.moduletype_defs)
+
+    c = _program("C", dependencies=("A",), source_path=prg / "C.s")
+    convert_project_into_graph(
+        SattLineProject._from_programs({"A": a, "C": c}),
+        graph,
+        binding=binding,
+        root_name="C",
+        strict=False,
+    )
+
+    assert graph.ast_by_name["A"] is a.code
+    assert len(graph.moduletype_defs) == indexed_before
+    assert set(graph.ast_by_name) == {"A", "B", "C"}
+
+
+def test_new_lookup_reused_per_binding() -> None:
+    binding = _binding(Path("/p"))
+    assert binding.new_lookup() is binding.new_lookup()
+
+
+def test_emit_status_dedupes_consecutive_messages() -> None:
+    seen: list[str] = []
+    binding = ParserProjectBinding(
+        program_dir=Path("/p"),
+        other_lib_dirs=(),
+        abb_lib_dir=None,
+        mode=CodeMode.DRAFT,
+        refresh_mode="full",
+        status_update_fn=seen.append,
+    )
+    parser_adapter_module._emit_status(binding, "hello")
+    parser_adapter_module._emit_status(binding, "hello")
+    parser_adapter_module._emit_status(binding, "world")
+    assert seen == ["hello", "world"]

@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false
 """Parser-backed project loading adapter (Phase 5).
 
 This module is the thin bridge between ``sattline-parser`` and the SattLint
@@ -6,7 +7,7 @@ resolution logic of its own: file discovery, per-artifact draft/official
 fallback, dependency recursion and program parsing are delegated to
 ``sattline_parser.project`` (``SattLineProject`` / ``ProjectLookup`` /
 ``read_dependency_names``), which mirrors the behaviour the old recursive
-loader used to own (see ``PARSER_PROJECT_LAYER_PLAN.md``).
+loader used to own.
 
 What stays SattLint-side, per program, is the work that never belonged to the
 parser: semantic validation, graphics companion attachment, library naming,
@@ -18,8 +19,7 @@ plan); the application seams built on it (``load_project``, reverse-library
 consumers, ``load_program_ast``) call this adapter directly through
 ``build_parser_binding`` + ``load_parser_project`` + ``convert_project_into_graph``.
 
-Known behaviour approximations (unchanged SattLint semantics in practice, see
-plan section 8.2):
+Known behaviour approximations (unchanged SattLint semantics in practice):
 
 * Programs the parser silently drops under ``strict=False`` (missing code file
   or unparseable source) surface as *missing* SattLint-side; the old loader
@@ -35,7 +35,7 @@ plan section 8.2):
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from time import perf_counter
 
@@ -51,8 +51,6 @@ from sattline_parser.project import read_dependency_names as parser_read_depende
 from ..core.syntax import (
     CodeMode,
     mark_local_validation,
-    raise_syntax_validation_failure,
-    validate_single_file_syntax,
 )
 from ..core.syntax import (
     has_current_local_validation as _has_current_local_validation,
@@ -74,6 +72,14 @@ from .loading_support import (
 )
 
 LoadStageTimingSink = Callable[[str, str, float], None]
+
+
+def _project_memo_factory() -> dict[tuple[str, bool], SattLineProject]:
+    return {}
+
+
+def _indexed_names_factory() -> set[str]:
+    return set()
 
 
 class CircularDependencyError(RuntimeError):
@@ -129,6 +135,16 @@ class ParserProjectBinding:
     status_update_fn: Callable[[str], None] | None = None
     stage_timing_sink: LoadStageTimingSink | None = None
     graphics_timing_sink: Callable[[str, str, float], None] | None = None
+    # Session-scoped adapter state, shared across every load/visit in one
+    # binding lifetime. These are the analogues of the old loader shell's
+    # ``_visited`` / ``_lib_by_name`` / status dedupe, and are excluded from
+    # equality/repr so the frozen binding stays a value-like configuration.
+    _project_memo: dict[tuple[str, bool], SattLineProject] = field(
+        default_factory=_project_memo_factory, compare=False, repr=False
+    )
+    _indexed_names: set[str] = field(default_factory=_indexed_names_factory, compare=False, repr=False)
+    _lookup: ProjectLookup | None = field(default=None, compare=False, repr=False)
+    _last_status_message: str | None = field(default=None, compare=False, repr=False)
 
     @property
     def roots(self) -> tuple[Path, ...]:
@@ -138,7 +154,13 @@ class ParserProjectBinding:
         return LoadMode(self.mode.value)
 
     def new_lookup(self) -> ProjectLookup:
-        return ProjectLookup(self.roots, self.parser_mode(), debug=self.debug_fn)
+        # Reuse one lookup per binding: its per-root ``SourceIndex`` memo is
+        # built lazily and would otherwise be re-created on every find call.
+        lookup = self._lookup
+        if lookup is None:
+            lookup = ProjectLookup(self.roots, self.parser_mode(), debug=self.debug_fn)
+            object.__setattr__(self, "_lookup", lookup)
+        return lookup
 
 
 def load_parser_project(
@@ -151,7 +173,30 @@ def load_parser_project(
 
     ``cache_dir=None`` keeps the load fully in-memory; the project-level
     analysis-result cache remains SattLint's replay/refresh layer.
+
+    Single-target loads are memoized per binding (keyed by casefolded target
+    and strictness), the analogue of the old loader shell's ``_visited`` set:
+    the same target visited again within one load (e.g. a reverse-library
+    consumer reachable through two different dependency files) is resolved and
+    parsed only once.
     """
+    if len(targets) == 1:
+        memo_key = (targets[0].casefold(), strict)
+        memoized = binding._project_memo.get(memo_key)
+        if memoized is not None:
+            return memoized
+        project = _load_project(binding, targets, strict=strict)
+        binding._project_memo[memo_key] = project
+        return project
+    return _load_project(binding, targets, strict=strict)
+
+
+def _load_project(
+    binding: ParserProjectBinding,
+    targets: Sequence[str],
+    *,
+    strict: bool,
+) -> SattLineProject:
     return SattLineProject.load(
         roots=binding.roots,
         mode=binding.parser_mode(),
@@ -172,12 +217,6 @@ def find_dependency_path(binding: ParserProjectBinding, name: str, requester_dir
 
 def read_dependency_names(deps_path: Path) -> tuple[str, ...]:
     return parser_read_dependency_names(deps_path)
-
-
-def syntax_check_program(binding: ParserProjectBinding, root_name: str) -> None:
-    code_path = find_code_path(binding, root_name, requester_dir=binding.program_dir)
-    if code_path is not None:
-        raise_syntax_validation_failure(validate_single_file_syntax(code_path, mode=binding.mode))
 
 
 def convert_project_into_graph(
@@ -211,8 +250,9 @@ def convert_project_into_graph(
     """
     _raise_on_cycle(project)
     local_lib_names = {} if lib_names is None else lib_names
+    indexed_names = binding._indexed_names
     for program in project.programs().values():
-        if _graph_has_name(graph, program.name):
+        if _graph_has_name(graph, program.name, indexed_names):
             continue
         _index_program(
             program,
@@ -221,9 +261,10 @@ def convert_project_into_graph(
             root_key=root_name.casefold(),
             strict=strict,
             lib_names=local_lib_names,
+            indexed_names=indexed_names,
         )
     _record_missing_dependencies(project, graph, binding=binding, strict=strict)
-    if not _graph_has_name(graph, root_name) and root_name.casefold() not in graph.unavailable_libraries:
+    if not _graph_has_name(graph, root_name, indexed_names) and root_name.casefold() not in graph.unavailable_libraries:
         record_missing_library(
             graph,
             name=root_name,
@@ -241,6 +282,7 @@ def _index_program(
     root_key: str,
     strict: bool,
     lib_names: dict[str, str],
+    indexed_names: set[str],
 ) -> None:
     name = program.name
     code_path = program.source_path
@@ -271,6 +313,7 @@ def _index_program(
             _record_project_warning(graph, name, warning)
         _emit_status(binding, f"Loading {name}: validation complete")
         graph.ast_by_name[name] = program.code
+        indexed_names.add(name.casefold())
         if binding.refresh_mode == "ast-only":
             return
 
@@ -448,14 +491,22 @@ def _record_missing_dependencies(
             )
 
 
-def _graph_has_name(graph: ProjectGraph, name: str) -> bool:
+def _graph_has_name(graph: ProjectGraph, name: str, indexed_names: set[str]) -> bool:
     key = name.casefold()
+    if key in indexed_names:
+        return True
+    # Fallback for graphs populated outside this binding (e.g. test doubles).
     return any(existing.casefold() == key for existing in graph.ast_by_name)
 
 
 def _emit_status(binding: ParserProjectBinding, message: str) -> None:
-    if binding.status_update_fn is not None:
-        binding.status_update_fn(message)
+    if binding.status_update_fn is None:
+        return
+    text = str(message).strip()
+    if not text or text == binding._last_status_message:
+        return
+    object.__setattr__(binding, "_last_status_message", text)
+    binding.status_update_fn(text)
 
 
 __all__ = [
@@ -469,5 +520,4 @@ __all__ = [
     "mark_local_validation",
     "read_dependency_names",
     "record_missing_library",
-    "syntax_check_program",
 ]

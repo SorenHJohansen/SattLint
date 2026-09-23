@@ -1,10 +1,11 @@
 """Load one project version (official or draft) into a semantic snapshot.
 
-Both versions of the configured project are loaded through the existing
-``SattLineProjectLoader`` and ``build_snapshot_from_loaded_project`` seam. Each
-version is parsed exactly once; the resulting ``SemanticSnapshot`` and per-module
-``CodeModel`` are reused by the semantic diff, impact analysis, and context
-extraction. No analyzers run and no diagnostics are collected.
+Both versions of the configured project are loaded through
+``project.loading.load_program_ast`` and the
+``build_snapshot_from_loaded_project`` seam. Each version is parsed exactly
+once; the resulting ``SemanticSnapshot`` and per-module ``CodeModel`` are
+reused by the semantic diff, impact analysis, and context extraction. No
+analyzers run and no diagnostics are collected.
 """
 
 from __future__ import annotations
