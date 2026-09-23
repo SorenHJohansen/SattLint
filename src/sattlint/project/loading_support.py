@@ -158,7 +158,7 @@ def _include_reverse_library_consumers(
     graph: ProjectGraph,
     find_dependency_path_fn: Callable[[str, Path | None], Path | None],
     read_dependency_names_fn: Callable[[Path | None], list[str]],
-    visit_target_fn: Callable[[str, Path | None], None],
+    visit_targets_fn: Callable[[list[tuple[str, Path | None]]], None],
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
     is_within_directory_fn: Callable[[Path, Path], bool],
     target_is_library_fn: Callable[..., bool],
@@ -176,6 +176,7 @@ def _include_reverse_library_consumers(
     selected_key = selected_target.casefold()
     requester_dir = Path(cfg["program_dir"])
     queued_targets: set[tuple[str, str]] = set()
+    pending_targets: list[tuple[str, Path | None]] = []
 
     def _queue_reverse_consumer(target_name: str, deps_path: Path | None) -> None:
         if deps_path is None or target_name.casefold() == selected_key:
@@ -185,7 +186,7 @@ def _include_reverse_library_consumers(
         if queue_key in queued_targets:
             return
         queued_targets.add(queue_key)
-        visit_target_fn(target_name, deps_path.parent)
+        pending_targets.append((target_name, deps_path.parent))
 
     for candidate in require_analyzed_targets_fn(cfg):
         if candidate.casefold() == selected_key:
@@ -207,6 +208,12 @@ def _include_reverse_library_consumers(
             continue
 
         _queue_reverse_consumer(candidate, deps_path)
+
+    # Load and convert every reverse consumer in one batched parser load so
+    # their shared dependency closure is parsed once instead of once per
+    # consumer; each consumer is still validated as its own root target.
+    if pending_targets:
+        visit_targets_fn(pending_targets)
 
 
 def iter_loaded_projects(

@@ -177,17 +177,28 @@ def _load_parser_graph(
     return graph
 
 
-def _visit_target_into_graph(
+def _visit_targets_into_graph(
     binding: ParserProjectBinding,
     graph: ProjectGraph,
-    target_name: str,
+    targets: list[tuple[str, Path | None]],
     *,
-    requester_dir: Path | None,
     lib_names: dict[str, str],
 ) -> None:
-    project = load_parser_project(binding, [target_name], strict=False)
+    if not targets:
+        return
+    # One batched parser load for every reverse-library consumer: the union
+    # closure is parsed once instead of once per consumer, so shared dependency
+    # programs (typically the selected library's own closure) are not re-parsed.
+    project = load_parser_project(binding, [name for name, _ in targets], strict=False)
+    extra_roots = tuple(name for name, _ in targets)
     convert_project_into_graph(
-        project, graph, binding=binding, root_name=target_name, strict=False, lib_names=lib_names
+        project,
+        graph,
+        binding=binding,
+        root_name=extra_roots[0],
+        strict=False,
+        lib_names=lib_names,
+        extra_roots=extra_roots[1:],
     )
 
 
@@ -306,13 +317,7 @@ def load_project(  # noqa: PLR0915
         read_dependency_names_fn=lambda deps_path: (
             list(read_dependency_names(deps_path)) if deps_path is not None else []
         ),
-        visit_target_fn=lambda target_name, requester_dir: _visit_target_into_graph(
-            binding,
-            graph,
-            target_name,
-            requester_dir=requester_dir,
-            lib_names=lib_names,
-        ),
+        visit_targets_fn=lambda targets: _visit_targets_into_graph(binding, graph, targets, lib_names=lib_names),
         require_analyzed_targets_fn=require_analyzed_targets_fn,
         is_within_directory_fn=is_within_directory,
         target_is_library_fn=target_is_library,

@@ -134,8 +134,9 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
     def read_dependency_names_fn(deps_path):
         return loader.read_dependency_names(deps_path)
 
-    def visit_target_fn(target_name, requester_dir):
-        return loader.visit_target(target_name, "graph", False, requester_dir, False)
+    def visit_targets_fn(targets):
+        for target_name, requester_dir in targets:
+            loader.visit_target(target_name, "graph", False, requester_dir, False)
 
     monkeypatch.setattr(analysis_loading_module, "target_is_library", lambda *args, **kwargs: False)
     analysis_loading_module._include_reverse_library_consumers(
@@ -145,7 +146,7 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
         graph=cast(Any, "graph"),
         find_dependency_path_fn=find_dependency_path_fn,
         read_dependency_names_fn=read_dependency_names_fn,
-        visit_target_fn=visit_target_fn,
+        visit_targets_fn=visit_targets_fn,
         require_analyzed_targets_fn=lambda _cfg: ["Selected", "CandidateA", "NoDeps", "NoPath", "DupLocal"],
         is_within_directory_fn=lambda *_args: False,
         target_is_library_fn=lambda *_a, **_kw: False,
@@ -175,7 +176,7 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
         graph=cast(Any, "graph"),
         find_dependency_path_fn=find_dependency_path_fn,
         read_dependency_names_fn=read_dependency_names_fn,
-        visit_target_fn=visit_target_fn,
+        visit_targets_fn=visit_targets_fn,
         require_analyzed_targets_fn=lambda _cfg: ["Selected", "CandidateA", "NoDeps", "NoPath", "DupLocal"],
         is_within_directory_fn=lambda *_args: False,
         target_is_library_fn=lambda *_a, **_kw: True,
