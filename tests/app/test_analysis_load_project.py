@@ -29,22 +29,22 @@ def test_load_project_saves_cache_after_successful_merge(monkeypatch):
         def save(self, key, **kwargs):
             saved.update({"key": key, **kwargs})
 
-    class FakeLoader:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
-
-        def resolve(self, target_name, strict=False):
-            return graph
-
-        def _find_deps_with_context(self, target_name, requester_dir):
-            return None
-
-        def find_dependency_path(self, target_name, requester_dir=None):
-            return self._find_deps_with_context(target_name, requester_dir)
+    def fake_build_parser_binding(
+        cfg, *, status_update_fn=None, refresh_mode="full", stage_timing_sink=None, graphics_timing_sink=None
+    ):
+        return SimpleNamespace(
+            status_update_fn=status_update_fn,
+            refresh_mode=refresh_mode,
+            stage_timing_sink=stage_timing_sink,
+            graphics_timing_sink=graphics_timing_sink,
+        )
 
     monkeypatch.setattr(project_application, "ASTCache", FakeCache)
     monkeypatch.setattr(project_application, "get_cache_dir", lambda: Path("cache-dir"))
-    monkeypatch.setattr(analysis_loading_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(analysis_loading_module, "build_parser_binding", fake_build_parser_binding)
+    monkeypatch.setattr(analysis_loading_module, "_load_parser_graph", lambda *_args, **_kwargs: graph)
+    monkeypatch.setattr(analysis_loading_module, "find_dependency_path", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(analysis_loading_module, "read_dependency_names", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(analysis_loading_module, "merge_project_basepicture", lambda bp, graph: "merged")
 
     result = project_application.load_project(
@@ -81,22 +81,18 @@ def test_load_project_raises_default_error_when_target_missing(monkeypatch):
             assert key == "cache-key"
             return frozenset()
 
-    class FakeLoader:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
-
-        def resolve(self, target_name, strict=False):
-            return SimpleNamespace(ast_by_name={}, missing=[], warnings=[], source_files=set())
-
-        def _find_deps_with_context(self, target_name, requester_dir):
-            return None
-
-        def find_dependency_path(self, target_name, requester_dir=None):
-            return self._find_deps_with_context(target_name, requester_dir)
-
     monkeypatch.setattr(project_application, "ASTCache", FakeCache)
     monkeypatch.setattr(project_application, "get_cache_dir", lambda: Path("cache-dir"))
-    monkeypatch.setattr(analysis_loading_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(
+        analysis_loading_module, "build_parser_binding", lambda *_args, **_kwargs: SimpleNamespace(debug_fn=None)
+    )
+    monkeypatch.setattr(
+        analysis_loading_module,
+        "_load_parser_graph",
+        lambda *_args, **_kwargs: SimpleNamespace(ast_by_name={}, missing=[], warnings=[], source_files=set()),
+    )
+    monkeypatch.setattr(analysis_loading_module, "find_dependency_path", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(analysis_loading_module, "read_dependency_names", lambda *_args, **_kwargs: [])
 
     with pytest.raises(RuntimeError, match="Target 'TargetA' was not parsed"):
         project_application.load_project(
@@ -132,17 +128,11 @@ def test_load_project_raises_value_error_when_loader_config_missing(monkeypatch)
 
 
 def test_load_program_ast_returns_loaded_program(monkeypatch):
-    seen_kwargs: dict[str, object] = {}
-
-    class FakeLoader:
-        def __init__(self, **kwargs):
-            seen_kwargs.update(kwargs)
-            self.kwargs = kwargs
-
-        def resolve(self, program_name, strict=False):
-            return SimpleNamespace(ast_by_name={program_name: "bp-main"})
-
-    monkeypatch.setattr(analysis_loading_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(
+        analysis_loading_module,
+        "_load_parser_graph",
+        lambda _binding, program_name, **_kwargs: SimpleNamespace(ast_by_name={program_name: "bp-main"}),
+    )
 
     result = project_application.load_program_ast(
         {
@@ -208,8 +198,7 @@ def test_load_project_uses_cached_ast_only_project_and_manifest_metadata(monkeyp
     assert graph.analysis_manifest_files == frozenset({Path("programs/TargetA.z")})
 
 
-def test_load_project_ast_only_collects_stage_timings_and_flushes_lookup_cache(monkeypatch):
-    flushed: list[str] = []
+def test_load_project_ast_only_collects_stage_timings(monkeypatch):
     root_bp = named_object("TargetA", origin_file="TargetA.s")
     graph = AnalysisGraphStub(ast_by_name={"TargetA": root_bp})
 
@@ -228,35 +217,30 @@ def test_load_project_ast_only_collects_stage_timings_and_flushes_lookup_cache(m
         def save(self, *args, **kwargs):
             pytest.fail("ast-only refresh should return before saving cache")
 
-    class FakeLoader:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
+    def fake_build_parser_binding(
+        cfg, *, status_update_fn=None, refresh_mode="full", stage_timing_sink=None, graphics_timing_sink=None
+    ):
+        assert refresh_mode == "ast-only"
+        return SimpleNamespace(
+            refresh_mode=refresh_mode,
+            stage_timing_sink=stage_timing_sink,
+            graphics_timing_sink=graphics_timing_sink,
+        )
 
-        def resolve(self, target_name, strict=False):
-            assert strict is False
-            self.kwargs["stage_timing_sink"]("TargetA", "load_or_parse", 0.1)
-            self.kwargs["stage_timing_sink"]("TargetA", "validate", 0.2)
-            self.kwargs["graphics_timing_sink"]("TargetA", "attach-graphics", 0.3)
-            return graph
-
-        def _find_deps_with_context(self, target_name, requester_dir):
-            return None
-
-        def _read_deps(self, deps_path):
-            return []
-
-        def find_dependency_path(self, target_name, requester_dir=None):
-            return self._find_deps_with_context(target_name, requester_dir)
-
-        def read_dependency_names(self, deps_path):
-            return self._read_deps(deps_path)
-
-        def _flush_lookup_cache(self):
-            flushed.append("flushed")
+    def fake_load_parser_graph(binding, target_name, *, strict, lib_names):
+        assert strict is False
+        assert binding.stage_timing_sink is not None
+        binding.stage_timing_sink("TargetA", "load_or_parse", 0.1)
+        binding.stage_timing_sink("TargetA", "validate", 0.2)
+        binding.graphics_timing_sink("TargetA", "attach-graphics", 0.3)
+        return graph
 
     monkeypatch.setattr(project_application, "ASTCache", FakeCache)
     monkeypatch.setattr(project_application, "get_cache_dir", lambda: Path("cache-dir"))
-    monkeypatch.setattr(analysis_loading_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(analysis_loading_module, "build_parser_binding", fake_build_parser_binding)
+    monkeypatch.setattr(analysis_loading_module, "_load_parser_graph", fake_load_parser_graph)
+    monkeypatch.setattr(analysis_loading_module, "find_dependency_path", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(analysis_loading_module, "read_dependency_names", lambda *_args, **_kwargs: [])
 
     result = project_application.load_project(
         {
@@ -277,7 +261,6 @@ def test_load_project_ast_only_collects_stage_timings_and_flushes_lookup_cache(m
     assert graph.load_stage_timings_by_program == {"TargetA": {"load_or_parse": 0.1, "validate": 0.2}}
     assert graph.graphics_load_timings == {"attach-graphics": 0.3}
     assert graph.graphics_load_timings_by_program == {"TargetA": {"attach-graphics": 0.3}}
-    assert flushed == ["flushed"]
 
 
 def test_load_project_uses_custom_target_load_error_factory(monkeypatch):
@@ -298,35 +281,34 @@ def test_load_project_uses_custom_target_load_error_factory(monkeypatch):
             assert key == "cache-key"
             return frozenset()
 
-    class FakeLoader:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
+    def fake_build_parser_binding(
+        cfg, *, status_update_fn=None, refresh_mode="full", stage_timing_sink=None, graphics_timing_sink=None
+    ):
+        return SimpleNamespace(
+            status_update_fn=status_update_fn,
+            refresh_mode=refresh_mode,
+            stage_timing_sink=stage_timing_sink,
+            graphics_timing_sink=graphics_timing_sink,
+        )
 
-        def resolve(self, target_name, strict=False):
-            return SimpleNamespace(ast_by_name={}, missing=["missing-lib"], warnings=["warn-lib"], source_files=set())
-
-        def _find_deps_with_context(self, target_name, requester_dir):
-            return Path("programs/TargetA.z")
-
-        def _read_deps(self, deps_path):
-            return ["DepA"]
-
-        def find_dependency_path(self, target_name, requester_dir=None):
-            return self._find_deps_with_context(target_name, requester_dir)
-
-        def read_dependency_names(self, deps_path):
-            return self._read_deps(deps_path)
-
-        def _flush_lookup_cache(self):
-            return None
+    monkeypatch.setattr(project_application, "ASTCache", FakeCache)
+    monkeypatch.setattr(project_application, "get_cache_dir", lambda: Path("cache-dir"))
+    monkeypatch.setattr(analysis_loading_module, "build_parser_binding", fake_build_parser_binding)
+    monkeypatch.setattr(
+        analysis_loading_module,
+        "_load_parser_graph",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            ast_by_name={}, missing=["missing-lib"], warnings=["warn-lib"], source_files=set()
+        ),
+    )
+    monkeypatch.setattr(
+        analysis_loading_module, "find_dependency_path", lambda *_args, **_kwargs: Path("programs/TargetA.z")
+    )
+    monkeypatch.setattr(analysis_loading_module, "read_dependency_names", lambda *_args, **_kwargs: ["DepA"])
 
     def make_error(target_name, **kwargs):
         captured.update({"target_name": target_name, **kwargs})
         return CustomLoadError(f"custom:{target_name}")
-
-    monkeypatch.setattr(project_application, "ASTCache", FakeCache)
-    monkeypatch.setattr(project_application, "get_cache_dir", lambda: Path("cache-dir"))
-    monkeypatch.setattr(analysis_loading_module, "SattLineProjectLoader", FakeLoader)
 
     with pytest.raises(CustomLoadError, match="custom:TargetA"):
         project_application.load_project(
@@ -352,14 +334,11 @@ def test_load_project_uses_custom_target_load_error_factory(monkeypatch):
 
 
 def test_load_program_ast_raises_when_program_missing(monkeypatch):
-    class FakeLoader:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
-
-        def resolve(self, program_name, strict=False):
-            return SimpleNamespace(ast_by_name={"Other": "bp-other"})
-
-    monkeypatch.setattr(analysis_loading_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(
+        analysis_loading_module,
+        "_load_parser_graph",
+        lambda *_args, **_kwargs: SimpleNamespace(ast_by_name={"Other": "bp-other"}),
+    )
 
     with pytest.raises(RuntimeError, match="Program 'TargetA' not parsed"):
         project_application.load_program_ast(

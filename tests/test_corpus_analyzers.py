@@ -31,8 +31,7 @@ from sattlint.analyzers.framework import (
 )
 from sattlint.engine import (
     CodeMode,
-    SattLineProjectLoader,
-    SattLineProjectLoaderConfig,
+    load_project_graph,
     merge_project_basepicture,
 )
 from sattlint.models._variable_issues import VariableIssue
@@ -57,18 +56,16 @@ _MANIFESTS = _load_manifests()
 def _load_target(manifest: dict[str, Any]) -> tuple[Any, Any]:
     """Load the manifest's target fixture into ``(base_picture, graph)``."""
     target_path = (MANIFESTS_DIR / str(manifest["target_file"])).resolve()
-    loader = SattLineProjectLoader(
-        SattLineProjectLoaderConfig(
-            program_dir=target_path.parent,
-            other_lib_dirs=[],
-            abb_lib_dir=target_path.parent,
-            mode=CodeMode.DRAFT,
-            debug=False,
-            use_file_ast_cache=False,
-        )
-    )
+    cfg: dict[str, Any] = {
+        "program_dir": target_path.parent,
+        "other_lib_dirs": [],
+        "ABB_lib_dir": target_path.parent,
+        "mode": CodeMode.DRAFT,
+        "debug": False,
+    }
     stem = target_path.stem
-    graph = loader.resolve(stem, strict=False)
+    _, root_bp, graph = load_project_graph(cfg, stem, strict=False)
+    assert root_bp is not None
     base_picture = merge_project_basepicture(graph.ast_by_name[stem], graph)
     return base_picture, graph
 

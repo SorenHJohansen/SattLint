@@ -15,8 +15,7 @@ from sattlint.analyzers.picture_display_paths import analyze_picture_display_pat
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
 from sattlint.engine import (
     CodeMode,
-    SattLineProjectLoader,
-    SattLineProjectLoaderConfig,
+    load_project_graph,
     merge_project_basepicture,
 )
 from sattlint.graphics.picture_display_paths import PictureDisplayOccurrence
@@ -44,17 +43,15 @@ def _resolve_fixture_path(stem: str) -> Path:
 
 def _load_fixture_base_picture(stem: str) -> BasePicture:
     fixture = _resolve_fixture_path(stem)
-    loader = SattLineProjectLoader(
-        SattLineProjectLoaderConfig(
-            program_dir=fixture.parent,
-            other_lib_dirs=[],
-            abb_lib_dir=fixture.parent,
-            mode=CodeMode.DRAFT,
-            debug=False,
-            use_file_ast_cache=False,
-        )
-    )
-    graph = loader.resolve(fixture.stem, strict=False)
+    cfg: dict[str, object] = {
+        "program_dir": fixture.parent,
+        "other_lib_dirs": [],
+        "ABB_lib_dir": fixture.parent,
+        "mode": CodeMode.DRAFT,
+        "debug": False,
+    }
+    _, root_bp, graph = load_project_graph(cfg, fixture.stem, strict=False)
+    assert root_bp is not None
     return merge_project_basepicture(graph.ast_by_name[fixture.stem], graph)
 
 

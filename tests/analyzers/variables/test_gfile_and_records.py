@@ -158,24 +158,21 @@ def test_whole_record_read_does_not_hide_field_read_only_issue():
 def test_gfile_var_and_expr_reads_count_as_used_for_unused_analysis():
     from sattlint.engine import (  # noqa: PLC0415
         CodeMode,
-        SattLineProjectLoader,
-        SattLineProjectLoaderConfig,
+        load_project_graph,
         merge_project_basepicture,
     )
 
     fixture = Path(__file__).resolve().parents[2] / "fixtures" / "sample_sattline_files" / "TestGFileParse.s"
-    loader = SattLineProjectLoader(
-        SattLineProjectLoaderConfig(
-            program_dir=fixture.parent,
-            other_lib_dirs=[],
-            abb_lib_dir=fixture.parent,
-            mode=CodeMode.DRAFT,
-            debug=False,
-            use_file_ast_cache=False,
-        )
-    )
+    cfg: dict[str, object] = {
+        "program_dir": fixture.parent,
+        "other_lib_dirs": [],
+        "ABB_lib_dir": fixture.parent,
+        "mode": CodeMode.DRAFT,
+        "debug": False,
+    }
 
-    graph = loader.resolve(fixture.stem, strict=False)
+    _, root_bp, graph = load_project_graph(cfg, fixture.stem, strict=False)
+    assert root_bp is not None
     bp = merge_project_basepicture(graph.ast_by_name[fixture.stem], graph)
     analyzer = VariablesAnalyzer(bp)
     issues = analyzer.run()
@@ -190,8 +187,7 @@ def test_gfile_var_and_expr_reads_count_as_used_for_unused_analysis():
 def test_nested_gfile_bindings_count_as_used_end_to_end(tmp_path: Path):
     from sattlint.engine import (  # noqa: PLC0415
         CodeMode,
-        SattLineProjectLoader,
-        SattLineProjectLoaderConfig,
+        load_project_graph,
         merge_project_basepicture,
     )
 
@@ -226,18 +222,16 @@ ENDDEF (*BasePicture*);
     fixture.write_text(source, encoding="utf-8")
     fixture.with_suffix(".g").write_text(graphics, encoding="utf-8")
 
-    loader = SattLineProjectLoader(
-        SattLineProjectLoaderConfig(
-            program_dir=tmp_path,
-            other_lib_dirs=[],
-            abb_lib_dir=tmp_path,
-            mode=CodeMode.DRAFT,
-            debug=False,
-            use_file_ast_cache=False,
-        )
-    )
+    cfg: dict[str, object] = {
+        "program_dir": tmp_path,
+        "other_lib_dirs": [],
+        "ABB_lib_dir": tmp_path,
+        "mode": CodeMode.DRAFT,
+        "debug": False,
+    }
 
-    graph = loader.resolve(fixture.stem, strict=False)
+    _, root_bp, graph = load_project_graph(cfg, fixture.stem, strict=False)
+    assert root_bp is not None
     bp = merge_project_basepicture(graph.ast_by_name[fixture.stem], graph)
     analyzer = VariablesAnalyzer(bp)
     issues = analyzer.run()

@@ -11,7 +11,7 @@ from .io import (
     project_status,
     save_project,
 )
-from .models import SattLineProject
+from .models import SattLintProjectFile
 from .types import DEFAULT_PROJECT_DICT, ProjectDict
 
 __all__ = [
@@ -19,7 +19,7 @@ __all__ = [
     "SLPROJ_FILENAME",
     "SLPROJ_VERSION",
     "ProjectDict",
-    "SattLineProject",
+    "SattLintProjectFile",
     "discover_project",
     "init_project",
     "load_project",

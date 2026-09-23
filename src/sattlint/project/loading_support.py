@@ -17,7 +17,7 @@ from ..core.syntax import CodeMode, deps_ext_candidates, normalize_code_mode
 from ..models.project_graph import ProjectFailure, ProjectGraph
 from ..validation.shared import ValidationNotice, ValidationWarning, coerce_validation_notice
 
-_STAGE_ORDER = ("load_or_parse", "validate", "attach_graphics", "index", "ast_cache_save")
+_STAGE_ORDER = ("load_or_parse", "validate", "attach_graphics", "index")
 log = logging.getLogger("SattLint")
 
 
@@ -38,7 +38,6 @@ def _format_refresh_stage_timings(stage_timings: dict[str, float], *, refresh_mo
         "validate": "validate",
         "attach_graphics": "graphics",
         "index": "index",
-        "ast_cache_save": "ast_cache_save",
     }
     parts: list[str] = []
     for stage_name in _STAGE_ORDER:
@@ -82,70 +81,6 @@ def _emit_debug_load_summary(
 def _attach_analysis_cache_metadata(graph: ProjectGraph, *, cache_key: str, manifest_files: Iterable[Path]) -> None:
     graph.analysis_cache_key = cache_key
     graph.analysis_manifest_files = frozenset(manifest_files)
-
-
-def _loader_find_dependency_path(loader: Any, target_name: str, requester_dir: Path | None) -> Path | None:
-    public_finder = getattr(loader, "find_dependency_path", None)
-    if callable(public_finder):
-        return cast(Path | None, public_finder(target_name, requester_dir=requester_dir))
-    private_finder = getattr(loader, "_find_deps_with_context", None)
-    if callable(private_finder):
-        return cast(Path | None, private_finder(target_name, requester_dir=requester_dir))
-    return None
-
-
-def _loader_read_dependency_names(loader: Any, deps_path: Path | None) -> list[str]:
-    if deps_path is None:
-        return []
-    public_reader = getattr(loader, "read_dependency_names", None)
-    if callable(public_reader):
-        return cast(list[str], public_reader(deps_path))
-    private_reader = getattr(loader, "_read_deps", None)
-    if callable(private_reader):
-        return cast(list[str], private_reader(deps_path))
-    return []
-
-
-def _loader_flush_lookup_cache(loader: Any) -> None:
-    public_flush = getattr(loader, "flush_lookup_cache", None)
-    if callable(public_flush):
-        public_flush()
-        return
-    private_flush = getattr(loader, "_flush_lookup_cache", None)
-    if callable(private_flush):
-        private_flush()
-
-
-def _loader_visit_target(
-    loader: Any,
-    target_name: str,
-    graph: ProjectGraph,
-    syntax_only: bool,
-    *,
-    requester_dir: Path | None,
-    syntax_check: bool,
-) -> None:
-    public_visit = getattr(loader, "visit_target", None)
-    if callable(public_visit):
-        public_visit(
-            target_name,
-            graph,
-            syntax_only,
-            requester_dir=requester_dir,
-            syntax_check=syntax_check,
-        )
-        return
-    private_visit = getattr(loader, "_visit", None)
-    if callable(private_visit):
-        private_visit(
-            target_name,
-            graph,
-            syntax_only,
-            requester_dir=requester_dir,
-            syntax_check=syntax_check,
-        )
-        return
-    raise AttributeError("loader does not provide visit_target or _visit")
 
 
 def _workspace_dependency_suffixes(mode: str) -> tuple[str, ...]:
@@ -221,7 +156,9 @@ def _include_reverse_library_consumers(
     selected_target: str,
     root_bp: BasePicture,
     graph: ProjectGraph,
-    loader: Any,
+    find_dependency_path_fn: Callable[[str, Path | None], Path | None],
+    read_dependency_names_fn: Callable[[Path | None], list[str]],
+    visit_target_fn: Callable[[str, Path | None], None],
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
     is_within_directory_fn: Callable[[Path, Path], bool],
     target_is_library_fn: Callable[..., bool],
@@ -248,21 +185,14 @@ def _include_reverse_library_consumers(
         if queue_key in queued_targets:
             return
         queued_targets.add(queue_key)
-        _loader_visit_target(
-            loader,
-            target_name,
-            graph,
-            False,
-            requester_dir=deps_path.parent,
-            syntax_check=False,
-        )
+        visit_target_fn(target_name, deps_path.parent)
 
     for candidate in require_analyzed_targets_fn(cfg):
         if candidate.casefold() == selected_key:
             continue
 
-        deps_path = _loader_find_dependency_path(loader, candidate, requester_dir)
-        candidate_dependencies = _loader_read_dependency_names(loader, deps_path)
+        deps_path = find_dependency_path_fn(candidate, requester_dir)
+        candidate_dependencies = read_dependency_names_fn(deps_path)
         if not any(dep.casefold() == selected_key for dep in candidate_dependencies):
             continue
 
@@ -272,7 +202,7 @@ def _include_reverse_library_consumers(
         if candidate.casefold() == selected_key:
             continue
 
-        candidate_dependencies = _loader_read_dependency_names(loader, deps_path)
+        candidate_dependencies = read_dependency_names_fn(deps_path)
         if not any(dep.casefold() == selected_key for dep in candidate_dependencies):
             continue
 
