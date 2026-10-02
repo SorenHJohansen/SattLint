@@ -217,8 +217,8 @@ class DataflowAnalyzer(
         state: StateMap,
     ) -> ScalarValue | object:
         if resolved.state_access != "old":
-            self._consume_pending_reads(state, resolved.symbol_root_key)
-            self._mark_constant_trace_read(state, resolved.symbol_root_key)
+            self._consume_pending_reads(state, resolved)
+            self._mark_constant_trace_read(state, resolved.symbol_key)
         value = state.get(resolved.key, UNKNOWN)
         if value is UNKNOWN and resolved.key != resolved.root_key:
             value = state.get(resolved.root_key, UNKNOWN)

@@ -102,17 +102,16 @@ def _hide_leaf_expanders(node: Any) -> None:
 def _finding_groups(
     analyzer: RunAnalyzerRecord,
 ) -> list[tuple[str, list[tuple[AnalysisFinding, int]]]]:
-    """Group findings by issue kind, collapsing identical (kind, message) pairs.
+    """Group findings by issue kind, message, and site.
 
-    Identical findings that repeat at multiple sites (e.g. a moduletype body
-    analyzed at several instance paths) are represented once, with their
-    occurrence count, so a moduletype issue is shown at a single instance path.
+    Identical findings repeated at the same site across instance paths are
+    represented once with an occurrence count.
     """
-    counts: dict[tuple[str, str], int] = {}
-    representatives: dict[tuple[str, str], AnalysisFinding] = {}
-    order: list[tuple[str, str]] = []
+    counts: dict[tuple[str, str, str | None], int] = {}
+    representatives: dict[tuple[str, str, str | None], AnalysisFinding] = {}
+    order: list[tuple[str, str, str | None]] = []
     for finding in analyzer.findings:
-        key = (finding.kind, finding.message)
+        key = (finding.kind, finding.message, _site_label(finding))
         if key not in representatives:
             representatives[key] = finding
             counts[key] = 0
@@ -121,7 +120,7 @@ def _finding_groups(
     groups: list[tuple[str, list[tuple[AnalysisFinding, int]]]] = []
     kind_index: dict[str, int] = {}
     for key in order:
-        kind, _message = key
+        kind, _message, _site = key
         if kind not in kind_index:
             kind_index[kind] = len(groups)
             groups.append((kind, []))

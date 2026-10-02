@@ -11,6 +11,7 @@ from sattline_parser.models.ast_model import (
     FrameModule,
     ModuleTypeDef,
     ModuleTypeInstance,
+    Simple_DataType,
     SingleModule,
     Variable,
 )
@@ -134,6 +135,8 @@ def _check_shadowing(
         parent = parent_locals.get(key)
         if not parent:
             continue
+        if _is_integer_status_indicator(self, var) or _is_integer_status_indicator(self, parent.variable):
+            continue
         parent_path = ".".join(parent.module_path)
         issue = VariableIssue(
             kind=IssueKind.SHADOWING,
@@ -146,6 +149,19 @@ def _check_shadowing(
             append_issue(issue)
         else:
             self._issues.append(issue)
+
+
+def _is_integer_status_indicator(self: Any, variable: Variable) -> bool:
+    datatype = variable.datatype
+    is_integer = datatype == Simple_DataType.INTEGER or (isinstance(datatype, str) and datatype.casefold() == "integer")
+    if not is_integer:
+        return False
+
+    name = variable.name.casefold()
+    if name == "si" or (name.startswith("si") and name[2:].isdigit()):
+        return True
+
+    return any(binding.channel_kind == "status" for binding in self.procedure_status_bindings.get(id(variable), []))
 
 
 def _extend_locals(

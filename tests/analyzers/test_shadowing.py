@@ -1,7 +1,10 @@
 # pyright: reportOptionalCall=false
+import pytest
 from sattline_parser.models.ast_model import (
     BasePicture,
+    Equation,
     FrameModule,
+    ModuleCode,
     ModuleHeader,
     ModuleTypeDef,
     ModuleTypeInstance,
@@ -9,6 +12,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattline_parser.models.expressions import FuncCall, FuncCallStmt, VarRef
 
 from sattlint.analyzers.variables import analyze_variables
 from sattlint.reporting.variables_report import DEFAULT_VARIABLE_ANALYSIS_KINDS, IssueKind
@@ -20,6 +24,82 @@ def _hdr(name: str) -> ModuleHeader:
 
 def _shadowing_only_report(bp: BasePicture):
     return analyze_variables(bp, selected_issue_kinds=frozenset({IssueKind.SHADOWING}))
+
+
+def _nested_shadowing_report(
+    parent_variable: Variable,
+    child_variables: list[Variable],
+    *,
+    child_module_code: ModuleCode | None = None,
+):
+    child = SingleModule(
+        header=_hdr("Child"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=child_variables,
+        submodules=[],
+        modulecode=child_module_code,
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[parent_variable],
+        submodules=[child],
+        modulecode=None,
+        moduledef=None,
+    )
+    return _shadowing_only_report(bp)
+
+
+@pytest.mark.parametrize("name", ["si", "SI1", "si2", "si3", "si4", "si5", "si14"])
+def test_shadowing_ignores_integer_status_indicator_names(name: str) -> None:
+    report = _nested_shadowing_report(
+        Variable(name=name, datatype=Simple_DataType.INTEGER),
+        [Variable(name=name, datatype=Simple_DataType.INTEGER)],
+    )
+
+    assert report.issues == []
+
+
+def test_shadowing_still_reports_noninteger_si_name_collision() -> None:
+    report = _nested_shadowing_report(
+        Variable(name="si", datatype=Simple_DataType.STRING),
+        [Variable(name="si", datatype=Simple_DataType.STRING)],
+    )
+
+    assert any(issue.kind is IssueKind.SHADOWING for issue in report.issues)
+
+
+def test_shadowing_ignores_integer_variable_bound_to_status_channel() -> None:
+    status_name = "OperationStatus"
+    report = _nested_shadowing_report(
+        Variable(name=status_name, datatype=Simple_DataType.INTEGER),
+        [
+            Variable(name=status_name, datatype=Simple_DataType.INTEGER),
+            Variable(name="Text", datatype=Simple_DataType.STRING),
+        ],
+        child_module_code=ModuleCode(
+            equations=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="SetStringPos",
+                                args=(VarRef(name="Text"), 1, VarRef(name=status_name)),
+                            )
+                        )
+                    ],
+                )
+            ]
+        ),
+    )
+
+    assert report.issues == []
 
 
 def test_shadowing_detected_for_nested_locals() -> None:

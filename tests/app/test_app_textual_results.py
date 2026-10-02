@@ -239,6 +239,56 @@ def test_results_tree_collapses_identical_findings_to_one_path() -> None:
     assert "3 occurrences" in leaf.label.plain
 
 
+def test_results_tree_keeps_identical_findings_at_distinct_sites() -> None:
+    first = AnalysisFinding(
+        kind="dataflow.condition_always_false",
+        message="Condition 'False' is always false at this point.",
+        module_path=("RootProgram", "MixingAfl", "PhaseLogic"),
+        data={"site": "SQ:PhaseSequence > TRANS:Tr12"},
+    )
+    second = AnalysisFinding(
+        kind="dataflow.condition_always_false",
+        message="Condition 'False' is always false at this point.",
+        module_path=("RootProgram", "MixingAfl", "PhaseLogic"),
+        data={"site": "SQ:PhaseSequence > TRANS:Tr47"},
+    )
+    record = RunRecord(
+        run_id="r1",
+        started_at="s",
+        finished_at="f",
+        project_tag="RootProgram",
+        targets=(
+            RunTargetRecord(
+                target_name="RootProgram",
+                is_library=False,
+                analyzers=(
+                    RunAnalyzerRecord(
+                        key="dataflow",
+                        name="Dataflow",
+                        status="completed",
+                        findings=(first, second),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    tree = app_textual_results_module._build_run_tree(record)
+
+    assert tree is not None
+    analyzer_node = next(iter(tree.root.children[0].children))
+    kind_node = next(iter(analyzer_node.children))
+    root_branch = next(iter(kind_node.children))
+    mixing_branch = next(iter(root_branch.children))
+    module_node = next(iter(mixing_branch.children))
+    site_nodes = list(module_node.children)
+    assert [node.label.plain for node in site_nodes] == [
+        "SQ:PhaseSequence > TRANS:Tr12",
+        "SQ:PhaseSequence > TRANS:Tr47",
+    ]
+    assert [next(iter(node.children)).data for node in site_nodes] == [first, second]
+
+
 def test_results_tree_renders_site_node_and_context_leaf() -> None:
     record = RunRecord(
         run_id="r1",

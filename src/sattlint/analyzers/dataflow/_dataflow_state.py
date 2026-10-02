@@ -120,16 +120,39 @@ class _DataflowStateMixin:
             sites=(self._site_str(),),
         )
         if is_scalar_value(value):
+            self._invalidate_constant_traces(next_state, resolved.symbol_key, preserve_exact=True)
             self._track_constant_write(resolved, value, next_state, module_path)
         else:
-            next_state.pop(self._constant_trace_key(resolved.symbol_root_key), None)
+            self._invalidate_constant_traces(next_state, resolved.symbol_key)
         return next_state
 
-    def _constant_trace_key(self: Any, root_key: tuple[str, ...]) -> tuple[str, ...]:
-        return CONSTANT_TRACE_PREFIX + root_key
+    def _constant_trace_key(self: Any, symbol_key: tuple[str, ...]) -> tuple[str, ...]:
+        return CONSTANT_TRACE_PREFIX + symbol_key
 
     def _is_constant_trace_key(self: Any, key: tuple[str, ...]) -> bool:
         return key[: len(CONSTANT_TRACE_PREFIX)] == CONSTANT_TRACE_PREFIX
+
+    def _symbol_paths_overlap(
+        self: Any,
+        left: tuple[str, ...],
+        right: tuple[str, ...],
+    ) -> bool:
+        return left[: len(right)] == right or right[: len(left)] == left
+
+    def _invalidate_constant_traces(
+        self: Any,
+        state: StateMap,
+        symbol_key: tuple[str, ...],
+        *,
+        preserve_exact: bool = False,
+    ) -> None:
+        for trace_key in tuple(state):
+            if not self._is_constant_trace_key(trace_key):
+                continue
+            traced_symbol_key = trace_key[len(CONSTANT_TRACE_PREFIX) :]
+            overlaps = self._symbol_paths_overlap(traced_symbol_key, symbol_key)
+            if overlaps and not (preserve_exact and traced_symbol_key == symbol_key):
+                state.pop(trace_key, None)
 
     def _track_constant_write(
         self: Any,
@@ -140,17 +163,19 @@ class _DataflowStateMixin:
     ) -> None:
         if resolved.state_access == "old":
             return
-        trace_key = self._constant_trace_key(resolved.symbol_root_key)
+        trace_key = self._constant_trace_key(resolved.symbol_key)
         trace = state.get(trace_key)
         if isinstance(trace, ConstantTrace) and trace.read_since_write and trace.last_value != value:
             self._report_conflicting_constants(resolved, value, trace.last_value, module_path)
         state[trace_key] = ConstantTrace(last_value=value, read_since_write=False)
 
-    def _mark_constant_trace_read(self: Any, state: StateMap, root_key: tuple[str, ...]) -> None:
-        trace_key = self._constant_trace_key(root_key)
-        trace = state.get(trace_key)
-        if isinstance(trace, ConstantTrace):
-            state[trace_key] = ConstantTrace(last_value=trace.last_value, read_since_write=True)
+    def _mark_constant_trace_read(self: Any, state: StateMap, symbol_key: tuple[str, ...]) -> None:
+        for trace_key, trace in tuple(state.items()):
+            if not self._is_constant_trace_key(trace_key) or not isinstance(trace, ConstantTrace):
+                continue
+            traced_symbol_key = trace_key[len(CONSTANT_TRACE_PREFIX) :]
+            if self._symbol_paths_overlap(traced_symbol_key, symbol_key):
+                state[trace_key] = ConstantTrace(last_value=trace.last_value, read_since_write=True)
 
     def _has_pending_write_for_symbol(
         self: Any,
@@ -169,12 +194,15 @@ class _DataflowStateMixin:
     def _consume_pending_reads(
         self: Any,
         state: StateMap,
-        root_key: tuple[str, ...],
+        resolved: ResolvedRef,
     ) -> None:
         for pending_key in [
             key
             for key, pending in state.items()
-            if self._is_pending_state_key(key) and isinstance(pending, PendingWrite) and pending.root_key == root_key
+            if self._is_pending_state_key(key)
+            and isinstance(pending, PendingWrite)
+            and pending.root_key == resolved.symbol_root_key
+            and self._symbol_paths_overlap(pending.key, resolved.symbol_key)
         ]:
             state.pop(pending_key, None)
 
