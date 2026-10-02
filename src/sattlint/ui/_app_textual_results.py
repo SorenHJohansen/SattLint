@@ -24,6 +24,39 @@ from ._app_textual_shared import (
     _query_required,
 )
 
+if _TEXTUAL_TREE is not None:
+    from rich.cells import cell_len as _cell_len  # type: ignore[import-untyped]
+
+    _TREE_TOGGLE_WIDTH = _cell_len(str(_TEXTUAL_TREE.ICON_NODE))
+
+    class _ResultsTree(_TEXTUAL_TREE):  # pyright: ignore[reportUntypedBaseClass]
+        """Results tree with cheap label measurement.
+
+        Textual's ``Tree._build`` re-measures every expanded label on each
+        expand/collapse through ``render_label`` (Rich ``Text`` copy/stylize/
+        assemble). Overriding ``get_label_width`` to measure the plain label
+        avoids that work; the width is memoized per node and invalidated when
+        the node's label or expand affordance changes.
+        """
+
+        def get_label_width(self, node: Any) -> int:
+            cached = getattr(node, "_sattlint_label_width", None)
+            updates = getattr(node, "_updates", 0)
+            if cached is not None and cached[0] == updates:
+                return int(cached[1])
+            width = _cell_len(str(node._label.plain))
+            if getattr(node, "_allow_expand", False):
+                width += _TREE_TOGGLE_WIDTH
+            node._sattlint_label_width = (updates, width)
+            return width
+
+else:  # pragma: no cover - optional dependency path
+    _ResultsTree: Any = None
+
+
+def _new_results_tree() -> Any:
+    return _ResultsTree("", id="results-tree")
+
 
 def _format_run_timestamp(iso_text: str) -> str:
     """Format an ISO run timestamp without the 'T'/'Z' separators."""
@@ -73,30 +106,6 @@ def _finding_label(finding: AnalysisFinding, *, occurrence_count: int = 1) -> st
     if occurrence_count > 1:
         label += f" ({occurrence_count} occurrences)"
     return label
-
-
-def _add_finding_detail_leafs(node: Any, finding: AnalysisFinding) -> None:
-    """Attach the standard Context / Why / Fix leafs to a finding node.
-
-    Each leaf is added only when the corresponding text exists, so a finding
-    with no explanation stays a plain leaf node.
-    """
-    context = _context_label(finding)
-    if context:
-        node.add(f"Context: {context}", data=None)
-    if finding.explanation:
-        node.add(f"Why: {finding.explanation}", data=None)
-    if finding.suggestion:
-        node.add(f"Fix: {finding.suggestion}", data=None)
-
-
-def _hide_leaf_expanders(node: Any) -> None:
-    children = list(getattr(node, "children", ()))
-    if not children:
-        node.allow_expand = False
-        return
-    for child in children:
-        _hide_leaf_expanders(child)
 
 
 def _finding_groups(
@@ -164,7 +173,23 @@ def _populate_analyzer_findings(analyzer_node: Any, analyzer: RunAnalyzerRecord)
                     site_nodes[site_key] = site_node
                 leaf_parent = site_node
             finding_node = leaf_parent.add(_finding_label(finding, occurrence_count=occurrence_count), data=finding)
-            _add_finding_detail_leafs(finding_node, finding)
+            finding_node.allow_expand = False
+
+
+def _auto_expand_single_child_chains(root: Any) -> None:
+    """Expand every descendant that has exactly one child.
+
+    Chains of single-child branch nodes (common for nested module paths and
+    sites) carry no navigation choice, so opening them up front saves the user
+    from clicking through each level. The root is left untouched so the hidden
+    top level is not implicitly expanded.
+    """
+    stack = list(root._children)
+    while stack:
+        node = stack.pop()
+        if len(node._children) == 1:
+            node._expanded = True
+        stack.extend(node._children)
 
 
 def _populate_run_tree(tree: Any, record: RunRecord, *, show_empty_analyzers: bool = False) -> None:
@@ -184,14 +209,14 @@ def _populate_run_tree(tree: Any, record: RunRecord, *, show_empty_analyzers: bo
                 data=analyzer,
             )
             _populate_analyzer_findings(analyzer_node, analyzer)
-    _hide_leaf_expanders(root)
+    _auto_expand_single_child_chains(root)
     root.expand()
 
 
 def _build_run_tree(record: RunRecord, *, show_empty_analyzers: bool = False) -> Any:
     if _TEXTUAL_TREE is None:
         return None
-    tree = _TEXTUAL_TREE("", id="results-tree")
+    tree = _new_results_tree()
     _populate_run_tree(tree, record, show_empty_analyzers=show_empty_analyzers)
     return tree
 
@@ -328,7 +353,7 @@ def _render_results_tree(self: Any, record: RunRecord) -> None:
     self._selected_run_record = record
     tree = getattr(self, "_results_tree_widget", None)
     if tree is None:
-        tree = _TEXTUAL_TREE("", id="results-tree")
+        tree = _new_results_tree()
         tree_host = _query_required(self, "#results-tree-host", _TEXTUAL_VERTICAL)
         tree_host.mount(tree)
         self._results_tree_widget = tree
@@ -359,7 +384,8 @@ def _expand_all_results(self: Any) -> None:
         self._write_output("No analysis results are available yet.")
         return
     for node in _walk_tree_nodes(tree.root, include_root=True):
-        node.expand()
+        node._expanded = True
+    tree._invalidate()
     self._write_output("Expanded all results.")
 
 
@@ -369,7 +395,9 @@ def _collapse_all_results(self: Any) -> None:
         self._write_output("No analysis results are available yet.")
         return
     for node in _walk_tree_nodes(tree.root, include_root=True):
-        node.collapse()
+        node._expanded = False
+    _auto_expand_single_child_chains(tree.root)
+    tree._invalidate()
     self._write_output("Collapsed all results.")
 
 

@@ -28,6 +28,12 @@ def _tuple_str(values: object) -> tuple[str, ...]:
     return tuple(str(item) for item in cast(Sequence[object], values) if item)
 
 
+def _int_value(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    return value
+
+
 def _phase_timings_value(values: object) -> tuple[dict[str, object], ...]:
     if not isinstance(values, (list, tuple)):
         return ()
@@ -240,6 +246,31 @@ class RunSummary:
             analyzer_count=record.analyzer_count,
             issue_count=record.issue_count,
             cancelled=record.cancelled,
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "run_id": self.run_id,
+            "started_at": self.started_at,
+            "finished_at": self.finished_at,
+            "project_tag": self.project_tag,
+            "target_count": self.target_count,
+            "analyzer_count": self.analyzer_count,
+            "issue_count": self.issue_count,
+            "cancelled": self.cancelled,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, object]) -> RunSummary:
+        return cls(
+            run_id=str(payload.get("run_id") or ""),
+            started_at=str(payload.get("started_at") or ""),
+            finished_at=str(payload.get("finished_at") or ""),
+            project_tag=str(payload.get("project_tag") or ""),
+            target_count=_int_value(payload.get("target_count")),
+            analyzer_count=_int_value(payload.get("analyzer_count")),
+            issue_count=_int_value(payload.get("issue_count")),
+            cancelled=bool(payload.get("cancelled", False)),
         )
 
 

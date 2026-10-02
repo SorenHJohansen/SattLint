@@ -13,6 +13,7 @@ from .types import RUN_RECORD_SCHEMA_VERSION, RunRecord, RunSummary
 DEFAULT_RUN_HISTORY_LIMIT = 50
 
 _RUN_JSON_SUFFIX = ".json"
+_SUMMARY_SUFFIX = ".summary"
 
 
 def get_runs_dir() -> Path:
@@ -21,6 +22,10 @@ def get_runs_dir() -> Path:
 
 def _run_path(runs_dir: Path, run_id: str) -> Path:
     return runs_dir / f"{run_id}{_RUN_JSON_SUFFIX}"
+
+
+def _summary_path(runs_dir: Path, run_id: str) -> Path:
+    return runs_dir / f"{run_id}{_SUMMARY_SUFFIX}"
 
 
 def _generate_run_id() -> str:
@@ -52,6 +57,7 @@ def save_run(record: RunRecord, *, runs_dir: Path | None = None) -> RunRecord:
     except (OSError, TypeError, ValueError):
         return stored_record
 
+    _write_summary(resolved_runs_dir, RunSummary.from_record(stored_record))
     return stored_record
 
 
@@ -69,21 +75,33 @@ def prune_runs(runs_dir: Path | None, *, limit: int) -> int:
             path.unlink()
         except OSError:
             continue
+        _remove_summary(resolved_runs_dir, summary.run_id)
         removed += 1
     return removed
 
 
 def list_runs(*, runs_dir: Path | None = None) -> tuple[RunSummary, ...]:
-    """List persisted runs newest-first."""
+    """List persisted runs newest-first.
+
+    Summaries are read from small per-run sidecar files so a run with a large
+    finding set is not fully parsed just to populate the run list. Runs written
+    before the sidecar existed are parsed once and backfilled.
+    """
     resolved_runs_dir = get_runs_dir() if runs_dir is None else runs_dir
     if not resolved_runs_dir.exists():
         return ()
 
     summaries: list[RunSummary] = []
     for path in sorted(resolved_runs_dir.glob(f"*{_RUN_JSON_SUFFIX}"), key=lambda p: p.name, reverse=True):
-        record = _load_run_file(path)
-        if record is not None:
-            summaries.append(RunSummary.from_record(record))
+        run_id = path.name[: -len(_RUN_JSON_SUFFIX)]
+        summary = _load_summary(resolved_runs_dir, run_id)
+        if summary is None:
+            record = _load_run_file(path)
+            if record is None:
+                continue
+            summary = RunSummary.from_record(record)
+            _write_summary(resolved_runs_dir, summary)
+        summaries.append(summary)
     return tuple(summaries)
 
 
@@ -102,7 +120,37 @@ def delete_run(run_id: str, *, runs_dir: Path | None = None) -> bool:
         path.unlink()
     except OSError:
         return False
+    _remove_summary(resolved_runs_dir, run_id)
     return True
+
+
+def _load_summary(runs_dir: Path, run_id: str) -> RunSummary | None:
+    path = _summary_path(runs_dir, run_id)
+    if not path.exists():
+        return None
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return RunSummary.from_dict(cast(dict[str, object], payload))
+
+
+def _write_summary(runs_dir: Path, summary: RunSummary) -> None:
+    try:
+        with _summary_path(runs_dir, summary.run_id).open("w", encoding="utf-8") as handle:
+            json.dump(summary.to_dict(), handle, ensure_ascii=True, indent=2, sort_keys=True)
+    except (OSError, TypeError, ValueError):
+        return
+
+
+def _remove_summary(runs_dir: Path, run_id: str) -> None:
+    try:
+        _summary_path(runs_dir, run_id).unlink()
+    except OSError:
+        return
 
 
 def _load_run_file(path: Path) -> RunRecord | None:

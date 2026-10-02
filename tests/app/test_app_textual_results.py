@@ -289,7 +289,7 @@ def test_results_tree_keeps_identical_findings_at_distinct_sites() -> None:
     assert [next(iter(node.children)).data for node in site_nodes] == [first, second]
 
 
-def test_results_tree_renders_site_node_and_context_leaf() -> None:
+def test_results_tree_renders_site_node_and_finding_leaf() -> None:
     record = RunRecord(
         run_id="r1",
         started_at="s",
@@ -331,10 +331,11 @@ def test_results_tree_renders_site_node_and_context_leaf() -> None:
     assert leaf.data.kind == "string_mapping_mismatch"
     assert "TargetVal => SourceVal" in leaf.label.plain
     assert "[RootProgram.Child]" not in leaf.label.plain
-    assert any(child.label.plain == "Context: TargetVal => SourceVal" for child in leaf.children)
+    assert not list(leaf.children)
+    assert leaf.allow_expand is False
 
 
-def test_results_tree_adds_why_and_fix_leafs_when_present() -> None:
+def test_results_tree_finding_node_is_leaf_preserving_detail_data() -> None:
     record = RunRecord(
         run_id="r1",
         started_at="s",
@@ -373,10 +374,10 @@ def test_results_tree_adds_why_and_fix_leafs_when_present() -> None:
     root_branch = next(iter(kind_node.children))
     finding_node = next(iter(root_branch.children))
     assert finding_node.data.kind == "unused"
-    labels = {child.label.plain for child in finding_node.children}
-    assert "Context: Spare" in labels
-    assert "Why: Stale declarations add noise." in labels
-    assert "Fix: Delete the declaration." in labels
+    assert finding_node.data.explanation == "Stale declarations add noise."
+    assert finding_node.data.suggestion == "Delete the declaration."
+    assert not list(finding_node.children)
+    assert finding_node.allow_expand is False
 
 
 def test_results_tree_merges_identical_site_nodes_for_separate_findings() -> None:

@@ -2365,13 +2365,16 @@ def test_textual_results_view_lists_runs_and_renders_tree(monkeypatch: pytest.Mo
             target_node = tree.root.children[0]
             analyzer_node = next(iter(target_node.children))
             kind_node = next(iter(analyzer_node.children))
-            assert target_node.is_expanded is False
-            assert analyzer_node.is_expanded is False
-            assert kind_node.is_expanded is False
+            assert target_node.is_expanded is True
+            assert analyzer_node.is_expanded is True
+            assert kind_node.is_expanded is True
 
             app_instance._collapse_all_results()
             await pilot.pause()
             assert tree.root.is_expanded is False
+            assert target_node.is_expanded is True
+            assert analyzer_node.is_expanded is True
+            assert kind_node.is_expanded is True
 
             app_instance._expand_all_results()
             await pilot.pause()

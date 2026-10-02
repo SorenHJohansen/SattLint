@@ -162,6 +162,8 @@ def on_results_runs_list_highlighted(self: Any, event: Any) -> None:
     if not isinstance(index, int) or not (0 <= index < len(summaries)):
         return
     summary = summaries[index]
+    if summary.run_id == getattr(self, "_results_tree_run_id", None):
+        return
     record = _load_run(summary.run_id)
     if record is None:
         self._report_error("Could not load run", "That run could not be loaded.")
