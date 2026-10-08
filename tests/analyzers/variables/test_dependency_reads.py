@@ -15,8 +15,8 @@ def test_iter_variables_for_datatype_field_analysis_includes_context_only_variab
         submodules=[],
         modulecode=None,
         moduledef=None,
-        origin_file="UnitXDiluteLib.s",
-        origin_lib="UnitXDiluteLib",
+        origin_file="DiluteLib.s",
+        origin_lib="DiluteLib",
     )
     fake_analyzer = SimpleNamespace(
         bp=bp,
@@ -52,8 +52,8 @@ def test_unused_datatype_fields_include_context_only_variable_usage():
             Variable(name="CleanCycle", datatype=Simple_DataType.STRING),
             Variable(name="WaitCleanCycle", datatype=Simple_DataType.STRING),
         ],
-        origin_file="UnitXDiluteLib.s",
-        origin_lib="UnitXDiluteLib",
+        origin_file="DiluteLib.s",
+        origin_lib="DiluteLib",
     )
     bp = BasePicture(
         header=_hdr("BasePicture"),
@@ -63,8 +63,8 @@ def test_unused_datatype_fields_include_context_only_variable_usage():
         submodules=[],
         modulecode=None,
         moduledef=None,
-        origin_file="UnitXDiluteLib.s",
-        origin_lib="UnitXDiluteLib",
+        origin_file="DiluteLib.s",
+        origin_lib="DiluteLib",
     )
     usage_by_id = {
         id(root_var): _UsageStub(field_reads={"WaitCleanCycle": [object()]}),
@@ -107,8 +107,8 @@ def test_analyze_variables_library_target_counts_dependency_typedef_field_reads(
             Variable(name="LSH", datatype=Simple_DataType.STRING),
             Variable(name="DrainPipe", datatype=Simple_DataType.STRING),
         ],
-        origin_file="UnitApplSupportLib.s",
-        origin_lib="UnitApplSupportLib",
+        origin_file="ApplSupportLib.s",
+        origin_lib="ApplSupportLib",
     )
     dependency_typedef = ModuleTypeDef(
         name="ConsumerType",
@@ -136,8 +136,8 @@ def test_analyze_variables_library_target_counts_dependency_typedef_field_reads(
             ]
         ),
         parametermappings=[],
-        origin_file="UnitApplLib.s",
-        origin_lib="UnitApplLib",
+        origin_file="ApplLib.s",
+        origin_lib="ApplLib",
     )
     support_typedef = ModuleTypeDef(
         name="SupportType",
@@ -166,8 +166,8 @@ def test_analyze_variables_library_target_counts_dependency_typedef_field_reads(
             sequences=[],
         ),
         parametermappings=[],
-        origin_file="UnitApplSupportLib.s",
-        origin_lib="UnitApplSupportLib",
+        origin_file="ApplSupportLib.s",
+        origin_lib="ApplSupportLib",
     )
     bp = BasePicture(
         header=_hdr("BasePicture"),
@@ -177,8 +177,8 @@ def test_analyze_variables_library_target_counts_dependency_typedef_field_reads(
         submodules=[],
         modulecode=None,
         moduledef=None,
-        origin_file="UnitApplSupportLib.s",
-        origin_lib="UnitApplSupportLib",
+        origin_file="ApplSupportLib.s",
+        origin_lib="ApplSupportLib",
     )
 
     report = analyze_variables(
@@ -209,8 +209,8 @@ def test_analyze_variables_library_target_counts_reverse_consumer_typedef_field_
             Variable(name="LSH", datatype=Simple_DataType.STRING),
             Variable(name="DrainPipe", datatype=Simple_DataType.STRING),
         ],
-        origin_file="UnitApplSupportLib.s",
-        origin_lib="UnitApplSupportLib",
+        origin_file="ApplSupportLib.s",
+        origin_lib="ApplSupportLib",
     )
     support_typedef = ModuleTypeDef(
         name="SupportType",
@@ -220,8 +220,8 @@ def test_analyze_variables_library_target_counts_reverse_consumer_typedef_field_
         moduledef=None,
         modulecode=ModuleCode(equations=[], sequences=[]),
         parametermappings=[],
-        origin_file="UnitApplSupportLib.s",
-        origin_lib="UnitApplSupportLib",
+        origin_file="ApplSupportLib.s",
+        origin_lib="ApplSupportLib",
     )
     consumer_typedef = ModuleTypeDef(
         name="ConsumerType",
@@ -250,8 +250,8 @@ def test_analyze_variables_library_target_counts_reverse_consumer_typedef_field_
             sequences=[],
         ),
         parametermappings=[],
-        origin_file="UnitApplLib.s",
-        origin_lib="UnitApplLib",
+        origin_file="ApplLib.s",
+        origin_lib="ApplLib",
     )
     bp = BasePicture(
         header=_hdr("BasePicture"),
@@ -261,8 +261,8 @@ def test_analyze_variables_library_target_counts_reverse_consumer_typedef_field_
         submodules=[],
         modulecode=None,
         moduledef=None,
-        origin_file="UnitApplSupportLib.s",
-        origin_lib="UnitApplSupportLib",
+        origin_file="ApplSupportLib.s",
+        origin_lib="ApplSupportLib",
     )
 
     report = analyze_variables(

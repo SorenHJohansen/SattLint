@@ -119,7 +119,7 @@ def test_icf_validation_reports_valid_and_invalid_entries():
 
 def test_icf_validation_skips_placeholder_h_dot_value():
     bp = BasePicture(
-        header=_header("UnitIsoFK3"),
+        header=_header("IsoFK3"),
         submodules=[SingleModule(header=_header("Unit265A"), moduledef=None)],
     )
 
@@ -133,7 +133,7 @@ def test_icf_validation_skips_placeholder_h_dot_value():
         ),
     ]
 
-    report = validate_icf_entries_against_program(bp, entries, expected_program="UnitIsoFK3")
+    report = validate_icf_entries_against_program(bp, entries, expected_program="IsoFK3")
 
     assert report.skipped_entries == 1
     assert report.valid_entries == 0
@@ -197,7 +197,7 @@ def test_icf_validation_placeholder_counts_as_covered_for_completeness():
         localvariables=[Variable(name="Dv", datatype="DvRecord")],
     )
     bp = BasePicture(
-        header=_header("UnitIsoFK3"),
+        header=_header("IsoFK3"),
         datatype_defs=[fill_record, dv],
         submodules=[unit],
     )
@@ -205,7 +205,7 @@ def test_icf_validation_placeholder_counts_as_covered_for_completeness():
     entries = [
         _entry(
             "Tid_Start",
-            "UnitIsoFK3:Unit265A.Dv.CRY_Fyld1.Tid_Start",
+            "IsoFK3:Unit265A.Dv.CRY_Fyld1.Tid_Start",
             unit="Unit265A",
             journal="CRY_Fyld1 ,CRY_Fyld1",
             group="JournalData_Parameters",
@@ -220,7 +220,7 @@ def test_icf_validation_placeholder_counts_as_covered_for_completeness():
         ),
     ]
 
-    report = validate_icf_entries_against_program(bp, entries, expected_program="UnitIsoFK3")
+    report = validate_icf_entries_against_program(bp, entries, expected_program="IsoFK3")
 
     assert report.skipped_entries == 1
     assert not any(issue.reason == "missing journal parameter fields" for issue in report.issues)
@@ -312,19 +312,19 @@ def test_icf_validation_prefers_draft_moduletype_locals_after_instance_path_reso
     transfer_fallback = ModuleTypeDef(
         name="TransferType",
         origin_lib="ProjectLib",
-        origin_file="UnitXModullLib.x",
+        origin_file="ModullLib.x",
         localvariables=[],
     )
     transfer_source = ModuleTypeDef(
         name="TransferType",
         origin_lib="ProjectLib",
-        origin_file="UnitXDiluteLib.s",
+        origin_file="DiluteLib.s",
         localvariables=[Variable(name="Dilute", datatype="DiluteLogType")],
     )
     wrapper = ModuleTypeDef(
         name="WrapperType",
         origin_lib="ProjectLib",
-        origin_file="UnitXDiluteLib.s",
+        origin_file="DiluteLib.s",
         submodules=[ModuleTypeInstance(header=_header("Transfer"), moduletype_name="TransferType")],
     )
 
@@ -668,7 +668,7 @@ def test_icf_validation_checks_nested_journal_parameter_record_only():
         localvariables=[Variable(name="Dv", datatype="DvRecord")],
     )
     bp = BasePicture(
-        header=_header("UnitIsoFK3"),
+        header=_header("IsoFK3"),
         datatype_defs=[cry_fill, dv],
         submodules=[unit],
     )
@@ -676,14 +676,14 @@ def test_icf_validation_checks_nested_journal_parameter_record_only():
     entries = [
         _entry(
             "Tid_Start",
-            "UnitIsoFK3:Unit265A.Dv.CRY_Fyld1.Tid_Start",
+            "IsoFK3:Unit265A.Dv.CRY_Fyld1.Tid_Start",
             unit="Unit265A",
             journal="CRY_Fyld1 ,CRY_Fyld1",
             group="JournalData_Parameters",
         ),
     ]
 
-    report = validate_icf_entries_against_program(bp, entries, expected_program="UnitIsoFK3")
+    report = validate_icf_entries_against_program(bp, entries, expected_program="IsoFK3")
 
     issue = next(issue for issue in report.issues if issue.reason == "missing journal parameter fields")
     assert "Dv.CRY_Fyld1" in (issue.detail or "")

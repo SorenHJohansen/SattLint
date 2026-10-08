@@ -92,7 +92,7 @@ def test_icf_validation_reports_valid_and_invalid_entries() -> None:
 
 def test_icf_validation_skips_placeholder_h_dot_value() -> None:
     bp = BasePicture(
-        header=_header("UnitIsoFK3"),
+        header=_header("IsoFK3"),
         submodules=[SingleModule(header=_header("Unit265A"), moduledef=None)],
     )
     entries = [
@@ -105,7 +105,7 @@ def test_icf_validation_skips_placeholder_h_dot_value() -> None:
         )
     ]
 
-    report = validate_icf_entries_against_program(bp, entries, expected_program="UnitIsoFK3")
+    report = validate_icf_entries_against_program(bp, entries, expected_program="IsoFK3")
 
     assert report.skipped_entries == 1
     assert report.valid_entries == 0

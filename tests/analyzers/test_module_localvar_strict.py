@@ -41,7 +41,7 @@ def test_module_localvar_strict_path_and_case_insensitive():
     # Typedef from a library
     mt_appltank = ModuleTypeDef(
         name="ApplTank",
-        origin_lib="UnitApplLib",
+        origin_lib="ApplLib",
         localvariables=[Variable(name="Dv", datatype="ApplDvType")],
         moduleparameters=[],
         submodules=[],
@@ -82,12 +82,12 @@ def test_module_localvar_strict_path_and_case_insensitive():
     )
 
     report = report_module_localvar_fields(bp, "StartMaster.Unit251A", "Dv", debug=False)
-    assert "Module type: UnitApplLib:ApplTank" in report
+    assert "Module type: ApplLib:ApplTank" in report
     assert "FIELD-LEVEL ACCESSES" in report
     assert "acktext" in report.lower()
 
     # Case-insensitive path + variable
-    report2 = report_module_localvar_fields(bp, "startmaster.kaha251a", "dv", debug=False)
+    report2 = report_module_localvar_fields(bp, "startmaster.unit251a", "dv", debug=False)
     assert "FIELD-LEVEL ACCESSES" in report2
 
 

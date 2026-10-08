@@ -28,15 +28,15 @@ def test_app_analysis_wrappers_delegate_to_underlying_helpers(monkeypatch):
 
 def test_target_validation_warnings_keeps_controllib_dependency_warning():
     assert project_application._target_validation_warnings(
-        "UnitMPCColumnLib",
+        "ColumnLib",
         [
-            "UnitMPCColumnLib: dependency 'controllib' unavailable: expected proprietary dependency",
-            "UnitMPCColumnLib: warning one",
+            "ColumnLib: dependency 'controllib' unavailable: expected proprietary dependency",
+            "ColumnLib: warning one",
             "dep_b: warning two",
         ],
     ) == [
-        "UnitMPCColumnLib: dependency 'controllib' unavailable: expected proprietary dependency",
-        "UnitMPCColumnLib: warning one",
+        "ColumnLib: dependency 'controllib' unavailable: expected proprietary dependency",
+        "ColumnLib: warning one",
     ]
 
 

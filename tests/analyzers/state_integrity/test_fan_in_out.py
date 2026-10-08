@@ -434,7 +434,7 @@ def test_variables_report_summary_omits_sections_overview_for_single_visible_kin
         role="localvariable",
     )
     report = VariablesReport(
-        basepicture_name="UnitXDiluteLib",
+        basepicture_name="DiluteLib",
         issues=[issue],
         selected_issue_kinds=frozenset({IssueKind.NEVER_READ}),
         visible_kinds=frozenset({IssueKind.NEVER_READ}),

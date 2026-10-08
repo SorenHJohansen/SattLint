@@ -79,7 +79,7 @@ def test_unused_datatype_fields_are_aggregated_across_variables():
 
 def test_unused_datatype_fields_count_nested_record_field_accesses():
     op_type = DataType(
-        name="UnitOPType",
+        name="OpType",
         description=None,
         datecode=None,
         var_list=[
@@ -94,7 +94,7 @@ def test_unused_datatype_fields_count_nested_record_field_accesses():
         name="ConfigType",
         description=None,
         datecode=None,
-        var_list=[Variable(name="ActiveOP", datatype="UnitOPType")],
+        var_list=[Variable(name="ActiveOP", datatype="OpType")],
         origin_file="Root.s",
         origin_lib="ProjectLib",
     )
@@ -166,7 +166,7 @@ def test_unused_datatype_fields_count_nested_record_field_accesses():
     unused_fields = {
         issue.field_path
         for issue in analyzer.issues
-        if issue.kind is IssueKind.UNUSED_DATATYPE_FIELD and issue.datatype_name == "UnitOPType"
+        if issue.kind is IssueKind.UNUSED_DATATYPE_FIELD and issue.datatype_name == "OpType"
     }
 
     assert unused_fields == {"LOP20", "LOP21"}
@@ -182,8 +182,8 @@ def test_library_target_dependency_mapping_counts_root_record_field_usage_withou
             Variable(name="TC601_GlitChDelay", datatype=Simple_DataType.INTEGER),
             Variable(name="Unused", datatype=Simple_DataType.INTEGER),
         ],
-        origin_file="UnitColumnLib.s",
-        origin_lib="UnitColumnLib",
+        origin_file="ColumnLib.s",
+        origin_lib="ColumnLib",
     )
     dependency_typedef = ModuleTypeDef(
         name="MES_BatchControl",
@@ -238,8 +238,8 @@ def test_library_target_dependency_mapping_counts_root_record_field_usage_withou
             sequences=[],
         ),
         parametermappings=[],
-        origin_file="UnitColumnLib.s",
-        origin_lib="UnitColumnLib",
+        origin_file="ColumnLib.s",
+        origin_lib="ColumnLib",
     )
 
     bp = BasePicture(
@@ -250,8 +250,8 @@ def test_library_target_dependency_mapping_counts_root_record_field_usage_withou
         submodules=[],
         modulecode=None,
         moduledef=None,
-        origin_file="UnitColumnLib.s",
-        origin_lib="UnitColumnLib",
+        origin_file="ColumnLib.s",
+        origin_lib="ColumnLib",
     )
 
     analyzer = VariablesAnalyzer(
@@ -281,8 +281,8 @@ def test_picture_display_variable_rows_count_as_field_usage_for_datatype_reporti
             Variable(name="WaitCleanCycle", datatype=Simple_DataType.STRING),
             Variable(name="Unused", datatype=Simple_DataType.STRING),
         ],
-        origin_file="UnitXDiluteLib.s",
-        origin_lib="UnitXDiluteLib",
+        origin_file="DiluteLib.s",
+        origin_lib="DiluteLib",
     )
     module = SingleModule(
         header=_hdr("DisplayModule"),
@@ -301,8 +301,8 @@ def test_picture_display_variable_rows_count_as_field_usage_for_datatype_reporti
         submodules=[module],
         modulecode=None,
         moduledef=None,
-        origin_file="UnitXDiluteLib.s",
-        origin_lib="UnitXDiluteLib",
+        origin_file="DiluteLib.s",
+        origin_lib="DiluteLib",
     )
     bp.graphics_picture_display_occurrences = [
         PictureDisplayOccurrence(

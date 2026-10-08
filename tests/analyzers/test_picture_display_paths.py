@@ -623,7 +623,7 @@ def test_resolve_picture_display_path_reports_unimplemented_emf_asset() -> None:
     base_picture = base_picture_with_single_chain()
 
     resolution = resolve_picture_display_path(
-        "Vendor SattLine Background Color.emf",
+        "Vendor Background.emf",
         base_picture=base_picture,
         declaring_module_path=("Root",),
     )

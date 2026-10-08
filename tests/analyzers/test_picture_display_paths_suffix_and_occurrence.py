@@ -102,7 +102,7 @@ def test_resolve_picture_display_path_recovers_missing_declaring_module_by_suffi
         declaring_module_path=(
             "BasePicture",
             "L1",
-            "UnitColumn",
+            "Column",
             "L1",
             "L2",
             "UnitControl",
@@ -192,10 +192,10 @@ def test_correlate_picture_display_records_maps_local_moduletype_record_to_templ
 
 def test_correlate_picture_display_records_treats_same_library_typedef_as_local() -> None:
     base_picture = base_picture_with_moduletype_form_picture_display()
-    base_picture.origin_file = "UnitMPCColumnLib.x"
-    base_picture.origin_lib = "UnitMPCColumnLib"
-    base_picture.moduletype_defs[0].origin_file = "UnitColumnDisplay.x"
-    base_picture.moduletype_defs[0].origin_lib = "UnitMPCColumnLib"
+    base_picture.origin_file = "ColumnLib.x"
+    base_picture.origin_lib = "ColumnLib"
+    base_picture.moduletype_defs[0].origin_file = "ColumnDisplay.x"
+    base_picture.moduletype_defs[0].origin_lib = "ColumnLib"
 
     record = PictureDisplayRecord(
         record_index=1,
@@ -310,7 +310,7 @@ def test_resolve_picture_display_path_suffix_recovery_supports_wildcard_sibling_
         declaring_module_path=(
             "BasePicture",
             "L1",
-            "UnitColumn",
+            "Column",
             "L1",
             "L2",
             "UnitControl",
@@ -361,7 +361,7 @@ def test_resolve_picture_display_path_retries_canonical_suffix_when_exact_local_
             "L1",
             [
                 module(
-                    "UnitColumn",
+                    "Column",
                     [
                         module(
                             "L1",
@@ -438,7 +438,7 @@ def test_resolve_picture_display_path_retries_canonical_suffix_when_exact_local_
         declaring_module_path=(
             "BasePicture",
             "L1",
-            "UnitColumn",
+            "Column",
             "L1",
             "L2",
             "UnitControl",

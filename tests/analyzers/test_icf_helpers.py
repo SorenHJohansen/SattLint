@@ -107,7 +107,7 @@ def test_icf_helper_resolve_unit_type_and_signature_diff(monkeypatch):
         "TankType",
     )
     assert icf_module._resolve_unit_type_label(base_picture, "Unit221B", [_entry("K", "Program:Unit221B.T.K")]) == (
-        "family:kaha221",
+        "family:unit221",
         "family Unit221",
     )
 
@@ -435,7 +435,7 @@ def test_icf_helper_additional_summary_and_parse_branches(tmp_path, monkeypatch)
         "Unit221A",
         [_entry("K", "Program:Unit221A.T.K")],
     )
-    assert fallback == ("family:kaha221", "family Unit221")
+    assert fallback == ("family:unit221", "family Unit221")
 
 
 def test_icf_helper_additional_path_and_field_validation_branches(monkeypatch):

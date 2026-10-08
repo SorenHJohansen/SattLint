@@ -17,8 +17,8 @@ def test_library_target_picture_display_variable_rows_count_typedef_moduleparame
         moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
         modulecode=None,
         parametermappings=[],
-        origin_file="UnitMPCColumnLib.s",
-        origin_lib="UnitMPCColumnLib",
+        origin_file="ColumnLib.s",
+        origin_lib="ColumnLib",
     )
     bp = BasePicture(
         header=_hdr("BasePicture"),
@@ -28,8 +28,8 @@ def test_library_target_picture_display_variable_rows_count_typedef_moduleparame
         submodules=[],
         modulecode=None,
         moduledef=None,
-        origin_file="UnitMPCColumnLib.s",
-        origin_lib="UnitMPCColumnLib",
+        origin_file="ColumnLib.s",
+        origin_lib="ColumnLib",
     )
     bp.graphics_picture_display_occurrences = [
         PictureDisplayOccurrence(
@@ -75,8 +75,8 @@ def test_library_target_picture_display_index_variable_counts_typedef_modulepara
         moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
         modulecode=None,
         parametermappings=[],
-        origin_file="UnitMPCColumnLib.s",
-        origin_lib="UnitMPCColumnLib",
+        origin_file="ColumnLib.s",
+        origin_lib="ColumnLib",
     )
     bp = BasePicture(
         header=_hdr("BasePicture"),
@@ -86,8 +86,8 @@ def test_library_target_picture_display_index_variable_counts_typedef_modulepara
         submodules=[],
         modulecode=None,
         moduledef=None,
-        origin_file="UnitMPCColumnLib.s",
-        origin_lib="UnitMPCColumnLib",
+        origin_file="ColumnLib.s",
+        origin_lib="ColumnLib",
     )
     bp.graphics_picture_display_occurrences = [
         PictureDisplayOccurrence(
@@ -133,8 +133,8 @@ def test_library_target_picture_display_record_binding_counts_typedef_modulepara
         moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
         modulecode=None,
         parametermappings=[],
-        origin_file="UnitMPCColumnLib.s",
-        origin_lib="UnitMPCColumnLib",
+        origin_file="ColumnLib.s",
+        origin_lib="ColumnLib",
     )
     bp = BasePicture(
         header=_hdr("BasePicture"),
@@ -144,8 +144,8 @@ def test_library_target_picture_display_record_binding_counts_typedef_modulepara
         submodules=[],
         modulecode=None,
         moduledef=None,
-        origin_file="UnitMPCColumnLib.s",
-        origin_lib="UnitMPCColumnLib",
+        origin_file="ColumnLib.s",
+        origin_lib="ColumnLib",
     )
     bp.graphics_bindings = [
         GraphicsBinding(
@@ -209,8 +209,8 @@ def test_library_target_picture_display_runtime_instance_path_counts_typedef_mod
         moduledef=None,
         modulecode=None,
         parametermappings=[],
-        origin_file="UnitMPCColumnLib.s",
-        origin_lib="UnitMPCColumnLib",
+        origin_file="ColumnLib.s",
+        origin_lib="ColumnLib",
     )
     bp = BasePicture(
         header=_hdr("BasePicture"),
@@ -222,7 +222,7 @@ def test_library_target_picture_display_runtime_instance_path_counts_typedef_mod
                 header=_hdr("L1"),
                 submodules=[
                     ModuleTypeInstance(
-                        header=_hdr("UnitColumn"),
+                        header=_hdr("Column"),
                         moduletype_name="Column",
                         parametermappings=[],
                     )
@@ -233,8 +233,8 @@ def test_library_target_picture_display_runtime_instance_path_counts_typedef_mod
         ],
         modulecode=None,
         moduledef=None,
-        origin_file="UnitMPCColumnLib.s",
-        origin_lib="UnitMPCColumnLib",
+        origin_file="ColumnLib.s",
+        origin_lib="ColumnLib",
     )
     bp.graphics_bindings = [
         GraphicsBinding(
@@ -247,7 +247,7 @@ def test_library_target_picture_display_runtime_instance_path_counts_typedef_mod
     bp.graphics_picture_display_occurrences = [
         PictureDisplayOccurrence(
             program_name="BasePicture",
-            declaring_module_path=("BasePicture", "L1", "UnitColumn", "Panel"),
+            declaring_module_path=("BasePicture", "L1", "Column", "Panel"),
             record=PictureDisplayRecord(
                 record_index=1,
                 record_start_line=1,
@@ -297,8 +297,8 @@ def test_library_target_picture_display_variable_rows_count_typedef_moduleparame
         moduledef=None,
         modulecode=None,
         parametermappings=[],
-        origin_file="UnitMPCColumnLib.s",
-        origin_lib="UnitMPCColumnLib",
+        origin_file="ColumnLib.s",
+        origin_lib="ColumnLib",
     )
     bp = BasePicture(
         header=_hdr("BasePicture"),
@@ -308,8 +308,8 @@ def test_library_target_picture_display_variable_rows_count_typedef_moduleparame
         submodules=[],
         modulecode=None,
         moduledef=None,
-        origin_file="UnitMPCColumnLib.s",
-        origin_lib="UnitMPCColumnLib",
+        origin_file="ColumnLib.s",
+        origin_lib="ColumnLib",
     )
     bp.graphics_picture_display_occurrences = [
         PictureDisplayOccurrence(
@@ -356,8 +356,8 @@ def test_library_target_direct_typedef_code_counts_field_usage_for_datatype_repo
             Variable(name="WaitCleanCycle", datatype=Simple_DataType.STRING),
             Variable(name="Unused", datatype=Simple_DataType.STRING),
         ],
-        origin_file="UnitXDiluteLib.s",
-        origin_lib="UnitXDiluteLib",
+        origin_file="DiluteLib.s",
+        origin_lib="DiluteLib",
     )
     root_typedef = ModuleTypeDef(
         name="DiluteType",
@@ -387,8 +387,8 @@ def test_library_target_direct_typedef_code_counts_field_usage_for_datatype_repo
             sequences=[],
         ),
         parametermappings=[],
-        origin_file="UnitXDiluteLib.s",
-        origin_lib="UnitXDiluteLib",
+        origin_file="DiluteLib.s",
+        origin_lib="DiluteLib",
     )
     bp = BasePicture(
         header=_hdr("BasePicture"),
@@ -398,8 +398,8 @@ def test_library_target_direct_typedef_code_counts_field_usage_for_datatype_repo
         submodules=[],
         modulecode=None,
         moduledef=None,
-        origin_file="UnitXDiluteLib.s",
-        origin_lib="UnitXDiluteLib",
+        origin_file="DiluteLib.s",
+        origin_lib="DiluteLib",
     )
 
     analyzer = VariablesAnalyzer(

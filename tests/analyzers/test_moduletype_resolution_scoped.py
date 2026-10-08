@@ -79,8 +79,8 @@ def test_ambiguous_within_dependencies_raises():
 
 
 def test_resolves_same_library_prefers_draft_source_file():
-    mt_source = ModuleTypeDef(name="CIP", origin_lib="Lib1", origin_file="UnitXDiluteLib.s")
-    mt_fallback = ModuleTypeDef(name="CIP", origin_lib="Lib1", origin_file="UnitXModullLib.x")
+    mt_source = ModuleTypeDef(name="CIP", origin_lib="Lib1", origin_file="DiluteLib.s")
+    mt_fallback = ModuleTypeDef(name="CIP", origin_lib="Lib1", origin_file="ModullLib.x")
     bp = BasePicture(
         header=_header(),
         origin_lib="Lib1",
@@ -103,16 +103,16 @@ def test_resolution_helper_source_preference_and_label_edges():
         preferred_source_extensions,
     )
 
-    draft = ModuleTypeDef(name="CIP", origin_lib="Lib1", origin_file="UnitXDiluteLib.s")
-    duplicate = ModuleTypeDef(name="CIP", origin_lib="Lib1", origin_file="UnitXDiluteLib.s")
-    official = ModuleTypeDef(name="CIP", origin_lib="Lib1", origin_file="UnitXModullLib.x")
+    draft = ModuleTypeDef(name="CIP", origin_lib="Lib1", origin_file="DiluteLib.s")
+    duplicate = ModuleTypeDef(name="CIP", origin_lib="Lib1", origin_file="DiluteLib.s")
+    official = ModuleTypeDef(name="CIP", origin_lib="Lib1", origin_file="ModullLib.x")
     bare = ModuleTypeDef(name="Bare")
 
     assert path_startswith_casefold(["BasePicture", "Child"], ["basepicture"]) is True
     assert path_startswith_casefold(["BasePicture"], ["BasePicture", "Child"]) is False
     assert path_startswith_casefold(["BasePicture", "Child"], ["BasePicture", "Other"]) is False
 
-    assert format_moduletype_label(draft) == "Lib1:CIP (UnitXDiluteLib.s)"
+    assert format_moduletype_label(draft) == "Lib1:CIP (DiluteLib.s)"
     assert format_moduletype_label(ModuleTypeDef(name="CIP", origin_lib="Lib1")) == "Lib1:CIP"
     assert format_moduletype_label(bare) == "Bare"
 
@@ -162,19 +162,19 @@ def test_strict_path_prefers_enclosing_draft_moduletype_definition():
     transfer_source = ModuleTypeDef(
         name="Transfer",
         origin_lib="ProjectLib",
-        origin_file="UnitXDiluteLib.s",
+        origin_file="DiluteLib.s",
         submodules=[SingleModule(header=_header("Dilute"), moduledef=None)],
     )
     transfer_fallback = ModuleTypeDef(
         name="Transfer",
         origin_lib="ProjectLib",
-        origin_file="UnitXModullLib.x",
+        origin_file="ModullLib.x",
         submodules=[SingleModule(header=_header("Legacy"), moduledef=None)],
     )
     wrapper = ModuleTypeDef(
         name="Wrapper",
         origin_lib="ProjectLib",
-        origin_file="UnitXDiluteLib.s",
+        origin_file="DiluteLib.s",
         submodules=[ModuleTypeInstance(header=_header("Transfer"), moduletype_name="Transfer")],
     )
     bp = BasePicture(

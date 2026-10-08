@@ -36,7 +36,7 @@ def test_library_dependency_typedef_internal_string_mismatches_are_suppressed_bu
         origin_lib="exstruct",
     )
     parent_typedef = ModuleTypeDef(
-        name="UnitMPCColumn",
+        name="Column",
         moduleparameters=[],
         localvariables=[Variable(name="EdgeSource", datatype=Simple_DataType.STRING)],
         submodules=[
@@ -58,8 +58,8 @@ def test_library_dependency_typedef_internal_string_mismatches_are_suppressed_bu
         moduledef=None,
         modulecode=None,
         parametermappings=[],
-        origin_file="UnitMPCColumnLib.s",
-        origin_lib="UnitMPCColumnLib",
+        origin_file="ColumnLib.s",
+        origin_lib="ColumnLib",
     )
     bp = BasePicture(
         header=_hdr("Root"),
@@ -69,8 +69,8 @@ def test_library_dependency_typedef_internal_string_mismatches_are_suppressed_bu
         submodules=[],
         modulecode=None,
         moduledef=None,
-        origin_file="UnitMPCColumnLib.s",
-        origin_lib="UnitMPCColumnLib",
+        origin_file="ColumnLib.s",
+        origin_lib="ColumnLib",
     )
 
     analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True, include_dependency_moduletype_usage=True)
@@ -79,7 +79,7 @@ def test_library_dependency_typedef_internal_string_mismatches_are_suppressed_bu
     issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.STRING_MAPPING_MISMATCH]
 
     assert [(issue.module_path, issue.variable.name, issue.source_variable.name) for issue in issues] == [
-        (["Root", "TypeDef:UnitMPCColumn", "Coordinate"], "EdgeTarget", "EdgeSource")
+        (["Root", "TypeDef:Column", "Coordinate"], "EdgeTarget", "EdgeSource")
     ]
 
 
@@ -122,7 +122,7 @@ def test_library_dependency_nested_instance_string_mismatches_are_suppressed_but
         origin_lib="exstruct",
     )
     parent_typedef = ModuleTypeDef(
-        name="UnitMPCColumn",
+        name="Column",
         moduleparameters=[],
         localvariables=[Variable(name="EdgeSource", datatype=Simple_DataType.STRING)],
         submodules=[
@@ -144,8 +144,8 @@ def test_library_dependency_nested_instance_string_mismatches_are_suppressed_but
         moduledef=None,
         modulecode=None,
         parametermappings=[],
-        origin_file="UnitMPCColumnLib.s",
-        origin_lib="UnitMPCColumnLib",
+        origin_file="ColumnLib.s",
+        origin_lib="ColumnLib",
     )
     bp = BasePicture(
         header=_hdr("Root"),
@@ -155,8 +155,8 @@ def test_library_dependency_nested_instance_string_mismatches_are_suppressed_but
         submodules=[],
         modulecode=None,
         moduledef=None,
-        origin_file="UnitMPCColumnLib.s",
-        origin_lib="UnitMPCColumnLib",
+        origin_file="ColumnLib.s",
+        origin_lib="ColumnLib",
     )
 
     analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True, include_dependency_moduletype_usage=True)
@@ -165,7 +165,7 @@ def test_library_dependency_nested_instance_string_mismatches_are_suppressed_but
     issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.STRING_MAPPING_MISMATCH]
 
     assert [(issue.module_path, issue.variable.name, issue.source_variable.name) for issue in issues] == [
-        (["Root", "TypeDef:UnitMPCColumn", "Coordinate"], "EdgeTarget", "EdgeSource")
+        (["Root", "TypeDef:Column", "Coordinate"], "EdgeTarget", "EdgeSource")
     ]
 
 
@@ -208,7 +208,7 @@ def test_library_dependency_nested_instance_string_mismatches_stay_suppressed_wi
         origin_lib="exstruct",
     )
     parent_typedef = ModuleTypeDef(
-        name="UnitMPCColumn",
+        name="Column",
         moduleparameters=[],
         localvariables=[Variable(name="EdgeSource", datatype=Simple_DataType.STRING)],
         submodules=[
@@ -230,8 +230,8 @@ def test_library_dependency_nested_instance_string_mismatches_stay_suppressed_wi
         moduledef=None,
         modulecode=None,
         parametermappings=[],
-        origin_file="UnitMPCColumnLib.s",
-        origin_lib="UnitMPCColumnLib",
+        origin_file="ColumnLib.s",
+        origin_lib="ColumnLib",
     )
     bp = BasePicture(
         header=_hdr("Root"),
@@ -241,8 +241,8 @@ def test_library_dependency_nested_instance_string_mismatches_stay_suppressed_wi
         submodules=[],
         modulecode=None,
         moduledef=None,
-        origin_file="UnitMPCColumnLib.s",
-        origin_lib="UnitMPCColumnLib",
+        origin_file="ColumnLib.s",
+        origin_lib="ColumnLib",
     )
 
     analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True, include_dependency_moduletype_usage=True)
@@ -251,7 +251,7 @@ def test_library_dependency_nested_instance_string_mismatches_stay_suppressed_wi
     issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.STRING_MAPPING_MISMATCH]
 
     assert [(issue.module_path, issue.variable.name, issue.source_variable.name) for issue in issues] == [
-        (["Root", "TypeDef:UnitMPCColumn", "Coordinate"], "EdgeTarget", "EdgeSource")
+        (["Root", "TypeDef:Column", "Coordinate"], "EdgeTarget", "EdgeSource")
     ]
 
 

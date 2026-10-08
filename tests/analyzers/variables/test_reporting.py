@@ -77,8 +77,8 @@ def test_library_target_report_shows_typedef_for_same_lib_different_file_modulet
         moduledef=None,
         modulecode=None,
         parametermappings=[],
-        origin_file="UnitApplSupportLib.s",
-        origin_lib="UnitApplSupportLib",
+        origin_file="ApplSupportLib.s",
+        origin_lib="ApplSupportLib",
     )
     bp = BasePicture(
         header=_hdr("BasePicture"),
@@ -91,8 +91,8 @@ def test_library_target_report_shows_typedef_for_same_lib_different_file_modulet
         ],
         modulecode=None,
         moduledef=None,
-        origin_file="UnitApplSupportLib.s",
-        origin_lib="UnitApplSupportLib",
+        origin_file="ApplSupportLib.s",
+        origin_lib="ApplSupportLib",
     )
 
     analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True)
@@ -123,8 +123,8 @@ def test_program_target_report_dedupes_root_owned_typedef_instance_findings():
         moduledef=None,
         modulecode=None,
         parametermappings=[],
-        origin_file="UnitApplSupportLib.s",
-        origin_lib="UnitApplSupportLib",
+        origin_file="ApplSupportLib.s",
+        origin_lib="ApplSupportLib",
     )
     bp = BasePicture(
         header=_hdr("BasePicture"),
@@ -137,8 +137,8 @@ def test_program_target_report_dedupes_root_owned_typedef_instance_findings():
         ],
         modulecode=None,
         moduledef=None,
-        origin_file="UnitApplSupportLib.s",
-        origin_lib="UnitApplSupportLib",
+        origin_file="ApplSupportLib.s",
+        origin_lib="ApplSupportLib",
     )
 
     analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=False)
@@ -170,7 +170,7 @@ def test_library_target_does_not_report_typedefs_from_sibling_projectlib_files()
         moduledef=None,
         modulecode=None,
         parametermappings=[],
-        origin_file="UnitListeLibX.x",
+        origin_file="ListeLibX.x",
         origin_lib="ProjectLib",
     )
     bp = BasePicture(
@@ -181,7 +181,7 @@ def test_library_target_does_not_report_typedefs_from_sibling_projectlib_files()
         submodules=[],
         modulecode=None,
         moduledef=None,
-        origin_file="UnitMPCColumnLib.x",
+        origin_file="ColumnLib.x",
         origin_lib="ProjectLib",
     )
     usage_by_id = {id(foreign_local): _UsageStub(read=True, is_read_only=True)}
