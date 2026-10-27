@@ -177,6 +177,12 @@ class DependencyUsageScopeSupportMixin:
                     current_library=parent_context.current_library,
                     parent_context=parent_context,
                 )
+                # Frame modules reuse their parent environment. Keep the parent
+                # module-parameter keys visible so inherited parameters are still
+                # classified as contract values, not uninitialized locals.
+                self._moduleparameter_keys_by_context[id(frame_context)] = set(
+                    self._moduleparameter_keys_by_context.get(id(parent_context), set())
+                )
                 self._walk_module_code(child.modulecode, frame_context, child_path)
                 self._walk_modules(child.submodules or [], frame_context, child_path)
                 continue

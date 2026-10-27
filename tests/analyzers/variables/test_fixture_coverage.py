@@ -69,7 +69,7 @@ def test_variables_execution_collect_typedef_issues_covers_branchy_typedef_roles
         "EffectParam",
         "moduleparameter",
         None,
-    ) in issues
+    ) not in issues
     assert (
         IssueKind.PROCEDURE_STATUS,
         ("Root", "TypeDef:WorkerType"),

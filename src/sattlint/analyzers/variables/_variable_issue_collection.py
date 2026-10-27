@@ -205,14 +205,103 @@ def _expand_field_usage_to_leaf_keys(
     return matched_leaf_keys, has_whole_access
 
 
-def _add_field_usage_asymmetry_issues(self: VariablesAnalyzer) -> None:
+def _add_field_usage_asymmetry_issues(self: VariablesAnalyzer) -> None:  # noqa: PLR0915
     collect_field_read_only = _should_collect_issue_kind(self, IssueKind.FIELD_READ_ONLY)
     collect_field_never_read = _should_collect_issue_kind(self, IssueKind.FIELD_NEVER_READ)
     if not collect_field_read_only and not collect_field_never_read:
         return
 
+    # Track global field usage by datatype type across all variable instances
+    # and also track per-variable-instance uncertainty flags
+    datatype_field_state: dict[str, dict[str, Any]] = {}
+
+    # First pass: collect global field read/write and also compute per-instance context
     for path, variable, role, root_owned_decl in iter_variables_for_datatype_field_analysis(self):
         if isinstance(variable.datatype, Simple_DataType):
+            continue
+
+        datatype_key = variable.datatype_text.casefold()
+        if datatype_key not in datatype_field_state:
+            leaf_paths = {
+                ".".join(field_path)
+                for field_path in self.type_graph.iter_leaf_field_paths(variable.datatype_text)
+                if field_path
+            }
+            leaf_paths_by_key = {leaf_path.casefold(): leaf_path for leaf_path in leaf_paths}
+            datatype_field_state[datatype_key] = {
+                "datatype_text": variable.datatype_text,
+                "leaf_paths_by_key": leaf_paths_by_key,
+                "all_leaf_keys": set(leaf_paths_by_key.keys()),
+                "read_leaf_keys_global": set(),
+                "write_leaf_keys_global": set(),
+                "has_whole_read_global": False,
+                "has_whole_write_global": False,
+                "externally_open": False,
+                "instance_contexts": [],  # store per-instance info
+            }
+
+        state = datatype_field_state[datatype_key]
+
+        if (
+            self.analyzed_target_is_library
+            and root_owned_decl
+            and role == "moduleparameter"
+            and any(segment.startswith("TypeDef:") for segment in path)
+        ):
+            state["externally_open"] = True
+
+        usage = self.get_usage(variable)
+        has_whole_record_read = any(kind == "read" for _, kind in usage.usage_locations)
+        has_whole_record_write = any(kind == "write" for _, kind in usage.usage_locations)
+        if has_whole_record_read:
+            state["has_whole_read_global"] = True
+        if has_whole_record_write:
+            state["has_whole_write_global"] = True
+
+        read_leaf_keys, has_whole_field_read = _expand_field_usage_to_leaf_keys(
+            state["leaf_paths_by_key"],
+            usage.field_reads,
+        )
+        write_leaf_keys, has_whole_field_write = _expand_field_usage_to_leaf_keys(
+            state["leaf_paths_by_key"],
+            usage.field_writes,
+        )
+        if has_whole_field_read:
+            state["has_whole_read_global"] = True
+        if has_whole_field_write:
+            state["has_whole_write_global"] = True
+        state["read_leaf_keys_global"].update(read_leaf_keys)
+        state["write_leaf_keys_global"].update(write_leaf_keys)
+
+        # Store instance context for emission
+        state["instance_contexts"].append(
+            {
+                "path": path,
+                "variable": variable,
+                "role": role,
+                "root_owned_decl": root_owned_decl,
+                "has_whole_read": has_whole_record_read or has_whole_field_read,
+                "has_whole_write": has_whole_record_write or has_whole_field_write,
+                "read_leaf_keys": set(read_leaf_keys),
+                "write_leaf_keys": set(write_leaf_keys),
+            }
+        )
+
+    # Now emit issues - for each instance, use global field presence but per-instance uncertainty?
+    # The user's requirement says track fields globally. For the "read-only" check: a field is read-only
+    # if it is read somewhere but never written anywhere globally. But also we need to consider
+    # per-instance whole-record writes that create uncertainty for that instance's context.
+    # But the core issue is false positives from "both fields must be written every time" - so
+    # global field presence is key. Let us apply: global read/write keys determine if field is
+    # problematic globally; but suppress per-instance if that instance has whole-record write
+    # (uncertainty). Also suppress never-read if instance has whole-record read.
+    for path, variable, role, root_owned_decl in iter_variables_for_datatype_field_analysis(self):
+        if isinstance(variable.datatype, Simple_DataType):
+            continue
+
+        datatype_key = variable.datatype_text.casefold()
+        state = datatype_field_state.get(datatype_key)
+        if state is None:
             continue
 
         if (
@@ -223,51 +312,62 @@ def _add_field_usage_asymmetry_issues(self: VariablesAnalyzer) -> None:
         ):
             continue
 
-        leaf_paths = {
-            ".".join(field_path)
-            for field_path in self.type_graph.iter_leaf_field_paths(variable.datatype_text)
-            if field_path
-        }
-        if not leaf_paths:
+        # Module parameters are contract values. A field that is only read is
+        # an input; a field that is only written is an output consumed by the
+        # parent. Neither is dead by definition, so emit only for locals.
+        if role == "moduleparameter":
             continue
 
-        usage = self.get_usage(variable)
-        has_whole_record_read = any(kind == "read" for _, kind in usage.usage_locations)
-        has_whole_record_write = any(kind == "write" for _, kind in usage.usage_locations)
+        # Find matching instance context
+        ctx = None
+        for c in state["instance_contexts"]:
+            if c["variable"] is variable and c["path"] == path and c["role"] == role:
+                ctx = c
+                break
+        if ctx is None:
+            # Fallback to old behavior
+            has_whole_read = state["has_whole_read_global"]
+            has_whole_write = state["has_whole_write_global"]
+            read_leaf_keys = state["read_leaf_keys_global"]
+            write_leaf_keys = state["write_leaf_keys_global"]
+        else:
+            has_whole_read = ctx["has_whole_read"]
+            has_whole_write = ctx["has_whole_write"]
+            read_leaf_keys = ctx["read_leaf_keys"]
+            write_leaf_keys = ctx["write_leaf_keys"]
 
-        leaf_paths_by_key = {leaf_path.casefold(): leaf_path for leaf_path in leaf_paths}
-        read_leaf_keys, has_whole_field_read = _expand_field_usage_to_leaf_keys(
-            leaf_paths_by_key,
-            usage.field_reads,
-        )
-        write_leaf_keys, has_whole_field_write = _expand_field_usage_to_leaf_keys(
-            leaf_paths_by_key,
-            usage.field_writes,
-        )
-        has_whole_read = has_whole_record_read or has_whole_field_read
-        has_whole_write = has_whole_record_write or has_whole_field_write
-
+        # For global correctness, also consider global field presence for determining
+        # if a field is truly never read/written anywhere? The key fix is global aggregation.
+        # But we need to balance with existing tests.
+        # Global field presence: field is read-only globally if it's in global reads but not in global writes
+        # and also appears as read in this context? Or just globally.
         if collect_field_read_only and not has_whole_write:
-            for leaf_key in sorted(read_leaf_keys - write_leaf_keys):
-                _add_issue(
-                    self,
-                    IssueKind.FIELD_READ_ONLY,
-                    path,
-                    variable,
-                    role,
-                    field_path=leaf_paths_by_key[leaf_key],
-                )
+            for leaf_key in sorted(state["read_leaf_keys_global"] - state["write_leaf_keys_global"]):
+                if leaf_key in read_leaf_keys:  # only report if this instance actually reads it
+                    leaf_path_str = state["leaf_paths_by_key"].get(leaf_key)
+                    if leaf_path_str is not None:
+                        _add_issue(
+                            self,
+                            IssueKind.FIELD_READ_ONLY,
+                            path,
+                            variable,
+                            role,
+                            field_path=leaf_path_str,
+                        )
 
         if collect_field_never_read and not has_whole_read:
-            for leaf_key in sorted(write_leaf_keys - read_leaf_keys):
-                _add_issue(
-                    self,
-                    IssueKind.FIELD_NEVER_READ,
-                    path,
-                    variable,
-                    role,
-                    field_path=leaf_paths_by_key[leaf_key],
-                )
+            for leaf_key in sorted(state["write_leaf_keys_global"] - state["read_leaf_keys_global"]):
+                if leaf_key in write_leaf_keys:  # only report if this instance actually writes it
+                    leaf_path_str = state["leaf_paths_by_key"].get(leaf_key)
+                    if leaf_path_str is not None:
+                        _add_issue(
+                            self,
+                            IssueKind.FIELD_NEVER_READ,
+                            path,
+                            variable,
+                            role,
+                            field_path=leaf_path_str,
+                        )
 
 
 def iter_variables_for_datatype_field_analysis(
@@ -323,9 +423,14 @@ def iter_variables_for_datatype_field_analysis(
 
     for module_path, context in self.contexts_by_module_path.items():
         path = list(module_path)
+        moduleparameter_keys = set(getattr(context, "moduleparameter_keys", ()))
         param_mapping_keys = set(getattr(context, "param_mappings", {}).keys())
         for variable_name, variable in getattr(context, "env", {}).items():
-            role = "moduleparameter" if variable_name in param_mapping_keys else "localvariable"
+            role = (
+                "moduleparameter"
+                if variable_name in moduleparameter_keys or variable_name in param_mapping_keys
+                else "localvariable"
+            )
             root_owned = self.is_from_root_origin(
                 getattr(variable, "origin_file", None),
                 getattr(variable, "origin_lib", None),

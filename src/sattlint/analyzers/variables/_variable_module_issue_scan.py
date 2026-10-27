@@ -112,6 +112,7 @@ def _collect_variable_issues(
 
         if (
             collect_write_without_effect
+            and role == "localvariable"
             and usage.read
             and usage.written
             and not self.has_output_effect(variable, path)

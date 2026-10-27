@@ -148,7 +148,7 @@ class MinMaxValidator:
         return {t.casefold() for t in tokens if t}
 
     def _minmax_flags(self, name: str) -> tuple[bool, bool, bool]:
-        bound_suffix = re.search(r"(?:^|[\s_.\-])M([XN])$", name, re.IGNORECASE)
+        bound_suffix = re.search(r"(?:^|[\s_.\-])M([XN])(?=$|[\s_.\-])", name, re.IGNORECASE)
         if bound_suffix is not None:
             is_minimum = bound_suffix.group(1).casefold() == "n"
             return is_minimum, not is_minimum, False

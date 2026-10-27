@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from sattline_parser.models.ast_model import BasePicture
@@ -165,6 +166,50 @@ def _dynamic_path_candidates(
     return result.texts
 
 
+def _base_picture_source_path(base_picture: BasePicture, graph: ProjectGraph | None) -> Path | None:
+    if graph is not None:
+        root_origin_for_basepicture = getattr(graph, "root_origin_for_basepicture", None)
+        if callable(root_origin_for_basepicture):
+            root_origin = root_origin_for_basepicture(base_picture)
+            source_path = getattr(root_origin, "source_path", None)
+            if source_path is not None:
+                return Path(source_path)
+    origin_file = getattr(base_picture, "origin_file", None)
+    return Path(str(origin_file)) if origin_file else None
+
+
+def _picture_display_asset_exists(
+    base_picture: BasePicture,
+    path_text: str,
+    graph: ProjectGraph | None,
+) -> bool:
+    file_path = _base_picture_source_path(base_picture, graph)
+    if file_path is None:
+        return False
+    asset = path_text.strip()
+    if asset.casefold().startswith("scr:"):
+        asset = asset[4:].strip()
+    if not asset:
+        return False
+    normalized = asset.replace("\\", "/")
+    basename = Path(normalized).name
+    seen: set[str] = set()
+    for parent in (file_path.parent, *file_path.parents):
+        for candidate in (
+            parent / normalized,
+            parent / basename,
+            parent / "scr" / normalized,
+            parent / "scr" / basename,
+        ):
+            key = candidate.as_posix().casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            if candidate.exists():
+                return True
+    return False
+
+
 def resolve_picture_display_path(
     path_text: str,
     *,
@@ -185,6 +230,14 @@ def resolve_picture_display_path(
         )
 
     if is_unimplemented_picture_display_asset_path(stripped):
+        if _picture_display_asset_exists(base_picture, stripped, graph):
+            return PictureDisplayPathResolution(
+                path_text=path_text,
+                program_name=base_picture.header.name,
+                declaring_module_path=module_path,
+                resolved_module_path=module_path,
+                detail="asset exists; .emf/.wmf content inspection is not implemented",
+            )
         return PictureDisplayPathResolution(
             path_text=path_text,
             program_name=base_picture.header.name,

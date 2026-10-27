@@ -487,14 +487,6 @@ def _collect_typedef_issues(self: VariablesAnalyzer) -> None:
                 status_role, field_path = procedure_status
                 self._add_issue(IssueKind.PROCEDURE_STATUS, td_path, variable, role=status_role, field_path=field_path)
                 continue
-            if collect_write_without_effect and (
-                usage.read
-                and usage.written
-                and not self._has_output_effect(variable, td_path)
-                and not self._has_procedure_status_binding(variable)
-            ):
-                self._add_issue(IssueKind.WRITE_WITHOUT_EFFECT, td_path, variable, role=role)
-
         for module in moduletype.submodules or []:
             self._collect_issues_from_module(module, path=td_path, current_library=current_library)
 

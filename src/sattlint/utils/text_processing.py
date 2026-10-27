@@ -194,6 +194,11 @@ def _comment_code_indicators(comment_text: str) -> tuple[str, ...]:
     1. Fast regex filtering to skip obvious non-code
     2. Grammar parsing for accurate detection
     """
+    # Templates and prose often show an abbreviated control structure
+    # (``IF Cond THEN ... ENDIF``). That is documentation, not commented code.
+    if "..." in comment_text or "\u2026" in comment_text:
+        return ()
+
     # Step 1: Fast regex filter
     if not _has_code_syntax_hints(comment_text):
         return ()

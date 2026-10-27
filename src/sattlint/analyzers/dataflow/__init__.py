@@ -188,7 +188,6 @@ class DataflowAnalyzer(
                 UNKNOWN,
                 next_state,
                 module_path=context.module_path,
-                treat_as_root_overwrite=True,
             )
         return next_state
 

@@ -8,6 +8,7 @@ history, and CLI JSON output all consume one consistent shape.
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -206,7 +207,33 @@ def extract_report_findings(report: object, *, default_name: str) -> tuple[Analy
                 data=_issue_data_value(item),
             )
         )
-    return tuple(findings)
+    return _dedupe_findings(findings)
+
+
+def _dedupe_findings(findings: list[AnalysisFinding]) -> tuple[AnalysisFinding, ...]:
+    """Remove exact duplicate findings while preserving first-seen order.
+
+    Some analyzers walk both a module-type definition and its instances and can
+    emit the same finding twice with the same site. The report layer is the last
+    shared point before run history and JSON output, so dedupe here.
+    """
+    seen: set[tuple[object, ...]] = set()
+    unique: list[AnalysisFinding] = []
+    for finding in findings:
+        key: tuple[object, ...] = (
+            finding.kind,
+            finding.message,
+            finding.module_path,
+            finding.rule_id,
+            finding.explanation,
+            finding.suggestion,
+            json.dumps(finding.data, sort_keys=True, default=str),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(finding)
+    return tuple(unique)
 
 
 def _variable_issue_text(item: object, field_name: str) -> str | None:

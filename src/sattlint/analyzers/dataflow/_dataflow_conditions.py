@@ -58,6 +58,8 @@ class _DataflowConditionMixin(_DataflowConditionFactsMixin):
         self._report_expression_temporal_hazards(condition, context, module_path, state)
         result = self._evaluate_condition(condition, context, module_path, state)
         condition_text = self._expr_text(condition)
+        if condition_text.casefold() in {"true", "false"}:
+            return result
         if result is True:
             self._add_issue(
                 kind=f"{issue_prefix}.condition_always_true",

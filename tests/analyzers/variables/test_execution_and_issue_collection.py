@@ -734,7 +734,7 @@ def test_variable_issue_collection_collect_module_issue_helper_covers_remaining_
         "EffectParam",
         "moduleparameter",
         None,
-    ) in issues
+    ) not in issues
     assert (
         IssueKind.PROCEDURE_STATUS,
         ("Root", "Worker"),

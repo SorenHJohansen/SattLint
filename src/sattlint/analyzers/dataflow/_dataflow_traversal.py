@@ -310,19 +310,34 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
         base = f"STEP:{step.name}"
         self._push_site(f"{base}:ENTER")
         try:
-            current_state = self._analyze_block(step.code.enter or [], context, module_path, current_state)
+            current_state = self._analyze_block(
+                step.code.enter or [],
+                context,
+                module_path,
+                self._clear_write_effect_state(current_state),
+            )
         finally:
             self._pop_site()
 
         self._push_site(f"{base}:ACTIVE")
         try:
-            current_state = self._analyze_block(step.code.active or [], context, module_path, current_state)
+            current_state = self._analyze_block(
+                step.code.active or [],
+                context,
+                module_path,
+                self._clear_write_effect_state(current_state),
+            )
         finally:
             self._pop_site()
 
         self._push_site(f"{base}:EXIT")
         try:
-            current_state = self._analyze_block(step.code.exit or [], context, module_path, current_state)
+            current_state = self._analyze_block(
+                step.code.exit or [],
+                context,
+                module_path,
+                self._clear_write_effect_state(current_state),
+            )
         finally:
             self._pop_site()
 

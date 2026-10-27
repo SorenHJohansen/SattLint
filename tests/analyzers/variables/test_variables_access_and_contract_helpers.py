@@ -709,7 +709,7 @@ def test_dataflow_facade_and_scalar_helpers_cover_remaining_branches(monkeypatch
                 getattr(resolved, "state_access", None),
                 value,
                 tuple(cast(list[str], kwargs["module_path"])),
-                bool(kwargs["treat_as_root_overwrite"]),
+                bool(kwargs.get("treat_as_root_overwrite", False)),
             )
         )
         updated = dict(cast(dict[object, object], next_state))
@@ -728,7 +728,7 @@ def test_dataflow_facade_and_scalar_helpers_cover_remaining_branches(monkeypatch
 
     next_state = delegate_probe._apply_call_side_effects("Fn", ["skip", "old", "new"], context, state)
 
-    assert applied_writes == [(None, dataflow_module.UNKNOWN, ("Root",), True)]
+    assert applied_writes == [(None, dataflow_module.UNKNOWN, ("Root",), False)]
     assert next_state[("written",)] is dataflow_module.UNKNOWN
 
     write_probe: Any = DataflowAnalyzer.__new__(DataflowAnalyzer)

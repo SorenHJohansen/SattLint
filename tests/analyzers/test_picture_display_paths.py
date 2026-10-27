@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -33,6 +35,44 @@ ROOT_PATH_STEP = "0"
 
 def _varref(name: str) -> VarRef:
     return VarRef(name=name)
+
+
+def test_wmf_asset_that_exists_on_disk_is_not_reported_unresolved(tmp_path: Path) -> None:
+    (tmp_path / "nne_blue_web.wmf").write_bytes(b"asset")
+    bp = BasePicture(
+        header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+        name="Root",
+        moduledef=ModuleDef(),
+        origin_file=str(tmp_path / "Root.s"),
+    )
+
+    resolution = resolve_picture_display_path(
+        "scr:nne_blue_web.wmf",
+        base_picture=bp,
+        declaring_module_path=["Root"],
+    )
+
+    assert resolution.ok
+    assert resolution.failure_reason is None
+    assert resolution.resolved_module_path == ("Root",)
+
+
+def test_wmf_asset_that_is_missing_keeps_unimplemented_reason(tmp_path: Path) -> None:
+    bp = BasePicture(
+        header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+        name="Root",
+        moduledef=ModuleDef(),
+        origin_file=str(tmp_path / "Root.s"),
+    )
+
+    resolution = resolve_picture_display_path(
+        "scr:missing.wmf",
+        base_picture=bp,
+        declaring_module_path=["Root"],
+    )
+
+    assert not resolution.ok
+    assert resolution.failure_reason == "unimplemented_asset"
 
 
 def _string_length_call(name: str) -> FuncCall:

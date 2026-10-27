@@ -589,7 +589,6 @@ def test_variable_issue_collection_and_variables_cover_remaining_branches(monkey
     variable_issue_collection_impl._collect_issues_from_module(helper, mod, ["Root"])
     assert issues == [
         (IssueKind.PROCEDURE_STATUS, "status-role", "Field"),
-        (IssueKind.WRITE_WITHOUT_EFFECT, "moduleparameter", None),
     ]
 
     report = VariablesReport(
