@@ -3,21 +3,16 @@
 > Single AI control-plane entry for SattLint.
 > Supporting docs are references, not parallel authorities.
 
-## ⚠️ CODEBASE EXPLORATION: SEMBLE ONLY — ABSOLUTE REQUIREMENT
+## Public Repository
 
-**Semble is the ONLY acceptable tool for exploring the codebase. It is not a preference — it is a hard requirement.**
+- This repository is public. Describe behavior, not origin.
+- SattLint is unofficial. Use "SattLine" only to name the file format; do not imply affiliation with ABB.
 
-You MUST use Semble (`semble_search` / `semble_find_related`) for ALL codebase exploration and source discovery. This is the FIRST tool you reach for, always.
+## Codebase Exploration
 
-You MUST NOT use `rg`, `ripgrep`, `grep`, `read`, `glob`, `find`, `ls`, `cat`, or ANY similar search/read tool to explore the codebase. These are forbidden for discovery — do not reach for them, do not fall back to them, do not "just take a quick look."
-
-- **First attempt is ALWAYS Semble.** If a Semble search is possible for the query, use it. No exceptions.
-- **Never fall back to ripgrep/grep/read/glob** because Semble "seems slower" or you are "already holding a file."
-- **Navigate directly to Semble results** — do not re-search the same content with another tool.
-- **Use `find_related` to discover similar code** elsewhere in the same repo instead of grepping for the pattern.
-- If a Semble search returns nothing useful, refine the query or retry — only then consider a documented exception.
-
-This rule exists because Semble is the indexed, accurate, and sanctioned way to explore this repository. The forbidden tools bypass that index and produce stale or incomplete results.
+- Use Semble when it makes sense: discovery, symbol lookup, and similar-code search.
+- For targeted reads, exact files, or when Semble misses, use `read`, `grep`, and `glob`.
+- Prefer the cheapest reliable tool; do not force Semble for a one-line lookup.
 
 ## Quick Reference
 
@@ -62,7 +57,6 @@ This rule exists because Semble is the indexed, accurate, and sanctioned way to 
 - Treat 100% focused coverage as the bar for the touched slice (core-beliefs #15).
 - Use repo venv commands or existing VS Code tasks for executable proof.
 - Use markdown links for workspace file and line references.
-- Never use `python3 - << 'PY'` heredocs through the VS Code terminal tools.
 
 ## Workflow
 
@@ -72,28 +66,6 @@ This rule exists because Semble is the indexed, accurate, and sanctioned way to 
 - Run the first focused validation immediately after the first substantive edit.
 - Widen to Ruff, Pyright, `ruff format --check`, or pre-commit only after the local check passes.
 
-## Restricted Commands — Hard Prohibition, NO Workarounds
-
-**A denied command is a hard prohibition, not a puzzle to solve.**
-
-This repository allows ONLY the read-only git commands `git log`, `git diff`, `git show`, and `git branch -a`; all other `git` commands (`git`, `git *`, `git*`) are denied, plus `sudo`, `rm`, and `pacman`/`yay`. If any command is denied, the denial is the final answer — the action should NEVER be performed by the AI. The user will run the command themselves if it is needed.
-
-You MUST NOT:
-
-- Find an alternate way to run the same operation (no `python -c` wrappers, no `subprocess` calls, no shell redirects that emulate a blocked command)
-- Use `git show HEAD:<path> > <path>`, `git archive`, `git diff | apply`, or any other technique as a substitute for a blocked `git checkout` / `git restore` / `git reset` / `git stash`
-- Reconstruct or emulate git operations through any other tool
-- Ask the user to loosen permissions, or try the same command "a different way"
-- Invent creative "safe" variants of a denied command
-
-Instead:
-
-1. **STOP** the task immediately.
-2. Give the user the exact command to run themselves in their terminal.
-3. Let the user execute it and report back. Never continue the operation by other means.
-
-Only `trash-put` is an allowed alternative — and only because it is explicitly listed as `allow` in the permission config for `rm` — and the four read-only git commands above. Anything not explicitly allowed is denied.
-
 ## Guardrails
 
 - Do not broaden changes aimlessly.
@@ -101,14 +73,13 @@ Only `trash-put` is an allowed alternative — and only because it is explicitly
 - Do not preserve temporary compatibility seams unless the phase plan still requires them.
 - Do not keep parallel AI workflow docs with independent rules.
 - Do not skip focused validation when a narrower executable check exists.
-- Do NOT invoke `rg`, `grep`, `read`, `glob`, `find`, `ls`, `cat`, or similar tools for codebase exploration — Semble is the only sanctioned tool (see top of file).
-- Never use `git commit --no-verify` or `git push --no-verify`.
+- Use Semble when it makes sense; targeted reads and exact lookups may use `read`, `grep`, `glob`, or `find`.
 
-## Bulk Edit Prohibition
+## Internal Identifiers
 
-- Do NOT use `sed`, `find ... -exec`, Python one-liners, or Task agents to make bulk code changes across multiple files.
-- Do NOT write scripts that modify source or test code. Ever.
-- Every code change must be made individually with the Edit tool, with verification after each edit.
-- For broad multi-file changes, state the plan and confirm scope before editing.
+- Never include internal identifiers in anything a human reads: chat replies, code comments, docstrings, commit messages, pull request descriptions, GitHub comments, documentation, fixtures, test names, and user-facing output.
+- Internal identifiers include private symbol names, internal rule IDs and finding kinds, internal enum values, ticket or issue numbers, build numbers, code addresses, and non-public customer, library, or project names.
+- Describe behavior in plain language and use the documented user-facing label. Keep machine IDs inside machine-readable JSON when a consumer needs them.
+- Public names are fine: repository file paths, public API names, and documented labels.
 
-Last Updated: 2026-09-08
+Last Updated: 2026-10-31
