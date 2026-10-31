@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import cast
 
+from sattline_parser.builtins import get_function_signature
 from sattline_parser.models.ast_model import (
     Assignment,
     BasePicture,
@@ -21,7 +22,6 @@ from sattline_parser.models.expressions import FuncCallStmt, VarRef
 from ...grammar import constants as const
 from ...resolution.scope import ScopeContext
 from .._dependency_usage_scope_support import DependencyUsageScopeSupportMixin
-from ..sattline_builtins import get_function_signature
 from .ast_node_helpers import (
     iter_branch_pairs as _iter_branch_pairs,
 )

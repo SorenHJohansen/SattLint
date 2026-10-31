@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+from sattline_parser.builtins import get_function_signature
 from sattline_parser.models.ast_model import Variable
 from sattline_parser.models.expressions import VarRef
 
 from ...grammar import constants as const
-from ..sattline_builtins import get_function_signature
 from ._reset_path_state import WriteKey, WriteMap
 
 

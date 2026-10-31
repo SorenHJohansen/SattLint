@@ -14,6 +14,7 @@ from collections.abc import Sequence as SequenceABC
 from dataclasses import dataclass
 from typing import Any, cast
 
+from sattline_parser.builtins import get_function_signature
 from sattline_parser.models.ast_model import (
     BasePicture,
     ModuleCode,
@@ -34,7 +35,6 @@ from sattline_parser.models.expressions import Assignment, FuncCallStmt, VarRef
 from ...grammar import constants as const
 from ...resolution.common import resolve_moduletype_def_strict
 from ...resolution.scope import ScopeContext
-from ..sattline_builtins import get_function_signature
 from ..shared.ast_node_helpers import object_tuple as _object_tuple
 from ..shared.ast_node_helpers import sequence_as_list as _sequence_as_list
 from ..shared.ast_node_helpers import statement_children as _statement_children

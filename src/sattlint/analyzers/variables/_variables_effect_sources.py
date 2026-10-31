@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from sattline_parser.builtins import get_function_signature
 from sattline_parser.models.expressions import VarRef
 
 from sattlint.resolution.scope import ScopeContext
 
 from ...grammar import constants as const
-from ..sattline_builtins import get_function_signature
 from ..shared.ast_node_helpers import (
     object_list as _object_list,
 )

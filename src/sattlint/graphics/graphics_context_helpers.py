@@ -13,7 +13,7 @@ from sattline_parser.models.ast_model import BasePicture
 from sattline_parser.preprocessing import is_compressed, preprocess_sl_text
 
 from ..models.project_graph import ProjectGraph
-from ..validation import validate_transformed_basepicture
+from ..validation.policy import validate_basepicture_strict
 from ..validation.shared import ValidationNotice
 from .picture_display_paths import (
     PictureDisplayOccurrence,
@@ -108,7 +108,7 @@ def load_picture_display_source_context(source_path: Path) -> BasePicture | None
         if is_compressed(source_text):
             source_text, _ = preprocess_sl_text(source_text)
         basepic = parser_core_parse_source_text(source_text)
-        validate_transformed_basepicture(
+        validate_basepicture_strict(
             basepic,
             allow_old_state_assignment=False,
             allow_unresolved_external_datatypes=False,

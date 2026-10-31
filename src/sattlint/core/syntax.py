@@ -28,12 +28,10 @@ from ..graphics.picture_display_paths import correlate_picture_display_records
 from ..graphics.validation import GraphicsValidationResult, validate_graphics_file
 from ..utils.text_processing import find_disallowed_comments
 from ..validation import (
-    LOCAL_STRUCTURE_VALIDATION_SCHEMA_VERSION,
     RawSourceValidationError,
     StructuralValidationError,
-    validate_transformed_basepicture,
-    validate_transformed_basepicture_locally,
 )
+from ..validation.policy import validate_basepicture_strict
 from ..validation.shared import ValidationNotice, ValidationWarning, coerce_validation_notice
 
 
@@ -168,7 +166,7 @@ def parse_source_text(
     transformer: SLTransformer | None = None,
     debug: Callable[[str], None] | None = None,
     parser_core_parse_source_text_fn: Callable[..., BasePicture] = parser_core_parse_source_text,
-    validate_transformed_basepicture_fn: Callable[[BasePicture], None] = validate_transformed_basepicture,
+    validate_transformed_basepicture_fn: Callable[[BasePicture], None] = validate_basepicture_strict,
 ) -> BasePicture:
     basepic = parser_core_parse_source_text_fn(
         src,
@@ -187,7 +185,7 @@ def parse_source_file(
     transformer: SLTransformer | None = None,
     debug: Callable[[str], None] | None = None,
     parser_core_parse_source_file_fn: Callable[..., BasePicture] = parser_core_parse_source_file,
-    validate_transformed_basepicture_fn: Callable[[BasePicture], None] = validate_transformed_basepicture,
+    validate_transformed_basepicture_fn: Callable[[BasePicture], None] = validate_basepicture_strict,
 ) -> BasePicture:
     basepic = parser_core_parse_source_file_fn(
         code_path,
@@ -197,40 +195,6 @@ def parse_source_file(
     )
     validate_transformed_basepicture_fn(basepic)
     return basepic
-
-
-_LOCAL_VALIDATION_MARKER_ATTR = "_sattlint_local_validation_schema"
-LOCAL_VALIDATION_MARKER_ATTR = _LOCAL_VALIDATION_MARKER_ATTR
-
-
-def has_current_local_validation(basepic: BasePicture) -> bool:
-    return getattr(basepic, _LOCAL_VALIDATION_MARKER_ATTR, None) == LOCAL_STRUCTURE_VALIDATION_SCHEMA_VERSION
-
-
-def mark_local_validation(basepic: BasePicture) -> BasePicture:
-    setattr(basepic, _LOCAL_VALIDATION_MARKER_ATTR, LOCAL_STRUCTURE_VALIDATION_SCHEMA_VERSION)
-    return basepic
-
-
-def ensure_local_validation(
-    basepic: BasePicture,
-    *,
-    warning_sink: list[ValidationWarning] | None = None,
-    has_current_local_validation_fn: Callable[[BasePicture], bool] = has_current_local_validation,
-    mark_local_validation_fn: Callable[[BasePicture], BasePicture] = mark_local_validation,
-    validate_transformed_basepicture_locally_fn: Callable[..., None] = validate_transformed_basepicture_locally,
-) -> bool:
-    if has_current_local_validation_fn(basepic):
-        return False
-    validate_transformed_basepicture_locally_fn(
-        basepic,
-        allow_unresolved_external_datatypes=True,
-        enforce_unique_submodule_names=False,
-        allow_parameterless_module_mappings=True,
-        warning_sink=None if warning_sink is None else warning_sink.append,
-    )
-    mark_local_validation_fn(basepic)
-    return True
 
 
 def extract_error_position(exc: Exception) -> tuple[int | None, int | None]:
@@ -249,7 +213,7 @@ def validate_single_file_syntax(
     load_source_text_fn: Callable[..., str] = load_source_text,
     find_disallowed_comments_fn: Callable[[str], list[Any]] = find_disallowed_comments,
     parser_core_parse_source_text_fn: Callable[..., BasePicture] = parser_core_parse_source_text,
-    validate_transformed_basepicture_fn: Callable[..., None] = validate_transformed_basepicture,
+    validate_transformed_basepicture_fn: Callable[..., None] = validate_basepicture_strict,
     describe_parse_error_fn: Callable[[UnexpectedInput, str], Any] = describe_parse_error,
     validate_graphics_file_fn: Callable[[Path], GraphicsValidationResult] = validate_graphics_file,
     graphics_source_context_path_fn: Callable[[Path], Path | None] = graphics_source_context_path,

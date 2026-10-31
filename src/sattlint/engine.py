@@ -23,6 +23,7 @@ from .core.syntax import (
     graphics_ext_candidates,
     normalize_code_mode,
     raise_syntax_validation_failure,
+    validate_basepicture_strict,
 )
 from .core.syntax import (
     extract_error_position as _extract_error_position,
@@ -67,13 +68,7 @@ from .project.parser_adapter import (
     load_parser_project,
 )
 from .utils.text_processing import find_disallowed_comments
-from .validation import (
-    LOCAL_STRUCTURE_VALIDATION_SCHEMA_VERSION,
-    StructuralValidationError,
-    validate_transformed_basepicture,
-    validate_transformed_basepicture_dependency_context,
-    validate_transformed_basepicture_locally,
-)
+from .validation import StructuralValidationError
 from .validation.shared import ValidationNotice, coerce_validation_notice
 
 
@@ -148,7 +143,7 @@ def parse_source_text(
         transformer=transformer,
         debug=debug,
         parser_core_parse_source_text_fn=parser_core_parse_source_text,
-        validate_transformed_basepicture_fn=validate_transformed_basepicture,
+        validate_transformed_basepicture_fn=validate_basepicture_strict,
     )
 
 
@@ -183,7 +178,7 @@ def validate_single_file_syntax(
         load_source_text_fn=_load_source_text,
         find_disallowed_comments_fn=find_disallowed_comments,
         parser_core_parse_source_text_fn=parser_core_parse_source_text,
-        validate_transformed_basepicture_fn=validate_transformed_basepicture,
+        validate_transformed_basepicture_fn=validate_basepicture_strict,
         describe_parse_error_fn=describe_parse_error,
         validate_graphics_file_fn=validate_graphics_file,
         graphics_source_context_path_fn=_graphics_source_context_path,
@@ -202,7 +197,6 @@ def merge_project_basepicture(root_bp: BasePicture, graph: ProjectGraph) -> Base
 
 
 __all__ = [
-    "LOCAL_STRUCTURE_VALIDATION_SCHEMA_VERSION",
     "CircularDependencyError",
     "CodeMode",
     "DependencyVersionCompatibilityError",
@@ -226,9 +220,7 @@ __all__ = [
     "parse_source_text",
     "raise_syntax_validation_failure",
     "resolve_graphics_companion_path",
+    "validate_basepicture_strict",
     "validate_loader_config",
     "validate_single_file_syntax",
-    "validate_transformed_basepicture",
-    "validate_transformed_basepicture_dependency_context",
-    "validate_transformed_basepicture_locally",
 ]

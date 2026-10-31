@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, cast
 
+from sattline_parser.builtins import get_function_signature
 from sattline_parser.formatting import formatter as formatter_module
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -20,7 +21,6 @@ from ...grammar import constants as const
 from ...resolution.scope import ScopeContext
 from ...resolution.type_graph import TypeGraph
 from ..framework import AnalysisSharedArtifacts, AnalyzerLifecycleMixin, Issue, SimpleReport
-from ..sattline_builtins import get_function_signature
 from ..shared._array_builtins import get_dynamic_array_builtin_spec
 from ..shared.variable_utils import matches_root_origin
 from ._dataflow_common import (

@@ -8,20 +8,20 @@ from typing import Any, ClassVar, Protocol, cast
 
 from sattline_parser.models.ast_model import ParameterMapping, Simple_DataType, Variable
 from sattline_parser.models.expressions import VarRef
+from sattline_parser.validation.typing import (
+    infer_literal_datatype as _infer_literal_datatype,
+)
+from sattline_parser.validation.typing import (
+    resolve_variable_field_datatype as _resolve_variable_field_datatype,
+)
+from sattline_parser.validation.typing import (
+    split_dotted_name as _split_dotted_name,
+)
 
 from ...grammar import constants as const
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ...resolution import TypeGraph
 from ...resolution.common import varname_full
-from ...validation.type_helpers import (
-    infer_literal_datatype as _infer_literal_datatype,
-)
-from ...validation.type_helpers import (
-    resolve_variable_field_datatype as _resolve_variable_field_datatype,
-)
-from ...validation.type_helpers import (
-    split_dotted_name as _split_dotted_name,
-)
 
 log = logging.getLogger("SattLint")
 
