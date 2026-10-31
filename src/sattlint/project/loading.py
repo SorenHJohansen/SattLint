@@ -10,6 +10,7 @@ from time import perf_counter
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
+from sattline_parser.project import LoadValidation
 
 from .. import cache as cache_module
 from ..config.types import ConfigDict
@@ -168,9 +169,10 @@ def _load_parser_graph(
     *,
     strict: bool,
     lib_names: dict[str, str],
+    validate: LoadValidation = LoadValidation.FULL,
 ) -> ProjectGraph:
     graph = ProjectGraph()
-    project = load_parser_project(binding, [target_name], strict=strict)
+    project = load_parser_project(binding, [target_name], strict=strict, validate=validate)
     convert_project_into_graph(
         project, graph, binding=binding, root_name=target_name, strict=strict, lib_names=lib_names
     )
@@ -392,7 +394,13 @@ def load_program_ast(
     binding = build_parser_binding(cfg, status_update_fn=status_update_fn)
 
     lib_names: dict[str, str] = {}
-    graph = _load_parser_graph(binding, program_name, strict=False, lib_names=lib_names)
+    graph = _load_parser_graph(
+        binding,
+        program_name,
+        strict=False,
+        lib_names=lib_names,
+        validate=LoadValidation.NONE,
+    )
     root_bp = graph.ast_by_name.get(program_name)
     if not root_bp:
         raise RuntimeError(f"Program '{program_name}' not parsed. Resolved: {list(graph.ast_by_name.keys())}")

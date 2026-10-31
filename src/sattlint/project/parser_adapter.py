@@ -39,31 +39,21 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from time import perf_counter
 
-from sattline_parser.models.ast_model import BasePicture
 from sattline_parser.project import (
     LoadMode,
+    LoadValidation,
     ProjectLookup,
     SattLineProgram,
     SattLineProject,
 )
 from sattline_parser.project import read_dependency_names as parser_read_dependency_names
+from sattline_parser.validation import Diagnostic, DiagnosticCode, DiagnosticSeverity
 
-from ..core.syntax import (
-    CodeMode,
-    mark_local_validation,
-)
-from ..core.syntax import (
-    has_current_local_validation as _has_current_local_validation,
-)
+from ..core.syntax import CodeMode
 from ..graphics.graphics_helpers import attach_graphics_companion
 from ..models.project_graph import ProjectGraph
-from ..resolution.dependency_versions import collect_dependency_version_conflicts
-from ..validation import (
-    StructuralValidationError,
-    validate_transformed_basepicture,
-    validate_transformed_basepicture_dependency_context,
-)
-from ..validation.shared import ValidationWarning
+from ..validation import StructuralValidationError
+from ..validation.shared import ValidationNotice
 from .loading_support import (
     record_project_failure as _record_project_failure,
 )
@@ -73,8 +63,21 @@ from .loading_support import (
 
 LoadStageTimingSink = Callable[[str, str, float], None]
 
+#: Parser rules SattLint deliberately does not enforce. Duplicate sibling names
+#: are accepted here because the version-drift analyzer fixtures use same-name
+#: siblings with different datecodes; the old adapter passed
+#: ``enforce_unique_submodule_names=False`` for the same reason.
+_SUPPRESSED_DIAGNOSTIC_CODES = frozenset(
+    {
+        DiagnosticCode.DUPLICATE_SIBLING_SUBMODULE,
+        DiagnosticCode.UNDEFINED_VARIABLE,
+        DiagnosticCode.UNKNOWN_DATATYPE_NAME,
+        DiagnosticCode.UNKNOWN_MODULETYPE_NAME,
+    }
+)
 
-def _project_memo_factory() -> dict[tuple[str, bool], SattLineProject]:
+
+def _project_memo_factory() -> dict[tuple[str, bool, str], SattLineProject]:
     return {}
 
 
@@ -139,7 +142,7 @@ class ParserProjectBinding:
     # binding lifetime. These are the analogues of the old loader shell's
     # ``_visited`` / ``_lib_by_name`` / status dedupe, and are excluded from
     # equality/repr so the frozen binding stays a value-like configuration.
-    _project_memo: dict[tuple[str, bool], SattLineProject] = field(
+    _project_memo: dict[tuple[str, bool, str], SattLineProject] = field(
         default_factory=_project_memo_factory, compare=False, repr=False
     )
     _indexed_names: set[str] = field(default_factory=_indexed_names_factory, compare=False, repr=False)
@@ -168,6 +171,7 @@ def load_parser_project(
     targets: Sequence[str],
     *,
     strict: bool,
+    validate: LoadValidation = LoadValidation.FULL,
 ) -> SattLineProject:
     """Load ``targets`` through the parser, hermetically (no parser-side cache).
 
@@ -181,14 +185,14 @@ def load_parser_project(
     parsed only once.
     """
     if len(targets) == 1:
-        memo_key = (targets[0].casefold(), strict)
+        memo_key = (targets[0].casefold(), strict, validate.value)
         memoized = binding._project_memo.get(memo_key)
         if memoized is not None:
             return memoized
-        project = _load_project(binding, targets, strict=strict)
+        project = _load_project(binding, targets, strict=strict, validate=validate)
         binding._project_memo[memo_key] = project
         return project
-    return _load_project(binding, targets, strict=strict)
+    return _load_project(binding, targets, strict=strict, validate=validate)
 
 
 def _load_project(
@@ -196,7 +200,9 @@ def _load_project(
     targets: Sequence[str],
     *,
     strict: bool,
+    validate: LoadValidation,
 ) -> SattLineProject:
+    effective_validate = LoadValidation.NONE if binding.refresh_mode == "ast-only" else validate
     return SattLineProject.load(
         roots=binding.roots,
         mode=binding.parser_mode(),
@@ -204,6 +210,7 @@ def _load_project(
         strict=strict,
         debug=binding.debug_fn,
         cache_dir=None,
+        validate=effective_validate,
     )
 
 
@@ -254,7 +261,12 @@ def convert_project_into_graph(
     A target that the parser dropped (no code found) is recorded as missing so
     ``load_project``'s target-error report keeps its ``missing`` payload.
     """
-    _raise_on_cycle(project)
+    cycles = project.cycles()
+    if cycles:
+        cycle = cycles[0]
+        registry = project.programs()
+        path = [registry[step].name if step in registry else step for step in cycle]
+        raise CircularDependencyError(path[0], path[:-1])
     local_lib_names = {} if lib_names is None else lib_names
     indexed_names = binding._indexed_names
     root_names = [root_name, *extra_roots]
@@ -299,28 +311,9 @@ def _index_program(
     if code_path is None:
         return
     is_root = name.casefold() in root_keys
-    validation_warnings: list[ValidationWarning] = []
     try:
-        try:
-            _emit_status(binding, f"Loading {name}: validating {code_path.name}")
-            validation_started_at = perf_counter()
-            mark_local_validation(program.code)
-            _validate_program(
-                program.code,
-                graph,
-                is_root=is_root,
-                strict=strict,
-                refresh_mode=binding.refresh_mode,
-                warning_sink=validation_warnings.append,
-            )
-            if binding.stage_timing_sink is not None:
-                binding.stage_timing_sink(name, "validate", perf_counter() - validation_started_at)
-        except StructuralValidationError as ex:
-            if is_root:
-                raise
-            _record_project_warning(graph, name, f"validation warning: {ex}")
-        for warning in validation_warnings:
-            _record_project_warning(graph, name, warning)
+        _emit_status(binding, f"Loading {name}: validating {code_path.name}")
+        _apply_diagnostics(program, graph, is_root=is_root, strict=strict)
         _emit_status(binding, f"Loading {name}: validation complete")
         graph.ast_by_name[name] = program.code
         indexed_names.add(name.casefold())
@@ -343,20 +336,8 @@ def _index_program(
             status_callback=_status_cb,
         )
         _emit_status(binding, f"Loading {name}: recording library")
-        library_name = _library_name_for_path(code_path, binding)
+        library_name = program.library or code_path.parent.name
         lib_names[name.casefold()] = library_name
-        _emit_status(binding, f"Loading {name}: checking version conflicts")
-        version_conflicts = collect_dependency_version_conflicts(
-            graph,
-            program.code,
-            library_name=library_name,
-            source_path=code_path,
-        )
-        if version_conflicts:
-            if strict:
-                raise DependencyVersionCompatibilityError(version_conflicts)
-            for conflict in version_conflicts:
-                _record_project_warning(graph, name, f"version compatibility warning: {conflict}")
         _emit_status(binding, f"Loading {name}: adding deps")
         dep_libs = [
             lib
@@ -370,115 +351,67 @@ def _index_program(
         if binding.stage_timing_sink is not None:
             binding.stage_timing_sink(name, "index", perf_counter() - index_started_at)
     except Exception as ex:
-        for warning in validation_warnings:
-            _record_project_warning(graph, name, warning)
         if strict:
             raise
         _record_project_failure(graph, name, ex)
 
 
-def _validate_program(
-    bp: BasePicture,
+def _apply_diagnostics(
+    program: SattLineProgram,
     graph: ProjectGraph,
     *,
     is_root: bool,
     strict: bool,
-    refresh_mode: str,
-    warning_sink: Callable[[ValidationWarning], None],
 ) -> None:
-    external_datatypes = () if refresh_mode == "ast-only" else tuple(graph.datatype_defs.values())
-    external_moduletype_defs = () if refresh_mode == "ast-only" else tuple(graph.moduletype_defs.values())
-    if not is_root and _has_current_local_validation(bp):
-        validate_transformed_basepicture_dependency_context(
-            bp,
-            external_datatypes=external_datatypes,
-            external_moduletype_defs=external_moduletype_defs,
-            allow_parameterless_module_mappings=True,
-            warn_unknown_parameter_targets=refresh_mode != "ast-only",
-            warn_incompatible_parameter_mappings=refresh_mode != "ast-only",
-            warning_sink=warning_sink,
-        )
-    else:
-        validate_transformed_basepicture(
-            bp,
-            external_datatypes=external_datatypes,
-            external_moduletype_defs=external_moduletype_defs,
-            allow_unresolved_external_datatypes=True if refresh_mode == "ast-only" else not strict,
-            enforce_unique_submodule_names=False,
-            allow_parameterless_module_mappings=True,
-            warn_unknown_parameter_targets=refresh_mode != "ast-only",
-            warn_incompatible_parameter_mappings=refresh_mode != "ast-only",
-            warning_sink=warning_sink,
-        )
+    """Translate the parser's diagnostics into SattLint policy outcomes.
 
+    A datecode conflict is fatal under ``strict`` (the old loader raised it for
+    every program). A root program's validation error is fatal; the same error
+    on a dependency becomes a notice. Everything else is a notice.
+    """
+    conflicts = [item for item in program.diagnostics if item.code is DiagnosticCode.DATECODE_CONFLICT]
+    if conflicts and strict:
+        raise DependencyVersionCompatibilityError([item.message for item in conflicts])
 
-def _library_name_for_path(code_path: Path, binding: ParserProjectBinding) -> str:
-    resolved_path = _resolved_path(code_path)
-    program_root = _resolved_path(binding.program_dir)
-    if _is_relative_to(resolved_path, program_root):
-        return program_root.name
-    for library_dir in binding.other_lib_dirs:
-        resolved_library_dir = _resolved_path(library_dir)
-        if _is_relative_to(resolved_path, resolved_library_dir):
-            return resolved_library_dir.name
-    if binding.abb_lib_dir is not None:
-        resolved_abb_root = _resolved_path(binding.abb_lib_dir)
-        if _is_relative_to(resolved_path, resolved_abb_root):
-            return resolved_abb_root.name
-    return resolved_path.parent.name
-
-
-def _resolved_path(path: Path) -> Path:
-    try:
-        return path.resolve()
-    except OSError:
-        return path
-
-
-def _is_relative_to(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-    except ValueError:
-        return False
-    return True
-
-
-def _raise_on_cycle(project: SattLineProject) -> None:
-    registry = project.programs()
-    original_name = {key: program.name for key, program in registry.items()}
-    adjacency = {
-        key: [dependency for dependency in program.dependencies if dependency.casefold() in registry]
-        for key, program in registry.items()
-    }
-    state = dict.fromkeys(registry, _WHITE)
-    for start in registry:
-        if state[start] != _WHITE:
+    first_error: Diagnostic | None = None
+    for diagnostic in program.diagnostics:
+        if diagnostic.code in _SUPPRESSED_DIAGNOSTIC_CODES:
             continue
-        state[start] = _GRAY
-        stack: list[tuple[str, int]] = [(start, 0)]
-        while stack:
-            key, next_index = stack[-1]
-            dependencies = adjacency[key]
-            if next_index >= len(dependencies):
-                state[key] = _BLACK
-                stack.pop()
+        notice = _notice(diagnostic)
+        if diagnostic.code is DiagnosticCode.DATECODE_CONFLICT:
+            _record_project_warning(graph, program.name, notice)
+            continue
+        if diagnostic.severity is DiagnosticSeverity.ERROR:
+            if is_root:
+                if first_error is None:
+                    first_error = diagnostic
                 continue
-            stack[-1] = (key, next_index + 1)
-            child = dependencies[next_index]
-            child_key = child.casefold()
-            if state[child_key] == _GRAY:
-                cycle_path = [original_name[entry[0]] for entry in stack]
-                cycle_keys = [entry[0] for entry in stack]
-                cycle_start = cycle_keys.index(child_key)
-                raise CircularDependencyError(child, cycle_path[cycle_start:])
-            if state[child_key] == _WHITE:
-                state[child_key] = _GRAY
-                stack.append((child_key, 0))
+            _record_project_warning(graph, program.name, notice)
+            continue
+        _record_project_warning(graph, program.name, notice)
+
+    if first_error is not None:
+        raise _structural_error(first_error)
 
 
-_WHITE = 0
-_GRAY = 1
-_BLACK = 2
+def _notice(diagnostic: Diagnostic) -> ValidationNotice:
+    span = diagnostic.span
+    return ValidationNotice(
+        message=diagnostic.message,
+        line=None if span is None else span.line,
+        column=None if span is None else span.column,
+        length=None if span is None else max(span.end - span.start, 0),
+    )
+
+
+def _structural_error(diagnostic: Diagnostic) -> StructuralValidationError:
+    notice = _notice(diagnostic)
+    return StructuralValidationError(
+        notice.message,
+        line=notice.line,
+        column=notice.column,
+        length=notice.length,
+    )
 
 
 def _record_missing_dependencies(
@@ -527,7 +460,6 @@ __all__ = [
     "find_code_path",
     "find_dependency_path",
     "load_parser_project",
-    "mark_local_validation",
     "read_dependency_names",
     "record_missing_library",
 ]
