@@ -344,8 +344,8 @@ def test_dataflow_non_state_multi_site_fork_self_loop() -> None:
                                 enter=[_assign("SharedFlag", True)],
                                 exit=[_assign("Sink", _varref("SharedFlag"))],
                             ),
+                            fork=SFCFork(targets=("Loop",)),
                         ),
-                        SFCFork(targets=("Loop",)),
                     ]
                 )
             ],

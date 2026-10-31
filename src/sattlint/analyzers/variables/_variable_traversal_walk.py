@@ -14,8 +14,6 @@ from sattline_parser.models.ast_model import (
     ModuleCode,
     Sequence,
     SFCAlternative,
-    SFCBreak,
-    SFCFork,
     SFCParallel,
     SFCStep,
     SFCSubsequence,
@@ -141,8 +139,6 @@ def _walk_seq_nodes(
             continue
         if isinstance(node, SFCTransitionSub):
             self._walk_seq_nodes(node.body or [], env, path, context)
-            continue
-        if isinstance(node, (SFCFork, SFCBreak)):
             continue
 
 

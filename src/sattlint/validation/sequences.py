@@ -13,7 +13,6 @@ from sattline_parser.models.ast_model import (
     ModuleCode,
     Sequence,
     SFCAlternative,
-    SFCBreak,
     SFCFork,
     SFCParallel,
     SFCStep,
@@ -306,15 +305,38 @@ def validate_step_auto_variable_refs(  # noqa: PLR0915
 
 
 def parallel_branch_trailer(node: object) -> str | None:
+    fork = getattr(node, "fork", None)
+    if isinstance(fork, SFCFork):
+        return "SEQBREAK" if fork.has_break else "SEQFORK"
     if isinstance(node, SFCTransition):
         return "SEQTRANSITION"
     if isinstance(node, SFCTransitionSub):
         return "SUBSEQTRANSITION"
-    if isinstance(node, SFCFork):
-        return "SEQFORK"
-    if isinstance(node, SFCBreak):
-        return "SEQBREAK"
     return None
+
+
+def _validate_fork_targets(
+    fork: SFCFork,
+    context: str,
+    *,
+    validate_identifier: Callable[[str | None, str], None],
+    labels: dict[str, str],
+    label_counts: dict[str, int],
+    module_labels: frozenset[str],
+    module_label_counts: dict[str, int] | None,
+) -> None:
+    for target in fork.targets:
+        validate_identifier(target, f"{context} fork target")
+        target_key = target.casefold()
+        if target_key not in labels and target_key not in module_labels:
+            raise StructuralValidationError(
+                f"{context} has SEQFORK target {target!r} that does not exist in the sequence or module"
+            )
+        if label_counts.get(target_key, 0) > 1 or (module_label_counts or {}).get(target_key, 0) > 1:
+            raise StructuralValidationError(
+                f"{context} has ambiguous SEQFORK target {target!r}; "
+                "that label is declared multiple times in the sequence or module"
+            )
 
 
 def _iter_expression_children(node: object) -> tuple[object, ...]:
@@ -575,6 +597,19 @@ def validate_sequence_nodes(  # noqa: PLR0915
         )
 
     for index, node in enumerate(nodes):
+        fork = getattr(node, "fork", None)
+        terminates_path = isinstance(fork, SFCFork)
+        if terminates_path:
+            _validate_fork_targets(
+                fork,
+                context,
+                validate_identifier=validate_identifier,
+                labels=labels,
+                label_counts=label_counts,
+                module_labels=module_labels,
+                module_label_counts=module_label_counts,
+            )
+
         if isinstance(node, SFCStep):
             validate_identifier(node.name, f"{context} step")
             if node.kind == "init":
@@ -599,6 +634,9 @@ def validate_sequence_nodes(  # noqa: PLR0915
             previous_unit_name = node.name
             previous_unit_kind = "step"
             previous_transition_name = None
+            if terminates_path:
+                previous_unit_name = None
+                previous_unit_kind = None
             continue
 
         previous_unit_name = None
@@ -634,9 +672,9 @@ def validate_sequence_nodes(  # noqa: PLR0915
         elif isinstance(node, SFCParallel):
             for branch_index, branch in enumerate(node.branches, start=1):
                 recurse(cast(list[object], branch), f"{context} parallel branch {branch_index}")
-                # A parallel branch may end with a control-transfer element (SEQFORK/SEQBREAK),
-                # which the grammar permits anywhere in a sequence body. Only a branch that
-                # terminates on a bare transition is structurally incomplete.
+                # A parallel branch may end with a transition or step carrying a
+                # SEQFORK suffix (optionally closed by SEQBREAK). Only a branch
+                # that terminates on a bare transition is structurally incomplete.
                 if branch:
                     trailer = parallel_branch_trailer(branch[-1])
                     if trailer in ("SEQTRANSITION", "SUBSEQTRANSITION"):
@@ -646,21 +684,11 @@ def validate_sequence_nodes(  # noqa: PLR0915
                         )
             previous_unit_name = "ENDPARALLEL"
             previous_unit_kind = "parallel block"
-        elif isinstance(node, SFCFork):
-            for target in node.targets:
-                validate_identifier(target, f"{context} fork target")
-                target_key = target.casefold()
-                if target_key not in labels and target_key not in module_labels:
-                    raise StructuralValidationError(
-                        f"{context} has SEQFORK target {target!r} that does not exist in the sequence or module"
-                    )
-                if label_counts.get(target_key, 0) > 1 or (module_label_counts or {}).get(target_key, 0) > 1:
-                    raise StructuralValidationError(
-                        f"{context} has ambiguous SEQFORK target {target!r}; "
-                        "that label is declared multiple times in the sequence or module"
-                    )
-        elif isinstance(node, SFCBreak):
-            continue
+
+        if terminates_path:
+            previous_unit_name = None
+            previous_unit_kind = None
+            previous_transition_name = None
 
     if require_init_step and init_steps != 1 and not (missing_initial_init_step and init_steps == 0):
         warn_or_raise(

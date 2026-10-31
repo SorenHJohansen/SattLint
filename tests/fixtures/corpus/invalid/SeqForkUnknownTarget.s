@@ -25,8 +25,7 @@ ModuleCode
          ENTERCODE
             JumpCmd = False;
       ALTERNATIVESEQ
-         SEQTRANSITION TrDone WAIT_FOR NOT JumpCmd
-            SEQBREAK
+         SEQTRANSITION TrDone WAIT_FOR NOT JumpCmd SEQFORK Running SEQBREAK
       ALTERNATIVEBRANCH
          SEQTRANSITION TrJump WAIT_FOR JumpCmd
             SEQFORK MissingTarget

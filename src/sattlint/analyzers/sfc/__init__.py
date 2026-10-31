@@ -12,7 +12,6 @@ from typing import Any, cast
 from sattline_parser.models.ast_model import (
     BasePicture,
     SFCAlternative,
-    SFCBreak,
     SFCFork,
     SFCParallel,
     SFCSubsequence,
@@ -48,9 +47,14 @@ def _sequence_node_label(node: object) -> str:
     node_name = getattr(node, "name", None)
     if node_name:
         return f"{type(node).__name__}:{node_name}"
-    if isinstance(node, SFCFork):
-        return f"SFCFork:{','.join(node.targets)}"
     return type(node).__name__
+
+
+def _node_fork_terminator(node: object) -> dict[str, Any] | None:
+    fork = getattr(node, "fork", None)
+    if not isinstance(fork, SFCFork):
+        return None
+    return {"kind": "SFCFork", "targets": list(fork.targets)}
 
 
 def _inspect_sfc_linear_nodes(
@@ -76,14 +80,6 @@ def _inspect_sfc_linear_nodes(
             )
             continue
 
-        if isinstance(node, SFCBreak):
-            terminated_by = {"kind": "SFCBreak"}
-            continue
-
-        if isinstance(node, SFCFork):
-            terminated_by = {"kind": "SFCFork", "targets": list(node.targets)}
-            continue
-
         if isinstance(node, SFCAlternative | SFCParallel):
             for branch_index, branch in enumerate(node.branches or []):
                 _inspect_sfc_linear_nodes(
@@ -97,6 +93,11 @@ def _inspect_sfc_linear_nodes(
 
         if isinstance(node, SFCSubsequence | SFCTransitionSub):
             _inspect_sfc_linear_nodes(findings, node.body, module_path, sequence_name, branch_path)
+            continue
+
+        fork_terminator = _node_fork_terminator(node)
+        if fork_terminator is not None:
+            terminated_by = fork_terminator
 
 
 def collect_sfc_reachability_findings(

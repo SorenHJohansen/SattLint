@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import pytest
 from sattline_parser.models.ast_model import (
-    SFCBreak,
     SFCCodeBlocks,
     SFCFork,
     SFCStep,
@@ -60,8 +59,28 @@ def test_collect_sequence_label_counts() -> None:
 
 def test_parallel_branch_trailer() -> None:
     assert parallel_branch_trailer(SFCTransition(name="X", condition=VarRef("Y"))) == "SEQTRANSITION"
-    assert parallel_branch_trailer(SFCFork(targets=("Done",))) == "SEQFORK"
-    assert parallel_branch_trailer(SFCBreak()) == "SEQBREAK"
+    assert (
+        parallel_branch_trailer(
+            SFCStep(
+                kind="step",
+                name="Fork",
+                code=SFCCodeBlocks(),
+                fork=SFCFork(targets=("Done",)),
+            )
+        )
+        == "SEQFORK"
+    )
+    assert (
+        parallel_branch_trailer(
+            SFCStep(
+                kind="step",
+                name="Break",
+                code=SFCCodeBlocks(),
+                fork=SFCFork(targets=("Done",), has_break=True),
+            )
+        )
+        == "SEQBREAK"
+    )
     assert parallel_branch_trailer(_step("Run")) is None
 
 

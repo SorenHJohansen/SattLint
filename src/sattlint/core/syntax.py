@@ -13,7 +13,7 @@ from lark.exceptions import UnexpectedInput, VisitError
 from sattline_parser import create_parser as parser_core_create_parser
 from sattline_parser import parse_source_file as parser_core_parse_source_file
 from sattline_parser import parse_source_text as parser_core_parse_source_text
-from sattline_parser.api import describe_parse_error, read_text_with_fallback
+from sattline_parser.api import describe_parse_error, read_text_cp1252
 from sattline_parser.models.ast_model import BasePicture
 from sattline_parser.preprocessing import is_compressed, preprocess_sl_text
 from sattline_parser.transformer.sl_transformer import SLTransformer
@@ -145,7 +145,7 @@ def load_source_text(
     code_path: Path,
     *,
     debug: Callable[[str], None] | None = None,
-    read_text_with_fallback_fn: Callable[[Path], str] = read_text_with_fallback,
+    read_text_cp1252_fn: Callable[[Path], str] = read_text_cp1252,
     is_compressed_fn: Callable[[str], bool] = is_compressed,
     preprocess_sl_text_fn: Callable[[str], tuple[str, object]] = preprocess_sl_text,
 ) -> str:
@@ -153,7 +153,7 @@ def load_source_text(
     if debug is not None:
         debug(f"Parsing file: {source_path}")
 
-    src = read_text_with_fallback_fn(source_path)
+    src = read_text_cp1252_fn(source_path)
     if is_compressed_fn(src):
         if debug is not None:
             debug("Compressed format detected; decoding before parsing")

@@ -11,7 +11,6 @@ from sattline_parser.models.ast_model import (
     ModuleTypeDef,
     Sequence,
     SFCAlternative,
-    SFCBreak,
     SFCCodeBlocks,
     SFCFork,
     SFCParallel,
@@ -52,6 +51,15 @@ def _assign(name: str, value: object) -> tuple:
 
 def _step(name: str, active_stmts: list[object]) -> SFCStep:
     return SFCStep(kind="step", name=name, code=SFCCodeBlocks(active=active_stmts))
+
+
+def _fork_step(name: str, targets: tuple[str, ...], *, has_break: bool = False) -> SFCStep:
+    return SFCStep(
+        kind="step",
+        name=name,
+        code=SFCCodeBlocks(),
+        fork=SFCFork(targets=targets, has_break=has_break),
+    )
 
 
 def _sequence(nodes: list[object]) -> Sequence:
@@ -310,7 +318,7 @@ def test_sfc_reachability_and_active_step_helpers_cover_nested_nodes_and_preview
     sfc_module._inspect_sfc_linear_nodes(
         findings,
         [
-            SFCBreak(),
+            _fork_step("Break", ("Done",), has_break=True),
             _step("Active", []),
             SFCTransition(name="LateGate", condition=True),
         ],
@@ -322,11 +330,19 @@ def test_sfc_reachability_and_active_step_helpers_cover_nested_nodes_and_preview
     sfc_module._inspect_sfc_linear_nodes(
         branch_findings,
         [
-            SFCAlternative(branches=[[SFCBreak(), _step("AltDead", [])]]),
-            SFCSubsequence(name="NestedSeq", body=[SFCBreak(), _step("Nested", [])]),
+            SFCAlternative(branches=[[_fork_step("Break", ("Done",), has_break=True), _step("AltDead", [])]]),
+            SFCSubsequence(name="NestedSeq", body=[_fork_step("Break", ("Done",)), _step("Nested", [])]),
             SFCTransitionSub(
                 name="NestedGate",
-                body=[SFCFork(targets=("Done",)), SFCTransition(name="AfterFork", condition=True)],
+                body=[
+                    SFCStep(
+                        kind="step",
+                        name="Fork",
+                        code=SFCCodeBlocks(),
+                        fork=SFCFork(targets=("Done",)),
+                    ),
+                    SFCTransition(name="AfterFork", condition=True),
+                ],
             ),
         ],
         ["Root"],
@@ -342,11 +358,10 @@ def test_sfc_reachability_and_active_step_helpers_cover_nested_nodes_and_preview
         "SFCStep:Nested",
         "SFCTransition:AfterFork",
     ]
-    assert findings[0].terminated_by == {"kind": "SFCBreak"}
+    assert findings[0].terminated_by == {"kind": "SFCFork", "targets": ["Done"]}
     assert branch_findings[0].branch_path == (0,)
     assert branch_findings[-1].terminated_by == {"kind": "SFCFork", "targets": ["Done"]}
-    assert sfc_module._sequence_node_label(SFCFork(targets=("Left", "Right"))) == "SFCFork:Left,Right"
-    assert sfc_module._sequence_node_label(SFCBreak()) == "SFCBreak"
+    assert sfc_module._sequence_node_label(SFCTransition(name=None, condition=None)) == "SFCTransition"
 
     sequence = _sequence([_step("Idle", []), _step("Running", [])])
     bp = BasePicture(

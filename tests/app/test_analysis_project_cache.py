@@ -1278,7 +1278,7 @@ LIBRARY_WITH_UNUSED_SOURCE = """
 "Original file date: ---"
 "Program date: 2026-04-23-12:00:00.000, name: MyLib"
 
-BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION MyModule_ 1
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
 
 LOCALVARIABLES
     UsedLocal: integer := 0;
@@ -1297,7 +1297,7 @@ DEP_SOURCE = """
 "Original file date: ---"
 "Program date: 2026-04-23-12:00:00.000, name: DepA"
 
-BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DepModule_ 1
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
 
 LOCALVARIABLES
     DepLocal: integer := 0;

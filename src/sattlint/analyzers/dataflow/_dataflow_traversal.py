@@ -9,7 +9,6 @@ from sattline_parser.models.ast_model import (
     ModuleTypeInstance,
     Sequence,
     SFCAlternative,
-    SFCBreak,
     SFCFork,
     SFCParallel,
     SFCStep,
@@ -213,6 +212,8 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
 
             if isinstance(node, SFCStep):
                 current_state = self._walk_sequence_step(node, context, module_path, current_state)
+                if isinstance(node.fork, SFCFork):
+                    terminated_by = {"kind": "SFCFork", "targets": list(node.fork.targets)}
                 continue
 
             if isinstance(node, SFCTransition):
@@ -222,6 +223,8 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
                     self._report_condition(node.condition, context, module_path, current_state)
                 finally:
                     self._pop_site()
+                if isinstance(node.fork, SFCFork):
+                    terminated_by = {"kind": "SFCFork", "targets": list(node.fork.targets)}
                 continue
 
             if isinstance(node, SFCAlternative):
@@ -292,14 +295,6 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
                     )
                 finally:
                     self._pop_site()
-                continue
-
-            if isinstance(node, SFCBreak):
-                terminated_by = {"kind": "SFCBreak"}
-                continue
-
-            if isinstance(node, SFCFork):
-                terminated_by = {"kind": "SFCFork", "targets": list(node.targets)}
                 continue
 
         return current_state

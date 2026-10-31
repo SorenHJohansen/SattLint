@@ -10,6 +10,16 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Changed
 
+- Upgraded `sattline-parser` to `>=2026.10.1,<2027` and migrated to its
+  2026.10.1 API: `read_text_cp1252` (strict Windows-1252, no encoding fallback)
+  replaces `read_text_with_fallback`; `SEQFORK`/`SEQBREAK` are now a suffix on
+  `SFCStep.fork`/`SFCTransition.fork` (`SFCBreak` is gone); optional
+  `SFCSubsequence.name` values are handled. Analyzer, validation, change-review,
+  test, and corpus-fixture call sites were updated to the new model.
+- Sequence validation treats a fork suffix as terminating the linear path, so
+  nodes after a `SEQFORK` are left to the reachability analyzer instead of being
+  reported as consecutive steps or transitions.
+
 - Final parser project-layer milestone: the `SattLineProjectLoader` shell is
   fully retired. `project/loader.py`, `project/loader_base.py`, and the final
   loader seams are deleted; all loads now route through

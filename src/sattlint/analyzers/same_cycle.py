@@ -14,8 +14,6 @@ from sattline_parser.models.ast_model import (
     ModuleTypeInstance,
     Sequence,
     SFCAlternative,
-    SFCBreak,
-    SFCFork,
     SFCParallel,
     SFCStep,
     SFCSubsequence,
@@ -480,9 +478,6 @@ class SameCycleAnalyzer(VariablesAnalyzer):
                     self._walk_sequence_nodes(node.body or [], context, path)
                 finally:
                     self._pop_site()
-                continue
-
-            if isinstance(node, (SFCFork, SFCBreak)):
                 continue
 
     def _walk_step(

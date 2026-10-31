@@ -6,7 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from sattline_parser.api import read_text_with_fallback
+from sattline_parser.api import read_text_cp1252
 from sattline_parser.models.ast_model import GraphicsBinding, SourceSpan
 
 from .validation_bindings import (
@@ -346,5 +346,5 @@ def validate_graphics_text(text: str, file_path: Path) -> GraphicsValidationResu
 
 
 def validate_graphics_file(file_path: Path) -> GraphicsValidationResult:
-    text = read_text_with_fallback(file_path)
+    text = read_text_cp1252(file_path)
     return validate_graphics_text(text, file_path)

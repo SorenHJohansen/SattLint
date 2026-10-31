@@ -6,7 +6,6 @@ from sattline_parser.models.ast_model import (
     ModuleHeader,
     Sequence,
     SFCBodyItem,
-    SFCBreak,
     SFCCodeBlocks,
     SFCFork,
     SFCStep,
@@ -37,7 +36,12 @@ def _unreachable_labels(bp: BasePicture) -> list[str]:
 def test_sequence_nodes_after_break_are_owned_by_sfc_not_dataflow():
     bp = _make_sequence(
         [
-            SFCBreak(),
+            SFCStep(
+                kind="step",
+                name="Break",
+                code=SFCCodeBlocks(),
+                fork=SFCFork(targets=("Done",), has_break=True),
+            ),
             SFCStep(kind="step", name="AfterBreak", code=SFCCodeBlocks()),
         ]
     )
@@ -45,13 +49,18 @@ def test_sequence_nodes_after_break_are_owned_by_sfc_not_dataflow():
     report = analyze_dataflow(bp)
 
     assert not any(issue.kind == "dataflow.unreachable_sequence_node" for issue in report.issues)
-    assert _unreachable_labels(bp) == ["SFCStep:AfterBreak:SFCBreak"]
+    assert _unreachable_labels(bp) == ["SFCStep:AfterBreak:SFCFork"]
 
 
 def test_sequence_nodes_after_fork_are_owned_by_sfc_not_dataflow():
     bp = _make_sequence(
         [
-            SFCFork(targets=("Done",)),
+            SFCStep(
+                kind="step",
+                name="Fork",
+                code=SFCCodeBlocks(),
+                fork=SFCFork(targets=("Done",)),
+            ),
             SFCStep(kind="step", name="AfterFork", code=SFCCodeBlocks()),
         ]
     )
@@ -68,14 +77,24 @@ def test_break_inside_nested_sequence_nodes_is_owned_by_sfc_not_dataflow():
             SFCSubsequence(
                 name="Prepare",
                 body=[
-                    SFCBreak(),
+                    SFCStep(
+                        kind="step",
+                        name="Break",
+                        code=SFCCodeBlocks(),
+                        fork=SFCFork(targets=("Done",), has_break=True),
+                    ),
                     SFCStep(kind="step", name="AfterBreakInSubsequence", code=SFCCodeBlocks()),
                 ],
             ),
             SFCTransitionSub(
                 name="Gate",
                 body=[
-                    SFCBreak(),
+                    SFCStep(
+                        kind="step",
+                        name="Break",
+                        code=SFCCodeBlocks(),
+                        fork=SFCFork(targets=("Done",), has_break=True),
+                    ),
                     SFCStep(kind="step", name="AfterBreakInTransitionSub", code=SFCCodeBlocks()),
                 ],
             ),
@@ -86,6 +105,6 @@ def test_break_inside_nested_sequence_nodes_is_owned_by_sfc_not_dataflow():
 
     assert not any(issue.kind == "dataflow.unreachable_sequence_node" for issue in report.issues)
     assert _unreachable_labels(bp) == [
-        "SFCStep:AfterBreakInSubsequence:SFCBreak",
-        "SFCStep:AfterBreakInTransitionSub:SFCBreak",
+        "SFCStep:AfterBreakInSubsequence:SFCFork",
+        "SFCStep:AfterBreakInTransitionSub:SFCFork",
     ]

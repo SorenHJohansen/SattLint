@@ -21,7 +21,6 @@ from sattline_parser.models.ast_model import (
     ModuleTypeInstance,
     Sequence,
     SFCAlternative,
-    SFCBreak,
     SFCFork,
     SFCParallel,
     SFCStep,
@@ -282,8 +281,6 @@ def _walk_sequence_nodes(
         if isinstance(node, SFCSubsequence | SFCTransitionSub):
             _walk_sequence_nodes(self, node.body or [], context, module_path, accesses)
             continue
-        if isinstance(node, (SFCFork, SFCBreak)):
-            continue
 
 
 def _walk_step(
@@ -326,20 +323,21 @@ def _collect_entry_step_names(nodes: SequenceABC[object]) -> set[str]:
 
 def _step_has_direct_self_loop(nodes: SequenceABC[object], index: int) -> bool:
     node = nodes[index]
-    if not isinstance(node, SFCStep) or index + 1 >= len(nodes):
+    if not isinstance(node, SFCStep):
         return False
     step_key = (node.name or "").casefold()
+    if isinstance(node.fork, SFCFork) and any(target.casefold() == step_key for target in node.fork.targets):
+        return True
+    if index + 1 >= len(nodes):
+        return False
     next_node = nodes[index + 1]
-    if isinstance(next_node, SFCFork):
-        return any(target.casefold() == step_key for target in next_node.targets)
     if not isinstance(next_node, SFCTransition):
         return False
+    if isinstance(next_node.fork, SFCFork):
+        return any(target.casefold() == step_key for target in next_node.fork.targets)
     tail = nodes[index + 2 :]
     if not tail:
         return True
-    first_tail = tail[0]
-    if isinstance(first_tail, SFCFork):
-        return any(target.casefold() == step_key for target in first_tail.targets)
     return not _collect_entry_step_names(tail)
 
 

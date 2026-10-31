@@ -57,7 +57,7 @@ flowchart LR
   producing a compact JSON + Markdown review artifact. It reuses the semantic snapshot
   and is fully independent of static analysis.
 - `src/sattlint/analyzers/` owns the heuristic analyzers and the registry.
-- `sattline-parser` (external dependency, `sattline-parser>=2026.9.1`) owns the SattLine grammar, parse tree transformation, AST models, **and the SattLine project layer**: `SattLineProject` owns search roots, load mode, file discovery, dependency resolution, and the resolved dependency graph (`SattLineProgram` per logical program/library). SattLint routes project loading directly through `sattlint.project.loader_config.build_parser_binding` + `parser_adapter` (`load_parser_project`/`convert_project_into_graph`), which re-validates and re-indexes the parser result into the SattLint `ProjectGraph` analysis index.
+- `sattline-parser` (external dependency, `sattline-parser>=2026.10.1`) owns the SattLine grammar, parse tree transformation, AST models, **and the SattLine project layer**: `SattLineProject` owns search roots, load mode, file discovery, dependency resolution, and the resolved dependency graph (`SattLineProgram` per logical program/library). SattLint routes project loading directly through `sattlint.project.loader_config.build_parser_binding` + `parser_adapter` (`load_parser_project`/`convert_project_into_graph`), which re-validates and re-indexes the parser result into the SattLint `ProjectGraph` analysis index.
 
 ## Operational Layer
 

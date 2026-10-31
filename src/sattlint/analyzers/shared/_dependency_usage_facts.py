@@ -15,7 +15,6 @@ from sattline_parser.models.ast_model import (
     SFCSubsequence,
     SFCTransition,
     SFCTransitionSub,
-    SLExpression,
 )
 from sattline_parser.models.expressions import FuncCallStmt, VarRef
 
@@ -169,7 +168,7 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
                     for statement in statements:
                         self._append_statement_fact(statement, context, module_path, site)
                 continue
-            if isinstance(node, SFCTransition) and cast(SLExpression | None, node.condition) is not None:
+            if isinstance(node, SFCTransition) and node.condition is not None:
                 site = f"sequence {sequence_name!r} transition {node.name!r} condition"
                 self._append_statement_fact(node.condition, context, module_path, site)
                 continue
