@@ -6,9 +6,9 @@ import dataclasses
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from typing import Literal, Protocol, cast
 
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.expressions import FuncCall, FuncCallStmt, VarRef
 
-from ..grammar import constants as const
 from ..types import VariableRef
 
 _DEFAULT_VAR_NAME = "var_name"

@@ -8,6 +8,7 @@ high fan-in/out, and variables report summary.
 from types import SimpleNamespace
 from typing import Any, cast
 
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     Equation,
@@ -31,7 +32,6 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import Assignment
 
-from sattlint import constants as const
 from sattlint.analyzers.sfc import analyze_sfc
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
 from sattlint.analyzers.variables._variables_effect_flow import EffectFlowTracker

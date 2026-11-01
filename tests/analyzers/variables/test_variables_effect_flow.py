@@ -6,6 +6,7 @@ from __future__ import annotations
 from collections import defaultdict
 from types import SimpleNamespace
 
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     ModuleHeader,
     ParameterMapping,
@@ -14,7 +15,6 @@ from sattline_parser.models.ast_model import (
     VarRef,
 )
 
-from sattlint import constants as const
 from sattlint.analyzers.variables import _variables_effect_flow as effect_flow_module
 from sattlint.analyzers.variables import _variables_effect_sources as effect_sources_module
 from sattlint.analyzers.variables._variables_effect_flow import EffectFlowTracker

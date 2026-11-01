@@ -99,7 +99,6 @@ def build_parser_binding(
     cfg: Mapping[str, object],
     *,
     status_update_fn: Callable[[str], None] | None = None,
-    refresh_mode: str = "full",
     stage_timing_sink: LoadStageTimingSink | None = None,
     graphics_timing_sink: GraphicsLoadTimingSink | None = None,
 ) -> ParserProjectBinding:
@@ -115,16 +114,12 @@ def build_parser_binding(
     )
     mode = _coerce_code_mode(cfg["mode"])
     debug = _coerce_bool_config_value(cfg["debug"], key="debug")
-    normalized_refresh_mode = str(refresh_mode).strip().lower() or "full"
-    if normalized_refresh_mode not in {"full", "ast-only"}:
-        raise ValueError(f"Unsupported refresh mode: {refresh_mode!r}")
 
     return ParserProjectBinding(
         program_dir=program_dir,
         other_lib_dirs=other_lib_dirs,
         abb_lib_dir=abb_lib_dir,
         mode=mode,
-        refresh_mode=normalized_refresh_mode,
         debug_fn=_make_debug_fn(debug),
         status_update_fn=status_update_fn,
         stage_timing_sink=stage_timing_sink,

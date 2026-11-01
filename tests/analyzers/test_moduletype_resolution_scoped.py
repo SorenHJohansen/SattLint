@@ -1,6 +1,7 @@
 """Tests for moduletype resolution within library scopes."""
 
 import pytest
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -15,7 +16,6 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import FuncCall, FuncCallStmt, VarRef
 
-from sattlint import constants as const
 from sattlint.analyzers.variables import VariablesAnalyzer
 from sattlint.resolution.common import (
     find_all_aliases,

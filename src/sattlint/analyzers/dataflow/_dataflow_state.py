@@ -4,10 +4,10 @@ import dataclasses
 from typing import Any, cast
 
 from lark import Tree
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import Variable
 from sattline_parser.models.expressions import VarRef
 
-from ...grammar import constants as const
 from ...resolution.scope import ScopeContext
 from ..shared.ast_node_helpers import (
     object_list as _object_list,

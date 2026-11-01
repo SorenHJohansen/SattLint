@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     ModuleCode,
@@ -12,7 +13,6 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
-from sattlint import constants as const
 from sattlint.resolution import AccessKind
 from tests.analyzers.variables.test_variables_effect_flow import _build_tracker, _context, _hdr, _string_source, _varref
 

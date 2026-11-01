@@ -108,11 +108,7 @@ def load_picture_display_source_context(source_path: Path) -> BasePicture | None
         if is_compressed(source_text):
             source_text, _ = preprocess_sl_text(source_text)
         basepic = parser_core_parse_source_text(source_text)
-        validate_basepicture_strict(
-            basepic,
-            allow_old_state_assignment=False,
-            allow_unresolved_external_datatypes=False,
-        )
+        validate_basepicture_strict(basepic)
         return basepic
     except (OSError, SyntaxError, UnexpectedInput, ValueError, RuntimeError):
         return None

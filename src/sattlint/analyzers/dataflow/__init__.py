@@ -5,6 +5,7 @@ from typing import Any, cast
 
 from sattline_parser.builtins import get_function_signature
 from sattline_parser.formatting import formatter as formatter_module
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     FloatLiteral,
@@ -17,7 +18,6 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import VarRef
 
-from ...grammar import constants as const
 from ...resolution.scope import ScopeContext
 from ...resolution.type_graph import TypeGraph
 from ..framework import AnalysisSharedArtifacts, AnalyzerLifecycleMixin, Issue, SimpleReport

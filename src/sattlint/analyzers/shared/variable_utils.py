@@ -5,9 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import ParameterMapping, Simple_DataType, Variable
 
-from ...grammar import constants as const
 from ...resolution.common import varname_base
 from ...utils.casefolding import casefold_key
 

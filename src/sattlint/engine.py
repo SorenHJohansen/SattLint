@@ -68,22 +68,23 @@ from .project.parser_adapter import (
     load_parser_project,
 )
 from .utils.text_processing import find_disallowed_comments
-from .validation import StructuralValidationError
-from .validation.shared import ValidationNotice, coerce_validation_notice
+from .validation.shared import (
+    StructuralValidationError,
+    ValidationNotice,
+    coerce_validation_notice,
+)
 
 
 def build_project_loader(
     cfg: Mapping[str, object],
     *,
     status_update_fn: Callable[[str], None] | None = None,
-    refresh_mode: str = "full",
     stage_timing_sink: LoadStageTimingSink | None = None,
     graphics_timing_sink: GraphicsLoadTimingSink | None = None,
 ) -> ParserProjectBinding:
     return build_parser_binding(
         cfg,
         status_update_fn=status_update_fn,
-        refresh_mode=refresh_mode,
         stage_timing_sink=stage_timing_sink,
         graphics_timing_sink=graphics_timing_sink,
     )
@@ -94,7 +95,6 @@ def load_project_graph(
     target_name: str,
     *,
     status_update_fn: Callable[[str], None] | None = None,
-    refresh_mode: str = "full",
     stage_timing_sink: LoadStageTimingSink | None = None,
     graphics_timing_sink: GraphicsLoadTimingSink | None = None,
     strict: bool = False,
@@ -102,7 +102,6 @@ def load_project_graph(
     binding = build_project_loader(
         cfg,
         status_update_fn=status_update_fn,
-        refresh_mode=refresh_mode,
         stage_timing_sink=stage_timing_sink,
         graphics_timing_sink=graphics_timing_sink,
     )

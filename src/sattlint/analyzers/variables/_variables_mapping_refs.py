@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from typing import Protocol, cast
 
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import ParameterMapping
 from sattline_parser.models.expressions import VarRef
-
-from ...grammar import constants as const
 
 
 class _ParameterMappingPayloads(Protocol):

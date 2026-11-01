@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     FrameModule,
     ModuleCode,
@@ -19,7 +20,6 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import Assignment, FuncCallStmt, IfStmt
 
-from ...grammar import constants as const
 from ...resolution.common import resolve_moduletype_def_strict
 from ...resolution.scope import ScopeContext
 from ..shared.ast_node_helpers import (

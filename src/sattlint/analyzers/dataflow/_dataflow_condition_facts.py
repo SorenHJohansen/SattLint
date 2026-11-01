@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from ...grammar import constants as const
+from sattline_parser.grammar import constants as const
+
 from ...resolution.scope import ScopeContext
 from ._dataflow_common import ConditionFact, ScalarValue
 from ._dataflow_condition_expr import CompareTuple, _expr_tuple, compare_left, compare_parts, is_compare

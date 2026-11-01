@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
@@ -14,7 +15,6 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
-from ..grammar import constants as const
 from ..resolution.common import (
     format_moduletype_label,
     resolve_moduletype_def_strict,

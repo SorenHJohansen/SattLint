@@ -217,18 +217,16 @@ def test_load_project_ast_only_collects_stage_timings(monkeypatch):
         def save(self, *args, **kwargs):
             pytest.fail("ast-only refresh should return before saving cache")
 
-    def fake_build_parser_binding(
-        cfg, *, status_update_fn=None, refresh_mode="full", stage_timing_sink=None, graphics_timing_sink=None
-    ):
-        assert refresh_mode == "ast-only"
+    def fake_build_parser_binding(cfg, *, status_update_fn=None, stage_timing_sink=None, graphics_timing_sink=None):
         return SimpleNamespace(
-            refresh_mode=refresh_mode,
             stage_timing_sink=stage_timing_sink,
             graphics_timing_sink=graphics_timing_sink,
         )
 
-    def fake_load_parser_graph(binding, target_name, *, strict, lib_names):
+    def fake_load_parser_graph(binding, target_name, *, strict, lib_names, validate, index_program_view):
         assert strict is False
+        assert validate.value == "none"
+        assert index_program_view is False
         assert binding.stage_timing_sink is not None
         binding.stage_timing_sink("TargetA", "load_or_parse", 0.1)
         binding.stage_timing_sink("TargetA", "validate", 0.2)

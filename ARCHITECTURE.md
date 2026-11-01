@@ -57,7 +57,7 @@ flowchart LR
   producing a compact JSON + Markdown review artifact. It reuses the semantic snapshot
   and is fully independent of static analysis.
 - `src/sattlint/analyzers/` owns the heuristic analyzers and the registry.
-- `sattline-parser` (external dependency, `sattline-parser>=2026.11.0`) owns the SattLine grammar, parse tree transformation, AST models, **the language rules**, and **the SattLine project layer**: `SattLineProject` owns search roots, load mode, file discovery, dependency resolution, per-program validation, library/provenance, datecode conflicts, and cycle paths. SattLint routes project loading through `sattlint.project.loader_config.build_parser_binding` + `parser_adapter` (`load_parser_project`/`convert_project_into_graph`), which translates the parser diagnostics into SattLint policy outcomes and indexes the loaded programs into the SattLint `ProjectGraph` analysis index.
+- `sattline-parser` (external dependency, `sattline-parser>=2026.11.1`) owns the SattLine grammar, parse tree transformation, AST models, **the language rules**, and **the SattLine project layer**: `SattLineProject` owns search roots, load mode, file discovery, dependency resolution, per-program validation, library/provenance, datecode conflicts, and cycle paths. SattLint routes project loading through `sattlint.project.loader_config.build_parser_binding` + `parser_adapter` (`load_parser_project`/`convert_project_into_graph`), which translates the parser diagnostics into SattLint policy outcomes and indexes the loaded programs into the SattLint `ProjectGraph` analysis index.
 
 ## Operational Layer
 
@@ -203,6 +203,8 @@ Two special cases worth knowing before changing anything:
   Cache ownership is split: the parser owns its per-file lookup/AST caches
   (`FileLookupCache`/`FileASTCache`); SattLint owns the analysis caches
   (`ASTCache`/`AnalysisReportCache`/foundation).
+- Graphics companions are scanned once by the parser into `GraphicsModel`. SattLint owns the
+  workspace asset verification, the correlation against the code picture, and notice wording.
 - All retained analyzers use the same semantic engine and findings model.
 - The analyzer registry is the single rule catalog; CLI, UI, and reporting read from it rather than duplicating rule lists.
 

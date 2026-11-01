@@ -8,6 +8,7 @@ from collections.abc import Sequence as SequenceABC
 from typing import TypedDict, cast
 
 from sattline_parser.formatting.formatter import format_expr
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     SFCAlternative,
@@ -17,7 +18,6 @@ from sattline_parser.models.ast_model import (
     SFCTransitionSub,
 )
 
-from ...grammar import constants as const
 from ...resolution.paths import CanonicalPath
 from ..framework import Issue
 from ..shared.target_origin import TargetOriginFilter

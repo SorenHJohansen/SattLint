@@ -10,6 +10,7 @@ import json
 from types import SimpleNamespace
 from typing import Any, cast
 
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     Assignment,
     BasePicture,
@@ -35,7 +36,6 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import FuncCall, FuncCallStmt
 
-from sattlint import constants as const
 from sattlint.analyzers import registry as registry_module
 from sattlint.analyzers.alarm_integrity import analyze_alarm_integrity
 from sattlint.analyzers.dataflow import analyze_dataflow

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import ModuleTypeDef, ModuleTypeInstance, ParameterMapping, SingleModule, Variable
 from sattline_parser.models.expressions import VarRef
 
-from ...grammar import constants as const
 from ...resolution.common import varname_base
 from ...resolution.scope import ScopeContext
 from ...utils.casefolding import casefold_key

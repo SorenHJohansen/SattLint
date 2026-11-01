@@ -25,9 +25,9 @@ Known behaviour approximations (unchanged SattLint semantics in practice):
   or unparseable source) surface as *missing* SattLint-side; the old loader
   distinguished missing-vs-parse-failure. No corpus fixture exercises the
   parse-failure branch.
-* The parser resolves a program's graph and ``.g``/``.y`` companion before
-  SattLint re-attaches graphics via ``attach_graphics_companion``; SattLint
-  keeps full graphics ownership.
+* The parser resolves a program's graph and ``.g``/``.y`` companion. SattLint
+  consumes the parsed ``GraphicsModel`` through ``attach_graphics_companion``
+  and owns only the workspace asset checks, correlation, and notice wording.
 * The parser load is hermetic (``cache_dir=None``); the parser runs its own
   program-level caches from a cache directory SattLint never passes.
 """
@@ -52,8 +52,7 @@ from sattline_parser.validation import Diagnostic, DiagnosticCode, DiagnosticSev
 from ..core.syntax import CodeMode
 from ..graphics.graphics_helpers import attach_graphics_companion
 from ..models.project_graph import ProjectGraph
-from ..validation import StructuralValidationError
-from ..validation.shared import ValidationNotice
+from ..validation.shared import StructuralValidationError, ValidationNotice
 from .loading_support import (
     record_project_failure as _record_project_failure,
 )
@@ -133,7 +132,6 @@ class ParserProjectBinding:
     other_lib_dirs: tuple[Path, ...]
     abb_lib_dir: Path | None
     mode: CodeMode
-    refresh_mode: str
     debug_fn: Callable[[str], None] | None = None
     status_update_fn: Callable[[str], None] | None = None
     stage_timing_sink: LoadStageTimingSink | None = None
@@ -202,7 +200,6 @@ def _load_project(
     strict: bool,
     validate: LoadValidation,
 ) -> SattLineProject:
-    effective_validate = LoadValidation.NONE if binding.refresh_mode == "ast-only" else validate
     return SattLineProject.load(
         roots=binding.roots,
         mode=binding.parser_mode(),
@@ -210,7 +207,7 @@ def _load_project(
         strict=strict,
         debug=binding.debug_fn,
         cache_dir=None,
-        validate=effective_validate,
+        validate=validate,
     )
 
 
@@ -235,6 +232,7 @@ def convert_project_into_graph(
     strict: bool,
     lib_names: dict[str, str] | None = None,
     extra_roots: Sequence[str] = (),
+    index_program_view: bool = True,
 ) -> None:
     """Translate a loaded parser project into a populated ``ProjectGraph``.
 
@@ -260,6 +258,10 @@ def convert_project_into_graph(
 
     A target that the parser dropped (no code found) is recorded as missing so
     ``load_project``'s target-error report keeps its ``missing`` payload.
+
+    ``index_program_view`` is false for an AST-only refresh: programs are still
+    validated and indexed by name, but graphics attachment, dependency edges,
+    and definition indexing are skipped.
     """
     cycles = project.cycles()
     if cycles:
@@ -282,6 +284,7 @@ def convert_project_into_graph(
             strict=strict,
             lib_names=local_lib_names,
             indexed_names=indexed_names,
+            index_program_view=index_program_view,
         )
     _record_missing_dependencies(project, graph, binding=binding, strict=strict)
     for name in root_names:
@@ -305,6 +308,7 @@ def _index_program(
     strict: bool,
     lib_names: dict[str, str],
     indexed_names: set[str],
+    index_program_view: bool,
 ) -> None:
     name = program.name
     code_path = program.source_path
@@ -317,7 +321,7 @@ def _index_program(
         _emit_status(binding, f"Loading {name}: validation complete")
         graph.ast_by_name[name] = program.code
         indexed_names.add(name.casefold())
-        if binding.refresh_mode == "ast-only":
+        if not index_program_view:
             return
 
         _emit_status(binding, f"Loading {name}: checking graphics companion")
@@ -326,10 +330,13 @@ def _index_program(
         def _status_cb(msg: str) -> None:
             _emit_status(binding, f"Loading {name}: {msg}")
 
+        graphics_ext = program.format.graphics_ext
+        graphics_path = code_path.with_suffix(graphics_ext) if graphics_ext is not None else None
         attach_graphics_companion(
             program.code,
+            graphics=program.graphics,
+            companion_path=graphics_path,
             code_path=code_path,
-            mode=binding.mode,
             graph=graph,
             owner_name=name,
             timing_sink=binding.graphics_timing_sink,

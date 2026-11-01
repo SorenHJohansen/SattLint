@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -20,7 +21,6 @@ from sattline_parser.models.ast_model import (
 )
 
 import sattlint.cache as cache_mod
-from sattlint import constants as const
 from sattlint.analyzers.datatype_fields import analyze_datatype_fields
 from sattlint.analyzers.variables import IssueKind, analyze_variables
 from sattlint.application import project as project_application
@@ -317,20 +317,20 @@ def test_load_project_ast_only_refresh_skips_project_merge_and_save(monkeypatch)
         source_files={Path("programs/TargetA.s")},
     )
 
-    def fake_build_parser_binding(
-        cfg, *, status_update_fn=None, refresh_mode="full", stage_timing_sink=None, graphics_timing_sink=None
-    ):
-        loader_calls.append({"refresh_mode": refresh_mode})
+    def fake_build_parser_binding(cfg, *, status_update_fn=None, stage_timing_sink=None, graphics_timing_sink=None):
         return SimpleNamespace(
             status_update_fn=status_update_fn,
-            refresh_mode=refresh_mode,
             stage_timing_sink=stage_timing_sink,
             graphics_timing_sink=graphics_timing_sink,
         )
 
+    def fake_load_parser_graph(binding, target_name, *, strict, lib_names, validate, index_program_view):
+        loader_calls.append({"validate": validate.value, "index_program_view": index_program_view})
+        return graph
+
     monkeypatch.setattr(project_application, "ASTCache", FakeCache)
     monkeypatch.setattr(analysis_loading_module, "build_parser_binding", fake_build_parser_binding)
-    monkeypatch.setattr(analysis_loading_module, "_load_parser_graph", lambda *_args, **_kwargs: graph)
+    monkeypatch.setattr(analysis_loading_module, "_load_parser_graph", fake_load_parser_graph)
     monkeypatch.setattr(analysis_loading_module, "find_dependency_path", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(analysis_loading_module, "read_dependency_names", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(
@@ -355,7 +355,7 @@ def test_load_project_ast_only_refresh_skips_project_merge_and_save(monkeypatch)
     )
 
     assert result == (root_bp, graph)
-    assert loader_calls[0]["refresh_mode"] == "ast-only"
+    assert loader_calls == [{"validate": "none", "index_program_view": False}]
 
 
 @pytest.mark.parametrize(
@@ -482,18 +482,15 @@ def test_load_project_raises_target_load_error_when_root_program_missing(monkeyp
         def save(self, key, **kwargs):
             pytest.fail("cache should not be saved when root program is missing")
 
-    def fake_build_parser_binding(
-        cfg, *, status_update_fn=None, refresh_mode="full", stage_timing_sink=None, graphics_timing_sink=None
-    ):
-        loader_kwargs.update({"status_update_fn": status_update_fn, "refresh_mode": refresh_mode})
+    def fake_build_parser_binding(cfg, *, status_update_fn=None, stage_timing_sink=None, graphics_timing_sink=None):
+        loader_kwargs.update({"status_update_fn": status_update_fn})
         return SimpleNamespace(
             status_update_fn=status_update_fn,
-            refresh_mode=refresh_mode,
             stage_timing_sink=stage_timing_sink,
             graphics_timing_sink=graphics_timing_sink,
         )
 
-    def fake_load_parser_graph(binding, target_name, *, strict, lib_names):
+    def fake_load_parser_graph(binding, target_name, *, strict, lib_names, validate, index_program_view):
         return SimpleNamespace(
             ast_by_name={"Dependency": "bp-dependency"},
             missing=["dep parse error"],

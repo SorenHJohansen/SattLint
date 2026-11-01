@@ -6,6 +6,7 @@ import logging
 import re
 from typing import Any, ClassVar, Protocol, cast
 
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import ParameterMapping, Simple_DataType, Variable
 from sattline_parser.models.expressions import VarRef
 from sattline_parser.validation.typing import (
@@ -18,7 +19,6 @@ from sattline_parser.validation.typing import (
     split_dotted_name as _split_dotted_name,
 )
 
-from ...grammar import constants as const
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ...resolution import TypeGraph
 from ...resolution.common import varname_full

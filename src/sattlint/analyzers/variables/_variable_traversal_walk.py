@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from lark import Tree
 from sattline_parser.formatting.formatter import format_expr as _format_expr
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     FloatLiteral,
     IntLiteral,
@@ -35,7 +36,6 @@ from sattline_parser.models.expressions import (
     VarRef,
 )
 
-from ...grammar import constants as const
 from ...resolution import AccessKind
 from ...resolution.common import varname_base
 from ...resolution.scope import ScopeContext

@@ -10,8 +10,29 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Changed
 
-- Upgraded `sattline-parser` to `>=2026.10.1,<2027` and migrated to its
-  2026.10.1 API: `read_text_cp1252` (strict Windows-1252, no encoding fallback)
+- Validation is now single-source in `sattline-parser`. `sattlint syntax-check`
+  and the analyzer type helpers consume `sattline_parser.validation`; SattLint
+  keeps only policy and error shapes. The duplicated rule modules, builtin
+  signature tables, builtin datatype tables, and datecode comparison are
+  removed, and the parser validation suite is the rule oracle. Builtin call
+  checks understand optional trailing async/debug parameters and object handle
+  types, so existing projects do not gain false arity or type findings.
+- Project loading consumes the parser project layer directly: per-program
+  diagnostics, library and resolved-base provenance, datecode conflicts, and
+  cycle paths come from the loaded project. Definition datecode conflicts are
+  now compared against the full loaded registry instead of first-wins maps, so
+  real projects can surface conflicts that were previously missed.
+- Graphics companions consume the parser's `GraphicsModel`. SattLint keeps the
+  workspace asset checks, code correlation, and notice wording, and the second
+  binding and record scanner is deleted.
+- Parser-core compatibility wrappers are gone. Grammar constants and the
+  transformer are imported from `sattline_parser` directly.
+- The parser adapter no longer reads a refresh mode. AST-only refreshes pass
+  `LoadValidation.NONE` to the parser and skip the program view explicitly,
+  instead of branching inside the adapter.
+- Upgraded `sattline-parser` to `>=2026.11.1,<2027`.
+- The `sattline-parser` 2026.10.1 API migration is included:
+  `read_text_cp1252` (strict Windows-1252, no encoding fallback)
   replaces `read_text_with_fallback`; `SEQFORK`/`SEQBREAK` are now a suffix on
   `SFCStep.fork`/`SFCTransition.fork` (`SFCBreak` is gone); optional
   `SFCSubsequence.name` values are handled. Analyzer, validation, change-review,
@@ -54,6 +75,15 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   companion handling, dependency version-conflict detection, library naming,
   and indexing behavior are preserved; the corpus, app-loader, analyzer, and
   new adapter test suites all pass.
+
+### Removed
+
+- The duplicated invalid corpus fixtures and their unreferenced manifests are
+  removed. Language-validation fixtures live in `sattline-parser`; the SattLint
+  corpus keeps analyzer and semantic fixtures only.
+- The `sattlint.grammar` constants shim, the `sattlint.transformer` package, the
+  `sattlint.validation` facade, the dead external-datatype validation flags, and
+  the temporary parity snapshot scripts are removed.
 
 ## [2026.9.3] - 2026-09-16
 

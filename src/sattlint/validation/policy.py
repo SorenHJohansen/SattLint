@@ -45,19 +45,14 @@ def validate_basepicture_strict(
     basepic: BasePicture,
     *,
     warning_sink: WarningSink | None = None,
-    allow_unresolved_external_datatypes: bool = False,
-    **_ignored: object,
 ) -> None:
     """Run the parser validator and keep SattLint's raise-on-first-error contract.
 
-    Extra keyword arguments are accepted so this stays a drop-in for the old
-    ``validate_transformed_basepicture`` seam, whose callers passed policy flags
-    that no longer belong to the validator.
+    The parser's standalone path owns the external-datatype allowance. SattLint
+    strict validation has no such switch, so this seam only chooses between the
+    first error and notice delivery.
     """
-    for diagnostic in validate_basepicture(
-        basepic,
-        allow_unresolved_external_datatypes=allow_unresolved_external_datatypes,
-    ):
+    for diagnostic in validate_basepicture(basepic):
         if diagnostic.severity is DiagnosticSeverity.ERROR:
             raise error_for(diagnostic)
         if warning_sink is not None:

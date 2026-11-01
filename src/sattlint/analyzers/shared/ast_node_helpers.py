@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from typing import cast
 
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.expressions import Assignment, FuncCallStmt, IfStmt, VarRef
-
-from ...grammar import constants as const
 
 NodeTuple = tuple[object, ...]
 NodeList = list[object]

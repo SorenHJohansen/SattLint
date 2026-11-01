@@ -6,6 +6,7 @@ from __future__ import annotations
 import logging
 from typing import Any, cast
 
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     CodeItem,
@@ -24,7 +25,6 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import Assignment, IfStmt, NotOp, VarRef
 
-from sattlint import constants as const
 from sattlint.reporting.variables_report import VariableIssue
 from tests.helpers.reset_contamination_api import reset_contamination_module
 

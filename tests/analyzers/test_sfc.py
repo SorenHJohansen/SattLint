@@ -3,6 +3,7 @@
 
 from types import SimpleNamespace
 
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
@@ -23,7 +24,6 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
-from sattlint import constants as const
 from sattlint.analyzers import sfc as sfc_module
 from sattlint.analyzers import variables as variables_module
 from sattlint.analyzers.framework import AnalysisContext, AnalysisSharedArtifacts, Issue

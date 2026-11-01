@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from itertools import product
 from typing import Any, cast
 
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     SFCAlternative,
     SFCParallel,
@@ -17,7 +18,6 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import Assignment, FuncCallStmt, IfStmt, VarRef
 
-from ...grammar import constants as const
 from ._reset_path_state import WriteKey, WriteMap
 
 type StmtBranch = tuple[Any, list[Any]]
