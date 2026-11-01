@@ -1,5 +1,6 @@
 # pyright: reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
 
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     CodeItem,
@@ -22,7 +23,6 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import Assignment, SLExpression, VarRef
 
-from sattlint import constants as const
 from sattlint.analyzers.dataflow import analyze_dataflow
 from sattlint.analyzers.registry import get_actual_cli_analyzer_keys, get_default_analyzers
 from sattlint.analyzers.same_cycle import analyze_same_cycle
@@ -344,8 +344,8 @@ def test_dataflow_non_state_multi_site_fork_self_loop() -> None:
                                 enter=[_assign("SharedFlag", True)],
                                 exit=[_assign("Sink", _varref("SharedFlag"))],
                             ),
+                            fork=SFCFork(targets=("Loop",)),
                         ),
-                        SFCFork(targets=("Loop",)),
                     ]
                 )
             ],

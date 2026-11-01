@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence as Seq
 from types import SimpleNamespace
 
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     CodeItem,
@@ -25,7 +26,6 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt, IfStmt, NotOp, VarRef
 
-from sattlint import constants as const
 from sattlint.reporting.variables_report import IssueKind, VariableIssue
 from tests.helpers.reset_contamination_api import reset_contamination_module
 

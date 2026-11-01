@@ -7,9 +7,8 @@ from dataclasses import dataclass
 from functools import cache
 from typing import cast
 
+from sattline_parser.builtins.records import BUILTIN_RECORD_SPECS
 from sattline_parser.models.ast_model import BasePicture, Simple_DataType, Variable
-
-from ._builtin_datatypes import BUILTIN_RECORD_SPECS
 
 
 def _cf(s: str) -> str:

@@ -2,6 +2,7 @@
 """Tests for strict module-path local variable analysis."""
 
 import pytest
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -17,7 +18,6 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt, VarRef
 
-from sattlint import constants as const
 from sattlint.analyzers.variable_usage_reporting import report_module_localvar_fields
 
 

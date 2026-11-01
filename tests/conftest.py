@@ -17,7 +17,7 @@ if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 create_sl_parser = import_module("sattlint.engine").create_sl_parser
-SLTransformer = import_module("sattlint.transformer.sl_transformer").SLTransformer
+SLTransformer = import_module("sattline_parser.transformer.sl_transformer").SLTransformer
 
 
 @pytest.fixture

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     ModuleCode,
     Sequence,
@@ -16,7 +17,6 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import Assignment, FuncCallStmt, IfStmt
 
-from ..grammar import constants as const
 from ..resolution.common import varname_full
 from .shared.ast_node_helpers import (
     iter_branch_pairs as _iter_branch_pairs,

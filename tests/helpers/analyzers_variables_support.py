@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from sattline_parser import parse_source_text as parser_core_parse_source_text
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     Assignment,
     BasePicture,
@@ -30,7 +31,6 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
-from sattlint import constants as const
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer, analyze_variables
 from sattlint.analyzers.variables import _variable_issue_collection as variable_issue_collection_module
 from sattlint.analyzers.variables import _variables_execution as variables_execution_module

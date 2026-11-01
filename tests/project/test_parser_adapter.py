@@ -3,7 +3,7 @@
 
 Covers ``sattlint.project.parser_adapter``: graph conversion from a loaded
 ``SattLineProject``, missing-dependency recording, cycle detection, reverse-
-consumer dedup, library naming, ast-only refresh mode, and the hermetic
+consumer dedup, library naming, AST-only graph conversion, and the hermetic
 ``load_parser_project`` I/O path. Programs are built schema-only via
 ``SattLineProject._from_programs`` (no filesystem) except for the I/O
 round-trip test, which writes real ``.s`` / ``.l`` fixtures into ``tmp_path``.
@@ -62,7 +62,6 @@ def _binding(
         other_lib_dirs=other_lib_dirs,
         abb_lib_dir=abb_lib_dir,
         mode=CodeMode.DRAFT,
-        refresh_mode="full",
     )
 
 
@@ -149,17 +148,18 @@ def test_convert_skips_already_present_programs() -> None:
 
 def test_convert_ast_only_skips_graphics_and_indexing() -> None:
     prg = Path("/tmp/base/prg")
-    binding = ParserProjectBinding(
-        program_dir=prg,
-        other_lib_dirs=(),
-        abb_lib_dir=None,
-        mode=CodeMode.DRAFT,
-        refresh_mode="ast-only",
-    )
+    binding = _binding(prg)
     a = _program("A", source_path=prg / "A.s")
     project = SattLineProject._from_programs({"A": a})
     graph = ProjectGraph()
-    convert_project_into_graph(project, graph, binding=binding, root_name="A", strict=False)
+    convert_project_into_graph(
+        project,
+        graph,
+        binding=binding,
+        root_name="A",
+        strict=False,
+        index_program_view=False,
+    )
 
     assert set(graph.ast_by_name) == {"A"}
     assert graph.moduletype_defs == {}
@@ -292,7 +292,6 @@ def test_emit_status_dedupes_consecutive_messages() -> None:
         other_lib_dirs=(),
         abb_lib_dir=None,
         mode=CodeMode.DRAFT,
-        refresh_mode="full",
         status_update_fn=seen.append,
     )
     parser_adapter_module._emit_status(binding, "hello")

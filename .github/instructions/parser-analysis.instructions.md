@@ -1,12 +1,12 @@
 ---
 description: "Use when changing strict validation, grammar-boundary usage, AST helpers, parser fixtures, or parser tests in SattLint. Covers parser invariants and first validation routing. Parser-core code itself lives in the external sattline-parser package."
 name: "Parser Analysis Instructions"
-applyTo: ["src/sattlint/grammar/**", "src/sattlint/models/ast_model.py", "src/sattlint/transformer/**", "tests/fixtures/corpus/**"]
+applyTo: ["src/sattlint/models/ast_model.py", "tests/fixtures/corpus/**"]
 ---
 # Parser Analysis
 
 - The SattLine parser core (grammar, transformer, AST models) ships as the external `sattline-parser` package; change parser-core behavior in that repo, then bump the version pin in `pyproject.toml`.
-- `src/sattlint/grammar/` and `src/sattlint/transformer/` only re-export parser symbols for compatibility; internal code should import from `sattline_parser` directly.
+- Grammar constants, the transformer, and AST helpers come from `sattline_parser` directly; SattLint has no parser-core compatibility wrapper.
 - Preserve strict single-file validation versus workspace-mode behavior.
 - Do not add silent fallback behavior to `sattlint syntax-check`.
 - Minimal fixtures still need three header `STRING` lines before `BasePicture`.

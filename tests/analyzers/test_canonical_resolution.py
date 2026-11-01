@@ -1,6 +1,7 @@
 # pyright: reportUnknownVariableType=false, reportUnknownParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false, reportMissingTypeArgument=false
 """Tests for canonical path resolution across parameter mappings."""
 
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -14,7 +15,6 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import Assignment, VarRef
 
-from sattlint import constants as const
 from sattlint.analyzers.variables import VariablesAnalyzer
 from sattlint.resolution.access_graph import AccessEvent, AccessGraph, AccessKind
 from sattlint.resolution.paths import CanonicalPath, ModuleSegment, decorate_segment

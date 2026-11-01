@@ -14,12 +14,12 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 from sattline_parser.models.expressions import VarRef
+from sattline_parser.validation.typing import resolve_variable_field_datatype as _resolve_variable_field_datatype
 
 from ...reporting.variables_report import IssueKind
 from ...resolution.common import resolve_moduletype_def_strict, varname_base, varname_full
 from ...resolution.scope import ScopeContext
 from ...utils.casefolding import casefold_key
-from ...validation.type_helpers import resolve_variable_field_datatype as _resolve_variable_field_datatype
 from ..shared._walk_utils import iter_nested_modules
 from ..shared.variable_utils import mapping_target_name
 

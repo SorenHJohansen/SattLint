@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import cast
 
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
@@ -35,7 +36,6 @@ from ..config.analysis import (
     cyclomatic_module_threshold,
     cyclomatic_step_threshold,
 )
-from ..grammar import constants as const
 from .framework import Issue, SimpleReport
 from .shared._walk_utils import iter_nested_modules
 from .shared.target_origin import build_target_origin_filter_for_basepicture

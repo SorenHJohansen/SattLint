@@ -11,6 +11,7 @@ from collections.abc import Callable
 from functools import partial
 from typing import Any, cast
 
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
@@ -40,7 +41,6 @@ from sattline_parser.models.expressions import (
     VarRef,
 )
 
-from ...grammar import constants as const
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ...resolution.paths import path_startswith_casefold
 from ...types import VariableId

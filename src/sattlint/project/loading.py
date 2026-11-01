@@ -10,6 +10,7 @@ from time import perf_counter
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
+from sattline_parser.project import LoadValidation
 
 from .. import cache as cache_module
 from ..config.types import ConfigDict
@@ -168,11 +169,19 @@ def _load_parser_graph(
     *,
     strict: bool,
     lib_names: dict[str, str],
+    validate: LoadValidation = LoadValidation.FULL,
+    index_program_view: bool = True,
 ) -> ProjectGraph:
     graph = ProjectGraph()
-    project = load_parser_project(binding, [target_name], strict=strict)
+    project = load_parser_project(binding, [target_name], strict=strict, validate=validate)
     convert_project_into_graph(
-        project, graph, binding=binding, root_name=target_name, strict=strict, lib_names=lib_names
+        project,
+        graph,
+        binding=binding,
+        root_name=target_name,
+        strict=strict,
+        lib_names=lib_names,
+        index_program_view=index_program_view,
     )
     return graph
 
@@ -219,11 +228,12 @@ def load_project(  # noqa: PLR0915
     validate_loader_config(cfg)
     targets = require_analyzed_targets_fn(cfg)
     selected_target = target_name or targets[0]
+    ast_only = str(refresh_mode).strip().lower() == "ast-only"
     cache_dir = get_cache_dir_fn()
     cache = cache_module.build_ast_cache(cache_dir, ast_cache_cls)
 
     def build_project_view(root_bp: BasePicture, graph: ProjectGraph) -> BasePicture:
-        if refresh_mode == "ast-only":
+        if ast_only:
             return root_bp
         project_bp = merge_project_basepicture(root_bp, graph)
         root_origin_for_basepicture = getattr(graph, "root_origin_for_basepicture", None)
@@ -272,12 +282,18 @@ def load_project(  # noqa: PLR0915
     binding = build_parser_binding(
         cfg,
         status_update_fn=status_update_fn,
-        refresh_mode=refresh_mode,
         stage_timing_sink=record_stage_timing if collect_stage_timings else None,
         graphics_timing_sink=record_graphics_timing if collect_stage_timings else None,
     )
     lib_names: dict[str, str] = {}
-    graph = _load_parser_graph(binding, selected_target, strict=False, lib_names=lib_names)
+    graph = _load_parser_graph(
+        binding,
+        selected_target,
+        strict=False,
+        lib_names=lib_names,
+        validate=LoadValidation.NONE if ast_only else LoadValidation.FULL,
+        index_program_view=not ast_only,
+    )
     root_bp = graph.ast_by_name.get(selected_target)
     deps_path = find_dependency_path(binding, selected_target, Path(cfg["program_dir"]))
     direct_dependencies = list(read_dependency_names(deps_path)) if deps_path is not None else []
@@ -305,7 +321,7 @@ def load_project(  # noqa: PLR0915
             name: dict(program_timings) for name, program_timings in graphics_timings_by_program.items()
         }
 
-    if refresh_mode == "ast-only":
+    if ast_only:
         return root_bp, graph
 
     _include_reverse_library_consumers(
@@ -392,7 +408,13 @@ def load_program_ast(
     binding = build_parser_binding(cfg, status_update_fn=status_update_fn)
 
     lib_names: dict[str, str] = {}
-    graph = _load_parser_graph(binding, program_name, strict=False, lib_names=lib_names)
+    graph = _load_parser_graph(
+        binding,
+        program_name,
+        strict=False,
+        lib_names=lib_names,
+        validate=LoadValidation.NONE,
+    )
     root_bp = graph.ast_by_name.get(program_name)
     if not root_bp:
         raise RuntimeError(f"Program '{program_name}' not parsed. Resolved: {list(graph.ast_by_name.keys())}")

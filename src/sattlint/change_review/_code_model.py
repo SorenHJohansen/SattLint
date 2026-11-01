@@ -136,12 +136,12 @@ def _iter_sfc_items(path: _StatementKey, items: list[Any] | None) -> Any:
                 for child in _iter_sfc_items((*path, "branch", branch_index), branch):
                     yield child
         elif isinstance(item, SFCSubsequence):
-            for child in _iter_sfc_items((*path, "subsequence", item.name, index), item.body):
+            for child in _iter_sfc_items((*path, "subsequence", item.name or "", index), item.body):
                 yield child
         elif isinstance(item, SFCTransitionSub):
             for child in _iter_sfc_items((*path, "transition-sub", item.name or "", index), item.body):
                 yield child
-        # SFCFork / SFCBreak / CodeComment carry no reviewable code.
+        # Fork suffixes and CodeComment carry no reviewable code.
 
 
 def _iter_code_statements(module_code: ModuleCode | None) -> Any:

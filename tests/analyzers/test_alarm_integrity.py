@@ -1,4 +1,5 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportMissingTypeArgument=false
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     Equation,
@@ -16,7 +17,6 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import VarRef
 
-from sattlint import constants as const
 from sattlint.analyzers import alarm_integrity as alarm_integrity_module
 from sattlint.analyzers.alarm_integrity import analyze_alarm_integrity
 from sattlint.analyzers.framework import Issue

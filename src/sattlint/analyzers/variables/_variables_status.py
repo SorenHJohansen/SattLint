@@ -5,11 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
+from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import Variable
 from sattline_parser.models.expressions import VarRef
 
 from ...core.call_signatures import CallParameterSignature, resolve_call_signature
-from ...grammar import constants as const
 from ...models.usage import VariableUsage
 from ...resolution.scope import ScopeContext
 

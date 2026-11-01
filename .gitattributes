@@ -14,3 +14,9 @@
 .gitignore text eol=lf
 LICENSE text eol=lf
 src/config.toml merge=ours
+*.s text eol=lf
+*.x text eol=lf
+*.g text eol=lf
+*.y text eol=lf
+*.l text eol=lf
+*.z text eol=lf

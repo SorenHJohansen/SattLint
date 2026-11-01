@@ -8,7 +8,7 @@ from pathlib import Path
 from lark import Lark
 from sattline_parser import parse_source_file as parser_core_parse_source_file
 from sattline_parser import parse_source_text as parser_core_parse_source_text
-from sattline_parser.api import describe_parse_error, read_text_with_fallback
+from sattline_parser.api import describe_parse_error, read_text_cp1252
 from sattline_parser.models.ast_model import BasePicture
 from sattline_parser.preprocessing import is_compressed, preprocess_sl_text
 from sattline_parser.transformer.sl_transformer import SLTransformer
@@ -23,6 +23,7 @@ from .core.syntax import (
     graphics_ext_candidates,
     normalize_code_mode,
     raise_syntax_validation_failure,
+    validate_basepicture_strict,
 )
 from .core.syntax import (
     extract_error_position as _extract_error_position,
@@ -67,28 +68,23 @@ from .project.parser_adapter import (
     load_parser_project,
 )
 from .utils.text_processing import find_disallowed_comments
-from .validation import (
-    LOCAL_STRUCTURE_VALIDATION_SCHEMA_VERSION,
+from .validation.shared import (
     StructuralValidationError,
-    validate_transformed_basepicture,
-    validate_transformed_basepicture_dependency_context,
-    validate_transformed_basepicture_locally,
+    ValidationNotice,
+    coerce_validation_notice,
 )
-from .validation.shared import ValidationNotice, coerce_validation_notice
 
 
 def build_project_loader(
     cfg: Mapping[str, object],
     *,
     status_update_fn: Callable[[str], None] | None = None,
-    refresh_mode: str = "full",
     stage_timing_sink: LoadStageTimingSink | None = None,
     graphics_timing_sink: GraphicsLoadTimingSink | None = None,
 ) -> ParserProjectBinding:
     return build_parser_binding(
         cfg,
         status_update_fn=status_update_fn,
-        refresh_mode=refresh_mode,
         stage_timing_sink=stage_timing_sink,
         graphics_timing_sink=graphics_timing_sink,
     )
@@ -99,7 +95,6 @@ def load_project_graph(
     target_name: str,
     *,
     status_update_fn: Callable[[str], None] | None = None,
-    refresh_mode: str = "full",
     stage_timing_sink: LoadStageTimingSink | None = None,
     graphics_timing_sink: GraphicsLoadTimingSink | None = None,
     strict: bool = False,
@@ -107,7 +102,6 @@ def load_project_graph(
     binding = build_project_loader(
         cfg,
         status_update_fn=status_update_fn,
-        refresh_mode=refresh_mode,
         stage_timing_sink=stage_timing_sink,
         graphics_timing_sink=graphics_timing_sink,
     )
@@ -129,7 +123,7 @@ def _load_source_text(
     return _load_source_text_core(
         code_path,
         debug=debug,
-        read_text_with_fallback_fn=read_text_with_fallback,
+        read_text_cp1252_fn=read_text_cp1252,
         is_compressed_fn=is_compressed,
         preprocess_sl_text_fn=preprocess_sl_text,
     )
@@ -148,7 +142,7 @@ def parse_source_text(
         transformer=transformer,
         debug=debug,
         parser_core_parse_source_text_fn=parser_core_parse_source_text,
-        validate_transformed_basepicture_fn=validate_transformed_basepicture,
+        validate_transformed_basepicture_fn=validate_basepicture_strict,
     )
 
 
@@ -183,7 +177,7 @@ def validate_single_file_syntax(
         load_source_text_fn=_load_source_text,
         find_disallowed_comments_fn=find_disallowed_comments,
         parser_core_parse_source_text_fn=parser_core_parse_source_text,
-        validate_transformed_basepicture_fn=validate_transformed_basepicture,
+        validate_transformed_basepicture_fn=validate_basepicture_strict,
         describe_parse_error_fn=describe_parse_error,
         validate_graphics_file_fn=validate_graphics_file,
         graphics_source_context_path_fn=_graphics_source_context_path,
@@ -202,7 +196,6 @@ def merge_project_basepicture(root_bp: BasePicture, graph: ProjectGraph) -> Base
 
 
 __all__ = [
-    "LOCAL_STRUCTURE_VALIDATION_SCHEMA_VERSION",
     "CircularDependencyError",
     "CodeMode",
     "DependencyVersionCompatibilityError",
@@ -226,9 +219,7 @@ __all__ = [
     "parse_source_text",
     "raise_syntax_validation_failure",
     "resolve_graphics_companion_path",
+    "validate_basepicture_strict",
     "validate_loader_config",
     "validate_single_file_syntax",
-    "validate_transformed_basepicture",
-    "validate_transformed_basepicture_dependency_context",
-    "validate_transformed_basepicture_locally",
 ]

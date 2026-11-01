@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sattline_parser.api import read_text_with_fallback
+from sattline_parser.api import read_text_cp1252
 
 
 class SourceTextProvider:
@@ -32,7 +32,7 @@ class SourceTextProvider:
         if cached is not None:
             return cached
         try:
-            content = read_text_with_fallback(path)
+            content = read_text_cp1252(path)
         except OSError:
             return None
         self._cache[file_name.casefold()] = content

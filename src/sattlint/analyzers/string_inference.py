@@ -38,10 +38,10 @@ from sattline_parser.models.expressions import (
     UnaryOp,
     VarRef,
 )
+from sattline_parser.validation.typing import is_string_simple_type
 
 from ..resolution.common import select_moduletype_def_strict, varname_base, varname_full
 from ..resolution.scope import ScopeContext
-from ..validation.type_helpers import is_string_simple_type
 from ._string_models import (
     _MAX_CONTEXT_BUILD_DEPTH,
     _MAX_FIXED_POINT_PASSES,

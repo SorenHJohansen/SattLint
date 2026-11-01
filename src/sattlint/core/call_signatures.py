@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from ..analyzers.sattline_builtins import get_function_signature
+from sattline_parser.builtins import get_function_signature
 
 _STATUS_PARAMETER_NAMES = {"status", "debugstatus"}
 
@@ -64,7 +64,7 @@ def resolve_call_signature(name: str | None) -> CallSignature | None:
 
     return CallSignature(
         name=builtin.name,
-        call_type=builtin.type,
+        call_type="Function" if builtin.kind == "function" else "Procedure",
         return_type=builtin.return_type,
         parameters=tuple(
             CallParameterSignature(

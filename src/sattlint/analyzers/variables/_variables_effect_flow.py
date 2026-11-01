@@ -6,13 +6,13 @@ from collections import defaultdict
 from collections.abc import Callable
 from typing import Any, Protocol, cast
 
+from sattline_parser.builtins import get_function_signature
 from sattline_parser.models.ast_model import BasePicture, ParameterMapping, Variable
 
 from sattlint.resolution import AccessKind, decorate_segment
 from sattlint.resolution.common import varname_base
 from sattlint.resolution.scope import ScopeContext
 
-from ..sattline_builtins import get_function_signature
 from ..shared._array_builtins import get_dynamic_array_builtin_spec
 from ._variables_effect_sources import (
     collect_expression_effect_sources as _collect_expression_effect_sources,
