@@ -169,7 +169,7 @@ def load_parser_project(
     targets: Sequence[str],
     *,
     strict: bool,
-    validate: LoadValidation = LoadValidation.FULL,
+    validate: LoadValidation = LoadValidation.INVOKED,
 ) -> SattLineProject:
     """Load ``targets`` through the parser, hermetically (no parser-side cache).
 

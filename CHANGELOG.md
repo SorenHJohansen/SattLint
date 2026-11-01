@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses calendar versioning (`vYYYY.M.number`) to match
 `sattline-parser`.
 
-## [Unreleased]
+## [2026.11.1] - 2026-11-01
 
 ### Changed
 
@@ -30,7 +30,14 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 - The parser adapter no longer reads a refresh mode. AST-only refreshes pass
   `LoadValidation.NONE` to the parser and skip the program view explicitly,
   instead of branching inside the adapter.
-- Upgraded `sattline-parser` to `>=2026.11.1,<2027`.
+- Upgraded `sattline-parser` to `>=2026.11.2,<2027`.
+- Project loading now uses the parser's invoked validation scope. The selected
+  target is validated in full; dependency libraries are limited to the module
+  types the target invokes, transitively, so unused library internals no longer
+  add findings.
+- Validation performance improved substantially through the parser release:
+  the type graph is reused per program instead of per expression, and a warm
+  cache load no longer unpickles every AST just to prune it.
 - The `sattline-parser` 2026.10.1 API migration is included:
   `read_text_cp1252` (strict Windows-1252, no encoding fallback)
   replaces `read_text_with_fallback`; `SEQFORK`/`SEQBREAK` are now a suffix on
