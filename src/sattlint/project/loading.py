@@ -169,7 +169,7 @@ def _load_parser_graph(
     *,
     strict: bool,
     lib_names: dict[str, str],
-    validate: LoadValidation = LoadValidation.FULL,
+    validate: LoadValidation = LoadValidation.INVOKED,
     index_program_view: bool = True,
 ) -> ProjectGraph:
     graph = ProjectGraph()
@@ -291,7 +291,7 @@ def load_project(  # noqa: PLR0915
         selected_target,
         strict=False,
         lib_names=lib_names,
-        validate=LoadValidation.NONE if ast_only else LoadValidation.FULL,
+        validate=LoadValidation.NONE if ast_only else LoadValidation.INVOKED,
         index_program_view=not ast_only,
     )
     root_bp = graph.ast_by_name.get(selected_target)
