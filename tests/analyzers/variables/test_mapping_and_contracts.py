@@ -104,6 +104,8 @@ def test_min_max_mapping_validator_recognizes_mn_mx_bound_suffixes():
 
     assert validator._minmax_flags("Eng.InitMM.Tryk_Afl_Min_Mn") == (True, False, False)
     assert validator._minmax_flags("Eng.InitMM.Tryk_Afl_Min_Mx") == (False, True, False)
+    assert validator._minmax_flags("Eng.InitMM.Tryk_Afl_Min_Mn.Value") == (True, False, False)
+    assert validator._minmax_flags("Eng.InitMM.Tryk_Afl_Min_Mx.Value") == (False, True, False)
 
 
 def test_string_mapping_mismatch_is_reported_when_assigning_large_string_to_small_string():

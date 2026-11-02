@@ -11,7 +11,9 @@ from . import registry as analyzer_registry
 from .framework import AnalyzerSpec
 from .registry import (
     AnalyzerCatalog,
+    AnalyzerCatalogReport,
     AnalyzerMetadata,
+    AnalyzerMetadataDict,
 )
 
 
@@ -45,7 +47,9 @@ def get_selectable_analyzers() -> list[AnalyzerSpec]:
 
 __all__ = [
     "AnalyzerCatalog",
+    "AnalyzerCatalogReport",
     "AnalyzerMetadata",
+    "AnalyzerMetadataDict",
     "canonicalize_analyzer_key",
     "canonicalize_analyzer_keys",
     "get_actual_cli_analyzer_keys",

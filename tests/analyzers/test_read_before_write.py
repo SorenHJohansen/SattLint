@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from sattline_parser.models.ast_model import (
     BasePicture,
     Equation,
+    FrameModule,
     ModuleCode,
     ModuleHeader,
     Simple_DataType,
@@ -113,6 +114,33 @@ def test_read_before_write_ignores_initialized_and_parameter_values():
     report = _rbw_only_report(bp)
 
     assert not any(issue.kind is IssueKind.READ_BEFORE_WRITE for issue in report.issues)
+
+
+def test_read_before_write_ignores_module_parameter_inherited_by_frame_module():
+    parent = SingleModule(
+        header=_hdr("Parent"),
+        moduledef=None,
+        moduleparameters=[Variable(name="InputSignal", datatype=Simple_DataType.BOOLEAN)],
+        localvariables=[Variable(name="OutputSignal", datatype=Simple_DataType.BOOLEAN)],
+        submodules=[
+            FrameModule(
+                header=_hdr("Frame"),
+                modulecode=ModuleCode(
+                    equations=[_equation([Assignment(target=_varref("OutputSignal"), value=_varref("InputSignal"))])]
+                ),
+                submodules=[],
+            )
+        ],
+        modulecode=None,
+        parametermappings=[],
+    )
+    bp = BasePicture(header=_hdr("Root"), localvariables=[], submodules=[parent], modulecode=None)
+
+    report = _rbw_only_report(bp)
+
+    assert not any(
+        issue.kind is IssueKind.READ_BEFORE_WRITE and issue.context == "InputSignal" for issue in report.issues
+    )
 
 
 def test_read_before_write_clean_when_all_reads_follow_writes():

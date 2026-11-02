@@ -57,7 +57,7 @@ flowchart LR
   producing a compact JSON + Markdown review artifact. It reuses the semantic snapshot
   and is fully independent of static analysis.
 - `src/sattlint/analyzers/` owns the heuristic analyzers and the registry.
-- `sattline-parser` (external dependency, `sattline-parser>=2026.11.2`) owns the SattLine grammar, parse tree transformation, AST models, **the language rules**, and **the SattLine project layer**: `SattLineProject` owns search roots, load mode, file discovery, dependency resolution, per-program validation, library/provenance, datecode conflicts, and cycle paths. SattLint routes project loading through `sattlint.project.loader_config.build_parser_binding` + `parser_adapter` (`load_parser_project`/`convert_project_into_graph`), which translates the parser diagnostics into SattLint policy outcomes and indexes the loaded programs into the SattLint `ProjectGraph` analysis index.
+- `sattline-parser` (external dependency, `sattline-parser>=2026.11.3`) owns the SattLine grammar, parse tree transformation, AST models, **the language rules**, and **the SattLine project layer**: `SattLineProject` owns search roots, load mode, file discovery, dependency resolution, per-program validation, library/provenance, datecode conflicts, and cycle paths. SattLint routes project loading through `sattlint.project.loader_config.build_parser_binding` + `parser_adapter` (`load_parser_project`/`convert_project_into_graph`), which translates the parser diagnostics into SattLint policy outcomes and indexes the loaded programs into the SattLint `ProjectGraph` analysis index.
 
 ## Operational Layer
 
@@ -66,7 +66,8 @@ flowchart LR
 
 ## Actual Runtime Entry Map
 
-- `sattlint` enters at `src/sattlint/cli/startup.py`. It takes no arguments and starts the interactive Textual shell from `src/sattlint/ui/`.
+- `sattlint` enters at `src/sattlint/cli/startup.py`. No arguments starts the interactive Textual shell from `src/sattlint/ui/`; arguments dispatch the headless commands `project show`, `analyzers list`, `analyze`, `findings`, and `show` through `src/sattlint/cli/entry.py`.
+- The headless commands are non-interactive: data goes to stdout (text, JSON, or NDJSON), diagnostics go to stderr, and JSON envelopes carry `schema_version`.
 - The interactive UI (`sattlint` with no arguments) provides Analyze, Setup, and Help views.
 
 ## Analyzer Workflow

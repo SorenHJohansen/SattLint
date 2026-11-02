@@ -34,6 +34,29 @@ def test_extract_report_findings_normalizes_framework_issues() -> None:
     assert second.module_path == ("Root",)
 
 
+def test_extract_report_findings_keeps_distinct_data_at_the_same_site() -> None:
+    report = SimpleNamespace(
+        issues=[
+            Issue(
+                kind="dataflow.dead_overwrite",
+                message="overwritten",
+                module_path=["Root", "Mod"],
+                data={"site": "SQ:Seq > STEP:One", "symbol": "A"},
+            ),
+            Issue(
+                kind="dataflow.dead_overwrite",
+                message="overwritten",
+                module_path=["Root", "Mod"],
+                data={"site": "SQ:Seq > STEP:One", "symbol": "B"},
+            ),
+        ]
+    )
+
+    findings = extract_report_findings(report, default_name="Root")
+
+    assert len(findings) == 2
+
+
 def test_extract_report_findings_handles_enum_kind_and_empty_module_path() -> None:
     class Kind:
         value = "never_read"

@@ -25,9 +25,11 @@
 
 `.slproj` is the central concept. A project file captures all analysis settings — targets, directories, mode, documentation, output/cache paths — in a single checked-in file. Paths in `.slproj` are relative to the file itself, making projects portable.
 
-- `sattlint init` scaffolds a new `.slproj` in the current directory
-- `sattlint --project PATH <command>` uses an explicit project file
-- Auto-discovery walks up from CWD when no `--project` or `--config` is given
+- `sattlint project show` inspects a `.slproj`
+- `sattlint analyze` runs analyzers headlessly and emits JSON/NDJSON/text
+- `sattlint findings` / `sattlint show` query stored runs without re-analyzing
+- `sattlint analyzers list` reports analyzer keys, categories, and rule IDs
+- `--project PATH` selects an explicit project file; otherwise discovery walks up from CWD
 - Project settings are merged over `~/.config/sattlint/config.toml` defaults
 - See `src/sattlint/project/` for the implementation: `types.py`, `io.py`, `models.py`
 
@@ -50,7 +52,7 @@
 
 - Keep `AGENTS.md` as the only root AI authority (AGENTS_REFERENCE.md core-beliefs #2).
 - Start from the owning seam. Run focused executable validation before widening.
-- `sattlint syntax-check` stays strict (core-beliefs #4/#10). No silent fallback behavior.
+- Parser-owned syntax validation stays strict (see the external `sattline-parser` tool); no silent fallback behavior.
 - Follow core-beliefs typing discipline (#14, #26, #27, #29): objects over dicts/tuples, no avoidable `Any`, Pyright strict-clean, typed dispatch over reflection.
 - Right solution, not the safe solution (#28); root-cause fixes over compatibility shims (#25).
 - Keep files at reasonable seams; prefer smaller focused modules over one giant file (core-beliefs #16/#17).

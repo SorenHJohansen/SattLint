@@ -154,6 +154,21 @@ class _DataflowStateMixin:
             if overlaps and not (preserve_exact and traced_symbol_key == symbol_key):
                 state.pop(trace_key, None)
 
+    def _clear_write_effect_state(self: Any, state: StateMap) -> StateMap:
+        """Drop write-effect bookkeeping that must not cross an SFC step phase.
+
+        SFC steps run in different scans. Carrying pending writes or constant
+        traces across ENTER/ACTIVE/EXIT boundaries turns intentional
+        enable/disable sequences into false dead-overwrite or conflicting-
+        constant findings. Values remain in the state so transition conditions
+        still see the latest assigned value.
+        """
+        next_state = state.copy()
+        for key in tuple(next_state):
+            if self._is_pending_state_key(key) or self._is_constant_trace_key(key):
+                next_state.pop(key, None)
+        return next_state
+
     def _track_constant_write(
         self: Any,
         resolved: ResolvedRef,

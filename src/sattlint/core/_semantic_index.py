@@ -30,6 +30,7 @@ from ._semantic_helpers import (
 from ._semantic_index_reference_support import SemanticIndexReferenceSupportMixin
 from ._semantic_snapshot import ReferenceOccurrence, SymbolDefinition, SymbolReference
 from .call_signatures import CallSignatureOccurrence
+from .origin import is_root_origin
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,10 +58,12 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         root_origin_file: str | None = None,
         root_origin_library: str | None = None,
         unavailable_libraries: set[str] | None = None,
+        include_dependency_modules: bool = True,
     ):
         self.base_picture = base_picture
         self.root_origin_file = root_origin_file if root_origin_file is not None else base_picture.origin_file
         self.root_origin_library = root_origin_library if root_origin_library is not None else base_picture.origin_lib
+        self.include_dependency_modules = include_dependency_modules
         self.type_graph = TypeGraph.from_basepicture(base_picture)
         self.symbol_table = CanonicalSymbolTable()
         self.unavailable_libraries = unavailable_libraries or set()
@@ -82,6 +85,16 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
             issues=self._issues,
             global_lookup_fn=self._lookup_global_variable,
             root_library=self.root_origin_library,
+        )
+
+    def _is_root_origin(self, origin_file: str | None, origin_lib: str | None) -> bool:
+        if self.include_dependency_modules:
+            return True
+        return is_root_origin(
+            origin_file,
+            origin_lib,
+            root_origin_file=self.root_origin_file,
+            root_origin_library=self.root_origin_library,
         )
 
     def build(

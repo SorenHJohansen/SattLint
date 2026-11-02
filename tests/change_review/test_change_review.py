@@ -7,6 +7,15 @@ import json
 from pathlib import Path
 
 import pytest
+from sattline_parser.models.ast_model import (
+    BasePicture,
+    ModuleCode,
+    ModuleDef,
+    ModuleHeader,
+    ModuleTypeDef,
+    Simple_DataType,
+    Variable,
+)
 
 from sattlint.change_review import (
     ChangeReviewResult,
@@ -18,6 +27,8 @@ from sattlint.change_review import (
 )
 from sattlint.change_review.serialization.json_serializer import review_to_json
 from sattlint.change_review.source import SourceTextProvider
+from sattlint.core.semantic import build_snapshot_from_loaded_project
+from sattlint.models.project_graph import ProjectGraph
 from tests.helpers.change_review_support import (
     DRAFT_PROGRAM,
     FUNCTION_BLOCK_DRAFT,
@@ -190,3 +201,40 @@ def test_metadata_overhead_is_compact(tmp_path: Path):
 
 def test_draft_and_official_programs_unused_when_unrelated(tmp_path: Path):
     assert OFFICIAL_PROGRAM != DRAFT_PROGRAM
+
+
+def _moduletype(name: str, *, origin_file: str, origin_lib: str) -> ModuleTypeDef:
+    return ModuleTypeDef(
+        name=name,
+        moduleparameters=[],
+        localvariables=[Variable(name=f"{name}Value", datatype=Simple_DataType.INTEGER)],
+        moduledef=ModuleDef(),
+        modulecode=ModuleCode(sequences=[], equations=[]),
+        origin_file=origin_file,
+        origin_lib=origin_lib,
+    )
+
+
+def test_change_review_snapshot_can_exclude_dependency_moduletypes(tmp_path: Path):
+    root_type = _moduletype("RootType", origin_file="Demo.s", origin_lib="DemoLib")
+    dependency_type = _moduletype("DependencyType", origin_file="Dependency.x", origin_lib="OtherLib")
+    bp = BasePicture(
+        header=ModuleHeader(name="Demo", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+        name="Demo",
+        moduletype_defs=[root_type, dependency_type],
+        moduledef=ModuleDef(),
+        origin_file="Demo.s",
+        origin_lib="DemoLib",
+    )
+
+    snapshot = build_snapshot_from_loaded_project(
+        bp,
+        ProjectGraph(),
+        entry_file=tmp_path / "Demo.s",
+        workspace_root=tmp_path,
+        include_dependency_modules=False,
+    )
+
+    paths = {definition.canonical_path for definition in snapshot.definitions}
+    assert any(path.startswith("RootType") for path in paths)
+    assert not any(path.startswith("DependencyType") for path in paths)

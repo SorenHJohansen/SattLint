@@ -123,7 +123,8 @@ class SpecComplianceAnalyzer:
             )
 
     def _check_sequence(self, sequence: Sequence, module_path: list[str]) -> None:
-        if self._sequence_prefix and (sequence.name or "") and not sequence.name.startswith(self._sequence_prefix):
+        sequence_name = sequence.name or ""
+        if self._sequence_prefix and sequence_name and not sequence_name.startswith(self._sequence_prefix):
             self._issues.append(
                 Issue(
                     kind="spec.sequence_name_prefix",

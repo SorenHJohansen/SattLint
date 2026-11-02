@@ -1,9 +1,9 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false, reportIndexIssue=false
-"""CLI behavior tests for SattLint — no-args TUI launch surface.
+"""CLI behavior tests for SattLint startup and interactive routing.
 
-All CLI subcommands and flags have been removed; the CLI is a single
-behavior: ``sattlint`` (no arguments) launches the Textual TUI. These tests
-cover that launch path and the interactive-routing cases around it.
+No-argument startup launches the Textual TUI. Non-empty argv is routed to the
+headless CLI; these tests cover that routing boundary and the interactive
+launch path. Headless command behavior lives in ``test_cli_headless.py``.
 """
 
 import runpy

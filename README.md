@@ -73,14 +73,29 @@ Open a configuration first (**File → Open Configuration** or **File → New
 Configuration**), then use the **Analyze** view to pick analyzers and run
 checks.
 
-`sattlint` takes no arguments; all CLI subcommands and flags have been removed
-and every capability is reachable from the Textual UI. Supplying arguments
-returns a usage error (exit code `2`).
+### Headless automation
+
+The same capabilities are available without the TUI for scripts and AI agents:
+
+```bash
+sattlint project show --project app.slproj --format json
+sattlint analyzers list --format json
+sattlint analyze --project app.slproj --format json
+sattlint findings --run latest --module Root.A --group-by module --format json
+sattlint show <finding-id> --format json
+```
+
+Commands write data to stdout and diagnostics to stderr. JSON output carries a
+`schema_version`; finding IDs are stable across runs. Text and Markdown output
+use human-readable finding labels; structured output keeps the machine IDs.
 
 Exit codes:
 
-- `0` — success (the TUI launched and quit cleanly)
-- `2` — arguments were supplied to `sattlint`
+- `0` — success / no blocking findings
+- `1` — findings were reported (`analyze --fail-on any`, the default)
+- `2` — usage, configuration, project, or target-loading error
+- `3` — internal error
+- `130` — interrupted
 
 ---
 

@@ -10,7 +10,7 @@ quality gates, validation map, and core beliefs.
 
 | Path | Role | First validation |
 | --- | --- | --- |
-| `sattline-parser` (external) | Parser grammar, AST, transformer, strict syntax behavior | `sattlint syntax-check` or targeted parser pytest |
+| `sattline-parser` (external) | Parser grammar, AST, transformer, strict syntax behavior | targeted parser pytest (the parser tool owns single-file check/parse CLIs) |
 | `src/sattlint/cli/` | CLI entrypoints and command handlers | Targeted owner pytest, then Ruff and Pyright |
 | `src/sattlint/analyzers/` | Heuristic analyzers and the rule registry | Targeted analyzer pytest |
 | `src/sattlint/core/` | Shared semantic snapshot, document helpers, and the engine-internal analysis trace recorder (`core/tracing.py`) | Targeted pytest |
@@ -60,7 +60,7 @@ the same gate names.
 | Stage | Responsibility | Required commands | Expected proof |
 | --- | --- | --- | --- |
 | Focused local | Immediate correctness on the touched slice | Focused pytest, touched-file Pyright when Python files changed | One focused executable check before widening |
-| Pre-commit | Fast local hygiene before sharing work | `python -m pre_commit run --all-files` | Ruff fix, Ruff format, Pyright on `src/sattlint tests`, SattLine syntax-check on staged fixtures |
+| Pre-commit | Fast local hygiene before sharing work | `python -m pre_commit run --all-files` | Ruff fix, Ruff format, Pyright on `src/sattlint tests`, and the standard pre-commit-hooks checks |
 | Full local | Broader branch health | `python -m ruff check .`, `python -m ruff format --check .`, `python -m pyright src/sattlint tests`, `python -m pytest -q --tb=short` | Full lint, type, and test pass |
 | CI | Full trust on PRs and main | `ci.yml`: clean install, the full local set, clean-wheel smokes (Linux + Windows) | Deterministic install and retained-command smokes |
 
@@ -78,8 +78,7 @@ the same gate names.
 
 This is the default local safety gate. It is fast and file-scoped: Ruff
 autofix, Ruff format, Pyright on `src/sattlint tests` (with the existing
-per-file suppressions in test files), SattLine syntax-check on staged SattLine
-fixtures, and the standard pre-commit-hooks checks.
+per-file suppressions in test files), and the standard pre-commit-hooks checks.
 
 ### CI Gate
 
@@ -100,9 +99,11 @@ Canonical first-check command source for SattLint maintainer surfaces.
 
 - Parser, grammar, transformer, AST, or strict validation:
   `python -m pytest tests/app/test_cli.py -x -q --tb=short`
-  or `sattlint syntax-check <target>`
+  or the external `sattline-parser` tool's check command
 - CLI routing or argparse behavior:
   `python -m pytest tests/app/test_cli.py -x -q --tb=short`
+- Headless CLI commands and JSON/NDJSON payloads:
+  `python -m pytest tests/app/test_cli_headless.py -x -q --tb=short`
 - Interactive / menu / Textual app behavior:
   `python -m pytest tests/app/test_analysis_*.py tests/app/test_app_textual.py tests/app/test_cli.py -x -q --tb=short`
 - Analyzer behavior (rule-specific):
@@ -222,7 +223,7 @@ Data shapes validated at boundaries (parser, config, analyzer inputs).
 
 - Use AST models, not dicts with magic keys
 - Validate early, fail clearly, no silent fallbacks
-- `sattlint syntax-check` is strict by design
+- Parser-owned syntax validation is strict by design (external `sattline-parser`)
 
 **Construction-time parsing**: Transform data into stronger types at construction, not at validation.
 

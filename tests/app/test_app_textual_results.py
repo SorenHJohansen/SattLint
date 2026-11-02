@@ -117,10 +117,9 @@ def test_results_tree_builds_run_hierarchy() -> None:
     assert analyzer_node.data is record.targets[0].analyzers[0]
     kind_node = next(iter(analyzer_node.children))
     assert kind_node.data is None
-    root_branch = next(iter(kind_node.children))
-    assert root_branch.data == "RootProgram"
-    module_node = next(iter(root_branch.children))
+    module_node = next(iter(kind_node.children))
     assert module_node.data == "RootProgram.StartMaster"
+    assert module_node.label.plain == "RootProgram.StartMaster"
     finding_node = next(iter(module_node.children))
     assert finding_node.data == record.targets[0].analyzers[0].findings[0]
 
@@ -175,13 +174,12 @@ def test_results_tree_groups_findings_by_kind() -> None:
     assert unused_root.data == "RootProgram"
     unused_modules = list(unused_root.children)
     assert [node.data for node in unused_modules] == ["RootProgram.A", "RootProgram.B"]
-    shadow_root = next(iter(shadowed_kind.children))
-    assert shadow_root.data == "RootProgram"
-    shadow_modules = list(shadow_root.children)
-    assert [node.data for node in shadow_modules] == ["RootProgram.B"]
+    shadow_module = next(iter(shadowed_kind.children))
+    assert shadow_module.data == "RootProgram.B"
+    assert shadow_module.label.plain == "RootProgram.B"
     assert len(list(unused_modules[0].children)) == 1
     assert len(list(unused_modules[1].children)) == 1
-    assert len(list(shadow_modules[0].children)) == 1
+    assert len(list(shadow_module.children)) == 1
 
 
 def test_results_tree_collapses_identical_findings_to_one_path() -> None:
@@ -229,12 +227,9 @@ def test_results_tree_collapses_identical_findings_to_one_path() -> None:
     kind_node = next(iter(analyzer_node.children))
     assert kind_node.label.plain == "Typedef (3)"
     root_branch = next(iter(kind_node.children))
-    assert root_branch.data == "RootProgram"
-    a_branch = next(iter(root_branch.children))
-    assert a_branch.data == "RootProgram.A"
-    pump_nodes = list(a_branch.children)
-    assert [node.data for node in pump_nodes] == ["RootProgram.A.Pump_1"]
-    leaf = next(iter(pump_nodes[0].children))
+    assert root_branch.data == "RootProgram.A.Pump_1"
+    assert root_branch.label.plain == "RootProgram.A.Pump_1"
+    leaf = next(iter(root_branch.children))
     assert leaf.data.kind == "typedef"
     assert "3 occurrences" in leaf.label.plain
 
@@ -278,9 +273,8 @@ def test_results_tree_keeps_identical_findings_at_distinct_sites() -> None:
     assert tree is not None
     analyzer_node = next(iter(tree.root.children[0].children))
     kind_node = next(iter(analyzer_node.children))
-    root_branch = next(iter(kind_node.children))
-    mixing_branch = next(iter(root_branch.children))
-    module_node = next(iter(mixing_branch.children))
+    module_node = next(iter(kind_node.children))
+    assert module_node.data == "RootProgram.MixingAfl.PhaseLogic"
     site_nodes = list(module_node.children)
     assert [node.label.plain for node in site_nodes] == [
         "SQ:PhaseSequence > TRANS:Tr12",
@@ -323,8 +317,8 @@ def test_results_tree_renders_site_node_and_finding_leaf() -> None:
     assert tree is not None
     analyzer_node = next(iter(tree.root.children[0].children))
     kind_node = next(iter(analyzer_node.children))
-    root_branch = next(iter(kind_node.children))
-    module_node = next(iter(root_branch.children))
+    module_node = next(iter(kind_node.children))
+    assert module_node.data == "RootProgram.Child"
     site_node = next(iter(module_node.children))
     assert site_node.label.plain == "Child : ChildType"
     leaf = next(iter(site_node.children))
@@ -420,9 +414,8 @@ def test_results_tree_merges_identical_site_nodes_for_separate_findings() -> Non
     assert tree is not None
     analyzer_node = next(iter(tree.root.children[0].children))
     kind_node = next(iter(analyzer_node.children))
-    root_branch = next(iter(kind_node.children))
-    module_node = next(iter(root_branch.children))
-    assert module_node.label.plain == "LoopLogic"
+    module_node = next(iter(kind_node.children))
+    assert module_node.label.plain == "RootProgram.LoopLogic"
     site_nodes = list(module_node.children)
     assert len(site_nodes) == 1
     assert site_nodes[0].label.plain == "EQ:Control"
@@ -499,3 +492,151 @@ def test_run_tree_top_level_is_one_node_per_target() -> None:
     assert tree is not None
     assert str(tree.root.label) == ""
     assert [child.data.target_name for child in tree.root.children] == ["RootProgram"]
+
+
+def test_results_tree_keeps_branch_points_when_merging_module_chains() -> None:
+    record = RunRecord(
+        run_id="r1",
+        started_at="s",
+        finished_at="f",
+        project_tag="RootProgram",
+        targets=(
+            RunTargetRecord(
+                target_name="RootProgram",
+                is_library=False,
+                analyzers=(
+                    RunAnalyzerRecord(
+                        key="variables",
+                        name="Variable issues",
+                        status="completed",
+                        findings=(
+                            AnalysisFinding(kind="unused", message="first", module_path=("RootProgram", "A", "One")),
+                            AnalysisFinding(kind="unused", message="second", module_path=("RootProgram", "A", "Two")),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    tree = app_textual_results_module._build_run_tree(record)
+
+    assert tree is not None
+    kind_node = next(iter(next(iter(tree.root.children[0].children)).children))
+    root_branch = next(iter(kind_node.children))
+    assert root_branch.label.plain == "RootProgram.A"
+    assert [node.label.plain for node in root_branch.children] == ["One", "Two"]
+
+
+def test_results_tree_groups_findings_by_module_across_analyzers() -> None:
+    record = RunRecord(
+        run_id="r1",
+        started_at="s",
+        finished_at="f",
+        project_tag="RootProgram",
+        targets=(
+            RunTargetRecord(
+                target_name="RootProgram",
+                is_library=False,
+                analyzers=(
+                    RunAnalyzerRecord(
+                        key="variables",
+                        name="Variable issues",
+                        status="completed",
+                        findings=(
+                            AnalysisFinding(kind="unused", message="m1", module_path=("RootProgram", "A")),
+                            AnalysisFinding(kind="unused", message="m2", module_path=("RootProgram", "A", "Sub")),
+                        ),
+                    ),
+                    RunAnalyzerRecord(
+                        key="patterns",
+                        name="Pattern checks",
+                        status="completed",
+                        findings=(
+                            AnalysisFinding(kind="magic_number", message="m3", module_path=("RootProgram", "A")),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    tree = app_textual_results_module._build_run_tree(record, group_by="module")
+
+    assert tree is not None
+    target_node = next(iter(tree.root.children))
+    module_node = next(iter(target_node.children))
+    assert module_node.data == "RootProgram.A"
+    analyzer_nodes = [node for node in module_node.children if not isinstance(node.data, str)]
+    assert [node.data.key for node in analyzer_nodes] == ["variables", "patterns"]
+    variables_node, patterns_node = analyzer_nodes
+    assert [node.label.plain for node in variables_node.children] == ["Unused variable (1)"]
+    assert [node.label.plain for node in patterns_node.children] == ["Magic number (1)"]
+
+    sub_module = next(node for node in module_node.children if node.data == "RootProgram.A.Sub")
+    assert sub_module.label.plain == "Sub"
+    sub_analyzers = list(sub_module.children)
+    assert [node.data.key for node in sub_analyzers] == ["variables"]
+
+
+def test_results_tree_module_grouping_lists_empty_analyzers_when_requested() -> None:
+    record = RunRecord(
+        run_id="r1",
+        started_at="s",
+        finished_at="f",
+        project_tag="RootProgram",
+        targets=(
+            RunTargetRecord(
+                target_name="RootProgram",
+                is_library=False,
+                analyzers=(
+                    RunAnalyzerRecord(
+                        key="variables",
+                        name="Variable issues",
+                        status="completed",
+                        findings=(AnalysisFinding(kind="unused", message="m", module_path=("RootProgram",)),),
+                    ),
+                    RunAnalyzerRecord(key="sfc", name="SFC checks", status="completed", findings=()),
+                ),
+            ),
+        ),
+    )
+
+    tree = app_textual_results_module._build_run_tree(record, group_by="module", show_empty_analyzers=True)
+
+    assert tree is not None
+    target_node = next(iter(tree.root.children))
+    no_findings_node = next(node for node in target_node.children if node.label.plain == "No findings (1)")
+    assert [node.data.key for node in no_findings_node.children] == ["sfc"]
+
+
+def test_results_tree_module_grouping_auto_expands_single_child_chains() -> None:
+    record = RunRecord(
+        run_id="r1",
+        started_at="s",
+        finished_at="f",
+        project_tag="RootProgram",
+        targets=(
+            RunTargetRecord(
+                target_name="RootProgram",
+                is_library=False,
+                analyzers=(
+                    RunAnalyzerRecord(
+                        key="variables",
+                        name="Variable issues",
+                        status="completed",
+                        findings=(AnalysisFinding(kind="unused", message="m", module_path=("RootProgram", "A", "B")),),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    tree = app_textual_results_module._build_run_tree(record, group_by="module")
+
+    assert tree is not None
+    target_node = next(iter(tree.root.children))
+    module_node = next(iter(target_node.children))
+    assert module_node.label.plain == "RootProgram.A.B"
+    assert target_node.is_expanded is True
+    assert module_node.is_expanded is True

@@ -21,19 +21,6 @@ class AnalyzerDeliveryMetadata:
     supports_incremental: bool = False
     min_fixture_set: tuple[str, ...] = ()
 
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "scope": self.scope,
-            "implementation_bucket": self.implementation_bucket,
-            "output_artifacts": list(self.output_artifacts),
-            "cli_exposed": self.cli_exposed,
-            "acceptance_tests": list(self.acceptance_tests),
-            "depends_on_artifacts": list(self.depends_on_artifacts),
-            "supports_baselines": self.supports_baselines,
-            "supports_incremental": self.supports_incremental,
-            "min_fixture_set": list(self.min_fixture_set),
-        }
-
 
 def summary_output_for_analyzer(analyzer_key: str) -> str:
     return f"{analyzer_key}.summary"

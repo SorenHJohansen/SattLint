@@ -40,6 +40,7 @@ from sattline_parser.models.expressions import Assignment
 from ..core._semantic_helpers import source_file_key
 from ..core._semantic_snapshot import ReferenceOccurrence, SemanticSnapshot
 from ..core.ast_tools import iter_variable_refs
+from ..core.origin import is_root_origin
 from ._ast_normalize import normalize_ast_value
 
 _StatementKey = tuple[str | int, ...]
@@ -401,8 +402,11 @@ def _group_blocks(
 
 
 class _ModuleTreeWalker:
-    def __init__(self, snapshot: SemanticSnapshot):
+    def __init__(self, snapshot: SemanticSnapshot, *, include_dependency_modules: bool = True):
         self._snapshot = snapshot
+        self._include_dependency_modules = include_dependency_modules
+        self._root_origin_file = snapshot.base_picture.origin_file or snapshot.entry_file.name
+        self._root_origin_library = snapshot.base_picture.origin_lib
         self._typedef_index: dict[str, list[ModuleTypeDef]] = {}
         for moduletype in snapshot.base_picture.moduletype_defs or []:
             self._typedef_index.setdefault(moduletype.name.casefold(), []).append(moduletype)
@@ -410,6 +414,16 @@ class _ModuleTreeWalker:
         self._modules: list[ModuleModel] = []
         self._ref_sites_by_module: dict[tuple[str, ...], frozenset[tuple[str, int, int]]] = {}
         self._produced_keys_by_module: dict[tuple[str, ...], set[_DefinitionKey]] = {}
+
+    def _is_root_origin(self, origin_file: str | None, origin_lib: str | None) -> bool:
+        if self._include_dependency_modules:
+            return True
+        return is_root_origin(
+            origin_file,
+            origin_lib,
+            root_origin_file=self._root_origin_file,
+            root_origin_library=self._root_origin_library,
+        )
 
     def _add_module(
         self,
@@ -491,6 +505,8 @@ class _ModuleTreeWalker:
                 child_path = (*module_path, module.header.name)
                 typedef = self._resolve_typedef(module)
                 if typedef is None:
+                    continue
+                if not self._is_root_origin(typedef.origin_file, typedef.origin_lib):
                     continue
                 self._add_module(
                     typedef,
@@ -608,6 +624,6 @@ class _ModuleTreeWalker:
         )
 
 
-def build_code_model(snapshot: SemanticSnapshot) -> CodeModel:
+def build_code_model(snapshot: SemanticSnapshot, *, include_dependency_modules: bool = True) -> CodeModel:
     """Build the per-module semantic code model for one project version."""
-    return _ModuleTreeWalker(snapshot).build()
+    return _ModuleTreeWalker(snapshot, include_dependency_modules=include_dependency_modules).build()

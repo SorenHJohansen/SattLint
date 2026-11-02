@@ -8,9 +8,9 @@ applyTo: ["src/sattlint/models/ast_model.py", "tests/fixtures/corpus/**"]
 - The SattLine parser core (grammar, transformer, AST models) ships as the external `sattline-parser` package; change parser-core behavior in that repo, then bump the version pin in `pyproject.toml`.
 - Grammar constants, the transformer, and AST helpers come from `sattline_parser` directly; SattLint has no parser-core compatibility wrapper.
 - Preserve strict single-file validation versus workspace-mode behavior.
-- Do not add silent fallback behavior to `sattlint syntax-check`.
+- Do not add silent fallback behavior around parser validation; SattLint keeps its raise-on-first-error policy in `sattlint.validation.policy`.
 - Minimal fixtures still need three header `STRING` lines before `BasePicture`.
 - Compare identifiers case-insensitively with `.casefold()`.
 - `:OLD` and `:NEW` stay valid only on `STATE` variables.
-- Choose the first focused validation route from [validation map](../../AGENTS_REFERENCE.md#validation-map); parser work normally stays on strict `syntax-check` before broader pytest.
+- Choose the first focused validation route from [validation map](../../AGENTS_REFERENCE.md#validation-map); parser work normally stays on the external `sattline check` plus targeted pytest before broader runs.
 - If behavior changes, update focused parser or validation tests before wider runs.

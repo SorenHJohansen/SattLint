@@ -75,6 +75,26 @@ def test_save_and_reload_preserves_values(tmp_path: Path) -> None:
     assert project.data["analysis"] == {"validate": True}
 
 
+def test_project_analysis_survives_effective_config_merge(tmp_path: Path) -> None:
+    path = tmp_path / "proj.slproj"
+    data = {
+        "slproj_version": 1,
+        "analyzed_programs_and_libraries": [],
+        "mode": "official",
+        "program_dir": tmp_path / "src",
+        "ABB_lib_dir": "",
+        "icf_dir": "",
+        "other_lib_dirs": [],
+        "analysis": {"spec_compliance": {"step_prefix": "ST_"}},
+    }
+    save_project(path, cast(ProjectDict, data))
+    project = load_project(path)
+
+    cfg = project.to_default_merged_config_dict()
+
+    assert cfg["analysis"]["spec_compliance"]["step_prefix"] == "ST_"
+
+
 def test_init_project_scaffolds_defaults(tmp_path: Path) -> None:
     path = tmp_path / "proj.slproj"
     project = init_project(path, name="Demo")

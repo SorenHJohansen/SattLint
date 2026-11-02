@@ -734,7 +734,7 @@ def test_variable_issue_collection_collect_module_issue_helper_covers_remaining_
         "EffectParam",
         "moduleparameter",
         None,
-    ) in issues
+    ) not in issues
     assert (
         IssueKind.PROCEDURE_STATUS,
         ("Root", "Worker"),
@@ -762,10 +762,12 @@ def test_variable_issue_collection_nested_scope_and_magic_helpers_cover_remainin
     detached_var = Variable(name="Detached", datatype="DetachedPayload")
 
     nested_state = {
-        "innerpayload": {
-            "accessed_prefixes": set(),
-            "has_whole_access": False,
-        }
+        "innerpayload": variable_issue_collection_module._DatatypeDefinitionState(
+            datatype_name="InnerPayload",
+            module_path=("Root", "DataType:InnerPayload"),
+            leaf_paths=set(),
+            accessed_prefixes=set(),
+        )
     }
     type_records = {
         "OuterPayload": SimpleNamespace(fields_by_key={"inner": SimpleNamespace(datatype="InnerPayload")}),
@@ -837,8 +839,8 @@ def test_variable_issue_collection_nested_scope_and_magic_helpers_cover_remainin
     variable_issue_collection_module._record_nested_datatype_access(helper, nested_state, missing_field_var, "Inner")
     variable_issue_collection_module._record_nested_datatype_access(helper, nested_state, detached_var, "Inner")
     variable_issue_collection_module._record_nested_datatype_access(helper, nested_state, nested_param, "Inner")
-    assert nested_state["innerpayload"]["accessed_prefixes"] == set()
-    assert nested_state["innerpayload"]["has_whole_access"] is True
+    assert nested_state["innerpayload"].accessed_prefixes == set()
+    assert nested_state["innerpayload"].has_whole_access is True
 
     helper.bp.localvariables = [whole_access_var]
     helper.bp.submodules = []

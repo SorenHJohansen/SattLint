@@ -9,6 +9,7 @@ a callable surface that is independent of any specific terminal.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, cast
 
 from ..analyzers import catalog as analysis_catalog_module
@@ -31,20 +32,34 @@ def _get_selectable_analyzers() -> list[Any]:
 get_selectable_analyzers = _get_selectable_analyzers
 
 
+def _selected_analyzers_fn(selected_keys: list[str] | None) -> Callable[[], list[Any]]:
+    return _get_selectable_analyzers if selected_keys else _get_enabled_analyzers
+
+
+def _invoke_checks[ResultT](
+    checks_fn: Callable[..., ResultT],
+    cfg: ConfigDict,
+    selected_keys: list[str] | None,
+    **options: object,
+) -> ResultT:
+    """Call one ``checks`` entry point with the shared project-loading defaults."""
+    return checks_fn(
+        cfg,
+        selected_keys,
+        iter_loaded_projects_fn=project_application.iter_loaded_projects,
+        get_enabled_analyzers_fn=_selected_analyzers_fn(selected_keys),
+        target_is_library_fn=project_application.target_is_library,
+        **options,
+    )
+
+
 def run_checks(
     cfg: ConfigDict,
     selected_keys: list[str] | None,
     *,
     use_cache: bool = True,
 ) -> None:
-    checks_module.run_checks(
-        cfg,
-        selected_keys,
-        use_cache=use_cache,
-        iter_loaded_projects_fn=project_application.iter_loaded_projects,
-        get_enabled_analyzers_fn=_get_selectable_analyzers if selected_keys else _get_enabled_analyzers,
-        target_is_library_fn=project_application.target_is_library,
-    )
+    _invoke_checks(checks_module.run_checks, cfg, selected_keys, use_cache=use_cache)
 
 
 def run_checks_result(
@@ -53,11 +68,21 @@ def run_checks_result(
     *,
     use_cache: bool = True,
 ) -> checks_module.ChecksRunResult:
-    return checks_module.run_checks_result(
+    return _invoke_checks(checks_module.run_checks_result, cfg, selected_keys, use_cache=use_cache)
+
+
+def collect_checks_result(
+    cfg: ConfigDict,
+    selected_keys: list[str] | None,
+    *,
+    use_cache: bool = True,
+    persist_run: bool = True,
+) -> checks_module.ChecksRunResult:
+    """Run checks without emitting the human-readable report to stdout."""
+    return _invoke_checks(
+        checks_module.collect_run_checks_result,
         cfg,
         selected_keys,
         use_cache=use_cache,
-        iter_loaded_projects_fn=project_application.iter_loaded_projects,
-        get_enabled_analyzers_fn=_get_selectable_analyzers if selected_keys else _get_enabled_analyzers,
-        target_is_library_fn=project_application.target_is_library,
+        persist_run=persist_run,
     )

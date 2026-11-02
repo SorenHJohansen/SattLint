@@ -101,3 +101,77 @@ def test_datatype_fields_is_registered_selectable_but_not_default_cli():
     catalog = get_default_analyzer_catalog()
     entries = [analyzer for analyzer in catalog.analyzers if analyzer.spec.key == "datatype-fields"]
     assert len(entries) == 1
+
+
+def _picture_with_module_and_local_records() -> tuple[BasePicture, Variable, Variable]:
+    dt = DataType(
+        name="RecType",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="A", datatype=Simple_DataType.INTEGER),
+            Variable(name="B", datatype=Simple_DataType.REAL),
+        ],
+    )
+    param_rec = Variable(name="ParamRec", datatype="RecType")
+    local_rec = Variable(name="LocalRec", datatype="RecType")
+    sink = Variable(name="Sink", datatype=Simple_DataType.INTEGER)
+    module = SingleModule(
+        header=_hdr("M1"),
+        moduledef=None,
+        moduleparameters=[param_rec],
+        localvariables=[local_rec, sink],
+        submodules=[],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="UseFields",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        Assignment(target=_varref("LocalRec.A"), value=1),
+                        Assignment(target=_varref("Sink"), value=_varref("LocalRec.B")),
+                        Assignment(target=_varref("Sink"), value=_varref("ParamRec.B")),
+                    ],
+                )
+            ],
+            sequences=[],
+        ),
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[dt],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[module],
+        modulecode=None,
+        moduledef=None,
+    )
+    return bp, param_rec, local_rec
+
+
+def test_field_asymmetry_ignores_module_parameter_contract_fields():
+    bp, param_rec, _local_rec = _picture_with_module_and_local_records()
+
+    report = analyze_datatype_fields(bp)
+    param_issues = [
+        issue
+        for issue in report.issues
+        if issue.variable is param_rec and issue.kind in {IssueKind.FIELD_READ_ONLY, IssueKind.FIELD_NEVER_READ}
+    ]
+
+    assert param_issues == []
+
+
+def test_field_asymmetry_still_reports_local_record_fields():
+    bp, _param_rec, local_rec = _picture_with_module_and_local_records()
+
+    report = analyze_datatype_fields(bp)
+    local_kinds = {
+        issue.kind
+        for issue in report.issues
+        if issue.variable is local_rec and issue.kind in {IssueKind.FIELD_READ_ONLY, IssueKind.FIELD_NEVER_READ}
+    }
+
+    assert local_kinds == {IssueKind.FIELD_READ_ONLY, IssueKind.FIELD_NEVER_READ}

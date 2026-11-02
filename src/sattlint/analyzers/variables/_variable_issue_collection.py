@@ -15,6 +15,7 @@ from sattline_parser.models.ast_model import (
 )
 
 from ...config.analysis import fan_in_out_threshold
+from ...models.usage import VariableUsage
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ...resolution import AccessEvent, AccessKind
 from ...resolution.common import resolve_moduletype_def_strict
@@ -120,9 +121,21 @@ def _build_root_variable_access_summaries(
     return summaries
 
 
+@dataclass(slots=True)
+class _DatatypeDefinitionState:
+    """Field-usage state for one datatype definition across the analyzed target."""
+
+    datatype_name: str
+    module_path: tuple[str, ...]
+    leaf_paths: set[str]
+    accessed_prefixes: set[str]
+    has_whole_access: bool = False
+    externally_open: bool = False
+
+
 def _record_nested_datatype_access(
     self: VariablesAnalyzer,
-    datatype_state: dict[str, dict[str, Any]],
+    datatype_state: dict[str, _DatatypeDefinitionState],
     variable: Variable,
     field_path: str,
 ) -> None:
@@ -153,9 +166,9 @@ def _record_nested_datatype_access(
 
         remaining_path = ".".join(segments[index + 1 :])
         if remaining_path:
-            state["accessed_prefixes"].add(remaining_path.casefold())
+            state.accessed_prefixes.add(remaining_path.casefold())
         else:
-            state["has_whole_access"] = True
+            state.has_whole_access = True
 
 
 def _add_issue(
@@ -205,69 +218,122 @@ def _expand_field_usage_to_leaf_keys(
     return matched_leaf_keys, has_whole_access
 
 
+def _empty_leaf_key_set() -> set[str]:
+    return set()
+
+
+@dataclass(slots=True)
+class _DatatypeFieldUsage:
+    """Field usage aggregated across every instance of one datatype."""
+
+    leaf_paths_by_key: dict[str, str]
+    read_leaf_keys: set[str] = field(default_factory=_empty_leaf_key_set)
+    write_leaf_keys: set[str] = field(default_factory=_empty_leaf_key_set)
+
+
+@dataclass(frozen=True, slots=True)
+class _InstanceFieldUsage:
+    """One variable instance's field usage, kept for issue emission."""
+
+    path: tuple[str, ...]
+    variable: Variable
+    role: str
+    has_whole_read: bool
+    has_whole_write: bool
+    read_leaf_keys: frozenset[str]
+    write_leaf_keys: frozenset[str]
+
+
+def _leaf_paths_by_key(self: VariablesAnalyzer, datatype_text: str) -> dict[str, str]:
+    leaf_paths = {
+        ".".join(field_path) for field_path in self.type_graph.iter_leaf_field_paths(datatype_text) if field_path
+    }
+    return {leaf_path.casefold(): leaf_path for leaf_path in leaf_paths}
+
+
+def _has_whole_record_access(usage: VariableUsage, kind: str) -> bool:
+    return any(access_kind == kind for _, access_kind in usage.usage_locations)
+
+
 def _add_field_usage_asymmetry_issues(self: VariablesAnalyzer) -> None:
     collect_field_read_only = _should_collect_issue_kind(self, IssueKind.FIELD_READ_ONLY)
     collect_field_never_read = _should_collect_issue_kind(self, IssueKind.FIELD_NEVER_READ)
     if not collect_field_read_only and not collect_field_never_read:
         return
 
-    for path, variable, role, root_owned_decl in iter_variables_for_datatype_field_analysis(self):
+    datatype_usage: dict[str, _DatatypeFieldUsage] = {}
+    instances: list[_InstanceFieldUsage] = []
+    for path, variable, role, _root_owned_decl in iter_variables_for_datatype_field_analysis(self):
         if isinstance(variable.datatype, Simple_DataType):
             continue
 
-        if (
-            self.analyzed_target_is_library
-            and root_owned_decl
-            and role == "moduleparameter"
-            and any(segment.startswith("TypeDef:") for segment in path)
-        ):
-            continue
-
-        leaf_paths = {
-            ".".join(field_path)
-            for field_path in self.type_graph.iter_leaf_field_paths(variable.datatype_text)
-            if field_path
-        }
-        if not leaf_paths:
-            continue
+        datatype_key = variable.datatype_text.casefold()
+        state = datatype_usage.get(datatype_key)
+        if state is None:
+            state = _DatatypeFieldUsage(leaf_paths_by_key=_leaf_paths_by_key(self, variable.datatype_text))
+            datatype_usage[datatype_key] = state
 
         usage = self.get_usage(variable)
-        has_whole_record_read = any(kind == "read" for _, kind in usage.usage_locations)
-        has_whole_record_write = any(kind == "write" for _, kind in usage.usage_locations)
-
-        leaf_paths_by_key = {leaf_path.casefold(): leaf_path for leaf_path in leaf_paths}
         read_leaf_keys, has_whole_field_read = _expand_field_usage_to_leaf_keys(
-            leaf_paths_by_key,
+            state.leaf_paths_by_key,
             usage.field_reads,
         )
         write_leaf_keys, has_whole_field_write = _expand_field_usage_to_leaf_keys(
-            leaf_paths_by_key,
+            state.leaf_paths_by_key,
             usage.field_writes,
         )
-        has_whole_read = has_whole_record_read or has_whole_field_read
-        has_whole_write = has_whole_record_write or has_whole_field_write
+        state.read_leaf_keys.update(read_leaf_keys)
+        state.write_leaf_keys.update(write_leaf_keys)
+        instances.append(
+            _InstanceFieldUsage(
+                path=tuple(path),
+                variable=variable,
+                role=role,
+                has_whole_read=has_whole_field_read or _has_whole_record_access(usage, "read"),
+                has_whole_write=has_whole_field_write or _has_whole_record_access(usage, "write"),
+                read_leaf_keys=frozenset(read_leaf_keys),
+                write_leaf_keys=frozenset(write_leaf_keys),
+            )
+        )
 
-        if collect_field_read_only and not has_whole_write:
-            for leaf_key in sorted(read_leaf_keys - write_leaf_keys):
-                _add_issue(
-                    self,
-                    IssueKind.FIELD_READ_ONLY,
-                    path,
-                    variable,
-                    role,
-                    field_path=leaf_paths_by_key[leaf_key],
-                )
+    for instance in instances:
+        # Module parameters are contract values: a read-only field is an input
+        # and a write-only field is an output consumed by the parent.
+        if instance.role == "moduleparameter":
+            continue
+        state = datatype_usage[instance.variable.datatype_text.casefold()]
+        if collect_field_read_only and not instance.has_whole_write:
+            _emit_field_issues(self, IssueKind.FIELD_READ_ONLY, instance, state, instance.read_leaf_keys)
+        if collect_field_never_read and not instance.has_whole_read:
+            _emit_field_issues(self, IssueKind.FIELD_NEVER_READ, instance, state, instance.write_leaf_keys)
 
-        if collect_field_never_read and not has_whole_read:
-            for leaf_key in sorted(write_leaf_keys - read_leaf_keys):
-                _add_issue(
-                    self,
-                    IssueKind.FIELD_NEVER_READ,
-                    path,
-                    variable,
-                    role,
-                    field_path=leaf_paths_by_key[leaf_key],
-                )
+
+def _emit_field_issues(
+    self: VariablesAnalyzer,
+    kind: IssueKind,
+    instance: _InstanceFieldUsage,
+    state: _DatatypeFieldUsage,
+    instance_leaf_keys: frozenset[str],
+) -> None:
+    if kind is IssueKind.FIELD_READ_ONLY:
+        global_leaf_keys = state.read_leaf_keys
+        counterpart_leaf_keys = state.write_leaf_keys
+    else:
+        global_leaf_keys = state.write_leaf_keys
+        counterpart_leaf_keys = state.read_leaf_keys
+    for leaf_key in sorted(global_leaf_keys - counterpart_leaf_keys):
+        if leaf_key not in instance_leaf_keys:
+            continue
+        leaf_path = state.leaf_paths_by_key.get(leaf_key)
+        if leaf_path is not None:
+            _add_issue(
+                self,
+                kind,
+                list(instance.path),
+                instance.variable,
+                instance.role,
+                field_path=leaf_path,
+            )
 
 
 def iter_variables_for_datatype_field_analysis(
@@ -323,9 +389,14 @@ def iter_variables_for_datatype_field_analysis(
 
     for module_path, context in self.contexts_by_module_path.items():
         path = list(module_path)
+        moduleparameter_keys = set(getattr(context, "moduleparameter_keys", ()))
         param_mapping_keys = set(getattr(context, "param_mappings", {}).keys())
         for variable_name, variable in getattr(context, "env", {}).items():
-            role = "moduleparameter" if variable_name in param_mapping_keys else "localvariable"
+            role = (
+                "moduleparameter"
+                if variable_name in moduleparameter_keys or variable_name in param_mapping_keys
+                else "localvariable"
+            )
             root_owned = self.is_from_root_origin(
                 getattr(variable, "origin_file", None),
                 getattr(variable, "origin_lib", None),
@@ -336,13 +407,10 @@ def iter_variables_for_datatype_field_analysis(
 
 
 def _add_unused_datatype_field_issues(self: VariablesAnalyzer) -> None:
-    datatype_state: dict[str, dict[str, Any]] = {}
+    datatype_state: dict[str, _DatatypeDefinitionState] = {}
 
     for datatype in self.bp.datatype_defs or []:
-        if not self.is_from_root_origin(
-            getattr(datatype, "origin_file", None),
-            getattr(datatype, "origin_lib", None),
-        ):
+        if not self.is_from_root_origin(datatype.origin_file, datatype.origin_lib):
             continue
         leaf_paths = {
             ".".join(field_path) for field_path in self.type_graph.iter_leaf_field_paths(datatype.name) if field_path
@@ -351,14 +419,12 @@ def _add_unused_datatype_field_issues(self: VariablesAnalyzer) -> None:
             continue
         datatype_state.setdefault(
             datatype.name.casefold(),
-            {
-                "datatype_name": datatype.name,
-                "module_path": [self.bp.header.name, f"DataType:{datatype.name}"],
-                "leaf_paths": leaf_paths,
-                "accessed_prefixes": set(),
-                "has_whole_access": False,
-                "externally_open": False,
-            },
+            _DatatypeDefinitionState(
+                datatype_name=datatype.name,
+                module_path=(self.bp.header.name, f"DataType:{datatype.name}"),
+                leaf_paths=leaf_paths,
+                accessed_prefixes=set(),
+            ),
         )
 
     if not datatype_state:
@@ -378,40 +444,38 @@ def _add_unused_datatype_field_issues(self: VariablesAnalyzer) -> None:
             and role == "moduleparameter"
             and any(segment.startswith("TypeDef:") for segment in path)
         ):
-            state["externally_open"] = True
+            state.externally_open = True
 
         usage = self.get_usage(variable)
         if usage.usage_locations:
-            state["has_whole_access"] = True
+            state.has_whole_access = True
 
         for field_path in list((usage.field_reads or {}).keys()) + list((usage.field_writes or {}).keys()):
             normalized = ".".join(segment for segment in field_path.split(".") if segment)
             if normalized:
-                state["accessed_prefixes"].add(normalized.casefold())
+                state.accessed_prefixes.add(normalized.casefold())
                 _record_nested_datatype_access(self, datatype_state, variable, normalized)
 
     for state in datatype_state.values():
-        if state["externally_open"] or state["has_whole_access"]:
+        if state.externally_open or state.has_whole_access:
+            continue
+        if not state.accessed_prefixes:
             continue
 
-        accessed_prefixes = state["accessed_prefixes"]
-        if not accessed_prefixes:
-            continue
-
-        for leaf_path in sorted(state["leaf_paths"]):
+        for leaf_path in sorted(state.leaf_paths):
             leaf_key = leaf_path.casefold()
             if any(
                 leaf_key == accessed_prefix or leaf_key.startswith(f"{accessed_prefix}.")
-                for accessed_prefix in accessed_prefixes
+                for accessed_prefix in state.accessed_prefixes
             ):
                 continue
 
             self.append_issue(
                 VariableIssue(
                     kind=IssueKind.UNUSED_DATATYPE_FIELD,
-                    module_path=list(state["module_path"]),
+                    module_path=list(state.module_path),
                     variable=None,
-                    datatype_name=state["datatype_name"],
+                    datatype_name=state.datatype_name,
                     role="datatype field",
                     field_path=leaf_path,
                 )
