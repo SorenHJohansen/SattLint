@@ -60,7 +60,7 @@ the same gate names.
 | Stage | Responsibility | Required commands | Expected proof |
 | --- | --- | --- | --- |
 | Focused local | Immediate correctness on the touched slice | Focused pytest, touched-file Pyright when Python files changed | One focused executable check before widening |
-| Pre-commit | Fast local hygiene before sharing work | `python -m pre_commit run --all-files` | Ruff fix, Ruff format, Pyright on `src/sattlint tests`, SattLine syntax-check on staged fixtures |
+| Pre-commit | Fast local hygiene before sharing work | `python -m pre_commit run --all-files` | Ruff fix, Ruff format, Pyright on `src/sattlint tests`, and the standard pre-commit-hooks checks |
 | Full local | Broader branch health | `python -m ruff check .`, `python -m ruff format --check .`, `python -m pyright src/sattlint tests`, `python -m pytest -q --tb=short` | Full lint, type, and test pass |
 | CI | Full trust on PRs and main | `ci.yml`: clean install, the full local set, clean-wheel smokes (Linux + Windows) | Deterministic install and retained-command smokes |
 
@@ -78,8 +78,7 @@ the same gate names.
 
 This is the default local safety gate. It is fast and file-scoped: Ruff
 autofix, Ruff format, Pyright on `src/sattlint tests` (with the existing
-per-file suppressions in test files), SattLine syntax-check on staged SattLine
-fixtures, and the standard pre-commit-hooks checks.
+per-file suppressions in test files), and the standard pre-commit-hooks checks.
 
 ### CI Gate
 
@@ -103,6 +102,8 @@ Canonical first-check command source for SattLint maintainer surfaces.
   or the external `sattline-parser` tool's check command
 - CLI routing or argparse behavior:
   `python -m pytest tests/app/test_cli.py -x -q --tb=short`
+- Headless CLI commands and JSON/NDJSON payloads:
+  `python -m pytest tests/app/test_cli_headless.py -x -q --tb=short`
 - Interactive / menu / Textual app behavior:
   `python -m pytest tests/app/test_analysis_*.py tests/app/test_app_textual.py tests/app/test_cli.py -x -q --tb=short`
 - Analyzer behavior (rule-specific):

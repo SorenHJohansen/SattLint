@@ -22,25 +22,25 @@ applyTo: ["src/**", "tests/**"]
 - Declaration validation rejects builtin-like datatype typos and incompatible declaration init literals.
 - String literals are rejected in module-code function or procedure call arguments; they are allowed in parameter mappings.
 - Builtin call validation checks arity, variable-reference requirements for `in var`, `out`, and `inout`, const-write restrictions, and datatype compatibility. `SetStringPos` and `GetStringPos` on `CONST` string variables remain allowed.
-- Single-file `sattlint syntax-check` rejects freestanding comments directly inside `ModuleCode` before the first `EQUATIONBLOCK` or `SEQUENCE` or `OPENSEQUENCE`.
-- Single-file `syntax-check` remains stricter than workspace loading by design.
+- Single-file `sattline check` (external parser CLI) rejects freestanding comments directly inside `ModuleCode` before the first `EQUATIONBLOCK` or `SEQUENCE` or `OPENSEQUENCE`.
+- Single-file `sattline check` remains stricter than workspace loading by design.
 
 ## Syntactic vs. Semantic Validity (CRITICAL FOR SCAFFOLDING)
 
-**Syntax-check passing does NOT mean the scaffold is complete or correct.**
+**A passing `sattline check` does NOT mean the scaffold is complete or correct.**
 
 A file can be syntactically valid but semantically broken:
 - `TYPEDEFINITIONS Module1 = MODULEDEFINITION DateCode_ 1 ModuleDef ... ENDDEF` with zero SUBMODULES is syntactically correct but a bare shell
 - `SUBMODULES Equipment Invocation (...) : UnknownType` is syntactically correct but references a non-existent type
 - A support library with no TYPEDEFINITIONS is syntactically correct but provides no reusable module types
 
-**For unit scaffolding, always perform semantic validation AFTER syntax-check:**
+**For unit scaffolding, always perform semantic validation AFTER `sattline check`:**
 1. Main library unit moduletype must declare MODULEPARAMETERS (beyond just Tag)
 2. Main library unit moduletype must declare LOCALVARIABLES for process state
 3. Main library unit moduletype must declare SUBMODULES invoking support-library types
 4. Support library must contain at least one equipment/operation MODULEDEFINITION
 5. Every type referenced in SUBMODULE invocations must be defined in the support library
-6. Do NOT treat "syntax-check OK" as "scaffold complete"—always verify module substance
+6. Do NOT treat "`sattline check` OK" as "scaffold complete"—always verify module substance
 
 ## Variable-Analysis Gotchas
 
@@ -53,11 +53,11 @@ A file can be syntactically valid but semantically broken:
 
 ## CLI And Testing
 
-- The installed `sattlint` console script targets `sattlint.cli.startup:cli`, so `sys.argv[1:]` reaches the startup entry. `app.cli()` remains a compatibility shim that delegates to it.
-- Calling `app.main()` with no argv still opens the Textual interactive shell.
-- If you change CLI menu layout or numbering, keep `tests/test_app.py` in sync.
+- The installed `sattlint` console script targets `sattlint.cli.startup:cli`. With arguments it dispatches the headless commands (`project show`, `analyzers list`, `analyze`, `findings`, `show`); with no arguments it opens the Textual interactive shell.
+- SattLint does not do project validation; strict syntax checking belongs to the external `sattline check` command.
+- If you change CLI routing or the interactive shell, keep `tests/app/test_cli*.py` and `tests/app/test_app_textual*.py` in sync.
 - Do not rely on the IDE test runner as the first validation path here; use repo-venv pytest commands directly, and treat IDE zero-test collection as expected noise rather than a project signal.
-- Prefer targeted test modules first, for example `tests/test_cli.py` for CLI work, `tests/analyzers/test_cyclomatic_complexity.py` for analyzer work, and the matching source-owner test module for the touched seam.
+- Prefer targeted test modules first, for example `tests/app/test_cli.py` for CLI work, `tests/analyzers/test_cyclomatic_complexity.py` for analyzer work, and the matching source-owner test module for the touched seam.
 - Use the real fixtures under `tests/fixtures/sample_sattline_files/` when uncertain about syntax or semantics.
 
 ## Workspace And Project Loading

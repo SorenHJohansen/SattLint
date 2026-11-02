@@ -10,7 +10,8 @@ import json
 import sys
 from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Any
+
+from ._payloads import ErrorPayload
 
 SCHEMA_VERSION = 1
 
@@ -33,19 +34,16 @@ class CliError(Exception):
         self.details = dict(details or {})
 
 
-def base_payload(*, command: str, **fields: object) -> dict[str, Any]:
-    return {"schema_version": SCHEMA_VERSION, "command": command, **fields}
-
-
-def error_payload(error: CliError) -> dict[str, Any]:
-    return base_payload(
-        command="error",
-        error={
+def error_payload(error: CliError) -> ErrorPayload:
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "command": "error",
+        "error": {
             "code": error.code,
             "message": error.message,
             "details": dict(error.details),
         },
-    )
+    }
 
 
 def _write_text(text: str, output: Path | None) -> None:
@@ -94,7 +92,6 @@ def output_path(value: str | None) -> Path | None:
 __all__ = [
     "SCHEMA_VERSION",
     "CliError",
-    "base_payload",
     "emit_error",
     "emit_json",
     "emit_ndjson",

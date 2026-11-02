@@ -5,12 +5,12 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
-from typing import Any
 
 from ..analyzers.catalog import canonicalize_analyzer_keys
 from ..application.findings import AnalysisFinding
 from ..runs import RunRecord, list_runs, load_run
 from ._output import CliError
+from ._payloads import FindingGroup, FindingPayload, FindingSummary, RunPayload
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,10 +71,11 @@ def _finding_id(
 
 
 def flat_findings(record: RunRecord) -> list[FlatFinding]:
-    """Flatten a run into deduplicated, deterministically ordered findings.
+    """Flatten a run into deterministically ordered findings.
 
-    Identical findings (same target, analyzer, kind, rule, module, site,
-    context, and message) are represented once with an occurrence count.
+    Repeated identical findings (same target, analyzer, kind, rule, module,
+    site, context, and message) collapse into one entry with an occurrence
+    count.
     """
     counts: dict[tuple[str, str, str, str | None, tuple[str, ...], str | None, str | None, str], int] = {}
     representatives: dict[
@@ -130,7 +131,7 @@ def flat_findings(record: RunRecord) -> list[FlatFinding]:
     return flattened
 
 
-def finding_payload(finding: FlatFinding) -> dict[str, Any]:
+def finding_payload(finding: FlatFinding) -> FindingPayload:
     analysis = finding.finding
     return {
         "id": finding.id,
@@ -201,7 +202,7 @@ def filter_findings(findings: Iterable[FlatFinding], filters: FindingFilters) ->
     return selected
 
 
-def group_findings(findings: Iterable[FlatFinding], group_by: str) -> list[dict[str, Any]]:
+def group_findings(findings: Iterable[FlatFinding], group_by: str) -> list[FindingGroup]:
     if group_by == "none":
         return []
 
@@ -254,7 +255,7 @@ def resolve_run(run_id: str | None) -> RunRecord:
     return record
 
 
-def run_payload(record: RunRecord) -> dict[str, object]:
+def run_payload(record: RunRecord) -> RunPayload:
     return {
         "run_id": record.run_id,
         "started_at": record.started_at,
@@ -265,7 +266,7 @@ def run_payload(record: RunRecord) -> dict[str, object]:
     }
 
 
-def finding_summary(findings: Iterable[FlatFinding]) -> dict[str, object]:
+def finding_summary(findings: Iterable[FlatFinding]) -> FindingSummary:
     items = list(findings)
     by_analyzer: dict[str, int] = {}
     by_kind: dict[str, int] = {}

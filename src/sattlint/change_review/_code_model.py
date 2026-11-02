@@ -18,7 +18,6 @@ resulting indexes line up with the snapshot's reference index.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, fields, is_dataclass
-from pathlib import Path
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
@@ -41,6 +40,7 @@ from sattline_parser.models.expressions import Assignment
 from ..core._semantic_helpers import source_file_key
 from ..core._semantic_snapshot import ReferenceOccurrence, SemanticSnapshot
 from ..core.ast_tools import iter_variable_refs
+from ..core.origin import is_root_origin
 from ._ast_normalize import normalize_ast_value
 
 _StatementKey = tuple[str | int, ...]
@@ -418,11 +418,12 @@ class _ModuleTreeWalker:
     def _is_root_origin(self, origin_file: str | None, origin_lib: str | None) -> bool:
         if self._include_dependency_modules:
             return True
-        if self._root_origin_library and origin_lib and origin_lib.casefold() != self._root_origin_library.casefold():
-            return False
-        if origin_file and self._root_origin_file:
-            return Path(origin_file).stem.casefold() == Path(self._root_origin_file).stem.casefold()
-        return True
+        return is_root_origin(
+            origin_file,
+            origin_lib,
+            root_origin_file=self._root_origin_file,
+            root_origin_library=self._root_origin_library,
+        )
 
     def _add_module(
         self,

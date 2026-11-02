@@ -12,7 +12,7 @@ import argparse
 import sys
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import NoReturn, Protocol
 
 from ..__version__ import __version__
 from ..config.types import ConfigDict
@@ -32,6 +32,10 @@ AppCommandFn = Callable[..., int | None]
 
 class CommandHandlers(dict[str, AppCommandFn]):
     """Mapping of command names to handlers (used by tests and embedding)."""
+
+
+class _SubParserAction(Protocol):
+    def add_parser(self, name: str, /, *, help: str | None = None) -> argparse.ArgumentParser: ...
 
 
 class _Parser(argparse.ArgumentParser):
@@ -58,25 +62,22 @@ def _add_project_arg(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--project", metavar="PATH", help="Path to a .slproj file or a directory containing one.")
 
 
-def _build_project_parser(subparsers: Any) -> None:
-    project_parser = subparsers.add_parser("project", help="Inspect and validate a .slproj project.")
+def _build_project_parser(subparsers: _SubParserAction) -> None:
+    project_parser = subparsers.add_parser("project", help="Inspect a .slproj project.")
     project_sub = project_parser.add_subparsers(dest="project_command", required=True)
     show = project_sub.add_parser("show", help="Show the resolved project.")
     _add_project_arg(show)
     _add_output_args(show)
-    validate = project_sub.add_parser("validate", help="Validate project configuration and directories.")
-    _add_project_arg(validate)
-    _add_output_args(validate)
 
 
-def _build_analyzers_parser(subparsers: Any) -> None:
+def _build_analyzers_parser(subparsers: _SubParserAction) -> None:
     analyzers_parser = subparsers.add_parser("analyzers", help="List analyzer metadata.")
     analyzers_sub = analyzers_parser.add_subparsers(dest="analyzers_command", required=True)
     listing = analyzers_sub.add_parser("list", help="List analyzers, keys, categories, and rule IDs.")
     _add_output_args(listing)
 
 
-def _build_analyze_parser(subparsers: Any) -> None:
+def _build_analyze_parser(subparsers: _SubParserAction) -> None:
     parser = subparsers.add_parser("analyze", help="Run analyzers headlessly.")
     _add_project_arg(parser)
     parser.add_argument(
@@ -107,7 +108,7 @@ def _build_analyze_parser(subparsers: Any) -> None:
     _add_output_args(parser, formats=("json", "ndjson", "text"))
 
 
-def _build_findings_parser(subparsers: Any) -> None:
+def _build_findings_parser(subparsers: _SubParserAction) -> None:
     parser = subparsers.add_parser("findings", help="Query findings from a stored run.")
     parser.add_argument("--run", default="latest", metavar="ID", help="Run ID, unique prefix, or 'latest'.")
     parser.add_argument(
@@ -134,7 +135,7 @@ def _build_findings_parser(subparsers: Any) -> None:
     _add_output_args(parser, formats=("json", "ndjson", "text"))
 
 
-def _build_show_parser(subparsers: Any) -> None:
+def _build_show_parser(subparsers: _SubParserAction) -> None:
     parser = subparsers.add_parser("show", help="Show one finding by its stable ID.")
     parser.add_argument("finding_id", metavar="FINDING_ID")
     parser.add_argument("--run", default="latest", metavar="ID", help="Run ID, unique prefix, or 'latest'.")
@@ -164,9 +165,7 @@ def _handlers() -> dict[str, AppCommandFn]:
 
 
 def _dispatch_project(args: argparse.Namespace) -> int:
-    if args.project_command == "show":
-        return commands.command_project_show(args)
-    return commands.command_project_validate(args)
+    return commands.command_project_show(args)
 
 
 def _dispatch_analyzers(args: argparse.Namespace) -> int:

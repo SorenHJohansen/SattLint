@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import io
+import argparse
 import sys
-from contextlib import redirect_stdout
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 from ..analyzers.catalog import (
     canonicalize_analyzer_keys,
@@ -15,7 +14,8 @@ from ..analyzers.catalog import (
     get_default_analyzer_catalog,
 )
 from ..application.analyze import collect_checks_result
-from ..application.checks import build_run_record
+from ..application.checks import ChecksRunResult, build_run_record
+from ..application.findings import kind_human_label
 from ..config.types import ConfigDict
 from ..project.support import TargetLoadError
 from ..runs import RunRecord
@@ -31,100 +31,155 @@ from ._findings import (
     run_payload,
 )
 from ._output import (
+    SCHEMA_VERSION,
     CliError,
-    base_payload,
     emit_json,
     emit_ndjson,
     emit_text,
     output_path,
 )
-from ._project import (
-    effective_project_config,
-    project_payload,
-    resolve_project_file,
-    validate_project,
+from ._payloads import (
+    AnalyzePayload,
+    AnalyzerInfo,
+    AnalyzersListPayload,
+    AnalyzeSummary,
+    FindingGroup,
+    FindingPayload,
+    FindingsFilters,
+    FindingsPayload,
+    FindingsSummary,
+    FindingSummary,
+    ProjectInfo,
+    ProjectShowPayload,
+    ShowPayload,
 )
+from ._project import effective_project_config, project_payload, resolve_project_file
 
 
-def command_project_show(args: Any) -> int:
+@dataclass(frozen=True, slots=True)
+class _OutputOptions:
+    output_format: str
+    output: Path | None
+    quiet: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _AnalyzeOptions:
+    output: _OutputOptions
+    project: str | None
+    analyzers: tuple[str, ...]
+    targets: tuple[str, ...]
+    modules: tuple[str, ...]
+    use_cache: bool
+    persist_run: bool
+    fail_on_findings: bool
+
+
+def _output_options(args: argparse.Namespace) -> _OutputOptions:
+    return _OutputOptions(
+        output_format=str(args.format or "text"),
+        output=output_path(args.output),
+        quiet=bool(args.quiet),
+    )
+
+
+def _analyze_options(args: argparse.Namespace) -> _AnalyzeOptions:
+    return _AnalyzeOptions(
+        output=_output_options(args),
+        project=str(args.project) if args.project else None,
+        analyzers=tuple(str(value) for value in args.analyzer),
+        targets=tuple(str(value) for value in args.target),
+        modules=tuple(str(value) for value in args.module),
+        use_cache=not bool(args.no_cache),
+        persist_run=not bool(args.no_save),
+        fail_on_findings=str(args.fail_on) == "any",
+    )
+
+
+def command_project_show(args: argparse.Namespace) -> int:
     project = resolve_project_file(args.project)
-    payload = base_payload(command="project show", project=project_payload(project))
-    output = output_path(args.output)
-    if args.format == "json":
-        emit_json(payload, output=output)
+    options = _output_options(args)
+    project_info = project_payload(project)
+    if options.output_format == "json":
+        payload: ProjectShowPayload = {
+            "schema_version": SCHEMA_VERSION,
+            "command": "project show",
+            "project": project_info,
+        }
+        emit_json(payload, output=options.output)
     else:
-        _emit_project_text(project_payload(project), output=output)
+        emit_text(_project_text(project_info), output=options.output)
     return 0
 
 
-def _emit_project_text(project: dict[str, Any], *, output: Path | None) -> None:
-    paths = cast(dict[str, object], project["paths"])
-    lines = [
+def _project_text(project: ProjectInfo) -> list[str]:
+    paths = project["paths"]
+    return [
         f"Project: {project['path']}",
         f"Root:    {project['root']}",
         f"Mode:    {project['mode']}",
-        f"Targets: {', '.join(cast(list[str], project['targets'])) or '(none)'}",
+        f"Targets: {', '.join(project['targets']) or '(none)'}",
         f"program_dir: {paths['program_dir']}",
         f"ABB_lib_dir: {paths['ABB_lib_dir']}",
         f"icf_dir: {paths['icf_dir']}",
-        f"other_lib_dirs: {', '.join(cast(list[str], paths['other_lib_dirs'])) or '(none)'}",
+        f"other_lib_dirs: {', '.join(paths['other_lib_dirs']) or '(none)'}",
         f"Runs:    {project['runs_dir']}",
         f"Review:  {project['review_output_dir']}",
     ]
-    emit_text(lines, output=output)
 
 
-def command_project_validate(args: Any) -> int:
-    project = resolve_project_file(args.project)
-    validation = validate_project(project)
-    payload = base_payload(command="project validate", **validation)
-    output = output_path(args.output)
-    if args.format == "json":
-        emit_json(payload, output=output)
-    else:
-        emit_text(_validation_text(validation), output=output)
-    return 0 if validation["ok"] else 2
-
-
-def _validation_text(validation: dict[str, Any]) -> list[str]:
-    project_path = validation["project_path"]
-    if validation["ok"]:
-        return [f"Project is valid: {project_path}"]
-    lines = [f"Project is invalid: {project_path}"]
-    for error in cast(list[dict[str, str]], validation["errors"]):
-        lines.append(f"- [{error['key_path']}] {error['message']}")
-    return lines
-
-
-def command_analyzers_list(args: Any) -> int:
+def command_analyzers_list(args: argparse.Namespace) -> int:
     catalog = get_default_analyzer_catalog()
-    default_keys = set(catalog_default_keys())
-    analyzers: list[dict[str, object]] = []
+    default_keys = set(get_actual_cli_analyzer_keys())
+    analyzers: list[AnalyzerInfo] = []
     for metadata in catalog.analyzers:
-        entry: dict[str, object] = metadata.to_dict()
-        entry["default"] = metadata.spec.key in default_keys
-        analyzers.append(entry)
-    payload = base_payload(command="analyzers list", analyzers=analyzers)
-    output = output_path(args.output)
-    if args.format == "json":
-        emit_json(payload, output=output)
+        delivery = metadata.delivery
+        analyzers.append(
+            AnalyzerInfo(
+                key=metadata.spec.key,
+                name=metadata.spec.name,
+                description=metadata.spec.description,
+                category=metadata.spec.category,
+                enabled=metadata.spec.enabled,
+                summary_output=metadata.summary_output,
+                rule_ids=list(metadata.rule_ids),
+                scope=delivery.scope,
+                implementation_bucket=delivery.implementation_bucket,
+                output_artifacts=list(delivery.output_artifacts),
+                cli_exposed=delivery.cli_exposed,
+                acceptance_tests=list(delivery.acceptance_tests),
+                depends_on_artifacts=list(delivery.depends_on_artifacts),
+                supports_baselines=delivery.supports_baselines,
+                supports_incremental=delivery.supports_incremental,
+                min_fixture_set=list(delivery.min_fixture_set),
+                default=metadata.spec.key in default_keys,
+            )
+        )
+    options = _output_options(args)
+    if options.output_format == "json":
+        payload: AnalyzersListPayload = {
+            "schema_version": SCHEMA_VERSION,
+            "command": "analyzers list",
+            "analyzers": analyzers,
+        }
+        emit_json(payload, output=options.output)
     else:
-        lines: list[str] = []
-        for entry in analyzers:
-            marker = "*" if entry["default"] else " "
-            lines.append(f"{marker} {entry['key']:<24} {entry['category']:<12} {entry['name']}")
-        emit_text(lines, output=output)
+        emit_text(_analyzers_text(analyzers), output=options.output)
     return 0
 
 
-def catalog_default_keys() -> tuple[str, ...]:
-    return get_actual_cli_analyzer_keys()
+def _analyzers_text(analyzers: list[AnalyzerInfo]) -> list[str]:
+    lines: list[str] = []
+    for entry in analyzers:
+        marker = "*" if entry["default"] else " "
+        lines.append(f"{marker} {entry['key']:<24} {entry['category']:<12} {entry['name']}")
+    return lines
 
 
-def _resolve_analyzer_keys(requested: list[str]) -> list[str] | None:
+def _resolve_analyzer_keys(requested: tuple[str, ...]) -> list[str] | None:
     if not requested:
         return None
-    canonical = list(canonicalize_analyzer_keys(requested))
+    canonical = list(canonicalize_analyzer_keys(list(requested)))
     known = {metadata.spec.key for metadata in get_default_analyzer_catalog().analyzers if metadata.spec.enabled}
     unknown = [key for key in canonical if key not in known]
     if unknown:
@@ -137,7 +192,7 @@ def _resolve_analyzer_keys(requested: list[str]) -> list[str] | None:
     return canonical
 
 
-def _apply_target_filter(cfg: ConfigDict, requested: list[str]) -> ConfigDict:
+def _apply_target_filter(cfg: ConfigDict, requested: tuple[str, ...]) -> ConfigDict:
     if not requested:
         return cfg
     configured = [str(value) for value in cast(list[object], cfg.get("analyzed_programs_and_libraries", []))]
@@ -162,32 +217,34 @@ def _apply_target_filter(cfg: ConfigDict, requested: list[str]) -> ConfigDict:
     return cast(ConfigDict, filtered)
 
 
-def _capture_run(cfg: ConfigDict, keys: list[str] | None, *, use_cache: bool, persist_run: bool) -> tuple[Any, str]:
-    buffer = io.StringIO()
+def _capture_run(
+    cfg: ConfigDict,
+    keys: list[str] | None,
+    *,
+    use_cache: bool,
+    persist_run: bool,
+) -> ChecksRunResult:
     try:
-        with redirect_stdout(buffer):
-            result = collect_checks_result(cfg, keys, use_cache=use_cache, persist_run=persist_run)
+        return collect_checks_result(cfg, keys, use_cache=use_cache, persist_run=persist_run)
     except TargetLoadError as exc:
         raise CliError(str(exc), code="target_load_failed", exit_code=2) from exc
-    return result, buffer.getvalue()
 
 
-def _result_record(result: Any, cfg: ConfigDict) -> RunRecord:
+def _result_record(result: ChecksRunResult, cfg: ConfigDict) -> RunRecord:
     record = build_run_record(result, cfg)
     if result.run_id:
         record = replace(record, run_id=result.run_id)
     return record
 
 
-def command_analyze(args: Any) -> int:
-    project = resolve_project_file(args.project)
-    cfg = _apply_target_filter(effective_project_config(project), args.target)
-    keys = _resolve_analyzer_keys(args.analyzer)
-    result, captured = _capture_run(cfg, keys, use_cache=not args.no_cache, persist_run=not args.no_save)
-    if captured and not args.quiet:
-        sys.stderr.write(captured)
-        sys.stderr.flush()
+def command_analyze(args: argparse.Namespace) -> int:
+    options = _analyze_options(args)
+    project = resolve_project_file(options.project)
+    cfg = _apply_target_filter(effective_project_config(project), options.targets)
+    keys = _resolve_analyzer_keys(options.analyzers)
+    result = _capture_run(cfg, keys, use_cache=options.use_cache, persist_run=options.persist_run)
     if result.cancelled:
+        _write_diagnostics(result, options)
         return 130
     if not result.selected_analyzers:
         raise CliError(
@@ -203,156 +260,181 @@ def command_analyze(args: Any) -> int:
             exit_code=2,
             details={"output": list(result.output_lines)},
         )
+    _write_diagnostics(result, options)
     record = _result_record(result, cfg)
     all_findings = flat_findings(record)
-    filters = FindingFilters(modules=tuple(args.module))
-    findings = filter_findings(all_findings, filters)
-    summary = finding_summary(findings)
-    summary["total_findings"] = len(all_findings)
-    summary["targets"] = len(result.targets)
-    summary["analyzers"] = len(result.selected_analyzers)
-    payload = base_payload(
-        command="analyze",
-        run_id=result.run_id,
-        cancelled=result.cancelled,
-        project={
+    findings = filter_findings(all_findings, FindingFilters(modules=options.modules))
+    summary = _analyze_summary(finding_summary(findings), all_findings, result)
+    payload: AnalyzePayload = {
+        "schema_version": SCHEMA_VERSION,
+        "command": "analyze",
+        "run_id": result.run_id,
+        "cancelled": result.cancelled,
+        "project": {
             "path": str(project.path),
             "targets": list(cfg.get("analyzed_programs_and_libraries", [])),
         },
-        selected_analyzers=list(result.selected_analyzers),
-        summary=summary,
-        findings=[finding_payload(finding) for finding in findings],
-    )
-    _emit_analyze(args, payload, findings)
-    if args.fail_on == "any" and findings:
+        "selected_analyzers": list(result.selected_analyzers),
+        "summary": summary,
+        "findings": [finding_payload(finding) for finding in findings],
+    }
+    _emit_analyze(options.output, payload, findings)
+    if options.fail_on_findings and findings:
         return 1
     return 0
 
 
-def _emit_analyze(args: Any, payload: dict[str, Any], findings: list[FlatFinding]) -> None:
-    output = output_path(args.output)
-    if args.format == "json":
-        emit_json(payload, output=output)
-    elif args.format == "ndjson":
-        emit_ndjson((finding_payload(finding) for finding in findings), output=output)
+def _write_diagnostics(result: ChecksRunResult, options: _AnalyzeOptions) -> None:
+    if not result.output_lines or options.output.quiet:
+        return
+    sys.stderr.write("\n".join(result.output_lines) + "\n")
+    sys.stderr.flush()
+
+
+def _analyze_summary(
+    summary: FindingSummary,
+    all_findings: list[FlatFinding],
+    result: ChecksRunResult,
+) -> AnalyzeSummary:
+    return AnalyzeSummary(
+        findings=summary["findings"],
+        occurrences=summary["occurrences"],
+        by_analyzer=summary["by_analyzer"],
+        by_kind=summary["by_kind"],
+        by_module=summary["by_module"],
+        total_findings=len(all_findings),
+        targets=len(result.targets),
+        analyzers=len(result.selected_analyzers),
+    )
+
+
+def _emit_analyze(options: _OutputOptions, payload: AnalyzePayload, findings: list[FlatFinding]) -> None:
+    if options.output_format == "json":
+        emit_json(payload, output=options.output)
+    elif options.output_format == "ndjson":
+        emit_ndjson((finding_payload(finding) for finding in findings), output=options.output)
     else:
-        emit_text(_analyze_text(payload), output=output)
+        emit_text(_analyze_text(payload), output=options.output)
 
 
-def _analyze_text(payload: dict[str, Any]) -> list[str]:
-    summary = cast(dict[str, object], payload["summary"])
+def _analyze_text(payload: AnalyzePayload) -> list[str]:
+    summary = payload["summary"]
     lines = [
         f"Run: {payload['run_id'] or '(not saved)'}",
-        f"Targets: {summary['targets']}  Analyzers: {summary['analyzers']}  Findings: {summary['findings']}",
+        f"Targets: {summary.get('targets', 0)}  Analyzers: {summary.get('analyzers', 0)}  "
+        f"Findings: {summary['findings']}",
     ]
-    for finding in cast(list[dict[str, Any]], payload["findings"]):
-        lines.append(_finding_line(finding))
+    lines.extend(_finding_line(finding) for finding in payload["findings"])
     return lines
 
 
-def _finding_line(finding: dict[str, Any]) -> str:
+def _finding_line(finding: FindingPayload) -> str:
     module = finding["module"] or "(unknown)"
-    rule = f" [{finding['rule_id']}]" if finding["rule_id"] else ""
-    return f"{module}: {finding['kind']}{rule} - {finding['message']} ({finding['analyzer']})"
+    return f"{module}: {kind_human_label(finding['kind'])} - {finding['message']} ({finding['analyzer']})"
 
 
-def command_findings(args: Any) -> int:
+def command_findings(args: argparse.Namespace) -> int:
+    options = _output_options(args)
     record = resolve_run(args.run)
-    findings = filter_findings(
-        flat_findings(record),
-        FindingFilters(
-            targets=tuple(args.target),
-            analyzers=tuple(args.analyzer),
-            modules=tuple(args.module),
-            exact_module=args.exact_module,
-            kinds=tuple(args.kind),
-            rules=tuple(args.rule),
-        ),
+    filters = FindingFilters(
+        targets=tuple(str(value) for value in args.target),
+        analyzers=tuple(str(value) for value in args.analyzer),
+        modules=tuple(str(value) for value in args.module),
+        exact_module=bool(args.exact_module),
+        kinds=tuple(str(value) for value in args.kind),
+        rules=tuple(str(value) for value in args.rule),
     )
+    findings = filter_findings(flat_findings(record), filters)
     matched = len(findings)
-    if args.limit is not None:
-        findings = findings[: args.limit]
-    groups = group_findings(findings, args.group_by)
-    summary = finding_summary(findings)
-    summary["matched"] = matched
-    payload = base_payload(
-        command="findings",
-        run=run_payload(record),
-        filters={
-            "target": list(args.target),
-            "analyzer": list(args.analyzer),
-            "module": list(args.module),
-            "exact_module": args.exact_module,
-            "kind": list(args.kind),
-            "rule": list(args.rule),
-            "group_by": args.group_by,
-            "limit": args.limit,
-        },
-        summary=summary,
-        groups=groups,
-        findings=[finding_payload(finding) for finding in findings],
-    )
-    output = output_path(args.output)
-    if args.format == "json":
-        emit_json(payload, output=output)
-    elif args.format == "ndjson":
-        emit_ndjson((finding_payload(finding) for finding in findings), output=output)
+    limit = args.limit
+    if limit is not None:
+        findings = findings[: int(limit)]
+    groups: list[FindingGroup] = group_findings(findings, str(args.group_by))
+    summary = _findings_summary(finding_summary(findings), matched)
+    payload: FindingsPayload = {
+        "schema_version": SCHEMA_VERSION,
+        "command": "findings",
+        "run": run_payload(record),
+        "filters": FindingsFilters(
+            target=list(filters.targets),
+            analyzer=list(filters.analyzers),
+            module=list(filters.modules),
+            exact_module=filters.exact_module,
+            kind=list(filters.kinds),
+            rule=list(filters.rules),
+            group_by=str(args.group_by),
+            limit=limit,
+        ),
+        "summary": summary,
+        "groups": groups,
+        "findings": [finding_payload(finding) for finding in findings],
+    }
+    if options.output_format == "json":
+        emit_json(payload, output=options.output)
+    elif options.output_format == "ndjson":
+        emit_ndjson((finding_payload(finding) for finding in findings), output=options.output)
     else:
-        emit_text(_findings_text(payload), output=output)
+        emit_text(_findings_text(payload), output=options.output)
     return 0
 
 
-def _findings_text(payload: dict[str, Any]) -> list[str]:
-    run = cast(dict[str, object], payload["run"])
-    summary = cast(dict[str, object], payload["summary"])
+def _findings_summary(summary: FindingSummary, matched: int) -> FindingsSummary:
+    return FindingsSummary(
+        findings=summary["findings"],
+        occurrences=summary["occurrences"],
+        by_analyzer=summary["by_analyzer"],
+        by_kind=summary["by_kind"],
+        by_module=summary["by_module"],
+        matched=matched,
+    )
+
+
+def _findings_text(payload: FindingsPayload) -> list[str]:
+    summary = payload["summary"]
     lines = [
-        f"Run: {run['run_id']}  Findings: {summary['findings']} (matched {summary['matched']})",
+        f"Run: {payload['run']['run_id']}  Findings: {summary['findings']} (matched {summary.get('matched', 0)})",
     ]
-    groups = cast(list[dict[str, Any]], payload["groups"])
-    if groups:
-        for group in groups:
-            lines.append(f"{group['key']} ({group['count']})")
+    if payload["groups"]:
+        lines.extend(f"{group['key']} ({group['count']})" for group in payload["groups"])
         return lines
-    for finding in cast(list[dict[str, Any]], payload["findings"]):
-        lines.append(_finding_line(finding))
+    lines.extend(_finding_line(finding) for finding in payload["findings"])
     return lines
 
 
-def command_show(args: Any) -> int:
+def command_show(args: argparse.Namespace) -> int:
+    options = _output_options(args)
     record = resolve_run(args.run)
-    findings = flat_findings(record)
-    match = next((finding for finding in findings if finding.id == args.finding_id), None)
+    finding_id = str(args.finding_id)
+    match = next((finding for finding in flat_findings(record) if finding.id == finding_id), None)
     if match is None:
         raise CliError(
-            f"Finding {args.finding_id!r} was not found in run {record.run_id}.",
+            f"Finding {finding_id!r} was not found in run {record.run_id}.",
             code="finding_not_found",
             exit_code=2,
             details={"run_id": record.run_id},
         )
-    payload = base_payload(
-        command="show",
-        run=run_payload(record),
-        finding=finding_payload(match),
-    )
-    output = output_path(args.output)
-    if args.format == "json":
-        emit_json(payload, output=output)
-    elif args.format == "markdown":
-        emit_text(_finding_markdown(payload), output=output)
+    payload: ShowPayload = {
+        "schema_version": SCHEMA_VERSION,
+        "command": "show",
+        "run": run_payload(record),
+        "finding": finding_payload(match),
+    }
+    if options.output_format == "json":
+        emit_json(payload, output=options.output)
+    elif options.output_format == "markdown":
+        emit_text(_finding_markdown(payload), output=options.output)
     else:
-        emit_text(_finding_text(payload), output=output)
+        emit_text(_finding_text(payload), output=options.output)
     return 0
 
 
-def _finding_text(payload: dict[str, Any]) -> list[str]:
-    finding = cast(dict[str, Any], payload["finding"])
+def _finding_text(payload: ShowPayload) -> list[str]:
+    finding = payload["finding"]
     lines = [
         f"Finding: {finding['id']}",
         f"Module:  {finding['module'] or '(unknown)'}",
-        f"Kind:    {finding['kind']}",
+        f"Kind:    {kind_human_label(finding['kind'])}",
     ]
-    if finding["rule_id"]:
-        lines.append(f"Rule:    {finding['rule_id']}")
     if finding["site"]:
         lines.append(f"Site:    {finding['site']}")
     lines.extend(
@@ -369,19 +451,16 @@ def _finding_text(payload: dict[str, Any]) -> list[str]:
     return lines
 
 
-def _finding_markdown(payload: dict[str, Any]) -> list[str]:
-    finding = cast(dict[str, Any], payload["finding"])
-    run = cast(dict[str, object], payload["run"])
+def _finding_markdown(payload: ShowPayload) -> list[str]:
+    finding = payload["finding"]
     lines = [
-        f"# {finding['kind']}: {finding['module'] or '(unknown)'}",
+        f"# {kind_human_label(finding['kind'])}: {finding['module'] or '(unknown)'}",
         "",
         f"- **Finding:** `{finding['id']}`",
-        f"- **Run:** `{run['run_id']}`",
+        f"- **Run:** `{payload['run']['run_id']}`",
         f"- **Analyzer:** `{finding['analyzer']}`",
         f"- **Target:** `{finding['target']}`",
     ]
-    if finding["rule_id"]:
-        lines.append(f"- **Rule:** `{finding['rule_id']}`")
     if finding["site"]:
         lines.append(f"- **Site:** `{finding['site']}`")
     lines.extend(["", finding["message"]])
@@ -397,6 +476,5 @@ __all__ = [
     "command_analyzers_list",
     "command_findings",
     "command_project_show",
-    "command_project_validate",
     "command_show",
 ]

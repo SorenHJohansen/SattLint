@@ -25,7 +25,7 @@
 
 `.slproj` is the central concept. A project file captures all analysis settings — targets, directories, mode, documentation, output/cache paths — in a single checked-in file. Paths in `.slproj` are relative to the file itself, making projects portable.
 
-- `sattlint project show` / `sattlint project validate` inspect a `.slproj`
+- `sattlint project show` inspects a `.slproj`
 - `sattlint analyze` runs analyzers headlessly and emits JSON/NDJSON/text
 - `sattlint findings` / `sattlint show` query stored runs without re-analyzing
 - `sattlint analyzers list` reports analyzer keys, categories, and rule IDs

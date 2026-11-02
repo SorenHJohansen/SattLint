@@ -66,7 +66,8 @@ flowchart LR
 
 ## Actual Runtime Entry Map
 
-- `sattlint` enters at `src/sattlint/cli/startup.py`. It takes no arguments and starts the interactive Textual shell from `src/sattlint/ui/`.
+- `sattlint` enters at `src/sattlint/cli/startup.py`. No arguments starts the interactive Textual shell from `src/sattlint/ui/`; arguments dispatch the headless commands `project show`, `analyzers list`, `analyze`, `findings`, and `show` through `src/sattlint/cli/entry.py`.
+- The headless commands are non-interactive: data goes to stdout (text, JSON, or NDJSON), diagnostics go to stderr, and JSON envelopes carry `schema_version`.
 - The interactive UI (`sattlint` with no arguments) provides Analyze, Setup, and Help views.
 
 ## Analyzer Workflow

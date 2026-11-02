@@ -129,18 +129,10 @@ def test_project_show_resolves_paths(capsys: pytest.CaptureFixture[str], tmp_pat
     assert payload["project"]["paths"]["program_dir"] == str((tmp_path / "programs").resolve())
 
 
-def test_project_validate_reports_errors(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
-    project = _write_project(tmp_path, program_dir="missing")
-    code = run_cli(
-        ["project", "validate", "--project", str(project), "--format", "json"],
-        config_path=tmp_path / "config.toml",
-    )
+def test_project_validate_subcommand_is_gone(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    code = run_cli(["project", "validate"], config_path=tmp_path / "config.toml")
     assert code == 2
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["ok"] is False
-    messages = " ".join(error["message"] for error in payload["errors"])
-    assert "program_dir" in messages
-    assert "Demo" in messages
+    assert "invalid choice" in capsys.readouterr().err
 
 
 def test_findings_filters_and_groups(
@@ -454,7 +446,7 @@ def test_show_text_and_markdown(
     code = run_cli(["show", finding_id, "--format", "markdown"], config_path=tmp_path / "config.toml")
     assert code == 0
     out = capsys.readouterr().out
-    assert out.startswith("# unused: Demo.A")
+    assert out.startswith("# Unused variable: Demo.A")
     assert "**Finding:**" in out
 
 
@@ -615,37 +607,3 @@ def test_collect_run_checks_result_records_saved_run_id(
 
     assert result.run_id is not None
     assert (tmp_path / "runs" / f"{result.run_id}.json").exists()
-
-
-def test_project_validate_reports_optional_directory_errors(
-    capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
-) -> None:
-    (tmp_path / "programs").mkdir()
-    project = tmp_path / "demo.slproj"
-    project.write_text(
-        "\n".join(
-            [
-                "slproj_version = 1",
-                'analyzed_programs_and_libraries = ["Demo"]',
-                'mode = "draft"',
-                'program_dir = "programs"',
-                'ABB_lib_dir = ""',
-                'icf_dir = ""',
-                'other_lib_dirs = ["missing-lib"]',
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    (tmp_path / "programs" / "Demo.s").write_text("", encoding="utf-8")
-
-    code = run_cli(
-        ["project", "validate", "--project", str(project), "--format", "json"],
-        config_path=tmp_path / "config.toml",
-    )
-
-    assert code == 2
-    payload = json.loads(capsys.readouterr().out)
-    key_paths = {error["key_path"] for error in payload["errors"]}
-    assert "other_lib_dirs[0]" in key_paths

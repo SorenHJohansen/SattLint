@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -31,6 +30,7 @@ from ._semantic_helpers import (
 from ._semantic_index_reference_support import SemanticIndexReferenceSupportMixin
 from ._semantic_snapshot import ReferenceOccurrence, SymbolDefinition, SymbolReference
 from .call_signatures import CallSignatureOccurrence
+from .origin import is_root_origin
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,11 +90,12 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
     def _is_root_origin(self, origin_file: str | None, origin_lib: str | None) -> bool:
         if self.include_dependency_modules:
             return True
-        if self.root_origin_library and origin_lib and origin_lib.casefold() != self.root_origin_library.casefold():
-            return False
-        if origin_file and self.root_origin_file:
-            return Path(origin_file).stem.casefold() == Path(self.root_origin_file).stem.casefold()
-        return True
+        return is_root_origin(
+            origin_file,
+            origin_lib,
+            root_origin_file=self.root_origin_file,
+            root_origin_library=self.root_origin_library,
+        )
 
     def build(
         self,

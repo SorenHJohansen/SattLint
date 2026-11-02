@@ -79,7 +79,6 @@ The same capabilities are available without the TUI for scripts and AI agents:
 
 ```bash
 sattlint project show --project app.slproj --format json
-sattlint project validate --project app.slproj --format json
 sattlint analyzers list --format json
 sattlint analyze --project app.slproj --format json
 sattlint findings --run latest --module Root.A --group-by module --format json
@@ -87,7 +86,8 @@ sattlint show <finding-id> --format json
 ```
 
 Commands write data to stdout and diagnostics to stderr. JSON output carries a
-`schema_version`; finding IDs are stable across runs.
+`schema_version`; finding IDs are stable across runs. Text and Markdown output
+use human-readable finding labels; structured output keeps the machine IDs.
 
 Exit codes:
 

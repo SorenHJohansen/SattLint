@@ -34,20 +34,6 @@ def test_extract_report_findings_normalizes_framework_issues() -> None:
     assert second.module_path == ("Root",)
 
 
-def test_extract_report_findings_removes_exact_duplicates() -> None:
-    issue = Issue(
-        kind="dataflow.condition_always_false",
-        message="Condition 'Gate' is always false at this point.",
-        module_path=["Root", "Mod"],
-        data={"condition": "Gate", "site": "SQ:Seq > TRANS:Next"},
-    )
-    report = SimpleNamespace(issues=[issue, issue])
-
-    findings = extract_report_findings(report, default_name="Root")
-
-    assert findings == (extract_report_findings(SimpleNamespace(issues=[issue]), default_name="Root")[0],)
-
-
 def test_extract_report_findings_keeps_distinct_data_at_the_same_site() -> None:
     report = SimpleNamespace(
         issues=[

@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal, TypedDict, cast
+from typing import cast
 
 from ..cache import get_cache_dir
 from ..change_review.settings import resolve_review_output_dir
-from ..config import get_config_path, validate_effective_config
+from ..config import get_config_path
 from ..config.types import ConfigDict
 from ..project import SLPROJ_FILENAME, discover_project, load_project
 from ..project.models import SattLintProjectFile
 from ..runs import get_runs_dir
 from ._output import CliError
+from ._payloads import ConfigInfo, ProjectInfo, ProjectPaths
 
 
 def resolve_project_file(raw: str | None) -> SattLintProjectFile:
@@ -62,13 +63,6 @@ def effective_project_config(project: SattLintProjectFile) -> ConfigDict:
     return project.to_default_merged_config_dict()
 
 
-class ProjectPaths(TypedDict):
-    program_dir: str
-    ABB_lib_dir: str
-    icf_dir: str
-    other_lib_dirs: list[str]
-
-
 def project_paths(cfg: ConfigDict) -> ProjectPaths:
     return {
         "program_dir": str(cfg.get("program_dir") or ""),
@@ -78,10 +72,11 @@ def project_paths(cfg: ConfigDict) -> ProjectPaths:
     }
 
 
-def project_payload(project: SattLintProjectFile) -> dict[str, Any]:
+def project_payload(project: SattLintProjectFile) -> ProjectInfo:
     cfg = effective_project_config(project)
     raw = project.data
     config_path = get_config_path()
+    config: ConfigInfo = {"path": str(config_path), "exists": config_path.exists()}
     return {
         "path": str(project.path),
         "root": str(project.root),
@@ -90,57 +85,10 @@ def project_payload(project: SattLintProjectFile) -> dict[str, Any]:
         "targets": list(raw.get("analyzed_programs_and_libraries", [])),
         "analysis": dict(raw.get("analysis", {})),
         "paths": project_paths(cfg),
-        "config": {"path": str(config_path), "exists": config_path.exists()},
+        "config": config,
         "cache_dir": str(get_cache_dir()),
         "runs_dir": str(get_runs_dir()),
         "review_output_dir": str(resolve_review_output_dir(cfg)),
-    }
-
-
-def _directory_error(key_path: str, value: str, *, required: bool) -> str | None:
-    if not value.strip():
-        return f"{key_path} is required." if required else None
-    path = Path(value)
-    if not path.exists():
-        return f"{key_path} does not exist: {value}"
-    if not path.is_dir():
-        return f"{key_path} is not a directory: {value}"
-    return None
-
-
-def validate_project(project: SattLintProjectFile) -> dict[str, Any]:
-    cfg = effective_project_config(project)
-    validation = validate_effective_config(cfg)
-    errors: list[dict[str, str]] = [
-        {"key_path": error.key_path, "message": error.message} for error in validation.errors
-    ]
-    paths = project_paths(cfg)
-    path_keys: tuple[tuple[Literal["program_dir", "ABB_lib_dir", "icf_dir"], bool], ...] = (
-        ("program_dir", True),
-        ("ABB_lib_dir", False),
-        ("icf_dir", False),
-    )
-    for key_path, required in path_keys:
-        message = _directory_error(key_path, paths[key_path], required=required)
-        if message is not None:
-            errors.append({"key_path": key_path, "message": message})
-    for index, value in enumerate(paths["other_lib_dirs"]):
-        message = _directory_error(f"other_lib_dirs[{index}]", value, required=False)
-        if message is not None:
-            errors.append({"key_path": f"other_lib_dirs[{index}]", "message": message})
-    targets = cfg.get("analyzed_programs_and_libraries", [])
-    if not targets:
-        errors.append(
-            {
-                "key_path": "analyzed_programs_and_libraries",
-                "message": "No analysis targets are configured.",
-            }
-        )
-    return {
-        "ok": not errors,
-        "project_path": str(project.path),
-        "errors": errors,
-        "resolved": paths,
     }
 
 
@@ -149,5 +97,4 @@ __all__ = [
     "project_paths",
     "project_payload",
     "resolve_project_file",
-    "validate_project",
 ]

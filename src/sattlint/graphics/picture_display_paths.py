@@ -350,8 +350,6 @@ def _resolve_picture_display_path_from_current(
     parent_step_adjustment: int,
     used_suffix_recovery: bool,
 ) -> PictureDisplayPathResolution:
-    raw_path = raw_path
-
     parent_steps = 0
     while raw_path.startswith("-"):
         parent_steps += 1
