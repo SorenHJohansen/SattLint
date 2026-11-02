@@ -8,6 +8,8 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ## [Unreleased]
 
+## [2026.11.2] - 2026-11-02
+
 ### Added
 
 - Headless CLI for automation and agents: `sattlint project show`,
@@ -22,6 +24,49 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   `--limit`. Text and Markdown output use human-readable finding labels;
   machine IDs stay in JSON and NDJSON. Pure syntax and project validation
   remain owned by the external `sattline-parser` tool.
+- The results view can group findings by analyzer or by module. The module
+  view collapses single-child module chains into one node, so long paths use
+  less vertical space.
+- `analyze` reports the id of the saved run in its JSON payload, and
+  `--no-save` skips run-history persistence for one-off runs.
+
+### Changed
+
+- Field-level variable analysis aggregates reads and writes across every
+  instance of a datatype before reporting, so partial-field findings describe
+  the analyzed target instead of one instance. Whole-record access stays
+  directional.
+- Module parameters are treated as contract values: unused-assignment
+  findings apply to locals only, including module-type parameters.
+- SFC dataflow discards pending writes and constant traces between step
+  phases (enter, active, exit) while transition conditions still see the
+  latest values. Literal `TRUE`/`FALSE` conditions no longer produce
+  always-true or always-false findings.
+- Frame modules inherit their parent's parameter keys, so inherited
+  parameters are treated as contract values rather than uninitialized locals.
+- Change Review builds its semantic model from root-origin modules and skips
+  dependency internals.
+- Commented-code detection ignores abbreviated control-structure templates
+  such as `IF Cond THEN ... ENDIF` instead of skipping every comment that
+  contains an ellipsis.
+- Min/Max bound detection also recognizes the marker before a trailing path
+  segment, for example `_Min_Mn.Value`.
+- PictureDisplay checks treat an existing `.emf`/`.wmf` asset as present and
+  report that content inspection is not implemented instead of unresolved.
+- `.slproj` analysis overrides survive merging with the default configuration.
+
+### Fixed
+
+- Field read-only and never-read findings were duplicated or reported per
+  instance instead of per analyzed datatype.
+- Unused-assignment findings were reported for module parameters.
+- Literal conditions produced always-true and always-false dataflow findings.
+- Dead-overwrite and conflicting-constant findings crossed SFC step phases.
+- Frame-module parameters were classified as uninitialized locals.
+- Existing `.emf`/`.wmf` PictureDisplay assets were reported as unresolved.
+- Template ellipses suppressed commented-code findings for real code.
+- `.slproj` analysis settings were dropped when the project configuration was
+  merged with defaults.
 
 ## [2026.11.1] - 2026-11-01
 
