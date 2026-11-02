@@ -8,6 +8,13 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ## [Unreleased]
 
+### Changed
+
+- Upgraded `sattline-parser` to `>=2026.11.3,<2027`. The parser now checks
+  internal builtin registrations, carries the full configuration-defined record
+  field tables, resolves SFC element names program-wide, keeps base-picture
+  module parameters, and defaults project loads to invoked validation scope.
+
 ## [2026.11.2] - 2026-11-02
 
 ### Added
