@@ -8,7 +8,7 @@ from typing import Any, ClassVar
 from ..config.types import ConfigDict
 from ._app_textual_actions import _TextualActionsMixin
 from ._app_textual_analyze import _TextualAnalyzeMixin
-from ._app_textual_results import _TextualResultsMixin
+from ._app_textual_results import ResultsGroupBy, _TextualResultsMixin
 from ._app_textual_settings import _TextualSettingsMixin
 from ._app_textual_setup import _TextualSetupMixin
 from ._app_textual_shared import (
@@ -138,6 +138,8 @@ if _TEXTUAL_APP is not None:
             self._selected_run_record = None
             self._results_run_summaries: list[object] = []
             self._results_tree_widget = None
+            self._results_show_empty_analyzers_flag = False
+            self._results_group_by_flag: ResultsGroupBy = "analyzer"
             self._setup_candidate_index = 0
             self._setup_filter_text = ""
             self._setup_target_names_list: list[str] = []
@@ -356,6 +358,11 @@ if _TEXTUAL_APP is not None:
                                     yield _TEXTUAL_LIST_VIEW(id="results-runs-list")
                             with _TEXTUAL_VERTICAL(id="results-detail-section"):
                                 with _TEXTUAL_HORIZONTAL(id="results-tabs"):
+                                    yield _TEXTUAL_BUTTON(
+                                        "Group: Analyzer",
+                                        id="results-toggle-group",
+                                        classes="raised-button results-header-button",
+                                    )
                                     yield _TEXTUAL_BUTTON(
                                         "Expand all",
                                         id="results-expand-all",

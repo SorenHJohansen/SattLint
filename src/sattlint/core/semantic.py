@@ -44,6 +44,7 @@ def _build_semantic_snapshot(
     discovery: WorkspaceSourceDiscovery,
     project_graph: ProjectGraph,
     debug: bool,
+    include_dependency_modules: bool = True,
 ) -> SemanticSnapshot:
     root_origin_for_basepicture = getattr(project_graph, "root_origin_for_basepicture", None)
     root_origin = root_origin_for_basepicture(base_picture) if callable(root_origin_for_basepicture) else None
@@ -63,6 +64,7 @@ def _build_semantic_snapshot(
             root_origin_file=root_origin_file,
             root_origin_library=root_origin_library,
             unavailable_libraries=project_graph.unavailable_libraries,
+            include_dependency_modules=include_dependency_modules,
         )
     except TypeError as exc:
         if "unexpected keyword argument" not in str(exc):
@@ -149,6 +151,7 @@ def build_snapshot_from_loaded_project(
     entry_file: Path,
     workspace_root: Path,
     debug: bool = False,
+    include_dependency_modules: bool = True,
 ) -> SemanticSnapshot:
     resolved_entry_path = Path(entry_file).resolve()
     resolved_workspace_root = Path(workspace_root).resolve()
@@ -160,6 +163,7 @@ def build_snapshot_from_loaded_project(
         discovery=discovery,
         project_graph=project_graph,
         debug=debug,
+        include_dependency_modules=include_dependency_modules,
     )
 
 

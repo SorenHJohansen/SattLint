@@ -12,7 +12,7 @@ import io
 import os
 from collections.abc import Callable, Iterator
 from contextlib import redirect_stdout
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from time import perf_counter
 from typing import Any, cast
@@ -84,6 +84,7 @@ class ChecksRunResult:
     targets: tuple[ChecksTargetResult, ...] = ()
     selected_analyzers: tuple[str, ...] = ()
     cancelled: bool = False
+    run_id: str | None = None
 
 
 def _issue_count_for_report(report: object) -> int | None:
@@ -160,13 +161,14 @@ def build_run_record(result: ChecksRunResult, cfg: ConfigDict, *, started_at: st
     )
 
 
-def _persist_run_result(result: ChecksRunResult, cfg: ConfigDict, *, started_at: str) -> None:
+def _persist_run_result(result: ChecksRunResult, cfg: ConfigDict, *, started_at: str) -> RunRecord | None:
     if result.cancelled or not _run_history_enabled(cfg):
-        return
+        return None
     runs_dir = get_runs_dir()
     record = build_run_record(result, cfg, started_at=started_at)
-    save_run(record, runs_dir=runs_dir)
+    stored = save_run(record, runs_dir=runs_dir)
     prune_runs(runs_dir, limit=_run_history_limit(cfg))
+    return stored
 
 
 def _get_enabled_analyzers() -> list[Any]:
@@ -510,7 +512,9 @@ def collect_run_checks_result(  # noqa: PLR0915
         selected_analyzers=selected_analyzer_keys,
     )
     if persist_run:
-        _persist_run_result(result, cfg, started_at=run_started_at)
+        stored = _persist_run_result(result, cfg, started_at=run_started_at)
+        if stored is not None:
+            result = replace(result, run_id=stored.run_id)
     return result
 
 

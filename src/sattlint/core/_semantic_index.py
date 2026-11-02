@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -57,10 +58,12 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         root_origin_file: str | None = None,
         root_origin_library: str | None = None,
         unavailable_libraries: set[str] | None = None,
+        include_dependency_modules: bool = True,
     ):
         self.base_picture = base_picture
         self.root_origin_file = root_origin_file if root_origin_file is not None else base_picture.origin_file
         self.root_origin_library = root_origin_library if root_origin_library is not None else base_picture.origin_lib
+        self.include_dependency_modules = include_dependency_modules
         self.type_graph = TypeGraph.from_basepicture(base_picture)
         self.symbol_table = CanonicalSymbolTable()
         self.unavailable_libraries = unavailable_libraries or set()
@@ -83,6 +86,15 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
             global_lookup_fn=self._lookup_global_variable,
             root_library=self.root_origin_library,
         )
+
+    def _is_root_origin(self, origin_file: str | None, origin_lib: str | None) -> bool:
+        if self.include_dependency_modules:
+            return True
+        if self.root_origin_library and origin_lib and origin_lib.casefold() != self.root_origin_library.casefold():
+            return False
+        if origin_file and self.root_origin_file:
+            return Path(origin_file).stem.casefold() == Path(self.root_origin_file).stem.casefold()
+        return True
 
     def build(
         self,

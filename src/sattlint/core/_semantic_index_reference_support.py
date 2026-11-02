@@ -213,6 +213,8 @@ class SemanticIndexReferenceSupportMixin:
             )
             if moduletype is None:
                 continue
+            if not self._is_root_origin(moduletype.origin_file, moduletype.origin_lib):
+                continue
             typedef_context = self.context_builder.build_for_typedef(
                 moduletype,
                 module,
@@ -268,6 +270,8 @@ class SemanticIndexReferenceSupportMixin:
         parent_context: ScopeContext,
     ) -> None:
         for moduletype in moduletype_defs:
+            if not self._is_root_origin(moduletype.origin_file, moduletype.origin_lib):
+                continue
             module_path = (moduletype.name,)
             display_module_path = (decorate_segment(moduletype.name, "MT"),)
             synthetic_instance = ModuleTypeInstance(

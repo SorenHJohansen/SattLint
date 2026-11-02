@@ -10,6 +10,7 @@ the interactive loop independent of the legacy ``app`` module.
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 from collections.abc import Callable
@@ -153,7 +154,7 @@ def get_help_text(cfg: ConfigDict) -> str:
     )
 
 
-def build_cli_parser() -> object:
+def build_cli_parser() -> argparse.ArgumentParser:
     from .entry import build_cli_parser as _build_cli_parser  # noqa: PLC0415
 
     return _build_cli_parser()

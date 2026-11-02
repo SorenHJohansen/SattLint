@@ -14,6 +14,7 @@ import pytest
 from sattlint import ui as app_textual
 from sattlint.application import change_review as change_review_application
 from sattlint.cli import startup as app_module
+from sattlint.cli._output import CliError
 from sattlint.cli.startup import analysis_handler_fns
 from sattlint.config.types import ConfigDict
 
@@ -139,4 +140,7 @@ def test_change_review_ui_controls_present() -> None:
 
 def test_no_cli_command_introduced_for_change_review() -> None:
     parser = app_module.build_cli_parser()
-    assert parser is None
+    assert parser is not None
+    # Change Review stays TUI-only; the headless CLI does not expose it yet.
+    with pytest.raises(CliError):
+        parser.parse_args(["review"])

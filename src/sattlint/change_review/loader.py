@@ -71,8 +71,9 @@ def load_version_snapshot(
         graph,
         entry_file=entry_path,
         workspace_root=workspace_root,
+        include_dependency_modules=False,
     )
-    code_model = build_code_model(snapshot)
+    code_model = build_code_model(snapshot, include_dependency_modules=False)
 
     source_files: dict[str, Path] = {}
     total_size = 0

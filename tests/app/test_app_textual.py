@@ -2386,6 +2386,83 @@ def test_textual_results_view_lists_runs_and_renders_tree(monkeypatch: pytest.Mo
     asyncio.run(_run())
 
 
+def test_textual_results_group_toggle_switches_to_module_grouping(monkeypatch: pytest.MonkeyPatch) -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    record = RunRecord(
+        run_id="run1",
+        started_at="2026-09-06T10:00:00Z",
+        finished_at="2026-09-06T10:05:00Z",
+        project_tag="TargetA",
+        targets=(
+            RunTargetRecord(
+                target_name="TargetA",
+                is_library=False,
+                analyzers=(
+                    RunAnalyzerRecord(
+                        key="variables",
+                        name="Variable issues",
+                        status="completed",
+                        findings=(
+                            AnalysisFinding(
+                                kind="unused",
+                                message="declared but never read",
+                                module_path=("TargetA", "Charging"),
+                            ),
+                        ),
+                    ),
+                    RunAnalyzerRecord(
+                        key="patterns",
+                        name="Pattern checks",
+                        status="completed",
+                        findings=(
+                            AnalysisFinding(
+                                kind="magic_number",
+                                message="magic number 2",
+                                module_path=("TargetA", "Charging"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+    summary = RunSummary.from_record(record)
+
+    async def _run() -> None:
+        app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": ["TargetA"]})
+        monkeypatch.setattr(app_textual_results_module, "list_runs", lambda: (summary,))
+        monkeypatch.setattr(app_textual_results_module, "load_run", lambda run_id: record if run_id == "run1" else None)
+
+        async with app_instance.run_test() as pilot:
+            await pilot.press("ctrl+2")
+            await pilot.pause()
+
+            group_button = app_instance.query_one("#results-toggle-group")
+            assert str(group_button.label) == "Group: Analyzer"
+            assert app_instance._results_group_by() == "analyzer"
+
+            await pilot.click("#results-toggle-group")
+            await pilot.pause()
+
+            assert str(group_button.label) == "Group: Module"
+            assert app_instance._results_group_by() == "module"
+            tree = app_instance._results_tree_widget
+            assert tree is not None
+            target_node = tree.root.children[0]
+            module_node = next(iter(target_node.children))
+            assert module_node.label.plain == "TargetA.Charging"
+            analyzer_nodes = list(module_node.children)
+            assert [node.data.key for node in analyzer_nodes] == ["variables", "patterns"]
+            assert [next(iter(node.children)).label.plain for node in analyzer_nodes] == [
+                "Unused variable (1)",
+                "Magic number (1)",
+            ]
+
+    asyncio.run(_run())
+
+
 def test_textual_analysis_completion_switches_to_results_view(monkeypatch: pytest.MonkeyPatch) -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")

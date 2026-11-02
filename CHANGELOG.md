@@ -74,6 +74,17 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Added
 
+- Headless CLI for automation and agents: `sattlint project show`,
+  `sattlint project validate`, `sattlint analyzers list`,
+  `sattlint analyze --format json|ndjson|text`, `sattlint findings`, and
+  `sattlint show <finding-id>`. Commands are non-interactive, keep data on
+  stdout and diagnostics on stderr, emit a versioned JSON envelope, and use
+  stable content-derived finding IDs. `analyze` supports `--project`,
+  `--analyzer`, `--target`, `--module`, `--no-cache`, `--no-save`,
+  `--fail-on {any,none}`, `--output`, and `--quiet`; `findings` supports run
+  lookup (`latest` or an ID/prefix), analyzer/target/module/kind/rule filters,
+  module-prefix grouping, and `--limit`. Pure syntax checking remains owned by
+  the external `sattline-parser` tool.
 - Phase 5 parser project layer: the SattLint project loader delegates all
   SattLine discovery, dependency resolution, and parsing to `sattline-parser`'s
   project layer through `sattlint.project.parser_adapter`, with

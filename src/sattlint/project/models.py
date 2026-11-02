@@ -46,7 +46,7 @@ class SattLintProjectFile:
                 "ABB_lib_dir": self._maybe_resolve(d["ABB_lib_dir"]),
                 "icf_dir": self._maybe_resolve(d["icf_dir"]),
                 "other_lib_dirs": [self._resolve(p) for p in d["other_lib_dirs"] if p.strip()],
-                "analysis": {},
+                "analysis": deepcopy(d.get("analysis", {})),
             },
         )
         return cfg

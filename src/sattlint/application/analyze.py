@@ -61,3 +61,22 @@ def run_checks_result(
         get_enabled_analyzers_fn=_get_selectable_analyzers if selected_keys else _get_enabled_analyzers,
         target_is_library_fn=project_application.target_is_library,
     )
+
+
+def collect_checks_result(
+    cfg: ConfigDict,
+    selected_keys: list[str] | None,
+    *,
+    use_cache: bool = True,
+    persist_run: bool = True,
+) -> checks_module.ChecksRunResult:
+    """Run checks without emitting the human-readable report to stdout."""
+    return checks_module.collect_run_checks_result(
+        cfg,
+        selected_keys,
+        use_cache=use_cache,
+        persist_run=persist_run,
+        iter_loaded_projects_fn=project_application.iter_loaded_projects,
+        get_enabled_analyzers_fn=_get_selectable_analyzers if selected_keys else _get_enabled_analyzers,
+        target_is_library_fn=project_application.target_is_library,
+    )

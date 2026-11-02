@@ -10,7 +10,7 @@ quality gates, validation map, and core beliefs.
 
 | Path | Role | First validation |
 | --- | --- | --- |
-| `sattline-parser` (external) | Parser grammar, AST, transformer, strict syntax behavior | `sattlint syntax-check` or targeted parser pytest |
+| `sattline-parser` (external) | Parser grammar, AST, transformer, strict syntax behavior | targeted parser pytest (the parser tool owns single-file check/parse CLIs) |
 | `src/sattlint/cli/` | CLI entrypoints and command handlers | Targeted owner pytest, then Ruff and Pyright |
 | `src/sattlint/analyzers/` | Heuristic analyzers and the rule registry | Targeted analyzer pytest |
 | `src/sattlint/core/` | Shared semantic snapshot, document helpers, and the engine-internal analysis trace recorder (`core/tracing.py`) | Targeted pytest |
@@ -100,7 +100,7 @@ Canonical first-check command source for SattLint maintainer surfaces.
 
 - Parser, grammar, transformer, AST, or strict validation:
   `python -m pytest tests/app/test_cli.py -x -q --tb=short`
-  or `sattlint syntax-check <target>`
+  or the external `sattline-parser` tool's check command
 - CLI routing or argparse behavior:
   `python -m pytest tests/app/test_cli.py -x -q --tb=short`
 - Interactive / menu / Textual app behavior:
@@ -222,7 +222,7 @@ Data shapes validated at boundaries (parser, config, analyzer inputs).
 
 - Use AST models, not dicts with magic keys
 - Validate early, fail clearly, no silent fallbacks
-- `sattlint syntax-check` is strict by design
+- Parser-owned syntax validation is strict by design (external `sattline-parser`)
 
 **Construction-time parsing**: Transform data into stronger types at construction, not at validation.
 
