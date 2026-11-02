@@ -161,7 +161,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
 
 
 def _run_cli(argv: list[str]) -> int:
-    return cli_entry.run_cli(argv, config_path=config_module.get_config_path())
+    return cli_entry.run_cli(argv)
 
 
 def main(

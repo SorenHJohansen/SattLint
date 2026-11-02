@@ -68,6 +68,14 @@ def test_text_processing_comment_code_indicators_ignores_template_ellipsis(monke
     assert text_processing._comment_code_indicators("IF NOT StateSequence.Reset THEN \u2026 ENDIF;") == ()
 
 
+def test_text_processing_comment_code_indicators_keeps_code_with_stray_ellipsis(monkeypatch) -> None:
+    monkeypatch.setattr(text_processing, "_is_valid_code_via_grammar", lambda _text: True)
+
+    indicators = text_processing._comment_code_indicators("Counter := OldValue ... ;")
+
+    assert "assignment" in indicators
+
+
 def test_text_processing_comment_code_indicators_returns_assignment_and_call_when_valid(monkeypatch) -> None:
     monkeypatch.setattr(text_processing, "_is_valid_code_via_grammar", lambda _text: True)
 

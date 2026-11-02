@@ -215,12 +215,30 @@ def _add_finding_leaves(parent: Any, findings: Iterable[tuple[AnalysisFinding, i
         finding_node.allow_expand = False
 
 
+def _analyzer_label(analyzer: RunAnalyzerRecord) -> str:
+    return f"{analyzer.name} ({analyzer.key}) — {analyzer.status}"
+
+
+def _add_kind_node(parent: Any, kind: str, items: list[tuple[AnalysisFinding, int]]) -> Any:
+    total = sum(count for _finding, count in items)
+    return parent.add(f"{kind_human_label(kind)} ({total})", data=None)
+
+
+def _add_empty_analyzer_nodes(target_node: Any, target: RunTargetRecord) -> None:
+    empty_analyzers = [analyzer for analyzer in target.analyzers if not analyzer.findings]
+    if not empty_analyzers:
+        return
+    no_findings_node = target_node.add(f"No findings ({len(empty_analyzers)})", data=None)
+    for analyzer in empty_analyzers:
+        analyzer_node = no_findings_node.add(_analyzer_label(analyzer), data=analyzer)
+        analyzer_node.allow_expand = False
+
+
 def _populate_findings_by_analyzer(analyzer_node: Any, analyzer: RunAnalyzerRecord) -> None:
     builder = _ModuleTreeBuilder()
     for kind, items in _finding_groups(analyzer):
-        total = sum(count for _finding, count in items)
         display_paths = _module_display_paths(_finding_module_path(finding, analyzer) for finding, _count in items)
-        kind_node = analyzer_node.add(f"{kind_human_label(kind)} ({total})", data=None)
+        kind_node = _add_kind_node(analyzer_node, kind, items)
         by_module: dict[tuple[str, ...], list[tuple[AnalysisFinding, int]]] = {}
         for finding, occurrence_count in items:
             by_module.setdefault(display_paths[_finding_module_path(finding, analyzer)], []).append(
@@ -258,24 +276,12 @@ def _populate_findings_by_module(
     for segments, branches in module_branches.items():
         module_node = builder.add(target_node, display_paths[segments])
         for analyzer, kinds in branches:
-            analyzer_node = module_node.add(
-                f"{analyzer.name} ({analyzer.key}) — {analyzer.status}",
-                data=analyzer,
-            )
+            analyzer_node = module_node.add(_analyzer_label(analyzer), data=analyzer)
             for kind, items in kinds.items():
-                total = sum(count for _finding, count in items)
-                kind_node = analyzer_node.add(f"{kind_human_label(kind)} ({total})", data=None)
+                kind_node = _add_kind_node(analyzer_node, kind, items)
                 _add_finding_leaves(kind_node, items)
     if show_empty_analyzers:
-        empty_analyzers = [analyzer for analyzer in target.analyzers if not analyzer.findings]
-        if empty_analyzers:
-            no_findings_node = target_node.add(f"No findings ({len(empty_analyzers)})", data=None)
-            for analyzer in empty_analyzers:
-                analyzer_node = no_findings_node.add(
-                    f"{analyzer.name} ({analyzer.key}) — {analyzer.status}",
-                    data=analyzer,
-                )
-                analyzer_node.allow_expand = False
+        _add_empty_analyzer_nodes(target_node, target)
 
 
 def _auto_expand_single_child_chains(root: Any) -> None:

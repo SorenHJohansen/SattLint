@@ -44,6 +44,13 @@ _CONTROL_RE = re.compile(
     re.IGNORECASE,
 )
 _COMPARE_RE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_:.]*\s*(?:<=|>=|<>|<|>)\s*")
+# Abbreviated control structures (``IF Cond THEN ... ENDIF``) are templates,
+# not commented-out code. Only that shape is exempt; a stray ellipsis in prose
+# must not hide real code.
+_ABBREVIATED_CONTROL_RE = re.compile(
+    r"\b(?:IF|ELSIF|WHILE|REPEAT|FOR|CASE)\b.*(?:\.\.\.|\u2026).*\bEND[A-Z]*\b",
+    re.IGNORECASE,
+)
 
 
 @cache
@@ -194,9 +201,9 @@ def _comment_code_indicators(comment_text: str) -> tuple[str, ...]:
     1. Fast regex filtering to skip obvious non-code
     2. Grammar parsing for accurate detection
     """
-    # Templates and prose often show an abbreviated control structure
-    # (``IF Cond THEN ... ENDIF``). That is documentation, not commented code.
-    if "..." in comment_text or "\u2026" in comment_text:
+    # Templates show abbreviated control structures (``IF Cond THEN ... ENDIF``).
+    # That is documentation, not commented code.
+    if _ABBREVIATED_CONTROL_RE.search(comment_text):
         return ()
 
     # Step 1: Fast regex filter

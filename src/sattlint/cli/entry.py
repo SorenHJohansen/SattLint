@@ -11,36 +11,29 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Callable
-from pathlib import Path
 from typing import NoReturn, Protocol
 
 from ..__version__ import __version__
-from ..config.types import ConfigDict
 from . import commands
 from ._output import CliError, emit_error
 
 EXIT_SUCCESS = 0
-EXIT_FINDINGS = 1
-EXIT_FAILURE = 2
 EXIT_USAGE_ERROR = 2
 
-BuildCliParserFn = Callable[..., argparse.ArgumentParser]
-LoadConfigFn = Callable[[Path], tuple[ConfigDict, bool]]
-ApplyDebugFn = Callable[[ConfigDict], None]
-AppCommandFn = Callable[..., int | None]
-
-
-class CommandHandlers(dict[str, AppCommandFn]):
-    """Mapping of command names to handlers (used by tests and embedding)."""
+AppCommandFn = Callable[[argparse.Namespace], int | None]
 
 
 class _SubParserAction(Protocol):
     def add_parser(self, name: str, /, *, help: str | None = None) -> argparse.ArgumentParser: ...
 
 
+class _UsageError(CliError):
+    """A usage failure raised by the parser before a namespace exists."""
+
+
 class _Parser(argparse.ArgumentParser):
     def error(self, message: str) -> NoReturn:
-        raise CliError(message, code="usage_error", exit_code=EXIT_USAGE_ERROR)
+        raise _UsageError(message, code="usage_error", exit_code=EXIT_USAGE_ERROR)
 
 
 def _add_output_args(
@@ -169,9 +162,7 @@ def _dispatch_project(args: argparse.Namespace) -> int:
 
 
 def _dispatch_analyzers(args: argparse.Namespace) -> int:
-    if args.analyzers_command == "list":
-        return commands.command_analyzers_list(args)
-    raise CliError("Unknown analyzers command.", code="usage_error", exit_code=EXIT_USAGE_ERROR)
+    return commands.command_analyzers_list(args)
 
 
 def _format_from_args(args: argparse.Namespace) -> str:
@@ -179,6 +170,7 @@ def _format_from_args(args: argparse.Namespace) -> str:
 
 
 def _requested_format(argv: list[str]) -> str:
+    """Read ``--format`` before parsing fails and no namespace exists."""
     for index, argument in enumerate(argv):
         if argument == "--format" and index + 1 < len(argv):
             return argv[index + 1]
@@ -187,39 +179,25 @@ def _requested_format(argv: list[str]) -> str:
     return "text"
 
 
-def run_cli(
-    argv: list[str],
-    *,
-    config_path: Path,
-    build_cli_parser_fn: BuildCliParserFn | None = None,
-    load_config_fn: LoadConfigFn | None = None,
-    apply_debug_fn: ApplyDebugFn | None = None,
-    command_handlers: CommandHandlers | None = None,
-    exit_success: int = EXIT_SUCCESS,
-    exit_usage_error: int = EXIT_USAGE_ERROR,
-) -> int:
-    del config_path, load_config_fn, apply_debug_fn
-    builder = build_cli_parser_fn or build_cli_parser
-    parser = builder()
+def run_cli(argv: list[str]) -> int:
+    parser = build_cli_parser()
     try:
         args = parser.parse_args(argv)
-    except CliError as exc:
-        exc.exit_code = exit_usage_error
+    except _UsageError as exc:
         emit_error(exc, output_format=_requested_format(argv))
-        return exit_usage_error
+        return exc.exit_code
     except SystemExit as exc:
         return int(exc.code or 0)
 
-    handlers = _handlers() if command_handlers is None else command_handlers
-    handler = handlers.get(args.command)
+    handler = _handlers().get(args.command)
     if handler is None:
         emit_error(
-            CliError(f"Unknown command: {args.command}", code="usage_error", exit_code=exit_usage_error),
+            CliError(f"Unknown command: {args.command}", code="usage_error", exit_code=EXIT_USAGE_ERROR),
             output_format=_format_from_args(args),
         )
-        return exit_usage_error
+        return EXIT_USAGE_ERROR
     try:
-        return int(handler(args) or exit_success)
+        return int(handler(args) or EXIT_SUCCESS)
     except CliError as exc:
         emit_error(exc, output_format=_format_from_args(args))
         return exc.exit_code
@@ -238,7 +216,6 @@ def run_cli(
 
 
 __all__ = [
-    "CommandHandlers",
     "build_cli_parser",
     "run_cli",
 ]

@@ -120,7 +120,7 @@ def diagnose_picture_display_paths(
             if isinstance(resolution_parent_step_adjustment_value, int)
             else occurrence.parent_step_adjustment
         )
-        for path_row in getattr(occurrence.record, "path_rows", ()) or ():
+        for path_row in occurrence.record.path_rows or ():
             if path_row.kind == "literal":
                 candidate_paths = (path_row.raw_text,)
             else:
@@ -168,13 +168,10 @@ def _dynamic_path_candidates(
 
 def _base_picture_source_path(base_picture: BasePicture, graph: ProjectGraph | None) -> Path | None:
     if graph is not None:
-        root_origin_for_basepicture = getattr(graph, "root_origin_for_basepicture", None)
-        if callable(root_origin_for_basepicture):
-            root_origin = root_origin_for_basepicture(base_picture)
-            source_path = getattr(root_origin, "source_path", None)
-            if source_path is not None:
-                return Path(source_path)
-    origin_file = getattr(base_picture, "origin_file", None)
+        root_origin = graph.root_origin_for_basepicture(base_picture)
+        if root_origin is not None and root_origin.source_path is not None:
+            return root_origin.source_path
+    origin_file = base_picture.origin_file
     return Path(str(origin_file)) if origin_file else None
 
 

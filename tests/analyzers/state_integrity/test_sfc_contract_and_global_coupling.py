@@ -49,6 +49,81 @@ def test_write_without_effect_detected_for_internal_value_chain():
     )
 
 
+def test_write_without_effect_is_not_reported_for_module_parameters() -> None:
+    child = SingleModule(
+        header=_hdr("Worker"),
+        moduledef=None,
+        moduleparameters=[Variable(name="OutParam", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Sink", datatype=Simple_DataType.INTEGER)],
+        submodules=[],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        Assignment(target=_varref("OutParam"), value=1),
+                        Assignment(target=_varref("Sink"), value=_varref("OutParam")),
+                    ],
+                )
+            ],
+            sequences=[],
+        ),
+        parametermappings=[],
+    )
+
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[],
+        submodules=[child],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    assert not [issue for issue in analyzer.issues if issue.kind is IssueKind.WRITE_WITHOUT_EFFECT]
+
+
+def test_write_without_effect_is_not_reported_for_typedef_module_parameters() -> None:
+    moduletype = ModuleTypeDef(
+        name="WorkerType",
+        moduleparameters=[Variable(name="OutParam", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Sink", datatype=Simple_DataType.INTEGER)],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        Assignment(target=_varref("OutParam"), value=1),
+                        Assignment(target=_varref("Sink"), value=_varref("OutParam")),
+                    ],
+                )
+            ],
+            sequences=[],
+        ),
+    )
+
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[],
+        submodules=[],
+        moduletype_defs=[moduletype],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    assert not [issue for issue in analyzer.issues if issue.kind is IssueKind.WRITE_WITHOUT_EFFECT]
+
+
 def test_write_without_effect_is_suppressed_for_mapped_output_path():
     out_target: VarRef = _varref("Out")
     final_output_source: VarRef = _varref("FinalOutput")

@@ -121,9 +121,21 @@ def _build_root_variable_access_summaries(
     return summaries
 
 
+@dataclass(slots=True)
+class _DatatypeDefinitionState:
+    """Field-usage state for one datatype definition across the analyzed target."""
+
+    datatype_name: str
+    module_path: tuple[str, ...]
+    leaf_paths: set[str]
+    accessed_prefixes: set[str]
+    has_whole_access: bool = False
+    externally_open: bool = False
+
+
 def _record_nested_datatype_access(
     self: VariablesAnalyzer,
-    datatype_state: dict[str, dict[str, Any]],
+    datatype_state: dict[str, _DatatypeDefinitionState],
     variable: Variable,
     field_path: str,
 ) -> None:
@@ -154,9 +166,9 @@ def _record_nested_datatype_access(
 
         remaining_path = ".".join(segments[index + 1 :])
         if remaining_path:
-            state["accessed_prefixes"].add(remaining_path.casefold())
+            state.accessed_prefixes.add(remaining_path.casefold())
         else:
-            state["has_whole_access"] = True
+            state.has_whole_access = True
 
 
 def _add_issue(
@@ -395,13 +407,10 @@ def iter_variables_for_datatype_field_analysis(
 
 
 def _add_unused_datatype_field_issues(self: VariablesAnalyzer) -> None:
-    datatype_state: dict[str, dict[str, Any]] = {}
+    datatype_state: dict[str, _DatatypeDefinitionState] = {}
 
     for datatype in self.bp.datatype_defs or []:
-        if not self.is_from_root_origin(
-            getattr(datatype, "origin_file", None),
-            getattr(datatype, "origin_lib", None),
-        ):
+        if not self.is_from_root_origin(datatype.origin_file, datatype.origin_lib):
             continue
         leaf_paths = {
             ".".join(field_path) for field_path in self.type_graph.iter_leaf_field_paths(datatype.name) if field_path
@@ -410,14 +419,12 @@ def _add_unused_datatype_field_issues(self: VariablesAnalyzer) -> None:
             continue
         datatype_state.setdefault(
             datatype.name.casefold(),
-            {
-                "datatype_name": datatype.name,
-                "module_path": [self.bp.header.name, f"DataType:{datatype.name}"],
-                "leaf_paths": leaf_paths,
-                "accessed_prefixes": set(),
-                "has_whole_access": False,
-                "externally_open": False,
-            },
+            _DatatypeDefinitionState(
+                datatype_name=datatype.name,
+                module_path=(self.bp.header.name, f"DataType:{datatype.name}"),
+                leaf_paths=leaf_paths,
+                accessed_prefixes=set(),
+            ),
         )
 
     if not datatype_state:
@@ -437,40 +444,38 @@ def _add_unused_datatype_field_issues(self: VariablesAnalyzer) -> None:
             and role == "moduleparameter"
             and any(segment.startswith("TypeDef:") for segment in path)
         ):
-            state["externally_open"] = True
+            state.externally_open = True
 
         usage = self.get_usage(variable)
         if usage.usage_locations:
-            state["has_whole_access"] = True
+            state.has_whole_access = True
 
         for field_path in list((usage.field_reads or {}).keys()) + list((usage.field_writes or {}).keys()):
             normalized = ".".join(segment for segment in field_path.split(".") if segment)
             if normalized:
-                state["accessed_prefixes"].add(normalized.casefold())
+                state.accessed_prefixes.add(normalized.casefold())
                 _record_nested_datatype_access(self, datatype_state, variable, normalized)
 
     for state in datatype_state.values():
-        if state["externally_open"] or state["has_whole_access"]:
+        if state.externally_open or state.has_whole_access:
+            continue
+        if not state.accessed_prefixes:
             continue
 
-        accessed_prefixes = state["accessed_prefixes"]
-        if not accessed_prefixes:
-            continue
-
-        for leaf_path in sorted(state["leaf_paths"]):
+        for leaf_path in sorted(state.leaf_paths):
             leaf_key = leaf_path.casefold()
             if any(
                 leaf_key == accessed_prefix or leaf_key.startswith(f"{accessed_prefix}.")
-                for accessed_prefix in accessed_prefixes
+                for accessed_prefix in state.accessed_prefixes
             ):
                 continue
 
             self.append_issue(
                 VariableIssue(
                     kind=IssueKind.UNUSED_DATATYPE_FIELD,
-                    module_path=list(state["module_path"]),
+                    module_path=list(state.module_path),
                     variable=None,
-                    datatype_name=state["datatype_name"],
+                    datatype_name=state.datatype_name,
                     role="datatype field",
                     field_path=leaf_path,
                 )

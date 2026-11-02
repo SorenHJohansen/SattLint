@@ -10,7 +10,7 @@ from ..analyzers.catalog import canonicalize_analyzer_keys
 from ..application.findings import AnalysisFinding
 from ..runs import RunRecord, list_runs, load_run
 from ._output import CliError
-from ._payloads import FindingGroup, FindingPayload, FindingSummary, RunPayload
+from ._payloads import FindingGroup, FindingPayload, FindingSummary, GroupBy, RunPayload
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,7 +202,7 @@ def filter_findings(findings: Iterable[FlatFinding], filters: FindingFilters) ->
     return selected
 
 
-def group_findings(findings: Iterable[FlatFinding], group_by: str) -> list[FindingGroup]:
+def group_findings(findings: Iterable[FlatFinding], group_by: GroupBy) -> list[FindingGroup]:
     if group_by == "none":
         return []
 

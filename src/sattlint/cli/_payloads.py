@@ -6,7 +6,11 @@ checked by Pyright instead of being assembled from untyped dicts.
 
 from __future__ import annotations
 
-from typing import TypedDict
+from typing import Literal, TypedDict
+
+from ..analyzers.catalog import AnalyzerMetadataDict
+
+type GroupBy = Literal["none", "module", "analyzer", "kind"]
 
 
 class ErrorInfo(TypedDict):
@@ -53,23 +57,7 @@ class ProjectShowPayload(TypedDict):
     project: ProjectInfo
 
 
-class AnalyzerInfo(TypedDict):
-    key: str
-    name: str
-    description: str
-    category: str
-    enabled: bool
-    summary_output: str
-    rule_ids: list[str]
-    scope: str
-    implementation_bucket: str
-    output_artifacts: list[str]
-    cli_exposed: bool
-    acceptance_tests: list[str]
-    depends_on_artifacts: list[str]
-    supports_baselines: bool
-    supports_incremental: bool
-    min_fixture_set: list[str]
+class AnalyzerInfo(AnalyzerMetadataDict):
     default: bool
 
 
@@ -154,7 +142,7 @@ class FindingsFilters(TypedDict):
     exact_module: bool
     kind: list[str]
     rule: list[str]
-    group_by: str
+    group_by: GroupBy
     limit: int | None
 
 
@@ -190,6 +178,7 @@ __all__ = [
     "FindingsFilters",
     "FindingsPayload",
     "FindingsSummary",
+    "GroupBy",
     "ProjectInfo",
     "ProjectPaths",
     "ProjectShowPayload",

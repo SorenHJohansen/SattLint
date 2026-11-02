@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
+from typing import TypedDict
 
 from ...utils.repo_paths import repo_root_from
 from .._registry_specs import build_default_analyzers
@@ -55,6 +56,32 @@ LEGACY_ANALYZER_KEY_ALIASES: dict[str, str] = {
 }
 
 
+class AnalyzerMetadataDict(TypedDict):
+    """Serialized analyzer metadata: the single source for CLI and reports."""
+
+    key: str
+    name: str
+    description: str
+    category: str
+    enabled: bool
+    summary_output: str
+    rule_ids: list[str]
+    scope: str
+    implementation_bucket: str
+    output_artifacts: list[str]
+    cli_exposed: bool
+    acceptance_tests: list[str]
+    depends_on_artifacts: list[str]
+    supports_baselines: bool
+    supports_incremental: bool
+    min_fixture_set: list[str]
+
+
+class AnalyzerCatalogReport(TypedDict):
+    generated_by: str
+    analyzers: list[AnalyzerMetadataDict]
+
+
 @dataclass(frozen=True)
 class AnalyzerMetadata:
     spec: AnalyzerSpec
@@ -70,18 +97,26 @@ class AnalyzerMetadata:
     def summary_output(self) -> str:
         return f"{self.spec.key}.summary"
 
-    def to_dict(self) -> dict[str, object]:
-        data: dict[str, object] = {
-            "key": self.spec.key,
-            "name": self.spec.name,
-            "description": self.spec.description,
-            "category": self.spec.category,
-            "enabled": self.spec.enabled,
-            "summary_output": self.summary_output,
-            "rule_ids": list(self.rule_ids),
-        }
-        data.update(self.delivery.to_dict())
-        return data
+    def to_dict(self) -> AnalyzerMetadataDict:
+        delivery = self.delivery
+        return AnalyzerMetadataDict(
+            key=self.spec.key,
+            name=self.spec.name,
+            description=self.spec.description,
+            category=self.spec.category,
+            enabled=self.spec.enabled,
+            summary_output=self.summary_output,
+            rule_ids=list(self.rule_ids),
+            scope=delivery.scope,
+            implementation_bucket=delivery.implementation_bucket,
+            output_artifacts=list(delivery.output_artifacts),
+            cli_exposed=delivery.cli_exposed,
+            acceptance_tests=list(delivery.acceptance_tests),
+            depends_on_artifacts=list(delivery.depends_on_artifacts),
+            supports_baselines=delivery.supports_baselines,
+            supports_incremental=delivery.supports_incremental,
+            min_fixture_set=list(delivery.min_fixture_set),
+        )
 
 
 @dataclass(frozen=True)
@@ -91,11 +126,11 @@ class AnalyzerCatalog:
     def enabled_specs(self) -> tuple[AnalyzerSpec, ...]:
         return tuple(analyzer.spec for analyzer in self.analyzers if analyzer.spec.enabled)
 
-    def to_report(self, *, generated_by: str) -> dict[str, object]:
-        return {
-            "generated_by": generated_by,
-            "analyzers": [analyzer.to_dict() for analyzer in self.analyzers],
-        }
+    def to_report(self, *, generated_by: str) -> AnalyzerCatalogReport:
+        return AnalyzerCatalogReport(
+            generated_by=generated_by,
+            analyzers=[analyzer.to_dict() for analyzer in self.analyzers],
+        )
 
 
 def canonicalize_analyzer_key(key: str) -> str:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
@@ -48,7 +49,7 @@ from ._payloads import (
     FindingsFilters,
     FindingsPayload,
     FindingsSummary,
-    FindingSummary,
+    GroupBy,
     ProjectInfo,
     ProjectShowPayload,
     ShowPayload,
@@ -83,6 +84,28 @@ def _output_options(args: argparse.Namespace) -> _OutputOptions:
     )
 
 
+def _emit_document(options: _OutputOptions, *, payload: Mapping[str, object], text_lines: Iterable[str]) -> None:
+    if options.output_format == "json":
+        emit_json(payload, output=options.output)
+    else:
+        emit_text(text_lines, output=options.output)
+
+
+def _emit_findings(
+    options: _OutputOptions,
+    *,
+    payload: Mapping[str, object],
+    findings: Iterable[FlatFinding],
+    text_lines: Iterable[str],
+) -> None:
+    if options.output_format == "json":
+        emit_json(payload, output=options.output)
+    elif options.output_format == "ndjson":
+        emit_ndjson((finding_payload(finding) for finding in findings), output=options.output)
+    else:
+        emit_text(text_lines, output=options.output)
+
+
 def _analyze_options(args: argparse.Namespace) -> _AnalyzeOptions:
     return _AnalyzeOptions(
         output=_output_options(args),
@@ -100,15 +123,12 @@ def command_project_show(args: argparse.Namespace) -> int:
     project = resolve_project_file(args.project)
     options = _output_options(args)
     project_info = project_payload(project)
-    if options.output_format == "json":
-        payload: ProjectShowPayload = {
-            "schema_version": SCHEMA_VERSION,
-            "command": "project show",
-            "project": project_info,
-        }
-        emit_json(payload, output=options.output)
-    else:
-        emit_text(_project_text(project_info), output=options.output)
+    payload: ProjectShowPayload = {
+        "schema_version": SCHEMA_VERSION,
+        "command": "project show",
+        "project": project_info,
+    }
+    _emit_document(options, payload=payload, text_lines=_project_text(project_info))
     return 0
 
 
@@ -133,38 +153,18 @@ def command_analyzers_list(args: argparse.Namespace) -> int:
     default_keys = set(get_actual_cli_analyzer_keys())
     analyzers: list[AnalyzerInfo] = []
     for metadata in catalog.analyzers:
-        delivery = metadata.delivery
-        analyzers.append(
-            AnalyzerInfo(
-                key=metadata.spec.key,
-                name=metadata.spec.name,
-                description=metadata.spec.description,
-                category=metadata.spec.category,
-                enabled=metadata.spec.enabled,
-                summary_output=metadata.summary_output,
-                rule_ids=list(metadata.rule_ids),
-                scope=delivery.scope,
-                implementation_bucket=delivery.implementation_bucket,
-                output_artifacts=list(delivery.output_artifacts),
-                cli_exposed=delivery.cli_exposed,
-                acceptance_tests=list(delivery.acceptance_tests),
-                depends_on_artifacts=list(delivery.depends_on_artifacts),
-                supports_baselines=delivery.supports_baselines,
-                supports_incremental=delivery.supports_incremental,
-                min_fixture_set=list(delivery.min_fixture_set),
-                default=metadata.spec.key in default_keys,
-            )
-        )
-    options = _output_options(args)
-    if options.output_format == "json":
-        payload: AnalyzersListPayload = {
-            "schema_version": SCHEMA_VERSION,
-            "command": "analyzers list",
-            "analyzers": analyzers,
+        entry: AnalyzerInfo = {
+            **metadata.to_dict(),
+            "default": metadata.spec.key in default_keys,
         }
-        emit_json(payload, output=options.output)
-    else:
-        emit_text(_analyzers_text(analyzers), output=options.output)
+        analyzers.append(entry)
+    options = _output_options(args)
+    payload: AnalyzersListPayload = {
+        "schema_version": SCHEMA_VERSION,
+        "command": "analyzers list",
+        "analyzers": analyzers,
+    }
+    _emit_document(options, payload=payload, text_lines=_analyzers_text(analyzers))
     return 0
 
 
@@ -264,7 +264,12 @@ def command_analyze(args: argparse.Namespace) -> int:
     record = _result_record(result, cfg)
     all_findings = flat_findings(record)
     findings = filter_findings(all_findings, FindingFilters(modules=options.modules))
-    summary = _analyze_summary(finding_summary(findings), all_findings, result)
+    summary: AnalyzeSummary = {
+        **finding_summary(findings),
+        "total_findings": len(all_findings),
+        "targets": len(result.targets),
+        "analyzers": len(result.selected_analyzers),
+    }
     payload: AnalyzePayload = {
         "schema_version": SCHEMA_VERSION,
         "command": "analyze",
@@ -278,7 +283,7 @@ def command_analyze(args: argparse.Namespace) -> int:
         "summary": summary,
         "findings": [finding_payload(finding) for finding in findings],
     }
-    _emit_analyze(options.output, payload, findings)
+    _emit_findings(options.output, payload=payload, findings=findings, text_lines=_analyze_text(payload))
     if options.fail_on_findings and findings:
         return 1
     return 0
@@ -289,32 +294,6 @@ def _write_diagnostics(result: ChecksRunResult, options: _AnalyzeOptions) -> Non
         return
     sys.stderr.write("\n".join(result.output_lines) + "\n")
     sys.stderr.flush()
-
-
-def _analyze_summary(
-    summary: FindingSummary,
-    all_findings: list[FlatFinding],
-    result: ChecksRunResult,
-) -> AnalyzeSummary:
-    return AnalyzeSummary(
-        findings=summary["findings"],
-        occurrences=summary["occurrences"],
-        by_analyzer=summary["by_analyzer"],
-        by_kind=summary["by_kind"],
-        by_module=summary["by_module"],
-        total_findings=len(all_findings),
-        targets=len(result.targets),
-        analyzers=len(result.selected_analyzers),
-    )
-
-
-def _emit_analyze(options: _OutputOptions, payload: AnalyzePayload, findings: list[FlatFinding]) -> None:
-    if options.output_format == "json":
-        emit_json(payload, output=options.output)
-    elif options.output_format == "ndjson":
-        emit_ndjson((finding_payload(finding) for finding in findings), output=options.output)
-    else:
-        emit_text(_analyze_text(payload), output=options.output)
 
 
 def _analyze_text(payload: AnalyzePayload) -> list[str]:
@@ -349,8 +328,9 @@ def command_findings(args: argparse.Namespace) -> int:
     limit = args.limit
     if limit is not None:
         findings = findings[: int(limit)]
-    groups: list[FindingGroup] = group_findings(findings, str(args.group_by))
-    summary = _findings_summary(finding_summary(findings), matched)
+    group_by = cast(GroupBy, str(args.group_by))
+    groups: list[FindingGroup] = group_findings(findings, group_by)
+    summary: FindingsSummary = {**finding_summary(findings), "matched": matched}
     payload: FindingsPayload = {
         "schema_version": SCHEMA_VERSION,
         "command": "findings",
@@ -362,31 +342,15 @@ def command_findings(args: argparse.Namespace) -> int:
             exact_module=filters.exact_module,
             kind=list(filters.kinds),
             rule=list(filters.rules),
-            group_by=str(args.group_by),
+            group_by=group_by,
             limit=limit,
         ),
         "summary": summary,
         "groups": groups,
         "findings": [finding_payload(finding) for finding in findings],
     }
-    if options.output_format == "json":
-        emit_json(payload, output=options.output)
-    elif options.output_format == "ndjson":
-        emit_ndjson((finding_payload(finding) for finding in findings), output=options.output)
-    else:
-        emit_text(_findings_text(payload), output=options.output)
+    _emit_findings(options, payload=payload, findings=findings, text_lines=_findings_text(payload))
     return 0
-
-
-def _findings_summary(summary: FindingSummary, matched: int) -> FindingsSummary:
-    return FindingsSummary(
-        findings=summary["findings"],
-        occurrences=summary["occurrences"],
-        by_analyzer=summary["by_analyzer"],
-        by_kind=summary["by_kind"],
-        by_module=summary["by_module"],
-        matched=matched,
-    )
 
 
 def _findings_text(payload: FindingsPayload) -> list[str]:
@@ -419,12 +383,10 @@ def command_show(args: argparse.Namespace) -> int:
         "run": run_payload(record),
         "finding": finding_payload(match),
     }
-    if options.output_format == "json":
-        emit_json(payload, output=options.output)
-    elif options.output_format == "markdown":
+    if options.output_format == "markdown":
         emit_text(_finding_markdown(payload), output=options.output)
     else:
-        emit_text(_finding_text(payload), output=options.output)
+        _emit_document(options, payload=payload, text_lines=_finding_text(payload))
     return 0
 
 
