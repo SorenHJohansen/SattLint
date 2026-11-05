@@ -8,18 +8,23 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ## [Unreleased]
 
+## [2026.11.3] - 2026-11-05
+
+### Fixed
+
+- Restored installs against the published parser. The previous range
+  `>=2026.11.3,<2027` accepted `sattline-parser` 2026.11.4, which changes the
+  AST surface before the analyzer migration lands, so a fresh install failed at
+  import. This release pins the parser to the supported version.
+
 ### Changed
 
-- Pinned `sattline-parser` to `==2026.11.3` instead of tracking
-  `>=2026.11.3,<2027`. The next parser release changes the AST surface (typed
-  interactor bodies, retained header arguments and clipping payloads,
-  reference-leaf nodes, public AST and type namespaces, removed rule severity
-  and compatibility fields). The pin moves only together with the analyzer
-  migration, so a fresh install cannot resolve an incompatible parser.
-- Upgraded `sattline-parser` to `2026.11.3`. The parser now checks internal
-  builtin registrations, carries the full configuration-defined record field
-  tables, resolves SFC element names program-wide, keeps base-picture module
-  parameters, and defaults project loads to invoked validation scope.
+- Upgraded `sattline-parser` to `2026.11.3` and pinned it exactly. The parser
+  now checks internal builtin registrations, carries the full
+  configuration-defined record field tables, resolves SFC element names
+  program-wide, keeps base-picture module parameters, and defaults project
+  loads to invoked validation scope. The pin moves only together with the
+  analyzer migration.
 
 ## [2026.11.2] - 2026-11-02
 
