@@ -1,10 +1,11 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportIndexIssue=false
-"""Parser compatibility tests (Phase 22).
+"""Parser compatibility tests.
 
 Documents the supported ``sattline-parser`` version policy and verifies the
-installed parser exposes the API surface SattLint relies on.  The declared
-range is ``>=2026.10.1,<2027`` (see ``pyproject.toml``); representative fixtures
-exercise parse/transform behavior across the features that depend on it.
+installed parser exposes the API surface SattLint relies on. The dependency is
+pinned exactly (see ``pyproject.toml``) and moves only with a deliberate AST
+migration; representative fixtures exercise parse/transform behavior across the
+features that depend on it.
 """
 
 from __future__ import annotations
@@ -34,17 +35,21 @@ def _declared_parser_requirement() -> str:
 
 def test_installed_parser_matches_declared_policy() -> None:
     requirement = _declared_parser_requirement()
-    installed = sattline_parser.__version__
+    assert requirement.startswith("sattline-parser=="), requirement
+    pinned = requirement.split("==", 1)[1].strip()
 
-    assert requirement.startswith("sattline-parser>="), requirement
-    assert installed >= "2026.10.1", f"installed parser {installed} below declared minimum"
-    assert installed < "2027", f"installed parser {installed} outside declared major range"
+    assert pinned == sattline_parser.__version__, (
+        f"declared parser {pinned} does not match installed {sattline_parser.__version__}"
+    )
 
 
 def test_declared_parser_requirement_is_pinned() -> None:
     requirement = _declared_parser_requirement()
-    assert ">=" in requirement
-    assert "<2027" in requirement or "<2028" in requirement
+    assert requirement.startswith("sattline-parser=="), requirement
+    pinned = requirement.split("==", 1)[1].strip()
+
+    assert pinned
+    assert not any(operator in pinned for operator in "<>=!,"), requirement
 
 
 def test_parser_core_api_surface_is_available() -> None:
