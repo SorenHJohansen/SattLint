@@ -40,7 +40,11 @@ class DataflowIssueReportingMixin:
         resolved: ResolvedRef,
         module_path: list[str],
     ) -> None:
+        if any(pending in entry_writes for entry_writes in self._conditional_entry_writes):
+            return
         site = self._site_str()
+        if pending.is_enter_reset and pending.sites == (site,):
+            return
         dedupe_key = (tuple(module_path), site, pending.display_name.casefold())
         if not remember_once(self._reported_dead_overwrite, dedupe_key):
             return

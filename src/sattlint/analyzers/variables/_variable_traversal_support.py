@@ -550,6 +550,9 @@ def _scan_for_varrefs(
 ) -> None:
     if obj is None:
         return
+    if isinstance(obj, (*_EXPRESSION_TAIL_NODE_TYPES, VarRef)):
+        self._walk_tail(obj, context, path, is_ui_read=is_ui_read)
+        return
     if isinstance(obj, list):
         for item in cast(list[Any], obj):
             self._scan_for_varrefs(item, context, path, is_ui_read=is_ui_read)

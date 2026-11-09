@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import fields, is_dataclass
 
 from sattline_parser.builtins import get_function_signature
 from sattline_parser.grammar import constants as const
-from sattline_parser.models.expressions import VarRef
+from sattline_parser.models.expressions import FuncCall, VarRef
 
 from sattlint.resolution.scope import ScopeContext
 
@@ -125,6 +126,11 @@ def collect_expression_effect_sources(
                 sources.add(key)
         return sources
 
+    if isinstance(obj, FuncCall):
+        return collect_function_input_effect_keys(
+            obj.name, list(obj.args), context, resolve_effect_key=resolve_effect_key
+        )
+
     node_dict = _string_key_dict(obj)
     if node_dict is not None:
         if const.KEY_VAR_NAME in node_dict:
@@ -190,4 +196,13 @@ def collect_expression_effect_sources(
             )
         return sources
 
+    if is_dataclass(obj) and not isinstance(obj, type):
+        for field in fields(obj):
+            sources.update(
+                collect_expression_effect_sources(
+                    getattr(obj, field.name),
+                    context,
+                    resolve_effect_key=resolve_effect_key,
+                )
+            )
     return sources

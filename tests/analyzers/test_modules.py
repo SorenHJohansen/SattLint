@@ -10,6 +10,7 @@ from sattline_parser.models.ast_model import (
     ModuleHeader,
     Simple_DataType,
     SingleModule,
+    SourceSpan,
     Variable,
 )
 from sattline_parser.models.expressions import Assignment, VarRef
@@ -21,6 +22,7 @@ from sattlint.analyzers.modules import (
     VariableDiff,
     analyze_version_drift,
     compare_modules,
+    compare_variable_lists,
     create_fingerprint,
     find_modules_by_name,
 )
@@ -141,6 +143,26 @@ def test_version_drift_records_modified_variable_shape_diffs() -> None:
     assert issues[0].data is not None
     assert "localvariables" in issues[0].data["material_differences"]
     assert any("Local variable 'Output' changed" in note for note in issues[0].data["upgrade_notes"])
+
+
+def test_variable_difference_ignores_declaration_location() -> None:
+    modules = [
+        SingleModule(
+            header=_hdr("Panel"),
+            moduledef=None,
+            moduleparameters=[
+                Variable(
+                    name="Name",
+                    datatype=Simple_DataType.IDENTSTRING,
+                    declaration_span=SourceSpan(start=line * 10, end=line * 10 + 4, line=line, column=1),
+                )
+            ],
+        )
+        for line in (10, 50)
+    ]
+    diff = compare_variable_lists([create_fingerprint(module, ["Root", "Panel"]) for module in modules])
+    assert diff.common == ["Name"]
+    assert diff.modified == {}
 
 
 def test_version_drift_ignores_datecode_only_differences() -> None:

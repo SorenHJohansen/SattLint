@@ -27,7 +27,7 @@ from sattlint.application.findings import AnalysisFinding
 from sattlint.cli import startup as app
 from sattlint.config.types import ConfigDict
 from sattlint.project.io import init_project, load_project
-from sattlint.runs import RunAnalyzerRecord, RunRecord, RunSummary, RunTargetRecord
+from sattlint.runs import RunAnalyzerRecord, RunModuleRecord, RunRecord, RunSummary, RunTargetRecord
 from sattlint.ui import _app_textual_actions as app_textual_actions_module
 from sattlint.ui import _app_textual_app as app_textual_module
 from sattlint.ui import _app_textual_results as app_textual_results_module
@@ -2357,36 +2357,39 @@ def test_textual_results_view_lists_runs_and_renders_tree(monkeypatch: pytest.Mo
             assert app_instance._active_view == "results"
             results_browser = app_instance.query_one("#results-browser")
             assert results_browser.has_class("is-hidden") is False
-            assert len(list(app_instance.query_one("#results-tree-host").children)) == 1
+            assert app_instance.query_one("#results-tree-host .results-pane-title").renderable == "Modules"
+            assert app_instance.query_one("#results-findings-host .results-pane-title").renderable == "Findings"
+            assert (
+                app_instance.query_one("#results-tree-host").size.width
+                > app_instance.query_one("#results-runs-section").size.width
+            )
 
             tree = app_instance._results_tree_widget
             assert tree is not None
             assert tree.root.is_expanded is True
             target_node = tree.root.children[0]
-            analyzer_node = next(iter(target_node.children))
-            kind_node = next(iter(analyzer_node.children))
-            assert target_node.is_expanded is True
-            assert analyzer_node.is_expanded is True
-            assert kind_node.is_expanded is True
+            assert target_node.label.plain == "TargetA"
+            assert not list(target_node.children)
+            findings_report = app_instance._results_findings_widget
+            assert findings_report.id == "results-findings-report"
+            assert not list(app_instance.query("#results-findings-host Tree"))
+            assert "Unused variable (1)" in findings_report.renderable
+            assert "declared but never read" in findings_report.renderable
 
             app_instance._collapse_all_results()
             await pilot.pause()
-            assert tree.root.is_expanded is False
-            assert target_node.is_expanded is True
-            assert analyzer_node.is_expanded is True
-            assert kind_node.is_expanded is True
+            assert tree.root.is_expanded is True
+            assert target_node.is_expanded is False
 
             app_instance._expand_all_results()
             await pilot.pause()
             assert tree.root.is_expanded is True
             assert target_node.is_expanded is True
-            assert analyzer_node.is_expanded is True
-            assert kind_node.is_expanded is True
 
     asyncio.run(_run())
 
 
-def test_textual_results_group_toggle_switches_to_module_grouping(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_textual_results_module_selection_updates_findings_pane(monkeypatch: pytest.MonkeyPatch) -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
@@ -2399,6 +2402,14 @@ def test_textual_results_group_toggle_switches_to_module_grouping(monkeypatch: p
             RunTargetRecord(
                 target_name="TargetA",
                 is_library=False,
+                module=RunModuleRecord(
+                    name="TargetA",
+                    kind="SingleModule",
+                    children=(
+                        RunModuleRecord(name="Charging", kind="FrameModule"),
+                        RunModuleRecord(name="Idle", kind="SingleModule"),
+                    ),
+                ),
                 analyzers=(
                     RunAnalyzerRecord(
                         key="variables",
@@ -2439,26 +2450,22 @@ def test_textual_results_group_toggle_switches_to_module_grouping(monkeypatch: p
             await pilot.press("ctrl+2")
             await pilot.pause()
 
-            group_button = app_instance.query_one("#results-toggle-group")
-            assert str(group_button.label) == "Group: Analyzer"
-            assert app_instance._results_group_by() == "analyzer"
-
-            await pilot.click("#results-toggle-group")
-            await pilot.pause()
-
-            assert str(group_button.label) == "Group: Module"
-            assert app_instance._results_group_by() == "module"
             tree = app_instance._results_tree_widget
             assert tree is not None
-            target_node = tree.root.children[0]
-            module_node = next(iter(target_node.children))
-            assert module_node.label.plain == "TargetA.Charging"
-            analyzer_nodes = list(module_node.children)
-            assert [node.data.key for node in analyzer_nodes] == ["variables", "patterns"]
-            assert [next(iter(node.children)).label.plain for node in analyzer_nodes] == [
-                "Unused variable (1)",
-                "Magic number (1)",
-            ]
+            findings_report = app_instance._results_findings_widget
+            assert findings_report.id == "results-findings-report"
+            root = tree.root.children[0]
+            assert [node.label.plain for node in root.children] == ["Charging (FrameModule)", "Idle (SingleModule)"]
+            assert findings_report.renderable == "No findings for this module"
+
+            tree.select_node(root.children[0])
+            await pilot.pause()
+            assert "Variable issues (variables)\n  Unused variable (1)" in findings_report.renderable
+            assert "Pattern checks (patterns)\n  Magic number (1)" in findings_report.renderable
+
+            tree.select_node(root.children[1])
+            await pilot.pause()
+            assert findings_report.renderable == "No findings for this module"
 
     asyncio.run(_run())
 

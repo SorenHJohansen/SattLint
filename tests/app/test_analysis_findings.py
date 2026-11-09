@@ -1,8 +1,14 @@
+# pyright: reportPrivateUsage=false
 from types import SimpleNamespace
 
+from sattline_parser.models.ast_model import Simple_DataType, Variable
+
 from sattlint.analyzers.framework import Issue
+from sattlint.analyzers.shared._validators import StringMappingValidator
+from sattlint.application.checks import _issue_count_for_report
 from sattlint.application.findings import AnalysisFinding, extract_report_findings, kind_human_label
-from sattlint.models._variable_issues import IssueKind
+from sattlint.models._variable_issues import IssueKind, VariableIssue
+from sattlint.reporting.variables_report import VariablesReport
 
 
 def test_extract_report_findings_normalizes_framework_issues() -> None:
@@ -97,6 +103,37 @@ def test_extract_report_findings_returns_empty_for_missing_or_non_list_issues() 
     assert extract_report_findings(SimpleNamespace(issues="not-a-list"), default_name="Root") == ()
 
 
+def test_datatype_report_excludes_supporting_variable_findings() -> None:
+    report = VariablesReport(
+        basepicture_name="Root",
+        issues=[
+            VariableIssue(
+                kind=IssueKind.UNUSED_DATATYPE_FIELD, module_path=["Root"], variable=None, role="datatype field"
+            ),
+            VariableIssue(kind=IssueKind.MAGIC_NUMBER, module_path=["Root"], variable=None, role="literal"),
+            VariableIssue(kind=IssueKind.UNKNOWN_PARAMETER_TARGET, module_path=["Root"], variable=None, role="mapping"),
+        ],
+        visible_kinds=frozenset({IssueKind.UNUSED_DATATYPE_FIELD}),
+    )
+
+    findings = extract_report_findings(report, default_name="Root")
+
+    assert [finding.kind for finding in findings] == ["unused_datatype_field"]
+    assert _issue_count_for_report(report) == len(findings)
+
+
+def test_string_mapping_finding_shows_both_capacities() -> None:
+    issues = StringMappingValidator().check_string_mapping(
+        Variable(name="Name", datatype=Simple_DataType.IDENTSTRING),
+        Variable(name="SourceName", datatype=Simple_DataType.STRING),
+        ["Root", "Child"],
+    )
+    findings = extract_report_findings(SimpleNamespace(issues=issues), default_name="Root")
+    context = findings[0].data["context"]
+    assert "Name (identstring, 15 characters)" in context
+    assert "SourceName (string, 40 characters)" in context
+
+
 def test_analysis_finding_round_trips_through_dict() -> None:
     finding = AnalysisFinding(
         kind="unused",
@@ -156,6 +193,7 @@ def test_kind_human_label_returns_short_phrase() -> None:
     assert kind_human_label("magic_number") == "Magic number"
     assert kind_human_label("sfc_parallel_write_race") == "Parallel write race"
     assert kind_human_label("dataflow.condition_always_false") == "Condition always false"
+    assert kind_human_label("sfc_missing_initial_step") == "Missing initial step at sequence start"
     assert kind_human_label("unknown_custom_kind") == "Unknown Custom Kind"
 
 

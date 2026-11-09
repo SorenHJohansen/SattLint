@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Generator
+from contextlib import contextmanager
 from typing import Any, Protocol, cast
 
 from sattline_parser.builtins import get_function_signature
@@ -73,6 +74,7 @@ class EffectFlowTracker:
         )
         self._canonical_path: CanonicalPathFn = canonical_path_fn
         self._record_access: RecordAccessFn = record_access_fn
+        self._control_sources: list[set[EffectKey]] = []
 
     def effect_key_for_variable(
         self,
@@ -95,11 +97,18 @@ class EffectFlowTracker:
         if base_name:
             local_var = context.env.get(base_name.casefold())
             if local_var is not None:
-                return self.effect_key_for_variable(local_var, context.module_path)
+                return self._declaration_effect_key(local_var, context)
         variable, _field_path, decl_module_path, _decl_display = context.resolve_variable(full_ref)
         if variable is None:
             return None
         return self.effect_key_for_variable(variable, decl_module_path)
+
+    def _declaration_effect_key(self, variable: Variable, context: ScopeContext) -> EffectKey:
+        owner = context
+        name = variable.name.casefold()
+        while owner.parent_context is not None and owner.parent_context.env.get(name) is variable:
+            owner = owner.parent_context
+        return self.effect_key_for_variable(variable, owner.module_path)
 
     def mapping_source_effect_key(
         self,
@@ -148,7 +157,17 @@ class EffectFlowTracker:
         variable = context.env.get(base)
         if variable is None:
             return None
-        return self.effect_key_for_variable(variable, context.module_path)
+        return self._declaration_effect_key(variable, context)
+
+    def record_external_mapping_input(
+        self,
+        mapping: ParameterMapping,
+        parent_env: dict[str, Variable],
+        parent_context: ScopeContext,
+    ) -> None:
+        key = self.mapping_source_effect_key(mapping, parent_env=parent_env, parent_context=parent_context)
+        if key is not None:
+            self._external_effect_sinks.add(key)
 
     def resolve_mapped_effect_source_key(
         self,
@@ -172,6 +191,20 @@ class EffectFlowTracker:
         if source_key is None or target_key is None:
             return
         self._effect_flow_edges[source_key].add(target_key)
+
+    @contextmanager
+    def conditional_effects(self, conditions: object, context: ScopeContext) -> Generator[None]:
+        self._control_sources.append(self.collect_expression_effect_sources(conditions, context))
+        try:
+            yield
+        finally:
+            self._control_sources.pop()
+
+    def record_controlled_write(self, full_ref: str, context: ScopeContext) -> None:
+        target = self.resolve_effect_key(full_ref, context)
+        for sources in self._control_sources:
+            for source in sources:
+                self.record_effect_flow(source, target)
 
     def collect_function_input_effect_keys(
         self,

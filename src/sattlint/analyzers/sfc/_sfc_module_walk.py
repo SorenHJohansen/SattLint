@@ -32,7 +32,9 @@ def iter_sfc_modulecodes(
     for moduletype in base_picture.moduletype_defs or ():
         if moduletype_filter is not None and not moduletype_filter(moduletype):
             continue
-        yield [base_picture.header.name, f"TypeDef:{moduletype.name}"], moduletype.modulecode
+        path = [base_picture.header.name, f"TypeDef:{moduletype.name}"]
+        yield path, moduletype.modulecode
+        yield from _iter_nested_modulecodes(moduletype.submodules, path)
 
 
 def _iter_nested_modulecodes(

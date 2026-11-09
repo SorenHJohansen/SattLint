@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from ..application.findings import AnalysisFinding, kind_human_label
 from ..runs import (
     RunAnalyzerRecord,
+    RunModuleRecord,
     RunRecord,
     RunSummary,
     RunTargetRecord,
@@ -16,7 +17,6 @@ from ..runs import (
     load_run,
 )
 from ._app_textual_shared import (
-    _TEXTUAL_BUTTON,
     _TEXTUAL_LIST_ITEM,
     _TEXTUAL_LIST_VIEW,
     _TEXTUAL_QUERY_ERRORS,
@@ -25,8 +25,6 @@ from ._app_textual_shared import (
     _TEXTUAL_VERTICAL,
     _query_required,
 )
-
-ResultsGroupBy = Literal["analyzer", "module"]
 
 if _TEXTUAL_TREE is not None:
     from rich.cells import cell_len as _cell_len  # type: ignore[import-untyped]
@@ -62,6 +60,13 @@ def _new_results_tree() -> Any:
     return _ResultsTree("", id="results-tree")
 
 
+@dataclass(frozen=True, slots=True)
+class _ModuleSelection:
+    target: RunTargetRecord
+    path: tuple[str, ...]
+    aliases: dict[str, tuple[str, ...]]
+
+
 def _format_run_timestamp(iso_text: str) -> str:
     """Format an ISO run timestamp without the 'T'/'Z' separators."""
     if not iso_text:
@@ -74,25 +79,34 @@ def _format_run_timestamp(iso_text: str) -> str:
 
 
 def _run_summary_label(summary: RunSummary) -> str:
-    return f"{_format_run_timestamp(summary.finished_at)} ({summary.issue_count} issues)"
+    timestamp = _format_run_timestamp(summary.finished_at)
+    return f"{timestamp[5:16]} ({summary.issue_count})" if len(timestamp) >= 16 else timestamp
 
 
 _LEADING_MODULE_PATH_RE = re.compile(r"^\[[^\]]+\]\s*")
 
 
 def _context_label(finding: AnalysisFinding) -> str:
-    """The expression/context to show on the finding leaf.
+    """The expression/context to show in the findings report.
 
     Prefers the analyzer-provided ``data["context"]`` (e.g. ``TargetVal =>
     SourceVal``); otherwise falls back to the message with the leading
-    ``[Module.Path]`` annotation stripped (the path is already shown as tree
-    branch nodes).
+    ``[Module.Path]`` annotation stripped (the selected module supplies the path).
     """
+    message = _LEADING_MODULE_PATH_RE.sub("", finding.message).strip()
+    if finding.kind == "unused_datatype_field" and finding.module_path:
+        datatype = finding.module_path[-1].removeprefix("DataType:")
+        field_prefix = f"datatype '{datatype}'."
+        return message.removeprefix(field_prefix)
     data = finding.data
+    if finding.kind in {"field_read_only", "field_never_read"}:
+        variable = data.get("variable_name")
+        field = data.get("field_path")
+        return f"{variable}.{field}" if variable and field else message
     context = data.get("context")
     if context:
         return str(context)
-    return _LEADING_MODULE_PATH_RE.sub("", finding.message).strip()
+    return message
 
 
 def _site_label(finding: AnalysisFinding) -> str | None:
@@ -141,147 +155,13 @@ def _finding_groups(
     return groups
 
 
-class _ModuleTreeBuilder:
-    """Builds module-path branch nodes, reusing a branch for identical segments."""
-
-    def __init__(self) -> None:
-        self._branches: dict[tuple[int, str], Any] = {}
-
-    def add(self, parent: Any, segments: tuple[str, ...]) -> Any:
-        current = parent
-        for index, segment in enumerate(segments):
-            key = (id(current), segment)
-            node = self._branches.get(key)
-            if node is None:
-                node = current.add(segment, data=".".join(segments[: index + 1]))
-                self._branches[key] = node
-            current = node
-        return current
-
-
-def _module_display_paths(paths: Iterable[tuple[str, ...]]) -> dict[tuple[str, ...], tuple[str, ...]]:
-    """Map module paths to display paths with single-child chains merged.
-
-    A module node is collapsed into its parent when it carries no findings of
-    its own and has exactly one child path. The resulting node label is the
-    dotted chain (``RootProgram.StartMaster.Charge``) instead of one node per
-    path segment. Branch points and module nodes with findings stay separate so
-    navigation is preserved.
-    """
-    terminals = set(paths)
-    trie: dict[str, dict[str, Any]] = {}
-    for path in terminals:
-        node = trie
-        for segment in path:
-            node = node.setdefault(segment, {})
-
-    display_paths: dict[tuple[str, ...], tuple[str, ...]] = {}
-    pending: list[tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]]] = [(trie, (), ())]
-    while pending:
-        node, origin_prefix, display_prefix = pending.pop()
-        for segment, children in node.items():
-            origin = (*origin_prefix, segment)
-            display = (*display_prefix, segment)
-            remaining = children
-            while origin not in terminals and len(remaining) == 1:
-                ((child_segment, grandchildren),) = remaining.items()
-                origin = (*origin, child_segment)
-                display = (*display[:-1], f"{display[-1]}.{child_segment}")
-                remaining = grandchildren
-            if origin in terminals:
-                display_paths[origin] = display
-            if remaining:
-                pending.append((remaining, origin, display))
-    return display_paths
-
-
 def _finding_module_path(finding: AnalysisFinding, analyzer: RunAnalyzerRecord) -> tuple[str, ...]:
     return finding.module_path if finding.module_path else (analyzer.name,)
 
 
-def _add_finding_leaves(parent: Any, findings: Iterable[tuple[AnalysisFinding, int]]) -> None:
-    site_nodes: dict[tuple[int, str], Any] = {}
-    for finding, occurrence_count in findings:
-        leaf_parent = parent
-        site = _site_label(finding)
-        if site:
-            site_key = (id(parent), site)
-            site_node = site_nodes.get(site_key)
-            if site_node is None:
-                site_node = parent.add(site, data=None)
-                site_nodes[site_key] = site_node
-            leaf_parent = site_node
-        finding_node = leaf_parent.add(_finding_label(finding, occurrence_count=occurrence_count), data=finding)
-        finding_node.allow_expand = False
-
-
 def _analyzer_label(analyzer: RunAnalyzerRecord) -> str:
-    return f"{analyzer.name} ({analyzer.key}) — {analyzer.status}"
-
-
-def _add_kind_node(parent: Any, kind: str, items: list[tuple[AnalysisFinding, int]]) -> Any:
-    total = sum(count for _finding, count in items)
-    return parent.add(f"{kind_human_label(kind)} ({total})", data=None)
-
-
-def _add_empty_analyzer_nodes(target_node: Any, target: RunTargetRecord) -> None:
-    empty_analyzers = [analyzer for analyzer in target.analyzers if not analyzer.findings]
-    if not empty_analyzers:
-        return
-    no_findings_node = target_node.add(f"No findings ({len(empty_analyzers)})", data=None)
-    for analyzer in empty_analyzers:
-        analyzer_node = no_findings_node.add(_analyzer_label(analyzer), data=analyzer)
-        analyzer_node.allow_expand = False
-
-
-def _populate_findings_by_analyzer(analyzer_node: Any, analyzer: RunAnalyzerRecord) -> None:
-    builder = _ModuleTreeBuilder()
-    for kind, items in _finding_groups(analyzer):
-        display_paths = _module_display_paths(_finding_module_path(finding, analyzer) for finding, _count in items)
-        kind_node = _add_kind_node(analyzer_node, kind, items)
-        by_module: dict[tuple[str, ...], list[tuple[AnalysisFinding, int]]] = {}
-        for finding, occurrence_count in items:
-            by_module.setdefault(display_paths[_finding_module_path(finding, analyzer)], []).append(
-                (finding, occurrence_count)
-            )
-        for display_segments, module_items in by_module.items():
-            module_node = builder.add(kind_node, display_segments)
-            _add_finding_leaves(module_node, module_items)
-
-
-def _populate_findings_by_module(
-    target_node: Any,
-    target: RunTargetRecord,
-    *,
-    show_empty_analyzers: bool,
-) -> None:
-    analyzers = [analyzer for analyzer in target.analyzers if analyzer.findings]
-    display_paths = _module_display_paths(
-        _finding_module_path(finding, analyzer) for analyzer in analyzers for finding in analyzer.findings
-    )
-    module_branches: dict[
-        tuple[str, ...],
-        list[tuple[RunAnalyzerRecord, dict[str, list[tuple[AnalysisFinding, int]]]]],
-    ] = {}
-    for analyzer in analyzers:
-        modules: dict[tuple[str, ...], dict[str, list[tuple[AnalysisFinding, int]]]] = {}
-        for kind, items in _finding_groups(analyzer):
-            for finding, occurrence_count in items:
-                modules.setdefault(_finding_module_path(finding, analyzer), {}).setdefault(kind, []).append(
-                    (finding, occurrence_count)
-                )
-        for segments, kinds in modules.items():
-            module_branches.setdefault(segments, []).append((analyzer, kinds))
-    builder = _ModuleTreeBuilder()
-    for segments, branches in module_branches.items():
-        module_node = builder.add(target_node, display_paths[segments])
-        for analyzer, kinds in branches:
-            analyzer_node = module_node.add(_analyzer_label(analyzer), data=analyzer)
-            for kind, items in kinds.items():
-                kind_node = _add_kind_node(analyzer_node, kind, items)
-                _add_finding_leaves(kind_node, items)
-    if show_empty_analyzers:
-        _add_empty_analyzer_nodes(target_node, target)
+    label = f"{analyzer.name} ({analyzer.key})"
+    return label if analyzer.status == "completed" else f"{label} — {analyzer.status}"
 
 
 def _auto_expand_single_child_chains(root: Any) -> None:
@@ -300,95 +180,235 @@ def _auto_expand_single_child_chains(root: Any) -> None:
         stack.extend(node._children)
 
 
-def _populate_run_tree(
-    tree: Any,
-    record: RunRecord,
-    *,
-    show_empty_analyzers: bool = False,
-    group_by: ResultsGroupBy = "analyzer",
-) -> None:
-    tree.reset("", data=record)
-    tree.show_root = False
-    root = tree.root
-    for target in record.targets:
-        shown_analyzers = [analyzer for analyzer in target.analyzers if show_empty_analyzers or analyzer.findings]
-        target_issue_count = sum(len(analyzer.findings) for analyzer in shown_analyzers)
-        target_node = root.add(
-            f"{target.target_name} ({len(shown_analyzers)} analyzers, {target_issue_count} issues)",
-            data=target,
-        )
-        if group_by == "module":
-            _populate_findings_by_module(target_node, target, show_empty_analyzers=show_empty_analyzers)
-            continue
-        for analyzer in shown_analyzers:
-            analyzer_node = target_node.add(
-                f"{analyzer.name} ({analyzer.key}) — {analyzer.status}",
-                data=analyzer,
-            )
-            _populate_findings_by_analyzer(analyzer_node, analyzer)
-    _auto_expand_single_child_chains(root)
-    root.expand()
+def _module_label(module: RunModuleRecord) -> str:
+    if module.moduletype_name:
+        return f"{module.name} {module.moduletype_name}"
+    return f"{module.name} ({module.kind})" if module.kind else module.name
 
 
-def _build_run_tree(
-    record: RunRecord,
-    *,
-    show_empty_analyzers: bool = False,
-    group_by: ResultsGroupBy = "analyzer",
-) -> Any:
-    if _TEXTUAL_TREE is None:
-        return None
-    tree = _new_results_tree()
-    _populate_run_tree(tree, record, show_empty_analyzers=show_empty_analyzers, group_by=group_by)
-    return tree
+def _normalized_finding_path(
+    target: RunTargetRecord,
+    root_name: str,
+    finding: AnalysisFinding,
+    analyzer: RunAnalyzerRecord,
+    aliases: dict[str, tuple[str, ...]] | None = None,
+) -> tuple[str, ...]:
+    path = _finding_module_path(finding, analyzer)
+    if path[0].casefold() == target.target_name.casefold():
+        normalized = (root_name, *path[1:])
+    elif path[0].casefold() == root_name.casefold():
+        normalized = path
+    else:
+        normalized = (root_name, *path)
+    if aliases is not None and len(normalized) > 1:
+        invoked_path = aliases.get(normalized[1].casefold())
+        if invoked_path is not None:
+            return (*invoked_path, *normalized[2:])
+    return normalized
 
 
-def _run_overview_text(record: RunRecord) -> str:
-    return (
-        f"Analysis run {record.finished_at}\n"
-        f"Configuration: {record.project_tag or '(none)'}\n"
-        f"Targets: {record.target_count}\n"
-        f"Analyzers: {record.analyzer_count}\n"
-        f"Issues: {record.issue_count}"
-    )
-
-
-def _target_overview_text(target: RunTargetRecord) -> str:
-    return (
-        f"Target: {target.target_name}\n"
-        f"Analyzers: {len(target.analyzers)}\n"
-        f"Issues: {sum(len(analyzer.findings) for analyzer in target.analyzers)}"
-    )
-
-
-def _write_finding_detail(self: Any, finding: AnalysisFinding) -> None:
-    lines = [
-        f"Finding: {kind_human_label(finding.kind)}",
-        f"Location: {'.'.join(finding.module_path) if finding.module_path else 'unknown'}",
-        f"Message: {_LEADING_MODULE_PATH_RE.sub('', finding.message).strip()}",
+def _module_path_aliases(target: RunTargetRecord, root_name: str) -> dict[str, tuple[str, ...]]:
+    paths = [
+        _normalized_finding_path(target, root_name, finding, analyzer)
+        for analyzer in target.analyzers
+        for finding in analyzer.findings
     ]
-    if finding.rule_id:
-        lines.append(f"Rule: {finding.rule_id}")
-    if finding.explanation:
-        lines.append(f"Why it matters: {finding.explanation}")
-    if finding.suggestion:
-        lines.append(f"Suggested fix: {finding.suggestion}")
-    self._write_output("\n".join(lines))
+    direct_names = {path[1].casefold() for path in paths if len(path) > 1 and ":" not in path[1]}
+    candidates: dict[str, dict[tuple[str, ...], tuple[str, ...]]] = {}
+    if target.module is not None:
+        actual_roots = {child.name.casefold() for child in target.module.children}
+        pending = [(child, (root_name, child.name)) for child in target.module.children]
+        while pending:
+            module, path = pending.pop()
+            name = module.name.casefold()
+            if len(path) > 2 and module.moduletype_name and name in direct_names and name not in actual_roots:
+                candidates.setdefault(name, {})[tuple(part.casefold() for part in path)] = path
+            pending.extend((child, (*path, child.name)) for child in module.children)
+    else:
+        direct_findings = {path[1].casefold() for path in paths if len(path) == 2}
+        for path in paths:
+            for length in range(3, len(path) + 1):
+                name = path[length - 1].casefold()
+                if name in direct_names and name not in direct_findings:
+                    invoked_path = path[:length]
+                    candidates.setdefault(name, {})[tuple(part.casefold() for part in invoked_path)] = invoked_path
+    return {name: next(iter(matches.values())) for name, matches in candidates.items() if len(matches) == 1}
+
+
+def _add_module_children(
+    parent: Any,
+    children: tuple[RunModuleRecord, ...],
+    path: tuple[str, ...],
+    target: RunTargetRecord,
+    branches: dict[tuple[str, ...], Any],
+    finding_paths: set[tuple[str, ...]],
+    aliases: dict[str, tuple[str, ...]],
+) -> None:
+    for child in children:
+        child_path = (*path, child.name)
+        merged_paths = [child_path]
+        final = child
+        while len(final.children) == 1 and tuple(part.casefold() for part in child_path) not in finding_paths:
+            final = final.children[0]
+            child_path = (*child_path, final.name)
+            merged_paths.append(child_path)
+        label = _module_label(final)
+        if len(merged_paths) > 1:
+            label = f"{'.'.join(segment[-1] for segment in merged_paths)}{label.removeprefix(final.name)}"
+        child_node = parent.add(label, data=_ModuleSelection(target, child_path, aliases))
+        for merged_path in merged_paths:
+            branches[tuple(part.casefold() for part in merged_path)] = child_node
+        _add_module_children(child_node, final.children, child_path, target, branches, finding_paths, aliases)
+
+
+def _fallback_module_children(
+    path: tuple[str, ...], path_children: dict[tuple[str, ...], dict[str, str]]
+) -> tuple[RunModuleRecord, ...]:
+    key = tuple(part.casefold() for part in path)
+    return tuple(
+        RunModuleRecord(name=name, children=_fallback_module_children((*path, name), path_children))
+        for name in path_children.get(key, {}).values()
+    )
+
+
+def _populate_module_navigation(tree: Any, record: RunRecord) -> _ModuleSelection | None:
+    tree.reset("", data=None)
+    tree.show_root = False
+    first_selection = None
+    for target in record.targets:
+        module = target.module
+        roots = {
+            finding.module_path[0]
+            for analyzer in target.analyzers
+            for finding in analyzer.findings
+            if finding.module_path
+        }
+        root_name = (
+            module.name.split(":", 1)[-1]
+            if module is not None
+            else next(iter(roots))
+            if len(roots) == 1
+            else target.target_name
+        )
+        aliases = _module_path_aliases(target, root_name)
+        selection = _ModuleSelection(target, (root_name,), aliases)
+        if first_selection is None:
+            first_selection = selection
+        root_label = (
+            _module_label(module)
+            if module
+            else f"{target.target_name}:{root_name}"
+            if root_name.casefold() != target.target_name.casefold()
+            else target.target_name
+        )
+        root_node = tree.root.add(root_label, data=selection)
+        branches = {(root_name.casefold(),): root_node}
+        finding_paths = {
+            tuple(part.casefold() for part in _normalized_finding_path(target, root_name, finding, analyzer, aliases))
+            for analyzer in target.analyzers
+            for finding in analyzer.findings
+        }
+
+        if module is not None:
+            _add_module_children(root_node, module.children, selection.path, target, branches, finding_paths, aliases)
+        else:
+            path_children: dict[tuple[str, ...], dict[str, str]] = {}
+            for analyzer in target.analyzers:
+                for finding in analyzer.findings:
+                    path = _normalized_finding_path(target, root_name, finding, analyzer, aliases)
+                    for length in range(1, len(path)):
+                        parent_key = tuple(part.casefold() for part in path[:length])
+                        path_children.setdefault(parent_key, {}).setdefault(path[length].casefold(), path[length])
+
+            _add_module_children(
+                root_node,
+                _fallback_module_children(selection.path, path_children),
+                selection.path,
+                target,
+                branches,
+                finding_paths,
+                aliases,
+            )
+        for analyzer in target.analyzers:
+            for finding in analyzer.findings:
+                path = _normalized_finding_path(target, root_name, finding, analyzer, aliases)
+                for length in range(2, len(path) + 1):
+                    prefix = path[:length]
+                    key = tuple(part.casefold() for part in prefix)
+                    if key not in branches:
+                        parent_key = tuple(part.casefold() for part in prefix[:-1])
+                        branches[key] = branches[parent_key].add(
+                            prefix[-1], data=_ModuleSelection(target, prefix, aliases)
+                        )
+    _auto_expand_single_child_chains(tree.root)
+    tree.root.expand()
+    return first_selection
+
+
+def _module_findings_report(selection: _ModuleSelection, *, show_empty_analyzers: bool) -> str:
+    target = selection.target
+    path = tuple(part.casefold() for part in selection.path)
+    lines: list[str] = []
+    for analyzer in target.analyzers:
+        matching = tuple(
+            finding
+            for finding in analyzer.findings
+            if tuple(
+                part.casefold()
+                for part in _normalized_finding_path(target, selection.path[0], finding, analyzer, selection.aliases)
+            )
+            == path
+        )
+        if not matching and not (show_empty_analyzers and len(path) == 1 and not analyzer.findings):
+            continue
+        if lines:
+            lines.append("")
+        lines.append(_analyzer_label(analyzer))
+        if not matching:
+            lines.append("  No findings")
+            continue
+        for kind, items in _finding_groups(
+            RunAnalyzerRecord(key=analyzer.key, name=analyzer.name, status=analyzer.status, findings=matching)
+        ):
+            lines.append(f"  {kind_human_label(kind)} ({sum(count for _, count in items)})")
+            for finding, occurrence_count in items:
+                lines.append(f"    {_finding_label(finding, occurrence_count=occurrence_count)}")
+                site = _site_label(finding)
+                if site:
+                    lines.append(f"      Site: {site}")
+                message = _LEADING_MODULE_PATH_RE.sub("", finding.message).strip()
+                if message and message != _context_label(finding):
+                    lines.append(f"      {message}")
+                if finding.explanation:
+                    lines.append(f"      Why it matters: {finding.explanation}")
+                if finding.suggestion:
+                    lines.append(f"      Suggested fix: {finding.suggestion}")
+    return "\n".join(lines) if lines else "No findings for this module"
 
 
 def on_tree_node_selected(self: Any, event: Any) -> None:
     node = getattr(event, "node", None)
     data = getattr(node, "data", None)
-    if isinstance(data, AnalysisFinding):
-        _write_finding_detail(self, data)
-    elif isinstance(data, str):
-        self._write_output(f"Module: {data}")
-    elif isinstance(data, RunAnalyzerRecord):
-        self._write_output(data.summary or f"{data.name}: {data.status}")
-    elif isinstance(data, RunTargetRecord):
-        self._write_output(_target_overview_text(data))
-    elif isinstance(data, RunRecord):
-        self._write_output(_run_overview_text(data))
+    if isinstance(data, _ModuleSelection):
+        _select_results_module(self, data)
+
+
+def on_tree_node_highlighted(self: Any, event: Any) -> None:
+    data = getattr(getattr(event, "node", None), "data", None)
+    if isinstance(data, _ModuleSelection):
+        _select_results_module(self, data)
+
+
+def _select_results_module(self: Any, selection: _ModuleSelection) -> None:
+    current = getattr(self, "_selected_results_module", None)
+    if current is not None and current.target is selection.target and current.path == selection.path:
+        return
+    self._selected_results_module = selection
+    findings_report = getattr(self, "_results_findings_widget", None)
+    if findings_report is not None:
+        findings_report.update(
+            _module_findings_report(selection, show_empty_analyzers=self._results_show_empty_analyzers())
+        )
 
 
 def _current_project_tag(self: Any) -> str:
@@ -480,21 +500,29 @@ def _render_results_tree(self: Any, record: RunRecord) -> None:
         tree_host.mount(tree)
         self._results_tree_widget = tree
         self._results_tree_render_key = None
-    group_by = self._results_group_by()
-    show_empty_analyzers = self._results_show_empty_analyzers()
-    render_key = (record.run_id, show_empty_analyzers, group_by)
+    findings_report = getattr(self, "_results_findings_widget", None)
+    if findings_report is None:
+        findings_report = _TEXTUAL_STATIC("", id="results-findings-report", markup=False)
+        _query_required(self, "#results-findings-host", _TEXTUAL_VERTICAL).mount(findings_report)
+        self._results_findings_widget = findings_report
+    render_key = record.run_id
     if getattr(self, "_results_tree_render_key", None) != render_key:
-        _populate_run_tree(
-            tree,
-            record,
-            show_empty_analyzers=show_empty_analyzers,
-            group_by=group_by,
-        )
+        selection = _populate_module_navigation(tree, record)
         self._results_tree_render_key = render_key
         self._results_tree_run_id = record.run_id
-    self._update_results_group_button()
+        self._selected_results_module = None
+        if selection is not None:
+            _select_results_module(self, selection)
+        else:
+            findings_report.update("No findings")
+    elif self._selected_results_module is not None:
+        findings_report.update(
+            _module_findings_report(
+                self._selected_results_module, show_empty_analyzers=self._results_show_empty_analyzers()
+            )
+        )
     self._refresh_shell_state()
-    self._write_output("Analysis results are shown in the tree. Select a node for details.")
+    self._write_output("Select a module to inspect its findings.")
 
 
 def _results_show_empty_analyzers(self: Any) -> bool:
@@ -509,31 +537,6 @@ def _toggle_results_show_empty_analyzers(self: Any) -> None:
         else "Hiding analyzers with no findings."
     )
     self._render_selected_run()
-
-
-def _results_group_by(self: Any) -> ResultsGroupBy:
-    value = getattr(self, "_results_group_by_flag", "analyzer")
-    return "module" if value == "module" else "analyzer"
-
-
-def _results_group_label(group_by: ResultsGroupBy) -> str:
-    return "Group: Module" if group_by == "module" else "Group: Analyzer"
-
-
-def _update_results_group_button(self: Any) -> None:
-    try:
-        button = self.query_one("#results-toggle-group", _TEXTUAL_BUTTON)
-    except _TEXTUAL_QUERY_ERRORS:
-        return
-    button.label = _results_group_label(self._results_group_by())
-
-
-def _toggle_results_group_by(self: Any) -> None:
-    group_by: ResultsGroupBy = "module" if self._results_group_by() == "analyzer" else "analyzer"
-    self._results_group_by_flag = group_by
-    self._write_output("Results are grouped by module." if group_by == "module" else "Results are grouped by analyzer.")
-    self._render_selected_run()
-    self._refresh_shell_state()
 
 
 def _expand_all_results(self: Any) -> None:
@@ -554,7 +557,7 @@ def _collapse_all_results(self: Any) -> None:
         return
     for node in _walk_tree_nodes(tree.root, include_root=True):
         node._expanded = False
-    _auto_expand_single_child_chains(tree.root)
+    tree.root.expand()
     tree._invalidate()
     self._write_output("Collapsed all results.")
 
@@ -572,11 +575,15 @@ def _refresh_results_view(self: Any) -> None:
     summaries = getattr(self, "_results_run_summaries", [])
     if not summaries:
         self._selected_run_record = None
+        self._selected_results_module = None
         self._results_tree_run_id = None
         self._results_tree_render_key = None
         tree = getattr(self, "_results_tree_widget", None)
         if tree is not None:
             tree.reset("No matching runs", data=None)
+        findings_report = getattr(self, "_results_findings_widget", None)
+        if findings_report is not None:
+            findings_report.update("No findings")
         self._write_output("No previous analysis runs are available yet. Run analyses from the Analyze view.")
         return
     current_id = getattr(self._selected_run_record, "run_id", None)
@@ -608,6 +615,7 @@ if TYPE_CHECKING:
 
     class _TextualResultsMixin:
         def on_tree_node_selected(self, event: Any) -> None: ...
+        def on_tree_node_highlighted(self, event: Any) -> None: ...
         def _current_project_tag(self) -> str: ...
         def _refresh_results_runs_list(self) -> None: ...
         def _render_results_tree(self, record: RunRecord) -> None: ...
@@ -616,9 +624,6 @@ if TYPE_CHECKING:
         def _collapse_all_results(self) -> None: ...
         def _results_show_empty_analyzers(self) -> bool: ...
         def _toggle_results_show_empty_analyzers(self) -> None: ...
-        def _results_group_by(self) -> ResultsGroupBy: ...
-        def _update_results_group_button(self) -> None: ...
-        def _toggle_results_group_by(self) -> None: ...
         def _delete_selected_run(self) -> None: ...
         def _refresh_results_view(self) -> None: ...
 else:
@@ -627,6 +632,7 @@ else:
         """Provides the Results view: run selection and the results tree."""
 
         on_tree_node_selected = on_tree_node_selected
+        on_tree_node_highlighted = on_tree_node_highlighted
         _current_project_tag = _current_project_tag
         _refresh_results_runs_list = _refresh_results_runs_list
         _render_results_tree = _render_results_tree
@@ -635,8 +641,5 @@ else:
         _collapse_all_results = _collapse_all_results
         _results_show_empty_analyzers = _results_show_empty_analyzers
         _toggle_results_show_empty_analyzers = _toggle_results_show_empty_analyzers
-        _results_group_by = _results_group_by
-        _update_results_group_button = _update_results_group_button
-        _toggle_results_group_by = _toggle_results_group_by
         _delete_selected_run = _delete_selected_run
         _refresh_results_view = _refresh_results_view

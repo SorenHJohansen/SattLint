@@ -242,7 +242,7 @@ class _SfcAccessCollector(VariablesAnalyzer):
         env: dict[str, Variable],
         path: list[str],
         context: ScopeContext,
-    ) -> None:
+    ) -> list[object]:
         del context
         display_path: list[str] = []
         if path:
@@ -258,3 +258,4 @@ class _SfcAccessCollector(VariablesAnalyzer):
 
         for node in nodes:
             self._walk_sequence_node(node, context, path, include_site_labels=False)
+        return []

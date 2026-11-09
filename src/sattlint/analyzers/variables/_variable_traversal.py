@@ -157,8 +157,8 @@ class VariablesTraversalMixin:
         env: dict[str, Any],
         path: list[str],
         context: ScopeContext,
-    ) -> None:
-        _walk_seq_nodes(self, nodes, env, path, context)
+    ) -> list[object]:
+        return _walk_seq_nodes(self, nodes, env, path, context)
 
     def _walk_stmt_or_expr(
         self: Any,

@@ -29,6 +29,7 @@ from ._dataflow_common import (
     PENDING_PREFIX,
     UNKNOWN,
     ConstantTrace,
+    PendingWrite,
     ResolvedRef,
     ScalarValue,
     StateMap,
@@ -73,6 +74,7 @@ class DataflowAnalyzer(
         self._site_stack: list[str] = []
         self._active_typedefs: set[str] = set()
         self._reported_dead_overwrite: set[tuple[tuple[str, ...], str, str]] = set()
+        self._conditional_entry_writes: list[set[PendingWrite]] = []
         self._reported_conflicting_constants: set[tuple[tuple[str, ...], str, str]] = set()
         self._reported_scan_cycle_stale_read: set[tuple[tuple[str, ...], str, str]] = set()
         self._reported_scan_cycle_implicit_new: set[tuple[tuple[str, ...], str, str]] = set()

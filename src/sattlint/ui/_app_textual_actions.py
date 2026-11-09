@@ -1002,10 +1002,8 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
         analyze_clear_filter_button.disabled = toolbar_disabled or not analyze_view or interaction_locked
     except _TEXTUAL_QUERY_ERRORS:
         pass
-    results_group_button = _query_required(self, "#results-toggle-group", _TEXTUAL_BUTTON)
     results_expand_button = _query_required(self, "#results-expand-all", _TEXTUAL_BUTTON)
     results_collapse_button = _query_required(self, "#results-collapse-all", _TEXTUAL_BUTTON)
-    results_group_button.disabled = toolbar_disabled or not results_view or interaction_locked
     results_expand_button.disabled = toolbar_disabled or not results_view or interaction_locked
     results_collapse_button.disabled = toolbar_disabled or not results_view or interaction_locked
     try:
@@ -1103,7 +1101,6 @@ def on_button_pressed(self: Any, event: Any) -> None:
         "analyze-cancel-running": self.action_cancel_running_analysis,
         "analyze-clear-selection": self._clear_selected_analyzers,
         "analyze-clear-output": self._clear_output_and_refocus,
-        "results-toggle-group": self._toggle_results_group_by,
         "results-expand-all": self._expand_all_results,
         "results-collapse-all": self._collapse_all_results,
         "results-delete-run": self._delete_selected_run,

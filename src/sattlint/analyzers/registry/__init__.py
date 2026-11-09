@@ -17,6 +17,7 @@ from ..datatype_fields import analyze_datatype_fields
 from ..framework import AnalyzerSpec
 from ..icf.analyzer import analyze_icf_configuration
 from ..modules import analyze_version_drift
+from ..moduletype_usage import analyze_moduletype_usage
 from ..picture_display_paths import analyze_picture_display_paths
 from ..plugin import get_registered_plugin_analyzers, register_analyzer
 from ..same_cycle import analyze_same_cycle
@@ -225,6 +226,7 @@ __all__ = [
     "analyze_dataflow",
     "analyze_datatype_fields",
     "analyze_icf_configuration",
+    "analyze_moduletype_usage",
     "analyze_picture_display_paths",
     "analyze_same_cycle",
     "analyze_sfc",

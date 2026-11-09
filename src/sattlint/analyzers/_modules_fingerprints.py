@@ -17,8 +17,10 @@ from sattline_parser.models.ast_model import (
 
 _IGNORED_AST_FIELDS = {
     "datecode",
+    "declaration_span",
     "description",
     "invoke_coord",
+    "invocation_span",
     "origin_file",
     "origin_lib",
     "position",

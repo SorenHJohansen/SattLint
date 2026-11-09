@@ -103,21 +103,32 @@ class _DataflowStateMixin:
         if whole_symbol_write:
             overwritten = self._pop_pending_writes_for_root(next_state, resolved.symbol_root_key)
             for pending in overwritten:
-                self._report_dead_overwrite(pending, resolved, module_path)
+                if not self._same_pending_value(pending, resolved, value, state):
+                    self._report_dead_overwrite(pending, resolved, module_path)
         else:
             next_state.pop(self._pending_state_key(resolved.symbol_root_key), None)
             pending_key = self._pending_state_key(resolved.symbol_key)
             pending_write = next_state.pop(pending_key, None)
-            if isinstance(pending_write, PendingWrite):
+            if isinstance(pending_write, PendingWrite) and not self._same_pending_value(
+                pending_write, resolved, value, state
+            ):
                 self._report_dead_overwrite(pending_write, resolved, module_path)
 
-        next_state = self._invalidate_symbol(next_state, resolved.symbol_root_key)
+        invalidated_key = resolved.symbol_root_key if treat_as_root_overwrite else resolved.symbol_key
+        next_state = self._invalidate_symbol(next_state, invalidated_key)
         next_state[resolved.symbol_key] = INITIALIZED if value is UNKNOWN else value
         next_state[self._pending_state_key(resolved.symbol_key)] = PendingWrite(
             key=resolved.symbol_key,
             root_key=resolved.symbol_root_key,
             display_name=resolved.base_display_name,
             sites=(self._site_str(),),
+            is_enter_reset=(
+                isinstance(value, int | float | bool)
+                and value == 0
+                and bool(self._site_stack)
+                and self._site_stack[-1].startswith("STEP:")
+                and self._site_stack[-1].endswith(":ENTER")
+            ),
         )
         if is_scalar_value(value):
             self._invalidate_constant_traces(next_state, resolved.symbol_key, preserve_exact=True)
@@ -125,6 +136,22 @@ class _DataflowStateMixin:
         else:
             self._invalidate_constant_traces(next_state, resolved.symbol_key)
         return next_state
+
+    def _same_pending_value(
+        self: Any,
+        pending: PendingWrite,
+        resolved: ResolvedRef,
+        value: ScalarValue | object,
+        state: StateMap,
+    ) -> bool:
+        previous = state.get(pending.key, UNKNOWN)
+        return (
+            pending.key == resolved.symbol_key
+            and is_scalar_value(previous)
+            and is_scalar_value(value)
+            and type(previous) is type(value)
+            and previous == value
+        )
 
     def _constant_trace_key(self: Any, symbol_key: tuple[str, ...]) -> tuple[str, ...]:
         return CONSTANT_TRACE_PREFIX + symbol_key
@@ -320,6 +347,7 @@ class _DataflowStateMixin:
                 key=first_pending.key,
                 root_key=first_pending.root_key,
                 display_name=first_pending.display_name,
+                is_enter_reset=all(value.is_enter_reset for value in pending_values if isinstance(value, PendingWrite)),
                 sites=tuple(
                     sorted(
                         {site for value in pending_values if isinstance(value, PendingWrite) for site in value.sites}

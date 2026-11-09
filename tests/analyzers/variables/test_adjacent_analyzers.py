@@ -85,7 +85,7 @@ def test_cyclomatic_complexity_flags_high_complexity_program_modulecode():
         moduledef=None,
     )
 
-    report = analyze_cyclomatic_complexity(bp)
+    report = analyze_cyclomatic_complexity(bp, module_threshold=10)
 
     issues = [issue for issue in report.issues if issue.kind == "module.cyclomatic_complexity"]
     assert len(issues) == 1
@@ -140,7 +140,7 @@ def test_cyclomatic_complexity_flags_high_complexity_sfc_step():
         moduledef=None,
     )
 
-    report = analyze_cyclomatic_complexity(bp)
+    report = analyze_cyclomatic_complexity(bp, step_threshold=6)
 
     issues = [issue for issue in report.issues if issue.kind == "step.cyclomatic_complexity"]
     assert len(issues) == 1

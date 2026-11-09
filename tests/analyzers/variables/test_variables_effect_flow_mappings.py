@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import pytest
 from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -61,6 +62,32 @@ def test_effect_flow_tracker_collects_program_and_library_sink_keys() -> None:
     assert tracker.compute_effective_output_keys(set()) == set()
     assert program_sinks == {("external", "sink"), ("root", "programvar")}
     assert library_sinks == {("external", "sink"), ("root", "typedef:included", "includedparam")}
+
+
+def test_frame_inherited_variable_keeps_declaration_effect_key() -> None:
+    source = Variable(name="Source", datatype=Simple_DataType.INTEGER)
+    parent = _context(env={"source": source}, module_path=["Root", "Parent"])
+    frame = _context(env=parent.env, module_path=["Root", "Parent", "Frame"], parent_context=parent)
+    tracker, _, _, _, _ = _build_tracker()
+
+    assert tracker.resolve_effect_key("Source", frame) == ("root", "parent", "source")
+    assert tracker.resolve_local_effect_key("Source", frame) == ("root", "parent", "source")
+
+
+def test_conditional_effect_scope_is_cleared_after_error() -> None:
+    context = _context(
+        env={
+            "condition": Variable(name="Condition", datatype=Simple_DataType.BOOLEAN),
+            "output": Variable(name="Output", datatype=Simple_DataType.BOOLEAN),
+        }
+    )
+    tracker, edges, _, _, _ = _build_tracker()
+    with pytest.raises(RuntimeError, match="stop"), tracker.conditional_effects(_varref("Condition"), context):
+        tracker.record_controlled_write("Output", context)
+        raise RuntimeError("stop")
+    edges.clear()
+    tracker.record_controlled_write("Output", context)
+    assert not edges
 
 
 def test_effect_flow_tracker_propagates_internal_mapping_reads_writes_and_edges() -> None:

@@ -109,37 +109,56 @@ def _walk_seq_nodes(
     env: dict[str, Variable],
     path: list[str],
     context: ScopeContext,
-) -> None:
+) -> list[object]:
+    """Return the transition guards of paths that fall through this container."""
+    conditions: list[object] = []
     for node in nodes or []:
         if isinstance(node, SFCStep):
-            for stmt in node.code.enter or []:
-                self._set_current_statement(stmt)
-                self._walk_stmt_or_expr(stmt, context, path)
-            for stmt in node.code.active or []:
-                self._set_current_statement(stmt)
-                self._walk_stmt_or_expr(stmt, context, path)
-            for stmt in node.code.exit or []:
-                self._set_current_statement(stmt)
-                self._walk_stmt_or_expr(stmt, context, path)
+            with self.effect_flow_tracker.conditional_effects(conditions, context):
+                for stmt in node.code.enter or []:
+                    self._set_current_statement(stmt)
+                    self._walk_stmt_or_expr(stmt, context, path)
+                for stmt in node.code.active or []:
+                    self._set_current_statement(stmt)
+                    self._walk_stmt_or_expr(stmt, context, path)
+                for stmt in node.code.exit or []:
+                    self._set_current_statement(stmt)
+                    self._walk_stmt_or_expr(stmt, context, path)
+            if node.fork is not None:
+                return []
             continue
         if isinstance(node, SFCTransition):
             self._set_current_statement(node.condition)
             self._walk_stmt_or_expr(node.condition, context, path)
+            conditions.append(node.condition)
+            if node.fork is not None:
+                return []
             continue
         if isinstance(node, SFCAlternative):
-            for branch in node.branches or []:
-                self._walk_seq_nodes(branch or [], env, path, context)
+            joined_conditions: list[object] = []
+            with self.effect_flow_tracker.conditional_effects(conditions, context):
+                for branch in node.branches or []:
+                    joined_conditions.extend(self._walk_seq_nodes(branch or [], env, path, context))
+            conditions.extend(joined_conditions)
             continue
         if isinstance(node, SFCParallel):
-            for branch in node.branches or []:
-                self._walk_seq_nodes(branch or [], env, path, context)
+            joined_conditions = []
+            with self.effect_flow_tracker.conditional_effects(conditions, context):
+                for branch in node.branches or []:
+                    joined_conditions.extend(self._walk_seq_nodes(branch or [], env, path, context))
+            conditions.extend(joined_conditions)
             continue
         if isinstance(node, SFCSubsequence):
-            self._walk_seq_nodes(node.body or [], env, path, context)
+            with self.effect_flow_tracker.conditional_effects(conditions, context):
+                joined_conditions = self._walk_seq_nodes(node.body or [], env, path, context)
+            conditions.extend(joined_conditions)
             continue
         if isinstance(node, SFCTransitionSub):
-            self._walk_seq_nodes(node.body or [], env, path, context)
+            with self.effect_flow_tracker.conditional_effects(conditions, context):
+                joined_conditions = self._walk_seq_nodes(node.body or [], env, path, context)
+            conditions.extend(joined_conditions)
             continue
+    return conditions
 
 
 def _walk_stmt_or_expr(  # noqa: PLR0915
@@ -160,14 +179,18 @@ def _walk_stmt_or_expr(  # noqa: PLR0915
         return
 
     if isinstance(obj, IfStmt):
+        conditions: list[object] = []
         for cond, stmts in obj.branches or []:
             self._walk_stmt_or_expr(cond, context, path, is_ui_read=is_ui_read)
-            for stmt in stmts or []:
+            conditions.append(cond)
+            with self.effect_flow_tracker.conditional_effects(conditions, context):
+                for stmt in stmts or []:
+                    self._set_current_statement(stmt)
+                    self._walk_stmt_or_expr(stmt, context, path, is_ui_read=is_ui_read)
+        with self.effect_flow_tracker.conditional_effects(conditions, context):
+            for stmt in obj.else_block or []:
                 self._set_current_statement(stmt)
                 self._walk_stmt_or_expr(stmt, context, path, is_ui_read=is_ui_read)
-        for stmt in obj.else_block or []:
-            self._set_current_statement(stmt)
-            self._walk_stmt_or_expr(stmt, context, path, is_ui_read=is_ui_read)
         return
 
     if isinstance(obj, Assignment):
@@ -256,14 +279,18 @@ def _walk_stmt_or_expr(  # noqa: PLR0915
 
     if isinstance(obj, tuple) and obj and obj[0] == const.GRAMMAR_VALUE_IF:
         _, branches, else_block = cast(_IfTuple, obj)
+        conditions = []
         for cond, stmts in branches or []:
             self._walk_stmt_or_expr(cond, context, path, is_ui_read=is_ui_read)
-            for stmt in stmts or []:
+            conditions.append(cond)
+            with self.effect_flow_tracker.conditional_effects(conditions, context):
+                for stmt in stmts or []:
+                    self._set_current_statement(stmt)
+                    self._walk_stmt_or_expr(stmt, context, path, is_ui_read=is_ui_read)
+        with self.effect_flow_tracker.conditional_effects(conditions, context):
+            for stmt in else_block or []:
                 self._set_current_statement(stmt)
                 self._walk_stmt_or_expr(stmt, context, path, is_ui_read=is_ui_read)
-        for stmt in else_block or []:
-            self._set_current_statement(stmt)
-            self._walk_stmt_or_expr(stmt, context, path, is_ui_read=is_ui_read)
         return
 
     if isinstance(obj, tuple) and obj and obj[0] in (const.KEY_TERNARY, "Ternary"):

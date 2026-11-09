@@ -1,13 +1,64 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false, reportPrivateUsage=false
 import json
 import os
 from types import SimpleNamespace
 
+from sattline_parser.models.ast_model import (
+    BasePicture,
+    FrameModule,
+    ModuleHeader,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    SingleModule,
+)
+
 from sattlint.analyzers.framework import Issue, SimpleReport
 from sattlint.config import DEFAULT_CONFIG
+from sattlint.models.project_graph import ProjectGraph
 from sattlint.reporting import target_report as analysis_reporting_module
 from tests.helpers import AnalysisGraphStub, named_object
 from tests.helpers.app_analysis_support import *
+
+
+def test_snapshot_module_tree_includes_empty_modules_and_instance_children() -> None:
+    def header(name: str) -> ModuleHeader:
+        return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
+
+    template = ModuleTypeDef(
+        name="InlineLager",
+        submodules=[
+            FrameModule(header=header("L1")),
+            ModuleTypeInstance(header=header("UnitHeader1"), moduletype_name="UnitHeader"),
+        ],
+    )
+    root = BasePicture(
+        header=header("BasePicture"),
+        origin_lib="HC",
+        origin_file="KaHCBInlineLib.s",
+        moduletype_defs=[template],
+        submodules=[
+            FrameModule(
+                header=header("StartMaster"), submodules=[SingleModule(header=header("ChangeLog"), moduledef=None)]
+            ),
+            ModuleTypeInstance(header=header("InlineLager"), moduletype_name="InlineLager"),
+        ],
+    )
+
+    graph = ProjectGraph()
+    graph.moduletype_defs[("hc", "unitheader", "nnestruct.x")] = ModuleTypeDef(
+        name="UnitHeader", origin_lib="HC", origin_file="nnestruct.x"
+    )
+    snapshot = checks_application._snapshot_module_tree(root, graph, "KaHCBInlineLib")
+
+    assert snapshot.name == "KaHCBInlineLib:BasePicture"
+    assert snapshot.kind == "SingleModule"
+    assert [(child.name, child.kind, child.moduletype_name) for child in snapshot.children] == [
+        ("StartMaster", "FrameModule", None),
+        ("InlineLager", "", "InlineLager"),
+    ]
+    assert snapshot.children[0].children[0].name == "ChangeLog"
+    assert [child.name for child in snapshot.children[1].children] == ["L1", "UnitHeader1"]
+    assert snapshot.children[1].children[1].moduletype_name == "nnestruct:UnitHeader"
 
 
 def test_select_report_source_path_propagates_callback_type_error() -> None:

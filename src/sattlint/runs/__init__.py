@@ -11,12 +11,13 @@ from .io import (
     prune_runs,
     save_run,
 )
-from .types import RUN_RECORD_SCHEMA_VERSION, RunAnalyzerRecord, RunRecord, RunSummary, RunTargetRecord
+from .types import RUN_RECORD_SCHEMA_VERSION, RunAnalyzerRecord, RunModuleRecord, RunRecord, RunSummary, RunTargetRecord
 
 __all__ = [
     "DEFAULT_RUN_HISTORY_LIMIT",
     "RUN_RECORD_SCHEMA_VERSION",
     "RunAnalyzerRecord",
+    "RunModuleRecord",
     "RunRecord",
     "RunSummary",
     "RunTargetRecord",

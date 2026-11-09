@@ -13,7 +13,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, cast
 
-from ..models._variable_issues import materialize_variable_issue_metadata
+from ..models._variable_issues import VariableIssue, materialize_variable_issue_metadata
+from ..reporting.variables_report import VariablesReport
 
 
 def _empty_data() -> dict[str, Any]:
@@ -125,6 +126,10 @@ def _issue_data_value(item: object) -> dict[str, Any]:
         mapping = cast(Mapping[str, object], raw_data)
         for key, value in mapping.items():
             data[str(key)] = _sanitize_data_value(value)
+    if isinstance(item, VariableIssue) and item.field_path:
+        data.setdefault("field_path", item.field_path)
+        if item.variable is not None:
+            data.setdefault("variable_name", item.variable.name)
     _merge_synthesized_context(item, data)
     return data
 
@@ -187,7 +192,14 @@ def extract_report_findings(report: object, *, default_name: str) -> tuple[Analy
         return ()
 
     findings: list[AnalysisFinding] = []
+    visible_kinds = (
+        {kind.value for kind in report.visible_kinds}
+        if isinstance(report, VariablesReport) and report.visible_kinds is not None
+        else None
+    )
     for item in cast(list[object], issues):
+        if visible_kinds is not None and _kind_value(item) not in visible_kinds:
+            continue
         module_path = _module_path_value(item)
         explanation = _issue_metadata_value(item, "explanation")
         if explanation is None:
@@ -254,6 +266,7 @@ _KIND_HUMAN_LABELS: dict[str, str] = {
     "dataflow.scan_cycle_implicit_new": "Implicit :NEW read",
     "read_before_write": "Read before write",
     "module.version_drift": "Version drift",
+    "module.unused_type": "Unused module type",
     "module.cyclomatic_complexity": "High cyclomatic complexity",
     "step.cyclomatic_complexity": "High step complexity",
     "equation.cyclomatic_complexity": "High equation block complexity",
@@ -267,6 +280,7 @@ _KIND_HUMAN_LABELS: dict[str, str] = {
     "spec.sequence_name_prefix": "Sequence name prefix",
     "spec.equation_block_prefix": "Equation block name prefix",
     "unsafe_boolean_default": "Unsafe boolean default",
+    "sfc_missing_initial_step": "Missing initial step at sequence start",
     "same_cycle_shared_access_hazard": "Same-cycle shared access",
     "same_cycle_parallel_read_write_hazard": "Parallel read/write hazard",
     "dataflow.non_state_multi_site": "Non-state multi-site access",

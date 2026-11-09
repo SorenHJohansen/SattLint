@@ -3,9 +3,11 @@
 
 from types import SimpleNamespace
 
+import pytest
 from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
+    CodeComment,
     FrameModule,
     ModuleCode,
     ModuleHeader,
@@ -70,6 +72,58 @@ def _sequence(nodes: list[object]) -> Sequence:
         size=(1.0, 1.0),
         code=nodes,
     )
+
+
+@pytest.mark.parametrize("opening", ["init", "comment", "step", "transition", "alternative", "parallel", "empty"])
+def test_each_sequence_must_begin_with_an_initial_step(opening: str) -> None:
+    initial = SFCStep(kind="init", name="Start", code=SFCCodeBlocks())
+    if opening == "init":
+        nodes = [
+            initial,
+            SFCTransition(name="Proceed", condition=True),
+            SFCAlternative(branches=[[_step("BranchStep", [])], [_step("OtherStep", [])]]),
+        ]
+    elif opening == "comment":
+        nodes = [CodeComment(text="Sequence notes"), initial]
+    elif opening == "step":
+        nodes = [_step("NotInitial", []), SFCTransition(name="Later", condition=True), initial]
+    elif opening == "transition":
+        nodes = [SFCTransition(name="TooEarly", condition=True), initial]
+    elif opening == "alternative":
+        nodes = [SFCAlternative(branches=[[initial], [_step("OtherStep", [])]])]
+    elif opening == "parallel":
+        nodes = [SFCParallel(branches=[[initial], [_step("OtherStep", [])]])]
+    else:
+        nodes = []
+    bp = BasePicture(header=_hdr("Root"), modulecode=ModuleCode(sequences=[_sequence(nodes)]))
+    report = analyze_sfc(bp)
+    issues = [issue for issue in report.issues if issue.kind == "sfc_missing_initial_step"]
+    assert bool(issues) is (opening not in {"init", "comment"})
+    if issues:
+        assert len(issues) == 1
+        assert issues[0].message == "Sequence 'SeqMain' must begin with an initial step (SEQINITSTEP)."
+        assert issues[0].module_path == ["Root"]
+        assert issues[0].data is not None and issues[0].data["site"] == "SQ:SeqMain"
+
+
+def test_sequence_start_check_reaches_nested_library_modules_and_respects_selection() -> None:
+    invalid = _sequence([_step("NotInitial", [])])
+    library = ModuleTypeDef(
+        name="LibraryType",
+        submodules=[
+            FrameModule(
+                header=_hdr("Frame"),
+                submodules=[
+                    SingleModule(header=_hdr("Logic"), moduledef=None, modulecode=ModuleCode(sequences=[invalid]))
+                ],
+            )
+        ],
+    )
+    bp = BasePicture(header=_hdr("Root"), moduletype_defs=[library])
+    report = analyze_sfc(bp, selected_issue_kinds={"sfc_missing_initial_step"})
+    assert len(report.issues) == 1
+    assert report.issues[0].module_path == ["Root", "TypeDef:LibraryType", "Frame", "Logic"]
+    assert not analyze_sfc(bp, selected_issue_kinds={"sfc_duplicate_transition_guard"}).issues
 
 
 def test_parallel_branch_write_race_detected():

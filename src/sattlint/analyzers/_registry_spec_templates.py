@@ -161,6 +161,26 @@ def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
             ),
         ),
         AnalyzerSpecTemplate(
+            key="moduletype-usage",
+            name="Module-type usage",
+            description=(
+                "Finds module types that have no consumer invocation.\n"
+                "\n"
+                "For a library target, scans every program or library whose "
+                "dependency list includes the declaring library, including "
+                "targets that were not selected for analysis.\n"
+                "\n"
+                "A type invoked only once, in its own declaring library, is "
+                "reported as unused. Shared dependency declarations are counted "
+                "once, and same-named types from different libraries are kept "
+                "separate.\n"
+                "\n"
+                "This workspace-wide check is opt-in, like datatype-field usage."
+            ),
+            analyzer_attr="analyze_moduletype_usage",
+            context_kwargs=("analysis_context", "analyzed_target_is_library"),
+        ),
+        AnalyzerSpecTemplate(
             key="picture-display-paths",
             name="PictureDisplay paths",
             description=(
@@ -238,6 +258,11 @@ def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
                 "Checks all SFC sequences (step diagrams).\n"
                 "\n"
                 "Finds:\n"
+                "\n"
+                "- Missing initial step at sequence start - each sequence must "
+                "begin with SEQINITSTEP.\n"
+                "  Example: a sequence starts with SEQSTEP or SEQTRANSITION "
+                "instead of SEQINITSTEP.\n"
                 "\n"
                 "- Unreachable sequence node - a step can never run.\n"
                 "  Example: a step placed after a step that already ended the "
@@ -348,15 +373,11 @@ def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
             key="same-cycle",
             name="Same-cycle hazards",
             description=(
-                "Checks that the same variable is not read and written at the "
-                "same time in one scan cycle.\n"
+                "Checks for conflicting accesses to the same variable in "
+                "explicit parallel sequence branches. Shared access by ordinary "
+                "modules alone is not reported.\n"
                 "\n"
                 "Finds:\n"
-                "\n"
-                "- Same-cycle shared access - a shared variable is read and "
-                "written in the same scan by different modules.\n"
-                "  Example: module Reader does 'Output = SharedValue;' while "
-                "module Writer does 'SharedValue = 0;'.\n"
                 "\n"
                 "- Parallel read/write hazard - one parallel branch reads and "
                 "another writes the same variable.\n"

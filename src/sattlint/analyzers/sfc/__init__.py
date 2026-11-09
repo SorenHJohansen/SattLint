@@ -11,9 +11,11 @@ from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
+    CodeComment,
     SFCAlternative,
     SFCFork,
     SFCParallel,
+    SFCStep,
     SFCSubsequence,
     SFCTransitionSub,
 )
@@ -30,6 +32,7 @@ from ._sfc_module_walk import iter_sfc_modulecodes
 
 _SFC_REACHABILITY_ISSUE_KINDS = frozenset({"sfc_unreachable_transition", "sfc_unreachable_sequence_node"})
 _SFC_TRANSITION_LOGIC_ISSUE_KINDS = frozenset({"sfc_duplicate_transition_guard"})
+_SFC_INITIAL_STEP_ISSUE_KINDS = frozenset({"sfc_missing_initial_step"})
 
 
 @dataclass(frozen=True)
@@ -116,6 +119,33 @@ def collect_sfc_reachability_findings(
     return findings
 
 
+def _collect_initial_step_issues(
+    base_picture: BasePicture,
+    *,
+    moduletype_filter: TargetOriginFilter | None = None,
+) -> list[Issue]:
+    issues: list[Issue] = []
+    for module_path, modulecode in iter_sfc_modulecodes(base_picture, moduletype_filter=moduletype_filter):
+        if modulecode is None:
+            continue
+        for sequence in modulecode.sequences or []:
+            first = next((node for node in sequence.code or [] if not isinstance(node, CodeComment)), None)
+            if isinstance(first, SFCStep) and first.kind.casefold() == "init":
+                continue
+            name = sequence.name or "<unnamed>"
+            issues.append(
+                Issue(
+                    kind="sfc_missing_initial_step",
+                    message=f"Sequence {name!r} must begin with an initial step (SEQINITSTEP).",
+                    module_path=module_path.copy(),
+                    explanation="The initial step establishes the sequence's entry state before transitions or normal steps run.",
+                    suggestion="Move the existing initial step to the start, or add a SEQINITSTEP if it is missing.",
+                    data={"sequence": name, "site": f"SQ:{name}", "context": "Missing initial step at sequence start"},
+                )
+            )
+    return issues
+
+
 def _format_terminator(terminated_by: dict[str, Any]) -> str:
     terminator = str(terminated_by.get("kind", "an earlier terminating node"))
     targets = terminated_by.get("targets")
@@ -156,6 +186,8 @@ def analyze_sfc(
     )
 
     issues: list[Issue] = []
+    if _should_collect_any_issue_kinds(_SFC_INITIAL_STEP_ISSUE_KINDS):
+        issues.extend(_collect_initial_step_issues(base_picture, moduletype_filter=moduletype_filter))
     if _should_collect_any_issue_kinds(_SFC_REACHABILITY_ISSUE_KINDS):
         for finding in collect_sfc_reachability_findings(base_picture, moduletype_filter=moduletype_filter):
             branch_context = _format_branch_path(finding.branch_path)

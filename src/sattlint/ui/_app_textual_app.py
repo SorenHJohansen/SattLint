@@ -8,7 +8,7 @@ from typing import Any, ClassVar
 from ..config.types import ConfigDict
 from ._app_textual_actions import _TextualActionsMixin
 from ._app_textual_analyze import _TextualAnalyzeMixin
-from ._app_textual_results import ResultsGroupBy, _TextualResultsMixin
+from ._app_textual_results import _TextualResultsMixin
 from ._app_textual_settings import _TextualSettingsMixin
 from ._app_textual_setup import _TextualSetupMixin
 from ._app_textual_shared import (
@@ -138,8 +138,9 @@ if _TEXTUAL_APP is not None:
             self._selected_run_record = None
             self._results_run_summaries: list[object] = []
             self._results_tree_widget = None
+            self._results_findings_widget = None
+            self._selected_results_module = None
             self._results_show_empty_analyzers_flag = False
-            self._results_group_by_flag: ResultsGroupBy = "analyzer"
             self._setup_candidate_index = 0
             self._setup_filter_text = ""
             self._setup_target_names_list: list[str] = []
@@ -359,11 +360,6 @@ if _TEXTUAL_APP is not None:
                             with _TEXTUAL_VERTICAL(id="results-detail-section"):
                                 with _TEXTUAL_HORIZONTAL(id="results-tabs"):
                                     yield _TEXTUAL_BUTTON(
-                                        "Group: Analyzer",
-                                        id="results-toggle-group",
-                                        classes="raised-button results-header-button",
-                                    )
-                                    yield _TEXTUAL_BUTTON(
                                         "Expand all",
                                         id="results-expand-all",
                                         classes="raised-button results-header-button",
@@ -373,8 +369,11 @@ if _TEXTUAL_APP is not None:
                                         id="results-collapse-all",
                                         classes="raised-button results-header-button",
                                     )
-                                with _TEXTUAL_VERTICAL(id="results-tree-host"):
-                                    pass
+                                with _TEXTUAL_HORIZONTAL(id="results-module-browser"):
+                                    with _TEXTUAL_VERTICAL(id="results-tree-host"):
+                                        yield _TEXTUAL_STATIC("Modules", classes="results-pane-title")
+                                    with _TEXTUAL_VERTICAL(id="results-findings-host"):
+                                        yield _TEXTUAL_STATIC("Findings", classes="results-pane-title")
                         with _TEXTUAL_HORIZONTAL(id="output-browser", classes="is-hidden"):  # noqa: SIM117
                             with _TEXTUAL_VERTICAL(id="output-section"):
                                 with _TEXTUAL_VERTICAL(id="output-group", classes="settings-group-box"):

@@ -3,11 +3,13 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
 from sattline_parser.models.ast_model import (
     BasePicture,
     CodeItem,
     DataType,
     Equation,
+    FrameModule,
     IntLiteral,
     ModuleCode,
     ModuleHeader,
@@ -17,9 +19,10 @@ from sattline_parser.models.ast_model import (
     SFCStep,
     SFCTransition,
     Simple_DataType,
+    SingleModule,
     Variable,
 )
-from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt, IfStmt, VarRef
+from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt, IfStmt, NotOp, VarRef
 
 from sattlint.analyzers.dataflow import analyze_dataflow
 
@@ -156,6 +159,161 @@ def test_conflicting_constants_does_not_fire_without_read_in_between() -> None:
     assert "dataflow.dead_overwrite" in _conflicting_kinds(report)
 
 
+@pytest.mark.parametrize("first, second, flagged", [(0, 0, False), (42, 42, False), (0, 1, True)])
+def test_identical_known_writes_are_not_value_replacements(first: int, second: int, flagged: bool) -> None:
+    report = _report(
+        [
+            Assignment(target=_varref("X"), value=IntLiteral(first)),
+            Assignment(target=_varref("X"), value=IntLiteral(second)),
+        ]
+    )
+    assert ("dataflow.dead_overwrite" in _conflicting_kinds(report)) is flagged
+
+
+def test_unknown_replacement_still_reports_dead_overwrite() -> None:
+    report = _report(
+        [
+            Assignment(target=_varref("X"), value=IntLiteral(0)),
+            Assignment(target=_varref("X"), value=_varref("Cond")),
+        ]
+    )
+    assert "dataflow.dead_overwrite" in _conflicting_kinds(report)
+
+
+def test_identical_field_resets_are_not_value_replacements() -> None:
+    report = _record_report(
+        [
+            Assignment(target=_varref("Rec.First"), value=False),
+            Assignment(target=_varref("Rec.First"), value=False),
+        ]
+    )
+    assert "dataflow.dead_overwrite" not in _conflicting_kinds(report)
+
+
+def test_sibling_field_write_preserves_known_reset_value() -> None:
+    report = _record_report(
+        [
+            Assignment(target=_varref("Rec.First"), value=False),
+            Assignment(target=_varref("Rec.Second"), value=True),
+            Assignment(target=_varref("Rec.First"), value=False),
+        ]
+    )
+    assert "dataflow.dead_overwrite" not in _conflicting_kinds(report)
+
+
+def test_whole_record_write_still_replaces_pending_field_value() -> None:
+    report = _record_report(
+        [
+            Assignment(target=_varref("Rec.First"), value=False),
+            Assignment(target=_varref("Rec"), value=_varref("Snapshot")),
+        ]
+    )
+    assert "dataflow.dead_overwrite" in _conflicting_kinds(report)
+
+
+def test_conditional_replacement_keeps_initial_default_live() -> None:
+    report = _report(
+        [
+            Assignment(target=_varref("X"), value=IntLiteral(0)),
+            IfStmt(
+                branches=((_varref("Cond"), (Assignment(target=_varref("X"), value=IntLiteral(2)),)),),
+                else_block=None,
+            ),
+            Assignment(target=_varref("Y"), value=_varref("X")),
+        ]
+    )
+
+    assert "dataflow.dead_overwrite" not in _conflicting_kinds(report)
+
+
+def test_conditional_branch_still_reports_its_own_dead_write() -> None:
+    report = _report(
+        [
+            Assignment(target=_varref("X"), value=IntLiteral(0)),
+            IfStmt(
+                branches=(
+                    (
+                        _varref("Cond"),
+                        (
+                            Assignment(target=_varref("X"), value=IntLiteral(1)),
+                            Assignment(target=_varref("X"), value=IntLiteral(2)),
+                        ),
+                    ),
+                ),
+                else_block=None,
+            ),
+        ]
+    )
+
+    issues = [issue for issue in report.issues if issue.kind == "dataflow.dead_overwrite"]
+    assert len(issues) == 1
+    assert issues[0].data is not None
+    assert "IF:BRANCH:0" in str(issues[0].data["previous_sites"])
+
+
+def test_sfc_enter_zero_reset_is_not_a_dead_overwrite() -> None:
+    report = _sequence_report(
+        [
+            SFCStep(
+                kind="step",
+                name="CalculateAmounts",
+                code=SFCCodeBlocks(
+                    enter=[
+                        Assignment(target=_varref("X"), value=IntLiteral(0)),
+                        Assignment(target=_varref("X"), value=IntLiteral(2)),
+                    ]
+                ),
+            )
+        ]
+    )
+
+    assert "dataflow.dead_overwrite" not in _conflicting_kinds(report)
+
+
+def test_sfc_enter_nonzero_overwrite_still_reports() -> None:
+    report = _sequence_report(
+        [
+            SFCStep(
+                kind="step",
+                name="CalculateAmounts",
+                code=SFCCodeBlocks(
+                    enter=[
+                        Assignment(target=_varref("X"), value=IntLiteral(1)),
+                        Assignment(target=_varref("X"), value=IntLiteral(2)),
+                    ]
+                ),
+            )
+        ]
+    )
+
+    assert "dataflow.dead_overwrite" in _conflicting_kinds(report)
+
+
+def test_equation_zero_overwrite_still_reports() -> None:
+    report = _report(
+        [
+            Assignment(target=_varref("X"), value=IntLiteral(0)),
+            Assignment(target=_varref("X"), value=IntLiteral(2)),
+        ]
+    )
+
+    assert "dataflow.dead_overwrite" in _conflicting_kinds(report)
+
+
+def test_guaranteed_branch_still_reports_dead_default() -> None:
+    report = _report(
+        [
+            Assignment(target=_varref("X"), value=IntLiteral(0)),
+            IfStmt(
+                branches=((True, (Assignment(target=_varref("X"), value=IntLiteral(2)),)),),
+                else_block=None,
+            ),
+        ]
+    )
+
+    assert "dataflow.dead_overwrite" in _conflicting_kinds(report)
+
+
 def test_conflicting_constants_is_path_sensitive_for_branch_exclusive_writes() -> None:
     report = _report(
         [
@@ -276,6 +434,157 @@ def test_sfc_transition_still_sees_values_assigned_in_step_enter() -> None:
     )
 
     assert "dataflow.condition_always_false" in _conflicting_kinds(report)
+
+
+def test_equation_initializer_is_not_a_permanent_fact_across_scans() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[
+            Variable(name="PreviousReset", datatype=Simple_DataType.BOOLEAN, init_value=True),
+            Variable(name="Reset", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="FixedFalse", datatype=Simple_DataType.BOOLEAN, const=True, init_value=False),
+            Variable(name="Output", datatype=Simple_DataType.BOOLEAN),
+        ],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="EdgeDetection",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        IfStmt(
+                            branches=(
+                                (
+                                    NotOp(operand=_varref("PreviousReset")),
+                                    (Assignment(target=_varref("Output"), value=True),),
+                                ),
+                            ),
+                            else_block=None,
+                        ),
+                        Assignment(target=_varref("PreviousReset"), value=_varref("Reset")),
+                        IfStmt(
+                            branches=((_varref("FixedFalse"), (Assignment(target=_varref("Output"), value=False),)),),
+                            else_block=None,
+                        ),
+                    ],
+                )
+            ]
+        ),
+    )
+    report = analyze_dataflow(bp)
+    conditions = [
+        issue.data.get("condition")
+        for issue in report.issues
+        if issue.kind == "dataflow.condition_always_false" and issue.data is not None
+    ]
+    assert "FixedFalse" in conditions
+    assert not any("PreviousReset" in str(condition) for condition in conditions)
+
+
+def test_wait_condition_can_change_through_external_module_parameter() -> None:
+    phase = SingleModule(
+        header=_hdr("Phase"),
+        moduledef=None,
+        moduleparameters=[
+            Variable(name="Done", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="FixedFalse", datatype=Simple_DataType.BOOLEAN, const=True, init_value=False),
+        ],
+        localvariables=[Variable(name="LocalDone", datatype=Simple_DataType.BOOLEAN)],
+        submodules=[
+            FrameModule(
+                header=_hdr("Logic"),
+                modulecode=ModuleCode(
+                    sequences=[
+                        Sequence(
+                            name="PhaseSequence",
+                            type="sequence",
+                            position=(0.0, 0.0),
+                            size=(1.0, 1.0),
+                            code=[
+                                SFCStep(
+                                    kind="step",
+                                    name="Start",
+                                    code=SFCCodeBlocks(
+                                        enter=[
+                                            Assignment(target=_varref("Done"), value=False),
+                                            Assignment(target=_varref("LocalDone"), value=False),
+                                        ]
+                                    ),
+                                ),
+                                SFCTransition(name="ExternallyCompleted", condition=_varref("Done")),
+                                SFCTransition(name="LocallyImpossible", condition=_varref("LocalDone")),
+                                SFCTransition(name="ConstantImpossible", condition=_varref("FixedFalse")),
+                            ],
+                        )
+                    ]
+                ),
+            )
+        ],
+    )
+    report = analyze_dataflow(BasePicture(header=_hdr("Root"), submodules=[phase]))
+    conditions = [
+        issue.data.get("condition")
+        for issue in report.issues
+        if issue.kind == "dataflow.condition_always_false" and issue.data is not None
+    ]
+    assert "Done" not in conditions
+    assert "LocalDone" in conditions
+    assert "FixedFalse" in conditions
+
+
+def test_sfc_active_condition_can_change_after_enter_on_later_scans() -> None:
+    report = _sequence_report(
+        [
+            SFCStep(
+                kind="step",
+                name="ST_AlarmOrManual",
+                code=SFCCodeBlocks(
+                    enter=[Assignment(target=_varref("Gate"), value=False)],
+                    active=[
+                        IfStmt(
+                            branches=((_varref("Gate"), (Assignment(target=_varref("X"), value=True),)),),
+                            else_block=None,
+                        ),
+                        Assignment(target=_varref("Gate"), value=True),
+                    ],
+                ),
+            )
+        ]
+    )
+
+    assert not any(
+        issue.kind == "dataflow.condition_always_false"
+        and issue.data is not None
+        and "STEP:ST_AlarmOrManual:ACTIVE" in str(issue.data.get("site"))
+        for issue in report.issues
+    )
+
+
+def test_sfc_active_condition_stays_false_when_active_never_writes_flag() -> None:
+    report = _sequence_report(
+        [
+            SFCStep(
+                kind="step",
+                name="Only",
+                code=SFCCodeBlocks(
+                    enter=[Assignment(target=_varref("Gate"), value=False)],
+                    active=[
+                        IfStmt(
+                            branches=((_varref("Gate"), (Assignment(target=_varref("X"), value=True),)),),
+                            else_block=None,
+                        )
+                    ],
+                ),
+            )
+        ]
+    )
+
+    assert any(
+        issue.kind == "dataflow.condition_always_false"
+        and issue.data is not None
+        and "STEP:Only:ACTIVE" in str(issue.data.get("site"))
+        for issue in report.issues
+    )
 
 
 def test_literal_transition_conditions_do_not_emit_condition_findings() -> None:

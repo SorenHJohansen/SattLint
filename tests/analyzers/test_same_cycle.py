@@ -1,9 +1,11 @@
 # pyright: reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
 
+import pytest
 from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     CodeItem,
+    DataType,
     Equation,
     ModuleCode,
     ModuleHeader,
@@ -64,6 +66,7 @@ def test_same_cycle_analyzer_is_registered_and_in_default_cli() -> None:
     assert "same-cycle" in specs
     assert specs["same-cycle"].enabled is True
     assert "same-cycle" in get_actual_cli_analyzer_keys()
+    assert "explicit parallel sequence branches" in specs["same-cycle"].description
 
 
 def test_same_cycle_reports_parallel_read_write_hazard() -> None:
@@ -103,7 +106,7 @@ def test_same_cycle_reports_parallel_read_write_hazard() -> None:
     }
 
 
-def test_same_cycle_reports_cross_module_shared_access_hazard() -> None:
+def test_cross_module_read_write_overlap_is_not_a_proven_hazard() -> None:
     reader = SingleModule(
         header=_hdr("Reader"),
         moduledef=None,
@@ -134,13 +137,10 @@ def test_same_cycle_reports_cross_module_shared_access_hazard() -> None:
 
     report = analyze_same_cycle(bp)
 
-    issue = next(issue for issue in report.issues if issue.kind == "same_cycle_shared_access_hazard")
-    assert "Root.SharedValue" in issue.message
-    assert "Reader (read)" in issue.message
-    assert "Writer (write)" in issue.message
+    assert report.issues == []
 
 
-def test_same_cycle_reports_external_invocation_mapping_shared_access_hazard() -> None:
+def test_external_mapping_overlap_is_not_a_proven_hazard() -> None:
     external_reader = ModuleTypeDef(
         name="ExternalReader",
         moduleparameters=[Variable(name="Input", datatype=Simple_DataType.INTEGER)],
@@ -191,10 +191,7 @@ def test_same_cycle_reports_external_invocation_mapping_shared_access_hazard() -
 
     report = analyze_same_cycle(bp)
 
-    issue = next(issue for issue in report.issues if issue.kind == "same_cycle_shared_access_hazard")
-    assert "Root.SharedValue" in issue.message
-    assert "ReaderInst (read)" in issue.message
-    assert "Writer (write)" in issue.message
+    assert report.issues == []
 
 
 def test_dataflow_non_state_multi_site_across_equations() -> None:
@@ -265,6 +262,40 @@ def test_dataflow_non_state_multi_site_ignores_single_equation() -> None:
     assert not any(issue.kind == "dataflow.non_state_multi_site" for issue in report.issues)
 
 
+@pytest.mark.parametrize("written_field, expected", [("First", True), ("Second", False)])
+def test_continuous_sites_compare_record_fields_not_whole_record(written_field: str, expected: bool) -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[
+            DataType(
+                name="RecordType",
+                description=None,
+                datecode=None,
+                var_list=[
+                    Variable(name="First", datatype=Simple_DataType.INTEGER),
+                    Variable(name="Second", datatype=Simple_DataType.INTEGER),
+                ],
+            )
+        ],
+        localvariables=[
+            Variable(name="Record", datatype="RecordType"),
+            Variable(name="Sink", datatype=Simple_DataType.INTEGER),
+        ],
+        modulecode=ModuleCode(
+            equations=[
+                _eq("ReadFirst", [_assign("Sink", _varref("Record.First"))]),
+                _eq("WriteField", [_assign(f"Record.{written_field}", 2)]),
+            ]
+        ),
+    )
+    report = analyze_dataflow(bp)
+    conflicts = [issue for issue in report.issues if issue.kind == "dataflow.non_state_multi_site"]
+    assert bool(conflicts) is expected
+    if conflicts:
+        assert conflicts[0].data is not None
+        assert conflicts[0].data["symbol"] == "Root.Record.First"
+
+
 def test_dataflow_non_state_multi_site_ignores_single_active_step() -> None:
     bp = BasePicture(
         header=_hdr("Root"),
@@ -324,6 +355,35 @@ def test_dataflow_non_state_multi_site_transition_self_loop() -> None:
         "STEP:Loop:ENTER",
         "STEP:Loop:TRANS:Gate",
     ]
+
+
+def test_hold_step_with_false_transition_is_not_a_continuous_self_loop() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[
+            Variable(name="Saved", datatype=Simple_DataType.INTEGER),
+            Variable(name="Current", datatype=Simple_DataType.INTEGER),
+        ],
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        SFCStep(
+                            kind="step",
+                            name="Hold",
+                            code=SFCCodeBlocks(
+                                enter=[_assign("Saved", _varref("Current"))],
+                                exit=[_assign("Current", _varref("Saved"))],
+                            ),
+                        ),
+                        SFCTransition(name="StayHeld", condition=False),
+                    ]
+                )
+            ]
+        ),
+    )
+    report = analyze_dataflow(bp)
+    assert not any(issue.kind == "dataflow.non_state_multi_site" for issue in report.issues)
 
 
 def test_dataflow_non_state_multi_site_fork_self_loop() -> None:

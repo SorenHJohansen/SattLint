@@ -11,13 +11,14 @@ from __future__ import annotations
 import io
 import os
 from collections.abc import Callable, Iterator
-from contextlib import redirect_stdout
+from contextlib import redirect_stdout, suppress
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from pathlib import Path
 from time import perf_counter
 from typing import Any, cast
 
-from sattline_parser.models.ast_model import BasePicture
+from sattline_parser.models.ast_model import BasePicture, FrameModule, ModuleTypeDef, ModuleTypeInstance, SingleModule
 
 from .. import config as config_module
 from ..analyzers import catalog as analysis_catalog_module
@@ -36,9 +37,12 @@ from ..core.terminal import flush_stdout
 from ..models.project_graph import ProjectGraph
 from ..project import cache as report_cache_module
 from ..reporting.target_report import normalize_report_target_name
+from ..reporting.variables_report import VariablesReport
+from ..resolution.common import resolve_moduletype_def_strict
 from ..runs import (
     DEFAULT_RUN_HISTORY_LIMIT,
     RunAnalyzerRecord,
+    RunModuleRecord,
     RunRecord,
     RunTargetRecord,
     get_runs_dir,
@@ -76,6 +80,7 @@ class ChecksTargetResult:
     analyzer_bottleneck: dict[str, object] | None = None
     analyzer_phase_bottleneck: dict[str, object] | None = None
     shared_artifact_profile: str | None = None
+    module: RunModuleRecord | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +93,8 @@ class ChecksRunResult:
 
 
 def _issue_count_for_report(report: object) -> int | None:
+    if isinstance(report, VariablesReport) and report.visible_kinds is not None:
+        return sum(issue.kind in report.visible_kinds for issue in report.issues)
     issues = getattr(report, "issues", None)
     if not isinstance(issues, list):
         return None
@@ -145,6 +152,76 @@ def _run_target_record(result: ChecksTargetResult) -> RunTargetRecord:
         analyzers=tuple(_run_analyzer_record(analyzer) for analyzer in result.analyzers),
         stage_timings_ms=result.stage_timings_ms,
         graphics_timings_ms=result.graphics_timings_ms,
+        module=result.module,
+    )
+
+
+def _snapshot_module_tree(base_picture: BasePicture, graph: ProjectGraph, target_name: str) -> RunModuleRecord:
+    definitions: dict[str, list[ModuleTypeDef]] = {}
+    for definition in (*(base_picture.moduletype_defs or []), *graph.moduletype_defs.values()):
+        bucket = definitions.setdefault(definition.name.casefold(), [])
+        if all(definition is not existing for existing in bucket):
+            bucket.append(definition)
+
+    def children_of(
+        modules: list[SingleModule | FrameModule | ModuleTypeInstance],
+        library: str | None,
+        source_file: str | None,
+        active_types: frozenset[tuple[str, str, str]],
+    ) -> tuple[RunModuleRecord, ...]:
+        children: list[RunModuleRecord] = []
+        for module in modules:
+            if isinstance(module, ModuleTypeInstance):
+                definition = None
+                with suppress(ValueError):
+                    definition = resolve_moduletype_def_strict(
+                        base_picture,
+                        module.moduletype_name,
+                        current_library=library,
+                        current_file=source_file,
+                        moduletype_index=definitions,
+                    )
+                nested: tuple[RunModuleRecord, ...] = ()
+                type_label = module.moduletype_name
+                if definition is not None:
+                    if (
+                        definition.origin_file
+                        and Path(definition.origin_file).stem.casefold()
+                        != Path(base_picture.origin_file or "").stem.casefold()
+                    ):
+                        type_label = f"{Path(definition.origin_file).stem}:{type_label}"
+                    key = (
+                        (definition.origin_lib or "").casefold(),
+                        definition.name.casefold(),
+                        (definition.origin_file or "").casefold(),
+                    )
+                    if key not in active_types:
+                        nested = children_of(
+                            definition.submodules or [],
+                            definition.origin_lib or library,
+                            definition.origin_file or source_file,
+                            active_types | {key},
+                        )
+                children.append(RunModuleRecord(name=module.header.name, moduletype_name=type_label, children=nested))
+            else:
+                children.append(
+                    RunModuleRecord(
+                        name=module.header.name,
+                        kind=type(module).__name__,
+                        children=children_of(module.submodules or [], library, source_file, active_types),
+                    )
+                )
+        return tuple(children)
+
+    root_name = base_picture.header.name
+    if target_name.casefold() != root_name.casefold():
+        root_name = f"{target_name}:{root_name}"
+    return RunModuleRecord(
+        name=root_name,
+        kind="SingleModule",
+        children=children_of(
+            base_picture.submodules or [], base_picture.origin_lib, base_picture.origin_file, frozenset()
+        ),
     )
 
 
@@ -343,6 +420,11 @@ def collect_run_checks_result(  # noqa: PLR0915
                 scale=1000.0,
             )
             is_library = target_is_library_fn(cfg, project_bp, graph)
+            module_tree = (
+                _snapshot_module_tree(project_bp, graph, target_name)
+                if isinstance(cast(object, project_bp), BasePicture)
+                else None
+            )
             context = build_analysis_context(
                 project_bp,
                 graph=graph,
@@ -397,6 +479,7 @@ def collect_run_checks_result(  # noqa: PLR0915
                             target_name=target_name,
                             is_library=is_library,
                             analyzers=tuple(target_analyzers),
+                            module=module_tree,
                             stage_timings_ms=stage_timings_ms or None,
                             graphics_timings_ms=graphics_timings_ms or None,
                         )
@@ -477,6 +560,7 @@ def collect_run_checks_result(  # noqa: PLR0915
                     target_name=target_name,
                     is_library=is_library,
                     analyzers=tuple(target_analyzers),
+                    module=module_tree,
                     stage_timings_ms=stage_timings_ms or None,
                     graphics_timings_ms=graphics_timings_ms or None,
                     analyzer_bottleneck=analyzer_bottleneck,

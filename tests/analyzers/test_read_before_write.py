@@ -1,12 +1,17 @@
 # pyright: reportUnknownVariableType=false, reportUnknownParameterType=false, reportMissingTypeArgument=false
 from collections.abc import Sequence
 
+import pytest
 from sattline_parser.models.ast_model import (
     BasePicture,
+    DataType,
     Equation,
     FrameModule,
     ModuleCode,
     ModuleHeader,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    ParameterMapping,
     Simple_DataType,
     SingleModule,
     Variable,
@@ -165,3 +170,134 @@ def test_read_before_write_clean_when_all_reads_follow_writes():
     report = _rbw_only_report(bp)
 
     assert not any(issue.kind is IssueKind.READ_BEFORE_WRITE for issue in report.issues)
+
+
+@pytest.mark.parametrize("dependency", [False, True])
+@pytest.mark.parametrize("reusable_parent", [False, True])
+def test_child_output_mapping_is_not_an_unwritten_local(dependency: bool, reusable_parent: bool):
+    child = SingleModule(
+        header=_hdr("Producer"),
+        moduledef=None,
+        moduleparameters=[Variable(name="Error", datatype=Simple_DataType.BOOLEAN)],
+        modulecode=ModuleCode(equations=[_equation([Assignment(target=_varref("Error"), value=False)])]),
+        parametermappings=[
+            ParameterMapping(
+                target=_varref("Error"),
+                source_type="variable_name",
+                is_duration=False,
+                is_source_global=False,
+                source=_varref("ErrorSignal"),
+                source_literal=None,
+            )
+        ],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        origin_file="Root.s",
+        localvariables=[
+            Variable(name="ErrorSignal", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Unwritten", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Output", datatype=Simple_DataType.BOOLEAN),
+        ],
+        submodules=[child],
+        modulecode=ModuleCode(
+            equations=[
+                _equation(
+                    [
+                        Assignment(target=_varref("Output"), value=_varref("ErrorSignal")),
+                        Assignment(target=_varref("Output"), value=_varref("Unwritten")),
+                    ]
+                )
+            ]
+        ),
+    )
+    if dependency:
+        bp.moduletype_defs = [
+            ModuleTypeDef(
+                name="ProducerType",
+                moduleparameters=child.moduleparameters,
+                modulecode=child.modulecode,
+                origin_file="Dependency.s",
+            )
+        ]
+        bp.submodules = [
+            ModuleTypeInstance(
+                header=child.header,
+                moduletype_name="ProducerType",
+                parametermappings=child.parametermappings,
+            )
+        ]
+    if reusable_parent:
+        parent = ModuleTypeDef(
+            name="Container",
+            localvariables=bp.localvariables,
+            submodules=bp.submodules,
+            modulecode=bp.modulecode,
+            origin_file="Root.s",
+        )
+        bp.moduletype_defs.append(parent)
+        bp.localvariables = []
+        bp.modulecode = None
+        bp.submodules = [ModuleTypeInstance(header=_hdr("ContainerInstance"), moduletype_name="Container")]
+
+    report = analyze_variables(
+        bp,
+        analyzed_target_is_library=True,
+        selected_issue_kinds=frozenset({IssueKind.READ_BEFORE_WRITE}),
+    )
+
+    assert not any(issue.context == "ErrorSignal" for issue in report.issues)
+    assert any(issue.context == "Unwritten" for issue in report.issues)
+
+
+def test_child_field_output_does_not_initialize_sibling():
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[
+            DataType(
+                name="SignalsType",
+                description=None,
+                datecode=None,
+                var_list=[
+                    Variable(name="Provided", datatype=Simple_DataType.BOOLEAN),
+                    Variable(name="Missing", datatype=Simple_DataType.BOOLEAN),
+                ],
+            )
+        ],
+        localvariables=[
+            Variable(name="Signals", datatype="SignalsType"),
+            Variable(name="Output", datatype=Simple_DataType.BOOLEAN),
+        ],
+        submodules=[
+            SingleModule(
+                header=_hdr("Producer"),
+                moduledef=None,
+                moduleparameters=[Variable(name="Error", datatype=Simple_DataType.BOOLEAN)],
+                modulecode=ModuleCode(equations=[_equation([Assignment(target=_varref("Error"), value=False)])]),
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("Error"),
+                        source_type="variable_name",
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("Signals.Provided"),
+                        source_literal=None,
+                    )
+                ],
+            )
+        ],
+        modulecode=ModuleCode(
+            equations=[
+                _equation(
+                    [
+                        Assignment(target=_varref("Output"), value=_varref("Signals.Provided")),
+                        Assignment(target=_varref("Output"), value=_varref("Signals.Missing")),
+                    ]
+                )
+            ]
+        ),
+    )
+    report = _rbw_only_report(bp)
+    assert [issue.context for issue in report.issues if issue.kind is IssueKind.READ_BEFORE_WRITE] == [
+        "Signals.Missing"
+    ]
