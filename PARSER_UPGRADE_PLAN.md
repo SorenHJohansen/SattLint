@@ -1,8 +1,10 @@
 # SattLint parser upgrade plan
 
-Status: in progress, Phases 0, 1, 2, and 4 committed on the migration branch;
-Phase 3 items that became loud breaks were folded into Phase 4, and the
-remaining silent-loss items are tracked below
+Status: in progress, Phases 0, 1, 2, 3, and 4 committed on the migration
+branch; Phase 5 remains. The Phase 3 reference-visibility tests parse real
+parser output and the corpus manifests pass under 2026.11.4; the 2026.11.3
+differential is deferred to Phase 6 because the environment is pinned to the
+target parser.
 Target parser: `sattline-parser==2026.11.4`
 Current SattLint release: `2026.11.3`, pinned to `sattline-parser==2026.11.3`
 Next SattLint release: next available CalVer, with the target parser pin
@@ -172,8 +174,8 @@ the Phase 3 behavior gaps.
 Observed ordering hazard: the parser removes the legacy tuple and Lark tree
 constants that the reflective traversal layer still read, so those branches
 raised at first use. Phase 4 removed the reflective layer and folded in the
-Phase 3 items that raised; the remaining suite failures are the Phase 3
-silent-loss gaps and the Phase 2 attachment seams.
+Phase 3 items that raised; Phase 3 then added real-parser tests for every
+reference shape and confirmed the corpus manifests under 2026.11.4.
 
 Phase close: run the suite and `/verify`, request the `sattlint-reviewer` pass
 (`/review`), apply the findings, then commit the loud-break fixes.

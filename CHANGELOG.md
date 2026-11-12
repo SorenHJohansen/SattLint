@@ -31,6 +31,12 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   `sattlint.core.ast_tools` are filters over that walk.
 - Upgraded `sattline-parser` to `2026.11.4` on the migration branch, still
   pinned exactly.
+- Added Phase 3 reference-visibility tests over real parser output for text
+  objects, pick buttons, header arguments, clipping tails, procedure calls,
+  interactor bodies, and literal versus variable parameter mappings. The corpus
+  manifests pass under 2026.11.4; the 2026.11.3 differential is deferred to the
+  release gate because the development environment is pinned to the target
+  parser.
 - Bumped the AST, project graph, and foundation cache identities so cached
   graphs from the previous parser release are not reused.
 
