@@ -8,11 +8,9 @@ from typing import Any
 
 from ...resolution.scope import ScopeContext
 from ._variable_traversal_support import (
-    _extract_var_basenames_from_tree,
     _handle_function_call,
     _mark_var_by_basename,
     _repath_context,
-    _scan_for_varrefs,
     _walk_graph_object,
     _walk_header_enable,
     _walk_header_groupconn,
@@ -98,16 +96,6 @@ class VariablesTraversalMixin:
     ) -> None:
         _walk_interact_object(self, interact_object, context, path)
 
-    def _scan_for_varrefs(
-        self: Any,
-        obj: Any,
-        context: ScopeContext,
-        path: list[str],
-        *,
-        is_ui_read: bool = False,
-    ) -> None:
-        _scan_for_varrefs(self, obj, context, path, is_ui_read=is_ui_read)
-
     def _walk_output_tail(
         self: Any,
         tail: Any,
@@ -127,13 +115,6 @@ class VariablesTraversalMixin:
         is_ui_read: bool = False,
     ) -> None:
         _walk_tail(self, tail, context, path, is_ui_read=is_ui_read)
-
-    def _extract_var_basenames_from_tree(
-        self: Any,
-        node: Any,
-        allow_single_ident: bool = False,
-    ) -> set[str]:
-        return _extract_var_basenames_from_tree(self, node, allow_single_ident)
 
     def _mark_var_by_basename(
         self: Any,
@@ -176,11 +157,9 @@ class VariablesTraversalMixin:
 
 __all__ = [
     "VariablesTraversalMixin",
-    "_extract_var_basenames_from_tree",
     "_handle_function_call",
     "_mark_var_by_basename",
     "_repath_context",
-    "_scan_for_varrefs",
     "_walk_graph_object",
     "_walk_header_enable",
     "_walk_header_groupconn",

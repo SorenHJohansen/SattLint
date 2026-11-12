@@ -70,7 +70,10 @@ src/config.toml
 
 # IDE / Editor state (DO NOT COMMIT)
 .benchmarks/
-.opencode/
+# OpenCode workspace tooling is shared; local overrides stay ignored.
+.opencode/*
+!.opencode/agents/
+!.opencode/commands/
 *.vsix
 
 # Local settings

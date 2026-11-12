@@ -104,6 +104,8 @@ def _statement_context_label(key: tuple[str | int, ...]) -> str | None:
             parts.append(f"subsequence {key[index + 1]}")
         elif segment == "transition-sub" and index + 1 < len(key):
             parts.append(f"transition sub {key[index + 1]}")
+        elif segment == "fork":
+            parts.append("fork")
     return " > ".join(parts)
 
 
@@ -153,9 +155,16 @@ def _to_location(source_file: str | None, span: object) -> SourceLocation | None
 
 
 def _declaration_repr(definition: SymbolDefinition) -> str | None:
+    parts: list[str] = []
+    if definition.modifiers:
+        parts.append(" ".join(modifier.upper() for modifier in definition.modifiers))
     if definition.datatype is not None:
-        return definition.datatype
-    return definition.kind
+        parts.append(definition.datatype)
+    else:
+        parts.append(definition.kind)
+    if definition.initializer is not None:
+        parts.append(f"= {definition.initializer}")
+    return " ".join(parts)
 
 
 class _DefinitionDiff:
@@ -209,10 +218,18 @@ class _DefinitionDiff:
                 continue
             official_repr = _declaration_repr(official_def)
             draft_repr = _declaration_repr(draft_def)
-            if (official_def.kind, official_def.datatype, official_def.field_path) == (
+            if (
+                official_def.kind,
+                official_def.datatype,
+                official_def.field_path,
+                official_def.initializer,
+                official_def.modifiers,
+            ) == (
                 draft_def.kind,
                 draft_def.datatype,
                 draft_def.field_path,
+                draft_def.initializer,
+                draft_def.modifiers,
             ):
                 continue
             changes.append(
@@ -440,6 +457,8 @@ def _diff_step_membership(
 
 
 def _classify_statement_change(official_statement: StatementModel, draft_statement: StatementModel) -> ChangeKind:
+    if official_statement.node_type == "fork" or draft_statement.node_type == "fork":
+        return ChangeKind.STATEMENT_CHANGED
     if official_statement.node_type == "transition" or draft_statement.node_type == "transition":
         return ChangeKind.TRANSITION_CHANGED
     official_shape = statement_shape(official_statement.fingerprint)
@@ -450,6 +469,8 @@ def _classify_statement_change(official_statement: StatementModel, draft_stateme
 
 
 def _statement_detail(statement: StatementModel, kind: ChangeKind) -> str:
+    if statement.node_type == "fork":
+        return "Sequence jump changed"
     if kind is ChangeKind.TRANSITION_CHANGED:
         return "Transition condition changed"
     if kind is ChangeKind.EXPRESSION_CHANGED:

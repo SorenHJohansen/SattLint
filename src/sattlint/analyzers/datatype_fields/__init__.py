@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from sattline_parser.models.ast_model import BasePicture
+from sattlint.parser_api import BasePicture
 
 from ...reporting.variables_report import DATATYPE_FIELD_ANALYSIS_KINDS, VariablesReport
 from ..framework import AnalysisContext

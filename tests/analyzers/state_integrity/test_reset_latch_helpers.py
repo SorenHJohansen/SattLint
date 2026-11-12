@@ -1,4 +1,4 @@
-from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt
+from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt, NotOp
 
 from tests.helpers.analyzers_state_support import *
 
@@ -16,12 +16,12 @@ def test_reset_contamination_helpers_collect_if_and_nested_sequence_paths():
     if_states = reset_contamination_helpers._collect_if_stmt_paths(
         [
             (
-                (const.GRAMMAR_VALUE_NOT, _varref("OpSeq.Reset")),
-                [(const.KEY_ASSIGN, _varref("Counter.Member"), _varref("Source"))],
+                NotOp(operand=_varref("OpSeq.Reset")),
+                [Assignment(target=_varref("Counter.Member"), value=_varref("Source"))],
             ),
             (
-                (const.GRAMMAR_VALUE_NOT, _varref("OpSeqResetOld")),
-                [(const.KEY_ASSIGN, _varref("Counter"), _varref("Source"))],
+                NotOp(operand=_varref("OpSeqResetOld")),
+                [Assignment(target=_varref("Counter"), value=_varref("Source"))],
             ),
         ],
         None,
@@ -74,61 +74,6 @@ def test_reset_contamination_helpers_collect_if_and_nested_sequence_paths():
     assert ("counter", "other") in transition_sub_states[0].run_writes
 
 
-def test_reset_contamination_helpers_collect_statement_paths_across_expression_wrappers():
-    counter = Variable(name="Counter", datatype=Simple_DataType.INTEGER)
-    source = Variable(name="Source", datatype=Simple_DataType.INTEGER)
-    destination = Variable(name="Destination", datatype=Simple_DataType.INTEGER)
-    status = Variable(name="Status", datatype=Simple_DataType.INTEGER)
-    env = {
-        "counter": counter,
-        "source": source,
-        "destination": destination,
-        "status": status,
-    }
-    wrapped = SimpleNamespace(
-        children=[
-            (
-                const.KEY_TERNARY,
-                [
-                    (
-                        (const.GRAMMAR_VALUE_NOT, _varref("OpSeq.Reset")),
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "CopyVariable",
-                            [_varref("Source"), _varref("Destination"), _varref("Status")],
-                        ),
-                    )
-                ],
-                (
-                    const.KEY_ASSIGN,
-                    _varref("Counter"),
-                    (const.KEY_COMPARE, _varref("Counter"), [("=", _varref("Source"))]),
-                ),
-            ),
-            (const.KEY_ADD, _varref("Counter"), [("+", _varref("Source"))]),
-            (const.KEY_PLUS, _varref("Counter")),
-            (const.KEY_MINUS, _varref("Source")),
-            (const.GRAMMAR_VALUE_OR, [_varref("OpSeq.Reset"), _varref("OpSeqResetOld")]),
-            [(const.KEY_FUNCTION_CALL, "CopyVariable", [_varref("Source"), _varref("Destination"), _varref("Status")])],
-        ]
-    )
-
-    states = reset_contamination_helpers._collect_stmt_paths(
-        wrapped,
-        env,
-        "opseq.reset",
-        {"opseqresetold"},
-        [reset_contamination_helpers._PathState()],
-    )
-
-    assert len(states) == 1
-    assert set(states[0].run_writes) == {
-        ("counter", ""),
-        ("destination", ""),
-        ("status", ""),
-    }
-
-
 def test_implicit_latch_helpers_collect_boolean_statement_and_sequence_paths():
     env = {
         "flag": Variable(name="Flag", datatype=Simple_DataType.BOOLEAN),
@@ -142,27 +87,6 @@ def test_implicit_latch_helpers_collect_boolean_statement_and_sequence_paths():
         "nestedflag": Variable(name="NestedFlag", datatype=Simple_DataType.BOOLEAN),
         "gateflag": Variable(name="GateFlag", datatype=Simple_DataType.BOOLEAN),
     }
-
-    wrapped_states = reset_contamination_helpers._collect_boolean_stmt_paths(
-        SimpleNamespace(
-            data=const.KEY_STATEMENT,
-            children=[
-                (
-                    const.GRAMMAR_VALUE_IF,
-                    [(True, [(const.KEY_ASSIGN, _varref("Flag"), True)])],
-                    [(const.KEY_FUNCTION_CALL, "SetBooleanValue", [_varref("Flag"), False])],
-                ),
-                SimpleNamespace(children=[(const.KEY_ASSIGN, _varref("WrappedFlag"), True)]),
-            ],
-        ),
-        env,
-        [reset_contamination_helpers._BooleanPathState()],
-    )
-
-    assert len(wrapped_states) == 2
-    assert all(("wrappedflag", "") in state.true_writes for state in wrapped_states)
-    assert any(("flag", "") in state.true_writes for state in wrapped_states)
-    assert any(("flag", "") in state.false_writes for state in wrapped_states)
 
     step_states = reset_contamination_helpers._collect_boolean_seq_node_paths(
         SFCStep(

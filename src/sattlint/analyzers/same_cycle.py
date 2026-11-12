@@ -6,7 +6,7 @@ from collections.abc import Set
 from dataclasses import dataclass, field
 from typing import Any
 
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     BasePicture,
     FrameModule,
     ModuleCode,
@@ -415,7 +415,7 @@ class SameCycleAnalyzer(VariablesAnalyzer):
             finally:
                 self._pop_site()
 
-        for equation in modulecode.equations or []:
+        for equation in modulecode.equationblocks or []:
             label = f"EQ:{getattr(equation, 'name', '<unnamed>')}"
             self._push_site(label)
             try:

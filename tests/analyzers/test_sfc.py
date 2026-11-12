@@ -3,7 +3,7 @@
 
 from types import SimpleNamespace
 
-from sattline_parser.grammar import constants as const
+from sattline_parser.ast import Assignment, VarRef
 from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
@@ -41,12 +41,12 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
-def _assign(name: str, value: object) -> tuple:
-    return (const.KEY_ASSIGN, _varref(name), value)
+def _assign(name: str, value: object) -> Assignment:
+    return Assignment(target=_varref(name), value=value)
 
 
 def _step(name: str, active_stmts: list[object]) -> SFCStep:
@@ -87,7 +87,7 @@ def test_parallel_branch_write_race_detected():
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
-        modulecode=ModuleCode(sequences=[seq], equations=[]),
+        modulecodes=[ModuleCode(sequences=[seq], equationblocks=[])],
     )
 
     report = analyze_same_cycle(bp)
@@ -113,7 +113,7 @@ def test_parallel_branch_distinct_writes_not_reported():
             Variable(name="OutputA", datatype=Simple_DataType.INTEGER),
             Variable(name="OutputB", datatype=Simple_DataType.INTEGER),
         ],
-        modulecode=ModuleCode(sequences=[seq], equations=[]),
+        modulecodes=[ModuleCode(sequences=[seq], equationblocks=[])],
     )
 
     report = analyze_same_cycle(bp)
@@ -125,21 +125,23 @@ def test_analyze_same_cycle_parallel_write_race_selection_skips_other_issue_coll
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
-        modulecode=ModuleCode(
-            sequences=[
-                _sequence(
-                    [
-                        SFCParallel(
-                            branches=[
-                                [_step("Left", [_assign("Output", 1)])],
-                                [_step("Right", [_assign("Output", 2)])],
-                            ]
-                        )
-                    ]
-                )
-            ],
-            equations=[],
-        ),
+        modulecodes=[
+            ModuleCode(
+                sequences=[
+                    _sequence(
+                        [
+                            SFCParallel(
+                                branches=[
+                                    [_step("Left", [_assign("Output", 1)])],
+                                    [_step("Right", [_assign("Output", 2)])],
+                                ]
+                            )
+                        ]
+                    )
+                ],
+                equationblocks=[],
+            )
+        ],
     )
 
     report = analyze_same_cycle(
@@ -281,26 +283,26 @@ def test_sfc_access_collector_walk_helpers_cover_branch_labels_and_site_markers(
 def test_iter_sfc_modulecodes_covers_root_nested_modules_and_typedefs():
     nested_frame = FrameModule(
         header=_hdr("FrameChild"),
-        modulecode=ModuleCode(sequences=[], equations=[]),
+        modulecodes=[ModuleCode(sequences=[], equationblocks=[])],
         submodules=[],
     )
     nested_single = SingleModule(
         header=_hdr("UnitChild"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[],
         submodules=[nested_frame],
-        modulecode=ModuleCode(sequences=[], equations=[]),
+        modulecodes=[ModuleCode(sequences=[], equationblocks=[])],
     )
     moduletype = ModuleTypeDef(
         name="TypeLogic",
-        modulecode=ModuleCode(sequences=[], equations=[]),
+        modulecodes=[ModuleCode(sequences=[], equationblocks=[])],
     )
     bp = BasePicture(
         header=_hdr("Root"),
         submodules=[nested_single],
         moduletype_defs=[moduletype],
-        modulecode=ModuleCode(sequences=[], equations=[]),
+        modulecodes=[ModuleCode(sequences=[], equationblocks=[])],
     )
 
     entries = list(iter_sfc_modulecodes(bp))
@@ -366,8 +368,8 @@ def test_sfc_reachability_and_active_step_helpers_cover_nested_nodes_and_preview
     sequence = _sequence([_step("Idle", []), _step("Running", [])])
     bp = BasePicture(
         header=_hdr("Root"),
-        submodules=[FrameModule(header=_hdr("NoCode"), modulecode=None, submodules=[])],
-        modulecode=ModuleCode(sequences=[sequence], equations=[]),
+        submodules=[FrameModule(header=_hdr("NoCode"), modulecodes=[], submodules=[])],
+        modulecodes=[ModuleCode(sequences=[sequence], equationblocks=[])],
     )
     assert sfc_module.collect_sfc_reachability_findings(bp) == []
     assert sfc_module._format_terminator({"kind": "SFCFork", "targets": ["Left", 7, "Right"]}) == (
@@ -432,21 +434,23 @@ def test_analyze_sfc_reuses_variable_artifacts_when_available(monkeypatch):
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
-        modulecode=ModuleCode(
-            sequences=[
-                _sequence(
-                    [
-                        SFCParallel(
-                            branches=[
-                                [_step("Left", [_assign("Output", 1)])],
-                                [_step("Right", [_assign("Output", 2)])],
-                            ]
-                        )
-                    ]
-                )
-            ],
-            equations=[],
-        ),
+        modulecodes=[
+            ModuleCode(
+                sequences=[
+                    _sequence(
+                        [
+                            SFCParallel(
+                                branches=[
+                                    [_step("Left", [_assign("Output", 1)])],
+                                    [_step("Right", [_assign("Output", 2)])],
+                                ]
+                            )
+                        ]
+                    )
+                ],
+                equationblocks=[],
+            )
+        ],
     )
     shared_artifacts = AnalysisSharedArtifacts()
     context = AnalysisContext(base_picture=bp, shared_artifacts=shared_artifacts)

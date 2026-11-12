@@ -1,7 +1,8 @@
 """Tests for moduletype resolution within library scopes."""
 
+from typing import Any
+
 import pytest
-from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -16,7 +17,9 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import FuncCall, FuncCallStmt, VarRef
 
-from sattlint.analyzers.variables import VariablesAnalyzer
+from sattlint.analyzers.framework import AnalysisContext
+from sattlint.analyzers.variables import VariablesAnalyzer, analyze_variables
+from sattlint.models.project_graph import ProjectGraph
 from sattlint.resolution.common import (
     find_all_aliases,
     find_all_aliases_upstream,
@@ -42,10 +45,11 @@ def test_resolves_same_library_first():
         header=_header(),
         origin_lib="Lib1",
         moduletype_defs=[mt_lib1, mt_lib2],
-        library_dependencies={"lib1": ["lib2"]},
     )
 
-    resolved = _resolve_moduletype_def_strict(bp, "CIP", current_library="Lib1")
+    resolved = _resolve_moduletype_def_strict(
+        bp, "CIP", current_library="Lib1", library_dependencies={"lib1": ["lib2"]}
+    )
 
     assert resolved is mt_lib1
 
@@ -56,10 +60,13 @@ def test_resolves_via_dependency_when_missing_local():
         header=_header(),
         origin_lib="Lib1",
         moduletype_defs=[mt_lib2],
-        library_dependencies={"lib1": ["lib2"]},
     )
 
-    resolved = _resolve_moduletype_def_strict(bp, "CIP", current_library="Lib1")
+    resolved = _resolve_moduletype_def_strict(
+        bp,
+        "CIP",
+        current_library="Lib1",
+    )
 
     assert resolved is mt_lib2
 
@@ -71,11 +78,12 @@ def test_ambiguous_within_dependencies_raises():
         header=_header(),
         origin_lib="Lib1",
         moduletype_defs=[mt_lib2, mt_lib3],
-        library_dependencies={"lib1": ["lib2", "lib3"]},
     )
 
     with pytest.raises(ValueError):
-        _resolve_moduletype_def_strict(bp, "CIP", current_library="Lib1")
+        _resolve_moduletype_def_strict(
+            bp, "CIP", current_library="Lib1", library_dependencies={"lib1": ["lib2", "lib3"]}
+        )
 
 
 def test_resolves_same_library_prefers_draft_source_file():
@@ -86,10 +94,9 @@ def test_resolves_same_library_prefers_draft_source_file():
         origin_lib="Lib1",
         origin_file="Root.s",
         moduletype_defs=[mt_fallback, mt_source],
-        library_dependencies={"lib1": []},
     )
 
-    resolved = _resolve_moduletype_def_strict(bp, "CIP", current_library="Lib1")
+    resolved = _resolve_moduletype_def_strict(bp, "CIP", current_library="Lib1", library_dependencies={"lib1": []})
 
     assert resolved is mt_source
 
@@ -139,7 +146,6 @@ def test_resolve_moduletype_strict_uses_origin_library_and_reports_missing_or_am
         header=_header(),
         origin_lib="Lib1",
         moduletype_defs=[local, local_other, dependency],
-        library_dependencies={"lib1": ["lib2"]},
     )
 
     with pytest.raises(ValueError, match="Ambiguous moduletype 'CIP'") as exc_info:
@@ -163,13 +169,13 @@ def test_strict_path_prefers_enclosing_draft_moduletype_definition():
         name="Transfer",
         origin_lib="ProjectLib",
         origin_file="DiluteLib.s",
-        submodules=[SingleModule(header=_header("Dilute"), moduledef=None)],
+        submodules=[SingleModule(header=_header("Dilute"), moduledefs=[])],
     )
     transfer_fallback = ModuleTypeDef(
         name="Transfer",
         origin_lib="ProjectLib",
         origin_file="ModullLib.x",
-        submodules=[SingleModule(header=_header("Legacy"), moduledef=None)],
+        submodules=[SingleModule(header=_header("Legacy"), moduledefs=[])],
     )
     wrapper = ModuleTypeDef(
         name="Wrapper",
@@ -183,7 +189,6 @@ def test_strict_path_prefers_enclosing_draft_moduletype_definition():
         origin_file="Root.s",
         moduletype_defs=[transfer_fallback, transfer_source, wrapper],
         submodules=[ModuleTypeInstance(header=_header("Wrapper"), moduletype_name="Wrapper")],
-        library_dependencies={"applib": ["projectlib"]},
     )
 
     resolved = _resolve_module_by_strict_path(bp, "Wrapper.Transfer.Dilute")
@@ -215,17 +220,19 @@ def test_analyzer_uses_library_scoped_moduletype_defs():
         localvariables=[Variable(name="DV", datatype="CIPType1")],
         moduleparameters=[],
         submodules=[],
-        moduledef=None,
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="E1",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[FuncCallStmt(call=FuncCall(name="InitVariable", args=(VarRef(name="DV.Active"),)))],
-                )
-            ]
-        ),
+        moduledefs=[],
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="E1",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[FuncCallStmt(call=FuncCall(name="InitVariable", args=(VarRef(name="DV.Active"),)))],
+                    )
+                ]
+            )
+        ],
     )
 
     cip_lib2 = ModuleTypeDef(
@@ -235,17 +242,19 @@ def test_analyzer_uses_library_scoped_moduletype_defs():
         localvariables=[Variable(name="DV", datatype="CIPType2")],
         moduleparameters=[],
         submodules=[],
-        moduledef=None,
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="E1",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[FuncCallStmt(call=FuncCall(name="InitVariable", args=(VarRef(name="DV.Active"),)))],
-                )
-            ]
-        ),
+        moduledefs=[],
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="E1",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[FuncCallStmt(call=FuncCall(name="InitVariable", args=(VarRef(name="DV.Active"),)))],
+                    )
+                ]
+            )
+        ],
     )
 
     wrapper = ModuleTypeDef(
@@ -255,8 +264,8 @@ def test_analyzer_uses_library_scoped_moduletype_defs():
         localvariables=[],
         moduleparameters=[],
         submodules=[ModuleTypeInstance(header=_header("CIP1"), moduletype_name="CIP")],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
     )
 
     bp = BasePicture(
@@ -267,9 +276,8 @@ def test_analyzer_uses_library_scoped_moduletype_defs():
         moduletype_defs=[cip_lib1, cip_lib2, wrapper],
         localvariables=[],
         submodules=[ModuleTypeInstance(header=_header("WrapperInst"), moduletype_name="Wrapper")],
-        modulecode=None,
-        moduledef=None,
-        library_dependencies={"applib": ["lib1", "lib2"]},
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp, debug=False, fail_loudly=False)
@@ -292,7 +300,7 @@ def test_resolve_module_by_strict_path_rejects_empty_or_invalid_paths():
 def test_resolve_module_by_strict_path_reports_close_matches_for_unknown_segment():
     bp = BasePicture(
         header=_header("BasePicture"),
-        submodules=[SingleModule(header=_header("Dilute"), moduledef=None)],
+        submodules=[SingleModule(header=_header("Dilute"), moduledefs=[])],
     )
 
     with pytest.raises(ValueError, match="Close matches"):
@@ -304,7 +312,7 @@ def test_module_lookup_and_scope_helpers_cover_typedef_and_regular_paths():
     mp = Variable(name="FromParam", datatype=Simple_DataType.INTEGER)
     child = SingleModule(
         header=_header("Child"),
-        moduledef=None,
+        moduledefs=[],
         localvariables=[local],
         moduleparameters=[mp],
         submodules=[],
@@ -336,7 +344,7 @@ def test_module_lookup_and_scope_helpers_cover_typedef_and_regular_paths():
 
 
 def test_varname_and_alias_helpers_cover_valid_and_invalid_inputs():
-    const_ref = {const.KEY_VAR_NAME: "Root.Signal.Value"}
+    const_ref = VarRef(name="Root.Signal.Value")
     assert varname_base(const_ref) == "root"
     assert varname_base("Root.Signal") == "root"
     assert varname_base(42) is None
@@ -355,3 +363,59 @@ def test_varname_and_alias_helpers_cover_valid_and_invalid_inputs():
 
     assert find_all_aliases(root, alias_links) == [(child, "A"), (leaf, "A.B")]
     assert find_all_aliases_upstream(leaf, alias_links) == [(child, "B"), (root, "A.B")]
+
+
+def _library_dependency_picture() -> tuple[BasePicture, ProjectGraph]:
+    lib1 = ModuleTypeDef(
+        name="CIP",
+        origin_lib="Lib1",
+        origin_file="Lib1.x",
+        localvariables=[Variable(name="Active", datatype=Simple_DataType.BOOLEAN)],
+    )
+    lib2 = ModuleTypeDef(
+        name="CIP",
+        origin_lib="Lib2",
+        origin_file="Lib2.x",
+        localvariables=[Variable(name="Other", datatype=Simple_DataType.INTEGER)],
+    )
+    bp = BasePicture(
+        header=_header("Root"),
+        origin_lib="AppLib",
+        origin_file="Root.x",
+        moduletype_defs=[lib1, lib2],
+        submodules=[ModuleTypeInstance(header=_header("CIPInst"), moduletype_name="CIP")],
+    )
+    graph = ProjectGraph()
+    graph.add_library_dependencies("AppLib", ["Lib2"])
+    return bp, graph
+
+
+def test_analyzer_resolves_dependency_moduletype_from_graph_dependencies():
+    bp, graph = _library_dependency_picture()
+
+    analyzer = VariablesAnalyzer(bp, fail_loudly=False, library_dependencies=graph.library_dependencies)
+    analyzer.run()
+
+    context = analyzer.contexts_by_module_path[("Root", "CIPInst")]
+    assert "other" in context.env
+    assert "active" not in context.env
+
+
+def test_analyze_variables_derives_library_dependencies_from_graph():
+    bp, graph = _library_dependency_picture()
+    captured: dict[str, object] = {}
+
+    class _RecordingAnalyzer(VariablesAnalyzer):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            captured["library_dependencies"] = kwargs.get("library_dependencies")
+            super().__init__(*args, **kwargs)
+
+    context = AnalysisContext(
+        base_picture=bp,
+        graph=graph,
+        variables_collector_class=_RecordingAnalyzer,
+    )
+
+    analyze_variables(bp, analysis_context=context)
+
+    assert captured["library_dependencies"] == {"applib": {"lib2"}}

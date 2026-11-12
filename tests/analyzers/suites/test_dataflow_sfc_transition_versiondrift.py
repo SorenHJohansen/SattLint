@@ -16,26 +16,28 @@ def test_dataflow_flags_contradictory_branch_condition_in_analyzer_suite():
             Variable(name="Flag", datatype=Simple_DataType.BOOLEAN),
             Variable(name="Output", datatype=Simple_DataType.BOOLEAN),
         ],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        IfStmt(
-                            branches=(
-                                (
-                                    BoolOp(op="AND", operands=(_varref("Flag"), NotOp(operand=_varref("Flag")))),
-                                    (Assignment(target=_varref("Output"), value=True),),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Main",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            IfStmt(
+                                branches=(
+                                    (
+                                        BoolOp(op="AND", operands=(_varref("Flag"), NotOp(operand=_varref("Flag")))),
+                                        (Assignment(target=_varref("Output"), value=True),),
+                                    ),
                                 ),
-                            ),
-                            else_block=(Assignment(target=_varref("Output"), value=False),),
-                        )
-                    ],
-                )
-            ]
-        ),
+                                else_block=(Assignment(target=_varref("Output"), value=False),),
+                            )
+                        ],
+                    )
+                ]
+            )
+        ],
     )
 
     report = analyze_dataflow(bp)
@@ -51,32 +53,34 @@ def test_dataflow_flags_impossible_inferred_compare_condition_in_analyzer_suite(
             Variable(name="Counter", datatype=Simple_DataType.INTEGER),
             Variable(name="Output", datatype=Simple_DataType.BOOLEAN),
         ],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        IfStmt(
-                            branches=(
-                                (
-                                    BoolOp(
-                                        op="AND",
-                                        operands=(
-                                            Compare(left=_varref("Counter"), op="==", right=1),
-                                            Compare(left=_varref("Counter"), op="==", right=2),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Main",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            IfStmt(
+                                branches=(
+                                    (
+                                        BoolOp(
+                                            op="AND",
+                                            operands=(
+                                                Compare(left=_varref("Counter"), op="==", right=1),
+                                                Compare(left=_varref("Counter"), op="==", right=2),
+                                            ),
                                         ),
+                                        (Assignment(target=_varref("Output"), value=True),),
                                     ),
-                                    (Assignment(target=_varref("Output"), value=True),),
                                 ),
-                            ),
-                            else_block=None,
-                        )
-                    ],
-                )
-            ]
-        ),
+                                else_block=None,
+                            )
+                        ],
+                    )
+                ]
+            )
+        ],
     )
 
     report = analyze_dataflow(bp)
@@ -132,8 +136,8 @@ def test_sfc_parallel_write_race_detected_for_record_field_overlap():
             )
         ],
         localvariables=[Variable(name="Rec", datatype="RecType")],
-        modulecode=ModuleCode(sequences=[sequence], equations=[]),
-        moduledef=None,
+        modulecodes=[ModuleCode(sequences=[sequence], equationblocks=[])],
+        moduledefs=[],
     )
 
     report = analyze_same_cycle(bp)
@@ -160,7 +164,7 @@ def test_dataflow_detects_always_true_transition_guard():
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[Variable(name="Permit", datatype=Simple_DataType.BOOLEAN)],
-        modulecode=ModuleCode(sequences=[sequence], equations=[]),
+        modulecodes=[ModuleCode(sequences=[sequence], equationblocks=[])],
     )
 
     report = analyze_dataflow(bp)
@@ -185,7 +189,7 @@ def test_dataflow_detects_always_false_transition_guard():
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[Variable(name="Permit", datatype=Simple_DataType.BOOLEAN)],
-        modulecode=ModuleCode(sequences=[sequence], equations=[]),
+        modulecodes=[ModuleCode(sequences=[sequence], equationblocks=[])],
     )
 
     report = analyze_dataflow(bp)
@@ -217,7 +221,7 @@ def test_sfc_transition_logic_detects_duplicate_guards_after_normalization():
             Variable(name="Permit", datatype=Simple_DataType.BOOLEAN),
             Variable(name="Ready", datatype=Simple_DataType.BOOLEAN),
         ],
-        modulecode=ModuleCode(sequences=[sequence], equations=[]),
+        modulecodes=[ModuleCode(sequences=[sequence], equationblocks=[])],
     )
 
     report = analyze_sfc(bp)
@@ -232,41 +236,45 @@ def test_version_drift_detects_small_code_delta_between_same_named_modules():
     variant_a = SingleModule(
         header=_hdr("Mixer"),
         datecode=100,
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Logic",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("Output"), value=1)],
-                )
-            ],
-            sequences=[],
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Logic",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[Assignment(target=_varref("Output"), value=1)],
+                    )
+                ],
+                sequences=[],
+            )
+        ],
         parametermappings=[],
     )
     variant_b = SingleModule(
         header=_hdr("Mixer"),
         datecode=200,
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Logic",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("Output"), value=2)],
-                )
-            ],
-            sequences=[],
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Logic",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[Assignment(target=_varref("Output"), value=2)],
+                    )
+                ],
+                sequences=[],
+            )
+        ],
         parametermappings=[],
     )
     cast(Any, variant_a).origin_file = "Root.s"
@@ -277,8 +285,8 @@ def test_version_drift_detects_small_code_delta_between_same_named_modules():
         moduletype_defs=[],
         localvariables=[],
         submodules=[variant_a, variant_b],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="Root.s",
     )
 
@@ -300,21 +308,21 @@ def test_version_drift_records_modified_variable_shape_diffs():
     variant_a = SingleModule(
         header=_hdr("Mixer"),
         datecode=100,
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
     variant_b = SingleModule(
         header=_hdr("Mixer"),
         datecode=200,
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="Output", datatype=Simple_DataType.REAL)],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
     cast(Any, variant_a).origin_file = "Root.s"
@@ -325,8 +333,8 @@ def test_version_drift_records_modified_variable_shape_diffs():
         moduletype_defs=[],
         localvariables=[],
         submodules=[variant_a, variant_b],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="Root.s",
     )
 

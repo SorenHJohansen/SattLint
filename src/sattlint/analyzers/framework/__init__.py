@@ -7,7 +7,7 @@ from dataclasses import dataclass, field, replace
 from time import perf_counter
 from typing import Any, Literal, Protocol
 
-from sattline_parser.models.ast_model import BasePicture
+from sattlint.parser_api import BasePicture
 
 from ._shared_analysis import AnalysisSharedArtifacts, CollectedViews, VariableAnalysisArtifacts
 from .issue import Findings, Issue, format_report_header

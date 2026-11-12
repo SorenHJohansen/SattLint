@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from collections.abc import Sequence as SequenceABC
 from typing import Any
 
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     BasePicture,
     FrameModule,
     ModuleCode,
@@ -95,7 +95,7 @@ class SpecComplianceAnalyzer:
     def _check_module_code(self, modulecode: ModuleCode | None, module_path: list[str]) -> None:
         if modulecode is None:
             return
-        for equation in modulecode.equations or []:
+        for equation in modulecode.equationblocks or []:
             self._check_equation_block(equation, module_path)
         for sequence in modulecode.sequences or []:
             self._check_sequence(sequence, module_path)

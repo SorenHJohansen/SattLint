@@ -9,14 +9,22 @@ PictureDisplay asset verification and the not-implemented asset warnings.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal, cast
 
-from sattline_parser.api import parse_graphics_file, parse_graphics_text
-from sattline_parser.models.ast_model import GraphicsBinding, SourceSpan
-from sattline_parser.project import GraphicsCompositeRecord as ParserGraphicsCompositeRecord
-from sattline_parser.project import GraphicsModel, GraphicsPathRow, GraphicsPictureDisplayRecord
+from sattlint.parser_api import (
+    GraphicsBinding,
+    GraphicsMessage,
+    GraphicsModel,
+    GraphicsPathRow,
+    GraphicsPictureDisplayRecord,
+    SourceSpan,
+    VarRef,
+    parse_graphics_file,
+    parse_graphics_text,
+)
+from sattlint.parser_api import GraphicsCompositeRecord as ParserGraphicsCompositeRecord
 
 __all__ = [
     "GraphicsCompositeRecord",
@@ -32,28 +40,24 @@ __all__ = [
 ]
 
 
-@dataclass(frozen=True, slots=True)
-class GraphicsValidationMessage:
-    severity: Literal["error", "warning"]
-    message: str
-    line: int
-    column: int
-    length: int = 1
+#: The parser owns the graphics message shape; SattLint keeps the historical
+#: name as an alias for its public result type.
+GraphicsValidationMessage = GraphicsMessage
 
 
 @dataclass(frozen=True, slots=True)
 class GraphicsValidationResult:
-    messages: tuple[GraphicsValidationMessage, ...] = ()
+    messages: tuple[GraphicsMessage, ...] = ()
     bindings: tuple[GraphicsBinding, ...] = ()
     composite_records: tuple[GraphicsCompositeRecord, ...] = ()
     picture_display_records: tuple[PictureDisplayRecord, ...] = ()
 
     @property
-    def errors(self) -> tuple[GraphicsValidationMessage, ...]:
+    def errors(self) -> tuple[GraphicsMessage, ...]:
         return tuple(message for message in self.messages if message.severity == "error")
 
     @property
-    def warnings(self) -> tuple[GraphicsValidationMessage, ...]:
+    def warnings(self) -> tuple[GraphicsMessage, ...]:
         return tuple(message for message in self.messages if message.severity == "warning")
 
 
@@ -126,10 +130,10 @@ def _validate_literal_path(
     *,
     line: int,
     column: int,
-) -> GraphicsValidationMessage | None:
+) -> GraphicsMessage | None:
     stripped = path_text.strip()
     if not stripped:
-        return GraphicsValidationMessage(
+        return GraphicsMessage(
             severity="error",
             message="PictureDisplay contains an empty literal path",
             line=line,
@@ -139,7 +143,7 @@ def _validate_literal_path(
     if stripped.casefold().startswith("scr:"):
         asset_name = stripped[4:].strip()
         if not asset_name:
-            return GraphicsValidationMessage(
+            return GraphicsMessage(
                 severity="error",
                 message="PictureDisplay asset path must include a file name after 'scr:'",
                 line=line,
@@ -147,7 +151,7 @@ def _validate_literal_path(
                 length=len(stripped),
             )
         if is_unimplemented_picture_display_asset_path(stripped):
-            return GraphicsValidationMessage(
+            return GraphicsMessage(
                 severity="warning",
                 message=unimplemented_picture_display_asset_message(),
                 line=line,
@@ -156,7 +160,7 @@ def _validate_literal_path(
             )
         if any(candidate.exists() for candidate in _candidate_asset_paths(file_path, asset_name)):
             return None
-        return GraphicsValidationMessage(
+        return GraphicsMessage(
             severity="warning",
             message=f"PictureDisplay asset {stripped!r} could not be verified from this workspace",
             line=line,
@@ -165,7 +169,7 @@ def _validate_literal_path(
         )
 
     if is_unimplemented_picture_display_asset_path(stripped):
-        return GraphicsValidationMessage(
+        return GraphicsMessage(
             severity="warning",
             message=unimplemented_picture_display_asset_message(),
             line=line,
@@ -198,6 +202,26 @@ def _picture_display_record(record: GraphicsPictureDisplayRecord) -> PictureDisp
     )
 
 
+def _graphics_binding(binding: GraphicsBinding) -> GraphicsBinding:
+    """Normalize a parser graphics binding into a typed value.
+
+    The parser reports ``var`` bindings as a ``{"var_name": ..., "span": ...}``
+    payload. Convert that payload once here so analyzers only ever see a
+    ``VarRef`` for a variable binding; computed expressions, literals, and
+    text already arrive typed.
+    """
+    value = binding.value
+    if not isinstance(value, dict):
+        return binding
+    mapping = cast(dict[str, Any], value)
+    raw_name = mapping.get("var_name")
+    if not isinstance(raw_name, str) or not raw_name:
+        return binding
+    raw_span = mapping.get("span")
+    span = raw_span if isinstance(raw_span, SourceSpan) else binding.span
+    return replace(binding, value=VarRef(name=raw_name, span=span))
+
+
 def _composite_record(record: ParserGraphicsCompositeRecord) -> GraphicsCompositeRecord:
     return GraphicsCompositeRecord(
         record_index=record.record_index,
@@ -214,7 +238,7 @@ def validate_graphics_model(model: GraphicsModel, file_path: Path) -> GraphicsVa
     PictureDisplay asset paths against the workspace that contains ``file_path``.
     """
     messages = [
-        GraphicsValidationMessage(
+        GraphicsMessage(
             severity=message.severity,
             message=message.message,
             line=message.line,
@@ -239,7 +263,7 @@ def validate_graphics_model(model: GraphicsModel, file_path: Path) -> GraphicsVa
 
     return GraphicsValidationResult(
         messages=tuple(messages),
-        bindings=model.bindings,
+        bindings=tuple(_graphics_binding(binding) for binding in model.bindings),
         composite_records=tuple(_composite_record(record) for record in model.composite_records),
         picture_display_records=picture_display_records,
     )

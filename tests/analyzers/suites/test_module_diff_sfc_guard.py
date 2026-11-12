@@ -1,3 +1,5 @@
+from sattline_parser.ast import BoolOp, MappingSource, NotOp
+
 from tests.helpers.analyzers_suites_support import *
 
 
@@ -13,26 +15,28 @@ def test_module_localvar_field_report_includes_filtered_summary_sections():
     )
     child = SingleModule(
         header=_hdr("Child"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="Input", datatype="UsageRecord")],
         localvariables=[],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="ChildEq",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        Assignment(target=_varref("Input.Target"), value=IntLiteral(2)),
-                    ],
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="ChildEq",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            Assignment(target=_varref("Input.Target"), value=IntLiteral(2)),
+                        ],
+                    )
+                ]
+            )
+        ],
         parametermappings=[
             ParameterMapping(
                 target=_varref("Input"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("Dv"),
@@ -48,7 +52,7 @@ def test_module_localvar_field_report_includes_filtered_summary_sections():
         submodules=[
             SingleModule(
                 header=_hdr("Unit"),
-                moduledef=None,
+                moduledefs=[],
                 moduleparameters=[],
                 localvariables=[
                     Variable(name="Dv", datatype="UsageRecord"),
@@ -56,26 +60,28 @@ def test_module_localvar_field_report_includes_filtered_summary_sections():
                     Variable(name="Sink", datatype=Simple_DataType.INTEGER),
                 ],
                 submodules=[child],
-                modulecode=ModuleCode(
-                    equations=[
-                        Equation(
-                            name="Usage",
-                            position=(0.0, 0.0),
-                            size=(1.0, 1.0),
-                            code=[
-                                Assignment(target=_varref("Sink"), value=_varref("Dv.Source")),
-                                Assignment(target=_varref("Dv.Target"), value=IntLiteral(1)),
-                                Assignment(target=_varref("Mirror"), value=_varref("Dv")),
-                                Assignment(target=_varref("Dv"), value=_varref("Mirror")),
-                            ],
-                        )
-                    ]
-                ),
+                modulecodes=[
+                    ModuleCode(
+                        equationblocks=[
+                            Equation(
+                                name="Usage",
+                                position=(0.0, 0.0),
+                                size=(1.0, 1.0),
+                                code=[
+                                    Assignment(target=_varref("Sink"), value=_varref("Dv.Source")),
+                                    Assignment(target=_varref("Dv.Target"), value=IntLiteral(1)),
+                                    Assignment(target=_varref("Mirror"), value=_varref("Dv")),
+                                    Assignment(target=_varref("Dv"), value=_varref("Mirror")),
+                                ],
+                            )
+                        ]
+                    )
+                ],
                 parametermappings=[],
             )
         ],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     report = report_module_localvar_fields(bp, "Unit", "Dv")
@@ -107,8 +113,8 @@ def test_find_module_instances_includes_direct_and_typedef_expansions():
                 parametermappings=[],
             )
         ],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
     )
     bp = BasePicture(
@@ -128,8 +134,8 @@ def test_find_module_instances_includes_direct_and_typedef_expansions():
                 parametermappings=[],
             ),
         ],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     results = _find_module_instances(bp, "WantedType")
@@ -194,11 +200,11 @@ def test_module_comparison_summary_covers_empty_and_single_variant_reports():
 
     module = SingleModule(
         header=_hdr("Pump"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
     fingerprint = create_fingerprint(module, ["Root", "Pump"])
@@ -218,38 +224,42 @@ def test_module_comparison_summary_covers_empty_and_single_variant_reports():
 def test_module_comparison_summary_lists_variant_differences():
     variant_a = SingleModule(
         header=_hdr("Pump"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="CommonParam", datatype=Simple_DataType.INTEGER)],
         localvariables=[Variable(name="OnlyA", datatype=Simple_DataType.INTEGER)],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="MainEq",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("OnlyA"), value=IntLiteral(1))],
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="MainEq",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[Assignment(target=_varref("OnlyA"), value=IntLiteral(1))],
+                    )
+                ]
+            )
+        ],
         parametermappings=[],
     )
     variant_b = SingleModule(
         header=_hdr("Pump"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="CommonParam", datatype=Simple_DataType.INTEGER)],
         localvariables=[Variable(name="OnlyB", datatype=Simple_DataType.INTEGER)],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="OtherEq",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("OnlyB"), value=IntLiteral(2))],
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="OtherEq",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[Assignment(target=_varref("OnlyB"), value=IntLiteral(2))],
+                    )
+                ]
+            )
+        ],
         parametermappings=[],
     )
     fingerprint_a = create_fingerprint(variant_a, ["Root", "PumpA"])
@@ -353,31 +363,31 @@ def test_module_variant_grouping_collapses_identical_structures_and_common_prefi
     shared_a = SingleModule(
         header=_hdr("Pump"),
         datecode=100,
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="Shared", datatype=Simple_DataType.INTEGER)],
         localvariables=[],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
     shared_b = SingleModule(
         header=_hdr("Pump"),
         datecode=200,
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="Shared", datatype=Simple_DataType.INTEGER)],
         localvariables=[],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
     drifted = SingleModule(
         header=_hdr("Pump"),
         datecode=300,
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="Shared", datatype=Simple_DataType.INTEGER)],
         localvariables=[Variable(name="OnlyHere", datatype=Simple_DataType.INTEGER)],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
 
@@ -400,12 +410,12 @@ def test_module_variant_grouping_collapses_identical_structures_and_common_prefi
 
 def test_sfc_guard_signature_collapses_contradictory_and_expression_to_false():
     signature = _normalize_guard_signature(
-        (
-            const.GRAMMAR_VALUE_AND,
-            [
+        BoolOp(
+            op="AND",
+            operands=(
                 _varref("Permit"),
-                (const.GRAMMAR_VALUE_NOT, _varref("Permit")),
-            ],
+                NotOp(operand=_varref("Permit")),
+            ),
         )
     )
 

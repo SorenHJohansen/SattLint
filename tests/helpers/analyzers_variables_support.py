@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from sattline_parser import parse_source_text as parser_core_parse_source_text
+from sattline_parser.ast import MappingSource, VarRef
 from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     Assignment,
@@ -30,6 +31,7 @@ from sattline_parser.models.ast_model import (
     SourceSpan,
     Variable,
 )
+from sattline_parser.models.expressions import FuncCall, FuncCallStmt, IfStmt, NotOp, TernaryOp
 
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer, analyze_variables
 from sattlint.analyzers.variables import _variable_issue_collection as variable_issue_collection_module
@@ -78,15 +80,20 @@ __all__ = [
     "DataType",
     "Equation",
     "FloatLiteral",
+    "FuncCall",
+    "FuncCallStmt",
     "GraphObject",
+    "IfStmt",
     "IntLiteral",
     "InteractObject",
     "IssueKind",
+    "MappingSource",
     "ModuleCode",
     "ModuleDef",
     "ModuleHeader",
     "ModuleTypeDef",
     "ModuleTypeInstance",
+    "NotOp",
     "ParameterMapping",
     "Path",
     "SFCTransition",
@@ -96,6 +103,8 @@ __all__ = [
     "Simple_DataType",
     "SingleModule",
     "SourceSpan",
+    "TernaryOp",
+    "VarRef",
     "Variable",
     "VariableIssue",
     "VariablesAnalyzer",

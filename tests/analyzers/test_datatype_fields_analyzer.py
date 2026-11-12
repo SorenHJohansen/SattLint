@@ -44,21 +44,23 @@ def _picture_with_unused_field() -> BasePicture:
     rec = Variable(name="Rec", datatype="RecType")
     m1 = SingleModule(
         header=_hdr("M1"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[rec],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="UseField",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("Rec.A"), value=1)],
-                )
-            ],
-            sequences=[],
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="UseField",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[Assignment(target=_varref("Rec.A"), value=1)],
+                    )
+                ],
+                sequences=[],
+            )
+        ],
         parametermappings=[],
     )
     return BasePicture(
@@ -67,8 +69,8 @@ def _picture_with_unused_field() -> BasePicture:
         moduletype_defs=[],
         localvariables=[],
         submodules=[m1],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
 
@@ -118,25 +120,27 @@ def _picture_with_module_and_local_records() -> tuple[BasePicture, Variable, Var
     sink = Variable(name="Sink", datatype=Simple_DataType.INTEGER)
     module = SingleModule(
         header=_hdr("M1"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[param_rec],
         localvariables=[local_rec, sink],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="UseFields",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        Assignment(target=_varref("LocalRec.A"), value=1),
-                        Assignment(target=_varref("Sink"), value=_varref("LocalRec.B")),
-                        Assignment(target=_varref("Sink"), value=_varref("ParamRec.B")),
-                    ],
-                )
-            ],
-            sequences=[],
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="UseFields",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            Assignment(target=_varref("LocalRec.A"), value=1),
+                            Assignment(target=_varref("Sink"), value=_varref("LocalRec.B")),
+                            Assignment(target=_varref("Sink"), value=_varref("ParamRec.B")),
+                        ],
+                    )
+                ],
+                sequences=[],
+            )
+        ],
         parametermappings=[],
     )
     bp = BasePicture(
@@ -145,8 +149,8 @@ def _picture_with_module_and_local_records() -> tuple[BasePicture, Variable, Var
         moduletype_defs=[],
         localvariables=[],
         submodules=[module],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
     return bp, param_rec, local_rec
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef
+from sattlint.parser_api import BasePicture, ModuleTypeDef
 
 from .variable_utils import matches_root_origin
 

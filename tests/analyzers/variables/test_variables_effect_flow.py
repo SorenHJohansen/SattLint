@@ -6,7 +6,7 @@ from __future__ import annotations
 from collections import defaultdict
 from types import SimpleNamespace
 
-from sattline_parser.grammar import constants as const
+from sattline_parser.ast import BinOp, FuncCall, MappingSource
 from sattline_parser.models.ast_model import (
     ModuleHeader,
     ParameterMapping,
@@ -37,7 +37,7 @@ def _string_source(text: str) -> VarRef:
 def test_parameter_mapping_normalizes_string_variable_refs() -> None:
     mapping = ParameterMapping(
         target=_varref("Input"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=False,
         source=_varref("ParentLocal.Member"),
@@ -168,13 +168,13 @@ def test_effect_source_helpers_cover_fallback_and_signature_paths(monkeypatch) -
 
     no_name_sources = effect_sources_module.collect_function_input_effect_keys(
         None,
-        [SimpleNamespace(data="Expr", children=[_varref("Source")]), [_varref("Mapped")]],
+        [_varref("Source"), [_varref("Mapped")]],
         context,
         resolve_effect_key=tracker.resolve_effect_key,
     )
     unknown_sources = effect_sources_module.collect_function_input_effect_keys(
         "UnknownFn",
-        [("Pair", _varref("Source"), {"nested": [_varref("Mapped")]})],
+        [BinOp(left=_varref("Source"), op="+", right=_varref("Mapped"))],
         context,
         resolve_effect_key=tracker.resolve_effect_key,
     )
@@ -185,7 +185,7 @@ def test_effect_source_helpers_cover_fallback_and_signature_paths(monkeypatch) -
         resolve_effect_key=tracker.resolve_effect_key,
     )
     expression_sources = effect_sources_module.collect_expression_effect_sources(
-        (const.KEY_FUNCTION_CALL, "SignedFn", [_varref("Source"), _varref("Target"), _varref("Mapped")]),
+        FuncCall(name="SignedFn", args=(_varref("Source"), _varref("Target"), _varref("Mapped"))),
         context,
         resolve_effect_key=tracker.resolve_effect_key,
     )
@@ -295,7 +295,7 @@ def test_effect_flow_tracker_resolve_and_assignment_helpers_cover_local_mapped_a
 
     non_global_mapping = ParameterMapping(
         target=_varref("input"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=False,
         source=_varref("Local.Member"),
@@ -303,7 +303,7 @@ def test_effect_flow_tracker_resolve_and_assignment_helpers_cover_local_mapped_a
     )
     invalid_mapping = ParameterMapping(
         target=_varref("input"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=False,
         source=None,
@@ -322,7 +322,7 @@ def test_effect_flow_tracker_resolve_and_assignment_helpers_cover_local_mapped_a
 
     tracker.record_assignment_effect_flow(
         "Target",
-        ("Pair", _varref("Local"), {"nested": [_varref("Mapped")]}),
+        BinOp(left=_varref("Local"), op="+", right=_varref("Mapped")),
         context,
     )
 
@@ -343,7 +343,7 @@ def test_effect_flow_tracker_mapping_source_effect_key_covers_string_parent_and_
 
     global_string = ParameterMapping(
         target=_varref("input"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=True,
         source=_string_source("ParentGlobal.Member"),
@@ -351,7 +351,7 @@ def test_effect_flow_tracker_mapping_source_effect_key_covers_string_parent_and_
     )
     missing_global = ParameterMapping(
         target=_varref("input"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=True,
         source=_string_source(""),
@@ -359,7 +359,7 @@ def test_effect_flow_tracker_mapping_source_effect_key_covers_string_parent_and_
     )
     unknown_global = ParameterMapping(
         target=_varref("input"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=True,
         source=_string_source("Unknown.Member"),
@@ -367,7 +367,7 @@ def test_effect_flow_tracker_mapping_source_effect_key_covers_string_parent_and_
     )
     local_string = ParameterMapping(
         target=_varref("input"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=False,
         source=_string_source("ParentLocal.Member"),
@@ -375,7 +375,7 @@ def test_effect_flow_tracker_mapping_source_effect_key_covers_string_parent_and_
     )
     missing_local = ParameterMapping(
         target=_varref("input"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=False,
         source=_string_source(""),
@@ -383,7 +383,7 @@ def test_effect_flow_tracker_mapping_source_effect_key_covers_string_parent_and_
     )
     unknown_local = ParameterMapping(
         target=_varref("input"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=False,
         source=_string_source("Unknown.Member"),

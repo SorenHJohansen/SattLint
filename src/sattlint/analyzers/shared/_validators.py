@@ -6,16 +6,19 @@ import logging
 import re
 from typing import Any, ClassVar, Protocol, cast
 
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import ParameterMapping, Simple_DataType, Variable
-from sattline_parser.models.expressions import VarRef
-from sattline_parser.validation.typing import (
+from sattlint.parser_api import (
+    ParameterMapping,
+    Simple_DataType,
+    Variable,
+    VarRef,
+)
+from sattlint.parser_api import (
     infer_literal_datatype as _infer_literal_datatype,
 )
-from sattline_parser.validation.typing import (
+from sattlint.parser_api import (
     resolve_variable_field_datatype as _resolve_variable_field_datatype,
 )
-from sattline_parser.validation.typing import (
+from sattlint.parser_api import (
     split_dotted_name as _split_dotted_name,
 )
 
@@ -124,9 +127,6 @@ class MinMaxValidator:
     def _mapping_name_text(self, value: Any) -> str | None:
         if isinstance(value, VarRef):
             return value.name or None
-        if isinstance(value, dict) and const.KEY_VAR_NAME in value:
-            name = cast(dict[str, object], value).get(const.KEY_VAR_NAME)
-            return name if isinstance(name, str) else None
         if isinstance(value, Variable):
             return value.name
         if isinstance(value, str):

@@ -5,8 +5,7 @@ from __future__ import annotations
 from contextlib import AbstractContextManager, nullcontext
 from typing import TYPE_CHECKING, Any, cast
 
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     FrameModule,
     ModuleTypeDef,
     ModuleTypeInstance,
@@ -14,8 +13,8 @@ from sattline_parser.models.ast_model import (
     Simple_DataType,
     SingleModule,
     Variable,
+    VarRef,
 )
-from sattline_parser.models.expressions import VarRef
 
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ...resolution import decorate_segment
@@ -216,6 +215,7 @@ def _walk_moduletype_instance_subtree(  # noqa: PLR0915
                 current_library=parent_context.current_library,
                 unavailable_libraries=self.unavailable_libraries,
                 moduletype_index=getattr(self, "typedef_index", None),
+                library_dependencies=getattr(self, "library_dependencies", None),
             )
         except ValueError:
             moduletype = None
@@ -412,11 +412,6 @@ def _lookup_env_var_from_varname_dict(
             return env.get(base)
     if isinstance(var_dict_or_other, str):
         base = varname_base(var_dict_or_other)
-        if base is not None:
-            return env.get(base)
-    if isinstance(var_dict_or_other, dict) and const.KEY_VAR_NAME in var_dict_or_other:
-        var_dict = cast(dict[str, object], var_dict_or_other)
-        base = varname_base(var_dict)
         if base is not None:
             return env.get(base)
     return None

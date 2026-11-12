@@ -10,7 +10,7 @@ from collections import Counter, defaultdict
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     FrameModule,
     ModuleTypeDef,
     ModuleTypeInstance,

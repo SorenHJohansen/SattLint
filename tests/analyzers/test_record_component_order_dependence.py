@@ -51,25 +51,27 @@ def test_getrecordcomponent_reports_record_component_order_dependence():
 
     module = SingleModule(
         header=_hdr("M1"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[rec, result, status],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                _eq(
-                    [
-                        _func(
-                            "GetRecordComponent",
-                            _varref("Rec"),
-                            2,
-                            _varref("ResultRec"),
-                            _varref("Status"),
-                        )
-                    ]
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    _eq(
+                        [
+                            _func(
+                                "GetRecordComponent",
+                                _varref("Rec"),
+                                2,
+                                _varref("ResultRec"),
+                                _varref("Status"),
+                            )
+                        ]
+                    )
+                ]
+            )
+        ],
         parametermappings=[],
     )
 
@@ -80,8 +82,8 @@ def test_getrecordcomponent_reports_record_component_order_dependence():
             moduletype_defs=[],
             localvariables=[],
             submodules=[module],
-            modulecode=None,
-            moduledef=None,
+            modulecodes=[],
+            moduledefs=[],
         )
     )
     analyzer.run()
@@ -120,25 +122,27 @@ def test_putrecordcomponent_reports_record_component_order_dependence():
 
     module = SingleModule(
         header=_hdr("M1"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[rec, source, status],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                _eq(
-                    [
-                        _func(
-                            "PutRecordComponent",
-                            _varref("Rec"),
-                            1,
-                            _varref("InputRec"),
-                            _varref("Status"),
-                        )
-                    ]
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    _eq(
+                        [
+                            _func(
+                                "PutRecordComponent",
+                                _varref("Rec"),
+                                1,
+                                _varref("InputRec"),
+                                _varref("Status"),
+                            )
+                        ]
+                    )
+                ]
+            )
+        ],
         parametermappings=[],
     )
 
@@ -149,8 +153,8 @@ def test_putrecordcomponent_reports_record_component_order_dependence():
             moduletype_defs=[],
             localvariables=[],
             submodules=[module],
-            modulecode=None,
-            moduledef=None,
+            modulecodes=[],
+            moduledefs=[],
         )
     )
     analyzer.run()
@@ -190,32 +194,34 @@ def test_repeated_positional_access_reports_each_datatype_once():
 
     module = SingleModule(
         header=_hdr("M1"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[rec_a, rec_b, result, status],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                _eq(
-                    [
-                        _func(
-                            "GetRecordComponent",
-                            _varref("RecA"),
-                            1,
-                            _varref("ResultRec"),
-                            _varref("Status"),
-                        ),
-                        _func(
-                            "GetRecordComponent",
-                            _varref("RecB"),
-                            2,
-                            _varref("ResultRec"),
-                            _varref("Status"),
-                        ),
-                    ]
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    _eq(
+                        [
+                            _func(
+                                "GetRecordComponent",
+                                _varref("RecA"),
+                                1,
+                                _varref("ResultRec"),
+                                _varref("Status"),
+                            ),
+                            _func(
+                                "GetRecordComponent",
+                                _varref("RecB"),
+                                2,
+                                _varref("ResultRec"),
+                                _varref("Status"),
+                            ),
+                        ]
+                    )
+                ]
+            )
+        ],
         parametermappings=[],
     )
 
@@ -226,8 +232,8 @@ def test_repeated_positional_access_reports_each_datatype_once():
             moduletype_defs=[],
             localvariables=[],
             submodules=[module],
-            modulecode=None,
-            moduledef=None,
+            modulecodes=[],
+            moduledefs=[],
         )
     )
     analyzer.run()
@@ -252,29 +258,31 @@ def test_positional_record_component_wrapper_ignores_anytype_for_datatype_list()
             Variable(name="Status", datatype=Simple_DataType.INTEGER),
         ],
         submodules=[],
-        moduledef=None,
-        modulecode=ModuleCode(
-            equations=[
-                _eq(
-                    [
-                        _func(
-                            "GetRecordComponent",
-                            _varref("RecipeRecord"),
-                            _varref("GetComponentIndex"),
-                            _varref("StateElement"),
-                            _varref("Status"),
-                        ),
-                        _func(
-                            "PutArray",
-                            _varref("RecipeArray"),
-                            1,
-                            _varref("StateElement"),
-                            _varref("Status"),
-                        ),
-                    ]
-                )
-            ]
-        ),
+        moduledefs=[],
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    _eq(
+                        [
+                            _func(
+                                "GetRecordComponent",
+                                _varref("RecipeRecord"),
+                                _varref("GetComponentIndex"),
+                                _varref("StateElement"),
+                                _varref("Status"),
+                            ),
+                            _func(
+                                "PutArray",
+                                _varref("RecipeArray"),
+                                1,
+                                _varref("StateElement"),
+                                _varref("Status"),
+                            ),
+                        ]
+                    )
+                ]
+            )
+        ],
         parametermappings=[],
     )
 
@@ -285,8 +293,8 @@ def test_positional_record_component_wrapper_ignores_anytype_for_datatype_list()
             moduletype_defs=[picklist_type],
             localvariables=[],
             submodules=[],
-            modulecode=None,
-            moduledef=None,
+            modulecodes=[],
+            moduledefs=[],
         )
     )
     analyzer.run()

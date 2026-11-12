@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import cast
@@ -14,7 +15,12 @@ from sattline_parser.models.ast_model import BasePicture
 
 from sattlint.analyzers.catalog import get_default_cli_analyzers
 from sattlint.application import checks as checks_module
-from sattlint.application.checks import ChecksAnalyzerResult, ChecksRunResult, ChecksTargetResult
+from sattlint.application.checks import (
+    ChecksAnalyzerResult,
+    ChecksRunResult,
+    ChecksTargetResult,
+    TargetLoadFailure,
+)
 from sattlint.application.findings import AnalysisFinding
 from sattlint.cli._findings import (
     FindingFilters,
@@ -30,6 +36,11 @@ from sattlint.models.project_graph import ProjectGraph
 from sattlint.runs import RunAnalyzerRecord, RunRecord, RunSummary, RunTargetRecord
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _isolate_user_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("sattlint.cli._project.get_config_path", lambda: tmp_path / "config.toml")
 
 
 def _write_project(tmp_path: Path, *, target: str = "Demo", program_dir: str = "programs") -> Path:
@@ -109,7 +120,7 @@ def _fake_collect(result: ChecksRunResult) -> Callable[..., ChecksRunResult]:
     return _collect
 
 
-def _no_loaded_projects(_cfg: ConfigDict) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
+def _no_loaded_projects(_cfg: ConfigDict, **_kwargs: object) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
     return iter(())
 
 
@@ -544,6 +555,58 @@ def test_analyze_preflight_and_no_analyzers_errors(
     assert code == 2
     payload = json.loads(capsys.readouterr().err)
     assert payload["error"]["code"] == "no_analyzers"
+
+
+def test_analyze_target_load_failure_is_not_reported_as_success(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "programs").mkdir()
+    project = _write_project(tmp_path)
+    result = _checks_result(_finding(module_path=("Demo", "A")))
+    failed = ChecksRunResult(
+        output_lines=("loader diagnostic",),
+        targets=result.targets,
+        selected_analyzers=result.selected_analyzers,
+        failures=(TargetLoadFailure(target_name="Broken", message="root failed"),),
+    )
+    monkeypatch.setattr("sattlint.cli.commands.collect_checks_result", _fake_collect(failed))
+
+    code = run_cli(["analyze", "--project", str(project), "--format", "json"])
+
+    assert code == 2
+    payload = json.loads(capsys.readouterr().err)
+    assert payload["error"]["code"] == "target_load_failed"
+    assert payload["error"]["details"] == {"Broken": "root failed"}
+
+
+def test_analyze_json_failure_stderr_stays_machine_readable(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "programs").mkdir()
+    project = _write_project(tmp_path)
+    base = _checks_result(_finding(module_path=("Demo", "A")))
+    failed = ChecksRunResult(
+        output_lines=("loader diagnostic",),
+        targets=base.targets,
+        selected_analyzers=base.selected_analyzers,
+        failures=(TargetLoadFailure(target_name="Broken", message="root failed"),),
+    )
+
+    def collect(*_args: object, **_kwargs: object) -> ChecksRunResult:
+        logging.getLogger("SattLint").error("loader traceback detail")
+        return failed
+
+    monkeypatch.setattr("sattlint.cli.commands.collect_checks_result", collect)
+
+    code = run_cli(["analyze", "--project", str(project), "--format", "json"])
+
+    assert code == 2
+    payload = json.loads(capsys.readouterr().err)
+    assert payload["error"]["code"] == "target_load_failed"
 
 
 def test_analyze_unknown_target_returns_json_error(

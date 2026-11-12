@@ -34,11 +34,11 @@ def _nested_shadowing_report(
 ):
     child = SingleModule(
         header=_hdr("Child"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=child_variables,
         submodules=[],
-        modulecode=child_module_code,
+        modulecodes=[child_module_code] if child_module_code is not None else [],
         parametermappings=[],
     )
     bp = BasePicture(
@@ -47,8 +47,8 @@ def _nested_shadowing_report(
         moduletype_defs=[],
         localvariables=[parent_variable],
         submodules=[child],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
     return _shadowing_only_report(bp)
 
@@ -81,7 +81,7 @@ def test_shadowing_ignores_integer_variable_bound_to_status_channel() -> None:
             Variable(name="Text", datatype=Simple_DataType.STRING),
         ],
         child_module_code=ModuleCode(
-            equations=[
+            equationblocks=[
                 Equation(
                     name="Main",
                     position=(0.0, 0.0),
@@ -105,11 +105,11 @@ def test_shadowing_ignores_integer_variable_bound_to_status_channel() -> None:
 def test_shadowing_detected_for_nested_locals() -> None:
     child = SingleModule(
         header=_hdr("Child"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="value", datatype=Simple_DataType.INTEGER)],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
 
@@ -119,8 +119,8 @@ def test_shadowing_detected_for_nested_locals() -> None:
         moduletype_defs=[],
         localvariables=[Variable(name="Value", datatype=Simple_DataType.INTEGER)],
         submodules=[child],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     report = _shadowing_only_report(bp)
@@ -134,8 +134,8 @@ def test_shadowing_detected_for_moduletype_instance_locals() -> None:
         moduleparameters=[],
         localvariables=[Variable(name="Setting", datatype=Simple_DataType.INTEGER)],
         submodules=[],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
     )
 
@@ -151,8 +151,8 @@ def test_shadowing_detected_for_moduletype_instance_locals() -> None:
         moduletype_defs=[mt],
         localvariables=[Variable(name="setting", datatype=Simple_DataType.INTEGER)],
         submodules=[instance],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     report = _shadowing_only_report(bp)
@@ -166,8 +166,8 @@ def test_shadowing_ignores_external_moduletype_instance_locals_for_program_targe
         moduleparameters=[],
         localvariables=[Variable(name="Setting", datatype=Simple_DataType.INTEGER)],
         submodules=[],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="TypeA.x",
         origin_lib="SomeLib",
@@ -185,8 +185,8 @@ def test_shadowing_ignores_external_moduletype_instance_locals_for_program_targe
         moduletype_defs=[mt],
         localvariables=[Variable(name="setting", datatype=Simple_DataType.INTEGER)],
         submodules=[instance],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="Root.x",
         origin_lib="ProgramLib",
     )
@@ -203,20 +203,20 @@ def test_shadowing_is_default_variable_analysis_kind() -> None:
 def test_shadowing_traverses_frames_and_nested_single_modules() -> None:
     grandchild = SingleModule(
         header=_hdr("Grandchild"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="VALUE", datatype=Simple_DataType.INTEGER)],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
     child = SingleModule(
         header=_hdr("Child"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="Other", datatype=Simple_DataType.INTEGER)],
         submodules=[grandchild],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
     frame = FrameModule(header=_hdr("Frame"), submodules=[child])
@@ -226,8 +226,8 @@ def test_shadowing_traverses_frames_and_nested_single_modules() -> None:
         moduletype_defs=[],
         localvariables=[Variable(name="Value", datatype=Simple_DataType.INTEGER)],
         submodules=[frame],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     report = _shadowing_only_report(bp)
@@ -241,8 +241,8 @@ def test_shadowing_ignores_moduletype_instances_when_root_origin_is_unknown() ->
         moduleparameters=[],
         localvariables=[Variable(name="Setting", datatype=Simple_DataType.INTEGER)],
         submodules=[],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="TypeA.x",
     )
@@ -257,8 +257,8 @@ def test_shadowing_ignores_moduletype_instances_when_root_origin_is_unknown() ->
         moduletype_defs=[mt],
         localvariables=[Variable(name="setting", datatype=Simple_DataType.INTEGER)],
         submodules=[instance],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     assert _shadowing_only_report(bp).issues == []
@@ -276,8 +276,8 @@ def test_shadowing_ignores_unresolvable_moduletype_instances() -> None:
         moduletype_defs=[],
         localvariables=[Variable(name="setting", datatype=Simple_DataType.INTEGER)],
         submodules=[instance],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     assert _shadowing_only_report(bp).issues == []
@@ -292,16 +292,16 @@ def test_shadowing_report_is_empty_without_collisions() -> None:
         submodules=[
             SingleModule(
                 header=_hdr("Child"),
-                moduledef=None,
+                moduledefs=[],
                 moduleparameters=[],
                 localvariables=[Variable(name="ChildValue", datatype=Simple_DataType.INTEGER)],
                 submodules=[],
-                modulecode=None,
+                modulecodes=[],
                 parametermappings=[],
             )
         ],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     assert _shadowing_only_report(bp).issues == []

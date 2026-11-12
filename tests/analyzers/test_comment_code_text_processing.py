@@ -4,12 +4,6 @@ from lark.exceptions import UnexpectedInput
 from sattlint.utils import text_processing
 
 
-def test_text_processing_is_at_keyword_honors_boundaries() -> None:
-    assert text_processing._is_at_keyword("ModuleCode", 0, "ModuleCode") is True
-    assert text_processing._is_at_keyword("ModuleCodes", 0, "ModuleCode") is False
-    assert text_processing._is_at_keyword("XModuleCode", 1, "ModuleCode") is False
-
-
 def test_text_processing_advance_position_handles_crlf_and_lf() -> None:
     assert text_processing._advance_position("\r", "\n", 1, 1) == (2, 1, 1)
     assert text_processing._advance_position("\r", None, 1, 1) == (2, 1, 0)

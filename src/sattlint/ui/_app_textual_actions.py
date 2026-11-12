@@ -792,7 +792,7 @@ def _interaction_locked(self: Any) -> bool:
 
 def _load_project_object(self: Any, project: Any) -> None:
     self._project = project
-    self._cfg = project.to_default_merged_config_dict()
+    self._cfg = project.to_default_merged_config_dict(cast(dict[str, object], self._app_only_cfg))
     self._config_path = project.path
     self._dirty = False
     self._startup_output = ""

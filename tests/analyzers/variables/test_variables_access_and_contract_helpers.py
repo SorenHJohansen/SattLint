@@ -5,17 +5,14 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
+from sattline_parser.ast import VarRef
 from sattline_parser.models.ast_model import (
     FloatLiteral,
-    FrameModule,
-    ModuleTypeInstance,
     SFCFork,
     Simple_DataType,
-    SingleModule,
     Variable,
 )
 
-from sattlint.analyzers import _dependency_usage_scope_support as dependency_scope_module
 from sattlint.analyzers import dataflow as dataflow_module
 from sattlint.analyzers.dataflow import DataflowAnalyzer
 from sattlint.analyzers.shared import _dedupe as dedupe_module
@@ -142,10 +139,9 @@ def test_variables_access_wrapper_helpers_delegate_and_parse_fields() -> None:
     helper.root_env["direct"] = variable
     assert variables_access_impl._lookup_global_variable(helper, "direct") is variable
     assert variables_access_impl._lookup_global_variable(helper, "fallback") is not None
-    assert variables_access_impl._extract_field_path(helper, {}) == (None, None)
-    assert variables_access_impl._extract_field_path(helper, {"var_name": 1}) == (None, None)
-    assert variables_access_impl._extract_field_path(helper, {"var_name": "Demo"}) == ("demo", None)
-    assert variables_access_impl._extract_field_path(helper, {"var_name": "Demo.Field"}) == ("demo", "Field")
+    assert variables_access_impl._extract_field_path(helper, None) == (None, None)
+    assert variables_access_impl._extract_field_path(helper, VarRef(name="Demo")) == ("demo", None)
+    assert variables_access_impl._extract_field_path(helper, VarRef(name="Demo.Field")) == ("demo", "Field")
 
 
 def test_variables_access_effect_and_site_helpers_cover_remaining_branches() -> None:
@@ -789,182 +785,6 @@ def test_dataflow_facade_and_scalar_helpers_cover_remaining_branches(monkeypatch
     assert helper_probe._sequence_node_label(object()) == "object"
 
 
-def test_dependency_scope_support_context_and_mapping_helpers_cover_branches() -> None:
-    class Probe(dependency_scope_module.DependencyUsageScopeSupportMixin):
-        pass
-
-    root_typedef = _ns(name="RootType", origin_file="Root.s", origin_lib=None)
-    dep_typedef = _ns(name="DepType", origin_file="Dep.s", origin_lib=None)
-    probe: Any = Probe.__new__(Probe)
-    probe.bp = _ns(moduletype_defs=[root_typedef, dep_typedef], origin_file="Root.s", origin_lib=None)
-    probe._analyzed_target_is_library = False
-    probe._unavailable_libraries = set()
-    probe._moduleparameter_keys_by_context = cast(dict[int, set[str]], {})
-
-    def _is_from_root_origin(origin_file: object, _origin_lib: object | None = None) -> bool:
-        return origin_file == "Root.s"
-
-    probe._is_from_root_origin = _is_from_root_origin
-
-    assert probe._iter_root_typedefs() == [root_typedef]
-
-    parent_context = _ns(marker="parent")
-    param = Variable(name="Param", datatype=Simple_DataType.INTEGER)
-    local = Variable(name="Local", datatype=Simple_DataType.INTEGER)
-    built: Any = probe._build_scope_context(
-        [param, local],
-        moduleparameters=[param],
-        param_mappings={"param": (param, "", ["Root"], ["Root"])},
-        module_path=["Root", "Child"],
-        current_library="Lib",
-        parent_context=parent_context,
-    )
-    assert built.env == {"param": param, "local": local}
-    assert built.module_path == ["Root", "Child"]
-    assert built.display_module_path == ["Root", "Child"]
-    assert built.current_library == "Lib"
-    assert built.parent_context is parent_context
-    assert probe._moduleparameter_keys_by_context[id(built)] == {"param"}
-
-    source_var = Variable(name="Source", datatype=Simple_DataType.INTEGER)
-
-    def _resolve_variable(full_source: object) -> tuple[Variable | None, str | None, list[str], list[str]]:
-        if str(full_source).startswith("Source"):
-            return (source_var, "Field", ["Decl"], ["Display"])
-        return (None, None, [], [])
-
-    resolved: Any = probe._build_parameter_mappings(
-        [
-            _ns(is_source_global=True, target={"var_name": "Skip"}, source={"var_name": "Source"}),
-            _ns(is_source_global=False, target={}, source={"var_name": "Source"}),
-            _ns(is_source_global=False, target={"var_name": "TargetA"}, source=object()),
-            _ns(is_source_global=False, target={"var_name": "TargetB"}, source={"var_name": "Missing"}),
-            _ns(is_source_global=False, target={"var_name": "TargetC"}, source={"var_name": "Source.Field"}),
-            _ns(is_source_global=False, target={"var_name": "TargetD"}, source="Source.Other"),
-        ],
-        _ns(resolve_variable=_resolve_variable),
-    )
-    assert resolved == {
-        "targetc": (source_var, "Field", ["Decl"], ["Display"]),
-        "targetd": (source_var, "Field", ["Decl"], ["Display"]),
-    }
-
-
-def test_dependency_scope_support_walk_helpers_cover_branches(monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: PLR0915
-    class Probe(dependency_scope_module.DependencyUsageScopeSupportMixin):
-        pass
-
-    module_code_calls: list[tuple[object | None, list[str]]] = []
-    typedef_calls: list[tuple[object, list[str], Any]] = []
-    instance_calls: list[tuple[object, list[str]]] = []
-
-    probe: Any = Probe.__new__(Probe)
-    probe.bp = _ns(origin_file="Root.s", origin_lib=None)
-    probe._analyzed_target_is_library = False
-    probe._unavailable_libraries = set()
-    probe._moduleparameter_keys_by_context = cast(dict[int, set[str]], {})
-
-    def _walk_module_code(modulecode: object | None, _context: object, module_path: list[str]) -> None:
-        module_code_calls.append((modulecode, module_path))
-
-    def _walk_typedef(moduletype: object, context: object, module_path: list[str]) -> None:
-        typedef_calls.append((moduletype, module_path, context))
-
-    def _is_from_root_origin(origin_file: object, _origin_lib: object | None = None) -> bool:
-        return origin_file == "Root.s"
-
-    probe._walk_module_code = _walk_module_code
-    probe._walk_typedef = _walk_typedef
-    probe._is_from_root_origin = _is_from_root_origin
-
-    single = SingleModule.__new__(SingleModule)
-    single.header = _ns(name="Single")
-    single.moduleparameters = [Variable(name="Param", datatype=Simple_DataType.INTEGER)]
-    single.localvariables = [Variable(name="Local", datatype=Simple_DataType.INTEGER)]
-    single.parametermappings = [_ns(is_source_global=False, target={"var_name": "Param"}, source="Source")]
-    single.modulecode = cast(Any, "single-code")
-    single.submodules = []
-
-    frame = FrameModule.__new__(FrameModule)
-    frame.header = _ns(name="Frame")
-    frame.modulecode = cast(Any, "frame-code")
-    frame.submodules = []
-
-    inst = ModuleTypeInstance.__new__(ModuleTypeInstance)
-    inst.header = _ns(name="Inst")
-    inst.moduletype_name = "ChildType"
-    inst.parametermappings = []
-
-    def _resolve_parent_variable(_full_source: object) -> tuple[Variable, None, list[str], list[str]]:
-        return (
-            Variable(name="Source", datatype=Simple_DataType.INTEGER),
-            None,
-            ["Decl"],
-            ["Display"],
-        )
-
-    parent_context = _ns(
-        env={"source": Variable(name="Source", datatype=Simple_DataType.INTEGER)},
-        param_mappings={},
-        current_library="Lib",
-        resolve_variable=_resolve_parent_variable,
-    )
-
-    original_walk_instance: Any | None = getattr(probe, "_walk_moduletype_instance", None)
-
-    def _walk_instance(instance: object, _parent_context: object, child_path: list[str]) -> None:
-        instance_calls.append((instance, child_path))
-
-    def _raise_missing_typedef(*_args: object, **_kwargs: object) -> object:
-        raise ValueError("missing")
-
-    dep_resolved_typedef = _ns(origin_file="Dep.s", origin_lib="DepLib", moduleparameters=[], localvariables=[])
-
-    def _resolve_dep_typedef(*_args: object, **_kwargs: object) -> Any:
-        return dep_resolved_typedef
-
-    def _resolve_root_typedef(*_args: object, **_kwargs: object) -> Any:
-        return resolved_typedef
-
-    probe._walk_moduletype_instance = _walk_instance
-    probe._walk_modules([single, frame, inst], parent_context, ["Root"])
-    assert module_code_calls == [
-        ("single-code", ["Root", "Single"]),
-        ("frame-code", ["Root", "Frame"]),
-    ]
-    assert instance_calls == [(inst, ["Root", "Inst"])]
-    if original_walk_instance is not None:
-        probe._walk_moduletype_instance = original_walk_instance
-
-    resolved_typedef = _ns(
-        origin_file="Root.s",
-        origin_lib="ResolvedLib",
-        moduleparameters=[Variable(name="Param", datatype=Simple_DataType.INTEGER)],
-        localvariables=[Variable(name="Local", datatype=Simple_DataType.INTEGER)],
-    )
-    monkeypatch.setattr(
-        dependency_scope_module,
-        "resolve_moduletype_def_strict",
-        _raise_missing_typedef,
-    )
-    probe._walk_moduletype_instance(inst, parent_context, ["Root", "Inst"])
-
-    monkeypatch.setattr(
-        dependency_scope_module,
-        "resolve_moduletype_def_strict",
-        _resolve_dep_typedef,
-    )
-    probe._walk_moduletype_instance(inst, parent_context, ["Root", "Inst"])
-
-    monkeypatch.setattr(dependency_scope_module, "resolve_moduletype_def_strict", _resolve_root_typedef)
-    probe._walk_moduletype_instance(inst, parent_context, ["Root", "Inst"])
-    assert len(typedef_calls) == 1
-    moduletype, module_path, typedef_context = typedef_calls[0]
-    assert moduletype is resolved_typedef
-    assert module_path == ["Root", "Inst"]
-    assert typedef_context.current_library == "ResolvedLib"
-
-
 def test_variables_contracts_cover_guard_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     parameter = Variable(name="Required", datatype=Simple_DataType.INTEGER)
     mapping: Any = _ns(target={"var_name": "Required"})
@@ -1071,129 +891,6 @@ def test_variables_contracts_cover_guard_branches(monkeypatch: pytest.MonkeyPatc
     calls.clear()
     variables_contracts_impl._check_param_mappings_for_type_instance(resolved_inst, inst, {}, cast(Any, None), ["Root"])
     assert calls == ["checked"]
-
-
-def test_variables_contracts_cover_remaining_collection_and_index_branches(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    nested_param = Variable(name="NestedParam", datatype=Simple_DataType.INTEGER)
-    nested_local = Variable(name="NestedLocal", datatype=Simple_DataType.INTEGER)
-    root_local = Variable(name="RootLocal", datatype=Simple_DataType.INTEGER)
-    typedef_param = Variable(name="TypeParam", datatype=Simple_DataType.INTEGER)
-    typedef_local = Variable(name="TypeLocal", datatype=Simple_DataType.INTEGER)
-
-    nested_single = SingleModule.__new__(SingleModule)
-    nested_single.header = _ns(name="Nested")
-    nested_single.moduleparameters = [nested_param]
-    nested_single.localvariables = [nested_local]
-    nested_single.submodules = []
-
-    frame = FrameModule.__new__(FrameModule)
-    frame.header = _ns(name="Frame")
-    frame.submodules = [nested_single]
-
-    index_helper: Any = _ns(
-        any_var_index={},
-        bp=_ns(
-            localvariables=[root_local],
-            submodules=[frame],
-            moduletype_defs=[_ns(moduleparameters=[typedef_param], localvariables=[typedef_local])],
-        ),
-    )
-    variables_contracts_impl._index_all_variables(index_helper)
-    assert index_helper.any_var_index == {
-        "rootlocal": [root_local],
-        "nestedparam": [nested_param],
-        "nestedlocal": [nested_local],
-        "typeparam": [typedef_param],
-        "typelocal": [typedef_local],
-    }
-
-    inst: Any = _ns(moduletype_name="Worker", parametermappings=[])
-    disabled_type_helper: Any = SimpleNamespace(
-        _selected_issue_kinds={IssueKind.IMPLICIT_LATCH},
-        bp=_ns(),
-        unavailable_libraries=set(),
-    )
-
-    def _raise_should_not_resolve(*_args: object, **_kwargs: object) -> object:
-        raise AssertionError("should not resolve")
-
-    monkeypatch.setattr(
-        variables_contracts_module,
-        "resolve_moduletype_def_strict",
-        _raise_should_not_resolve,
-    )
-    variables_contracts_impl._check_param_mappings_for_type_instance(
-        disabled_type_helper,
-        inst,
-        {},
-        cast(Any, None),
-        ["Root"],
-    )
-
-    mapping_calls: list[tuple[str, object]] = []
-    src_var = Variable(name="Source", datatype=Simple_DataType.INTEGER)
-    tgt_var = Variable(name="Target", datatype=Simple_DataType.INTEGER)
-    pm_global: Any = _ns(is_source_global=True, source={"var_name": "Source"})
-    pm_local: Any = _ns(is_source_global=False, source={"var_name": "RootSource"})
-
-    def _lookup_env_var(_source_ref: object, _env: object) -> None:
-        return None
-
-    def _check_string_mapping(*_args: object, **_kwargs: object) -> list[SimpleNamespace]:
-        return [
-            SimpleNamespace(
-                label="string",
-                source_variable=None,
-                source_decl_module_path=None,
-                source_role=None,
-            )
-        ]
-
-    def _check_min_max_mapping(*_args: object, **_kwargs: object) -> list[SimpleNamespace]:
-        return [SimpleNamespace(label="range")]
-
-    def _append_mapping_issue(pm: Any, issue: Any) -> None:
-        mapping_calls.append((pm.source["var_name"], issue.label))
-
-    mapping_helper: Any = SimpleNamespace(
-        _selected_issue_kinds={IssueKind.STRING_MAPPING_MISMATCH},
-        lookup_env_var_from_varname_dict=_lookup_env_var,
-        root_env={"rootsource": src_var},
-        contract_validator=_ns(),
-        string_validator=_ns(check_string_mapping=_check_string_mapping),
-        min_max_validator=_ns(check_min_max_mapping=_check_min_max_mapping),
-        append_param_mapping_issue=_append_mapping_issue,
-    )
-    variables_contracts_impl._check_param_mapping(
-        cast(Any, SimpleNamespace(_selected_issue_kinds={IssueKind.UNUSED})),
-        pm_local,
-        tgt_var,
-        {},
-        cast(Any, None),
-        ["Root"],
-    )
-    variables_contracts_impl._check_param_mapping(
-        mapping_helper,
-        pm_global,
-        tgt_var,
-        {},
-        cast(Any, None),
-        ["Root"],
-    )
-    variables_contracts_impl._check_param_mapping(
-        mapping_helper,
-        pm_local,
-        tgt_var,
-        {},
-        cast(Any, None),
-        ["Root"],
-    )
-    assert mapping_calls == [
-        ("RootSource", "string"),
-        ("RootSource", "range"),
-    ]
 
 
 def test_variables_contracts_cover_remaining_loop_and_guard_branches() -> None:

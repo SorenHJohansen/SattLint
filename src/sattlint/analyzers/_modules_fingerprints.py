@@ -5,7 +5,7 @@ from dataclasses import dataclass, field, fields, is_dataclass
 from enum import Enum
 from typing import Any, Literal, cast
 
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     Equation,
     FrameModule,
     ModuleTypeInstance,
@@ -131,28 +131,6 @@ def normalize_ast_value(value: Any) -> NormalizedValue:
             items.append((field_info.name, normalized))
         return (type(value).__name__, tuple(items))
 
-    if hasattr(value, "data") and hasattr(value, "children"):
-        raw_children = cast(object, getattr(value, "children", []))
-        children: tuple[NormalizedValue, ...] = ()
-        if isinstance(raw_children, list | tuple):
-            children = tuple(
-                normalize_ast_value(child) for child in cast(list[object] | tuple[object, ...], raw_children)
-            )
-        return (
-            type(value).__name__,
-            cast(object | None, getattr(value, "data", None)),
-            children,
-        )
-
-    if hasattr(value, "__dict__"):
-        items: list[NamedNormalizedValue] = []
-        attrs = cast(dict[str, object], vars(value))
-        for key, item in sorted(attrs.items()):
-            if key.startswith("_") or key in _IGNORED_AST_FIELDS:
-                continue
-            items.append((key, normalize_ast_value(item)))
-        return (type(value).__name__, tuple(items))
-
     return repr(value)
 
 
@@ -275,7 +253,7 @@ class ModuleFingerprint:
 def create_fingerprint(module: SingleModule, path: list[str]) -> ModuleFingerprint:
     """Create a fingerprint for a SingleModule."""
     sequences = module.modulecode.sequences if module.modulecode and module.modulecode.sequences else []
-    equations = module.modulecode.equations if module.modulecode and module.modulecode.equations else []
+    equations = module.modulecode.equationblocks if module.modulecode and module.modulecode.equationblocks else []
 
     return ModuleFingerprint(
         name=module.header.name,

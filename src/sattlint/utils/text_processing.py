@@ -6,9 +6,10 @@ from functools import cache
 from typing import TYPE_CHECKING, Any
 
 from lark.exceptions import UnexpectedInput
-from sattline_parser.api import build_lark_parser
 
-from ._comment_scanning import scan_comments_with_code, scan_disallowed_comments
+from sattlint.parser_api import build_lark_parser
+
+from ._comment_scanning import scan_comments_with_code
 
 if TYPE_CHECKING:
     from lark import Lark
@@ -26,13 +27,6 @@ class CommentCodeHit:
     equation_name: str | None = None
     sequence_name: str | None = None
     step_name: str | None = None
-
-
-@dataclass(frozen=True)
-class CommentPlacementViolation:
-    start_line: int
-    start_col: int
-    text: str
 
 
 # Regex patterns for fast filtering (syntax hints, not definitive)
@@ -266,26 +260,6 @@ def _advance_position(
     return line, col + 1, 0
 
 
-def _is_at_keyword(text: str, pos: int, keyword: str) -> bool:
-    """Check if text at position starts with keyword (case-insensitive, word boundary)."""
-    if pos + len(keyword) > len(text):
-        return False
-    if pos > 0:
-        before_char = text[pos - 1]
-        if before_char.isalnum() or before_char == "_":
-            return False
-    substr = text[pos : pos + len(keyword)]
-    if substr.casefold() != keyword.casefold():
-        return False
-    # Check word boundary after
-    after_pos = pos + len(keyword)
-    if after_pos < len(text):
-        after_char = text[after_pos]
-        if after_char.isalnum() or after_char == "_":
-            return False
-    return True
-
-
 def _is_identifier_start(ch: str) -> bool:
     return ch.isalpha() or ch == "_"
 
@@ -299,29 +273,6 @@ def _consume_identifier(text: str, pos: int) -> tuple[str, int]:
     while end < len(text) and _is_identifier_char(text[end]):
         end += 1
     return text[pos:end], end
-
-
-def _is_valid_enddef_label_comment(comment_text: str) -> bool:
-    stripped = comment_text.strip()
-    return bool(stripped) and "\n" not in stripped and "\r" not in stripped
-
-
-def find_disallowed_comments(text: str) -> list[CommentPlacementViolation]:
-    """Find comments that appear outside equation and sequence blocks.
-
-    Inside ModuleCode, freestanding comments before the first EQUATIONBLOCK or
-    SEQUENCE/OPENSEQUENCE block are rejected. Conventional ENDDEF label
-    comments such as ``ENDDEF (*BasePicture*);`` remain allowed.
-
-    Comments outside ModuleCode are ignored.
-    """
-    return scan_disallowed_comments(
-        text,
-        advance_position=_advance_position,
-        is_at_keyword=_is_at_keyword,
-        is_valid_enddef_label_comment=_is_valid_enddef_label_comment,
-        violation_factory=CommentPlacementViolation,
-    )
 
 
 def find_comments_with_code(text: str) -> list[CommentCodeHit]:

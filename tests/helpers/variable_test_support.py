@@ -42,24 +42,26 @@ def status_bridge_typedef() -> ModuleTypeDef:
             Variable(name="Source", datatype=Simple_DataType.INTEGER),
             Variable(name="Destination", datatype=Simple_DataType.INTEGER),
         ],
-        moduledef=None,
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="BridgeEq",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        FuncCallStmt(
-                            call=FuncCall(
-                                name="CopyVariable",
-                                args=(varref("Source"), varref("Destination"), varref("OperationStatus")),
+        moduledefs=[],
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="BridgeEq",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            FuncCallStmt(
+                                call=FuncCall(
+                                    name="CopyVariable",
+                                    args=(varref("Source"), varref("Destination"), varref("OperationStatus")),
+                                )
                             )
-                        )
-                    ],
-                )
-            ]
-        ),
+                        ],
+                    )
+                ]
+            )
+        ],
     )
 
 

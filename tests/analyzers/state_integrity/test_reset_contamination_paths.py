@@ -41,7 +41,7 @@ def test_reset_contamination_detected_for_missing_reset_write():
 
     mod = SingleModule(
         header=_hdr("Unit"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[
             Variable(name="Counter", datatype=Simple_DataType.INTEGER),
@@ -50,7 +50,7 @@ def test_reset_contamination_detected_for_missing_reset_write():
             Variable(name="OprSeqResetOld", datatype=Simple_DataType.BOOLEAN),
         ],
         submodules=[],
-        modulecode=ModuleCode(sequences=[seq], equations=[eq]),
+        modulecodes=[ModuleCode(sequences=[seq], equationblocks=[eq])],
         parametermappings=[],
     )
 
@@ -60,8 +60,8 @@ def test_reset_contamination_detected_for_missing_reset_write():
         moduletype_defs=[],
         localvariables=[],
         submodules=[mod],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -107,7 +107,7 @@ def test_reset_contamination_cleared_when_reset_writes_present():
 
     mod = SingleModule(
         header=_hdr("Unit"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[
             Variable(name="Counter", datatype=Simple_DataType.INTEGER),
@@ -115,7 +115,7 @@ def test_reset_contamination_cleared_when_reset_writes_present():
             Variable(name="OprSeqResetOld", datatype=Simple_DataType.BOOLEAN),
         ],
         submodules=[],
-        modulecode=ModuleCode(sequences=[seq], equations=[eq]),
+        modulecodes=[ModuleCode(sequences=[seq], equationblocks=[eq])],
         parametermappings=[],
     )
 
@@ -125,8 +125,8 @@ def test_reset_contamination_cleared_when_reset_writes_present():
         moduletype_defs=[],
         localvariables=[],
         submodules=[mod],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -177,7 +177,7 @@ def test_reset_contamination_helpers_collect_refs_and_reset_old_vars_from_nested
                 ],
             )
         ],
-        equations=[
+        equationblocks=[
             Equation(
                 name="Main",
                 position=(0.0, 0.0),
@@ -206,17 +206,12 @@ def test_reset_contamination_helpers_classify_conditions_and_infer_alternatives(
     reset_old_vars_cf = {"opseqresetold"}
 
     run_flags = reset_contamination_helpers._classify_reset_condition(
-        (const.GRAMMAR_VALUE_NOT, _varref("OpSeq.Reset")),
+        NotOp(operand=_varref("OpSeq.Reset")),
         reset_ref_cf,
         reset_old_vars_cf,
     )
     reset_flags = reset_contamination_helpers._classify_reset_condition(
-        (const.GRAMMAR_VALUE_NOT, _varref("OpSeqResetOld")),
-        reset_ref_cf,
-        reset_old_vars_cf,
-    )
-    mixed_flags = reset_contamination_helpers._classify_reset_condition(
-        [_varref("OpSeq.Reset"), (const.GRAMMAR_VALUE_NOT, _varref("OpSeq.Reset"))],
+        NotOp(operand=_varref("OpSeqResetOld")),
         reset_ref_cf,
         reset_old_vars_cf,
     )
@@ -233,8 +228,6 @@ def test_reset_contamination_helpers_classify_conditions_and_infer_alternatives(
         "exact_run": False,
         "exact_reset": True,
     }
-    assert mixed_flags["run"] is True
-    assert mixed_flags["reset"] is True
 
     assert [
         state.reset_state

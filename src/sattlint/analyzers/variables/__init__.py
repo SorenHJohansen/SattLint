@@ -5,12 +5,12 @@ from __future__ import annotations
 import logging
 import time
 from collections import defaultdict
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Iterable, Mapping
 from collections.abc import Set as AbstractSet
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     BasePicture,
     FrameModule,
     ModuleTypeDef,
@@ -20,6 +20,7 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
+from ...models.project_graph import EMPTY_GRAPHICS_ATTACHMENTS, GraphicsAttachments
 from ...reporting.variables_report import (
     DEFAULT_VARIABLE_ANALYSIS_KINDS,
     IssueKind,
@@ -94,9 +95,11 @@ def _build_variable_analysis_artifacts(base_picture: BasePicture) -> VariableAna
         if origin_lib:
             dependency_library_display_names.setdefault(origin_lib.casefold(), origin_lib)
 
-    root_env = {casefold_key(variable.name): variable for variable in (base_picture.localvariables or [])}
+    root_parameters = base_picture.moduleparameters or []
+    root_locals = base_picture.localvariables or []
+    root_env = {casefold_key(variable.name): variable for variable in (*root_parameters, *root_locals)}
     any_var_index: dict[str, list[Variable]] = {}
-    for variable in base_picture.localvariables or []:
+    for variable in (*root_parameters, *root_locals):
         any_var_index.setdefault(casefold_key(variable.name), []).append(variable)
     for module in base_picture.submodules or []:
         _collect_module_vars_for_artifacts(module, any_var_index)
@@ -136,6 +139,19 @@ def _publish_shared_artifacts(
     )
 
 
+def _analysis_graphics_attachments(
+    analysis_context: AnalysisContext | None,
+    base_picture: BasePicture,
+) -> GraphicsAttachments | None:
+    if analysis_context is None:
+        return None
+    attachments_for = getattr(analysis_context.graph, "graphics_attachments_for", None)
+    if not callable(attachments_for):
+        return None
+    attachments = attachments_for(base_picture)
+    return attachments if isinstance(attachments, GraphicsAttachments) else None
+
+
 def analyze_variables(
     base_picture: BasePicture,
     analysis_context: AnalysisContext | None = None,
@@ -170,6 +186,10 @@ def analyze_variables(
         config=config,
         status_update_fn=status_update_fn,
         shared_artifacts=(analysis_context.shared_artifacts if analysis_context is not None else None),
+        graphics_attachments=_analysis_graphics_attachments(analysis_context, base_picture),
+        library_dependencies=(
+            getattr(analysis_context.graph, "library_dependencies", None) if analysis_context is not None else None
+        ),
     )
     init_duration_ms = round((time.perf_counter() - init_started_at) * 1000, 3)
     issues = analyzer.run()
@@ -335,8 +355,12 @@ class VariablesAnalyzer(
         config: dict[str, Any] | None = None,
         status_update_fn: Callable[[str], None] | None = None,
         shared_artifacts: AnalysisSharedArtifacts | None = None,
+        graphics_attachments: GraphicsAttachments | None = None,
+        library_dependencies: Mapping[str, Iterable[str]] | None = None,
     ):
         self.bp = base_picture
+        self.graphics_attachments = graphics_attachments or EMPTY_GRAPHICS_ATTACHMENTS
+        self.library_dependencies = library_dependencies
         self.debug = debug
         self.fail_loudly = fail_loudly
         self._unavailable_libraries = unavailable_libraries or set()

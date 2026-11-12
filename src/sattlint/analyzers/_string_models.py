@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     BasePicture,
     FrameModule,
     ModuleTypeDef,
@@ -137,4 +137,4 @@ class _ModuleContext:
     scope: ScopeContext
     node: BasePicture | SingleModule | FrameModule | ModuleTypeDef | ModuleTypeInstance
     literal_bindings: tuple[_LiteralBinding, ...]
-    children: tuple[_ModuleContext, ...] = ()
+    nested: tuple[_ModuleContext, ...] = ()

@@ -4,27 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from sattline_parser.builtins import get_function_signature
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.expressions import VarRef
-
+from sattlint.parser_api import FuncCall, VarRef, get_function_signature, walk
 from sattlint.resolution.scope import ScopeContext
-
-from ..shared.ast_node_helpers import (
-    object_list as _object_list,
-)
-from ..shared.ast_node_helpers import (
-    object_sequence as _object_sequence,
-)
-from ..shared.ast_node_helpers import (
-    object_tuple as _object_tuple,
-)
-from ..shared.ast_node_helpers import (
-    sequence_as_list as _sequence_as_list,
-)
-from ..shared.ast_node_helpers import (
-    string_key_dict as _string_key_dict,
-)
 
 EffectKey = tuple[str, ...]
 ResolveEffectKey = Callable[[str, ScopeContext], EffectKey | None]
@@ -33,11 +14,7 @@ ResolveEffectKey = Callable[[str, ScopeContext], EffectKey | None]
 def _var_name_from_mapping(node: object) -> str | None:
     if isinstance(node, VarRef):
         return node.name or None
-    mapping = _string_key_dict(node)
-    if mapping is None:
-        return None
-    raw_name = mapping.get(const.KEY_VAR_NAME)
-    return raw_name if isinstance(raw_name, str) and raw_name else None
+    return None
 
 
 def collect_function_input_effect_keys(
@@ -117,77 +94,23 @@ def collect_expression_effect_sources(
     if obj is None:
         return sources
 
-    if isinstance(obj, VarRef):
-        full_ref = obj.name
-        if full_ref:
-            key = resolve_effect_key(full_ref, context)
-            if key is not None:
-                sources.add(key)
-        return sources
+    if isinstance(obj, FuncCall):
+        return collect_function_input_effect_keys(
+            obj.name,
+            list(obj.args),
+            context,
+            resolve_effect_key=resolve_effect_key,
+        )
 
-    node_dict = _string_key_dict(obj)
-    if node_dict is not None:
-        if const.KEY_VAR_NAME in node_dict:
-            full_ref = node_dict[const.KEY_VAR_NAME]
-            if isinstance(full_ref, str):
-                key = resolve_effect_key(full_ref, context)
-                if key is not None:
-                    sources.add(key)
-            return sources
-        for value in node_dict.values():
-            sources.update(
-                collect_expression_effect_sources(
-                    value,
-                    context,
-                    resolve_effect_key=resolve_effect_key,
-                )
-            )
-        return sources
-
-    list_node = _object_list(obj)
-    if list_node is not None:
-        for item in list_node:
-            sources.update(
-                collect_expression_effect_sources(
-                    item,
-                    context,
-                    resolve_effect_key=resolve_effect_key,
-                )
-            )
-        return sources
-
-    children = _object_sequence(getattr(obj, "children", None))
-    if children is not None:
-        for child in children:
-            sources.update(
-                collect_expression_effect_sources(
-                    child,
-                    context,
-                    resolve_effect_key=resolve_effect_key,
-                )
-            )
-        return sources
-
-    tuple_node = _object_tuple(obj)
-    if tuple_node is not None:
-        if tuple_node and tuple_node[0] == const.KEY_FUNCTION_CALL:
-            fn_name = tuple_node[1] if len(tuple_node) > 1 and isinstance(tuple_node[1], str) else None
-            fn_args = _sequence_as_list(tuple_node[2] if len(tuple_node) > 2 else None)
-            return collect_function_input_effect_keys(
-                fn_name,
-                fn_args,
-                context,
-                resolve_effect_key=resolve_effect_key,
-            )
-        items = tuple_node[1:] if tuple_node and isinstance(tuple_node[0], str) else tuple_node
-        for item in items:
-            sources.update(
-                collect_expression_effect_sources(
-                    item,
-                    context,
-                    resolve_effect_key=resolve_effect_key,
-                )
-            )
-        return sources
+    for event in walk(obj):
+        node = event.node
+        if not isinstance(node, VarRef):
+            continue
+        full_ref = node.name
+        if not full_ref:
+            continue
+        key = resolve_effect_key(full_ref, context)
+        if key is not None:
+            sources.add(key)
 
     return sources

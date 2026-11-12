@@ -4,8 +4,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
-from sattline_parser.grammar import constants as grammar_const
-from sattline_parser.models.ast_model import Simple_DataType, Variable
+from sattlint.parser_api import Simple_DataType, Variable
+from sattlint.parser_api import constants as grammar_const
 
 if TYPE_CHECKING:
     from .variables_report import VariableIssue

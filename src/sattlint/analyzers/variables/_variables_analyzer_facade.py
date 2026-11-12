@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
-from sattline_parser.models.ast_model import ModuleTypeDef, ParameterMapping, Variable
+from sattlint.parser_api import ModuleTypeDef, ParameterMapping, Variable
 
 from ...models.usage import VariableUsage
 from ...reporting.variables_report import IssueKind, VariableIssue

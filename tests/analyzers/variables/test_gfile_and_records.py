@@ -1,10 +1,11 @@
 # pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportOptionalMemberAccess=false, reportUnusedImport=false
 from pathlib import Path
-from types import SimpleNamespace
 
 from sattline_parser.models.ast_model import GraphicsBinding
 
+from sattlint.graphics.validation import GraphicsCompositeRecord
 from tests.helpers.analyzers_variables_support import *
+from tests.helpers.graphics_attachments_support import graphics_attachments
 
 
 def test_sample_fixture_contains_common_variable_quality_issues():
@@ -77,9 +78,9 @@ def _build_record_field_asymmetry_basepicture(*, include_whole_read: bool) -> Ba
     sink = Variable(name="Sink", datatype=Simple_DataType.INTEGER)
 
     whole_record_assignment = (
-        (const.KEY_ASSIGN, _varref("WholePeer"), _varref("Payload"))
+        Assignment(target=_varref("WholePeer"), value=_varref("Payload"))
         if include_whole_read
-        else (const.KEY_ASSIGN, _varref("Payload"), _varref("WholePeer"))
+        else Assignment(target=_varref("Payload"), value=_varref("WholePeer"))
     )
 
     return BasePicture(
@@ -88,30 +89,32 @@ def _build_record_field_asymmetry_basepicture(*, include_whole_read: bool) -> Ba
         moduletype_defs=[],
         localvariables=[payload, whole_peer, field_source, sink],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="WholeRecordAccess",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[whole_record_assignment],
-                ),
-                Equation(
-                    name="ReadUsedField",
-                    position=(1.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Sink"), _varref("Payload.Used"))],
-                ),
-                Equation(
-                    name="WriteMiswiredField",
-                    position=(2.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Payload.Miswired"), _varref("FieldSource"))],
-                ),
-            ],
-            sequences=[],
-        ),
-        moduledef=None,
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="WholeRecordAccess",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[whole_record_assignment],
+                    ),
+                    Equation(
+                        name="ReadUsedField",
+                        position=(1.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[Assignment(target=_varref("Sink"), value=_varref("Payload.Used"))],
+                    ),
+                    Equation(
+                        name="WriteMiswiredField",
+                        position=(2.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[Assignment(target=_varref("Payload.Miswired"), value=_varref("FieldSource"))],
+                    ),
+                ],
+                sequences=[],
+            )
+        ],
+        moduledefs=[],
     )
 
 
@@ -174,7 +177,7 @@ def test_gfile_var_and_expr_reads_count_as_used_for_unused_analysis():
     _, root_bp, graph = load_project_graph(cfg, fixture.stem, strict=False)
     assert root_bp is not None
     bp = merge_project_basepicture(graph.ast_by_name[fixture.stem], graph)
-    analyzer = VariablesAnalyzer(bp)
+    analyzer = VariablesAnalyzer(bp, graphics_attachments=graph.graphics_attachments_for(bp))
     issues = analyzer.run()
 
     usage_by_name = {variable.name: analyzer._get_usage(variable) for variable in bp.localvariables}
@@ -233,7 +236,7 @@ ENDDEF (*BasePicture*);
     _, root_bp, graph = load_project_graph(cfg, fixture.stem, strict=False)
     assert root_bp is not None
     bp = merge_project_basepicture(graph.ast_by_name[fixture.stem], graph)
-    analyzer = VariablesAnalyzer(bp)
+    analyzer = VariablesAnalyzer(bp, graphics_attachments=graph.graphics_attachments_for(bp))
     issues = analyzer.run()
 
     assert not any(
@@ -255,14 +258,14 @@ ENDDEF (*BasePicture*);
 def test_nested_composite_gfile_bindings_use_declaring_module_scope():
     module = SingleModule(
         header=_hdr("Panel"),
-        moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
+        moduledefs=[ModuleDef(graph_objects=[GraphObject("CompositeObject")])],
         moduleparameters=[],
         localvariables=[
             Variable(name="NestedOnly", datatype=Simple_DataType.INTEGER),
             Variable(name="Shared", datatype=Simple_DataType.INTEGER),
         ],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
     bp = BasePicture(
@@ -274,26 +277,30 @@ def test_nested_composite_gfile_bindings_use_declaring_module_scope():
             Variable(name="Shared", datatype=Simple_DataType.INTEGER),
         ],
         submodules=[module],
-        modulecode=None,
-        moduledef=ModuleDef(),
+        modulecodes=[],
+        moduledefs=[ModuleDef()],
     )
-    bp.graphics_bindings = [
-        GraphicsBinding(
-            kind="var",
-            raw_text="NestedOnly",
-            value=_varref("NestedOnly"),
-            span=SourceSpan(start=0, end=0, line=9, column=1),
-        ),
-        GraphicsBinding(
-            kind="var",
-            raw_text="Shared",
-            value=_varref("Shared"),
-            span=SourceSpan(start=0, end=0, line=10, column=1),
-        ),
-    ]
-    bp.graphics_composite_records = [SimpleNamespace(record_index=1, record_start_line=8, record_end_line=12)]
+    bp_attachments = graphics_attachments(
+        bindings=[
+            GraphicsBinding(
+                kind="var",
+                raw_text="NestedOnly",
+                value=_varref("NestedOnly"),
+                span=SourceSpan(start=0, end=0, line=9, column=1),
+            ),
+            GraphicsBinding(
+                kind="var",
+                raw_text="Shared",
+                value=_varref("Shared"),
+                span=SourceSpan(start=0, end=0, line=10, column=1),
+            ),
+        ],
+        composite_records=[
+            GraphicsCompositeRecord(record_index=1, record_start_line=8, record_end_line=12, family_code="")
+        ],
+    )
 
-    analyzer = VariablesAnalyzer(bp)
+    analyzer = VariablesAnalyzer(bp, graphics_attachments=bp_attachments)
     issues = analyzer.run()
 
     assert not any(
@@ -326,19 +333,21 @@ def test_unparsed_gfile_expr_still_counts_named_variables_as_reads():
             Variable(name="Beta", datatype=Simple_DataType.BOOLEAN),
         ],
         submodules=[],
-        modulecode=None,
-        moduledef=ModuleDef(),
+        modulecodes=[],
+        moduledefs=[ModuleDef()],
     )
-    bp.graphics_bindings = [
-        GraphicsBinding(
-            kind="expr",
-            raw_text="Alpha ??? Beta",
-            value="Alpha ??? Beta",
-            span=SourceSpan(start=0, end=0, line=1, column=1),
-        )
-    ]
+    bp_attachments = graphics_attachments(
+        bindings=[
+            GraphicsBinding(
+                kind="expr",
+                raw_text="Alpha ??? Beta",
+                value="Alpha ??? Beta",
+                span=SourceSpan(start=0, end=0, line=1, column=1),
+            )
+        ]
+    )
 
-    analyzer = VariablesAnalyzer(bp)
+    analyzer = VariablesAnalyzer(bp, graphics_attachments=bp_attachments)
     issues = analyzer.run()
 
     assert not any(
@@ -362,37 +371,37 @@ def test_search_rec_component_found_record_output_is_not_flagged_never_read():
             Variable(name="Mirror", datatype=Simple_DataType.INTEGER),
         ],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Search",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("SearchSucceeded"),
-                            (
-                                const.KEY_FUNCTION_CALL,
-                                "SearchRecComponent",
-                                [
-                                    _varref("CR"),
-                                    _varref("Index"),
-                                    10,
-                                    _varref("SearchUnit"),
-                                    _varref("SearchUnit"),
-                                    _varref("FoundUnit"),
-                                    _varref("srci"),
-                                ],
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Search",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            Assignment(
+                                target=_varref("SearchSucceeded"),
+                                value=FuncCall(
+                                    name="SearchRecComponent",
+                                    args=(
+                                        _varref("CR"),
+                                        _varref("Index"),
+                                        10,
+                                        _varref("SearchUnit"),
+                                        _varref("SearchUnit"),
+                                        _varref("FoundUnit"),
+                                        _varref("srci"),
+                                    ),
+                                ),
                             ),
-                        ),
-                        (const.KEY_ASSIGN, _varref("Mirror"), _varref("Index")),
-                    ],
-                )
-            ],
-            sequences=[],
-        ),
-        moduledef=None,
+                            Assignment(target=_varref("Mirror"), value=_varref("Index")),
+                        ],
+                    )
+                ],
+                sequences=[],
+            )
+        ],
+        moduledefs=[],
     )
 
     issues = VariablesAnalyzer(bp).run()

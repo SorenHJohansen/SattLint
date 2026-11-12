@@ -133,3 +133,22 @@ def test_foundation_cache_key_is_content_derived_and_distinct(tmp_path) -> None:
     assert key_a != cache_module.compute_foundation_cache_key("proj-key-other", manifest_a)
     report_key = cache_module.compute_analysis_report_cache_key("proj-key", "variables")
     assert key_a != report_key
+
+
+def test_analysis_report_cache_key_tracks_analyzer_settings() -> None:
+    baseline = cache_module.compute_analysis_report_cache_key(
+        "proj-key",
+        "cyclomatic-complexity",
+        analysis_settings={"cyclomatic_module_threshold": 10},
+    )
+
+    assert baseline == cache_module.compute_analysis_report_cache_key(
+        "proj-key",
+        "cyclomatic-complexity",
+        analysis_settings={"cyclomatic_module_threshold": 10},
+    )
+    assert baseline != cache_module.compute_analysis_report_cache_key(
+        "proj-key",
+        "cyclomatic-complexity",
+        analysis_settings={"cyclomatic_module_threshold": 20},
+    )

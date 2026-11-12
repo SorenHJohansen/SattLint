@@ -260,6 +260,16 @@ def command_analyze(args: argparse.Namespace) -> int:
             exit_code=2,
             details={"output": list(result.output_lines)},
         )
+    if result.failures:
+        if options.output.output_format == "text":
+            _write_diagnostics(result, options)
+        failed = ", ".join(failure.target_name for failure in result.failures)
+        raise CliError(
+            f"Analysis stopped because {len(result.failures)} target(s) could not be loaded: {failed}",
+            code="target_load_failed",
+            exit_code=2,
+            details={failure.target_name: failure.message for failure in result.failures},
+        )
     _write_diagnostics(result, options)
     record = _result_record(result, cfg)
     all_findings = flat_findings(record)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     ModuleCode,
     Variable,
 )
@@ -89,7 +89,7 @@ def _collect_paths_in_modulecode(
 ) -> list[_PathState]:
     states = [_PathState()]
 
-    for eq in modulecode.equations or []:
+    for eq in modulecode.equationblocks or []:
         states = _collect_stmt_block_paths(
             eq.code or [],
             env,

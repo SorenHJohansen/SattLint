@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
+from sattline_parser.ast import VarRef
 from sattline_parser.models.ast_model import (
     Simple_DataType,
     Variable,
@@ -108,25 +109,25 @@ def test_variables_status_cover_binding_branches(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr(variables_status_module, "resolve_call_signature", _resolve_missing_signature)
     variables_status_impl._record_procedure_status_bindings(recorder, "Fn", [], good_context)
-    variables_status_impl._record_procedure_status_bindings(recorder, "Fn", [{"var_name": 5}], good_context)
+    variables_status_impl._record_procedure_status_bindings(recorder, "Fn", [object()], good_context)
     variables_status_impl._record_ignorable_output_bindings(recorder, "SearchRecComponent", [], good_context)
     monkeypatch.setattr(variables_status_module, "resolve_call_signature", _resolve_signature)
     variables_status_impl._record_procedure_status_bindings(
         recorder,
         "Fn",
-        [{"var_name": 5}],
+        [object()],
         good_context,
     )
     variables_status_impl._record_procedure_status_bindings(
         recorder,
         "Fn",
-        [{}, {"var_name": 5}, {"var_name": "Ignored"}],
+        [object(), object(), object()],
         good_context,
     )
     variables_status_impl._record_procedure_status_bindings(
         recorder,
         "Fn",
-        [{"var_name": "StatusVar"}],
+        [VarRef(name="StatusVar")],
         good_context,
     )
     variables_status_impl._record_ignorable_output_bindings(
@@ -138,25 +139,25 @@ def test_variables_status_cover_binding_branches(monkeypatch: pytest.MonkeyPatch
     variables_status_impl._record_ignorable_output_bindings(
         recorder,
         "SearchRecComponent",
-        [{}, {}, {}],
+        [object(), object(), object()],
         good_context,
     )
     variables_status_impl._record_ignorable_output_bindings(
         recorder,
         "SearchRecComponent",
-        [{}, {}, {"var_name": 7}],
+        [object(), object(), object()],
         good_context,
     )
     variables_status_impl._record_ignorable_output_bindings(
         recorder,
         "SearchRecComponent",
-        [{"var_name": 7}, {"var_name": "Ignored"}, {"var_name": "StatusVar"}],
+        [object(), object(), VarRef(name="StatusVar")],
         good_context,
     )
     variables_status_impl._record_ignorable_output_bindings(
         recorder,
         "Fn",
-        [{"var_name": "StatusVar"}],
+        [VarRef(name="StatusVar")],
         good_context,
     )
     assert status_calls == ["StatusVar"]
@@ -600,7 +601,7 @@ def test_variable_issue_collection_and_variables_cover_remaining_branches(monkey
         include_empty_sections=True,
     )
     assert variables_execution_impl._mapping_target_name(_ns(target="Demo.Field")) == "demo"
-    assert variables_execution_impl._mapping_target_name(_ns(target={"var_name": "Demo.Field"})) == "demo"
+    assert variables_execution_impl._mapping_target_name(_ns(target=VarRef(name="Demo.Field"))) == "demo"
     assert variables_execution_impl._mapping_target_name(_ns(target={})) is None
     assert variables_access_impl._site_str(_ns(site_stack=[])) == ""
     assert variables_access_impl._site_str(_ns(site_stack=["A", "B"])) == "A > B"

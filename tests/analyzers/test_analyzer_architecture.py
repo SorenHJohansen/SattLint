@@ -259,8 +259,8 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
     context = AnalysisContext(
         base_picture=base_picture,
@@ -336,8 +336,8 @@ def test_build_analysis_context_normalizes_config_and_shared_artifacts() -> None
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     config = {"mode": "workspace"}
@@ -375,8 +375,8 @@ def _make_foundation():
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
     return _build_foundation(base_picture)
 
@@ -525,8 +525,8 @@ def test_plugin_analyzer_runs_with_full_context_and_shared_artifacts() -> None:
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
     shared = AnalysisSharedArtifacts()
     shared.variable_analysis = _make_foundation()

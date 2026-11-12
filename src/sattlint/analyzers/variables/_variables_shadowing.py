@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, cast
 
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     BasePicture,
     FrameModule,
     ModuleTypeDef,
@@ -118,6 +118,7 @@ def _resolve_moduletype(
             inst.moduletype_name,
             current_library=current_library,
             unavailable_libraries=getattr(self, "_unavailable_libraries", None) or set(),
+            library_dependencies=getattr(self, "library_dependencies", None),
         )
     except ValueError:
         return None

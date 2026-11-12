@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from sattline_parser.grammar import constants as const
+from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import (
     BasePicture,
     ModuleCode,
@@ -27,16 +27,16 @@ def test_effect_flow_tracker_collects_program_and_library_sink_keys() -> None:
         name="Included",
         moduleparameters=[included_param],
         localvariables=[],
-        moduledef=None,
-        modulecode=ModuleCode(equations=[], sequences=[]),
+        moduledefs=[],
+        modulecodes=[ModuleCode(equationblocks=[], sequences=[])],
     )
     included_typedef.origin_file = "root.s"
     skipped_typedef = ModuleTypeDef(
         name="Skipped",
         moduleparameters=[skipped_param],
         localvariables=[],
-        moduledef=None,
-        modulecode=ModuleCode(equations=[], sequences=[]),
+        moduledefs=[],
+        modulecodes=[ModuleCode(equationblocks=[], sequences=[])],
     )
     skipped_typedef.origin_file = "dep.s"
     bp = BasePicture(
@@ -45,8 +45,8 @@ def test_effect_flow_tracker_collects_program_and_library_sink_keys() -> None:
         moduletype_defs=[included_typedef, skipped_typedef],
         localvariables=[program_var],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     program_sinks = tracker.collect_effect_sink_keys(
@@ -70,7 +70,7 @@ def test_effect_flow_tracker_propagates_internal_mapping_reads_writes_and_edges(
     child_context = _context(env={"input": input_var}, module_path=["Root", "Child"])
     mapping = ParameterMapping(
         target=_varref("input"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=False,
         source=_varref("Source.Field"),
@@ -105,7 +105,7 @@ def test_effect_flow_tracker_propagates_global_internal_field_mapping_and_ignore
     parent_context = _context(env={"globalsource": global_source}, module_path=["Root", "Parent"])
     global_internal_mapping = ParameterMapping(
         target=_varref("input"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=True,
         source=_varref("GlobalSource.Field"),
@@ -113,7 +113,7 @@ def test_effect_flow_tracker_propagates_global_internal_field_mapping_and_ignore
     )
     invalid_local_mapping = ParameterMapping(
         target=_varref("input"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=False,
         source=invalid_local,
@@ -160,7 +160,7 @@ def test_effect_flow_tracker_propagates_lookup_global_fallbacks_and_field_extern
 
     local_field_mapping = ParameterMapping(
         target=_varref("input"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=False,
         source=_string_source("LookupGlobal.Field"),
@@ -168,7 +168,7 @@ def test_effect_flow_tracker_propagates_lookup_global_fallbacks_and_field_extern
     )
     global_field_mapping = ParameterMapping(
         target=_varref("input"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=True,
         source=_string_source("FallbackGlobal.Field"),
@@ -176,7 +176,7 @@ def test_effect_flow_tracker_propagates_lookup_global_fallbacks_and_field_extern
     )
     missing_local_mapping = ParameterMapping(
         target=_varref("input"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=False,
         source=_string_source("Missing.Field"),
@@ -228,7 +228,7 @@ def test_effect_flow_tracker_external_global_mapping_records_external_sink() -> 
 
     external_global_mapping = ParameterMapping(
         target=_varref("input"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=True,
         source=_varref("GlobalSource.Field"),
@@ -257,7 +257,7 @@ def test_effect_flow_tracker_external_local_mapping_records_external_sink() -> N
 
     external_local_mapping = ParameterMapping(
         target=_varref("input"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=False,
         source=_varref("LocalSource"),
@@ -287,7 +287,7 @@ def test_effect_flow_tracker_propagates_global_and_external_mappings() -> None:
 
     global_mapping = ParameterMapping(
         target=_varref("input"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=True,
         source=_varref("GlobalSource.Member"),
@@ -295,7 +295,7 @@ def test_effect_flow_tracker_propagates_global_and_external_mappings() -> None:
     )
     global_plain_mapping = ParameterMapping(
         target=_varref("input"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=True,
         source=_varref("GlobalSource"),
@@ -303,7 +303,7 @@ def test_effect_flow_tracker_propagates_global_and_external_mappings() -> None:
     )
     missing_external_global_mapping = ParameterMapping(
         target=_varref("input"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=True,
         source=_varref("MissingGlobal"),
@@ -311,7 +311,7 @@ def test_effect_flow_tracker_propagates_global_and_external_mappings() -> None:
     )
     local_external_mapping = ParameterMapping(
         target=_varref("input"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=False,
         source=_varref("LocalSource"),
@@ -319,7 +319,7 @@ def test_effect_flow_tracker_propagates_global_and_external_mappings() -> None:
     )
     missing_global_mapping = ParameterMapping(
         target=_varref("input"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=True,
         source=None,

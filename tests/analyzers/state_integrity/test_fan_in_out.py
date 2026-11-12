@@ -10,29 +10,31 @@ def test_global_scope_minimization_is_suppressed_for_library_targets():
         submodules=[
             SingleModule(
                 header=_hdr("Worker"),
-                moduledef=None,
+                moduledefs=[],
                 moduleparameters=[],
                 localvariables=[Variable(name="Observed", datatype=Simple_DataType.INTEGER)],
                 submodules=[],
-                modulecode=ModuleCode(
-                    equations=[
-                        Equation(
-                            name="UseConfined",
-                            position=(0.0, 0.0),
-                            size=(1.0, 1.0),
-                            code=[
-                                Assignment(target=_varref("ConfinedValue"), value=1),
-                                Assignment(target=_varref("Observed"), value=_varref("ConfinedValue")),
-                            ],
-                        )
-                    ],
-                    sequences=[],
-                ),
+                modulecodes=[
+                    ModuleCode(
+                        equationblocks=[
+                            Equation(
+                                name="UseConfined",
+                                position=(0.0, 0.0),
+                                size=(1.0, 1.0),
+                                code=[
+                                    Assignment(target=_varref("ConfinedValue"), value=1),
+                                    Assignment(target=_varref("Observed"), value=_varref("ConfinedValue")),
+                                ],
+                            )
+                        ],
+                        sequences=[],
+                    )
+                ],
                 parametermappings=[],
             )
         ],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="Root.s",
     )
 
@@ -48,78 +50,86 @@ def test_high_fan_in_out_is_reported_for_root_global_shared_across_many_modules(
 
     writer = SingleModule(
         header=_hdr("Writer"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="WriteShared",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("SharedValue"), value=1)],
-                )
-            ],
-            sequences=[],
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="WriteShared",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[Assignment(target=_varref("SharedValue"), value=1)],
+                    )
+                ],
+                sequences=[],
+            )
+        ],
         parametermappings=[],
     )
     reader_a = SingleModule(
         header=_hdr("ReaderA"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="Observed", datatype=Simple_DataType.INTEGER)],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="ReadSharedA",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
-                )
-            ],
-            sequences=[],
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="ReadSharedA",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
+                    )
+                ],
+                sequences=[],
+            )
+        ],
         parametermappings=[],
     )
     reader_b = SingleModule(
         header=_hdr("ReaderB"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="Observed", datatype=Simple_DataType.INTEGER)],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="ReadSharedB",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
-                )
-            ],
-            sequences=[],
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="ReadSharedB",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
+                    )
+                ],
+                sequences=[],
+            )
+        ],
         parametermappings=[],
     )
     reader_c = SingleModule(
         header=_hdr("ReaderC"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="Observed", datatype=Simple_DataType.INTEGER)],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="ReadSharedC",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
-                )
-            ],
-            sequences=[],
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="ReadSharedC",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
+                    )
+                ],
+                sequences=[],
+            )
+        ],
         parametermappings=[],
     )
 
@@ -127,8 +137,8 @@ def test_high_fan_in_out_is_reported_for_root_global_shared_across_many_modules(
         header=_hdr("Root"),
         localvariables=[shared],
         submodules=[writer, reader_a, reader_b, reader_c],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -154,64 +164,70 @@ def test_high_fan_in_out_is_not_reported_below_threshold():
         submodules=[
             SingleModule(
                 header=_hdr("Writer"),
-                moduledef=None,
+                moduledefs=[],
                 moduleparameters=[],
                 localvariables=[],
                 submodules=[],
-                modulecode=ModuleCode(
-                    equations=[
-                        Equation(
-                            name="WriteShared",
-                            position=(0.0, 0.0),
-                            size=(1.0, 1.0),
-                            code=[Assignment(target=_varref("SharedValue"), value=1)],
-                        )
-                    ],
-                    sequences=[],
-                ),
+                modulecodes=[
+                    ModuleCode(
+                        equationblocks=[
+                            Equation(
+                                name="WriteShared",
+                                position=(0.0, 0.0),
+                                size=(1.0, 1.0),
+                                code=[Assignment(target=_varref("SharedValue"), value=1)],
+                            )
+                        ],
+                        sequences=[],
+                    )
+                ],
                 parametermappings=[],
             ),
             SingleModule(
                 header=_hdr("ReaderA"),
-                moduledef=None,
+                moduledefs=[],
                 moduleparameters=[],
                 localvariables=[Variable(name="Observed", datatype=Simple_DataType.INTEGER)],
                 submodules=[],
-                modulecode=ModuleCode(
-                    equations=[
-                        Equation(
-                            name="ReadSharedA",
-                            position=(0.0, 0.0),
-                            size=(1.0, 1.0),
-                            code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
-                        )
-                    ],
-                    sequences=[],
-                ),
+                modulecodes=[
+                    ModuleCode(
+                        equationblocks=[
+                            Equation(
+                                name="ReadSharedA",
+                                position=(0.0, 0.0),
+                                size=(1.0, 1.0),
+                                code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
+                            )
+                        ],
+                        sequences=[],
+                    )
+                ],
                 parametermappings=[],
             ),
             SingleModule(
                 header=_hdr("ReaderB"),
-                moduledef=None,
+                moduledefs=[],
                 moduleparameters=[],
                 localvariables=[Variable(name="Observed", datatype=Simple_DataType.INTEGER)],
                 submodules=[],
-                modulecode=ModuleCode(
-                    equations=[
-                        Equation(
-                            name="ReadSharedB",
-                            position=(0.0, 0.0),
-                            size=(1.0, 1.0),
-                            code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
-                        )
-                    ],
-                    sequences=[],
-                ),
+                modulecodes=[
+                    ModuleCode(
+                        equationblocks=[
+                            Equation(
+                                name="ReadSharedB",
+                                position=(0.0, 0.0),
+                                size=(1.0, 1.0),
+                                code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
+                            )
+                        ],
+                        sequences=[],
+                    )
+                ],
                 parametermappings=[],
             ),
         ],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -229,64 +245,70 @@ def test_high_fan_in_out_honors_configured_threshold():
         submodules=[
             SingleModule(
                 header=_hdr("Writer"),
-                moduledef=None,
+                moduledefs=[],
                 moduleparameters=[],
                 localvariables=[],
                 submodules=[],
-                modulecode=ModuleCode(
-                    equations=[
-                        Equation(
-                            name="WriteShared",
-                            position=(0.0, 0.0),
-                            size=(1.0, 1.0),
-                            code=[Assignment(target=_varref("SharedValue"), value=1)],
-                        )
-                    ],
-                    sequences=[],
-                ),
+                modulecodes=[
+                    ModuleCode(
+                        equationblocks=[
+                            Equation(
+                                name="WriteShared",
+                                position=(0.0, 0.0),
+                                size=(1.0, 1.0),
+                                code=[Assignment(target=_varref("SharedValue"), value=1)],
+                            )
+                        ],
+                        sequences=[],
+                    )
+                ],
                 parametermappings=[],
             ),
             SingleModule(
                 header=_hdr("ReaderA"),
-                moduledef=None,
+                moduledefs=[],
                 moduleparameters=[],
                 localvariables=[Variable(name="Observed", datatype=Simple_DataType.INTEGER)],
                 submodules=[],
-                modulecode=ModuleCode(
-                    equations=[
-                        Equation(
-                            name="ReadSharedA",
-                            position=(0.0, 0.0),
-                            size=(1.0, 1.0),
-                            code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
-                        )
-                    ],
-                    sequences=[],
-                ),
+                modulecodes=[
+                    ModuleCode(
+                        equationblocks=[
+                            Equation(
+                                name="ReadSharedA",
+                                position=(0.0, 0.0),
+                                size=(1.0, 1.0),
+                                code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
+                            )
+                        ],
+                        sequences=[],
+                    )
+                ],
                 parametermappings=[],
             ),
             SingleModule(
                 header=_hdr("ReaderB"),
-                moduledef=None,
+                moduledefs=[],
                 moduleparameters=[],
                 localvariables=[Variable(name="Observed", datatype=Simple_DataType.INTEGER)],
                 submodules=[],
-                modulecode=ModuleCode(
-                    equations=[
-                        Equation(
-                            name="ReadSharedB",
-                            position=(0.0, 0.0),
-                            size=(1.0, 1.0),
-                            code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
-                        )
-                    ],
-                    sequences=[],
-                ),
+                modulecodes=[
+                    ModuleCode(
+                        equationblocks=[
+                            Equation(
+                                name="ReadSharedB",
+                                position=(0.0, 0.0),
+                                size=(1.0, 1.0),
+                                code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
+                            )
+                        ],
+                        sequences=[],
+                    )
+                ],
                 parametermappings=[],
             ),
         ],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp, config={"analysis": {"fan_in_out_threshold": 2}})

@@ -82,8 +82,8 @@ def test_variables_execution_collect_basepicture_issues_covers_procedure_status_
         moduletype_defs=[],
         localvariables=[procedure_var],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
     issues: list[tuple[IssueKind, tuple[str, ...], str, str, str | None]] = []
 
@@ -131,8 +131,8 @@ def test_variables_execution_collect_basepicture_issues_covers_write_without_eff
         moduletype_defs=[],
         localvariables=[effect_var],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
     issues: list[tuple[IssueKind, tuple[str, ...], str, str, str | None]] = []
 
@@ -171,8 +171,8 @@ def test_variables_execution_collect_typedef_issues_covers_moduleparameter_proce
         moduleparameters=[procedure_param],
         localvariables=[],
         submodules=[],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
     )
     bp = BasePicture(
@@ -181,8 +181,8 @@ def test_variables_execution_collect_typedef_issues_covers_moduleparameter_proce
         moduletype_defs=[moduletype],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
     issues: list[tuple[IssueKind, tuple[str, ...], str, str, str | None]] = []
 
@@ -270,8 +270,8 @@ def test_variables_execution_dependency_and_typedef_early_returns_cover_remainin
         moduleparameters=[Variable(name="Param", datatype=Simple_DataType.INTEGER)],
         localvariables=[],
         submodules=[SingleModule.__new__(SingleModule)],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
     )
     analyze_calls: list[str] = []
@@ -292,8 +292,8 @@ def test_variables_execution_dependency_and_typedef_early_returns_cover_remainin
             moduletype_defs=[moduletype],
             localvariables=[],
             submodules=[],
-            modulecode=None,
-            moduledef=None,
+            modulecodes=[],
+            moduledefs=[],
         ),
         _update_status=_noop,
         _analyze_typedef=_analyze_typedef,
@@ -314,6 +314,12 @@ def test_variables_execution_run_records_phase_timings() -> None:
         _issues=[],
         _param_mapping_issue_indexes={},
         context_builder=_ns(issues=[]),
+        graphics_attachments=_ns(
+            bindings=(),
+            composite_occurrences=(),
+            composite_records=(),
+            picture_display_occurrences=(),
+        ),
         _limit_to_module_path=None,
         _phase_timings=phase_timings,
         _alias_links=[],
@@ -365,6 +371,12 @@ def test_variables_execution_run_skips_irrelevant_phases_for_unused_only() -> No
         _issues=[],
         _param_mapping_issue_indexes={},
         context_builder=_ns(issues=[]),
+        graphics_attachments=_ns(
+            bindings=(),
+            composite_occurrences=(),
+            composite_records=(),
+            picture_display_occurrences=(),
+        ),
         _limit_to_module_path=None,
         _phase_timings=phase_timings,
         _alias_links=[],
@@ -475,6 +487,12 @@ def test_variables_execution_run_debug_logs_phase_counts_and_aggregated_unresolv
         _issues=[],
         _param_mapping_issue_indexes={},
         context_builder=_ns(issues=[]),
+        graphics_attachments=_ns(
+            bindings=(),
+            composite_occurrences=(),
+            composite_records=(),
+            picture_display_occurrences=(),
+        ),
         _limit_to_module_path=None,
         _phase_timings=phase_timings,
         _alias_links=[],

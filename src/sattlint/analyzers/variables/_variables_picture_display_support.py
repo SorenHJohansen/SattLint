@@ -7,18 +7,15 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, cast
 
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     BasePicture,
     FrameModule,
-    GraphicsBinding,
     ModuleTypeDef,
     ModuleTypeInstance,
     SingleModule,
 )
 
-from ...graphics.picture_display_paths import PictureDisplayOccurrence
-from ...graphics.picture_display_runtime import CompositeRecordOccurrence, correlate_composite_records
-from ...graphics.validation import GraphicsCompositeRecord
+from ...graphics.picture_display_runtime import correlate_composite_records
 from ...resolution import AccessKind, decorate_segment
 from ...resolution.common import resolve_moduletype_def_strict
 from ...resolution.scope import ScopeContext
@@ -110,6 +107,7 @@ def _build_child_picture_display_context(
             child.moduletype_name,
             current_library=current_context.current_library,
             unavailable_libraries=self.unavailable_libraries,
+            library_dependencies=getattr(self, "library_dependencies", None),
         )
         child_context = self.context_builder.build_for_typedef(
             resolved_moduletype,
@@ -172,6 +170,7 @@ def seed_picture_display_context(self: VariablesAnalyzer, module_path: list[str]
                     child.moduletype_name,
                     current_library=current_context.current_library,
                     unavailable_libraries=self.unavailable_libraries,
+                    library_dependencies=getattr(self, "library_dependencies", None),
                 )
             else:
                 current_node = child
@@ -220,6 +219,7 @@ def _seed_runtime_picture_display_context(self: VariablesAnalyzer, module_path: 
                     child.moduletype_name,
                     current_library=current_context.current_library,
                     unavailable_libraries=self.unavailable_libraries,
+                    library_dependencies=getattr(self, "library_dependencies", None),
                 )
             else:
                 next_node = child
@@ -232,10 +232,7 @@ def _seed_runtime_picture_display_context(self: VariablesAnalyzer, module_path: 
 
 
 def record_picture_display_variable_occurrences(self: VariablesAnalyzer) -> None:
-    occurrences = cast(
-        tuple[PictureDisplayOccurrence, ...],
-        tuple(getattr(self.bp, "graphics_picture_display_occurrences", ()) or ()),
-    )
+    occurrences = self.graphics_attachments.picture_display_occurrences
     if not occurrences:
         return
 
@@ -249,7 +246,7 @@ def record_picture_display_variable_occurrences(self: VariablesAnalyzer) -> None
             cast(tuple[int, ...], tuple(getattr(occurrence.record, "path_row_lines", ()) or ()))
         )
 
-        for binding in cast(tuple[GraphicsBinding, ...], tuple(getattr(self.bp, "graphics_bindings", ()) or ())):
+        for binding in self.graphics_attachments.bindings:
             span = binding.span
             if span is None:
                 continue
@@ -336,10 +333,7 @@ def _mark_graphics_binding_in_context(
 
 
 def record_graphics_binding_occurrences(self: VariablesAnalyzer) -> None:
-    graphics_bindings = cast(
-        tuple[GraphicsBinding, ...],
-        tuple(getattr(self.bp, "graphics_bindings", ()) or ()),
-    )
+    graphics_bindings = self.graphics_attachments.bindings
     if not graphics_bindings:
         return
 
@@ -349,15 +343,9 @@ def record_graphics_binding_occurrences(self: VariablesAnalyzer) -> None:
         root_context = self.context_builder.build_for_basepicture()
         self._contexts_by_module_path[tuple(root_path)] = root_context
 
-    occurrences = cast(
-        tuple[CompositeRecordOccurrence, ...],
-        tuple(getattr(self.bp, "graphics_composite_occurrences", ()) or ()),
-    )
+    occurrences = self.graphics_attachments.composite_occurrences
     if not occurrences:
-        composite_records = cast(
-            tuple[GraphicsCompositeRecord, ...],
-            tuple(getattr(self.bp, "graphics_composite_records", ()) or ()),
-        )
+        composite_records = self.graphics_attachments.composite_records
         if composite_records:
             occurrences = correlate_composite_records(self.bp, composite_records)
 

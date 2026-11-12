@@ -13,8 +13,8 @@ def test_iter_variables_for_datatype_field_analysis_includes_context_only_variab
         moduletype_defs=[],
         localvariables=[root_var],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="DiluteLib.s",
         origin_lib="DiluteLib",
     )
@@ -61,8 +61,8 @@ def test_unused_datatype_fields_include_context_only_variable_usage():
         moduletype_defs=[],
         localvariables=[root_var],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="DiluteLib.s",
         origin_lib="DiluteLib",
     )
@@ -118,23 +118,21 @@ def test_analyze_variables_library_target_counts_dependency_typedef_field_reads(
             Variable(name="Sink", datatype=Simple_DataType.STRING),
         ],
         submodules=[],
-        moduledef=None,
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="ReadField",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("Sink"),
-                            _varref("OPText.LSH"),
-                        )
-                    ],
-                )
-            ]
-        ),
+        moduledefs=[],
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="ReadField",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            Assignment(target=_varref("Sink"), value=_varref("OPText.LSH")),
+                        ],
+                    )
+                ]
+            )
+        ],
         parametermappings=[],
         origin_file="ApplLib.s",
         origin_lib="ApplLib",
@@ -147,24 +145,22 @@ def test_analyze_variables_library_target_counts_dependency_typedef_field_reads(
             Variable(name="Sink", datatype=Simple_DataType.STRING),
         ],
         submodules=[ModuleTypeInstance(header=_hdr("Consumer"), moduletype_name="ConsumerType", parametermappings=[])],
-        moduledef=None,
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="ReadRootField",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("Sink"),
-                            _varref("OPText.DrainPipe"),
-                        )
-                    ],
-                )
-            ],
-            sequences=[],
-        ),
+        moduledefs=[],
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="ReadRootField",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            Assignment(target=_varref("Sink"), value=_varref("OPText.DrainPipe")),
+                        ],
+                    )
+                ],
+                sequences=[],
+            )
+        ],
         parametermappings=[],
         origin_file="ApplSupportLib.s",
         origin_lib="ApplSupportLib",
@@ -175,8 +171,8 @@ def test_analyze_variables_library_target_counts_dependency_typedef_field_reads(
         moduletype_defs=[support_typedef, dependency_typedef],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="ApplSupportLib.s",
         origin_lib="ApplSupportLib",
     )
@@ -217,8 +213,8 @@ def test_analyze_variables_library_target_counts_reverse_consumer_typedef_field_
         moduleparameters=[],
         localvariables=[Variable(name="OPText", datatype="ApplOpTxtType")],
         submodules=[],
-        moduledef=None,
-        modulecode=ModuleCode(equations=[], sequences=[]),
+        moduledefs=[],
+        modulecodes=[ModuleCode(equationblocks=[], sequences=[])],
         parametermappings=[],
         origin_file="ApplSupportLib.s",
         origin_lib="ApplSupportLib",
@@ -231,24 +227,22 @@ def test_analyze_variables_library_target_counts_reverse_consumer_typedef_field_
             Variable(name="Sink", datatype=Simple_DataType.STRING),
         ],
         submodules=[],
-        moduledef=None,
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="ReadLSH",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("Sink"),
-                            _varref("OPText.LSH"),
-                        )
-                    ],
-                )
-            ],
-            sequences=[],
-        ),
+        moduledefs=[],
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="ReadLSH",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            Assignment(target=_varref("Sink"), value=_varref("OPText.LSH")),
+                        ],
+                    )
+                ],
+                sequences=[],
+            )
+        ],
         parametermappings=[],
         origin_file="ApplLib.s",
         origin_lib="ApplLib",
@@ -259,8 +253,8 @@ def test_analyze_variables_library_target_counts_reverse_consumer_typedef_field_
         moduletype_defs=[support_typedef, consumer_typedef],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="ApplSupportLib.s",
         origin_lib="ApplSupportLib",
     )

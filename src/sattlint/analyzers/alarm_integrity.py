@@ -3,10 +3,10 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     BasePicture,
     FrameModule,
+    MappingSource,
     ModuleCode,
     ModuleTypeDef,
     ModuleTypeInstance,
@@ -397,7 +397,7 @@ class AlarmIntegrityAnalyzer:
         mapping: ParameterMapping,
         env: dict[str, Variable],
     ) -> _ParameterValue | None:
-        if mapping.source_type == const.KEY_VALUE:
+        if mapping.source_type == MappingSource.VALUE:
             return _ParameterValue(
                 status="resolved",
                 value=mapping.source_literal,

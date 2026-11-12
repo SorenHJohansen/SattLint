@@ -6,7 +6,6 @@ from __future__ import annotations
 import logging
 from typing import Any, cast
 
-from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     CodeItem,
@@ -67,7 +66,7 @@ def _reset_equation(run_target: str, reset_target: str) -> Equation:
 def _reset_modulecode(run_target: str = "Counter", reset_target: str = "Other") -> ModuleCode:
     return ModuleCode(
         sequences=[Sequence(name="OpSeq", type="sequence", position=(0.0, 0.0), size=(1.0, 1.0), code=[])],
-        equations=[_reset_equation(run_target, reset_target)],
+        equationblocks=[_reset_equation(run_target, reset_target)],
     )
 
 
@@ -79,27 +78,29 @@ def _typedef_with_latch(name: str) -> ModuleTypeDef:
             Variable(name="Start", datatype=Simple_DataType.BOOLEAN),
             Variable(name="AlarmLatched", datatype=Simple_DataType.BOOLEAN),
         ],
-        moduledef=None,
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="LatchEq",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=cast(
-                        list[CodeItem],
-                        [
-                            IfStmt(
-                                branches=(
-                                    (_varref("Start"), (Assignment(target=_varref("AlarmLatched"), value=True),)),
-                                ),
-                                else_block=(),
-                            )
-                        ],
-                    ),
-                )
-            ]
-        ),
+        moduledefs=[],
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="LatchEq",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=cast(
+                            list[CodeItem],
+                            [
+                                IfStmt(
+                                    branches=(
+                                        (_varref("Start"), (Assignment(target=_varref("AlarmLatched"), value=True),)),
+                                    ),
+                                    else_block=(),
+                                )
+                            ],
+                        ),
+                    )
+                ]
+            )
+        ],
     )
 
 
@@ -113,8 +114,8 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
             Variable(name="ResetValue", datatype=Simple_DataType.INTEGER),
             Variable(name="SeqResetOld", datatype=Simple_DataType.BOOLEAN),
         ],
-        moduledef=None,
-        modulecode=_reset_modulecode(),
+        moduledefs=[],
+        modulecodes=[_reset_modulecode()],
     )
     typedef_reset.origin_file = "root.s"
 
@@ -127,8 +128,8 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
             Variable(name="ResetValue", datatype=Simple_DataType.INTEGER),
             Variable(name="SeqResetOld", datatype=Simple_DataType.BOOLEAN),
         ],
-        moduledef=None,
-        modulecode=_reset_modulecode(),
+        moduledefs=[],
+        modulecodes=[_reset_modulecode()],
     )
     typedef_skipped.origin_file = "other.s"
 
@@ -144,27 +145,29 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
             Variable(name="RootLatched", datatype=Simple_DataType.BOOLEAN),
         ],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="RootEq",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=cast(
-                        list[CodeItem],
-                        [
-                            IfStmt(
-                                branches=(
-                                    (_varref("Start"), (Assignment(target=_varref("RootLatched"), value=True),)),
-                                ),
-                                else_block=(),
-                            )
-                        ],
-                    ),
-                )
-            ]
-        ),
-        moduledef=None,
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="RootEq",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=cast(
+                            list[CodeItem],
+                            [
+                                IfStmt(
+                                    branches=(
+                                        (_varref("Start"), (Assignment(target=_varref("RootLatched"), value=True),)),
+                                    ),
+                                    else_block=(),
+                                )
+                            ],
+                        ),
+                    )
+                ]
+            )
+        ],
+        moduledefs=[],
     )
     bp.origin_file = "root.s"
 
@@ -237,11 +240,11 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
     reset_contamination_module._check_for_single(
         SingleModule(
             header=_hdr("NoCode"),
-            moduledef=None,
+            moduledefs=[],
             moduleparameters=[],
             localvariables=[],
             submodules=[],
-            modulecode=None,
+            modulecodes=[],
             parametermappings=[],
         ),
         ["Root", "NoCode"],
@@ -253,8 +256,8 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
             name="NoCodeType",
             moduleparameters=[],
             localvariables=[],
-            moduledef=None,
-            modulecode=None,
+            moduledefs=[],
+            modulecodes=[],
         ),
         ["Root", "TypeDef:NoCodeType"],
         [],
@@ -264,20 +267,20 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
 
     child_module = SingleModule(
         header=_hdr("Child"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="ChildFlag", datatype=Simple_DataType.BOOLEAN)],
         submodules=[],
-        modulecode=ModuleCode(equations=[], sequences=[]),
+        modulecodes=[ModuleCode(equationblocks=[], sequences=[])],
         parametermappings=[],
     )
     parent_module = SingleModule(
         header=_hdr("Parent"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[],
         submodules=[child_module],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
     traversed_paths: list[list[str]] = []
@@ -292,11 +295,11 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
 
     no_sequence_issues: list[VariableIssue] = []
     reset_contamination_module._check_for_modulecode(
-        ModuleCode(equations=[], sequences=[]), env, ["Root"], no_sequence_issues
+        ModuleCode(equationblocks=[], sequences=[]), env, ["Root"], no_sequence_issues
     )
     reset_contamination_module._check_for_modulecode(
         ModuleCode(
-            equations=[],
+            equationblocks=[],
             sequences=[Sequence(name="", type="sequence", position=(0.0, 0.0), size=(1.0, 1.0), code=[])],
         ),
         env,
@@ -305,7 +308,7 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
     )
     reset_contamination_module._check_for_modulecode(
         ModuleCode(
-            equations=[],
+            equationblocks=[],
             sequences=[Sequence(name="OpSeq", type="sequence", position=(0.0, 0.0), size=(1.0, 1.0), code=[])],
         ),
         env,
@@ -314,7 +317,7 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
     )
     reset_contamination_module._check_for_modulecode(
         ModuleCode(
-            equations=[
+            equationblocks=[
                 Equation(
                     name="GuardOnly",
                     position=(0.0, 0.0),
@@ -407,12 +410,12 @@ def test_reset_contamination_helpers_bound_duplicate_paths_and_emit_debug(caplog
         if_states = reset_contamination_module._collect_if_stmt_paths(
             [
                 (
-                    (const.GRAMMAR_VALUE_NOT, _varref("OpSeq.Reset")),
-                    [(const.KEY_ASSIGN, _varref("Counter.Member"), _varref("Source"))],
+                    NotOp(operand=_varref("OpSeq.Reset")),
+                    [Assignment(target=_varref("Counter.Member"), value=_varref("Source"))],
                 ),
                 (
-                    (const.GRAMMAR_VALUE_NOT, _varref("OpSeq.Reset")),
-                    [(const.KEY_ASSIGN, _varref("Counter.Member"), _varref("Source"))],
+                    NotOp(operand=_varref("OpSeq.Reset")),
+                    [Assignment(target=_varref("Counter.Member"), value=_varref("Source"))],
                 ),
             ],
             None,
