@@ -1,6 +1,6 @@
 # SattLint parser upgrade plan
 
-Status: planned
+Status: in progress, Phases 0 and 1 committed on the migration branch
 Target parser: `sattline-parser==2026.11.4`
 Current SattLint release: `2026.11.3`, pinned to `sattline-parser==2026.11.3`
 Next SattLint release: next available CalVer, with the target parser pin
