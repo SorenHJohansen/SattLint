@@ -211,7 +211,22 @@ class ProjectGraph:
         for name, picture in self.ast_by_name.items():
             if picture is bp:
                 return self.graphics_attachments.get(name, EMPTY_GRAPHICS_ATTACHMENTS)
-        return EMPTY_GRAPHICS_ATTACHMENTS
+
+        # ``merge_project_basepicture`` returns a ``replace`` clone, so identity
+        # fails for the merged picture the analyzers receive. Match the clone to
+        # its indexed original by the fields the merge preserves.
+        matches = [
+            name
+            for name, picture in self.ast_by_name.items()
+            if picture.header.name == bp.header.name
+            and picture.origin_file == bp.origin_file
+            and picture.origin_lib == bp.origin_lib
+        ]
+        if len(matches) == 1:
+            return self.graphics_attachments.get(matches[0], EMPTY_GRAPHICS_ATTACHMENTS)
+
+        program_name = bp.name or bp.header.name
+        return self.graphics_attachments.get(program_name, EMPTY_GRAPHICS_ATTACHMENTS)
 
     def index_from_basepic(
         self,

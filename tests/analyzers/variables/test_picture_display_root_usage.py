@@ -6,6 +6,7 @@ from sattlint.graphics.picture_display_paths import PictureDisplayOccurrence
 from sattlint.graphics.validation import PictureDisplayPathRow, PictureDisplayRecord
 from tests.helpers.analyzers_variables_part4_support import COLUMN_TYPE_STEP, FIRST_RECORD_STEP
 from tests.helpers.analyzers_variables_support import *
+from tests.helpers.graphics_attachments_support import graphics_attachments
 
 
 def test_library_target_picture_display_variable_rows_count_typedef_moduleparameter_usage_at_root():
@@ -31,29 +32,31 @@ def test_library_target_picture_display_variable_rows_count_typedef_moduleparame
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
-    bp.graphics_picture_display_occurrences = [
-        PictureDisplayOccurrence(
-            program_name="BasePicture",
-            declaring_module_path=("BasePicture", "Column"),
-            record=PictureDisplayRecord(
-                record_index=1,
-                record_start_line=1,
-                record_end_line=5,
-                path_rows=(
-                    PictureDisplayPathRow(
-                        record_index=1,
-                        index_token=COLUMN_TYPE_STEP,
-                        index_value=None,
-                        kind="variable",
-                        raw_text="ColumnType",
-                        span=SourceSpan(start=0, end=0, line=1, column=1),
+    bp_attachments = graphics_attachments(
+        picture_display_occurrences=[
+            PictureDisplayOccurrence(
+                program_name="BasePicture",
+                declaring_module_path=("BasePicture", "Column"),
+                record=PictureDisplayRecord(
+                    record_index=1,
+                    record_start_line=1,
+                    record_end_line=5,
+                    path_rows=(
+                        PictureDisplayPathRow(
+                            record_index=1,
+                            index_token=COLUMN_TYPE_STEP,
+                            index_value=None,
+                            kind="variable",
+                            raw_text="ColumnType",
+                            span=SourceSpan(start=0, end=0, line=1, column=1),
+                        ),
                     ),
                 ),
-            ),
-        )
-    ]
+            )
+        ]
+    )
 
-    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True)
+    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True, graphics_attachments=bp_attachments)
     analyzer.run()
 
     assert not any(
@@ -89,29 +92,31 @@ def test_library_target_picture_display_index_variable_counts_typedef_modulepara
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
-    bp.graphics_picture_display_occurrences = [
-        PictureDisplayOccurrence(
-            program_name="BasePicture",
-            declaring_module_path=("BasePicture", "Column"),
-            record=PictureDisplayRecord(
-                record_index=1,
-                record_start_line=1,
-                record_end_line=5,
-                path_rows=(
-                    PictureDisplayPathRow(
-                        record_index=1,
-                        index_token=COLUMN_TYPE_STEP,
-                        index_value=None,
-                        kind="literal",
-                        raw_text="+InletMPC+++Inlet_Z2",
-                        span=SourceSpan(start=0, end=0, line=1, column=1),
+    bp_attachments = graphics_attachments(
+        picture_display_occurrences=[
+            PictureDisplayOccurrence(
+                program_name="BasePicture",
+                declaring_module_path=("BasePicture", "Column"),
+                record=PictureDisplayRecord(
+                    record_index=1,
+                    record_start_line=1,
+                    record_end_line=5,
+                    path_rows=(
+                        PictureDisplayPathRow(
+                            record_index=1,
+                            index_token=COLUMN_TYPE_STEP,
+                            index_value=None,
+                            kind="literal",
+                            raw_text="+InletMPC+++Inlet_Z2",
+                            span=SourceSpan(start=0, end=0, line=1, column=1),
+                        ),
                     ),
                 ),
-            ),
-        )
-    ]
+            )
+        ]
+    )
 
-    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True)
+    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True, graphics_attachments=bp_attachments)
     analyzer.run()
 
     assert not any(
@@ -147,37 +152,39 @@ def test_library_target_picture_display_record_binding_counts_typedef_modulepara
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
-    bp.graphics_bindings = [
-        GraphicsBinding(
-            kind="var",
-            raw_text="ColumnType",
-            value=_varref("ColumnType"),
-            span=SourceSpan(start=0, end=0, line=1, column=1),
-        )
-    ]
-    bp.graphics_picture_display_occurrences = [
-        PictureDisplayOccurrence(
-            program_name="BasePicture",
-            declaring_module_path=("BasePicture", "Column"),
-            record=PictureDisplayRecord(
-                record_index=1,
-                record_start_line=1,
-                record_end_line=5,
-                path_rows=(
-                    PictureDisplayPathRow(
-                        record_index=1,
-                        index_token=FIRST_RECORD_STEP,
-                        index_value=1,
-                        kind="literal",
-                        raw_text="+InletMPC+++Inlet_Z2",
-                        span=SourceSpan(start=0, end=0, line=2, column=1),
+    bp_attachments = graphics_attachments(
+        bindings=[
+            GraphicsBinding(
+                kind="var",
+                raw_text="ColumnType",
+                value=_varref("ColumnType"),
+                span=SourceSpan(start=0, end=0, line=1, column=1),
+            )
+        ],
+        picture_display_occurrences=[
+            PictureDisplayOccurrence(
+                program_name="BasePicture",
+                declaring_module_path=("BasePicture", "Column"),
+                record=PictureDisplayRecord(
+                    record_index=1,
+                    record_start_line=1,
+                    record_end_line=5,
+                    path_rows=(
+                        PictureDisplayPathRow(
+                            record_index=1,
+                            index_token=FIRST_RECORD_STEP,
+                            index_value=1,
+                            kind="literal",
+                            raw_text="+InletMPC+++Inlet_Z2",
+                            span=SourceSpan(start=0, end=0, line=2, column=1),
+                        ),
                     ),
                 ),
-            ),
-        )
-    ]
+            )
+        ],
+    )
 
-    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True)
+    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True, graphics_attachments=bp_attachments)
     analyzer.run()
 
     assert not any(
@@ -236,37 +243,39 @@ def test_library_target_picture_display_runtime_instance_path_counts_typedef_mod
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
-    bp.graphics_bindings = [
-        GraphicsBinding(
-            kind="var",
-            raw_text="ColumnType",
-            value=_varref("ColumnType"),
-            span=SourceSpan(start=0, end=0, line=1, column=1),
-        )
-    ]
-    bp.graphics_picture_display_occurrences = [
-        PictureDisplayOccurrence(
-            program_name="BasePicture",
-            declaring_module_path=("BasePicture", "L1", "Column", "Panel"),
-            record=PictureDisplayRecord(
-                record_index=1,
-                record_start_line=1,
-                record_end_line=5,
-                path_rows=(
-                    PictureDisplayPathRow(
-                        record_index=1,
-                        index_token=FIRST_RECORD_STEP,
-                        index_value=1,
-                        kind="literal",
-                        raw_text="+InletMPC+++Inlet_Z2",
-                        span=SourceSpan(start=0, end=0, line=2, column=1),
+    bp_attachments = graphics_attachments(
+        bindings=[
+            GraphicsBinding(
+                kind="var",
+                raw_text="ColumnType",
+                value=_varref("ColumnType"),
+                span=SourceSpan(start=0, end=0, line=1, column=1),
+            )
+        ],
+        picture_display_occurrences=[
+            PictureDisplayOccurrence(
+                program_name="BasePicture",
+                declaring_module_path=("BasePicture", "L1", "Column", "Panel"),
+                record=PictureDisplayRecord(
+                    record_index=1,
+                    record_start_line=1,
+                    record_end_line=5,
+                    path_rows=(
+                        PictureDisplayPathRow(
+                            record_index=1,
+                            index_token=FIRST_RECORD_STEP,
+                            index_value=1,
+                            kind="literal",
+                            raw_text="+InletMPC+++Inlet_Z2",
+                            span=SourceSpan(start=0, end=0, line=2, column=1),
+                        ),
                     ),
                 ),
-            ),
-        )
-    ]
+            )
+        ],
+    )
 
-    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True)
+    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True, graphics_attachments=bp_attachments)
     analyzer.run()
 
     assert not any(
@@ -311,29 +320,31 @@ def test_library_target_picture_display_variable_rows_count_typedef_moduleparame
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
-    bp.graphics_picture_display_occurrences = [
-        PictureDisplayOccurrence(
-            program_name="BasePicture",
-            declaring_module_path=("BasePicture", "Column", "Panel"),
-            record=PictureDisplayRecord(
-                record_index=1,
-                record_start_line=1,
-                record_end_line=5,
-                path_rows=(
-                    PictureDisplayPathRow(
-                        record_index=1,
-                        index_token=COLUMN_TYPE_STEP,
-                        index_value=None,
-                        kind="variable",
-                        raw_text="ColumnType",
-                        span=SourceSpan(start=0, end=0, line=1, column=1),
+    bp_attachments = graphics_attachments(
+        picture_display_occurrences=[
+            PictureDisplayOccurrence(
+                program_name="BasePicture",
+                declaring_module_path=("BasePicture", "Column", "Panel"),
+                record=PictureDisplayRecord(
+                    record_index=1,
+                    record_start_line=1,
+                    record_end_line=5,
+                    path_rows=(
+                        PictureDisplayPathRow(
+                            record_index=1,
+                            index_token=COLUMN_TYPE_STEP,
+                            index_value=None,
+                            kind="variable",
+                            raw_text="ColumnType",
+                            span=SourceSpan(start=0, end=0, line=1, column=1),
+                        ),
                     ),
                 ),
-            ),
-        )
-    ]
+            )
+        ]
+    )
 
-    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True)
+    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True, graphics_attachments=bp_attachments)
     analyzer.run()
 
     assert not any(

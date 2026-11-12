@@ -1,10 +1,11 @@
 # pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportOptionalMemberAccess=false, reportUnusedImport=false
 from pathlib import Path
-from types import SimpleNamespace
 
 from sattline_parser.models.ast_model import GraphicsBinding
 
+from sattlint.graphics.validation import GraphicsCompositeRecord
 from tests.helpers.analyzers_variables_support import *
+from tests.helpers.graphics_attachments_support import graphics_attachments
 
 
 def test_sample_fixture_contains_common_variable_quality_issues():
@@ -176,7 +177,7 @@ def test_gfile_var_and_expr_reads_count_as_used_for_unused_analysis():
     _, root_bp, graph = load_project_graph(cfg, fixture.stem, strict=False)
     assert root_bp is not None
     bp = merge_project_basepicture(graph.ast_by_name[fixture.stem], graph)
-    analyzer = VariablesAnalyzer(bp)
+    analyzer = VariablesAnalyzer(bp, graphics_attachments=graph.graphics_attachments_for(bp))
     issues = analyzer.run()
 
     usage_by_name = {variable.name: analyzer._get_usage(variable) for variable in bp.localvariables}
@@ -235,7 +236,7 @@ ENDDEF (*BasePicture*);
     _, root_bp, graph = load_project_graph(cfg, fixture.stem, strict=False)
     assert root_bp is not None
     bp = merge_project_basepicture(graph.ast_by_name[fixture.stem], graph)
-    analyzer = VariablesAnalyzer(bp)
+    analyzer = VariablesAnalyzer(bp, graphics_attachments=graph.graphics_attachments_for(bp))
     issues = analyzer.run()
 
     assert not any(
@@ -279,23 +280,27 @@ def test_nested_composite_gfile_bindings_use_declaring_module_scope():
         modulecodes=[],
         moduledefs=[ModuleDef()],
     )
-    bp.graphics_bindings = [
-        GraphicsBinding(
-            kind="var",
-            raw_text="NestedOnly",
-            value=_varref("NestedOnly"),
-            span=SourceSpan(start=0, end=0, line=9, column=1),
-        ),
-        GraphicsBinding(
-            kind="var",
-            raw_text="Shared",
-            value=_varref("Shared"),
-            span=SourceSpan(start=0, end=0, line=10, column=1),
-        ),
-    ]
-    bp.graphics_composite_records = [SimpleNamespace(record_index=1, record_start_line=8, record_end_line=12)]
+    bp_attachments = graphics_attachments(
+        bindings=[
+            GraphicsBinding(
+                kind="var",
+                raw_text="NestedOnly",
+                value=_varref("NestedOnly"),
+                span=SourceSpan(start=0, end=0, line=9, column=1),
+            ),
+            GraphicsBinding(
+                kind="var",
+                raw_text="Shared",
+                value=_varref("Shared"),
+                span=SourceSpan(start=0, end=0, line=10, column=1),
+            ),
+        ],
+        composite_records=[
+            GraphicsCompositeRecord(record_index=1, record_start_line=8, record_end_line=12, family_code="")
+        ],
+    )
 
-    analyzer = VariablesAnalyzer(bp)
+    analyzer = VariablesAnalyzer(bp, graphics_attachments=bp_attachments)
     issues = analyzer.run()
 
     assert not any(
@@ -331,16 +336,18 @@ def test_unparsed_gfile_expr_still_counts_named_variables_as_reads():
         modulecodes=[],
         moduledefs=[ModuleDef()],
     )
-    bp.graphics_bindings = [
-        GraphicsBinding(
-            kind="expr",
-            raw_text="Alpha ??? Beta",
-            value="Alpha ??? Beta",
-            span=SourceSpan(start=0, end=0, line=1, column=1),
-        )
-    ]
+    bp_attachments = graphics_attachments(
+        bindings=[
+            GraphicsBinding(
+                kind="expr",
+                raw_text="Alpha ??? Beta",
+                value="Alpha ??? Beta",
+                span=SourceSpan(start=0, end=0, line=1, column=1),
+            )
+        ]
+    )
 
-    analyzer = VariablesAnalyzer(bp)
+    analyzer = VariablesAnalyzer(bp, graphics_attachments=bp_attachments)
     issues = analyzer.run()
 
     assert not any(

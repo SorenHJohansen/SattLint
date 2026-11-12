@@ -9,9 +9,9 @@ PictureDisplay asset verification and the not-implemented asset warnings.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal, cast
 
 from sattlint.parser_api import (
     GraphicsBinding,
@@ -19,6 +19,7 @@ from sattlint.parser_api import (
     GraphicsPathRow,
     GraphicsPictureDisplayRecord,
     SourceSpan,
+    VarRef,
     parse_graphics_file,
     parse_graphics_text,
 )
@@ -204,6 +205,26 @@ def _picture_display_record(record: GraphicsPictureDisplayRecord) -> PictureDisp
     )
 
 
+def _graphics_binding(binding: GraphicsBinding) -> GraphicsBinding:
+    """Normalize a parser graphics binding into a typed value.
+
+    The parser reports ``var`` bindings as a ``{"var_name": ..., "span": ...}``
+    payload. Convert that payload once here so analyzers only ever see a
+    ``VarRef`` for a variable binding; computed expressions, literals, and
+    text already arrive typed.
+    """
+    value = binding.value
+    if not isinstance(value, dict):
+        return binding
+    mapping = cast(dict[str, Any], value)
+    raw_name = mapping.get("var_name")
+    if not isinstance(raw_name, str) or not raw_name:
+        return binding
+    raw_span = mapping.get("span")
+    span = raw_span if isinstance(raw_span, SourceSpan) else binding.span
+    return replace(binding, value=VarRef(name=raw_name, span=span))
+
+
 def _composite_record(record: ParserGraphicsCompositeRecord) -> GraphicsCompositeRecord:
     return GraphicsCompositeRecord(
         record_index=record.record_index,
@@ -245,7 +266,7 @@ def validate_graphics_model(model: GraphicsModel, file_path: Path) -> GraphicsVa
 
     return GraphicsValidationResult(
         messages=tuple(messages),
-        bindings=model.bindings,
+        bindings=tuple(_graphics_binding(binding) for binding in model.bindings),
         composite_records=tuple(_composite_record(record) for record in model.composite_records),
         picture_display_records=picture_display_records,
     )

@@ -20,6 +20,8 @@ from sattlint.engine import (
 )
 from sattlint.graphics.picture_display_paths import PictureDisplayOccurrence
 from sattlint.graphics.validation import PictureDisplayPathRow, PictureDisplayRecord
+from sattlint.models.project_graph import ProjectGraph
+from tests.helpers.graphics_attachments_support import graphics_attachments
 
 SAMPLE_FIXTURE_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "sample_sattline_files"
 CORPUS_ANALYZER_FIXTURE_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "corpus" / "semantic" / "analyzer"
@@ -41,7 +43,7 @@ def _resolve_fixture_path(stem: str) -> Path:
     raise FileNotFoundError(stem)
 
 
-def _load_fixture_base_picture(stem: str) -> BasePicture:
+def _load_fixture_base_picture(stem: str) -> tuple[BasePicture, ProjectGraph]:
     fixture = _resolve_fixture_path(stem)
     cfg: dict[str, object] = {
         "program_dir": fixture.parent,
@@ -52,19 +54,21 @@ def _load_fixture_base_picture(stem: str) -> BasePicture:
     }
     _, root_bp, graph = load_project_graph(cfg, fixture.stem, strict=False)
     assert root_bp is not None
-    return merge_project_basepicture(graph.ast_by_name[fixture.stem], graph)
+    return merge_project_basepicture(graph.ast_by_name[fixture.stem], graph), graph
 
 
 def test_picture_display_path_analyzer_uses_real_string_fixture() -> None:
-    base_picture = _load_fixture_base_picture("TestStringsInPictureDisplay")
+    base_picture, graph = _load_fixture_base_picture("TestStringsInPictureDisplay")
+    attachments = graph.graphics_attachments_for(base_picture)
 
-    report = analyze_picture_display_paths(base_picture)
+    report = analyze_picture_display_paths(base_picture, graph=graph)
 
-    assert len(base_picture.graphics_picture_display_records) == 1
-    assert len(base_picture.graphics_picture_display_occurrences) == 1
-    assert [
-        (row.index_token, row.kind, row.raw_text) for row in base_picture.graphics_picture_display_records[0].path_rows
-    ] == [("1", "variable_invalid", "PathOK"), ("2", "variable_invalid", "PathNotOK")]
+    assert len(attachments.picture_display_records) == 1
+    assert len(attachments.picture_display_occurrences) == 1
+    assert [(row.index_token, row.kind, row.raw_text) for row in attachments.picture_display_records[0].path_rows] == [
+        ("1", "variable_invalid", "PathOK"),
+        ("2", "variable_invalid", "PathNotOK"),
+    ]
     assert len(report.issues) == 1
     assert "PathNotOK" in report.issues[0].message
     assert "+T+ToggleParWindow" in report.issues[0].message
@@ -92,38 +96,40 @@ def test_variable_invalid_picture_display_rows_do_not_count_as_usage() -> None:
         modulecodes=[],
         moduledefs=[],
     )
-    base_picture.graphics_bindings = [
-        GraphicsBinding(
-            kind="var",
-            raw_text="PathAIT",
-            value=_varref("PathAIT"),
-            span=SourceSpan(start=0, end=0, line=2, column=5),
-        )
-    ]
-    base_picture.graphics_picture_display_occurrences = [
-        PictureDisplayOccurrence(
-            program_name="BasePicture",
-            declaring_module_path=("BasePicture", "DisplayModule"),
-            record=PictureDisplayRecord(
-                record_index=1,
-                record_start_line=1,
-                record_end_line=5,
-                path_row_lines=(2,),
-                path_rows=(
-                    PictureDisplayPathRow(
-                        record_index=1,
-                        index_token=str(1),
-                        index_value=1,
-                        kind="variable_invalid",
-                        raw_text="PathAIT",
-                        span=SourceSpan(start=0, end=0, line=2, column=5),
+    base_picture_attachments = graphics_attachments(
+        bindings=[
+            GraphicsBinding(
+                kind="var",
+                raw_text="PathAIT",
+                value=_varref("PathAIT"),
+                span=SourceSpan(start=0, end=0, line=2, column=5),
+            )
+        ],
+        picture_display_occurrences=[
+            PictureDisplayOccurrence(
+                program_name="BasePicture",
+                declaring_module_path=("BasePicture", "DisplayModule"),
+                record=PictureDisplayRecord(
+                    record_index=1,
+                    record_start_line=1,
+                    record_end_line=5,
+                    path_row_lines=(2,),
+                    path_rows=(
+                        PictureDisplayPathRow(
+                            record_index=1,
+                            index_token=str(1),
+                            index_value=1,
+                            kind="variable_invalid",
+                            raw_text="PathAIT",
+                            span=SourceSpan(start=0, end=0, line=2, column=5),
+                        ),
                     ),
                 ),
-            ),
-        )
-    ]
+            )
+        ],
+    )
 
-    analyzer = VariablesAnalyzer(base_picture)
+    analyzer = VariablesAnalyzer(base_picture, graphics_attachments=base_picture_attachments)
     analyzer.run()
 
     assert any(

@@ -25,6 +25,7 @@ from sattlint.graphics.picture_display_paths import (
 )
 from sattlint.graphics.validation import PictureDisplayPathRow, PictureDisplayRecord
 from sattlint.models.project_graph import ProjectGraph
+from tests.helpers.graphics_attachments_support import graph_with_attachments, graphics_attachments
 from tests.helpers.picture_display_paths_support import (
     base_picture_with_leading_dash_paths,
     base_picture_with_single_chain,
@@ -185,29 +186,33 @@ def _build_operation_path_base_picture() -> BasePicture:
 
 def test_picture_display_path_analyzer_reports_unresolved_paths() -> None:
     base_picture = base_picture_with_single_chain()
-    base_picture.graphics_picture_display_occurrences = [
-        PictureDisplayOccurrence(
-            program_name="Root",
-            declaring_module_path=("Root",),
-            record=PictureDisplayRecord(
-                record_index=1,
-                record_start_line=1,
-                record_end_line=5,
-                path_rows=(
-                    PictureDisplayPathRow(
-                        record_index=1,
-                        index_token=ROOT_PATH_STEP,
-                        index_value=0,
-                        kind="literal",
-                        raw_text="+MissingPanel",
-                        span=SourceSpan(start=0, end=0, line=1, column=1),
+    base_picture_attachments = graphics_attachments(
+        picture_display_occurrences=[
+            PictureDisplayOccurrence(
+                program_name="Root",
+                declaring_module_path=("Root",),
+                record=PictureDisplayRecord(
+                    record_index=1,
+                    record_start_line=1,
+                    record_end_line=5,
+                    path_rows=(
+                        PictureDisplayPathRow(
+                            record_index=1,
+                            index_token=ROOT_PATH_STEP,
+                            index_value=0,
+                            kind="literal",
+                            raw_text="+MissingPanel",
+                            span=SourceSpan(start=0, end=0, line=1, column=1),
+                        ),
                     ),
                 ),
-            ),
-        )
-    ]
+            )
+        ]
+    )
 
-    report = analyze_picture_display_paths(base_picture)
+    report = analyze_picture_display_paths(
+        base_picture, graph=graph_with_attachments(base_picture, base_picture_attachments)
+    )
 
     assert len(report.issues) == 1
     assert report.issues[0].module_path == ["Root"]
@@ -219,58 +224,70 @@ def test_picture_display_path_analyzer_reports_unresolved_paths() -> None:
 
 def test_picture_display_path_analyzer_marks_library_target_findings_as_info() -> None:
     base_picture = base_picture_with_single_chain()
-    base_picture.graphics_picture_display_occurrences = [
-        PictureDisplayOccurrence(
-            program_name="Root",
-            declaring_module_path=("Root",),
-            record=PictureDisplayRecord(
-                record_index=1,
-                record_start_line=1,
-                record_end_line=5,
-                path_rows=(
-                    PictureDisplayPathRow(
-                        record_index=1,
-                        index_token=ROOT_PATH_STEP,
-                        index_value=0,
-                        kind="literal",
-                        raw_text="+MissingPanel",
-                        span=SourceSpan(start=0, end=0, line=1, column=1),
+    base_picture_attachments = graphics_attachments(
+        picture_display_occurrences=[
+            PictureDisplayOccurrence(
+                program_name="Root",
+                declaring_module_path=("Root",),
+                record=PictureDisplayRecord(
+                    record_index=1,
+                    record_start_line=1,
+                    record_end_line=5,
+                    path_rows=(
+                        PictureDisplayPathRow(
+                            record_index=1,
+                            index_token=ROOT_PATH_STEP,
+                            index_value=0,
+                            kind="literal",
+                            raw_text="+MissingPanel",
+                            span=SourceSpan(start=0, end=0, line=1, column=1),
+                        ),
                     ),
                 ),
-            ),
-        )
-    ]
+            )
+        ]
+    )
 
-    report = analyze_picture_display_paths(base_picture, analyzed_target_is_library=True)
+    report = analyze_picture_display_paths(
+        base_picture,
+        graph=graph_with_attachments(base_picture, base_picture_attachments),
+        analyzed_target_is_library=True,
+    )
 
     assert len(report.issues) == 1
 
 
 def test_picture_display_path_analyzer_library_target_reports_intra_library_failures() -> None:
     base_picture = base_picture_with_single_chain()
-    base_picture.graphics_picture_display_occurrences = [
-        PictureDisplayOccurrence(
-            program_name="Root",
-            declaring_module_path=("Root",),
-            record=PictureDisplayRecord(
-                record_index=1,
-                record_start_line=1,
-                record_end_line=5,
-                path_rows=(
-                    PictureDisplayPathRow(
-                        record_index=1,
-                        index_token=ROOT_PATH_STEP,
-                        index_value=0,
-                        kind="literal",
-                        raw_text="+MissingPanel",
-                        span=SourceSpan(start=0, end=0, line=1, column=1),
+    base_picture_attachments = graphics_attachments(
+        picture_display_occurrences=[
+            PictureDisplayOccurrence(
+                program_name="Root",
+                declaring_module_path=("Root",),
+                record=PictureDisplayRecord(
+                    record_index=1,
+                    record_start_line=1,
+                    record_end_line=5,
+                    path_rows=(
+                        PictureDisplayPathRow(
+                            record_index=1,
+                            index_token=ROOT_PATH_STEP,
+                            index_value=0,
+                            kind="literal",
+                            raw_text="+MissingPanel",
+                            span=SourceSpan(start=0, end=0, line=1, column=1),
+                        ),
                     ),
                 ),
-            ),
-        )
-    ]
+            )
+        ]
+    )
 
-    report = analyze_picture_display_paths(base_picture, analyzed_target_is_library=True)
+    report = analyze_picture_display_paths(
+        base_picture,
+        graph=graph_with_attachments(base_picture, base_picture_attachments),
+        analyzed_target_is_library=True,
+    )
 
     assert len(report.issues) == 1
     assert report.issues[0].kind == "picture_display_paths.unresolved"
@@ -279,37 +296,43 @@ def test_picture_display_path_analyzer_library_target_reports_intra_library_fail
 
 def test_picture_display_path_analyzer_library_target_suppresses_above_base_but_reports_program_coupling() -> None:
     base_picture = base_picture_with_single_chain()
-    base_picture.graphics_picture_display_occurrences = [
-        PictureDisplayOccurrence(
-            program_name="Root",
-            declaring_module_path=("Root",),
-            record=PictureDisplayRecord(
-                record_index=1,
-                record_start_line=1,
-                record_end_line=5,
-                path_rows=(
-                    PictureDisplayPathRow(
-                        record_index=1,
-                        index_token="-",
-                        index_value=0,
-                        kind="literal",
-                        raw_text="-Test",
-                        span=SourceSpan(start=0, end=0, line=1, column=1),
-                    ),
-                    PictureDisplayPathRow(
-                        record_index=2,
-                        index_token="+",
-                        index_value=0,
-                        kind="literal",
-                        raw_text="+External:Program:*Panel",
-                        span=SourceSpan(start=0, end=0, line=1, column=1),
+    base_picture_attachments = graphics_attachments(
+        picture_display_occurrences=[
+            PictureDisplayOccurrence(
+                program_name="Root",
+                declaring_module_path=("Root",),
+                record=PictureDisplayRecord(
+                    record_index=1,
+                    record_start_line=1,
+                    record_end_line=5,
+                    path_rows=(
+                        PictureDisplayPathRow(
+                            record_index=1,
+                            index_token="-",
+                            index_value=0,
+                            kind="literal",
+                            raw_text="-Test",
+                            span=SourceSpan(start=0, end=0, line=1, column=1),
+                        ),
+                        PictureDisplayPathRow(
+                            record_index=2,
+                            index_token="+",
+                            index_value=0,
+                            kind="literal",
+                            raw_text="+External:Program:*Panel",
+                            span=SourceSpan(start=0, end=0, line=1, column=1),
+                        ),
                     ),
                 ),
-            ),
-        )
-    ]
+            )
+        ]
+    )
 
-    report = analyze_picture_display_paths(base_picture, analyzed_target_is_library=True)
+    report = analyze_picture_display_paths(
+        base_picture,
+        graph=graph_with_attachments(base_picture, base_picture_attachments),
+        analyzed_target_is_library=True,
+    )
 
     assert len(report.issues) == 1
     assert report.issues[0].kind == "picture_display_paths.unresolved"
@@ -318,29 +341,33 @@ def test_picture_display_path_analyzer_library_target_suppresses_above_base_but_
 
 def test_picture_display_path_analyzer_ignores_resolved_paths() -> None:
     base_picture = base_picture_with_single_chain()
-    base_picture.graphics_picture_display_occurrences = [
-        PictureDisplayOccurrence(
-            program_name="Root",
-            declaring_module_path=("Root",),
-            record=PictureDisplayRecord(
-                record_index=1,
-                record_start_line=1,
-                record_end_line=5,
-                path_rows=(
-                    PictureDisplayPathRow(
-                        record_index=1,
-                        index_token=ROOT_PATH_STEP,
-                        index_value=0,
-                        kind="literal",
-                        raw_text="++Panel",
-                        span=SourceSpan(start=0, end=0, line=1, column=1),
+    base_picture_attachments = graphics_attachments(
+        picture_display_occurrences=[
+            PictureDisplayOccurrence(
+                program_name="Root",
+                declaring_module_path=("Root",),
+                record=PictureDisplayRecord(
+                    record_index=1,
+                    record_start_line=1,
+                    record_end_line=5,
+                    path_rows=(
+                        PictureDisplayPathRow(
+                            record_index=1,
+                            index_token=ROOT_PATH_STEP,
+                            index_value=0,
+                            kind="literal",
+                            raw_text="++Panel",
+                            span=SourceSpan(start=0, end=0, line=1, column=1),
+                        ),
                     ),
                 ),
-            ),
-        )
-    ]
+            )
+        ]
+    )
 
-    report = analyze_picture_display_paths(base_picture)
+    report = analyze_picture_display_paths(
+        base_picture, graph=graph_with_attachments(base_picture, base_picture_attachments)
+    )
 
     assert report.issues == []
 
@@ -393,29 +420,33 @@ def test_picture_display_path_analyzer_reports_generic_variable_path_candidates(
             )
         ],
     )
-    base_picture.graphics_picture_display_occurrences = [
-        PictureDisplayOccurrence(
-            program_name="Root",
-            declaring_module_path=("Root",),
-            record=PictureDisplayRecord(
-                record_index=1,
-                record_start_line=1,
-                record_end_line=5,
-                path_rows=(
-                    PictureDisplayPathRow(
-                        record_index=1,
-                        index_token=str(1),
-                        index_value=1,
-                        kind="variable",
-                        raw_text="DisplayPath",
-                        span=SourceSpan(start=0, end=0, line=1, column=1),
+    base_picture_attachments = graphics_attachments(
+        picture_display_occurrences=[
+            PictureDisplayOccurrence(
+                program_name="Root",
+                declaring_module_path=("Root",),
+                record=PictureDisplayRecord(
+                    record_index=1,
+                    record_start_line=1,
+                    record_end_line=5,
+                    path_rows=(
+                        PictureDisplayPathRow(
+                            record_index=1,
+                            index_token=str(1),
+                            index_value=1,
+                            kind="variable",
+                            raw_text="DisplayPath",
+                            span=SourceSpan(start=0, end=0, line=1, column=1),
+                        ),
                     ),
                 ),
-            ),
-        )
-    ]
+            )
+        ]
+    )
 
-    report = analyze_picture_display_paths(base_picture)
+    report = analyze_picture_display_paths(
+        base_picture, graph=graph_with_attachments(base_picture, base_picture_attachments)
+    )
 
     assert len(report.issues) == 1
     assert "DisplayPath" in report.issues[0].message
@@ -424,29 +455,33 @@ def test_picture_display_path_analyzer_reports_generic_variable_path_candidates(
 
 def test_picture_display_path_analyzer_reports_unresolved_operationpath_candidate_from_oprframe_name() -> None:
     base_picture = _build_operation_path_base_picture()
-    base_picture.graphics_picture_display_occurrences = [
-        PictureDisplayOccurrence(
-            program_name="Root",
-            declaring_module_path=("Root", "UnitControl"),
-            record=PictureDisplayRecord(
-                record_index=1,
-                record_start_line=1,
-                record_end_line=5,
-                path_rows=(
-                    PictureDisplayPathRow(
-                        record_index=1,
-                        index_token=str(1),
-                        index_value=1,
-                        kind="variable",
-                        raw_text="Paths.OperationPath",
-                        span=SourceSpan(start=0, end=0, line=1, column=1),
+    base_picture_attachments = graphics_attachments(
+        picture_display_occurrences=[
+            PictureDisplayOccurrence(
+                program_name="Root",
+                declaring_module_path=("Root", "UnitControl"),
+                record=PictureDisplayRecord(
+                    record_index=1,
+                    record_start_line=1,
+                    record_end_line=5,
+                    path_rows=(
+                        PictureDisplayPathRow(
+                            record_index=1,
+                            index_token=str(1),
+                            index_value=1,
+                            kind="variable",
+                            raw_text="Paths.OperationPath",
+                            span=SourceSpan(start=0, end=0, line=1, column=1),
+                        ),
                     ),
                 ),
-            ),
-        )
-    ]
+            )
+        ]
+    )
 
-    report = analyze_picture_display_paths(base_picture)
+    report = analyze_picture_display_paths(
+        base_picture, graph=graph_with_attachments(base_picture, base_picture_attachments)
+    )
 
     assert len(report.issues) == 1
     assert "Paths.OperationPath" in report.issues[0].message
@@ -456,29 +491,33 @@ def test_picture_display_path_analyzer_reports_unresolved_operationpath_candidat
 
 def test_picture_display_path_analyzer_reports_above_base_as_distinct_kind() -> None:
     base_picture = base_picture_with_single_chain()
-    base_picture.graphics_picture_display_occurrences = [
-        PictureDisplayOccurrence(
-            program_name="Root",
-            declaring_module_path=("Root",),
-            record=PictureDisplayRecord(
-                record_index=1,
-                record_start_line=1,
-                record_end_line=5,
-                path_rows=(
-                    PictureDisplayPathRow(
-                        record_index=1,
-                        index_token="-",
-                        index_value=0,
-                        kind="literal",
-                        raw_text="-Test",
-                        span=SourceSpan(start=0, end=0, line=1, column=1),
+    base_picture_attachments = graphics_attachments(
+        picture_display_occurrences=[
+            PictureDisplayOccurrence(
+                program_name="Root",
+                declaring_module_path=("Root",),
+                record=PictureDisplayRecord(
+                    record_index=1,
+                    record_start_line=1,
+                    record_end_line=5,
+                    path_rows=(
+                        PictureDisplayPathRow(
+                            record_index=1,
+                            index_token="-",
+                            index_value=0,
+                            kind="literal",
+                            raw_text="-Test",
+                            span=SourceSpan(start=0, end=0, line=1, column=1),
+                        ),
                     ),
                 ),
-            ),
-        )
-    ]
+            )
+        ]
+    )
 
-    report = analyze_picture_display_paths(base_picture)
+    report = analyze_picture_display_paths(
+        base_picture, graph=graph_with_attachments(base_picture, base_picture_attachments)
+    )
 
     above_base = [issue for issue in report.issues if issue.kind == "picture_display_paths.above_base"]
     assert len(above_base) == 1

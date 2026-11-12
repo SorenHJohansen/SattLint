@@ -7,6 +7,7 @@ from sattline_parser.models.ast_model import GraphicsBinding
 from sattlint.graphics.picture_display_paths import PictureDisplayOccurrence
 from sattlint.graphics.validation import PictureDisplayPathRow, PictureDisplayRecord
 from tests.helpers.analyzers_variables_support import *
+from tests.helpers.graphics_attachments_support import graphics_attachments
 
 
 def test_unused_datatype_fields_are_aggregated_across_variables():
@@ -305,40 +306,43 @@ def test_picture_display_variable_rows_count_as_field_usage_for_datatype_reporti
         origin_file="DiluteLib.s",
         origin_lib="DiluteLib",
     )
-    bp.graphics_picture_display_occurrences = [
-        PictureDisplayOccurrence(
-            program_name="BasePicture",
-            declaring_module_path=("BasePicture", "DisplayModule"),
-            record=PictureDisplayRecord(
-                record_index=1,
-                record_start_line=1,
-                record_end_line=5,
-                path_rows=(
-                    PictureDisplayPathRow(
-                        record_index=1,
-                        index_token="<token>",
-                        index_value=0,
-                        kind="variable",
-                        raw_text="StepTexts.CleanCycle",
-                        span=SourceSpan(start=0, end=0, line=9, column=1),
-                    ),
-                    PictureDisplayPathRow(
-                        record_index=1,
-                        index_token="<token>",
-                        index_value=1,
-                        kind="variable",
-                        raw_text="StepTexts.WaitCleanCycle",
-                        span=SourceSpan(start=0, end=0, line=10, column=1),
+    bp_attachments = graphics_attachments(
+        picture_display_occurrences=[
+            PictureDisplayOccurrence(
+                program_name="BasePicture",
+                declaring_module_path=("BasePicture", "DisplayModule"),
+                record=PictureDisplayRecord(
+                    record_index=1,
+                    record_start_line=1,
+                    record_end_line=5,
+                    path_rows=(
+                        PictureDisplayPathRow(
+                            record_index=1,
+                            index_token="<token>",
+                            index_value=0,
+                            kind="variable",
+                            raw_text="StepTexts.CleanCycle",
+                            span=SourceSpan(start=0, end=0, line=9, column=1),
+                        ),
+                        PictureDisplayPathRow(
+                            record_index=1,
+                            index_token="<token>",
+                            index_value=1,
+                            kind="variable",
+                            raw_text="StepTexts.WaitCleanCycle",
+                            span=SourceSpan(start=0, end=0, line=10, column=1),
+                        ),
                     ),
                 ),
-            ),
-        )
-    ]
+            )
+        ]
+    )
 
     analyzer = VariablesAnalyzer(
         bp,
         analyzed_target_is_library=True,
         selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS),
+        graphics_attachments=bp_attachments,
     )
     analyzer.run()
 
@@ -371,29 +375,31 @@ def test_invalid_picture_display_path_rows_do_not_count_as_usage():
         modulecodes=[],
         moduledefs=[],
     )
-    bp.graphics_bindings = [
-        GraphicsBinding(
-            kind="var",
-            raw_text="PathAIT",
-            value=_varref("PathAIT"),
-            span=SourceSpan(start=0, end=0, line=2, column=5),
-        )
-    ]
-    bp.graphics_picture_display_occurrences = [
-        PictureDisplayOccurrence(
-            program_name="BasePicture",
-            declaring_module_path=("BasePicture", "DisplayModule"),
-            record=PictureDisplayRecord(
-                record_index=1,
-                record_start_line=1,
-                record_end_line=5,
-                path_row_lines=(2,),
-                path_rows=(),
-            ),
-        )
-    ]
+    bp_attachments = graphics_attachments(
+        bindings=[
+            GraphicsBinding(
+                kind="var",
+                raw_text="PathAIT",
+                value=_varref("PathAIT"),
+                span=SourceSpan(start=0, end=0, line=2, column=5),
+            )
+        ],
+        picture_display_occurrences=[
+            PictureDisplayOccurrence(
+                program_name="BasePicture",
+                declaring_module_path=("BasePicture", "DisplayModule"),
+                record=PictureDisplayRecord(
+                    record_index=1,
+                    record_start_line=1,
+                    record_end_line=5,
+                    path_row_lines=(2,),
+                    path_rows=(),
+                ),
+            )
+        ],
+    )
 
-    analyzer = VariablesAnalyzer(bp)
+    analyzer = VariablesAnalyzer(bp, graphics_attachments=bp_attachments)
     analyzer.run()
 
     assert any(

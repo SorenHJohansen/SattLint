@@ -16,7 +16,9 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 - Module definition code blocks are read from `equationblocks`, matching the
   parser model.
 - Graphics companion records, bindings, and picture display correlations live on
-  the project graph instead of on the parser's AST.
+  the project graph instead of on the parser's AST. Attachments resolve for the
+  merged base picture the analyzers receive, and parser `var` bindings are
+  normalized to `VarRef` at the graphics seam.
 - Module type resolution reads library dependencies from the project graph.
 
 ### Changed
