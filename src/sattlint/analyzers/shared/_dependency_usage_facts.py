@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from sattlint.parser_api import (
     Assignment,
     BasePicture,
+    FuncCall,
     FuncCallStmt,
     IfStmt,
     ModuleCode,
@@ -253,40 +254,72 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
             return
 
         if isinstance(node, FuncCallStmt):
-            call_name = node.call.name
-            args = list(node.call.args) if node.call.args else []
-            signature = get_function_signature(call_name)
-            resolved_args: list[FactRef | None] = []
-            for index, argument in enumerate(args):
-                direction = "in"
-                if signature is not None and index < len(signature.parameters):
-                    direction = signature.parameters[index].direction
-                if direction in {"in", "in var", "inout"}:
-                    self._collect_node_facts(
-                        argument,
-                        context,
-                        reads=reads,
-                        writes=writes,
-                        calls=calls,
-                        seen_reads=seen_reads,
-                        seen_writes=seen_writes,
-                    )
-                resolved = self._resolve_ref(argument, context)
-                resolved_args.append(resolved)
-                if direction in {"out", "inout"} and resolved is not None and resolved.key not in seen_writes:
-                    seen_writes.add(resolved.key)
-                    writes.append(resolved)
-            calls.append(CallFact(function_name=call_name, args=tuple(resolved_args)))
+            self._collect_call_facts(
+                node.call,
+                context,
+                reads=reads,
+                writes=writes,
+                calls=calls,
+                seen_reads=seen_reads,
+                seen_writes=seen_writes,
+            )
             return
 
-        for event in walk(node):
+        for event in walk(node, prune=lambda current: isinstance(current, FuncCall)):
             reference = event.node
+            if isinstance(reference, FuncCall):
+                self._collect_call_facts(
+                    reference,
+                    context,
+                    reads=reads,
+                    writes=writes,
+                    calls=calls,
+                    seen_reads=seen_reads,
+                    seen_writes=seen_writes,
+                )
+                continue
             if not isinstance(reference, VarRef):
                 continue
             resolved = self._resolve_ref(reference, context)
             if resolved is not None and resolved.key not in seen_reads:
                 seen_reads.add(resolved.key)
                 reads.append(resolved)
+
+    def _collect_call_facts(
+        self,
+        call: FuncCall,
+        context: ScopeContext,
+        *,
+        reads: list[FactRef],
+        writes: list[FactRef],
+        calls: list[CallFact],
+        seen_reads: set[tuple[str, ...]],
+        seen_writes: set[tuple[str, ...]],
+    ) -> None:
+        call_name = call.name
+        args = list(call.args) if call.args else []
+        signature = get_function_signature(call_name)
+        resolved_args: list[FactRef | None] = []
+        for index, argument in enumerate(args):
+            direction = "in"
+            if signature is not None and index < len(signature.parameters):
+                direction = signature.parameters[index].direction
+            if direction in {"in", "in var", "inout"}:
+                self._collect_node_facts(
+                    argument,
+                    context,
+                    reads=reads,
+                    writes=writes,
+                    calls=calls,
+                    seen_reads=seen_reads,
+                    seen_writes=seen_writes,
+                )
+            resolved = self._resolve_ref(argument, context)
+            resolved_args.append(resolved)
+            if direction in {"out", "inout"} and resolved is not None and resolved.key not in seen_writes:
+                seen_writes.add(resolved.key)
+                writes.append(resolved)
+        calls.append(CallFact(function_name=call_name, args=tuple(resolved_args)))
 
     def _resolve_ref(self, expr: object, context: ScopeContext) -> FactRef | None:
         if not isinstance(expr, VarRef):

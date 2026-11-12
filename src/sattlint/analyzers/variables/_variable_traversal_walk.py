@@ -165,7 +165,8 @@ def _walk_stmt_or_expr(  # noqa: PLR0915
             target_base = varname_base(full_name)
             value_base = varname_base(value_name) if value_name is not None else None
             is_param_self_assignment = (
-                bool(context.moduleparameter_keys)
+                context.parent_context is not None
+                and bool(context.moduleparameter_keys)
                 and target_base is not None
                 and target_base.casefold() in context.moduleparameter_keys
                 and value_base is not None

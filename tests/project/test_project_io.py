@@ -95,6 +95,24 @@ def test_project_analysis_survives_effective_config_merge(tmp_path: Path) -> Non
     assert cfg["analysis"]["spec_compliance"]["step_prefix"] == "ST_"
 
 
+def test_project_merge_preserves_user_app_settings(tmp_path: Path) -> None:
+    path = tmp_path / "proj.slproj"
+    init_project(path)
+    project = load_project(path)
+
+    cfg = project.to_default_merged_config_dict(
+        {
+            "run_history": {"enabled": False, "limit": 5},
+            "output": {"retention_lines": 100},
+            "review": {"output_dir": str(tmp_path / "reviews")},
+        }
+    )
+
+    assert cfg["run_history"] == {"enabled": False, "limit": 5}
+    assert cfg["output"]["retention_lines"] == 100
+    assert cfg["review"]["output_dir"] == str(tmp_path / "reviews")
+
+
 def test_init_project_scaffolds_defaults(tmp_path: Path) -> None:
     path = tmp_path / "proj.slproj"
     project = init_project(path, name="Demo")

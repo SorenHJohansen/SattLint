@@ -213,6 +213,114 @@ def test_changed_variable_declaration(tmp_path: Path):
     assert any(change.symbol.endswith("Flow") for change in declared)
 
 
+def test_changed_initializer_is_a_declaration_change(tmp_path: Path):
+    draft = OFFICIAL_PROGRAM.replace("   ValveOpen: boolean := False;", "   ValveOpen: boolean := True;")
+    official, draft_version, _cfg = load_pair(tmp_path, OFFICIAL_PROGRAM, draft)
+    changes = _diff(official, draft_version)
+
+    declared = [change for change in changes if change.kind is ChangeKind.DECLARATION_CHANGED]
+    assert any(change.symbol.endswith("ValveOpen") for change in declared)
+    assert any("TRUE" in str(change.draft) for change in declared)
+
+
+def test_changed_declaration_modifier_is_a_declaration_change(tmp_path: Path):
+    draft = OFFICIAL_PROGRAM.replace("   Flow: integer := 0;", "   Flow: integer State := 0;")
+    official, draft_version, _cfg = load_pair(tmp_path, OFFICIAL_PROGRAM, draft)
+    changes = _diff(official, draft_version)
+
+    declared = [change for change in changes if change.kind is ChangeKind.DECLARATION_CHANGED]
+    assert any(change.symbol.endswith("Flow") and "STATE" in str(change.draft) for change in declared)
+
+
+FORK_PROGRAM = """\
+"Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-06-19-12:00:00.000, name: Demo"
+
+BasePicture Invocation
+   ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
+    ) : MODULEDEFINITION DateCode_ 1
+
+LOCALVARIABLES
+   StartCmd: boolean := False;
+   Status: integer := 0;
+
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+   OPENSEQUENCE ForkSeq COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+      SEQINITSTEP Init
+      SEQTRANSITION TrBegin WAIT_FOR True
+      SEQSTEP PathA
+         ENTERCODE
+            Status = 1;
+      SEQTRANSITION TrAfterA WAIT_FOR True
+      SEQSTEP PathB
+         ENTERCODE
+            Status = 2;
+      SEQTRANSITION TrAfterB WAIT_FOR True
+      SEQSTEP Decide
+         ENTERCODE
+            Status = 3;
+      SEQTRANSITION TrFork WAIT_FOR True
+         SEQFORK PathA
+   ENDOPENSEQUENCE
+ENDDEF (*BasePicture*);
+"""
+
+
+ROOT_PARAMETER_PROGRAM = """\
+"Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-06-19-12:00:00.000, name: Demo"
+
+BasePicture Invocation
+   ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
+    ) : MODULEDEFINITION DateCode_ 1
+
+MODULEPARAMETERS
+   Input: integer;
+
+LOCALVARIABLES
+   Sink: integer := 0;
+
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+   EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+      Sink = Input;
+
+ENDDEF (*BasePicture*);
+"""
+
+
+def test_changed_root_module_parameter_is_a_declaration_change(tmp_path: Path):
+    draft = ROOT_PARAMETER_PROGRAM.replace("   Input: integer;", "   Input: real;")
+    official, draft_version, _cfg = load_pair(tmp_path, ROOT_PARAMETER_PROGRAM, draft)
+    changes = _diff(official, draft_version)
+
+    declared = [change for change in changes if change.kind is ChangeKind.DECLARATION_CHANGED]
+    assert any(change.symbol.endswith("Input") for change in declared)
+
+
+def test_case_only_sequence_fork_change_is_not_reported(tmp_path: Path):
+    draft_text = FORK_PROGRAM.replace("SEQFORK PathA", "SEQFORK patha")
+    official, draft_version, _cfg = load_pair(tmp_path, FORK_PROGRAM, draft_text)
+
+    assert _diff(official, draft_version) == []
+
+
+def test_changed_sequence_fork_target_is_reported(tmp_path: Path):
+    draft_text = FORK_PROGRAM.replace("SEQFORK PathA", "SEQFORK PathB")
+    official, draft_version, _cfg = load_pair(tmp_path, FORK_PROGRAM, draft_text)
+    changes = _diff(official, draft_version)
+
+    fork_changes = [
+        change for change in changes if change.statement_context and "sequence ForkSeq" in change.statement_context
+    ]
+    assert any(change.detail == "Sequence jump changed" for change in fork_changes)
+
+
 def test_changed_function_block_implementation(tmp_path: Path):
     official, draft, _cfg = load_pair(tmp_path, FUNCTION_BLOCK_OFFICIAL, FUNCTION_BLOCK_DRAFT)
     changes = _diff(official, draft)

@@ -51,6 +51,20 @@ _DefinitionKey = tuple[str, ...]
 
 
 @dataclass(frozen=True)
+class _SequenceFork:
+    """Semantic fingerprint of a ``SEQFORK`` suffix.
+
+    Forks are attributes of a step or transition instead of sequence items, so
+    they are recorded as their own review statement to keep jump changes
+    visible even when guards and actions are unchanged.
+    """
+
+    targets: tuple[str, ...]
+    has_break: bool
+    span: SourceSpan | None = field(default=None, metadata={"layout": True})
+
+
+@dataclass(frozen=True)
 class StatementModel:
     """A single code statement (or transition condition) inside a module."""
 
@@ -129,12 +143,32 @@ def _iter_sfc_items(path: _StatementKey, items: list[Any] | None) -> Any:
                         statement,
                         "statement",
                     )
+            if item.fork is not None:
+                yield (
+                    (*path, "fork", "step", item.name or ""),
+                    _SequenceFork(
+                        targets=tuple(target.casefold() for target in item.fork.targets),
+                        has_break=item.fork.has_break,
+                        span=item.span,
+                    ),
+                    "fork",
+                )
         elif isinstance(item, SFCTransition):
             yield (
                 (*path, "transition", index),
                 item.condition,
                 "transition",
             )
+            if item.fork is not None:
+                yield (
+                    (*path, "fork", "transition", index),
+                    _SequenceFork(
+                        targets=tuple(target.casefold() for target in item.fork.targets),
+                        has_break=item.fork.has_break,
+                        span=item.span,
+                    ),
+                    "fork",
+                )
         elif isinstance(item, SFCAlternative | SFCParallel):
             for branch_index, branch in enumerate(item.branches or []):
                 for child in _iter_sfc_items((*path, "branch", branch_index), branch):
@@ -241,7 +275,7 @@ def _node_declared_variables(
     node: BasePicture | SingleModule | FrameModule | ModuleTypeDef,
 ) -> list[Any]:
     if isinstance(node, BasePicture):
-        return list(node.localvariables or [])
+        return list(node.moduleparameters or []) + list(node.localvariables or [])
     if isinstance(node, SingleModule):
         return list(node.moduleparameters or []) + list(node.localvariables or [])
     if isinstance(node, ModuleTypeDef):

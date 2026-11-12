@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import sys
+from copy import deepcopy
 from pathlib import Path
 from typing import cast
 
 from ..cache import get_cache_dir
 from ..change_review.settings import resolve_review_output_dir
-from ..config import get_config_path
+from ..config import get_config_path, load_config
+from ..config.defaults import DEFAULT_CONFIG
 from ..config.types import ConfigDict
 from ..project import SLPROJ_FILENAME, discover_project, load_project
 from ..project.models import SattLintProjectFile
@@ -59,8 +62,24 @@ def _load_project(path: Path) -> SattLintProjectFile:
         raise CliError(f"Could not load project: {exc}", code="project_invalid", exit_code=2) from exc
 
 
+def _write_config_message(message: str) -> None:
+    sys.stderr.write(f"{message}\n")
+
+
+def _load_user_config() -> ConfigDict:
+    """Load the user config used as the base for project settings."""
+    path = get_config_path()
+    if not path.exists():
+        return cast(ConfigDict, deepcopy(DEFAULT_CONFIG))
+    try:
+        cfg, _ = load_config(path, emit_fn=_write_config_message)
+    except (OSError, ValueError) as exc:
+        raise CliError(f"Could not load user config {path}: {exc}", code="config_invalid", exit_code=2) from exc
+    return cfg
+
+
 def effective_project_config(project: SattLintProjectFile) -> ConfigDict:
-    return project.to_default_merged_config_dict()
+    return project.to_default_merged_config_dict(_load_user_config())
 
 
 def project_paths(cfg: ConfigDict) -> ProjectPaths:

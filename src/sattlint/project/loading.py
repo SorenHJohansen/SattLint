@@ -48,6 +48,7 @@ def iter_loaded_projects(
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
     load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]],
     emit_output_fn: Callable[..., None],
+    failure_sink: Callable[[str, str], None] | None = None,
 ) -> Iterator[LoadedProject]:
     for target_name in require_analyzed_targets_fn(cfg):
         try:
@@ -60,9 +61,11 @@ def iter_loaded_projects(
             )
         except (OSError, RuntimeError, ValueError) as exc:
             log_debug_exception(cfg, f"Failed to load analysis target {target_name!r}", logger=log)
+            if failure_sink is not None:
+                failure_sink(target_name, str(exc))
             emit_output_fn(f"\n=== Target: {target_name} ===")
             emit_output_fn("? Failed to load target:")
-            emit_output_fn(exc)
+            emit_output_fn(str(exc))
             continue
         _emit_debug_load_summary(cfg, target_name=target_name, graph=graph, emit_output_fn=emit_output_fn)
         yield target_name, project_bp, graph

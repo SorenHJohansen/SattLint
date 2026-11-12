@@ -518,7 +518,7 @@ def test_run_checks_uses_cached_report_when_available(monkeypatch):
     monkeypatch.setattr(
         checks_application,
         "compute_analysis_report_cache_key",
-        lambda project_key, analyzer_key: f"{project_key}:{analyzer_key}",
+        lambda project_key, analyzer_key, **_kwargs: f"{project_key}:{analyzer_key}",
     )
 
     checks_application.run_checks(
@@ -594,7 +594,7 @@ def test_run_checks_rebuilds_report_cache_when_cached_payload_is_stale(monkeypat
     monkeypatch.setattr(
         checks_application,
         "compute_analysis_report_cache_key",
-        lambda project_key, analyzer_key: f"{project_key}:{analyzer_key}",
+        lambda project_key, analyzer_key, **_kwargs: f"{project_key}:{analyzer_key}",
     )
 
     checks_application.run_checks(
@@ -637,6 +637,142 @@ def test_run_checks_rebuilds_report_cache_when_cached_payload_is_stale(monkeypat
         )
     ]
     assert any("state inference summary for TargetA" in line for line in lines)
+
+
+def test_run_checks_passes_analysis_settings_to_the_report_cache_key(monkeypatch):
+    captured: list[object] = []
+
+    class FakeReportCache:
+        def __init__(self, _cache_dir):
+            return None
+
+        def load(self, _key):
+            return None
+
+        def validate(self, _payload, *, fast=False):
+            del fast
+            return False
+
+        def save(self, _key, *, report, files):
+            del report, files
+            return True
+
+    def key_fn(project_key, analyzer_key, **kwargs):
+        captured.append(kwargs.get("analysis_settings"))
+        return f"{project_key}:{analyzer_key}"
+
+    monkeypatch.setattr(checks_application, "AnalysisReportCache", FakeReportCache)
+    monkeypatch.setattr(checks_application, "get_cache_dir", lambda: Path("report-cache-dir"))
+    monkeypatch.setattr(checks_application, "compute_analysis_report_cache_key", key_fn)
+
+    checks_application.collect_run_checks_result(
+        DEFAULT_CONFIG.copy() | {"analysis": {"fan_in_out_threshold": 7}},
+        ["state-inference"],
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        named_object("TargetA"),
+                        AnalysisGraphStub(
+                            unavailable_libraries=set(),
+                            analysis_cache_key="project-key",
+                            analysis_manifest_files=frozenset({Path("programs/TargetA.s")}),
+                        ),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                run=lambda _context: SimpleNamespace(issues=[], summary=lambda: "summary"),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+    )
+
+    assert captured == [{"fan_in_out_threshold": 7}]
+
+
+def test_collect_run_checks_result_records_loader_failures_as_text():
+    def iterator(_cfg, *, failure_sink=None, emit_output_fn=None, **_kwargs):
+        assert failure_sink is not None
+        assert emit_output_fn is not None
+        failure_sink("Broken", "root failed")
+        emit_output_fn(RuntimeError("boom"))
+        return iter(())
+
+    result = checks_application.collect_run_checks_result(
+        DEFAULT_CONFIG.copy() | {"analyzed_programs_and_libraries": ["Broken"]},
+        ["state-inference"],
+        iter_loaded_projects_fn=cast(Any, iterator),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                run=lambda _context: SimpleNamespace(issues=[], summary=lambda: "summary"),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+    )
+
+    assert [(failure.target_name, failure.message) for failure in result.failures] == [("Broken", "root failed")]
+    assert "\n".join(result.output_lines).endswith("boom")
+
+
+def test_collect_run_checks_result_forwards_use_cache_to_project_loading(monkeypatch):
+    seen: list[bool] = []
+
+    def iterator(_cfg, *, use_cache=True, **_kwargs):
+        seen.append(use_cache)
+        return iter(())
+
+    checks_application.collect_run_checks_result(
+        DEFAULT_CONFIG.copy(),
+        ["state-inference"],
+        use_cache=False,
+        iter_loaded_projects_fn=cast(Any, iterator),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                run=lambda _context: SimpleNamespace(issues=[], summary=lambda: "summary"),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+    )
+
+    assert seen == [False]
+
+
+def test_collect_run_checks_result_does_not_prune_when_save_fails(monkeypatch, tmp_path):
+    spec = analysis_catalog_module.get_default_cli_analyzers()[0]
+
+    def fail_save(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(checks_application, "get_runs_dir", lambda: tmp_path / "runs")
+    monkeypatch.setattr(checks_application, "save_run", fail_save)
+    monkeypatch.setattr(checks_application, "prune_runs", lambda *_args, **_kwargs: pytest.fail("must not prune"))
+
+    result = checks_application.collect_run_checks_result(
+        DEFAULT_CONFIG.copy() | {"analyzed_programs_and_libraries": ["Demo"]},
+        [spec.key],
+        use_cache=False,
+        persist_run=True,
+        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter(())),
+        get_enabled_analyzers_fn=lambda: [spec],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+    )
+
+    assert result.run_id is None
 
 
 def test_run_checks_bypasses_report_cache_when_use_cache_disabled(monkeypatch):

@@ -1728,6 +1728,24 @@ def test_textual_execute_analyzers_dispatches_to_run_checks(monkeypatch: pytest.
     assert called == [["alpha-analyzer", "beta-analyzer"]]
 
 
+def test_textual_execute_analyzers_reports_target_load_failures(monkeypatch: pytest.MonkeyPatch) -> None:
+    emitted: list[str] = []
+    result = SimpleNamespace(failures=(SimpleNamespace(target_name="Broken"),))
+    app_instance = _make_textual_app(
+        analysis_handlers={"run_checks_result": lambda _cfg, _keys: result},
+    )
+
+    monkeypatch.setattr(app_instance, "_emit_output_from_thread", lambda text: emitted.append(text))
+    monkeypatch.setattr(app_instance, "call_from_thread", lambda *_args: None)
+
+    app_instance._execute_analyzers(("alpha-analyzer",))
+
+    assert emitted == [
+        "Running 1 selected analyzer(s).",
+        "Analysis finished with target load failures: Broken. Review the output above.",
+    ]
+
+
 def test_textual_start_action_tracks_active_worker_thread(monkeypatch: pytest.MonkeyPatch) -> None:
     created_workers: list[object] = []
 

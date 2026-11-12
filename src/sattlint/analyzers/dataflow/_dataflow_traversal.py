@@ -23,9 +23,6 @@ from sattlint.parser_api import (
 
 from ...resolution.common import resolve_moduletype_def_strict
 from ...resolution.scope import ScopeContext
-from ..shared.ast_node_helpers import (
-    sequence_as_list as _sequence_as_list,
-)
 from ._dataflow_common import StateMap
 from ._dataflow_scope_support import DataflowScopeSupportMixin
 
@@ -369,10 +366,11 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
         if isinstance(obj, FuncCallStmt):
             current_state = state
             self._report_expression_temporal_hazards(obj.call, context, module_path, current_state)
+            # Expression evaluation applies signature-driven output writes, so
+            # the statement path must not apply them a second time (a repeated
+            # write would report the first write as a dead overwrite).
             self._evaluate_expression(obj.call, context, module_path, current_state)
-            function_name = obj.call.name
-            args = _sequence_as_list(obj.call.args)
-            return self._apply_call_side_effects(function_name, args, context, current_state)
+            return current_state
 
         self._report_expression_temporal_hazards(obj, context, module_path, state)
         self._evaluate_expression(obj, context, module_path, state)

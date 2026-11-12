@@ -294,6 +294,13 @@ class _DataflowConditionMixin(_DataflowConditionFactsMixin):
         if isinstance(expr, FuncCall):
             for argument in expr.args:
                 self._evaluate_expression(argument, context, module_path, state)
+            updated_state = self._apply_call_side_effects(expr.name, list(expr.args), context, state)
+            if updated_state is not state:
+                # Evaluators mutate the caller's state to record reads; mirror
+                # signature-driven output writes so a later condition does not
+                # treat a value written by the call as its prior constant.
+                state.clear()
+                state.update(updated_state)
             return UNKNOWN
 
         if is_ternary(expr):

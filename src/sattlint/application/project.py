@@ -99,13 +99,16 @@ def _iter_loaded_projects(
     use_cache: bool = True,
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]] = _require_analyzed_targets,
     load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]] | None = None,
+    failure_sink: Callable[[str, str], None] | None = None,
+    emit_output_fn: Callable[..., None] | None = None,
 ) -> Iterator[LoadedProject]:
     return analysis_loading_module.iter_loaded_projects(
         cfg,
         use_cache=use_cache,
         require_analyzed_targets_fn=require_analyzed_targets_fn,
         load_project_fn=load_project if load_project_fn is None else load_project_fn,
-        emit_output_fn=emit_output,
+        emit_output_fn=emit_output if emit_output_fn is None else emit_output_fn,
+        failure_sink=failure_sink,
     )
 
 
@@ -115,12 +118,16 @@ def iter_loaded_projects(
     use_cache: bool = True,
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]] = _require_analyzed_targets,
     load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]] | None = None,
+    failure_sink: Callable[[str, str], None] | None = None,
+    emit_output_fn: Callable[..., None] | None = None,
 ) -> Iterator[LoadedProject]:
     return _iter_loaded_projects(
         cfg,
         use_cache=use_cache,
         require_analyzed_targets_fn=require_analyzed_targets_fn,
         load_project_fn=load_project_fn,
+        failure_sink=failure_sink,
+        emit_output_fn=emit_output_fn,
     )
 
 

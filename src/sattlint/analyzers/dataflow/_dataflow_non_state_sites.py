@@ -9,7 +9,6 @@ by dataflow alongside the other scan-cycle semantics.
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable
 from collections.abc import Sequence as SequenceABC
 from dataclasses import dataclass
 from typing import Any, cast
@@ -17,6 +16,7 @@ from typing import Any, cast
 from sattlint.parser_api import (
     Assignment,
     BasePicture,
+    FuncCall,
     FuncCallStmt,
     IfStmt,
     ModuleCode,
@@ -33,9 +33,9 @@ from sattlint.parser_api import (
     SingleModule,
     VarRef,
     get_function_signature,
+    walk,
 )
 
-from ...core.ast_tools import iter_variable_refs
 from ...resolution.common import resolve_moduletype_def_strict
 from ...resolution.scope import ScopeContext
 from ..shared.ast_node_helpers import sequence_as_list as _sequence_as_list
@@ -411,12 +411,21 @@ def _record_expression(
     continuous_site: str | None,
     accesses: list[_SiteAccess],
 ) -> None:
-    for ref in _iter_ref_nodes(node):
-        _record_ref(self, ref, _READ, context, module_path, continuous_site, accesses)
-
-
-def _iter_ref_nodes(node: object) -> Iterable[VarRef]:
-    return iter_variable_refs(node)
+    for event in walk(node, prune=lambda current: isinstance(current, FuncCall)):
+        current = event.node
+        if isinstance(current, FuncCall):
+            _record_call_arguments(
+                self,
+                current.name,
+                _sequence_as_list(current.args),
+                context,
+                module_path,
+                continuous_site,
+                accesses,
+            )
+            continue
+        if isinstance(current, VarRef):
+            _record_ref(self, current, _READ, context, module_path, continuous_site, accesses)
 
 
 def _record_ref(

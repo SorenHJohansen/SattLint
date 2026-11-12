@@ -95,9 +95,11 @@ def _build_variable_analysis_artifacts(base_picture: BasePicture) -> VariableAna
         if origin_lib:
             dependency_library_display_names.setdefault(origin_lib.casefold(), origin_lib)
 
-    root_env = {casefold_key(variable.name): variable for variable in (base_picture.localvariables or [])}
+    root_parameters = base_picture.moduleparameters or []
+    root_locals = base_picture.localvariables or []
+    root_env = {casefold_key(variable.name): variable for variable in (*root_parameters, *root_locals)}
     any_var_index: dict[str, list[Variable]] = {}
-    for variable in base_picture.localvariables or []:
+    for variable in (*root_parameters, *root_locals):
         any_var_index.setdefault(casefold_key(variable.name), []).append(variable)
     for module in base_picture.submodules or []:
         _collect_module_vars_for_artifacts(module, any_var_index)

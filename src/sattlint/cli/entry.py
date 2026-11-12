@@ -9,6 +9,7 @@ querying stored runs.
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from collections.abc import Callable
 from typing import NoReturn, Protocol
@@ -21,6 +22,23 @@ EXIT_SUCCESS = 0
 EXIT_USAGE_ERROR = 2
 
 AppCommandFn = Callable[[argparse.Namespace], int | None]
+
+_machine_logging_suppressed = False
+
+
+def _suppress_last_resort_logging() -> None:
+    """Keep machine-readable stderr free of log records.
+
+    Python's logging last-resort handler writes WARNING and ERROR records to
+    stderr when no handler is configured. Headless JSON and NDJSON commands
+    need stderr to carry only their error envelope, so a no-op root handler is
+    installed once for those formats.
+    """
+    global _machine_logging_suppressed
+    if _machine_logging_suppressed:
+        return
+    logging.getLogger().addHandler(logging.NullHandler())
+    _machine_logging_suppressed = True
 
 
 class _SubParserAction(Protocol):
@@ -188,6 +206,9 @@ def run_cli(argv: list[str]) -> int:
         return exc.exit_code
     except SystemExit as exc:
         return int(exc.code or 0)
+
+    if _format_from_args(args) in {"json", "ndjson"}:
+        _suppress_last_resort_logging()
 
     handler = _handlers().get(args.command)
     if handler is None:

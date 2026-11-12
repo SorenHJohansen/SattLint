@@ -46,6 +46,8 @@ class SymbolDefinition:
     source_file: str | None = None
     source_library: str | None = None
     declaration_span: SourceSpan | None = None
+    initializer: str | None = None
+    modifiers: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

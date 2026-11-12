@@ -15,6 +15,28 @@ parser AST migration.
 
 ### Fixed
 
+- A target that fails to load no longer produces a successful headless run.
+  Diagnostics are captured with the run output, the command exits with a
+  target-loading error, and the partial run is not saved to run history. JSON
+  and NDJSON commands keep stderr machine-readable, and the interactive shell
+  reports that the run was incomplete.
+- Report cache keys include the analyzer settings under `analysis`, so changing
+  a threshold or naming option cannot reuse a report computed with other
+  settings.
+- Change Review reports declaration initializer and modifier changes, root
+  module parameter declarations, and sequence fork target or break changes.
+- Function calls inside expressions apply their declared output writes, so a
+  later condition does not treat the previous value as still current. Shared
+  dependency-usage and scan-order collection use the same argument directions.
+- Graphics bindings contribute their references and call signatures to the
+  semantic index again. Quoted symbols in tails no longer count as variable
+  reads or writes.
+- Opening a project preserves the user's saved run-history, output-retention,
+  and Change Review settings. Root module parameters now resolve, are indexed
+  as parameter definitions, and participate in variable analysis.
+- Run history reports a failed save instead of returning an identifier for a
+  run that was not written, and old runs are pruned only after a successful
+  save.
 - Parser validation diagnostics no longer depend on the removed severity field.
   Every final diagnostic is an error, and diagnoses the parser marks as
   tentative become notices.
@@ -53,8 +75,9 @@ parser AST migration.
   coordinate tails, clipping tails) are semantic, spans and parser-marked
   layout fields are not, and comment streams stay a small SattLint policy
   exception. Assignment targets are collected with the parser `walk` API.
-- Bumped the AST, project graph, and foundation cache identities so cached
-  graphs from the previous parser release are not reused.
+- Bumped the AST, project graph, foundation, and analysis report cache
+  identities so cached graphs and reports from the previous parser release or
+  analyzer settings are not reused.
 - Call signatures and graphics validation messages now derive from the parser's
   `BuiltinFunction` and `GraphicsMessage` types instead of field-for-field
   copies. The four suppressed language diagnostics carry a written reason at

@@ -80,6 +80,29 @@ def test_build_for_single_skips_empty_non_global_sources() -> None:
     assert issues == []
 
 
+def test_build_for_basepicture_registers_moduleparameters() -> None:
+    base_picture = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        moduleparameters=[Variable(name="Input", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Local", datatype=Simple_DataType.INTEGER)],
+        submodules=[],
+        modulecodes=[],
+        moduledefs=[],
+    )
+    builder, issues = _builder(base_picture)
+
+    context = builder.build_for_basepicture()
+
+    parameter, _field_path, _decl_path, _display = context.resolve_variable("Input")
+    local, _local_field, _local_decl, _local_display = context.resolve_variable("Local")
+    assert parameter is not None and parameter.name == "Input"
+    assert local is not None and local.name == "Local"
+    assert context.moduleparameter_keys == {"input"}
+    assert issues == []
+
+
 def test_build_for_typedef_without_parent_context_skips_source_resolution() -> None:
     base_picture = BasePicture(
         header=_hdr("Root"),

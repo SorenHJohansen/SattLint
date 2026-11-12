@@ -505,6 +505,8 @@ def _walk_tail(
         return
 
     if isinstance(tail, VarTail):
+        if isinstance(tail.value, LitStringTail):
+            return
         name = tail.bound_name
         if not name:
             return
