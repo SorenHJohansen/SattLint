@@ -6,7 +6,6 @@ from __future__ import annotations
 import logging
 from typing import Any, cast
 
-from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     CodeItem,
@@ -411,12 +410,12 @@ def test_reset_contamination_helpers_bound_duplicate_paths_and_emit_debug(caplog
         if_states = reset_contamination_module._collect_if_stmt_paths(
             [
                 (
-                    (const.GRAMMAR_VALUE_NOT, _varref("OpSeq.Reset")),
-                    [(const.KEY_ASSIGN, _varref("Counter.Member"), _varref("Source"))],
+                    NotOp(operand=_varref("OpSeq.Reset")),
+                    [Assignment(target=_varref("Counter.Member"), value=_varref("Source"))],
                 ),
                 (
-                    (const.GRAMMAR_VALUE_NOT, _varref("OpSeq.Reset")),
-                    [(const.KEY_ASSIGN, _varref("Counter.Member"), _varref("Source"))],
+                    NotOp(operand=_varref("OpSeq.Reset")),
+                    [Assignment(target=_varref("Counter.Member"), value=_varref("Source"))],
                 ),
             ],
             None,

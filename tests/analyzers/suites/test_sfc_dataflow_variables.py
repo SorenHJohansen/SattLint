@@ -1,4 +1,5 @@
-from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt
+from sattline_parser.ast import MappingSource
+from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt, VarRef
 
 from tests.helpers.analyzers_suites_support import *
 
@@ -133,7 +134,7 @@ def test_variables_analyzer_flags_dependency_mapped_status_that_only_reaches_ui(
         parametermappings=[
             ParameterMapping(
                 target=_varref("OperationStatus"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("StatusSink"),
@@ -146,7 +147,9 @@ def test_variables_analyzer_flags_dependency_mapped_status_that_only_reaches_ui(
         localvariables=[Variable(name="StatusSink", datatype=Simple_DataType.INTEGER)],
         submodules=[bridge],
         moduledefs=[
-            ModuleDef(graph_objects=[GraphObject(type="TextObject", properties={"text_vars": ["StatusSink"]})])
+            ModuleDef(
+                graph_objects=[GraphObject(type="TextObject", properties={"text_vars": [VarRef(name="StatusSink")]})]
+            )
         ],
     )
 
@@ -170,7 +173,7 @@ def test_variables_analyzer_treats_dependency_mapped_status_as_handled_when_read
         parametermappings=[
             ParameterMapping(
                 target=_varref("OperationStatus"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("StatusSink"),

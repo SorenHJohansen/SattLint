@@ -1,6 +1,7 @@
 # pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportOptionalMemberAccess=false, reportUnusedImport=false
 
 
+from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import GraphicsBinding
 
 from sattlint.graphics.picture_display_paths import PictureDisplayOccurrence
@@ -39,8 +40,8 @@ def test_unused_datatype_fields_are_aggregated_across_variables():
                         position=(0.0, 0.0),
                         size=(1.0, 1.0),
                         code=[
-                            (const.KEY_ASSIGN, _varref("sinkA"), _varref("First.A")),
-                            (const.KEY_ASSIGN, _varref("sinkB"), _varref("Second.B")),
+                            Assignment(target=_varref("sinkA"), value=_varref("First.A")),
+                            Assignment(target=_varref("sinkB"), value=_varref("Second.B")),
                         ],
                     )
                 ]
@@ -134,7 +135,7 @@ def test_unused_datatype_fields_count_nested_record_field_accesses():
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("ThisOPStation"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("Config.ActiveOP.LOP19"),
@@ -214,7 +215,7 @@ def test_library_target_dependency_mapping_counts_root_record_field_usage_withou
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("AlarmDelay"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("ColumnSh.TC601_AlarmDelay"),
@@ -231,13 +232,7 @@ def test_library_target_dependency_mapping_counts_root_record_field_usage_withou
                         name="ReadField",
                         position=(0.0, 0.0),
                         size=(1.0, 1.0),
-                        code=[
-                            (
-                                const.KEY_ASSIGN,
-                                _varref("Sink"),
-                                _varref("ColumnSh.TC601_GlitChDelay"),
-                            )
-                        ],
+                        code=[Assignment(target=_varref("Sink"), value=_varref("ColumnSh.TC601_GlitChDelay"))],
                     )
                 ],
                 sequences=[],

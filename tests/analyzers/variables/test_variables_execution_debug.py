@@ -47,6 +47,12 @@ def test_variables_execution_filters_noisy_unresolved_debug_names(
         _issues=[],
         _param_mapping_issue_indexes={},
         context_builder=SimpleNamespace(issues=[]),
+        graphics_attachments=SimpleNamespace(
+            bindings=(),
+            composite_occurrences=(),
+            composite_records=(),
+            picture_display_occurrences=(),
+        ),
         _limit_to_module_path=None,
         _phase_timings=[],
         _alias_links=[],

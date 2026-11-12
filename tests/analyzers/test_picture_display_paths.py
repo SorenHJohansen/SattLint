@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from sattline_parser.grammar import constants as const
+from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import (
     BasePicture,
     Equation,
@@ -153,7 +153,7 @@ def _build_operation_path_base_picture() -> BasePicture:
                         parametermappings=[
                             ParameterMapping(
                                 target=_varref("Prefix"),
-                                source_type=const.TREE_TAG_VARIABLE_NAME,
+                                source_type=MappingSource.VARIABLE,
                                 is_duration=False,
                                 is_source_global=False,
                                 source=_varref("OprPath"),
@@ -161,7 +161,7 @@ def _build_operation_path_base_picture() -> BasePicture:
                             ),
                             ParameterMapping(
                                 target=_varref("Name"),
-                                source_type=const.TREE_TAG_VARIABLE_NAME,
+                                source_type=MappingSource.VARIABLE,
                                 is_duration=False,
                                 is_source_global=False,
                                 source=_varref("FyldOprName"),
@@ -169,7 +169,7 @@ def _build_operation_path_base_picture() -> BasePicture:
                             ),
                             ParameterMapping(
                                 target=_varref("Paths"),
-                                source_type=const.TREE_TAG_VARIABLE_NAME,
+                                source_type=MappingSource.VARIABLE,
                                 is_duration=False,
                                 is_source_global=False,
                                 source=_varref("Paths"),

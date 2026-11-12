@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-from sattline_parser.grammar import constants as const
+from sattline_parser.ast import Assignment, VarRef
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -767,8 +767,8 @@ def test_load_project_library_target_workspace_program_usage_suppresses_unused_d
     def _hdr(name: str) -> ModuleHeader:
         return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
-    def _varref(name: str) -> dict[str, str]:
-        return {const.KEY_VAR_NAME: name}
+    def _varref(name: str) -> VarRef:
+        return VarRef(name=name)
 
     library_datatype = DataType(
         name="ApplOpTxtType",
@@ -808,7 +808,7 @@ def test_load_project_library_target_workspace_program_usage_suppresses_unused_d
                         name="ReadField",
                         position=(0.0, 0.0),
                         size=(1.0, 1.0),
-                        code=[(const.KEY_ASSIGN, _varref("Sink"), _varref("OPText.LSH"))],
+                        code=[Assignment(target=_varref("Sink"), value=_varref("OPText.LSH"))],
                     )
                 ],
                 sequences=[],

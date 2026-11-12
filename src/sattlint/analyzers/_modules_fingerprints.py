@@ -131,28 +131,6 @@ def normalize_ast_value(value: Any) -> NormalizedValue:
             items.append((field_info.name, normalized))
         return (type(value).__name__, tuple(items))
 
-    if hasattr(value, "data") and hasattr(value, "children"):
-        raw_children = cast(object, getattr(value, "children", []))
-        children: tuple[NormalizedValue, ...] = ()
-        if isinstance(raw_children, list | tuple):
-            children = tuple(
-                normalize_ast_value(child) for child in cast(list[object] | tuple[object, ...], raw_children)
-            )
-        return (
-            type(value).__name__,
-            cast(object | None, getattr(value, "data", None)),
-            children,
-        )
-
-    if hasattr(value, "__dict__"):
-        items: list[NamedNormalizedValue] = []
-        attrs = cast(dict[str, object], vars(value))
-        for key, item in sorted(attrs.items()):
-            if key.startswith("_") or key in _IGNORED_AST_FIELDS:
-                continue
-            items.append((key, normalize_ast_value(item)))
-        return (type(value).__name__, tuple(items))
-
     return repr(value)
 
 

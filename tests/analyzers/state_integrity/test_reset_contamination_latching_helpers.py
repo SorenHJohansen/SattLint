@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence as Seq
-from types import SimpleNamespace
 
-from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     CodeItem,
@@ -194,20 +192,15 @@ def test_latching_helpers_cover_boolean_paths_and_sequence_recursion() -> None:
         "otherflag": Variable(name="OtherFlag", datatype=Simple_DataType.BOOLEAN),
     }
     states = reset_contamination_module._collect_boolean_stmt_paths(
-        SimpleNamespace(
-            data=const.KEY_STATEMENT,
-            children=[
+        IfStmt(
+            branches=(
+                (True, (Assignment(target=_varref("Flag"), value=True),)),
                 (
-                    const.GRAMMAR_VALUE_IF,
-                    [
-                        (True, [(const.KEY_ASSIGN, _varref("Flag"), True)]),
-                        (False, [(const.KEY_FUNCTION_CALL, "SetBooleanValue", [_varref("OtherFlag"), True])]),
-                    ],
-                    [(const.KEY_FUNCTION_CALL, "SetBooleanValue", [_varref("Flag"), False])],
+                    False,
+                    (FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("OtherFlag"), True))),),
                 ),
-                [SimpleNamespace(children=[(const.KEY_ASSIGN, _varref("OtherFlag"), False)])],
-                SimpleNamespace(children=[(const.KEY_FUNCTION_CALL, "SetBooleanValue", [_varref("Flag"), False])]),
-            ],
+            ),
+            else_block=(FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("Flag"), False))),),
         ),
         env,
         [reset_contamination_module._BooleanPathState()],

@@ -2,7 +2,7 @@
 """Tests for strict module-path local variable analysis."""
 
 import pytest
-from sattline_parser.grammar import constants as const
+from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -136,7 +136,7 @@ def test_module_localvar_alias_prefix_uses_source_fields_only():
         parametermappings=[
             ParameterMapping(
                 target=_varref("control"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("Dv.empty"),
@@ -240,7 +240,7 @@ def test_module_localvar_param_mapping_does_not_override_localvariable_same_name
         parametermappings=[
             ParameterMapping(
                 target=_varref("DV"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("Dv"),

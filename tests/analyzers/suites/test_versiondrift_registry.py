@@ -17,7 +17,7 @@ def test_version_drift_ignores_datecode_only_differences():
                         name="Logic",
                         position=(0.0, 0.0),
                         size=(1.0, 1.0),
-                        code=[(const.KEY_ASSIGN, _varref("Output"), 1)],
+                        code=[Assignment(target=_varref("Output"), value=1)],
                     )
                 ],
                 sequences=[],
@@ -39,7 +39,7 @@ def test_version_drift_ignores_datecode_only_differences():
                         name="Logic",
                         position=(0.0, 0.0),
                         size=(1.0, 1.0),
-                        code=[(const.KEY_ASSIGN, _varref("Output"), 1)],
+                        code=[Assignment(target=_varref("Output"), value=1)],
                     )
                 ],
                 sequences=[],

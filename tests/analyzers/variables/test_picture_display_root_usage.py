@@ -377,10 +377,15 @@ def test_library_target_direct_typedef_code_counts_field_usage_for_datatype_repo
                         position=(0.0, 0.0),
                         size=(1.0, 1.0),
                         code=[
-                            (
-                                const.KEY_FUNCTION_CALL,
-                                "CopyString",
-                                [_varref("StepText.CleanCycle"), _varref("Sink"), _varref("Status")],
+                            FuncCallStmt(
+                                call=FuncCall(
+                                    name="CopyString",
+                                    args=(
+                                        _varref("StepText.CleanCycle"),
+                                        _varref("Sink"),
+                                        _varref("Status"),
+                                    ),
+                                )
                             )
                         ],
                     )

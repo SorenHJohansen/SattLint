@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import cast
 
 from sattlint.parser_api import (
     Assignment,
     BasePicture,
     FuncCallStmt,
+    IfStmt,
     ModuleCode,
     ModuleTypeDef,
     SFCAlternative,
@@ -18,35 +18,11 @@ from sattlint.parser_api import (
     SFCTransitionSub,
     VarRef,
     get_function_signature,
+    walk,
 )
-from sattlint.parser_api import constants as const
 
 from ...resolution.scope import ScopeContext
 from .._dependency_usage_scope_support import DependencyUsageScopeSupportMixin
-from .ast_node_helpers import (
-    iter_branch_pairs as _iter_branch_pairs,
-)
-from .ast_node_helpers import (
-    object_dict_values as _object_dict_values,
-)
-from .ast_node_helpers import (
-    object_list as _object_list,
-)
-from .ast_node_helpers import (
-    object_sequence as _object_sequence,
-)
-from .ast_node_helpers import (
-    object_tuple as _object_tuple,
-)
-from .ast_node_helpers import (
-    sequence_as_list as _sequence_as_list,
-)
-from .ast_node_helpers import (
-    statement_children as _statement_children,
-)
-from .ast_node_helpers import (
-    string_key_dict as _string_key_dict,
-)
 
 
 @dataclass(frozen=True)
@@ -213,29 +189,7 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
             )
         )
 
-    def _collect_fact_items(
-        self,
-        items: object,
-        context: ScopeContext,
-        *,
-        reads: list[FactRef],
-        writes: list[FactRef],
-        calls: list[CallFact],
-        seen_reads: set[tuple[str, ...]],
-        seen_writes: set[tuple[str, ...]],
-    ) -> None:
-        for item in cast(list[object] | tuple[object, ...], items):
-            self._collect_node_facts(
-                item,
-                context,
-                reads=reads,
-                writes=writes,
-                calls=calls,
-                seen_reads=seen_reads,
-                seen_writes=seen_writes,
-            )
-
-    def _collect_node_facts(  # noqa: PLR0915
+    def _collect_node_facts(
         self,
         node: object,
         context: ScopeContext,
@@ -249,25 +203,42 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
         if node is None:
             return
 
-        if isinstance(node, VarRef):
-            resolved = self._resolve_ref(node, context)
-            if resolved is not None and resolved.key not in seen_reads:
-                seen_reads.add(resolved.key)
-                reads.append(resolved)
+        if isinstance(node, IfStmt):
+            for condition, branch_statements in node.branches:
+                self._collect_node_facts(
+                    condition,
+                    context,
+                    reads=reads,
+                    writes=writes,
+                    calls=calls,
+                    seen_reads=seen_reads,
+                    seen_writes=seen_writes,
+                )
+                for statement in branch_statements:
+                    self._collect_node_facts(
+                        statement,
+                        context,
+                        reads=reads,
+                        writes=writes,
+                        calls=calls,
+                        seen_reads=seen_reads,
+                        seen_writes=seen_writes,
+                    )
+            for statement in node.else_block or ():
+                self._collect_node_facts(
+                    statement,
+                    context,
+                    reads=reads,
+                    writes=writes,
+                    calls=calls,
+                    seen_reads=seen_reads,
+                    seen_writes=seen_writes,
+                )
             return
 
-        node_dict = _string_key_dict(node)
-        if node_dict is not None and const.KEY_VAR_NAME in node_dict:
-            resolved = self._resolve_ref(node_dict, context)
-            if resolved is not None and resolved.key not in seen_reads:
-                seen_reads.add(resolved.key)
-                reads.append(resolved)
-            return
-
-        statement_children = _statement_children(node)
-        if statement_children is not None:
-            self._collect_fact_items(
-                list(statement_children),
+        if isinstance(node, Assignment):
+            self._collect_node_facts(
+                node.value,
                 context,
                 reads=reads,
                 writes=writes,
@@ -275,6 +246,10 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
                 seen_reads=seen_reads,
                 seen_writes=seen_writes,
             )
+            resolved = self._resolve_ref(node.target, context)
+            if resolved is not None and resolved.key not in seen_writes:
+                seen_writes.add(resolved.key)
+                writes.append(resolved)
             return
 
         if isinstance(node, FuncCallStmt):
@@ -304,189 +279,24 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
             calls.append(CallFact(function_name=call_name, args=tuple(resolved_args)))
             return
 
-        if isinstance(node, Assignment):
-            self._collect_node_facts(
-                node.value,
-                context,
-                reads=reads,
-                writes=writes,
-                calls=calls,
-                seen_reads=seen_reads,
-                seen_writes=seen_writes,
-            )
-            resolved = self._resolve_ref(node.target, context)
-            if resolved is not None and resolved.key not in seen_writes:
-                seen_writes.add(resolved.key)
-                writes.append(resolved)
-            return
-
-        tuple_node = _object_tuple(node)
-        if tuple_node is not None and tuple_node:
-            tag = tuple_node[0]
-            if tag == const.KEY_ASSIGN and len(tuple_node) >= 3:
-                target = tuple_node[1]
-                expr = tuple_node[2]
-                self._collect_node_facts(
-                    expr,
-                    context,
-                    reads=reads,
-                    writes=writes,
-                    calls=calls,
-                    seen_reads=seen_reads,
-                    seen_writes=seen_writes,
-                )
-                resolved = self._resolve_ref(target, context)
-                if resolved is not None and resolved.key not in seen_writes:
-                    seen_writes.add(resolved.key)
-                    writes.append(resolved)
-                return
-
-            if tag == const.KEY_FUNCTION_CALL and len(tuple_node) == 3:
-                function_name = tuple_node[1]
-                args = _sequence_as_list(tuple_node[2])
-                call_name = function_name if isinstance(function_name, str) else str(function_name)
-                signature = get_function_signature(call_name)
-                resolved_args: list[FactRef | None] = []
-                for index, argument in enumerate(args):
-                    direction = "in"
-                    if signature is not None and index < len(signature.parameters):
-                        direction = signature.parameters[index].direction
-                    if direction in {"in", "in var", "inout"}:
-                        self._collect_node_facts(
-                            argument,
-                            context,
-                            reads=reads,
-                            writes=writes,
-                            calls=calls,
-                            seen_reads=seen_reads,
-                            seen_writes=seen_writes,
-                        )
-                    resolved = self._resolve_ref(argument, context)
-                    resolved_args.append(resolved)
-                    if direction in {"out", "inout"} and resolved is not None and resolved.key not in seen_writes:
-                        seen_writes.add(resolved.key)
-                        writes.append(resolved)
-                calls.append(CallFact(function_name=call_name, args=tuple(resolved_args)))
-                return
-
-            if tag == const.GRAMMAR_VALUE_IF and len(tuple_node) == 3:
-                branches = tuple_node[1]
-                else_block = tuple_node[2]
-                for condition, branch_statements in _iter_branch_pairs(branches):
-                    self._collect_node_facts(
-                        condition,
-                        context,
-                        reads=reads,
-                        writes=writes,
-                        calls=calls,
-                        seen_reads=seen_reads,
-                        seen_writes=seen_writes,
-                    )
-                    self._collect_fact_items(
-                        tuple(_sequence_as_list(branch_statements)),
-                        context,
-                        reads=reads,
-                        writes=writes,
-                        calls=calls,
-                        seen_reads=seen_reads,
-                        seen_writes=seen_writes,
-                    )
-                self._collect_fact_items(
-                    tuple(_sequence_as_list(else_block)),
-                    context,
-                    reads=reads,
-                    writes=writes,
-                    calls=calls,
-                    seen_reads=seen_reads,
-                    seen_writes=seen_writes,
-                )
-                return
-
-            self._collect_fact_items(
-                tuple_node[1:],
-                context,
-                reads=reads,
-                writes=writes,
-                calls=calls,
-                seen_reads=seen_reads,
-                seen_writes=seen_writes,
-            )
-            return
-
-        list_node = _object_list(node)
-        if list_node is not None:
-            self._collect_fact_items(
-                list_node,
-                context,
-                reads=reads,
-                writes=writes,
-                calls=calls,
-                seen_reads=seen_reads,
-                seen_writes=seen_writes,
-            )
-            return
-
-        children = _object_sequence(getattr(node, "children", None))
-        if children is not None:
-            self._collect_fact_items(
-                list(children),
-                context,
-                reads=reads,
-                writes=writes,
-                calls=calls,
-                seen_reads=seen_reads,
-                seen_writes=seen_writes,
-            )
-            return
-
-        node_values = _object_dict_values(node)
-        if node_values:
-            self._collect_fact_items(
-                node_values,
-                context,
-                reads=reads,
-                writes=writes,
-                calls=calls,
-                seen_reads=seen_reads,
-                seen_writes=seen_writes,
-            )
+        for event in walk(node):
+            reference = event.node
+            if not isinstance(reference, VarRef):
+                continue
+            resolved = self._resolve_ref(reference, context)
+            if resolved is not None and resolved.key not in seen_reads:
+                seen_reads.add(resolved.key)
+                reads.append(resolved)
 
     def _resolve_ref(self, expr: object, context: ScopeContext) -> FactRef | None:
-        if isinstance(expr, VarRef):
-            full_name = expr.name
-            variable, field_path, decl_path, _decl_display_path = context.resolve_variable(full_name)
-            if variable is None:
-                return None
-            declaring_context = self._find_declaring_context(context, decl_path)
-            raw_state_access = getattr(expr, "state", None)
-            state_access = raw_state_access if isinstance(raw_state_access, str) else None
-            key = self._state_key(decl_path, variable.name, field_path, state_access)
-            root_key = self._state_key(decl_path, variable.name, "", state_access)
-            display_name = full_name if not state_access else f"{full_name}:{state_access.title()}"
-            return FactRef(
-                key=key,
-                root_key=root_key,
-                display_name=display_name,
-                base_display_name=full_name,
-                field_path=field_path,
-                state_access=state_access,
-                decl_module_path=tuple(decl_path),
-                has_initializer=variable.init_value is not None,
-                is_moduleparameter=variable.name.casefold()
-                in self._moduleparameter_keys_by_context.get(id(declaring_context), set()),
-            )
-        expr_map = _string_key_dict(expr)
-        if expr_map is None or const.KEY_VAR_NAME not in expr_map:
+        if not isinstance(expr, VarRef):
             return None
-        full_name = expr_map.get(const.KEY_VAR_NAME)
-        if not isinstance(full_name, str):
-            return None
+        full_name = expr.name
         variable, field_path, decl_path, _decl_display_path = context.resolve_variable(full_name)
         if variable is None:
             return None
         declaring_context = self._find_declaring_context(context, decl_path)
-        raw_state_access = expr_map.get("state")
-        state_access = raw_state_access if isinstance(raw_state_access, str) else None
+        state_access = expr.state if isinstance(expr.state, str) else None
         key = self._state_key(decl_path, variable.name, field_path, state_access)
         root_key = self._state_key(decl_path, variable.name, "", state_access)
         display_name = full_name if not state_access else f"{full_name}:{state_access.title()}"

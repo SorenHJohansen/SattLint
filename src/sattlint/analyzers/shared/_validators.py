@@ -12,7 +12,6 @@ from sattlint.parser_api import (
     Variable,
     VarRef,
 )
-from sattlint.parser_api import constants as const
 from sattlint.parser_api import (
     infer_literal_datatype as _infer_literal_datatype,
 )
@@ -128,9 +127,6 @@ class MinMaxValidator:
     def _mapping_name_text(self, value: Any) -> str | None:
         if isinstance(value, VarRef):
             return value.name or None
-        if isinstance(value, dict) and const.KEY_VAR_NAME in value:
-            name = cast(dict[str, object], value).get(const.KEY_VAR_NAME)
-            return name if isinstance(name, str) else None
         if isinstance(value, Variable):
             return value.name
         if isinstance(value, str):

@@ -206,17 +206,12 @@ def test_reset_contamination_helpers_classify_conditions_and_infer_alternatives(
     reset_old_vars_cf = {"opseqresetold"}
 
     run_flags = reset_contamination_helpers._classify_reset_condition(
-        (const.GRAMMAR_VALUE_NOT, _varref("OpSeq.Reset")),
+        NotOp(operand=_varref("OpSeq.Reset")),
         reset_ref_cf,
         reset_old_vars_cf,
     )
     reset_flags = reset_contamination_helpers._classify_reset_condition(
-        (const.GRAMMAR_VALUE_NOT, _varref("OpSeqResetOld")),
-        reset_ref_cf,
-        reset_old_vars_cf,
-    )
-    mixed_flags = reset_contamination_helpers._classify_reset_condition(
-        [_varref("OpSeq.Reset"), (const.GRAMMAR_VALUE_NOT, _varref("OpSeq.Reset"))],
+        NotOp(operand=_varref("OpSeqResetOld")),
         reset_ref_cf,
         reset_old_vars_cf,
     )
@@ -233,8 +228,6 @@ def test_reset_contamination_helpers_classify_conditions_and_infer_alternatives(
         "exact_run": False,
         "exact_reset": True,
     }
-    assert mixed_flags["run"] is True
-    assert mixed_flags["reset"] is True
 
     assert [
         state.reset_state

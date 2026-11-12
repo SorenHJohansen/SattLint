@@ -1,5 +1,5 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportMissingTypeArgument=false
-from sattline_parser.grammar import constants as const
+from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import (
     BasePicture,
     Equation,
@@ -66,14 +66,14 @@ def test_alarm_integrity_detects_duplicate_tags_across_instances() -> None:
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("Tag"),
-                        source_type=const.KEY_VALUE,
+                        source_type=MappingSource.VALUE,
                         is_duration=False,
                         is_source_global=False,
                         source_literal="Unit.Temp.High",
                     ),
                     ParameterMapping(
                         target=_varref("Condition"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("CondA"),
@@ -87,14 +87,14 @@ def test_alarm_integrity_detects_duplicate_tags_across_instances() -> None:
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("Tag"),
-                        source_type=const.KEY_VALUE,
+                        source_type=MappingSource.VALUE,
                         is_duration=False,
                         is_source_global=False,
                         source_literal="Unit.Temp.High",
                     ),
                     ParameterMapping(
                         target=_varref("Condition"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("CondB"),
@@ -125,14 +125,14 @@ def test_alarm_integrity_detects_duplicate_conditions_across_instances() -> None
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("Tag"),
-                        source_type=const.KEY_VALUE,
+                        source_type=MappingSource.VALUE,
                         is_duration=False,
                         is_source_global=False,
                         source_literal="Unit.Temp.High",
                     ),
                     ParameterMapping(
                         target=_varref("Condition"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("SharedCondition"),
@@ -146,14 +146,14 @@ def test_alarm_integrity_detects_duplicate_conditions_across_instances() -> None
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("Tag"),
-                        source_type=const.KEY_VALUE,
+                        source_type=MappingSource.VALUE,
                         is_duration=False,
                         is_source_global=False,
                         source_literal="Unit.Temp.Low",
                     ),
                     ParameterMapping(
                         target=_varref("Condition"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("SharedCondition"),
@@ -254,14 +254,14 @@ def test_alarm_integrity_helper_methods_cover_origins_mappings_and_value_formatt
         parametermappings=[
             ParameterMapping(
                 target=_varref("Tag"),
-                source_type=const.KEY_VALUE,
+                source_type=MappingSource.VALUE,
                 is_duration=False,
                 is_source_global=False,
                 source_literal=" Area.Alarm ",
             ),
             ParameterMapping(
                 target=_varref("Condition"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=True,
                 source=_varref("GlobalCondition"),
@@ -289,7 +289,7 @@ def test_alarm_integrity_helper_methods_cover_origins_mappings_and_value_formatt
     )
     init_mapping = ParameterMapping(
         target=_varref("Condition"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=False,
         source=_varref("AlarmFlag"),
@@ -303,7 +303,7 @@ def test_alarm_integrity_helper_methods_cover_origins_mappings_and_value_formatt
     )
     dotted_mapping = ParameterMapping(
         target=_varref("Condition"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=False,
         source=_varref("Alarm.Flag"),
@@ -318,7 +318,7 @@ def test_alarm_integrity_helper_methods_cover_origins_mappings_and_value_formatt
         analyzer._resolve_mapping_value(
             ParameterMapping(
                 target=_varref("Condition"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=None,
@@ -341,7 +341,7 @@ def test_alarm_integrity_helper_methods_cover_origins_mappings_and_value_formatt
             parametermappings=[
                 ParameterMapping(
                     target=_varref("Condition"),
-                    source_type=const.TREE_TAG_VARIABLE_NAME,
+                    source_type=MappingSource.VARIABLE,
                     is_duration=False,
                     is_source_global=False,
                     source=None,
@@ -435,7 +435,7 @@ def test_alarm_integrity_candidate_and_issue_emitters_cover_suppression_and_dedu
         parametermappings=[
             ParameterMapping(
                 target=_varref("Condition"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("CondA"),
@@ -451,7 +451,7 @@ def test_alarm_integrity_candidate_and_issue_emitters_cover_suppression_and_dedu
         parametermappings=[
             ParameterMapping(
                 target=_varref("Tag"),
-                source_type=const.KEY_VALUE,
+                source_type=MappingSource.VALUE,
                 is_duration=False,
                 is_source_global=False,
                 source_literal="Alarm.Tag",
@@ -466,14 +466,14 @@ def test_alarm_integrity_candidate_and_issue_emitters_cover_suppression_and_dedu
         parametermappings=[
             ParameterMapping(
                 target=_varref("Tag"),
-                source_type=const.KEY_VALUE,
+                source_type=MappingSource.VALUE,
                 is_duration=False,
                 is_source_global=False,
                 source_literal="Alarm.Tag",
             ),
             ParameterMapping(
                 target=_varref("Condition"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("CondA"),
@@ -494,14 +494,14 @@ def test_alarm_integrity_candidate_and_issue_emitters_cover_suppression_and_dedu
         parametermappings=[
             ParameterMapping(
                 target=_varref("Tag"),
-                source_type=const.KEY_VALUE,
+                source_type=MappingSource.VALUE,
                 is_duration=False,
                 is_source_global=False,
                 source_literal="Alarm.Unknown",
             ),
             ParameterMapping(
                 target=_varref("Condition"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("CondA"),
@@ -519,7 +519,7 @@ def test_alarm_integrity_candidate_and_issue_emitters_cover_suppression_and_dedu
             parametermappings=[
                 ParameterMapping(
                     target=_varref("Tag"),
-                    source_type=const.TREE_TAG_VARIABLE_NAME,
+                    source_type=MappingSource.VARIABLE,
                     is_duration=False,
                     is_source_global=False,
                     source=None,
@@ -527,7 +527,7 @@ def test_alarm_integrity_candidate_and_issue_emitters_cover_suppression_and_dedu
                 ),
                 ParameterMapping(
                     target=_varref("Condition"),
-                    source_type=const.TREE_TAG_VARIABLE_NAME,
+                    source_type=MappingSource.VARIABLE,
                     is_duration=False,
                     is_source_global=False,
                     source=None,
@@ -647,14 +647,14 @@ def test_alarm_integrity_only_accepts_known_eventlib_detector_moduletypes(monkey
         parametermappings=[
             ParameterMapping(
                 target=_varref("Tag"),
-                source_type=const.KEY_VALUE,
+                source_type=MappingSource.VALUE,
                 is_duration=False,
                 is_source_global=False,
                 source_literal="Alarm.Tag",
             ),
             ParameterMapping(
                 target=_varref("Condition"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("CondA"),
@@ -754,14 +754,14 @@ def test_alarm_integrity_run_walks_supported_nodes_and_module_code_filters_clear
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("Tag"),
-                        source_type=const.KEY_VALUE,
+                        source_type=MappingSource.VALUE,
                         is_duration=False,
                         is_source_global=False,
                         source_literal="Alarm.Tag",
                     ),
                     ParameterMapping(
                         target=_varref("Condition"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("RootFlag"),

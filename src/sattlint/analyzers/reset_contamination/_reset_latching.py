@@ -14,7 +14,6 @@ from sattlint.parser_api import (
     SFCTransitionSub,
     Variable,
 )
-from sattlint.parser_api import constants as const
 
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ._reset_latching_paths import (
@@ -32,14 +31,6 @@ from ._reset_latching_paths import (
     record_boolean_write,
 )
 from ._reset_path_state import WriteMap
-
-type StmtBranch = tuple[Any, list[Any]]
-type IfTuple = tuple[str, list[StmtBranch] | None, list[Any] | None]
-
-
-def _latch_children_of(obj: Any) -> list[Any] | None:
-    children = getattr(obj, "children", None)
-    return cast(list[Any], children) if isinstance(children, list) else None
 
 
 def check_for_modulecode_latching(
@@ -108,18 +99,6 @@ def scan_stmt_for_latching(
 ) -> None:
     if obj is None:
         return
-    if hasattr(obj, "data") and obj.data == const.KEY_STATEMENT:
-        for child in _latch_children_of(obj) or []:
-            scan_stmt_for_latching(
-                child,
-                env,
-                path,
-                issues,
-                seen,
-                site=site,
-                sequence_name=sequence_name,
-            )
-        return
     if isinstance(obj, IfStmt):
         branch_states: list[tuple[str, list[BooleanPathState]]] = []
         for index, (_condition, branch_statements) in enumerate(obj.branches or []):
@@ -174,78 +153,10 @@ def scan_stmt_for_latching(
                 sequence_name=sequence_name,
             )
         return
-    if isinstance(obj, tuple) and obj and obj[0] == const.GRAMMAR_VALUE_IF:
-        _, branches, else_block = cast(IfTuple, obj)
-        branch_states: list[tuple[str, list[BooleanPathState]]] = []
-        for index, (_condition, branch_statements) in enumerate(branches or []):
-            label = "IF" if index == 0 else f"ELSIF:{index}"
-            states = collect_boolean_stmt_block_paths(
-                branch_statements or [],
-                env,
-                [BooleanPathState()],
-            )
-            branch_states.append((label, states or [BooleanPathState()]))
-            scan_stmt_block_for_latching(
-                branch_statements or [],
-                env,
-                path,
-                issues,
-                seen,
-                site=f"{site} > {label}",
-                sequence_name=sequence_name,
-            )
-        else_states = (
-            collect_boolean_stmt_block_paths(else_block or [], env, [BooleanPathState()])
-            if else_block
-            else [BooleanPathState()]
-        )
-        if else_block:
-            scan_stmt_block_for_latching(
-                else_block or [],
-                env,
-                path,
-                issues,
-                seen,
-                site=f"{site} > ELSE",
-                sequence_name=sequence_name,
-            )
-
-        for label, states in branch_states:
-            alternative_states = [
-                alternative_state
-                for other_label, other_states in branch_states
-                if other_label != label
-                for alternative_state in other_states
-            ]
-            alternative_states.extend(else_states)
-            emit_branch_latch_issues(
-                states,
-                alternative_states or [BooleanPathState()],
-                path,
-                issues,
-                seen,
-                site=f"{site} > {label}",
-                role_prefix="implicit latch across alternative paths",
-                sequence_name=sequence_name,
-            )
-        return
     if isinstance(obj, list):
         for item in cast(list[Any], obj):
             scan_stmt_for_latching(
                 item,
-                env,
-                path,
-                issues,
-                seen,
-                site=site,
-                sequence_name=sequence_name,
-            )
-        return
-    children = _latch_children_of(obj)
-    if children is not None:
-        for child in children:
-            scan_stmt_for_latching(
-                child,
                 env,
                 path,
                 issues,

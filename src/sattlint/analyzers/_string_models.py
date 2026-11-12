@@ -137,4 +137,4 @@ class _ModuleContext:
     scope: ScopeContext
     node: BasePicture | SingleModule | FrameModule | ModuleTypeDef | ModuleTypeInstance
     literal_bindings: tuple[_LiteralBinding, ...]
-    children: tuple[_ModuleContext, ...] = ()
+    nested: tuple[_ModuleContext, ...] = ()

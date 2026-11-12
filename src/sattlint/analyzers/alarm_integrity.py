@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from sattlint.parser_api import (
     BasePicture,
     FrameModule,
+    MappingSource,
     ModuleCode,
     ModuleTypeDef,
     ModuleTypeInstance,
@@ -13,7 +14,6 @@ from sattlint.parser_api import (
     SingleModule,
     Variable,
 )
-from sattlint.parser_api import constants as const
 
 from ..resolution.common import (
     format_moduletype_label,
@@ -397,7 +397,7 @@ class AlarmIntegrityAnalyzer:
         mapping: ParameterMapping,
         env: dict[str, Variable],
     ) -> _ParameterValue | None:
-        if mapping.source_type == const.KEY_VALUE:
+        if mapping.source_type == MappingSource.VALUE:
             return _ParameterValue(
                 status="resolved",
                 value=mapping.source_literal,

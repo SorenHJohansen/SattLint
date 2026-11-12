@@ -2,6 +2,8 @@
 from types import SimpleNamespace
 from typing import Any
 
+from sattline_parser.ast import MappingSource
+
 from tests.helpers.analyzers_variables_support import *
 
 
@@ -287,7 +289,7 @@ def test_string_mapping_summary_dedupes_root_typedef_singlemodule_rows():
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("TargetValue"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("SourceValue"),
@@ -349,7 +351,7 @@ def test_string_mapping_summary_prefers_original_declaration_type_for_intermedia
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("FinalValue"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("RelayValue"),
@@ -374,7 +376,7 @@ def test_string_mapping_summary_prefers_original_declaration_type_for_intermedia
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("RelayValue"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("OriginalValue"),

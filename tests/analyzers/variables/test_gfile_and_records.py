@@ -77,9 +77,9 @@ def _build_record_field_asymmetry_basepicture(*, include_whole_read: bool) -> Ba
     sink = Variable(name="Sink", datatype=Simple_DataType.INTEGER)
 
     whole_record_assignment = (
-        (const.KEY_ASSIGN, _varref("WholePeer"), _varref("Payload"))
+        Assignment(target=_varref("WholePeer"), value=_varref("Payload"))
         if include_whole_read
-        else (const.KEY_ASSIGN, _varref("Payload"), _varref("WholePeer"))
+        else Assignment(target=_varref("Payload"), value=_varref("WholePeer"))
     )
 
     return BasePicture(
@@ -101,13 +101,13 @@ def _build_record_field_asymmetry_basepicture(*, include_whole_read: bool) -> Ba
                         name="ReadUsedField",
                         position=(1.0, 0.0),
                         size=(1.0, 1.0),
-                        code=[(const.KEY_ASSIGN, _varref("Sink"), _varref("Payload.Used"))],
+                        code=[Assignment(target=_varref("Sink"), value=_varref("Payload.Used"))],
                     ),
                     Equation(
                         name="WriteMiswiredField",
                         position=(2.0, 0.0),
                         size=(1.0, 1.0),
-                        code=[(const.KEY_ASSIGN, _varref("Payload.Miswired"), _varref("FieldSource"))],
+                        code=[Assignment(target=_varref("Payload.Miswired"), value=_varref("FieldSource"))],
                     ),
                 ],
                 sequences=[],
@@ -372,13 +372,11 @@ def test_search_rec_component_found_record_output_is_not_flagged_never_read():
                         position=(0.0, 0.0),
                         size=(1.0, 1.0),
                         code=[
-                            (
-                                const.KEY_ASSIGN,
-                                _varref("SearchSucceeded"),
-                                (
-                                    const.KEY_FUNCTION_CALL,
-                                    "SearchRecComponent",
-                                    [
+                            Assignment(
+                                target=_varref("SearchSucceeded"),
+                                value=FuncCall(
+                                    name="SearchRecComponent",
+                                    args=(
                                         _varref("CR"),
                                         _varref("Index"),
                                         10,
@@ -386,10 +384,10 @@ def test_search_rec_component_found_record_output_is_not_flagged_never_read():
                                         _varref("SearchUnit"),
                                         _varref("FoundUnit"),
                                         _varref("srci"),
-                                    ],
+                                    ),
                                 ),
                             ),
-                            (const.KEY_ASSIGN, _varref("Mirror"), _varref("Index")),
+                            Assignment(target=_varref("Mirror"), value=_varref("Index")),
                         ],
                     )
                 ],

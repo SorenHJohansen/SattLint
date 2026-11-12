@@ -9,35 +9,19 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from functools import partial
-from typing import Any, cast
 
 from sattlint.parser_api import (
     Assignment,
     BasePicture,
-    BinOp,
-    BoolOp,
-    Compare,
     FrameModule,
-    FuncCall,
-    FuncCallStmt,
-    IfStmt,
     ModuleCode,
     ModuleTypeDef,
     ModuleTypeInstance,
-    NotOp,
-    SFCAlternative,
-    SFCParallel,
-    SFCStep,
-    SFCSubsequence,
-    SFCTransition,
-    SFCTransitionSub,
     SingleModule,
-    TernaryOp,
-    UnaryOp,
     Variable,
     VarRef,
+    walk,
 )
-from sattlint.parser_api import constants as const
 
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ...resolution.paths import path_startswith_casefold
@@ -56,18 +40,9 @@ __all__ = [
     "is_from_root_origin",
 ]
 
-type _StmtBranch = tuple[Any, list[Any]]
-type _IfTuple = tuple[str, list[_StmtBranch] | None, list[Any] | None]
-type _AssignTuple = tuple[str, Any, Any]
-
 
 class ResetContaminationAnalyzer(BasePictureAnalyzer):
     """Class-backed owner for reset-contamination scans and helper traversal."""
-
-    @staticmethod
-    def _children_of(obj: Any) -> list[Any] | None:
-        children = getattr(obj, "children", None)
-        return cast(list[Any], children) if isinstance(children, list) else None
 
     @staticmethod
     def _should_analyze_path(path: list[str], limit_to_module_path: list[str] | None) -> bool:
@@ -253,206 +228,23 @@ class ResetContaminationAnalyzer(BasePictureAnalyzer):
                 )
 
     @staticmethod
-    def _collect_var_refs(modulecode: ModuleCode) -> set[str]:  # noqa: PLR0915
-        refs: set[str] = set()
-
-        def visit(obj: Any) -> None:  # noqa: PLR0915
-            if obj is None:
-                return
-            if isinstance(obj, VarRef):
-                if obj.name:
-                    refs.add(obj.name.casefold())
-                return
-            if isinstance(obj, Assignment):
-                visit(obj.target)
-                visit(obj.value)
-                return
-            if isinstance(obj, IfStmt):
-                for cond, stmts in obj.branches or []:
-                    visit(cond)
-                    for stmt in stmts or []:
-                        visit(stmt)
-                for stmt in obj.else_block or []:
-                    visit(stmt)
-                return
-            if isinstance(obj, NotOp):
-                visit(obj.operand)
-                return
-            if isinstance(obj, BoolOp):
-                for operand in obj.operands:
-                    visit(operand)
-                return
-            if isinstance(obj, Compare):
-                visit(obj.left)
-                visit(obj.right)
-                return
-            if isinstance(obj, BinOp):
-                visit(obj.left)
-                visit(obj.right)
-                return
-            if isinstance(obj, UnaryOp):
-                visit(obj.operand)
-                return
-            if isinstance(obj, FuncCall):
-                for arg in obj.args or []:
-                    visit(arg)
-                return
-            if isinstance(obj, FuncCallStmt):
-                visit(obj.call)
-                return
-            if isinstance(obj, TernaryOp):
-                for cond, then_expr in obj.branches or []:
-                    visit(cond)
-                    visit(then_expr)
-                if obj.else_expr is not None:
-                    visit(obj.else_expr)
-                return
-            if isinstance(obj, dict) and const.KEY_VAR_NAME in obj:
-                full = cast(dict[str, object], obj).get(const.KEY_VAR_NAME)
-                if isinstance(full, str) and full:
-                    refs.add(full.casefold())
-                return
-            if isinstance(obj, list):
-                for item in cast(list[Any], obj):
-                    visit(item)
-                return
-            if isinstance(obj, SFCStep):
-                for stmt in obj.code.enter or []:
-                    visit(stmt)
-                for stmt in obj.code.active or []:
-                    visit(stmt)
-                for stmt in obj.code.exit or []:
-                    visit(stmt)
-                return
-            if isinstance(obj, SFCTransition):
-                visit(obj.condition)
-                return
-            if isinstance(obj, SFCAlternative | SFCParallel):
-                for branch in obj.branches or []:
-                    for item in branch or []:
-                        visit(item)
-                return
-            if isinstance(obj, SFCSubsequence | SFCTransitionSub):
-                for item in obj.body or []:
-                    visit(item)
-                return
-            if isinstance(obj, tuple):
-                for item in cast(tuple[Any, ...], obj):
-                    visit(item)
-                return
-            children = ResetContaminationAnalyzer._children_of(obj)
-            if children is not None:
-                for child in children:
-                    visit(child)
-
-        for seq in modulecode.sequences or []:
-            for node in seq.code or []:
-                visit(node)
-        for eq in modulecode.equationblocks or []:
-            for stmt in eq.code or []:
-                visit(stmt)
-
-        return refs
+    def _collect_var_refs(modulecode: ModuleCode) -> set[str]:
+        return {
+            event.node.name.casefold()
+            for event in walk(modulecode)
+            if isinstance(event.node, VarRef) and event.node.name
+        }
 
     @staticmethod
-    def _collect_reset_old_vars(modulecode: ModuleCode, reset_ref_cf: str) -> set[str]:  # noqa: PLR0915
+    def _collect_reset_old_vars(modulecode: ModuleCode, reset_ref_cf: str) -> set[str]:
         reset_old_vars: set[str] = set()
-
-        def visit(obj: Any) -> None:
-            if obj is None:
-                return
-            if hasattr(obj, "data") and obj.data == const.KEY_STATEMENT:
-                for child in ResetContaminationAnalyzer._children_of(obj) or []:
-                    visit(child)
-                return
-            if isinstance(obj, Assignment):
-
-                def _varname_from_ref_new(ref: Any) -> str | None:
-                    if isinstance(ref, VarRef):
-                        return ref.name if ref.name else None
-                    if isinstance(ref, str):
-                        return ref
-                    return None
-
-                expr_name = _varname_from_ref_new(obj.value)
-                target_name = _varname_from_ref_new(obj.target)
-                if expr_name is not None and target_name is not None and expr_name.casefold() == reset_ref_cf:
-                    reset_old_vars.add(target_name)
-                visit(obj.value)
-                return
-            if isinstance(obj, IfStmt):
-                for cond, stmts in obj.branches or []:
-                    visit(cond)
-                    for stmt in stmts or []:
-                        visit(stmt)
-                for stmt in obj.else_block or []:
-                    visit(stmt)
-                return
-            if isinstance(obj, tuple) and obj and obj[0] == const.KEY_ASSIGN:
-                _, target, expr = cast(_AssignTuple, obj)
-
-                def _varname_from_ref(ref: Any) -> str | None:
-                    if isinstance(ref, VarRef):
-                        return ref.name if ref.name else None
-                    if isinstance(ref, str):
-                        return ref
-                    return None
-
-                expr_name = _varname_from_ref(expr)
-                target_name = _varname_from_ref(target)
-                if expr_name is not None and target_name is not None and expr_name.casefold() == reset_ref_cf:
-                    reset_old_vars.add(target_name)
-                visit(expr)
-                return
-            if isinstance(obj, tuple) and obj and obj[0] == const.GRAMMAR_VALUE_IF:
-                _, branches, else_block = cast(_IfTuple, obj)
-                for cond, stmts in branches or []:
-                    visit(cond)
-                    for stmt in stmts or []:
-                        visit(stmt)
-                for stmt in else_block or []:
-                    visit(stmt)
-                return
-            if isinstance(obj, list):
-                for item in cast(list[Any], obj):
-                    visit(item)
-                return
-            if isinstance(obj, SFCStep):
-                for stmt in obj.code.enter or []:
-                    visit(stmt)
-                for stmt in obj.code.active or []:
-                    visit(stmt)
-                for stmt in obj.code.exit or []:
-                    visit(stmt)
-                return
-            if isinstance(obj, SFCTransition):
-                visit(obj.condition)
-                return
-            if isinstance(obj, SFCAlternative | SFCParallel):
-                for branch in obj.branches or []:
-                    for item in branch or []:
-                        visit(item)
-                return
-            if isinstance(obj, SFCSubsequence | SFCTransitionSub):
-                for item in obj.body or []:
-                    visit(item)
-                return
-            if isinstance(obj, tuple):
-                for item in cast(tuple[Any, ...], obj):
-                    visit(item)
-                return
-            children = ResetContaminationAnalyzer._children_of(obj)
-            if children is not None:
-                for child in children:
-                    visit(child)
-
-        for seq in modulecode.sequences or []:
-            for node in seq.code or []:
-                visit(node)
-        for eq in modulecode.equationblocks or []:
-            for stmt in eq.code or []:
-                visit(stmt)
-
+        for event in walk(modulecode):
+            obj = event.node
+            if not isinstance(obj, Assignment):
+                continue
+            value = obj.value
+            if isinstance(value, VarRef) and value.name and value.name.casefold() == reset_ref_cf:
+                reset_old_vars.add(obj.target.name)
         return reset_old_vars
 
     def detect_reset_contamination(

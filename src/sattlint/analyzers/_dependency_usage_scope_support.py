@@ -126,17 +126,10 @@ class DependencyUsageScopeSupportMixin:
             if not target_name:
                 continue
             source = mapping.source
-            if source is None:
+            if not isinstance(source, VarRef):
                 continue
-            if isinstance(source, VarRef):  # type: ignore[reportUnnecessaryIsInstance]
-                full_source = source.name
-            elif isinstance(source, str):  # type: ignore[reportUnnecessaryIsInstance]
-                full_source = source
-            elif isinstance(source, dict) and "var_name" in source:  # type: ignore[reportUnnecessaryIsInstance]
-                full_source = source["var_name"]
-            else:
-                continue
-            source_var, field_prefix, decl_path, decl_display_path = parent_context.resolve_variable(str(full_source))
+            full_source = source.name
+            source_var, field_prefix, decl_path, decl_display_path = parent_context.resolve_variable(full_source)
             if source_var is None:
                 continue
             resolved[target_name.casefold()] = (

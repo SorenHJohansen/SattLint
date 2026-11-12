@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from sattlint.parser_api import ParameterMapping, Simple_DataType, Variable
-from sattlint.parser_api import constants as const
 
 from ...resolution.common import varname_base
 from ...utils.casefolding import casefold_key
@@ -94,17 +93,7 @@ def merge_variable_env(
 
 
 def mapping_target_name(mapping: ParameterMapping) -> str | None:
-    target = getattr(mapping, "target", None)
-    if isinstance(target, str):
-        return varname_base(target)
-    if isinstance(target, dict):
-        target_dict = cast(dict[str, object], target)
-        target_name = target_dict.get(const.KEY_VAR_NAME)
-        if isinstance(target_name, str):
-            return varname_base(target_name)
-    if target is None:
-        return None
-    return varname_base(cast(object, target))
+    return varname_base(mapping.target)
 
 
 class VariablesConstMixin:

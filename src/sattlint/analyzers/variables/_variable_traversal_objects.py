@@ -4,10 +4,19 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
-from sattlint.parser_api import ModuleDef, VarRef
-from sattlint.parser_api import constants as const
+from sattlint.parser_api import (
+    GraphObject,
+    InteractObject,
+    ModuleDef,
+    ModuleHeader,
+    ModuleTypeDef,
+    ProcedureCall,
+    VarRef,
+    VarTail,
+    walk,
+)
 
 from ...resolution import AccessKind
 from ...resolution.scope import ScopeContext
@@ -16,44 +25,32 @@ if TYPE_CHECKING:
     from . import VariablesAnalyzer
 
 
-def _object_mapping(value: object) -> dict[str, object] | None:
-    return cast(dict[str, object], value) if isinstance(value, dict) else None
+def _walk_header_enable(self: VariablesAnalyzer, header: ModuleHeader, context: ScopeContext, path: list[str]) -> None:
+    arguments = header.arguments
+    if arguments.enable is not None and arguments.enable.tail is not None:
+        self._walk_tail(arguments.enable.tail, context, path, is_ui_read=True)
+    if arguments.module_in_view is not None and arguments.module_in_view.tail is not None:
+        self._walk_tail(arguments.module_in_view.tail, context, path, is_ui_read=True)
+    for assign in arguments.assigns:
+        if assign.tail is not None:
+            self._walk_tail(assign.tail, context, path, is_ui_read=True)
 
 
-def _walk_header_enable(self: VariablesAnalyzer, header: Any, context: ScopeContext, path: list[str]) -> None:
-    tail = getattr(header, "enable_tail", None)
-    if tail is not None:
+def _walk_header_invoke_tails(
+    self: VariablesAnalyzer, header: ModuleHeader, context: ScopeContext, path: list[str]
+) -> None:
+    for tail in header.invoke_coord_tails or []:
         self._walk_tail(tail, context, path, is_ui_read=True)
 
 
-def _walk_header_invoke_tails(self: VariablesAnalyzer, header: Any, context: ScopeContext, path: list[str]) -> None:
-    for tail in getattr(header, "invoke_coord_tails", []) or []:
-        self._walk_tail(tail, context, path, is_ui_read=True)
-
-
-def _walk_header_groupconn(self: VariablesAnalyzer, header: Any, context: ScopeContext, path: list[str]) -> None:
-    groupconn = getattr(header, "groupconn", None)
-    if isinstance(groupconn, VarRef):
-        base = groupconn.name
-        if not base:
-            return
-        local_var = context.env.get(base.casefold())
-        if local_var is not None:
-            self._get_usage(local_var).mark_read(path)
-            return
-        var, _field_prefix, _decl_path, _decl_display = context.resolve_variable(base)
-        if var is not None:
-            self._mark_ref_access(base, context, path, AccessKind.READ)
-            return
-        var = self._lookup_env_var_from_varname_dict(base, context.env)
-        if var is not None:
-            self._get_usage(var).mark_read(path)
+def _walk_header_groupconn(
+    self: VariablesAnalyzer, header: ModuleHeader, context: ScopeContext, path: list[str]
+) -> None:
+    groupconn = header.groupconn
+    if not isinstance(groupconn, VarRef):
         return
-    var_dict = _object_mapping(groupconn)
-    if var_dict is None:
-        return
-    base = var_dict.get(const.KEY_VAR_NAME)
-    if not isinstance(base, str):
+    base = groupconn.name
+    if not base:
         return
     local_var = context.env.get(base.casefold())
     if local_var is not None:
@@ -68,25 +65,12 @@ def _walk_header_groupconn(self: VariablesAnalyzer, header: Any, context: ScopeC
         self._get_usage(var).mark_read(path)
 
 
-def _walk_typedef_groupconn(self: VariablesAnalyzer, mt: Any, context: ScopeContext, path: list[str]) -> None:
-    groupconn = getattr(mt, "groupconn", None)
-    if isinstance(groupconn, VarRef):
-        base = groupconn.name
-        if not base:
-            return
-        local_var = context.env.get(base.casefold())
-        if local_var is not None:
-            self._get_usage(local_var).mark_read(path)
-            return
-        var, _field_prefix, _decl_path, _decl_display = context.resolve_variable(base)
-        if var is not None:
-            self._mark_ref_access(base, context, path, AccessKind.READ)
+def _walk_typedef_groupconn(self: VariablesAnalyzer, mt: ModuleTypeDef, context: ScopeContext, path: list[str]) -> None:
+    groupconn = mt.groupconn
+    if not isinstance(groupconn, VarRef):
         return
-    var_dict = _object_mapping(groupconn)
-    if var_dict is None:
-        return
-    base = var_dict.get(const.KEY_VAR_NAME)
-    if not isinstance(base, str):
+    base = groupconn.name
+    if not base:
         return
     local_var = context.env.get(base.casefold())
     if local_var is not None:
@@ -110,40 +94,52 @@ def _walk_moduledef(
     for interact_object in mdef.interact_objects or []:
         self._walk_interact_object(interact_object, context, path)
 
-    props = cast(dict[str, Any], getattr(mdef, "properties", {}) or {})
-    for tail in cast(list[Any], props.get(const.KEY_TAILS, []) or []):
-        self._walk_tail(tail, context, path, is_ui_read=True)
-
-
-def _walk_graph_object(self: VariablesAnalyzer, go: Any, context: ScopeContext, path: list[str]) -> None:
-    props = cast(dict[str, Any], getattr(go, "properties", {}) or {})
-    for text_var in cast(list[Any], props.get("text_vars", []) or []):
-        base = text_var.split(".", 1)[0] if isinstance(text_var, str) else None
-        self._mark_var_by_basename(base, context.env, path, is_ui_read=True)
-    for tail in cast(list[Any], props.get(const.KEY_TAILS, []) or []):
-        self._walk_tail(tail, context, path, is_ui_read=True)
-
-
-def _walk_interact_object(self: VariablesAnalyzer, io: Any, context: ScopeContext, path: list[str]) -> None:
-    props = cast(dict[str, Any], getattr(io, "properties", {}) or {})
-    for tail in cast(list[Any], props.get(const.KEY_TAILS, []) or []):
-        if getattr(tail, "data", None) == const.GRAMMAR_VALUE_OUTVAR_PREFIX:
-            self._walk_output_tail(tail, context, path, is_ui_read=True)
-        else:
+    clipping = mdef.clipping
+    if clipping is not None:
+        for tail in clipping.tails:
             self._walk_tail(tail, context, path, is_ui_read=True)
-    self._scan_for_varrefs(props.get(const.KEY_BODY), context, path, is_ui_read=True)
-    self._scan_for_varrefs(props.get("flags"), context, path, is_ui_read=True)
 
-    procedure = props.get(const.KEY_PROCEDURE)
-    procedure_mapping = _object_mapping(procedure)
-    procedure_args = procedure_mapping.get(const.KEY_ARGS) if procedure_mapping is not None else None
-    if procedure_mapping is not None and (
-        isinstance(procedure_mapping.get(const.KEY_NAME), str) or isinstance(procedure_args, list)
-    ):
-        fn_name = procedure_mapping.get(const.KEY_NAME)
+
+def _mark_reference_read(
+    self: VariablesAnalyzer,
+    name: str | None,
+    context: ScopeContext,
+    path: list[str],
+    *,
+    is_ui_read: bool,
+) -> None:
+    if not name:
+        return
+    resolved_var, _field_path, _decl_path, _decl_display = context.resolve_variable(name)
+    if resolved_var is not None:
+        self._mark_ref_access(name, context, path, AccessKind.READ, is_ui_read=is_ui_read)
+        return
+    self._mark_var_by_basename(name.split(".", 1)[0], context.env, path, is_ui_read=is_ui_read)
+
+
+def _walk_graph_object(self: VariablesAnalyzer, go: GraphObject, context: ScopeContext, path: list[str]) -> None:
+    properties = go.properties
+    for text_var in properties.get("text_vars", []) or []:
+        base = text_var.name.split(".", 1)[0] if text_var.name else None
+        self._mark_var_by_basename(base, context.env, path, is_ui_read=True)
+    for tail in properties.get("tails", []) or []:
+        self._walk_tail(tail, context, path, is_ui_read=True)
+
+
+def _walk_interact_object(self: VariablesAnalyzer, io: InteractObject, context: ScopeContext, path: list[str]) -> None:
+    for event in walk(io, prune=lambda node: isinstance(node, ProcedureCall)):
+        node = event.node
+        if isinstance(node, VarRef):
+            _mark_reference_read(self, node.name, context, path, is_ui_read=True)
+            continue
+        if isinstance(node, VarTail):
+            self._walk_tail(node, context, path, is_ui_read=True)
+
+    procedure = io.properties.get("procedure")
+    if isinstance(procedure, ProcedureCall):
         self._handle_function_call(
-            fn_name if isinstance(fn_name, str) else None,
-            cast(list[Any], procedure_args) if isinstance(procedure_args, list) else [],
+            procedure.name,
+            list(procedure.args),
             context,
             path,
             is_ui_read=True,

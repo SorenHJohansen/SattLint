@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -140,7 +141,7 @@ def test_dependency_mapping_distinguishes_program_and_library_targets(monkeypatc
         parametermappings=[
             ParameterMapping(
                 target={"var_name": "signal"},
-                source_type="var_name",
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source={"var_name": "ProgramVar"},
@@ -148,7 +149,7 @@ def test_dependency_mapping_distinguishes_program_and_library_targets(monkeypatc
             ),
             ParameterMapping(
                 target={"var_name": "signal"},
-                source_type="var_name",
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source={"var_name": "ProgramVar.Field"},
@@ -339,7 +340,7 @@ def test_missing_typedef_and_singlemodule_branch_gaps(monkeypatch: pytest.Monkey
         parametermappings=[
             ParameterMapping(
                 target={"var_name": "signal"},
-                source_type="var_name",
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source={"var_name": "ProgramVar"},
@@ -383,7 +384,7 @@ def test_missing_typedef_and_singlemodule_branch_gaps(monkeypatch: pytest.Monkey
         parametermappings=[
             ParameterMapping(
                 target={"var_name": "Input"},
-                source_type="var_name",
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=None,
@@ -451,7 +452,7 @@ def test_internal_typedef_and_frame_duplication_branch_gaps(monkeypatch: pytest.
         parametermappings=[
             ParameterMapping(
                 target={"var_name": "signal"},
-                source_type="var_name",
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=None,

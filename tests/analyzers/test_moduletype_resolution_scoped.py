@@ -1,7 +1,6 @@
 """Tests for moduletype resolution within library scopes."""
 
 import pytest
-from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -341,7 +340,7 @@ def test_module_lookup_and_scope_helpers_cover_typedef_and_regular_paths():
 
 
 def test_varname_and_alias_helpers_cover_valid_and_invalid_inputs():
-    const_ref = {const.KEY_VAR_NAME: "Root.Signal.Value"}
+    const_ref = VarRef(name="Root.Signal.Value")
     assert varname_base(const_ref) == "root"
     assert varname_base("Root.Signal") == "root"
     assert varname_base(42) is None

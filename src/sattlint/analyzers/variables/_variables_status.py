@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from sattlint.parser_api import Variable, VarRef
-from sattlint.parser_api import constants as const
 
 from ...core.call_signatures import CallParameterSignature, resolve_call_signature
 from ...models.usage import VariableUsage
@@ -84,11 +83,6 @@ def _record_procedure_status_bindings(
         argument = args[index]
         if isinstance(argument, VarRef):
             full_ref = argument.name
-        elif isinstance(argument, dict) and const.KEY_VAR_NAME in argument:
-            argument_dict = cast(dict[str, object], argument)
-            full_ref = argument_dict.get(const.KEY_VAR_NAME)
-            if not isinstance(full_ref, str):
-                continue
         else:
             continue
         self.bind_procedure_status(
@@ -124,11 +118,6 @@ def _record_ignorable_output_bindings(
         argument = args[index]
         if isinstance(argument, VarRef):
             full_ref = argument.name
-        elif isinstance(argument, dict) and const.KEY_VAR_NAME in argument:
-            argument_dict = cast(dict[str, object], argument)
-            full_ref = argument_dict.get(const.KEY_VAR_NAME)
-            if not isinstance(full_ref, str):
-                continue
         else:
             continue
         self.bind_ignorable_output(full_ref, context=context)

@@ -1,6 +1,6 @@
+from sattline_parser.ast import MappingSource
+
 # pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportOptionalMemberAccess=false, reportUnusedImport=false
-
-
 from tests.helpers.analyzers_variables_support import *
 
 
@@ -20,7 +20,7 @@ def test_library_dependency_typedef_internal_string_mismatches_are_suppressed_bu
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("InnerTarget"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("InnerSource"),
@@ -46,7 +46,7 @@ def test_library_dependency_typedef_internal_string_mismatches_are_suppressed_bu
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("EdgeTarget"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("EdgeSource"),
@@ -106,7 +106,7 @@ def test_library_dependency_nested_instance_string_mismatches_are_suppressed_but
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("TagPrefix"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("Name"),
@@ -132,7 +132,7 @@ def test_library_dependency_nested_instance_string_mismatches_are_suppressed_but
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("EdgeTarget"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("EdgeSource"),
@@ -192,7 +192,7 @@ def test_library_dependency_nested_instance_string_mismatches_stay_suppressed_wi
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("TagPrefix"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("Name"),
@@ -218,7 +218,7 @@ def test_library_dependency_nested_instance_string_mismatches_stay_suppressed_wi
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("EdgeTarget"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("EdgeSource"),
@@ -278,7 +278,7 @@ def test_program_dependency_nested_instance_string_mismatches_stay_suppressed_wi
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("TagPrefix"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("Name"),
@@ -305,7 +305,7 @@ def test_program_dependency_nested_instance_string_mismatches_stay_suppressed_wi
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("EdgeTarget"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("EdgeSource"),

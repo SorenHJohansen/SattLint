@@ -1,3 +1,4 @@
+from sattline_parser.ast import MappingSource
 from sattline_parser.models.expressions import Assignment, VarRef
 
 from tests.helpers.analyzers_state_support import *
@@ -159,7 +160,7 @@ def test_write_without_effect_is_suppressed_for_mapped_output_path():
         parametermappings=[
             ParameterMapping(
                 target=out_target,
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=final_output_source,
@@ -282,7 +283,7 @@ def test_hidden_global_coupling_is_not_reported_for_explicit_parameter_mappings(
         parametermappings=[
             ParameterMapping(
                 target=writer_out_target,
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=writer_shared_source,
@@ -312,7 +313,7 @@ def test_hidden_global_coupling_is_not_reported_for_explicit_parameter_mappings(
         parametermappings=[
             ParameterMapping(
                 target=reader_in_target,
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=reader_shared_source,

@@ -1,3 +1,5 @@
+from sattline_parser.ast import MappingSource
+
 # pyright: reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
 from sattlint.analyzers.shared import _validators as validators_module
 from sattlint.resolution.type_graph import TypeGraph
@@ -15,7 +17,7 @@ def test_min_max_mapping_mismatch_detected():
         parametermappings=[
             ParameterMapping(
                 target=_varref("MaxValue"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("MinValue"),
@@ -64,7 +66,7 @@ def test_min_max_mapping_mismatch_not_raised_for_aligned_names():
         parametermappings=[
             ParameterMapping(
                 target=_varref("MinValue"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("MinValue"),
@@ -119,7 +121,7 @@ def test_string_mapping_mismatch_is_reported_when_assigning_large_string_to_smal
         parametermappings=[
             ParameterMapping(
                 target=_varref("TargetValue"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("SourceValue"),
@@ -173,7 +175,7 @@ def test_string_mapping_mismatch_is_not_reported_when_assigning_small_string_to_
         parametermappings=[
             ParameterMapping(
                 target=_varref("TargetValue"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("SourceValue"),
@@ -229,7 +231,7 @@ def test_string_mapping_mismatch_ignores_unresolved_source_name_even_when_same_n
         parametermappings=[
             ParameterMapping(
                 target=_varref("Name"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("Name"),
@@ -275,7 +277,7 @@ def test_string_mapping_mismatch_is_reported_for_string_literal_to_narrower_para
         parametermappings=[
             ParameterMapping(
                 target=_varref("TargetValue"),
-                source_type=const.KEY_VALUE,
+                source_type=MappingSource.VALUE,
                 is_duration=False,
                 is_source_global=False,
                 source=None,
@@ -319,7 +321,7 @@ def test_string_mapping_mismatch_is_not_reported_for_short_string_literal_that_f
         parametermappings=[
             ParameterMapping(
                 target=_varref("TargetValue"),
-                source_type=const.KEY_VALUE,
+                source_type=MappingSource.VALUE,
                 is_duration=False,
                 is_source_global=False,
                 source=None,
@@ -362,7 +364,7 @@ def test_string_mapping_mismatch_uses_resolved_datatype_field_metadata():
         parametermappings=[
             ParameterMapping(
                 target=_varref("Text"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("Name"),
@@ -381,7 +383,7 @@ def test_string_mapping_mismatch_uses_resolved_datatype_field_metadata():
         parametermappings=[
             ParameterMapping(
                 target=_varref("Name"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("DV.StopText"),
@@ -442,7 +444,7 @@ def test_string_mapping_mismatch_ignores_direct_record_field_mapping_when_field_
         parametermappings=[
             ParameterMapping(
                 target=_varref("Text"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("DV.StopText"),
@@ -488,7 +490,7 @@ def test_unknown_parameter_target_detected_for_single_module_mapping():
         parametermappings=[
             ParameterMapping(
                 target=_varref("MissingValue"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("SourceValue"),
@@ -542,7 +544,7 @@ def test_unknown_parameter_target_detected_for_moduletype_instance_mapping():
         parametermappings=[
             ParameterMapping(
                 target=_varref("MissingValue"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("SourceValue"),
@@ -638,7 +640,7 @@ def test_singlemodule_groupconn_with_mapping_marks_child_and_parent_used():
         parametermappings=[
             ParameterMapping(
                 target=_varref("ScanGroup"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("ParentGroup"),
@@ -696,7 +698,7 @@ def test_validator_helper_branches_cover_string_and_minmax_helpers():
         == []
     )
 
-    assert minmax_validator._mapping_name_text({const.KEY_VAR_NAME: 5}) is None
+    assert minmax_validator._mapping_name_text({}) is None
     assert (
         minmax_validator._mapping_name_text(Variable(name="MinLimit", datatype=Simple_DataType.INTEGER)) == "MinLimit"
     )
@@ -708,7 +710,7 @@ def test_validator_helper_branches_cover_string_and_minmax_helpers():
 
     ambiguous_mapping = ParameterMapping(
         target=_varref("MinMaxWindow"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=False,
         source=_varref("MinSource"),
@@ -726,7 +728,7 @@ def test_validator_helper_branches_cover_string_and_minmax_helpers():
 
     blank_mapping = ParameterMapping(
         target=_varref(""),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=False,
         source=_varref(""),
@@ -749,7 +751,7 @@ def test_contract_mapping_validator_helper_branches(monkeypatch):
     target_var = Variable(name="AnyParam", datatype="AnyType")
     mapping = ParameterMapping(
         target=_varref("AnyParam"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=False,
         source=_varref("Source"),
@@ -767,7 +769,7 @@ def test_contract_mapping_validator_helper_branches(monkeypatch):
     assert validator._resolve_source_datatype(
         ParameterMapping(
             target=_varref("AnyParam"),
-            source_type=const.KEY_VALUE,
+            source_type=MappingSource.VALUE,
             is_duration=False,
             is_source_global=False,
             source=None,
@@ -780,7 +782,7 @@ def test_contract_mapping_validator_helper_branches(monkeypatch):
     assert validator._resolve_source_datatype(
         ParameterMapping(
             target=_varref("AnyParam"),
-            source_type=const.TREE_TAG_VARIABLE_NAME,
+            source_type=MappingSource.VARIABLE,
             is_duration=False,
             is_source_global=False,
             source=_varref("Source.child"),
@@ -796,7 +798,7 @@ def test_contract_mapping_validator_datatype_resolution_branches(monkeypatch):
     source_var = Variable(name="Source", datatype=Simple_DataType.STRING)
     mapping = ParameterMapping(
         target=_varref("Target"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=False,
         source=_varref("Source"),

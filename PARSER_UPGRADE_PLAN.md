@@ -1,8 +1,8 @@
 # SattLint parser upgrade plan
 
-Status: in progress, Phases 0 to 2 committed on the migration branch; the
-legacy traversal cleanup (Phase 4) blocks a green suite and must land before
-Phase 3
+Status: in progress, Phases 0, 1, 2, and 4 committed on the migration branch;
+Phase 3 items that became loud breaks were folded into Phase 4, and the
+remaining silent-loss items are tracked below
 Target parser: `sattline-parser==2026.11.4`
 Current SattLint release: `2026.11.3`, pinned to `sattline-parser==2026.11.3`
 Next SattLint release: next available CalVer, with the target parser pin
@@ -170,10 +170,10 @@ Acceptance: the suite imports and runs against 2026.11.4. Remaining failures are
 the Phase 3 behavior gaps.
 
 Observed ordering hazard: the parser removes the legacy tuple and Lark tree
-constants that the reflective traversal layer still reads, so those branches
-raise at first use. The suite therefore cannot go green, and Phase 3 cannot
-compare a finding baseline, until the Phase 4 cleanup lands. Do Phase 4 before
-Phase 3.
+constants that the reflective traversal layer still read, so those branches
+raised at first use. Phase 4 removed the reflective layer and folded in the
+Phase 3 items that raised; the remaining suite failures are the Phase 3
+silent-loss gaps and the Phase 2 attachment seams.
 
 Phase close: run the suite and `/verify`, request the `sattlint-reviewer` pass
 (`/review`), apply the findings, then commit the loud-break fixes.

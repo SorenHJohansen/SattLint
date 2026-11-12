@@ -1,38 +1,8 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
+from sattline_parser.ast import MappingSource
 from sattline_parser.models.expressions import NotOp
 
 from tests.helpers.analyzers_variables_support import *
-
-
-def test_walk_tail_children_fallback_marks_parent_scope_variable_reads() -> None:
-    parent_parameter = Variable(name="p", datatype=Simple_DataType.IDENTSTRING)
-    bp = BasePicture(
-        header=_hdr("BasePicture"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[],
-        modulecodes=[],
-        moduledefs=[],
-    )
-    analyzer = VariablesAnalyzer(bp)
-    parent_context = ScopeContext(
-        env={"p": parent_parameter},
-        param_mappings={},
-        module_path=["BasePicture", "Parent"],
-        display_module_path=["BasePicture<BP>", "Parent<SM>"],
-    )
-    child_context = ScopeContext(
-        env={},
-        param_mappings={},
-        module_path=["BasePicture", "Parent", "Child"],
-        display_module_path=["BasePicture<BP>", "Parent<SM>", "Child<SM>"],
-        parent_context=parent_context,
-    )
-
-    analyzer._walk_tail(SimpleNamespace(children=[_varref("p.name")]), child_context, child_context.module_path)
-
-    assert analyzer._get_usage(parent_parameter).read is True
 
 
 def test_walk_tail_not_expression_marks_operand_variable_reads() -> None:
@@ -71,6 +41,12 @@ def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_pat
     runner: Any = SimpleNamespace(
         _issues=[],
         context_builder=SimpleNamespace(issues=None),
+        graphics_attachments=SimpleNamespace(
+            bindings=(),
+            composite_occurrences=(),
+            composite_records=(),
+            picture_display_occurrences=(),
+        ),
         _limit_to_module_path=None,
         bp=BasePicture(
             header=_hdr("Root"),
@@ -133,7 +109,7 @@ def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_pat
         parametermappings=[
             ParameterMapping(
                 target=_varref("Input"),
-                source_type=const.KEY_VALUE,
+                source_type=MappingSource.VALUE,
                 is_duration=False,
                 is_source_global=False,
                 source=None,
@@ -305,7 +281,7 @@ def test_program_target_dependency_mapping_marks_external_field_reads() -> None:
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("signal"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("DrainDV.V991"),
@@ -619,7 +595,7 @@ def _mapped_root_variable_read_module(name: str) -> SingleModule:
         parametermappings=[
             ParameterMapping(
                 target=_varref("Signal"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("Shared"),

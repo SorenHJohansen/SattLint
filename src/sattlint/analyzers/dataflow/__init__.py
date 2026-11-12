@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
 from sattlint.parser_api import (
     BasePicture,
@@ -15,7 +15,6 @@ from sattlint.parser_api import (
     format_expr,
     get_function_signature,
 )
-from sattlint.parser_api import constants as const
 
 from ...resolution.scope import ScopeContext
 from ...resolution.type_graph import TypeGraph
@@ -232,13 +231,6 @@ class DataflowAnalyzer(
         if isinstance(expr, VarRef):
             full_name = expr.name
             raw_state_access = expr.state
-            requested_state_access = raw_state_access if isinstance(raw_state_access, str) else None
-        elif isinstance(expr, dict) and const.KEY_VAR_NAME in expr:
-            expr_map = cast(dict[str, object], expr)
-            full_name = expr_map.get(const.KEY_VAR_NAME)
-            if not isinstance(full_name, str):
-                return None
-            raw_state_access = expr_map.get("state")
             requested_state_access = raw_state_access if isinstance(raw_state_access, str) else None
         elif isinstance(expr, str):
             full_name = expr

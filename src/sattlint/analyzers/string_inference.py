@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from sattlint.parser_api import (
     Assignment,
@@ -36,7 +36,6 @@ from sattlint.parser_api import (
     VarRef,
     is_string_simple_type,
 )
-from sattlint.parser_api import constants as const
 
 from ..resolution.common import select_moduletype_def_strict, varname_base, varname_full
 from ..resolution.scope import ScopeContext
@@ -184,7 +183,7 @@ class ExactStringInferenceEngine:
             node=self.base_picture,
             literal_bindings=(),
         )
-        root.children = tuple(self._build_child_context(root, child) for child in self.base_picture.submodules or [])
+        root.nested = tuple(self._build_child_context(root, child) for child in self.base_picture.submodules or [])
         return root
 
     def _build_typedef_root_context(self, moduletype: ModuleTypeDef) -> _ModuleContext:
@@ -209,7 +208,7 @@ class ExactStringInferenceEngine:
             node=moduletype,
             literal_bindings=(),
         )
-        context.children = tuple(self._build_child_context(context, child) for child in moduletype.submodules or [])
+        context.nested = tuple(self._build_child_context(context, child) for child in moduletype.submodules or [])
         return context
 
     def _build_child_context(
@@ -226,7 +225,7 @@ class ExactStringInferenceEngine:
                 node=child,
                 literal_bindings=_literal_bindings_for_mappings(child.parametermappings, "parameter_mapping_literal"),
             )
-            context.children = tuple(
+            context.nested = tuple(
                 self._build_child_context(context, grandchild) for grandchild in child.submodules or []
             )
             return context
@@ -241,7 +240,7 @@ class ExactStringInferenceEngine:
                 parent_context=parent.scope,
             )
             context = _ModuleContext(path=child_path, scope=scope, node=child, literal_bindings=())
-            context.children = tuple(
+            context.nested = tuple(
                 self._build_child_context(context, grandchild) for grandchild in child.submodules or []
             )
             return context
@@ -298,7 +297,7 @@ class ExactStringInferenceEngine:
             node=resolved_typedef,
             literal_bindings=_literal_bindings_for_mappings(child.parametermappings, "parameter_mapping_literal"),
         )
-        context.children = tuple(
+        context.nested = tuple(
             self._build_child_context(context, grandchild) for grandchild in resolved_typedef.submodules or []
         )
         self._context_build_depth -= 1
@@ -308,7 +307,7 @@ class ExactStringInferenceEngine:
         self._contexts_by_path[tuple(segment.casefold() for segment in context.path)] = context
         if _module_code(context.node) is not None:
             self._execution_contexts.append(context)
-        for child in context.children:
+        for child in context.nested:
             self._collect_contexts(child)
 
     def _build_initial_state(self) -> _AbstractState:
@@ -390,31 +389,6 @@ class ExactStringInferenceEngine:
                 branch_states.append(self._execute_statement_list(list(branch_body), state.clone(), scope))
             if statement.else_block:
                 branch_states.append(self._execute_statement_list(list(statement.else_block), state.clone(), scope))
-            if not branch_states:
-                return state
-            merged = branch_states[0].clone()
-            for branch_state in branch_states[1:]:
-                _merge_state_into(merged, branch_state)
-            return merged
-
-        if not isinstance(statement, tuple) or not statement:
-            return state
-
-        tag = statement[0]
-        if tag == const.KEY_ASSIGN and len(statement) == 3:
-            return self._execute_assignment(statement[1], statement[2], state, scope)
-
-        if tag == const.KEY_FUNCTION_CALL and len(statement) == 3:
-            return self._execute_builtin_call(cast(str, statement[1]), cast(list[object], statement[2]), state, scope)
-
-        if tag == const.GRAMMAR_VALUE_IF and len(statement) == 3:
-            branches = cast(list[tuple[object, list[object]]], statement[1])
-            else_branch = cast(list[object], statement[2])
-            branch_states = []
-            for _condition, branch_body in branches:
-                branch_states.append(self._execute_statement_list(branch_body, state.clone(), scope))
-            if else_branch:
-                branch_states.append(self._execute_statement_list(else_branch, state.clone(), scope))
             if not branch_states:
                 return state
             merged = branch_states[0].clone()
@@ -669,26 +643,6 @@ class ExactStringInferenceEngine:
                 merged = _merge_string_results(merged, self._eval_string_expr(expr.else_expr, state, scope))
             return merged
 
-        if isinstance(expr, dict):
-            ref_name = varname_full(expr)
-            if not ref_name:
-                return _unknown_string_result()
-            resolved = _resolve_slot(scope, ref_name)
-            if resolved is None:
-                return _unknown_string_result()
-            return _read_string_result(state, resolved)
-
-        if isinstance(expr, tuple) and expr:
-            tag = expr[0]
-            if tag == const.KEY_TERNARY and len(expr) == 3:
-                merged = StringInferenceResult()
-                for _condition, branch_expr in cast(list[tuple[object, object]], expr[1]):
-                    merged = _merge_string_results(merged, self._eval_string_expr(branch_expr, state, scope))
-                merged = _merge_string_results(merged, self._eval_string_expr(expr[2], state, scope))
-                return merged
-
-            return _unknown_string_result()
-
         return _unknown_string_result()
 
     def _eval_int_expr(self, expr: object, state: _AbstractState, scope: ScopeContext) -> _IntResult:
@@ -747,61 +701,6 @@ class ExactStringInferenceEngine:
                 merged = _merge_int_results(merged, self._eval_int_expr(branch_expr, state, scope))
             if expr.else_expr is not None:
                 merged = _merge_int_results(merged, self._eval_int_expr(expr.else_expr, state, scope))
-            return merged
-
-        if isinstance(expr, dict):
-            ref_name = varname_full(expr)
-            if not ref_name:
-                return _IntResult(unknown=True)
-            resolved = _resolve_slot(scope, ref_name)
-            if resolved is None:
-                return _IntResult(unknown=True)
-            return state.int_values.get(resolved.key, _IntResult(unknown=True))
-
-        if isinstance(expr, tuple) and expr:
-            return self._eval_int_tuple_expr(expr, state, scope)
-
-        return _IntResult(unknown=True)
-
-    def _eval_int_tuple_expr(self, expr: tuple[object, ...], state: _AbstractState, scope: ScopeContext) -> _IntResult:
-        tag = expr[0]
-        if tag == const.KEY_FUNCTION_CALL and len(expr) == 3:
-            name = cast(str, expr[1]).casefold()
-            args = cast(list[object], expr[2])
-            if name == "stringlength" and args:
-                source = self._eval_string_expr(args[0], state, scope)
-                values = tuple(len(candidate.text) for candidate in source.candidates)
-                return _normalize_int_result(_IntResult(values, source.unknown_text))
-            if name == "getstringpos" and args:
-                source = self._eval_string_expr(args[0], state, scope)
-                return _normalize_int_result(_IntResult(source.cursor_positions, source.unknown_cursor))
-            if name == "maxstringlength" and args:
-                source = self._eval_string_expr(args[0], state, scope)
-                if source.max_length is None:
-                    return _IntResult(unknown=source.unknown_max_length)
-                return _normalize_int_result(_IntResult((source.max_length,), source.unknown_max_length))
-
-        if tag == const.KEY_ADD and len(expr) == 3:
-            result = self._eval_int_expr(expr[1], state, scope)
-            for operator, tail_expr in cast(list[tuple[str, object]], expr[2]):
-                tail = self._eval_int_expr(tail_expr, state, scope)
-                result = _apply_int_operator(result, operator, tail)
-            return result
-
-        if tag == const.KEY_MINUS and len(expr) == 2:
-            source = self._eval_int_expr(expr[1], state, scope)
-            return _normalize_int_result(
-                _IntResult(tuple(-value for value in source.values), source.unknown),
-            )
-
-        if tag == const.KEY_PLUS and len(expr) == 2:
-            return self._eval_int_expr(expr[1], state, scope)
-
-        if tag == const.KEY_TERNARY and len(expr) == 3:
-            merged = _IntResult()
-            for _condition, branch_expr in cast(list[tuple[object, object]], expr[1]):
-                merged = _merge_int_results(merged, self._eval_int_expr(branch_expr, state, scope))
-            merged = _merge_int_results(merged, self._eval_int_expr(expr[2], state, scope))
             return merged
 
         return _IntResult(unknown=True)

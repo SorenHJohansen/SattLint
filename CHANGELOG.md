@@ -24,6 +24,9 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 - Parser access goes through one module, `sattlint.parser_api`, so a parser
   release that moves internal modules cannot break imports across the tree.
   The unused `sattlint.models.ast_model` compatibility wrapper is removed.
+- Analyzer traversal reads the parser model through typed fields and the
+  `walk` API. The shared variable and call-site collectors in
+  `sattlint.core.ast_tools` are filters over that walk.
 - Upgraded `sattline-parser` to `2026.11.4` on the migration branch, still
   pinned exactly.
 - Bumped the AST, project graph, and foundation cache identities so cached
@@ -31,8 +34,13 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Removed
 
+- The reflective traversal layer: mapping, sequence, dataclass, `children`, and
+  `__dict__` guessing in the analyzer path. A guard test rejects those patterns
+  in `src/sattlint/analyzers`.
 - The parser compatibility tests that exercised the retained parse tree. The
   exact-pin checks now live in the parser surface contract test.
+- Tests that fed hand-built legacy tuple, dictionary, and
+  `SimpleNamespace(children=...)` shapes to analyzer traversal helpers.
 
 ## [2026.11.3] - 2026-11-05
 

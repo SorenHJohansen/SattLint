@@ -5,61 +5,26 @@ from __future__ import annotations
 from typing import Any
 
 from sattlint.parser_api import NotOp, VarRef
-from sattlint.parser_api import constants as const
 
-from ..shared.ast_node_helpers import (
-    object_list as _object_list,
-)
-from ..shared.ast_node_helpers import (
-    object_sequence as _object_sequence,
-)
-from ..shared.ast_node_helpers import (
-    object_tuple as _object_tuple,
-)
-from ..shared.ast_node_helpers import (
-    string_key_dict as _string_key_dict,
-)
 from ._reset_path_state import PathState as _PathState
 
 
 def _varref_casefold(obj: Any) -> str | None:
-    if isinstance(obj, VarRef):
-        if obj.name:
-            return obj.name.casefold()
-        return None
-    node_dict = _string_key_dict(obj)
-    if node_dict is None or const.KEY_VAR_NAME not in node_dict:
-        return None
-    full = node_dict[const.KEY_VAR_NAME]
-    if not isinstance(full, str) or not full:
-        return None
-    return full.casefold()
+    if isinstance(obj, VarRef) and obj.name:
+        return obj.name.casefold()
+    return None
 
 
 def _is_exact_run_condition(cond: Any, reset_ref_cf: str) -> bool:
     if isinstance(cond, NotOp):
         return _varref_casefold(cond.operand) == reset_ref_cf
-    tuple_node = _object_tuple(cond)
-    return (
-        tuple_node is not None
-        and len(tuple_node) == 2
-        and tuple_node[0] == const.GRAMMAR_VALUE_NOT
-        and _varref_casefold(tuple_node[1]) == reset_ref_cf
-    )
+    return False
 
 
 def _is_exact_reset_condition(cond: Any, reset_ref_cf: str, reset_old_vars_cf: set[str]) -> bool:
     if isinstance(cond, NotOp):
         return _varref_casefold(cond.operand) in reset_old_vars_cf
-    tuple_node = _object_tuple(cond)
-    if _varref_casefold(cond) == reset_ref_cf:
-        return True
-    return (
-        tuple_node is not None
-        and len(tuple_node) == 2
-        and tuple_node[0] == const.GRAMMAR_VALUE_NOT
-        and _varref_casefold(tuple_node[1]) in reset_old_vars_cf
-    )
+    return _varref_casefold(cond) == reset_ref_cf
 
 
 def _classify_reset_condition(cond: Any, reset_ref_cf: str, reset_old_vars_cf: set[str]) -> dict[str, bool]:
@@ -80,35 +45,6 @@ def _classify_reset_condition(cond: Any, reset_ref_cf: str, reset_old_vars_cf: s
             return
         if isinstance(obj, NotOp):
             visit(obj.operand, not negated)
-            return
-        node_dict = _string_key_dict(obj)
-        if node_dict is not None and const.KEY_VAR_NAME in node_dict:
-            full = node_dict[const.KEY_VAR_NAME]
-            if isinstance(full, str) and full:
-                name_cf = full.casefold()
-                if name_cf == reset_ref_cf or name_cf in reset_old_vars_cf:
-                    if negated:
-                        negatives.add(name_cf)
-                    else:
-                        positives.add(name_cf)
-            return
-        tuple_node = _object_tuple(obj)
-        if tuple_node is not None and tuple_node:
-            if tuple_node[0] == const.GRAMMAR_VALUE_NOT:
-                visit(tuple_node[1] if len(tuple_node) > 1 else None, not negated)
-                return
-            for item in tuple_node[1:]:
-                visit(item, negated)
-            return
-        list_node = _object_list(obj)
-        if list_node is not None:
-            for item in list_node:
-                visit(item, negated)
-            return
-        children = _object_sequence(getattr(obj, "children", None))
-        if children is not None:
-            for child in children:
-                visit(child, negated)
 
     visit(cond, False)
 

@@ -1,6 +1,6 @@
 # pyright: reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
 
-from sattline_parser.grammar import constants as const
+from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import (
     BasePicture,
     CodeItem,
@@ -181,7 +181,7 @@ def test_same_cycle_reports_external_invocation_mapping_shared_access_hazard() -
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("Input"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("SharedValue"),

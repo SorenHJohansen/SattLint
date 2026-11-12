@@ -127,11 +127,7 @@ def test_analyze_variables_library_target_counts_dependency_typedef_field_reads(
                         position=(0.0, 0.0),
                         size=(1.0, 1.0),
                         code=[
-                            (
-                                const.KEY_ASSIGN,
-                                _varref("Sink"),
-                                _varref("OPText.LSH"),
-                            )
+                            Assignment(target=_varref("Sink"), value=_varref("OPText.LSH")),
                         ],
                     )
                 ]
@@ -158,11 +154,7 @@ def test_analyze_variables_library_target_counts_dependency_typedef_field_reads(
                         position=(0.0, 0.0),
                         size=(1.0, 1.0),
                         code=[
-                            (
-                                const.KEY_ASSIGN,
-                                _varref("Sink"),
-                                _varref("OPText.DrainPipe"),
-                            )
+                            Assignment(target=_varref("Sink"), value=_varref("OPText.DrainPipe")),
                         ],
                     )
                 ],
@@ -244,11 +236,7 @@ def test_analyze_variables_library_target_counts_reverse_consumer_typedef_field_
                         position=(0.0, 0.0),
                         size=(1.0, 1.0),
                         code=[
-                            (
-                                const.KEY_ASSIGN,
-                                _varref("Sink"),
-                                _varref("OPText.LSH"),
-                            )
+                            Assignment(target=_varref("Sink"), value=_varref("OPText.LSH")),
                         ],
                     )
                 ],

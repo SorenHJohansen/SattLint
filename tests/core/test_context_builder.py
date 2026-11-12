@@ -1,6 +1,7 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownArgumentType=false
 from __future__ import annotations
 
+from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import (
     BasePicture,
     ModuleHeader,
@@ -59,7 +60,7 @@ def test_build_for_single_skips_empty_non_global_sources() -> None:
         parametermappings=[
             ParameterMapping(
                 target=VarRef(name="Input"),
-                source_type="value",
+                source_type=MappingSource.VALUE,
                 is_duration=False,
                 is_source_global=False,
                 source=None,
@@ -105,7 +106,7 @@ def test_build_for_typedef_without_parent_context_skips_source_resolution() -> N
         parametermappings=[
             ParameterMapping(
                 target=VarRef(name="Input"),
-                source_type="var_name",
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=VarRef(name="Outer"),
@@ -193,7 +194,7 @@ def test_build_for_typedef_reuses_cached_template_for_equivalent_mappings() -> N
         parametermappings=[
             ParameterMapping(
                 target=VarRef(name="Input"),
-                source_type="var_name",
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=VarRef(name="Outer"),

@@ -1,3 +1,5 @@
+from sattline_parser.ast import MappingSource
+
 from tests.helpers.analyzers_suites_support import *
 
 
@@ -30,14 +32,14 @@ def test_alarm_integrity_detects_duplicate_tags_across_instances():
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("Tag"),
-                        source_type=const.KEY_VALUE,
+                        source_type=MappingSource.VALUE,
                         is_duration=False,
                         is_source_global=False,
                         source_literal="Unit.Temp.High",
                     ),
                     ParameterMapping(
                         target=_varref("Condition"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("CondA"),
@@ -51,14 +53,14 @@ def test_alarm_integrity_detects_duplicate_tags_across_instances():
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("Tag"),
-                        source_type=const.KEY_VALUE,
+                        source_type=MappingSource.VALUE,
                         is_duration=False,
                         is_source_global=False,
                         source_literal="Unit.Temp.High",
                     ),
                     ParameterMapping(
                         target=_varref("Condition"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("CondB"),
@@ -103,14 +105,14 @@ def test_alarm_integrity_detects_duplicate_conditions_across_instances():
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("Tag"),
-                        source_type=const.KEY_VALUE,
+                        source_type=MappingSource.VALUE,
                         is_duration=False,
                         is_source_global=False,
                         source_literal="Unit.Temp.High",
                     ),
                     ParameterMapping(
                         target=_varref("Condition"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("SharedCondition"),
@@ -124,14 +126,14 @@ def test_alarm_integrity_detects_duplicate_conditions_across_instances():
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("Tag"),
-                        source_type=const.KEY_VALUE,
+                        source_type=MappingSource.VALUE,
                         is_duration=False,
                         is_source_global=False,
                         source_literal="Unit.Temp.Low",
                     ),
                     ParameterMapping(
                         target=_varref("Condition"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("SharedCondition"),

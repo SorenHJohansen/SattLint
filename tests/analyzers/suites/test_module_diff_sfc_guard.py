@@ -1,3 +1,5 @@
+from sattline_parser.ast import BoolOp, MappingSource, NotOp
+
 from tests.helpers.analyzers_suites_support import *
 
 
@@ -34,7 +36,7 @@ def test_module_localvar_field_report_includes_filtered_summary_sections():
         parametermappings=[
             ParameterMapping(
                 target=_varref("Input"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("Dv"),
@@ -408,12 +410,12 @@ def test_module_variant_grouping_collapses_identical_structures_and_common_prefi
 
 def test_sfc_guard_signature_collapses_contradictory_and_expression_to_false():
     signature = _normalize_guard_signature(
-        (
-            const.GRAMMAR_VALUE_AND,
-            [
+        BoolOp(
+            op="AND",
+            operands=(
                 _varref("Permit"),
-                (const.GRAMMAR_VALUE_NOT, _varref("Permit")),
-            ],
+                NotOp(operand=_varref("Permit")),
+            ),
         )
     )
 

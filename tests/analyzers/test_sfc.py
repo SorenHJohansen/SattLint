@@ -3,7 +3,7 @@
 
 from types import SimpleNamespace
 
-from sattline_parser.grammar import constants as const
+from sattline_parser.ast import Assignment, VarRef
 from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
@@ -41,12 +41,12 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _varref(name: str) -> dict:
-    return {const.KEY_VAR_NAME: name}
+def _varref(name: str) -> VarRef:
+    return VarRef(name=name)
 
 
-def _assign(name: str, value: object) -> tuple:
-    return (const.KEY_ASSIGN, _varref(name), value)
+def _assign(name: str, value: object) -> Assignment:
+    return Assignment(target=_varref(name), value=value)
 
 
 def _step(name: str, active_stmts: list[object]) -> SFCStep:
