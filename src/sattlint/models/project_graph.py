@@ -12,8 +12,8 @@ from ._validation_notice import ValidationNotice
 if TYPE_CHECKING:
     from ..graphics.picture_display_paths import PictureDisplayOccurrence
     from ..graphics.picture_display_runtime import CompositeRecordOccurrence
-    from ..graphics.validation import GraphicsCompositeRecord, GraphicsValidationMessage, PictureDisplayRecord
-    from ..parser_api import GraphicsBinding
+    from ..graphics.validation import GraphicsCompositeRecord, PictureDisplayRecord
+    from ..parser_api import GraphicsBinding, GraphicsMessage
 
 
 def _ast_by_name_factory() -> dict[str, BasePicture]:
@@ -79,7 +79,7 @@ class GraphicsAttachments:
 
     file_name: str | None = None
     bindings: tuple[GraphicsBinding, ...] = ()
-    messages: tuple[GraphicsValidationMessage, ...] = ()
+    messages: tuple[GraphicsMessage, ...] = ()
     composite_records: tuple[GraphicsCompositeRecord, ...] = ()
     composite_occurrences: tuple[CompositeRecordOccurrence, ...] = ()
     picture_display_records: tuple[PictureDisplayRecord, ...] = ()

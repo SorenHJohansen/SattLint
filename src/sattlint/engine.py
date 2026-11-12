@@ -11,9 +11,6 @@ from sattlint.parser_api import (
     BasePicture,
     SLTransformer,
     describe_parse_error,
-    is_compressed,
-    preprocess_sl_text,
-    read_text_cp1252,
 )
 from sattlint.parser_api import parse_source_file as parser_core_parse_source_file
 from sattlint.parser_api import parse_source_text as parser_core_parse_source_text
@@ -35,9 +32,6 @@ from .core.syntax import (
 )
 from .core.syntax import (
     graphics_validation_to_syntax_result as _graphics_validation_to_syntax_result,
-)
-from .core.syntax import (
-    load_source_text as _load_source_text_core,
 )
 from .core.syntax import (
     parse_source_file as _parse_source_file_core,
@@ -72,7 +66,6 @@ from .project.parser_adapter import (
     convert_project_into_graph,
     load_parser_project,
 )
-from .utils.text_processing import find_disallowed_comments
 from .validation.shared import (
     StructuralValidationError,
     ValidationNotice,
@@ -120,20 +113,6 @@ def load_project_graph(
     return binding, root_bp, graph
 
 
-def _load_source_text(
-    code_path: Path,
-    *,
-    debug: Callable[[str], None] | None = None,
-) -> str:
-    return _load_source_text_core(
-        code_path,
-        debug=debug,
-        read_text_cp1252_fn=read_text_cp1252,
-        is_compressed_fn=is_compressed,
-        preprocess_sl_text_fn=preprocess_sl_text,
-    )
-
-
 def parse_source_text(
     src: str,
     *,
@@ -179,8 +158,6 @@ def validate_single_file_syntax(
     return _validate_single_file_syntax_core(
         code_path,
         mode=mode,
-        load_source_text_fn=_load_source_text,
-        find_disallowed_comments_fn=find_disallowed_comments,
         parser_core_parse_source_text_fn=parser_core_parse_source_text,
         validate_transformed_basepicture_fn=validate_basepicture_strict,
         describe_parse_error_fn=describe_parse_error,

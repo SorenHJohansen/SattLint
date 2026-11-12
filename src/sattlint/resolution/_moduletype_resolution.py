@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import difflib
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -76,7 +76,7 @@ def select_moduletype_def_strict(
     current_library: str | None = None,
     current_file: str | None = None,
     unavailable_libraries: set[str] | None = None,
-    library_dependencies: Mapping[str, Sequence[str]] | None = None,
+    library_dependencies: Mapping[str, Iterable[str]] | None = None,
 ) -> ModuleTypeDef:
     if not matches:
         available = sorted({mt.name for mt in (bp.moduletype_defs or [])})
@@ -137,7 +137,7 @@ def resolve_moduletype_def_strict(
     current_file: str | None = None,
     unavailable_libraries: set[str] | None = None,
     moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
-    library_dependencies: Mapping[str, Sequence[str]] | None = None,
+    library_dependencies: Mapping[str, Iterable[str]] | None = None,
 ) -> ModuleTypeDef:
     key = moduletype_name.casefold()
     if moduletype_index is not None:

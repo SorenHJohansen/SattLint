@@ -38,7 +38,7 @@ def _nested_shadowing_report(
         moduleparameters=[],
         localvariables=child_variables,
         submodules=[],
-        modulecodes=[child_module_code],
+        modulecodes=[child_module_code] if child_module_code is not None else [],
         parametermappings=[],
     )
     bp = BasePicture(

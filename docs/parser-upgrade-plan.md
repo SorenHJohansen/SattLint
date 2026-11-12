@@ -1,13 +1,17 @@
+> Historical migration plan. SattLint 2026.11.4 completed the parser AST
+> migration; follow-up work is tracked separately.
+
 # SattLint parser upgrade plan
 
-Status: in progress, Phases 0, 1, 2, 3, 4, and 5 committed on the migration
-branch; Phase 6 (release gate) remains. The Phase 3 reference-visibility tests
-parse real parser output and the corpus manifests pass under 2026.11.4; the
-2026.11.3 differential is deferred to Phase 6 because the environment is pinned
-to the target parser.
+Status: Phases 0 to 6 implemented on the migration branch. Phase 6 release
+preparation is committed; the pull request, tag, and PyPI publish follow the
+normal flow. The Phase 3 reference-visibility tests parse real parser output,
+the corpus manifests pass under 2026.11.4, and the corpus differential against
+2026.11.3 produced an identical finding set.
 Target parser: `sattline-parser==2026.11.4`
-Current SattLint release: `2026.11.3`, pinned to `sattline-parser==2026.11.3`
-Next SattLint release: next available CalVer, with the target parser pin
+Current SattLint release: `2026.11.4`, pinned to `sattline-parser==2026.11.4`
+Next SattLint release: the next CalVer after 2026.11.4, with the same exact
+parser pin
 
 ## Why this upgrade needs its own branch
 
@@ -79,7 +83,7 @@ These follow the sattline-parser agent workflow:
 2. Change `pyproject.toml` to `sattline-parser==2026.11.4`.
 3. Install the target parser in the development environment.
 4. Confirm the compatibility test reads the pin rather than hardcoding a
-   version: [tests/core/test_parser_compatibility.py](tests/core/test_parser_compatibility.py).
+   version: `tests/core/test_parser_compatibility.py` (removed in Phase 2).
 5. Add a fixture-based contract test. Use real parser output, not hand-built
    legacy shapes. Cover:
    - a text-object `VarName`,
@@ -102,7 +106,7 @@ setup and contract test.
 ## Phase 1: one parser surface
 
 1. Create `src/sattlint/parser_api.py`, or repurpose the unused
-   [models/ast_model.py](src/sattlint/models/ast_model.py), as the single
+   `models/ast_model.py` (removed in Phase 1), as the single
    re-export module:
    - nodes, clauses, tails, and walker from `sattline_parser.ast`,
    - type facts from `sattline_parser.types`,
@@ -166,7 +170,7 @@ These fail at import or at first use, so fix them before the silent losses.
    A cached project graph pickles ASTs, so reusing 2026.11.3 entries under the
    new model is unsafe.
 7. Delete the parser compatibility tests that rely on the retained parse tree:
-   [tests/core/test_parser_compatibility.py](tests/core/test_parser_compatibility.py).
+   `tests/core/test_parser_compatibility.py` (removed in Phase 2).
 
 Acceptance: the suite imports and runs against 2026.11.4. Remaining failures are
 the Phase 3 behavior gaps.
@@ -301,6 +305,21 @@ normalization changes.
 Phase close: run the full gate and `/verify`, request the `sattlint-reviewer`
 pass (`/review`) on the release diff, apply the findings, then commit the release
 preparation. The release commit and tag follow the normal PR and tag flow.
+
+Release evidence recorded for 2026.11.4:
+
+- `ruff check`, `ruff format --check`, `pyright src/sattlint tests`,
+  `pre-commit run --all-files`, and `pytest -q` passed.
+- `python -m build` produced the wheel and sdist; `twine check` passed.
+- A clean virtual environment installed the wheel with
+  `sattline-parser==2026.11.4`; `sattlint --version` reported `2026.11.4`.
+- The installed CLI analyzed `LinterTestProgram.s` through a `.slproj` project
+  and reported 37 findings with status ok.
+- The analyzer corpus was run in an isolated 2026.11.3 worktree with
+  `sattline-parser==2026.11.3` and in this branch with `2026.11.4`:
+  `pytest tests/test_corpus_analyzers.py tests/corpus/test_corpus_regression_exactness.py -q`
+  passed 59 cases in each, and a per-manifest finding dump was byte-identical,
+  so no finding was added or removed.
 
 ## Verification matrix
 

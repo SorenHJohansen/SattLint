@@ -1,5 +1,7 @@
 """Tests for moduletype resolution within library scopes."""
 
+from typing import Any
+
 import pytest
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -404,7 +406,7 @@ def test_analyze_variables_derives_library_dependencies_from_graph():
     captured: dict[str, object] = {}
 
     class _RecordingAnalyzer(VariablesAnalyzer):
-        def __init__(self, *args: object, **kwargs: object) -> None:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
             captured["library_dependencies"] = kwargs.get("library_dependencies")
             super().__init__(*args, **kwargs)
 

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from sattlint.parser_api import Variable, VarRef
 
-from ...core.call_signatures import CallParameterSignature, resolve_call_signature
+from ...core.call_signatures import CallParameter, resolve_call_signature
 from ...models.usage import VariableUsage
 from ...resolution.scope import ScopeContext
 
@@ -36,7 +36,7 @@ def _bind_procedure_status(
     full_ref: str,
     *,
     call_name: str,
-    parameter: CallParameterSignature,
+    parameter: CallParameter,
     context: ScopeContext,
 ) -> None:
     resolved_var, resolved_field_path, _decl_path, _decl_display = context.resolve_variable(full_ref)
@@ -190,7 +190,7 @@ class VariablesStatusMixin:
         full_ref: str,
         *,
         call_name: str,
-        parameter: CallParameterSignature,
+        parameter: CallParameter,
         context: ScopeContext,
     ) -> None:
         _bind_procedure_status(self, full_ref, call_name=call_name, parameter=parameter, context=context)

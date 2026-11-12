@@ -15,6 +15,7 @@ from typing import Any, Literal, cast
 
 from sattlint.parser_api import (
     GraphicsBinding,
+    GraphicsMessage,
     GraphicsModel,
     GraphicsPathRow,
     GraphicsPictureDisplayRecord,
@@ -39,28 +40,24 @@ __all__ = [
 ]
 
 
-@dataclass(frozen=True, slots=True)
-class GraphicsValidationMessage:
-    severity: Literal["error", "warning"]
-    message: str
-    line: int
-    column: int
-    length: int = 1
+#: The parser owns the graphics message shape; SattLint keeps the historical
+#: name as an alias for its public result type.
+GraphicsValidationMessage = GraphicsMessage
 
 
 @dataclass(frozen=True, slots=True)
 class GraphicsValidationResult:
-    messages: tuple[GraphicsValidationMessage, ...] = ()
+    messages: tuple[GraphicsMessage, ...] = ()
     bindings: tuple[GraphicsBinding, ...] = ()
     composite_records: tuple[GraphicsCompositeRecord, ...] = ()
     picture_display_records: tuple[PictureDisplayRecord, ...] = ()
 
     @property
-    def errors(self) -> tuple[GraphicsValidationMessage, ...]:
+    def errors(self) -> tuple[GraphicsMessage, ...]:
         return tuple(message for message in self.messages if message.severity == "error")
 
     @property
-    def warnings(self) -> tuple[GraphicsValidationMessage, ...]:
+    def warnings(self) -> tuple[GraphicsMessage, ...]:
         return tuple(message for message in self.messages if message.severity == "warning")
 
 
@@ -133,10 +130,10 @@ def _validate_literal_path(
     *,
     line: int,
     column: int,
-) -> GraphicsValidationMessage | None:
+) -> GraphicsMessage | None:
     stripped = path_text.strip()
     if not stripped:
-        return GraphicsValidationMessage(
+        return GraphicsMessage(
             severity="error",
             message="PictureDisplay contains an empty literal path",
             line=line,
@@ -146,7 +143,7 @@ def _validate_literal_path(
     if stripped.casefold().startswith("scr:"):
         asset_name = stripped[4:].strip()
         if not asset_name:
-            return GraphicsValidationMessage(
+            return GraphicsMessage(
                 severity="error",
                 message="PictureDisplay asset path must include a file name after 'scr:'",
                 line=line,
@@ -154,7 +151,7 @@ def _validate_literal_path(
                 length=len(stripped),
             )
         if is_unimplemented_picture_display_asset_path(stripped):
-            return GraphicsValidationMessage(
+            return GraphicsMessage(
                 severity="warning",
                 message=unimplemented_picture_display_asset_message(),
                 line=line,
@@ -163,7 +160,7 @@ def _validate_literal_path(
             )
         if any(candidate.exists() for candidate in _candidate_asset_paths(file_path, asset_name)):
             return None
-        return GraphicsValidationMessage(
+        return GraphicsMessage(
             severity="warning",
             message=f"PictureDisplay asset {stripped!r} could not be verified from this workspace",
             line=line,
@@ -172,7 +169,7 @@ def _validate_literal_path(
         )
 
     if is_unimplemented_picture_display_asset_path(stripped):
-        return GraphicsValidationMessage(
+        return GraphicsMessage(
             severity="warning",
             message=unimplemented_picture_display_asset_message(),
             line=line,
@@ -241,7 +238,7 @@ def validate_graphics_model(model: GraphicsModel, file_path: Path) -> GraphicsVa
     PictureDisplay asset paths against the workspace that contains ``file_path``.
     """
     messages = [
-        GraphicsValidationMessage(
+        GraphicsMessage(
             severity=message.severity,
             message=message.message,
             line=message.line,

@@ -3,18 +3,36 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from sattlint.parser_api import get_function_signature
+from sattlint.parser_api import BuiltinFunction, BuiltinParameter, get_function_signature
 
 _STATUS_PARAMETER_NAMES = {"status", "debugstatus"}
 
 
 @dataclass(frozen=True, slots=True)
-class CallParameterSignature:
-    name: str
-    datatype: str
-    direction: Literal["in", "in var", "out", "inout"]
-    sorting: str
-    ownership: str
+class CallParameter:
+    """Derived view over one parser ``BuiltinParameter``."""
+
+    builtin: BuiltinParameter
+
+    @property
+    def name(self) -> str:
+        return self.builtin.name
+
+    @property
+    def datatype(self) -> str:
+        return self.builtin.datatype
+
+    @property
+    def direction(self) -> Literal["in", "in var", "out", "inout"]:
+        return self.builtin.direction
+
+    @property
+    def sorting(self) -> str:
+        return self.builtin.sorting
+
+    @property
+    def ownership(self) -> str:
+        return self.builtin.ownership
 
     @property
     def channel_kind(self) -> str | None:
@@ -33,14 +51,29 @@ class CallParameterSignature:
 
 @dataclass(frozen=True, slots=True)
 class CallSignature:
-    name: str
-    call_type: Literal["Function", "Procedure"]
-    return_type: str | None
-    parameters: tuple[CallParameterSignature, ...]
+    """Derived view over one parser ``BuiltinFunction``."""
+
+    builtin: BuiltinFunction
     source: str = "builtin"
 
     @property
-    def status_parameters(self) -> tuple[CallParameterSignature, ...]:
+    def name(self) -> str:
+        return self.builtin.name
+
+    @property
+    def call_type(self) -> Literal["Function", "Procedure"]:
+        return "Function" if self.builtin.kind == "function" else "Procedure"
+
+    @property
+    def return_type(self) -> str | None:
+        return self.builtin.return_type
+
+    @property
+    def parameters(self) -> tuple[CallParameter, ...]:
+        return tuple(CallParameter(parameter) for parameter in self.builtin.parameters)
+
+    @property
+    def status_parameters(self) -> tuple[CallParameter, ...]:
         return tuple(parameter for parameter in self.parameters if parameter.is_status_channel)
 
 
@@ -57,30 +90,14 @@ class CallSignatureOccurrence:
 def resolve_call_signature(name: str | None) -> CallSignature | None:
     if not name:
         return None
-
     builtin = get_function_signature(name)
     if builtin is None:
         return None
-
-    return CallSignature(
-        name=builtin.name,
-        call_type="Function" if builtin.kind == "function" else "Procedure",
-        return_type=builtin.return_type,
-        parameters=tuple(
-            CallParameterSignature(
-                name=parameter.name,
-                datatype=parameter.datatype,
-                direction=parameter.direction,
-                sorting=parameter.sorting,
-                ownership=parameter.ownership,
-            )
-            for parameter in builtin.parameters
-        ),
-    )
+    return CallSignature(builtin=builtin)
 
 
 __all__ = [
-    "CallParameterSignature",
+    "CallParameter",
     "CallSignature",
     "CallSignatureOccurrence",
     "resolve_call_signature",

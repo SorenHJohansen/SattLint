@@ -35,7 +35,9 @@ from sattline_parser import (
 )
 from sattline_parser.api import (
     build_lark_parser,
+    load_source_text,
     read_text_cp1252,
+    source_text_for_parse,
 )
 from sattline_parser.ast import (
     Alignment,
@@ -83,7 +85,6 @@ from sattline_parser.ast import (
     ModuleOptions,
     ModuleTypeDef,
     ModuleTypeInstance,
-    NodeVisitor,
     NotOp,
     ParameterMapping,
     PickButton,
@@ -113,17 +114,15 @@ from sattline_parser.ast import (
     Variable,
     VarRef,
     VarTail,
-    WalkEvent,
     Zoomable,
     ZoomLimits,
-    is_expression_tail,
-    iter_child_nodes,
     iter_literal_leaves,
-    tail_list,
     walk,
 )
 from sattline_parser.builtins import (
     BUILTIN_RECORD_SPECS,
+    BuiltinFunction,
+    BuiltinParameter,
     get_function_signature,
 )
 from sattline_parser.formatting import (
@@ -134,6 +133,7 @@ from sattline_parser.formatting import (
 )
 from sattline_parser.project import (
     GraphicsCompositeRecord,
+    GraphicsMessage,
     GraphicsModel,
     GraphicsPathRow,
     GraphicsPictureDisplayRecord,
@@ -185,6 +185,8 @@ __all__ = [
     "BasePicture",
     "BinOp",
     "BoolOp",
+    "BuiltinFunction",
+    "BuiltinParameter",
     "ClipValue",
     "ClippingClause",
     "CodeComment",
@@ -211,6 +213,7 @@ __all__ = [
     "GraphProperties",
     "GraphicsBinding",
     "GraphicsCompositeRecord",
+    "GraphicsMessage",
     "GraphicsModel",
     "GraphicsPathRow",
     "GraphicsPictureDisplayRecord",
@@ -234,7 +237,6 @@ __all__ = [
     "ModuleOptions",
     "ModuleTypeDef",
     "ModuleTypeInstance",
-    "NodeVisitor",
     "NotOp",
     "ParameterMapping",
     "PickButton",
@@ -269,7 +271,6 @@ __all__ = [
     "VarRef",
     "VarTail",
     "Variable",
-    "WalkEvent",
     "ZoomLimits",
     "Zoomable",
     "assignment_type_matches",
@@ -294,15 +295,14 @@ __all__ = [
     "is_boolean",
     "is_boolean_datatype",
     "is_compressed",
-    "is_expression_tail",
     "is_numeric",
     "is_numeric_datatype",
     "is_string_simple_type",
     "is_valid_duration_literal",
     "is_valid_time_literal",
-    "iter_child_nodes",
     "iter_literal_leaves",
     "literal_matches_expected_datatype",
+    "load_source_text",
     "merge_compatible_types",
     "merge_numeric_types",
     "normalize_builtin_datatype",
@@ -316,9 +316,9 @@ __all__ = [
     "read_text_cp1252",
     "resolve_graphics_companion_path",
     "resolve_variable_field_datatype",
+    "source_text_for_parse",
     "split_dotted_name",
     "suggest_datatype_name",
-    "tail_list",
     "validate_basepicture",
     "walk",
 ]

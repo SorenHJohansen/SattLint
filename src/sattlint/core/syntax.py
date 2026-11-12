@@ -15,9 +15,8 @@ from sattlint.parser_api import (
     BasePicture,
     SLTransformer,
     describe_parse_error,
-    is_compressed,
-    preprocess_sl_text,
-    read_text_cp1252,
+    load_source_text,
+    source_text_for_parse,
 )
 from sattlint.parser_api import create_parser as parser_core_create_parser
 from sattlint.parser_api import parse_source_file as parser_core_parse_source_file
@@ -31,10 +30,8 @@ from ..graphics.graphics_context_helpers import (
 )
 from ..graphics.picture_display_paths import correlate_picture_display_records
 from ..graphics.validation import GraphicsValidationResult, validate_graphics_file
-from ..utils.text_processing import find_disallowed_comments
 from ..validation.policy import validate_basepicture_strict
 from ..validation.shared import (
-    RawSourceValidationError,
     StructuralValidationError,
     ValidationNotice,
     ValidationWarning,
@@ -133,26 +130,6 @@ def create_sl_parser() -> Lark:
     return parser_core_create_parser()
 
 
-def load_source_text(
-    code_path: Path,
-    *,
-    debug: Callable[[str], None] | None = None,
-    read_text_cp1252_fn: Callable[[Path], str] = read_text_cp1252,
-    is_compressed_fn: Callable[[str], bool] = is_compressed,
-    preprocess_sl_text_fn: Callable[[str], tuple[str, object]] = preprocess_sl_text,
-) -> str:
-    source_path = Path(code_path)
-    if debug is not None:
-        debug(f"Parsing file: {source_path}")
-
-    src = read_text_cp1252_fn(source_path)
-    if is_compressed_fn(src):
-        if debug is not None:
-            debug("Compressed format detected; decoding before parsing")
-        src, _ = preprocess_sl_text_fn(src)
-    return src
-
-
 def parse_source_text(
     src: str,
     *,
@@ -205,7 +182,7 @@ def validate_single_file_syntax(
     *,
     mode: CodeMode | str | None = None,
     load_source_text_fn: Callable[..., str] = load_source_text,
-    find_disallowed_comments_fn: Callable[[str], list[Any]] = find_disallowed_comments,
+    source_text_for_parse_fn: Callable[..., str] = source_text_for_parse,
     parser_core_parse_source_text_fn: Callable[..., BasePicture] = parser_core_parse_source_text,
     validate_transformed_basepicture_fn: Callable[..., None] = validate_basepicture_strict,
     describe_parse_error_fn: Callable[[UnexpectedInput, str], Any] = describe_parse_error,
@@ -220,7 +197,6 @@ def validate_single_file_syntax(
         ..., SyntaxValidationResult
     ] = graphics_validation_to_syntax_result,
     coerce_validation_notice_fn: Callable[[ValidationWarning], ValidationNotice] = coerce_validation_notice,
-    raw_source_validation_error_cls: type[RawSourceValidationError] = RawSourceValidationError,
     structural_validation_error_cls: type[StructuralValidationError] = StructuralValidationError,
 ) -> SyntaxValidationResult:
     target_path = Path(code_path)
@@ -239,21 +215,16 @@ def validate_single_file_syntax(
         return graphics_validation_to_syntax_result_fn(target_path, result, warnings=warnings)
 
     src = ""
+    parse_src = ""
     validation_warnings: list[ValidationWarning] = []
     try:
-        src = load_source_text_fn(target_path)
-        violations = find_disallowed_comments_fn(src)
-        if violations:
-            first = violations[0]
-            raise raw_source_validation_error_cls(
-                "comment is only allowed inside EQUATIONBLOCK or SEQUENCE/OPENSEQUENCE blocks",
-                line=first.start_line,
-                column=first.start_col,
-            )
-        basepic = parser_core_parse_source_text_fn(src, log_failures=False)
+        # Parse the text the parser reads, so compressed sources keep their
+        # original character coordinates in spans and diagnostics.
+        parse_src = source_text_for_parse_fn(target_path)
+        basepic = parser_core_parse_source_text_fn(parse_src, log_failures=False)
         validate_transformed_basepicture_fn(basepic, warning_sink=validation_warnings.append)
     except UnexpectedInput as exc:
-        details = describe_parse_error_fn(exc, src)
+        details = describe_parse_error_fn(exc, parse_src or src)
         return SyntaxValidationResult(
             file_path=target_path,
             ok=False,

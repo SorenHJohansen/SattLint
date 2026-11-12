@@ -68,3 +68,16 @@ def test_syntax_check_accepts_a_valid_code_and_graphics_pair(tmp_path: Path) -> 
 
     assert result.ok is True
     assert result.stage == "ok"
+
+
+def test_comment_before_a_code_block_is_rejected_by_the_parser(tmp_path: Path) -> None:
+    source = _VALID_SOURCE.replace(
+        "    EQUATIONBLOCK Main",
+        "    (* freestanding comment *)\n    EQUATIONBLOCK Main",
+    )
+    code_path = _write(tmp_path / "Program.s", source)
+
+    result = validate_single_file_syntax(code_path)
+
+    assert result.ok is False
+    assert result.stage == "parse"

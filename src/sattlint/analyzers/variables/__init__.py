@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import time
 from collections import defaultdict
-from collections.abc import Callable, Generator, Mapping, Sequence
+from collections.abc import Callable, Generator, Iterable, Mapping
 from collections.abc import Set as AbstractSet
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, ClassVar, cast
@@ -354,7 +354,7 @@ class VariablesAnalyzer(
         status_update_fn: Callable[[str], None] | None = None,
         shared_artifacts: AnalysisSharedArtifacts | None = None,
         graphics_attachments: GraphicsAttachments | None = None,
-        library_dependencies: Mapping[str, Sequence[str]] | None = None,
+        library_dependencies: Mapping[str, Iterable[str]] | None = None,
     ):
         self.bp = base_picture
         self.graphics_attachments = graphics_attachments or EMPTY_GRAPHICS_ATTACHMENTS
