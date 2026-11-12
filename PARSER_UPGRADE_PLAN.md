@@ -1,10 +1,10 @@
 # SattLint parser upgrade plan
 
-Status: in progress, Phases 0, 1, 2, 3, and 4 committed on the migration
-branch; Phase 5 remains. The Phase 3 reference-visibility tests parse real
-parser output and the corpus manifests pass under 2026.11.4; the 2026.11.3
-differential is deferred to Phase 6 because the environment is pinned to the
-target parser.
+Status: in progress, Phases 0, 1, 2, 3, 4, and 5 committed on the migration
+branch; Phase 6 (release gate) remains. The Phase 3 reference-visibility tests
+parse real parser output and the corpus manifests pass under 2026.11.4; the
+2026.11.3 differential is deferred to Phase 6 because the environment is pinned
+to the target parser.
 Target parser: `sattline-parser==2026.11.4`
 Current SattLint release: `2026.11.3`, pinned to `sattline-parser==2026.11.3`
 Next SattLint release: next available CalVer, with the target parser pin

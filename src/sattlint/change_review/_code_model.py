@@ -17,7 +17,8 @@ resulting indexes line up with the snapshot's reference index.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, fields, is_dataclass
+from collections.abc import Iterator
+from dataclasses import dataclass, field
 from typing import Any, cast
 
 from sattlint.parser_api import (
@@ -35,6 +36,8 @@ from sattlint.parser_api import (
     SFCTransitionSub,
     SingleModule,
     SourceSpan,
+    VarRef,
+    walk,
 )
 
 from ..core._semantic_helpers import source_file_key
@@ -203,23 +206,11 @@ def _module_declaration_span(node: BasePicture | SingleModule | FrameModule | Mo
     return span if isinstance(span, SourceSpan) else None
 
 
-def _iter_child_values(node: Any) -> Any:
-    if isinstance(node, tuple | list):
-        yield from cast(tuple[Any, ...] | list[Any], node)
-    elif is_dataclass(node) and not isinstance(node, type):
-        for field_def in fields(node):
-            if field_def.name == "span":
-                continue
-            yield getattr(node, field_def.name)
-
-
-def _iter_assignment_targets(node: Any) -> Any:
+def _iter_assignment_targets(node: object) -> Iterator[VarRef]:
     """Yield ``VarRef`` targets assigned anywhere inside *node*."""
-    if isinstance(node, Assignment):
-        yield node.target
-        return
-    for child in _iter_child_values(node):
-        yield from _iter_assignment_targets(child)
+    for event in walk(node):
+        if isinstance(event.node, Assignment):
+            yield event.node.target
 
 
 def _build_ref_line_index(

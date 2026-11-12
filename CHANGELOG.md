@@ -37,6 +37,11 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   manifests pass under 2026.11.4; the 2026.11.3 differential is deferred to the
   release gate because the development environment is pinned to the target
   parser.
+- Change Review now derives layout ignoring from parser field metadata instead
+  of a global field-name list. Bound tails (`Enable_`, `Module_In_View`,
+  coordinate tails, clipping tails) are semantic, spans and parser-marked
+  layout fields are not, and comment streams stay a small SattLint policy
+  exception. Assignment targets are collected with the parser `walk` API.
 - Bumped the AST, project graph, and foundation cache identities so cached
   graphs from the previous parser release are not reused.
 
