@@ -4032,6 +4032,18 @@ def test_textual_shell_does_not_crash_within_window(tmp_path: Path) -> None:
         env["TERM"] = "xterm-256color"
         env["COLUMNS"] = "100"
         env["LINES"] = "30"
+        # The child runs in ``tmp_path``. A relative ``PYTHONPATH=src`` would
+        # resolve against that directory and import a stale installed package
+        # instead of this checkout.
+        python_path_entries = [str(Path(__file__).resolve().parents[2] / "src")]
+        for entry in os.environ.get("PYTHONPATH", "").split(os.pathsep):
+            if not entry:
+                continue
+            entry_path = Path(entry)
+            if not entry_path.is_absolute():
+                entry_path = (Path.cwd() / entry_path).resolve()
+            python_path_entries.append(str(entry_path))
+        env["PYTHONPATH"] = os.pathsep.join(dict.fromkeys(python_path_entries))
         process = subprocess.Popen(
             [sys.executable, "-m", "sattlint"],
             stdin=slave,
