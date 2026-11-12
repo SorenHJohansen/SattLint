@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any, cast
 
-from sattline_parser.builtins import get_function_signature
-from sattline_parser.formatting import formatter as formatter_module
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     BasePicture,
     FloatLiteral,
     IntLiteral,
@@ -15,8 +11,11 @@ from sattline_parser.models.ast_model import (
     SFCFork,
     SingleModule,
     Variable,
+    VarRef,
+    format_expr,
+    get_function_signature,
 )
-from sattline_parser.models.expressions import VarRef
+from sattlint.parser_api import constants as const
 
 from ...resolution.scope import ScopeContext
 from ...resolution.type_graph import TypeGraph
@@ -38,8 +37,7 @@ from ._dataflow_issue_reporting import DataflowIssueReportingMixin
 from ._dataflow_state import DataflowStateMixin
 from ._dataflow_traversal import DataflowTraversalMixin
 
-_FORMAT_EXPR_ATTR = "format_expr"
-_format_expr = cast(Callable[[Any], object], getattr(formatter_module, _FORMAT_EXPR_ATTR))
+_format_expr = format_expr
 
 
 class DataflowAnalyzer(

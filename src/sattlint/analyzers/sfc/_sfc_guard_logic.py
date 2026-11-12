@@ -7,16 +7,16 @@ from __future__ import annotations
 from collections.abc import Sequence as SequenceABC
 from typing import TypedDict, cast
 
-from sattline_parser.formatting.formatter import format_expr
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     BasePicture,
     SFCAlternative,
     SFCParallel,
     SFCSubsequence,
     SFCTransition,
     SFCTransitionSub,
+    format_expr,
 )
+from sattlint.parser_api import constants as const
 
 from ...resolution.paths import CanonicalPath
 from ..framework import Issue
@@ -220,7 +220,7 @@ def _normalize_compare_guard(left: object, operator: str, right: object) -> obje
 
 
 def _normalize_guard_signature(expr: object) -> object:
-    from sattline_parser.models.expressions import BoolOp, NotOp, VarRef  # noqa: PLC0415
+    from sattlint.parser_api import BoolOp, NotOp, VarRef  # noqa: PLC0415
 
     if getattr(expr, "data", None) == const.KEY_STATEMENT:
         children = getattr(expr, "children", None)

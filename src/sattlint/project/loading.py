@@ -9,8 +9,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any, cast
 
-from sattline_parser.models.ast_model import BasePicture
-from sattline_parser.project import LoadValidation
+from sattlint.parser_api import BasePicture, LoadValidation
 
 from .. import cache as cache_module
 from ..config.types import ConfigDict

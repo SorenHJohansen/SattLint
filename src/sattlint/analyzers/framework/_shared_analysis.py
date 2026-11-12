@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from threading import Lock
 from typing import TYPE_CHECKING, Any
 
-from sattline_parser.models.ast_model import ModuleTypeDef, Variable
+from sattlint.parser_api import ModuleTypeDef, Variable
 
 from ... import cache as cache_module
 from ...resolution import TypeGraph

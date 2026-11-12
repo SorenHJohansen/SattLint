@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from sattline_parser.models.expressions import BinOp, BoolOp, Compare, NotOp, TernaryOp, UnaryOp, VarRef
+from sattlint.parser_api import BinOp, BoolOp, Compare, NotOp, TernaryOp, UnaryOp, VarRef
 
 type ExprNode = Any
 type ComparePair = tuple[str, ExprNode]

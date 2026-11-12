@@ -13,10 +13,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from sattline_parser.api import parse_graphics_file, parse_graphics_text
-from sattline_parser.models.ast_model import GraphicsBinding, SourceSpan
-from sattline_parser.project import GraphicsCompositeRecord as ParserGraphicsCompositeRecord
-from sattline_parser.project import GraphicsModel, GraphicsPathRow, GraphicsPictureDisplayRecord
+from sattlint.parser_api import (
+    GraphicsBinding,
+    GraphicsModel,
+    GraphicsPathRow,
+    GraphicsPictureDisplayRecord,
+    SourceSpan,
+    parse_graphics_file,
+    parse_graphics_text,
+)
+from sattlint.parser_api import GraphicsCompositeRecord as ParserGraphicsCompositeRecord
 
 __all__ = [
     "GraphicsCompositeRecord",

@@ -8,6 +8,14 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ## [Unreleased]
 
+### Changed
+
+- Parser access goes through one module, `sattlint.parser_api`, so a parser
+  release that moves internal modules cannot break imports across the tree.
+  The unused `sattlint.models.ast_model` compatibility wrapper is removed.
+- Upgraded `sattline-parser` to `2026.11.4` on the migration branch, still
+  pinned exactly.
+
 ## [2026.11.3] - 2026-11-05
 
 ### Fixed

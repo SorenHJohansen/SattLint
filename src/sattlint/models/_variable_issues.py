@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from sattline_parser.models.ast_model import Simple_DataType, SourceSpan, Variable
+from sattlint.parser_api import Simple_DataType, SourceSpan, Variable
 
 from ..types import VariableId
 

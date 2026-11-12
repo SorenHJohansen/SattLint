@@ -3,9 +3,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import cast
 
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import Variable
-from sattline_parser.models.expressions import VarRef
+from sattlint.parser_api import Variable, VarRef
+from sattlint.parser_api import constants as const
 
 
 def _string_object_mapping(value: object) -> Mapping[str, object] | None:

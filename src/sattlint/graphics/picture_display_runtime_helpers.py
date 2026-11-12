@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef, ModuleTypeInstance
+from sattlint.parser_api import BasePicture, ModuleTypeDef, ModuleTypeInstance
 
 from ..resolution.common import select_moduletype_def_strict
 

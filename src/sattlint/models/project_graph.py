@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from ..parser_api import BasePicture, DataType, ModuleTypeDef
 from ._validation_notice import ValidationNotice
-from .ast_model import BasePicture, DataType, ModuleTypeDef
 
 
 def _ast_by_name_factory() -> dict[str, BasePicture]:

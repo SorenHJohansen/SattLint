@@ -7,19 +7,21 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, cast
 
-from sattline_parser.builtins import get_function_signature
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import FloatLiteral, IntLiteral, Variable
-from sattline_parser.models.expressions import (
+from sattlint.parser_api import (
     BinOp,
     BoolOp,
     Compare,
+    FloatLiteral,
     FuncCall,
+    IntLiteral,
     NotOp,
     TernaryOp,
     UnaryOp,
+    Variable,
     VarRef,
+    get_function_signature,
 )
+from sattlint.parser_api import constants as const
 
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ...resolution import AccessKind

@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import Variable
-from sattline_parser.models.expressions import Assignment, FuncCallStmt, IfStmt
+from sattlint.parser_api import Assignment, FuncCallStmt, IfStmt, Variable
+from sattlint.parser_api import constants as const
 
 from ..shared.ast_node_helpers import (
     NodeTuple as _NodeTuple,

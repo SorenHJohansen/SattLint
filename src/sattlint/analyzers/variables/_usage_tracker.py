@@ -8,7 +8,7 @@ from ...models.usage import VariableUsage
 from ...resolution import AccessEvent, AccessGraph, AccessKind, CanonicalPath
 
 if TYPE_CHECKING:
-    from sattline_parser.models.ast_model import Variable
+    from sattlint.parser_api import Variable
 
     from ...resolution.scope import ScopeContext
 

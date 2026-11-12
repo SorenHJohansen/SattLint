@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
+    Assignment,
+    FuncCallStmt,
+    IfStmt,
     ModuleCode,
     Sequence,
     SFCAlternative,
@@ -15,7 +17,7 @@ from sattline_parser.models.ast_model import (
     SFCTransitionSub,
     Variable,
 )
-from sattline_parser.models.expressions import Assignment, FuncCallStmt, IfStmt
+from sattlint.parser_api import constants as const
 
 from ..resolution.common import varname_full
 from .shared.ast_node_helpers import (

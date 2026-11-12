@@ -6,8 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 from time import perf_counter
 
-from sattline_parser.models.ast_model import BasePicture
-from sattline_parser.project import GraphicsModel
+from sattlint.parser_api import BasePicture, GraphicsModel
 
 from ..models.project_graph import ProjectGraph
 from ..project.loading_support import record_project_warning

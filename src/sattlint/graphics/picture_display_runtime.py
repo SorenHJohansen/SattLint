@@ -6,8 +6,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import BasePicture, FrameModule, ModuleTypeDef, ModuleTypeInstance, SingleModule
+from sattlint.parser_api import BasePicture, FrameModule, ModuleTypeDef, ModuleTypeInstance, SingleModule
+from sattlint.parser_api import constants as const
 
 from ..resolution.common import select_moduletype_def_strict
 from .picture_display_runtime_helpers import (

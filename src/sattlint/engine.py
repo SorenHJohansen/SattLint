@@ -6,12 +6,17 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from lark import Lark
-from sattline_parser import parse_source_file as parser_core_parse_source_file
-from sattline_parser import parse_source_text as parser_core_parse_source_text
-from sattline_parser.api import describe_parse_error, read_text_cp1252
-from sattline_parser.models.ast_model import BasePicture
-from sattline_parser.preprocessing import is_compressed, preprocess_sl_text
-from sattline_parser.transformer.sl_transformer import SLTransformer
+
+from sattlint.parser_api import (
+    BasePicture,
+    SLTransformer,
+    describe_parse_error,
+    is_compressed,
+    preprocess_sl_text,
+    read_text_cp1252,
+)
+from sattlint.parser_api import parse_source_file as parser_core_parse_source_file
+from sattlint.parser_api import parse_source_text as parser_core_parse_source_text
 
 from .core.syntax import (
     CodeMode,

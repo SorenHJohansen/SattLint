@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import Any, cast
 
 from lark.exceptions import VisitError
-from sattline_parser.models.ast_model import BasePicture
+
+from sattlint.parser_api import BasePicture
 
 from ..config.types import ConfigDict
 from ..core import profiling as profiling_module

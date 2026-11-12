@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
+    IfStmt,
     ModuleCode,
     SFCAlternative,
     SFCParallel,
@@ -14,7 +14,7 @@ from sattline_parser.models.ast_model import (
     SFCTransitionSub,
     Variable,
 )
-from sattline_parser.models.expressions import IfStmt
+from sattlint.parser_api import constants as const
 
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ._reset_latching_paths import (

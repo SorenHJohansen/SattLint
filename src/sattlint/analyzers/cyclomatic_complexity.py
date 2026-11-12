@@ -2,13 +2,20 @@ from __future__ import annotations
 
 from typing import cast
 
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
+    Assignment,
     BasePicture,
+    BinOp,
+    BoolOp,
+    Compare,
     FrameModule,
+    FuncCall,
+    FuncCallStmt,
+    IfStmt,
     ModuleCode,
     ModuleTypeDef,
     ModuleTypeInstance,
+    NotOp,
     SFCAlternative,
     SFCParallel,
     SFCStep,
@@ -16,20 +23,11 @@ from sattline_parser.models.ast_model import (
     SFCTransition,
     SFCTransitionSub,
     SingleModule,
-)
-from sattline_parser.models.expressions import (
-    Assignment,
-    BinOp,
-    BoolOp,
-    Compare,
-    FuncCall,
-    FuncCallStmt,
-    IfStmt,
-    NotOp,
     TernaryOp,
     UnaryOp,
     VarRef,
 )
+from sattlint.parser_api import constants as const
 
 from ..config.analysis import (
     cyclomatic_equation_block_threshold,

@@ -3,9 +3,8 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import FloatLiteral, IntLiteral
-from sattline_parser.models.expressions import BinOp, FuncCall
+from sattlint.parser_api import BinOp, FloatLiteral, FuncCall, IntLiteral
+from sattlint.parser_api import constants as const
 
 from ...resolution.scope import ScopeContext
 from ._dataflow_common import (

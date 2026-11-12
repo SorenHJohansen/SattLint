@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from sattline_parser.models.ast_model import BasePicture, FrameModule, ModuleTypeInstance, SingleModule, Variable
+from sattlint.parser_api import BasePicture, FrameModule, ModuleTypeInstance, SingleModule, Variable
 
 from ..models._variable_issues import IssueKind, VariableIssue
 from ._alias_utils import varname_base, varname_full
@@ -16,7 +16,7 @@ from .scope import ScopeContext
 from .symbol_table import SymbolKind
 
 if TYPE_CHECKING:
-    from sattline_parser.models.ast_model import ModuleTypeDef
+    from sattlint.parser_api import ModuleTypeDef
 
     from .symbol_table import CanonicalSymbolTable
     from .type_graph import TypeGraph

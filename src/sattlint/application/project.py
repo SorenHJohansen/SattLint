@@ -15,7 +15,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
-from sattline_parser.models.ast_model import BasePicture
+from sattlint.parser_api import BasePicture
 
 from .. import cache as cache_module
 from .. import console as console_module

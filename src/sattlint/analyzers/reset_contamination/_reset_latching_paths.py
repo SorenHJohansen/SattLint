@@ -6,8 +6,10 @@ from dataclasses import dataclass, field
 from itertools import product
 from typing import Any, cast
 
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
+    Assignment,
+    FuncCallStmt,
+    IfStmt,
     SFCAlternative,
     SFCParallel,
     SFCStep,
@@ -15,8 +17,9 @@ from sattline_parser.models.ast_model import (
     SFCTransition,
     SFCTransitionSub,
     Variable,
+    VarRef,
 )
-from sattline_parser.models.expressions import Assignment, FuncCallStmt, IfStmt, VarRef
+from sattlint.parser_api import constants as const
 
 from ._reset_path_state import WriteKey, WriteMap
 

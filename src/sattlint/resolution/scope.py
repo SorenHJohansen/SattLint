@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from sattline_parser.models.ast_model import Variable
+from sattlint.parser_api import Variable
 
 
 def _resolve_cache_factory() -> dict[str, tuple[Variable | None, str, list[str], list[str]]]:

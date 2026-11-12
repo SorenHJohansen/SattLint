@@ -14,11 +14,15 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
+    Assignment,
     BasePicture,
+    BinOp,
     Equation,
     FrameModule,
+    FuncCall,
+    FuncCallStmt,
+    IfStmt,
     ModuleCode,
     ModuleTypeDef,
     ModuleTypeInstance,
@@ -26,19 +30,13 @@ from sattline_parser.models.ast_model import (
     Sequence,
     Simple_DataType,
     SingleModule,
-    Variable,
-)
-from sattline_parser.models.expressions import (
-    Assignment,
-    BinOp,
-    FuncCall,
-    FuncCallStmt,
-    IfStmt,
     TernaryOp,
     UnaryOp,
+    Variable,
     VarRef,
+    is_string_simple_type,
 )
-from sattline_parser.validation.typing import is_string_simple_type
+from sattlint.parser_api import constants as const
 
 from ..resolution.common import select_moduletype_def_strict, varname_base, varname_full
 from ..resolution.scope import ScopeContext

@@ -5,8 +5,8 @@ from __future__ import annotations
 import difflib
 from typing import TYPE_CHECKING, Any
 
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import ParameterMapping, Simple_DataType, Variable
+from sattlint.parser_api import ParameterMapping, Simple_DataType, Variable
+from sattlint.parser_api import constants as const
 
 from ...resolution import AccessKind, CanonicalPath
 from ...resolution.scope import ScopeContext

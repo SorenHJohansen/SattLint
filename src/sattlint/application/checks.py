@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from time import perf_counter
 from typing import Any, cast
 
-from sattline_parser.models.ast_model import BasePicture
+from sattlint.parser_api import BasePicture
 
 from .. import config as config_module
 from ..analyzers import catalog as analysis_catalog_module

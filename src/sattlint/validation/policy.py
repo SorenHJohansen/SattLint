@@ -11,8 +11,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from sattline_parser.models.ast_model import BasePicture
 from sattline_parser.validation import Diagnostic, DiagnosticSeverity, validate_basepicture
+
+from sattlint.parser_api import BasePicture
 
 from .shared import StructuralValidationError, ValidationNotice
 

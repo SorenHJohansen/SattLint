@@ -6,9 +6,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
 
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import ModuleDef
-from sattline_parser.models.expressions import VarRef
+from sattlint.parser_api import ModuleDef, VarRef
+from sattlint.parser_api import constants as const
 
 from ...resolution import AccessKind
 from ...resolution.scope import ScopeContext

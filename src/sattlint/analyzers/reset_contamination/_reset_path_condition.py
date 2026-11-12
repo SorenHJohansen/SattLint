@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.expressions import NotOp, VarRef
+from sattlint.parser_api import NotOp, VarRef
+from sattlint.parser_api import constants as const
 
 from ..shared.ast_node_helpers import (
     object_list as _object_list,

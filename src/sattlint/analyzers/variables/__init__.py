@@ -10,7 +10,7 @@ from collections.abc import Set as AbstractSet
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     BasePicture,
     FrameModule,
     ModuleTypeDef,

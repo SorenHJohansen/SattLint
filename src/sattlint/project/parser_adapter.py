@@ -39,15 +39,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from time import perf_counter
 
-from sattline_parser.project import (
+from sattline_parser.validation import Diagnostic, DiagnosticCode, DiagnosticSeverity
+
+from sattlint.parser_api import (
     LoadMode,
     LoadValidation,
     ProjectLookup,
     SattLineProgram,
     SattLineProject,
 )
-from sattline_parser.project import read_dependency_names as parser_read_dependency_names
-from sattline_parser.validation import Diagnostic, DiagnosticCode, DiagnosticSeverity
+from sattlint.parser_api import read_dependency_names as parser_read_dependency_names
 
 from ..core.syntax import CodeMode
 from ..graphics.graphics_helpers import attach_graphics_companion

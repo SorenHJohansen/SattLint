@@ -5,7 +5,7 @@ from dataclasses import dataclass, field, fields, is_dataclass
 from enum import Enum
 from typing import Any, Literal, cast
 
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     Equation,
     FrameModule,
     ModuleTypeInstance,

@@ -7,7 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from sattline_parser.models.ast_model import Variable
+from sattlint.parser_api import Variable
 
 WriteKey = tuple[str, str]
 WriteEntry = tuple[Variable, str]

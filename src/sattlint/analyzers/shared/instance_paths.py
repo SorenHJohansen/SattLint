@@ -15,7 +15,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import FrozenInstanceError
 from typing import Any, cast
 
-from sattline_parser.models.ast_model import BasePicture, ModuleTypeInstance
+from sattlint.parser_api import BasePicture, ModuleTypeInstance
 
 from ...models.project_graph import ProjectGraph
 

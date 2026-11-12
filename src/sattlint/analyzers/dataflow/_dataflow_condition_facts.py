@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from sattline_parser.grammar import constants as const
+from sattlint.parser_api import constants as const
 
 from ...resolution.scope import ScopeContext
 from ._dataflow_common import ConditionFact, ScalarValue

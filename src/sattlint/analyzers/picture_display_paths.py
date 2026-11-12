@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sattline_parser.models.ast_model import BasePicture
+from sattlint.parser_api import BasePicture
 
 from ..graphics.picture_display_paths import diagnose_picture_display_paths, format_picture_display_path_diagnostic
 from ..models.project_graph import ProjectGraph

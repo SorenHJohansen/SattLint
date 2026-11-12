@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from sattline_parser.models.ast_model import SourceSpan
-from sattline_parser.models.expressions import VarRef
+from sattlint.parser_api import SourceSpan, VarRef
 
 from ..models._validation_notice import ValidationNotice
 

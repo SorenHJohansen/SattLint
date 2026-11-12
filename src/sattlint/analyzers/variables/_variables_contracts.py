@@ -5,16 +5,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
 
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     FrameModule,
     ModuleTypeInstance,
     ParameterMapping,
     Simple_DataType,
     SingleModule,
     Variable,
+    VarRef,
 )
-from sattline_parser.models.expressions import VarRef
-from sattline_parser.validation.typing import resolve_variable_field_datatype as _resolve_variable_field_datatype
+from sattlint.parser_api import resolve_variable_field_datatype as _resolve_variable_field_datatype
 
 from ...reporting.variables_report import IssueKind
 from ...resolution.common import resolve_moduletype_def_strict, varname_base, varname_full

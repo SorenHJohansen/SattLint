@@ -5,8 +5,7 @@ from __future__ import annotations
 from contextlib import AbstractContextManager, nullcontext
 from typing import TYPE_CHECKING, Any, cast
 
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     FrameModule,
     ModuleTypeDef,
     ModuleTypeInstance,
@@ -14,8 +13,9 @@ from sattline_parser.models.ast_model import (
     Simple_DataType,
     SingleModule,
     Variable,
+    VarRef,
 )
-from sattline_parser.models.expressions import VarRef
+from sattlint.parser_api import constants as const
 
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ...resolution import decorate_segment

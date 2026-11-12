@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, Protocol, cast
 
-from sattline_parser.models.ast_model import Variable
+from sattlint.parser_api import Variable
 
 from ...reporting.variables_report import VariableIssue
 from ...resolution import AccessGraph

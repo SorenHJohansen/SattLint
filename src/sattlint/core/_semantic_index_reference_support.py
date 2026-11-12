@@ -3,9 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import FrameModule, ModuleTypeDef, ModuleTypeInstance, SingleModule, SourceSpan
-from sattline_parser.models.expressions import VarRef
+from sattlint.parser_api import FrameModule, ModuleTypeDef, ModuleTypeInstance, SingleModule, SourceSpan, VarRef
+from sattlint.parser_api import constants as const
 
 from ..resolution import CanonicalPath, decorate_segment
 from ..resolution.scope import ScopeContext

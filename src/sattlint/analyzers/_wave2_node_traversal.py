@@ -4,9 +4,9 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
 
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     Assignment,
+    FuncCallStmt,
     ModuleCode,
     Sequence,
     SFCAlternative,
@@ -15,8 +15,9 @@ from sattline_parser.models.ast_model import (
     SFCSubsequence,
     SFCTransition,
     SFCTransitionSub,
+    VarRef,
 )
-from sattline_parser.models.expressions import FuncCallStmt, VarRef
+from sattlint.parser_api import constants as const
 
 from ..resolution.common import varname_full
 from .shared.ast_node_helpers import (

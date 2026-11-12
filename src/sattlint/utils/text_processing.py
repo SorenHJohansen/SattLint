@@ -6,7 +6,8 @@ from functools import cache
 from typing import TYPE_CHECKING, Any
 
 from lark.exceptions import UnexpectedInput
-from sattline_parser.api import build_lark_parser
+
+from sattlint.parser_api import build_lark_parser
 
 from ._comment_scanning import scan_comments_with_code, scan_disallowed_comments
 

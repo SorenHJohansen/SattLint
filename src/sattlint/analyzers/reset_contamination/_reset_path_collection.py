@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     ModuleCode,
     Variable,
 )

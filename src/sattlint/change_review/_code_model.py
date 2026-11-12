@@ -20,7 +20,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field, fields, is_dataclass
 from typing import Any, cast
 
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
+    Assignment,
     BasePicture,
     FrameModule,
     ModuleCode,
@@ -35,7 +36,6 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     SourceSpan,
 )
-from sattline_parser.models.expressions import Assignment
 
 from ..core._semantic_helpers import source_file_key
 from ..core._semantic_snapshot import ReferenceOccurrence, SemanticSnapshot

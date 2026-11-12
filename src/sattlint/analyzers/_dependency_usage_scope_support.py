@@ -3,7 +3,7 @@ from __future__ import annotations
 # pyright: reportPrivateUsage=false
 from typing import Protocol
 
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     BasePicture,
     FrameModule,
     ModuleCode,
@@ -12,8 +12,8 @@ from sattline_parser.models.ast_model import (
     ParameterMapping,
     SingleModule,
     Variable,
+    VarRef,
 )
-from sattline_parser.models.expressions import VarRef
 
 from ..resolution.common import resolve_moduletype_def_strict, varname_base
 from ..resolution.scope import ScopeContext

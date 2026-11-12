@@ -7,12 +7,19 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, cast
 
 from lark import Tree
-from sattline_parser.formatting.formatter import format_expr as _format_expr
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import (
+
+from sattlint.parser_api import (
+    Assignment,
+    BinOp,
+    BoolOp,
+    Compare,
     FloatLiteral,
+    FuncCall,
+    FuncCallStmt,
+    IfStmt,
     IntLiteral,
     ModuleCode,
+    NotOp,
     Sequence,
     SFCAlternative,
     SFCParallel,
@@ -20,21 +27,13 @@ from sattline_parser.models.ast_model import (
     SFCSubsequence,
     SFCTransition,
     SFCTransitionSub,
-    Variable,
-)
-from sattline_parser.models.expressions import (
-    Assignment,
-    BinOp,
-    BoolOp,
-    Compare,
-    FuncCall,
-    FuncCallStmt,
-    IfStmt,
-    NotOp,
     TernaryOp,
     UnaryOp,
+    Variable,
     VarRef,
 )
+from sattlint.parser_api import constants as const
+from sattlint.parser_api import format_expr as _format_expr
 
 from ...resolution import AccessKind
 from ...resolution.common import varname_base

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from sattline_parser.builtins import get_function_signature
+from sattlint.parser_api import get_function_signature
 
 _STATUS_PARAMETER_NAMES = {"status", "debugstatus"}
 
