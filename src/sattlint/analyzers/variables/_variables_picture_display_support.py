@@ -107,6 +107,7 @@ def _build_child_picture_display_context(
             child.moduletype_name,
             current_library=current_context.current_library,
             unavailable_libraries=self.unavailable_libraries,
+            library_dependencies=getattr(self, "library_dependencies", None),
         )
         child_context = self.context_builder.build_for_typedef(
             resolved_moduletype,
@@ -169,6 +170,7 @@ def seed_picture_display_context(self: VariablesAnalyzer, module_path: list[str]
                     child.moduletype_name,
                     current_library=current_context.current_library,
                     unavailable_libraries=self.unavailable_libraries,
+                    library_dependencies=getattr(self, "library_dependencies", None),
                 )
             else:
                 current_node = child
@@ -217,6 +219,7 @@ def _seed_runtime_picture_display_context(self: VariablesAnalyzer, module_path: 
                     child.moduletype_name,
                     current_library=current_context.current_library,
                     unavailable_libraries=self.unavailable_libraries,
+                    library_dependencies=getattr(self, "library_dependencies", None),
                 )
             else:
                 next_node = child

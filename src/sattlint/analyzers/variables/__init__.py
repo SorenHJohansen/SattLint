@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import time
 from collections import defaultdict
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, ClassVar, cast
@@ -185,6 +185,9 @@ def analyze_variables(
         status_update_fn=status_update_fn,
         shared_artifacts=(analysis_context.shared_artifacts if analysis_context is not None else None),
         graphics_attachments=_analysis_graphics_attachments(analysis_context, base_picture),
+        library_dependencies=(
+            getattr(analysis_context.graph, "library_dependencies", None) if analysis_context is not None else None
+        ),
     )
     init_duration_ms = round((time.perf_counter() - init_started_at) * 1000, 3)
     issues = analyzer.run()
@@ -351,9 +354,11 @@ class VariablesAnalyzer(
         status_update_fn: Callable[[str], None] | None = None,
         shared_artifacts: AnalysisSharedArtifacts | None = None,
         graphics_attachments: GraphicsAttachments | None = None,
+        library_dependencies: Mapping[str, Sequence[str]] | None = None,
     ):
         self.bp = base_picture
         self.graphics_attachments = graphics_attachments or EMPTY_GRAPHICS_ATTACHMENTS
+        self.library_dependencies = library_dependencies
         self.debug = debug
         self.fail_loudly = fail_loudly
         self._unavailable_libraries = unavailable_libraries or set()

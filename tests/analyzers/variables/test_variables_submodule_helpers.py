@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from sattline_parser.ast import MappingSource
+from sattline_parser.ast import MappingSource, VarRef
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -54,7 +54,6 @@ class _UsageStub:
 
 def test_submodule_mapping_and_display_helpers() -> None:
     assert variables_submodules_module._mapping_source_full_ref(_ns(source="Signal.Value")) == "Signal.Value"
-    assert variables_submodules_module._mapping_source_full_ref(_ns(source={"var_name": 5})) is None
     assert variables_submodules_module._mapping_source_full_ref(_ns(source=5)) is None
 
     assert variables_submodules_module._should_walk_submodule_path(_ns(limit_to_module_path=None), ["Root", "Child"])
@@ -140,19 +139,19 @@ def test_dependency_mapping_distinguishes_program_and_library_targets(monkeypatc
         moduletype_name="DependencyType",
         parametermappings=[
             ParameterMapping(
-                target={"var_name": "signal"},
+                target=VarRef(name="signal"),
                 source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
-                source={"var_name": "ProgramVar"},
+                source=VarRef(name="ProgramVar"),
                 source_literal=None,
             ),
             ParameterMapping(
-                target={"var_name": "signal"},
+                target=VarRef(name="signal"),
                 source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
-                source={"var_name": "ProgramVar.Field"},
+                source=VarRef(name="ProgramVar.Field"),
                 source_literal=None,
             ),
         ],
@@ -227,7 +226,7 @@ def test_submodule_lookup_and_duplication_helpers() -> None:
     assert (
         variables_submodules_module._lookup_env_var_from_varname_dict(
             _ns(),
-            {"var_name": "Signal.Field"},
+            VarRef(name="Signal.Field"),
             {"signal": env_var},
         )
         is env_var
@@ -339,11 +338,11 @@ def test_missing_typedef_and_singlemodule_branch_gaps(monkeypatch: pytest.Monkey
         moduletype_name="MissingType",
         parametermappings=[
             ParameterMapping(
-                target={"var_name": "signal"},
+                target=VarRef(name="signal"),
                 source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
-                source={"var_name": "ProgramVar"},
+                source=VarRef(name="ProgramVar"),
                 source_literal=None,
             )
         ],
@@ -451,7 +450,7 @@ def test_internal_typedef_and_frame_duplication_branch_gaps(monkeypatch: pytest.
         moduletype_name="InternalType",
         parametermappings=[
             ParameterMapping(
-                target={"var_name": "signal"},
+                target=VarRef(name="signal"),
                 source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,

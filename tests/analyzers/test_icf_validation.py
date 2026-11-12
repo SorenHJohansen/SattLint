@@ -335,7 +335,6 @@ def test_icf_validation_prefers_draft_moduletype_locals_after_instance_path_reso
         datatype_defs=[dilute_log],
         moduletype_defs=[transfer_fallback, transfer_source, wrapper],
         submodules=[ModuleTypeInstance(header=_header("Wrapper"), moduletype_name="WrapperType")],
-        library_dependencies={"applib": ["projectlib"]},
     )
 
     entries = [

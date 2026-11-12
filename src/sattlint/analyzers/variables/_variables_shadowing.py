@@ -118,6 +118,7 @@ def _resolve_moduletype(
             inst.moduletype_name,
             current_library=current_library,
             unavailable_libraries=getattr(self, "_unavailable_libraries", None) or set(),
+            library_dependencies=getattr(self, "library_dependencies", None),
         )
     except ValueError:
         return None

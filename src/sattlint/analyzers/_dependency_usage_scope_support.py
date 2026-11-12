@@ -194,6 +194,7 @@ class DependencyUsageScopeSupportMixin:
                 instance.moduletype_name,
                 current_library=parent_context.current_library,
                 unavailable_libraries=self._unavailable_libraries,
+                library_dependencies=getattr(self, "library_dependencies", None),
             )
         except ValueError:
             return

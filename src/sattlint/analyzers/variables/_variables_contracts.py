@@ -122,6 +122,7 @@ def _check_param_mappings_for_type_instance(
             current_library=current_library,
             unavailable_libraries=self.unavailable_libraries,
             moduletype_index=getattr(self, "typedef_index", None),
+            library_dependencies=getattr(self, "library_dependencies", None),
         )
     except ValueError:
         return
