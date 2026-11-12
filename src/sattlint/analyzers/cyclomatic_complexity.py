@@ -149,7 +149,7 @@ class CyclomaticComplexityAnalyzer:
         modulecode: ModuleCode,
     ) -> int:
         complexity = 1
-        for equation in modulecode.equations or []:
+        for equation in modulecode.equationblocks or []:
             equation_name = getattr(equation, "name", "") or "<unnamed>"
             self._record_equation_block_complexity_issue(
                 module_path=module_path,

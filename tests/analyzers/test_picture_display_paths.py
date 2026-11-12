@@ -42,7 +42,7 @@ def test_wmf_asset_that_exists_on_disk_is_not_reported_unresolved(tmp_path: Path
     bp = BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="Root",
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
         origin_file=str(tmp_path / "Root.s"),
     )
 
@@ -61,7 +61,7 @@ def test_wmf_asset_that_is_missing_keeps_unimplemented_reason(tmp_path: Path) ->
     bp = BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="Root",
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
         origin_file=str(tmp_path / "Root.s"),
     )
 
@@ -88,52 +88,54 @@ def _build_operation_path_base_picture() -> BasePicture:
             Variable(name="Paths", datatype="PathsType"),
         ],
         localvariables=[Variable(name="BuilderStatus", datatype=Simple_DataType.INTEGER)],
-        moduledef=ModuleDef(),
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        FuncCallStmt(call=FuncCall(name="ClearString", args=(_varref("Paths.OperationPath"),))),
-                        FuncCallStmt(
-                            call=FuncCall(
-                                name="InsertString",
-                                args=(
-                                    _varref("Paths.OperationPath"),
-                                    _varref("Prefix"),
-                                    _string_length_call("Prefix"),
-                                    _varref("BuilderStatus"),
-                                ),
-                            )
-                        ),
-                        FuncCallStmt(
-                            call=FuncCall(
-                                name="InsertString",
-                                args=(
-                                    _varref("Paths.OperationPath"),
-                                    _varref("Name"),
-                                    _string_length_call("Name"),
-                                    _varref("BuilderStatus"),
-                                ),
-                            )
-                        ),
-                    ],
-                )
-            ]
-        ),
+        moduledefs=[ModuleDef()],
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Main",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            FuncCallStmt(call=FuncCall(name="ClearString", args=(_varref("Paths.OperationPath"),))),
+                            FuncCallStmt(
+                                call=FuncCall(
+                                    name="InsertString",
+                                    args=(
+                                        _varref("Paths.OperationPath"),
+                                        _varref("Prefix"),
+                                        _string_length_call("Prefix"),
+                                        _varref("BuilderStatus"),
+                                    ),
+                                )
+                            ),
+                            FuncCallStmt(
+                                call=FuncCall(
+                                    name="InsertString",
+                                    args=(
+                                        _varref("Paths.OperationPath"),
+                                        _varref("Name"),
+                                        _string_length_call("Name"),
+                                        _varref("BuilderStatus"),
+                                    ),
+                                )
+                            ),
+                        ],
+                    )
+                ]
+            )
+        ],
     )
 
     return BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="Root",
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
         moduletype_defs=[path_builder],
         submodules=[
             SingleModule(
                 header=ModuleHeader(name="UnitControl", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                moduledef=ModuleDef(),
+                moduledefs=[ModuleDef()],
                 localvariables=[
                     Variable(name="Paths", datatype="PathsType"),
                     Variable(name="OprPath", datatype=Simple_DataType.STRING, init_value="+L2+Operations+L2*"),
@@ -347,47 +349,49 @@ def test_picture_display_path_analyzer_reports_generic_variable_path_candidates(
     base_picture = BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="Root",
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
         localvariables=[
             Variable(name="DisplayPath", datatype=Simple_DataType.STRING),
             Variable(name="Prefix", datatype=Simple_DataType.STRING, init_value="+"),
             Variable(name="PanelName", datatype=Simple_DataType.IDENTSTRING, init_value="MissingPanel"),
             Variable(name="Status", datatype=Simple_DataType.INTEGER),
         ],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        FuncCallStmt(call=FuncCall(name="ClearString", args=(_varref("DisplayPath"),))),
-                        FuncCallStmt(
-                            call=FuncCall(
-                                name="InsertString",
-                                args=(
-                                    _varref("DisplayPath"),
-                                    _varref("Prefix"),
-                                    _string_length_call("Prefix"),
-                                    _varref("Status"),
-                                ),
-                            )
-                        ),
-                        FuncCallStmt(
-                            call=FuncCall(
-                                name="InsertString",
-                                args=(
-                                    _varref("DisplayPath"),
-                                    _varref("PanelName"),
-                                    _string_length_call("PanelName"),
-                                    _varref("Status"),
-                                ),
-                            )
-                        ),
-                    ],
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Main",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            FuncCallStmt(call=FuncCall(name="ClearString", args=(_varref("DisplayPath"),))),
+                            FuncCallStmt(
+                                call=FuncCall(
+                                    name="InsertString",
+                                    args=(
+                                        _varref("DisplayPath"),
+                                        _varref("Prefix"),
+                                        _string_length_call("Prefix"),
+                                        _varref("Status"),
+                                    ),
+                                )
+                            ),
+                            FuncCallStmt(
+                                call=FuncCall(
+                                    name="InsertString",
+                                    args=(
+                                        _varref("DisplayPath"),
+                                        _varref("PanelName"),
+                                        _string_length_call("PanelName"),
+                                        _varref("Status"),
+                                    ),
+                                )
+                            ),
+                        ],
+                    )
+                ]
+            )
+        ],
     )
     base_picture.graphics_picture_display_occurrences = [
         PictureDisplayOccurrence(
@@ -539,37 +543,41 @@ def test_exact_string_inference_tracks_setstringpos_and_cutstring() -> None:
     base_picture = BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="Root",
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
         localvariables=[
             Variable(name="Tag", datatype=Simple_DataType.STRING),
             Variable(name="Source", datatype=Simple_DataType.STRING, init_value="ABCD"),
             Variable(name="Status", datatype=Simple_DataType.INTEGER),
         ],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        FuncCallStmt(call=FuncCall(name="ClearString", args=(_varref("Tag"),))),
-                        FuncCallStmt(
-                            call=FuncCall(
-                                name="InsertString",
-                                args=(
-                                    _varref("Tag"),
-                                    _varref("Source"),
-                                    _string_length_call("Source"),
-                                    _varref("Status"),
-                                ),
-                            )
-                        ),
-                        FuncCallStmt(call=FuncCall(name="SetStringPos", args=(_varref("Tag"), 2, _varref("Status")))),
-                        FuncCallStmt(call=FuncCall(name="CutString", args=(_varref("Tag"), 2, _varref("Status")))),
-                    ],
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Main",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            FuncCallStmt(call=FuncCall(name="ClearString", args=(_varref("Tag"),))),
+                            FuncCallStmt(
+                                call=FuncCall(
+                                    name="InsertString",
+                                    args=(
+                                        _varref("Tag"),
+                                        _varref("Source"),
+                                        _string_length_call("Source"),
+                                        _varref("Status"),
+                                    ),
+                                )
+                            ),
+                            FuncCallStmt(
+                                call=FuncCall(name="SetStringPos", args=(_varref("Tag"), 2, _varref("Status")))
+                            ),
+                            FuncCallStmt(call=FuncCall(name="CutString", args=(_varref("Tag"), 2, _varref("Status")))),
+                        ],
+                    )
+                ]
+            )
+        ],
     )
 
     result = ExactStringInferenceEngine(base_picture).infer("Tag", module_path=("Root",))
@@ -589,22 +597,22 @@ def test_exact_string_inference_tracks_setstringpos_and_cutstring() -> None:
 def test_resolve_picture_display_path_treats_single_plus_as_named_child_step() -> None:
     panel = SingleModule(
         header=ModuleHeader(name="Panel", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
     )
     l2 = SingleModule(
         header=ModuleHeader(name="L2", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
         submodules=[panel],
     )
     l1 = SingleModule(
         header=ModuleHeader(name="L1", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
         submodules=[l2],
     )
     base_picture = BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="Root",
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
         submodules=[l1],
     )
 
@@ -676,15 +684,15 @@ def test_resolve_picture_display_path_reports_unimplemented_emf_asset() -> None:
 def test_resolve_picture_display_path_keeps_local_moduletype_defs_when_graph_has_dependencies() -> None:
     panel = SingleModule(
         header=ModuleHeader(name="Panel", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
     )
     local_typedef = ModuleTypeDef(
         name="LocalType",
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
         submodules=[
             SingleModule(
                 header=ModuleHeader(name="L1", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                moduledef=ModuleDef(),
+                moduledefs=[ModuleDef()],
                 submodules=[panel],
             )
         ],
@@ -693,14 +701,14 @@ def test_resolve_picture_display_path_keeps_local_moduletype_defs_when_graph_has
     )
     dependency_typedef = ModuleTypeDef(
         name="DependencyType",
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
         origin_lib="DepLib",
         origin_file="DepLib.s",
     )
     base_picture = BasePicture(
         header=ModuleHeader(name="BasePicture", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="BasePicture",
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
         submodules=[
             ModuleTypeInstance(
                 header=ModuleHeader(name="Instance", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
@@ -731,38 +739,38 @@ def test_resolve_picture_display_path_keeps_local_moduletype_defs_when_graph_has
 def test_resolve_picture_display_path_implicit_plus_uses_first_declared_child() -> None:
     inlet_outlet_steps = SingleModule(
         header=ModuleHeader(name="InletOutletSteps", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
     )
     logic = SingleModule(
         header=ModuleHeader(name="Logic", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
         submodules=[
             SingleModule(
                 header=ModuleHeader(name="L1", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                moduledef=ModuleDef(),
+                moduledefs=[ModuleDef()],
                 submodules=[inlet_outlet_steps],
             )
         ],
     )
     startup_panel = SingleModule(
         header=ModuleHeader(name="StartupPanel", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
     )
     opr_frame = SingleModule(
         header=ModuleHeader(name="OprFrame", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
         submodules=[
             SingleModule(
                 header=ModuleHeader(name="Produktion", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                moduledef=ModuleDef(),
+                moduledefs=[ModuleDef()],
                 submodules=[
                     SingleModule(
                         header=ModuleHeader(name="L1", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                        moduledef=ModuleDef(),
+                        moduledefs=[ModuleDef()],
                         submodules=[
                             SingleModule(
                                 header=ModuleHeader(name="L2", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                                moduledef=ModuleDef(),
+                                moduledefs=[ModuleDef()],
                                 submodules=[logic],
                             )
                         ],
@@ -773,11 +781,11 @@ def test_resolve_picture_display_path_implicit_plus_uses_first_declared_child() 
     )
     operations = SingleModule(
         header=ModuleHeader(name="Operations", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
         submodules=[
             SingleModule(
                 header=ModuleHeader(name="L2", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                moduledef=ModuleDef(),
+                moduledefs=[ModuleDef()],
                 submodules=[opr_frame],
             ),
             startup_panel,
@@ -786,11 +794,11 @@ def test_resolve_picture_display_path_implicit_plus_uses_first_declared_child() 
     base_picture = BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="Root",
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
         submodules=[
             SingleModule(
                 header=ModuleHeader(name="First", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                moduledef=ModuleDef(),
+                moduledefs=[ModuleDef()],
                 submodules=[operations],
             )
         ],
@@ -912,51 +920,51 @@ def test_resolve_picture_display_path_single_dash_plus_climbs_to_parent_module()
     base_picture = BasePicture(
         header=ModuleHeader(name="BasePicture", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="BasePicture",
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
         submodules=[
             SingleModule(
                 header=ModuleHeader(name="XAppl_231XY", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                moduledef=ModuleDef(),
+                moduledefs=[ModuleDef()],
                 submodules=[
                     SingleModule(
                         header=ModuleHeader(name="L1", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                        moduledef=ModuleDef(),
+                        moduledefs=[ModuleDef()],
                         submodules=[
                             SingleModule(
                                 header=ModuleHeader(name="L2", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                                moduledef=ModuleDef(),
+                                moduledefs=[ModuleDef()],
                                 submodules=[
                                     SingleModule(
                                         header=ModuleHeader(name="OpMessage1", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                                        moduledef=ModuleDef(),
+                                        moduledefs=[ModuleDef()],
                                     ),
                                     SingleModule(
                                         header=ModuleHeader(name="UnitControl", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                                        moduledef=ModuleDef(),
+                                        moduledefs=[ModuleDef()],
                                         submodules=[
                                             SingleModule(
                                                 header=ModuleHeader(name="L1", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                                                moduledef=ModuleDef(),
+                                                moduledefs=[ModuleDef()],
                                                 submodules=[
                                                     SingleModule(
                                                         header=ModuleHeader(
                                                             name="L2", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)
                                                         ),
-                                                        moduledef=ModuleDef(),
+                                                        moduledefs=[ModuleDef()],
                                                         submodules=[
                                                             SingleModule(
                                                                 header=ModuleHeader(
                                                                     name="Operations",
                                                                     invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0),
                                                                 ),
-                                                                moduledef=ModuleDef(),
+                                                                moduledefs=[ModuleDef()],
                                                                 submodules=[
                                                                     SingleModule(
                                                                         header=ModuleHeader(
                                                                             name="L2",
                                                                             invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0),
                                                                         ),
-                                                                        moduledef=ModuleDef(),
+                                                                        moduledefs=[ModuleDef()],
                                                                         submodules=[
                                                                             SingleModule(
                                                                                 header=ModuleHeader(
@@ -969,7 +977,7 @@ def test_resolve_picture_display_path_single_dash_plus_climbs_to_parent_module()
                                                                                         1.0,
                                                                                     ),
                                                                                 ),
-                                                                                moduledef=ModuleDef(),
+                                                                                moduledefs=[ModuleDef()],
                                                                                 submodules=[
                                                                                     SingleModule(
                                                                                         header=ModuleHeader(
@@ -982,7 +990,7 @@ def test_resolve_picture_display_path_single_dash_plus_climbs_to_parent_module()
                                                                                                 1.0,
                                                                                             ),
                                                                                         ),
-                                                                                        moduledef=ModuleDef(),
+                                                                                        moduledefs=[ModuleDef()],
                                                                                         submodules=[
                                                                                             SingleModule(
                                                                                                 header=ModuleHeader(
@@ -995,7 +1003,9 @@ def test_resolve_picture_display_path_single_dash_plus_climbs_to_parent_module()
                                                                                                         1.0,
                                                                                                     ),
                                                                                                 ),
-                                                                                                moduledef=ModuleDef(),
+                                                                                                moduledefs=[
+                                                                                                    ModuleDef()
+                                                                                                ],
                                                                                                 submodules=[
                                                                                                     SingleModule(
                                                                                                         header=ModuleHeader(
@@ -1008,7 +1018,9 @@ def test_resolve_picture_display_path_single_dash_plus_climbs_to_parent_module()
                                                                                                                 1.0,
                                                                                                             ),
                                                                                                         ),
-                                                                                                        moduledef=ModuleDef(),
+                                                                                                        moduledefs=[
+                                                                                                            ModuleDef()
+                                                                                                        ],
                                                                                                     )
                                                                                                 ],
                                                                                             )

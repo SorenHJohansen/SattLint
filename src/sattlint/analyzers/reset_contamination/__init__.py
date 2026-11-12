@@ -348,7 +348,7 @@ class ResetContaminationAnalyzer(BasePictureAnalyzer):
         for seq in modulecode.sequences or []:
             for node in seq.code or []:
                 visit(node)
-        for eq in modulecode.equations or []:
+        for eq in modulecode.equationblocks or []:
             for stmt in eq.code or []:
                 visit(stmt)
 
@@ -449,7 +449,7 @@ class ResetContaminationAnalyzer(BasePictureAnalyzer):
         for seq in modulecode.sequences or []:
             for node in seq.code or []:
                 visit(node)
-        for eq in modulecode.equations or []:
+        for eq in modulecode.equationblocks or []:
             for stmt in eq.code or []:
                 visit(stmt)
 

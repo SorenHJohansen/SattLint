@@ -62,7 +62,7 @@ def collect_alarm_boolean_writes(
 
 def iter_modulecode_statements(modulecode: ModuleCode) -> list[object]:
     statements: list[object] = []
-    for equation in modulecode.equations or []:
+    for equation in modulecode.equationblocks or []:
         statements.extend(equation.code or [])
     for sequence in modulecode.sequences or []:
         statements.extend(iter_sequence_statements(sequence))

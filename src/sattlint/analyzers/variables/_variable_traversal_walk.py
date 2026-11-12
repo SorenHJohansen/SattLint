@@ -72,7 +72,7 @@ def _walk_module_code(
     if mc is None:
         return
 
-    for eq in mc.equations or []:
+    for eq in mc.equationblocks or []:
         if eq.name:
             self._push_site(f"EQ:{eq.name}")
         try:

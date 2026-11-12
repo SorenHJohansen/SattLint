@@ -6,28 +6,32 @@ from tests.helpers.analyzers_state_support import *
 def test_implicit_latch_detected_when_if_branch_sets_true_without_else_clear():
     mod = SingleModule(
         header=_hdr("Unit"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[
             Variable(name="Start", datatype=Simple_DataType.BOOLEAN),
             Variable(name="AlarmLatched", datatype=Simple_DataType.BOOLEAN),
         ],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        IfStmt(
-                            branches=((_varref("Start"), (Assignment(target=_varref("AlarmLatched"), value=True),)),),
-                            else_block=None,
-                        )
-                    ],
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Main",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            IfStmt(
+                                branches=(
+                                    (_varref("Start"), (Assignment(target=_varref("AlarmLatched"), value=True),)),
+                                ),
+                                else_block=None,
+                            )
+                        ],
+                    )
+                ]
+            )
+        ],
         parametermappings=[],
     )
 
@@ -37,8 +41,8 @@ def test_implicit_latch_detected_when_if_branch_sets_true_without_else_clear():
         moduletype_defs=[],
         localvariables=[],
         submodules=[mod],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -54,28 +58,32 @@ def test_implicit_latch_detected_when_if_branch_sets_true_without_else_clear():
 def test_implicit_latch_not_reported_when_else_branch_clears_false():
     mod = SingleModule(
         header=_hdr("Unit"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[
             Variable(name="Start", datatype=Simple_DataType.BOOLEAN),
             Variable(name="AlarmLatched", datatype=Simple_DataType.BOOLEAN),
         ],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        IfStmt(
-                            branches=((_varref("Start"), (Assignment(target=_varref("AlarmLatched"), value=True),)),),
-                            else_block=(Assignment(target=_varref("AlarmLatched"), value=False),),
-                        )
-                    ],
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Main",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            IfStmt(
+                                branches=(
+                                    (_varref("Start"), (Assignment(target=_varref("AlarmLatched"), value=True),)),
+                                ),
+                                else_block=(Assignment(target=_varref("AlarmLatched"), value=False),),
+                            )
+                        ],
+                    )
+                ]
+            )
+        ],
         parametermappings=[],
     )
 
@@ -85,8 +93,8 @@ def test_implicit_latch_not_reported_when_else_branch_clears_false():
         moduletype_defs=[],
         localvariables=[],
         submodules=[mod],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -105,45 +113,9 @@ def test_implicit_latch_detected_in_root_modulecode():
             Variable(name="AlarmLatched", datatype=Simple_DataType.BOOLEAN),
         ],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        IfStmt(
-                            branches=((_varref("Start"), (Assignment(target=_varref("AlarmLatched"), value=True),)),),
-                            else_block=None,
-                        )
-                    ],
-                )
-            ]
-        ),
-        moduledef=None,
-    )
-
-    issues = VariablesAnalyzer(bp).run()
-
-    latch_issues = [issue for issue in issues if issue.kind is IssueKind.IMPLICIT_LATCH]
-    assert len(latch_issues) == 1
-    assert latch_issues[0].module_path == ["Root"]
-    assert latch_issues[0].site == "EQ:Main > IF"
-
-
-def test_limit_to_module_path_restricts_state_integrity_checks_to_matching_subtree():
-    def _latching_module(name: str) -> SingleModule:
-        return SingleModule(
-            header=_hdr(name),
-            moduledef=None,
-            moduleparameters=[],
-            localvariables=[
-                Variable(name="Start", datatype=Simple_DataType.BOOLEAN),
-                Variable(name="AlarmLatched", datatype=Simple_DataType.BOOLEAN),
-            ],
-            submodules=[],
-            modulecode=ModuleCode(
-                equations=[
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
                     Equation(
                         name="Main",
                         position=(0.0, 0.0),
@@ -158,7 +130,49 @@ def test_limit_to_module_path_restricts_state_integrity_checks_to_matching_subtr
                         ],
                     )
                 ]
-            ),
+            )
+        ],
+        moduledefs=[],
+    )
+
+    issues = VariablesAnalyzer(bp).run()
+
+    latch_issues = [issue for issue in issues if issue.kind is IssueKind.IMPLICIT_LATCH]
+    assert len(latch_issues) == 1
+    assert latch_issues[0].module_path == ["Root"]
+    assert latch_issues[0].site == "EQ:Main > IF"
+
+
+def test_limit_to_module_path_restricts_state_integrity_checks_to_matching_subtree():
+    def _latching_module(name: str) -> SingleModule:
+        return SingleModule(
+            header=_hdr(name),
+            moduledefs=[],
+            moduleparameters=[],
+            localvariables=[
+                Variable(name="Start", datatype=Simple_DataType.BOOLEAN),
+                Variable(name="AlarmLatched", datatype=Simple_DataType.BOOLEAN),
+            ],
+            submodules=[],
+            modulecodes=[
+                ModuleCode(
+                    equationblocks=[
+                        Equation(
+                            name="Main",
+                            position=(0.0, 0.0),
+                            size=(1.0, 1.0),
+                            code=[
+                                IfStmt(
+                                    branches=(
+                                        (_varref("Start"), (Assignment(target=_varref("AlarmLatched"), value=True),)),
+                                    ),
+                                    else_block=None,
+                                )
+                            ],
+                        )
+                    ]
+                )
+            ],
             parametermappings=[],
         )
 
@@ -168,8 +182,8 @@ def test_limit_to_module_path_restricts_state_integrity_checks_to_matching_subtr
         moduletype_defs=[],
         localvariables=[],
         submodules=[_latching_module("UnitA"), _latching_module("UnitB")],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     issues = VariablesAnalyzer(bp).run(limit_to_module_path=["Root", "UnitA"])
@@ -181,35 +195,39 @@ def test_limit_to_module_path_restricts_state_integrity_checks_to_matching_subtr
 def test_frame_module_children_are_included_in_state_integrity_checks():
     child = SingleModule(
         header=_hdr("Nested"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[
             Variable(name="Start", datatype=Simple_DataType.BOOLEAN),
             Variable(name="AlarmLatched", datatype=Simple_DataType.BOOLEAN),
         ],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        IfStmt(
-                            branches=((_varref("Start"), (Assignment(target=_varref("AlarmLatched"), value=True),)),),
-                            else_block=None,
-                        )
-                    ],
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Main",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            IfStmt(
+                                branches=(
+                                    (_varref("Start"), (Assignment(target=_varref("AlarmLatched"), value=True),)),
+                                ),
+                                else_block=None,
+                            )
+                        ],
+                    )
+                ]
+            )
+        ],
         parametermappings=[],
     )
     frame = FrameModule(
         header=_hdr("Frame"),
         datecode=None,
         submodules=[child],
-        modulecode=None,
+        modulecodes=[],
     )
     bp = BasePicture(
         header=_hdr("Root"),
@@ -217,8 +235,8 @@ def test_frame_module_children_are_included_in_state_integrity_checks():
         moduletype_defs=[],
         localvariables=[],
         submodules=[frame],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     issues = VariablesAnalyzer(bp).run()
@@ -250,11 +268,11 @@ def test_implicit_latch_detected_for_step_without_exit_clear():
 
     mod = SingleModule(
         header=_hdr("Unit"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="StepFlag", datatype=Simple_DataType.BOOLEAN)],
         submodules=[],
-        modulecode=ModuleCode(sequences=[seq], equations=[]),
+        modulecodes=[ModuleCode(sequences=[seq], equationblocks=[])],
         parametermappings=[],
     )
 
@@ -264,8 +282,8 @@ def test_implicit_latch_detected_for_step_without_exit_clear():
         moduletype_defs=[],
         localvariables=[],
         submodules=[mod],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)

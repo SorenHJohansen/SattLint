@@ -415,7 +415,7 @@ class SameCycleAnalyzer(VariablesAnalyzer):
             finally:
                 self._pop_site()
 
-        for equation in modulecode.equations or []:
+        for equation in modulecode.equationblocks or []:
             label = f"EQ:{getattr(equation, 'name', '<unnamed>')}"
             self._push_site(label)
             try:

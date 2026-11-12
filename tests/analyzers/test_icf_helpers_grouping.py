@@ -122,8 +122,8 @@ def test_icf_helper_remaining_resolution_and_grouping_branches(monkeypatch):
         name="WorkerType",
         moduleparameters=[type_param],
         localvariables=[type_local],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
     )
     instance = ModuleTypeInstance(header=_header("Child"), moduletype_name="WorkerType")
     base_picture = BasePicture(header=_header("Program"), moduletype_defs=[moduletype])
@@ -149,7 +149,7 @@ def test_icf_helper_remaining_resolution_and_grouping_branches(monkeypatch):
     assert icf_module._find_variable_in_module_scope(moduletype, base_picture, "missing") is None
 
     resolved = SimpleNamespace(
-        node=SingleModule(header=_header("Unit"), moduledef=None),
+        node=SingleModule(header=_header("Unit"), moduledefs=[]),
         current_library=None,
         current_file=None,
         display_path_str="Program.Unit",
@@ -265,9 +265,7 @@ def test_icf_helper_final_parse_and_reference_branches(tmp_path, monkeypatch):
     assert len(icf_module.parse_icf_file(parse_file)) == 1
     assert icf_module._extract_icf_sattline_ref(":Path") == (None, None)
 
-    moduletype = ModuleTypeDef(
-        name="WorkerType", moduleparameters=[], localvariables=[], moduledef=None, modulecode=None
-    )
+    moduletype = ModuleTypeDef(name="WorkerType", moduleparameters=[], localvariables=[], moduledefs=[], modulecodes=[])
     instance = ModuleTypeInstance(header=_header("Child"), moduletype_name="WorkerType")
     monkeypatch.setattr(icf_module, "resolve_moduletype_def_strict", lambda *_args, **_kwargs: moduletype)
     assert (

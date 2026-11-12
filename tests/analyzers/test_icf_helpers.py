@@ -91,7 +91,7 @@ def test_icf_helper_parse_and_extract_edge_cases(tmp_path):
 def test_icf_helper_resolve_unit_type_and_signature_diff(monkeypatch):
     base_picture = BasePicture(header=_header("Program"), submodules=[])
     instance = ModuleTypeInstance(header=_header("Unit221A"), moduletype_name="TankType")
-    family_module = SingleModule(header=_header("Unit221B"), moduledef=None)
+    family_module = SingleModule(header=_header("Unit221B"), moduledefs=[])
 
     def _resolve_module(_bp, path, moduletype_index=None):
         if path == "Unit221A":
@@ -141,12 +141,12 @@ def test_icf_helper_find_variable_and_path_description_edges(monkeypatch):
         name="WorkerType",
         moduleparameters=[type_param],
         localvariables=[type_local],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
     )
     single = SingleModule(
         header=_header("Unit"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[param_var],
         localvariables=[local_var],
     )
@@ -235,7 +235,7 @@ def test_icf_helper_validation_edges_and_case_only_regression(monkeypatch):
     )
     unit = SingleModule(
         header=_header("Unit221A"),
-        moduledef=None,
+        moduledefs=[],
         localvariables=[Variable(name="HSSetLogData", datatype="ACSSignOffLOGData")],
     )
     bp = BasePicture(
@@ -391,8 +391,8 @@ def test_icf_helper_parameter_completeness_and_unit_structure_edges():
         BasePicture(
             header=_header("Program"),
             submodules=[
-                SingleModule(header=_header("Unit221A"), moduledef=None),
-                SingleModule(header=_header("Unit221B"), moduledef=None),
+                SingleModule(header=_header("Unit221A"), moduledefs=[]),
+                SingleModule(header=_header("Unit221B"), moduledefs=[]),
             ],
         ),
         structure_entries,
@@ -478,7 +478,7 @@ def test_icf_helper_additional_path_and_field_validation_branches(monkeypatch):
     assert icf_datatype_module.resolve_record_datatype(type_graph, record_var.datatype, ["Inner", "Value"]) is None
 
     resolved = SimpleNamespace(
-        node=SingleModule(header=_header("Unit"), moduledef=None, localvariables=[record_var]),
+        node=SingleModule(header=_header("Unit"), moduledefs=[], localvariables=[record_var]),
         current_library=None,
         current_file=None,
         display_path_str="Program.Unit",

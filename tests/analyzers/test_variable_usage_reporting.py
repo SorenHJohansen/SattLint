@@ -30,8 +30,8 @@ def _base_picture(*, submodules: list[SingleModule | FrameModule | ModuleTypeIns
         moduletype_defs=[],
         localvariables=[],
         submodules=submodules or [],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
 
@@ -39,20 +39,20 @@ def test_find_module_instances_walks_nested_singlemodule_branch() -> None:
     wanted = ModuleTypeInstance(header=_hdr("WantedNested"), moduletype_name="WantedType", parametermappings=[])
     child = SingleModule(
         header=_hdr("Child"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[],
         submodules=[wanted],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
     parent = SingleModule(
         header=_hdr("Parent"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[],
         submodules=[child],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
 
@@ -118,11 +118,11 @@ def test_report_module_localvar_fields_handles_prefixed_empty_field_paths_and_de
         lambda *args, **kwargs: SimpleNamespace(
             node=SingleModule(
                 header=_hdr("Unit"),
-                moduledef=None,
+                moduledefs=[],
                 moduleparameters=[],
                 localvariables=[local_var],
                 submodules=[],
-                modulecode=None,
+                modulecodes=[],
                 parametermappings=[],
             ),
             path=["Root", "Unit"],
@@ -155,8 +155,8 @@ def test_report_module_localvar_fields_rejects_invalid_module_type(monkeypatch: 
                 moduleparameters=[],
                 localvariables=[],
                 submodules=[],
-                moduledef=None,
-                modulecode=None,
+                moduledefs=[],
+                modulecodes=[],
                 parametermappings=[],
             ),
             path=["Root", "WrongNode"],
@@ -177,11 +177,11 @@ def test_report_module_localvar_fields_rejects_missing_local_var(monkeypatch: py
         lambda *args, **kwargs: SimpleNamespace(
             node=SingleModule(
                 header=_hdr("Unit"),
-                moduledef=None,
+                moduledefs=[],
                 moduleparameters=[],
                 localvariables=[],
                 submodules=[],
-                modulecode=None,
+                modulecodes=[],
                 parametermappings=[],
             ),
             path=["Root", "Unit"],
@@ -207,11 +207,11 @@ def test_report_module_localvar_fields_reports_no_field_accesses(monkeypatch: py
         lambda *args, **kwargs: SimpleNamespace(
             node=SingleModule(
                 header=_hdr("Unit"),
-                moduledef=None,
+                moduledefs=[],
                 moduleparameters=[],
                 localvariables=[local_var],
                 submodules=[],
-                modulecode=None,
+                modulecodes=[],
                 parametermappings=[],
             ),
             path=["Root", "Unit"],
@@ -306,11 +306,11 @@ def test_report_module_localvar_fields_reports_whole_variable_accesses(monkeypat
         lambda *args, **kwargs: SimpleNamespace(
             node=SingleModule(
                 header=_hdr("Unit"),
-                moduledef=None,
+                moduledefs=[],
                 moduleparameters=[],
                 localvariables=[local_var],
                 submodules=[],
-                modulecode=None,
+                modulecodes=[],
                 parametermappings=[],
             ),
             path=["Root", "Unit"],

@@ -151,7 +151,7 @@ def _iter_code_statements(module_code: ModuleCode | None) -> Any:
     for seq in module_code.sequences or []:
         prefix = ("sequence", seq.name or "")
         yield from _iter_sfc_items(prefix, seq.code or [])
-    for equation in module_code.equations or []:
+    for equation in module_code.equationblocks or []:
         prefix = ("equation", equation.name or "")
         for index, statement in enumerate(equation.code or []):
             yield ((*prefix, index), statement, "statement")

@@ -53,7 +53,7 @@ def _bool_step(name: str, statements: Seq[CodeItem]) -> SFCStep:
 def test_detection_walks_frame_submodules_for_reset_and_latching() -> None:
     child = SingleModule(
         header=_hdr("Child"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[
             Variable(name="Counter", datatype=Simple_DataType.INTEGER),
@@ -64,39 +64,41 @@ def test_detection_walks_frame_submodules_for_reset_and_latching() -> None:
             Variable(name="Latch", datatype=Simple_DataType.BOOLEAN),
         ],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                _eq(
-                    "ResetEq",
-                    [
-                        IfStmt(
-                            branches=(
-                                (
-                                    NotOp(operand=_varref("OpSeq.Reset")),
-                                    (Assignment(target=_varref("Counter"), value=_varref("ResetValue")),),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    _eq(
+                        "ResetEq",
+                        [
+                            IfStmt(
+                                branches=(
+                                    (
+                                        NotOp(operand=_varref("OpSeq.Reset")),
+                                        (Assignment(target=_varref("Counter"), value=_varref("ResetValue")),),
+                                    ),
+                                    (
+                                        NotOp(operand=_varref("SeqResetOld")),
+                                        (Assignment(target=_varref("Other"), value=_varref("ResetValue")),),
+                                    ),
                                 ),
-                                (
-                                    NotOp(operand=_varref("SeqResetOld")),
-                                    (Assignment(target=_varref("Other"), value=_varref("ResetValue")),),
-                                ),
+                                else_block=None,
                             ),
-                            else_block=None,
-                        ),
-                        Assignment(target=_varref("SeqResetOld"), value=_varref("OpSeq.Reset")),
-                    ],
-                ),
-                _eq(
-                    "LatchEq",
-                    [
-                        IfStmt(
-                            branches=((_varref("Start"), (Assignment(target=_varref("Latch"), value=True),)),),
-                            else_block=None,
-                        ),
-                    ],
-                ),
-            ],
-            sequences=[_seq("OpSeq", [])],
-        ),
+                            Assignment(target=_varref("SeqResetOld"), value=_varref("OpSeq.Reset")),
+                        ],
+                    ),
+                    _eq(
+                        "LatchEq",
+                        [
+                            IfStmt(
+                                branches=((_varref("Start"), (Assignment(target=_varref("Latch"), value=True),)),),
+                                else_block=None,
+                            ),
+                        ],
+                    ),
+                ],
+                sequences=[_seq("OpSeq", [])],
+            )
+        ],
         parametermappings=[],
     )
     picture = BasePicture(header=_hdr("Root"), submodules=[FrameModule(header=_hdr("Frame"), submodules=[child])])
@@ -133,7 +135,7 @@ def test_reset_helpers_collect_nested_refs_and_skip_fully_reset_paths() -> None:
         "seqresetold": Variable(name="SeqResetOld", datatype=Simple_DataType.BOOLEAN),
     }
     modulecode = ModuleCode(
-        equations=[
+        equationblocks=[
             _eq(
                 "CoveredReset",
                 [

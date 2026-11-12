@@ -4,10 +4,6 @@ SattLint reads ``sattline-parser`` through one module, ``sattlint.parser_api``.
 Every other module in ``src/`` imports the surface, so a parser release that
 moves or renames an internal module cannot break imports scattered across the
 tree.
-
-The allowlist below is temporary. Each entry names a file that still imports a
-parser submodule and is scheduled to move to the surface. Shrink it, never grow
-it, and remove it before the release.
 """
 
 from __future__ import annotations
@@ -19,14 +15,6 @@ from pathlib import Path
 SOURCE_ROOT = Path(__file__).resolve().parents[2] / "src" / "sattlint"
 SURFACE_MODULE = SOURCE_ROOT / "parser_api.py"
 PARSER_PACKAGE = "sattline_parser"
-
-#: Files that still import the parser directly, mapped to the modules each may
-#: still reach. The removal step for each one deletes its entry in the same
-#: change.
-PENDING_SURFACE_MIGRATION: dict[str, frozenset[str]] = {
-    "project/parser_adapter.py": frozenset({"sattline_parser.validation"}),
-    "validation/policy.py": frozenset({"sattline_parser.validation"}),
-}
 
 
 @dataclass(frozen=True)
@@ -69,25 +57,11 @@ def _direct_imports() -> list[DirectParserImport]:
     return violations
 
 
-def _unexpected_imports() -> list[DirectParserImport]:
-    unexpected: list[DirectParserImport] = []
-    for violation in _direct_imports():
-        allowed = PENDING_SURFACE_MIGRATION.get(violation.path)
-        if allowed is None or violation.module not in allowed:
-            unexpected.append(violation)
-    return unexpected
-
-
 def test_only_the_surface_module_imports_the_parser_package() -> None:
-    violations = _unexpected_imports()
+    assert _parser_imports(SURFACE_MODULE), "the scan found no parser import in the surface module"
+
+    violations = _direct_imports()
 
     assert not violations, "import the parser through sattlint.parser_api:\n" + "\n".join(
         str(violation) for violation in violations
     )
-
-
-def test_pending_allowlist_entries_are_still_guilty() -> None:
-    imported_paths = {violation.path for violation in _direct_imports()}
-    stale = sorted(set(PENDING_SURFACE_MIGRATION) - imported_paths)
-
-    assert not stale, "drop these allowlist entries; their files no longer import the parser: " + ", ".join(stale)

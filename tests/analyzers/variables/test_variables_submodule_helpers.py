@@ -64,8 +64,8 @@ def test_submodule_mapping_and_display_helpers() -> None:
     parent_context = _ns(display_module_path=["Root"])
     frame = FrameModule(
         header=ModuleHeader(name="Frame", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         submodules=[],
     )
     inst = ModuleTypeInstance(
@@ -89,8 +89,8 @@ def test_framemodule_subtree_uses_repathed_context(monkeypatch: pytest.MonkeyPat
     frame_calls: list[tuple[str, object, list[str]]] = []
     frame = FrameModule(
         header=ModuleHeader(name="Frame", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         submodules=[],
     )
     frame_helper: Any = _ns(
@@ -128,8 +128,8 @@ def test_dependency_mapping_distinguishes_program_and_library_targets(monkeypatc
         moduleparameters=[Variable(name="signal", datatype=Simple_DataType.INTEGER)],
         localvariables=[],
         submodules=[],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="DependencyType.s",
         origin_lib="SupportLib",
@@ -252,8 +252,8 @@ def test_submodule_lookup_and_duplication_helpers() -> None:
                     Variable(name="OnlyOne", datatype="ExternalPayload"),
                 ],
                 submodules=[],
-                modulecode=None,
-                moduledef=None,
+                modulecodes=[],
+                moduledefs=[],
             ),
             is_from_root_origin=lambda *args, **kwargs: True,
             append_issue=issues.append,
@@ -268,8 +268,8 @@ def test_walk_submodules_respects_limit_paths(monkeypatch: pytest.MonkeyPatch) -
     walked_calls: list[str] = []
     frame = FrameModule(
         header=ModuleHeader(name="Frame", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         submodules=[],
     )
     walker: Any = _ns(limit_to_module_path=["Elsewhere"], repath_context=lambda context, **kwargs: _ns())
@@ -375,11 +375,11 @@ def test_missing_typedef_and_singlemodule_branch_gaps(monkeypatch: pytest.Monkey
 
     single = SingleModule(
         header=ModuleHeader(name="Single", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="Input", datatype=Simple_DataType.INTEGER)],
         localvariables=[],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[
             ParameterMapping(
                 target={"var_name": "Input"},
@@ -410,8 +410,8 @@ def test_internal_typedef_and_frame_duplication_branch_gaps(monkeypatch: pytest.
         moduleparameters=[Variable(name="signal", datatype=Simple_DataType.INTEGER)],
         localvariables=[],
         submodules=[],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="Root.s",
         origin_lib="ProjectLib",
@@ -476,23 +476,23 @@ def test_internal_typedef_and_frame_duplication_branch_gaps(monkeypatch: pytest.
         submodules=[
             FrameModule(
                 header=ModuleHeader(name="Frame", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
-                moduledef=None,
-                modulecode=None,
+                moduledefs=[],
+                modulecodes=[],
                 submodules=[
                     SingleModule(
                         header=ModuleHeader(name="Nested", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
-                        moduledef=None,
+                        moduledefs=[],
                         moduleparameters=[Variable(name="Payload", datatype="ExternalPayload")],
                         localvariables=[],
                         submodules=[],
-                        modulecode=None,
+                        modulecodes=[],
                         parametermappings=[],
                     )
                 ],
             )
         ],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
     frame_issues: list[VariableIssue] = []
     variables_submodules_module._detect_datatype_duplications(

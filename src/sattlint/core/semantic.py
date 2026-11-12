@@ -58,21 +58,14 @@ def _build_semantic_snapshot(
         if root_origin is not None
         else getattr(base_picture, "origin_lib", None)
     )
-    try:
-        builder = SemanticIndexBuilder(
-            base_picture,
-            root_origin_file=root_origin_file,
-            root_origin_library=root_origin_library,
-            unavailable_libraries=project_graph.unavailable_libraries,
-            include_dependency_modules=include_dependency_modules,
-        )
-    except TypeError as exc:
-        if "unexpected keyword argument" not in str(exc):
-            raise
-        builder = SemanticIndexBuilder(
-            base_picture,
-            unavailable_libraries=project_graph.unavailable_libraries,
-        )
+    builder = SemanticIndexBuilder(
+        base_picture,
+        root_origin_file=root_origin_file,
+        root_origin_library=root_origin_library,
+        unavailable_libraries=project_graph.unavailable_libraries,
+        include_dependency_modules=include_dependency_modules,
+        graphics_attachments=project_graph.graphics_attachments_for(base_picture),
+    )
     builder_result = builder.build()
     symbol_table = builder_result.symbol_table
     type_graph = builder_result.type_graph

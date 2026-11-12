@@ -11,8 +11,8 @@ def test_alarm_integrity_detects_duplicate_tags_across_instances():
         ],
         localvariables=[],
         submodules=[],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="Root.s",
     )
@@ -87,8 +87,8 @@ def test_alarm_integrity_detects_duplicate_conditions_across_instances():
         ],
         localvariables=[],
         submodules=[],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="Root.s",
     )
@@ -154,16 +154,18 @@ def test_alarm_integrity_detects_never_cleared_alarm_variable():
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[Variable(name="AlarmTrip", datatype=Simple_DataType.BOOLEAN)],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("AlarmTrip"), True)))],
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Main",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("AlarmTrip"), True)))],
+                    )
+                ]
+            )
+        ],
     )
 
     report = analyze_alarm_integrity(bp)

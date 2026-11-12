@@ -170,7 +170,7 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
             finally:
                 self._pop_site()
 
-        for equation in modulecode.equations or []:
+        for equation in modulecode.equationblocks or []:
             self._push_site(f"EQ:{getattr(equation, 'name', '<unnamed>')}")
             try:
                 current_state = self._analyze_block(equation.code or [], context, module_path, current_state)

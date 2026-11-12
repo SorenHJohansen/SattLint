@@ -70,7 +70,7 @@ def test_icf_validation_reports_valid_and_invalid_entries() -> None:
     )
     unit = SingleModule(
         header=_header("Unit"),
-        moduledef=None,
+        moduledefs=[],
         localvariables=[Variable(name="T", datatype="Rec")],
     )
     bp = BasePicture(
@@ -93,7 +93,7 @@ def test_icf_validation_reports_valid_and_invalid_entries() -> None:
 def test_icf_validation_skips_placeholder_h_dot_value() -> None:
     bp = BasePicture(
         header=_header("IsoFK3"),
-        submodules=[SingleModule(header=_header("Unit265A"), moduledef=None)],
+        submodules=[SingleModule(header=_header("Unit265A"), moduledefs=[])],
     )
     entries = [
         _entry(

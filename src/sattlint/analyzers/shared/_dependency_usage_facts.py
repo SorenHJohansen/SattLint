@@ -144,7 +144,7 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
     ) -> None:
         if modulecode is None:
             return
-        for equation in modulecode.equations or []:
+        for equation in modulecode.equationblocks or []:
             site = f"equation block {equation.name!r}"
             for statement in equation.code or []:
                 self._append_statement_fact(statement, context, module_path, site)

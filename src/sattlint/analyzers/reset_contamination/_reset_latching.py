@@ -50,7 +50,7 @@ def check_for_modulecode_latching(
 ) -> None:
     seen: set[tuple[tuple[str, ...], str, str]] = set()
 
-    for equation in modulecode.equations or []:
+    for equation in modulecode.equationblocks or []:
         equation_name = getattr(equation, "name", "<unnamed>")
         scan_stmt_block_for_latching(
             equation.code or [],

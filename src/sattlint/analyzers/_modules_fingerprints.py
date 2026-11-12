@@ -275,7 +275,7 @@ class ModuleFingerprint:
 def create_fingerprint(module: SingleModule, path: list[str]) -> ModuleFingerprint:
     """Create a fingerprint for a SingleModule."""
     sequences = module.modulecode.sequences if module.modulecode and module.modulecode.sequences else []
-    equations = module.modulecode.equations if module.modulecode and module.modulecode.equations else []
+    equations = module.modulecode.equationblocks if module.modulecode and module.modulecode.equationblocks else []
 
     return ModuleFingerprint(
         name=module.header.name,

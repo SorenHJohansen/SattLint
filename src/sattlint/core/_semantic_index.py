@@ -14,6 +14,7 @@ from sattlint.parser_api import (
 )
 
 from ..models._variable_issues import VariableIssue
+from ..models.project_graph import EMPTY_GRAPHICS_ATTACHMENTS, GraphicsAttachments
 from ..resolution import (
     CanonicalPath,
     CanonicalSymbolTable,
@@ -59,8 +60,10 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         root_origin_library: str | None = None,
         unavailable_libraries: set[str] | None = None,
         include_dependency_modules: bool = True,
+        graphics_attachments: GraphicsAttachments | None = None,
     ):
         self.base_picture = base_picture
+        self.graphics_attachments = graphics_attachments or EMPTY_GRAPHICS_ATTACHMENTS
         self.root_origin_file = root_origin_file if root_origin_file is not None else base_picture.origin_file
         self.root_origin_library = root_origin_library if root_origin_library is not None else base_picture.origin_lib
         self.include_dependency_modules = include_dependency_modules
@@ -134,15 +137,15 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
             source_library=self.root_origin_library,
         )
         self._record_scope_references(
-            self.base_picture.graphics_bindings,
+            self.graphics_attachments.bindings,
             context=root_context,
-            source_file=self.base_picture.graphics_file,
+            source_file=self.graphics_attachments.file_name,
             source_library=self.root_origin_library,
         )
         self._record_call_signatures(
-            self.base_picture.graphics_bindings,
+            self.graphics_attachments.bindings,
             module_path=(self.base_picture.header.name,),
-            source_file=self.base_picture.graphics_file,
+            source_file=self.graphics_attachments.file_name,
             source_library=self.root_origin_library,
         )
         self._walk_moduletype_defs(

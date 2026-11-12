@@ -39,9 +39,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from time import perf_counter
 
-from sattline_parser.validation import Diagnostic, DiagnosticCode, DiagnosticSeverity
-
 from sattlint.parser_api import (
+    Diagnostic,
+    DiagnosticCode,
     LoadMode,
     LoadValidation,
     ProjectLookup,
@@ -333,7 +333,7 @@ def _index_program(
 
         graphics_ext = program.format.graphics_ext
         graphics_path = code_path.with_suffix(graphics_ext) if graphics_ext is not None else None
-        attach_graphics_companion(
+        graph.graphics_attachments[name] = attach_graphics_companion(
             program.code,
             graphics=program.graphics,
             companion_path=graphics_path,
@@ -374,8 +374,10 @@ def _apply_diagnostics(
     """Translate the parser's diagnostics into SattLint policy outcomes.
 
     A datecode conflict is fatal under ``strict`` (the old loader raised it for
-    every program). A root program's validation error is fatal; the same error
-    on a dependency becomes a notice. Everything else is a notice.
+    every program). A root program's final diagnostic is fatal; the same
+    diagnostic on a dependency becomes a notice. Tentative diagnostics, which
+    depend on a part of the closure that failed to load, are notices. Everything
+    else is a notice.
     """
     conflicts = [item for item in program.diagnostics if item.code is DiagnosticCode.DATECODE_CONFLICT]
     if conflicts and strict:
@@ -389,12 +391,9 @@ def _apply_diagnostics(
         if diagnostic.code is DiagnosticCode.DATECODE_CONFLICT:
             _record_project_warning(graph, program.name, notice)
             continue
-        if diagnostic.severity is DiagnosticSeverity.ERROR:
-            if is_root:
-                if first_error is None:
-                    first_error = diagnostic
-                continue
-            _record_project_warning(graph, program.name, notice)
+        if not diagnostic.tentative and is_root:
+            if first_error is None:
+                first_error = diagnostic
             continue
         _record_project_warning(graph, program.name, notice)
 

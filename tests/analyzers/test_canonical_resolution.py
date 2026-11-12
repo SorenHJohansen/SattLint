@@ -69,25 +69,27 @@ def test_resolves_submodule_parameter_access_to_canonical_parent_path():
             name="Analog_Profi_Scale",
             invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0),
         ),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="signal", datatype="AIType")],
         localvariables=[],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="E1",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        Assignment(
-                            target=_varref("signal.comp_signal.value"),
-                            value=1.0,
-                        )
-                    ],
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="E1",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            Assignment(
+                                target=_varref("signal.comp_signal.value"),
+                                value=1.0,
+                            )
+                        ],
+                    )
+                ]
+            )
+        ],
         parametermappings=[
             ParameterMapping(
                 target=_varref("signal"),
@@ -105,8 +107,8 @@ def test_resolves_submodule_parameter_access_to_canonical_parent_path():
         moduletype_defs=[],
         localvariables=[dv],
         submodules=[child],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)

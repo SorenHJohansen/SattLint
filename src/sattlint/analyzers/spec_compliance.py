@@ -95,7 +95,7 @@ class SpecComplianceAnalyzer:
     def _check_module_code(self, modulecode: ModuleCode | None, module_path: list[str]) -> None:
         if modulecode is None:
             return
-        for equation in modulecode.equations or []:
+        for equation in modulecode.equationblocks or []:
             self._check_equation_block(equation, module_path)
         for sequence in modulecode.sequences or []:
             self._check_sequence(sequence, module_path)

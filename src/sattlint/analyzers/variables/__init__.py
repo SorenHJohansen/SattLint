@@ -20,6 +20,7 @@ from sattlint.parser_api import (
     Variable,
 )
 
+from ...models.project_graph import EMPTY_GRAPHICS_ATTACHMENTS, GraphicsAttachments
 from ...reporting.variables_report import (
     DEFAULT_VARIABLE_ANALYSIS_KINDS,
     IssueKind,
@@ -136,6 +137,19 @@ def _publish_shared_artifacts(
     )
 
 
+def _analysis_graphics_attachments(
+    analysis_context: AnalysisContext | None,
+    base_picture: BasePicture,
+) -> GraphicsAttachments | None:
+    if analysis_context is None:
+        return None
+    attachments_for = getattr(analysis_context.graph, "graphics_attachments_for", None)
+    if not callable(attachments_for):
+        return None
+    attachments = attachments_for(base_picture)
+    return attachments if isinstance(attachments, GraphicsAttachments) else None
+
+
 def analyze_variables(
     base_picture: BasePicture,
     analysis_context: AnalysisContext | None = None,
@@ -170,6 +184,7 @@ def analyze_variables(
         config=config,
         status_update_fn=status_update_fn,
         shared_artifacts=(analysis_context.shared_artifacts if analysis_context is not None else None),
+        graphics_attachments=_analysis_graphics_attachments(analysis_context, base_picture),
     )
     init_duration_ms = round((time.perf_counter() - init_started_at) * 1000, 3)
     issues = analyzer.run()
@@ -335,8 +350,10 @@ class VariablesAnalyzer(
         config: dict[str, Any] | None = None,
         status_update_fn: Callable[[str], None] | None = None,
         shared_artifacts: AnalysisSharedArtifacts | None = None,
+        graphics_attachments: GraphicsAttachments | None = None,
     ):
         self.bp = base_picture
+        self.graphics_attachments = graphics_attachments or EMPTY_GRAPHICS_ATTACHMENTS
         self.debug = debug
         self.fail_loudly = fail_loudly
         self._unavailable_libraries = unavailable_libraries or set()

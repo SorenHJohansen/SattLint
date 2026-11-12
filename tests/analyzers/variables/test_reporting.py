@@ -17,8 +17,8 @@ def test_datatype_duplication_is_scoped_per_module_and_excludes_anytype():
             Variable(name="PhaseTimerCopy", datatype="Timer"),
         ],
         submodules=[],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
@@ -28,8 +28,8 @@ def test_datatype_duplication_is_scoped_per_module_and_excludes_anytype():
         moduleparameters=[Variable(name="WildcardC", datatype="AnyType")],
         localvariables=[Variable(name="PhaseTimer", datatype="Timer")],
         submodules=[],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
@@ -41,8 +41,8 @@ def test_datatype_duplication_is_scoped_per_module_and_excludes_anytype():
         moduletype_defs=[fyld, applik],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
     )
@@ -74,8 +74,8 @@ def test_library_target_report_shows_typedef_for_same_lib_different_file_modulet
         moduleparameters=[Variable(name="EnableInteraktion", datatype=Simple_DataType.BOOLEAN)],
         localvariables=[],
         submodules=[],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="ApplSupportLib.s",
         origin_lib="ApplSupportLib",
@@ -89,8 +89,8 @@ def test_library_target_report_shows_typedef_for_same_lib_different_file_modulet
             ModuleTypeInstance(header=_hdr("Y_Info_Panel"), moduletype_name="InfoPanelType", parametermappings=[]),
             ModuleTypeInstance(header=_hdr("X_Info_Panel"), moduletype_name="InfoPanelType", parametermappings=[]),
         ],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="ApplSupportLib.s",
         origin_lib="ApplSupportLib",
     )
@@ -120,8 +120,8 @@ def test_program_target_report_dedupes_root_owned_typedef_instance_findings():
         moduleparameters=[Variable(name="EnableInteraktion", datatype=Simple_DataType.BOOLEAN)],
         localvariables=[],
         submodules=[],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="ApplSupportLib.s",
         origin_lib="ApplSupportLib",
@@ -135,8 +135,8 @@ def test_program_target_report_dedupes_root_owned_typedef_instance_findings():
             ModuleTypeInstance(header=_hdr("Y_Info_Panel"), moduletype_name="InfoPanelType", parametermappings=[]),
             ModuleTypeInstance(header=_hdr("X_Info_Panel"), moduletype_name="InfoPanelType", parametermappings=[]),
         ],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="ApplSupportLib.s",
         origin_lib="ApplSupportLib",
     )
@@ -167,8 +167,8 @@ def test_library_target_does_not_report_typedefs_from_sibling_projectlib_files()
         moduleparameters=[],
         localvariables=[foreign_local],
         submodules=[],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="ListeLibX.x",
         origin_lib="ProjectLib",
@@ -179,8 +179,8 @@ def test_library_target_does_not_report_typedefs_from_sibling_projectlib_files()
         moduletype_defs=[foreign_typedef],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="ColumnLib.x",
         origin_lib="ProjectLib",
     )
@@ -272,8 +272,8 @@ def test_string_mapping_summary_dedupes_root_typedef_singlemodule_rows():
         moduleparameters=[Variable(name="TargetValue", datatype=Simple_DataType.IDENTSTRING)],
         localvariables=[],
         submodules=[],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
     )
     parent_typedef = ModuleTypeDef(
@@ -296,8 +296,8 @@ def test_string_mapping_summary_dedupes_root_typedef_singlemodule_rows():
                 ],
             )
         ],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
     )
     bp = BasePicture(
@@ -306,8 +306,8 @@ def test_string_mapping_summary_dedupes_root_typedef_singlemodule_rows():
         moduletype_defs=[child_typedef, parent_typedef],
         localvariables=[],
         submodules=[ModuleTypeInstance(header=_hdr("Parent"), moduletype_name="ParentType", parametermappings=[])],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -334,8 +334,8 @@ def test_string_mapping_summary_prefers_original_declaration_type_for_intermedia
         moduleparameters=[Variable(name="FinalValue", datatype=Simple_DataType.IDENTSTRING)],
         localvariables=[],
         submodules=[],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
     )
     relay_typedef = ModuleTypeDef(
@@ -358,8 +358,8 @@ def test_string_mapping_summary_prefers_original_declaration_type_for_intermedia
                 ],
             )
         ],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
     )
     bp = BasePicture(
@@ -383,8 +383,8 @@ def test_string_mapping_summary_prefers_original_declaration_type_for_intermedia
                 ],
             )
         ],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)

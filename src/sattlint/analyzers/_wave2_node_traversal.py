@@ -52,7 +52,7 @@ def _iter_sequence_values(node: object) -> Iterator[object]:
 
 def iter_statement_sites(modulecode: ModuleCode) -> list[StatementSite]:
     sites: list[StatementSite] = []
-    for equation in modulecode.equations or []:
+    for equation in modulecode.equationblocks or []:
         label = f"equation block {equation.name!r}"
         for statement in equation.code or []:
             sites.append(StatementSite(label=label, statement=statement))

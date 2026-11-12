@@ -6,41 +6,45 @@ def test_version_drift_ignores_datecode_only_differences():
     variant_a = SingleModule(
         header=_hdr("Mixer"),
         datecode=100,
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Logic",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Output"), 1)],
-                )
-            ],
-            sequences=[],
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Logic",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[(const.KEY_ASSIGN, _varref("Output"), 1)],
+                    )
+                ],
+                sequences=[],
+            )
+        ],
         parametermappings=[],
     )
     variant_b = SingleModule(
         header=_hdr("Mixer"),
         datecode=200,
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Logic",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Output"), 1)],
-                )
-            ],
-            sequences=[],
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Logic",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[(const.KEY_ASSIGN, _varref("Output"), 1)],
+                    )
+                ],
+                sequences=[],
+            )
+        ],
         parametermappings=[],
     )
     cast(Any, variant_a).origin_file = "Root.s"
@@ -51,8 +55,8 @@ def test_version_drift_ignores_datecode_only_differences():
         moduletype_defs=[],
         localvariables=[],
         submodules=[variant_a, variant_b],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="Root.s",
     )
 

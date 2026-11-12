@@ -34,17 +34,19 @@ def test_cyclomatic_complexity_ignores_low_complexity_program_modulecode() -> No
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="MainEq",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("Output"), value=IntLiteral(1))],
-                )
-            ]
-        ),
-        moduledef=None,
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="MainEq",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[Assignment(target=_varref("Output"), value=IntLiteral(1))],
+                    )
+                ]
+            )
+        ],
+        moduledefs=[],
     )
 
     report = analyze_cyclomatic_complexity(bp)
@@ -72,17 +74,19 @@ def test_cyclomatic_complexity_flags_high_complexity_program_modulecode() -> Non
         moduletype_defs=[],
         localvariables=[Variable(name=f"Cond{index}", datatype=Simple_DataType.BOOLEAN) for index in range(10)],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="MainEq",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=decision_statements,
-                )
-            ]
-        ),
-        moduledef=None,
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="MainEq",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=decision_statements,
+                    )
+                ]
+            )
+        ],
+        moduledefs=[],
     )
 
     report = analyze_cyclomatic_complexity(bp)
@@ -105,38 +109,40 @@ def test_cyclomatic_complexity_flags_high_complexity_sfc_step() -> None:
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecode=ModuleCode(
-            sequences=[
-                Sequence(
-                    name="MainSeq",
-                    type="SEQUENCE",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        SFCStep(
-                            kind="step",
-                            name="HeatUp",
-                            code=SFCCodeBlocks(
-                                active=[
-                                    IfStmt(
-                                        branches=(
-                                            (
-                                                _varref(f"StepCond{index}"),
-                                                (Assignment(target=_varref("Output"), value=IntLiteral(index)),),
+        modulecodes=[
+            ModuleCode(
+                sequences=[
+                    Sequence(
+                        name="MainSeq",
+                        type="SEQUENCE",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            SFCStep(
+                                kind="step",
+                                name="HeatUp",
+                                code=SFCCodeBlocks(
+                                    active=[
+                                        IfStmt(
+                                            branches=(
+                                                (
+                                                    _varref(f"StepCond{index}"),
+                                                    (Assignment(target=_varref("Output"), value=IntLiteral(index)),),
+                                                ),
                                             ),
-                                        ),
-                                        else_block=(),
-                                    )
-                                    for index in range(6)
-                                ]
+                                            else_block=(),
+                                        )
+                                        for index in range(6)
+                                    ]
+                                ),
                             ),
-                        ),
-                        SFCTransition(name="Continue", condition=_varref("Proceed")),
-                    ],
-                )
-            ]
-        ),
-        moduledef=None,
+                            SFCTransition(name="Continue", condition=_varref("Proceed")),
+                        ],
+                    )
+                ]
+            )
+        ],
+        moduledefs=[],
     )
 
     report = analyze_cyclomatic_complexity(bp)
@@ -180,17 +186,19 @@ def test_cyclomatic_complexity_flags_high_equation_block_complexity() -> None:
         moduletype_defs=[],
         localvariables=[Variable(name=f"EqCond{index}", datatype=Simple_DataType.BOOLEAN) for index in range(10)],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="BusyBlock",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=decision_statements,
-                )
-            ]
-        ),
-        moduledef=None,
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="BusyBlock",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=decision_statements,
+                    )
+                ]
+            )
+        ],
+        moduledefs=[],
     )
 
     report = analyze_cyclomatic_complexity(bp)
@@ -226,17 +234,19 @@ def test_cyclomatic_complexity_honors_configured_thresholds() -> None:
         moduletype_defs=[],
         localvariables=[Variable(name=f"EqCond{index}", datatype=Simple_DataType.BOOLEAN) for index in range(3)],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="SmallBlock",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=decision_statements,
-                )
-            ]
-        ),
-        moduledef=None,
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="SmallBlock",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=decision_statements,
+                    )
+                ]
+            )
+        ],
+        moduledefs=[],
     )
 
     report = analyze_cyclomatic_complexity(

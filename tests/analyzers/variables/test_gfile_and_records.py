@@ -88,30 +88,32 @@ def _build_record_field_asymmetry_basepicture(*, include_whole_read: bool) -> Ba
         moduletype_defs=[],
         localvariables=[payload, whole_peer, field_source, sink],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="WholeRecordAccess",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[whole_record_assignment],
-                ),
-                Equation(
-                    name="ReadUsedField",
-                    position=(1.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Sink"), _varref("Payload.Used"))],
-                ),
-                Equation(
-                    name="WriteMiswiredField",
-                    position=(2.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Payload.Miswired"), _varref("FieldSource"))],
-                ),
-            ],
-            sequences=[],
-        ),
-        moduledef=None,
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="WholeRecordAccess",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[whole_record_assignment],
+                    ),
+                    Equation(
+                        name="ReadUsedField",
+                        position=(1.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[(const.KEY_ASSIGN, _varref("Sink"), _varref("Payload.Used"))],
+                    ),
+                    Equation(
+                        name="WriteMiswiredField",
+                        position=(2.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[(const.KEY_ASSIGN, _varref("Payload.Miswired"), _varref("FieldSource"))],
+                    ),
+                ],
+                sequences=[],
+            )
+        ],
+        moduledefs=[],
     )
 
 
@@ -255,14 +257,14 @@ ENDDEF (*BasePicture*);
 def test_nested_composite_gfile_bindings_use_declaring_module_scope():
     module = SingleModule(
         header=_hdr("Panel"),
-        moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
+        moduledefs=[ModuleDef(graph_objects=[GraphObject("CompositeObject")])],
         moduleparameters=[],
         localvariables=[
             Variable(name="NestedOnly", datatype=Simple_DataType.INTEGER),
             Variable(name="Shared", datatype=Simple_DataType.INTEGER),
         ],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
     bp = BasePicture(
@@ -274,8 +276,8 @@ def test_nested_composite_gfile_bindings_use_declaring_module_scope():
             Variable(name="Shared", datatype=Simple_DataType.INTEGER),
         ],
         submodules=[module],
-        modulecode=None,
-        moduledef=ModuleDef(),
+        modulecodes=[],
+        moduledefs=[ModuleDef()],
     )
     bp.graphics_bindings = [
         GraphicsBinding(
@@ -326,8 +328,8 @@ def test_unparsed_gfile_expr_still_counts_named_variables_as_reads():
             Variable(name="Beta", datatype=Simple_DataType.BOOLEAN),
         ],
         submodules=[],
-        modulecode=None,
-        moduledef=ModuleDef(),
+        modulecodes=[],
+        moduledefs=[ModuleDef()],
     )
     bp.graphics_bindings = [
         GraphicsBinding(
@@ -362,37 +364,39 @@ def test_search_rec_component_found_record_output_is_not_flagged_never_read():
             Variable(name="Mirror", datatype=Simple_DataType.INTEGER),
         ],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Search",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("SearchSucceeded"),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Search",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
                             (
-                                const.KEY_FUNCTION_CALL,
-                                "SearchRecComponent",
-                                [
-                                    _varref("CR"),
-                                    _varref("Index"),
-                                    10,
-                                    _varref("SearchUnit"),
-                                    _varref("SearchUnit"),
-                                    _varref("FoundUnit"),
-                                    _varref("srci"),
-                                ],
+                                const.KEY_ASSIGN,
+                                _varref("SearchSucceeded"),
+                                (
+                                    const.KEY_FUNCTION_CALL,
+                                    "SearchRecComponent",
+                                    [
+                                        _varref("CR"),
+                                        _varref("Index"),
+                                        10,
+                                        _varref("SearchUnit"),
+                                        _varref("SearchUnit"),
+                                        _varref("FoundUnit"),
+                                        _varref("srci"),
+                                    ],
+                                ),
                             ),
-                        ),
-                        (const.KEY_ASSIGN, _varref("Mirror"), _varref("Index")),
-                    ],
-                )
-            ],
-            sequences=[],
-        ),
-        moduledef=None,
+                            (const.KEY_ASSIGN, _varref("Mirror"), _varref("Index")),
+                        ],
+                    )
+                ],
+                sequences=[],
+            )
+        ],
+        moduledefs=[],
     )
 
     issues = VariablesAnalyzer(bp).run()

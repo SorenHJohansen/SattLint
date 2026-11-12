@@ -27,16 +27,16 @@ def test_effect_flow_tracker_collects_program_and_library_sink_keys() -> None:
         name="Included",
         moduleparameters=[included_param],
         localvariables=[],
-        moduledef=None,
-        modulecode=ModuleCode(equations=[], sequences=[]),
+        moduledefs=[],
+        modulecodes=[ModuleCode(equationblocks=[], sequences=[])],
     )
     included_typedef.origin_file = "root.s"
     skipped_typedef = ModuleTypeDef(
         name="Skipped",
         moduleparameters=[skipped_param],
         localvariables=[],
-        moduledef=None,
-        modulecode=ModuleCode(equations=[], sequences=[]),
+        moduledefs=[],
+        modulecodes=[ModuleCode(equationblocks=[], sequences=[])],
     )
     skipped_typedef.origin_file = "dep.s"
     bp = BasePicture(
@@ -45,8 +45,8 @@ def test_effect_flow_tracker_collects_program_and_library_sink_keys() -> None:
         moduletype_defs=[included_typedef, skipped_typedef],
         localvariables=[program_var],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     program_sinks = tracker.collect_effect_sink_keys(

@@ -8,6 +8,17 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ## [Unreleased]
 
+### Fixed
+
+- Parser validation diagnostics no longer depend on the removed severity field.
+  Every final diagnostic is an error, and diagnoses the parser marks as
+  tentative become notices.
+- Module definition code blocks are read from `equationblocks`, matching the
+  parser model.
+- Graphics companion records, bindings, and picture display correlations live on
+  the project graph instead of on the parser's AST.
+- Module type resolution reads library dependencies from the project graph.
+
 ### Changed
 
 - Parser access goes through one module, `sattlint.parser_api`, so a parser
@@ -15,6 +26,13 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   The unused `sattlint.models.ast_model` compatibility wrapper is removed.
 - Upgraded `sattline-parser` to `2026.11.4` on the migration branch, still
   pinned exactly.
+- Bumped the AST, project graph, and foundation cache identities so cached
+  graphs from the previous parser release are not reused.
+
+### Removed
+
+- The parser compatibility tests that exercised the retained parse tree. The
+  exact-pin checks now live in the parser surface contract test.
 
 ## [2026.11.3] - 2026-11-05
 

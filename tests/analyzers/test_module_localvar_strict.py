@@ -45,29 +45,31 @@ def test_module_localvar_strict_path_and_case_insensitive():
         localvariables=[Variable(name="Dv", datatype="ApplDvType")],
         moduleparameters=[],
         submodules=[],
-        moduledef=None,
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="E1",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        Assignment(target=_varref("Dv.AckText"), value="Hello"),
-                    ],
-                )
-            ]
-        ),
+        moduledefs=[],
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="E1",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            Assignment(target=_varref("Dv.AckText"), value="Hello"),
+                        ],
+                    )
+                ]
+            )
+        ],
     )
 
     inst = ModuleTypeInstance(header=_hdr("Unit251A"), moduletype_name="ApplTank")
     startmaster = SingleModule(
         header=_hdr("StartMaster"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[],
         submodules=[inst],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
 
@@ -77,8 +79,8 @@ def test_module_localvar_strict_path_and_case_insensitive():
         moduletype_defs=[mt_appltank],
         localvariables=[],
         submodules=[startmaster],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     report = report_module_localvar_fields(bp, "StartMaster.Unit251A", "Dv", debug=False)
@@ -98,8 +100,8 @@ def test_module_localvar_strict_path_fails_loudly():
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     with pytest.raises(ValueError):
@@ -113,22 +115,24 @@ def test_module_localvar_alias_prefix_uses_source_fields_only():
 
     child = SingleModule(
         header=_hdr("Child"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="control", datatype=Simple_DataType.STRING)],
         localvariables=[],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="E1",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        Assignment(target=_varref("control.Cmd"), value="1"),
-                    ],
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="E1",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            Assignment(target=_varref("control.Cmd"), value="1"),
+                        ],
+                    )
+                ]
+            )
+        ],
         parametermappings=[
             ParameterMapping(
                 target=_varref("control"),
@@ -143,11 +147,11 @@ def test_module_localvar_alias_prefix_uses_source_fields_only():
 
     parent = SingleModule(
         header=_hdr("StartMaster"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="Dv", datatype=Simple_DataType.STRING)],
         submodules=[child],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
 
@@ -157,8 +161,8 @@ def test_module_localvar_alias_prefix_uses_source_fields_only():
         moduletype_defs=[],
         localvariables=[],
         submodules=[parent],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     report = report_module_localvar_fields(bp, "StartMaster", "Dv", debug=False)
@@ -200,7 +204,7 @@ def test_module_localvar_param_mapping_does_not_override_localvariable_same_name
 
     child = SingleModule(
         header=_hdr("Child"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="DV", datatype="ApplDvType")],
         localvariables=[
             Variable(name="DV", datatype="DVType"),
@@ -208,29 +212,31 @@ def test_module_localvar_param_mapping_does_not_override_localvariable_same_name
             Variable(name="si", datatype=Simple_DataType.BOOLEAN),
         ],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="E1",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        FuncCallStmt(
-                            call=FuncCall(
-                                name="InitVariable",
-                                args=(_varref("DV.Active"), _varref("InitVar"), _varref("si")),
-                            )
-                        ),
-                        FuncCallStmt(
-                            call=FuncCall(
-                                name="CopyVariable",
-                                args=(_varref("DV.DefaultComm"), _varref("Inlet1.Destination"), _varref("si")),
-                            )
-                        ),
-                    ],
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="E1",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            FuncCallStmt(
+                                call=FuncCall(
+                                    name="InitVariable",
+                                    args=(_varref("DV.Active"), _varref("InitVar"), _varref("si")),
+                                )
+                            ),
+                            FuncCallStmt(
+                                call=FuncCall(
+                                    name="CopyVariable",
+                                    args=(_varref("DV.DefaultComm"), _varref("Inlet1.Destination"), _varref("si")),
+                                )
+                            ),
+                        ],
+                    )
+                ]
+            )
+        ],
         parametermappings=[
             ParameterMapping(
                 target=_varref("DV"),
@@ -245,11 +251,11 @@ def test_module_localvar_param_mapping_does_not_override_localvariable_same_name
 
     parent = SingleModule(
         header=_hdr("StartMaster"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="Dv", datatype="ApplDvType")],
         submodules=[child],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
 
@@ -259,8 +265,8 @@ def test_module_localvar_param_mapping_does_not_override_localvariable_same_name
         moduletype_defs=[],
         localvariables=[],
         submodules=[parent],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     report = report_module_localvar_fields(bp, "StartMaster", "Dv", debug=False, fail_loudly=False)

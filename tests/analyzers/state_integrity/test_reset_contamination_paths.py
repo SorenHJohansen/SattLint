@@ -41,7 +41,7 @@ def test_reset_contamination_detected_for_missing_reset_write():
 
     mod = SingleModule(
         header=_hdr("Unit"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[
             Variable(name="Counter", datatype=Simple_DataType.INTEGER),
@@ -50,7 +50,7 @@ def test_reset_contamination_detected_for_missing_reset_write():
             Variable(name="OprSeqResetOld", datatype=Simple_DataType.BOOLEAN),
         ],
         submodules=[],
-        modulecode=ModuleCode(sequences=[seq], equations=[eq]),
+        modulecodes=[ModuleCode(sequences=[seq], equationblocks=[eq])],
         parametermappings=[],
     )
 
@@ -60,8 +60,8 @@ def test_reset_contamination_detected_for_missing_reset_write():
         moduletype_defs=[],
         localvariables=[],
         submodules=[mod],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -107,7 +107,7 @@ def test_reset_contamination_cleared_when_reset_writes_present():
 
     mod = SingleModule(
         header=_hdr("Unit"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[
             Variable(name="Counter", datatype=Simple_DataType.INTEGER),
@@ -115,7 +115,7 @@ def test_reset_contamination_cleared_when_reset_writes_present():
             Variable(name="OprSeqResetOld", datatype=Simple_DataType.BOOLEAN),
         ],
         submodules=[],
-        modulecode=ModuleCode(sequences=[seq], equations=[eq]),
+        modulecodes=[ModuleCode(sequences=[seq], equationblocks=[eq])],
         parametermappings=[],
     )
 
@@ -125,8 +125,8 @@ def test_reset_contamination_cleared_when_reset_writes_present():
         moduletype_defs=[],
         localvariables=[],
         submodules=[mod],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -177,7 +177,7 @@ def test_reset_contamination_helpers_collect_refs_and_reset_old_vars_from_nested
                 ],
             )
         ],
-        equations=[
+        equationblocks=[
             Equation(
                 name="Main",
                 position=(0.0, 0.0),

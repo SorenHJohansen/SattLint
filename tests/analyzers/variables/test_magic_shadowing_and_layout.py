@@ -49,8 +49,8 @@ def test_magic_number_detection_in_equations_and_sfc():
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
-        modulecode=ModuleCode(sequences=[seq], equations=[eq]),
-        moduledef=None,
+        modulecodes=[ModuleCode(sequences=[seq], equationblocks=[eq])],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -73,11 +73,11 @@ def test_magic_number_detection_in_equations_and_sfc():
 def test_shadowing_detected_for_nested_locals():
     child = SingleModule(
         header=_hdr("Child"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="value", datatype=Simple_DataType.INTEGER)],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
 
@@ -87,8 +87,8 @@ def test_shadowing_detected_for_nested_locals():
         moduletype_defs=[],
         localvariables=[Variable(name="Value", datatype=Simple_DataType.INTEGER)],
         submodules=[child],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     report = analyze_variables(bp, selected_issue_kinds=frozenset({IssueKind.SHADOWING}))
@@ -102,8 +102,8 @@ def test_shadowing_detected_for_moduletype_instance_locals():
         moduleparameters=[],
         localvariables=[Variable(name="Setting", datatype=Simple_DataType.INTEGER)],
         submodules=[],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
     )
 
@@ -119,8 +119,8 @@ def test_shadowing_detected_for_moduletype_instance_locals():
         moduletype_defs=[mt],
         localvariables=[Variable(name="setting", datatype=Simple_DataType.INTEGER)],
         submodules=[instance],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     report = analyze_variables(bp, selected_issue_kinds=frozenset({IssueKind.SHADOWING}))

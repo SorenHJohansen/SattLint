@@ -14,8 +14,8 @@ def test_library_target_picture_display_variable_rows_count_typedef_moduleparame
         moduleparameters=[Variable(name="ColumnType", datatype=Simple_DataType.INTEGER)],
         localvariables=[],
         submodules=[],
-        moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
-        modulecode=None,
+        moduledefs=[ModuleDef(graph_objects=[GraphObject("CompositeObject")])],
+        modulecodes=[],
         parametermappings=[],
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
@@ -26,8 +26,8 @@ def test_library_target_picture_display_variable_rows_count_typedef_moduleparame
         moduletype_defs=[root_typedef],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -72,8 +72,8 @@ def test_library_target_picture_display_index_variable_counts_typedef_modulepara
         moduleparameters=[Variable(name="ColumnType", datatype=Simple_DataType.INTEGER)],
         localvariables=[],
         submodules=[],
-        moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
-        modulecode=None,
+        moduledefs=[ModuleDef(graph_objects=[GraphObject("CompositeObject")])],
+        modulecodes=[],
         parametermappings=[],
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
@@ -84,8 +84,8 @@ def test_library_target_picture_display_index_variable_counts_typedef_modulepara
         moduletype_defs=[root_typedef],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -130,8 +130,8 @@ def test_library_target_picture_display_record_binding_counts_typedef_modulepara
         moduleparameters=[Variable(name="ColumnType", datatype=Simple_DataType.INTEGER)],
         localvariables=[],
         submodules=[],
-        moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
-        modulecode=None,
+        moduledefs=[ModuleDef(graph_objects=[GraphObject("CompositeObject")])],
+        modulecodes=[],
         parametermappings=[],
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
@@ -142,8 +142,8 @@ def test_library_target_picture_display_record_binding_counts_typedef_modulepara
         moduletype_defs=[root_typedef],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -198,16 +198,16 @@ def test_library_target_picture_display_runtime_instance_path_counts_typedef_mod
         submodules=[
             SingleModule(
                 header=_hdr("Panel"),
-                moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
+                moduledefs=[ModuleDef(graph_objects=[GraphObject("CompositeObject")])],
                 moduleparameters=[],
                 localvariables=[],
                 submodules=[],
-                modulecode=None,
+                modulecodes=[],
                 parametermappings=[],
             )
         ],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
@@ -227,12 +227,12 @@ def test_library_target_picture_display_runtime_instance_path_counts_typedef_mod
                         parametermappings=[],
                     )
                 ],
-                moduledef=None,
-                modulecode=None,
+                moduledefs=[],
+                modulecodes=[],
             )
         ],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -286,16 +286,16 @@ def test_library_target_picture_display_variable_rows_count_typedef_moduleparame
         submodules=[
             SingleModule(
                 header=_hdr("Panel"),
-                moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
+                moduledefs=[ModuleDef(graph_objects=[GraphObject("CompositeObject")])],
                 moduleparameters=[],
                 localvariables=[],
                 submodules=[],
-                modulecode=None,
+                modulecodes=[],
                 parametermappings=[],
             )
         ],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
@@ -306,8 +306,8 @@ def test_library_target_picture_display_variable_rows_count_typedef_moduleparame
         moduletype_defs=[root_typedef],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -368,24 +368,26 @@ def test_library_target_direct_typedef_code_counts_field_usage_for_datatype_repo
             Variable(name="Status", datatype=Simple_DataType.INTEGER),
         ],
         submodules=[],
-        moduledef=None,
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "CopyString",
-                            [_varref("StepText.CleanCycle"), _varref("Sink"), _varref("Status")],
-                        )
-                    ],
-                )
-            ],
-            sequences=[],
-        ),
+        moduledefs=[],
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Main",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            (
+                                const.KEY_FUNCTION_CALL,
+                                "CopyString",
+                                [_varref("StepText.CleanCycle"), _varref("Sink"), _varref("Status")],
+                            )
+                        ],
+                    )
+                ],
+                sequences=[],
+            )
+        ],
         parametermappings=[],
         origin_file="DiluteLib.s",
         origin_lib="DiluteLib",
@@ -396,8 +398,8 @@ def test_library_target_direct_typedef_code_counts_field_usage_for_datatype_repo
         moduletype_defs=[root_typedef],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="DiluteLib.s",
         origin_lib="DiluteLib",
     )

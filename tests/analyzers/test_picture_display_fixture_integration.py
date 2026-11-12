@@ -81,16 +81,16 @@ def test_variable_invalid_picture_display_rows_do_not_count_as_usage() -> None:
         submodules=[
             SingleModule(
                 header=_hdr("DisplayModule"),
-                moduledef=ModuleDef(),
+                moduledefs=[ModuleDef()],
                 moduleparameters=[],
                 localvariables=[path_var],
                 submodules=[],
-                modulecode=None,
+                modulecodes=[],
                 parametermappings=[],
             )
         ],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
     base_picture.graphics_bindings = [
         GraphicsBinding(

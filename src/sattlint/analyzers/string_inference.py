@@ -820,7 +820,7 @@ def _module_code_blocks(
     if module_code is None:
         return ()
     blocks: list[list[object]] = []
-    for equation in module_code.equations or []:
+    for equation in module_code.equationblocks or []:
         if isinstance(equation, Equation):
             blocks.append(list(equation.code or []))
     for sequence in module_code.sequences or []:

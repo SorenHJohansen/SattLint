@@ -164,7 +164,7 @@ def test_reset_contamination_remaining_branch_coverage(caplog: Any) -> None:
                 ],
             )
         ],
-        equations=[
+        equationblocks=[
             Equation(
                 name="Nested",
                 position=(0.0, 0.0),

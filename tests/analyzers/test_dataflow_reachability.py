@@ -20,10 +20,12 @@ from sattlint.analyzers.sfc import collect_sfc_reachability_findings
 def _make_sequence(code: list[SFCBodyItem]) -> BasePicture:
     return BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
-        modulecode=ModuleCode(
-            sequences=[Sequence(name="SeqMain", type="sequence", position=(0.0, 0.0), size=(1.0, 1.0), code=code)],
-            equations=[],
-        ),
+        modulecodes=[
+            ModuleCode(
+                sequences=[Sequence(name="SeqMain", type="sequence", position=(0.0, 0.0), size=(1.0, 1.0), code=code)],
+                equationblocks=[],
+            )
+        ],
     )
 
 

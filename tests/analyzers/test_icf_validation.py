@@ -80,7 +80,7 @@ def test_icf_validation_reports_valid_and_invalid_entries():
 
     unit = SingleModule(
         header=_header("Unit"),
-        moduledef=None,
+        moduledefs=[],
         localvariables=[Variable(name="T", datatype="Rec")],
     )
 
@@ -120,7 +120,7 @@ def test_icf_validation_reports_valid_and_invalid_entries():
 def test_icf_validation_skips_placeholder_h_dot_value():
     bp = BasePicture(
         header=_header("IsoFK3"),
-        submodules=[SingleModule(header=_header("Unit265A"), moduledef=None)],
+        submodules=[SingleModule(header=_header("Unit265A"), moduledefs=[])],
     )
 
     entries = [
@@ -148,7 +148,7 @@ def test_icf_validation_skips_placeholder_h_dot_value():
 def test_icf_validation_reports_unparseable_reference_as_skipped_detail():
     bp = BasePicture(
         header=_header("Program"),
-        submodules=[SingleModule(header=_header("Unit"), moduledef=None)],
+        submodules=[SingleModule(header=_header("Unit"), moduledefs=[])],
     )
 
     entries = [
@@ -193,7 +193,7 @@ def test_icf_validation_placeholder_counts_as_covered_for_completeness():
     )
     unit = SingleModule(
         header=_header("Unit265A"),
-        moduledef=None,
+        moduledefs=[],
         localvariables=[Variable(name="Dv", datatype="DvRecord")],
     )
     bp = BasePicture(
@@ -235,7 +235,7 @@ def test_icf_validation_rejects_mixed_value_prefix_letters_in_one_file():
     )
     unit = SingleModule(
         header=_header("Unit"),
-        moduledef=None,
+        moduledefs=[],
         localvariables=[Variable(name="T", datatype="Rec")],
     )
     bp = BasePicture(
@@ -263,13 +263,13 @@ def test_icf_validation_rejects_mixed_value_prefix_letters_in_one_file():
 def test_icf_validation_marks_unresolved_module_segment_in_detail():
     display = SingleModule(
         header=_header("Display"),
-        moduledef=None,
+        moduledefs=[],
     )
     level2 = FrameModule(header=_header("L2"), submodules=[display])
     level1 = FrameModule(header=_header("L1"), submodules=[level2])
     unit = SingleModule(
         header=_header("Unit"),
-        moduledef=None,
+        moduledefs=[],
         submodules=[level1],
     )
     start_master = FrameModule(header=_header("StartMaster"), submodules=[unit])
@@ -368,7 +368,7 @@ def test_icf_validation_requires_simple_leaf_datatype():
 
     unit = SingleModule(
         header=_header("Unit"),
-        moduledef=None,
+        moduledefs=[],
         localvariables=[
             Variable(name="Simple", datatype=Simple_DataType.REAL),
             Variable(name="Complex", datatype="Rec"),
@@ -427,7 +427,7 @@ def test_icf_validation_exposes_resolved_entries_for_reuse():
 
     unit = SingleModule(
         header=_header("Unit"),
-        moduledef=None,
+        moduledefs=[],
         localvariables=[Variable(name="T", datatype="Rec")],
     )
 
@@ -480,7 +480,7 @@ def test_icf_validation_flags_unit_and_group_mismatches():
     )
     unit = SingleModule(
         header=_header("Unit221A"),
-        moduledef=None,
+        moduledefs=[],
         localvariables=[Variable(name="HygienicStatus", datatype="JournalRecord")],
     )
     bp = BasePicture(
@@ -535,7 +535,7 @@ def test_icf_validation_flags_missing_journal_parameter_record_fields():
     )
     unit = SingleModule(
         header=_header("Unit221X"),
-        moduledef=None,
+        moduledefs=[],
         localvariables=[Variable(name="Dilute", datatype="DiluteRecord")],
     )
     bp = BasePicture(
@@ -593,7 +593,7 @@ def test_icf_validation_treats_nested_parameter_descendants_as_parent_record_cov
     )
     unit = SingleModule(
         header=_header("Unit221A"),
-        moduledef=None,
+        moduledefs=[],
         localvariables=[Variable(name="LogValue", datatype="LogValueRecord")],
     )
     bp = BasePicture(
@@ -664,7 +664,7 @@ def test_icf_validation_checks_nested_journal_parameter_record_only():
     )
     unit = SingleModule(
         header=_header("Unit265A"),
-        moduledef=None,
+        moduledefs=[],
         localvariables=[Variable(name="Dv", datatype="DvRecord")],
     )
     bp = BasePicture(
@@ -706,7 +706,7 @@ def test_icf_validation_accepts_flattened_statechange_channel_names():
     )
     unit = SingleModule(
         header=_header("Unit221B"),
-        moduledef=None,
+        moduledefs=[],
         localvariables=[
             Variable(name="PUC_Stop_STATE_NO", datatype=Simple_DataType.INTEGER),
             Variable(name="PUC_Stop_S", datatype="ResponseRecord"),
@@ -938,7 +938,7 @@ def test_icf_validation_treats_acssignoff_meaning_as_optional_parameter_field():
     )
     unit = SingleModule(
         header=_header("Unit221A"),
-        moduledef=None,
+        moduledefs=[],
         localvariables=[Variable(name="HSSetLogData", datatype="ACSSignOffLOGData")],
     )
     bp = BasePicture(

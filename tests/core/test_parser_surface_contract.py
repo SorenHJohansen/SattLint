@@ -12,9 +12,11 @@ The tests import only the supported doors: the top-level parse entry point and
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 import pytest
+import sattline_parser
 from sattline_parser import parse_source_text
 from sattline_parser.ast import (
     AssignClause,
@@ -36,6 +38,7 @@ from sattline_parser.ast import (
 )
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "parser_surface" / "ParserSurfaceShapes.s"
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.fixture(scope="module")
@@ -156,3 +159,29 @@ def test_walk_reaches_references_and_bound_tails(picture: BasePicture) -> None:
         ("in", "ClipVar"),
         ("out", "OutVal"),
     }
+
+
+def _declared_parser_requirement() -> str:
+    with (REPO_ROOT / "pyproject.toml").open("rb") as handle:
+        project = tomllib.load(handle)
+    dependencies = project["project"]["dependencies"]
+    return next(dependency for dependency in dependencies if dependency.startswith("sattline-parser"))
+
+
+def test_installed_parser_matches_declared_pin() -> None:
+    requirement = _declared_parser_requirement()
+    assert requirement.startswith("sattline-parser=="), requirement
+
+    pinned = requirement.split("==", 1)[1].strip()
+    assert pinned == sattline_parser.__version__, (
+        f"declared parser {pinned} does not match installed {sattline_parser.__version__}"
+    )
+
+
+def test_declared_parser_requirement_is_pinned_exactly() -> None:
+    requirement = _declared_parser_requirement()
+    assert requirement.startswith("sattline-parser=="), requirement
+
+    pinned = requirement.split("==", 1)[1].strip()
+    assert pinned
+    assert not any(operator in pinned for operator in "<>=!,"), requirement

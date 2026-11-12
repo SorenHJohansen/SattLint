@@ -42,10 +42,11 @@ def test_resolves_same_library_first():
         header=_header(),
         origin_lib="Lib1",
         moduletype_defs=[mt_lib1, mt_lib2],
-        library_dependencies={"lib1": ["lib2"]},
     )
 
-    resolved = _resolve_moduletype_def_strict(bp, "CIP", current_library="Lib1")
+    resolved = _resolve_moduletype_def_strict(
+        bp, "CIP", current_library="Lib1", library_dependencies={"lib1": ["lib2"]}
+    )
 
     assert resolved is mt_lib1
 
@@ -71,11 +72,12 @@ def test_ambiguous_within_dependencies_raises():
         header=_header(),
         origin_lib="Lib1",
         moduletype_defs=[mt_lib2, mt_lib3],
-        library_dependencies={"lib1": ["lib2", "lib3"]},
     )
 
     with pytest.raises(ValueError):
-        _resolve_moduletype_def_strict(bp, "CIP", current_library="Lib1")
+        _resolve_moduletype_def_strict(
+            bp, "CIP", current_library="Lib1", library_dependencies={"lib1": ["lib2", "lib3"]}
+        )
 
 
 def test_resolves_same_library_prefers_draft_source_file():
@@ -86,10 +88,9 @@ def test_resolves_same_library_prefers_draft_source_file():
         origin_lib="Lib1",
         origin_file="Root.s",
         moduletype_defs=[mt_fallback, mt_source],
-        library_dependencies={"lib1": []},
     )
 
-    resolved = _resolve_moduletype_def_strict(bp, "CIP", current_library="Lib1")
+    resolved = _resolve_moduletype_def_strict(bp, "CIP", current_library="Lib1", library_dependencies={"lib1": []})
 
     assert resolved is mt_source
 
@@ -163,13 +164,13 @@ def test_strict_path_prefers_enclosing_draft_moduletype_definition():
         name="Transfer",
         origin_lib="ProjectLib",
         origin_file="DiluteLib.s",
-        submodules=[SingleModule(header=_header("Dilute"), moduledef=None)],
+        submodules=[SingleModule(header=_header("Dilute"), moduledefs=[])],
     )
     transfer_fallback = ModuleTypeDef(
         name="Transfer",
         origin_lib="ProjectLib",
         origin_file="ModullLib.x",
-        submodules=[SingleModule(header=_header("Legacy"), moduledef=None)],
+        submodules=[SingleModule(header=_header("Legacy"), moduledefs=[])],
     )
     wrapper = ModuleTypeDef(
         name="Wrapper",
@@ -215,17 +216,19 @@ def test_analyzer_uses_library_scoped_moduletype_defs():
         localvariables=[Variable(name="DV", datatype="CIPType1")],
         moduleparameters=[],
         submodules=[],
-        moduledef=None,
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="E1",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[FuncCallStmt(call=FuncCall(name="InitVariable", args=(VarRef(name="DV.Active"),)))],
-                )
-            ]
-        ),
+        moduledefs=[],
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="E1",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[FuncCallStmt(call=FuncCall(name="InitVariable", args=(VarRef(name="DV.Active"),)))],
+                    )
+                ]
+            )
+        ],
     )
 
     cip_lib2 = ModuleTypeDef(
@@ -235,17 +238,19 @@ def test_analyzer_uses_library_scoped_moduletype_defs():
         localvariables=[Variable(name="DV", datatype="CIPType2")],
         moduleparameters=[],
         submodules=[],
-        moduledef=None,
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="E1",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[FuncCallStmt(call=FuncCall(name="InitVariable", args=(VarRef(name="DV.Active"),)))],
-                )
-            ]
-        ),
+        moduledefs=[],
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="E1",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[FuncCallStmt(call=FuncCall(name="InitVariable", args=(VarRef(name="DV.Active"),)))],
+                    )
+                ]
+            )
+        ],
     )
 
     wrapper = ModuleTypeDef(
@@ -255,8 +260,8 @@ def test_analyzer_uses_library_scoped_moduletype_defs():
         localvariables=[],
         moduleparameters=[],
         submodules=[ModuleTypeInstance(header=_header("CIP1"), moduletype_name="CIP")],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
     )
 
     bp = BasePicture(
@@ -267,8 +272,8 @@ def test_analyzer_uses_library_scoped_moduletype_defs():
         moduletype_defs=[cip_lib1, cip_lib2, wrapper],
         localvariables=[],
         submodules=[ModuleTypeInstance(header=_header("WrapperInst"), moduletype_name="Wrapper")],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         library_dependencies={"applib": ["lib1", "lib2"]},
     )
 
@@ -292,7 +297,7 @@ def test_resolve_module_by_strict_path_rejects_empty_or_invalid_paths():
 def test_resolve_module_by_strict_path_reports_close_matches_for_unknown_segment():
     bp = BasePicture(
         header=_header("BasePicture"),
-        submodules=[SingleModule(header=_header("Dilute"), moduledef=None)],
+        submodules=[SingleModule(header=_header("Dilute"), moduledefs=[])],
     )
 
     with pytest.raises(ValueError, match="Close matches"):
@@ -304,7 +309,7 @@ def test_module_lookup_and_scope_helpers_cover_typedef_and_regular_paths():
     mp = Variable(name="FromParam", datatype=Simple_DataType.INTEGER)
     child = SingleModule(
         header=_header("Child"),
-        moduledef=None,
+        moduledefs=[],
         localvariables=[local],
         moduleparameters=[mp],
         submodules=[],

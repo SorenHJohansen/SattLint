@@ -89,7 +89,7 @@ def _collect_paths_in_modulecode(
 ) -> list[_PathState]:
     states = [_PathState()]
 
-    for eq in modulecode.equations or []:
+    for eq in modulecode.equationblocks or []:
         states = _collect_stmt_block_paths(
             eq.code or [],
             env,

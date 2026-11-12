@@ -240,7 +240,7 @@ def _walk_module_code(
 ) -> None:
     if modulecode is None:
         return
-    for equation in modulecode.equations or []:
+    for equation in modulecode.equationblocks or []:
         label = f"EQ:{getattr(equation, 'name', '<unnamed>')}"
         for statement in equation.code or []:
             _record_statement(self, statement, context, module_path, label, accesses)

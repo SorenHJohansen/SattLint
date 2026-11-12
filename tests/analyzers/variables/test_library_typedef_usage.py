@@ -24,23 +24,25 @@ def test_library_typedef_moduleparameter_unused_fields_are_suppressed():
         moduleparameters=[Variable(name="p", datatype="RecType")],
         localvariables=[Variable(name="sink", datatype=Simple_DataType.INTEGER)],
         submodules=[],
-        moduledef=None,
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("sink"),
-                            _varref("p.Used"),
-                        )
-                    ],
-                )
-            ]
-        ),
+        moduledefs=[],
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Main",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            (
+                                const.KEY_ASSIGN,
+                                _varref("sink"),
+                                _varref("p.Used"),
+                            )
+                        ],
+                    )
+                ]
+            )
+        ],
         parametermappings=[],
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
@@ -52,8 +54,8 @@ def test_library_typedef_moduleparameter_unused_fields_are_suppressed():
         moduletype_defs=[exported],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
     )
@@ -92,19 +94,21 @@ def test_library_typedef_local_used_via_child_interact_coordinate_tail_is_not_un
         moduleparameters=[child_param],
         localvariables=[],
         submodules=[],
-        moduledef=ModuleDef(
-            interact_objects=[
-                InteractObject(
-                    type=const.GRAMMAR_VALUE_COMBUT,
-                    properties={
-                        const.KEY_COORDS: [((0.0, 0.0), (1.0, 1.0))],
-                        const.KEY_TAILS: [_varref("xSize")],
-                        const.KEY_BODY: [{const.KEY_NAME: "ButtonType", const.KEY_VALUE: 0}],
-                    },
-                )
-            ]
-        ),
-        modulecode=None,
+        moduledefs=[
+            ModuleDef(
+                interact_objects=[
+                    InteractObject(
+                        type=const.GRAMMAR_VALUE_COMBUT,
+                        properties={
+                            const.KEY_COORDS: [((0.0, 0.0), (1.0, 1.0))],
+                            const.KEY_TAILS: [_varref("xSize")],
+                            const.KEY_BODY: [{const.KEY_NAME: "ButtonType", const.KEY_VALUE: 0}],
+                        },
+                    )
+                ]
+            )
+        ],
+        modulecodes=[],
         parametermappings=[],
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
@@ -131,8 +135,8 @@ def test_library_typedef_local_used_via_child_interact_coordinate_tail_is_not_un
                 ],
             )
         ],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
@@ -144,8 +148,8 @@ def test_library_typedef_local_used_via_child_interact_coordinate_tail_is_not_un
         moduletype_defs=[parent_type, child_type],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
     )
@@ -168,34 +172,36 @@ def test_library_typedef_local_used_via_child_combutproc_togglewindow_arg_is_not
         moduleparameters=[child_param],
         localvariables=[],
         submodules=[],
-        moduledef=ModuleDef(
-            interact_objects=[
-                InteractObject(
-                    type=const.GRAMMAR_VALUE_COMBUTPROC,
-                    properties={
-                        const.KEY_COORDS: [((0.0, 0.0), (1.0, 1.0))],
-                        const.KEY_PROCEDURE: {
-                            const.KEY_NAME: "ToggleWindow",
-                            const.KEY_ARGS: [
-                                "",
-                                "Picklist",
-                                False,
-                                0.0,
-                                0.0,
-                                _varref("xSize"),
-                                0.0,
-                                False,
-                                0,
-                                0,
-                                False,
-                                0,
-                            ],
+        moduledefs=[
+            ModuleDef(
+                interact_objects=[
+                    InteractObject(
+                        type=const.GRAMMAR_VALUE_COMBUTPROC,
+                        properties={
+                            const.KEY_COORDS: [((0.0, 0.0), (1.0, 1.0))],
+                            const.KEY_PROCEDURE: {
+                                const.KEY_NAME: "ToggleWindow",
+                                const.KEY_ARGS: [
+                                    "",
+                                    "Picklist",
+                                    False,
+                                    0.0,
+                                    0.0,
+                                    _varref("xSize"),
+                                    0.0,
+                                    False,
+                                    0,
+                                    0,
+                                    False,
+                                    0,
+                                ],
+                            },
                         },
-                    },
-                )
-            ]
-        ),
-        modulecode=None,
+                    )
+                ]
+            )
+        ],
+        modulecodes=[],
         parametermappings=[],
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
@@ -222,8 +228,8 @@ def test_library_typedef_local_used_via_child_combutproc_togglewindow_arg_is_not
                 ],
             )
         ],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
@@ -235,8 +241,8 @@ def test_library_typedef_local_used_via_child_combutproc_togglewindow_arg_is_not
         moduletype_defs=[parent_type, child_type],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
     )
@@ -275,24 +281,26 @@ def test_library_typedef_local_used_via_child_legacy_combutproc_togglewindow_tre
         moduleparameters=[child_param],
         localvariables=[],
         submodules=[],
-        moduledef=ModuleDef(
-            interact_objects=[
-                InteractObject(
-                    type=const.GRAMMAR_VALUE_COMBUTPROC,
-                    properties={
-                        const.KEY_COORDS: [((0.0, 0.0), (1.0, 1.0))],
-                        const.KEY_PROCEDURE: {
-                            const.KEY_NAME: None,
-                            const.KEY_ARGS: [
-                                "ToggleWindow",
-                                legacy_procedure_args,
-                            ],
+        moduledefs=[
+            ModuleDef(
+                interact_objects=[
+                    InteractObject(
+                        type=const.GRAMMAR_VALUE_COMBUTPROC,
+                        properties={
+                            const.KEY_COORDS: [((0.0, 0.0), (1.0, 1.0))],
+                            const.KEY_PROCEDURE: {
+                                const.KEY_NAME: None,
+                                const.KEY_ARGS: [
+                                    "ToggleWindow",
+                                    legacy_procedure_args,
+                                ],
+                            },
                         },
-                    },
-                )
-            ]
-        ),
-        modulecode=None,
+                    )
+                ]
+            )
+        ],
+        modulecodes=[],
         parametermappings=[],
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
@@ -319,8 +327,8 @@ def test_library_typedef_local_used_via_child_legacy_combutproc_togglewindow_tre
                 ],
             )
         ],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
@@ -332,8 +340,8 @@ def test_library_typedef_local_used_via_child_legacy_combutproc_togglewindow_tre
         moduletype_defs=[parent_type, child_type],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
     )
