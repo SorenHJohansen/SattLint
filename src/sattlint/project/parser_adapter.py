@@ -429,6 +429,7 @@ def _record_missing_dependencies(
     strict: bool,
 ) -> None:
     for program in project.programs().values():
+        graph.source_dependencies[program.name.casefold()] = {name.casefold() for name in program.dependencies}
         for dependency in program.dependencies:
             if dependency.casefold() in project or dependency.casefold() in graph.unavailable_libraries:
                 continue

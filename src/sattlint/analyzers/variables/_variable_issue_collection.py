@@ -326,6 +326,8 @@ def _emit_field_issues(
             continue
         leaf_path = state.leaf_paths_by_key.get(leaf_key)
         if leaf_path is not None:
+            if kind is IssueKind.FIELD_READ_ONLY and _is_const_field(self, instance.variable, leaf_path):
+                continue
             _add_issue(
                 self,
                 kind,
@@ -334,6 +336,22 @@ def _emit_field_issues(
                 instance.role,
                 field_path=leaf_path,
             )
+
+
+def _is_const_field(self: VariablesAnalyzer, variable: Variable, field_path: str) -> bool:
+    if variable.const:
+        return True
+    datatype = variable.datatype
+    for segment in field_path.split("."):
+        if isinstance(datatype, Simple_DataType):
+            return False
+        definition = self.type_graph.field(datatype, segment)
+        if definition is None:
+            return False
+        if definition.const:
+            return True
+        datatype = definition.datatype
+    return False
 
 
 def iter_variables_for_datatype_field_analysis(

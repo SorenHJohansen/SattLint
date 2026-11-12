@@ -5,6 +5,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, cast
 
+from rich.style import Style
+from rich.text import Text
+
 from ..application.findings import AnalysisFinding, kind_human_label
 from ..runs import (
     RunAnalyzerRecord,
@@ -119,11 +122,46 @@ def _site_label(finding: AnalysisFinding) -> str | None:
 
 def _finding_label(finding: AnalysisFinding, *, occurrence_count: int = 1) -> str:
     label = _context_label(finding)
-    if finding.rule_id:
-        label += f" ({finding.rule_id})"
+    if label.casefold() == kind_human_label(finding.kind).casefold():
+        label = _LEADING_MODULE_PATH_RE.sub("", finding.message).strip()
     if occurrence_count > 1:
-        label += f" ({occurrence_count} occurrences)"
+        label += f" \u00d7{occurrence_count}"
     return label
+
+
+def _readable_site(site: str) -> str:
+    parts: list[str] = []
+    for segment in site.split(" > "):
+        tokens = segment.split(":")
+        if tokens[0] in {"SQ", "SUBSEQ"} and len(tokens) == 2:
+            parts.append(tokens[1])
+        elif tokens[0] == "STEP" and len(tokens) == 3:
+            parts.extend((tokens[1], tokens[2].capitalize()))
+        elif tokens[0] in {"EQ", "TRANS", "TRANS-SUB"} and len(tokens) == 2:
+            label = "Equation" if tokens[0] == "EQ" else "Transition"
+            parts.append(f"{label} {tokens[1]}")
+        elif tokens[0] in {"ALT", "PAR"} and len(tokens) == 3 and tokens[2].isdigit():
+            label = "Alternative" if tokens[0] == "ALT" else "Parallel branch"
+            parts.append(f"{label} {int(tokens[2]) + 1}")
+        else:
+            parts.append(segment)
+    return " \u203a ".join(parts)
+
+
+def _finding_details(finding: AnalysisFinding) -> list[str]:
+    details: list[str] = []
+    message = _LEADING_MODULE_PATH_RE.sub("", finding.message).strip()
+    context = _finding_label(finding)
+    if message and context.casefold() not in message.casefold():
+        details.append(message)
+    previous_sites = finding.data.get("previous_sites")
+    if isinstance(previous_sites, (list, tuple)):
+        details.extend(f"Previous write: {_readable_site(str(site))}" for site in previous_sites)
+    for key, label in (("target_display_name", "Target"), ("source_display_name", "Source")):
+        value = finding.data.get(key)
+        if value:
+            details.append(f"{label}: {value}")
+    return details
 
 
 def _finding_groups(
@@ -160,7 +198,7 @@ def _finding_module_path(finding: AnalysisFinding, analyzer: RunAnalyzerRecord) 
 
 
 def _analyzer_label(analyzer: RunAnalyzerRecord) -> str:
-    label = f"{analyzer.name} ({analyzer.key})"
+    label = analyzer.name
     return label if analyzer.status == "completed" else f"{label} — {analyzer.status}"
 
 
@@ -242,23 +280,38 @@ def _add_module_children(
     target: RunTargetRecord,
     branches: dict[tuple[str, ...], Any],
     finding_paths: set[tuple[str, ...]],
+    finding_prefixes: set[tuple[str, ...]],
     aliases: dict[str, tuple[str, ...]],
 ) -> None:
     for child in children:
         child_path = (*path, child.name)
+        if tuple(part.casefold() for part in child_path) not in finding_prefixes:
+            continue
         merged_paths = [child_path]
         final = child
-        while len(final.children) == 1 and tuple(part.casefold() for part in child_path) not in finding_paths:
-            final = final.children[0]
+        retained_children = tuple(
+            descendant
+            for descendant in final.children
+            if tuple(part.casefold() for part in (*child_path, descendant.name)) in finding_prefixes
+        )
+        while len(retained_children) == 1 and tuple(part.casefold() for part in child_path) not in finding_paths:
+            final = retained_children[0]
             child_path = (*child_path, final.name)
             merged_paths.append(child_path)
+            retained_children = tuple(
+                descendant
+                for descendant in final.children
+                if tuple(part.casefold() for part in (*child_path, descendant.name)) in finding_prefixes
+            )
         label = _module_label(final)
         if len(merged_paths) > 1:
             label = f"{'.'.join(segment[-1] for segment in merged_paths)}{label.removeprefix(final.name)}"
         child_node = parent.add(label, data=_ModuleSelection(target, child_path, aliases))
         for merged_path in merged_paths:
             branches[tuple(part.casefold() for part in merged_path)] = child_node
-        _add_module_children(child_node, final.children, child_path, target, branches, finding_paths, aliases)
+        _add_module_children(
+            child_node, retained_children, child_path, target, branches, finding_paths, finding_prefixes, aliases
+        )
 
 
 def _fallback_module_children(
@@ -276,6 +329,8 @@ def _populate_module_navigation(tree: Any, record: RunRecord) -> _ModuleSelectio
     tree.show_root = False
     first_selection = None
     for target in record.targets:
+        if not any(analyzer.findings for analyzer in target.analyzers):
+            continue
         module = target.module
         roots = {
             finding.module_path[0]
@@ -308,9 +363,12 @@ def _populate_module_navigation(tree: Any, record: RunRecord) -> _ModuleSelectio
             for analyzer in target.analyzers
             for finding in analyzer.findings
         }
+        finding_prefixes = {path[:length] for path in finding_paths for length in range(1, len(path) + 1)}
 
         if module is not None:
-            _add_module_children(root_node, module.children, selection.path, target, branches, finding_paths, aliases)
+            _add_module_children(
+                root_node, module.children, selection.path, target, branches, finding_paths, finding_prefixes, aliases
+            )
         else:
             path_children: dict[tuple[str, ...], dict[str, str]] = {}
             for analyzer in target.analyzers:
@@ -327,6 +385,7 @@ def _populate_module_navigation(tree: Any, record: RunRecord) -> _ModuleSelectio
                 target,
                 branches,
                 finding_paths,
+                finding_prefixes,
                 aliases,
             )
         for analyzer in target.analyzers:
@@ -345,10 +404,16 @@ def _populate_module_navigation(tree: Any, record: RunRecord) -> _ModuleSelectio
     return first_selection
 
 
-def _module_findings_report(selection: _ModuleSelection, *, show_empty_analyzers: bool) -> str:
+def _module_findings_report(
+    selection: _ModuleSelection,
+    *,
+    show_empty_analyzers: bool,
+    expanded_details: frozenset[int] = frozenset(),
+) -> Text:
     target = selection.target
     path = tuple(part.casefold() for part in selection.path)
-    lines: list[str] = []
+    lines: list[Text] = []
+    detail_index = 0
     for analyzer in target.analyzers:
         matching = tuple(
             finding
@@ -362,28 +427,61 @@ def _module_findings_report(selection: _ModuleSelection, *, show_empty_analyzers
         if not matching and not (show_empty_analyzers and len(path) == 1 and not analyzer.findings):
             continue
         if lines:
-            lines.append("")
-        lines.append(_analyzer_label(analyzer))
+            lines.append(Text(""))
+        lines.append(Text(_analyzer_label(analyzer), style="bold #001ba3"))
         if not matching:
-            lines.append("  No findings")
+            lines.append(Text("  No findings", style="dim"))
             continue
         for kind, items in _finding_groups(
             RunAnalyzerRecord(key=analyzer.key, name=analyzer.name, status=analyzer.status, findings=matching)
         ):
-            lines.append(f"  {kind_human_label(kind)} ({sum(count for _, count in items)})")
-            for finding, occurrence_count in items:
-                lines.append(f"    {_finding_label(finding, occurrence_count=occurrence_count)}")
+            lines.append(Text(f"{kind_human_label(kind)} ({sum(count for _, count in items)})", style="bold #674600"))
+            for finding_index, (finding, occurrence_count) in enumerate(items):
+                if finding_index:
+                    lines.append(Text(""))
+                lines.append(Text(f"  {_finding_label(finding, occurrence_count=occurrence_count)}", style="bold"))
                 site = _site_label(finding)
                 if site:
-                    lines.append(f"      Site: {site}")
-                message = _LEADING_MODULE_PATH_RE.sub("", finding.message).strip()
-                if message and message != _context_label(finding):
-                    lines.append(f"      {message}")
-                if finding.explanation:
-                    lines.append(f"      Why it matters: {finding.explanation}")
-                if finding.suggestion:
-                    lines.append(f"      Suggested fix: {finding.suggestion}")
-    return "\n".join(lines) if lines else "No findings for this module"
+                    lines.append(Text(f"  {_readable_site(site)}", style="#38545a"))
+                details = _finding_details(finding)
+                if details:
+                    expanded = detail_index in expanded_details
+                    control = Text("  Hide details" if expanded else "  Details", style="underline #001ba3")
+                    control.stylize(Style(meta={"@click": f"toggle_details({detail_index})"}))
+                    lines.append(control)
+                    if expanded:
+                        lines.extend(Text(f"  {detail}") for detail in details)
+                detail_index += 1
+    return Text("\n").join(lines) if lines else Text("No findings for this module", style="dim")
+
+
+if _TEXTUAL_STATIC is not None:
+
+    class _FindingsReport(_TEXTUAL_STATIC):
+        def set_selection(self, selection: _ModuleSelection, *, show_empty_analyzers: bool) -> None:
+            self._selection = selection
+            self._show_empty = show_empty_analyzers
+            self._expanded_details: set[int] = set()
+            self._refresh_report()
+
+        def _refresh_report(self) -> None:
+            self.update(
+                _module_findings_report(
+                    self._selection,
+                    show_empty_analyzers=self._show_empty,
+                    expanded_details=frozenset(self._expanded_details),
+                )
+            )
+
+        def action_toggle_details(self, index: int) -> None:
+            if index in self._expanded_details:
+                self._expanded_details.remove(index)
+            else:
+                self._expanded_details.add(index)
+            self._refresh_report()
+
+else:
+    _FindingsReport = None
 
 
 def on_tree_node_selected(self: Any, event: Any) -> None:
@@ -406,9 +504,7 @@ def _select_results_module(self: Any, selection: _ModuleSelection) -> None:
     self._selected_results_module = selection
     findings_report = getattr(self, "_results_findings_widget", None)
     if findings_report is not None:
-        findings_report.update(
-            _module_findings_report(selection, show_empty_analyzers=self._results_show_empty_analyzers())
-        )
+        findings_report.set_selection(selection, show_empty_analyzers=self._results_show_empty_analyzers())
 
 
 def _current_project_tag(self: Any) -> str:
@@ -502,7 +598,7 @@ def _render_results_tree(self: Any, record: RunRecord) -> None:
         self._results_tree_render_key = None
     findings_report = getattr(self, "_results_findings_widget", None)
     if findings_report is None:
-        findings_report = _TEXTUAL_STATIC("", id="results-findings-report", markup=False)
+        findings_report = _FindingsReport("", id="results-findings-report", markup=False)
         _query_required(self, "#results-findings-host", _TEXTUAL_VERTICAL).mount(findings_report)
         self._results_findings_widget = findings_report
     render_key = record.run_id
@@ -516,10 +612,8 @@ def _render_results_tree(self: Any, record: RunRecord) -> None:
         else:
             findings_report.update("No findings")
     elif self._selected_results_module is not None:
-        findings_report.update(
-            _module_findings_report(
-                self._selected_results_module, show_empty_analyzers=self._results_show_empty_analyzers()
-            )
+        findings_report.set_selection(
+            self._selected_results_module, show_empty_analyzers=self._results_show_empty_analyzers()
         )
     self._refresh_shell_state()
     self._write_output("Select a module to inspect its findings.")

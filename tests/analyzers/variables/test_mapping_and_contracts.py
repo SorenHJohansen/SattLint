@@ -477,7 +477,7 @@ def test_string_mapping_mismatch_ignores_direct_record_field_mapping_when_field_
     assert not any(issue.kind is IssueKind.STRING_MAPPING_MISMATCH for issue in analyzer.issues)
 
 
-def test_unknown_parameter_target_detected_for_single_module_mapping():
+def test_extra_mapping_target_is_accepted_for_single_module():
     child = SingleModule(
         header=_hdr("Child"),
         moduledef=None,
@@ -521,12 +521,10 @@ def test_unknown_parameter_target_detected_for_single_module_mapping():
     analyzer.run()
 
     issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.UNKNOWN_PARAMETER_TARGET]
-    assert len(issues) == 1
-    assert issues[0].module_path == ["Root", "Parent", "Child"]
-    assert issues[0].role == "unknown parameter mapping target 'MissingValue'"
+    assert issues == []
 
 
-def test_unknown_parameter_target_detected_for_moduletype_instance_mapping():
+def test_extra_mapping_target_is_accepted_for_moduletype_instance():
     typedef = ModuleTypeDef(
         name="ChildType",
         moduleparameters=[Variable(name="DeclaredValue", datatype=Simple_DataType.INTEGER)],
@@ -573,9 +571,7 @@ def test_unknown_parameter_target_detected_for_moduletype_instance_mapping():
     analyzer.run()
 
     issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.UNKNOWN_PARAMETER_TARGET]
-    assert len(issues) == 1
-    assert issues[0].module_path == ["Root", "Parent", "Child"]
-    assert issues[0].role == "unknown parameter mapping target 'MissingValue'"
+    assert issues == []
 
 
 def test_singlemodule_groupconn_marks_child_parameter_used():

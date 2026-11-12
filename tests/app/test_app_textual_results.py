@@ -60,22 +60,18 @@ def test_module_navigation_merges_single_child_chains_but_keeps_findings_selecta
     assert selection is not None
     root = tree.root.children[0]
     assert root.label.plain == "Lib:Root (SingleModule)"
-    intermediate, empty = root.children
+    assert len(root.children) == 1
+    intermediate = root.children[0]
     assert intermediate.label.plain == "InlineLager.L1 (FrameModule)"
     assert intermediate.data.path == ("Root", "InlineLager", "L1")
-    assert intermediate.children[0].label.plain == "L2 (FrameModule)"
-    assert empty.label.plain == "Empty (SingleModule)"
+    assert list(intermediate.children) == []
 
-    assert "Variable issues (variables)" in results_module._module_findings_report(
-        intermediate.data, show_empty_analyzers=False
-    )
     assert (
-        results_module._module_findings_report(empty.data, show_empty_analyzers=False) == "No findings for this module"
+        "Variable issues" in results_module._module_findings_report(intermediate.data, show_empty_analyzers=False).plain
     )
-
     empty_record = replace(record, targets=(replace(record.targets[0], analyzers=()),))
-    results_module._populate_module_navigation(tree, empty_record)
-    assert tree.root.children[0].children[0].label.plain == "InlineLager.L1.L2 (FrameModule)"
+    assert results_module._populate_module_navigation(tree, empty_record) is None
+    assert list(tree.root.children) == []
 
 
 def test_module_findings_keep_sites_duplicates_and_details() -> None:
@@ -95,12 +91,59 @@ def test_module_findings_keep_sites_duplicates_and_details() -> None:
     results_module._populate_module_navigation(tree, record)
     selected_module = tree.root.children[0].children[0]
     report = results_module._module_findings_report(selected_module.data, show_empty_analyzers=False)
-    assert "Variable issues (variables)\n  Unused variable (2)" in report
-    assert "Spare (VAR-1) (2 occurrences)" in report
-    assert "Site: EQ:Control" in report
-    assert "never read" in report
-    assert "Why it matters: Unused declaration." in report
-    assert "Suggested fix: Delete it." in report
+    assert report.spans
+    assert any(span.style == "bold #001ba3" for span in report.spans)
+    assert any(span.style == "bold #674600" for span in report.spans)
+    report = report.plain
+    assert "Variable issues\nUnused variable (2)" in report
+    assert "Spare \u00d72" in report
+    assert "VAR-1" not in report
+    assert "(variables)" not in report
+    assert "Equation Control" in report
+    assert "never read" not in report
+    expanded = results_module._module_findings_report(
+        selected_module.data, show_empty_analyzers=False, expanded_details=frozenset({0})
+    ).plain
+    assert "never read" in expanded
+    assert "Why it matters:" not in report
+    assert "Suggested fix:" not in report
+    assert first.explanation is not None
+    assert first.suggestion is not None
+    assert first.explanation not in report
+    assert first.suggestion not in report
+
+
+def test_module_navigation_prunes_empty_subtrees_before_merging_paths() -> None:
+    root_module = RunModuleRecord(
+        name="Root",
+        children=(
+            RunModuleRecord(
+                name="Parent",
+                children=(
+                    RunModuleRecord(name="EmptyBranch", children=(RunModuleRecord(name="EmptyLeaf"),)),
+                    RunModuleRecord(name="Active", children=(RunModuleRecord(name="Leaf"),)),
+                ),
+            ),
+        ),
+    )
+    finding = AnalysisFinding(kind="unused", message="unused field", module_path=("root", "parent", "active", "leaf"))
+    target = RunTargetRecord(
+        target_name="Root",
+        module=root_module,
+        analyzers=(
+            RunAnalyzerRecord(key="variables", name="Variable issues", status="completed", findings=(finding,)),
+        ),
+    )
+    tree = results_module._new_results_tree()
+    results_module._populate_module_navigation(
+        tree, RunRecord(run_id="r1", started_at="s", finished_at="f", project_tag="Root", targets=(target,))
+    )
+
+    branches = list(tree.root.children[0].children)
+    assert len(branches) == 1
+    assert branches[0].label.plain == "Parent.Active.Leaf"
+    assert list(branches[0].children) == []
+    assert "unused field" in results_module._module_findings_report(branches[0].data, show_empty_analyzers=False).plain
 
 
 def test_datatype_field_findings_show_each_field_and_omit_completed_status() -> None:
@@ -122,10 +165,12 @@ def test_datatype_field_findings_show_each_field_and_omit_completed_status() -> 
         tree, RunRecord(run_id="r1", started_at="s", finished_at="f", project_tag="", targets=(target,))
     )
     report = results_module._module_findings_report(tree.root.children[0].children[0].data, show_empty_analyzers=False)
-    assert report.startswith("Variable issues (variables)\n  Unused datatype field (3)")
-    assert "    DeliveryFail\n" in report
-    assert "    NotEmpty\n" in report
-    assert report.endswith("    PrepareMix\n      datatype 'MixStepTextType'.PrepareMix")
+    report = report.plain
+    assert report.startswith("Variable issues\nUnused datatype field (3)")
+    assert "  DeliveryFail\n" in report
+    assert "  NotEmpty\n" in report
+    assert report.endswith("  PrepareMix")
+    assert "datatype 'MixStepTextType'" not in report
 
 
 def test_read_only_field_label_preserves_field_name() -> None:
@@ -180,13 +225,12 @@ def test_module_navigation_shows_only_invoked_type_and_keeps_its_findings() -> N
     results_module._populate_module_navigation(tree, record)
 
     start_master = tree.root.children[0].children[0]
-    assert start_master.label.plain == "StartMaster (FrameModule)"
-    assert [child.label.plain for child in tree.root.children[0].children] == ["StartMaster (FrameModule)"]
-    inline = start_master.children[1]
-    assert inline.label.plain == "InlineLager.L1.L2 (FrameModule)"
+    assert start_master.label.plain == "StartMaster.InlineLager.L1.L2 (FrameModule)"
+    assert len(tree.root.children[0].children) == 1
+    inline = start_master
     report = results_module._module_findings_report(inline.data, show_empty_analyzers=False)
-    assert "    a\n" in report
-    assert report.endswith("    b")
+    assert "  a\n" in report
+    assert report.plain.endswith("  b")
 
     legacy = replace(record, targets=(replace(target, module=None),))
     results_module._populate_module_navigation(tree, legacy)
@@ -217,7 +261,7 @@ def test_legacy_run_builds_navigation_from_finding_paths() -> None:
     assert root.label.plain == "Root"
     assert root.children[0].data.path == ("Root", "A", "B")
 
-    assert "Variable issues (variables)" in results_module._module_findings_report(
+    assert "Variable issues" in results_module._module_findings_report(
         root.children[0].data, show_empty_analyzers=False
     )
 
@@ -227,13 +271,75 @@ def test_show_empty_analyzers_only_at_target_root() -> None:
     tree = results_module._new_results_tree()
     selection = results_module._populate_module_navigation(tree, record)
     assert selection is not None
-    assert results_module._module_findings_report(selection, show_empty_analyzers=True) == (
-        "SFC checks (sfc)\n  No findings"
+    assert results_module._module_findings_report(selection, show_empty_analyzers=True).plain == (
+        "SFC checks\n  No findings"
     )
+    empty_selection = results_module._ModuleSelection(record.targets[0], ("Root", "Empty"), {})
     assert (
-        results_module._module_findings_report(tree.root.children[0].children[1].data, show_empty_analyzers=True)
+        results_module._module_findings_report(empty_selection, show_empty_analyzers=True).plain
         == "No findings for this module"
     )
+
+
+def test_findings_rich_formatting_preserves_literal_brackets() -> None:
+    finding = AnalysisFinding(
+        kind="unused",
+        message="[Root] expression is unused",
+        module_path=("Root",),
+        data={"context": "Values[Index] [bold]literal[/bold]"},
+    )
+    target = RunTargetRecord(
+        target_name="Root",
+        analyzers=(
+            RunAnalyzerRecord(key="variables", name="Variable issues", status="completed", findings=(finding,)),
+        ),
+    )
+    selection = results_module._ModuleSelection(target, ("Root",), {})
+
+    report = results_module._module_findings_report(selection, show_empty_analyzers=False)
+
+    assert "Values[Index] [bold]literal[/bold]" in report.plain
+
+
+def test_finding_locations_use_readable_names_without_losing_branches() -> None:
+    assert (
+        results_module._readable_site("SQ:PhaseSequence > STEP:Stop:ENTER") == "PhaseSequence \u203a Stop \u203a Enter"
+    )
+    assert (
+        results_module._readable_site("SQ:Run > ALT:BRANCH:0 > TRANS:Ready")
+        == "Run \u203a Alternative 1 \u203a Transition Ready"
+    )
+    assert results_module._readable_site("PAR:BRANCH:1") == "Parallel branch 2"
+    assert results_module._readable_site("Custom site") == "Custom site"
+
+
+def test_finding_details_preserve_previous_writes_and_mapping_endpoints() -> None:
+    finding = AnalysisFinding(
+        kind="unused",
+        message="Spare is unused",
+        data={
+            "context": "Spare",
+            "previous_sites": ["SQ:Run > STEP:Start:ENTER"],
+            "target_display_name": "Target.Field",
+            "source_display_name": "Source.Field",
+        },
+    )
+    assert results_module._finding_details(finding) == [
+        "Previous write: Run \u203a Start \u203a Enter",
+        "Target: Target.Field",
+        "Source: Source.Field",
+    ]
+
+
+def test_generic_finding_context_does_not_repeat_category() -> None:
+    finding = AnalysisFinding(
+        kind="min_max_mapping_mismatch",
+        message="[Root] maximum mapped to minimum",
+        data={"context": "Min/Max mapping mismatch"},
+    )
+
+    assert results_module._finding_label(finding) == "maximum mapped to minimum"
+    assert results_module._finding_details(finding) == []
 
 
 def _settings_app(cfg: object) -> SimpleNamespace:

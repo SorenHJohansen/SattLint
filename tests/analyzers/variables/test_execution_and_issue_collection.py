@@ -1,4 +1,5 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
+import pytest
 from sattline_parser.models.expressions import NotOp
 
 from tests.helpers.analyzers_variables_support import *
@@ -461,6 +462,7 @@ def test_field_usage_asymmetry_detects_sibling_miswire_and_treats_whole_record_r
         is_from_root_origin=lambda origin, origin_lib=None: True,
         limit_to_module_path=None,
         type_graph=SimpleNamespace(
+            field=lambda record_type, field_name: None,
             iter_leaf_field_paths=lambda name: (
                 [
                     ("OutletProd_Def", "Std"),
@@ -468,7 +470,7 @@ def test_field_usage_asymmetry_detects_sibling_miswire_and_treats_whole_record_r
                 ]
                 if name == "Payload"
                 else []
-            )
+            ),
         ),
         contexts_by_module_path={},
     )
@@ -492,6 +494,55 @@ def test_field_usage_asymmetry_detects_sibling_miswire_and_treats_whole_record_r
     } == {
         (IssueKind.FIELD_READ_ONLY, "OutletConfig", "OutletProd_Def.Std"),
     }
+
+
+@pytest.mark.parametrize("constant_level", ["none", "record", "parent", "leaf"])
+def test_read_only_fields_exclude_constants_but_unused_fields_remain_reported(constant_level: str) -> None:
+    inner = DataType(
+        name="Inner",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="Flag", datatype=Simple_DataType.BOOLEAN, const=constant_level == "leaf"),
+            Variable(name="Unused", datatype=Simple_DataType.BOOLEAN, const=True),
+        ],
+    )
+    outer = DataType(
+        name="Outer",
+        description=None,
+        datecode=None,
+        var_list=[Variable(name="Child", datatype="Inner", const=constant_level == "parent")],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[inner, outer],
+        localvariables=[
+            Variable(name="Record", datatype="Outer", const=constant_level == "record"),
+            Variable(name="Sink", datatype=Simple_DataType.BOOLEAN),
+        ],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Sink"), value=_varref("Record.Child.Flag"))],
+                )
+            ]
+        ),
+    )
+    analyzer = VariablesAnalyzer(
+        bp, selected_issue_kinds=frozenset({IssueKind.FIELD_READ_ONLY, IssueKind.UNUSED_DATATYPE_FIELD})
+    )
+
+    analyzer.run()
+
+    read_only = [issue for issue in analyzer.issues if issue.kind is IssueKind.FIELD_READ_ONLY]
+    assert [issue.field_path for issue in read_only] == (["Child.Flag"] if constant_level == "none" else [])
+    assert any(
+        issue.kind is IssueKind.UNUSED_DATATYPE_FIELD and issue.field_path == "Child.Unused"
+        for issue in analyzer.issues
+    )
 
 
 def test_variable_issue_collection_direct_global_helpers_cover_remaining_branches():

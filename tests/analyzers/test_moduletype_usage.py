@@ -164,6 +164,37 @@ def test_module_type_usage_rejects_incomplete_graph() -> None:
         analyze_moduletype_usage(library, AnalysisContext(library, graph, target_is_library=True))
 
 
+def test_module_type_usage_ignores_missing_downstream_source() -> None:
+    library = _picture()
+    dependency = _picture(
+        "ConfigurationLib",
+        definitions=[],
+        instances=[replace(_instance("Controller"), moduletype_name="Controller")],
+    )
+    graph = ProjectGraph(
+        ast_by_name={"EquipmentLib": library, "ConfigurationLib": dependency},
+        source_dependencies={"equipmentlib": {"configurationlib"}, "configurationlib": {"controllib"}},
+        unavailable_libraries={"controllib"},
+        missing=["Dependent source is unavailable"],
+    )
+
+    report = analyze_moduletype_usage(library, AnalysisContext(library, graph, target_is_library=True))
+
+    assert len(report.issues) == 1
+
+
+def test_module_type_usage_still_rejects_missing_consumer_source() -> None:
+    library = _picture()
+    graph = ProjectGraph(
+        source_dependencies={"consumer": {"equipmentlib"}},
+        unavailable_libraries={"consumer"},
+        missing=["Consumer source is unavailable"],
+    )
+
+    with pytest.raises(ValueError, match="incomplete"):
+        analyze_moduletype_usage(library, AnalysisContext(library, graph, target_is_library=True))
+
+
 def test_module_type_usage_requires_project_graph_contract() -> None:
     library = _picture()
 

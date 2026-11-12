@@ -40,7 +40,7 @@ def _field_definition(field: object) -> FieldDef | None:
     if state is not None and not isinstance(state, bool):
         return None
 
-    return FieldDef(name=field_name, datatype=datatype, state=state)
+    return FieldDef(name=field_name, datatype=datatype, state=state, const=bool(getattr(field, "const", False)))
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +48,7 @@ class FieldDef:
     name: str
     datatype: Simple_DataType | str
     state: bool | None = False
+    const: bool = False
 
 
 @dataclass(frozen=True, slots=True)

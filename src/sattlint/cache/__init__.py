@@ -329,7 +329,7 @@ def _normalize_cache_dir(cache_dir: Path) -> Path:
         return expanded
 
 
-PROJECT_CACHE_SCHEMA_VERSION = "2026-06-11-project-graph-root-origin-schema"
+PROJECT_CACHE_SCHEMA_VERSION = "2026-11-12-project-source-dependencies"
 ANALYSIS_REPORT_CACHE_SCHEMA_VERSION = "2026-06-04-string-literal-mismatch-threshold"
 _ANALYSIS_REPORT_ANALYZER_VERSIONS = {
     "cyclomatic-complexity": "2026-11-06-default-thresholds",

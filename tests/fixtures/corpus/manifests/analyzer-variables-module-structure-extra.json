@@ -4,7 +4,6 @@
     "mode": "analyzer-variables",
     "expectation": {
         "expected_finding_ids": [
-            "unknown_parameter_target",
             "write_without_effect"
         ],
         "artifact_fragments": {
@@ -15,9 +14,14 @@
             }
         },
         "forbidden_finding_ids": [
+            "unknown_parameter_target",
             "corpus.execution-error",
             "syntax.parse"
         ]
     },
-    "required_artifacts": ["findings.json", "status.json", "summary.json"]
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
 }

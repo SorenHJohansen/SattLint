@@ -94,6 +94,7 @@ class ProjectGraph:
     datatype_defs: dict[str, DataType] = field(default_factory=_datatype_defs_factory)
     # library_name.casefold() -> set of dependency library names (casefolded)
     library_dependencies: dict[str, set[str]] = field(default_factory=_library_dependencies_factory)
+    source_dependencies: dict[str, set[str]] = field(default_factory=_library_dependencies_factory)
     missing: list[str] = field(default_factory=_missing_factory)
     warnings: list[str] = field(default_factory=_warnings_factory)
     warning_notices: list[tuple[str, ValidationNotice]] = field(default_factory=_warning_notices_factory)

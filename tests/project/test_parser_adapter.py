@@ -90,6 +90,7 @@ def test_convert_populates_graph_from_registry() -> None:
     assert graph.ast_by_name["B"] is b.code
     assert graph.source_files == {lib / "A.s", prg / "B.s"}
     assert graph.library_dependencies["prg"] == {"lib"}
+    assert graph.source_dependencies == {"a": set(), "b": {"a"}}
     assert graph.missing == []
 
 
@@ -102,6 +103,7 @@ def test_convert_records_dangling_dependency_as_missing() -> None:
     convert_project_into_graph(project, graph, binding=_binding(prg), root_name="B", strict=False)
 
     assert "missing" in graph.unavailable_libraries
+    assert graph.source_dependencies == {"b": {"missing"}}
     assert any("MISSING" in entry and "B" in entry for entry in graph.missing)
 
 

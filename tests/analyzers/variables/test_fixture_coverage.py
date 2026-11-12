@@ -142,7 +142,7 @@ def test_module_structure_issues_fixture_contains_expected_issue_kinds():
         if issue.kind is IssueKind.WRITE_WITHOUT_EFFECT and issue.variable is not None
     }
 
-    assert any("BogusParam" in str(issue) for issue in issues if issue.kind is IssueKind.UNKNOWN_PARAMETER_TARGET)
+    assert not any(issue.kind is IssueKind.UNKNOWN_PARAMETER_TARGET for issue in issues)
     assert "Internal" in write_without_effect
 
 

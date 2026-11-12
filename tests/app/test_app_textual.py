@@ -2420,6 +2420,7 @@ def test_textual_results_module_selection_updates_findings_pane(monkeypatch: pyt
                                 kind="unused",
                                 message="declared but never read",
                                 module_path=("TargetA", "Charging"),
+                                data={"context": "Spare", "previous_sites": ["SQ:Run > STEP:Start:ENTER"]},
                             ),
                         ),
                     ),
@@ -2455,17 +2456,28 @@ def test_textual_results_module_selection_updates_findings_pane(monkeypatch: pyt
             findings_report = app_instance._results_findings_widget
             assert findings_report.id == "results-findings-report"
             root = tree.root.children[0]
-            assert [node.label.plain for node in root.children] == ["Charging (FrameModule)", "Idle (SingleModule)"]
-            assert findings_report.renderable == "No findings for this module"
+            assert [node.label.plain for node in root.children] == ["Charging (FrameModule)"]
+            assert findings_report.renderable.plain == "No findings for this module"
 
+            await pilot.resize_terminal(140, 50)
             tree.select_node(root.children[0])
             await pilot.pause()
-            assert "Variable issues (variables)\n  Unused variable (1)" in findings_report.renderable
-            assert "Pattern checks (patterns)\n  Magic number (1)" in findings_report.renderable
-
-            tree.select_node(root.children[1])
+            assert "Variable issues\nUnused variable (1)" in findings_report.renderable
+            assert "Pattern checks\nMagic number (1)" in findings_report.renderable
+            assert findings_report.renderable.spans
+            assert "declared but never read" not in findings_report.renderable.plain
+            detail_line = findings_report.renderable.plain.splitlines().index("  Details")
+            assert await pilot.click(findings_report, offset=(4, detail_line))
             await pilot.pause()
-            assert findings_report.renderable == "No findings for this module"
+            assert "declared but never read" in findings_report.renderable.plain
+            assert "Previous write: Run \u203a Start \u203a Enter" in findings_report.renderable.plain
+            await pilot.click(findings_report, offset=(4, detail_line))
+            await pilot.pause()
+            assert "declared but never read" not in findings_report.renderable.plain
+
+            tree.select_node(root)
+            await pilot.pause()
+            assert findings_report.renderable.plain == "No findings for this module"
 
     asyncio.run(_run())
 

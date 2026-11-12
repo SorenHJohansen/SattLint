@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+from pathlib import Path
 
 from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef, ModuleTypeInstance
 
@@ -43,11 +44,25 @@ def analyze_moduletype_usage(
     graph = None if analysis_context is None else analysis_context.graph
     if graph is not None and not isinstance(graph, ProjectGraph):
         raise TypeError("Module-type usage requires a loaded project graph.")
-    if graph is not None and graph.missing:
-        raise ValueError("Module-type usage is incomplete because dependent source could not be loaded.")
     if analysis_context is not None:
         base_picture = analysis_context.base_picture
         analyzed_target_is_library = analyzed_target_is_library or analysis_context.target_is_library
+
+    if graph is not None and graph.missing:
+        target_name = (
+            Path(base_picture.origin_file).stem if base_picture.origin_file else base_picture.header.name
+        ).casefold()
+        downstream: set[str] = set()
+        pending = list(graph.source_dependencies.get(target_name, set()))
+        while pending:
+            dependency = pending.pop().casefold()
+            if dependency == target_name or dependency in downstream:
+                continue
+            downstream.add(dependency)
+            pending.extend(graph.source_dependencies.get(dependency, set()))
+        unavailable = {name.casefold() for name in graph.unavailable_libraries}
+        if graph.failures or not unavailable or not unavailable.issubset(downstream):
+            raise ValueError("Module-type usage is incomplete because consumer source could not be loaded.")
 
     pictures = [] if graph is None else list(graph.ast_by_name.values())
     if not any(
@@ -68,6 +83,11 @@ def analyze_moduletype_usage(
     for definition in definitions:
         index[definition.name.casefold()].append(definition)
 
+    is_target_definition = build_target_origin_filter_for_basepicture(
+        base_picture, analyzed_target_is_library=analyzed_target_is_library
+    )
+    target_type_names = {definition.name.casefold() for definition in definitions if is_target_definition(definition)}
+
     invocations: dict[int, list[_Invocation]] = defaultdict(list)
     seen: set[tuple[int, str, str, tuple[str, ...]]] = set()
     scopes: list[BasePicture | ModuleTypeDef] = [*pictures, *definitions]
@@ -79,6 +99,8 @@ def analyze_moduletype_usage(
         )
         for module, path in iter_nested_modules(scope.submodules, parent_path=scope_path):
             if not isinstance(module, ModuleTypeInstance):
+                continue
+            if graph is not None and module.moduletype_name.casefold() not in target_type_names:
                 continue
             definition = select_moduletype_def_strict(
                 base_picture if isinstance(scope, ModuleTypeDef) else scope,
@@ -98,9 +120,6 @@ def analyze_moduletype_usage(
                 seen.add(invocation_key)
                 invocations[id(definition)].append(_Invocation(scope.origin_file, path))
 
-    is_target_definition = build_target_origin_filter_for_basepicture(
-        base_picture, analyzed_target_is_library=analyzed_target_is_library
-    )
     issues: list[Issue] = []
     for definition in definitions:
         if not is_target_definition(definition):
