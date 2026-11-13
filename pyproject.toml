@@ -24,7 +24,7 @@ classifiers = [
 ]
 dependencies = [
     "lark>=1.3.1,<2",
-    "sattline-parser>=2026.11.3,<2027",
+    "sattline-parser==2026.11.4",
     "tomli_w>=1.2.0",
     "rich>=13.9.0",
     "textual>=8.2.7,<9",
@@ -48,7 +48,7 @@ test = [
 
 dev = [
     "sattlint[test]",
-    "ruff==0.16.10",    # Match pre-commit Ruff to avoid formatter drift
+    "ruff==0.17.3",    # Match pre-commit Ruff to avoid formatter drift
     "pyright>=1.1.411", # Type checking
     "build>=1.2.2",    # Build frontend for release validation
     "twine>=5.1.1",    # Package metadata validation

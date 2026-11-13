@@ -8,6 +8,8 @@ BasePicture Invocation
 LOCALVARIABLES
    Cond0, Cond1, Cond2, Cond3, Cond4: boolean := False;
    Cond5, Cond6, Cond7, Cond8, Cond9: boolean := False;
+   Cond10, Cond11, Cond12, Cond13, Cond14: boolean := False;
+   Cond15, Cond16, Cond17, Cond18, Cond19: boolean := False;
    Output: integer := 0;
 
 ModuleDef
@@ -43,6 +45,36 @@ ModuleCode
       ENDIF;
       IF Cond9 THEN
          Output = 9;
+      ENDIF;
+      IF Cond10 THEN
+         Output = 10;
+      ENDIF;
+      IF Cond11 THEN
+         Output = 11;
+      ENDIF;
+      IF Cond12 THEN
+         Output = 12;
+      ENDIF;
+      IF Cond13 THEN
+         Output = 13;
+      ENDIF;
+      IF Cond14 THEN
+         Output = 14;
+      ENDIF;
+      IF Cond15 THEN
+         Output = 15;
+      ENDIF;
+      IF Cond16 THEN
+         Output = 16;
+      ENDIF;
+      IF Cond17 THEN
+         Output = 17;
+      ENDIF;
+      IF Cond18 THEN
+         Output = 18;
+      ENDIF;
+      IF Cond19 THEN
+         Output = 19;
       ENDIF;
 
 ENDDEF (*BasePicture*);

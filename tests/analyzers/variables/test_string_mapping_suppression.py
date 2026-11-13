@@ -1,6 +1,6 @@
+from sattline_parser.ast import MappingSource
+
 # pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportOptionalMemberAccess=false, reportUnusedImport=false
-
-
 from tests.helpers.analyzers_variables_support import *
 
 
@@ -12,15 +12,15 @@ def test_library_dependency_typedef_internal_string_mismatches_are_suppressed_bu
         submodules=[
             SingleModule(
                 header=_hdr("InnerConsumer"),
-                moduledef=None,
+                moduledefs=[],
                 moduleparameters=[Variable(name="InnerTarget", datatype=Simple_DataType.IDENTSTRING)],
                 localvariables=[],
                 submodules=[],
-                modulecode=None,
+                modulecodes=[],
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("InnerTarget"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("InnerSource"),
@@ -29,8 +29,8 @@ def test_library_dependency_typedef_internal_string_mismatches_are_suppressed_bu
                 ],
             )
         ],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="exstruct.x",
         origin_lib="exstruct",
@@ -46,7 +46,7 @@ def test_library_dependency_typedef_internal_string_mismatches_are_suppressed_bu
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("EdgeTarget"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("EdgeSource"),
@@ -55,8 +55,8 @@ def test_library_dependency_typedef_internal_string_mismatches_are_suppressed_bu
                 ],
             )
         ],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
@@ -67,8 +67,8 @@ def test_library_dependency_typedef_internal_string_mismatches_are_suppressed_bu
         moduletype_defs=[dependency_typedef, parent_typedef],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -89,8 +89,8 @@ def test_library_dependency_nested_instance_string_mismatches_are_suppressed_but
         moduleparameters=[Variable(name="TagPrefix", datatype=Simple_DataType.IDENTSTRING)],
         localvariables=[],
         submodules=[],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="exstruct.x",
         origin_lib="exstruct",
@@ -106,7 +106,7 @@ def test_library_dependency_nested_instance_string_mismatches_are_suppressed_but
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("TagPrefix"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("Name"),
@@ -115,8 +115,8 @@ def test_library_dependency_nested_instance_string_mismatches_are_suppressed_but
                 ],
             )
         ],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="exstruct.x",
         origin_lib="exstruct",
@@ -132,7 +132,7 @@ def test_library_dependency_nested_instance_string_mismatches_are_suppressed_but
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("EdgeTarget"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("EdgeSource"),
@@ -141,8 +141,8 @@ def test_library_dependency_nested_instance_string_mismatches_are_suppressed_but
                 ],
             )
         ],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
@@ -153,8 +153,8 @@ def test_library_dependency_nested_instance_string_mismatches_are_suppressed_but
         moduletype_defs=[nested_dependency, dependency_typedef, parent_typedef],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -175,8 +175,8 @@ def test_library_dependency_nested_instance_string_mismatches_stay_suppressed_wi
         moduleparameters=[Variable(name="TagPrefix", datatype=Simple_DataType.IDENTSTRING)],
         localvariables=[],
         submodules=[],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="exstruct.x",
         origin_lib="exstruct",
@@ -192,7 +192,7 @@ def test_library_dependency_nested_instance_string_mismatches_stay_suppressed_wi
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("TagPrefix"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("Name"),
@@ -201,8 +201,8 @@ def test_library_dependency_nested_instance_string_mismatches_stay_suppressed_wi
                 ],
             )
         ],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file=None,
         origin_lib="exstruct",
@@ -218,7 +218,7 @@ def test_library_dependency_nested_instance_string_mismatches_stay_suppressed_wi
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("EdgeTarget"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("EdgeSource"),
@@ -227,8 +227,8 @@ def test_library_dependency_nested_instance_string_mismatches_stay_suppressed_wi
                 ],
             )
         ],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
@@ -239,8 +239,8 @@ def test_library_dependency_nested_instance_string_mismatches_stay_suppressed_wi
         moduletype_defs=[nested_dependency, dependency_typedef, parent_typedef],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -261,8 +261,8 @@ def test_program_dependency_nested_instance_string_mismatches_stay_suppressed_wi
         moduleparameters=[Variable(name="TagPrefix", datatype=Simple_DataType.IDENTSTRING)],
         localvariables=[],
         submodules=[],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="exstruct.x",
         origin_lib="exstruct",
@@ -278,7 +278,7 @@ def test_program_dependency_nested_instance_string_mismatches_stay_suppressed_wi
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("TagPrefix"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("Name"),
@@ -287,8 +287,8 @@ def test_program_dependency_nested_instance_string_mismatches_stay_suppressed_wi
                 ],
             )
         ],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file=None,
         origin_lib="exstruct",
@@ -305,7 +305,7 @@ def test_program_dependency_nested_instance_string_mismatches_stay_suppressed_wi
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("EdgeTarget"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("EdgeSource"),
@@ -314,8 +314,8 @@ def test_program_dependency_nested_instance_string_mismatches_stay_suppressed_wi
                 ],
             )
         ],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="PlantProgram.s",
         origin_lib="PlantProgram",
     )

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Sequence
 
-from sattline_parser.models.ast_model import FrameModule, ModuleTypeInstance, SingleModule
+from sattlint.parser_api import FrameModule, ModuleTypeInstance, SingleModule
 
 type NestedModule = SingleModule | FrameModule | ModuleTypeInstance
 type InstanceSubmoduleResolver = Callable[[ModuleTypeInstance], Sequence[NestedModule] | None]

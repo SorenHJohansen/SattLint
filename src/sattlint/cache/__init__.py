@@ -42,8 +42,8 @@ __all__ = [
     "prune_cache_dir",
 ]
 
-CACHE_VERSION = 15  # Bump when cached AST semantics or attached graphics companion record shapes change.
-ANALYSIS_REPORT_CACHE_VERSION = 3
+CACHE_VERSION = 16  # Bump when cached AST semantics or attached graphics companion record shapes change.
+ANALYSIS_REPORT_CACHE_VERSION = 4
 _PICKLE_CACHE_MAGIC = b"SATTLINT-PICKLE-V1\n"
 _PICKLE_HMAC_KEY_NAME = ".pickle-hmac-key"
 _PICKLE_HMAC_SIZE = 32
@@ -329,8 +329,8 @@ def _normalize_cache_dir(cache_dir: Path) -> Path:
         return expanded
 
 
-PROJECT_CACHE_SCHEMA_VERSION = "2026-11-12-project-source-dependencies"
-ANALYSIS_REPORT_CACHE_SCHEMA_VERSION = "2026-06-04-string-literal-mismatch-threshold"
+PROJECT_CACHE_SCHEMA_VERSION = "2026-11-12-project-graph-parser-2026-11-4"
+ANALYSIS_REPORT_CACHE_SCHEMA_VERSION = "2026-11-12-analyzer-settings"
 _ANALYSIS_REPORT_ANALYZER_VERSIONS = {
     "cyclomatic-complexity": "2026-11-06-default-thresholds",
     "sfc": "2026-11-06-sequence-start",
@@ -338,7 +338,7 @@ _ANALYSIS_REPORT_ANALYZER_VERSIONS = {
 # Phase E: the analysis foundation (type graph + typedef/moduletype/datatype indices + symbol
 # skeleton) is a pure function of the parsed ASTs, so it is content-addressable. This version
 # must be bumped whenever the serialized foundation shape or its derivation changes.
-FOUNDATION_CACHE_SCHEMA_VERSION = "2026-09-03-source-content-derived-foundation-schema"
+FOUNDATION_CACHE_SCHEMA_VERSION = "2026-11-12-root-parameters"
 
 
 def compute_cache_key(cfg: Mapping[str, object], *, analysis_target: str | None = None) -> str:
@@ -356,7 +356,19 @@ def compute_cache_key(cfg: Mapping[str, object], *, analysis_target: str | None 
     return h.hexdigest()
 
 
-def compute_analysis_report_cache_key(project_cache_key: str, analyzer_key: str) -> str:
+def compute_analysis_report_cache_key(
+    project_cache_key: str,
+    analyzer_key: str,
+    *,
+    analysis_settings: object = None,
+) -> str:
+    """Derive the per-analyzer report cache key.
+
+    Analyzer knobs under ``analysis`` change findings without changing the
+    parsed project, so they are part of the key. The settings are serialized in
+    a stable form; non-JSON values fall back to ``repr`` so an unrepresentable
+    value still invalidates the cache instead of silently sharing an entry.
+    """
     h = hashlib.sha256()
     h.update(ANALYSIS_REPORT_CACHE_SCHEMA_VERSION.encode())
     h.update(project_cache_key.encode("utf-8", errors="ignore"))
@@ -364,7 +376,17 @@ def compute_analysis_report_cache_key(project_cache_key: str, analyzer_key: str)
     analyzer_version = _ANALYSIS_REPORT_ANALYZER_VERSIONS.get(analyzer_key)
     if analyzer_version is not None:
         h.update(analyzer_version.encode())
+    h.update(_analysis_settings_fingerprint(analysis_settings).encode("utf-8", errors="ignore"))
     return h.hexdigest()
+
+
+def _analysis_settings_fingerprint(analysis_settings: object) -> str:
+    if analysis_settings is None:
+        return ""
+    try:
+        return json.dumps(analysis_settings, sort_keys=True, default=repr, separators=(",", ":"))
+    except (TypeError, ValueError):
+        return repr(analysis_settings)
 
 
 def compute_foundation_cache_key(project_cache_key: str, source_manifest: Mapping[str, tuple[int, int]]) -> str:

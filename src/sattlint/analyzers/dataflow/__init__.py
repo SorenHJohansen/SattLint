@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any, cast
+from typing import Any
 
-from sattline_parser.builtins import get_function_signature
-from sattline_parser.formatting import formatter as formatter_module
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     BasePicture,
     FloatLiteral,
     IntLiteral,
@@ -15,8 +11,10 @@ from sattline_parser.models.ast_model import (
     SFCFork,
     SingleModule,
     Variable,
+    VarRef,
+    format_expr,
+    get_function_signature,
 )
-from sattline_parser.models.expressions import VarRef
 
 from ...resolution.scope import ScopeContext
 from ...resolution.type_graph import TypeGraph
@@ -39,8 +37,7 @@ from ._dataflow_issue_reporting import DataflowIssueReportingMixin
 from ._dataflow_state import DataflowStateMixin
 from ._dataflow_traversal import DataflowTraversalMixin
 
-_FORMAT_EXPR_ATTR = "format_expr"
-_format_expr = cast(Callable[[Any], object], getattr(formatter_module, _FORMAT_EXPR_ATTR))
+_format_expr = format_expr
 
 
 class DataflowAnalyzer(
@@ -236,13 +233,6 @@ class DataflowAnalyzer(
         if isinstance(expr, VarRef):
             full_name = expr.name
             raw_state_access = expr.state
-            requested_state_access = raw_state_access if isinstance(raw_state_access, str) else None
-        elif isinstance(expr, dict) and const.KEY_VAR_NAME in expr:
-            expr_map = cast(dict[str, object], expr)
-            full_name = expr_map.get(const.KEY_VAR_NAME)
-            if not isinstance(full_name, str):
-                return None
-            raw_state_access = expr_map.get("state")
             requested_state_access = raw_state_access if isinstance(raw_state_access, str) else None
         elif isinstance(expr, str):
             full_name = expr

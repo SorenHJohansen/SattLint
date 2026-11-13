@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     FrameModule,
     ModuleTypeInstance,
     Simple_DataType,
@@ -673,7 +674,10 @@ def _collect_issues_from_module(
         mod,
         path,
         current_library=current_library,
-        resolve_moduletype_def=resolve_moduletype_def_strict,
+        resolve_moduletype_def=partial(
+            resolve_moduletype_def_strict,
+            library_dependencies=getattr(self, "library_dependencies", None),
+        ),
     )
 
 

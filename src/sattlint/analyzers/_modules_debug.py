@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from sattline_parser.models.ast_model import BasePicture, FrameModule, ModuleTypeInstance, SingleModule
+from sattlint.parser_api import BasePicture, FrameModule, ModuleTypeInstance, SingleModule
 
 log = logging.getLogger("SattLint")
 

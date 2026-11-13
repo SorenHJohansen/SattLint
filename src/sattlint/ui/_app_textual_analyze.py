@@ -441,7 +441,12 @@ def _execute_analyzers(self: Any, selected_keys: tuple[str, ...]) -> None:
         self._emit_output_from_thread("No configured analysis targets are available.")
         return
     result = handler(self._cfg, list(selected_keys))
-    self._emit_output_from_thread("Selected analyzers completed.")
+    failures = tuple(getattr(result, "failures", ())) if result is not None else ()
+    if failures:
+        names = ", ".join(str(getattr(failure, "target_name", "")) for failure in failures)
+        self._emit_output_from_thread(f"Analysis finished with target load failures: {names}. Review the output above.")
+    else:
+        self._emit_output_from_thread("Selected analyzers completed.")
     if result is not None:
         self.call_from_thread(self._finish_analysis_run, result)
 

@@ -18,7 +18,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any, cast
 
-from sattline_parser.models.ast_model import BasePicture, FrameModule, ModuleTypeDef, ModuleTypeInstance, SingleModule
+from sattlint.parser_api import BasePicture, FrameModule, ModuleTypeDef, ModuleTypeInstance, SingleModule
 
 from .. import config as config_module
 from ..analyzers import catalog as analysis_catalog_module
@@ -84,12 +84,19 @@ class ChecksTargetResult:
 
 
 @dataclass(frozen=True, slots=True)
+class TargetLoadFailure:
+    target_name: str
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
 class ChecksRunResult:
     output_lines: tuple[str, ...]
     targets: tuple[ChecksTargetResult, ...] = ()
     selected_analyzers: tuple[str, ...] = ()
     cancelled: bool = False
     run_id: str | None = None
+    failures: tuple[TargetLoadFailure, ...] = ()
 
 
 def _issue_count_for_report(report: object) -> int | None:
@@ -239,11 +246,14 @@ def build_run_record(result: ChecksRunResult, cfg: ConfigDict, *, started_at: st
 
 
 def _persist_run_result(result: ChecksRunResult, cfg: ConfigDict, *, started_at: str) -> RunRecord | None:
-    if result.cancelled or not _run_history_enabled(cfg):
+    if result.cancelled or result.failures or not _run_history_enabled(cfg):
         return None
     runs_dir = get_runs_dir()
     record = build_run_record(result, cfg, started_at=started_at)
-    stored = save_run(record, runs_dir=runs_dir)
+    try:
+        stored = save_run(record, runs_dir=runs_dir)
+    except OSError:
+        return None
     prune_runs(runs_dir, limit=_run_history_limit(cfg))
     return stored
 
@@ -271,8 +281,19 @@ def _shared_artifact_profile_text(target_name: str, shared_artifacts: AnalysisSh
     )
 
 
-def _iter_loaded_projects(cfg: ConfigDict) -> Iterator[LoadedProject]:
-    return project_application.iter_loaded_projects(cfg)
+def _iter_loaded_projects(
+    cfg: ConfigDict,
+    *,
+    use_cache: bool = True,
+    failure_sink: Callable[[str, str], None] | None = None,
+    emit_output_fn: Callable[..., None] | None = None,
+) -> Iterator[LoadedProject]:
+    return project_application.iter_loaded_projects(
+        cfg,
+        use_cache=use_cache,
+        failure_sink=failure_sink,
+        emit_output_fn=project_application.emit_output if emit_output_fn is None else emit_output_fn,
+    )
 
 
 def _run_per_run_analyzer(
@@ -357,9 +378,22 @@ def collect_run_checks_result(  # noqa: PLR0915
     run_started_at = _utc_now_iso()
     output_lines: list[str] = []
     target_results: list[ChecksTargetResult] = []
+    load_failures: list[TargetLoadFailure] = []
 
-    def emit_line(message: str) -> None:
-        output_lines.append(message)
+    def emit_line(message: object) -> None:
+        output_lines.append(str(message))
+
+    def record_load_failure(target_name: str, message: str) -> None:
+        load_failures.append(TargetLoadFailure(target_name=target_name, message=message))
+
+    analysis_settings = cfg.get("analysis")
+
+    def report_cache_key(project_key: str, analyzer_key: str) -> str:
+        return compute_analysis_report_cache_key(
+            project_key,
+            analyzer_key,
+            analysis_settings=analysis_settings,
+        )
 
     analyzers = list(
         analysis_dispatch_module.get_cli_dispatch_analyzers(
@@ -407,7 +441,12 @@ def collect_run_checks_result(  # noqa: PLR0915
     )
     profiler = profiling_module.create_profiler()
     try:
-        for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
+        for target_name, project_bp, graph in iter_loaded_projects_fn(
+            cfg,
+            use_cache=use_cache,
+            failure_sink=record_load_failure,
+            emit_output_fn=emit_line,
+        ):
             target_analyzers: list[ChecksAnalyzerResult] = []
             target_started_at = perf_counter()
             analyzer_timings_ms: dict[str, float] = {}
@@ -450,7 +489,7 @@ def collect_run_checks_result(  # noqa: PLR0915
                                 run_fn=lambda spec=spec, context=context: (
                                     analysis_dispatch_module.run_registry_analyzer(spec, context)
                                 ),
-                                compute_analysis_report_cache_key_fn=compute_analysis_report_cache_key,
+                                compute_analysis_report_cache_key_fn=report_cache_key,
                             )
                         ),
                     )
@@ -489,6 +528,7 @@ def collect_run_checks_result(  # noqa: PLR0915
                         targets=tuple(target_results),
                         selected_analyzers=selected_analyzer_keys,
                         cancelled=True,
+                        failures=tuple(load_failures),
                     )
                 analyzer_timings_ms[spec.key] = round((perf_counter() - analyzer_started_at) * 1000, 3)
                 _rewrite_typedef_issue_paths(report, context.base_picture, graph)
@@ -588,12 +628,14 @@ def collect_run_checks_result(  # noqa: PLR0915
             targets=tuple(target_results),
             selected_analyzers=selected_analyzer_keys,
             cancelled=True,
+            failures=tuple(load_failures),
         )
 
     result = ChecksRunResult(
         output_lines=tuple(output_lines),
         targets=tuple(target_results),
         selected_analyzers=selected_analyzer_keys,
+        failures=tuple(load_failures),
     )
     if persist_run:
         stored = _persist_run_result(result, cfg, started_at=run_started_at)

@@ -1,7 +1,7 @@
 # pyright: reportUnknownVariableType=false, reportUnknownParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false, reportMissingTypeArgument=false
 """Tests for canonical path resolution across parameter mappings."""
 
-from sattline_parser.grammar import constants as const
+from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -69,29 +69,31 @@ def test_resolves_submodule_parameter_access_to_canonical_parent_path():
             name="Analog_Profi_Scale",
             invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0),
         ),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="signal", datatype="AIType")],
         localvariables=[],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="E1",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        Assignment(
-                            target=_varref("signal.comp_signal.value"),
-                            value=1.0,
-                        )
-                    ],
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="E1",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            Assignment(
+                                target=_varref("signal.comp_signal.value"),
+                                value=1.0,
+                            )
+                        ],
+                    )
+                ]
+            )
+        ],
         parametermappings=[
             ParameterMapping(
                 target=_varref("signal"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("Dv.I.WT001"),
@@ -105,8 +107,8 @@ def test_resolves_submodule_parameter_access_to_canonical_parent_path():
         moduletype_defs=[],
         localvariables=[dv],
         submodules=[child],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)

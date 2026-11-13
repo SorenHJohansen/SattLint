@@ -38,26 +38,28 @@ def test_builtin_progstationdata_fields_are_addressable() -> None:
 
     module = SingleModule(
         header=_hdr("M1"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[progstation_data, format_text, warning_colour],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                _eq(
-                    [
-                        Assignment(
-                            target=_varref("FormatText"),
-                            value=_varref("ProgStationData.FormatString"),
-                        ),
-                        Assignment(
-                            target=_varref("WarningColour"),
-                            value=_varref("ProgStationData.WarningColour"),
-                        ),
-                    ]
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    _eq(
+                        [
+                            Assignment(
+                                target=_varref("FormatText"),
+                                value=_varref("ProgStationData.FormatString"),
+                            ),
+                            Assignment(
+                                target=_varref("WarningColour"),
+                                value=_varref("ProgStationData.WarningColour"),
+                            ),
+                        ]
+                    )
+                ]
+            )
+        ],
         parametermappings=[],
     )
 
@@ -67,8 +69,8 @@ def test_builtin_progstationdata_fields_are_addressable() -> None:
         moduletype_defs=[],
         localvariables=[progstation_data, format_text, warning_colour],
         submodules=[module],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -90,19 +92,21 @@ def test_builtin_progstationdata_nested_field_addressable() -> None:
         moduletype_defs=[],
         localvariables=[progstation_data, result],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                _eq(
-                    [
-                        Assignment(
-                            target=_varref("Result"),
-                            value=_varref("ProgStationData.Timestamp"),
-                        ),
-                    ]
-                )
-            ]
-        ),
-        moduledef=None,
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    _eq(
+                        [
+                            Assignment(
+                                target=_varref("Result"),
+                                value=_varref("ProgStationData.Timestamp"),
+                            ),
+                        ]
+                    )
+                ]
+            )
+        ],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -125,8 +129,8 @@ def test_builtin_record_fields_from_parameter_mapping() -> None:
             Variable(name="Y", datatype=Simple_DataType.STRING),
         ],
         submodules=[],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
     )
 
@@ -142,19 +146,21 @@ def test_builtin_record_fields_from_parameter_mapping() -> None:
                 parametermappings=[],
             )
         ],
-        modulecode=ModuleCode(
-            equations=[
-                _eq(
-                    [
-                        Assignment(
-                            target=_varref("Target"),
-                            value=_varref("MyRecord.X"),
-                        ),
-                    ]
-                )
-            ]
-        ),
-        moduledef=None,
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    _eq(
+                        [
+                            Assignment(
+                                target=_varref("Target"),
+                                value=_varref("MyRecord.X"),
+                            ),
+                        ]
+                    )
+                ]
+            )
+        ],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)

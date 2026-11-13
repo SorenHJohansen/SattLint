@@ -1,3 +1,5 @@
+from sattline_parser.ast import MappingSource
+
 # pyright: reportUnknownVariableType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
 from tests.helpers.analyzers_state_support import *
 
@@ -562,7 +564,7 @@ def test_effect_flow_tracker_global_mapping_uses_lookup_fallback():
     key = tracker.mapping_source_effect_key(
         ParameterMapping(
             target=_varref("Input"),
-            source_type=const.TREE_TAG_VARIABLE_NAME,
+            source_type=MappingSource.VARIABLE,
             is_duration=False,
             is_source_global=True,
             source=_varref("GlobalSource"),

@@ -39,11 +39,13 @@ def _report(code: list[CodeItem], variables: tuple[str, ...] = ("X", "Y", "Cond"
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[Variable(name=name, datatype=Simple_DataType.INTEGER) for name in variables],
-        modulecode=ModuleCode(
-            sequences=[],
-            equations=[Equation(name="Main", position=(0.0, 0.0), size=(1.0, 1.0), code=code)],
-        ),
-        moduledef=None,
+        modulecodes=[
+            ModuleCode(
+                sequences=[],
+                equationblocks=[Equation(name="Main", position=(0.0, 0.0), size=(1.0, 1.0), code=code)],
+            )
+        ],
+        moduledefs=[],
     )
     return analyze_dataflow(bp)
 
@@ -66,11 +68,13 @@ def _record_report(code: list[CodeItem]):
             Variable(name="Snapshot", datatype="RecordType"),
             Variable(name="Sink", datatype=Simple_DataType.BOOLEAN),
         ],
-        modulecode=ModuleCode(
-            sequences=[],
-            equations=[Equation(name="Main", position=(0.0, 0.0), size=(1.0, 1.0), code=code)],
-        ),
-        moduledef=None,
+        modulecodes=[
+            ModuleCode(
+                sequences=[],
+                equationblocks=[Equation(name="Main", position=(0.0, 0.0), size=(1.0, 1.0), code=code)],
+            )
+        ],
+        moduledefs=[],
     )
     return analyze_dataflow(bp)
 
@@ -364,19 +368,21 @@ def _sequence_report(nodes: list[SFCBodyItem]) -> Any:
             Variable(name="X", datatype=Simple_DataType.BOOLEAN),
             Variable(name="Gate", datatype=Simple_DataType.BOOLEAN),
         ],
-        modulecode=ModuleCode(
-            sequences=[
-                Sequence(
-                    name="SeqMain",
-                    type="sequence",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=nodes,
-                )
-            ],
-            equations=[],
-        ),
-        moduledef=None,
+        modulecodes=[
+            ModuleCode(
+                sequences=[
+                    Sequence(
+                        name="SeqMain",
+                        type="sequence",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=nodes,
+                    )
+                ],
+                equationblocks=[],
+            )
+        ],
+        moduledefs=[],
     )
     return analyze_dataflow(bp)
 
@@ -445,31 +451,35 @@ def test_equation_initializer_is_not_a_permanent_fact_across_scans() -> None:
             Variable(name="FixedFalse", datatype=Simple_DataType.BOOLEAN, const=True, init_value=False),
             Variable(name="Output", datatype=Simple_DataType.BOOLEAN),
         ],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="EdgeDetection",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        IfStmt(
-                            branches=(
-                                (
-                                    NotOp(operand=_varref("PreviousReset")),
-                                    (Assignment(target=_varref("Output"), value=True),),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="EdgeDetection",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            IfStmt(
+                                branches=(
+                                    (
+                                        NotOp(operand=_varref("PreviousReset")),
+                                        (Assignment(target=_varref("Output"), value=True),),
+                                    ),
                                 ),
+                                else_block=None,
                             ),
-                            else_block=None,
-                        ),
-                        Assignment(target=_varref("PreviousReset"), value=_varref("Reset")),
-                        IfStmt(
-                            branches=((_varref("FixedFalse"), (Assignment(target=_varref("Output"), value=False),)),),
-                            else_block=None,
-                        ),
-                    ],
-                )
-            ]
-        ),
+                            Assignment(target=_varref("PreviousReset"), value=_varref("Reset")),
+                            IfStmt(
+                                branches=(
+                                    (_varref("FixedFalse"), (Assignment(target=_varref("Output"), value=False),)),
+                                ),
+                                else_block=None,
+                            ),
+                        ],
+                    )
+                ]
+            )
+        ],
     )
     report = analyze_dataflow(bp)
     conditions = [
@@ -484,7 +494,6 @@ def test_equation_initializer_is_not_a_permanent_fact_across_scans() -> None:
 def test_wait_condition_can_change_through_external_module_parameter() -> None:
     phase = SingleModule(
         header=_hdr("Phase"),
-        moduledef=None,
         moduleparameters=[
             Variable(name="Done", datatype=Simple_DataType.BOOLEAN),
             Variable(name="FixedFalse", datatype=Simple_DataType.BOOLEAN, const=True, init_value=False),
@@ -493,31 +502,33 @@ def test_wait_condition_can_change_through_external_module_parameter() -> None:
         submodules=[
             FrameModule(
                 header=_hdr("Logic"),
-                modulecode=ModuleCode(
-                    sequences=[
-                        Sequence(
-                            name="PhaseSequence",
-                            type="sequence",
-                            position=(0.0, 0.0),
-                            size=(1.0, 1.0),
-                            code=[
-                                SFCStep(
-                                    kind="step",
-                                    name="Start",
-                                    code=SFCCodeBlocks(
-                                        enter=[
-                                            Assignment(target=_varref("Done"), value=False),
-                                            Assignment(target=_varref("LocalDone"), value=False),
-                                        ]
+                modulecodes=[
+                    ModuleCode(
+                        sequences=[
+                            Sequence(
+                                name="PhaseSequence",
+                                type="sequence",
+                                position=(0.0, 0.0),
+                                size=(1.0, 1.0),
+                                code=[
+                                    SFCStep(
+                                        kind="step",
+                                        name="Start",
+                                        code=SFCCodeBlocks(
+                                            enter=[
+                                                Assignment(target=_varref("Done"), value=False),
+                                                Assignment(target=_varref("LocalDone"), value=False),
+                                            ]
+                                        ),
                                     ),
-                                ),
-                                SFCTransition(name="ExternallyCompleted", condition=_varref("Done")),
-                                SFCTransition(name="LocallyImpossible", condition=_varref("LocalDone")),
-                                SFCTransition(name="ConstantImpossible", condition=_varref("FixedFalse")),
-                            ],
-                        )
-                    ]
-                ),
+                                    SFCTransition(name="ExternallyCompleted", condition=_varref("Done")),
+                                    SFCTransition(name="LocallyImpossible", condition=_varref("LocalDone")),
+                                    SFCTransition(name="ConstantImpossible", condition=_varref("FixedFalse")),
+                                ],
+                            )
+                        ]
+                    )
+                ],
             )
         ],
     )
@@ -619,31 +630,33 @@ def test_procedure_out_field_writes_do_not_overwrite_sibling_fields() -> None:
             Variable(name="Status1", datatype=Simple_DataType.INTEGER),
             Variable(name="Status2", datatype=Simple_DataType.INTEGER),
         ],
-        modulecode=ModuleCode(
-            sequences=[],
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        FuncCallStmt(
-                            call=FuncCall(
-                                name="CopyVariable",
-                                args=(_varref("Source"), _varref("Rec.First"), _varref("Status1")),
-                            )
-                        ),
-                        FuncCallStmt(
-                            call=FuncCall(
-                                name="CopyVariable",
-                                args=(_varref("Source"), _varref("Rec.Second"), _varref("Status2")),
-                            )
-                        ),
-                    ],
-                )
-            ],
-        ),
-        moduledef=None,
+        modulecodes=[
+            ModuleCode(
+                sequences=[],
+                equationblocks=[
+                    Equation(
+                        name="Main",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            FuncCallStmt(
+                                call=FuncCall(
+                                    name="CopyVariable",
+                                    args=(_varref("Source"), _varref("Rec.First"), _varref("Status1")),
+                                )
+                            ),
+                            FuncCallStmt(
+                                call=FuncCall(
+                                    name="CopyVariable",
+                                    args=(_varref("Source"), _varref("Rec.Second"), _varref("Status2")),
+                                )
+                            ),
+                        ],
+                    )
+                ],
+            )
+        ],
+        moduledefs=[],
     )
 
     report = analyze_dataflow(bp)

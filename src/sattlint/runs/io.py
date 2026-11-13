@@ -51,11 +51,8 @@ def save_run(record: RunRecord, *, runs_dir: Path | None = None) -> RunRecord:
 
     payload = stored_record.to_dict()
     path = _run_path(resolved_runs_dir, stored_record.run_id)
-    try:
-        with path.open("w", encoding="utf-8") as handle:
-            json.dump(payload, handle, ensure_ascii=True, indent=2, sort_keys=True)
-    except (OSError, TypeError, ValueError):
-        return stored_record
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=True, indent=2, sort_keys=True)
 
     _write_summary(resolved_runs_dir, RunSummary.from_record(stored_record))
     return stored_record

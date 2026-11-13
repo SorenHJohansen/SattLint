@@ -1,4 +1,5 @@
-from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt
+from sattline_parser.ast import MappingSource
+from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt, VarRef
 
 from tests.helpers.analyzers_suites_support import *
 
@@ -33,7 +34,7 @@ def test_sfc_parallel_write_race_detected_for_same_variable():
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
-        modulecode=ModuleCode(sequences=[sequence], equations=[]),
+        modulecodes=[ModuleCode(sequences=[sequence], equationblocks=[])],
     )
 
     report = analyze_same_cycle(bp)
@@ -69,7 +70,7 @@ def test_dataflow_flags_implicit_same_scan_state_read_in_sequence_step():
             Variable(name="Flag", datatype=Simple_DataType.BOOLEAN, state=True),
             Variable(name="Output", datatype=Simple_DataType.BOOLEAN),
         ],
-        modulecode=ModuleCode(sequences=[sequence], equations=[]),
+        modulecodes=[ModuleCode(sequences=[sequence], equationblocks=[])],
     )
 
     report = analyze_dataflow(bp)
@@ -90,22 +91,25 @@ def test_variables_analyzer_flags_ignored_procedure_status_output():
             Variable(name="Destination", datatype=Simple_DataType.INTEGER),
             Variable(name="Status", datatype=Simple_DataType.INTEGER),
         ],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        FuncCallStmt(
-                            call=FuncCall(
-                                name="CopyVariable", args=(_varref("Source"), _varref("Destination"), _varref("Status"))
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Main",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            FuncCallStmt(
+                                call=FuncCall(
+                                    name="CopyVariable",
+                                    args=(_varref("Source"), _varref("Destination"), _varref("Status")),
+                                )
                             )
-                        )
-                    ],
-                )
-            ]
-        ),
+                        ],
+                    )
+                ]
+            )
+        ],
     )
 
     issues = VariablesAnalyzer(bp).run()
@@ -130,7 +134,7 @@ def test_variables_analyzer_flags_dependency_mapped_status_that_only_reaches_ui(
         parametermappings=[
             ParameterMapping(
                 target=_varref("OperationStatus"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("StatusSink"),
@@ -142,7 +146,11 @@ def test_variables_analyzer_flags_dependency_mapped_status_that_only_reaches_ui(
         moduletype_defs=[_status_bridge_typedef()],
         localvariables=[Variable(name="StatusSink", datatype=Simple_DataType.INTEGER)],
         submodules=[bridge],
-        moduledef=ModuleDef(graph_objects=[GraphObject(type="TextObject", properties={"text_vars": ["StatusSink"]})]),
+        moduledefs=[
+            ModuleDef(
+                graph_objects=[GraphObject(type="TextObject", properties={"text_vars": [VarRef(name="StatusSink")]})]
+            )
+        ],
     )
 
     issues = VariablesAnalyzer(bp).run()
@@ -165,7 +173,7 @@ def test_variables_analyzer_treats_dependency_mapped_status_as_handled_when_read
         parametermappings=[
             ParameterMapping(
                 target=_varref("OperationStatus"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("StatusSink"),
@@ -180,16 +188,18 @@ def test_variables_analyzer_treats_dependency_mapped_status_as_handled_when_read
             Variable(name="Handled", datatype=Simple_DataType.BOOLEAN),
         ],
         submodules=[bridge],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("Handled"), value=_varref("StatusSink"))],
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Main",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[Assignment(target=_varref("Handled"), value=_varref("StatusSink"))],
+                    )
+                ]
+            )
+        ],
     )
 
     issues = VariablesAnalyzer(bp).run()

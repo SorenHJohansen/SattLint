@@ -1,10 +1,18 @@
 # pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportOptionalMemberAccess=false, reportUnusedImport=false
-from typing import cast
 
 import pytest
-from lark import Tree
-from sattline_parser.models.ast_model import (
+from sattline_parser.ast import (
+    AssignClause,
+    Assignment,
+    BoolOp,
+    EnableClause,
     FrameModule,
+    FuncCall,
+    FuncCallStmt,
+    IfStmt,
+    MappingSource,
+    ModuleArguments,
+    ProcedureCall,
     Sequence,
     SFCAlternative,
     SFCCodeBlocks,
@@ -14,8 +22,8 @@ from sattline_parser.models.ast_model import (
     SFCSubsequence,
     SFCTransition,
     SFCTransitionSub,
+    VarTail,
 )
-from sattline_parser.models.expressions import Assignment, BoolOp, FuncCall, FuncCallStmt, IfStmt
 
 from tests.helpers.analyzers_variables_support import *
 
@@ -25,18 +33,23 @@ def test_interact_enable_expression_counts_mapped_parent_input_as_read() -> None
     child_type = ModuleTypeDef(
         name="CoreReal",
         moduleparameters=[enable],
-        moduledef=ModuleDef(
-            interact_objects=[
-                InteractObject(
-                    type="TextBox_",
-                    properties={
-                        const.KEY_BODY: [
-                            Tree("enable_combut", [True, BoolOp(op="AND", operands=(_varref("Enable"), True))])
-                        ]
-                    },
-                )
-            ]
-        ),
+        moduledefs=[
+            ModuleDef(
+                interact_objects=[
+                    InteractObject(
+                        type="TextBox_",
+                        properties={
+                            "body": [
+                                EnableClause(
+                                    enabled=True,
+                                    tail=BoolOp(op="AND", operands=(_varref("Enable"), True)),
+                                )
+                            ]
+                        },
+                    )
+                ]
+            )
+        ],
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
     )
@@ -51,7 +64,7 @@ def test_interact_enable_expression_counts_mapped_parent_input_as_read() -> None
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("Enable"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("EnablePrivilege"),
@@ -84,34 +97,43 @@ def test_written_local_consumed_by_dependency_has_external_effect(consumed: bool
         origin_file="Dependency.s",
         moduleparameters=[Variable(name="Input", datatype=Simple_DataType.INTEGER)],
         localvariables=[Variable(name="Observed", datatype=Simple_DataType.INTEGER)],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Consume",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Observed"), _varref("Input") if consumed else 0)],
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Consume",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            Assignment(
+                                target=_varref("Observed"),
+                                value=_varref("Input") if consumed else IntLiteral(0),
+                            )
+                        ],
+                    )
+                ]
+            )
+        ],
     )
     parent = ModuleTypeDef(
         name="Parent",
         origin_file="Root.s",
         localvariables=[local, Variable(name="Scratch", datatype=Simple_DataType.INTEGER)],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Generate",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        (const.KEY_ASSIGN, _varref("Request"), 2),
-                        (const.KEY_ASSIGN, _varref("Scratch"), _varref("Request")),
-                    ],
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Generate",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            Assignment(target=_varref("Request"), value=IntLiteral(2)),
+                            Assignment(target=_varref("Scratch"), value=_varref("Request")),
+                        ],
+                    )
+                ]
+            )
+        ],
         submodules=[
             ModuleTypeInstance(
                 header=_hdr("ConsumerInstance"),
@@ -120,7 +142,7 @@ def test_written_local_consumed_by_dependency_has_external_effect(consumed: bool
                     ParameterMapping(
                         target=_varref("Input"),
                         source=_varref("Request"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_source_global=False,
                         is_duration=False,
                         source_literal=None,
@@ -146,31 +168,39 @@ def test_display_read_is_an_observable_effect(display_kind: str) -> None:
         name="Display",
         origin_file="Root.s",
         localvariables=[source, shown, dead, Variable(name="Scratch", datatype=Simple_DataType.BOOLEAN)],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Calculate",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        Assignment(target=_varref("Source"), value=True),
-                        Assignment(target=_varref("Shown"), value=_varref("Source")),
-                        Assignment(target=_varref("Dead"), value=True),
-                        Assignment(target=_varref("Scratch"), value=_varref("Dead")),
-                    ],
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Calculate",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            Assignment(target=_varref("Source"), value=True),
+                            Assignment(target=_varref("Shown"), value=_varref("Source")),
+                            Assignment(target=_varref("Dead"), value=True),
+                            Assignment(target=_varref("Scratch"), value=_varref("Dead")),
+                        ],
+                    )
+                ]
+            )
+        ],
     )
     if display_kind == "text":
-        parent.moduledef = ModuleDef(graph_objects=[GraphObject("TextObject", properties={"text_vars": ["Shown"]})])
+        parent.moduledefs = [
+            ModuleDef(graph_objects=[GraphObject("TextObject", properties={"text_vars": [_varref("Shown")]})])
+        ]
     elif display_kind == "interact":
-        parent.moduledef = ModuleDef(
-            interact_objects=[InteractObject("TextBox_", properties={const.KEY_TAILS: [_varref("Shown")]})]
-        )
+        parent.moduledefs = [
+            ModuleDef(
+                interact_objects=[
+                    InteractObject("TextBox_", properties={"tails": [VarTail(direction="in", value="Shown")]})
+                ]
+            )
+        ]
     else:
         header = _hdr("Visible")
-        header.enable_tail = _varref("Shown")
+        header.arguments = ModuleArguments(enable=EnableClause(enabled=True, tail=_varref("Shown")))
         parent.submodules = [FrameModule(header=header)]
     report = analyze_variables(
         BasePicture(header=_hdr("Root"), origin_file="Root.s", moduletype_defs=[parent]),
@@ -202,26 +232,28 @@ def test_transition_guard_contributes_to_following_step_effect(alternative: bool
         origin_file="Root.s",
         moduleparameters=[Variable(name="Output", datatype=Simple_DataType.BOOLEAN)],
         localvariables=[guard, Variable(name="Scratch", datatype=Simple_DataType.BOOLEAN)],
-        modulecode=ModuleCode(
-            sequences=[
-                Sequence(
-                    name="PhaseSequence",
-                    type="sequence",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        SFCStep(
-                            kind="init",
-                            name="Start",
-                            code=SFCCodeBlocks(
-                                enter=[Assignment(target=_varref("Ready"), value=True)],
+        modulecodes=[
+            ModuleCode(
+                sequences=[
+                    Sequence(
+                        name="PhaseSequence",
+                        type="sequence",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            SFCStep(
+                                kind="init",
+                                name="Start",
+                                code=SFCCodeBlocks(
+                                    enter=[Assignment(target=_varref("Ready"), value=True)],
+                                ),
                             ),
-                        ),
-                        *([SFCAlternative(branches=[following, []])] if alternative else following),
-                    ],
-                )
-            ]
-        ),
+                            *([SFCAlternative(branches=[following, []])] if alternative else following),
+                        ],
+                    )
+                ]
+            )
+        ],
     )
     report = analyze_variables(
         BasePicture(header=_hdr("Root"), origin_file="Root.s", moduletype_defs=[parent]),
@@ -242,54 +274,58 @@ def test_fallthrough_guard_reaches_joined_step_but_jump_guard_does_not(observabl
         origin_file="Root.s",
         moduleparameters=[Variable(name="Output", datatype=Simple_DataType.BOOLEAN)],
         localvariables=[ready, leave, Variable(name="Scratch", datatype=Simple_DataType.BOOLEAN)],
-        modulecode=ModuleCode(
-            sequences=[
-                Sequence(
-                    name="PhaseSequence",
-                    type="sequence",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        SFCStep(
-                            kind="init",
-                            name="Start",
-                            code=SFCCodeBlocks(
-                                enter=[
-                                    Assignment(target=_varref("Ready"), value=True),
-                                    Assignment(target=_varref("Leave"), value=True),
+        modulecodes=[
+            ModuleCode(
+                sequences=[
+                    Sequence(
+                        name="PhaseSequence",
+                        type="sequence",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            SFCStep(
+                                kind="init",
+                                name="Start",
+                                code=SFCCodeBlocks(
+                                    enter=[
+                                        Assignment(target=_varref("Ready"), value=True),
+                                        Assignment(target=_varref("Leave"), value=True),
+                                    ]
+                                ),
+                            ),
+                            SFCAlternative(
+                                branches=[
+                                    [
+                                        SFCSubsequence(
+                                            name="Nested",
+                                            body=[SFCTransition(name="ReadyToProceed", condition=_varref("Ready"))],
+                                        )
+                                    ]
+                                    if nested
+                                    else [SFCTransition(name="ReadyToProceed", condition=_varref("Ready"))],
+                                    [
+                                        SFCTransition(
+                                            name="TryAgain",
+                                            condition=_varref("Leave"),
+                                            fork=SFCFork(targets=("Start",)),
+                                        )
+                                    ],
                                 ]
                             ),
-                        ),
-                        SFCAlternative(
-                            branches=[
-                                [
-                                    SFCSubsequence(
-                                        name="Nested",
-                                        body=[SFCTransition(name="ReadyToProceed", condition=_varref("Ready"))],
-                                    )
-                                ]
-                                if nested
-                                else [SFCTransition(name="ReadyToProceed", condition=_varref("Ready"))],
-                                [
-                                    SFCTransition(
-                                        name="TryAgain", condition=_varref("Leave"), fork=SFCFork(targets=("Start",))
-                                    )
-                                ],
-                            ]
-                        ),
-                        SFCStep(
-                            kind="step",
-                            name="Run",
-                            code=SFCCodeBlocks(
-                                active=[
-                                    Assignment(target=_varref("Output" if observable else "Scratch"), value=True),
-                                ]
+                            SFCStep(
+                                kind="step",
+                                name="Run",
+                                code=SFCCodeBlocks(
+                                    active=[
+                                        Assignment(target=_varref("Output" if observable else "Scratch"), value=True),
+                                    ]
+                                ),
                             ),
-                        ),
-                    ],
-                )
-            ]
-        ),
+                        ],
+                    )
+                ]
+            )
+        ],
     )
     report = analyze_variables(
         BasePicture(header=_hdr("Root"), origin_file="Root.s", moduletype_defs=[phase]),
@@ -317,31 +353,35 @@ def test_nested_sequence_guard_reaches_following_output(container: str, observab
         origin_file="Root.s",
         localvariables=[guard, Variable(name="Scratch", datatype=Simple_DataType.BOOLEAN)],
         moduleparameters=[Variable(name="Output", datatype=Simple_DataType.BOOLEAN)],
-        modulecode=ModuleCode(
-            sequences=[
-                Sequence(
-                    name="PhaseSequence",
-                    type="sequence",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        SFCStep(
-                            kind="init",
-                            name="Start",
-                            code=SFCCodeBlocks(enter=[Assignment(target=_varref("Ready"), value=True)]),
-                        ),
-                        node,
-                        SFCStep(
-                            kind="step",
-                            name="Run",
-                            code=SFCCodeBlocks(
-                                active=[Assignment(target=_varref("Output" if observable else "Scratch"), value=True)]
+        modulecodes=[
+            ModuleCode(
+                sequences=[
+                    Sequence(
+                        name="PhaseSequence",
+                        type="sequence",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            SFCStep(
+                                kind="init",
+                                name="Start",
+                                code=SFCCodeBlocks(enter=[Assignment(target=_varref("Ready"), value=True)]),
                             ),
-                        ),
-                    ],
-                )
-            ]
-        ),
+                            node,
+                            SFCStep(
+                                kind="step",
+                                name="Run",
+                                code=SFCCodeBlocks(
+                                    active=[
+                                        Assignment(target=_varref("Output" if observable else "Scratch"), value=True)
+                                    ]
+                                ),
+                            ),
+                        ],
+                    )
+                ]
+            )
+        ],
     )
     report = analyze_variables(
         BasePicture(header=_hdr("Root"), origin_file="Root.s", moduletype_defs=[phase]),
@@ -352,10 +392,9 @@ def test_nested_sequence_guard_reaches_following_output(container: str, observab
     assert flagged is not observable
 
 
-@pytest.mark.parametrize("typed", [False, True])
 @pytest.mark.parametrize("procedure", [False, True])
 @pytest.mark.parametrize("branch_location", ["first", "else", "nested"])
-def test_condition_controlling_output_has_observable_effect(typed: bool, procedure: bool, branch_location: str) -> None:
+def test_condition_controlling_output_has_observable_effect(procedure: bool, branch_location: str) -> None:
     flag = Variable(name="Request", datatype=Simple_DataType.BOOLEAN)
     dead = Variable(name="Dead", datatype=Simple_DataType.BOOLEAN)
     if procedure:
@@ -365,35 +404,11 @@ def test_condition_controlling_output_has_observable_effect(typed: bool, procedu
     else:
         body = Assignment(target=_varref("Output"), value=True)
     condition = BoolOp(op="AND", operands=(_varref("Request"), True))
-    branch = (
-        IfStmt(branches=((condition, (body,)),), else_block=None)
-        if typed
-        else (
-            const.GRAMMAR_VALUE_IF,
-            [(condition, [body])],
-            None,
-        )
-    )
+    branch = IfStmt(branches=((condition, (body,)),), else_block=None)
     if branch_location == "else":
-        branch = (
-            IfStmt(branches=((condition, ()),), else_block=(body,))
-            if typed
-            else (
-                const.GRAMMAR_VALUE_IF,
-                [(condition, ())],
-                [body],
-            )
-        )
+        branch = IfStmt(branches=((condition, ()),), else_block=(body,))
     elif branch_location == "nested":
-        branch = (
-            IfStmt(branches=((True, (branch,)),), else_block=None)
-            if typed
-            else (
-                const.GRAMMAR_VALUE_IF,
-                [(True, [branch])],
-                None,
-            )
-        )
+        branch = IfStmt(branches=((True, (branch,)),), else_block=None)
     parent = ModuleTypeDef(
         name="Parent",
         origin_file="Root.s",
@@ -405,21 +420,23 @@ def test_condition_controlling_output_has_observable_effect(typed: bool, procedu
             Variable(name="Status", datatype=Simple_DataType.INTEGER),
             Variable(name="Scratch", datatype=Simple_DataType.BOOLEAN),
         ],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Control",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        Assignment(target=_varref("Request"), value=True),
-                        branch,
-                        Assignment(target=_varref("Dead"), value=True),
-                        Assignment(target=_varref("Scratch"), value=_varref("Dead")),
-                    ],
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Control",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[
+                            Assignment(target=_varref("Request"), value=True),
+                            branch,
+                            Assignment(target=_varref("Dead"), value=True),
+                            Assignment(target=_varref("Scratch"), value=_varref("Dead")),
+                        ],
+                    )
+                ]
+            )
+        ],
     )
     report = analyze_variables(
         BasePicture(header=_hdr("Root"), origin_file="Root.s", moduletype_defs=[parent]),
@@ -449,23 +466,19 @@ def test_library_typedef_moduleparameter_unused_fields_are_suppressed():
         moduleparameters=[Variable(name="p", datatype="RecType")],
         localvariables=[Variable(name="sink", datatype=Simple_DataType.INTEGER)],
         submodules=[],
-        moduledef=None,
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        (
-                            const.KEY_ASSIGN,
-                            _varref("sink"),
-                            _varref("p.Used"),
-                        )
-                    ],
-                )
-            ]
-        ),
+        moduledefs=[],
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Main",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[Assignment(target=_varref("sink"), value=_varref("p.Used"))],
+                    )
+                ]
+            )
+        ],
         parametermappings=[],
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
@@ -477,8 +490,8 @@ def test_library_typedef_moduleparameter_unused_fields_are_suppressed():
         moduletype_defs=[exported],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
     )
@@ -517,19 +530,21 @@ def test_library_typedef_local_used_via_child_interact_coordinate_tail_is_not_un
         moduleparameters=[child_param],
         localvariables=[],
         submodules=[],
-        moduledef=ModuleDef(
-            interact_objects=[
-                InteractObject(
-                    type=const.GRAMMAR_VALUE_COMBUT,
-                    properties={
-                        const.KEY_COORDS: [((0.0, 0.0), (1.0, 1.0))],
-                        const.KEY_TAILS: [_varref("xSize")],
-                        const.KEY_BODY: [{const.KEY_NAME: "ButtonType", const.KEY_VALUE: 0}],
-                    },
-                )
-            ]
-        ),
-        modulecode=None,
+        moduledefs=[
+            ModuleDef(
+                interact_objects=[
+                    InteractObject(
+                        type=const.GRAMMAR_VALUE_COMBUT,
+                        properties={
+                            "coords": [((0.0, 0.0), (1.0, 1.0))],
+                            "tails": [VarTail(direction="in", value="xSize")],
+                            "body": [AssignClause(name="ButtonType", value=0, tail=None)],
+                        },
+                    )
+                ]
+            )
+        ],
+        modulecodes=[],
         parametermappings=[],
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
@@ -547,7 +562,7 @@ def test_library_typedef_local_used_via_child_interact_coordinate_tail_is_not_un
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("xSize"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("XSize"),
@@ -556,8 +571,8 @@ def test_library_typedef_local_used_via_child_interact_coordinate_tail_is_not_un
                 ],
             )
         ],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
@@ -569,8 +584,8 @@ def test_library_typedef_local_used_via_child_interact_coordinate_tail_is_not_un
         moduletype_defs=[parent_type, child_type],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
     )
@@ -593,34 +608,20 @@ def test_library_typedef_local_used_via_child_combutproc_togglewindow_arg_is_not
         moduleparameters=[child_param],
         localvariables=[],
         submodules=[],
-        moduledef=ModuleDef(
-            interact_objects=[
-                InteractObject(
-                    type=const.GRAMMAR_VALUE_COMBUTPROC,
-                    properties={
-                        const.KEY_COORDS: [((0.0, 0.0), (1.0, 1.0))],
-                        const.KEY_PROCEDURE: {
-                            const.KEY_NAME: "ToggleWindow",
-                            const.KEY_ARGS: [
-                                "",
-                                "Picklist",
-                                False,
-                                0.0,
-                                0.0,
-                                _varref("xSize"),
-                                0.0,
-                                False,
-                                0,
-                                0,
-                                False,
-                                0,
-                            ],
+        moduledefs=[
+            ModuleDef(
+                interact_objects=[
+                    InteractObject(
+                        type=const.GRAMMAR_VALUE_COMBUTPROC,
+                        properties={
+                            "coords": [((0.0, 0.0), (1.0, 1.0))],
+                            "procedure": ProcedureCall(name="ToggleWindow", args=(_varref("xSize"),)),
                         },
-                    },
-                )
-            ]
-        ),
-        modulecode=None,
+                    )
+                ]
+            )
+        ],
+        modulecodes=[],
         parametermappings=[],
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
@@ -638,7 +639,7 @@ def test_library_typedef_local_used_via_child_combutproc_togglewindow_arg_is_not
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("xSize"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("XSize"),
@@ -647,8 +648,8 @@ def test_library_typedef_local_used_via_child_combutproc_togglewindow_arg_is_not
                 ],
             )
         ],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
@@ -660,105 +661,8 @@ def test_library_typedef_local_used_via_child_combutproc_togglewindow_arg_is_not
         moduletype_defs=[parent_type, child_type],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
-        origin_file="LibraryRoot.x",
-        origin_lib="ProjectLib",
-    )
-
-    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True)
-    analyzer.run()
-
-    assert not any(
-        issue.kind is IssueKind.UNUSED
-        and issue.variable is x_size
-        and issue.module_path == ["BasePicture", "TypeDef:EluMasterLinie"]
-        for issue in analyzer.issues
-    )
-
-
-def test_library_typedef_local_used_via_child_legacy_combutproc_togglewindow_tree_is_not_unused():
-    legacy_procedure_args = Tree(
-        "procedure_args",
-        cast(
-            list[object],
-            [
-                Tree("proc_atom", cast(list[object], [""])),
-                Tree("proc_atom", cast(list[object], ["Picklist"])),
-                Tree("proc_atom", cast(list[object], [False])),
-                Tree("proc_atom", cast(list[object], [0.0])),
-                Tree("proc_atom", cast(list[object], [0.0])),
-                Tree("proc_atom", cast(list[object], [0.0])),
-                Tree("proc_atom", cast(list[object], ["xSize"])),
-            ],
-        ),
-    )
-
-    child_param = Variable(name="xSize", datatype=Simple_DataType.REAL)
-    child_type = ModuleTypeDef(
-        name="RecipePicklistSecond",
-        moduleparameters=[child_param],
-        localvariables=[],
-        submodules=[],
-        moduledef=ModuleDef(
-            interact_objects=[
-                InteractObject(
-                    type=const.GRAMMAR_VALUE_COMBUTPROC,
-                    properties={
-                        const.KEY_COORDS: [((0.0, 0.0), (1.0, 1.0))],
-                        const.KEY_PROCEDURE: {
-                            const.KEY_NAME: None,
-                            const.KEY_ARGS: [
-                                "ToggleWindow",
-                                legacy_procedure_args,
-                            ],
-                        },
-                    },
-                )
-            ]
-        ),
-        modulecode=None,
-        parametermappings=[],
-        origin_file="LibraryRoot.x",
-        origin_lib="ProjectLib",
-    )
-
-    x_size = Variable(name="XSize", datatype=Simple_DataType.REAL)
-    parent_type = ModuleTypeDef(
-        name="EluMasterLinie",
-        moduleparameters=[],
-        localvariables=[x_size],
-        submodules=[
-            ModuleTypeInstance(
-                header=_hdr("Picklist"),
-                moduletype_name="RecipePicklistSecond",
-                parametermappings=[
-                    ParameterMapping(
-                        target=_varref("xSize"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
-                        is_duration=False,
-                        is_source_global=False,
-                        source=_varref("XSize"),
-                        source_literal=None,
-                    )
-                ],
-            )
-        ],
-        moduledef=None,
-        modulecode=None,
-        parametermappings=[],
-        origin_file="LibraryRoot.x",
-        origin_lib="ProjectLib",
-    )
-
-    bp = BasePicture(
-        header=_hdr("BasePicture"),
-        datatype_defs=[],
-        moduletype_defs=[parent_type, child_type],
-        localvariables=[],
-        submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
     )

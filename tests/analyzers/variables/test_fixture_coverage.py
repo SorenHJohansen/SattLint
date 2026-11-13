@@ -19,8 +19,8 @@ def test_variables_execution_collect_typedef_issues_covers_branchy_typedef_roles
         moduleparameters=[display_param, effect_param],
         localvariables=[procedure_local, display_local, read_only_local, written_only_local, effect_local],
         submodules=[],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
     )
     bp = BasePicture(
@@ -29,8 +29,8 @@ def test_variables_execution_collect_typedef_issues_covers_branchy_typedef_roles
         moduletype_defs=[moduletype],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
     usage_by_id = {
         id(display_param): _UsageStub(is_display_only=True),

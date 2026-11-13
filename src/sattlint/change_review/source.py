@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sattline_parser.api import read_text_cp1252
+from sattlint.parser_api import read_text_cp1252
 
 
 class SourceTextProvider:

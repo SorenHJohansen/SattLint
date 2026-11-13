@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sattline_parser.models.ast_model import Simple_DataType, Variable
+from sattlint.parser_api import Simple_DataType, Variable
 
 from ...resolution.type_graph import TypeGraph
 

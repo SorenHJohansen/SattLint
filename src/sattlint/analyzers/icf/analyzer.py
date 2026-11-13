@@ -18,7 +18,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, cast
 
-from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef
+from sattlint.parser_api import BasePicture, ModuleTypeDef
 
 from ...config.types import ConfigDict
 from ...models.project_graph import ProjectGraph, merge_project_basepicture

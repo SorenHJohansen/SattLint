@@ -73,8 +73,8 @@ def test_rewrite_resolves_nested_typedef_instance_chains() -> None:
         moduleparameters=[],
         localvariables=[],
         submodules=[_instance("Inner Invocation", "InnerChild")],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
     )
     bp = BasePicture(

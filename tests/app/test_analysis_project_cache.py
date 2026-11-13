@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-from sattline_parser.grammar import constants as const
+from sattline_parser.ast import Assignment, VarRef
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -767,8 +767,8 @@ def test_load_project_library_target_workspace_program_usage_suppresses_unused_d
     def _hdr(name: str) -> ModuleHeader:
         return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
-    def _varref(name: str) -> dict[str, str]:
-        return {const.KEY_VAR_NAME: name}
+    def _varref(name: str) -> VarRef:
+        return VarRef(name=name)
 
     library_datatype = DataType(
         name="ApplOpTxtType",
@@ -787,8 +787,8 @@ def test_load_project_library_target_workspace_program_usage_suppresses_unused_d
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="LibraryTarget.s",
         origin_lib="LibraryTarget",
     )
@@ -801,18 +801,20 @@ def test_load_project_library_target_workspace_program_usage_suppresses_unused_d
             Variable(name="Sink", datatype=Simple_DataType.STRING),
         ],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="ReadField",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Sink"), _varref("OPText.LSH"))],
-                )
-            ],
-            sequences=[],
-        ),
-        moduledef=None,
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="ReadField",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[Assignment(target=_varref("Sink"), value=_varref("OPText.LSH"))],
+                    )
+                ],
+                sequences=[],
+            )
+        ],
+        moduledefs=[],
         origin_file="ProgramConsumer.s",
         origin_lib="Programs",
     )
@@ -865,8 +867,8 @@ def test_load_project_library_target_workspace_program_usage_suppresses_unused_d
             moduletype_defs=bp.moduletype_defs,
             localvariables=[] if consumer_bp is None else consumer_bp.localvariables,
             submodules=[],
-            modulecode=None if consumer_bp is None else consumer_bp.modulecode,
-            moduledef=None,
+            modulecodes=[None if consumer_bp is None else consumer_bp.modulecode],
+            moduledefs=[],
             origin_file=bp.origin_file,
             origin_lib=bp.origin_lib,
         )

@@ -8,12 +8,112 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ## [Unreleased]
 
+## [2026.11.4] - 2026-11-12
+
+SattLint 2026.11.4 pairs with `sattline-parser==2026.11.4` and completes the
+parser AST migration.
+
+### Fixed
+
+- A target that fails to load no longer produces a successful headless run.
+  Diagnostics are captured with the run output, the command exits with a
+  target-loading error, and the partial run is not saved to run history. JSON
+  and NDJSON commands keep stderr machine-readable, and the interactive shell
+  reports that the run was incomplete.
+- Report cache keys include the analyzer settings under `analysis`, so changing
+  a threshold or naming option cannot reuse a report computed with other
+  settings.
+- Change Review reports declaration initializer and modifier changes, root
+  module parameter declarations, and sequence fork target or break changes.
+- Function calls inside expressions apply their declared output writes, so a
+  later condition does not treat the previous value as still current. Shared
+  dependency-usage and scan-order collection use the same argument directions.
+- Graphics bindings contribute their references and call signatures to the
+  semantic index again. Quoted symbols in tails no longer count as variable
+  reads or writes.
+- Opening a project preserves the user's saved run-history, output-retention,
+  and Change Review settings. Root module parameters now resolve, are indexed
+  as parameter definitions, and participate in variable analysis.
+- Run history reports a failed save instead of returning an identifier for a
+  run that was not written, and old runs are pruned only after a successful
+  save.
+- Parser validation diagnostics no longer depend on the removed severity field.
+  Every final diagnostic is an error, and diagnoses the parser marks as
+  tentative become notices.
+- Module definition code blocks are read from `equationblocks`, matching the
+  parser model.
+- Graphics companion records, bindings, and picture display correlations live on
+  the project graph instead of on the parser's AST. Attachments resolve for the
+  merged base picture the analyzers receive, and parser `var` bindings are
+  normalized to `VarRef` at the graphics seam.
+- Module type resolution reads library dependencies from the project graph.
+- Source loading uses the parser's `load_source_text` and `source_text_for_parse`
+  helpers, so byte-coded streams and compressed sources keep the parser's
+  character coordinates instead of a SattLint-local decode pipeline.
+- Comment placement is left to the parser grammar. The commented-out-code
+  detector reads keyword facts from the parser constants instead of a local
+  keyword list.
+
 ### Changed
 
-- Upgraded `sattline-parser` to `>=2026.11.3,<2027`. The parser now checks
-  internal builtin registrations, carries the full configuration-defined record
-  field tables, resolves SFC element names program-wide, keeps base-picture
-  module parameters, and defaults project loads to invoked validation scope.
+- Parser access in shipped code goes through one module,
+  `sattlint.parser_api`, so a parser release that moves internal modules cannot
+  break `src/` imports. Tests may reach `sattline_parser` directly for surface
+  contract coverage. The unused `sattlint.models.ast_model` compatibility
+  wrapper is removed.
+- Analyzer traversal reads the parser model through typed fields and the
+  `walk` API. The shared variable and call-site collectors in
+  `sattlint.core.ast_tools` are filters over that walk.
+- Requires `sattline-parser` 2026.11.4, pinned exactly.
+- Added reference-visibility tests over real parser output for text objects,
+  pick buttons, header arguments, clipping tails, procedure calls, interactor
+  bodies, and literal versus variable parameter mappings. The corpus manifests
+  pass under 2026.11.4, and the differential against a 2026.11.3 worktree
+  produced an identical finding set.
+- Change Review now derives layout ignoring from parser field metadata instead
+  of a global field-name list. Bound tails (`Enable_`, `Module_In_View`,
+  coordinate tails, clipping tails) are semantic, spans and parser-marked
+  layout fields are not, and comment streams stay a small SattLint policy
+  exception. Assignment targets are collected with the parser `walk` API.
+- Bumped the AST, project graph, foundation, and analysis report cache
+  identities so cached graphs and reports from the previous parser release or
+  analyzer settings are not reused.
+- Call signatures and graphics validation messages now derive from the parser's
+  `BuiltinFunction` and `GraphicsMessage` types instead of field-for-field
+  copies. The four suppressed language diagnostics carry a written reason at
+  the suppression site.
+
+### Removed
+
+- The reflective traversal layer: mapping, sequence, dataclass, `children`, and
+  `__dict__` guessing in the analyzer path. A guard test rejects those patterns
+  in `src/sattlint/analyzers`.
+- The parser compatibility tests that exercised the retained parse tree. The
+  exact-pin checks now live in the parser surface contract test.
+- Tests that fed hand-built legacy tuple, dictionary, and
+  `SimpleNamespace(children=...)` shapes to analyzer traversal helpers.
+- The duplicate comment-placement pre-scan; the parser grammar now owns that
+  check.
+- The historical parser upgrade plan moved from the repository root to
+  `docs/parser-upgrade-plan.md`.
+
+## [2026.11.3] - 2026-11-05
+
+### Fixed
+
+- Restored installs against the published parser. The previous range
+  `>=2026.11.3,<2027` accepted `sattline-parser` 2026.11.4, which changes the
+  AST surface before the analyzer migration lands, so a fresh install failed at
+  import. This release pins the parser to the supported version.
+
+### Changed
+
+- Upgraded `sattline-parser` to `2026.11.3` and pinned it exactly. The parser
+  now checks internal builtin registrations, carries the full
+  configuration-defined record field tables, resolves SFC element names
+  program-wide, keeps base-picture module parameters, and defaults project
+  loads to invoked validation scope. The pin moves only together with the
+  analyzer migration.
 
 ## [2026.11.2] - 2026-11-02
 
@@ -306,6 +406,7 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 - This entry establishes the changelog baseline for future tagged releases.
 
+[2026.11.4]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.11.4
 [2026.9.3]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.9.3
 [2026.9.2]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.9.2
 [2026.9.1]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.9.1

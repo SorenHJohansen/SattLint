@@ -1,3 +1,5 @@
+from sattline_parser.ast import MappingSource
+
 # pyright: reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
 from sattlint.analyzers.shared import _validators as validators_module
 from sattlint.resolution.type_graph import TypeGraph
@@ -7,15 +9,15 @@ from tests.helpers.analyzers_variables_support import *
 def test_min_max_mapping_mismatch_detected():
     child = SingleModule(
         header=_hdr("Child"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="MaxValue", datatype=Simple_DataType.INTEGER)],
         localvariables=[],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[
             ParameterMapping(
                 target=_varref("MaxValue"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("MinValue"),
@@ -26,14 +28,14 @@ def test_min_max_mapping_mismatch_detected():
 
     parent = SingleModule(
         header=_hdr("Parent"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[
             Variable(name="MinValue", datatype=Simple_DataType.INTEGER),
             Variable(name="MaxValue", datatype=Simple_DataType.INTEGER),
         ],
         submodules=[child],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
 
@@ -43,8 +45,8 @@ def test_min_max_mapping_mismatch_detected():
         moduletype_defs=[],
         localvariables=[],
         submodules=[parent],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -56,15 +58,15 @@ def test_min_max_mapping_mismatch_detected():
 def test_min_max_mapping_mismatch_not_raised_for_aligned_names():
     child = SingleModule(
         header=_hdr("Child"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="MinValue", datatype=Simple_DataType.INTEGER)],
         localvariables=[],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[
             ParameterMapping(
                 target=_varref("MinValue"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("MinValue"),
@@ -75,11 +77,11 @@ def test_min_max_mapping_mismatch_not_raised_for_aligned_names():
 
     parent = SingleModule(
         header=_hdr("Parent"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="MinValue", datatype=Simple_DataType.INTEGER)],
         submodules=[child],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
 
@@ -89,8 +91,8 @@ def test_min_max_mapping_mismatch_not_raised_for_aligned_names():
         moduletype_defs=[],
         localvariables=[],
         submodules=[parent],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -111,15 +113,15 @@ def test_min_max_mapping_validator_recognizes_mn_mx_bound_suffixes():
 def test_string_mapping_mismatch_is_reported_when_assigning_large_string_to_small_string():
     child = SingleModule(
         header=_hdr("Child"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="TargetValue", datatype=Simple_DataType.IDENTSTRING)],
         localvariables=[],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[
             ParameterMapping(
                 target=_varref("TargetValue"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("SourceValue"),
@@ -130,11 +132,11 @@ def test_string_mapping_mismatch_is_reported_when_assigning_large_string_to_smal
 
     parent = SingleModule(
         header=_hdr("Parent"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="SourceValue", datatype=Simple_DataType.STRING)],
         submodules=[child],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
 
@@ -144,8 +146,8 @@ def test_string_mapping_mismatch_is_reported_when_assigning_large_string_to_smal
         moduletype_defs=[],
         localvariables=[],
         submodules=[parent],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -165,15 +167,15 @@ def test_string_mapping_mismatch_is_reported_when_assigning_large_string_to_smal
 def test_string_mapping_mismatch_is_not_reported_when_assigning_small_string_to_large_string():
     child = SingleModule(
         header=_hdr("Child"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="TargetValue", datatype=Simple_DataType.STRING)],
         localvariables=[],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[
             ParameterMapping(
                 target=_varref("TargetValue"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("SourceValue"),
@@ -184,11 +186,11 @@ def test_string_mapping_mismatch_is_not_reported_when_assigning_small_string_to_
 
     parent = SingleModule(
         header=_hdr("Parent"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="SourceValue", datatype=Simple_DataType.IDENTSTRING)],
         submodules=[child],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
 
@@ -198,8 +200,8 @@ def test_string_mapping_mismatch_is_not_reported_when_assigning_small_string_to_
         moduletype_defs=[],
         localvariables=[],
         submodules=[parent],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -211,25 +213,25 @@ def test_string_mapping_mismatch_is_not_reported_when_assigning_small_string_to_
 def test_string_mapping_mismatch_ignores_unresolved_source_name_even_when_same_name_exists_elsewhere():
     unrelated = SingleModule(
         header=_hdr("Unrelated"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="Name", datatype=Simple_DataType.STRING)],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
 
     child = SingleModule(
         header=_hdr("Child"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="Name", datatype=Simple_DataType.IDENTSTRING)],
         localvariables=[],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[
             ParameterMapping(
                 target=_varref("Name"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("Name"),
@@ -240,11 +242,11 @@ def test_string_mapping_mismatch_ignores_unresolved_source_name_even_when_same_n
 
     parent = SingleModule(
         header=_hdr("Parent"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[],
         submodules=[unrelated, child],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
 
@@ -254,8 +256,8 @@ def test_string_mapping_mismatch_ignores_unresolved_source_name_even_when_same_n
         moduletype_defs=[],
         localvariables=[],
         submodules=[parent],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -267,15 +269,15 @@ def test_string_mapping_mismatch_ignores_unresolved_source_name_even_when_same_n
 def test_string_mapping_mismatch_is_reported_for_string_literal_to_narrower_parameter():
     child = SingleModule(
         header=_hdr("Child"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="TargetValue", datatype=Simple_DataType.IDENTSTRING)],
         localvariables=[],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[
             ParameterMapping(
                 target=_varref("TargetValue"),
-                source_type=const.KEY_VALUE,
+                source_type=MappingSource.VALUE,
                 is_duration=False,
                 is_source_global=False,
                 source=None,
@@ -290,8 +292,8 @@ def test_string_mapping_mismatch_is_reported_for_string_literal_to_narrower_para
         moduletype_defs=[],
         localvariables=[],
         submodules=[child],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -311,15 +313,15 @@ def test_string_mapping_mismatch_is_reported_for_string_literal_to_narrower_para
 def test_string_mapping_mismatch_is_not_reported_for_short_string_literal_that_fits_parameter():
     child = SingleModule(
         header=_hdr("Child"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="TargetValue", datatype=Simple_DataType.IDENTSTRING)],
         localvariables=[],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[
             ParameterMapping(
                 target=_varref("TargetValue"),
-                source_type=const.KEY_VALUE,
+                source_type=MappingSource.VALUE,
                 is_duration=False,
                 is_source_global=False,
                 source=None,
@@ -334,8 +336,8 @@ def test_string_mapping_mismatch_is_not_reported_for_short_string_literal_that_f
         moduletype_defs=[],
         localvariables=[],
         submodules=[child],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -354,15 +356,15 @@ def test_string_mapping_mismatch_uses_resolved_datatype_field_metadata():
 
     activate_button = SingleModule(
         header=_hdr("ActivateButton"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="Text", datatype=Simple_DataType.IDENTSTRING)],
         localvariables=[],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[
             ParameterMapping(
                 target=_varref("Text"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("Name"),
@@ -373,15 +375,15 @@ def test_string_mapping_mismatch_uses_resolved_datatype_field_metadata():
 
     panel = SingleModule(
         header=_hdr("Panel"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="Name", datatype=Simple_DataType.STRING)],
         localvariables=[],
         submodules=[activate_button],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[
             ParameterMapping(
                 target=_varref("Name"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("DV.StopText"),
@@ -392,11 +394,11 @@ def test_string_mapping_mismatch_uses_resolved_datatype_field_metadata():
 
     parent = SingleModule(
         header=_hdr("Parent"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="DV", datatype="OpsamDvType")],
         submodules=[panel],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
 
@@ -406,8 +408,8 @@ def test_string_mapping_mismatch_uses_resolved_datatype_field_metadata():
         moduletype_defs=[],
         localvariables=[],
         submodules=[parent],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -434,15 +436,15 @@ def test_string_mapping_mismatch_ignores_direct_record_field_mapping_when_field_
 
     child = SingleModule(
         header=_hdr("Child"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="Text", datatype=Simple_DataType.IDENTSTRING)],
         localvariables=[],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[
             ParameterMapping(
                 target=_varref("Text"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("DV.StopText"),
@@ -453,11 +455,11 @@ def test_string_mapping_mismatch_ignores_direct_record_field_mapping_when_field_
 
     parent = SingleModule(
         header=_hdr("Parent"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="DV", datatype="OpsamDvType")],
         submodules=[child],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
 
@@ -467,8 +469,8 @@ def test_string_mapping_mismatch_ignores_direct_record_field_mapping_when_field_
         moduletype_defs=[],
         localvariables=[],
         submodules=[parent],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -480,15 +482,15 @@ def test_string_mapping_mismatch_ignores_direct_record_field_mapping_when_field_
 def test_extra_mapping_target_is_accepted_for_single_module():
     child = SingleModule(
         header=_hdr("Child"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="DeclaredValue", datatype=Simple_DataType.INTEGER)],
         localvariables=[],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[
             ParameterMapping(
                 target=_varref("MissingValue"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("SourceValue"),
@@ -499,11 +501,11 @@ def test_extra_mapping_target_is_accepted_for_single_module():
 
     parent = SingleModule(
         header=_hdr("Parent"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="SourceValue", datatype=Simple_DataType.INTEGER)],
         submodules=[child],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
 
@@ -513,8 +515,8 @@ def test_extra_mapping_target_is_accepted_for_single_module():
         moduletype_defs=[],
         localvariables=[],
         submodules=[parent],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -530,8 +532,8 @@ def test_extra_mapping_target_is_accepted_for_moduletype_instance():
         moduleparameters=[Variable(name="DeclaredValue", datatype=Simple_DataType.INTEGER)],
         localvariables=[],
         submodules=[],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[],
     )
     instance = ModuleTypeInstance(
@@ -540,7 +542,7 @@ def test_extra_mapping_target_is_accepted_for_moduletype_instance():
         parametermappings=[
             ParameterMapping(
                 target=_varref("MissingValue"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("SourceValue"),
@@ -550,11 +552,11 @@ def test_extra_mapping_target_is_accepted_for_moduletype_instance():
     )
     parent = SingleModule(
         header=_hdr("Parent"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="SourceValue", datatype=Simple_DataType.INTEGER)],
         submodules=[instance],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
     bp = BasePicture(
@@ -563,8 +565,8 @@ def test_extra_mapping_target_is_accepted_for_moduletype_instance():
         moduletype_defs=[typedef],
         localvariables=[],
         submodules=[parent],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -580,21 +582,21 @@ def test_singlemodule_groupconn_marks_child_parameter_used():
 
     child = SingleModule(
         header=child_header,
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="ScanGroup", datatype="GroupData")],
         localvariables=[],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
 
     parent = SingleModule(
         header=_hdr("Parent"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[],
         submodules=[child],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
 
@@ -604,8 +606,8 @@ def test_singlemodule_groupconn_marks_child_parameter_used():
         moduletype_defs=[],
         localvariables=[],
         submodules=[parent],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -626,15 +628,15 @@ def test_singlemodule_groupconn_with_mapping_marks_child_and_parent_used():
 
     child = SingleModule(
         header=child_header,
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="ScanGroup", datatype="GroupData")],
         localvariables=[],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[
             ParameterMapping(
                 target=_varref("ScanGroup"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("ParentGroup"),
@@ -645,11 +647,11 @@ def test_singlemodule_groupconn_with_mapping_marks_child_and_parent_used():
 
     parent = SingleModule(
         header=_hdr("Parent"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="ParentGroup", datatype="GroupData")],
         localvariables=[],
         submodules=[child],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
 
@@ -659,8 +661,8 @@ def test_singlemodule_groupconn_with_mapping_marks_child_and_parent_used():
         moduletype_defs=[],
         localvariables=[],
         submodules=[parent],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -692,7 +694,7 @@ def test_validator_helper_branches_cover_string_and_minmax_helpers():
         == []
     )
 
-    assert minmax_validator._mapping_name_text({const.KEY_VAR_NAME: 5}) is None
+    assert minmax_validator._mapping_name_text({}) is None
     assert (
         minmax_validator._mapping_name_text(Variable(name="MinLimit", datatype=Simple_DataType.INTEGER)) == "MinLimit"
     )
@@ -704,7 +706,7 @@ def test_validator_helper_branches_cover_string_and_minmax_helpers():
 
     ambiguous_mapping = ParameterMapping(
         target=_varref("MinMaxWindow"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=False,
         source=_varref("MinSource"),
@@ -722,7 +724,7 @@ def test_validator_helper_branches_cover_string_and_minmax_helpers():
 
     blank_mapping = ParameterMapping(
         target=_varref(""),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=False,
         source=_varref(""),
@@ -745,7 +747,7 @@ def test_contract_mapping_validator_helper_branches(monkeypatch):
     target_var = Variable(name="AnyParam", datatype="AnyType")
     mapping = ParameterMapping(
         target=_varref("AnyParam"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=False,
         source=_varref("Source"),
@@ -763,7 +765,7 @@ def test_contract_mapping_validator_helper_branches(monkeypatch):
     assert validator._resolve_source_datatype(
         ParameterMapping(
             target=_varref("AnyParam"),
-            source_type=const.KEY_VALUE,
+            source_type=MappingSource.VALUE,
             is_duration=False,
             is_source_global=False,
             source=None,
@@ -776,7 +778,7 @@ def test_contract_mapping_validator_helper_branches(monkeypatch):
     assert validator._resolve_source_datatype(
         ParameterMapping(
             target=_varref("AnyParam"),
-            source_type=const.TREE_TAG_VARIABLE_NAME,
+            source_type=MappingSource.VARIABLE,
             is_duration=False,
             is_source_global=False,
             source=_varref("Source.child"),
@@ -792,7 +794,7 @@ def test_contract_mapping_validator_datatype_resolution_branches(monkeypatch):
     source_var = Variable(name="Source", datatype=Simple_DataType.STRING)
     mapping = ParameterMapping(
         target=_varref("Target"),
-        source_type=const.TREE_TAG_VARIABLE_NAME,
+        source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=False,
         source=_varref("Source"),

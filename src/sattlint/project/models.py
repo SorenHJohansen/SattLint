@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -51,11 +52,17 @@ class SattLintProjectFile:
         )
         return cfg
 
-    def to_default_merged_config_dict(self) -> ConfigDict:
-        merged = deep_merge_dict(
-            cast(dict[str, object], deepcopy(DEFAULT_CONFIG)),
-            cast(dict[str, object], self.to_config_dict()),
-        )
+    def to_default_merged_config_dict(self, base: Mapping[str, object] | None = None) -> ConfigDict:
+        """Merge defaults, an optional user config, and this project file.
+
+        Application settings (run history, output retention, review output)
+        live in the user config, so opening a project must not reset them to
+        the built-in defaults. The project always wins over the base config.
+        """
+        base_config = cast(dict[str, object], deepcopy(DEFAULT_CONFIG))
+        if base is not None:
+            base_config = deep_merge_dict(base_config, dict(base))
+        merged = deep_merge_dict(base_config, cast(dict[str, object], self.to_config_dict()))
         return cast(ConfigDict, merged)
 
 

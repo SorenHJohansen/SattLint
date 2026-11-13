@@ -17,10 +17,12 @@ resulting indexes line up with the snapshot's reference index.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, fields, is_dataclass
+from collections.abc import Iterator
+from dataclasses import dataclass, field
 from typing import Any, cast
 
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
+    Assignment,
     BasePicture,
     FrameModule,
     ModuleCode,
@@ -34,8 +36,9 @@ from sattline_parser.models.ast_model import (
     SFCTransitionSub,
     SingleModule,
     SourceSpan,
+    VarRef,
+    walk,
 )
-from sattline_parser.models.expressions import Assignment
 
 from ..core._semantic_helpers import source_file_key
 from ..core._semantic_snapshot import ReferenceOccurrence, SemanticSnapshot
@@ -45,6 +48,20 @@ from ._ast_normalize import normalize_ast_value
 
 _StatementKey = tuple[str | int, ...]
 _DefinitionKey = tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _SequenceFork:
+    """Semantic fingerprint of a ``SEQFORK`` suffix.
+
+    Forks are attributes of a step or transition instead of sequence items, so
+    they are recorded as their own review statement to keep jump changes
+    visible even when guards and actions are unchanged.
+    """
+
+    targets: tuple[str, ...]
+    has_break: bool
+    span: SourceSpan | None = field(default=None, metadata={"layout": True})
 
 
 @dataclass(frozen=True)
@@ -126,12 +143,32 @@ def _iter_sfc_items(path: _StatementKey, items: list[Any] | None) -> Any:
                         statement,
                         "statement",
                     )
+            if item.fork is not None:
+                yield (
+                    (*path, "fork", "step", item.name or ""),
+                    _SequenceFork(
+                        targets=tuple(target.casefold() for target in item.fork.targets),
+                        has_break=item.fork.has_break,
+                        span=item.span,
+                    ),
+                    "fork",
+                )
         elif isinstance(item, SFCTransition):
             yield (
                 (*path, "transition", index),
                 item.condition,
                 "transition",
             )
+            if item.fork is not None:
+                yield (
+                    (*path, "fork", "transition", index),
+                    _SequenceFork(
+                        targets=tuple(target.casefold() for target in item.fork.targets),
+                        has_break=item.fork.has_break,
+                        span=item.span,
+                    ),
+                    "fork",
+                )
         elif isinstance(item, SFCAlternative | SFCParallel):
             for branch_index, branch in enumerate(item.branches or []):
                 for child in _iter_sfc_items((*path, "branch", branch_index), branch):
@@ -151,7 +188,7 @@ def _iter_code_statements(module_code: ModuleCode | None) -> Any:
     for seq in module_code.sequences or []:
         prefix = ("sequence", seq.name or "")
         yield from _iter_sfc_items(prefix, seq.code or [])
-    for equation in module_code.equations or []:
+    for equation in module_code.equationblocks or []:
         prefix = ("equation", equation.name or "")
         for index, statement in enumerate(equation.code or []):
             yield ((*prefix, index), statement, "statement")
@@ -203,23 +240,11 @@ def _module_declaration_span(node: BasePicture | SingleModule | FrameModule | Mo
     return span if isinstance(span, SourceSpan) else None
 
 
-def _iter_child_values(node: Any) -> Any:
-    if isinstance(node, tuple | list):
-        yield from cast(tuple[Any, ...] | list[Any], node)
-    elif is_dataclass(node) and not isinstance(node, type):
-        for field_def in fields(node):
-            if field_def.name == "span":
-                continue
-            yield getattr(node, field_def.name)
-
-
-def _iter_assignment_targets(node: Any) -> Any:
+def _iter_assignment_targets(node: object) -> Iterator[VarRef]:
     """Yield ``VarRef`` targets assigned anywhere inside *node*."""
-    if isinstance(node, Assignment):
-        yield node.target
-        return
-    for child in _iter_child_values(node):
-        yield from _iter_assignment_targets(child)
+    for event in walk(node):
+        if isinstance(event.node, Assignment):
+            yield event.node.target
 
 
 def _build_ref_line_index(
@@ -250,7 +275,7 @@ def _node_declared_variables(
     node: BasePicture | SingleModule | FrameModule | ModuleTypeDef,
 ) -> list[Any]:
     if isinstance(node, BasePicture):
-        return list(node.localvariables or [])
+        return list(node.moduleparameters or []) + list(node.localvariables or [])
     if isinstance(node, SingleModule):
         return list(node.moduleparameters or []) + list(node.localvariables or [])
     if isinstance(node, ModuleTypeDef):

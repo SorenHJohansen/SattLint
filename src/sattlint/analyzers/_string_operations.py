@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 
-from sattline_parser.models.ast_model import Simple_DataType
+from sattlint.parser_api import Simple_DataType
 
 from ._string_models import (
     _MAX_CURSOR_POSITIONS,

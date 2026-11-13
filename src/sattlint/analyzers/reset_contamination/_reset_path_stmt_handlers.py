@@ -2,33 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import Variable
-from sattline_parser.models.expressions import Assignment, FuncCallStmt, IfStmt
+from sattlint.parser_api import Assignment, FuncCallStmt, IfStmt, Variable
 
-from ..shared.ast_node_helpers import (
-    NodeTuple as _NodeTuple,
-)
-from ..shared.ast_node_helpers import (
-    iter_branch_pairs as _iter_branch_pairs,
-)
-from ..shared.ast_node_helpers import (
-    object_list as _object_list,
-)
-from ..shared.ast_node_helpers import (
-    object_sequence as _object_sequence,
-)
-from ..shared.ast_node_helpers import (
-    object_tuple as _object_tuple,
-)
-from ..shared.ast_node_helpers import (
-    sequence_as_list as _sequence_as_list,
-)
-from ..shared.ast_node_helpers import (
-    statement_children as _statement_children,
-)
 from ._reset_path_condition import (
     classify_reset_condition as _classify_reset_condition,
 )
@@ -97,112 +75,9 @@ def _collect_paths_from_items(
     return next_states
 
 
-def _handle_ternary_stmt(
-    obj: _NodeTuple,
-    env: dict[str, Variable],
-    reset_ref_cf: str,
-    reset_old_vars_cf: set[str],
-    states: list[_PathState],
-    *,
-    path_debug: _PathCollectionDebug | None = None,
-) -> list[_PathState]:
-    branches = obj[1] if len(obj) > 1 else None
-    else_expr = obj[2] if len(obj) > 2 else None
-    next_states = states
-    for cond, then_expr in _iter_branch_pairs(branches):
-        next_states = _collect_stmt_paths(
-            cond,
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            next_states,
-            path_debug=path_debug,
-        )
-        next_states = _collect_stmt_paths(
-            then_expr,
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            next_states,
-            path_debug=path_debug,
-        )
-    if else_expr is not None:
-        next_states = _collect_stmt_paths(
-            else_expr,
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            next_states,
-            path_debug=path_debug,
-        )
-    return next_states
-
-
-def _handle_compare_stmt(
-    obj: _NodeTuple,
-    env: dict[str, Variable],
-    reset_ref_cf: str,
-    reset_old_vars_cf: set[str],
-    states: list[_PathState],
-    *,
-    path_debug: _PathCollectionDebug | None = None,
-) -> list[_PathState]:
-    left = obj[1] if len(obj) > 1 else None
-    pairs = obj[2] if len(obj) > 2 else None
-    next_states = _collect_stmt_paths(
-        left,
-        env,
-        reset_ref_cf,
-        reset_old_vars_cf,
-        states,
-        path_debug=path_debug,
-    )
-    for _sym, rhs in _iter_branch_pairs(pairs):
-        next_states = _collect_stmt_paths(
-            rhs,
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            next_states,
-            path_debug=path_debug,
-        )
-    return next_states
-
-
-def _handle_addmul_stmt(
-    obj: _NodeTuple,
-    env: dict[str, Variable],
-    reset_ref_cf: str,
-    reset_old_vars_cf: set[str],
-    states: list[_PathState],
-    *,
-    path_debug: _PathCollectionDebug | None = None,
-) -> list[_PathState]:
-    left = obj[1] if len(obj) > 1 else None
-    parts = obj[2] if len(obj) > 2 else None
-    next_states = _collect_stmt_paths(
-        left,
-        env,
-        reset_ref_cf,
-        reset_old_vars_cf,
-        states,
-        path_debug=path_debug,
-    )
-    for _opval, rhs in _iter_branch_pairs(parts):
-        next_states = _collect_stmt_paths(
-            rhs,
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            next_states,
-            path_debug=path_debug,
-        )
-    return next_states
-
-
 def _collect_if_stmt_paths(
-    branches: object,
-    else_block: object,
+    branches: Sequence[tuple[object, Sequence[object]]],
+    else_block: Sequence[object] | None,
     env: dict[str, Variable],
     reset_ref_cf: str,
     reset_old_vars_cf: set[str],
@@ -218,7 +93,7 @@ def _collect_if_stmt_paths(
         saw_exact_reset = False
         branch_matched = False
 
-        for cond, stmts in _iter_branch_pairs(branches):
+        for cond, stmts in branches:
             cond_flags = _classify_reset_condition(cond, reset_ref_cf, reset_old_vars_cf)
             saw_run = saw_run or cond_flags["run"]
             saw_reset = saw_reset or cond_flags["reset"]
@@ -231,7 +106,7 @@ def _collect_if_stmt_paths(
             branch_matched = True
             branch_outcomes.extend(
                 _collect_stmt_block_paths(
-                    _sequence_as_list(stmts),
+                    list(stmts),
                     env,
                     reset_ref_cf,
                     reset_old_vars_cf,
@@ -251,7 +126,7 @@ def _collect_if_stmt_paths(
             if fallback_states:
                 branch_outcomes.extend(
                     _collect_stmt_block_paths(
-                        _sequence_as_list(else_block),
+                        list(else_block),
                         env,
                         reset_ref_cf,
                         reset_old_vars_cf,
@@ -266,7 +141,7 @@ def _collect_if_stmt_paths(
         path_debug.emit(
             "collect-if-stmt-paths",
             input_count=len(states),
-            branch_count=len(_sequence_as_list(branches)),
+            branch_count=len(branches),
             output_count=len(result),
             has_else=else_block is not None,
         )
@@ -350,16 +225,6 @@ def _collect_stmt_paths(
 ) -> list[_PathState]:
     if obj is None:
         return states
-    statement_children = _statement_children(obj)
-    if statement_children is not None:
-        return _collect_paths_from_items(
-            list(statement_children),
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-            path_debug=path_debug,
-        )
 
     if isinstance(obj, Assignment):
         return _collect_assignment_paths(
@@ -387,109 +252,6 @@ def _collect_stmt_paths(
         return _collect_if_stmt_paths(
             obj.branches,
             obj.else_block,
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-            path_debug=path_debug,
-        )
-
-    tuple_node = _object_tuple(obj)
-    if tuple_node is not None and tuple_node and tuple_node[0] == const.GRAMMAR_VALUE_IF:
-        branches = tuple_node[1] if len(tuple_node) > 1 else None
-        else_block = tuple_node[2] if len(tuple_node) > 2 else None
-        return _collect_if_stmt_paths(
-            branches,
-            else_block,
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-            path_debug=path_debug,
-        )
-
-    if tuple_node is not None and tuple_node and tuple_node[0] == const.KEY_ASSIGN:
-        target = tuple_node[1] if len(tuple_node) > 1 else None
-        expr = tuple_node[2] if len(tuple_node) > 2 else None
-        return _collect_assignment_paths(
-            target,
-            expr,
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-            path_debug=path_debug,
-        )
-
-    if tuple_node is not None and tuple_node and tuple_node[0] == const.KEY_FUNCTION_CALL:
-        fn_name = tuple_node[1] if len(tuple_node) > 1 else None
-        args = tuple_node[2] if len(tuple_node) > 2 else None
-        if not isinstance(fn_name, str):
-            return states
-        return _collect_function_call_paths(
-            fn_name,
-            _sequence_as_list(args),
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-            path_debug=path_debug,
-        )
-
-    if tuple_node is not None and tuple_node and tuple_node[0] in (const.KEY_TERNARY, "Ternary"):
-        return _handle_ternary_stmt(tuple_node, env, reset_ref_cf, reset_old_vars_cf, states, path_debug=path_debug)
-
-    if tuple_node is not None and tuple_node and tuple_node[0] in (const.KEY_COMPARE, "compare"):
-        return _handle_compare_stmt(tuple_node, env, reset_ref_cf, reset_old_vars_cf, states, path_debug=path_debug)
-
-    if tuple_node is not None and tuple_node and tuple_node[0] in (const.KEY_ADD, const.KEY_MUL):
-        return _handle_addmul_stmt(tuple_node, env, reset_ref_cf, reset_old_vars_cf, states, path_debug=path_debug)
-
-    if tuple_node is not None and tuple_node and tuple_node[0] in (const.KEY_PLUS, const.KEY_MINUS):
-        return _collect_stmt_paths(
-            tuple_node[1] if len(tuple_node) > 1 else None,
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-            path_debug=path_debug,
-        )
-
-    if tuple_node is not None and tuple_node and tuple_node[0] in (const.GRAMMAR_VALUE_OR, const.GRAMMAR_VALUE_AND):
-        return _collect_paths_from_items(
-            _sequence_as_list(tuple_node[1] if len(tuple_node) > 1 else None),
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-            path_debug=path_debug,
-        )
-
-    if tuple_node is not None and tuple_node and tuple_node[0] == const.GRAMMAR_VALUE_NOT:
-        return _collect_stmt_paths(
-            tuple_node[1] if len(tuple_node) > 1 else None,
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-            path_debug=path_debug,
-        )
-
-    list_node = _object_list(obj)
-    if list_node is not None:
-        return _collect_paths_from_items(
-            list_node,
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-            path_debug=path_debug,
-        )
-
-    children = _object_sequence(getattr(obj, "children", None))
-    if children is not None:
-        return _collect_paths_from_items(
-            list(children),
             env,
             reset_ref_cf,
             reset_old_vars_cf,

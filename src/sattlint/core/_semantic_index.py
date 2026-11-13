@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from typing import cast
 
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     BasePicture,
     ModuleHeader,
     ModuleTypeDef,
@@ -14,6 +16,7 @@ from sattline_parser.models.ast_model import (
 )
 
 from ..models._variable_issues import VariableIssue
+from ..models.project_graph import EMPTY_GRAPHICS_ATTACHMENTS, GraphicsAttachments
 from ..resolution import (
     CanonicalPath,
     CanonicalSymbolTable,
@@ -22,6 +25,7 @@ from ..resolution import (
     TypeGraph,
     decorate_segment,
 )
+from ..resolution.scope import ScopeContext
 from ._semantic_helpers import (
     cf,
     format_datatype,
@@ -59,8 +63,10 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         root_origin_library: str | None = None,
         unavailable_libraries: set[str] | None = None,
         include_dependency_modules: bool = True,
+        graphics_attachments: GraphicsAttachments | None = None,
     ):
         self.base_picture = base_picture
+        self.graphics_attachments = graphics_attachments or EMPTY_GRAPHICS_ATTACHMENTS
         self.root_origin_file = root_origin_file if root_origin_file is not None else base_picture.origin_file
         self.root_origin_library = root_origin_library if root_origin_library is not None else base_picture.origin_lib
         self.include_dependency_modules = include_dependency_modules
@@ -68,7 +74,9 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         self.symbol_table = CanonicalSymbolTable()
         self.unavailable_libraries = unavailable_libraries or set()
         self._issues: list[VariableIssue] = []
-        self._root_env = {v.name.casefold(): v for v in (base_picture.localvariables or [])}
+        self._root_env = {
+            v.name.casefold(): v for v in (*(base_picture.moduleparameters or []), *(base_picture.localvariables or []))
+        }
         self._definitions_by_key: dict[tuple[str, ...], SymbolDefinition] = {}
         self._definitions_in_order: list[SymbolDefinition] = []
         self._references_by_file: dict[str, list[ReferenceOccurrence]] = {}
@@ -101,10 +109,20 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         self,
     ) -> SemanticIndex:
         root_context = self.context_builder.build_for_basepicture()
+        root_module_path = (self.base_picture.header.name,)
+        root_display_path = (decorate_segment(self.base_picture.header.name, "BP"),)
+        self._record_variables(
+            self.base_picture.moduleparameters or [],
+            module_path=root_module_path,
+            display_module_path=root_display_path,
+            kind=SymbolKind.PARAMETER.value,
+            origin_file=self.root_origin_file,
+            origin_library=self.root_origin_library,
+        )
         self._record_variables(
             self.base_picture.localvariables or [],
-            module_path=(self.base_picture.header.name,),
-            display_module_path=(decorate_segment(self.base_picture.header.name, "BP"),),
+            module_path=root_module_path,
+            display_module_path=root_display_path,
             kind=SymbolKind.LOCAL.value,
             origin_file=self.root_origin_file,
             origin_library=self.root_origin_library,
@@ -133,18 +151,7 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
             source_file=self.root_origin_file,
             source_library=self.root_origin_library,
         )
-        self._record_scope_references(
-            self.base_picture.graphics_bindings,
-            context=root_context,
-            source_file=self.base_picture.graphics_file,
-            source_library=self.root_origin_library,
-        )
-        self._record_call_signatures(
-            self.base_picture.graphics_bindings,
-            module_path=(self.base_picture.header.name,),
-            source_file=self.base_picture.graphics_file,
-            source_library=self.root_origin_library,
-        )
+        self._record_graphics_attachments(root_context)
         self._walk_moduletype_defs(
             self.base_picture.moduletype_defs or [],
             parent_context=root_context,
@@ -216,6 +223,33 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
             (root_type.casefold(), tuple(cf(segment) for segment in field_path))
         )
 
+    def _record_graphics_attachments(self, context: ScopeContext) -> None:
+        """Index references and calls inside graphics bindings.
+
+        The parser walker deliberately excludes graphics binding wrappers from
+        AST traversal, so each binding's typed value must be visited directly.
+        The binding's own span is inherited by the value, which keeps the
+        recorded source location intact.
+        """
+        source_file = self.graphics_attachments.file_name
+        module_path = (self.base_picture.header.name,)
+        for binding in self.graphics_attachments.bindings:
+            value = binding.value
+            if value is None:
+                continue
+            self._record_scope_references(
+                value,
+                context=context,
+                source_file=source_file,
+                source_library=self.root_origin_library,
+            )
+            self._record_call_signatures(
+                value,
+                module_path=module_path,
+                source_file=source_file,
+                source_library=self.root_origin_library,
+            )
+
     def _lookup_global_variable(self, name: str | None) -> Variable | None:
         if not name:
             return None
@@ -228,6 +262,39 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
     @staticmethod
     def _symbol_kind_parameter() -> str:
         return SymbolKind.PARAMETER.value
+
+    @staticmethod
+    def _variable_modifiers(variable: Variable) -> tuple[str, ...]:
+        modifiers: list[str] = []
+        if variable.const:
+            modifiers.append("const")
+        if variable.state:
+            modifiers.append("state")
+        if variable.opsave:
+            modifiers.append("opsave")
+        if variable.secure:
+            modifiers.append("secure")
+        if variable.global_var:
+            modifiers.append("global")
+        return tuple(modifiers)
+
+    @staticmethod
+    def _initializer_text(value: object) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return "TRUE" if value else "FALSE"
+        if isinstance(value, int | float):
+            return str(value)
+        if isinstance(value, str):
+            return f'"{value}"'
+        if isinstance(value, dict):
+            return json.dumps(
+                {str(key): item for key, item in cast(dict[object, object], value).items()},
+                sort_keys=True,
+                ensure_ascii=True,
+            )
+        return repr(value)
 
     @staticmethod
     def _synthetic_module_header(name: str) -> ModuleHeader:
@@ -255,6 +322,8 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
                 origin_file=origin_file,
                 origin_library=origin_library,
                 declaration_span=variable.declaration_span,
+                initializer=self._initializer_text(variable.init_value),
+                modifiers=self._variable_modifiers(variable),
             )
 
             for field_segments in self.type_graph.iter_leaf_field_paths(variable.datatype):
@@ -285,6 +354,8 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         origin_file: str | None,
         origin_library: str | None,
         declaration_span: SourceSpan | None,
+        initializer: str | None = None,
+        modifiers: tuple[str, ...] = (),
     ) -> None:
         definition = SymbolDefinition(
             canonical_path=str(canonical_path),
@@ -296,6 +367,8 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
             source_file=origin_file,
             source_library=origin_library,
             declaration_span=declaration_span,
+            initializer=initializer,
+            modifiers=modifiers,
         )
         self._definitions_by_key[canonical_path.key()] = definition
         self._definitions_in_order.append(definition)

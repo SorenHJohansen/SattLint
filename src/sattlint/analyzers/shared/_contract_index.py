@@ -37,7 +37,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     BasePicture,
     ModuleTypeDef,
     ModuleTypeInstance,

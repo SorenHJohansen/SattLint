@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import ModuleTypeDef, ModuleTypeInstance, ParameterMapping, SingleModule, Variable
-from sattline_parser.models.expressions import VarRef
+from sattlint.parser_api import ModuleTypeDef, ModuleTypeInstance, ParameterMapping, SingleModule, Variable, VarRef
 
 from ...resolution.common import varname_base
 from ...resolution.scope import ScopeContext
@@ -113,11 +111,9 @@ class DataflowScopeSupportMixin:
             target_name = varname_base(mapping.target)
             if not target_name:
                 continue
-            source = cast(VarRef | dict[str, object] | str | None, mapping.source)
+            source = cast(VarRef | str | None, mapping.source)
             if isinstance(source, VarRef):
                 full_source = source.name
-            elif isinstance(source, dict) and const.KEY_VAR_NAME in source:
-                full_source = source[const.KEY_VAR_NAME]
             elif isinstance(source, str):
                 full_source = source
             else:

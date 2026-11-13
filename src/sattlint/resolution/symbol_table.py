@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
-from sattline_parser.models.ast_model import Simple_DataType, Variable
+from sattlint.parser_api import Simple_DataType, Variable
 
 from .paths import CanonicalPath, CanonicalPathKey
 from .type_graph import TypeGraph

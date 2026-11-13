@@ -32,8 +32,8 @@ def _make_base_picture() -> BasePicture:
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
 

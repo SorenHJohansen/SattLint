@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from sattline_parser.models.ast_model import FrameModule, ModuleTypeDef, ModuleTypeInstance, SingleModule, Variable
+from sattlint.parser_api import FrameModule, ModuleTypeDef, ModuleTypeInstance, SingleModule, Variable
 
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ._variables_contracts import (

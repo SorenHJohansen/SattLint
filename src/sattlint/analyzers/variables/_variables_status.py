@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import Variable
-from sattline_parser.models.expressions import VarRef
+from sattlint.parser_api import Variable, VarRef
 
-from ...core.call_signatures import CallParameterSignature, resolve_call_signature
+from ...core.call_signatures import CallParameter, resolve_call_signature
 from ...models.usage import VariableUsage
 from ...resolution.scope import ScopeContext
 
@@ -38,7 +36,7 @@ def _bind_procedure_status(
     full_ref: str,
     *,
     call_name: str,
-    parameter: CallParameterSignature,
+    parameter: CallParameter,
     context: ScopeContext,
 ) -> None:
     resolved_var, resolved_field_path, _decl_path, _decl_display = context.resolve_variable(full_ref)
@@ -85,11 +83,6 @@ def _record_procedure_status_bindings(
         argument = args[index]
         if isinstance(argument, VarRef):
             full_ref = argument.name
-        elif isinstance(argument, dict) and const.KEY_VAR_NAME in argument:
-            argument_dict = cast(dict[str, object], argument)
-            full_ref = argument_dict.get(const.KEY_VAR_NAME)
-            if not isinstance(full_ref, str):
-                continue
         else:
             continue
         self.bind_procedure_status(
@@ -125,11 +118,6 @@ def _record_ignorable_output_bindings(
         argument = args[index]
         if isinstance(argument, VarRef):
             full_ref = argument.name
-        elif isinstance(argument, dict) and const.KEY_VAR_NAME in argument:
-            argument_dict = cast(dict[str, object], argument)
-            full_ref = argument_dict.get(const.KEY_VAR_NAME)
-            if not isinstance(full_ref, str):
-                continue
         else:
             continue
         self.bind_ignorable_output(full_ref, context=context)
@@ -202,7 +190,7 @@ class VariablesStatusMixin:
         full_ref: str,
         *,
         call_name: str,
-        parameter: CallParameterSignature,
+        parameter: CallParameter,
         context: ScopeContext,
     ) -> None:
         _bind_procedure_status(self, full_ref, call_name=call_name, parameter=parameter, context=context)

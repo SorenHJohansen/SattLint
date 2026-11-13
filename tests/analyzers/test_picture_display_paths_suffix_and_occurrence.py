@@ -28,7 +28,7 @@ def test_resolve_picture_display_path_recovers_missing_declaring_module_by_suffi
     base_picture = BasePicture(
         header=ModuleHeader(name="BasePicture", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="BasePicture",
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
         submodules=[
             module(
                 "Column",
@@ -261,7 +261,7 @@ def test_correlate_picture_display_records_keeps_local_templates_out_of_concrete
         submodules=[
             SingleModule(
                 header=ModuleHeader(name="Form", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
+                moduledefs=[ModuleDef(graph_objects=[GraphObject("CompositeObject")])],
             )
         ],
     )
@@ -269,15 +269,15 @@ def test_correlate_picture_display_records_keeps_local_templates_out_of_concrete
         header=ModuleHeader(name="BasePicture", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="BasePicture",
         moduletype_defs=[local_template],
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
         submodules=[
             SingleModule(
                 header=ModuleHeader(name="Parent", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
+                moduledefs=[ModuleDef(graph_objects=[GraphObject("CompositeObject")])],
                 submodules=[
                     SingleModule(
                         header=ModuleHeader(name="Leaf", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                        moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
+                        moduledefs=[ModuleDef(graph_objects=[GraphObject("CompositeObject")])],
                     ),
                     ModuleTypeInstance(
                         header=ModuleHeader(name="LocalTemplate", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),

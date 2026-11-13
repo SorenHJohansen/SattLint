@@ -3,7 +3,7 @@ from __future__ import annotations
 # pyright: reportPrivateUsage=false
 from typing import Protocol
 
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     BasePicture,
     FrameModule,
     ModuleCode,
@@ -12,8 +12,8 @@ from sattline_parser.models.ast_model import (
     ParameterMapping,
     SingleModule,
     Variable,
+    VarRef,
 )
-from sattline_parser.models.expressions import VarRef
 
 from ..resolution.common import resolve_moduletype_def_strict, varname_base
 from ..resolution.scope import ScopeContext
@@ -126,17 +126,10 @@ class DependencyUsageScopeSupportMixin:
             if not target_name:
                 continue
             source = mapping.source
-            if source is None:
+            if not isinstance(source, VarRef):
                 continue
-            if isinstance(source, VarRef):  # type: ignore[reportUnnecessaryIsInstance]
-                full_source = source.name
-            elif isinstance(source, str):  # type: ignore[reportUnnecessaryIsInstance]
-                full_source = source
-            elif isinstance(source, dict) and "var_name" in source:  # type: ignore[reportUnnecessaryIsInstance]
-                full_source = source["var_name"]
-            else:
-                continue
-            source_var, field_prefix, decl_path, decl_display_path = parent_context.resolve_variable(str(full_source))
+            full_source = source.name
+            source_var, field_prefix, decl_path, decl_display_path = parent_context.resolve_variable(full_source)
             if source_var is None:
                 continue
             resolved[target_name.casefold()] = (
@@ -201,6 +194,7 @@ class DependencyUsageScopeSupportMixin:
                 instance.moduletype_name,
                 current_library=parent_context.current_library,
                 unavailable_libraries=self._unavailable_libraries,
+                library_dependencies=getattr(self, "library_dependencies", None),
             )
         except ValueError:
             return

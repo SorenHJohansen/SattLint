@@ -1,7 +1,7 @@
 # pyright: reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
 
 import pytest
-from sattline_parser.grammar import constants as const
+from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import (
     BasePicture,
     CodeItem,
@@ -76,21 +76,23 @@ def test_same_cycle_reports_parallel_read_write_hazard() -> None:
             Variable(name="SharedValue", datatype=Simple_DataType.INTEGER),
             Variable(name="Output", datatype=Simple_DataType.INTEGER),
         ],
-        modulecode=ModuleCode(
-            sequences=[
-                _sequence(
-                    [
-                        SFCParallel(
-                            branches=[
-                                [_step("Left", [_assign("Output", _varref("SharedValue"))])],
-                                [_step("Right", [_assign("SharedValue", 2)])],
-                            ]
-                        )
-                    ]
-                )
-            ],
-            equations=[],
-        ),
+        modulecodes=[
+            ModuleCode(
+                sequences=[
+                    _sequence(
+                        [
+                            SFCParallel(
+                                branches=[
+                                    [_step("Left", [_assign("Output", _varref("SharedValue"))])],
+                                    [_step("Right", [_assign("SharedValue", 2)])],
+                                ]
+                            )
+                        ]
+                    )
+                ],
+                equationblocks=[],
+            )
+        ],
     )
 
     report = analyze_same_cycle(bp)
@@ -109,30 +111,32 @@ def test_same_cycle_reports_parallel_read_write_hazard() -> None:
 def test_cross_module_read_write_overlap_is_not_a_proven_hazard() -> None:
     reader = SingleModule(
         header=_hdr("Reader"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[_eq("ReadEq", [_assign("Output", _varref("SharedValue"))])],
-            sequences=[],
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[_eq("ReadEq", [_assign("Output", _varref("SharedValue"))])],
+                sequences=[],
+            )
+        ],
         parametermappings=[],
     )
     writer = SingleModule(
         header=_hdr("Writer"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[],
         submodules=[],
-        modulecode=ModuleCode(equations=[_eq("WriteEq", [_assign("SharedValue", 0)])], sequences=[]),
+        modulecodes=[ModuleCode(equationblocks=[_eq("WriteEq", [_assign("SharedValue", 0)])], sequences=[])],
         parametermappings=[],
     )
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[Variable(name="SharedValue", datatype=Simple_DataType.INTEGER)],
         submodules=[reader, writer],
-        modulecode=ModuleCode(equations=[], sequences=[]),
+        modulecodes=[ModuleCode(equationblocks=[], sequences=[])],
     )
 
     report = analyze_same_cycle(bp)
@@ -146,22 +150,24 @@ def test_external_mapping_overlap_is_not_a_proven_hazard() -> None:
         moduleparameters=[Variable(name="Input", datatype=Simple_DataType.INTEGER)],
         localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
         submodules=[],
-        moduledef=None,
-        modulecode=ModuleCode(
-            equations=[_eq("ReadEq", [_assign("Output", _varref("Input"))])],
-            sequences=[],
-        ),
+        moduledefs=[],
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[_eq("ReadEq", [_assign("Output", _varref("Input"))])],
+                sequences=[],
+            )
+        ],
         parametermappings=[],
         origin_file="ExternalDep.s",
         origin_lib="ExternalLib",
     )
     writer = SingleModule(
         header=_hdr("Writer"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[],
         submodules=[],
-        modulecode=ModuleCode(equations=[_eq("WriteEq", [_assign("SharedValue", 0)])], sequences=[]),
+        modulecodes=[ModuleCode(equationblocks=[_eq("WriteEq", [_assign("SharedValue", 0)])], sequences=[])],
         parametermappings=[],
     )
     bp = BasePicture(
@@ -175,7 +181,7 @@ def test_external_mapping_overlap_is_not_a_proven_hazard() -> None:
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("Input"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("SharedValue"),
@@ -184,7 +190,7 @@ def test_external_mapping_overlap_is_not_a_proven_hazard() -> None:
             ),
             writer,
         ],
-        modulecode=ModuleCode(equations=[], sequences=[]),
+        modulecodes=[ModuleCode(equationblocks=[], sequences=[])],
         origin_file="Root.s",
         origin_lib="RootLib",
     )
@@ -201,13 +207,15 @@ def test_dataflow_non_state_multi_site_across_equations() -> None:
             Variable(name="SharedValue", datatype=Simple_DataType.INTEGER),
             Variable(name="Sink", datatype=Simple_DataType.INTEGER),
         ],
-        modulecode=ModuleCode(
-            equations=[
-                _eq("ReadEq", [_assign("Sink", _varref("SharedValue"))]),
-                _eq("WriteEq", [_assign("SharedValue", 2)]),
-            ],
-            sequences=[],
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    _eq("ReadEq", [_assign("Sink", _varref("SharedValue"))]),
+                    _eq("WriteEq", [_assign("SharedValue", 2)]),
+                ],
+                sequences=[],
+            )
+        ],
     )
 
     report = analyze_dataflow(bp)
@@ -243,18 +251,20 @@ def test_dataflow_non_state_multi_site_ignores_single_equation() -> None:
             Variable(name="SharedValue", datatype=Simple_DataType.INTEGER),
             Variable(name="Sink", datatype=Simple_DataType.INTEGER),
         ],
-        modulecode=ModuleCode(
-            equations=[
-                _eq(
-                    "MainEq",
-                    [
-                        _assign("Sink", _varref("SharedValue")),
-                        _assign("SharedValue", 2),
-                    ],
-                )
-            ],
-            sequences=[],
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    _eq(
+                        "MainEq",
+                        [
+                            _assign("Sink", _varref("SharedValue")),
+                            _assign("SharedValue", 2),
+                        ],
+                    )
+                ],
+                sequences=[],
+            )
+        ],
     )
 
     report = analyze_dataflow(bp)
@@ -281,12 +291,14 @@ def test_continuous_sites_compare_record_fields_not_whole_record(written_field: 
             Variable(name="Record", datatype="RecordType"),
             Variable(name="Sink", datatype=Simple_DataType.INTEGER),
         ],
-        modulecode=ModuleCode(
-            equations=[
-                _eq("ReadFirst", [_assign("Sink", _varref("Record.First"))]),
-                _eq("WriteField", [_assign(f"Record.{written_field}", 2)]),
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    _eq("ReadFirst", [_assign("Sink", _varref("Record.First"))]),
+                    _eq("WriteField", [_assign(f"Record.{written_field}", 2)]),
+                ]
+            )
+        ],
     )
     report = analyze_dataflow(bp)
     conflicts = [issue for issue in report.issues if issue.kind == "dataflow.non_state_multi_site"]
@@ -303,22 +315,24 @@ def test_dataflow_non_state_multi_site_ignores_single_active_step() -> None:
             Variable(name="SharedValue", datatype=Simple_DataType.INTEGER),
             Variable(name="Sink", datatype=Simple_DataType.INTEGER),
         ],
-        modulecode=ModuleCode(
-            sequences=[
-                _sequence(
-                    [
-                        _step(
-                            "Loop",
-                            [
-                                _assign("Sink", _varref("SharedValue")),
-                                _assign("SharedValue", 2),
-                            ],
-                        )
-                    ]
-                )
-            ],
-            equations=[],
-        ),
+        modulecodes=[
+            ModuleCode(
+                sequences=[
+                    _sequence(
+                        [
+                            _step(
+                                "Loop",
+                                [
+                                    _assign("Sink", _varref("SharedValue")),
+                                    _assign("SharedValue", 2),
+                                ],
+                            )
+                        ]
+                    )
+                ],
+                equationblocks=[],
+            )
+        ],
     )
 
     report = analyze_dataflow(bp)
@@ -330,21 +344,23 @@ def test_dataflow_non_state_multi_site_transition_self_loop() -> None:
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[Variable(name="SharedFlag", datatype=Simple_DataType.BOOLEAN)],
-        modulecode=ModuleCode(
-            sequences=[
-                _sequence(
-                    [
-                        SFCStep(
-                            kind="step",
-                            name="Loop",
-                            code=SFCCodeBlocks(enter=[_assign("SharedFlag", True)]),
-                        ),
-                        SFCTransition(name="Gate", condition=_varref("SharedFlag")),
-                    ]
-                )
-            ],
-            equations=[],
-        ),
+        modulecodes=[
+            ModuleCode(
+                sequences=[
+                    _sequence(
+                        [
+                            SFCStep(
+                                kind="step",
+                                name="Loop",
+                                code=SFCCodeBlocks(enter=[_assign("SharedFlag", True)]),
+                            ),
+                            SFCTransition(name="Gate", condition=_varref("SharedFlag")),
+                        ]
+                    )
+                ],
+                equationblocks=[],
+            )
+        ],
     )
 
     report = analyze_dataflow(bp)
@@ -364,23 +380,25 @@ def test_hold_step_with_false_transition_is_not_a_continuous_self_loop() -> None
             Variable(name="Saved", datatype=Simple_DataType.INTEGER),
             Variable(name="Current", datatype=Simple_DataType.INTEGER),
         ],
-        modulecode=ModuleCode(
-            sequences=[
-                _sequence(
-                    [
-                        SFCStep(
-                            kind="step",
-                            name="Hold",
-                            code=SFCCodeBlocks(
-                                enter=[_assign("Saved", _varref("Current"))],
-                                exit=[_assign("Current", _varref("Saved"))],
+        modulecodes=[
+            ModuleCode(
+                sequences=[
+                    _sequence(
+                        [
+                            SFCStep(
+                                kind="step",
+                                name="Hold",
+                                code=SFCCodeBlocks(
+                                    enter=[_assign("Saved", _varref("Current"))],
+                                    exit=[_assign("Current", _varref("Saved"))],
+                                ),
                             ),
-                        ),
-                        SFCTransition(name="StayHeld", condition=False),
-                    ]
-                )
-            ]
-        ),
+                            SFCTransition(name="StayHeld", condition=False),
+                        ]
+                    )
+                ]
+            )
+        ],
     )
     report = analyze_dataflow(bp)
     assert not any(issue.kind == "dataflow.non_state_multi_site" for issue in report.issues)
@@ -393,24 +411,26 @@ def test_dataflow_non_state_multi_site_fork_self_loop() -> None:
             Variable(name="SharedFlag", datatype=Simple_DataType.BOOLEAN),
             Variable(name="Sink", datatype=Simple_DataType.BOOLEAN),
         ],
-        modulecode=ModuleCode(
-            sequences=[
-                _sequence(
-                    [
-                        SFCStep(
-                            kind="step",
-                            name="Loop",
-                            code=SFCCodeBlocks(
-                                enter=[_assign("SharedFlag", True)],
-                                exit=[_assign("Sink", _varref("SharedFlag"))],
+        modulecodes=[
+            ModuleCode(
+                sequences=[
+                    _sequence(
+                        [
+                            SFCStep(
+                                kind="step",
+                                name="Loop",
+                                code=SFCCodeBlocks(
+                                    enter=[_assign("SharedFlag", True)],
+                                    exit=[_assign("Sink", _varref("SharedFlag"))],
+                                ),
+                                fork=SFCFork(targets=("Loop",)),
                             ),
-                            fork=SFCFork(targets=("Loop",)),
-                        ),
-                    ]
-                )
-            ],
-            equations=[],
-        ),
+                        ]
+                    )
+                ],
+                equationblocks=[],
+            )
+        ],
     )
 
     report = analyze_dataflow(bp)
@@ -430,23 +450,25 @@ def test_dataflow_non_state_multi_site_ignores_single_active_site_in_self_loop()
             Variable(name="SharedValue", datatype=Simple_DataType.INTEGER),
             Variable(name="Sink", datatype=Simple_DataType.INTEGER),
         ],
-        modulecode=ModuleCode(
-            sequences=[
-                _sequence(
-                    [
-                        _step(
-                            "Loop",
-                            [
-                                _assign("Sink", _varref("SharedValue")),
-                                _assign("SharedValue", 1),
-                            ],
-                        ),
-                        SFCTransition(name="Gate", condition=True),
-                    ]
-                )
-            ],
-            equations=[],
-        ),
+        modulecodes=[
+            ModuleCode(
+                sequences=[
+                    _sequence(
+                        [
+                            _step(
+                                "Loop",
+                                [
+                                    _assign("Sink", _varref("SharedValue")),
+                                    _assign("SharedValue", 1),
+                                ],
+                            ),
+                            SFCTransition(name="Gate", condition=True),
+                        ]
+                    )
+                ],
+                equationblocks=[],
+            )
+        ],
     )
 
     report = analyze_dataflow(bp)

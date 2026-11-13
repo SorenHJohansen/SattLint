@@ -77,6 +77,15 @@
 - Do not skip focused validation when a narrower executable check exists.
 - Use Semble when it makes sense; targeted reads and exact lookups may use `read`, `grep`, `glob`, or `find`.
 
+## AI Workspace Tooling
+
+- Use `/verify` for the full check ladder.
+- Use `/review` for a read-only review by the `sattlint-reviewer` subagent.
+- Major work gets one reviewer pass, not a review loop. Treat a multi-file change, a new public seam, or an analyzer behavior change as major. Apply the findings, re-run `/verify`, and stop. Request a second review only when the user asks for one.
+- Every parser upgrade phase ends with a review pass and a commit on the migration branch.
+- `.opencode/agents/` holds the reviewer subagent. `.opencode/commands/` holds `verify`, `review`, and `release`.
+- The pull request template is the smallest checklist a change must satisfy.
+
 ## Internal Identifiers
 
 - Never include internal identifiers in anything a human reads: chat replies, code comments, docstrings, commit messages, pull request descriptions, GitHub comments, documentation, fixtures, test names, and user-facing output.

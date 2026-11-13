@@ -45,7 +45,15 @@ def test_iter_loaded_projects_skips_failed_targets(noop_screen, monkeypatch, cap
 
     monkeypatch.setattr(project_application, "load_project", fake_load_project)
 
-    projects = list(project_application._iter_loaded_projects(cfg))
+    failures: list[tuple[str, str]] = []
+    projects = list(
+        project_application._iter_loaded_projects(
+            cfg, failure_sink=lambda name, message: failures.append((name, message))
+        )
+    )
+
+    assert [name for name, _message in failures] == ["Broken"]
+    assert "root failed" in failures[0][1]
 
     out = capsys.readouterr().out
     assert projects == [("Working", "bp-working", working_graph)]

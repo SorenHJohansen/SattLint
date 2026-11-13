@@ -9,15 +9,16 @@ by dataflow alongside the other scan-cycle semantics.
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable, Mapping
 from collections.abc import Sequence as SequenceABC
 from dataclasses import dataclass
 from typing import Any, cast
 
-from sattline_parser.builtins import get_function_signature
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
+    Assignment,
     BasePicture,
+    FuncCall,
+    FuncCallStmt,
+    IfStmt,
     ModuleCode,
     ModuleTypeDef,
     ModuleTypeInstance,
@@ -30,14 +31,14 @@ from sattline_parser.models.ast_model import (
     SFCTransition,
     SFCTransitionSub,
     SingleModule,
+    VarRef,
+    get_function_signature,
+    walk,
 )
-from sattline_parser.models.expressions import Assignment, FuncCallStmt, VarRef
 
 from ...resolution.common import resolve_moduletype_def_strict
 from ...resolution.scope import ScopeContext
-from ..shared.ast_node_helpers import object_tuple as _object_tuple
 from ..shared.ast_node_helpers import sequence_as_list as _sequence_as_list
-from ..shared.ast_node_helpers import statement_children as _statement_children
 
 _READ = "read"
 _WRITE = "write"
@@ -238,7 +239,7 @@ def _walk_module_code(
 ) -> None:
     if modulecode is None:
         return
-    for equation in modulecode.equations or []:
+    for equation in modulecode.equationblocks or []:
         label = f"EQ:{getattr(equation, 'name', '<unnamed>')}"
         for statement in equation.code or []:
             _record_statement(self, statement, context, module_path, label, accesses)
@@ -362,10 +363,13 @@ def _record_statement(
     continuous_site: str | None,
     accesses: list[_SiteAccess],
 ) -> None:
-    statement_children = _statement_children(statement)
-    if statement_children is not None:
-        for child in statement_children:
-            _record_statement(self, child, context, module_path, continuous_site, accesses)
+    if isinstance(statement, IfStmt):
+        for condition, branch_statements in statement.branches:
+            _record_expression(self, condition, context, module_path, continuous_site, accesses)
+            for branch_statement in branch_statements:
+                _record_statement(self, branch_statement, context, module_path, continuous_site, accesses)
+        for else_statement in statement.else_block or ():
+            _record_statement(self, else_statement, context, module_path, continuous_site, accesses)
         return
 
     if isinstance(statement, Assignment):
@@ -377,27 +381,6 @@ def _record_statement(
         args = _sequence_as_list(statement.call.args)
         _record_call_arguments(self, statement.call.name, args, context, module_path, continuous_site, accesses)
         return
-
-    tuple_node = _object_tuple(statement)
-    if tuple_node is not None and tuple_node:
-        tag = tuple_node[0]
-        if tag == const.KEY_ASSIGN and len(tuple_node) >= 3:
-            _record_expression(self, tuple_node[2], context, module_path, continuous_site, accesses)
-            _record_ref(self, tuple_node[1], _WRITE, context, module_path, continuous_site, accesses)
-            return
-        if tag == const.KEY_FUNCTION_CALL and len(tuple_node) >= 3:
-            function_name = tuple_node[1]
-            args = _sequence_as_list(tuple_node[2])
-            _record_call_arguments(
-                self,
-                function_name if isinstance(function_name, str) else None,
-                args,
-                context,
-                module_path,
-                continuous_site,
-                accesses,
-            )
-            return
 
     _record_expression(self, statement, context, module_path, continuous_site, accesses)
 
@@ -430,37 +413,21 @@ def _record_expression(
     continuous_site: str | None,
     accesses: list[_SiteAccess],
 ) -> None:
-    for ref in _iter_ref_nodes(node):
-        _record_ref(self, ref, _READ, context, module_path, continuous_site, accesses)
-
-
-def _iter_ref_nodes(node: object) -> Iterable[object]:
-    if node is None:
-        return
-    if isinstance(node, VarRef):
-        yield node
-        return
-    if isinstance(node, Mapping):
-        mapping = cast(Mapping[object, object], node)
-        if const.KEY_VAR_NAME in mapping:
-            yield node
-            return
-        for value in mapping.values():
-            yield from _iter_ref_nodes(value)
-        return
-    if isinstance(node, tuple):
-        sequence = cast(tuple[object, ...], node)
-        if const.KEY_VAR_NAME in sequence:
-            yield node
-            return
-        for value in sequence:
-            yield from _iter_ref_nodes(value)
-        return
-    children = getattr(node, "children", None)
-    if isinstance(children, list | tuple):
-        for child in cast(list[object] | tuple[object, ...], children):
-            yield from _iter_ref_nodes(child)
-        return
+    for event in walk(node, prune=lambda current: isinstance(current, FuncCall)):
+        current = event.node
+        if isinstance(current, FuncCall):
+            _record_call_arguments(
+                self,
+                current.name,
+                _sequence_as_list(current.args),
+                context,
+                module_path,
+                continuous_site,
+                accesses,
+            )
+            continue
+        if isinstance(current, VarRef):
+            _record_ref(self, current, _READ, context, module_path, continuous_site, accesses)
 
 
 def _record_ref(
@@ -501,9 +468,6 @@ def _record_ref(
 def _ref_full_name(ref: object) -> str | None:
     if isinstance(ref, VarRef):
         return ref.name
-    if isinstance(ref, dict):
-        name = cast(dict[str, object], ref).get(const.KEY_VAR_NAME)
-        return name if isinstance(name, str) else None
     return None
 
 

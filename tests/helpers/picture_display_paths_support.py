@@ -13,17 +13,17 @@ from sattline_parser.models.ast_model import (
 def base_picture_with_single_chain() -> BasePicture:
     leaf = SingleModule(
         header=ModuleHeader(name="Panel", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
     )
     wrapper = SingleModule(
         header=ModuleHeader(name="L1", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
         submodules=[leaf],
     )
     return BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="Root",
-        moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
+        moduledefs=[ModuleDef(graph_objects=[GraphObject("CompositeObject")])],
         submodules=[wrapper],
     )
 
@@ -34,7 +34,7 @@ def module(
 ) -> SingleModule:
     return SingleModule(
         header=ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
         submodules=submodules or [],
     )
 
@@ -51,7 +51,7 @@ def base_picture_with_leading_dash_paths() -> BasePicture:
     return BasePicture(
         header=ModuleHeader(name="BasePicture", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="BasePicture",
-        moduledef=ModuleDef(),
+        moduledefs=[ModuleDef()],
         submodules=[
             module(
                 "Column",
@@ -185,7 +185,7 @@ def base_picture_with_moduletype_form_picture_display() -> BasePicture:
                         [
                             SingleModule(
                                 header=ModuleHeader(name="Form", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                                moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
+                                moduledefs=[ModuleDef(graph_objects=[GraphObject("CompositeObject")])],
                             )
                         ],
                     )

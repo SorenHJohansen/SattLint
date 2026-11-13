@@ -1,30 +1,25 @@
 # pyright: reportPrivateUsage=false
-"""Parser-backed project loading adapter (Phase 5).
+"""Parser-backed project loading adapter.
 
-This module is the thin bridge between ``sattline-parser`` and the SattLint
+This module is the bridge between ``sattline-parser`` and the SattLint
 ``ProjectGraph`` structures the application layer expects. It holds no SattLine
 resolution logic of its own: file discovery, per-artifact draft/official
-fallback, dependency recursion and program parsing are delegated to
+fallback, dependency recursion, and program parsing are delegated to
 ``sattline_parser.project`` (``SattLineProject`` / ``ProjectLookup`` /
-``read_dependency_names``), which mirrors the behaviour the old recursive
-loader used to own.
+``read_dependency_names``).
 
-What stays SattLint-side, per program, is the work that never belonged to the
-parser: semantic validation, graphics companion attachment, library naming,
-dependency-version conflict detection and definition indexing into the
-``ProjectGraph``.
+SattLint owns the per-program work the parser does not: semantic validation,
+graphics companion attachment, library naming, dependency-version conflict
+detection, and definition indexing into the ``ProjectGraph``. The application
+seams (``load_project``, reverse-library consumers, ``load_program_ast``) call
+this adapter through ``build_parser_binding`` + ``load_parser_project`` +
+``convert_project_into_graph``.
 
-The ``SattLineProjectLoader`` shell is retired (final layer of the Phase 5/6
-plan); the application seams built on it (``load_project``, reverse-library
-consumers, ``load_program_ast``) call this adapter directly through
-``build_parser_binding`` + ``load_parser_project`` + ``convert_project_into_graph``.
-
-Known behaviour approximations (unchanged SattLint semantics in practice):
+Known behaviour approximations:
 
 * Programs the parser silently drops under ``strict=False`` (missing code file
-  or unparseable source) surface as *missing* SattLint-side; the old loader
-  distinguished missing-vs-parse-failure. No corpus fixture exercises the
-  parse-failure branch.
+  or unparseable source) surface as *missing* SattLint-side. No corpus fixture
+  exercises the parse-failure branch.
 * The parser resolves a program's graph and ``.g``/``.y`` companion. SattLint
   consumes the parsed ``GraphicsModel`` through ``attach_graphics_companion``
   and owns only the workspace asset checks, correlation, and notice wording.
@@ -39,15 +34,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from time import perf_counter
 
-from sattline_parser.project import (
+from sattlint.parser_api import (
+    Diagnostic,
+    DiagnosticCode,
     LoadMode,
     LoadValidation,
     ProjectLookup,
     SattLineProgram,
     SattLineProject,
 )
-from sattline_parser.project import read_dependency_names as parser_read_dependency_names
-from sattline_parser.validation import Diagnostic, DiagnosticCode, DiagnosticSeverity
+from sattlint.parser_api import read_dependency_names as parser_read_dependency_names
 
 from ..core.syntax import CodeMode
 from ..graphics.graphics_helpers import attach_graphics_companion
@@ -66,11 +62,28 @@ LoadStageTimingSink = Callable[[str, str, float], None]
 #: are accepted here because the version-drift analyzer fixtures use same-name
 #: siblings with different datecodes; the old adapter passed
 #: ``enforce_unique_submodule_names=False`` for the same reason.
+#: Language diagnostics owned by the parser CLI, not by SattLint analyzers.
+#:
+#: Project mode loads partial workspaces: proprietary libraries and unrelated
+#: dependencies may be absent, so the parser reports names it cannot resolve.
+#: SattLint suppresses these four codes at load rather than turning a partial
+#: workspace into a hard failure. SattLint analyzers report the structural
+#: problems they can prove (for example duplicate siblings); undefined names
+#: and unknown datatype/moduletype names stay the parser CLI's responsibility.
+#: Do not add a code here without a written reason and a corpus case.
 _SUPPRESSED_DIAGNOSTIC_CODES = frozenset(
     {
+        # Duplicate sibling module names are reported by the module-structure
+        # analyzer; the loader keeps the first definition and continues.
         DiagnosticCode.DUPLICATE_SIBLING_SUBMODULE,
+        # Undefined names usually belong to an unavailable external library in
+        # project mode. The parser CLI reports them; SattLint does not.
         DiagnosticCode.UNDEFINED_VARIABLE,
+        # Unknown datatype names are expected when a dependency library is not
+        # available; the datatype analyzers report what they can resolve.
         DiagnosticCode.UNKNOWN_DATATYPE_NAME,
+        # Unknown moduletype names are expected for the same missing-library
+        # reason; moduletype resolution reports ambiguity separately.
         DiagnosticCode.UNKNOWN_MODULETYPE_NAME,
     }
 )
@@ -332,7 +345,7 @@ def _index_program(
 
         graphics_ext = program.format.graphics_ext
         graphics_path = code_path.with_suffix(graphics_ext) if graphics_ext is not None else None
-        attach_graphics_companion(
+        graph.graphics_attachments[name] = attach_graphics_companion(
             program.code,
             graphics=program.graphics,
             companion_path=graphics_path,
@@ -373,8 +386,10 @@ def _apply_diagnostics(
     """Translate the parser's diagnostics into SattLint policy outcomes.
 
     A datecode conflict is fatal under ``strict`` (the old loader raised it for
-    every program). A root program's validation error is fatal; the same error
-    on a dependency becomes a notice. Everything else is a notice.
+    every program). A root program's final diagnostic is fatal; the same
+    diagnostic on a dependency becomes a notice. Tentative diagnostics, which
+    depend on a part of the closure that failed to load, are notices. Everything
+    else is a notice.
     """
     conflicts = [item for item in program.diagnostics if item.code is DiagnosticCode.DATECODE_CONFLICT]
     if conflicts and strict:
@@ -388,12 +403,9 @@ def _apply_diagnostics(
         if diagnostic.code is DiagnosticCode.DATECODE_CONFLICT:
             _record_project_warning(graph, program.name, notice)
             continue
-        if diagnostic.severity is DiagnosticSeverity.ERROR:
-            if is_root:
-                if first_error is None:
-                    first_error = diagnostic
-                continue
-            _record_project_warning(graph, program.name, notice)
+        if not diagnostic.tentative and is_root:
+            if first_error is None:
+                first_error = diagnostic
             continue
         _record_project_warning(graph, program.name, notice)
 

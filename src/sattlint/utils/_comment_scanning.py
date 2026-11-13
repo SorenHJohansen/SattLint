@@ -3,28 +3,30 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-_KEYWORD_MODULEDEFINITION = "moduledefinition"  # nosec B105 - SattLine grammar keyword
-_KEYWORD_PRIVATE = "private_"  # nosec B105 - SattLine grammar keyword
-_KEYWORD_MODULECODE = "modulecode"  # nosec B105 - SattLine grammar keyword
-_KEYWORD_ENDDEF = "enddef"  # nosec B105 - SattLine grammar keyword
-_KEYWORD_INVOCATION = "invocation"  # nosec B105 - SattLine grammar keyword
-_KEYWORD_BASEPICTURE = "basepicture"  # nosec B105 - SattLine grammar keyword
-_KEYWORD_SUBMODULES = "submodules"
-_KEYWORD_TYPEDEFINITIONS = "typedefinitions"
-_KEYWORD_MODULEPARAMETERS = "moduleparameters"
-_KEYWORD_LOCALVARIABLES = "localvariables"
-_KEYWORD_EQUATIONBLOCK = "equationblock"
-_KEYWORD_ENDEQUATIONBLOCK = "endequationblock"
-_KEYWORD_SEQUENCE = "sequence"
-_KEYWORD_OPENSEQUENCE = "opensequence"
-_KEYWORD_ENDSEQUENCE = "endsequence"
-_KEYWORD_ENDOPENSEQUENCE = "endopensequence"
-_KEYWORD_SEQINITSTEP = "seqinitstep"
-_KEYWORD_SEQSTEP = "seqstep"
-_KEYWORD_SEQTRANSITION = "seqtransition"
-_KEYWORD_SUBSEQTRANSITION = "subseqtransition"
-_KEYWORD_ENDSUBSEQTRANSITION = "endsubseqtransition"
-_KEYWORD_SEQFORK = "seqfork"
+from sattlint.parser_api import constants as const
+
+# Keyword facts come from the parser's grammar constants, not a local list, so a
+# grammar rename cannot silently desynchronize the comment scanner.
+_KEYWORD_MODULEDEFINITION = const.GRAMMAR_VALUE_MODULEDEFINITION.casefold()
+_KEYWORD_PRIVATE = const.GRAMMAR_VALUE_PRIVATE.casefold()
+_KEYWORD_MODULECODE = const.GRAMMAR_VALUE_MODULECODE.casefold()
+_KEYWORD_ENDDEF = const.GRAMMAR_VALUE_ENDDEF_KW.casefold()
+_KEYWORD_INVOCATION = const.GRAMMAR_VALUE_INVOCATION.casefold()
+_KEYWORD_SUBMODULES = const.GRAMMAR_VALUE_SUBMODULES.casefold()
+_KEYWORD_TYPEDEFINITIONS = const.GRAMMAR_VALUE_TYPEDEFINITIONS.casefold()
+_KEYWORD_MODULEPARAMETERS = const.GRAMMAR_VALUE_MODULEPARAMETERS.casefold()
+_KEYWORD_LOCALVARIABLES = const.GRAMMAR_VALUE_LOCALVARIABLES.casefold()
+_KEYWORD_EQUATIONBLOCK = const.GRAMMAR_VALUE_EQUATIONBLOCK.casefold()
+_KEYWORD_SEQUENCE = const.GRAMMAR_VALUE_SEQUENCE.casefold()
+_KEYWORD_OPENSEQUENCE = const.GRAMMAR_VALUE_OPENSEQUENCE.casefold()
+_KEYWORD_ENDSEQUENCE = const.GRAMMAR_VALUE_ENDSEQUENCE.casefold()
+_KEYWORD_ENDOPENSEQUENCE = const.GRAMMAR_VALUE_ENDOPENSEQUENCE.casefold()
+_KEYWORD_SEQINITSTEP = const.GRAMMAR_VALUE_SEQINITSTEP.casefold()
+_KEYWORD_SEQSTEP = const.GRAMMAR_VALUE_SEQSTEP.casefold()
+_KEYWORD_SEQTRANSITION = const.GRAMMAR_VALUE_SEQTRANSITION.casefold()
+_KEYWORD_SUBSEQTRANSITION = const.GRAMMAR_VALUE_SUBSEQTRANSITION.casefold()
+_KEYWORD_ENDSUBSEQTRANSITION = const.GRAMMAR_VALUE_ENDSUBSEQTRANSITION.casefold()
+_KEYWORD_SEQFORK = const.GRAMMAR_VALUE_SEQFORK.casefold()
 _MODULE_PATH_BREAK_KEYWORDS = frozenset(
     {
         _KEYWORD_MODULEDEFINITION,
@@ -45,153 +47,6 @@ class _ModuleCodeContext:
     sequence_name: str | None = None
     step_name: str | None = None
     pending_name_kind: str | None = None
-
-
-def scan_disallowed_comments[TViolation](  # noqa: PLR0915
-    text: str,
-    *,
-    advance_position: Callable[[str, str | None, int, int], tuple[int, int, int]],
-    is_at_keyword: Callable[[str, int, str], bool],
-    is_valid_enddef_label_comment: Callable[[str], bool],
-    violation_factory: Callable[[int, int, str], TViolation],
-) -> list[TViolation]:
-    violations: list[TViolation] = []
-    n = len(text)
-    i = 0
-    depth = 0
-    in_string = False
-    string_quote = ""
-    line = 1
-    col = 1
-    in_module_code = False
-    awaiting_first_block = False
-    pending_enddef_label = False
-    comment_start_line = 1
-    comment_start_col = 1
-    comment_text: list[str] = []
-    comment_allowed_by_enddef = False
-
-    while i < n:
-        ch = text[i]
-        next_ch = text[i + 1] if i + 1 < n else None
-
-        if depth == 0:
-            if not in_string:
-                if pending_enddef_label and not ch.isspace() and not (ch == "(" and next_ch == "*"):
-                    pending_enddef_label = False
-
-                if is_at_keyword(text, i, "ModuleCode"):
-                    in_module_code = True
-                    awaiting_first_block = True
-                    pending_enddef_label = False
-                    i += len("ModuleCode")
-                    col += len("ModuleCode")
-                    continue
-
-                if in_module_code and is_at_keyword(text, i, "EQUATIONBLOCK"):
-                    awaiting_first_block = False
-                    i += len("EQUATIONBLOCK")
-                    col += len("EQUATIONBLOCK")
-                    pending_enddef_label = False
-                    continue
-
-                if in_module_code and is_at_keyword(text, i, "OPENSEQUENCE"):
-                    awaiting_first_block = False
-                    i += len("OPENSEQUENCE")
-                    col += len("OPENSEQUENCE")
-                    pending_enddef_label = False
-                    continue
-
-                if in_module_code and is_at_keyword(text, i, "SEQUENCE"):
-                    awaiting_first_block = False
-                    i += len("SEQUENCE")
-                    col += len("SEQUENCE")
-                    pending_enddef_label = False
-                    continue
-
-                if is_at_keyword(text, i, "ENDDEF"):
-                    if in_module_code:
-                        awaiting_first_block = False
-                        in_module_code = False
-                    pending_enddef_label = True
-                    i += len("ENDDEF")
-                    col += len("ENDDEF")
-                    continue
-
-                if ch == '"' or ch == "'":
-                    in_string = True
-                    string_quote = ch
-                    line, col, extra = advance_position(ch, next_ch, line, col)
-                    i += 1 + extra
-                    continue
-
-                if ch == "(" and next_ch == "*":
-                    comment_start_line = line
-                    comment_start_col = col
-                    comment_text = []
-                    comment_allowed_by_enddef = pending_enddef_label
-                    pending_enddef_label = False
-                    if in_module_code and awaiting_first_block and not comment_allowed_by_enddef:
-                        violations.append(violation_factory(comment_start_line, comment_start_col, ""))
-                    depth = 1
-                    i += 2
-                    col += 2
-                    continue
-            else:
-                if ch == "\n" or ch == "\r":
-                    line, col, extra = advance_position(ch, next_ch, line, col)
-                    i += 1 + extra
-                    in_string = False
-                    string_quote = ""
-                    continue
-                if ch == string_quote:
-                    if next_ch == string_quote:
-                        line, col, extra = advance_position(ch, next_ch, line, col)
-                        i += 1 + extra
-                        if next_ch is not None:
-                            line, col, extra = advance_position(next_ch, None, line, col)
-                            i += 1 + extra
-                        continue
-                    in_string = False
-                    string_quote = ""
-                elif ch == "\\":
-                    line, col, extra = advance_position(ch, next_ch, line, col)
-                    i += 1 + extra
-                    if next_ch is not None:
-                        line, col, extra = advance_position(next_ch, None, line, col)
-                        i += 1 + extra
-                    continue
-
-            line, col, extra = advance_position(ch, next_ch, line, col)
-            i += 1 + extra
-        else:
-            if ch == "(" and next_ch == "*":
-                depth += 1
-                comment_text.append("(*")
-                i += 2
-                col += 2
-                continue
-
-            if ch == "*" and next_ch == ")":
-                depth -= 1
-                i += 2
-                col += 2
-                if depth == 0:
-                    if comment_allowed_by_enddef and not is_valid_enddef_label_comment("".join(comment_text)):
-                        violations.append(
-                            violation_factory(comment_start_line, comment_start_col, "".join(comment_text))
-                        )
-                    comment_text = []
-                    comment_allowed_by_enddef = False
-                else:
-                    comment_text.append("*)")
-                continue
-
-            comment_text.append(ch)
-            line, col, extra = advance_position(ch, next_ch, line, col)
-            i += 1 + extra
-
-    return violations
 
 
 def scan_comments_with_code[THit](  # noqa: PLR0915
@@ -299,26 +154,12 @@ def scan_comments_with_code[THit](  # noqa: PLR0915
                         col += len(token)
                         continue
 
-                    if token_cf == _KEYWORD_BASEPICTURE:
-                        candidate_definition_name = token
-                        i = token_end
-                        col += len(token)
-                        continue
-
                     if current_context is not None:
                         if token_cf == _KEYWORD_EQUATIONBLOCK:
                             current_context.equation_name = None
                             current_context.sequence_name = None
                             current_context.step_name = None
                             current_context.pending_name_kind = "equation"
-                            candidate_definition_name = None
-                            i = token_end
-                            col += len(token)
-                            continue
-
-                        if token_cf == _KEYWORD_ENDEQUATIONBLOCK:
-                            current_context.equation_name = None
-                            current_context.pending_name_kind = None
                             candidate_definition_name = None
                             i = token_end
                             col += len(token)

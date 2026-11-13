@@ -5,10 +5,10 @@ from __future__ import annotations
 import difflib
 from typing import TYPE_CHECKING, Any
 
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import ParameterMapping, Simple_DataType, Variable
+from sattlint.parser_api import ParameterMapping, Simple_DataType, Variable
 
 from ...resolution import AccessKind, CanonicalPath
+from ...resolution.common import varname_full
 from ...resolution.scope import ScopeContext
 from ...utils.casefolding import is_anytype_name
 from ..shared.variable_utils import matches_root_origin
@@ -440,20 +440,15 @@ def is_from_root_origin(
     )
 
 
-def _extract_field_path(self: VariablesAnalyzer, var_dict: dict[str, Any]) -> tuple[str | None, str | None]:
-    if const.KEY_VAR_NAME not in var_dict:
-        return None, None
-
-    full_name = var_dict[const.KEY_VAR_NAME]
-    if not isinstance(full_name, str) or not full_name:
+def _extract_field_path(self: VariablesAnalyzer, var_ref: object) -> tuple[str | None, str | None]:
+    full_name = varname_full(var_ref)
+    if not full_name:
         return None, None
     if "." not in full_name:
         return full_name.casefold(), None
 
-    parts = full_name.split(".", 1)
-    base = parts[0].casefold()
-    field_path = parts[1] if len(parts) > 1 else None
-    return base, field_path
+    base, field_path = full_name.split(".", 1)
+    return base.casefold(), field_path
 
 
 class VariablesAccessMixin:
@@ -651,9 +646,9 @@ class VariablesAccessMixin:
 
     def _extract_field_path(
         self: Any,
-        var_dict: dict[str, Any],
+        var_ref: object,
     ) -> tuple[str | None, str | None]:
-        return _extract_field_path(self, var_dict)
+        return _extract_field_path(self, var_ref)
 
 
 canonical_path = _canonical_path

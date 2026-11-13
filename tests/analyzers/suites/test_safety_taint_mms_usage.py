@@ -16,8 +16,8 @@ def test_variable_usage_datatype_report_returns_not_found_message():
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     report = report_datatype_usage(bp, "MissingValue")
@@ -43,7 +43,7 @@ def test_variable_usage_reports_include_field_and_whole_variable_accesses():
         submodules=[
             SingleModule(
                 header=_hdr("Unit"),
-                moduledef=None,
+                moduledefs=[],
                 moduleparameters=[],
                 localvariables=[
                     Variable(name="Dv", datatype="UsageRecord"),
@@ -51,26 +51,28 @@ def test_variable_usage_reports_include_field_and_whole_variable_accesses():
                     Variable(name="Sink", datatype=Simple_DataType.INTEGER),
                 ],
                 submodules=[],
-                modulecode=ModuleCode(
-                    equations=[
-                        Equation(
-                            name="Usage",
-                            position=(0.0, 0.0),
-                            size=(1.0, 1.0),
-                            code=[
-                                Assignment(target=_varref("Sink"), value=_varref("Dv.Source")),
-                                Assignment(target=_varref("Dv.Target"), value=IntLiteral(1)),
-                                Assignment(target=_varref("Mirror"), value=_varref("Dv")),
-                                Assignment(target=_varref("Dv"), value=_varref("Mirror")),
-                            ],
-                        )
-                    ]
-                ),
+                modulecodes=[
+                    ModuleCode(
+                        equationblocks=[
+                            Equation(
+                                name="Usage",
+                                position=(0.0, 0.0),
+                                size=(1.0, 1.0),
+                                code=[
+                                    Assignment(target=_varref("Sink"), value=_varref("Dv.Source")),
+                                    Assignment(target=_varref("Dv.Target"), value=IntLiteral(1)),
+                                    Assignment(target=_varref("Mirror"), value=_varref("Dv")),
+                                    Assignment(target=_varref("Dv"), value=_varref("Mirror")),
+                                ],
+                            )
+                        ]
+                    )
+                ],
                 parametermappings=[],
             )
         ],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     datatype_report = report_datatype_usage(bp, "Dv")

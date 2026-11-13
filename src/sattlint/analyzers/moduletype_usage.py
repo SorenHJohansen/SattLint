@@ -6,7 +6,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef, ModuleTypeInstance
+from sattlint.parser_api import BasePicture, ModuleTypeDef, ModuleTypeInstance
 
 from ..models.project_graph import ProjectGraph
 from ..resolution.common import dedupe_moduletype_defs, select_moduletype_def_strict
@@ -109,6 +109,7 @@ def analyze_moduletype_usage(
                 current_library=scope.origin_lib,
                 current_file=scope.origin_file,
                 unavailable_libraries=None if graph is None else graph.unavailable_libraries,
+                library_dependencies=None if graph is None else graph.library_dependencies,
             )
             invocation_key = (
                 id(definition),

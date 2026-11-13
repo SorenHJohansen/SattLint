@@ -53,24 +53,26 @@ def test_copyvariable_marks_all_leaf_fields_read_and_written():
 
     m1 = SingleModule(
         header=_hdr("M1"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[src, dst, status],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                _eq(
-                    [
-                        FuncCallStmt(
-                            call=FuncCall(
-                                name="CopyVariable",
-                                args=(_varref("Src"), _varref("Dst"), _varref("Status")),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    _eq(
+                        [
+                            FuncCallStmt(
+                                call=FuncCall(
+                                    name="CopyVariable",
+                                    args=(_varref("Src"), _varref("Dst"), _varref("Status")),
+                                )
                             )
-                        )
-                    ]
-                )
-            ]
-        ),
+                        ]
+                    )
+                ]
+            )
+        ],
         parametermappings=[],
     )
 
@@ -80,8 +82,8 @@ def test_copyvariable_marks_all_leaf_fields_read_and_written():
         moduletype_defs=[],
         localvariables=[],
         submodules=[m1],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -128,24 +130,26 @@ def test_copyvarnosort_expands_nested_prefix_fields():
 
     m1 = SingleModule(
         header=_hdr("M1"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[src, dst, status],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                _eq(
-                    [
-                        FuncCallStmt(
-                            call=FuncCall(
-                                name="CopyVarNoSort",
-                                args=(_varref("OuterSrc.Inner"), _varref("OuterDst.Inner"), _varref("Status")),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    _eq(
+                        [
+                            FuncCallStmt(
+                                call=FuncCall(
+                                    name="CopyVarNoSort",
+                                    args=(_varref("OuterSrc.Inner"), _varref("OuterDst.Inner"), _varref("Status")),
+                                )
                             )
-                        )
-                    ]
-                )
-            ]
-        ),
+                        ]
+                    )
+                ]
+            )
+        ],
         parametermappings=[],
     )
 
@@ -155,8 +159,8 @@ def test_copyvarnosort_expands_nested_prefix_fields():
         moduletype_defs=[],
         localvariables=[],
         submodules=[m1],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -189,22 +193,24 @@ def test_partial_record_usage_reports_unused_leaf_fields():
 
     m1 = SingleModule(
         header=_hdr("M1"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[rec],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                _eq(
-                    [
-                        Assignment(
-                            target=_varref("Rec.A"),
-                            value=1,
-                        )
-                    ]
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    _eq(
+                        [
+                            Assignment(
+                                target=_varref("Rec.A"),
+                                value=1,
+                            )
+                        ]
+                    )
+                ]
+            )
+        ],
         parametermappings=[],
     )
 
@@ -214,8 +220,8 @@ def test_partial_record_usage_reports_unused_leaf_fields():
         moduletype_defs=[],
         localvariables=[],
         submodules=[m1],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS))
@@ -249,22 +255,24 @@ def test_whole_record_access_does_not_report_unused_leaf_fields():
 
     m1 = SingleModule(
         header=_hdr("M1"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[src, dst],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                _eq(
-                    [
-                        Assignment(
-                            target=_varref("Dst"),
-                            value=_varref("Src"),
-                        )
-                    ]
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    _eq(
+                        [
+                            Assignment(
+                                target=_varref("Dst"),
+                                value=_varref("Src"),
+                            )
+                        ]
+                    )
+                ]
+            )
+        ],
         parametermappings=[],
     )
 
@@ -274,8 +282,8 @@ def test_whole_record_access_does_not_report_unused_leaf_fields():
         moduletype_defs=[],
         localvariables=[],
         submodules=[m1],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS))
@@ -300,24 +308,26 @@ def test_copyvariable_fails_loudly_on_unknown_field_prefix():
 
     m1 = SingleModule(
         header=_hdr("M1"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[src, dst, status],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                _eq(
-                    [
-                        FuncCallStmt(
-                            call=FuncCall(
-                                name="CopyVariable",
-                                args=(_varref("Src.Nope"), _varref("Dst"), _varref("Status")),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    _eq(
+                        [
+                            FuncCallStmt(
+                                call=FuncCall(
+                                    name="CopyVariable",
+                                    args=(_varref("Src.Nope"), _varref("Dst"), _varref("Status")),
+                                )
                             )
-                        )
-                    ]
-                )
-            ]
-        ),
+                        ]
+                    )
+                ]
+            )
+        ],
         parametermappings=[],
     )
 
@@ -327,8 +337,8 @@ def test_copyvariable_fails_loudly_on_unknown_field_prefix():
         moduletype_defs=[],
         localvariables=[],
         submodules=[m1],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -342,24 +352,26 @@ def test_copyvariable_allows_opaque_builtin_record_type():
 
     m1 = SingleModule(
         header=_hdr("M1"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[src, dst],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                _eq(
-                    [
-                        FuncCallStmt(
-                            call=FuncCall(
-                                name="CopyVariable",
-                                args=(_varref("Random"), _varref("Random2")),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    _eq(
+                        [
+                            FuncCallStmt(
+                                call=FuncCall(
+                                    name="CopyVariable",
+                                    args=(_varref("Random"), _varref("Random2")),
+                                )
                             )
-                        )
-                    ]
-                )
-            ]
-        ),
+                        ]
+                    )
+                ]
+            )
+        ],
         parametermappings=[],
     )
 
@@ -369,8 +381,8 @@ def test_copyvariable_allows_opaque_builtin_record_type():
         moduletype_defs=[],
         localvariables=[],
         submodules=[m1],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp, fail_loudly=False)
@@ -397,36 +409,38 @@ def test_array_builtins_bind_record_element_contracts_and_mark_whole_record_acce
 
     module = SingleModule(
         header=_hdr("M1"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[array_var, seed, out, status],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                _eq(
-                    [
-                        FuncCallStmt(
-                            call=FuncCall(
-                                name="CreateArray",
-                                args=(_varref("Arr"), 1, 2, _varref("Seed"), _varref("Status")),
-                            )
-                        ),
-                        FuncCallStmt(
-                            call=FuncCall(
-                                name="GetArray",
-                                args=(_varref("Arr"), 1, _varref("Out"), _varref("Status")),
-                            )
-                        ),
-                        FuncCallStmt(
-                            call=FuncCall(
-                                name="PutArray",
-                                args=(_varref("Arr"), 2, _varref("Seed"), _varref("Status")),
-                            )
-                        ),
-                    ]
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    _eq(
+                        [
+                            FuncCallStmt(
+                                call=FuncCall(
+                                    name="CreateArray",
+                                    args=(_varref("Arr"), 1, 2, _varref("Seed"), _varref("Status")),
+                                )
+                            ),
+                            FuncCallStmt(
+                                call=FuncCall(
+                                    name="GetArray",
+                                    args=(_varref("Arr"), 1, _varref("Out"), _varref("Status")),
+                                )
+                            ),
+                            FuncCallStmt(
+                                call=FuncCall(
+                                    name="PutArray",
+                                    args=(_varref("Arr"), 2, _varref("Seed"), _varref("Status")),
+                                )
+                            ),
+                        ]
+                    )
+                ]
+            )
+        ],
         parametermappings=[],
     )
 
@@ -436,8 +450,8 @@ def test_array_builtins_bind_record_element_contracts_and_mark_whole_record_acce
         moduletype_defs=[],
         localvariables=[],
         submodules=[module],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(bp)

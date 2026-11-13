@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
+    Assignment,
     FrameModule,
+    FuncCallStmt,
+    IfStmt,
     ModuleCode,
     ModuleTypeDef,
     ModuleTypeInstance,
@@ -17,20 +19,11 @@ from sattline_parser.models.ast_model import (
     SFCTransition,
     SFCTransitionSub,
     SingleModule,
+    VarRef,
 )
-from sattline_parser.models.expressions import Assignment, FuncCallStmt, IfStmt, VarRef
 
 from ...resolution.common import resolve_moduletype_def_strict
 from ...resolution.scope import ScopeContext
-from ..shared.ast_node_helpers import (
-    object_tuple as _object_tuple,
-)
-from ..shared.ast_node_helpers import (
-    sequence_as_list as _sequence_as_list,
-)
-from ..shared.ast_node_helpers import (
-    statement_children as _statement_children,
-)
 from ._dataflow_common import PendingWrite, StateMap
 from ._dataflow_scope_support import DataflowScopeSupportMixin
 
@@ -161,7 +154,7 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
             return state
 
         current_state = state
-        for equation in modulecode.equations or []:
+        for equation in modulecode.equationblocks or []:
             for root_key in self._active_write_roots(equation.code or [], context):
                 current_state = self._invalidate_symbol(current_state, root_key)
         for sequence in modulecode.sequences or []:
@@ -171,7 +164,7 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
             finally:
                 self._pop_site()
 
-        for equation in modulecode.equations or []:
+        for equation in modulecode.equationblocks or []:
             self._push_site(f"EQ:{getattr(equation, 'name', '<unnamed>')}")
             try:
                 current_state = self._analyze_block(equation.code or [], context, module_path, current_state)
@@ -365,15 +358,11 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
             scope = scope.parent_context
         return next_state
 
-    def _active_write_roots(self: Any, statements: list[Any], context: ScopeContext) -> set[tuple[str, ...]]:
+    def _active_write_roots(self: Any, statements: list[object], context: ScopeContext) -> set[tuple[str, ...]]:
         roots: set[tuple[str, ...]] = set()
         pending: list[object] = list(statements)
         while pending:
             statement = pending.pop()
-            children = _statement_children(statement)
-            if children is not None:
-                pending.extend(children)
-                continue
             if isinstance(statement, IfStmt):
                 for _condition, branch in statement.branches:
                     pending.extend(branch)
@@ -383,18 +372,6 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
                 resolved = self._resolve_ref(statement.target, context)
                 if resolved is not None:
                     roots.add(resolved.symbol_root_key)
-                continue
-            tuple_node = _object_tuple(statement)
-            if tuple_node is not None and tuple_node:
-                if tuple_node[0] == const.GRAMMAR_VALUE_IF:
-                    _if_tag, branches_raw, else_block = tuple_node
-                    for _condition, branch in cast(list[tuple[object, object]] | None, branches_raw) or []:
-                        pending.extend(_sequence_as_list(branch))
-                    pending.extend(_sequence_as_list(else_block))
-                elif tuple_node[0] == const.KEY_ASSIGN and len(tuple_node) >= 3:
-                    resolved = self._resolve_ref(tuple_node[1], context)
-                    if resolved is not None:
-                        roots.add(resolved.symbol_root_key)
         return roots
 
     def _analyze_block(
@@ -416,13 +393,6 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
         module_path: list[str],
         state: StateMap,
     ) -> StateMap:
-        statement_children = _statement_children(obj)
-        if statement_children is not None:
-            current_state = state
-            for child in statement_children:
-                current_state = self._analyze_stmt_or_expr(child, context, module_path, current_state)
-            return current_state
-
         if isinstance(obj, IfStmt):
             return self._analyze_if_statement(obj, context, module_path, state)
 
@@ -435,31 +405,11 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
         if isinstance(obj, FuncCallStmt):
             current_state = state
             self._report_expression_temporal_hazards(obj.call, context, module_path, current_state)
+            # Expression evaluation applies signature-driven output writes, so
+            # the statement path must not apply them a second time (a repeated
+            # write would report the first write as a dead overwrite).
             self._evaluate_expression(obj.call, context, module_path, current_state)
-            function_name = obj.call.name
-            args = _sequence_as_list(obj.call.args)
-            return self._apply_call_side_effects(function_name, args, context, current_state)
-
-        tuple_node = _object_tuple(obj)
-        if tuple_node is not None and tuple_node and tuple_node[0] == const.GRAMMAR_VALUE_IF:
-            return self._analyze_if_statement(cast(tuple[Any, ...], tuple_node), context, module_path, state)
-
-        if tuple_node is not None and tuple_node and tuple_node[0] == const.KEY_ASSIGN and len(tuple_node) >= 3:
-            target = tuple_node[1]
-            expr = tuple_node[2]
-            current_state = state
-            self._report_expression_temporal_hazards(expr, context, module_path, current_state)
-            value = self._evaluate_expression(expr, context, module_path, current_state)
-            return self._write_target(target, value, context, current_state)
-
-        if tuple_node is not None and tuple_node and tuple_node[0] == const.KEY_FUNCTION_CALL:
-            function_name = tuple_node[1] if len(tuple_node) > 1 else None
-            args = _sequence_as_list(tuple_node[2] if len(tuple_node) > 2 else None)
-            current_state = state
-            for argument in args:
-                self._report_expression_temporal_hazards(argument, context, module_path, current_state)
-                self._evaluate_expression(argument, context, module_path, current_state)
-            return self._apply_call_side_effects(function_name, args, context, current_state)
+            return current_state
 
         self._report_expression_temporal_hazards(obj, context, module_path, state)
         self._evaluate_expression(obj, context, module_path, state)
@@ -467,17 +417,13 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
 
     def _analyze_if_statement(
         self: Any,
-        statement: IfStmt | tuple[Any, ...],
+        statement: IfStmt,
         context: ScopeContext,
         module_path: list[str],
         state: StateMap,
     ) -> StateMap:
-        if isinstance(statement, IfStmt):
-            branches = list(statement.branches)
-            else_block = statement.else_block
-        else:
-            _if_tag, branches_raw, else_block = statement
-            branches = cast(list[tuple[object, object]] | None, branches_raw) or []
+        branches = list(statement.branches)
+        else_block = statement.else_block
         reachable_states: list[StateMap] = []
         fallthrough_state = state
 

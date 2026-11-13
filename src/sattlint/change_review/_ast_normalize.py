@@ -13,35 +13,26 @@ is otherwise generic dataclass traversal.
 
 from __future__ import annotations
 
-from dataclasses import fields, is_dataclass
+from dataclasses import Field, fields, is_dataclass
 from enum import Enum
 from typing import cast
 
-_IGNORED_FIELDS = frozenset(
+#: Fields the parser does not mark as layout, but Change Review treats as
+#: presentation-only. Comment streams are the product policy; ``span`` and
+#: ``declaration_span`` cover SattLint's own models, which do not carry parser
+#: metadata. Every other field is semantic unless the parser marks it layout.
+_SATTLINT_IGNORED_FIELDS = frozenset(
     {
-        "span",
-        "declaration_span",
-        "position",
-        "size",
-        "invoke_coord",
-        "invoke_coord_tails",
-        "clipping_bounds",
-        "zoom_limits",
-        "zoomable",
-        "grid",
-        "seq_layers",
-        "layer_info",
-        "enable_tail",
-        "datecode",
-        "description",
         "trailing_comments",
         "description_comments",
+        "span",
+        "declaration_span",
     }
 )
 
 
-def _field_is_ignored(name: str) -> bool:
-    return name in _IGNORED_FIELDS
+def _field_is_ignored(field: Field[object]) -> bool:
+    return bool(field.metadata.get("layout")) or field.name in _SATTLINT_IGNORED_FIELDS
 
 
 def normalize_ast_value(value: object) -> object:
@@ -72,7 +63,7 @@ def normalize_ast_value(value: object) -> object:
             sorted(
                 (field.name, normalize_ast_value(getattr(value, field.name)))
                 for field in fields(value)
-                if not _field_is_ignored(field.name)
+                if not _field_is_ignored(field)
             )
         )
         return ("dc", type(value).__name__, normalized_fields)

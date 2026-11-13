@@ -51,24 +51,26 @@ def _build_initvariable_picture() -> tuple[BasePicture, Variable, Variable]:
 
     module = SingleModule(
         header=_hdr("M1"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[],
         localvariables=[init_record, record, status],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                _eq(
-                    [
-                        FuncCallStmt(
-                            call=FuncCall(
-                                name="InitVariable",
-                                args=(_varref("Rec"), _varref("InitRec"), _varref("Status")),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    _eq(
+                        [
+                            FuncCallStmt(
+                                call=FuncCall(
+                                    name="InitVariable",
+                                    args=(_varref("Rec"), _varref("InitRec"), _varref("Status")),
+                                )
                             )
-                        )
-                    ]
-                )
-            ]
-        ),
+                        ]
+                    )
+                ]
+            )
+        ],
         parametermappings=[],
     )
 
@@ -78,8 +80,8 @@ def _build_initvariable_picture() -> tuple[BasePicture, Variable, Variable]:
         moduletype_defs=[],
         localvariables=[],
         submodules=[module],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
     return picture, init_record, record
 

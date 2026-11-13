@@ -4,9 +4,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+from ..parser_api import BasePicture, DataType, ModuleTypeDef
 from ._validation_notice import ValidationNotice
-from .ast_model import BasePicture, DataType, ModuleTypeDef
+
+if TYPE_CHECKING:
+    from ..graphics.picture_display_paths import PictureDisplayOccurrence
+    from ..graphics.picture_display_runtime import CompositeRecordOccurrence
+    from ..graphics.validation import GraphicsCompositeRecord, PictureDisplayRecord
+    from ..parser_api import GraphicsBinding, GraphicsMessage
 
 
 def _ast_by_name_factory() -> dict[str, BasePicture]:
@@ -61,6 +68,31 @@ def _timings_factory() -> dict[str, float]:
     return {}
 
 
+@dataclass(frozen=True)
+class GraphicsAttachments:
+    """SattLint's graphics view of one program, kept off the parser's AST.
+
+    The parser owns the companion scan; this value carries the correlated
+    record shapes the analyzers read. It is keyed by program name on
+    :attr:`ProjectGraph.graphics_attachments`.
+    """
+
+    file_name: str | None = None
+    bindings: tuple[GraphicsBinding, ...] = ()
+    messages: tuple[GraphicsMessage, ...] = ()
+    composite_records: tuple[GraphicsCompositeRecord, ...] = ()
+    composite_occurrences: tuple[CompositeRecordOccurrence, ...] = ()
+    picture_display_records: tuple[PictureDisplayRecord, ...] = ()
+    picture_display_occurrences: tuple[PictureDisplayOccurrence, ...] = ()
+
+
+EMPTY_GRAPHICS_ATTACHMENTS = GraphicsAttachments()
+
+
+def _graphics_attachments_factory() -> dict[str, GraphicsAttachments]:
+    return {}
+
+
 def _timings_by_program_factory() -> dict[str, dict[str, float]]:
     return {}
 
@@ -108,6 +140,8 @@ class ProjectGraph:
     load_stage_timings_by_program: dict[str, dict[str, float]] = field(default_factory=_timings_by_program_factory)
     graphics_load_timings: dict[str, float] = field(default_factory=_timings_factory)
     graphics_load_timings_by_program: dict[str, dict[str, float]] = field(default_factory=_timings_by_program_factory)
+    # Program name -> SattLint's graphics view of that program.
+    graphics_attachments: dict[str, GraphicsAttachments] = field(default_factory=_graphics_attachments_factory)
     # True only when this whole graph was replayed from the project-level analysis-result cache
     # (see _app_analysis_loading.py); all timing/count fields above are then stale/historical,
     # not measurements of the current call.
@@ -173,6 +207,28 @@ class ProjectGraph:
     def root_origin_file_for_basepicture(self, bp: BasePicture) -> str | None:
         return self.root_origin_file_for_name(bp.header.name)
 
+    def graphics_attachments_for(self, bp: BasePicture) -> GraphicsAttachments:
+        """The graphics view attached to ``bp``, or an empty value when none was attached."""
+        for name, picture in self.ast_by_name.items():
+            if picture is bp:
+                return self.graphics_attachments.get(name, EMPTY_GRAPHICS_ATTACHMENTS)
+
+        # ``merge_project_basepicture`` returns a ``replace`` clone, so identity
+        # fails for the merged picture the analyzers receive. Match the clone to
+        # its indexed original by the fields the merge preserves.
+        matches = [
+            name
+            for name, picture in self.ast_by_name.items()
+            if picture.header.name == bp.header.name
+            and picture.origin_file == bp.origin_file
+            and picture.origin_lib == bp.origin_lib
+        ]
+        if len(matches) == 1:
+            return self.graphics_attachments.get(matches[0], EMPTY_GRAPHICS_ATTACHMENTS)
+
+        program_name = bp.name or bp.header.name
+        return self.graphics_attachments.get(program_name, EMPTY_GRAPHICS_ATTACHMENTS)
+
     def index_from_basepic(
         self,
         bp: BasePicture,
@@ -206,10 +262,8 @@ def merge_project_basepicture(root_bp: BasePicture, graph: ProjectGraph) -> Base
     """Merge gathered moduletype/datatype/label-definitions into the root base picture."""
     merged_datatypes: list[DataType] = list(graph.datatype_defs.values())
     merged_modtypes: list[ModuleTypeDef] = list(graph.moduletype_defs.values())
-    lib_deps = {lib: sorted(deps) for lib, deps in (graph.library_dependencies or {}).items()}
     return replace(
         root_bp,
         datatype_defs=merged_datatypes,
         moduletype_defs=merged_modtypes,
-        library_dependencies=lib_deps,
     )

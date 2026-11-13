@@ -7,10 +7,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, TypeGuard
 
 from lark.exceptions import UnexpectedInput
-from sattline_parser import parse_source_text as parser_core_parse_source_text
-from sattline_parser.api import read_text_cp1252
-from sattline_parser.models.ast_model import BasePicture
-from sattline_parser.preprocessing import is_compressed, preprocess_sl_text
+
+from sattlint.parser_api import BasePicture, source_text_for_parse
+from sattlint.parser_api import parse_source_text as parser_core_parse_source_text
 
 from ..models.project_graph import ProjectGraph
 from ..validation.policy import validate_basepicture_strict
@@ -104,9 +103,7 @@ def graphics_source_context_path(graphics_path: Path) -> Path | None:
 
 def load_picture_display_source_context(source_path: Path) -> BasePicture | None:
     try:
-        source_text = read_text_cp1252(source_path)
-        if is_compressed(source_text):
-            source_text, _ = preprocess_sl_text(source_text)
+        source_text = source_text_for_parse(source_path)
         basepic = parser_core_parse_source_text(source_text)
         validate_basepicture_strict(basepic)
         return basepic

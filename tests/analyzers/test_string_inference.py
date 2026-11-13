@@ -29,17 +29,19 @@ def _base_picture(*, variables: list[Variable], code: list[object]) -> BasePictu
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="Root",
         localvariables=variables,
-        moduledef=ModuleDef(),
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=code,  # pyright: ignore[reportArgumentType]
-                )
-            ]
-        ),
+        moduledefs=[ModuleDef()],
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Main",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=code,  # pyright: ignore[reportArgumentType]
+                    )
+                ]
+            )
+        ],
     )
 
 

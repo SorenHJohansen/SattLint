@@ -33,11 +33,9 @@ def _definition() -> ModuleTypeDef:
     return ModuleTypeDef(
         name="Equipment",
         datecode=1,
-        moduledef=None,
         moduleparameters=[],
         localvariables=[],
         submodules=[],
-        modulecode=None,
         origin_file="EquipmentLib.s",
         origin_lib="EquipmentLib",
     )
@@ -62,8 +60,6 @@ def _picture(
         moduletype_defs=[_definition()] if definitions is None else definitions,
         localvariables=[],
         submodules=[_instance("LibraryInstance")] if instances is None else list(instances),
-        modulecode=None,
-        moduledef=None,
         origin_file=f"{name}.s",
         origin_lib=name,
     )
@@ -80,8 +76,6 @@ def test_module_type_usage_distinguishes_library_instance_from_consumer(has_prog
         moduletype_defs=[_definition()],
         localvariables=[],
         submodules=instances,
-        modulecode=None,
-        moduledef=None,
         origin_file="EquipmentLib.s",
         origin_lib="EquipmentLib",
     )
@@ -122,8 +116,10 @@ def test_module_type_usage_keeps_same_named_library_types_separate() -> None:
     other_definition = replace(_definition(), origin_file="OtherLib.s", origin_lib="OtherLib")
     other_library = _picture("OtherLib", definitions=[other_definition])
     consumer = _picture("Consumer", definitions=[], instances=[_instance("OtherEquipment")])
-    consumer.library_dependencies = {"consumer": ["OtherLib"]}
-    graph = ProjectGraph(ast_by_name={"EquipmentLib": library, "OtherLib": other_library, "Consumer": consumer})
+    graph = ProjectGraph(
+        ast_by_name={"EquipmentLib": library, "OtherLib": other_library, "Consumer": consumer},
+        library_dependencies={"consumer": {"otherlib"}},
+    )
 
     report = analyze_moduletype_usage(library, AnalysisContext(library, graph, target_is_library=True))
 

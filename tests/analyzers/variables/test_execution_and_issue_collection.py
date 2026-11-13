@@ -1,39 +1,9 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
 import pytest
+from sattline_parser.ast import MappingSource
 from sattline_parser.models.expressions import NotOp
 
 from tests.helpers.analyzers_variables_support import *
-
-
-def test_walk_tail_children_fallback_marks_parent_scope_variable_reads() -> None:
-    parent_parameter = Variable(name="p", datatype=Simple_DataType.IDENTSTRING)
-    bp = BasePicture(
-        header=_hdr("BasePicture"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[],
-        modulecode=None,
-        moduledef=None,
-    )
-    analyzer = VariablesAnalyzer(bp)
-    parent_context = ScopeContext(
-        env={"p": parent_parameter},
-        param_mappings={},
-        module_path=["BasePicture", "Parent"],
-        display_module_path=["BasePicture<BP>", "Parent<SM>"],
-    )
-    child_context = ScopeContext(
-        env={},
-        param_mappings={},
-        module_path=["BasePicture", "Parent", "Child"],
-        display_module_path=["BasePicture<BP>", "Parent<SM>", "Child<SM>"],
-        parent_context=parent_context,
-    )
-
-    analyzer._walk_tail(SimpleNamespace(children=[_varref("p.name")]), child_context, child_context.module_path)
-
-    assert analyzer._get_usage(parent_parameter).read is True
 
 
 def test_walk_tail_not_expression_marks_operand_variable_reads() -> None:
@@ -44,8 +14,8 @@ def test_walk_tail_not_expression_marks_operand_variable_reads() -> None:
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
     analyzer = VariablesAnalyzer(bp)
     context = ScopeContext(
@@ -72,6 +42,12 @@ def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_pat
     runner: Any = SimpleNamespace(
         _issues=[],
         context_builder=SimpleNamespace(issues=None),
+        graphics_attachments=SimpleNamespace(
+            bindings=(),
+            composite_occurrences=(),
+            composite_records=(),
+            picture_display_occurrences=(),
+        ),
         _limit_to_module_path=None,
         bp=BasePicture(
             header=_hdr("Root"),
@@ -79,8 +55,8 @@ def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_pat
             moduletype_defs=[],
             localvariables=[],
             submodules=[],
-            modulecode=None,
-            moduledef=None,
+            modulecodes=[],
+            moduledefs=[],
         ),
         debug=True,
         _analysis_warnings=[],
@@ -129,12 +105,12 @@ def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_pat
         moduleparameters=[colliding_param, input_param],
         localvariables=[colliding_local],
         submodules=[],
-        moduledef=None,
-        modulecode=None,
+        moduledefs=[],
+        modulecodes=[],
         parametermappings=[
             ParameterMapping(
                 target=_varref("Input"),
-                source_type=const.KEY_VALUE,
+                source_type=MappingSource.VALUE,
                 is_duration=False,
                 is_source_global=False,
                 source=None,
@@ -187,11 +163,11 @@ def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_pat
     usage_by_id[id(write_param)] = _UsageStub(written=True)
     module = SingleModule(
         header=_hdr("Worker"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[read_param, write_param],
         localvariables=[],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
     context = ScopeContext(
@@ -277,18 +253,20 @@ def test_program_target_dependency_mapping_marks_external_field_reads() -> None:
         moduleparameters=[Variable(name="signal", datatype="Z251DrainDvType")],
         localvariables=[],
         submodules=[],
-        moduledef=None,
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="ReadSignal",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[_varref("signal.V991")],  # pyright: ignore[reportArgumentType]
-                )
-            ],
-            sequences=[],
-        ),
+        moduledefs=[],
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="ReadSignal",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[_varref("signal.V991")],  # pyright: ignore[reportArgumentType]
+                    )
+                ],
+                sequences=[],
+            )
+        ],
         parametermappings=[],
         origin_file="Valve2PortPB.s",
         origin_lib="SupportLib",
@@ -304,7 +282,7 @@ def test_program_target_dependency_mapping_marks_external_field_reads() -> None:
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("signal"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("DrainDV.V991"),
@@ -313,18 +291,20 @@ def test_program_target_dependency_mapping_marks_external_field_reads() -> None:
                 ],
             )
         ],
-        moduledef=None,
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="WriteDrain",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("DrainDV.V991"), value=1)],
-                )
-            ],
-            sequences=[],
-        ),
+        moduledefs=[],
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="WriteDrain",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[Assignment(target=_varref("DrainDV.V991"), value=1)],
+                    )
+                ],
+                sequences=[],
+            )
+        ],
         parametermappings=[],
         origin_file="Root.s",
         origin_lib="ProjectLib",
@@ -335,8 +315,8 @@ def test_program_target_dependency_mapping_marks_external_field_reads() -> None:
         moduletype_defs=[root_typedef, dependency_typedef],
         localvariables=[],
         submodules=[],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
         origin_file="Root.s",
         origin_lib="ProjectLib",
     )
@@ -399,14 +379,14 @@ def test_variable_issue_collection_datatype_field_helper_covers_remaining_branch
                     moduleparameters=[library_var],
                     localvariables=[],
                     submodules=[],
-                    modulecode=None,
-                    moduledef=None,
+                    modulecodes=[],
+                    moduledefs=[],
                 )
             ],
             localvariables=[primitive_var, missing_var, no_access_var, partial_var],
             submodules=[],
-            modulecode=None,
-            moduledef=None,
+            modulecodes=[],
+            moduledefs=[],
         ),
         analyzed_target_is_library=True,
         append_issue=lambda issue: issues.append(issue),
@@ -452,8 +432,8 @@ def test_field_usage_asymmetry_detects_sibling_miswire_and_treats_whole_record_r
             moduletype_defs=[],
             localvariables=[payload],
             submodules=[],
-            modulecode=None,
-            moduledef=None,
+            modulecodes=[],
+            moduledefs=[],
         ),
         analyzed_target_is_library=False,
         include_dependency_moduletype_usage=False,
@@ -520,16 +500,18 @@ def test_read_only_fields_exclude_constants_but_unused_fields_remain_reported(co
             Variable(name="Record", datatype="Outer", const=constant_level == "record"),
             Variable(name="Sink", datatype=Simple_DataType.BOOLEAN),
         ],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("Sink"), value=_varref("Record.Child.Flag"))],
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Main",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[Assignment(target=_varref("Sink"), value=_varref("Record.Child.Flag"))],
+                    )
+                ]
+            )
+        ],
     )
     analyzer = VariablesAnalyzer(
         bp, selected_issue_kinds=frozenset({IssueKind.FIELD_READ_ONLY, IssueKind.UNUSED_DATATYPE_FIELD})
@@ -555,8 +537,8 @@ def test_variable_issue_collection_direct_global_helpers_cover_remaining_branche
             moduletype_defs=[],
             localvariables=[shared],
             submodules=[],
-            modulecode=None,
-            moduledef=None,
+            modulecodes=[],
+            moduledefs=[],
         ),
         analyzed_target_is_library=False,
         append_issue=lambda issue: issues.append(issue),
@@ -647,24 +629,26 @@ def test_variable_issue_collection_direct_global_helpers_cover_remaining_branche
 def _mapped_root_variable_read_module(name: str) -> SingleModule:
     return SingleModule(
         header=_hdr(name),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[Variable(name="Signal", datatype=Simple_DataType.INTEGER)],
         localvariables=[Variable(name="Copy", datatype=Simple_DataType.INTEGER)],
         submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("Copy"), value=_varref("Signal"))],
-                )
-            ]
-        ),
+        modulecodes=[
+            ModuleCode(
+                equationblocks=[
+                    Equation(
+                        name="Main",
+                        position=(0.0, 0.0),
+                        size=(1.0, 1.0),
+                        code=[Assignment(target=_varref("Copy"), value=_varref("Signal"))],
+                    )
+                ]
+            )
+        ],
         parametermappings=[
             ParameterMapping(
                 target=_varref("Signal"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
+                source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
                 source=_varref("Shared"),
@@ -681,8 +665,8 @@ def test_variables_analyzer_records_root_variable_access_summary_phase_timing():
         moduletype_defs=[],
         localvariables=[Variable(name="Shared", datatype=Simple_DataType.INTEGER)],
         submodules=[_mapped_root_variable_read_module("Reader"), _mapped_root_variable_read_module("Writer")],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(
@@ -703,8 +687,8 @@ def test_variables_analyzer_reuse_resets_access_state_for_limited_rerun():
         moduletype_defs=[],
         localvariables=[Variable(name="Shared", datatype=Simple_DataType.INTEGER)],
         submodules=[_mapped_root_variable_read_module("ReaderA"), _mapped_root_variable_read_module("ReaderB")],
-        modulecode=None,
-        moduledef=None,
+        modulecodes=[],
+        moduledefs=[],
     )
 
     analyzer = VariablesAnalyzer(
@@ -740,11 +724,11 @@ def test_variable_issue_collection_collect_module_issue_helper_covers_remaining_
     issues: list[tuple[IssueKind, tuple[str, ...], str, str, str | None]] = []
     module = SingleModule(
         header=_hdr("Worker"),
-        moduledef=None,
+        moduledefs=[],
         moduleparameters=[procedure_param, ui_param, effect_param],
         localvariables=[procedure_local, ui_local, read_only_local],
         submodules=[],
-        modulecode=None,
+        modulecodes=[],
         parametermappings=[],
     )
     helper: Any = SimpleNamespace(
@@ -843,26 +827,26 @@ def test_variable_issue_collection_nested_scope_and_magic_helpers_cover_remainin
             submodules=[
                 SingleModule(
                     header=_hdr("Parent"),
-                    moduledef=None,
+                    moduledefs=[],
                     moduleparameters=[nested_param],
                     localvariables=[nested_local],
                     submodules=[
                         SingleModule(
                             header=_hdr("Child"),
-                            moduledef=None,
+                            moduledefs=[],
                             moduleparameters=[],
                             localvariables=[child_local],
                             submodules=[],
-                            modulecode=None,
+                            modulecodes=[],
                             parametermappings=[],
                         )
                     ],
-                    modulecode=None,
+                    modulecodes=[],
                     parametermappings=[],
                 )
             ],
-            modulecode=None,
-            moduledef=None,
+            modulecodes=[],
+            moduledefs=[],
         ),
         analyzed_target_is_library=False,
         include_dependency_moduletype_usage=False,

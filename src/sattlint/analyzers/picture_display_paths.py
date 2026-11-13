@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sattline_parser.models.ast_model import BasePicture
+from sattlint.parser_api import BasePicture
 
 from ..graphics.picture_display_paths import diagnose_picture_display_paths, format_picture_display_path_diagnostic
 from ..models.project_graph import ProjectGraph
@@ -21,7 +21,7 @@ def analyze_picture_display_paths(
     graph: ProjectGraph | None = None,
     analyzed_target_is_library: bool = False,
 ) -> SimpleReport:
-    occurrences = tuple(getattr(base_picture, "graphics_picture_display_occurrences", ()) or ())
+    occurrences = graph.graphics_attachments_for(base_picture).picture_display_occurrences if graph else ()
     diagnostics = diagnose_picture_display_paths(base_picture, occurrences, graph=graph)
     issues: list[Issue] = []
     for diagnostic in diagnostics:

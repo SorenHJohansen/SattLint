@@ -1728,6 +1728,24 @@ def test_textual_execute_analyzers_dispatches_to_run_checks(monkeypatch: pytest.
     assert called == [["alpha-analyzer", "beta-analyzer"]]
 
 
+def test_textual_execute_analyzers_reports_target_load_failures(monkeypatch: pytest.MonkeyPatch) -> None:
+    emitted: list[str] = []
+    result = SimpleNamespace(failures=(SimpleNamespace(target_name="Broken"),))
+    app_instance = _make_textual_app(
+        analysis_handlers={"run_checks_result": lambda _cfg, _keys: result},
+    )
+
+    monkeypatch.setattr(app_instance, "_emit_output_from_thread", lambda text: emitted.append(text))
+    monkeypatch.setattr(app_instance, "call_from_thread", lambda *_args: None)
+
+    app_instance._execute_analyzers(("alpha-analyzer",))
+
+    assert emitted == [
+        "Running 1 selected analyzer(s).",
+        "Analysis finished with target load failures: Broken. Review the output above.",
+    ]
+
+
 def test_textual_start_action_tracks_active_worker_thread(monkeypatch: pytest.MonkeyPatch) -> None:
     created_workers: list[object] = []
 
@@ -4051,6 +4069,18 @@ def test_textual_shell_does_not_crash_within_window(tmp_path: Path) -> None:
         env["TERM"] = "xterm-256color"
         env["COLUMNS"] = "100"
         env["LINES"] = "30"
+        # The child runs in ``tmp_path``. A relative ``PYTHONPATH=src`` would
+        # resolve against that directory and import a stale installed package
+        # instead of this checkout.
+        python_path_entries = [str(Path(__file__).resolve().parents[2] / "src")]
+        for entry in os.environ.get("PYTHONPATH", "").split(os.pathsep):
+            if not entry:
+                continue
+            entry_path = Path(entry)
+            if not entry_path.is_absolute():
+                entry_path = (Path.cwd() / entry_path).resolve()
+            python_path_entries.append(str(entry_path))
+        env["PYTHONPATH"] = os.pathsep.join(dict.fromkeys(python_path_entries))
         process = subprocess.Popen(
             [sys.executable, "-m", "sattlint"],
             stdin=slave,

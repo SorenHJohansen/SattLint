@@ -3,11 +3,9 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from sattline_parser.grammar import constants as const
-
 from ...resolution.scope import ScopeContext
 from ._dataflow_common import ConditionFact, ScalarValue
-from ._dataflow_condition_expr import CompareTuple, _expr_tuple, compare_left, compare_parts, is_compare
+from ._dataflow_condition_expr import compare_left, compare_parts, is_compare
 
 
 class _DataflowConditionFactsMixin:
@@ -94,19 +92,4 @@ class _DataflowConditionFactsMixin:
                 return False
             return None
 
-        condition_tuple = _expr_tuple(condition)
-        if condition_tuple is None or not condition_tuple or condition_tuple[0] not in (const.KEY_COMPARE, "compare"):
-            return None
-        _, left, pairs = cast(CompareTuple, condition_tuple)
-        if pairs is None or len(pairs) != 1:
-            return None
-        operator, right = pairs[0]
-        left_ref = self._resolve_ref(left, context)
-        right_ref = self._resolve_ref(right, context)
-        if left_ref is None or right_ref is None or left_ref.key != right_ref.key:
-            return None
-        if operator in ("==", "<=", ">="):
-            return True
-        if operator in ("<>", "<", ">"):
-            return False
         return None

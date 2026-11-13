@@ -6,7 +6,7 @@ from collections.abc import Sequence as SequenceABC
 from dataclasses import dataclass
 from typing import Any, cast
 
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     BasePicture,
     Sequence,
     SFCAlternative,

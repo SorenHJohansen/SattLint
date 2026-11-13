@@ -1,21 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import cast
-
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import Variable
-from sattline_parser.models.expressions import VarRef
-
-
-def _string_object_mapping(value: object) -> Mapping[str, object] | None:
-    if isinstance(value, Mapping):
-        return cast(Mapping[str, object], value)
-    return None
+from sattlint.parser_api import Variable, VarRef
 
 
 def varname_base(var_dict_or_str: object) -> str | None:
-    """Extract base variable name from a variable_name dict or string."""
+    """Extract base variable name from a variable reference or string."""
     full = varname_full(var_dict_or_str)
     if full is None:
         return None
@@ -24,16 +13,11 @@ def varname_base(var_dict_or_str: object) -> str | None:
 
 
 def varname_full(var_dict_or_str: object) -> str | None:
-    """Extract full variable name from a variable_name dict or string."""
+    """Extract full variable name from a variable reference or string."""
     if isinstance(var_dict_or_str, VarRef):
         return var_dict_or_str.name
     if isinstance(var_dict_or_str, str):
         return var_dict_or_str
-    mapping = _string_object_mapping(var_dict_or_str)
-    if mapping is not None:
-        value = mapping.get(const.KEY_VAR_NAME)
-        if isinstance(value, str):
-            return value
     return None
 
 

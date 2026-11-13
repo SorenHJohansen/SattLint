@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tomllib
+from collections.abc import Callable
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, cast
@@ -41,9 +42,10 @@ def get_projects_dir() -> Path:
     return _config_paths_module.get_projects_dir()
 
 
-def load_config(path: Path) -> tuple[ConfigDict, bool]:
+def load_config(path: Path, *, emit_fn: Callable[[str], None] | None = None) -> tuple[ConfigDict, bool]:
+    emit = emit_output if emit_fn is None else emit_fn
     if not path.exists():
-        emit_output(f"⚠ No config found, creating default: {path}")
+        emit(f"⚠ No config found, creating default: {path}")
         cfg = cast(ConfigDict, deepcopy(DEFAULT_CONFIG))
         save_config(path, cfg)
         return cfg, True
@@ -54,11 +56,11 @@ def load_config(path: Path) -> tuple[ConfigDict, bool]:
     strip_unknown_keys(cfg)
 
     for warning in load_time_config_warnings(cfg):
-        emit_output(f"⚠ Config warning [{warning.key_path}]: {warning.message}")
+        emit(f"⚠ Config warning [{warning.key_path}]: {warning.message}")
 
     for message in _validation_messages(cfg):
         key_path, error_message = message.split("] ", maxsplit=1)
-        emit_output(f"⚠ Config warning {key_path}]: {error_message}")
+        emit(f"⚠ Config warning {key_path}]: {error_message}")
 
     return _merged_effective_config(cfg), False
 

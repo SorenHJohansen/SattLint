@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from sattline_parser.models.ast_model import BasePicture, FrameModule, ModuleTypeInstance, SingleModule, Variable
+from sattlint.parser_api import BasePicture, FrameModule, ModuleTypeInstance, SingleModule, Variable
 
 from ..models._variable_issues import VariableIssue
 from ._alias_utils import varname_base, varname_full
@@ -16,7 +16,7 @@ from .scope import ScopeContext
 from .symbol_table import SymbolKind
 
 if TYPE_CHECKING:
-    from sattline_parser.models.ast_model import ModuleTypeDef
+    from sattlint.parser_api import ModuleTypeDef
 
     from .symbol_table import CanonicalSymbolTable
     from .type_graph import TypeGraph
@@ -261,15 +261,31 @@ class ContextBuilder:
         )
 
     def build_for_basepicture(self) -> ScopeContext:
-        """Build root scope context for BasePicture."""
+        """Build root scope context for BasePicture.
+
+        Root programs may declare ``MODULEPARAMETERS`` alongside locals; both
+        resolve in the root scope, and parameters keep their parameter
+        classification for contract-value handling.
+        """
+        params = list(self.bp.moduleparameters or [])
+        locals_ = list(self.bp.localvariables or [])
         env: dict[str, Variable] = {}
-        for variable in self.bp.localvariables or []:
+        for variable in params:
+            env[variable.name.casefold()] = variable
+        for variable in locals_:
             env[variable.name.casefold()] = variable
 
         module_path = [self.bp.header.name]
         display_path = [decorate_segment(self.bp.header.name, "BP")]
 
-        for variable in self.bp.localvariables or []:
+        for variable in params:
+            self.symbol_table.add_variable_root(
+                module_path=module_path,
+                var=variable,
+                kind=SymbolKind.PARAMETER,
+                type_graph=self.type_graph,
+            )
+        for variable in locals_:
             self.symbol_table.add_variable_root(
                 module_path=module_path,
                 var=variable,
@@ -282,7 +298,7 @@ class ContextBuilder:
             param_mappings={},
             module_path=module_path,
             display_module_path=display_path,
-            moduleparameter_keys=frozenset(),
+            moduleparameter_keys=frozenset(variable.name.casefold() for variable in params),
             current_library=self.root_library,
             parent_context=None,
         )

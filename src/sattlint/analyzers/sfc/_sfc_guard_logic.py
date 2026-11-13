@@ -7,15 +7,14 @@ from __future__ import annotations
 from collections.abc import Sequence as SequenceABC
 from typing import TypedDict, cast
 
-from sattline_parser.formatting.formatter import format_expr
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import (
+from sattlint.parser_api import (
     BasePicture,
     SFCAlternative,
     SFCParallel,
     SFCSubsequence,
     SFCTransition,
     SFCTransitionSub,
+    format_expr,
 )
 
 from ...resolution.paths import CanonicalPath
@@ -44,16 +43,6 @@ def _iter_values(value: object) -> list[object]:
     if isinstance(value, tuple):
         return list(cast(tuple[object, ...], value))
     return []
-
-
-def _comparison_pairs(raw: object) -> list[tuple[str, object]]:
-    pairs: list[tuple[str, object]] = []
-    for item in _iter_values(raw):
-        parts = _tuple_parts(item)
-        if parts is None or len(parts) != 2 or not isinstance(parts[0], str):
-            continue
-        pairs.append((parts[0], parts[1]))
-    return pairs
 
 
 def paths_conflict(a: CanonicalPath, b: CanonicalPath) -> bool:
@@ -220,15 +209,7 @@ def _normalize_compare_guard(left: object, operator: str, right: object) -> obje
 
 
 def _normalize_guard_signature(expr: object) -> object:
-    from sattline_parser.models.expressions import BoolOp, NotOp, VarRef  # noqa: PLC0415
-
-    if getattr(expr, "data", None) == const.KEY_STATEMENT:
-        children = getattr(expr, "children", None)
-        if not isinstance(children, list):
-            return ("text", "")
-        if children:
-            return _normalize_guard_signature(cast(list[object], children)[0])
-        return ("text", "")
+    from sattlint.parser_api import BoolOp, NotOp, VarRef  # noqa: PLC0415
 
     if isinstance(expr, bool):
         return ("bool", expr)
@@ -257,41 +238,6 @@ def _normalize_guard_signature(expr: object) -> object:
             logical_kind,
             [_normalize_guard_signature(part) for part in expr.operands],
         )
-
-    if isinstance(expr, dict) and const.KEY_VAR_NAME in expr:
-        payload = cast(dict[str, object], expr)
-        full_name = payload.get(const.KEY_VAR_NAME)
-        state_access = payload.get("state")
-        if isinstance(full_name, str) and full_name:
-            if isinstance(state_access, str) and state_access:
-                return ("var", full_name.casefold(), state_access.casefold())
-            return ("var", full_name.casefold())
-        return ("text", _expr_text(cast(object, expr)).casefold())
-
-    expr_parts = _tuple_parts(cast(object, expr))
-    if expr_parts:
-        operator = expr_parts[0]
-
-        if operator == const.GRAMMAR_VALUE_NOT and len(expr_parts) >= 2:
-            return _complement_signature(_normalize_guard_signature(expr_parts[1]))
-
-        if operator in (const.GRAMMAR_VALUE_AND, const.GRAMMAR_VALUE_OR) and len(expr_parts) >= 2:
-            logical_kind = "and" if operator == const.GRAMMAR_VALUE_AND else "or"
-            return _normalize_logical_guard(
-                logical_kind,
-                [_normalize_guard_signature(part) for part in _iter_values(expr_parts[1])],
-            )
-
-        if operator in (const.KEY_COMPARE, "compare") and len(expr_parts) == 3:
-            left = expr_parts[1]
-            comparisons = [
-                _normalize_compare_guard(left, symbol, right) for symbol, right in _comparison_pairs(expr_parts[2])
-            ]
-            if not comparisons:
-                return _normalize_guard_signature(left)
-            if len(comparisons) == 1:
-                return comparisons[0]
-            return _normalize_logical_guard("and", comparisons)
 
     return ("text", _expr_text(cast(object, expr)).casefold())
 

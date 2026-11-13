@@ -1,23 +1,10 @@
 from __future__ import annotations
 
-import dataclasses
 from typing import Any, cast
 
-from lark import Tree
-from sattline_parser.grammar import constants as const
-from sattline_parser.models.ast_model import Variable
-from sattline_parser.models.expressions import VarRef
+from sattlint.parser_api import Variable, VarRef, walk
 
 from ...resolution.scope import ScopeContext
-from ..shared.ast_node_helpers import (
-    object_list as _object_list,
-)
-from ..shared.ast_node_helpers import (
-    object_tuple as _object_tuple,
-)
-from ..shared.ast_node_helpers import (
-    string_key_dict as _string_key_dict,
-)
 from ._dataflow_common import (
     CONSTANT_TRACE_PREFIX,
     INITIALIZED,
@@ -38,51 +25,13 @@ class _DataflowStateMixin:
         context: ScopeContext,
     ) -> list[ResolvedRef]:
         collected: list[ResolvedRef] = []
-
-        def visit(node: object) -> None:
-            if isinstance(node, VarRef):
-                resolved = self._resolve_ref(node, context)
-                if resolved is not None and resolved.is_state_variable:
-                    collected.append(resolved)
-                return
-
-            node_dict = _string_key_dict(node)
-            if node_dict is not None and const.KEY_VAR_NAME in node_dict:
-                resolved = self._resolve_ref(node, context)
-                if resolved is not None and resolved.is_state_variable:
-                    collected.append(resolved)
-                return
-
-            if isinstance(node, Tree) and node.data == const.KEY_STATEMENT:
-                for child in _object_list(getattr(cast(object, node), "children", None)) or []:
-                    visit(child)
-                return
-
-            dataclass_node = cast(object, node)
-            if dataclasses.is_dataclass(dataclass_node) and not isinstance(dataclass_node, type):
-                for field in dataclasses.fields(dataclass_node):
-                    visit(getattr(dataclass_node, field.name))
-                return
-
-            node_obj = cast(object, node)
-            tuple_node = _object_tuple(node_obj)
-            if tuple_node is not None:
-                for item in tuple_node:
-                    visit(item)
-                return
-
-            list_node = _object_list(node_obj)
-            if list_node is not None:
-                for item in list_node:
-                    visit(item)
-                return
-
-            children = _object_list(getattr(node_obj, "children", None))
-            if children is not None:
-                for child in children:
-                    visit(child)
-
-        visit(expr)
+        for event in walk(expr):
+            node = event.node
+            if not isinstance(node, VarRef):
+                continue
+            resolved = self._resolve_ref(node, context)
+            if resolved is not None and resolved.is_state_variable:
+                collected.append(resolved)
         return collected
 
     def _apply_write_target(

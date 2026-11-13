@@ -7,9 +7,7 @@ from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from typing import Any, Protocol, cast
 
-from sattline_parser.builtins import get_function_signature
-from sattline_parser.models.ast_model import BasePicture, ParameterMapping, Variable
-
+from sattlint.parser_api import BasePicture, ParameterMapping, Variable, get_function_signature
 from sattlint.resolution import AccessKind, decorate_segment
 from sattlint.resolution.common import varname_base
 from sattlint.resolution.scope import ScopeContext
