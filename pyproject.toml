@@ -31,10 +31,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/SorenHJohansen/SattLint"
+Homepage = "https://pypi.org/project/sattlint/"
 Repository = "https://github.com/SorenHJohansen/SattLint"
 Issues = "https://github.com/SorenHJohansen/SattLint/issues"
-Documentation = "https://docs.sattlint.dev"
+Documentation = "https://github.com/SorenHJohansen/SattLint/blob/main/FEATURE_GUIDE.md"
 Support = "https://github.com/SorenHJohansen/SattLint/blob/main/SUPPORT.md"
 Changelog = "https://github.com/SorenHJohansen/SattLint/blob/main/CHANGELOG.md"
 Security = "https://github.com/SorenHJohansen/SattLint/security/policy"
@@ -53,6 +53,7 @@ dev = [
     "build>=1.2.2",    # Build frontend for release validation
     "twine>=5.1.1",    # Package metadata validation
     "pre-commit>=4.0", # Git hooks
+    "pip-audit>=2.9.0", # Dependency vulnerability audit
 ]
 
 fuzz = [

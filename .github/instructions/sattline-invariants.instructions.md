@@ -30,11 +30,13 @@ applyTo: ["src/**", "tests/**"]
 **A passing `sattline check` does NOT mean the scaffold is complete or correct.**
 
 A file can be syntactically valid but semantically broken:
+
 - `TYPEDEFINITIONS Module1 = MODULEDEFINITION DateCode_ 1 ModuleDef ... ENDDEF` with zero SUBMODULES is syntactically correct but a bare shell
 - `SUBMODULES Equipment Invocation (...) : UnknownType` is syntactically correct but references a non-existent type
 - A support library with no TYPEDEFINITIONS is syntactically correct but provides no reusable module types
 
 **For unit scaffolding, always perform semantic validation AFTER `sattline check`:**
+
 1. Main library unit moduletype must declare MODULEPARAMETERS (beyond just Tag)
 2. Main library unit moduletype must declare LOCALVARIABLES for process state
 3. Main library unit moduletype must declare SUBMODULES invoking support-library types

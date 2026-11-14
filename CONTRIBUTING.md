@@ -62,7 +62,9 @@ For a human-readable CLI reference, see [FEATURE_GUIDE.md](FEATURE_GUIDE.md).
 
 ## Development Setup
 
-Preferred local bootstrap uses `uv`. `pip install -e .[dev]` remains acceptable when `uv` is unavailable. CI installs with `pip install -e ".[dev]"`.
+The repository ships a `uv.lock` lockfile. Use `uv sync --extra dev` so your
+environment matches CI. `pip install -e ".[dev]"` remains acceptable when `uv`
+is unavailable, but it resolves fresh versions instead of the lock.
 
 ### Option 1: Linux or macOS
 
@@ -75,10 +77,8 @@ Preferred local bootstrap uses `uv`. `pip install -e .[dev]` remains acceptable 
 git clone https://github.com/SorenHJohansen/SattLint.git
 cd SattLint
 
-# Preferred: install through uv
-uv venv
-source .venv/bin/activate
-uv pip install -e ".[dev]"
+# Preferred: install the locked environment
+uv sync --extra dev
 
 # Fallback
 # python -m venv .venv
@@ -104,10 +104,8 @@ Configure your editor with:
 git clone https://github.com/SorenHJohansen/SattLint.git
 cd SattLint
 
-# Preferred: install through uv
-uv venv
-.venv\Scripts\activate
-uv pip install -e ".[dev]"
+# Preferred: install the locked environment
+uv sync --extra dev
 
 # Fallback
 # python -m venv .venv
@@ -138,6 +136,9 @@ pyright src/sattlint
 
 # Run tests
 pytest -q --tb=short
+
+# Check Markdown links
+python scripts/check_docs.py
 ```
 
 Run the fast local hygiene gate before pushing:
@@ -146,9 +147,11 @@ Run the fast local hygiene gate before pushing:
 python -m pre_commit run --all-files
 ```
 
-The pre-commit gate runs Ruff fix and format, Pyright on `src/sattlint`,
-SattLine `syntax-check` on staged SattLine fixtures, and the standard
-pre-commit-hooks checks.
+The pre-commit gate runs Ruff fix and format, Pyright on `src/sattlint`, and
+the standard pre-commit-hooks checks. The `docs` CI job runs the Markdown
+style check and `scripts/check_docs.py`. When you change dependencies in
+`pyproject.toml`, regenerate the lockfile with `uv lock` and commit it with the
+change.
 
 ### Running Tests
 
@@ -225,18 +228,23 @@ Run every item and confirm before tagging:
 - [ ] Documentation references match the shipped surface (commands, paths,
       exit codes).
 
-### PyPI environment protection (manual, GitHub settings)
+### PyPI environment protection (GitHub settings)
 
 `publish.yml` targets the `pypi-release` deployment environment. Trusted
-publishing (OIDC) is enabled, but **required-reviewer protection is not
-configured in the repository**. Before the first production release, configure
-the environment in GitHub settings:
+publishing (OIDC) is enabled, and the environment is restricted to tags
+matching `v*` through a custom deployment branch policy. A tag that does not
+match the policy cannot deploy.
 
-1. Open **Settings > Environments > pypi-release**.
-2. Add **Required reviewers** (at least one account with write access).
-3. Optionally restrict the deployment branch to `main`.
+Required reviewers are not configured. With a single maintainer, GitHub would
+not accept a self-approval, so the tag policy is the release gate. The
+`Release tags` ruleset also blocks moving or deleting an existing `v*` tag,
+which prevents a published tag from being repointed at a different commit.
 
-Until a reviewer is configured, a tag push can publish without human review.
+Re-check both settings after any repository transfer or environment rename:
+
+1. **Settings > Environments > pypi-release > Deployment branches and tags**
+   must allow tags matching `v*` and nothing else.
+2. **Settings > Rules > Release tags** must stay active.
 
 ### Tag and publish
 
@@ -253,9 +261,13 @@ git push origin vYYYY.M.number
 The workflow then:
 
 1. Runs the CI gate on the tagged commit.
-2. Builds sdist + wheel and runs `twine check`.
-3. Runs a clean-venv smoke (`--version`, `--help`, one `syntax-check`).
-4. Publishes to PyPI via trusted publishing.
+2. Checks that the package version matches the tag.
+3. Builds sdist + wheel and runs `twine check`.
+4. Runs a clean-venv smoke (`--version`, `--help`, one headless command).
+5. Publishes to PyPI via trusted publishing.
+
+`publish.yml` also accepts a manual dispatch with an optional expected version.
+A manual run builds and validates but never publishes.
 
 ### Release automation decisions (recorded 2026-09-08)
 
@@ -263,14 +275,14 @@ The workflow then:
   releases; the release is made from the tag with the CHANGELOG entry as notes.
 - **Artifact attestations**: not enabled; revisit if supply-chain requirements
   change.
-- **`CODEOWNERS` review gate for the release path**: not added; the
-  `pypi-release` environment reviewer protection is the human gate.
+- **`CODEOWNERS` review gate for the release path**: not added. The `v*`
+  environment policy and the tag ruleset are the release gates.
 
 ### Post-publish verification
 
 - [ ] `pipx install sattlint` (or `pipx upgrade sattlint`) succeeds.
 - [ ] `sattlint --version` reports the released version.
 - [ ] `sattlint --help` lists the documented commands.
-- [ ] `sattlint syntax-check <sample.s>` behaves as documented.
+- [ ] `sattlint analyzers list` works without a project.
 - [ ] Create a GitHub Release for the tag with the CHANGELOG entry as notes
       (the `Publish` workflow does not create releases automatically).
