@@ -18,7 +18,7 @@ List the smallest steps or commands that reproduce the problem.
 **What did you expect instead?**
 Describe the expected behavior.
 
-### Version and environment
+## Version and environment
 
 - SattLint version from `sattlint --version`:
 - Install method (`pip`, `pipx`, editable install, source checkout, other):

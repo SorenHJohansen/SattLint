@@ -15,7 +15,7 @@ Describe the goal in one or two sentences.
 **What have you tried?**
 List the commands, configuration, or UI steps you already ran, and what happened.
 
-### Your setup
+## Your setup
 
 - SattLint version from `sattlint --version`:
 - Operating system:
