@@ -2,7 +2,7 @@
 name: Bug report
 about: Report a bug in a stable or preview SattLint surface
 title: ''
-labels: ''
+labels: bug
 assignees: ''
 
 ---
@@ -10,7 +10,7 @@ assignees: ''
 Use [SUPPORT.md](../../SUPPORT.md) for issue-routing guidance and [SECURITY.md](../../SECURITY.md) if the report might involve a vulnerability, secret, or private-path exposure.
 
 **What happened?**
-Describe the bug clearly and include the affected surface, for example `sattlint syntax-check`, `sattlint analyze`, `sattlint init`, or the interactive menu.
+Describe the bug clearly and include the affected surface, for example `sattlint analyze`, `sattlint project show`, `sattlint findings`, or the interactive shell.
 
 **How do we reproduce it?**
 List the smallest steps or commands that reproduce the problem.
@@ -18,9 +18,10 @@ List the smallest steps or commands that reproduce the problem.
 **What did you expect instead?**
 Describe the expected behavior.
 
-**Version and environment**
+## Version and environment
+
 - SattLint version from `sattlint --version`:
-- Install method (`pipx`, editable install, source checkout, other):
+- Install method (`pip`, `pipx`, editable install, source checkout, other):
 - Operating system:
 - Python version:
 

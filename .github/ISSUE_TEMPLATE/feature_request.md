@@ -2,7 +2,7 @@
 name: Feature request
 about: Suggest an improvement to a stable or preview SattLint surface
 title: ''
-labels: ''
+labels: enhancement
 assignees: ''
 
 ---

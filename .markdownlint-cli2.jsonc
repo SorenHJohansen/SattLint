@@ -17,7 +17,11 @@
             "line_length": 2000,
             "code_blocks": false,
             "tables": false
-        }
+        },
+        "MD024": {
+            "siblings_only": true
+        },
+        "MD041": false
     },
     "globs": [
         "*.md",

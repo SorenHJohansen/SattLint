@@ -30,6 +30,12 @@ jobs:
           results_format: sarif
           publish_results: true
 
+      - name: "Upload to code scanning"
+        uses: github/codeql-action/upload-sarif@b7b84b636b4f90c9b31da1bc5f72bfadd5b31410 # v3
+        with:
+          sarif_file: results.sarif
+          category: scorecard
+
       - name: "Upload artifact"
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:

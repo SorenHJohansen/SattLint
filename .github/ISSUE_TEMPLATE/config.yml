@@ -3,6 +3,9 @@ contact_links:
   - name: Support questions and support policy
     url: https://github.com/SorenHJohansen/SattLint/blob/main/SUPPORT.md
     about: Check the stable-versus-preview contract and issue-routing guidance before opening an issue.
+  - name: Questions and ideas
+    url: https://github.com/SorenHJohansen/SattLint/discussions
+    about: Ask usage questions or discuss ideas before opening a tracked issue.
   - name: Security vulnerability
     url: https://github.com/SorenHJohansen/SattLint/security/advisories/new
     about: Report vulnerabilities privately instead of opening a public issue.

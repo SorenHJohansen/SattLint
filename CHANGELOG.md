@@ -8,6 +8,26 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ## [Unreleased]
 
+### Added
+
+- `SECURITY.md`, `SUPPORT.md`, `CODE_OF_CONDUCT.md`, and `FEATURE_GUIDE.md`
+  document the security intake, the stable and preview surfaces, community
+  expectations, and the headless command reference.
+- `scripts/check_docs.py` fails when a relative Markdown link points at a file
+  that does not exist.
+- A question issue template, and a dependency audit job in CI.
+- `uv.lock` pins the development environment that CI installs.
+
+### Changed
+
+- CI installs the locked environment with `uv sync --frozen`, runs a Markdown
+  style gate, and cancels superseded pull request runs.
+- The release workflow validates the package version against the tag, accepts
+  a manual dispatch version, and skips artifacts that already exist on PyPI.
+- The pull request template, issue templates, and release notes in
+  `CONTRIBUTING.md` match the shipped commands.
+- The pinned Ruff version matches the pre-commit hook revision.
+
 ## [2026.11.4] - 2026-11-12
 
 SattLint 2026.11.4 pairs with `sattline-parser==2026.11.4` and completes the
