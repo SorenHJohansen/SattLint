@@ -783,7 +783,7 @@ def test_delete_selected_run_asks_before_removing_the_run(monkeypatch: pytest.Mo
     assert messages[-1] == "Deleted run 2026-09-06 10:05:00."
 
 
-def test_results_run_summaries_prefer_project_path_over_shared_tag(
+def test_results_run_summaries_match_the_project_path_and_drop_legacy_runs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     summaries = [
@@ -797,20 +797,14 @@ def test_results_run_summaries_prefer_project_path_over_shared_tag(
         _cfg={"analyzed_programs_and_libraries": ["RootProgram"]},
         _config_path="/p/a.slproj",
     )
-    app_instance._current_project_tag = lambda: app_textual_results_module._current_project_tag(app_instance)
     app_instance._current_project_path = lambda: app_textual_results_module._current_project_path(app_instance)
 
     assert [summary.run_id for summary in app_textual_results_module._results_run_summaries(app_instance)] == [
         "same-path",
-        "legacy",
     ]
 
     app_instance._config_path = None
-    assert [summary.run_id for summary in app_textual_results_module._results_run_summaries(app_instance)] == [
-        "same-path",
-        "other-path",
-        "legacy",
-    ]
+    assert app_textual_results_module._results_run_summaries(app_instance) == ()
 
 
 def test_run_overview_text_names_the_project_path() -> None:

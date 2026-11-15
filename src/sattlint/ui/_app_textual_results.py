@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal
 
 from ..application.findings import AnalysisFinding, kind_human_label
 from ..runs import (
@@ -395,34 +395,21 @@ def on_tree_node_selected(self: Any, event: Any) -> None:
         self._write_output(_run_overview_text(data))
 
 
-def _current_project_tag(self: Any) -> str:
-    program_targets = self._cfg.get("analyzed_programs_and_libraries", [])
-    if isinstance(program_targets, list):
-        values = cast(list[object], program_targets)
-        return ", ".join(str(target) for target in values if str(target).strip())
-    return ""
-
-
 def _current_project_path(self: Any) -> str:
     raw_path = getattr(self, "_config_path", None)
     return "" if raw_path is None else str(raw_path)
 
 
 def _results_run_summaries(self: Any) -> tuple[RunSummary, ...]:
-    summaries = list_runs()
-    project_tag = self._current_project_tag()
-    if not project_tag:
-        return ()
+    """Stored runs that belong to the open project file.
+
+    A run stored before the project path was recorded cannot be attributed to a
+    project, so it is not listed. Its record stays on disk until it ages out.
+    """
     project_path = self._current_project_path()
     if not project_path:
-        # A session opened on a plain app config has no project file, so only
-        # the legacy tag can identify its runs.
-        return tuple(summary for summary in summaries if summary.project_tag == project_tag)
-    return tuple(
-        summary
-        for summary in summaries
-        if summary.project_path == project_path or (not summary.project_path and summary.project_tag == project_tag)
-    )
+        return ()
+    return tuple(summary for summary in list_runs() if summary.project_path == project_path)
 
 
 def _apply_results_list_index(list_view: Any, index: int) -> None:
@@ -677,7 +664,6 @@ if TYPE_CHECKING:
 
     class _TextualResultsMixin:
         def on_tree_node_selected(self, event: Any) -> None: ...
-        def _current_project_tag(self) -> str: ...
         def _current_project_path(self) -> str: ...
         def _refresh_results_runs_list(self) -> None: ...
         def _render_results_tree(self, record: RunRecord) -> None: ...
@@ -699,7 +685,6 @@ else:
         """Provides the Results view: run selection and the results tree."""
 
         on_tree_node_selected = on_tree_node_selected
-        _current_project_tag = _current_project_tag
         _current_project_path = _current_project_path
         _refresh_results_runs_list = _refresh_results_runs_list
         _render_results_tree = _render_results_tree

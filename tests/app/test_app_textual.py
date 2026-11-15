@@ -2343,6 +2343,7 @@ def test_textual_results_view_lists_runs_and_renders_tree(monkeypatch: pytest.Mo
         started_at="2026-09-06T10:00:00Z",
         finished_at="2026-09-06T10:05:00Z",
         project_tag="TargetA",
+        project_path="/tmp/sattlint-test.slproj",
         selected_analyzers=("variables",),
         targets=(
             RunTargetRecord(
@@ -2370,6 +2371,7 @@ def test_textual_results_view_lists_runs_and_renders_tree(monkeypatch: pytest.Mo
 
     async def _run() -> None:
         app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": ["TargetA"]})
+        app_instance._config_path = "/tmp/sattlint-test.slproj"
         monkeypatch.setattr(app_textual_results_module, "list_runs", lambda: (summary,))
         monkeypatch.setattr(app_textual_results_module, "load_run", lambda run_id: record if run_id == "run1" else None)
 
@@ -2418,6 +2420,7 @@ def test_textual_results_group_toggle_switches_to_module_grouping(monkeypatch: p
         started_at="2026-09-06T10:00:00Z",
         finished_at="2026-09-06T10:05:00Z",
         project_tag="TargetA",
+        project_path="/tmp/sattlint-test.slproj",
         targets=(
             RunTargetRecord(
                 target_name="TargetA",
@@ -2455,6 +2458,7 @@ def test_textual_results_group_toggle_switches_to_module_grouping(monkeypatch: p
 
     async def _run() -> None:
         app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": ["TargetA"]})
+        app_instance._config_path = "/tmp/sattlint-test.slproj"
         monkeypatch.setattr(app_textual_results_module, "list_runs", lambda: (summary,))
         monkeypatch.setattr(app_textual_results_module, "load_run", lambda run_id: record if run_id == "run1" else None)
 
@@ -2490,11 +2494,18 @@ def test_textual_analysis_completion_switches_to_results_view(monkeypatch: pytes
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
-    record = RunRecord(run_id="run9", started_at="s", finished_at="f", project_tag="TargetA")
+    record = RunRecord(
+        run_id="run9",
+        started_at="s",
+        finished_at="f",
+        project_tag="TargetA",
+        project_path="/tmp/sattlint-test.slproj",
+    )
     summary = RunSummary.from_record(record)
 
     async def _run() -> None:
         app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": ["TargetA"]})
+        app_instance._config_path = "/tmp/sattlint-test.slproj"
         monkeypatch.setattr(app_textual_results_module, "list_runs", lambda: (summary,))
         monkeypatch.setattr(app_textual_results_module, "load_run", lambda _run_id: record)
 
