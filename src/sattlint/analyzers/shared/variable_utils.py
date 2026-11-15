@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from sattlint.parser_api import ParameterMapping, Simple_DataType, Variable
+from sattlint.parser_api import ParameterMapping, ScalarDatatype, Variable
 
 from ...resolution.common import varname_base
 from ...utils.casefolding import casefold_key
@@ -16,9 +16,9 @@ if TYPE_CHECKING:
 
 def is_const_candidate(self: VariablesAnalyzer, variable: Variable) -> bool:
     return (
-        isinstance(variable.datatype, Simple_DataType)
-        and variable.datatype is not Simple_DataType.TIME
-        and variable.datatype is not Simple_DataType.DURATION
+        isinstance(variable.datatype, ScalarDatatype)
+        and variable.datatype is not ScalarDatatype.TIME
+        and variable.datatype is not ScalarDatatype.DURATION
         and not bool(variable.opsave)
         and not bool(variable.secure)
     )

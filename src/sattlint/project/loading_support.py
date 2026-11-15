@@ -13,7 +13,7 @@ from sattlint.parser_api import BasePicture
 
 from ..config.types import ConfigDict
 from ..core import profiling as profiling_module
-from ..core.debug import debug_enabled, log_debug_exception
+from ..core.debug import debug_enabled
 from ..core.syntax import CodeMode, deps_ext_candidates, normalize_code_mode
 from ..models.project_graph import ProjectFailure, ProjectGraph
 from ..validation.shared import ValidationNotice, ValidationWarning, coerce_validation_notice
@@ -157,7 +157,7 @@ def _include_reverse_library_consumers(
     selected_target: str,
     root_bp: BasePicture,
     graph: ProjectGraph,
-    find_dependency_path_fn: Callable[[str, Path | None], Path | None],
+    find_dependency_path_fn: Callable[[str], Path | None],
     read_dependency_names_fn: Callable[[Path | None], list[str]],
     visit_targets_fn: Callable[[list[tuple[str, Path | None]]], None],
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
@@ -175,7 +175,6 @@ def _include_reverse_library_consumers(
         return
 
     selected_key = selected_target.casefold()
-    requester_dir = Path(cfg["program_dir"])
     queued_targets: set[tuple[str, str]] = set()
     pending_targets: list[tuple[str, Path | None]] = []
 
@@ -193,7 +192,7 @@ def _include_reverse_library_consumers(
         if candidate.casefold() == selected_key:
             continue
 
-        deps_path = find_dependency_path_fn(candidate, requester_dir)
+        deps_path = find_dependency_path_fn(candidate)
         candidate_dependencies = read_dependency_names_fn(deps_path)
         if not any(dep.casefold() == selected_key for dep in candidate_dependencies):
             continue
@@ -215,33 +214,6 @@ def _include_reverse_library_consumers(
     # consumer; each consumer is still validated as its own root target.
     if pending_targets:
         visit_targets_fn(pending_targets)
-
-
-def iter_loaded_projects(
-    cfg: ConfigDict,
-    *,
-    use_cache: bool,
-    require_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
-    load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]],
-    emit_output_fn: Callable[..., None],
-) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
-    for target_name in require_analyzed_targets_fn(cfg):
-        try:
-            project_bp, graph = _call_load_project_compat(
-                load_project_fn,
-                cfg,
-                target_name=target_name,
-                use_cache=use_cache,
-                collect_stage_timings=_collect_analysis_timings(cfg),
-            )
-        except (OSError, RuntimeError, ValueError) as exc:
-            log_debug_exception(cfg, f"Failed to load analysis target {target_name!r}", logger=log)
-            emit_output_fn(f"\n=== Target: {target_name} ===")
-            emit_output_fn("? Failed to load target:")
-            emit_output_fn(exc)
-            continue
-        _emit_debug_load_summary(cfg, target_name=target_name, graph=graph, emit_output_fn=emit_output_fn)
-        yield target_name, project_bp, graph
 
 
 def record_project_failure(graph: ProjectGraph, name: str, exception: Exception) -> None:

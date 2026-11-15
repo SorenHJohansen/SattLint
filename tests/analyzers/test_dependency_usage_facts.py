@@ -12,7 +12,7 @@ from sattlint.parser_api import (
     FuncCall,
     ModuleCode,
     ModuleHeader,
-    Simple_DataType,
+    ScalarDatatype,
     Variable,
     VarRef,
 )
@@ -22,35 +22,33 @@ def test_output_argument_inside_expression_is_a_write_not_a_read() -> None:
     bp = BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
         localvariables=[
-            Variable(name="Text", datatype=Simple_DataType.STRING),
-            Variable(name="Status", datatype=Simple_DataType.INTEGER),
-            Variable(name="Value", datatype=Simple_DataType.INTEGER),
+            Variable(name="Text", datatype=ScalarDatatype.STRING),
+            Variable(name="Status", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Value", datatype=ScalarDatatype.INTEGER),
         ],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Main",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            Assignment(
-                                target=VarRef(name="Value"),
-                                value=BinOp(
-                                    left=1,
-                                    op="+",
-                                    right=FuncCall(
-                                        name="StringToInteger",
-                                        args=(VarRef(name="Text"), VarRef(name="Status")),
-                                    ),
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        Assignment(
+                            target=VarRef(name="Value"),
+                            value=BinOp(
+                                left=1,
+                                op="+",
+                                right=FuncCall(
+                                    name="StringToInteger",
+                                    args=(VarRef(name="Text"), VarRef(name="Status")),
                                 ),
-                            )
-                        ],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
+                            ),
+                        )
+                    ],
+                )
+            ],
+            sequences=[],
+        ),
     )
 
     facts = collect_statement_facts(bp)

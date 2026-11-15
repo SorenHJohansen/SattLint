@@ -9,6 +9,7 @@ from sattline_parser.models.ast_model import (
     FrameModule,
     ModuleCode,
     ModuleHeader,
+    ScalarDatatype,
     Sequence,
     SFCAlternative,
     SFCBodyItem,
@@ -18,7 +19,6 @@ from sattline_parser.models.ast_model import (
     SFCSubsequence,
     SFCTransition,
     SFCTransitionSub,
-    Simple_DataType,
     SingleModule,
     Variable,
 )
@@ -51,52 +51,50 @@ def _bool_step(name: str, statements: Seq[CodeItem]) -> SFCStep:
 def test_detection_walks_frame_submodules_for_reset_and_latching() -> None:
     child = SingleModule(
         header=_hdr("Child"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[
-            Variable(name="Counter", datatype=Simple_DataType.INTEGER),
-            Variable(name="Other", datatype=Simple_DataType.INTEGER),
-            Variable(name="ResetValue", datatype=Simple_DataType.INTEGER),
-            Variable(name="SeqResetOld", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="Start", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="Latch", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="Start", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="Latch", datatype=ScalarDatatype.BOOLEAN),
         ],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    _eq(
-                        "ResetEq",
-                        [
-                            IfStmt(
-                                branches=(
-                                    (
-                                        NotOp(operand=_varref("OpSeq.Reset")),
-                                        (Assignment(target=_varref("Counter"), value=_varref("ResetValue")),),
-                                    ),
-                                    (
-                                        NotOp(operand=_varref("SeqResetOld")),
-                                        (Assignment(target=_varref("Other"), value=_varref("ResetValue")),),
-                                    ),
+        modulecode=ModuleCode(
+            equationblocks=[
+                _eq(
+                    "ResetEq",
+                    [
+                        IfStmt(
+                            branches=(
+                                (
+                                    NotOp(operand=_varref("OpSeq.Reset")),
+                                    (Assignment(target=_varref("Counter"), value=_varref("ResetValue")),),
                                 ),
-                                else_block=None,
+                                (
+                                    NotOp(operand=_varref("SeqResetOld")),
+                                    (Assignment(target=_varref("Other"), value=_varref("ResetValue")),),
+                                ),
                             ),
-                            Assignment(target=_varref("SeqResetOld"), value=_varref("OpSeq.Reset")),
-                        ],
-                    ),
-                    _eq(
-                        "LatchEq",
-                        [
-                            IfStmt(
-                                branches=((_varref("Start"), (Assignment(target=_varref("Latch"), value=True),)),),
-                                else_block=None,
-                            ),
-                        ],
-                    ),
-                ],
-                sequences=[_seq("OpSeq", [])],
-            )
-        ],
+                            else_block=None,
+                        ),
+                        Assignment(target=_varref("SeqResetOld"), value=_varref("OpSeq.Reset")),
+                    ],
+                ),
+                _eq(
+                    "LatchEq",
+                    [
+                        IfStmt(
+                            branches=((_varref("Start"), (Assignment(target=_varref("Latch"), value=True),)),),
+                            else_block=None,
+                        ),
+                    ],
+                ),
+            ],
+            sequences=[_seq("OpSeq", [])],
+        ),
         parametermappings=[],
     )
     picture = BasePicture(header=_hdr("Root"), submodules=[FrameModule(header=_hdr("Frame"), submodules=[child])])
@@ -128,9 +126,9 @@ def test_detection_walks_frame_submodules_for_reset_and_latching() -> None:
 
 def test_reset_helpers_collect_nested_refs_and_skip_fully_reset_paths() -> None:
     env = {
-        "counter": Variable(name="Counter", datatype=Simple_DataType.INTEGER),
-        "resetvalue": Variable(name="ResetValue", datatype=Simple_DataType.INTEGER),
-        "seqresetold": Variable(name="SeqResetOld", datatype=Simple_DataType.BOOLEAN),
+        "counter": Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+        "resetvalue": Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+        "seqresetold": Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
     }
     modulecode = ModuleCode(
         equationblocks=[
@@ -188,8 +186,8 @@ def test_reset_helpers_collect_nested_refs_and_skip_fully_reset_paths() -> None:
 
 def test_latching_helpers_cover_boolean_paths_and_sequence_recursion() -> None:
     env = {
-        "flag": Variable(name="Flag", datatype=Simple_DataType.BOOLEAN),
-        "otherflag": Variable(name="OtherFlag", datatype=Simple_DataType.BOOLEAN),
+        "flag": Variable(name="Flag", datatype=ScalarDatatype.BOOLEAN),
+        "otherflag": Variable(name="OtherFlag", datatype=ScalarDatatype.BOOLEAN),
     }
     states = reset_contamination_module._collect_boolean_stmt_paths(
         IfStmt(

@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef, Simple_DataType, SingleModule, Variable
+from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef, ScalarDatatype, SingleModule, Variable
 
 from sattlint.analyzers import variables as variables_module
 from sattlint.analyzers.variables import IssueKind
@@ -75,15 +75,15 @@ def _run_phase(helper: Any, phase: str, callback: Callable[[], object]) -> None:
 
 
 def test_variables_execution_collect_basepicture_issues_covers_procedure_status_branch() -> None:
-    procedure_var = Variable(name="ProcedureVar", datatype=Simple_DataType.INTEGER)
+    procedure_var = Variable(name="ProcedureVar", datatype=ScalarDatatype.INTEGER)
     bp = BasePicture(
         header=_hdr("Root"),
         datatype_defs=[],
         moduletype_defs=[],
         localvariables=[procedure_var],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
     issues: list[tuple[IssueKind, tuple[str, ...], str, str, str | None]] = []
 
@@ -124,15 +124,15 @@ def test_variables_execution_collect_basepicture_issues_covers_procedure_status_
 
 
 def test_variables_execution_collect_basepicture_issues_covers_write_without_effect_branch() -> None:
-    effect_var = Variable(name="EffectVar", datatype=Simple_DataType.INTEGER)
+    effect_var = Variable(name="EffectVar", datatype=ScalarDatatype.INTEGER)
     bp = BasePicture(
         header=_hdr("Root"),
         datatype_defs=[],
         moduletype_defs=[],
         localvariables=[effect_var],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
     issues: list[tuple[IssueKind, tuple[str, ...], str, str, str | None]] = []
 
@@ -165,15 +165,14 @@ def test_variables_execution_collect_basepicture_issues_covers_write_without_eff
 
 
 def test_variables_execution_collect_typedef_issues_covers_moduleparameter_procedure_status_branch() -> None:
-    procedure_param = Variable(name="ProcedureParam", datatype=Simple_DataType.INTEGER)
+    procedure_param = Variable(name="ProcedureParam", datatype=ScalarDatatype.INTEGER)
     moduletype = ModuleTypeDef(
         name="WorkerType",
         moduleparameters=[procedure_param],
         localvariables=[],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
     )
     bp = BasePicture(
         header=_hdr("Root"),
@@ -181,8 +180,8 @@ def test_variables_execution_collect_typedef_issues_covers_moduleparameter_proce
         moduletype_defs=[moduletype],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
     issues: list[tuple[IssueKind, tuple[str, ...], str, str, str | None]] = []
 
@@ -267,12 +266,11 @@ def test_variables_execution_dependency_and_typedef_early_returns_cover_remainin
 
     moduletype = ModuleTypeDef(
         name="WorkerType",
-        moduleparameters=[Variable(name="Param", datatype=Simple_DataType.INTEGER)],
+        moduleparameters=[Variable(name="Param", datatype=ScalarDatatype.INTEGER)],
         localvariables=[],
         submodules=[SingleModule.__new__(SingleModule)],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
     )
     analyze_calls: list[str] = []
     collected_modules: list[object] = []
@@ -292,8 +290,8 @@ def test_variables_execution_dependency_and_typedef_early_returns_cover_remainin
             moduletype_defs=[moduletype],
             localvariables=[],
             submodules=[],
-            modulecodes=[],
-            moduledefs=[],
+            modulecode=None,
+            moduledef=None,
         ),
         _update_status=_noop,
         _analyze_typedef=_analyze_typedef,

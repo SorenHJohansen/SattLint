@@ -18,7 +18,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, cast
 
-from sattlint.parser_api import BasePicture, ModuleTypeDef
+from sattlint.parser_api import BasePicture, ModuleTypeDef, ProjectLoadError
 
 from ...config.types import ConfigDict
 from ...models.project_graph import ProjectGraph, merge_project_basepicture
@@ -106,7 +106,7 @@ def _validate_icf_file(
     else:
         try:
             program_bp, graph = load_program_ast(config, program_name)
-        except (OSError, RuntimeError, ValueError) as exc:
+        except (OSError, RuntimeError, ValueError, ProjectLoadError) as exc:
             return [
                 Issue(
                     kind=_KIND_FOR_LOAD_FAILURE,

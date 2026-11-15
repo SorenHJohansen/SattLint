@@ -27,8 +27,8 @@ from sattlint.parser_api import (
     ModuleTypeDef,
     ModuleTypeInstance,
     ParameterMapping,
+    ScalarDatatype,
     Sequence,
-    Simple_DataType,
     SingleModule,
     TernaryOp,
     UnaryOp,
@@ -327,7 +327,7 @@ class ExactStringInferenceEngine:
                         source_module_path=context.path,
                         max_length=_string_capacity_for_datatype(variable.datatype),
                     )
-                elif isinstance(init_value, int) and variable.datatype is Simple_DataType.INTEGER:
+                elif isinstance(init_value, int) and variable.datatype is ScalarDatatype.INTEGER:
                     state.int_values[slot_key] = _normalize_int_result(_IntResult((init_value,), False))
 
             for binding in context.literal_bindings:
@@ -340,7 +340,7 @@ class ExactStringInferenceEngine:
                         source_kind=binding.source_kind,
                         source_label=repr(binding.source_literal),
                         source_module_path=context.path,
-                        max_length=_STRING_LIMITS[Simple_DataType.MAXSTRING],
+                        max_length=_STRING_LIMITS[ScalarDatatype.MAXSTRING],
                     )
                 elif isinstance(binding.source_literal, int):
                     state.int_values[target_key] = _normalize_int_result(_IntResult((binding.source_literal,), False))
@@ -415,7 +415,7 @@ class ExactStringInferenceEngine:
         int_result = self._eval_int_expr(value_node, state, scope)
         string_result = self._eval_string_expr(value_node, state, scope)
         target_is_string = is_string_simple_type(target_slot.variable.datatype)
-        target_is_integer = target_slot.variable.datatype is Simple_DataType.INTEGER
+        target_is_integer = target_slot.variable.datatype is ScalarDatatype.INTEGER
         if target_is_string or (
             target_slot.key.field_path
             and (string_result.candidates or string_result.unknown_text)

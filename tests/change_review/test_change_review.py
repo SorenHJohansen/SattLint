@@ -13,7 +13,7 @@ from sattline_parser.models.ast_model import (
     ModuleDef,
     ModuleHeader,
     ModuleTypeDef,
-    Simple_DataType,
+    ScalarDatatype,
     Variable,
 )
 
@@ -207,9 +207,9 @@ def _moduletype(name: str, *, origin_file: str, origin_lib: str) -> ModuleTypeDe
     return ModuleTypeDef(
         name=name,
         moduleparameters=[],
-        localvariables=[Variable(name=f"{name}Value", datatype=Simple_DataType.INTEGER)],
-        moduledefs=[ModuleDef()],
-        modulecodes=[ModuleCode(sequences=[], equationblocks=[])],
+        localvariables=[Variable(name=f"{name}Value", datatype=ScalarDatatype.INTEGER)],
+        moduledef=ModuleDef(),
+        modulecode=ModuleCode(sequences=[], equationblocks=[]),
         origin_file=origin_file,
         origin_lib=origin_lib,
     )
@@ -222,7 +222,7 @@ def test_change_review_snapshot_can_exclude_dependency_moduletypes(tmp_path: Pat
         header=ModuleHeader(name="Demo", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="Demo",
         moduletype_defs=[root_type, dependency_type],
-        moduledefs=[ModuleDef()],
+        moduledef=ModuleDef(),
         origin_file="Demo.s",
         origin_lib="DemoLib",
     )

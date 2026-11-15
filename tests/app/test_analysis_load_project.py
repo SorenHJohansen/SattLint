@@ -1,4 +1,6 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportIndexIssue=false
+from sattline_parser.project import ProjectLoadError
+
 from sattlint.config import DEFAULT_CONFIG
 from tests.helpers import AnalysisGraphStub, named_object
 from tests.helpers.app_analysis_support import *
@@ -484,6 +486,46 @@ def test_force_refresh_ast_emits_basic_profiling_when_stage_timings_disabled(mon
             "payload": {"refresh_mode": "ast-only"},
         }
     ]
+
+
+def test_force_refresh_ast_reports_a_target_that_cannot_load(monkeypatch):
+    lines: list[str] = []
+    attempted: list[str] = []
+
+    class FakeCache:
+        def __init__(self, cache_dir):
+            self.cache_dir = cache_dir
+
+        def clear(self, key):
+            return None
+
+    class FakeTelemetry:
+        enabled = False
+
+        def emit(self, **_payload):
+            return None
+
+    def fake_load(_cfg, *, target_name, **_kwargs):
+        attempted.append(target_name)
+        if target_name == "Broken":
+            raise ProjectLoadError(target_name, "missing code file for 'Broken'")
+        return named_object(target_name), SimpleNamespace()
+
+    monkeypatch.setattr(project_application, "emit_output", lambda message, **_kwargs: lines.append(str(message)))
+    monkeypatch.setattr(profiling_module, "create_profiler", lambda: FakeTelemetry())
+
+    result = project_application.force_refresh_ast(
+        {"debug": False},
+        get_analyzed_targets_fn=lambda _cfg: ["Broken", "Good"],
+        cache_key_for_target_fn=lambda _cfg, target_name: target_name,
+        load_project_fn=fake_load,
+        ast_cache_cls=FakeCache,
+        get_cache_dir_fn=lambda: Path("cache-dir"),
+    )
+
+    assert attempted == ["Broken", "Good"]
+    assert any("Failed to refresh AST cache for Broken" in line for line in lines)
+    assert result is not None
 
 
 def test_ensure_ast_cache_covers_cache_hit_stale_missing_and_failure(monkeypatch):

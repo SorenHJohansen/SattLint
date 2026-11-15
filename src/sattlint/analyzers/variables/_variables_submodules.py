@@ -10,7 +10,7 @@ from sattlint.parser_api import (
     ModuleTypeDef,
     ModuleTypeInstance,
     ParameterMapping,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
     VarRef,
@@ -456,7 +456,7 @@ def _detect_datatype_duplications(self: VariablesAnalyzer) -> None:
     complex_vars = [
         (variable, path, role)
         for variable, path, role in var_locations
-        if not isinstance(variable.datatype, Simple_DataType) and not is_anytype_name(variable.datatype_text)
+        if not isinstance(variable.datatype, ScalarDatatype) and not is_anytype_name(variable.datatype_text)
     ]
 
     by_datatype: dict[tuple[tuple[str, ...], str], list[tuple[Any, list[str], str]]] = {}

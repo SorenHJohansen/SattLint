@@ -7,7 +7,7 @@ from sattline_parser.models.ast_model import (
     FrameModule,
     ModuleCode,
     ModuleHeader,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
 )
@@ -37,24 +37,22 @@ def test_read_before_write_reports_reads_before_writes():
     bp = BasePicture(
         header=_hdr("Program"),
         localvariables=[
-            Variable(name="InputSignal", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="OutputSignal", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="ObservedSignal", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="InputSignal", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="OutputSignal", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="ObservedSignal", datatype=ScalarDatatype.BOOLEAN),
         ],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    _equation(
-                        [
-                            Assignment(target=_varref("OutputSignal"), value=_varref("InputSignal")),
-                            Assignment(target=_varref("InputSignal"), value=True),
-                            Assignment(target=_varref("ObservedSignal"), value=_varref("OutputSignal")),
-                        ]
-                    )
-                ]
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                _equation(
+                    [
+                        Assignment(target=_varref("OutputSignal"), value=_varref("InputSignal")),
+                        Assignment(target=_varref("InputSignal"), value=True),
+                        Assignment(target=_varref("ObservedSignal"), value=_varref("OutputSignal")),
+                    ]
+                )
+            ]
+        ),
     )
 
     report = _rbw_only_report(bp)
@@ -68,21 +66,19 @@ def test_read_before_write_reports_initialization_order_hazard():
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[
-            Variable(name="Source", datatype=Simple_DataType.INTEGER),
-            Variable(name="Output", datatype=Simple_DataType.INTEGER),
+            Variable(name="Source", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Output", datatype=ScalarDatatype.INTEGER),
         ],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    _equation(
-                        [
-                            Assignment(target=_varref("Output"), value=_varref("Source")),
-                            Assignment(target=_varref("Source"), value=3),
-                        ]
-                    )
-                ]
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                _equation(
+                    [
+                        Assignment(target=_varref("Output"), value=_varref("Source")),
+                        Assignment(target=_varref("Source"), value=3),
+                    ]
+                )
+            ]
+        ),
     )
 
     report = _rbw_only_report(bp)
@@ -98,25 +94,25 @@ def test_read_before_write_is_default_variable_analysis_kind():
 def test_read_before_write_ignores_initialized_and_parameter_values():
     child = SingleModule(
         header=_hdr("Child"),
-        moduledefs=[],
-        moduleparameters=[Variable(name="Param", datatype=Simple_DataType.INTEGER)],
-        localvariables=[Variable(name="ChildOut", datatype=Simple_DataType.INTEGER)],
+        moduledef=None,
+        moduleparameters=[Variable(name="Param", datatype=ScalarDatatype.INTEGER)],
+        localvariables=[Variable(name="ChildOut", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        modulecodes=[
-            ModuleCode(equationblocks=[_equation([Assignment(target=_varref("ChildOut"), value=_varref("Param"))])])
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[_equation([Assignment(target=_varref("ChildOut"), value=_varref("Param"))])]
+        ),
         parametermappings=[],
     )
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[
-            Variable(name="PreInit", datatype=Simple_DataType.BOOLEAN, init_value=False),
-            Variable(name="Out", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="PreInit", datatype=ScalarDatatype.BOOLEAN, init_value=False),
+            Variable(name="Out", datatype=ScalarDatatype.BOOLEAN),
         ],
         submodules=[child],
-        modulecodes=[
-            ModuleCode(equationblocks=[_equation([Assignment(target=_varref("Out"), value=_varref("PreInit"))])])
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[_equation([Assignment(target=_varref("Out"), value=_varref("PreInit"))])]
+        ),
     )
 
     report = _rbw_only_report(bp)
@@ -127,26 +123,24 @@ def test_read_before_write_ignores_initialized_and_parameter_values():
 def test_read_before_write_ignores_module_parameter_inherited_by_frame_module():
     parent = SingleModule(
         header=_hdr("Parent"),
-        moduledefs=[],
-        moduleparameters=[Variable(name="InputSignal", datatype=Simple_DataType.BOOLEAN)],
-        localvariables=[Variable(name="OutputSignal", datatype=Simple_DataType.BOOLEAN)],
+        moduledef=None,
+        moduleparameters=[Variable(name="InputSignal", datatype=ScalarDatatype.BOOLEAN)],
+        localvariables=[Variable(name="OutputSignal", datatype=ScalarDatatype.BOOLEAN)],
         submodules=[
             FrameModule(
                 header=_hdr("Frame"),
-                modulecodes=[
-                    ModuleCode(
-                        equationblocks=[
-                            _equation([Assignment(target=_varref("OutputSignal"), value=_varref("InputSignal"))])
-                        ]
-                    )
-                ],
+                modulecode=ModuleCode(
+                    equationblocks=[
+                        _equation([Assignment(target=_varref("OutputSignal"), value=_varref("InputSignal"))])
+                    ]
+                ),
                 submodules=[],
             )
         ],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
-    bp = BasePicture(header=_hdr("Root"), localvariables=[], submodules=[parent], modulecodes=[])
+    bp = BasePicture(header=_hdr("Root"), localvariables=[], submodules=[parent], modulecode=None)
 
     report = _rbw_only_report(bp)
 
@@ -159,21 +153,19 @@ def test_read_before_write_clean_when_all_reads_follow_writes():
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[
-            Variable(name="Source", datatype=Simple_DataType.INTEGER),
-            Variable(name="Output", datatype=Simple_DataType.INTEGER),
+            Variable(name="Source", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Output", datatype=ScalarDatatype.INTEGER),
         ],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    _equation(
-                        [
-                            Assignment(target=_varref("Source"), value=3),
-                            Assignment(target=_varref("Output"), value=_varref("Source")),
-                        ]
-                    )
-                ]
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                _equation(
+                    [
+                        Assignment(target=_varref("Source"), value=3),
+                        Assignment(target=_varref("Output"), value=_varref("Source")),
+                    ]
+                )
+            ]
+        ),
     )
 
     report = _rbw_only_report(bp)

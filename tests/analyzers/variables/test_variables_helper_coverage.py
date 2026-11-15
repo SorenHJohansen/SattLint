@@ -8,7 +8,7 @@ from typing import Any, cast
 import pytest
 from sattline_parser.ast import VarRef
 from sattline_parser.models.ast_model import (
-    Simple_DataType,
+    ScalarDatatype,
     Variable,
 )
 
@@ -37,7 +37,7 @@ def _returns_false(*_args: object, **_kwargs: object) -> bool:
 
 
 def test_variables_status_cover_binding_branches(monkeypatch: pytest.MonkeyPatch) -> None:
-    variable = Variable(name="StatusVar", datatype=Simple_DataType.INTEGER)
+    variable = Variable(name="StatusVar", datatype=ScalarDatatype.INTEGER)
     helper: Any = SimpleNamespace(
         procedure_status_bindings=defaultdict(list),
         ignorable_output_variable_ids=set(),
@@ -165,8 +165,8 @@ def test_variables_status_cover_binding_branches(monkeypatch: pytest.MonkeyPatch
 
 
 def test_variables_status_propagation_and_variables_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
-    source = Variable(name="Source", datatype=Simple_DataType.INTEGER)
-    target = Variable(name="Target", datatype=Simple_DataType.INTEGER)
+    source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
+    target = Variable(name="Target", datatype=ScalarDatatype.INTEGER)
     binding = variables_status_module.ProcedureStatusBinding(
         call_name="Fn",
         parameter_name="Out",
@@ -259,7 +259,7 @@ def test_variables_status_propagation_and_variables_helpers(monkeypatch: pytest.
 
 
 def test_variables_status_procedure_status_issue_covers_remaining_branches() -> None:
-    bound_var = Variable(name="BoundStatus", datatype=Simple_DataType.INTEGER)
+    bound_var = Variable(name="BoundStatus", datatype=ScalarDatatype.INTEGER)
     binding = variables_status_module.ProcedureStatusBinding(
         call_name="RunProc",
         parameter_name="StatusOut",
@@ -333,8 +333,8 @@ def test_variables_analyzer_warn_trace_and_status_helpers_cover_remaining_branch
 
 
 def test_variables_facade_forwarders_and_properties_cover_remaining_branches() -> None:  # noqa: PLR0915
-    variable = Variable(name="FacadeVar", datatype=Simple_DataType.INTEGER)
-    other_variable = Variable(name="GlobalVar", datatype=Simple_DataType.INTEGER)
+    variable = Variable(name="FacadeVar", datatype=ScalarDatatype.INTEGER)
+    other_variable = Variable(name="GlobalVar", datatype=ScalarDatatype.INTEGER)
     issue = VariableIssue(kind=IssueKind.UNUSED, module_path=["Root"], variable=variable, role="unused")
     mapping = SimpleNamespace(name="Map")
     parent_context = SimpleNamespace(name="parent")
@@ -454,14 +454,14 @@ def test_variable_utils_cover_mapping_and_origin_fallback_branches(monkeypatch: 
     assert (
         variable_utils_module.is_const_candidate(
             analyzer,
-            Variable(name="Counter", datatype=Simple_DataType.INTEGER),
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
         )
         is True
     )
     assert (
         variable_utils_module.is_const_candidate(
             analyzer,
-            Variable(name="Timer", datatype=Simple_DataType.TIME),
+            Variable(name="Timer", datatype=ScalarDatatype.TIME),
         )
         is False
     )
@@ -533,9 +533,9 @@ def test_variable_utils_cover_mapping_and_origin_fallback_branches(monkeypatch: 
 
 
 def test_variable_issue_collection_and_variables_cover_remaining_branches(monkeypatch: pytest.MonkeyPatch) -> None:
-    proc_var = Variable(name="Proc", datatype=Simple_DataType.INTEGER)
-    ui_var = Variable(name="Display", datatype=Simple_DataType.INTEGER)
-    effect_var = Variable(name="Effect", datatype=Simple_DataType.INTEGER)
+    proc_var = Variable(name="Proc", datatype=ScalarDatatype.INTEGER)
+    ui_var = Variable(name="Display", datatype=ScalarDatatype.INTEGER)
+    effect_var = Variable(name="Effect", datatype=ScalarDatatype.INTEGER)
     issues: list[tuple[IssueKind, str | None, str | None]] = []
 
     def _is_from_root_origin(*_args: object) -> bool:

@@ -1,4 +1,7 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false
+from sattline_parser.project import ProjectLoadError
+
+from sattlint.models.project_graph import ProjectGraph
 from sattlint.project import loading_support as loading_support_module
 from tests.helpers import AnalysisGraphStub
 from tests.helpers.app_analysis_support import *
@@ -120,16 +123,16 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
             del graph, syntax_only, syntax_check
             visits.append((target_name, requester_dir))
 
-        def find_dependency_path(self, target_name, requester_dir=None):
-            return self._find_deps_with_context(target_name, requester_dir=requester_dir)
+        def find_dependency_path(self, target_name):
+            return self._find_deps_with_context(target_name)
 
         def read_dependency_names(self, deps_path):
             return self._read_deps(deps_path)
 
     loader = FakeLoader()
 
-    def find_dependency_path_fn(target_name, requester_dir):
-        return loader.find_dependency_path(target_name, requester_dir=requester_dir)
+    def find_dependency_path_fn(target_name):
+        return loader.find_dependency_path(target_name)
 
     def read_dependency_names_fn(deps_path):
         return loader.read_dependency_names(deps_path)
@@ -204,12 +207,10 @@ def test_analysis_loading_cache_manifest_files_adds_companions_and_dependency_ma
     manifest_files = analysis_loading_module.cache_manifest_files(
         cfg,
         graph,
-        find_dependency_path_fn=lambda target_name, requester_dir: (
-            None if requester_dir is None else requester_dir / f"{target_name}.z"
+        find_dependency_path_fn=lambda target_name: (
+            Path("libraries" if target_name == "TargetB" else "programs") / f"{target_name}.z"
         ),
         resolve_graphics_companion_path_fn=lambda source_path, **_kwargs: source_path.with_suffix(".g"),
-        casefold_equal_fn=lambda left, right: left.casefold() == right.casefold(),
-        casefold_key_fn=lambda value: value.casefold(),
     )
 
     assert manifest_files == {
@@ -218,3 +219,36 @@ def test_analysis_loading_cache_manifest_files_adds_companions_and_dependency_ma
         Path("programs/TargetA.z"),
         Path("libraries/TargetB.z"),
     }
+
+
+def test_visit_targets_into_graph_falls_back_per_consumer_after_batch_failure(monkeypatch):
+    converted: list[tuple[str, tuple[str, ...]]] = []
+    failures: list[str] = []
+
+    def fake_load_parser_project(_binding, targets, **_kwargs):
+        if len(targets) > 1:
+            raise ProjectLoadError(targets[0], "missing code file")
+        if targets[0] == "ConsumerB":
+            raise ProjectLoadError(targets[0], "missing code file")
+        return SimpleNamespace(names=tuple(targets))
+
+    def fake_convert_project_into_graph(_project, _graph, *, binding, root_name, strict, lib_names, extra_roots=()):
+        del binding, strict, lib_names
+        converted.append((root_name, tuple(extra_roots)))
+
+    def fake_record_project_failure(_graph, name, _exception):
+        failures.append(name)
+
+    monkeypatch.setattr(analysis_loading_module, "load_parser_project", fake_load_parser_project)
+    monkeypatch.setattr(analysis_loading_module, "convert_project_into_graph", fake_convert_project_into_graph)
+    monkeypatch.setattr(analysis_loading_module, "record_project_failure", fake_record_project_failure)
+
+    analysis_loading_module._visit_targets_into_graph(
+        cast(Any, object()),
+        ProjectGraph(),
+        [("ConsumerA", None), ("ConsumerB", None)],
+        lib_names={},
+    )
+
+    assert failures == ["ConsumerB"]
+    assert converted == [("ConsumerA", ())]

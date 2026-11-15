@@ -4,7 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
-from sattlint.parser_api import Simple_DataType, Variable
+from sattlint.parser_api import ScalarDatatype, Variable
 from sattlint.parser_api import constants as grammar_const
 
 if TYPE_CHECKING:
@@ -286,7 +286,7 @@ def render_table_issue_rows(
 
 
 def variable_datatype_text(variable: Variable) -> str:
-    if isinstance(variable.datatype, Simple_DataType):
+    if isinstance(variable.datatype, ScalarDatatype):
         return variable.datatype.value
     return str(variable.datatype)
 

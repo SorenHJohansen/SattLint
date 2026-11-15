@@ -69,7 +69,6 @@ from .project.parser_adapter import (
 from .validation.shared import (
     StructuralValidationError,
     ValidationNotice,
-    coerce_validation_notice,
 )
 
 
@@ -105,7 +104,7 @@ def load_project_graph(
     )
     graph = ProjectGraph()
     lib_names: dict[str, str] = {}
-    project = load_parser_project(binding, [target_name], strict=strict)
+    project = load_parser_project(binding, [target_name])
     convert_project_into_graph(
         project, graph, binding=binding, root_name=target_name, strict=strict, lib_names=lib_names
     )
@@ -169,7 +168,6 @@ def validate_single_file_syntax(
         resolve_graphics_companion_path_fn=resolve_graphics_companion_path,
         extract_error_position_fn=_extract_error_position,
         graphics_validation_to_syntax_result_fn=_graphics_validation_to_syntax_result,
-        coerce_validation_notice_fn=coerce_validation_notice,
     )
 
 

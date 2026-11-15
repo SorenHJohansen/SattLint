@@ -12,12 +12,11 @@ from tests.helpers.graphics_attachments_support import graphics_attachments
 def test_library_target_picture_display_variable_rows_count_typedef_moduleparameter_usage_at_root():
     root_typedef = ModuleTypeDef(
         name="Column",
-        moduleparameters=[Variable(name="ColumnType", datatype=Simple_DataType.INTEGER)],
+        moduleparameters=[Variable(name="ColumnType", datatype=ScalarDatatype.INTEGER)],
         localvariables=[],
         submodules=[],
-        moduledefs=[ModuleDef(graph_objects=[GraphObject("CompositeObject")])],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
+        modulecode=None,
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -27,8 +26,8 @@ def test_library_target_picture_display_variable_rows_count_typedef_moduleparame
         moduletype_defs=[root_typedef],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -72,12 +71,11 @@ def test_library_target_picture_display_variable_rows_count_typedef_moduleparame
 def test_library_target_picture_display_index_variable_counts_typedef_moduleparameter_usage_at_root():
     root_typedef = ModuleTypeDef(
         name="Column",
-        moduleparameters=[Variable(name="ColumnType", datatype=Simple_DataType.INTEGER)],
+        moduleparameters=[Variable(name="ColumnType", datatype=ScalarDatatype.INTEGER)],
         localvariables=[],
         submodules=[],
-        moduledefs=[ModuleDef(graph_objects=[GraphObject("CompositeObject")])],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
+        modulecode=None,
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -87,8 +85,8 @@ def test_library_target_picture_display_index_variable_counts_typedef_modulepara
         moduletype_defs=[root_typedef],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -132,12 +130,11 @@ def test_library_target_picture_display_index_variable_counts_typedef_modulepara
 def test_library_target_picture_display_record_binding_counts_typedef_moduleparameter_usage_at_root():
     root_typedef = ModuleTypeDef(
         name="Column",
-        moduleparameters=[Variable(name="ColumnType", datatype=Simple_DataType.INTEGER)],
+        moduleparameters=[Variable(name="ColumnType", datatype=ScalarDatatype.INTEGER)],
         localvariables=[],
         submodules=[],
-        moduledefs=[ModuleDef(graph_objects=[GraphObject("CompositeObject")])],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
+        modulecode=None,
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -147,8 +144,8 @@ def test_library_target_picture_display_record_binding_counts_typedef_modulepara
         moduletype_defs=[root_typedef],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -200,22 +197,21 @@ def test_library_target_picture_display_record_binding_counts_typedef_modulepara
 def test_library_target_picture_display_runtime_instance_path_counts_typedef_moduleparameter_usage():
     root_typedef = ModuleTypeDef(
         name="Column",
-        moduleparameters=[Variable(name="ColumnType", datatype=Simple_DataType.INTEGER)],
+        moduleparameters=[Variable(name="ColumnType", datatype=ScalarDatatype.INTEGER)],
         localvariables=[],
         submodules=[
             SingleModule(
                 header=_hdr("Panel"),
-                moduledefs=[ModuleDef(graph_objects=[GraphObject("CompositeObject")])],
+                moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
                 moduleparameters=[],
                 localvariables=[],
                 submodules=[],
-                modulecodes=[],
+                modulecode=None,
                 parametermappings=[],
             )
         ],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -234,12 +230,12 @@ def test_library_target_picture_display_runtime_instance_path_counts_typedef_mod
                         parametermappings=[],
                     )
                 ],
-                moduledefs=[],
-                modulecodes=[],
+                moduledef=None,
+                modulecode=None,
             )
         ],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -290,22 +286,21 @@ def test_library_target_picture_display_runtime_instance_path_counts_typedef_mod
 def test_library_target_picture_display_variable_rows_count_typedef_moduleparameter_usage_in_submodule():
     root_typedef = ModuleTypeDef(
         name="Column",
-        moduleparameters=[Variable(name="ColumnType", datatype=Simple_DataType.INTEGER)],
+        moduleparameters=[Variable(name="ColumnType", datatype=ScalarDatatype.INTEGER)],
         localvariables=[],
         submodules=[
             SingleModule(
                 header=_hdr("Panel"),
-                moduledefs=[ModuleDef(graph_objects=[GraphObject("CompositeObject")])],
+                moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
                 moduleparameters=[],
                 localvariables=[],
                 submodules=[],
-                modulecodes=[],
+                modulecode=None,
                 parametermappings=[],
             )
         ],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -315,8 +310,8 @@ def test_library_target_picture_display_variable_rows_count_typedef_moduleparame
         moduletype_defs=[root_typedef],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -363,9 +358,9 @@ def test_library_target_direct_typedef_code_counts_field_usage_for_datatype_repo
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="CleanCycle", datatype=Simple_DataType.STRING),
-            Variable(name="WaitCleanCycle", datatype=Simple_DataType.STRING),
-            Variable(name="Unused", datatype=Simple_DataType.STRING),
+            Variable(name="CleanCycle", datatype=ScalarDatatype.STRING),
+            Variable(name="WaitCleanCycle", datatype=ScalarDatatype.STRING),
+            Variable(name="Unused", datatype=ScalarDatatype.STRING),
         ],
         origin_file="DiluteLib.s",
         origin_lib="DiluteLib",
@@ -375,36 +370,33 @@ def test_library_target_direct_typedef_code_counts_field_usage_for_datatype_repo
         moduleparameters=[],
         localvariables=[
             Variable(name="StepText", datatype="StepTextType"),
-            Variable(name="Sink", datatype=Simple_DataType.STRING),
-            Variable(name="Status", datatype=Simple_DataType.INTEGER),
+            Variable(name="Sink", datatype=ScalarDatatype.STRING),
+            Variable(name="Status", datatype=ScalarDatatype.INTEGER),
         ],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Main",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            FuncCallStmt(
-                                call=FuncCall(
-                                    name="CopyString",
-                                    args=(
-                                        _varref("StepText.CleanCycle"),
-                                        _varref("Sink"),
-                                        _varref("Status"),
-                                    ),
-                                )
+        moduledef=None,
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="CopyString",
+                                args=(
+                                    _varref("StepText.CleanCycle"),
+                                    _varref("Sink"),
+                                    _varref("Status"),
+                                ),
                             )
-                        ],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
-        parametermappings=[],
+                        )
+                    ],
+                )
+            ],
+            sequences=[],
+        ),
         origin_file="DiluteLib.s",
         origin_lib="DiluteLib",
     )
@@ -414,8 +406,8 @@ def test_library_target_direct_typedef_code_counts_field_usage_for_datatype_repo
         moduletype_defs=[root_typedef],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="DiluteLib.s",
         origin_lib="DiluteLib",
     )

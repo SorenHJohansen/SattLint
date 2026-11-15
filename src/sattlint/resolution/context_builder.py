@@ -246,13 +246,16 @@ class ContextBuilder:
         unknown_parameter_targets: list[str] = []
         for parameter_mapping in instance.parametermappings or []:
             target_name = varname_base(parameter_mapping.target)
-            if not target_name or parameter_mapping.is_source_global:
+            if not target_name:
                 continue
             target_display_name = varname_full(parameter_mapping.target) or "<unknown>"
             target_key = target_name.casefold()
 
             if target_key not in param_keys:
                 unknown_parameter_targets.append(target_display_name)
+                continue
+
+            if parameter_mapping.is_source_global:
                 continue
 
             if parent_context is None:
@@ -359,7 +362,7 @@ class ContextBuilder:
 
         for parameter_mapping in mod.parametermappings or []:
             target_name = varname_base(parameter_mapping.target)
-            if not target_name or parameter_mapping.is_source_global:
+            if not target_name:
                 continue
             target_display_name = varname_full(parameter_mapping.target) or "<unknown>"
             target_key = target_name.casefold()
@@ -373,6 +376,9 @@ class ContextBuilder:
                         role=(f"unknown parameter mapping target {target_display_name!r}"),
                     )
                 )
+                continue
+
+            if parameter_mapping.is_source_global:
                 continue
 
             full_source = varname_full(parameter_mapping.source)

@@ -11,7 +11,7 @@ from sattline_parser.models.ast_model import (
     ModuleHeader,
     ModuleTypeDef,
     ModuleTypeInstance,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
 )
@@ -169,13 +169,13 @@ def test_strict_path_prefers_enclosing_draft_moduletype_definition():
         name="Transfer",
         origin_lib="ProjectLib",
         origin_file="DiluteLib.s",
-        submodules=[SingleModule(header=_header("Dilute"), moduledefs=[])],
+        submodules=[SingleModule(header=_header("Dilute"), moduledef=None)],
     )
     transfer_fallback = ModuleTypeDef(
         name="Transfer",
         origin_lib="ProjectLib",
         origin_file="ModullLib.x",
-        submodules=[SingleModule(header=_header("Legacy"), moduledefs=[])],
+        submodules=[SingleModule(header=_header("Legacy"), moduledef=None)],
     )
     wrapper = ModuleTypeDef(
         name="Wrapper",
@@ -202,15 +202,15 @@ def test_analyzer_uses_library_scoped_moduletype_defs():
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="Active", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="DefaultComm", datatype=Simple_DataType.STRING),
+            Variable(name="Active", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="DefaultComm", datatype=ScalarDatatype.STRING),
         ],
     )
     dt_lib2 = DataType(
         name="CIPType2",
         description=None,
         datecode=None,
-        var_list=[Variable(name="Other", datatype=Simple_DataType.INTEGER)],
+        var_list=[Variable(name="Other", datatype=ScalarDatatype.INTEGER)],
     )
 
     cip_lib1 = ModuleTypeDef(
@@ -220,19 +220,17 @@ def test_analyzer_uses_library_scoped_moduletype_defs():
         localvariables=[Variable(name="DV", datatype="CIPType1")],
         moduleparameters=[],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="E1",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[FuncCallStmt(call=FuncCall(name="InitVariable", args=(VarRef(name="DV.Active"),)))],
-                    )
-                ]
-            )
-        ],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="E1",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[FuncCallStmt(call=FuncCall(name="InitVariable", args=(VarRef(name="DV.Active"),)))],
+                )
+            ]
+        ),
     )
 
     cip_lib2 = ModuleTypeDef(
@@ -242,19 +240,17 @@ def test_analyzer_uses_library_scoped_moduletype_defs():
         localvariables=[Variable(name="DV", datatype="CIPType2")],
         moduleparameters=[],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="E1",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[FuncCallStmt(call=FuncCall(name="InitVariable", args=(VarRef(name="DV.Active"),)))],
-                    )
-                ]
-            )
-        ],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="E1",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[FuncCallStmt(call=FuncCall(name="InitVariable", args=(VarRef(name="DV.Active"),)))],
+                )
+            ]
+        ),
     )
 
     wrapper = ModuleTypeDef(
@@ -264,8 +260,8 @@ def test_analyzer_uses_library_scoped_moduletype_defs():
         localvariables=[],
         moduleparameters=[],
         submodules=[ModuleTypeInstance(header=_header("CIP1"), moduletype_name="CIP")],
-        moduledefs=[],
-        modulecodes=[],
+        moduledef=None,
+        modulecode=None,
     )
 
     bp = BasePicture(
@@ -276,8 +272,8 @@ def test_analyzer_uses_library_scoped_moduletype_defs():
         moduletype_defs=[cip_lib1, cip_lib2, wrapper],
         localvariables=[],
         submodules=[ModuleTypeInstance(header=_header("WrapperInst"), moduletype_name="Wrapper")],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp, debug=False, fail_loudly=False)
@@ -300,7 +296,7 @@ def test_resolve_module_by_strict_path_rejects_empty_or_invalid_paths():
 def test_resolve_module_by_strict_path_reports_close_matches_for_unknown_segment():
     bp = BasePicture(
         header=_header("BasePicture"),
-        submodules=[SingleModule(header=_header("Dilute"), moduledefs=[])],
+        submodules=[SingleModule(header=_header("Dilute"), moduledef=None)],
     )
 
     with pytest.raises(ValueError, match="Close matches"):
@@ -308,11 +304,11 @@ def test_resolve_module_by_strict_path_reports_close_matches_for_unknown_segment
 
 
 def test_module_lookup_and_scope_helpers_cover_typedef_and_regular_paths():
-    local = Variable(name="LocalOnly", datatype=Simple_DataType.INTEGER)
-    mp = Variable(name="FromParam", datatype=Simple_DataType.INTEGER)
+    local = Variable(name="LocalOnly", datatype=ScalarDatatype.INTEGER)
+    mp = Variable(name="FromParam", datatype=ScalarDatatype.INTEGER)
     child = SingleModule(
         header=_header("Child"),
-        moduledefs=[],
+        moduledef=None,
         localvariables=[local],
         moduleparameters=[mp],
         submodules=[],
@@ -321,7 +317,7 @@ def test_module_lookup_and_scope_helpers_cover_typedef_and_regular_paths():
     bp = BasePicture(
         header=_header("BasePicture"),
         moduletype_defs=[typedef],
-        localvariables=[Variable(name="RootVar", datatype=Simple_DataType.BOOLEAN)],
+        localvariables=[Variable(name="RootVar", datatype=ScalarDatatype.BOOLEAN)],
         submodules=[child],
     )
 
@@ -353,9 +349,9 @@ def test_varname_and_alias_helpers_cover_valid_and_invalid_inputs():
     assert varname_full("Root.Signal") == "Root.Signal"
     assert varname_full(None) is None
 
-    root = Variable(name="Root", datatype=Simple_DataType.INTEGER)
-    child = Variable(name="Child", datatype=Simple_DataType.INTEGER)
-    leaf = Variable(name="Leaf", datatype=Simple_DataType.INTEGER)
+    root = Variable(name="Root", datatype=ScalarDatatype.INTEGER)
+    child = Variable(name="Child", datatype=ScalarDatatype.INTEGER)
+    leaf = Variable(name="Leaf", datatype=ScalarDatatype.INTEGER)
     alias_links = [
         (root, child, "A"),
         (child, leaf, "B"),
@@ -370,13 +366,13 @@ def _library_dependency_picture() -> tuple[BasePicture, ProjectGraph]:
         name="CIP",
         origin_lib="Lib1",
         origin_file="Lib1.x",
-        localvariables=[Variable(name="Active", datatype=Simple_DataType.BOOLEAN)],
+        localvariables=[Variable(name="Active", datatype=ScalarDatatype.BOOLEAN)],
     )
     lib2 = ModuleTypeDef(
         name="CIP",
         origin_lib="Lib2",
         origin_file="Lib2.x",
-        localvariables=[Variable(name="Other", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Other", datatype=ScalarDatatype.INTEGER)],
     )
     bp = BasePicture(
         header=_header("Root"),

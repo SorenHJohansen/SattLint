@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sattline_parser.models.ast_model import BasePicture, ModuleHeader, Simple_DataType, Variable
+from sattline_parser.models.ast_model import BasePicture, ModuleHeader, ScalarDatatype, Variable
 from sattline_parser.models.expressions import FuncCall, VarRef
 
 from sattlint.core.semantic import build_snapshot_from_loaded_project
@@ -17,7 +17,7 @@ def test_graphics_binding_references_and_calls_are_indexed(tmp_path: Path) -> No
     bp = BasePicture(
         header=ModuleHeader(name="Demo", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
         name="Demo",
-        localvariables=[Variable(name="Flow", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Flow", datatype=ScalarDatatype.INTEGER)],
         origin_file="Demo.s",
         origin_lib="DemoLib",
     )

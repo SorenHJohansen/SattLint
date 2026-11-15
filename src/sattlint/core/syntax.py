@@ -184,7 +184,7 @@ def validate_single_file_syntax(
     load_source_text_fn: Callable[..., str] = load_source_text,
     source_text_for_parse_fn: Callable[..., str] = source_text_for_parse,
     parser_core_parse_source_text_fn: Callable[..., BasePicture] = parser_core_parse_source_text,
-    validate_transformed_basepicture_fn: Callable[..., None] = validate_basepicture_strict,
+    validate_transformed_basepicture_fn: Callable[[BasePicture], None] = validate_basepicture_strict,
     describe_parse_error_fn: Callable[[UnexpectedInput, str], Any] = describe_parse_error,
     validate_graphics_file_fn: Callable[[Path], GraphicsValidationResult] = validate_graphics_file,
     graphics_source_context_path_fn: Callable[[Path], Path | None] = graphics_source_context_path,
@@ -196,7 +196,6 @@ def validate_single_file_syntax(
     graphics_validation_to_syntax_result_fn: Callable[
         ..., SyntaxValidationResult
     ] = graphics_validation_to_syntax_result,
-    coerce_validation_notice_fn: Callable[[ValidationWarning], ValidationNotice] = coerce_validation_notice,
     structural_validation_error_cls: type[StructuralValidationError] = StructuralValidationError,
 ) -> SyntaxValidationResult:
     target_path = Path(code_path)
@@ -216,13 +215,12 @@ def validate_single_file_syntax(
 
     src = ""
     parse_src = ""
-    validation_warnings: list[ValidationWarning] = []
     try:
         # Parse the text the parser reads, so compressed sources keep their
         # original character coordinates in spans and diagnostics.
         parse_src = source_text_for_parse_fn(target_path)
         basepic = parser_core_parse_source_text_fn(parse_src, log_failures=False)
-        validate_transformed_basepicture_fn(basepic, warning_sink=validation_warnings.append)
+        validate_transformed_basepicture_fn(basepic)
     except UnexpectedInput as exc:
         details = describe_parse_error_fn(exc, parse_src or src)
         return SyntaxValidationResult(
@@ -232,7 +230,6 @@ def validate_single_file_syntax(
             message=details.message,
             line=details.line,
             column=details.column,
-            warning_notices=tuple(coerce_validation_notice_fn(warning) for warning in validation_warnings),
         )
     except VisitError as exc:
         line, column = extract_error_position_fn(exc)
@@ -244,7 +241,6 @@ def validate_single_file_syntax(
             message=message,
             line=line,
             column=column,
-            warning_notices=tuple(coerce_validation_notice_fn(warning) for warning in validation_warnings),
         )
     except structural_validation_error_cls as exc:
         line, column = extract_error_position_fn(exc)
@@ -255,7 +251,6 @@ def validate_single_file_syntax(
             message=str(exc),
             line=line,
             column=column,
-            warning_notices=tuple(coerce_validation_notice_fn(warning) for warning in validation_warnings),
         )
     except (OSError, RuntimeError, ValueError) as exc:
         line, column = extract_error_position_fn(exc)
@@ -267,7 +262,6 @@ def validate_single_file_syntax(
             message=str(exc),
             line=line,
             column=column,
-            warning_notices=tuple(coerce_validation_notice_fn(warning) for warning in validation_warnings),
         )
     except Exception as exc:
         line, column = extract_error_position_fn(exc)
@@ -281,13 +275,12 @@ def validate_single_file_syntax(
             message=str(exc),
             line=line,
             column=column,
-            warning_notices=tuple(coerce_validation_notice_fn(warning) for warning in validation_warnings),
         )
 
     companion_path = resolve_graphics_companion_path_fn(target_path, mode=mode)
     if companion_path is not None and companion_path != target_path:
         graphics_result = validate_graphics_file_fn(companion_path)
-        graphics_warnings = [*validation_warnings]
+        graphics_warnings: list[ValidationWarning] = []
         with contextlib.suppress(AttributeError):
             graphics_warnings.extend(
                 picture_display_path_warnings_fn(
@@ -307,8 +300,6 @@ def validate_single_file_syntax(
         file_path=target_path,
         ok=True,
         stage="ok",
-        warnings=tuple(coerce_validation_notice_fn(warning).message for warning in validation_warnings),
-        warning_notices=tuple(coerce_validation_notice_fn(warning) for warning in validation_warnings),
     )
 
 

@@ -1,6 +1,6 @@
 {
     "case_id": "analyzer-picture-display-unresolved",
-    "target_file": "../semantic/analyzer/TestStringsInPictureDisplay.s",
+    "target_file": "../semantic/analyzer/TestStringsDisplay.s",
     "mode": "analyzer-picture-display-paths",
     "expectation": {
         "expected_finding_ids": [

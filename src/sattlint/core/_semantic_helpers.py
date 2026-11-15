@@ -9,7 +9,7 @@ from sattlint.parser_api import (
     FrameModule,
     ModuleTypeDef,
     ModuleTypeInstance,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
 )
 
@@ -25,10 +25,10 @@ def _cf(value: str) -> str:
     return value.casefold()
 
 
-def _format_datatype(datatype: Simple_DataType | str | None) -> str | None:
+def _format_datatype(datatype: ScalarDatatype | str | None) -> str | None:
     if datatype is None:
         return None
-    if isinstance(datatype, Simple_DataType):
+    if isinstance(datatype, ScalarDatatype):
         return str(datatype.value)
     return str(datatype)
 
@@ -111,12 +111,12 @@ def _path_startswith(path: tuple[str, ...], prefix: tuple[str, ...]) -> bool:
 
 def _resolve_field_datatype(
     type_graph: TypeGraph,
-    root_type: Simple_DataType | str,
+    root_type: ScalarDatatype | str,
     field_path: tuple[str, ...],
-) -> Simple_DataType | str | None:
-    current: Simple_DataType | str = root_type
+) -> ScalarDatatype | str | None:
+    current: ScalarDatatype | str = root_type
     for segment in field_path:
-        if isinstance(current, Simple_DataType):
+        if isinstance(current, ScalarDatatype):
             return current
         field = type_graph.field(str(current), segment)
         if field is None:

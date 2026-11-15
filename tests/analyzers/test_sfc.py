@@ -10,6 +10,7 @@ from sattline_parser.models.ast_model import (
     ModuleCode,
     ModuleHeader,
     ModuleTypeDef,
+    ScalarDatatype,
     Sequence,
     SFCAlternative,
     SFCCodeBlocks,
@@ -19,7 +20,6 @@ from sattline_parser.models.ast_model import (
     SFCSubsequence,
     SFCTransition,
     SFCTransitionSub,
-    Simple_DataType,
     SingleModule,
     Variable,
 )
@@ -86,8 +86,8 @@ def test_parallel_branch_write_race_detected():
 
     bp = BasePicture(
         header=_hdr("Root"),
-        localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
-        modulecodes=[ModuleCode(sequences=[seq], equationblocks=[])],
+        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
+        modulecode=ModuleCode(sequences=[seq], equationblocks=[]),
     )
 
     report = analyze_same_cycle(bp)
@@ -110,10 +110,10 @@ def test_parallel_branch_distinct_writes_not_reported():
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[
-            Variable(name="OutputA", datatype=Simple_DataType.INTEGER),
-            Variable(name="OutputB", datatype=Simple_DataType.INTEGER),
+            Variable(name="OutputA", datatype=ScalarDatatype.INTEGER),
+            Variable(name="OutputB", datatype=ScalarDatatype.INTEGER),
         ],
-        modulecodes=[ModuleCode(sequences=[seq], equationblocks=[])],
+        modulecode=ModuleCode(sequences=[seq], equationblocks=[]),
     )
 
     report = analyze_same_cycle(bp)
@@ -124,24 +124,22 @@ def test_parallel_branch_distinct_writes_not_reported():
 def test_analyze_same_cycle_parallel_write_race_selection_skips_other_issue_collectors(monkeypatch):
     bp = BasePicture(
         header=_hdr("Root"),
-        localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
-        modulecodes=[
-            ModuleCode(
-                sequences=[
-                    _sequence(
-                        [
-                            SFCParallel(
-                                branches=[
-                                    [_step("Left", [_assign("Output", 1)])],
-                                    [_step("Right", [_assign("Output", 2)])],
-                                ]
-                            )
-                        ]
-                    )
-                ],
-                equationblocks=[],
-            )
-        ],
+        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        SFCParallel(
+                            branches=[
+                                [_step("Left", [_assign("Output", 1)])],
+                                [_step("Right", [_assign("Output", 2)])],
+                            ]
+                        )
+                    ]
+                )
+            ],
+            equationblocks=[],
+        ),
     )
 
     report = analyze_same_cycle(
@@ -177,7 +175,7 @@ def test_sfc_access_collector_tracks_parallel_writes_for_direct_and_resolved_wri
 
     usage_calls: list[dict[str, object]] = []
     collector.usage_tracker = SimpleNamespace(mark_ref_access=lambda **kwargs: usage_calls.append(kwargs))
-    variable = Variable(name="Rec", datatype=Simple_DataType.INTEGER)
+    variable = Variable(name="Rec", datatype=ScalarDatatype.INTEGER)
     resolved_context = SimpleNamespace(
         env={},
         resolve_variable=lambda _ref: (variable, "Field.Sub", ("Root", "Unit"), ("BP:Root", "Unit")),
@@ -283,26 +281,26 @@ def test_sfc_access_collector_walk_helpers_cover_branch_labels_and_site_markers(
 def test_iter_sfc_modulecodes_covers_root_nested_modules_and_typedefs():
     nested_frame = FrameModule(
         header=_hdr("FrameChild"),
-        modulecodes=[ModuleCode(sequences=[], equationblocks=[])],
+        modulecode=ModuleCode(sequences=[], equationblocks=[]),
         submodules=[],
     )
     nested_single = SingleModule(
         header=_hdr("UnitChild"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[],
         submodules=[nested_frame],
-        modulecodes=[ModuleCode(sequences=[], equationblocks=[])],
+        modulecode=ModuleCode(sequences=[], equationblocks=[]),
     )
     moduletype = ModuleTypeDef(
         name="TypeLogic",
-        modulecodes=[ModuleCode(sequences=[], equationblocks=[])],
+        modulecode=ModuleCode(sequences=[], equationblocks=[]),
     )
     bp = BasePicture(
         header=_hdr("Root"),
         submodules=[nested_single],
         moduletype_defs=[moduletype],
-        modulecodes=[ModuleCode(sequences=[], equationblocks=[])],
+        modulecode=ModuleCode(sequences=[], equationblocks=[]),
     )
 
     entries = list(iter_sfc_modulecodes(bp))
@@ -368,8 +366,8 @@ def test_sfc_reachability_and_active_step_helpers_cover_nested_nodes_and_preview
     sequence = _sequence([_step("Idle", []), _step("Running", [])])
     bp = BasePicture(
         header=_hdr("Root"),
-        submodules=[FrameModule(header=_hdr("NoCode"), modulecodes=[], submodules=[])],
-        modulecodes=[ModuleCode(sequences=[sequence], equationblocks=[])],
+        submodules=[FrameModule(header=_hdr("NoCode"), modulecode=None, submodules=[])],
+        modulecode=ModuleCode(sequences=[sequence], equationblocks=[]),
     )
     assert sfc_module.collect_sfc_reachability_findings(bp) == []
     assert sfc_module._format_terminator({"kind": "SFCFork", "targets": ["Left", 7, "Right"]}) == (
@@ -433,24 +431,22 @@ def test_analyze_sfc_reuses_variable_artifacts_when_available(monkeypatch):
 
     bp = BasePicture(
         header=_hdr("Root"),
-        localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
-        modulecodes=[
-            ModuleCode(
-                sequences=[
-                    _sequence(
-                        [
-                            SFCParallel(
-                                branches=[
-                                    [_step("Left", [_assign("Output", 1)])],
-                                    [_step("Right", [_assign("Output", 2)])],
-                                ]
-                            )
-                        ]
-                    )
-                ],
-                equationblocks=[],
-            )
-        ],
+        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        SFCParallel(
+                            branches=[
+                                [_step("Left", [_assign("Output", 1)])],
+                                [_step("Right", [_assign("Output", 2)])],
+                            ]
+                        )
+                    ]
+                )
+            ],
+            equationblocks=[],
+        ),
     )
     shared_artifacts = AnalysisSharedArtifacts()
     context = AnalysisContext(base_picture=bp, shared_artifacts=shared_artifacts)

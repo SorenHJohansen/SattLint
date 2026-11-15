@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from functools import cache
 from typing import cast
 
-from sattlint.parser_api import BUILTIN_RECORD_SPECS, BasePicture, Simple_DataType, Variable
+from sattlint.parser_api import BUILTIN_RECORD_SPECS, BasePicture, ScalarDatatype, Variable
 
 
 def _cf(s: str) -> str:
@@ -32,7 +32,7 @@ def _field_definition(field: object) -> FieldDef | None:
         return None
 
     datatype = getattr(field, "datatype", None)
-    if not isinstance(datatype, str | Simple_DataType):
+    if not isinstance(datatype, str | ScalarDatatype):
         return None
 
     state = getattr(field, "state", None)
@@ -45,7 +45,7 @@ def _field_definition(field: object) -> FieldDef | None:
 @dataclass(frozen=True, slots=True)
 class FieldDef:
     name: str
-    datatype: Simple_DataType | str
+    datatype: ScalarDatatype | str
     state: bool | None = False
 
 
@@ -108,17 +108,17 @@ class TypeGraph:
             return None
         return rec.fields_by_key.get(_cf(field_name))
 
-    def field_type(self, record_type: str, field_name: str) -> Simple_DataType | str | None:
+    def field_type(self, record_type: str, field_name: str) -> ScalarDatatype | str | None:
         f = self.field(record_type, field_name)
         return f.datatype if f else None
 
-    def iter_leaf_field_paths(self, root_type: Simple_DataType | str) -> Iterable[tuple[str, ...]]:
+    def iter_leaf_field_paths(self, root_type: ScalarDatatype | str) -> Iterable[tuple[str, ...]]:
         """Yield field paths from a type down to leaf (simple) datatypes.
 
         For a simple datatype, yields empty path (no further fields).
         For a record datatype, yields tuples like ("I", "WT001", "value").
         """
-        if isinstance(root_type, Simple_DataType):
+        if isinstance(root_type, ScalarDatatype):
             yield ()
             return
 
@@ -146,7 +146,7 @@ class TypeGraph:
             next_ancestors = ancestors | {tkey}
             for field in rec.fields_by_key.values():
                 new_prefix = (*prefix, field.name)
-                if isinstance(field.datatype, Simple_DataType):
+                if isinstance(field.datatype, ScalarDatatype):
                     yield new_prefix
                 else:
                     stack.append((str(field.datatype), new_prefix, next_ancestors))

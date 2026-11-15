@@ -11,7 +11,7 @@ from tests.analyzers.test_icf_helpers import (
     ICFResolvedEntry,
     ModuleTypeDef,
     ModuleTypeInstance,
-    Simple_DataType,
+    ScalarDatatype,
     SimpleNamespace,
     SingleModule,
     Variable,
@@ -26,7 +26,7 @@ def test_icf_helper_additional_parameter_record_skip_branches(monkeypatch):
         name="NestedRecord",
         description=None,
         datecode=None,
-        var_list=[Variable(name="Leaf", datatype=Simple_DataType.STRING)],
+        var_list=[Variable(name="Leaf", datatype=ScalarDatatype.STRING)],
     )
     root = DataType(
         name="RootRecord",
@@ -46,7 +46,7 @@ def test_icf_helper_additional_parameter_record_skip_branches(monkeypatch):
         root_datatype=object(),
         field_path="Nested.Leaf",
         leaf_name="Leaf",
-        datatype=Simple_DataType.STRING,
+        datatype=ScalarDatatype.STRING,
     )
     empty_field_path = ICFResolvedEntry(
         entry=entry,
@@ -55,7 +55,7 @@ def test_icf_helper_additional_parameter_record_skip_branches(monkeypatch):
         root_datatype="RootRecord",
         field_path=".",
         leaf_name="Record",
-        datatype=Simple_DataType.STRING,
+        datatype=ScalarDatatype.STRING,
     )
     unresolved_record = ICFResolvedEntry(
         entry=entry,
@@ -64,7 +64,7 @@ def test_icf_helper_additional_parameter_record_skip_branches(monkeypatch):
         root_datatype="RootRecord",
         field_path="Missing.Leaf",
         leaf_name="Leaf",
-        datatype=Simple_DataType.STRING,
+        datatype=ScalarDatatype.STRING,
     )
     ghost_record = ICFResolvedEntry(
         entry=entry,
@@ -73,7 +73,7 @@ def test_icf_helper_additional_parameter_record_skip_branches(monkeypatch):
         root_datatype="GhostRecord",
         field_path="Leaf",
         leaf_name="Leaf",
-        datatype=Simple_DataType.STRING,
+        datatype=ScalarDatatype.STRING,
     )
 
     issues = icf_module._validate_parameter_record_completeness(
@@ -104,7 +104,7 @@ def test_icf_helper_additional_parameter_record_skip_branches(monkeypatch):
         root_datatype="RootRecord",
         field_path="Nested.Leaf",
         leaf_name="Leaf",
-        datatype=Simple_DataType.STRING,
+        datatype=ScalarDatatype.STRING,
     )
     assert icf_module._validate_parameter_record_completeness(type_graph, [grouped_entry]) == []
 
@@ -116,14 +116,14 @@ def test_icf_helper_remaining_summary_branches(monkeypatch):
 
 
 def test_icf_helper_remaining_resolution_and_grouping_branches(monkeypatch):
-    type_local = Variable(name="TypeLocal", datatype=Simple_DataType.INTEGER)
-    type_param = Variable(name="TypeParam", datatype=Simple_DataType.INTEGER)
+    type_local = Variable(name="TypeLocal", datatype=ScalarDatatype.INTEGER)
+    type_param = Variable(name="TypeParam", datatype=ScalarDatatype.INTEGER)
     moduletype = ModuleTypeDef(
         name="WorkerType",
         moduleparameters=[type_param],
         localvariables=[type_local],
-        moduledefs=[],
-        modulecodes=[],
+        moduledef=None,
+        modulecode=None,
     )
     instance = ModuleTypeInstance(header=_header("Child"), moduletype_name="WorkerType")
     base_picture = BasePicture(header=_header("Program"), moduletype_defs=[moduletype])
@@ -149,7 +149,7 @@ def test_icf_helper_remaining_resolution_and_grouping_branches(monkeypatch):
     assert icf_module._find_variable_in_module_scope(moduletype, base_picture, "missing") is None
 
     resolved = SimpleNamespace(
-        node=SingleModule(header=_header("Unit"), moduledefs=[]),
+        node=SingleModule(header=_header("Unit"), moduledef=None),
         current_library=None,
         current_file=None,
         display_path_str="Program.Unit",
@@ -183,7 +183,7 @@ def test_icf_helper_remaining_resolution_and_grouping_branches(monkeypatch):
         name="NestedRecord",
         description=None,
         datecode=None,
-        var_list=[Variable(name="Leaf", datatype=Simple_DataType.STRING)],
+        var_list=[Variable(name="Leaf", datatype=ScalarDatatype.STRING)],
     )
     root = DataType(
         name="RootRecord",
@@ -202,7 +202,7 @@ def test_icf_helper_remaining_resolution_and_grouping_branches(monkeypatch):
         root_datatype="RootRecord",
         field_path="Nested.Leaf",
         leaf_name="Leaf",
-        datatype=Simple_DataType.STRING,
+        datatype=ScalarDatatype.STRING,
     )
     other_unit = ICFResolvedEntry(
         entry=_entry(
@@ -213,7 +213,7 @@ def test_icf_helper_remaining_resolution_and_grouping_branches(monkeypatch):
         root_datatype="RootRecord",
         field_path="Nested.Leaf",
         leaf_name="Leaf",
-        datatype=Simple_DataType.STRING,
+        datatype=ScalarDatatype.STRING,
     )
     other_path = ICFResolvedEntry(
         entry=_entry(
@@ -224,7 +224,7 @@ def test_icf_helper_remaining_resolution_and_grouping_branches(monkeypatch):
         root_datatype="RootRecord",
         field_path="Nested.Leaf",
         leaf_name="Leaf",
-        datatype=Simple_DataType.STRING,
+        datatype=ScalarDatatype.STRING,
     )
     prefix_mismatch = ICFResolvedEntry(
         entry=_entry(
@@ -235,7 +235,7 @@ def test_icf_helper_remaining_resolution_and_grouping_branches(monkeypatch):
         root_datatype="RootRecord",
         field_path="Other.Leaf",
         leaf_name="Leaf",
-        datatype=Simple_DataType.STRING,
+        datatype=ScalarDatatype.STRING,
     )
 
     original_record = type_graph.record
@@ -265,7 +265,9 @@ def test_icf_helper_final_parse_and_reference_branches(tmp_path, monkeypatch):
     assert len(icf_module.parse_icf_file(parse_file)) == 1
     assert icf_module._extract_icf_sattline_ref(":Path") == (None, None)
 
-    moduletype = ModuleTypeDef(name="WorkerType", moduleparameters=[], localvariables=[], moduledefs=[], modulecodes=[])
+    moduletype = ModuleTypeDef(
+        name="WorkerType", moduleparameters=[], localvariables=[], moduledef=None, modulecode=None
+    )
     instance = ModuleTypeInstance(header=_header("Child"), moduletype_name="WorkerType")
     monkeypatch.setattr(icf_module, "resolve_moduletype_def_strict", lambda *_args, **_kwargs: moduletype)
     assert (
@@ -302,7 +304,7 @@ def test_icf_helper_final_parameter_grouping_filters():
         name="NestedRecord",
         description=None,
         datecode=None,
-        var_list=[Variable(name="Leaf", datatype=Simple_DataType.STRING)],
+        var_list=[Variable(name="Leaf", datatype=ScalarDatatype.STRING)],
     )
     root = DataType(
         name="RootRecord",
@@ -323,7 +325,7 @@ def test_icf_helper_final_parameter_grouping_filters():
         root_datatype="RootRecord",
         field_path="Nested.Leaf",
         leaf_name="Leaf",
-        datatype=Simple_DataType.STRING,
+        datatype=ScalarDatatype.STRING,
     )
     diff_unit = ICFResolvedEntry(
         entry=_entry(
@@ -334,7 +336,7 @@ def test_icf_helper_final_parameter_grouping_filters():
         root_datatype="RootRecord",
         field_path="Nested.Leaf",
         leaf_name="Leaf",
-        datatype=Simple_DataType.STRING,
+        datatype=ScalarDatatype.STRING,
     )
     diff_path = ICFResolvedEntry(
         entry=_entry(
@@ -345,7 +347,7 @@ def test_icf_helper_final_parameter_grouping_filters():
         root_datatype="RootRecord",
         field_path="Nested.Leaf",
         leaf_name="Leaf",
-        datatype=Simple_DataType.STRING,
+        datatype=ScalarDatatype.STRING,
     )
     prefix_mismatch = ICFResolvedEntry(
         entry=_entry(
@@ -356,7 +358,7 @@ def test_icf_helper_final_parameter_grouping_filters():
         root_datatype="RootRecord",
         field_path="Other.Leaf",
         leaf_name="Leaf",
-        datatype=Simple_DataType.STRING,
+        datatype=ScalarDatatype.STRING,
     )
 
     issues = icf_module._validate_parameter_record_completeness(
@@ -392,7 +394,7 @@ def test_icf_helper_final_prefix_mismatch_filter(monkeypatch):
         root_datatype="RootRecord",
         field_path="Nested.Leaf",
         leaf_name="Leaf",
-        datatype=Simple_DataType.STRING,
+        datatype=ScalarDatatype.STRING,
     )
     prefix_mismatch = ICFResolvedEntry(
         entry=_entry(
@@ -403,7 +405,7 @@ def test_icf_helper_final_prefix_mismatch_filter(monkeypatch):
         root_datatype="RootRecord",
         field_path="Other.Child.Leaf",
         leaf_name="Leaf",
-        datatype=Simple_DataType.STRING,
+        datatype=ScalarDatatype.STRING,
     )
 
     monkeypatch.setattr(icf_module, "resolve_record_datatype", lambda *_args, **_kwargs: "RecordType")

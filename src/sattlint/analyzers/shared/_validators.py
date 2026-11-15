@@ -8,7 +8,7 @@ from typing import Any, ClassVar, Protocol, cast
 
 from sattlint.parser_api import (
     ParameterMapping,
-    Simple_DataType,
+    ScalarDatatype,
     Variable,
     VarRef,
 )
@@ -40,20 +40,20 @@ class Validator(Protocol):
 class StringMappingValidator:
     """Validates string variable mapping types."""
 
-    _STRING_LIMITS: ClassVar[dict[Simple_DataType, int]] = {
-        Simple_DataType.IDENTSTRING: 15,
-        Simple_DataType.TAGSTRING: 30,
-        Simple_DataType.STRING: 40,
-        Simple_DataType.LINESTRING: 80,
-        Simple_DataType.MAXSTRING: 140,
+    _STRING_LIMITS: ClassVar[dict[ScalarDatatype, int]] = {
+        ScalarDatatype.IDENTSTRING: 15,
+        ScalarDatatype.TAGSTRING: 30,
+        ScalarDatatype.STRING: 40,
+        ScalarDatatype.LINESTRING: 80,
+        ScalarDatatype.MAXSTRING: 140,
     }
-    _STRING_TYPES: ClassVar[set[Simple_DataType]] = set(_STRING_LIMITS.keys())
+    _STRING_TYPES: ClassVar[set[ScalarDatatype]] = set(_STRING_LIMITS.keys())
 
-    def _is_string_simple_type(self, dt: Simple_DataType | str | None) -> bool:
-        return isinstance(dt, Simple_DataType) and dt in self._STRING_TYPES
+    def _is_string_simple_type(self, dt: ScalarDatatype | str | None) -> bool:
+        return isinstance(dt, ScalarDatatype) and dt in self._STRING_TYPES
 
-    def _string_limit(self, dt: Simple_DataType | str | None) -> int | None:
-        if not isinstance(dt, Simple_DataType):
+    def _string_limit(self, dt: ScalarDatatype | str | None) -> int | None:
+        if not isinstance(dt, ScalarDatatype):
             return None
         return self._STRING_LIMITS.get(dt)
 
@@ -113,7 +113,7 @@ class StringMappingValidator:
                 module_path=list(path),
                 variable=tgt_var,
                 role="parameter mapping type mismatch",
-                source_variable=Variable(name=repr(source_literal), datatype=cast(Simple_DataType, source_datatype)),
+                source_variable=Variable(name=repr(source_literal), datatype=cast(ScalarDatatype, source_datatype)),
             )
         ]
 
@@ -212,7 +212,7 @@ class ContractMappingValidator:
         self,
         target_name: str,
         target_variable: Variable,
-    ) -> tuple[Simple_DataType | str | None, str | None]:
+    ) -> tuple[ScalarDatatype | str | None, str | None]:
         _base_name, field_path = _split_dotted_name(target_name)
         if not field_path:
             return target_variable.datatype, None
@@ -228,14 +228,14 @@ class ContractMappingValidator:
         self,
         target_name: str,
         target_variable: Variable,
-    ) -> tuple[Simple_DataType | str | None, str | None]:
+    ) -> tuple[ScalarDatatype | str | None, str | None]:
         return self._resolve_target_datatype(target_name, target_variable)
 
     def _resolve_source_datatype(
         self,
         mapping: ParameterMapping,
         source_variable: Variable | None,
-    ) -> tuple[Simple_DataType | str | None, str | None]:
+    ) -> tuple[ScalarDatatype | str | None, str | None]:
         if mapping.source_literal is not None:
             return (
                 _infer_literal_datatype(
@@ -264,5 +264,5 @@ class ContractMappingValidator:
         self,
         mapping: ParameterMapping,
         source_variable: Variable | None,
-    ) -> tuple[Simple_DataType | str | None, str | None]:
+    ) -> tuple[ScalarDatatype | str | None, str | None]:
         return self._resolve_source_datatype(mapping, source_variable)

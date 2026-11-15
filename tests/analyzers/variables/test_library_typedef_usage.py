@@ -10,8 +10,8 @@ def test_library_typedef_moduleparameter_unused_fields_are_suppressed():
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="Used", datatype=Simple_DataType.INTEGER),
-            Variable(name="Unused", datatype=Simple_DataType.INTEGER),
+            Variable(name="Used", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Unused", datatype=ScalarDatatype.INTEGER),
         ],
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
@@ -20,22 +20,19 @@ def test_library_typedef_moduleparameter_unused_fields_are_suppressed():
     exported = ModuleTypeDef(
         name="ExportedType",
         moduleparameters=[Variable(name="p", datatype="RecType")],
-        localvariables=[Variable(name="sink", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="sink", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Main",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("sink"), value=_varref("p.Used"))],
-                    )
-                ]
-            )
-        ],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("sink"), value=_varref("p.Used"))],
+                )
+            ]
+        ),
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
     )
@@ -46,8 +43,8 @@ def test_library_typedef_moduleparameter_unused_fields_are_suppressed():
         moduletype_defs=[exported],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
     )
@@ -80,33 +77,30 @@ def test_library_typedef_moduleparameter_unused_fields_are_suppressed():
 
 
 def test_library_typedef_local_used_via_child_interact_coordinate_tail_is_not_unused():
-    child_param = Variable(name="xSize", datatype=Simple_DataType.REAL)
+    child_param = Variable(name="xSize", datatype=ScalarDatatype.REAL)
     child_type = ModuleTypeDef(
         name="ButtonType",
         moduleparameters=[child_param],
         localvariables=[],
         submodules=[],
-        moduledefs=[
-            ModuleDef(
-                interact_objects=[
-                    InteractObject(
-                        type=const.GRAMMAR_VALUE_COMBUT,
-                        properties={
-                            "coords": [((0.0, 0.0), (1.0, 1.0))],
-                            "tails": [VarTail(direction="in", value="xSize")],
-                            "body": [AssignClause(name="ButtonType", value=0, tail=None)],
-                        },
-                    )
-                ]
-            )
-        ],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=ModuleDef(
+            interact_objects=[
+                InteractObject(
+                    type=const.GRAMMAR_VALUE_COMBUT,
+                    properties={
+                        "coords": [((0.0, 0.0), (1.0, 1.0))],
+                        "tails": [VarTail(direction="in", value="xSize")],
+                        "body": [AssignClause(name="ButtonType", value=0, tail=None)],
+                    },
+                )
+            ]
+        ),
+        modulecode=None,
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
     )
 
-    x_size = Variable(name="XSize", datatype=Simple_DataType.REAL)
+    x_size = Variable(name="XSize", datatype=ScalarDatatype.REAL)
     parent_type = ModuleTypeDef(
         name="EluMasterLinie",
         moduleparameters=[],
@@ -127,9 +121,8 @@ def test_library_typedef_local_used_via_child_interact_coordinate_tail_is_not_un
                 ],
             )
         ],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
     )
@@ -140,8 +133,8 @@ def test_library_typedef_local_used_via_child_interact_coordinate_tail_is_not_un
         moduletype_defs=[parent_type, child_type],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
     )
@@ -158,32 +151,29 @@ def test_library_typedef_local_used_via_child_interact_coordinate_tail_is_not_un
 
 
 def test_library_typedef_local_used_via_child_combutproc_togglewindow_arg_is_not_unused():
-    child_param = Variable(name="xSize", datatype=Simple_DataType.REAL)
+    child_param = Variable(name="xSize", datatype=ScalarDatatype.REAL)
     child_type = ModuleTypeDef(
         name="RecipePicklistSecond",
         moduleparameters=[child_param],
         localvariables=[],
         submodules=[],
-        moduledefs=[
-            ModuleDef(
-                interact_objects=[
-                    InteractObject(
-                        type=const.GRAMMAR_VALUE_COMBUTPROC,
-                        properties={
-                            "coords": [((0.0, 0.0), (1.0, 1.0))],
-                            "procedure": ProcedureCall(name="ToggleWindow", args=(_varref("xSize"),)),
-                        },
-                    )
-                ]
-            )
-        ],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=ModuleDef(
+            interact_objects=[
+                InteractObject(
+                    type=const.GRAMMAR_VALUE_COMBUTPROC,
+                    properties={
+                        "coords": [((0.0, 0.0), (1.0, 1.0))],
+                        "procedure": ProcedureCall(name="ToggleWindow", args=(_varref("xSize"),)),
+                    },
+                )
+            ]
+        ),
+        modulecode=None,
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
     )
 
-    x_size = Variable(name="XSize", datatype=Simple_DataType.REAL)
+    x_size = Variable(name="XSize", datatype=ScalarDatatype.REAL)
     parent_type = ModuleTypeDef(
         name="EluMasterLinie",
         moduleparameters=[],
@@ -204,9 +194,8 @@ def test_library_typedef_local_used_via_child_combutproc_togglewindow_arg_is_not
                 ],
             )
         ],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
     )
@@ -217,8 +206,8 @@ def test_library_typedef_local_used_via_child_combutproc_togglewindow_arg_is_not
         moduletype_defs=[parent_type, child_type],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
     )

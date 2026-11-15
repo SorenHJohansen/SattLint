@@ -5,6 +5,7 @@ from typing import cast
 
 import pytest
 from sattline_parser.models.ast_model import BasePicture
+from sattline_parser.project import ProjectLoadError
 
 import sattlint.analyzers.icf.analyzer as analyzer_module
 from sattlint.analyzers.registry import (
@@ -138,6 +139,24 @@ def test_load_failure_emits_program_load_failed(monkeypatch) -> None:
     monkeypatch.setattr(analyzer_module, "parse_icf_file", lambda path: [_entry()])
     monkeypatch.setattr(
         analyzer_module, "load_program_ast", lambda cfg, name: (_ for _ in ()).throw(RuntimeError("boom"))
+    )
+
+    report = analyzer_module.analyze_icf_configuration(None, config=_config(icf_dir=str(icf_dir)))
+
+    assert len(report.issues) == 1
+    assert report.issues[0].kind == "icf.program_load_failed"
+    assert report.issues[0].module_path == ["ProgramA"]
+
+
+def test_parser_load_error_emits_program_load_failed(monkeypatch) -> None:
+    icf_dir = Path("/tmp/icf")
+    f1 = icf_dir / "ProgramA.icf"
+    monkeypatch.setattr(analyzer_module, "configured_icf_files", lambda config: (icf_dir, [f1]))
+    monkeypatch.setattr(analyzer_module, "parse_icf_file", lambda path: [_entry()])
+    monkeypatch.setattr(
+        analyzer_module,
+        "load_program_ast",
+        lambda cfg, name: (_ for _ in ()).throw(ProjectLoadError(name, "missing code file")),
     )
 
     report = analyzer_module.analyze_icf_configuration(None, config=_config(icf_dir=str(icf_dir)))

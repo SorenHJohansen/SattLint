@@ -1,6 +1,6 @@
 {
     "case_id": "analyzer-variables-module-structure-extra",
-    "target_file": "../semantic/analyzer/ModuleStructureIssues.s",
+    "target_file": "../semantic/analyzer/ModuleStructIssues.s",
     "mode": "analyzer-variables",
     "expectation": {
         "expected_finding_ids": [

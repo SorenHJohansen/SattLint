@@ -9,7 +9,7 @@ from sattlint.parser_api import (
     FrameModule,
     ModuleTypeDef,
     ModuleTypeInstance,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
 )
@@ -389,16 +389,16 @@ def _validate_field_path(
     field_segments: list[str],
 ) -> tuple[bool, str | None]:
     if not field_segments:
-        if isinstance(root_var.datatype, Simple_DataType):
+        if isinstance(root_var.datatype, ScalarDatatype):
             return True, None
         return (
             False,
             f"non-simple datatype {root_var.datatype} referenced without field path",
         )
 
-    current_type: Simple_DataType | str | None = root_var.datatype
+    current_type: ScalarDatatype | str | None = root_var.datatype
     for field in field_segments:
-        if isinstance(current_type, Simple_DataType):
+        if isinstance(current_type, ScalarDatatype):
             return False, f"datatype {current_type.value} has no field {field!r}"
 
         field_def = type_graph.field(str(current_type), field)
@@ -407,7 +407,7 @@ def _validate_field_path(
 
         current_type = field_def.datatype
 
-    if isinstance(current_type, Simple_DataType):
+    if isinstance(current_type, ScalarDatatype):
         return True, None
     return (
         False,
@@ -423,10 +423,10 @@ def _resolve_canonical_leaf_name(
     if not field_segments:
         return root_var.name
 
-    current_type: Simple_DataType | str | None = root_var.datatype
+    current_type: ScalarDatatype | str | None = root_var.datatype
     resolved_name: str | None = None
     for field in field_segments:
-        if isinstance(current_type, Simple_DataType):
+        if isinstance(current_type, ScalarDatatype):
             return None
 
         field_def = type_graph.field(str(current_type), field)
@@ -523,7 +523,7 @@ def _validate_parameter_record_completeness(
     for resolved in resolved_entries:
         if _normalize_group_name(resolved.entry.group) != "journaldata_parameters":
             continue
-        if isinstance(resolved.root_datatype, Simple_DataType):
+        if isinstance(resolved.root_datatype, ScalarDatatype):
             continue
         if resolved.root_datatype is not None and not isinstance(resolved.root_datatype, str):
             continue

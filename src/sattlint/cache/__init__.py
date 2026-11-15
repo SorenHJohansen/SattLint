@@ -42,8 +42,8 @@ __all__ = [
     "prune_cache_dir",
 ]
 
-CACHE_VERSION = 16  # Bump when cached AST semantics or attached graphics companion record shapes change.
-ANALYSIS_REPORT_CACHE_VERSION = 4
+CACHE_VERSION = 17  # Bump when cached AST semantics or attached graphics companion record shapes change.
+ANALYSIS_REPORT_CACHE_VERSION = 5
 _PICKLE_CACHE_MAGIC = b"SATTLINT-PICKLE-V1\n"
 _PICKLE_HMAC_KEY_NAME = ".pickle-hmac-key"
 _PICKLE_HMAC_SIZE = 32
@@ -329,12 +329,12 @@ def _normalize_cache_dir(cache_dir: Path) -> Path:
         return expanded
 
 
-PROJECT_CACHE_SCHEMA_VERSION = "2026-11-12-project-graph-parser-2026-11-4"
-ANALYSIS_REPORT_CACHE_SCHEMA_VERSION = "2026-11-12-analyzer-settings"
+PROJECT_CACHE_SCHEMA_VERSION = "2026-11-15-project-graph-parser-2026-11-5"
+ANALYSIS_REPORT_CACHE_SCHEMA_VERSION = "2026-11-15-analyzer-settings"
 # Phase E: the analysis foundation (type graph + typedef/moduletype/datatype indices + symbol
 # skeleton) is a pure function of the parsed ASTs, so it is content-addressable. This version
 # must be bumped whenever the serialized foundation shape or its derivation changes.
-FOUNDATION_CACHE_SCHEMA_VERSION = "2026-11-12-root-parameters"
+FOUNDATION_CACHE_SCHEMA_VERSION = "2026-11-15-root-parameters"
 
 
 def compute_cache_key(cfg: Mapping[str, object], *, analysis_target: str | None = None) -> str:

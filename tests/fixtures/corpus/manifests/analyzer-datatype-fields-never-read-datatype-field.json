@@ -1,6 +1,6 @@
 {
     "case_id": "analyzer-datatype-fields-never-read-datatype-field",
-    "target_file": "../../sample_sattline_files/SequenceLifetimeIssues.s",
+    "target_file": "../../sample_sattline_files/SequenceLifetime.s",
     "mode": "analyzer-datatype-fields",
     "expectation": {
         "expected_finding_ids": [

@@ -125,12 +125,6 @@ _FINAL_SYNTHESIS_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
         IssueKind.HIGH_FAN_IN_OUT,
     }
 )
-_PARAM_MAPPING_CHECK_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
-    {
-        IssueKind.STRING_MAPPING_MISMATCH,
-        IssueKind.MIN_MAX_MAPPING_MISMATCH,
-    }
-)
 
 
 def _maybe_update_status(self: object, detail: str) -> None:
@@ -716,11 +710,6 @@ def _analyze_typedef(self: VariablesAnalyzer, mt: ModuleTypeDef, path: list[str]
         self.param_non_ui_reads_by_typedef[casefold_key(mt.name)] = used_non_ui_reads
         self.param_writes_by_typedef[casefold_key(mt.name)] = used_writes
 
-        if _should_collect_any_issue_kinds(self, _PARAM_MAPPING_CHECK_ISSUE_KINDS):
-            for mapping in mt.parametermappings or []:
-                target_name = mapping_target_name(mapping)
-                target_var = env.get(target_name) if target_name else None
-                self._check_param_mapping(mapping, target_var, env, context, path)
     finally:
         self._analyzing_typedefs.discard(mt_key)
 
@@ -818,12 +807,6 @@ def _analyze_typedef_with_context(
         self._walk_module_code(mt.modulecode, context, path)
         self._walk_submodules(mt.submodules or [], parent_context=context, parent_path=path)
         self._walk_typedef_groupconn(mt, context, path)
-
-        if _should_collect_any_issue_kinds(self, _PARAM_MAPPING_CHECK_ISSUE_KINDS):
-            for mapping in mt.parametermappings or []:
-                target_name = mapping_target_name(mapping)
-                target_var = context.env.get(target_name) if target_name else None
-                self._check_param_mapping(mapping, target_var, context.env, context, path)
 
         used_reads = {
             casefold_key(variable.name) for variable in (mt.moduleparameters or []) if self._get_usage(variable).read

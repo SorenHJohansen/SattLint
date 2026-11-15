@@ -6,9 +6,9 @@ from sattline_parser.models.ast_model import (
     ModuleCode,
     ModuleHeader,
     ModuleTypeDef,
+    ScalarDatatype,
     Sequence,
     SFCBodyItem,
-    Simple_DataType,
     SingleModule,
     Variable,
 )
@@ -71,32 +71,30 @@ def _typedef_with_latch(name: str) -> ModuleTypeDef:
         name=name,
         moduleparameters=[],
         localvariables=[
-            Variable(name="Start", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="AlarmLatched", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Start", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="AlarmLatched", datatype=ScalarDatatype.BOOLEAN),
         ],
-        moduledefs=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="LatchEq",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            IfStmt(
-                                branches=(
-                                    (
-                                        _varref("Start"),
-                                        (Assignment(target=_varref("AlarmLatched"), value=True),),
-                                    ),
+        moduledef=None,
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="LatchEq",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        IfStmt(
+                            branches=(
+                                (
+                                    _varref("Start"),
+                                    (Assignment(target=_varref("AlarmLatched"), value=True),),
                                 ),
-                                else_block=(),
-                            )
-                        ],
-                    )
-                ]
-            )
-        ],
+                            ),
+                            else_block=(),
+                        )
+                    ],
+                )
+            ]
+        ),
     )
 
 
@@ -105,13 +103,13 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
         name="ResetType",
         moduleparameters=[],
         localvariables=[
-            Variable(name="Counter", datatype=Simple_DataType.INTEGER),
-            Variable(name="Other", datatype=Simple_DataType.INTEGER),
-            Variable(name="ResetValue", datatype=Simple_DataType.INTEGER),
-            Variable(name="SeqResetOld", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
         ],
-        moduledefs=[],
-        modulecodes=[_reset_modulecode()],
+        moduledef=None,
+        modulecode=_reset_modulecode(),
     )
     typedef_reset.origin_file = "root.s"
 
@@ -119,13 +117,13 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
         name="SkippedType",
         moduleparameters=[],
         localvariables=[
-            Variable(name="Counter", datatype=Simple_DataType.INTEGER),
-            Variable(name="Other", datatype=Simple_DataType.INTEGER),
-            Variable(name="ResetValue", datatype=Simple_DataType.INTEGER),
-            Variable(name="SeqResetOld", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
         ],
-        moduledefs=[],
-        modulecodes=[_reset_modulecode()],
+        moduledef=None,
+        modulecode=_reset_modulecode(),
     )
     typedef_skipped.origin_file = "other.s"
 
@@ -137,33 +135,31 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
         datatype_defs=[],
         moduletype_defs=[typedef_reset, typedef_skipped, typedef_latch],
         localvariables=[
-            Variable(name="Start", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="RootLatched", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Start", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="RootLatched", datatype=ScalarDatatype.BOOLEAN),
         ],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="RootEq",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            IfStmt(
-                                branches=(
-                                    (
-                                        _varref("Start"),
-                                        (Assignment(target=_varref("RootLatched"), value=True),),
-                                    ),
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="RootEq",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        IfStmt(
+                            branches=(
+                                (
+                                    _varref("Start"),
+                                    (Assignment(target=_varref("RootLatched"), value=True),),
                                 ),
-                                else_block=(),
-                            )
-                        ],
-                    )
-                ]
-            )
-        ],
-        moduledefs=[],
+                            ),
+                            else_block=(),
+                        )
+                    ],
+                )
+            ]
+        ),
+        moduledef=None,
     )
     bp.origin_file = "root.s"
 
@@ -185,57 +181,55 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
 def test_detection_walks_frame_submodules_for_reset_and_latching() -> None:
     child = SingleModule(
         header=_hdr("Child"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[
-            Variable(name="Counter", datatype=Simple_DataType.INTEGER),
-            Variable(name="Other", datatype=Simple_DataType.INTEGER),
-            Variable(name="ResetValue", datatype=Simple_DataType.INTEGER),
-            Variable(name="SeqResetOld", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="Start", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="Latch", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="Start", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="Latch", datatype=ScalarDatatype.BOOLEAN),
         ],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    _eq(
-                        "ResetEq",
-                        [
-                            IfStmt(
-                                branches=(
-                                    (
-                                        NotOp(operand=_varref("OpSeq.Reset")),
-                                        (Assignment(target=_varref("Counter"), value=_varref("ResetValue")),),
-                                    ),
-                                    (
-                                        NotOp(operand=_varref("SeqResetOld")),
-                                        (Assignment(target=_varref("Other"), value=_varref("ResetValue")),),
-                                    ),
+        modulecode=ModuleCode(
+            equationblocks=[
+                _eq(
+                    "ResetEq",
+                    [
+                        IfStmt(
+                            branches=(
+                                (
+                                    NotOp(operand=_varref("OpSeq.Reset")),
+                                    (Assignment(target=_varref("Counter"), value=_varref("ResetValue")),),
                                 ),
-                                else_block=(),
+                                (
+                                    NotOp(operand=_varref("SeqResetOld")),
+                                    (Assignment(target=_varref("Other"), value=_varref("ResetValue")),),
+                                ),
                             ),
-                            Assignment(target=_varref("SeqResetOld"), value=_varref("OpSeq.Reset")),
-                        ],
-                    ),
-                    _eq(
-                        "LatchEq",
-                        [
-                            IfStmt(
-                                branches=(
-                                    (
-                                        _varref("Start"),
-                                        (Assignment(target=_varref("Latch"), value=True),),
-                                    ),
+                            else_block=(),
+                        ),
+                        Assignment(target=_varref("SeqResetOld"), value=_varref("OpSeq.Reset")),
+                    ],
+                ),
+                _eq(
+                    "LatchEq",
+                    [
+                        IfStmt(
+                            branches=(
+                                (
+                                    _varref("Start"),
+                                    (Assignment(target=_varref("Latch"), value=True),),
                                 ),
-                                else_block=(),
-                            )
-                        ],
-                    ),
-                ],
-                sequences=[_seq("OpSeq", [])],
-            )
-        ],
+                            ),
+                            else_block=(),
+                        )
+                    ],
+                ),
+            ],
+            sequences=[_seq("OpSeq", [])],
+        ),
         parametermappings=[],
     )
     picture = BasePicture(header=_hdr("Root"), submodules=[FrameModule(header=_hdr("Frame"), submodules=[child])])
@@ -267,57 +261,55 @@ def test_detection_walks_frame_submodules_for_reset_and_latching() -> None:
 def test_reset_contamination_can_consume_shared_indexes() -> None:
     child = SingleModule(
         header=_hdr("Child"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[
-            Variable(name="Counter", datatype=Simple_DataType.INTEGER),
-            Variable(name="Other", datatype=Simple_DataType.INTEGER),
-            Variable(name="ResetValue", datatype=Simple_DataType.INTEGER),
-            Variable(name="SeqResetOld", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="Start", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="Latch", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="Start", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="Latch", datatype=ScalarDatatype.BOOLEAN),
         ],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    _eq(
-                        "ResetEq",
-                        [
-                            IfStmt(
-                                branches=(
-                                    (
-                                        NotOp(operand=_varref("OpSeq.Reset")),
-                                        (Assignment(target=_varref("Counter"), value=_varref("ResetValue")),),
-                                    ),
-                                    (
-                                        NotOp(operand=_varref("SeqResetOld")),
-                                        (Assignment(target=_varref("Other"), value=_varref("ResetValue")),),
-                                    ),
+        modulecode=ModuleCode(
+            equationblocks=[
+                _eq(
+                    "ResetEq",
+                    [
+                        IfStmt(
+                            branches=(
+                                (
+                                    NotOp(operand=_varref("OpSeq.Reset")),
+                                    (Assignment(target=_varref("Counter"), value=_varref("ResetValue")),),
                                 ),
-                                else_block=(),
+                                (
+                                    NotOp(operand=_varref("SeqResetOld")),
+                                    (Assignment(target=_varref("Other"), value=_varref("ResetValue")),),
+                                ),
                             ),
-                            Assignment(target=_varref("SeqResetOld"), value=_varref("OpSeq.Reset")),
-                        ],
-                    ),
-                    _eq(
-                        "LatchEq",
-                        [
-                            IfStmt(
-                                branches=(
-                                    (
-                                        _varref("Start"),
-                                        (Assignment(target=_varref("Latch"), value=True),),
-                                    ),
+                            else_block=(),
+                        ),
+                        Assignment(target=_varref("SeqResetOld"), value=_varref("OpSeq.Reset")),
+                    ],
+                ),
+                _eq(
+                    "LatchEq",
+                    [
+                        IfStmt(
+                            branches=(
+                                (
+                                    _varref("Start"),
+                                    (Assignment(target=_varref("Latch"), value=True),),
                                 ),
-                                else_block=(),
-                            )
-                        ],
-                    ),
-                ],
-                sequences=[_seq("OpSeq", [])],
-            )
-        ],
+                            ),
+                            else_block=(),
+                        )
+                    ],
+                ),
+            ],
+            sequences=[_seq("OpSeq", [])],
+        ),
         parametermappings=[],
     )
     picture = BasePicture(header=_hdr("Root"), submodules=[FrameModule(header=_hdr("Frame"), submodules=[child])])

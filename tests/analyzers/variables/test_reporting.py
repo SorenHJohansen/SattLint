@@ -19,9 +19,8 @@ def test_datatype_duplication_is_scoped_per_module_and_excludes_anytype():
             Variable(name="PhaseTimerCopy", datatype="Timer"),
         ],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
     )
@@ -30,9 +29,8 @@ def test_datatype_duplication_is_scoped_per_module_and_excludes_anytype():
         moduleparameters=[Variable(name="WildcardC", datatype="AnyType")],
         localvariables=[Variable(name="PhaseTimer", datatype="Timer")],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
     )
@@ -43,8 +41,8 @@ def test_datatype_duplication_is_scoped_per_module_and_excludes_anytype():
         moduletype_defs=[fyld, applik],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="LibraryRoot.x",
         origin_lib="ProjectLib",
     )
@@ -73,12 +71,11 @@ def test_datatype_duplication_is_scoped_per_module_and_excludes_anytype():
 def test_library_target_report_shows_typedef_for_same_lib_different_file_moduletype():
     typedef = ModuleTypeDef(
         name="InfoPanelType",
-        moduleparameters=[Variable(name="EnableInteraktion", datatype=Simple_DataType.BOOLEAN)],
+        moduleparameters=[Variable(name="EnableInteraktion", datatype=ScalarDatatype.BOOLEAN)],
         localvariables=[],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
         origin_file="ApplSupportLib.s",
         origin_lib="ApplSupportLib",
     )
@@ -91,8 +88,8 @@ def test_library_target_report_shows_typedef_for_same_lib_different_file_modulet
             ModuleTypeInstance(header=_hdr("Y_Info_Panel"), moduletype_name="InfoPanelType", parametermappings=[]),
             ModuleTypeInstance(header=_hdr("X_Info_Panel"), moduletype_name="InfoPanelType", parametermappings=[]),
         ],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="ApplSupportLib.s",
         origin_lib="ApplSupportLib",
     )
@@ -119,12 +116,11 @@ def test_library_target_report_shows_typedef_for_same_lib_different_file_modulet
 def test_program_target_report_dedupes_root_owned_typedef_instance_findings():
     typedef = ModuleTypeDef(
         name="InfoPanelType",
-        moduleparameters=[Variable(name="EnableInteraktion", datatype=Simple_DataType.BOOLEAN)],
+        moduleparameters=[Variable(name="EnableInteraktion", datatype=ScalarDatatype.BOOLEAN)],
         localvariables=[],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
         origin_file="ApplSupportLib.s",
         origin_lib="ApplSupportLib",
     )
@@ -137,8 +133,8 @@ def test_program_target_report_dedupes_root_owned_typedef_instance_findings():
             ModuleTypeInstance(header=_hdr("Y_Info_Panel"), moduletype_name="InfoPanelType", parametermappings=[]),
             ModuleTypeInstance(header=_hdr("X_Info_Panel"), moduletype_name="InfoPanelType", parametermappings=[]),
         ],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="ApplSupportLib.s",
         origin_lib="ApplSupportLib",
     )
@@ -163,15 +159,14 @@ def test_program_target_report_dedupes_root_owned_typedef_instance_findings():
 
 
 def test_library_target_does_not_report_typedefs_from_sibling_projectlib_files():
-    foreign_local = Variable(name="FirstIndex", datatype=Simple_DataType.INTEGER)
+    foreign_local = Variable(name="FirstIndex", datatype=ScalarDatatype.INTEGER)
     foreign_typedef = ModuleTypeDef(
         name="ListKernel",
         moduleparameters=[],
         localvariables=[foreign_local],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
         origin_file="ListeLibX.x",
         origin_lib="ProjectLib",
     )
@@ -181,8 +176,8 @@ def test_library_target_does_not_report_typedefs_from_sibling_projectlib_files()
         moduletype_defs=[foreign_typedef],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="ColumnLib.x",
         origin_lib="ProjectLib",
     )
@@ -214,8 +209,8 @@ def test_library_target_does_not_report_typedefs_from_sibling_projectlib_files()
 
 
 def test_unused_summary_splits_moduletype_and_singlemodule_groups():
-    moduletype_var = Variable(name="EnableInteraktion", datatype=Simple_DataType.BOOLEAN)
-    singlemodule_var = Variable(name="MinMax", datatype=Simple_DataType.INTEGER)
+    moduletype_var = Variable(name="EnableInteraktion", datatype=ScalarDatatype.BOOLEAN)
+    singlemodule_var = Variable(name="MinMax", datatype=ScalarDatatype.INTEGER)
     issues = [
         VariableIssue(
             kind=IssueKind.UNUSED,
@@ -241,8 +236,8 @@ def test_unused_summary_splits_moduletype_and_singlemodule_groups():
 
 
 def test_never_read_summary_splits_moduletype_and_singlemodule_groups():
-    moduletype_var = Variable(name="EnableInteraktion", datatype=Simple_DataType.BOOLEAN)
-    singlemodule_var = Variable(name="MinMax", datatype=Simple_DataType.INTEGER)
+    moduletype_var = Variable(name="EnableInteraktion", datatype=ScalarDatatype.BOOLEAN)
+    singlemodule_var = Variable(name="MinMax", datatype=ScalarDatatype.INTEGER)
     issues = [
         VariableIssue(
             kind=IssueKind.NEVER_READ,
@@ -271,16 +266,15 @@ def test_never_read_summary_splits_moduletype_and_singlemodule_groups():
 def test_string_mapping_summary_dedupes_root_typedef_singlemodule_rows():
     child_typedef = ModuleTypeDef(
         name="ChildType",
-        moduleparameters=[Variable(name="TargetValue", datatype=Simple_DataType.IDENTSTRING)],
+        moduleparameters=[Variable(name="TargetValue", datatype=ScalarDatatype.IDENTSTRING)],
         localvariables=[],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
     )
     parent_typedef = ModuleTypeDef(
         name="ParentType",
-        moduleparameters=[Variable(name="SourceValue", datatype=Simple_DataType.STRING)],
+        moduleparameters=[Variable(name="SourceValue", datatype=ScalarDatatype.STRING)],
         localvariables=[],
         submodules=[
             ModuleTypeInstance(
@@ -298,9 +292,8 @@ def test_string_mapping_summary_dedupes_root_typedef_singlemodule_rows():
                 ],
             )
         ],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
     )
     bp = BasePicture(
         header=_hdr("Root"),
@@ -308,8 +301,8 @@ def test_string_mapping_summary_dedupes_root_typedef_singlemodule_rows():
         moduletype_defs=[child_typedef, parent_typedef],
         localvariables=[],
         submodules=[ModuleTypeInstance(header=_hdr("Parent"), moduletype_name="ParentType", parametermappings=[])],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -333,16 +326,15 @@ def test_string_mapping_summary_dedupes_root_typedef_singlemodule_rows():
 def test_string_mapping_summary_prefers_original_declaration_type_for_intermediate_path_rows():
     final_typedef = ModuleTypeDef(
         name="FinalType",
-        moduleparameters=[Variable(name="FinalValue", datatype=Simple_DataType.IDENTSTRING)],
+        moduleparameters=[Variable(name="FinalValue", datatype=ScalarDatatype.IDENTSTRING)],
         localvariables=[],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
     )
     relay_typedef = ModuleTypeDef(
         name="RelayType",
-        moduleparameters=[Variable(name="RelayValue", datatype=Simple_DataType.STRING)],
+        moduleparameters=[Variable(name="RelayValue", datatype=ScalarDatatype.STRING)],
         localvariables=[],
         submodules=[
             ModuleTypeInstance(
@@ -360,15 +352,14 @@ def test_string_mapping_summary_prefers_original_declaration_type_for_intermedia
                 ],
             )
         ],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
     )
     bp = BasePicture(
         header=_hdr("Root"),
         datatype_defs=[],
         moduletype_defs=[final_typedef, relay_typedef],
-        localvariables=[Variable(name="OriginalValue", datatype=Simple_DataType.IDENTSTRING)],
+        localvariables=[Variable(name="OriginalValue", datatype=ScalarDatatype.IDENTSTRING)],
         submodules=[
             ModuleTypeInstance(
                 header=_hdr("Relay"),
@@ -385,8 +376,8 @@ def test_string_mapping_summary_prefers_original_declaration_type_for_intermedia
                 ],
             )
         ],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -416,8 +407,8 @@ def test_string_mapping_summary_uses_resolved_field_source_and_target_names():
     issue = VariableIssue(
         kind=IssueKind.STRING_MAPPING_MISMATCH,
         module_path=["Root", "Parent", "Panel", "ActivateButton"],
-        variable=Variable(name="Text", datatype=Simple_DataType.IDENTSTRING),
-        source_variable=Variable(name="DV.StopText", datatype=Simple_DataType.IDENTSTRING),
+        variable=Variable(name="Text", datatype=ScalarDatatype.IDENTSTRING),
+        source_variable=Variable(name="DV.StopText", datatype=ScalarDatatype.IDENTSTRING),
         source_decl_module_path=["Root", "Parent"],
         source_role="localvariable",
         target_display_name="Text",

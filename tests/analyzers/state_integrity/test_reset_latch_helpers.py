@@ -6,8 +6,8 @@ reset_contamination_helpers = cast(Any, reset_contamination_module)
 
 
 def test_reset_contamination_helpers_collect_if_and_nested_sequence_paths():
-    counter = Variable(name="Counter", datatype=Simple_DataType.INTEGER)
-    source = Variable(name="Source", datatype=Simple_DataType.INTEGER)
+    counter = Variable(name="Counter", datatype=ScalarDatatype.INTEGER)
+    source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
     env = {
         "counter": counter,
         "source": source,
@@ -76,16 +76,16 @@ def test_reset_contamination_helpers_collect_if_and_nested_sequence_paths():
 
 def test_implicit_latch_helpers_collect_boolean_statement_and_sequence_paths():
     env = {
-        "flag": Variable(name="Flag", datatype=Simple_DataType.BOOLEAN),
-        "wrappedflag": Variable(name="WrappedFlag", datatype=Simple_DataType.BOOLEAN),
-        "stepflag": Variable(name="StepFlag", datatype=Simple_DataType.BOOLEAN),
-        "alarmlatched": Variable(name="AlarmLatched", datatype=Simple_DataType.BOOLEAN),
-        "otherflag": Variable(name="OtherFlag", datatype=Simple_DataType.BOOLEAN),
-        "branchflag": Variable(name="BranchFlag", datatype=Simple_DataType.BOOLEAN),
-        "parallela": Variable(name="ParallelA", datatype=Simple_DataType.BOOLEAN),
-        "parallelb": Variable(name="ParallelB", datatype=Simple_DataType.BOOLEAN),
-        "nestedflag": Variable(name="NestedFlag", datatype=Simple_DataType.BOOLEAN),
-        "gateflag": Variable(name="GateFlag", datatype=Simple_DataType.BOOLEAN),
+        "flag": Variable(name="Flag", datatype=ScalarDatatype.BOOLEAN),
+        "wrappedflag": Variable(name="WrappedFlag", datatype=ScalarDatatype.BOOLEAN),
+        "stepflag": Variable(name="StepFlag", datatype=ScalarDatatype.BOOLEAN),
+        "alarmlatched": Variable(name="AlarmLatched", datatype=ScalarDatatype.BOOLEAN),
+        "otherflag": Variable(name="OtherFlag", datatype=ScalarDatatype.BOOLEAN),
+        "branchflag": Variable(name="BranchFlag", datatype=ScalarDatatype.BOOLEAN),
+        "parallela": Variable(name="ParallelA", datatype=ScalarDatatype.BOOLEAN),
+        "parallelb": Variable(name="ParallelB", datatype=ScalarDatatype.BOOLEAN),
+        "nestedflag": Variable(name="NestedFlag", datatype=ScalarDatatype.BOOLEAN),
+        "gateflag": Variable(name="GateFlag", datatype=ScalarDatatype.BOOLEAN),
     }
 
     step_states = reset_contamination_helpers._collect_boolean_seq_node_paths(
@@ -213,10 +213,10 @@ def test_implicit_latch_helpers_collect_boolean_statement_and_sequence_paths():
 
 def test_implicit_latch_helpers_scan_nested_sfc_nodes_and_dedupe_issues():
     env = {
-        "alarmlatched": Variable(name="AlarmLatched", datatype=Simple_DataType.BOOLEAN),
-        "stepflag": Variable(name="StepFlag", datatype=Simple_DataType.BOOLEAN),
-        "nestedflag": Variable(name="NestedFlag", datatype=Simple_DataType.BOOLEAN),
-        "transitionflag": Variable(name="TransitionFlag", datatype=Simple_DataType.BOOLEAN),
+        "alarmlatched": Variable(name="AlarmLatched", datatype=ScalarDatatype.BOOLEAN),
+        "stepflag": Variable(name="StepFlag", datatype=ScalarDatatype.BOOLEAN),
+        "nestedflag": Variable(name="NestedFlag", datatype=ScalarDatatype.BOOLEAN),
+        "transitionflag": Variable(name="TransitionFlag", datatype=ScalarDatatype.BOOLEAN),
     }
     issues: list[VariableIssue] = []
     seen: set[tuple[tuple[str, ...], str, str]] = set()

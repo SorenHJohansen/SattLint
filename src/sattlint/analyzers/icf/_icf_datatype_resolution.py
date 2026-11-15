@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sattlint.parser_api import Simple_DataType, Variable
+from sattlint.parser_api import ScalarDatatype, Variable
 
 from ...resolution.type_graph import TypeGraph
 
@@ -9,10 +9,10 @@ def resolve_leaf_datatype(
     type_graph: TypeGraph,
     root_var: Variable,
     field_segments: list[str],
-) -> Simple_DataType | str | None:
-    current_type: Simple_DataType | str = root_var.datatype
+) -> ScalarDatatype | str | None:
+    current_type: ScalarDatatype | str = root_var.datatype
     for field in field_segments:
-        if isinstance(current_type, Simple_DataType):
+        if isinstance(current_type, ScalarDatatype):
             return None
         field_def = type_graph.field(str(current_type), field)
         if field_def is None:
@@ -23,12 +23,12 @@ def resolve_leaf_datatype(
 
 def resolve_record_datatype(
     type_graph: TypeGraph,
-    root_datatype: Simple_DataType | str | None,
+    root_datatype: ScalarDatatype | str | None,
     field_segments: list[str],
 ) -> str | None:
-    current_type: Simple_DataType | str | None = root_datatype
+    current_type: ScalarDatatype | str | None = root_datatype
     for field in field_segments:
-        if isinstance(current_type, Simple_DataType):
+        if isinstance(current_type, ScalarDatatype):
             return None
         if current_type is None:
             return None
@@ -37,6 +37,6 @@ def resolve_record_datatype(
             return None
         current_type = field_def.datatype
 
-    if isinstance(current_type, Simple_DataType) or current_type is None:
+    if isinstance(current_type, ScalarDatatype) or current_type is None:
         return None
     return str(current_type)

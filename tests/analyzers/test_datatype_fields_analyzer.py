@@ -7,7 +7,7 @@ from sattline_parser.models.ast_model import (
     Equation,
     ModuleCode,
     ModuleHeader,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
 )
@@ -37,30 +37,28 @@ def _picture_with_unused_field() -> BasePicture:
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="A", datatype=Simple_DataType.INTEGER),
-            Variable(name="B", datatype=Simple_DataType.REAL),
+            Variable(name="A", datatype=ScalarDatatype.INTEGER),
+            Variable(name="B", datatype=ScalarDatatype.REAL),
         ],
     )
     rec = Variable(name="Rec", datatype="RecType")
     m1 = SingleModule(
         header=_hdr("M1"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[rec],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="UseField",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Rec.A"), value=1)],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="UseField",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Rec.A"), value=1)],
+                )
+            ],
+            sequences=[],
+        ),
         parametermappings=[],
     )
     return BasePicture(
@@ -69,8 +67,8 @@ def _picture_with_unused_field() -> BasePicture:
         moduletype_defs=[],
         localvariables=[],
         submodules=[m1],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
 
@@ -111,36 +109,34 @@ def _picture_with_module_and_local_records() -> tuple[BasePicture, Variable, Var
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="A", datatype=Simple_DataType.INTEGER),
-            Variable(name="B", datatype=Simple_DataType.REAL),
+            Variable(name="A", datatype=ScalarDatatype.INTEGER),
+            Variable(name="B", datatype=ScalarDatatype.REAL),
         ],
     )
     param_rec = Variable(name="ParamRec", datatype="RecType")
     local_rec = Variable(name="LocalRec", datatype="RecType")
-    sink = Variable(name="Sink", datatype=Simple_DataType.INTEGER)
+    sink = Variable(name="Sink", datatype=ScalarDatatype.INTEGER)
     module = SingleModule(
         header=_hdr("M1"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[param_rec],
         localvariables=[local_rec, sink],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="UseFields",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            Assignment(target=_varref("LocalRec.A"), value=1),
-                            Assignment(target=_varref("Sink"), value=_varref("LocalRec.B")),
-                            Assignment(target=_varref("Sink"), value=_varref("ParamRec.B")),
-                        ],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="UseFields",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        Assignment(target=_varref("LocalRec.A"), value=1),
+                        Assignment(target=_varref("Sink"), value=_varref("LocalRec.B")),
+                        Assignment(target=_varref("Sink"), value=_varref("ParamRec.B")),
+                    ],
+                )
+            ],
+            sequences=[],
+        ),
         parametermappings=[],
     )
     bp = BasePicture(
@@ -149,8 +145,8 @@ def _picture_with_module_and_local_records() -> tuple[BasePicture, Variable, Var
         moduletype_defs=[],
         localvariables=[],
         submodules=[module],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
     return bp, param_rec, local_rec
 

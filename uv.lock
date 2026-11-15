@@ -1169,15 +1169,15 @@ wheels = [
 
 [[package]]
 name = "sattline-parser"
-version = "2026.11.4"
+version = "2026.11.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "lark", extra = ["interegular"] },
     { name = "regex" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/61/61/f6e1fd05415bb505868109f06403bfa258f45f9194db780a18d5691a1ade/sattline_parser-2026.11.4.tar.gz", hash = "sha256:93af9f9375a2d0ce082135ccde6ee8237c6e0eee6228e914c997323fb1575146", size = 220329, upload-time = "2026-11-05T21:28:29.563Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/41/38/7d6492a46e87a9317d5b4c5188b435058016ae1cc9e052919bb61800629b/sattline_parser-2026.11.5.tar.gz", hash = "sha256:25688d1b9c5dd35aaef262b25212a3823e126dacbac4026c1e4dc24f3afb474b", size = 705745, upload-time = "2026-11-15T16:33:11.45Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/56/a2/d5888ca0d86457a13c20cbe1aad2294093300ebc5c95df79c0146ce0c1bf/sattline_parser-2026.11.4-py3-none-any.whl", hash = "sha256:0274df0031430b3b7d414ac5a2944a8575c47474267a7f4b16e4e150e0ac46f9", size = 254856, upload-time = "2026-11-05T21:28:27.958Z" },
+    { url = "https://files.pythonhosted.org/packages/35/af/8825b577b27663ca51cd169b37ed2358529a337ddd6b98b53c1ca816dba1/sattline_parser-2026.11.5-py3-none-any.whl", hash = "sha256:76764d9be1d450ddd3b95adec23c4c0c14279951f31a82897ac5b1f9a06864c1", size = 285451, upload-time = "2026-11-15T16:33:10.131Z" },
 ]
 
 [[package]]
@@ -1225,7 +1225,7 @@ requires-dist = [
     { name = "pytest-timeout", marker = "extra == 'test'", specifier = ">=2.3.1" },
     { name = "rich", specifier = ">=13.9.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = "==0.17.4" },
-    { name = "sattline-parser", specifier = "==2026.11.4" },
+    { name = "sattline-parser", specifier = "==2026.11.5" },
     { name = "sattlint", extras = ["test"], marker = "extra == 'dev'" },
     { name = "textual", specifier = ">=8.2.7,<9" },
     { name = "tomli-w", specifier = ">=1.2.0" },

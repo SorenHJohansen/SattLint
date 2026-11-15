@@ -1,6 +1,6 @@
 {
     "case_id": "analyzer-cyclomatic-complexity-high",
-    "target_file": "../../analyzer_guardrails/CyclomaticComplexityHigh.s",
+    "target_file": "../../analyzer_guardrails/CyclomaticHigh.s",
     "mode": "analyzer-cyclomatic-complexity",
     "expectation": {
         "expected_finding_ids": [

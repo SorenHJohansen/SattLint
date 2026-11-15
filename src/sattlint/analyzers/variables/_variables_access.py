@@ -5,7 +5,7 @@ from __future__ import annotations
 import difflib
 from typing import TYPE_CHECKING, Any
 
-from sattlint.parser_api import ParameterMapping, Simple_DataType, Variable
+from sattlint.parser_api import ParameterMapping, ScalarDatatype, Variable
 
 from ...resolution import AccessKind, CanonicalPath
 from ...resolution.common import varname_full
@@ -208,19 +208,19 @@ def _pop_site(self: VariablesAnalyzer) -> None:
 
 def _strict_datatype_at_field_prefix(
     self: VariablesAnalyzer,
-    root_type: Simple_DataType | str,
+    root_type: ScalarDatatype | str,
     field_prefix: str,
     *,
     fn_name: str,
     syntactic_ref: str,
     resolved_var_name: str,
     use_path: list[str],
-) -> Simple_DataType | str:
+) -> ScalarDatatype | str:
     segments = [segment for segment in (field_prefix or "").split(".") if segment]
-    current: Simple_DataType | str = root_type
+    current: ScalarDatatype | str = root_type
 
     for segment in segments:
-        if isinstance(current, Simple_DataType):
+        if isinstance(current, ScalarDatatype):
             site = _site_str(self)
             if self.fail_loudly:
                 raise ValueError(
@@ -283,13 +283,13 @@ def _strict_datatype_at_field_prefix(
 
 def _iter_leaf_field_paths_strict(
     self: VariablesAnalyzer,
-    root_type: Simple_DataType | str,
+    root_type: ScalarDatatype | str,
     *,
     fn_name: str,
     syntactic_ref: str,
     resolved_var_name: str,
 ) -> list[tuple[str, ...]]:
-    if isinstance(root_type, Simple_DataType):
+    if isinstance(root_type, ScalarDatatype):
         return [()]
     if is_anytype_name(root_type):
         return [()]
@@ -342,7 +342,7 @@ def _iter_leaf_field_paths_strict(
         next_chain = (*chain, type_name)
         for field in record_type.fields_by_key.values():
             new_prefix = (*prefix, field.name)
-            if isinstance(field.datatype, Simple_DataType):
+            if isinstance(field.datatype, ScalarDatatype):
                 results.append(new_prefix)
             else:
                 stack.append((str(field.datatype), new_prefix, next_chain))
@@ -572,14 +572,14 @@ class VariablesAccessMixin:
 
     def _strict_datatype_at_field_prefix(
         self: Any,
-        root_type: Simple_DataType | str,
+        root_type: ScalarDatatype | str,
         field_prefix: str,
         *,
         fn_name: str,
         syntactic_ref: str,
         resolved_var_name: str,
         use_path: list[str],
-    ) -> Simple_DataType | str:
+    ) -> ScalarDatatype | str:
         return _strict_datatype_at_field_prefix(
             self,
             root_type,
@@ -592,7 +592,7 @@ class VariablesAccessMixin:
 
     def _iter_leaf_field_paths_strict(
         self: Any,
-        root_type: Simple_DataType | str,
+        root_type: ScalarDatatype | str,
         *,
         fn_name: str,
         syntactic_ref: str,

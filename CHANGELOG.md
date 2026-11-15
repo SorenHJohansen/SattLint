@@ -27,6 +27,38 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 - The pull request template, issue templates, and release notes in
   `CONTRIBUTING.md` match the shipped commands.
 - The pinned Ruff version matches the pre-commit hook revision.
+- Upgraded `sattline-parser` to `2026.11.5` and pinned it exactly, with
+  `uv.lock` regenerated. The parser renames `Simple_DataType` to
+  `ScalarDatatype`, stores module layout blocks as the singular `moduledef` and
+  `modulecode` fields, and removes the interim graphics payload classes.
+- Project loading is all or nothing. A missing or unparseable body, sidecar, or
+  companion now fails the target with a message that names the artifact,
+  instead of dropping the program silently. SattLint catches the parser load
+  errors at every load seam, reports the failure, and continues with the next
+  analyzed target.
+- Every cache version is bumped, so an entry written before the parser upgrade
+  is rejected rather than decoded into the new model.
+- A declared dependency that is not present is no longer recorded as a missing
+  library, because the parser refuses to return a partial project.
+- A module type definition no longer carries parameter mappings, so the
+  variables analyzer checks mappings only on submodules and module-type
+  instances, which is where the grammar allows them.
+- Dependency sidecar lookup is requester independent and pairs a sidecar with
+  the selected body's own prefix, matching the parser's ordered roots.
+- The unknown parameter mapping target rule stays with SattLint's variables
+  analyzer, so a root that carries that finding is still indexed.
+
+### Fixed
+
+- A reverse-library consumer that cannot load no longer discards the selected
+  library's analysis. The batch falls back to one load per consumer, records the
+  failing consumer, and keeps the library findings.
+- ICF analysis reports a load-failure issue when a referenced program cannot be
+  loaded instead of raising out of the analyzer.
+- An AST refresh reports a target that cannot load and continues with the rest
+  of the analyzed targets.
+- An unknown parameter mapping target is reported for a mapping from a global
+  source as well, matching the parser rule.
 
 ## [2026.11.4] - 2026-11-12
 

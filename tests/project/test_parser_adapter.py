@@ -1,11 +1,11 @@
 # pyright: reportPrivateUsage=false
-"""Focused unit tests for the Phase 5 parser-backed project loader adapter.
+"""Focused unit tests for the parser-backed project loader adapter.
 
 Covers ``sattlint.project.parser_adapter``: graph conversion from a loaded
-``SattLineProject``, missing-dependency recording, cycle detection, reverse-
-consumer dedup, library naming, AST-only graph conversion, and the hermetic
+``SattLineProject``, missing-root recording, cycle translation, reverse-consumer
+dedup, library naming, AST-only graph conversion, and the hermetic
 ``load_parser_project`` I/O path. Programs are built schema-only via
-``SattLineProject._from_programs`` (no filesystem) except for the I/O
+``SattLineProject.from_programs`` (no filesystem) except for the I/O
 round-trip test, which writes real ``.s`` / ``.l`` fixtures into ``tmp_path``.
 """
 
@@ -24,6 +24,7 @@ from sattline_parser.project import (
 
 from sattlint.core.syntax import CodeMode
 from sattlint.models.project_graph import ProjectGraph
+from sattlint.parser_api import LoadValidation
 from sattlint.project import parser_adapter as parser_adapter_module
 from sattlint.project.parser_adapter import (
     CircularDependencyError,
@@ -79,7 +80,7 @@ def test_convert_populates_graph_from_registry() -> None:
     lib = tmp / "lib"
     a = _program("A", source_path=lib / "A.s")
     b = _program("B", dependencies=("A",), source_path=prg / "B.s")
-    project = SattLineProject._from_programs({"A": a, "B": b})
+    project = SattLineProject.from_programs({"A": a, "B": b})
     graph = ProjectGraph()
     convert_project_into_graph(
         project, graph, binding=_binding(prg, other_lib_dirs=(lib,)), root_name="B", strict=False
@@ -93,22 +94,10 @@ def test_convert_populates_graph_from_registry() -> None:
     assert graph.missing == []
 
 
-def test_convert_records_dangling_dependency_as_missing() -> None:
-    tmp = Path("/tmp/base")
-    prg = tmp / "prg"
-    owner = _program("B", dependencies=("MISSING",), source_path=prg / "B.s")
-    project = SattLineProject._from_programs({"B": owner})
-    graph = ProjectGraph()
-    convert_project_into_graph(project, graph, binding=_binding(prg), root_name="B", strict=False)
-
-    assert "missing" in graph.unavailable_libraries
-    assert any("MISSING" in entry and "B" in entry for entry in graph.missing)
-
-
 def test_convert_flags_root_not_loaded_as_missing() -> None:
     prg = Path("/tmp/base/prg")
     a = _program("A", source_path=prg / "A.s")
-    project = SattLineProject._from_programs({"A": a})
+    project = SattLineProject.from_programs({"A": a})
     graph = ProjectGraph()
     convert_project_into_graph(project, graph, binding=_binding(prg), root_name="R", strict=False)
 
@@ -122,7 +111,7 @@ def test_convert_raises_on_cycle_always() -> None:
     prg = Path("/tmp/base/prg")
     a = _program("A", dependencies=("B",), source_path=prg / "A.s")
     b = _program("B", dependencies=("A",), source_path=prg / "B.s")
-    project = SattLineProject._from_programs({"A": a, "B": b})
+    project = SattLineProject.from_programs({"A": a, "B": b})
     graph = ProjectGraph()
     with pytest.raises(CircularDependencyError) as excinfo:
         convert_project_into_graph(project, graph, binding=_binding(prg), root_name="A", strict=False)
@@ -133,12 +122,12 @@ def test_convert_skips_already_present_programs() -> None:
     prg = Path("/tmp/base/prg")
     lib = _program("A", source_path=prg / "A.s")
     owner = _program("B", dependencies=("A",), source_path=prg / "B.s")
-    project = SattLineProject._from_programs({"A": lib, "B": owner})
+    project = SattLineProject.from_programs({"A": lib, "B": owner})
     graph = ProjectGraph()
     convert_project_into_graph(project, graph, binding=_binding(prg), root_name="B", strict=False)
     indexed_before = len(graph.moduletype_defs)
 
-    other = SattLineProject._from_programs({"A": lib, "C": _program("C", dependencies=("A",), source_path=prg / "C.s")})
+    other = SattLineProject.from_programs({"A": lib, "C": _program("C", dependencies=("A",), source_path=prg / "C.s")})
     convert_project_into_graph(other, graph, binding=_binding(prg), root_name="C", strict=False)
 
     assert graph.ast_by_name["A"] is lib.code
@@ -150,7 +139,7 @@ def test_convert_ast_only_skips_graphics_and_indexing() -> None:
     prg = Path("/tmp/base/prg")
     binding = _binding(prg)
     a = _program("A", source_path=prg / "A.s")
-    project = SattLineProject._from_programs({"A": a})
+    project = SattLineProject.from_programs({"A": a})
     graph = ProjectGraph()
     convert_project_into_graph(
         project,
@@ -175,7 +164,7 @@ def test_load_parser_project_round_trip_hermetic(tmp_path: Path) -> None:
     (program_dir / "Main.l").write_text("Dep\n", encoding="utf-8")
 
     binding = _binding(program_dir)
-    project = load_parser_project(binding, ["Main"], strict=False)
+    project = load_parser_project(binding, ["Main"])
     assert "Dep" in project
     assert "Main" in project
     assert project.dependencies_of("Main") == ("Dep",)
@@ -186,13 +175,31 @@ def test_load_parser_project_round_trip_hermetic(tmp_path: Path) -> None:
     assert set(graph.ast_by_name) == {"Main", "Dep"}
 
 
-def test_load_parser_project_strict_raises_on_missing_target(tmp_path: Path) -> None:
+def test_load_parser_project_raises_on_missing_target(tmp_path: Path) -> None:
     program_dir = tmp_path / "prg"
     program_dir.mkdir()
     (program_dir / "Main.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
     binding = _binding(program_dir)
     with pytest.raises(ProjectLoadError, match="missing code file"):
-        load_parser_project(binding, ["Nope"], strict=True)
+        load_parser_project(binding, ["Nope"])
+
+
+def test_load_parser_project_translates_parser_cycle(tmp_path: Path) -> None:
+    program_dir = tmp_path / "prg"
+    program_dir.mkdir()
+    (program_dir / "A.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
+    (program_dir / "B.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
+    (program_dir / "A.l").write_text("B\n", encoding="utf-8")
+    (program_dir / "B.l").write_text("A\n", encoding="utf-8")
+
+    binding = _binding(program_dir)
+    with pytest.raises(CircularDependencyError) as excinfo:
+        load_parser_project(binding, ["A"])
+
+    # A load-time cycle is rejected before any project exists, so the path
+    # carries the loader's canonical identities.
+    assert excinfo.value.library == "a"
+    assert excinfo.value.cycle_path == ["a", "b"]
 
 
 def test_find_code_and_dependency_paths_and_names(tmp_path: Path) -> None:
@@ -203,10 +210,10 @@ def test_find_code_and_dependency_paths_and_names(tmp_path: Path) -> None:
     (program_dir / "Main.l").write_text("Dep\n", encoding="utf-8")
 
     binding = _binding(program_dir)
-    assert find_code_path(binding, "Main", requester_dir=program_dir) == (program_dir / "Main.s").resolve()
-    assert find_dependency_path(binding, "Main", requester_dir=program_dir) == (program_dir / "Main.l").resolve()
+    assert find_code_path(binding, "Main") == (program_dir / "Main.s").resolve()
+    assert find_dependency_path(binding, "Main") == (program_dir / "Main.l").resolve()
     assert read_dependency_names(program_dir / "Main.l") == ("Dep",)
-    assert find_code_path(binding, "Nope", requester_dir=program_dir) is None
+    assert find_code_path(binding, "Nope") is None
 
 
 def test_library_name_falls_through_to_program_root() -> None:
@@ -222,7 +229,7 @@ def test_library_name_falls_through_to_program_root() -> None:
     b = _program("B", source_path=lib_b / "B.s")
     c = _program("C", source_path=abb / "C.s")
     root = _program("Root", dependencies=("A", "B", "C"), source_path=prg / "Root.s")
-    project = SattLineProject._from_programs({p.name: p for p in (a, b, c, root)})
+    project = SattLineProject.from_programs({p.name: p for p in (a, b, c, root)})
     graph = ProjectGraph()
     convert_project_into_graph(project, graph, binding=_bound(prg), root_name="Root", strict=False)
 
@@ -235,20 +242,20 @@ def test_load_parser_project_memoizes_single_target(tmp_path: Path) -> None:
     (program_dir / "Main.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
 
     binding = _binding(program_dir)
-    first = load_parser_project(binding, ["Main"], strict=False)
-    second = load_parser_project(binding, ["Main"], strict=False)
+    first = load_parser_project(binding, ["Main"])
+    second = load_parser_project(binding, ["Main"])
     assert second is first
 
 
-def test_load_parser_project_memo_ignores_strict_variants(tmp_path: Path) -> None:
+def test_load_parser_project_memo_partitions_by_validation_scope(tmp_path: Path) -> None:
     program_dir = tmp_path / "prg"
     program_dir.mkdir()
     (program_dir / "Main.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
 
     binding = _binding(program_dir)
-    non_strict = load_parser_project(binding, ["Main"], strict=False)
-    strict = load_parser_project(binding, ["Main"], strict=True)
-    assert strict is not non_strict
+    invoked = load_parser_project(binding, ["Main"])
+    parse_only = load_parser_project(binding, ["Main"], validate=LoadValidation.NONE)
+    assert parse_only is not invoked
 
 
 def test_convert_reuses_indexed_names_within_one_binding() -> None:
@@ -258,7 +265,7 @@ def test_convert_reuses_indexed_names_within_one_binding() -> None:
     b = _program("B", dependencies=("A",), source_path=prg / "B.s")
     graph = ProjectGraph()
     convert_project_into_graph(
-        SattLineProject._from_programs({"A": a, "B": b}),
+        SattLineProject.from_programs({"A": a, "B": b}),
         graph,
         binding=binding,
         root_name="B",
@@ -268,7 +275,7 @@ def test_convert_reuses_indexed_names_within_one_binding() -> None:
 
     c = _program("C", dependencies=("A",), source_path=prg / "C.s")
     convert_project_into_graph(
-        SattLineProject._from_programs({"A": a, "C": c}),
+        SattLineProject.from_programs({"A": a, "C": c}),
         graph,
         binding=binding,
         root_name="C",
@@ -305,7 +312,7 @@ def test_convert_batched_extra_roots_indexes_each_once() -> None:
     a = _program("A", source_path=prg / "A.s")
     r1 = _program("R1", dependencies=("A",), source_path=prg / "R1.s")
     r2 = _program("R2", dependencies=("A",), source_path=prg / "R2.s")
-    project = SattLineProject._from_programs({p.name: p for p in (a, r1, r2)})
+    project = SattLineProject.from_programs({p.name: p for p in (a, r1, r2)})
     graph = ProjectGraph()
     convert_project_into_graph(
         project,
@@ -325,7 +332,7 @@ def test_convert_batched_extra_roots_indexes_each_once() -> None:
 def test_convert_extra_roots_records_each_missing_root() -> None:
     prg = Path("/tmp/base/prg")
     a = _program("A", source_path=prg / "A.s")
-    project = SattLineProject._from_programs({"A": a})
+    project = SattLineProject.from_programs({"A": a})
     graph = ProjectGraph()
     convert_project_into_graph(
         project,

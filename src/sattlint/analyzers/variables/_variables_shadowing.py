@@ -11,7 +11,7 @@ from sattlint.parser_api import (
     FrameModule,
     ModuleTypeDef,
     ModuleTypeInstance,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
 )
@@ -154,7 +154,7 @@ def _check_shadowing(
 
 def _is_integer_status_indicator(self: Any, variable: Variable) -> bool:
     datatype = variable.datatype
-    is_integer = datatype == Simple_DataType.INTEGER or (isinstance(datatype, str) and datatype.casefold() == "integer")
+    is_integer = datatype == ScalarDatatype.INTEGER or (isinstance(datatype, str) and datatype.casefold() == "integer")
     if not is_integer:
         return False
 

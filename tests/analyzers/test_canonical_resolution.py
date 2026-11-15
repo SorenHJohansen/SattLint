@@ -9,7 +9,7 @@ from sattline_parser.models.ast_model import (
     ModuleCode,
     ModuleHeader,
     ParameterMapping,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
 )
@@ -41,7 +41,7 @@ def test_resolves_submodule_parameter_access_to_canonical_parent_path():
         name="RealSignal",
         description=None,
         datecode=None,
-        var_list=[Variable(name="value", datatype=Simple_DataType.REAL)],
+        var_list=[Variable(name="value", datatype=ScalarDatatype.REAL)],
     )
     dt_ai = DataType(
         name="AIType",
@@ -69,27 +69,25 @@ def test_resolves_submodule_parameter_access_to_canonical_parent_path():
             name="Analog_Profi_Scale",
             invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0),
         ),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[Variable(name="signal", datatype="AIType")],
         localvariables=[],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="E1",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            Assignment(
-                                target=_varref("signal.comp_signal.value"),
-                                value=1.0,
-                            )
-                        ],
-                    )
-                ]
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="E1",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        Assignment(
+                            target=_varref("signal.comp_signal.value"),
+                            value=1.0,
+                        )
+                    ],
+                )
+            ]
+        ),
         parametermappings=[
             ParameterMapping(
                 target=_varref("signal"),
@@ -107,8 +105,8 @@ def test_resolves_submodule_parameter_access_to_canonical_parent_path():
         moduletype_defs=[],
         localvariables=[dv],
         submodules=[child],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)

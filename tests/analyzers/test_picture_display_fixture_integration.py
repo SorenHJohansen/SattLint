@@ -5,7 +5,7 @@ from sattline_parser.models.ast_model import (
     GraphicsBinding,
     ModuleDef,
     ModuleHeader,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     SourceSpan,
     Variable,
@@ -58,7 +58,7 @@ def _load_fixture_base_picture(stem: str) -> tuple[BasePicture, ProjectGraph]:
 
 
 def test_picture_display_path_analyzer_uses_real_string_fixture() -> None:
-    base_picture, graph = _load_fixture_base_picture("TestStringsInPictureDisplay")
+    base_picture, graph = _load_fixture_base_picture("TestStringsDisplay")
     attachments = graph.graphics_attachments_for(base_picture)
 
     report = analyze_picture_display_paths(base_picture, graph=graph)
@@ -76,7 +76,7 @@ def test_picture_display_path_analyzer_uses_real_string_fixture() -> None:
 
 
 def test_variable_invalid_picture_display_rows_do_not_count_as_usage() -> None:
-    path_var = Variable(name="PathAIT", datatype=Simple_DataType.LINESTRING)
+    path_var = Variable(name="PathAIT", datatype=ScalarDatatype.LINESTRING)
     base_picture = BasePicture(
         header=_hdr("BasePicture"),
         datatype_defs=[],
@@ -85,16 +85,16 @@ def test_variable_invalid_picture_display_rows_do_not_count_as_usage() -> None:
         submodules=[
             SingleModule(
                 header=_hdr("DisplayModule"),
-                moduledefs=[ModuleDef()],
+                moduledef=ModuleDef(),
                 moduleparameters=[],
                 localvariables=[path_var],
                 submodules=[],
-                modulecodes=[],
+                modulecode=None,
                 parametermappings=[],
             )
         ],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
     base_picture_attachments = graphics_attachments(
         bindings=[

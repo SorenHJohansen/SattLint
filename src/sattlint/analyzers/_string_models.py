@@ -17,7 +17,7 @@ from sattlint.parser_api import (
     FrameModule,
     ModuleTypeDef,
     ModuleTypeInstance,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
 )
@@ -37,17 +37,17 @@ def _noop_progress(_msg: str) -> None:
     pass
 
 
-_STRING_LIMITS: dict[Simple_DataType, int] = {
-    Simple_DataType.IDENTSTRING: 15,
-    Simple_DataType.TAGSTRING: 30,
-    Simple_DataType.STRING: 40,
-    Simple_DataType.LINESTRING: 80,
-    Simple_DataType.MAXSTRING: 140,
+_STRING_LIMITS: dict[ScalarDatatype, int] = {
+    ScalarDatatype.IDENTSTRING: 15,
+    ScalarDatatype.TAGSTRING: 30,
+    ScalarDatatype.STRING: 40,
+    ScalarDatatype.LINESTRING: 80,
+    ScalarDatatype.MAXSTRING: 140,
 }
 
 
-def _string_capacity_for_datatype(datatype: Simple_DataType | str | None) -> int | None:
-    if isinstance(datatype, Simple_DataType):
+def _string_capacity_for_datatype(datatype: ScalarDatatype | str | None) -> int | None:
+    if isinstance(datatype, ScalarDatatype):
         return _STRING_LIMITS.get(datatype)
     return None
 

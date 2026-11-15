@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
-from sattlint.parser_api import Simple_DataType, Variable
+from sattlint.parser_api import ScalarDatatype, Variable
 
 from .paths import CanonicalPath, CanonicalPathKey
 from .type_graph import TypeGraph
@@ -24,7 +24,7 @@ class SymbolKind(Enum):
 class SymbolDef:
     kind: SymbolKind
     canonical_path: CanonicalPath
-    datatype: Simple_DataType | str | None
+    datatype: ScalarDatatype | str | None
 
 
 @dataclass

@@ -10,7 +10,7 @@ from sattlint.parser_api import (
     BasePicture,
     ModuleHeader,
     ModuleTypeDef,
-    Simple_DataType,
+    ScalarDatatype,
     SourceSpan,
     Variable,
 )
@@ -205,7 +205,7 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
                     datatype.origin_file,
                     datatype.origin_lib,
                 )
-                if not isinstance(variable_field.datatype, Simple_DataType):
+                if not isinstance(variable_field.datatype, ScalarDatatype):
                     walk(root_type_name, str(variable_field.datatype), path, next_active)
 
         for datatype in self.base_picture.datatype_defs or []:
@@ -214,10 +214,10 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
 
     def _lookup_field_definition(
         self,
-        root_type: Simple_DataType | str,
+        root_type: ScalarDatatype | str,
         field_path: tuple[str, ...],
     ) -> tuple[Variable, str | None, str | None] | None:
-        if isinstance(root_type, Simple_DataType):
+        if isinstance(root_type, ScalarDatatype):
             return None
         return self._datatype_field_definitions.get(
             (root_type.casefold(), tuple(cf(segment) for segment in field_path))
@@ -347,7 +347,7 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         *,
         canonical_path: CanonicalPath,
         kind: str,
-        datatype: Simple_DataType | str | None,
+        datatype: ScalarDatatype | str | None,
         module_path: tuple[str, ...],
         display_module_path: tuple[str, ...],
         field_path: str | None,

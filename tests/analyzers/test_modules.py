@@ -8,7 +8,7 @@ from sattline_parser.models.ast_model import (
     IntLiteral,
     ModuleCode,
     ModuleHeader,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
 )
@@ -39,45 +39,41 @@ def test_version_drift_detects_small_code_delta_between_same_named_modules() -> 
     variant_a = SingleModule(
         header=_hdr("Mixer"),
         datecode=100,
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Logic",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Output"), value=1)],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Logic",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Output"), value=1)],
+                )
+            ],
+            sequences=[],
+        ),
         parametermappings=[],
     )
     variant_b = SingleModule(
         header=_hdr("Mixer"),
         datecode=200,
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Logic",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Output"), value=2)],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Logic",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Output"), value=2)],
+                )
+            ],
+            sequences=[],
+        ),
         parametermappings=[],
     )
     cast(Any, variant_a).origin_file = "Root.s"
@@ -88,8 +84,8 @@ def test_version_drift_detects_small_code_delta_between_same_named_modules() -> 
         moduletype_defs=[],
         localvariables=[],
         submodules=[variant_a, variant_b],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="Root.s",
     )
 
@@ -108,21 +104,21 @@ def test_version_drift_records_modified_variable_shape_diffs() -> None:
     variant_a = SingleModule(
         header=_hdr("Mixer"),
         datecode=100,
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
     variant_b = SingleModule(
         header=_hdr("Mixer"),
         datecode=200,
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=Simple_DataType.REAL)],
+        localvariables=[Variable(name="Output", datatype=ScalarDatatype.REAL)],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
     cast(Any, variant_a).origin_file = "Root.s"
@@ -133,8 +129,8 @@ def test_version_drift_records_modified_variable_shape_diffs() -> None:
         moduletype_defs=[],
         localvariables=[],
         submodules=[variant_a, variant_b],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="Root.s",
     )
 
@@ -151,45 +147,41 @@ def test_version_drift_ignores_datecode_only_differences() -> None:
     variant_a = SingleModule(
         header=_hdr("Mixer"),
         datecode=100,
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Logic",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Output"), value=1)],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Logic",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Output"), value=1)],
+                )
+            ],
+            sequences=[],
+        ),
         parametermappings=[],
     )
     variant_b = SingleModule(
         header=_hdr("Mixer"),
         datecode=200,
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Logic",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Output"), value=1)],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Logic",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Output"), value=1)],
+                )
+            ],
+            sequences=[],
+        ),
         parametermappings=[],
     )
     cast(Any, variant_a).origin_file = "Root.s"
@@ -200,8 +192,8 @@ def test_version_drift_ignores_datecode_only_differences() -> None:
         moduletype_defs=[],
         localvariables=[],
         submodules=[variant_a, variant_b],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="Root.s",
     )
 
@@ -213,42 +205,38 @@ def test_version_drift_ignores_datecode_only_differences() -> None:
 def test_module_comparison_summary_lists_variant_differences() -> None:
     variant_a = SingleModule(
         header=_hdr("Pump"),
-        moduledefs=[],
-        moduleparameters=[Variable(name="CommonParam", datatype=Simple_DataType.INTEGER)],
-        localvariables=[Variable(name="OnlyA", datatype=Simple_DataType.INTEGER)],
+        moduledef=None,
+        moduleparameters=[Variable(name="CommonParam", datatype=ScalarDatatype.INTEGER)],
+        localvariables=[Variable(name="OnlyA", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="MainEq",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("OnlyA"), value=IntLiteral(1))],
-                    )
-                ]
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="MainEq",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("OnlyA"), value=IntLiteral(1))],
+                )
+            ]
+        ),
         parametermappings=[],
     )
     variant_b = SingleModule(
         header=_hdr("Pump"),
-        moduledefs=[],
-        moduleparameters=[Variable(name="CommonParam", datatype=Simple_DataType.INTEGER)],
-        localvariables=[Variable(name="OnlyB", datatype=Simple_DataType.INTEGER)],
+        moduledef=None,
+        moduleparameters=[Variable(name="CommonParam", datatype=ScalarDatatype.INTEGER)],
+        localvariables=[Variable(name="OnlyB", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="OtherEq",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("OnlyB"), value=IntLiteral(2))],
-                    )
-                ]
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="OtherEq",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("OnlyB"), value=IntLiteral(2))],
+                )
+            ]
+        ),
         parametermappings=[],
     )
     fingerprint_a = create_fingerprint(variant_a, ["Root", "PumpA"])
@@ -280,11 +268,11 @@ def test_modules_analyzer_is_enabled_by_default() -> None:
     specs = {spec.key: spec for spec in get_default_analyzers()}
     module = SingleModule(
         header=_hdr("Pump"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
 
@@ -296,29 +284,29 @@ def test_modules_analyzer_is_enabled_by_default() -> None:
 def test_find_modules_by_name_debug_logs_summary_without_per_node_chatter(caplog: pytest.LogCaptureFixture) -> None:
     pump_a = SingleModule(
         header=_hdr("Pump"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
     pump_b = SingleModule(
         header=_hdr("Pump"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
     area = SingleModule(
         header=_hdr("Area"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[],
         submodules=[pump_a, pump_b],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
     bp = BasePicture(
@@ -327,8 +315,8 @@ def test_find_modules_by_name_debug_logs_summary_without_per_node_chatter(caplog
         moduletype_defs=[],
         localvariables=[],
         submodules=[area],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     with caplog.at_level(logging.DEBUG, logger="SattLint"):

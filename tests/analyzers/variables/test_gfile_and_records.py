@@ -67,15 +67,15 @@ def _build_record_field_asymmetry_basepicture(*, include_whole_read: bool) -> Ba
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="Used", datatype=Simple_DataType.INTEGER),
-            Variable(name="Miswired", datatype=Simple_DataType.INTEGER),
+            Variable(name="Used", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Miswired", datatype=ScalarDatatype.INTEGER),
         ],
     )
 
     payload = Variable(name="Payload", datatype="PayloadType")
     whole_peer = Variable(name="WholePeer", datatype="PayloadType")
-    field_source = Variable(name="FieldSource", datatype=Simple_DataType.INTEGER)
-    sink = Variable(name="Sink", datatype=Simple_DataType.INTEGER)
+    field_source = Variable(name="FieldSource", datatype=ScalarDatatype.INTEGER)
+    sink = Variable(name="Sink", datatype=ScalarDatatype.INTEGER)
 
     whole_record_assignment = (
         Assignment(target=_varref("WholePeer"), value=_varref("Payload"))
@@ -89,32 +89,30 @@ def _build_record_field_asymmetry_basepicture(*, include_whole_read: bool) -> Ba
         moduletype_defs=[],
         localvariables=[payload, whole_peer, field_source, sink],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="WholeRecordAccess",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[whole_record_assignment],
-                    ),
-                    Equation(
-                        name="ReadUsedField",
-                        position=(1.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Sink"), value=_varref("Payload.Used"))],
-                    ),
-                    Equation(
-                        name="WriteMiswiredField",
-                        position=(2.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Payload.Miswired"), value=_varref("FieldSource"))],
-                    ),
-                ],
-                sequences=[],
-            )
-        ],
-        moduledefs=[],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="WholeRecordAccess",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[whole_record_assignment],
+                ),
+                Equation(
+                    name="ReadUsedField",
+                    position=(1.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Sink"), value=_varref("Payload.Used"))],
+                ),
+                Equation(
+                    name="WriteMiswiredField",
+                    position=(2.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Payload.Miswired"), value=_varref("FieldSource"))],
+                ),
+            ],
+            sequences=[],
+        ),
+        moduledef=None,
     )
 
 
@@ -258,14 +256,14 @@ ENDDEF (*BasePicture*);
 def test_nested_composite_gfile_bindings_use_declaring_module_scope():
     module = SingleModule(
         header=_hdr("Panel"),
-        moduledefs=[ModuleDef(graph_objects=[GraphObject("CompositeObject")])],
+        moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
         moduleparameters=[],
         localvariables=[
-            Variable(name="NestedOnly", datatype=Simple_DataType.INTEGER),
-            Variable(name="Shared", datatype=Simple_DataType.INTEGER),
+            Variable(name="NestedOnly", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Shared", datatype=ScalarDatatype.INTEGER),
         ],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
     bp = BasePicture(
@@ -273,12 +271,12 @@ def test_nested_composite_gfile_bindings_use_declaring_module_scope():
         datatype_defs=[],
         moduletype_defs=[],
         localvariables=[
-            Variable(name="RootOnly", datatype=Simple_DataType.INTEGER),
-            Variable(name="Shared", datatype=Simple_DataType.INTEGER),
+            Variable(name="RootOnly", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Shared", datatype=ScalarDatatype.INTEGER),
         ],
         submodules=[module],
-        modulecodes=[],
-        moduledefs=[ModuleDef()],
+        modulecode=None,
+        moduledef=ModuleDef(),
     )
     bp_attachments = graphics_attachments(
         bindings=[
@@ -329,12 +327,12 @@ def test_unparsed_gfile_expr_still_counts_named_variables_as_reads():
         datatype_defs=[],
         moduletype_defs=[],
         localvariables=[
-            Variable(name="Alpha", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="Beta", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Alpha", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="Beta", datatype=ScalarDatatype.BOOLEAN),
         ],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[ModuleDef()],
+        modulecode=None,
+        moduledef=ModuleDef(),
     )
     bp_attachments = graphics_attachments(
         bindings=[
@@ -362,46 +360,44 @@ def test_search_rec_component_found_record_output_is_not_flagged_never_read():
         datatype_defs=[],
         moduletype_defs=[],
         localvariables=[
-            Variable(name="CR", datatype=Simple_DataType.INTEGER),
-            Variable(name="Index", datatype=Simple_DataType.INTEGER),
-            Variable(name="SearchUnit", datatype=Simple_DataType.INTEGER),
-            Variable(name="FoundUnit", datatype=Simple_DataType.INTEGER),
-            Variable(name="srci", datatype=Simple_DataType.INTEGER),
-            Variable(name="SearchSucceeded", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="Mirror", datatype=Simple_DataType.INTEGER),
+            Variable(name="CR", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Index", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SearchUnit", datatype=ScalarDatatype.INTEGER),
+            Variable(name="FoundUnit", datatype=ScalarDatatype.INTEGER),
+            Variable(name="srci", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SearchSucceeded", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="Mirror", datatype=ScalarDatatype.INTEGER),
         ],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Search",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            Assignment(
-                                target=_varref("SearchSucceeded"),
-                                value=FuncCall(
-                                    name="SearchRecComponent",
-                                    args=(
-                                        _varref("CR"),
-                                        _varref("Index"),
-                                        10,
-                                        _varref("SearchUnit"),
-                                        _varref("SearchUnit"),
-                                        _varref("FoundUnit"),
-                                        _varref("srci"),
-                                    ),
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Search",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        Assignment(
+                            target=_varref("SearchSucceeded"),
+                            value=FuncCall(
+                                name="SearchRecComponent",
+                                args=(
+                                    _varref("CR"),
+                                    _varref("Index"),
+                                    10,
+                                    _varref("SearchUnit"),
+                                    _varref("SearchUnit"),
+                                    _varref("FoundUnit"),
+                                    _varref("srci"),
                                 ),
                             ),
-                            Assignment(target=_varref("Mirror"), value=_varref("Index")),
-                        ],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
-        moduledefs=[],
+                        ),
+                        Assignment(target=_varref("Mirror"), value=_varref("Index")),
+                    ],
+                )
+            ],
+            sequences=[],
+        ),
+        moduledef=None,
     )
 
     issues = VariablesAnalyzer(bp).run()

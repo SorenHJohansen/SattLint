@@ -16,7 +16,7 @@ from sattline_parser.models.ast_model import (
     Equation,
     ModuleCode,
     ModuleHeader,
-    Simple_DataType,
+    ScalarDatatype,
     Variable,
 )
 
@@ -404,9 +404,8 @@ def test_load_project_saves_full_mode_file_family_in_cache_manifest(
         def save(self, key, **kwargs):
             save_calls.append((key, kwargs))
 
-    def fake_find_dependency_path(binding, target_name, requester_dir, **_kwargs):
+    def fake_find_dependency_path(binding, target_name, **_kwargs):
         assert target_name == "TargetA"
-        assert requester_dir == programs_dir
         return deps_path
 
     def fake_read_dependency_names(deps_path_arg):
@@ -593,7 +592,7 @@ def test_load_project_library_target_includes_configured_reverse_consumers(monke
 
     root_bp = named_object("LibraryTarget", origin_file="LibraryTarget.s")
 
-    def fake_find_dependency_path(binding, target_name, requester_dir, **_kwargs):
+    def fake_find_dependency_path(binding, target_name, **_kwargs):
         mapping = {
             "LibraryTarget": None,
             "ConsumerTarget": Path("ProjectLib/ConsumerTarget.l"),
@@ -692,10 +691,10 @@ def test_load_project_library_target_includes_workspace_reverse_consumers(monkey
 
     root_bp = named_object("LibraryTarget", origin_file="LibraryTarget.s")
 
-    def fake_find_dependency_path(binding, target_name, requester_dir, **_kwargs):
+    def fake_find_dependency_path(binding, target_name, **_kwargs):
         if target_name == "LibraryTarget":
             return None
-        return requester_dir / f"{target_name}.l"
+        return programs_dir / f"{target_name}.l"
 
     def fake_read_dependency_names(deps_path):
         return [line.strip() for line in deps_path.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -775,8 +774,8 @@ def test_load_project_library_target_workspace_program_usage_suppresses_unused_d
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="LSH", datatype=Simple_DataType.STRING),
-            Variable(name="DrainPipe", datatype=Simple_DataType.STRING),
+            Variable(name="LSH", datatype=ScalarDatatype.STRING),
+            Variable(name="DrainPipe", datatype=ScalarDatatype.STRING),
         ],
         origin_file="LibraryTarget.s",
         origin_lib="LibraryTarget",
@@ -787,8 +786,8 @@ def test_load_project_library_target_workspace_program_usage_suppresses_unused_d
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="LibraryTarget.s",
         origin_lib="LibraryTarget",
     )
@@ -798,23 +797,21 @@ def test_load_project_library_target_workspace_program_usage_suppresses_unused_d
         moduletype_defs=[],
         localvariables=[
             Variable(name="OPText", datatype="ApplOpTxtType"),
-            Variable(name="Sink", datatype=Simple_DataType.STRING),
+            Variable(name="Sink", datatype=ScalarDatatype.STRING),
         ],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="ReadField",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Sink"), value=_varref("OPText.LSH"))],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
-        moduledefs=[],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="ReadField",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Sink"), value=_varref("OPText.LSH"))],
+                )
+            ],
+            sequences=[],
+        ),
+        moduledef=None,
         origin_file="ProgramConsumer.s",
         origin_lib="Programs",
     )
@@ -834,10 +831,10 @@ def test_load_project_library_target_workspace_program_usage_suppresses_unused_d
         def save(self, key, **kwargs):
             assert key == "cache-key"
 
-    def fake_find_dependency_path(binding, target_name, requester_dir, **_kwargs):
+    def fake_find_dependency_path(binding, target_name, **_kwargs):
         if target_name == "LibraryTarget":
             return None
-        return requester_dir / f"{target_name}.l"
+        return programs_dir / f"{target_name}.l"
 
     def fake_read_dependency_names(deps_path):
         return [line.strip() for line in deps_path.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -867,8 +864,8 @@ def test_load_project_library_target_workspace_program_usage_suppresses_unused_d
             moduletype_defs=bp.moduletype_defs,
             localvariables=[] if consumer_bp is None else consumer_bp.localvariables,
             submodules=[],
-            modulecodes=[None if consumer_bp is None else consumer_bp.modulecode],
-            moduledefs=[],
+            modulecode=None if consumer_bp is None else consumer_bp.modulecode,
+            moduledef=None,
             origin_file=bp.origin_file,
             origin_lib=bp.origin_lib,
         )

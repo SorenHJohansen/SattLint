@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 from sattlint.parser_api import (
     FrameModule,
     ModuleTypeInstance,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     SourceSpan,
     Variable,
@@ -144,9 +144,9 @@ def _record_nested_datatype_access(
     if not segments:
         return
 
-    current_type: Simple_DataType | str = variable.datatype
+    current_type: ScalarDatatype | str = variable.datatype
     for index, segment in enumerate(segments):
-        if isinstance(current_type, Simple_DataType):
+        if isinstance(current_type, ScalarDatatype):
             return
 
         record_type = self.type_graph.record(str(current_type))
@@ -158,7 +158,7 @@ def _record_nested_datatype_access(
             return
 
         current_type = field_def.datatype
-        if isinstance(current_type, Simple_DataType):
+        if isinstance(current_type, ScalarDatatype):
             return
 
         state = datatype_state.get(str(current_type).casefold())
@@ -265,7 +265,7 @@ def _add_field_usage_asymmetry_issues(self: VariablesAnalyzer) -> None:
     datatype_usage: dict[str, _DatatypeFieldUsage] = {}
     instances: list[_InstanceFieldUsage] = []
     for path, variable, role, _root_owned_decl in iter_variables_for_datatype_field_analysis(self):
-        if isinstance(variable.datatype, Simple_DataType):
+        if isinstance(variable.datatype, ScalarDatatype):
             continue
 
         datatype_key = variable.datatype_text.casefold()
@@ -432,7 +432,7 @@ def _add_unused_datatype_field_issues(self: VariablesAnalyzer) -> None:
         return
 
     for path, variable, role, root_owned_decl in iter_variables_for_datatype_field_analysis(self):
-        if isinstance(variable.datatype, Simple_DataType):
+        if isinstance(variable.datatype, ScalarDatatype):
             continue
 
         state = datatype_state.get(variable.datatype_text.casefold())

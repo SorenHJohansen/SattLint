@@ -41,16 +41,16 @@ def test_reset_contamination_detected_for_missing_reset_write():
 
     mod = SingleModule(
         header=_hdr("Unit"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[
-            Variable(name="Counter", datatype=Simple_DataType.INTEGER),
-            Variable(name="Other", datatype=Simple_DataType.INTEGER),
-            Variable(name="ResetValue", datatype=Simple_DataType.INTEGER),
-            Variable(name="OprSeqResetOld", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="OprSeqResetOld", datatype=ScalarDatatype.BOOLEAN),
         ],
         submodules=[],
-        modulecodes=[ModuleCode(sequences=[seq], equationblocks=[eq])],
+        modulecode=ModuleCode(sequences=[seq], equationblocks=[eq]),
         parametermappings=[],
     )
 
@@ -60,8 +60,8 @@ def test_reset_contamination_detected_for_missing_reset_write():
         moduletype_defs=[],
         localvariables=[],
         submodules=[mod],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -107,15 +107,15 @@ def test_reset_contamination_cleared_when_reset_writes_present():
 
     mod = SingleModule(
         header=_hdr("Unit"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[
-            Variable(name="Counter", datatype=Simple_DataType.INTEGER),
-            Variable(name="ResetValue", datatype=Simple_DataType.INTEGER),
-            Variable(name="OprSeqResetOld", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="OprSeqResetOld", datatype=ScalarDatatype.BOOLEAN),
         ],
         submodules=[],
-        modulecodes=[ModuleCode(sequences=[seq], equationblocks=[eq])],
+        modulecode=ModuleCode(sequences=[seq], equationblocks=[eq]),
         parametermappings=[],
     )
 
@@ -125,8 +125,8 @@ def test_reset_contamination_cleared_when_reset_writes_present():
         moduletype_defs=[],
         localvariables=[],
         submodules=[mod],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -286,11 +286,11 @@ def test_reset_contamination_helpers_classify_conditions_and_infer_alternatives(
 
 
 def test_reset_contamination_helpers_merge_parallel_paths_and_record_writes():
-    counter = Variable(name="Counter", datatype=Simple_DataType.INTEGER)
-    source = Variable(name="Source", datatype=Simple_DataType.INTEGER)
-    destination = Variable(name="Destination", datatype=Simple_DataType.INTEGER)
-    status = Variable(name="Status", datatype=Simple_DataType.INTEGER)
-    flag = Variable(name="Flag", datatype=Simple_DataType.BOOLEAN)
+    counter = Variable(name="Counter", datatype=ScalarDatatype.INTEGER)
+    source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
+    destination = Variable(name="Destination", datatype=ScalarDatatype.INTEGER)
+    status = Variable(name="Status", datatype=ScalarDatatype.INTEGER)
+    flag = Variable(name="Flag", datatype=ScalarDatatype.BOOLEAN)
     env = {
         "counter": counter,
         "source": source,
