@@ -191,6 +191,32 @@ Correction to the earlier UI report: the running-analysis note is never rendered
 - Introduced by the branch: the TUI project path attribution.
 - Pre-existing and uncovered: H1, H4 to H11, and nearly all Medium and Low items.
 
+## Parser upgrade to 2026.11.6
+
+Status: published 2026-11-15. This branch pins 2026.11.5, so the upgrade is a
+separate change after the current branch merges.
+
+Steps:
+
+1. Bump the pin to `2026.11.6`, regenerate `uv.lock`, and install the dev extras.
+2. Re-run the full gate and the corpus manifests.
+3. Verify the behavior changes that reach SattLint:
+   - a 21-character declaration now parses and reports a validation finding;
+   - unknown SFC accessors become undefined references;
+   - boolean parameter mapping values are preserved instead of read as the global keyword;
+   - lookup roots compare as filesystem paths, so roots differing only in case are distinct;
+   - dependency cycles follow resolved artifacts, so a symlink alias is a cycle;
+   - the loader is split into four collaborators with unchanged public behavior.
+4. Adopt the parts that replace local code:
+   - `parse_and_validate` now accepts external definitions, so single-file validation can see the loaded closure instead of calling the validator separately;
+   - `UnitIdentity` and `ArtifactIdentity` expose the parser's own identity rules, which the root-origin and casefold work should align with;
+   - the project symbol index can back or cross-check the dependency usage facts.
+5. Treat new surfaces as product work, not upgrade work: SARIF output for SattLint findings, `format_source` for canonical Change Review snippets, `to_jsonable` for a simpler normalization pass, and the interactor property catalogue and coordinate tails for graphics validation.
+
+Acceptance: the pin, lock, and gate are clean; corpus findings are unchanged
+except where 2026.11.6 fixes a parser fact; and every behavior change above has a
+recorded before and after.
+
 ## Parser feature adoption
 
 The 2026.11.5 release adds parser capabilities SattLint does not use yet. Items
