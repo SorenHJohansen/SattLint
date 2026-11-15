@@ -113,3 +113,12 @@ upgrade. The batch fixed the ones that affect correctness or CI trust:
 Smaller defects were fixed in the same pass: the run-year import cycle,
 configuration key warnings, startup error handling, report labels, asset path
 containment, run deletion confirmation, and the stale release documentation.
+
+## Parser 2026.11.6 delta
+
+The branch moved from 2026.11.5 to 2026.11.6 before merge. The public surface
+SattLint imports is additive: constructors gained keyword fields, the project
+layer gained identity and index helpers, and `parse_and_validate` gained
+external-definition arguments. The full suite, the corpus manifests, and both
+configured library targets were re-run after the pin change with the same
+results.

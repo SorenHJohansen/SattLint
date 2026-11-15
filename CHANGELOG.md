@@ -29,10 +29,12 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 - The pull request template, issue templates, and release notes in
   `CONTRIBUTING.md` match the shipped commands.
 - The pinned Ruff version matches the pre-commit hook revision.
-- Upgraded `sattline-parser` to `2026.11.5` and pinned it exactly, with
+- Upgraded `sattline-parser` to `2026.11.6` and pinned it exactly, with
   `uv.lock` regenerated. The parser renames `Simple_DataType` to
   `ScalarDatatype`, stores module layout blocks as the singular `moduledef` and
-  `modulecode` fields, and removes the interim graphics payload classes.
+  `modulecode` fields, and removes the interim graphics payload classes. The
+  2026.11.6 delta is additive for this codebase: no imported name or signature
+  changed except for new keyword fields and new project helpers.
 - Project loading is all or nothing. A missing or unparseable body, sidecar, or
   companion now fails the target with a message that names the artifact,
   instead of dropping the program silently. SattLint catches the parser load

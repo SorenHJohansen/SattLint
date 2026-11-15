@@ -193,10 +193,13 @@ Correction to the earlier UI report: the running-analysis note is never rendered
 
 ## Parser upgrade to 2026.11.6
 
-Status: published 2026-11-15. This branch pins 2026.11.5, so the upgrade is a
-separate change after the current branch merges.
+Status: published 2026-11-15. The branch moves from 2026.11.5 to 2026.11.6 on
+this same branch, before merge. The public surface is additive: every name
+SattLint imports still exists, the changed constructors only add keyword fields,
+and `parse_and_validate` only adds keyword arguments. The delta is the pin, the
+lock, a gate run, and a before and after on the behavior list below.
 
-Steps:
+Steps, all on this branch:
 
 1. Bump the pin to `2026.11.6`, regenerate `uv.lock`, and install the dev extras.
 2. Re-run the full gate and the corpus manifests.
@@ -269,6 +272,7 @@ the loader agree on the extension list. Batch B.
 
 ### Batch A, before merge
 
+0. Move the parser pin to 2026.11.6 and re-run the gate. The surface is additive, so this is a pin and lock change plus the behavior checks in the upgrade section.
 1. H1 root-origin keying.
 2. H2 report-cache metadata ordering.
 3. H3 guarded cache and runs directory resolution, including C1-11 profiler construction.
