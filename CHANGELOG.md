@@ -8,6 +8,8 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ## [Unreleased]
 
+## [2026.11.5] - 2026-11-15
+
 ### Added
 
 - `SECURITY.md`, `SUPPORT.md`, `CODE_OF_CONDUCT.md`, and `FEATURE_GUIDE.md`
@@ -458,6 +460,7 @@ parser AST migration.
 
 - This entry establishes the changelog baseline for future tagged releases.
 
+[2026.11.5]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.11.5
 [2026.11.4]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.11.4
 [2026.9.3]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.9.3
 [2026.9.2]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.9.2
