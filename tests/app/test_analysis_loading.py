@@ -3,6 +3,7 @@ from sattline_parser.project import ProjectLoadError
 
 from sattlint.models.project_graph import ProjectGraph
 from sattlint.project import loading_support as loading_support_module
+from sattlint.project.parser_adapter import CircularDependencyError
 from tests.helpers import AnalysisGraphStub
 from tests.helpers.app_analysis_support import *
 
@@ -236,12 +237,12 @@ def test_visit_targets_into_graph_falls_back_per_consumer_after_batch_failure(mo
         del binding, strict, lib_names
         converted.append((root_name, tuple(extra_roots)))
 
-    def fake_record_project_failure(_graph, name, _exception):
+    def fake_record_project_load_failure(_graph, name, _exception):
         failures.append(name)
 
     monkeypatch.setattr(analysis_loading_module, "load_parser_project", fake_load_parser_project)
     monkeypatch.setattr(analysis_loading_module, "convert_project_into_graph", fake_convert_project_into_graph)
-    monkeypatch.setattr(analysis_loading_module, "record_project_failure", fake_record_project_failure)
+    monkeypatch.setattr(analysis_loading_module, "record_project_load_failure", fake_record_project_load_failure)
 
     analysis_loading_module._visit_targets_into_graph(
         cast(Any, object()),
@@ -252,3 +253,77 @@ def test_visit_targets_into_graph_falls_back_per_consumer_after_batch_failure(mo
 
     assert failures == ["ConsumerB"]
     assert converted == [("ConsumerA", ())]
+
+
+def test_visit_targets_into_graph_isolates_a_consumer_cycle_from_the_library(monkeypatch):
+    converted: list[str] = []
+
+    def fake_load_parser_project(_binding, targets, **_kwargs):
+        if len(targets) > 1 or targets[0] == "ConsumerB":
+            raise CircularDependencyError(targets[0], [targets[0], "Shared"])
+        return SimpleNamespace(names=tuple(targets))
+
+    def fake_convert_project_into_graph(_project, _graph, *, binding, root_name, strict, lib_names, extra_roots=()):
+        del binding, strict, lib_names, extra_roots
+        converted.append(root_name)
+
+    monkeypatch.setattr(analysis_loading_module, "load_parser_project", fake_load_parser_project)
+    monkeypatch.setattr(analysis_loading_module, "convert_project_into_graph", fake_convert_project_into_graph)
+
+    graph = ProjectGraph()
+    analysis_loading_module._visit_targets_into_graph(
+        cast(Any, object()),
+        graph,
+        [("ConsumerA", None), ("ConsumerB", None)],
+        lib_names={},
+    )
+
+    # The healthy consumer still loads, and the cyclic one is recorded as a
+    # load failure instead of escaping and failing the selected library.
+    assert converted == ["ConsumerA"]
+    assert set(graph.failures) == {"consumerb"}
+    failure = graph.failures["consumerb"]
+    assert failure.line is None
+    assert failure.column is None
+    assert "Circular dependency detected" in failure.message
+    assert graph.missing == [failure.message]
+
+
+def test_record_project_load_failure_names_the_program_message_and_dependency():
+    graph = ProjectGraph()
+
+    loading_support_module.record_project_load_failure(
+        graph,
+        "Consumer",
+        ProjectLoadError("Dep", "missing code file", dependency="Dep"),
+    )
+
+    failure = graph.failures["consumer"]
+    assert failure.name == "Consumer"
+    assert failure.line is None
+    assert failure.column is None
+    assert "missing code file" in failure.message
+    assert "dependency 'Dep'" in failure.message
+    assert graph.missing == [failure.message]
+
+
+def test_analysis_loading_cache_manifest_files_adds_distribution_companions(tmp_path):
+    draft_body = tmp_path / "Draft.s"
+    official_body = tmp_path / "Official.x"
+    for path in (draft_body, official_body):
+        path.write_text("", encoding="utf-8")
+    draft_companion = draft_body.with_suffix(".p")
+    official_companion = official_body.with_suffix(".q")
+    for path in (draft_companion, official_companion):
+        path.write_text("", encoding="utf-8")
+
+    graph = ProjectGraph(source_files={draft_body, official_body})
+
+    manifest_files = analysis_loading_module.cache_manifest_files(
+        {"program_dir": str(tmp_path), "mode": "draft"},
+        graph,
+        find_dependency_path_fn=lambda _target_name: None,
+        resolve_graphics_companion_path_fn=lambda _source_path, **_kwargs: None,
+    )
+
+    assert manifest_files == {draft_body, draft_companion, official_body, official_companion}

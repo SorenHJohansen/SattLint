@@ -227,7 +227,7 @@ def test_load_config_applies_default_run_history_without_rewriting_existing_file
     assert 'path = ""' not in persisted_text
 
 
-def test_load_config_strips_unknown_run_history_key_without_rewriting_file(tmp_path, capsys):
+def test_load_config_warns_and_strips_unknown_run_history_key_without_rewriting_file(tmp_path, capsys):
     config_path = tmp_path / "config.toml"
     config_path.write_text('[run_history]\nenabled = true\nlimit = 10\npath = "legacy.jsonl"\n', encoding="utf-8")
 
@@ -237,7 +237,7 @@ def test_load_config_strips_unknown_run_history_key_without_rewriting_file(tmp_p
     persisted_text = config_path.read_text(encoding="utf-8")
     assert created is False
     assert loaded["run_history"] == {"enabled": True, "limit": 10}
-    assert "run_history.path" not in out
+    assert "run_history.path" in out
     assert "enabled = true" in persisted_text
     assert 'path = "legacy.jsonl"' in persisted_text
 

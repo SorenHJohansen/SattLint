@@ -8,7 +8,7 @@ from collections import defaultdict
 from collections.abc import Callable, Generator, Iterable, Mapping
 from collections.abc import Set as AbstractSet
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from sattlint.parser_api import (
     BasePicture,
@@ -171,10 +171,7 @@ def analyze_variables(
     )
     normalized_selected_issue_kinds = _normalize_selected_issue_kinds(selected_issue_kinds)
     init_started_at = time.perf_counter()
-    collector_class = VariablesAnalyzer
-    if analysis_context is not None and analysis_context.variables_collector_class is not None:
-        collector_class = cast(type[VariablesAnalyzer], analysis_context.variables_collector_class)
-    analyzer = collector_class(
+    analyzer = VariablesAnalyzer(
         base_picture,
         debug=debug,
         fail_loudly=False,

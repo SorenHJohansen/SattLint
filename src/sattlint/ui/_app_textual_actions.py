@@ -299,8 +299,14 @@ def _trim_session_output_lines(self: Any) -> bool:
     overflow = len(retained_lines) - retention
     if overflow <= 0:
         return False
-    del retained_lines[:overflow]
-    self._session_output_dropped_line_count = int(getattr(self, "_session_output_dropped_line_count", 0)) + overflow
+    # Rebuilding the widget is the expensive half of trimming, so drop a batch
+    # down to roughly half the retention window instead of shaving off the
+    # overflow. The widget then rebuilds once per half-retention lines rather
+    # than once per arriving line.
+    keep_count = max(retention // 2, 1)
+    drop_count = len(retained_lines) - keep_count
+    del retained_lines[:drop_count]
+    self._session_output_dropped_line_count = int(getattr(self, "_session_output_dropped_line_count", 0)) + drop_count
     return True
 
 
@@ -408,8 +414,6 @@ def _finish_action(self: Any, dirty: bool = False, *, clear_dirty_on_success: bo
     self._active_job_label = None
     self._active_job_started_at = None
     self._active_job_worker = None
-    self._active_job_cancel_event = None
-    self._active_job_cancel_requested = False
     self._active_job_thread = None
     if clear_dirty_on_success:
         self._dirty = False
@@ -503,30 +507,6 @@ def action_copy_output(self: Any) -> None:
         self._write_output(f"Copied {len(selected_text)} character(s) from Session output.")
     else:
         self._write_output("Copied all Session output because no text was selected.")
-
-
-def action_cancel_running_analysis(self: Any) -> None:
-    if not self._busy or self._active_job_action_id != "action-analyze":
-        self._write_output("No selected analysis run is active.")
-        return
-
-    worker = getattr(self, "_active_job_worker", None)
-    cancel_event = getattr(self, "_active_job_cancel_event", None)
-    if cancel_event is None:
-        self._write_output("The running analysis queue does not currently support cancellation.")
-        return
-    if self._active_job_cancel_requested:
-        self._write_output("Cancellation is already pending for the running analysis queue.")
-        return
-
-    self._active_job_cancel_requested = True
-    cancel_event.set()
-    if worker is not None:
-        with suppress(Exception):
-            worker.cancel()
-    self._refresh_view()
-    self._refresh_shell_state()
-    self._write_output("Cancellation requested. The running analysis will stop at the next checkpoint.")
 
 
 def action_quit_shell(self: Any) -> None:
@@ -643,8 +623,6 @@ def _start_action(
     self._active_job_label = label
     self._active_job_started_at = time.monotonic()
     self._active_job_worker = None
-    self._active_job_cancel_event = threading.Event()
-    self._active_job_cancel_requested = False
     self._active_job_thread = None
     self._set_active_action(action_id)
     self._refresh_summary()
@@ -668,10 +646,7 @@ def _start_action(
             self.call_from_thread(self.exit)
             return
         except KeyboardInterrupt:
-            if action_id == "action-analyze" and self._active_job_cancel_requested:
-                self._emit_output_from_thread("Selected analyses canceled.")
-            else:
-                self._emit_output_from_thread(f"{label} interrupted.")
+            self._emit_output_from_thread(f"{label} interrupted.")
         except Exception as exc:  # pragma: no cover - runtime-only fallback  # noqa: BLE001
             self.call_from_thread(self._report_error, f"{label} failed", f"{label} failed: {exc}")
         finally:
@@ -928,10 +903,16 @@ def _new_project(self: Any) -> None:
     self.present_request(request, on_response_fn=_apply_response)
 
 
-def _persist_project(self: Any) -> None:
+def _persist_project(self: Any) -> bool:
+    """Save the in-memory configuration to its project file.
+
+    Returns whether the configuration is now on disk. A missing project has
+    nothing to save, so it reports failure and the caller keeps the shell in the
+    unsaved state.
+    """
     project = getattr(self, "_project", None)
     if project is None:
-        return
+        return False
     cfg_raw: dict[str, object] = self._cfg
     root = project.root
     project_data: dict[str, object] = {
@@ -950,8 +931,9 @@ def _persist_project(self: Any) -> None:
         _save_slproj(project.path, cast(ProjectDict, project_data))
     except (ValueError, OSError) as exc:
         self._report_error("Failed to save configuration", f"Failed to save configuration: {exc}")
-        return
+        return False
     self._dirty = False
+    return True
 
 
 def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
@@ -963,7 +945,6 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
     analyze_run_selected_button = _query_required(self, "#analyze-run-selected", _TEXTUAL_BUTTON)
     analyze_select_all_button = _query_required(self, "#analyze-select-all", _TEXTUAL_BUTTON)
     output_generate_change_review_button = _query_required(self, "#output-generate-change-review", _TEXTUAL_BUTTON)
-    analyze_cancel_running_button = _query_required(self, "#analyze-cancel-running", _TEXTUAL_BUTTON)
     analyze_clear_selection_button = _query_required(self, "#analyze-clear-selection", _TEXTUAL_BUTTON)
     analyze_clear_output_button = _query_required(self, "#analyze-clear-output", _TEXTUAL_BUTTON)
 
@@ -989,9 +970,6 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
     )
     output_generate_change_review_button.disabled = (
         toolbar_disabled or not output_view or interaction_locked or not self._setup_has_targets()
-    )
-    analyze_cancel_running_button.disabled = not (
-        self._busy and self._active_job_action_id == "action-analyze" and analyze_view
     )
     analyze_clear_selection_button.disabled = (
         toolbar_disabled or not analyze_view or interaction_locked or not bool(self._analyze_selected_entry_ids)
@@ -1027,14 +1005,6 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
         widget_id = str(getattr(selection_list, "id", "") or "")
         if widget_id.startswith(_ANALYZER_LIST_ID_PREFIX):
             selection_list.disabled = toolbar_disabled or not analyze_view or interaction_locked
-    focused_widget = getattr(self, "focused", None)
-    if (
-        analyze_view
-        and self._busy
-        and self._active_job_action_id == "action-analyze"
-        and bool(getattr(focused_widget, "disabled", False))
-    ):
-        analyze_cancel_running_button.focus()
 
     for btn_id in (
         "setup-edit-program-dir",
@@ -1100,7 +1070,6 @@ def on_button_pressed(self: Any, event: Any) -> None:
         "analyze-run-selected": self._run_selected_analyzers,
         "analyze-select-all": self._select_all_analyzers,
         "analyze-clear-filter": lambda: self._set_analyze_filter_text(""),
-        "analyze-cancel-running": self.action_cancel_running_analysis,
         "analyze-clear-selection": self._clear_selected_analyzers,
         "analyze-clear-output": self._clear_output_and_refocus,
         "results-toggle-group": self._toggle_results_group_by,
@@ -1174,7 +1143,7 @@ if TYPE_CHECKING:
         def _open_project_browser(self) -> None: ...
         def _confirm_delete_configuration(self, path: Path) -> None: ...
         def _new_project(self) -> None: ...
-        def _persist_project(self) -> None: ...
+        def _persist_project(self) -> bool: ...
         def _show_setup_no_project(self) -> None: ...
         def _show_results_no_project(self) -> None: ...
         def action_show_analyze(self) -> None: ...
@@ -1186,7 +1155,6 @@ if TYPE_CHECKING:
         def action_toggle_results_empty(self) -> None: ...
         def action_prompt_view_filter(self) -> None: ...
         def action_copy_output(self) -> None: ...
-        def action_cancel_running_analysis(self) -> None: ...
         def action_quit_shell(self) -> None: ...
         def action_clear_output(self) -> None: ...
         def action_save_config(self) -> None: ...
@@ -1254,7 +1222,6 @@ else:
         action_toggle_results_empty = action_toggle_results_empty
         action_prompt_view_filter = action_prompt_view_filter
         action_copy_output = action_copy_output
-        action_cancel_running_analysis = action_cancel_running_analysis
         action_quit_shell = action_quit_shell
         action_clear_output = action_clear_output
         action_save_config = action_save_config

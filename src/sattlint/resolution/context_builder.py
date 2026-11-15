@@ -434,6 +434,6 @@ class ContextBuilder:
             module_path=module_path,
             display_module_path=display_module_path,
             moduleparameter_keys=template.moduleparameter_keys,
-            current_library=parent_context.current_library if parent_context else None,
+            current_library=moduletype.origin_lib or (parent_context.current_library if parent_context else None),
             parent_context=parent_context,
         )

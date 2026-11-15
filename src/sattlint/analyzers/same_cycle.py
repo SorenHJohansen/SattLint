@@ -24,7 +24,7 @@ from sattlint.parser_api import (
 
 from ..resolution import AccessKind, decorate_segment
 from ..resolution.common import resolve_moduletype_def_strict
-from ..resolution.paths import CanonicalPath
+from ..resolution.paths import CanonicalPath, CanonicalPathKey
 from ..resolution.scope import ScopeContext
 from .framework import AnalysisContext, Issue, empty_issues, format_report_header
 from .sfc._sfc_guard_logic import conflict_rep, paths_conflict
@@ -48,8 +48,6 @@ class _CycleEvent:
     decl_module_path: tuple[str, ...]
     access_module_path: tuple[str, ...]
     site: str
-    order: int
-    is_state_variable: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,7 +107,6 @@ class SameCycleAnalyzer(VariablesAnalyzer):
         self._parallel_meta: dict[ParallelKey, _ParallelMeta] = {}
         self._parallel_stack: list[tuple[ParallelKey, int]] = []
         self._parallel_counter = 0
-        self._current_order = 0
         self._current_seq_name = "<unnamed>"
         self._active_typedefs: set[str] = set()
         self._dependency_param_usage_cache: dict[
@@ -198,34 +195,18 @@ class SameCycleAnalyzer(VariablesAnalyzer):
                 *(part for part in field_path.split(".") if part),
             )
         )
-        self._current_order += 1
         event = _CycleEvent(
             kind=kind,
             canonical_path=canonical,
             decl_module_path=tuple(decl_module_path),
             access_module_path=tuple(path),
             site=self._site_str(),
-            order=self._current_order,
-            is_state_variable=self._resolve_state_flag(variable, field_path),
         )
         self._events.append(event)
 
         for parallel_key, branch_index in self._parallel_stack:
             branch_events = self._parallel_events.setdefault(parallel_key, {})
             branch_events.setdefault(branch_index, []).append(event)
-
-    def _resolve_state_flag(self, variable: Any, field_path: str) -> bool:
-        resolved_state = getattr(variable, "state", False)
-        current_datatype = getattr(variable, "datatype", None)
-        for field_name in (segment for segment in field_path.split(".") if segment):
-            if current_datatype is None or not isinstance(current_datatype, str):
-                return bool(resolved_state)
-            field = self.type_graph.field(current_datatype, field_name)
-            if field is None:
-                return bool(resolved_state)
-            current_datatype = field.datatype
-            resolved_state = field.state
-        return bool(resolved_state)
 
     def _should_collect_issue_kind(self, *issue_kinds: str) -> bool:
         if self._selected_same_cycle_issue_kinds is None:
@@ -593,6 +574,14 @@ class SameCycleAnalyzer(VariablesAnalyzer):
         if not self._should_collect_issue_kind(_SAME_CYCLE_SHARED_ACCESS_KIND):
             return
 
+        events_by_key: dict[CanonicalPathKey, list[int]] = defaultdict(list)
+        keys_with_prefix: dict[CanonicalPathKey, set[CanonicalPathKey]] = defaultdict(set)
+        for index, event in enumerate(self._events):
+            key = event.canonical_path.key()
+            events_by_key[key].append(index)
+            for length in range(1, len(key) + 1):
+                keys_with_prefix[key[:length]].add(key)
+
         grouped: dict[
             tuple[str, ...],
             tuple[
@@ -601,7 +590,15 @@ class SameCycleAnalyzer(VariablesAnalyzer):
         ] = {}
 
         for index, left_event in enumerate(self._events):
-            for right_event in self._events[index + 1 :]:
+            left_key = left_event.canonical_path.key()
+            candidate_indexes: set[int] = set()
+            for candidate_key in keys_with_prefix.get(left_key, ()):
+                candidate_indexes.update(events_by_key[candidate_key])
+            for length in range(1, len(left_key)):
+                candidate_indexes.update(events_by_key.get(left_key[:length], ()))
+
+            for right_index in sorted(candidate for candidate in candidate_indexes if candidate > index):
+                right_event = self._events[right_index]
                 if left_event.access_module_path == right_event.access_module_path:
                     continue
                 if not paths_conflict(left_event.canonical_path, right_event.canonical_path):

@@ -76,10 +76,18 @@ class ChecksTargetResult:
     analyzer_bottleneck: dict[str, object] | None = None
     analyzer_phase_bottleneck: dict[str, object] | None = None
     shared_artifact_profile: str | None = None
+    is_pseudo: bool = False
 
 
 @dataclass(frozen=True, slots=True)
 class TargetLoadFailure:
+    target_name: str
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
+class AnalyzerFailure:
+    analyzer_name: str
     target_name: str
     message: str
 
@@ -92,6 +100,20 @@ class ChecksRunResult:
     cancelled: bool = False
     run_id: str | None = None
     failures: tuple[TargetLoadFailure, ...] = ()
+
+    @property
+    def analyzer_failures(self) -> tuple[AnalyzerFailure, ...]:
+        """Analyzers that raised during this run, across loaded targets and per-run analyzers."""
+        return tuple(
+            AnalyzerFailure(
+                analyzer_name=analyzer.name,
+                target_name=target.target_name,
+                message=analyzer.summary or "Analyzer failed without a message.",
+            )
+            for target in self.targets
+            for analyzer in target.analyzers
+            if analyzer.status == "failed"
+        )
 
 
 def _issue_count_for_report(report: object) -> int | None:
@@ -155,24 +177,37 @@ def _run_target_record(result: ChecksTargetResult) -> RunTargetRecord:
     )
 
 
-def build_run_record(result: ChecksRunResult, cfg: ConfigDict, *, started_at: str | None = None) -> RunRecord:
+def build_run_record(
+    result: ChecksRunResult,
+    cfg: ConfigDict,
+    *,
+    started_at: str | None = None,
+    project_path: str = "",
+) -> RunRecord:
     """Convert a checks run result into a persisted run record."""
     return RunRecord(
         run_id="",
         started_at=started_at or _utc_now_iso(),
         finished_at=_utc_now_iso(),
         project_tag=_project_tag(cfg),
+        project_path=project_path,
         selected_analyzers=result.selected_analyzers,
         targets=tuple(_run_target_record(target) for target in result.targets),
         output_lines=result.output_lines,
     )
 
 
-def _persist_run_result(result: ChecksRunResult, cfg: ConfigDict, *, started_at: str) -> RunRecord | None:
-    if result.cancelled or result.failures or not _run_history_enabled(cfg):
+def _persist_run_result(
+    result: ChecksRunResult,
+    cfg: ConfigDict,
+    *,
+    started_at: str,
+    project_path: str = "",
+) -> RunRecord | None:
+    if result.cancelled or result.failures or result.analyzer_failures or not _run_history_enabled(cfg):
         return None
     runs_dir = get_runs_dir()
-    record = build_run_record(result, cfg, started_at=started_at)
+    record = build_run_record(result, cfg, started_at=started_at, project_path=project_path)
     try:
         stored = save_run(record, runs_dir=runs_dir)
     except OSError:
@@ -286,6 +321,7 @@ def collect_run_checks_result(  # noqa: PLR0915
     *,
     use_cache: bool = True,
     persist_run: bool = False,
+    project_path: str = "",
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
     get_enabled_analyzers_fn: Callable[[], list[Any]] | None = None,
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
@@ -536,6 +572,7 @@ def collect_run_checks_result(  # noqa: PLR0915
                     target_name=str(getattr(per_run_spec, "name", per_run_spec.key)),
                     is_library=False,
                     analyzers=(per_run_result,),
+                    is_pseudo=True,
                 )
             )
     except KeyboardInterrupt:
@@ -554,7 +591,7 @@ def collect_run_checks_result(  # noqa: PLR0915
         failures=tuple(load_failures),
     )
     if persist_run:
-        stored = _persist_run_result(result, cfg, started_at=run_started_at)
+        stored = _persist_run_result(result, cfg, started_at=run_started_at, project_path=project_path)
         if stored is not None:
             result = replace(result, run_id=stored.run_id)
     return result
@@ -566,6 +603,7 @@ def run_checks_result(
     *,
     use_cache: bool = True,
     persist_run: bool = True,
+    project_path: str = "",
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
     get_enabled_analyzers_fn: Callable[[], list[Any]] | None = None,
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
@@ -576,6 +614,7 @@ def run_checks_result(
         selected_keys,
         use_cache=use_cache,
         persist_run=persist_run,
+        project_path=project_path,
         iter_loaded_projects_fn=iter_loaded_projects_fn,
         get_enabled_analyzers_fn=get_enabled_analyzers_fn,
         target_is_library_fn=target_is_library_fn,
@@ -591,6 +630,7 @@ def run_checks(
     selected_keys: list[str] | None,
     *,
     use_cache: bool = True,
+    project_path: str = "",
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
     get_enabled_analyzers_fn: Callable[[], list[Any]] | None = None,
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
@@ -602,6 +642,7 @@ def run_checks(
         selected_keys,
         use_cache=use_cache,
         persist_run=True,
+        project_path=project_path,
         iter_loaded_projects_fn=iter_loaded_projects_fn,
         get_enabled_analyzers_fn=get_enabled_analyzers_fn,
         target_is_library_fn=target_is_library_fn,

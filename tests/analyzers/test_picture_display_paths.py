@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -1096,3 +1097,24 @@ def test_resolve_picture_display_path_single_dash_plus_climbs_to_parent_module()
         "L2",
         "OperatorMessage1",
     )
+
+
+def test_analyzer_reuses_precomputed_picture_display_diagnostics(monkeypatch: pytest.MonkeyPatch) -> None:
+    base_picture = BasePicture(header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)))
+    attachments = graphics_attachments(picture_display_diagnostics_computed=True)
+    graph = graph_with_attachments(base_picture, attachments)
+    recomputed: list[bool] = []
+
+    def fake_diagnose(*_args: object, **_kwargs: object) -> tuple[object, ...]:
+        recomputed.append(True)
+        return ()
+
+    monkeypatch.setattr(
+        "sattlint.analyzers.picture_display_paths.diagnose_picture_display_paths",
+        fake_diagnose,
+    )
+
+    report = analyze_picture_display_paths(base_picture, graph=graph)
+
+    assert report.issues == []
+    assert recomputed == []

@@ -140,6 +140,7 @@ from sattline_parser.project import (
     parse_graphics_file,
     parse_graphics_text,
     read_dependency_names,
+    resolve_distribution_companion_path,
     resolve_graphics_companion_path,
 )
 from sattline_parser.types import (
@@ -304,6 +305,7 @@ __all__ = [
     "preprocess_sl_text",
     "read_dependency_names",
     "read_text_cp1252",
+    "resolve_distribution_companion_path",
     "resolve_graphics_companion_path",
     "resolve_variable_field_datatype",
     "source_text_for_parse",

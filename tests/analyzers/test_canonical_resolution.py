@@ -1,6 +1,7 @@
 # pyright: reportUnknownVariableType=false, reportUnknownParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false, reportMissingTypeArgument=false
 """Tests for canonical path resolution across parameter mappings."""
 
+import pytest
 from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -174,3 +175,8 @@ def test_type_graph_reuses_cached_builtin_record_shells():
     builtin_name = next(iter(left._records_by_key.values())).name
 
     assert left.record(builtin_name) is right.record(builtin_name)
+
+
+def test_type_graph_rejects_non_datatype_definitions():
+    with pytest.raises(TypeError, match="DataType"):
+        TypeGraph.from_datatypes([object()])  # pyright: ignore[reportArgumentType]

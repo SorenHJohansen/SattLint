@@ -217,21 +217,38 @@ def _apply_target_filter(cfg: ConfigDict, requested: tuple[str, ...]) -> ConfigD
     return cast(ConfigDict, filtered)
 
 
+def _require_configured_targets(cfg: ConfigDict) -> None:
+    configured = [str(value).strip() for value in cast(list[object], cfg.get("analyzed_programs_and_libraries", []))]
+    if not any(configured):
+        raise CliError(
+            "No analysis targets are configured.",
+            code="no_targets",
+            exit_code=2,
+        )
+
+
 def _capture_run(
     cfg: ConfigDict,
     keys: list[str] | None,
     *,
     use_cache: bool,
     persist_run: bool,
+    project_path: str,
 ) -> ChecksRunResult:
     try:
-        return collect_checks_result(cfg, keys, use_cache=use_cache, persist_run=persist_run)
+        return collect_checks_result(
+            cfg,
+            keys,
+            use_cache=use_cache,
+            persist_run=persist_run,
+            project_path=project_path,
+        )
     except TargetLoadError as exc:
         raise CliError(str(exc), code="target_load_failed", exit_code=2) from exc
 
 
-def _result_record(result: ChecksRunResult, cfg: ConfigDict) -> RunRecord:
-    record = build_run_record(result, cfg)
+def _result_record(result: ChecksRunResult, cfg: ConfigDict, *, project_path: str) -> RunRecord:
+    record = build_run_record(result, cfg, project_path=project_path)
     if result.run_id:
         record = replace(record, run_id=result.run_id)
     return record
@@ -241,8 +258,16 @@ def command_analyze(args: argparse.Namespace) -> int:
     options = _analyze_options(args)
     project = resolve_project_file(options.project)
     cfg = _apply_target_filter(effective_project_config(project), options.targets)
+    _require_configured_targets(cfg)
+    project_path = str(project.path)
     keys = _resolve_analyzer_keys(options.analyzers)
-    result = _capture_run(cfg, keys, use_cache=options.use_cache, persist_run=options.persist_run)
+    result = _capture_run(
+        cfg,
+        keys,
+        use_cache=options.use_cache,
+        persist_run=options.persist_run,
+        project_path=project_path,
+    )
     if result.cancelled:
         _write_diagnostics(result, options)
         return 130
@@ -254,11 +279,16 @@ def command_analyze(args: argparse.Namespace) -> int:
             details={"requested": list(keys or ())},
         )
     if not result.targets:
+        if options.output.output_format == "text":
+            _write_diagnostics(result, options)
+            details: Mapping[str, object] = {}
+        else:
+            details = {"output": list(result.output_lines)}
         raise CliError(
-            "Analysis did not load any targets.",
+            "Self-check failed. Analysis did not start.",
             code="analysis_preflight_failed",
             exit_code=2,
-            details={"output": list(result.output_lines)},
+            details=details,
         )
     if result.failures:
         if options.output.output_format == "text":
@@ -270,14 +300,25 @@ def command_analyze(args: argparse.Namespace) -> int:
             exit_code=2,
             details={failure.target_name: failure.message for failure in result.failures},
         )
+    analyzer_failures = result.analyzer_failures
+    if analyzer_failures:
+        if options.output.output_format == "text":
+            _write_diagnostics(result, options)
+        failed_analyzers = ", ".join(failure.analyzer_name for failure in analyzer_failures)
+        raise CliError(
+            f"Analysis stopped because {len(analyzer_failures)} analyzer(s) failed: {failed_analyzers}",
+            code="analyzer_failed",
+            exit_code=2,
+            details={failure.analyzer_name: failure.message for failure in analyzer_failures},
+        )
     _write_diagnostics(result, options)
-    record = _result_record(result, cfg)
+    record = _result_record(result, cfg, project_path=project_path)
     all_findings = flat_findings(record)
     findings = filter_findings(all_findings, FindingFilters(modules=options.modules))
     summary: AnalyzeSummary = {
         **finding_summary(findings),
         "total_findings": len(all_findings),
-        "targets": len(result.targets),
+        "targets": sum(1 for target in result.targets if not target.is_pseudo),
         "analyzers": len(result.selected_analyzers),
     }
     payload: AnalyzePayload = {

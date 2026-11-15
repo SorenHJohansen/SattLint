@@ -115,10 +115,18 @@ def get_cache_manager(
 
 
 def build_ast_cache(cache_dir: Path, ast_cache_cls: type[Any] = ASTCache) -> Any:
-    return get_cache_manager(
-        cache_dir,
-        ast_cache_cls=cast(type[ASTCache], ast_cache_cls),
-    ).ast_cache
+    """Build the AST cache, or return ``None`` when the cache directory is unusable.
+
+    A cache is an optimisation: an unwritable or blocked cache location must
+    not stop an analysis run.
+    """
+    try:
+        return get_cache_manager(
+            cache_dir,
+            ast_cache_cls=cast(type[ASTCache], ast_cache_cls),
+        ).ast_cache
+    except OSError:
+        return None
 
 
 def build_analysis_report_cache(cache_dir: Path, analysis_report_cache_cls: type[Any] = AnalysisReportCache) -> Any:

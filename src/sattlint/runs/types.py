@@ -170,6 +170,7 @@ class RunRecord:
     started_at: str
     finished_at: str
     project_tag: str
+    project_path: str = ""
     selected_analyzers: tuple[str, ...] = ()
     cancelled: bool = False
     targets: tuple[RunTargetRecord, ...] = ()
@@ -194,6 +195,7 @@ class RunRecord:
             "started_at": self.started_at,
             "finished_at": self.finished_at,
             "project_tag": self.project_tag,
+            "project_path": self.project_path,
             "selected_analyzers": list(self.selected_analyzers),
             "cancelled": self.cancelled,
             "targets": [target.to_dict() for target in self.targets],
@@ -217,6 +219,7 @@ class RunRecord:
             started_at=str(payload.get("started_at") or ""),
             finished_at=str(payload.get("finished_at") or ""),
             project_tag=str(payload.get("project_tag") or ""),
+            project_path=str(payload.get("project_path") or ""),
             selected_analyzers=_tuple_str(payload.get("selected_analyzers")),
             cancelled=bool(payload.get("cancelled", False)),
             targets=targets,
@@ -234,6 +237,7 @@ class RunSummary:
     analyzer_count: int
     issue_count: int
     cancelled: bool
+    project_path: str = ""
 
     @classmethod
     def from_record(cls, record: RunRecord) -> RunSummary:
@@ -246,6 +250,7 @@ class RunSummary:
             analyzer_count=record.analyzer_count,
             issue_count=record.issue_count,
             cancelled=record.cancelled,
+            project_path=record.project_path,
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -258,6 +263,7 @@ class RunSummary:
             "analyzer_count": self.analyzer_count,
             "issue_count": self.issue_count,
             "cancelled": self.cancelled,
+            "project_path": self.project_path,
         }
 
     @classmethod
@@ -271,6 +277,8 @@ class RunSummary:
             analyzer_count=_int_value(payload.get("analyzer_count")),
             issue_count=_int_value(payload.get("issue_count")),
             cancelled=bool(payload.get("cancelled", False)),
+            # Older records and sidecars predate the field; an empty path means unknown.
+            project_path=str(payload.get("project_path") or ""),
         )
 
 

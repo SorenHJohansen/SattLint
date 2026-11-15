@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import threading
 from collections.abc import Callable
 from typing import Any, ClassVar
 
@@ -124,9 +123,6 @@ if _TEXTUAL_APP is not None:
             self._active_job_action_id: str | None = None
             self._active_job_label: str | None = None
             self._active_job_started_at: float | None = None
-            self._active_job_cancel_event: threading.Event | None = None
-            self._active_job_cancel_requested = False
-            self._active_job_thread: threading.Thread | None = None
             self._active_job_worker: Any | None = None
             self._project: Any | None = None
             self._ast_refresh_pending = False
@@ -138,6 +134,7 @@ if _TEXTUAL_APP is not None:
             self._selected_run_record = None
             self._results_run_summaries: list[object] = []
             self._results_tree_widget = None
+            self._results_pending_run_id: str | None = None
             self._results_show_empty_analyzers_flag = False
             self._results_group_by_flag: ResultsGroupBy = "analyzer"
             self._setup_candidate_index = 0
@@ -175,11 +172,6 @@ if _TEXTUAL_APP is not None:
                                             yield _TEXTUAL_BUTTON(
                                                 "Run selected analyses",
                                                 id="analyze-run-selected",
-                                                classes="raised-button toolbar-button",
-                                            )
-                                            yield _TEXTUAL_BUTTON(
-                                                "Cancel running",
-                                                id="analyze-cancel-running",
                                                 classes="raised-button toolbar-button",
                                             )
                                         with _TEXTUAL_HORIZONTAL(id="analyze-selection-zone"):

@@ -1,4 +1,4 @@
-# pyright: reportPrivateUsage=false, reportUnusedImport=false
+# pyright: reportPrivateUsage=false
 """Tests for variable-quality analyzers: loop output, parameter drift, cyclomatic complexity, scan-loop resource, min/max, contract mismatch, magic numbers, shadowing, variables analysis, and datatype duplication."""
 
 import logging
@@ -44,11 +44,6 @@ from sattlint.reporting.variables_report import (
     VariablesReport,
 )
 from sattlint.resolution.scope import ScopeContext
-from tests.analyzers.variables.test_adjacent_analyzers import (  # noqa: F401
-    test_cyclomatic_complexity_flags_high_complexity_program_modulecode,
-    test_cyclomatic_complexity_flags_high_complexity_sfc_step,
-    test_cyclomatic_complexity_ignores_low_complexity_program_modulecode,
-)
 from tests.helpers.variable_test_support import (
     UsageStub as _UsageStub,
 )

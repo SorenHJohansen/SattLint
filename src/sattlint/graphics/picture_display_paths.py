@@ -26,6 +26,7 @@ from .validation import (
     PictureDisplayPathRow,
     PictureDisplayRecord,
     is_unimplemented_picture_display_asset_path,
+    picture_display_asset_candidate_paths,
     unimplemented_picture_display_asset_message,
 )
 
@@ -188,23 +189,7 @@ def _picture_display_asset_exists(
         asset = asset[4:].strip()
     if not asset:
         return False
-    normalized = asset.replace("\\", "/")
-    basename = Path(normalized).name
-    seen: set[str] = set()
-    for parent in (file_path.parent, *file_path.parents):
-        for candidate in (
-            parent / normalized,
-            parent / basename,
-            parent / "scr" / normalized,
-            parent / "scr" / basename,
-        ):
-            key = candidate.as_posix().casefold()
-            if key in seen:
-                continue
-            seen.add(key)
-            if candidate.exists():
-                return True
-    return False
+    return any(candidate.exists() for candidate in picture_display_asset_candidate_paths(file_path, asset))
 
 
 def resolve_picture_display_path(

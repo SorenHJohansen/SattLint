@@ -54,7 +54,7 @@ def _issue_message(issue: ICFValidationIssue) -> str:
     first_line = issue.detail.strip().splitlines()[0] if issue.detail.strip() else ""
     if not first_line:
         return f"{location}: {issue.reason}"
-    return f"{location}: {issue.reason} — {first_line}"
+    return f"{location}: {issue.reason}: {first_line}"
 
 
 def _issue_data(issue: ICFValidationIssue, program_name: str) -> dict[str, Any]:

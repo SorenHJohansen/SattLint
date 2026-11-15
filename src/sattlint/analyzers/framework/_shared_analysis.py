@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from threading import Lock
 from typing import TYPE_CHECKING, Any
 
 from sattlint.parser_api import ModuleTypeDef, Variable
@@ -12,7 +11,6 @@ from ... import cache as cache_module
 from ...resolution import TypeGraph
 from ...resolution.access_graph import AccessGraph
 from ...resolution.scope import ScopeContext
-from ..shared._contract_index import ContractIndex, ContractIndexKey
 
 if TYPE_CHECKING:
     from ..variables._usage_tracker import UsageTracker
@@ -73,12 +71,6 @@ class AnalysisSharedArtifacts:
     foundation_cache: Any = None
     foundation_project_cache_key: str | None = None
     foundation_source_manifest: dict[str, tuple[int, int]] | None = None
-    # The immutable, snapshot-scoped contract index (lazily built) plus the policy key it was
-    # built for. Only the deeply-immutable `ContractIndex` is ever published here -- never the
-    # mutable session provider analyzer, which stays internal to the builder.
-    contract_index: ContractIndex | None = None
-    contract_index_key: ContractIndexKey | None = None
-    _contract_index_lock: Any = field(default_factory=lambda: Lock(), init=False)
 
     def ensure_foundation(self, build_fn: Any) -> VariableAnalysisArtifacts | None:
         """Lazily materialize the analysis foundation (type graph + indices + symbol skeleton).
@@ -121,29 +113,6 @@ class AnalysisSharedArtifacts:
         if foundation_cache is not None and cache_key is not None:
             foundation_cache.save(cache_key, built)
         return built
-
-    def ensure_contract_index(
-        self,
-        key: ContractIndexKey,
-        build_fn: Any,
-    ) -> ContractIndex | None:
-        """Lazily materialize the immutable contract index for one policy key.
-
-        Built at most once per :class:`ContractIndexKey`; a later request for a different
-        policy key rebuilds. Only the immutable :class:`ContractIndex` is stored and returned
-        -- the transient session provider is never published, so no caller can observe or
-        mutate in-progress per-typedef summaries. A building lock makes concurrent requests
-        for the same key wait for completion rather than observing a partial result.
-        """
-        with self._contract_index_lock:
-            if self.contract_index is not None and self.contract_index_key == key:
-                return self.contract_index
-            index = build_fn()
-            if index is None:
-                return None
-            self.contract_index = index
-            self.contract_index_key = key
-            return index
 
 
 __all__ = [

@@ -551,6 +551,12 @@ def _validate_parameter_record_completeness(
         grouped.setdefault(key, []).append(resolved)
 
     grouped_items = list(grouped.items())
+    records_by_scope: dict[
+        tuple[str | None, str | None, str | None],
+        list[tuple[tuple[str, ...], str, tuple[str, ...]]],
+    ] = {}
+    for (unit, journal, group, module_path, variable_name, record_path, _datatype_name), _entries in grouped_items:
+        records_by_scope.setdefault((unit, journal, group), []).append((module_path, variable_name, record_path))
 
     for (unit, journal, group, module_path, variable_name, record_path, datatype_name), entries in grouped_items:
         record = type_graph.record(datatype_name)
@@ -565,17 +571,9 @@ def _validate_parameter_record_completeness(
             if ph.unit != unit or ph.journal != journal or ph.group != group:
                 continue
             present.add(_cf(ph.key))
-        for (
-            other_unit,
-            other_journal,
-            other_group,
-            other_module_path,
-            other_variable_name,
-            other_record_path,
-            _other_datatype,
-        ), _other_entries in grouped_items:
-            if other_unit != unit or other_journal != journal or other_group != group:
-                continue
+        for other_module_path, other_variable_name, other_record_path in records_by_scope.get(
+            (unit, journal, group), ()
+        ):
             if other_module_path != module_path or other_variable_name != variable_name:
                 continue
             if len(other_record_path) <= len(record_path):

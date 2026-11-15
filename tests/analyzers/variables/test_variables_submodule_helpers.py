@@ -195,7 +195,7 @@ def test_dependency_mapping_distinguishes_program_and_library_targets(monkeypatc
         ["Root", "Dep"],
     )
 
-    assert checked == [(["Root", "Dep"], "ProjectLib")]
+    assert checked == [(["Root", "Dep"], "SupportLib")]
     assert propagated == [None, "DependencyType"]
 
     propagated.clear()

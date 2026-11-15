@@ -14,7 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from sattline_parser import parse_source_text
+from sattline_parser import Diagnostic, DiagnosticCode, parse_source_text
 from sattline_parser.models.ast_model import BasePicture
 from sattline_parser.project import (
     ProjectLoadError,
@@ -105,6 +105,46 @@ def test_convert_flags_root_not_loaded_as_missing() -> None:
     assert "r" in graph.unavailable_libraries
     assert any("'R'" in entry and "B" not in entry for entry in graph.missing)
     assert len(graph.missing) == 1
+
+
+def test_convert_failed_root_is_not_also_reported_as_missing() -> None:
+    prg = Path("/tmp/base/prg")
+    a = SattLineProgram(
+        name="A",
+        code=_code(),
+        source_path=prg / "A.s",
+        diagnostics=(Diagnostic(DiagnosticCode.DUPLICATE_VARIABLE_NAME, "duplicate variable"),),
+    )
+    project = SattLineProject.from_programs({"A": a})
+    graph = ProjectGraph()
+    convert_project_into_graph(project, graph, binding=_binding(prg), root_name="A", strict=False)
+
+    assert graph.ast_by_name == {}
+    assert set(graph.failures) == {"a"}
+    assert "a" not in graph.unavailable_libraries
+    assert not any("Missing code file" in entry for entry in graph.missing)
+    assert graph.missing == [graph.failures["a"].message]
+
+
+def test_index_failure_retracts_a_partially_committed_program(monkeypatch: pytest.MonkeyPatch) -> None:
+    prg = Path("/tmp/base/prg")
+    binding = _binding(prg)
+    a = _program("A", source_path=prg / "A.s")
+
+    def fail_attach(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("graphics exploded")
+
+    monkeypatch.setattr(parser_adapter_module, "attach_graphics_companion", fail_attach)
+    graph = ProjectGraph()
+    convert_project_into_graph(
+        SattLineProject.from_programs({"A": a}), graph, binding=binding, root_name="A", strict=False
+    )
+
+    assert graph.ast_by_name == {}
+    assert "a" not in binding._indexed_names
+    assert graph.graphics_attachments == {}
+    assert set(graph.failures) == {"a"}
+    assert graph.missing == [graph.failures["a"].message]
 
 
 def test_convert_raises_on_cycle_always() -> None:

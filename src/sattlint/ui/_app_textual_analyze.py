@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
@@ -440,7 +441,10 @@ def _execute_analyzers(self: Any, selected_keys: tuple[str, ...]) -> None:
     if not self._configured_target_names():
         self._emit_output_from_thread("No configured analysis targets are available.")
         return
-    result = handler(self._cfg, list(selected_keys))
+    handler_kwargs: dict[str, object] = {}
+    if "project_path" in inspect.signature(handler).parameters:
+        handler_kwargs["project_path"] = str(getattr(self, "_config_path", "") or "")
+    result = handler(self._cfg, list(selected_keys), **handler_kwargs)
     failures = tuple(getattr(result, "failures", ())) if result is not None else ()
     if failures:
         names = ", ".join(str(getattr(failure, "target_name", "")) for failure in failures)
@@ -452,7 +456,10 @@ def _execute_analyzers(self: Any, selected_keys: tuple[str, ...]) -> None:
 
 
 def _finish_analysis_run(self: Any, result: Any) -> None:
-    del result
+    run_id = str(getattr(result, "run_id", "") or "").strip()
+    if not run_id:
+        self._write_output("This run was not saved to run history, so the Results view still shows earlier runs.")
+        return
     self._activate_view("results")
 
 

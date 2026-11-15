@@ -43,13 +43,16 @@ def _isolate_user_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Non
     monkeypatch.setattr("sattlint.cli._project.get_config_path", lambda: tmp_path / "config.toml")
 
 
-def _write_project(tmp_path: Path, *, target: str = "Demo", program_dir: str = "programs") -> Path:
+def _write_project(
+    tmp_path: Path, *, target: str = "Demo", program_dir: str = "programs", targets: list[str] | None = None
+) -> Path:
     project = tmp_path / "demo.slproj"
+    resolved_targets = [target] if targets is None else targets
     project.write_text(
         "\n".join(
             [
                 "slproj_version = 1",
-                f'analyzed_programs_and_libraries = ["{target}"]',
+                f"analyzed_programs_and_libraries = {json.dumps(resolved_targets)}",
                 'mode = "official"',
                 f'program_dir = "{program_dir}"',
                 'ABB_lib_dir = ""',
@@ -701,3 +704,179 @@ def test_collect_run_checks_result_records_saved_run_id(
 
     assert result.run_id is not None
     assert (tmp_path / "runs" / f"{result.run_id}.json").exists()
+
+
+def test_analyze_reports_analyzer_failures_with_exit_two(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "programs").mkdir()
+    project = _write_project(tmp_path)
+    failed_target = ChecksTargetResult(
+        target_name="Demo",
+        is_library=False,
+        analyzers=(
+            ChecksAnalyzerResult(
+                key="variables",
+                name="Variable issues",
+                status="failed",
+                summary="Variable issues failed: boom",
+            ),
+        ),
+    )
+    failed_per_run = ChecksTargetResult(
+        target_name="ICF configuration",
+        is_library=False,
+        analyzers=(
+            ChecksAnalyzerResult(
+                key="icf",
+                name="ICF configuration",
+                status="failed",
+                summary="ICF configuration failed: boom",
+            ),
+        ),
+        is_pseudo=True,
+    )
+    result = ChecksRunResult(
+        output_lines=("Analyzing Demo: Variable issues (variables)",),
+        targets=(failed_target, failed_per_run),
+        selected_analyzers=("variables", "icf"),
+    )
+    monkeypatch.setattr("sattlint.cli.commands.collect_checks_result", _fake_collect(result))
+
+    code = run_cli(["analyze", "--project", str(project), "--format", "json", "--fail-on", "none"])
+
+    assert code == 2
+    payload = json.loads(capsys.readouterr().err)
+    assert payload["error"]["code"] == "analyzer_failed"
+    assert payload["error"]["details"] == {
+        "Variable issues": "Variable issues failed: boom",
+        "ICF configuration": "ICF configuration failed: boom",
+    }
+
+
+def test_analyze_analyzer_failure_text_mode_writes_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "programs").mkdir()
+    project = _write_project(tmp_path)
+    result = ChecksRunResult(
+        output_lines=("Analyzing Demo: Variable issues (variables)", "Variable issues failed: boom"),
+        targets=(
+            ChecksTargetResult(
+                target_name="Demo",
+                is_library=False,
+                analyzers=(
+                    ChecksAnalyzerResult(
+                        key="variables",
+                        name="Variable issues",
+                        status="failed",
+                        summary="Variable issues failed: boom",
+                    ),
+                ),
+            ),
+        ),
+        selected_analyzers=("variables",),
+    )
+    monkeypatch.setattr("sattlint.cli.commands.collect_checks_result", _fake_collect(result))
+
+    code = run_cli(["analyze", "--project", str(project), "--fail-on", "none"])
+
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "Variable issues failed: boom" in err
+    assert "1 analyzer(s) failed: Variable issues" in err
+
+
+def test_analyze_without_configured_targets_fails_preflight_without_running(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "programs").mkdir()
+    project = _write_project(tmp_path, targets=[])
+
+    def _fail_start(*_args: object, **_kwargs: object) -> ChecksRunResult:
+        pytest.fail("analysis must not start without targets")
+
+    monkeypatch.setattr("sattlint.cli.commands.collect_checks_result", _fail_start)
+
+    code = run_cli(["analyze", "--project", str(project), "--format", "json"])
+
+    assert code == 2
+    payload = json.loads(capsys.readouterr().err)
+    assert payload["error"]["code"] == "no_targets"
+    assert payload["error"]["message"] == "No analysis targets are configured."
+
+
+def test_analyze_self_check_failure_names_the_preflight(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "programs").mkdir()
+    project = _write_project(tmp_path)
+    preflight = ChecksRunResult(
+        output_lines=("❌ Self-check failed. Analysis aborted before the checks pipeline started.",),
+        targets=(),
+        selected_analyzers=("variables",),
+    )
+    monkeypatch.setattr("sattlint.cli.commands.collect_checks_result", _fake_collect(preflight))
+
+    code = run_cli(["analyze", "--project", str(project), "--format", "text"])
+
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "Self-check failed" in err
+    assert "Analysis aborted before the checks pipeline started" in err
+    assert "['" not in err
+
+
+def test_analyze_summary_counts_only_loaded_targets(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "programs").mkdir()
+    project = _write_project(tmp_path)
+    result = ChecksRunResult(
+        output_lines=(),
+        targets=(
+            ChecksTargetResult(
+                target_name="Demo",
+                is_library=False,
+                analyzers=(
+                    ChecksAnalyzerResult(
+                        key="variables",
+                        name="Variable issues",
+                        status="completed",
+                        findings=(),
+                    ),
+                ),
+            ),
+            ChecksTargetResult(
+                target_name="ICF configuration",
+                is_library=False,
+                analyzers=(
+                    ChecksAnalyzerResult(
+                        key="icf",
+                        name="ICF configuration",
+                        status="completed",
+                        findings=(),
+                    ),
+                ),
+                is_pseudo=True,
+            ),
+        ),
+        selected_analyzers=("variables", "icf"),
+    )
+    monkeypatch.setattr("sattlint.cli.commands.collect_checks_result", _fake_collect(result))
+
+    code = run_cli(["analyze", "--project", str(project), "--format", "json", "--fail-on", "none"])
+
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["summary"]["targets"] == 1

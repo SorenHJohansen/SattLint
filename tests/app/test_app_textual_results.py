@@ -2,10 +2,13 @@
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from sattlint.application.findings import AnalysisFinding
 from sattlint.runs import RunAnalyzerRecord, RunRecord, RunTargetRecord
 from sattlint.ui import _app_textual_results as app_textual_results_module
 from sattlint.ui import _app_textual_settings as app_textual_settings_module
+from sattlint.ui import _app_textual_setup_targets as app_textual_setup_targets_module
 
 
 def _settings_app(cfg: object) -> SimpleNamespace:
@@ -640,3 +643,186 @@ def test_results_tree_module_grouping_auto_expands_single_child_chains() -> None
     assert module_node.label.plain == "RootProgram.A.B"
     assert target_node.is_expanded is True
     assert module_node.is_expanded is True
+
+
+def _tree_render_app(messages: list[str]) -> SimpleNamespace:
+    app_instance = SimpleNamespace(
+        _selected_run_record=None,
+        _results_tree_widget=SimpleNamespace(),
+        _results_tree_render_key=None,
+        _results_tree_run_id=None,
+        _results_pending_run_id=None,
+        _results_group_by_flag="analyzer",
+        _results_show_empty_analyzers_flag=False,
+    )
+    app_instance._write_output = lambda text: messages.append(str(text))
+    app_instance._report_error = lambda title, message: messages.append(str(message))
+    app_instance._refresh_shell_state = lambda: None
+    app_instance._update_results_group_button = lambda: None
+    app_instance._results_group_by = lambda: "analyzer"
+    app_instance._results_show_empty_analyzers = lambda: False
+    return app_instance
+
+
+def _run_record(run_id: str) -> RunRecord:
+    return RunRecord(
+        run_id=run_id,
+        started_at="2026-09-06T10:00:00Z",
+        finished_at="2026-09-06T10:05:00Z",
+        project_tag="RootProgram",
+    )
+
+
+def test_results_tree_announces_shown_results_only_when_the_run_changes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    messages: list[str] = []
+    populated: list[str] = []
+    app_instance = _tree_render_app(messages)
+    monkeypatch.setattr(
+        app_textual_results_module,
+        "_populate_run_tree",
+        lambda _tree, record, **_kwargs: populated.append(record.run_id),
+    )
+    announcement = "Analysis results are shown in the tree. Select a node for details."
+
+    app_textual_results_module._render_results_tree(app_instance, _run_record("r1"))
+
+    assert populated == ["r1"]
+    assert messages == [announcement]
+
+    app_textual_results_module._render_results_tree(app_instance, _run_record("r1"))
+
+    assert populated == ["r1"]
+    assert messages == [announcement]
+
+    app_textual_results_module._render_results_tree(app_instance, _run_record("r2"))
+
+    assert populated == ["r1", "r2"]
+    assert messages == [announcement, announcement]
+
+
+def test_results_highlight_defers_and_coalesces_run_loads(monkeypatch: pytest.MonkeyPatch) -> None:
+    summaries = [SimpleNamespace(run_id="r1"), SimpleNamespace(run_id="r2")]
+    deferred: list[Any] = []
+    loaded: list[str] = []
+    rendered: list[str] = []
+    app_instance = SimpleNamespace(
+        _results_run_summaries=summaries,
+        _results_tree_run_id=None,
+        _results_pending_run_id=None,
+    )
+    app_instance.call_after_refresh = lambda callback: deferred.append(callback)
+    app_instance._render_selected_run = lambda: rendered.append(app_instance._selected_run_record.run_id)
+    app_instance._apply_pending_results_run_selection = lambda: (
+        app_textual_results_module._apply_pending_results_run_selection(app_instance)
+    )
+    app_instance._request_results_run_selection = lambda run_id: (
+        app_textual_results_module._request_results_run_selection(app_instance, run_id)
+    )
+    monkeypatch.setattr(
+        app_textual_results_module,
+        "load_run",
+        lambda run_id: loaded.append(run_id) or SimpleNamespace(run_id=run_id),
+    )
+
+    app_textual_setup_targets_module.on_results_runs_list_highlighted(
+        app_instance, SimpleNamespace(list_view=SimpleNamespace(index=0))
+    )
+    app_textual_setup_targets_module.on_results_runs_list_highlighted(
+        app_instance, SimpleNamespace(list_view=SimpleNamespace(index=1))
+    )
+
+    assert loaded == []
+    assert len(deferred) == 2
+
+    for callback in deferred:
+        callback()
+
+    assert loaded == ["r2"]
+    assert rendered == ["r2"]
+
+
+def test_delete_selected_run_asks_before_removing_the_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    messages: list[str] = []
+    deleted: list[str] = []
+    presented: list[tuple[object, Any]] = []
+    app_instance = SimpleNamespace(_selected_run_record=_run_record("r1"), _active_request=None)
+    app_instance._write_output = lambda text: messages.append(str(text))
+    app_instance._refresh_results_view = lambda: None
+    app_instance._refresh_shell_state = lambda: None
+
+    def _present(request: object, on_response_fn: Any = None) -> None:
+        presented.append((request, on_response_fn))
+
+    app_instance.present_request = _present
+    monkeypatch.setattr(
+        app_textual_results_module,
+        "delete_run",
+        lambda run_id: deleted.append(run_id) or True,
+    )
+
+    app_textual_results_module._delete_selected_run(app_instance)
+
+    assert deleted == []
+    assert len(presented) == 1
+    request, callback = presented[0]
+    assert getattr(request, "kind", None) == "confirm"
+    assert "cannot be undone" in getattr(request, "message", "")
+
+    callback(False)
+
+    assert deleted == []
+    assert messages == ["Delete canceled."]
+    assert app_instance._selected_run_record is not None
+
+    callback(True)
+
+    assert deleted == ["r1"]
+    assert app_instance._selected_run_record is None
+    assert messages[-1] == "Deleted run 2026-09-06 10:05:00."
+
+
+def test_results_run_summaries_prefer_project_path_over_shared_tag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    summaries = [
+        SimpleNamespace(run_id="same-path", project_path="/p/a.slproj", project_tag="RootProgram"),
+        SimpleNamespace(run_id="other-path", project_path="/p/b.slproj", project_tag="RootProgram"),
+        SimpleNamespace(run_id="legacy", project_path="", project_tag="RootProgram"),
+        SimpleNamespace(run_id="legacy-other", project_path="", project_tag="AnotherProgram"),
+    ]
+    monkeypatch.setattr(app_textual_results_module, "list_runs", lambda: list(summaries))
+    app_instance = SimpleNamespace(
+        _cfg={"analyzed_programs_and_libraries": ["RootProgram"]},
+        _config_path="/p/a.slproj",
+    )
+    app_instance._current_project_tag = lambda: app_textual_results_module._current_project_tag(app_instance)
+    app_instance._current_project_path = lambda: app_textual_results_module._current_project_path(app_instance)
+
+    assert [summary.run_id for summary in app_textual_results_module._results_run_summaries(app_instance)] == [
+        "same-path",
+        "legacy",
+    ]
+
+    app_instance._config_path = None
+    assert [summary.run_id for summary in app_textual_results_module._results_run_summaries(app_instance)] == [
+        "same-path",
+        "other-path",
+        "legacy",
+    ]
+
+
+def test_run_overview_text_names_the_project_path() -> None:
+    record = RunRecord(
+        run_id="r1",
+        started_at="2026-09-06T10:00:00Z",
+        finished_at="2026-09-06T10:05:00Z",
+        project_tag="RootProgram",
+        project_path="/p/a.slproj",
+    )
+
+    text = app_textual_results_module._run_overview_text(record)
+
+    assert "Project: /p/a.slproj" in text
+    assert "Configuration: RootProgram" in text

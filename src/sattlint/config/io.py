@@ -53,10 +53,11 @@ def load_config(path: Path, *, emit_fn: Callable[[str], None] | None = None) -> 
     with path.open("rb") as file_handle:
         cfg = cast(ConfigOverrideDict, tomllib.load(file_handle))
 
-    strip_unknown_keys(cfg)
-
+    # Report unknown keys before stripping them, otherwise a typo vanishes silently.
     for warning in load_time_config_warnings(cfg):
         emit(f"⚠ Config warning [{warning.key_path}]: {warning.message}")
+
+    strip_unknown_keys(cfg)
 
     for message in _validation_messages(cfg):
         key_path, error_message = message.split("] ", maxsplit=1)

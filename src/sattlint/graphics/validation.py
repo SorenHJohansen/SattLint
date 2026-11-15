@@ -33,6 +33,7 @@ __all__ = [
     "PictureDisplayPathRow",
     "PictureDisplayRecord",
     "is_unimplemented_picture_display_asset_path",
+    "picture_display_asset_candidate_paths",
     "unimplemented_picture_display_asset_message",
     "validate_graphics_file",
     "validate_graphics_model",
@@ -88,26 +89,37 @@ class GraphicsCompositeRecord:
     family_code: str
 
 
-def _candidate_asset_paths(file_path: Path, asset_name: str) -> tuple[Path, ...]:
-    normalized_name = asset_name.replace("\\", "/")
-    basename = Path(normalized_name).name
-    candidates: list[Path] = []
+def picture_display_asset_candidate_paths(file_path: Path, asset_name: str) -> tuple[Path, ...]:
+    """The asset locations to probe for a PictureDisplay literal path.
+
+    An asset belongs to the program that references it, so the search covers
+    the program directory (the folder holding ``file_path``) and that folder's
+    ``scr`` subfolder only. A path that would leave those folders, meaning an
+    absolute path or one containing a ``..`` segment, has no candidate at all.
+    """
+    normalized_name = asset_name.strip().replace("\\", "/")
+    if not normalized_name:
+        return ()
+    asset_path = Path(normalized_name)
+    basename = asset_path.name
+    if not basename or asset_path.is_absolute() or ".." in asset_path.parts:
+        return ()
+    program_dir = file_path.parent
+    candidates = (
+        program_dir / normalized_name,
+        program_dir / basename,
+        program_dir / "scr" / normalized_name,
+        program_dir / "scr" / basename,
+    )
+    unique: list[Path] = []
     seen: set[str] = set()
-
-    for parent in (file_path.parent, *file_path.parents):
-        for candidate in (
-            parent / normalized_name,
-            parent / basename,
-            parent / "scr" / normalized_name,
-            parent / "scr" / basename,
-        ):
-            key = candidate.as_posix().casefold()
-            if key in seen:
-                continue
-            seen.add(key)
-            candidates.append(candidate)
-
-    return tuple(candidates)
+    for candidate in candidates:
+        key = candidate.as_posix().casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(candidate)
+    return tuple(unique)
 
 
 def is_unimplemented_picture_display_asset_path(path_text: str) -> bool:
@@ -158,7 +170,7 @@ def _validate_literal_path(
                 column=column,
                 length=len(stripped),
             )
-        if any(candidate.exists() for candidate in _candidate_asset_paths(file_path, asset_name)):
+        if any(candidate.exists() for candidate in picture_display_asset_candidate_paths(file_path, asset_name)):
             return None
         return GraphicsMessage(
             severity="warning",

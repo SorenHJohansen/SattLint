@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import threading
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -34,6 +35,8 @@ from ._app_textual_shared import (
     advance_menu_choice_buffer,
     interaction_ledger_text,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -640,8 +643,11 @@ if _TEXTUAL_APP is not None:
         def _call_on_ui(self, callback: Any, *args: object, **kwargs: object) -> None:
             try:
                 self.app.call_from_thread(callback, *args, **kwargs)
-            except (AttributeError, RuntimeError, _NoActiveAppError):  # pragma: no cover - no running app / loop
-                callback(*args, **kwargs)
+            except (AttributeError, RuntimeError, _NoActiveAppError):
+                # There is no running app to marshal onto, so the callback stays
+                # on the worker thread. Running it here would touch widgets off
+                # the UI thread, which is what this hop exists to prevent.
+                _LOGGER.debug("Skipping UI callback %r: no running app to dispatch to", callback)
 
         def _emit_status(self, *parts: object) -> None:
             rendered_parts = [str(part) for part in parts if part is not None]

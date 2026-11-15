@@ -25,6 +25,7 @@ from sattlint.parser_api import (
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ...resolution import TypeGraph
 from ...resolution.common import varname_full
+from ._string_capacity import STRING_CAPACITIES, string_capacity_for_datatype
 
 log = logging.getLogger("SattLint")
 
@@ -40,22 +41,11 @@ class Validator(Protocol):
 class StringMappingValidator:
     """Validates string variable mapping types."""
 
-    _STRING_LIMITS: ClassVar[dict[ScalarDatatype, int]] = {
-        ScalarDatatype.IDENTSTRING: 15,
-        ScalarDatatype.TAGSTRING: 30,
-        ScalarDatatype.STRING: 40,
-        ScalarDatatype.LINESTRING: 80,
-        ScalarDatatype.MAXSTRING: 140,
-    }
-    _STRING_TYPES: ClassVar[set[ScalarDatatype]] = set(_STRING_LIMITS.keys())
-
     def _is_string_simple_type(self, dt: ScalarDatatype | str | None) -> bool:
-        return isinstance(dt, ScalarDatatype) and dt in self._STRING_TYPES
+        return isinstance(dt, ScalarDatatype) and dt in STRING_CAPACITIES
 
     def _string_limit(self, dt: ScalarDatatype | str | None) -> int | None:
-        if not isinstance(dt, ScalarDatatype):
-            return None
-        return self._STRING_LIMITS.get(dt)
+        return string_capacity_for_datatype(dt)
 
     def check_string_mapping(
         self,

@@ -2,6 +2,7 @@ import logging
 from typing import Any, cast
 
 import pytest
+from sattline_parser.ast import MappingSource, ParameterMapping, SourceSpan
 from sattline_parser.models.ast_model import (
     BasePicture,
     Equation,
@@ -262,6 +263,37 @@ def test_module_comparison_summary_lists_variant_differences() -> None:
     assert "Found 2 different structural variants" in summary
     assert "Submodules Differences (Recursive Tree)" in summary
     assert "Equations Only in Variant 1 (1): ['MainEq']" in summary
+
+
+def test_fingerprint_treats_mappings_that_differ_only_by_span_as_one_variant() -> None:
+    def _mapping(span: SourceSpan) -> ParameterMapping:
+        return ParameterMapping(
+            target=VarRef(name="Input", span=span),
+            source_type=MappingSource.VARIABLE,
+            is_duration=False,
+            is_source_global=False,
+            source=VarRef(name="Outer", span=span),
+            source_literal=None,
+        )
+
+    def _module(span: SourceSpan) -> SingleModule:
+        return SingleModule(
+            header=_hdr("Pump"),
+            moduledef=None,
+            moduleparameters=[Variable(name="Input", datatype=ScalarDatatype.INTEGER)],
+            localvariables=[],
+            submodules=[],
+            modulecode=None,
+            parametermappings=[_mapping(span)],
+        )
+
+    first = _module(SourceSpan(start=10, end=20, line=1, column=11))
+    second = _module(SourceSpan(start=90, end=100, line=7, column=5))
+
+    result = compare_modules([(["Root", "PumpA"], first), (["Root", "PumpB"], second)])
+
+    assert result.total_found == 2
+    assert result.unique_variants == 1
 
 
 def test_modules_analyzer_is_enabled_by_default() -> None:

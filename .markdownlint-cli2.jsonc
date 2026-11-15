@@ -26,10 +26,10 @@
     "globs": [
         "*.md",
         "docs/**/*.md",
+        ".github/**/*.md",
         "tests/fixtures/**/*.md"
     ],
     "ignores": [
-        "docs/SattLineReferenceDocs/**",
         "docs/references/sattline_system_procedures_reference.md"
     ]
 }

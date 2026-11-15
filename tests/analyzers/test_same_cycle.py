@@ -4,6 +4,7 @@ from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import (
     BasePicture,
     CodeItem,
+    DataType,
     Equation,
     ModuleCode,
     ModuleHeader,
@@ -194,6 +195,48 @@ def test_same_cycle_reports_external_invocation_mapping_shared_access_hazard() -
     assert "Root.SharedValue" in issue.message
     assert "ReaderInst (read)" in issue.message
     assert "Writer (write)" in issue.message
+
+
+def test_same_cycle_reports_field_access_conflicting_with_whole_record_access() -> None:
+    record = DataType(
+        name="Payload",
+        description=None,
+        datecode=None,
+        var_list=[Variable(name="Field", datatype=ScalarDatatype.INTEGER)],
+    )
+    reader = SingleModule(
+        header=_hdr("Reader"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
+        submodules=[],
+        modulecode=ModuleCode(
+            equationblocks=[_eq("ReadEq", [_assign("Output", _varref("Shared.Field"))])],
+            sequences=[],
+        ),
+        parametermappings=[],
+    )
+    writer = SingleModule(
+        header=_hdr("Writer"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=ModuleCode(equationblocks=[_eq("WriteEq", [_assign("Shared", 0)])], sequences=[]),
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[record],
+        localvariables=[Variable(name="Shared", datatype="Payload")],
+        submodules=[reader, writer],
+        modulecode=ModuleCode(equationblocks=[], sequences=[]),
+    )
+
+    report = analyze_same_cycle(bp)
+
+    issue = next(issue for issue in report.issues if issue.kind == "same_cycle_shared_access_hazard")
+    assert "Root.Shared" in issue.message
 
 
 def test_dataflow_non_state_multi_site_across_equations() -> None:

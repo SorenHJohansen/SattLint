@@ -4,7 +4,6 @@ import difflib
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from sattlint.parser_api import (
     BasePicture,
@@ -14,10 +13,13 @@ from sattlint.parser_api import (
     SingleModule,
 )
 
+type SubmoduleNode = SingleModule | FrameModule | ModuleTypeInstance
+type ModuleNode = BasePicture | SubmoduleNode
+
 
 @dataclass(frozen=True)
 class ResolvedModulePath:
-    node: Any
+    node: ModuleNode
     path: list[str]
     display_path_str: str
     current_library: str | None = None
@@ -188,7 +190,7 @@ def resolve_module_by_strict_path(  # noqa: PLR0915
     if any(not segment.strip() for segment in segments):
         raise ValueError(f"Invalid module path syntax: {module_path!r}")
 
-    current: Any = bp
+    current: ModuleNode = bp
     resolved_path: list[str] = [bp.header.name]
     current_library = bp.origin_lib
     current_file = bp.origin_file
@@ -211,15 +213,12 @@ def resolve_module_by_strict_path(  # noqa: PLR0915
             current_file=current_file,
         )
 
-    def children_of(node: Any) -> list[Any]:
-        if isinstance(node, BasePicture):
-            return list(node.submodules or [])
-        if isinstance(node, SingleModule | FrameModule | ModuleTypeDef):
+    def children_of(node: object) -> list[ModuleNode]:
+        if isinstance(node, BasePicture | SingleModule | FrameModule | ModuleTypeDef):
             return list(node.submodules or [])
         if isinstance(node, ModuleTypeInstance):
-            mt = resolve_moduletype(node)
-            return list(mt.submodules or [])
-        return []
+            return list(resolve_moduletype(node).submodules or [])
+        raise TypeError(f"Unexpected module node {type(node).__name__} while resolving a module path")
 
     for segment in segments:
         wanted = segment.strip()
@@ -230,20 +229,16 @@ def resolve_module_by_strict_path(  # noqa: PLR0915
                 f"(node type: {type(current).__name__})."
             )
 
-        matches: list[Any] = [
-            module
-            for module in candidates
-            if hasattr(module, "header") and module.header.name.casefold() == wanted.casefold()
+        matches: list[ModuleNode] = [
+            module for module in candidates if module.header.name.casefold() == wanted.casefold()
         ]
 
         if not matches:
-            names = [module.header.name for module in candidates if hasattr(module, "header")]
+            names = [module.header.name for module in candidates]
             close = difflib.get_close_matches(wanted, names, n=5, cutoff=0.6)
 
             details: list[str] = []
             for module in candidates:
-                if not hasattr(module, "header"):
-                    continue
                 if isinstance(module, ModuleTypeInstance):
                     try:
                         mt = resolve_moduletype(module)

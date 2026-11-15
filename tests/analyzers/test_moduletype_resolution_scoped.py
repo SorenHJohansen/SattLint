@@ -17,6 +17,7 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import FuncCall, FuncCallStmt, VarRef
 
+from sattlint.analyzers import variables as variables_module
 from sattlint.analyzers.framework import AnalysisContext
 from sattlint.analyzers.variables import VariablesAnalyzer, analyze_variables
 from sattlint.models.project_graph import ProjectGraph
@@ -397,7 +398,7 @@ def test_analyzer_resolves_dependency_moduletype_from_graph_dependencies():
     assert "active" not in context.env
 
 
-def test_analyze_variables_derives_library_dependencies_from_graph():
+def test_analyze_variables_derives_library_dependencies_from_graph(monkeypatch: pytest.MonkeyPatch):
     bp, graph = _library_dependency_picture()
     captured: dict[str, object] = {}
 
@@ -406,10 +407,11 @@ def test_analyze_variables_derives_library_dependencies_from_graph():
             captured["library_dependencies"] = kwargs.get("library_dependencies")
             super().__init__(*args, **kwargs)
 
+    monkeypatch.setattr(variables_module, "VariablesAnalyzer", _RecordingAnalyzer)
+
     context = AnalysisContext(
         base_picture=bp,
         graph=graph,
-        variables_collector_class=_RecordingAnalyzer,
     )
 
     analyze_variables(bp, analysis_context=context)

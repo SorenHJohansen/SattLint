@@ -44,6 +44,7 @@ def save_run(record: RunRecord, *, runs_dir: Path | None = None) -> RunRecord:
             started_at=record.started_at,
             finished_at=record.finished_at,
             project_tag=record.project_tag,
+            project_path=record.project_path,
             selected_analyzers=record.selected_analyzers,
             cancelled=record.cancelled,
             targets=record.targets,

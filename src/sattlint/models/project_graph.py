@@ -10,7 +10,7 @@ from ..parser_api import BasePicture, DataType, ModuleTypeDef
 from ._validation_notice import ValidationNotice
 
 if TYPE_CHECKING:
-    from ..graphics.picture_display_paths import PictureDisplayOccurrence
+    from ..graphics.picture_display_paths import PictureDisplayOccurrence, PictureDisplayPathDiagnostic
     from ..graphics.picture_display_runtime import CompositeRecordOccurrence
     from ..graphics.validation import GraphicsCompositeRecord, PictureDisplayRecord
     from ..parser_api import GraphicsBinding, GraphicsMessage
@@ -84,6 +84,10 @@ class GraphicsAttachments:
     composite_occurrences: tuple[CompositeRecordOccurrence, ...] = ()
     picture_display_records: tuple[PictureDisplayRecord, ...] = ()
     picture_display_occurrences: tuple[PictureDisplayOccurrence, ...] = ()
+    #: Path diagnostics computed while the companion was attached. Reading them
+    #: back keeps the analyzer from diagnosing the same occurrences twice.
+    picture_display_diagnostics: tuple[PictureDisplayPathDiagnostic, ...] = ()
+    picture_display_diagnostics_computed: bool = False
 
 
 EMPTY_GRAPHICS_ATTACHMENTS = GraphicsAttachments()
@@ -254,7 +258,7 @@ class ProjectGraph:
                 d.origin_file = source_path.name
             if library_name and not d.origin_lib:
                 d.origin_lib = library_name
-            self.datatype_defs[d.name] = d
+            self.datatype_defs[d.name.casefold()] = d
 
 
 def merge_project_basepicture(root_bp: BasePicture, graph: ProjectGraph) -> BasePicture:

@@ -49,6 +49,14 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   the selected body's own prefix, matching the parser's ordered roots.
 - The unknown parameter mapping target rule stays with SattLint's variables
   analyzer, so a root that carries that finding is still indexed.
+- The Analyze view no longer offers a Cancel control that could not stop a
+  running analysis, since the analysis pipeline has no cancellation checkpoint.
+- A companion is paired only with the artifact family of its body, and companion
+  stems match case-insensitively, following the parser rules.
+- PictureDisplay path diagnosis is computed once per target and reused by the
+  analyzer instead of being repeated.
+- The unused SFC parallel-write collector and contract-index subsystem are
+  removed.
 
 ### Fixed
 
@@ -61,6 +69,46 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   of the analyzed targets.
 - An unknown parameter mapping target is reported for a mapping from a global
   source as well, matching the parser rule.
+- An analyzer that raises now fails the command instead of producing an empty
+  finding set with a zero exit code, and the failed run is not persisted.
+- An unusable cache directory degrades to running without a cache instead of
+  aborting analysis, and a cache write error no longer fails a target.
+- An empty target list is reported as a configuration error instead of an
+  internal error.
+- `import sattlint.runs` works on its own; the application package no longer
+  imports run persistence eagerly.
+- A misspelled configuration key warns instead of being silently discarded.
+- Interactive startup reports a malformed configuration cleanly instead of
+  printing a traceback.
+- Repeated modules with parameter mappings no longer report false drift caused
+  by differing source positions, and datatype names compare case-insensitively.
+- A module type instance resolves its body against the type's own library
+  instead of the caller's library.
+- A same-named datatype declared in different case no longer produces two
+  entries with load-order dependent field resolution.
+- An unknown PictureDisplay asset path can no longer resolve outside the
+  program directory, and very large asset paths are rejected.
+- The analysis summary counts loaded targets rather than the per-run analyzer
+  pseudo-target.
+- Run history records the project file, so adding or removing a target no
+  longer hides earlier runs, and two projects with the same target names no
+  longer share entries.
+- The output log trims in batches instead of rebuilding the whole widget for
+  every line once retention is reached.
+- A failed setup save marks the project dirty instead of reporting the values as
+  saved, and the file-browser add path no longer mutates the config before the
+  duplicate-target check.
+- Deleting a stored analysis run asks for confirmation.
+- The Results view no longer presents an older stored run as the result of a run
+  that was not saved.
+- Moving through stored runs no longer reads and rebuilds on every highlight.
+- The AST refresh status fallback no longer touches widgets from a worker
+  thread.
+- Text reports use section labels instead of internal kind identifiers.
+- The corpus harness fails on a missing target instead of skipping, counts every
+  emitted finding, and every manifest family is schema checked.
+- The release smoke, the Markdown gate, and the contributor documentation now
+  describe what the workflows actually run.
 
 ## [2026.11.4] - 2026-11-12
 

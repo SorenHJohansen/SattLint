@@ -7,7 +7,6 @@ from typing import Any, cast
 
 from ..__version__ import __version__ as _sattlint_version
 from ..core.syntax import CodeMode, code_ext, deps_ext, normalize_code_mode
-from ..runs import load_run as _load_run
 from ._app_textual_setup_display import (
     _configured_target_names,
     _setup_candidate_display_paths,
@@ -44,10 +43,10 @@ def _set_setup_candidate_by_name(self: Any, target_name: str) -> None:
 
 
 def _mark_setup_changed(self: Any, message: str, *, reset_candidate_selection: bool = False) -> None:
-    self._persist_project()
-    self._dirty = self._dirty or not self._project_loaded()
+    persisted = bool(self._persist_project())
     if reset_candidate_selection:
         self._setup_candidate_index = 0
+    self._dirty = self._dirty or not persisted
     self._refresh_summary()
     self._refresh_view()
     self._set_active_action(None)
@@ -164,12 +163,7 @@ def on_results_runs_list_highlighted(self: Any, event: Any) -> None:
     summary = summaries[index]
     if summary.run_id == getattr(self, "_results_tree_run_id", None):
         return
-    record = _load_run(summary.run_id)
-    if record is None:
-        self._report_error("Could not load run", "That run could not be loaded.")
-        return
-    self._selected_run_record = record
-    self._render_selected_run()
+    self._request_results_run_selection(summary.run_id)
 
 
 def _setup_browser_detail_text(self: Any) -> str:
@@ -262,16 +256,17 @@ def _add_target_from_path(self: Any, selected_path: Path) -> None:
         target_dir = selected_path.parent
         stem = selected_path.stem
 
+    target_values = list(_stringify_list_values(self._cfg.get("analyzed_programs_and_libraries")))
+    if stem is not None and any(existing.casefold() == stem.casefold() for existing in target_values):
+        self._write_output(f"Target '{stem}' is already configured.")
+        return
+
     configured_dirs = {d.resolve() for d in _config_directory_paths(self._cfg)}
     if target_dir.resolve() not in configured_dirs:
         other_dirs = list(_stringify_list_values(self._cfg.get("other_lib_dirs")))
         self._cfg["other_lib_dirs"] = [*other_dirs, str(target_dir)]
 
     if stem is not None:
-        target_values = list(_stringify_list_values(self._cfg.get("analyzed_programs_and_libraries")))
-        if any(existing.casefold() == stem.casefold() for existing in target_values):
-            self._write_output(f"Target '{stem}' is already configured.")
-            return
         self._replace_setup_list_value(
             "analyzed_programs_and_libraries",
             [*target_values, stem],
@@ -364,8 +359,8 @@ def _apply_setup_dir_choice(self: Any, field_key: str, selected_path: Path, *, l
         if self._cfg.get(field_key) == new_value:
             return
         self._cfg[field_key] = new_value
-    self._persist_project()
-    self._dirty = self._dirty or not self._project_loaded()
+    persisted = bool(self._persist_project())
+    self._dirty = self._dirty or not persisted
     self._setup_candidate_index = 0
     self._refresh_summary()
     self._refresh_view()

@@ -121,8 +121,39 @@ def _strip_unknown_keys(cfg: ConfigOverrideDict) -> None:
 
 
 def _load_time_config_warnings(cfg: ConfigOverrideDict) -> tuple[ConfigValidationError, ...]:
-    del cfg
-    return ()
+    """Report keys that are about to be stripped, so a typo is not silently ignored."""
+    cfg_map = cast(ConfigObjectMap, cfg)
+    warnings: list[ConfigValidationError] = []
+
+    def report_unknown(section: ConfigObjectMap, *, valid_keys: frozenset[str], prefix: str = "") -> None:
+        for key in section:
+            if key in valid_keys:
+                continue
+            key_path = f"{prefix}.{key}" if prefix else key
+            warnings.append(
+                ConfigValidationError(
+                    key_path=key_path,
+                    message=f"Unknown config key '{key_path}'. It was ignored.",
+                )
+            )
+
+    report_unknown(cfg_map, valid_keys=VALID_TOP_LEVEL_CONFIG_KEYS)
+    for section_name, valid_keys in (
+        ("analysis", VALID_ANALYSIS_KEYS),
+        ("run_history", VALID_RUN_HISTORY_KEYS),
+        ("output", VALID_OUTPUT_KEYS),
+        ("review", VALID_REVIEW_KEYS),
+    ):
+        section = _config_dict(cfg_map.get(section_name))
+        if section is not None:
+            report_unknown(section, valid_keys=valid_keys, prefix=section_name)
+
+    analysis = _config_dict(cfg_map.get("analysis"))
+    spec_compliance = _config_dict(analysis.get("spec_compliance")) if analysis is not None else None
+    if spec_compliance is not None:
+        report_unknown(spec_compliance, valid_keys=VALID_SPEC_COMPLIANCE_KEYS, prefix="analysis.spec_compliance")
+
+    return tuple(warnings)
 
 
 def _build_validation_result(errors: list[ConfigValidationError]) -> ConfigValidationResult:

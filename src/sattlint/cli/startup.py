@@ -193,12 +193,20 @@ def main(
     try:
         # The Textual shell always opens with no project loaded. Projects are
         # opened or created from within the shell via Open Project / New Project.
-        cfg, default_used = load_config_fn(config_path)
+        try:
+            cfg, default_used = load_config_fn(config_path)
+        except (OSError, ValueError) as exc:
+            emit_output_fn(f"Failed to load configuration from {config_path}: {exc}")
+            return 1
 
         apply_debug_fn(cfg)
         resolved_ui_mode = "textual"
         if resolve_interactive_ui_mode_fn is not None:
-            resolved_ui_mode = resolve_interactive_ui_mode_fn(cfg, None)
+            try:
+                resolved_ui_mode = resolve_interactive_ui_mode_fn(cfg, None)
+            except RuntimeError as exc:
+                emit_output_fn(f"Interactive startup failed: {exc}")
+                return 1
         if default_used:
             emit_output_fn("Warning: Default config created. Open Setup before running analysis.")
             pause_fn()

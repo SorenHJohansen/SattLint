@@ -13,6 +13,7 @@ from sattlint.parser_api import (
     Sequence,
     SingleModule,
     Variable,
+    VarRef,
 )
 
 _IGNORED_AST_FIELDS = {
@@ -73,13 +74,20 @@ def _sorted_normalized_items(mapping: Mapping[str, NormalizedValue]) -> tuple[tu
     return tuple(items)
 
 
-def _mapping_var_name(value: object) -> str | None:
+def _mapping_ref_signature(value: VarRef | None) -> tuple[str, str | None] | None:
+    """Return a stable (name, state) signature for a mapping reference.
+
+    ``VarRef.span`` carries a source position and is excluded from equality, so hashing
+    the reference itself or its ``repr`` would treat repeated identical mappings as
+    different. Hash the name and the state marker instead.
+    """
     if value is None:
         return None
-    if isinstance(value, dict):
-        raw_name = cast(dict[object, object], value).get("var_name")
-        return "" if raw_name is None else str(raw_name)
-    return str(value)
+    state = value.state
+    return (
+        normalize_name(value.name),
+        state.casefold() if isinstance(state, str) else None,
+    )
 
 
 def normalize_name(name: str) -> str:
@@ -177,7 +185,7 @@ def _hash_variable_list(variables: list[Variable]) -> int:
         parts.append(
             (
                 normalize_name(variable.name),
-                variable.datatype_text,
+                normalize_name(variable.datatype_text),
                 variable.global_var,
                 variable.const,
                 variable.state,
@@ -193,17 +201,13 @@ def _hash_parameter_mappings(mappings: list[ParameterMapping]) -> int:
     """Create a hash representing parameter mappings."""
     parts: list[tuple[object, ...]] = []
     for mapping in mappings:
-        target = cast(object, mapping.target)
-        source = cast(object, mapping.source)
-        target_str = _mapping_var_name(target) or ""
-        source_str = _mapping_var_name(source)
         parts.append(
             (
-                normalize_name(target_str),
-                mapping.source_type,
+                _mapping_ref_signature(mapping.target),
+                str(mapping.source_type).casefold(),
                 mapping.is_duration,
                 mapping.is_source_global,
-                normalize_name(source_str) if source_str else None,
+                _mapping_ref_signature(mapping.source),
                 repr(mapping.source_literal),
             )
         )

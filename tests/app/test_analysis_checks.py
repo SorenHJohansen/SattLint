@@ -775,6 +775,69 @@ def test_collect_run_checks_result_does_not_prune_when_save_fails(monkeypatch, t
     assert result.run_id is None
 
 
+def test_collect_run_checks_result_exposes_failed_per_run_analyzer() -> None:
+    result = checks_application.collect_run_checks_result(
+        DEFAULT_CONFIG.copy(),
+        ["icf"],
+        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter(())),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="icf",
+                name="ICF configuration",
+                scope="per-run",
+                run=lambda _context: (_ for _ in ()).throw(RuntimeError("boom")),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+    )
+
+    assert result.targets[0].is_pseudo is True
+    assert [(failure.analyzer_name, failure.target_name) for failure in result.analyzer_failures] == [
+        ("ICF configuration", "ICF configuration")
+    ]
+
+
+def test_collect_run_checks_result_keeps_running_when_report_cache_is_unusable(monkeypatch, tmp_path):
+    blocked_cache = tmp_path / "blocked-cache"
+    blocked_cache.write_text("not a directory", encoding="utf-8")
+    monkeypatch.setattr(checks_application, "get_cache_dir", lambda: blocked_cache)
+
+    result = checks_application.collect_run_checks_result(
+        DEFAULT_CONFIG.copy(),
+        ["state-inference"],
+        use_cache=True,
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        named_object("TargetA"),
+                        AnalysisGraphStub(
+                            unavailable_libraries=set(),
+                            analysis_cache_key="project-key",
+                            analysis_manifest_files=frozenset({Path("programs/TargetA.s")}),
+                        ),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                run=lambda _context: SimpleNamespace(issues=[], summary=lambda: "summary"),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+    )
+
+    assert len(result.targets) == 1
+    assert result.targets[0].analyzers[0].status == "completed"
+
+
 def test_run_checks_bypasses_report_cache_when_use_cache_disabled(monkeypatch):
     run_calls: list[str] = []
 

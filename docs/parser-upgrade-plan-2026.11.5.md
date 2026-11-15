@@ -82,6 +82,34 @@ on `main` until the analyzer and project suites were green against the new pin.
   size as under 2026.11.4: 36 and 38 units, with no missing entries. Every
   remaining warning is a pre-existing graphics validation notice about `.emf`
   and `.wmf` resolution.
-- The corpus manifests pass under 2026.11.5. The only analyzer change is the
-  newly active parser rule for an unknown parameter mapping target, which
-  SattLint already reports as its own finding.
+- The analyzer corpus manifests pass under 2026.11.5. Only that family runs
+  today: the workspace, semantic, valid, and edge manifests are checked for
+  schema, an existing target, and resolvable analyzer keys, but no runner
+  asserts their findings yet.
+- The analyzer harness now counts every emitted finding and every declared rule
+  count. Two manifests had recorded only part of their fixture's output: the
+  signal-lifecycle fixture also reports an unconsumed variable, and the
+  high-complexity fixture reports the equation-level finding alongside the
+  module-level one. Both manifests record the full output.
+- The only analyzer change is the newly active parser rule for an unknown
+  parameter mapping target, which SattLint already reports as its own finding.
+
+## Post-review fix batch
+
+A follow-up review of the whole repository found defects outside the parser
+upgrade. The batch fixed the ones that affect correctness or CI trust:
+
+- An analyzer that raises now fails the command instead of exiting zero.
+- An unusable cache directory degrades to no cache instead of aborting.
+- An empty target list is a configuration error, not an internal error.
+- Repeated modules with parameter mappings no longer report false drift.
+- A module type instance resolves against its own library.
+- Run history records the project file, and the UI filters on it.
+- The output log trims in batches rather than rebuilding per line.
+- Companion pairing follows the parser family and case rules.
+- The corpus harness fails on a missing target, and every manifest family is
+  schema checked.
+
+Smaller defects were fixed in the same pass: the run-year import cycle,
+configuration key warnings, startup error handling, report labels, asset path
+containment, run deletion confirmation, and the stale release documentation.

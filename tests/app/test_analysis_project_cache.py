@@ -28,12 +28,12 @@ from sattlint.cache import ANALYSIS_REPORT_CACHE_VERSION, AnalysisReportCache, c
 from sattlint.core import profiling as profiling_module
 from sattlint.models.project_graph import ProjectFailure
 from sattlint.project import loading as analysis_loading_module
-from tests.helpers import named_object
+from tests.helpers import AnalysisGraphStub, named_object
 from tests.helpers.app_projects import build_mini_project_context
 
 
 def test_load_project_returns_cached_project_without_building_loader(monkeypatch):
-    cached_graph = SimpleNamespace()
+    cached_graph = AnalysisGraphStub()
     cached_root = named_object("TargetA")
     seen_cache_dirs: list[Path] = []
     validated_load_calls: list[str] = []
@@ -102,10 +102,8 @@ def test_load_project_rebuilds_when_cached_project_is_invalid(monkeypatch):
         def save(self, key, **kwargs):
             save_calls.append((key, kwargs))
 
-    graph = SimpleNamespace(
+    graph = AnalysisGraphStub(
         ast_by_name={"TargetA": named_object("TargetA")},
-        missing=[],
-        warnings=[],
         source_files={Path("programs/TargetA.s")},
     )
 
@@ -202,34 +200,6 @@ def test_iter_loaded_projects_emits_debug_load_summary_when_debug_enabled(monkey
         for line in lines
     )
     assert any("Graphics load phase totals:" in line and "validate-graphics-file=0.4000s" in line for line in lines)
-
-
-def test_iter_loaded_projects_debug_summary_tolerates_unsized_fields(monkeypatch):
-    lines: list[str] = []
-    project_bp = named_object("TargetA")
-    graph = SimpleNamespace(
-        source_files=object(),
-        warnings=object(),
-        missing=object(),
-        unavailable_libraries=object(),
-    )
-
-    monkeypatch.setattr(project_application, "emit_output", lambda message: lines.append(message))
-
-    loaded = list(
-        project_application.iter_loaded_projects(
-            {"debug": True},
-            use_cache=False,
-            require_analyzed_targets_fn=lambda _cfg: ["TargetA"],
-            load_project_fn=cast(Any, lambda _cfg, **_kwargs: (project_bp, graph)),
-        )
-    )
-
-    assert loaded == [("TargetA", project_bp, graph)]
-    assert any(
-        "DEBUG load summary for TargetA: source_files=0, warnings=0, missing=0, unavailable_libraries=0" in line
-        for line in lines
-    )
 
 
 def test_analysis_report_cache_round_trips_report_payload(tmp_path):
@@ -427,9 +397,7 @@ def test_load_project_saves_full_mode_file_family_in_cache_manifest(
     monkeypatch.setattr(
         analysis_loading_module,
         "_load_parser_graph",
-        lambda *_args, **_kwargs: SimpleNamespace(
-            ast_by_name={"TargetA": root_bp}, missing=[], warnings=[], source_files={code_path}
-        ),
+        lambda *_args, **_kwargs: AnalysisGraphStub(ast_by_name={"TargetA": root_bp}, source_files={code_path}),
     )
     monkeypatch.setattr(analysis_loading_module, "find_dependency_path", fake_find_dependency_path)
     monkeypatch.setattr(analysis_loading_module, "read_dependency_names", fake_read_dependency_names)
@@ -629,10 +597,8 @@ def test_load_project_library_target_includes_configured_reverse_consumers(monke
     monkeypatch.setattr(
         analysis_loading_module,
         "_load_parser_graph",
-        lambda *_args, **_kwargs: SimpleNamespace(
+        lambda *_args, **_kwargs: AnalysisGraphStub(
             ast_by_name={"LibraryTarget": root_bp},
-            missing=[],
-            warnings=[],
             source_files={Path("ProjectLib/LibraryTarget.s")},
         ),
     )
@@ -721,10 +687,8 @@ def test_load_project_library_target_includes_workspace_reverse_consumers(monkey
     monkeypatch.setattr(
         analysis_loading_module,
         "_load_parser_graph",
-        lambda *_args, **_kwargs: SimpleNamespace(
+        lambda *_args, **_kwargs: AnalysisGraphStub(
             ast_by_name={"LibraryTarget": root_bp},
-            missing=[],
-            warnings=[],
             source_files={project_lib_dir / "LibraryTarget.s"},
         ),
     )
@@ -875,10 +839,8 @@ def test_load_project_library_target_workspace_program_usage_suppresses_unused_d
     monkeypatch.setattr(
         analysis_loading_module,
         "_load_parser_graph",
-        lambda *_args, **_kwargs: SimpleNamespace(
+        lambda *_args, **_kwargs: AnalysisGraphStub(
             ast_by_name={"LibraryTarget": root_bp},
-            missing=[],
-            warnings=[],
             source_files={project_lib_dir / "LibraryTarget.s"},
         ),
     )

@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import os
 import select
 import shutil
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -250,6 +250,9 @@ def test_textual_ast_refresh_modal_records_exception_and_dismisses(monkeypatch: 
         lambda *_args, **_kwargs: SimpleNamespace(update=lambda text: status_updates.append(str(text))),
     )
     monkeypatch.setattr(modal, "dismiss", lambda result: dismissed.append(result))
+    # Run the UI hop inline: this test covers the refresh failure path, and the
+    # worker thread has no running app to marshal onto.
+    monkeypatch.setattr(modal, "_call_on_ui", lambda callback, *args, **kwargs: callback(*args, **kwargs))
 
     modal._run_refresh()
 
@@ -275,12 +278,37 @@ def test_textual_ast_refresh_modal_propagates_type_errors(monkeypatch: pytest.Mo
         lambda *_args, **_kwargs: SimpleNamespace(update=lambda _text: None),
     )
     monkeypatch.setattr(modal, "dismiss", lambda _result: None)
+    # Run the UI hop inline so the raised TypeError reaches this test.
+    monkeypatch.setattr(modal, "_call_on_ui", lambda callback, *args, **kwargs: callback(*args, **kwargs))
 
     with pytest.raises(TypeError, match="bad refresh wiring"):
         modal._run_refresh()
 
     assert modal._refresh_failed is True
     assert modal._refresh_exception is None
+
+
+def test_textual_ast_refresh_modal_skips_ui_callback_without_running_app(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    class _NoRunningApp:
+        def call_from_thread(self, *_args: object, **_kwargs: object) -> None:
+            raise RuntimeError("no running app")
+
+    invoked: list[str] = []
+
+    with caplog.at_level(logging.DEBUG, logger=app_textual_widgets_module.__name__):
+        app_textual_widgets_module._AstRefreshModalScreen._call_on_ui(
+            SimpleNamespace(app=_NoRunningApp()),
+            invoked.append,
+            "ignored",
+        )
+
+    assert invoked == []
+    assert any("Skipping UI callback" in record.getMessage() for record in caplog.records)
 
 
 def test_run_textual_shell_passes_app_config_without_startup_refresh(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1596,15 +1624,12 @@ def test_textual_analyze_buttons_unlock_after_finish_action() -> None:
     asyncio.run(_run())
 
 
-def test_textual_analyze_cancel_button_enables_for_running_queue() -> None:
+def test_textual_analyze_view_offers_no_cancel_control() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
     async def _run() -> None:
-        app_instance = _make_textual_app(
-            cfg={"analyzed_programs_and_libraries": ["DemoTarget.s"]},
-            analysis_handlers={"run_checks_result": lambda _cfg: None},
-        )
+        app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": ["DemoTarget.s"]})
 
         async with app_instance.run_test() as pilot:
             await pilot.pause()
@@ -1612,12 +1637,11 @@ def test_textual_analyze_cancel_button_enables_for_running_queue() -> None:
             app_instance._busy = True
             app_instance._active_job_action_id = "action-analyze"
             app_instance._active_job_label = "Run selected analyses"
-            app_instance._active_job_cancel_event = threading.Event()
-            app_instance._active_job_thread = SimpleNamespace(ident=None, is_alive=lambda: True)
             app_instance._refresh_shell_state()
             await pilot.pause()
 
-            assert getattr(app_instance.query_one("#analyze-cancel-running"), "disabled", True) is False
+            with pytest.raises(app_textual_shared_module._TEXTUAL_QUERY_ERRORS):
+                app_instance.query_one("#analyze-cancel-running")
 
     asyncio.run(_run())
 
@@ -1728,6 +1752,26 @@ def test_textual_execute_analyzers_dispatches_to_run_checks(monkeypatch: pytest.
     assert called == [["alpha-analyzer", "beta-analyzer"]]
 
 
+def test_textual_finish_analysis_run_reports_a_run_without_stored_history(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app_instance = _make_textual_app()
+    messages: list[str] = []
+    activated: list[str] = []
+
+    monkeypatch.setattr(app_instance, "_write_output", lambda text: messages.append(text))
+    monkeypatch.setattr(app_instance, "_activate_view", lambda view_name: activated.append(view_name))
+
+    app_instance._finish_analysis_run(SimpleNamespace(run_id=None))
+
+    assert activated == []
+    assert messages == ["This run was not saved to run history, so the Results view still shows earlier runs."]
+
+    app_instance._finish_analysis_run(SimpleNamespace(run_id="stored-run"))
+
+    assert activated == ["results"]
+
+
 def test_textual_execute_analyzers_reports_target_load_failures(monkeypatch: pytest.MonkeyPatch) -> None:
     emitted: list[str] = []
     result = SimpleNamespace(failures=(SimpleNamespace(target_name="Broken"),))
@@ -1785,7 +1829,6 @@ def test_textual_start_action_tracks_active_worker_thread(monkeypatch: pytest.Mo
     assert len(created_workers) == 1
     assert app_instance._active_job_worker is created_workers[0]
     assert app_instance._active_job_thread is None
-    assert app_instance._active_job_cancel_event is not None
 
 
 def test_textual_schedule_ui_coroutine_tracks_pending_task(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1883,55 +1926,17 @@ def test_textual_open_help_popup_propagates_type_errors(monkeypatch: pytest.Monk
     assert shown_help == []
 
 
-def test_textual_ctrl_g_cancel_binding_requests_stop_for_running_analysis() -> None:
-    if not app_textual.has_textual():
-        pytest.skip("Textual not installed")
+def test_textual_analyze_running_note_does_not_promise_cancellation() -> None:
+    app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": ["DemoTarget.s"]})
 
-    async def _run() -> None:
-        app_instance = _make_textual_app(
-            cfg={"analyzed_programs_and_libraries": ["DemoTarget.s"]},
-            get_enabled_analyzers_fn=lambda: [
-                SimpleNamespace(
-                    key="comment-code",
-                    name="Commented-out code",
-                    description="Detect commented-out code.",
-                    category="code-quality",
-                ),
-            ],
-            analysis_handlers={"run_checks_result": lambda _cfg: None},
-        )
+    app_instance._busy = True
+    app_instance._active_job_action_id = "action-analyze"
 
-        async with app_instance.run_test() as pilot:
-            await pilot.pause()
+    note = app_instance._analyze_note_text()
 
-            analyzers_list = app_instance.query_one("#analyze-section-analyzers")
-            analyzers_list.select("comment-code")
-            app_instance._sync_analyze_selection_from_selection_list(analyzers_list)
-            app_instance._write_focused_entry_to_output()
-            app_instance._busy = True
-            app_instance._active_job_action_id = "action-analyze"
-            app_instance._active_job_label = "Run selected analyzers"
-            app_instance._active_job_cancel_event = threading.Event()
-            app_instance._active_job_cancel_requested = False
-            app_instance._active_job_worker = SimpleNamespace(cancel=lambda: None)
-            app_instance._refresh_summary()
-            app_instance._refresh_shell_state()
-            app_instance._refresh_view()
-            await pilot.pause()
-
-            assert app_instance.query_one("#analyze-cancel-running") is not None
-            app_instance.action_cancel_running_analysis()
-
-            output_text = getattr(app_instance.query_one("#output"), "text", "")
-
-            assert app_instance._active_job_cancel_requested is True
-            assert app_instance._active_job_cancel_event is not None
-            assert app_instance._active_job_cancel_event.is_set() is True
-            assert "Cancellation requested. The running analysis will stop at the next checkpoint." in output_text
-            assert str(app_instance.query_one("#view-note").renderable) == ""
-            assert "Analyzer:" in output_text
-
-    asyncio.run(_run())
+    assert "Selected analyses are running." in note
+    assert "Cancel" not in note
+    assert "Ctrl+G" not in note
 
 
 def test_textual_analyze_clear_selection_resets_analyze_state() -> None:
@@ -2500,6 +2505,7 @@ def test_textual_analysis_completion_switches_to_results_view(monkeypatch: pytes
                 output_lines=("=== Target: TargetA ===", "state inference summary"),
                 targets=(),
                 selected_analyzers=("state-inference",),
+                run_id="run9",
             )
             app_instance._finish_analysis_run(result)
             await pilot.pause()
@@ -3229,12 +3235,55 @@ def test_textual_write_output_caps_retained_lines(monkeypatch: pytest.MonkeyPatc
 
     app_instance._write_output("\n".join(f"line {index}" for index in range(4005)))
 
-    assert len(app_instance._session_output_lines) == 4000
-    assert app_instance._session_output_lines[0] == "line 5"
-    assert app_instance._session_output_dropped_line_count == 5
+    assert len(app_instance._session_output_lines) == 2000
+    assert app_instance._session_output_lines[0] == "line 2005"
+    assert app_instance._session_output_dropped_line_count == 2005
     assert app_instance._output_title_text() == "Session output - retaining last 4000 lines"
-    assert fake_widget.text.startswith("line 5\n")
-    assert "line 4\n" not in fake_widget.text
+    assert fake_widget.text.startswith("line 2005\n")
+    assert "line 2004\n" not in fake_widget.text
+
+
+def test_textual_write_output_rebuilds_in_batches_after_retention(monkeypatch: pytest.MonkeyPatch) -> None:
+    app_instance = _make_textual_app(
+        cfg={"analyzed_programs_and_libraries": ["TargetA"], "output": {"retention_lines": 100}}
+    )
+
+    class FakeRichOutput:
+        def __init__(self) -> None:
+            self.text = ""
+            self._plain_text_parts: list[str] = []
+
+        def clear(self) -> None:
+            self.text = ""
+
+        def append_plain_text(self, text: str) -> None:
+            self._plain_text_parts.append(text)
+            self.text += text
+
+        def write(self, _renderable: object, **_kwargs: Any) -> None:
+            return None
+
+        def scroll_end(self, animate: bool = False) -> None:
+            return None
+
+    fake_widget = FakeRichOutput()
+    retained_sizes_at_rebuild: list[int] = []
+    original_rebuild = app_instance._rebuild_output_widget
+
+    def _rebuild_and_record(widget: Any) -> None:
+        retained_sizes_at_rebuild.append(len(app_instance._session_output_lines))
+        original_rebuild(widget)
+
+    monkeypatch.setattr(app_instance, "query_one", lambda *_args, **_kwargs: fake_widget)
+    monkeypatch.setattr(app_instance, "_rebuild_output_widget", _rebuild_and_record)
+
+    for index in range(1000):
+        app_instance._write_output(f"line {index}")
+
+    assert len(app_instance._session_output_lines) <= 100
+    assert retained_sizes_at_rebuild
+    assert max(retained_sizes_at_rebuild) <= 50
+    assert len(retained_sizes_at_rebuild) <= 20
 
 
 def test_textual_write_output_promotes_target_load_error_to_popup(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3853,6 +3902,73 @@ def test_textual_setup_change_autosaves_to_slproj(monkeypatch: pytest.MonkeyPatc
     saved = load_project(project_path)
     assert saved.data["program_dir"] == "/some/program/dir"
     assert "slproj_version" in saved.data
+
+
+def test_textual_setup_save_failure_keeps_the_dirty_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    app_instance = _make_textual_app()
+    errors: list[str] = []
+
+    monkeypatch.setattr(app_instance, "_refresh_summary", lambda: None)
+    monkeypatch.setattr(app_instance, "_refresh_view", lambda: None)
+    monkeypatch.setattr(app_instance, "_set_active_action", lambda _action_id: None)
+    monkeypatch.setattr(app_instance, "_refresh_shell_state", lambda: None)
+    monkeypatch.setattr(app_instance, "_write_output", lambda _text: None)
+    monkeypatch.setattr(app_instance, "_report_error", lambda title, message: errors.append(f"{title}: {message}"))
+    monkeypatch.setattr(
+        app_textual_actions_module,
+        "_save_slproj",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("read-only configuration")),
+    )
+    app_instance._active_view = "setup"
+
+    app_instance._cfg["program_dir"] = "/some/program/dir"
+    app_instance._mark_setup_changed("updated")
+
+    assert app_instance._dirty is True
+    assert errors == ["Failed to save configuration: Failed to save configuration: read-only configuration"]
+
+
+def test_textual_file_browser_duplicate_target_leaves_other_lib_dirs_unchanged(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": ["DemoTarget"]})
+    messages: list[str] = []
+    replacements: list[object] = []
+    target_file = tmp_path / "DemoTarget.s"
+    target_file.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(app_instance, "_write_output", lambda text: messages.append(text))
+    monkeypatch.setattr(
+        app_instance,
+        "_replace_setup_list_value",
+        lambda *args, **_kwargs: replacements.append(args),
+    )
+
+    app_instance._add_target_from_path(target_file)
+
+    assert not app_instance._cfg.get("other_lib_dirs")
+    assert replacements == []
+    assert messages == ["Target 'DemoTarget' is already configured."]
+
+
+def test_textual_file_browser_add_records_target_and_containing_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": []})
+    target_file = tmp_path / "NewTarget.s"
+    target_file.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(app_instance, "_refresh_summary", lambda: None)
+    monkeypatch.setattr(app_instance, "_refresh_view", lambda: None)
+    monkeypatch.setattr(app_instance, "_set_active_action", lambda _action_id: None)
+    monkeypatch.setattr(app_instance, "_refresh_shell_state", lambda: None)
+    monkeypatch.setattr(app_instance, "_write_output", lambda _text: None)
+
+    app_instance._add_target_from_path(target_file)
+
+    assert app_instance._cfg["other_lib_dirs"] == [str(tmp_path)]
+    assert app_instance._cfg["analyzed_programs_and_libraries"] == ["NewTarget"]
+    assert app_instance._dirty is False
 
 
 def test_textual_settings_change_autosaves_to_app_config(monkeypatch: pytest.MonkeyPatch) -> None:

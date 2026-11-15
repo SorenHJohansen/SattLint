@@ -26,7 +26,7 @@ quality gates, validation map, and core beliefs.
 - `sattlint`
 - `python -m pre_commit run --all-files`
 - `python -m ruff check .`
-- `python -m pyright src/sattlint`
+- `python -m pyright src/sattlint tests`
 - `python -m pytest -q --tb=short`
 
 ### Actual Runtime Map
@@ -123,7 +123,7 @@ Canonical first-check command source for SattLint maintainer surfaces.
 - Fast local hygiene gate:
   `python -m pre_commit run --all-files`
 - Full local validation before push:
-  `python -m ruff check . && python -m ruff format --check . && python -m pyright src/sattlint && python -m pytest -q --tb=short`
+  `python -m ruff check . && python -m ruff format --check . && python -m pyright src/sattlint tests && python -m pytest -q --tb=short`
 
 ---
 

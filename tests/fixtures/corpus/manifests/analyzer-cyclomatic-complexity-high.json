@@ -4,6 +4,7 @@
     "mode": "analyzer-cyclomatic-complexity",
     "expectation": {
         "expected_finding_ids": [
+            "equation.cyclomatic_complexity",
             "module.cyclomatic_complexity"
         ],
         "artifact_fragments": {
@@ -14,7 +15,9 @@
             },
             "summary.json": {
                 "analyzer_key": "cyclomatic-complexity",
+                "finding_count": 2,
                 "rule_counts": {
+                    "equation.cyclomatic_complexity": 1,
                     "module.cyclomatic_complexity": 1
                 }
             }

@@ -58,8 +58,9 @@ def run_checks(
     selected_keys: list[str] | None,
     *,
     use_cache: bool = True,
+    project_path: str = "",
 ) -> None:
-    _invoke_checks(checks_module.run_checks, cfg, selected_keys, use_cache=use_cache)
+    _invoke_checks(checks_module.run_checks, cfg, selected_keys, use_cache=use_cache, project_path=project_path)
 
 
 def run_checks_result(
@@ -67,8 +68,11 @@ def run_checks_result(
     selected_keys: list[str] | None,
     *,
     use_cache: bool = True,
+    project_path: str = "",
 ) -> checks_module.ChecksRunResult:
-    return _invoke_checks(checks_module.run_checks_result, cfg, selected_keys, use_cache=use_cache)
+    return _invoke_checks(
+        checks_module.run_checks_result, cfg, selected_keys, use_cache=use_cache, project_path=project_path
+    )
 
 
 def collect_checks_result(
@@ -77,6 +81,7 @@ def collect_checks_result(
     *,
     use_cache: bool = True,
     persist_run: bool = True,
+    project_path: str = "",
 ) -> checks_module.ChecksRunResult:
     """Run checks without emitting the human-readable report to stdout."""
     return _invoke_checks(
@@ -85,4 +90,5 @@ def collect_checks_result(
         selected_keys,
         use_cache=use_cache,
         persist_run=persist_run,
+        project_path=project_path,
     )

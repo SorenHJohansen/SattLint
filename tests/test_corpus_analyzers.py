@@ -3,24 +3,25 @@
 SattLint keeps a corpus of per-analyzer manifests under
 ``tests/fixtures/corpus/manifests/analyzer-*.json``. Each manifest pins a
 target ``.s`` fixture plus the finding ids an analyzer is expected to emit (and
-the ids it must never emit). This harness loads every manifest, runs the
-matching analyzer over its target, and asserts the findings agree with the
-manifest expectations.
+the ids it must never emit), together with the summary counts a stored run would
+report. This harness loads every manifest, runs the matching analyzer over its
+target, and asserts the findings agree with the manifest expectations.
 
-The old parser corpus runner (``sattlint/devtools/corpus.py``) was removed; this
-file restores the *analyzer* corpus coverage, driven directly by the manifest
-files.
+This is the only harness that executes the analyzer family. The semantic,
+valid, edge, and workspace manifests are schema-checked by
+``tests/corpus/test_manifest_schema.py`` but have no runner yet.
 """
 
 from __future__ import annotations
 
 import json
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from sattlint.analyzers._registry_dispatch import (
+from sattlint.analyzers.dispatch import (
     get_registry_analyzer_spec,
     run_registry_analyzer,
 )
@@ -53,13 +54,38 @@ def _load_manifests() -> list[tuple[str, dict[str, Any]]]:
 _MANIFESTS = _load_manifests()
 
 
+def _target_path(manifest: dict[str, Any]) -> Path:
+    return (MANIFESTS_DIR / str(manifest["target_file"])).resolve()
+
+
+def _analyzer_key(manifest: dict[str, Any]) -> str:
+    """The analyzer key the manifest pins.
+
+    Analyzer manifests carry it on the ``status`` artifact; fall back to a
+    top-level key or the analyzer-prefixed mode so a manifest cannot silently
+    run the wrong analyzer.
+    """
+    expectation = manifest["expectation"]
+    fragments = expectation.get("artifact_fragments", {})
+    status = fragments.get("status.json", {})
+    key = status.get("analyzer_key")
+    if not key:
+        key = manifest.get("analyzer_key")
+    if not key:
+        key = str(manifest.get("mode", "")).removeprefix("analyzer-")
+    return str(key)
+
+
 def _load_target(manifest: dict[str, Any]) -> tuple[Any, Any]:
     """Load the manifest's target fixture into ``(base_picture, graph)``."""
-    target_path = (MANIFESTS_DIR / str(manifest["target_file"])).resolve()
+    target_path = _target_path(manifest)
+    assert target_path.is_file(), f"{manifest['case_id']}: target fixture missing: {target_path}"
+
+    shared_dir = target_path.parent.parent / "shared"
     cfg: dict[str, Any] = {
         "program_dir": target_path.parent,
         "other_lib_dirs": [],
-        "ABB_lib_dir": target_path.parent,
+        "ABB_lib_dir": shared_dir if shared_dir.is_dir() else target_path.parent,
         "mode": CodeMode.DRAFT,
         "debug": False,
     }
@@ -84,50 +110,69 @@ def _build_context(
     )
 
 
-def _candidate_finding_ids(issue: Any) -> set[str]:
-    """All canonical ids an issue may be asserted against.
+def _ordered_finding_ids(issue: Any) -> list[str]:
+    """All canonical ids an issue may be asserted against, in priority order.
 
     Analyzers report findings under different conventions: some expose a
     ``rule_id``, some a ``rule.id`` (for rule-shaped issues), and the
     ``variables`` analyzer emits ``VariableIssue`` enums. Collect the union so
-    manifest expectations can use either convention.
+    manifest expectations can use either convention; the first entry is the id
+    used for counting, so one issue never counts twice.
     """
-    ids: set[str] = set()
-
-    rule_id = getattr(issue, "rule_id", None)
-    if rule_id:
-        ids.add(rule_id)
+    ids: list[str] = []
 
     rule = getattr(issue, "rule", None)
     if rule is not None and getattr(rule, "id", None):
-        ids.add(rule.id)
+        ids.append(str(rule.id))
+
+    rule_id = getattr(issue, "rule_id", None)
+    if rule_id:
+        ids.append(str(rule_id))
 
     if isinstance(issue, VariableIssue):
         kind_value = getattr(issue.kind, "value", None)
         if isinstance(kind_value, str):
-            ids.add(kind_value)
+            ids.append(kind_value)
 
     kind = getattr(issue, "kind", None)
     if isinstance(kind, str):
-        ids.add(kind)
+        ids.append(kind)
 
-    return ids - _IGNORED_FINDING_IDS
+    ordered: list[str] = []
+    for finding_id in ids:
+        if finding_id not in _IGNORED_FINDING_IDS and finding_id not in ordered:
+            ordered.append(finding_id)
+    return ordered
 
 
-def _run_analyzer(manifest: dict[str, Any]) -> set[str]:
-    """Run the manifest's analyzer and return the set of emitted finding ids."""
+def _collect_findings(report: Any, case_id: str) -> tuple[set[str], list[str]]:
+    """Return every emitted id plus one counted id per finding."""
+    emitted: set[str] = set()
+    counted: list[str] = []
+
+    for issue in getattr(report, "issues", ()) or ():
+        ids = _ordered_finding_ids(issue)
+        assert ids, f"{case_id}: finding has no rule id or kind: {issue!r}"
+        emitted.update(ids)
+        counted.append(ids[0])
+
+    # Raw analyzer hits are evidence, not findings, so they contribute ids for
+    # expectation matching but never to the finding count.
+    for hit in getattr(report, "hits", ()) or ():
+        emitted.update(_ordered_finding_ids(hit))
+
+    return emitted, counted
+
+
+def _run_analyzer(manifest: dict[str, Any]) -> tuple[set[str], list[str]]:
+    """Run the manifest's analyzer and return the emitted and counted ids."""
     base_picture, graph = _load_target(manifest)
     shared = AnalysisSharedArtifacts()
-    analyzer_key = str(manifest["expectation"]["artifact_fragments"]["status.json"]["analyzer_key"])
-    spec = get_registry_analyzer_spec(analyzer_key)
+    spec = get_registry_analyzer_spec(_analyzer_key(manifest))
 
     context = _build_context(base_picture, graph, shared)
     report = run_registry_analyzer(spec, context)
-
-    emitted: set[str] = set()
-    for issue in getattr(report, "issues", ()) or ():
-        emitted |= _candidate_finding_ids(issue)
-    return emitted
+    return _collect_findings(report, str(manifest["case_id"]))
 
 
 @pytest.mark.parametrize(
@@ -135,12 +180,26 @@ def _run_analyzer(manifest: dict[str, Any]) -> set[str]:
     [pytest.param(case_id, manifest, id=case_id) for case_id, manifest in _MANIFESTS],
 )
 def test_corpus_manifest_analyzer_run(case_id: str, manifest: dict[str, Any]) -> None:
-    """The analyzer emits all expected finding ids and none of the forbidden ones."""
+    """The analyzer matches the manifest's finding ids and summary counts."""
     expectation = manifest["expectation"]
     expected = set(expectation.get("expected_finding_ids", [])) - _IGNORED_FINDING_IDS
     forbidden = set(expectation.get("forbidden_finding_ids", []))
 
-    emitted = _run_analyzer(manifest)
+    emitted, counted = _run_analyzer(manifest)
 
     assert not (expected - emitted), f"{case_id}: expected finding ids not emitted: {sorted(expected - emitted)}"
     assert not (forbidden & emitted), f"{case_id}: forbidden finding ids emitted: {sorted(forbidden & emitted)}"
+
+    summary = expectation.get("artifact_fragments", {}).get("summary.json", {})
+
+    if "finding_count" in summary:
+        assert len(counted) == summary["finding_count"], (
+            f"{case_id}: finding count {len(counted)} != expected {summary['finding_count']}: {sorted(counted)}"
+        )
+
+    rule_counts = summary.get("rule_counts")
+    if isinstance(rule_counts, dict):
+        actual_counts = Counter(counted)
+        assert dict(actual_counts) == rule_counts, (
+            f"{case_id}: rule counts {dict(actual_counts)} != expected {rule_counts}"
+        )

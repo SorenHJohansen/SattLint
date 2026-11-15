@@ -20,8 +20,6 @@ from sattlint.parser_api import (
 
 from ..framework import AnalysisContext, Issue, SimpleReport
 from ..shared.target_origin import TargetOriginFilter, build_target_origin_filter_for_basepicture
-from ..variables import VariablesAnalyzer
-from ._sfc_collectors import _SfcAccessCollector
 from ._sfc_guard_logic import (
     _collect_transition_logic_issues,
     _format_branch_path,
@@ -130,16 +128,6 @@ def _format_terminator(terminated_by: dict[str, Any]) -> str:
     return terminator
 
 
-def get_variables_collector_class() -> type[VariablesAnalyzer]:
-    """Return the SFC-aware variables analyzer class.
-
-    When SFC parallel-branch collection is enabled, the canonical ``variables``
-    analyzer is run as this class so parallel-write data is recorded during the
-    single canonical traversal instead of a separate SFC walk.
-    """
-    return _SfcAccessCollector
-
-
 def analyze_sfc(
     base_picture: BasePicture,
     analysis_context: AnalysisContext | None = None,
@@ -205,6 +193,5 @@ __all__ = [
     "SfcReachabilityFinding",
     "analyze_sfc",
     "collect_sfc_reachability_findings",
-    "get_variables_collector_class",
     "iter_sfc_modulecodes",
 ]

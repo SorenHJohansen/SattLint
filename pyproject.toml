@@ -78,7 +78,6 @@ markers = [
     "unit: marks tests as unit tests",
     "parser: marks tests related to parser functionality",
     "analyzer: marks tests related to analyzer functionality",
-    "quarantine: marks flaky tests that should be skipped in CI",
 ]
 
 [tool.coverage.report]

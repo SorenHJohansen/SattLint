@@ -50,7 +50,7 @@ from sattlint.parser_api import read_dependency_names as parser_read_dependency_
 from ..core.syntax import CodeMode
 from ..graphics.graphics_helpers import attach_graphics_companion
 from ..models.project_graph import ProjectGraph
-from ..validation.shared import StructuralValidationError, ValidationNotice
+from ..validation.policy import error_for, notice_for
 from .loading_support import (
     record_project_failure as _record_project_failure,
 )
@@ -338,7 +338,12 @@ def convert_project_into_graph(
             index_program_view=index_program_view,
         )
     for name in root_names:
-        if _graph_has_name(graph, name, indexed_names) or name.casefold() in graph.unavailable_libraries:
+        key = name.casefold()
+        # A root that is present but failed validation already has a failure
+        # entry, and that entry is what the target report shows. Recording it
+        # as missing as well would hide the validation detail behind a
+        # generic missing-file message.
+        if _graph_has_name(graph, name, indexed_names) or key in graph.unavailable_libraries or key in graph.failures:
             continue
         record_missing_library(
             graph,
@@ -410,6 +415,12 @@ def _index_program(
     except Exception as ex:
         if strict:
             raise
+        # Validation and graphics/indexing run after the name is committed to
+        # the graph, so a later failure must retract the partial program;
+        # otherwise it looks loaded while its definitions were never indexed.
+        graph.ast_by_name.pop(name, None)
+        indexed_names.discard(name.casefold())
+        graph.graphics_attachments.pop(name, None)
         _record_project_failure(graph, name, ex)
 
 
@@ -435,7 +446,7 @@ def _apply_diagnostics(
     for diagnostic in program.diagnostics:
         if diagnostic.code in _SUPPRESSED_DIAGNOSTIC_CODES:
             continue
-        notice = _notice(diagnostic)
+        notice = notice_for(diagnostic)
         if diagnostic.code is DiagnosticCode.DATECODE_CONFLICT:
             _record_project_warning(graph, program.name, notice)
             continue
@@ -446,27 +457,7 @@ def _apply_diagnostics(
         _record_project_warning(graph, program.name, notice)
 
     if first_error is not None:
-        raise _structural_error(first_error)
-
-
-def _notice(diagnostic: Diagnostic) -> ValidationNotice:
-    span = diagnostic.span
-    return ValidationNotice(
-        message=diagnostic.message,
-        line=None if span is None else span.line,
-        column=None if span is None else span.column,
-        length=None if span is None else max(span.end - span.start, 0),
-    )
-
-
-def _structural_error(diagnostic: Diagnostic) -> StructuralValidationError:
-    notice = _notice(diagnostic)
-    return StructuralValidationError(
-        notice.message,
-        line=notice.line,
-        column=notice.column,
-        length=notice.length,
-    )
+        raise error_for(first_error)
 
 
 def _graph_has_name(graph: ProjectGraph, name: str, indexed_names: set[str]) -> bool:

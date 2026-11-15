@@ -149,6 +149,96 @@ def test_build_for_typedef_without_parent_context_skips_source_resolution() -> N
     assert issues == []
 
 
+def test_build_for_typedef_uses_typedef_library_for_instance_context() -> None:
+    base_picture = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+    )
+    builder, issues = _builder(base_picture)
+    parent_context = ScopeContext(
+        env={},
+        param_mappings={},
+        module_path=["Root"],
+        display_module_path=["Root<BP>"],
+        current_library="ParentLib",
+        parent_context=None,
+    )
+    moduletype = ModuleTypeDef(
+        name="WorkerType",
+        moduleparameters=[],
+        localvariables=[],
+        submodules=[],
+        moduledef=None,
+        modulecode=None,
+        origin_lib="TypeLib",
+    )
+    instance = ModuleTypeInstance(
+        header=_hdr("Worker"),
+        moduletype_name="WorkerType",
+        parametermappings=[],
+    )
+
+    context = builder.build_for_typedef(
+        moduletype,
+        instance,
+        parent_context=parent_context,
+        module_path=["Root", "Worker"],
+        display_module_path=["Root<BP>", "Worker<MT:WorkerType>"],
+    )
+
+    assert context.current_library == "TypeLib"
+    assert issues == []
+
+
+def test_build_for_typedef_falls_back_to_parent_library_when_typedef_has_none() -> None:
+    base_picture = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+    )
+    builder, _issues = _builder(base_picture)
+    parent_context = ScopeContext(
+        env={},
+        param_mappings={},
+        module_path=["Root"],
+        display_module_path=["Root<BP>"],
+        current_library="ParentLib",
+        parent_context=None,
+    )
+    moduletype = ModuleTypeDef(
+        name="WorkerType",
+        moduleparameters=[],
+        localvariables=[],
+        submodules=[],
+        moduledef=None,
+        modulecode=None,
+    )
+    instance = ModuleTypeInstance(
+        header=_hdr("Worker"),
+        moduletype_name="WorkerType",
+        parametermappings=[],
+    )
+
+    context = builder.build_for_typedef(
+        moduletype,
+        instance,
+        parent_context=parent_context,
+        module_path=["Root", "Worker"],
+        display_module_path=["Root<BP>", "Worker<MT:WorkerType>"],
+    )
+
+    assert context.current_library == "ParentLib"
+
+
 def test_build_for_basepicture_uses_explicit_root_library() -> None:
     base_picture = BasePicture(
         header=_hdr("Root"),

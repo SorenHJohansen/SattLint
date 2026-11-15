@@ -9,14 +9,21 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any, cast
 
-from sattlint.parser_api import BasePicture, LoadValidation, ProjectLoadError
+from sattlint.parser_api import (
+    BasePicture,
+    LoadMode,
+    LoadValidation,
+    ProjectLoadError,
+    resolve_distribution_companion_path,
+)
 
 from .. import cache as cache_module
 from ..config.types import ConfigDict
 from ..core import profiling as profiling_module
 from ..core.debug import log_debug_exception
+from ..core.syntax import CodeMode, normalize_code_mode
 from ..graphics.graphics_context_helpers import resolve_graphics_companion_path
-from ..models.project_graph import ProjectGraph, RootOrigin, merge_project_basepicture
+from ..models.project_graph import ProjectGraph, merge_project_basepicture
 from ..utils.casefolding import casefold_equal, casefold_key
 from .loader_config import build_parser_binding, validate_loader_config
 from .loading_support import (
@@ -28,9 +35,10 @@ from .loading_support import (
     _include_reverse_library_consumers,
     _with_status_line,
     log,
-    record_project_failure,
+    record_project_load_failure,
 )
 from .parser_adapter import (
+    CircularDependencyError,
     ParserProjectBinding,
     convert_project_into_graph,
     find_dependency_path,
@@ -79,12 +87,10 @@ def source_paths_for_current_target(
     casefold_equal_fn: Callable[[str, str], bool],
     casefold_key_fn: Callable[[str], str],
 ) -> set[Path]:
-    source_files: set[Path] = getattr(graph, "source_files", set())
-    root_source_path_for_basepicture = getattr(graph, "root_source_path_for_basepicture", None)
-    if callable(root_source_path_for_basepicture):
-        root_source_path = root_source_path_for_basepicture(project_bp)
-        if isinstance(root_source_path, Path):
-            return {root_source_path}
+    source_files: set[Path] = graph.source_files
+    root_source_path = graph.root_source_path_for_basepicture(project_bp)
+    if isinstance(root_source_path, Path):
+        return {root_source_path}
 
     origin_file = getattr(project_bp, "origin_file", None)
     if origin_file:
@@ -122,16 +128,24 @@ def cache_manifest_files(
     *,
     find_dependency_path_fn: Callable[[str], Path | None],
     resolve_graphics_companion_path_fn: Callable[..., Path | None],
+    resolve_distribution_companion_path_fn: Callable[..., Path | None] = resolve_distribution_companion_path,
 ) -> set[Path]:
-    manifest_files: set[Path] = set(getattr(graph, "source_files", set()))
+    manifest_files: set[Path] = set(graph.source_files)
+    parser_mode = LoadMode((normalize_code_mode(cfg.get("mode")) or CodeMode.OFFICIAL).value)
 
     for source_path in tuple(manifest_files):
         companion_path = resolve_graphics_companion_path_fn(source_path, mode=cfg.get("mode"))
         if companion_path is not None and companion_path != source_path:
             manifest_files.add(companion_path)
 
-    ast_by_name = cast(dict[str, BasePicture], getattr(graph, "ast_by_name", {}))
-    for target_name in ast_by_name:
+        # A distribution companion is a second artifact beside the same body.
+        # Editing it changes what the parser sees, so it belongs in the
+        # manifest even though SattLint never analyzes its contents.
+        distribution_path = resolve_distribution_companion_path_fn(source_path, mode=parser_mode)
+        if distribution_path is not None:
+            manifest_files.add(distribution_path)
+
+    for target_name in graph.ast_by_name:
         # The parser resolves a sidecar beside the selected body, so the lookup
         # needs no requester directory.
         deps_path = find_dependency_path_fn(target_name)
@@ -184,15 +198,18 @@ def _visit_targets_into_graph(
     # programs (typically the selected library's own closure) are not re-parsed.
     try:
         project = load_parser_project(binding, names)
-    except ProjectLoadError:
+    except (ProjectLoadError, CircularDependencyError):
         # The parser returns a complete closure or raises, so one broken
         # consumer fails the batch. The selected target is already in the graph,
         # so retry per consumer and record the ones that cannot load.
         for name in names:
             try:
                 single = load_parser_project(binding, [name])
-            except ProjectLoadError as exc:
-                record_project_failure(graph, name, exc)
+            except (ProjectLoadError, CircularDependencyError) as exc:
+                # A cycle is a load failure of the consumer; keep its parser
+                # explanation but record it through the load-failure channel.
+                load_error = exc if isinstance(exc, ProjectLoadError) else ProjectLoadError(name, str(exc))
+                record_project_load_failure(graph, name, load_error)
                 continue
             convert_project_into_graph(
                 single,
@@ -239,18 +256,16 @@ def load_project(  # noqa: PLR0915
         if ast_only:
             return root_bp
         project_bp = merge_project_basepicture(root_bp, graph)
-        root_origin_for_basepicture = getattr(graph, "root_origin_for_basepicture", None)
-        if callable(root_origin_for_basepicture):
-            root_origin = cast(RootOrigin | None, root_origin_for_basepicture(project_bp))
-            if root_origin is not None:
-                origin_file = root_origin.origin_file
-                origin_lib = root_origin.library_name
-                if origin_file and origin_file != getattr(project_bp, "origin_file", None):
-                    project_bp = replace(project_bp, origin_file=origin_file, origin_lib=origin_lib)
+        root_origin = graph.root_origin_for_basepicture(project_bp)
+        if root_origin is not None:
+            origin_file = root_origin.origin_file
+            origin_lib = root_origin.library_name
+            if origin_file and origin_file != getattr(project_bp, "origin_file", None):
+                project_bp = replace(project_bp, origin_file=origin_file, origin_lib=origin_lib)
         return project_bp
 
     key = cache_key_for_target_fn(cfg, selected_target)
-    if use_cache:
+    if use_cache and cache is not None:
         cached = cache.load_validated(key)
         payload_map = cast(Mapping[str, object], cached) if isinstance(cached, Mapping) else None
         cached_project = payload_map.get("project") if payload_map is not None else None
@@ -309,9 +324,8 @@ def load_project(  # noqa: PLR0915
             "missing": graph.missing,
             "warnings": graph.warnings,
             "direct_dependencies": direct_dependencies,
+            "failures": graph.failures,
         }
-        if hasattr(graph, "failures"):
-            error_kwargs["failures"] = graph.failures
         raise target_load_error_factory(selected_target, **error_kwargs)
 
     if collect_stage_timings:
@@ -360,11 +374,19 @@ def load_project(  # noqa: PLR0915
         cache_key=key,
         manifest_files=manifest_files,
     )
-    cache.save(
-        key,
-        project=(root_bp, graph),
-        files=manifest_files,
-    )
+    if graph.unavailable_libraries:
+        # A dependency that is absent now can appear as a file later, and the
+        # manifest cannot see a file that does not exist yet. Persisting this
+        # graph would replay the unresolved result after the library is added,
+        # so load again next run instead.
+        return project_bp, graph
+    if cache is not None:
+        with contextlib.suppress(OSError):
+            cache.save(
+                key,
+                project=(root_bp, graph),
+                files=manifest_files,
+            )
     return project_bp, graph
 
 
@@ -461,7 +483,8 @@ def force_refresh_ast(
     emit_output_fn(f"Refreshing AST caches for {total_targets} target(s)...")
     for index, target_name in enumerate(targets, start=1):
         emit_output_fn(f"\nRefreshing AST cache for {target_name}... ({index}/{total_targets})")
-        cache.clear(cache_key_for_target_fn(cfg, target_name))
+        if cache is not None:
+            cache.clear(cache_key_for_target_fn(cfg, target_name))
         started_at = perf_counter()
         try:
             result = _call_load_project_compat(
@@ -479,13 +502,12 @@ def force_refresh_ast(
         duration_ms = (perf_counter() - started_at) * 1000
         if collect_stage_timings:
             _bp, graph = result
-            stage_timings = getattr(graph, "load_stage_timings", None)
-            if isinstance(stage_timings, dict):
-                stage_timings_s = dict(cast(dict[str, float], stage_timings))
+            stage_timings_s = dict(graph.load_stage_timings)
+            if stage_timings_s:
                 stage_timings_ms = profiling_module.normalize_named_timings_ms(stage_timings_s, scale=1000.0)
                 stage_bottleneck = profiling_module.bottleneck_from_named_timings(stage_timings_ms, kind="stage")
                 graphics_timings_ms = profiling_module.normalize_named_timings_ms(
-                    getattr(graph, "graphics_load_timings", None),
+                    graph.graphics_load_timings,
                     scale=1000.0,
                 )
                 graphics_bottleneck = profiling_module.bottleneck_from_named_timings(
@@ -561,6 +583,9 @@ def ensure_ast_cache(
         return True
 
     cache = cache_module.build_ast_cache(get_cache_dir_fn(), ast_cache_cls)
+    if cache is None:
+        emit_output_fn("AST cache is unavailable; skipping the cache refresh.")
+        return True
     ok = True
     total_targets = len(targets)
     emit_output_fn(f"Refreshing AST caches for {total_targets} target(s)...")

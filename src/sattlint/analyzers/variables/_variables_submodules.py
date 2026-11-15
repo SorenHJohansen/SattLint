@@ -327,7 +327,7 @@ def _walk_moduletype_instance_subtree(  # noqa: PLR0915
             parent_env=parent_context.env,
             parent_context=parent_context,
             parent_path=[*parent_path, child_name],
-            current_library=parent_context.current_library,
+            current_library=moduletype.origin_lib or parent_context.current_library,
         )
 
 

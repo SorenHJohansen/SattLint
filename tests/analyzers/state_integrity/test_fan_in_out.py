@@ -417,12 +417,13 @@ def test_variables_report_summary_keeps_filtered_empty_output_scoped():
     summary = report.summary()
 
     assert "Issues: 0" in summary
-    assert "Selected issue kinds: reset_contamination" in summary
+    assert "Selected issue kinds: Reset contamination (missing reset writes)" in summary
     assert "Sections:" not in summary
     assert "  - Reset contamination (missing reset writes): 0" not in summary
     assert "Reset contamination (missing reset writes)" in summary
     assert "      none" in summary
-    assert summary.endswith("No reset contamination (missing reset writes) found.")
+    assert "No reset contamination (missing reset writes) found." not in summary
+    assert "No issues found for selected issue kinds" not in summary
     assert "Unused variables" not in summary
 
 
@@ -443,11 +444,11 @@ def test_variables_report_summary_omits_sections_overview_for_single_visible_kin
     summary = report.summary()
 
     assert "Issues: 1" in summary
-    assert "Selected issue kinds: never_read" in summary
+    assert "Selected issue kinds: Written but never read variables" in summary
     assert "Sections:" not in summary
-    assert summary.count("Written but never read variables") == 1
+    assert summary.count("  - Written but never read variables (1):") == 1
     assert "  - Written but never read variables: 1" not in summary
-    assert "  - Written but never read variables (1):" in summary
+    assert "No written but never read variables found." not in summary
 
 
 def test_variable_issue_str_formats_datatype_literal_and_role_only_variants():

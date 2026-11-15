@@ -23,6 +23,7 @@ from ._app_textual_shared import (
     _TEXTUAL_STATIC,
     _TEXTUAL_TREE,
     _TEXTUAL_VERTICAL,
+    InteractionRequest,
     _query_required,
 )
 
@@ -344,8 +345,11 @@ def _build_run_tree(
 
 
 def _run_overview_text(record: RunRecord) -> str:
+    project_path = getattr(record, "project_path", "")
+    project_line = f"Project: {project_path}\n" if project_path else ""
     return (
         f"Analysis run {record.finished_at}\n"
+        f"{project_line}"
         f"Configuration: {record.project_tag or '(none)'}\n"
         f"Targets: {record.target_count}\n"
         f"Analyzers: {record.analyzer_count}\n"
@@ -399,12 +403,26 @@ def _current_project_tag(self: Any) -> str:
     return ""
 
 
+def _current_project_path(self: Any) -> str:
+    raw_path = getattr(self, "_config_path", None)
+    return "" if raw_path is None else str(raw_path)
+
+
 def _results_run_summaries(self: Any) -> tuple[RunSummary, ...]:
     summaries = list_runs()
     project_tag = self._current_project_tag()
     if not project_tag:
         return ()
-    return tuple(summary for summary in summaries if summary.project_tag == project_tag)
+    project_path = self._current_project_path()
+    if not project_path:
+        # A session opened on a plain app config has no project file, so only
+        # the legacy tag can identify its runs.
+        return tuple(summary for summary in summaries if summary.project_tag == project_tag)
+    return tuple(
+        summary
+        for summary in summaries
+        if summary.project_path == project_path or (not summary.project_path and summary.project_tag == project_tag)
+    )
 
 
 def _apply_results_list_index(list_view: Any, index: int) -> None:
@@ -472,6 +490,7 @@ def _render_results_tree(self: Any, record: RunRecord) -> None:
     if _TEXTUAL_TREE is None:
         self._write_output("Results tree is unavailable in the current Textual session.")
         return
+    previous_run_id = getattr(self, "_results_tree_run_id", None)
     self._selected_run_record = record
     tree = getattr(self, "_results_tree_widget", None)
     if tree is None:
@@ -480,6 +499,7 @@ def _render_results_tree(self: Any, record: RunRecord) -> None:
         tree_host.mount(tree)
         self._results_tree_widget = tree
         self._results_tree_render_key = None
+        self._results_tree_run_id = None
     group_by = self._results_group_by()
     show_empty_analyzers = self._results_show_empty_analyzers()
     render_key = (record.run_id, show_empty_analyzers, group_by)
@@ -494,7 +514,37 @@ def _render_results_tree(self: Any, record: RunRecord) -> None:
         self._results_tree_run_id = record.run_id
     self._update_results_group_button()
     self._refresh_shell_state()
-    self._write_output("Analysis results are shown in the tree. Select a node for details.")
+    if record.run_id != previous_run_id:
+        self._write_output("Analysis results are shown in the tree. Select a node for details.")
+
+
+def _request_results_run_selection(self: Any, run_id: str) -> None:
+    """Load the run the user highlighted in the runs list, deferred.
+
+    A highlight used to read the run from disk and rebuild the tree inline, so
+    holding an arrow key down through a long list paid for every run on the way
+    past. The request is deferred and coalesced instead: only the run the user
+    settles on is read and rendered.
+    """
+    if not run_id or run_id == getattr(self, "_results_tree_run_id", None):
+        return
+    if run_id == self._results_pending_run_id:
+        return
+    self._results_pending_run_id = run_id
+    self.call_after_refresh(self._apply_pending_results_run_selection)
+
+
+def _apply_pending_results_run_selection(self: Any) -> None:
+    run_id = self._results_pending_run_id
+    self._results_pending_run_id = None
+    if run_id is None or run_id == getattr(self, "_results_tree_run_id", None):
+        return
+    record = load_run(run_id)
+    if record is None:
+        self._report_error("Could not load run", "That run could not be loaded.")
+        return
+    self._selected_run_record = record
+    self._render_selected_run()
 
 
 def _results_show_empty_analyzers(self: Any) -> bool:
@@ -595,13 +645,32 @@ def _delete_selected_run(self: Any) -> None:
     if record is None:
         self._write_output("No run is selected.")
         return
-    if not delete_run(record.run_id):
-        self._write_output("That run could not be deleted.")
+    if self._active_request is not None:
         return
-    self._write_output(f"Deleted run {_format_run_timestamp(record.finished_at)}.")
-    self._selected_run_record = None
-    self._refresh_results_view()
-    self._refresh_shell_state()
+
+    run_label = _format_run_timestamp(record.finished_at)
+
+    def _do_delete(response: object) -> None:
+        if not bool(response):
+            self._write_output("Delete canceled.")
+            return
+        if not delete_run(record.run_id):
+            self._write_output("That run could not be deleted.")
+            return
+        self._write_output(f"Deleted run {run_label}.")
+        self._selected_run_record = None
+        self._refresh_results_view()
+        self._refresh_shell_state()
+
+    self.present_request(
+        InteractionRequest(
+            kind="confirm",
+            title="Delete run",
+            message=f"Delete the stored run from {run_label}? This cannot be undone.",
+            note="The run and its results will be removed from the run history.",
+        ),
+        on_response_fn=_do_delete,
+    )
 
 
 if TYPE_CHECKING:
@@ -609,9 +678,12 @@ if TYPE_CHECKING:
     class _TextualResultsMixin:
         def on_tree_node_selected(self, event: Any) -> None: ...
         def _current_project_tag(self) -> str: ...
+        def _current_project_path(self) -> str: ...
         def _refresh_results_runs_list(self) -> None: ...
         def _render_results_tree(self, record: RunRecord) -> None: ...
         def _render_selected_run(self) -> None: ...
+        def _request_results_run_selection(self, run_id: str) -> None: ...
+        def _apply_pending_results_run_selection(self) -> None: ...
         def _expand_all_results(self) -> None: ...
         def _collapse_all_results(self) -> None: ...
         def _results_show_empty_analyzers(self) -> bool: ...
@@ -628,9 +700,12 @@ else:
 
         on_tree_node_selected = on_tree_node_selected
         _current_project_tag = _current_project_tag
+        _current_project_path = _current_project_path
         _refresh_results_runs_list = _refresh_results_runs_list
         _render_results_tree = _render_results_tree
         _render_selected_run = _render_selected_run
+        _request_results_run_selection = _request_results_run_selection
+        _apply_pending_results_run_selection = _apply_pending_results_run_selection
         _expand_all_results = _expand_all_results
         _collapse_all_results = _collapse_all_results
         _results_show_empty_analyzers = _results_show_empty_analyzers

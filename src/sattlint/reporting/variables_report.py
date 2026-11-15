@@ -256,14 +256,14 @@ class VariablesReport:
         selected_kinds = self._ordered_selected_issue_kinds()
         if not selected_kinds:
             return None
-        return f"Selected issue kinds: {', '.join(kind.value for kind in selected_kinds)}"
+        return f"Selected issue kinds: {', '.join(SECTION_TITLES[kind] for kind in selected_kinds)}"
 
     def _selected_no_issues_message(self) -> str:
         selected_kinds = self._ordered_selected_issue_kinds()
         if len(selected_kinds) == 1:
             return f"No {SECTION_TITLES[selected_kinds[0]].lower()} found."
         if selected_kinds:
-            joined = ", ".join(kind.value for kind in selected_kinds)
+            joined = ", ".join(SECTION_TITLES[kind] for kind in selected_kinds)
             return f"No issues found for selected issue kinds: {joined}."
         return "No issues found."
 
@@ -397,7 +397,4 @@ class VariablesReport:
         for kind in summary_kinds:
             lines.append("")
             self._append_section(lines, kind)
-        if not self.issues and self.selected_issue_kinds is not None:
-            lines.append("")
-            lines.append(self._selected_no_issues_message())
         return "\n".join(lines)

@@ -3,29 +3,24 @@ from __future__ import annotations
 
 import inspect
 import logging
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sized
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from pathlib import Path
 from typing import Any, cast
 
 from lark.exceptions import VisitError
 
-from sattlint.parser_api import BasePicture
+from sattlint.parser_api import BasePicture, ProjectLoadError
 
 from ..config.types import ConfigDict
 from ..core import profiling as profiling_module
 from ..core.debug import debug_enabled
 from ..core.syntax import CodeMode, deps_ext_candidates, normalize_code_mode
 from ..models.project_graph import ProjectFailure, ProjectGraph
-from ..validation.shared import ValidationNotice, ValidationWarning, coerce_validation_notice
+from ..validation.shared import ValidationWarning, coerce_validation_notice
+from .support import FAILURE_MARKERS, LOAD_FAILURE_MARKER
 
 _STAGE_ORDER = ("load_or_parse", "validate", "attach_graphics", "index")
 log = logging.getLogger("SattLint")
-
-
-def _safe_count(value: object) -> int:
-    if isinstance(value, Sized):
-        return len(value)
-    return 0
 
 
 def _format_named_timings(label: str, timings: Mapping[str, float]) -> str:
@@ -62,21 +57,17 @@ def _emit_debug_load_summary(
         return
 
     emit_output_fn(
-        f"DEBUG load summary for {target_name}: source_files={_safe_count(getattr(graph, 'source_files', None))}, "
-        f"warnings={_safe_count(getattr(graph, 'warnings', None))}, "
-        f"missing={_safe_count(getattr(graph, 'missing', None))}, "
-        f"unavailable_libraries={_safe_count(getattr(graph, 'unavailable_libraries', None))}"
+        f"DEBUG load summary for {target_name}: source_files={len(graph.source_files)}, "
+        f"warnings={len(graph.warnings)}, "
+        f"missing={len(graph.missing)}, "
+        f"unavailable_libraries={len(graph.unavailable_libraries)}"
     )
 
-    stage_timings = getattr(graph, "load_stage_timings", None)
-    if isinstance(stage_timings, Mapping) and stage_timings:
-        emit_output_fn(
-            _format_refresh_stage_timings(dict(cast(Mapping[str, float], stage_timings)), refresh_mode="full")
-        )
+    if graph.load_stage_timings:
+        emit_output_fn(_format_refresh_stage_timings(dict(graph.load_stage_timings), refresh_mode="full"))
 
-    graphics_timings = getattr(graph, "graphics_load_timings", None)
-    if isinstance(graphics_timings, Mapping) and graphics_timings:
-        emit_output_fn(_format_named_timings("Graphics load phase totals", cast(Mapping[str, float], graphics_timings)))
+    if graph.graphics_load_timings:
+        emit_output_fn(_format_named_timings("Graphics load phase totals", dict(graph.graphics_load_timings)))
 
 
 def _attach_analysis_cache_metadata(graph: ProjectGraph, *, cache_key: str, manifest_files: Iterable[Path]) -> None:
@@ -238,9 +229,21 @@ def record_project_failure(graph: ProjectGraph, name: str, exception: Exception)
 def record_project_warning(graph: ProjectGraph, name: str, message: ValidationWarning) -> None:
     notice = coerce_validation_notice(message)
     graph.warnings.append(f"{name}: {notice.message}")
-    warning_notices = getattr(graph, "warning_notices", None)
-    if isinstance(warning_notices, list):
-        cast(list[tuple[str, ValidationNotice]], warning_notices).append((name, notice))
+    graph.warning_notices.append((name, notice))
+
+
+def record_project_load_failure(graph: ProjectGraph, name: str, error: ProjectLoadError) -> None:
+    """Record a target the parser could not load at all.
+
+    The error already names the failing program, its message, and the
+    dependency edge it was reached through, so the entry keeps that detail
+    instead of relabelling it as a parse or transform failure. There is no
+    source position to attach: the failure happened before a program AST
+    existed.
+    """
+    message = f"{name}{LOAD_FAILURE_MARKER}{error}"
+    graph.missing.append(message)
+    graph.failures[name.casefold()] = ProjectFailure(name=name, message=message)
 
 
 def format_debug_list(title: str, entries: Iterable[str]) -> str:
@@ -260,10 +263,12 @@ def format_debug_missing_entries(entries: Iterable[str]) -> str:
 
     lines = [f"Missing/failed ({len(items)}):"]
     for item in items:
-        library_name, separator, detail = item.partition(" parse/transform error: ")
-        if separator:
-            lines.append(f"  - {library_name}")
-            lines.append(f"    parse/transform error: {detail}")
-            continue
-        lines.append(f"  - {item}")
+        for marker in FAILURE_MARKERS:
+            if marker in item:
+                library_name, detail = item.split(marker, 1)
+                lines.append(f"  - {library_name}")
+                lines.append(f"    {marker.strip().rstrip(':')}: {detail}")
+                break
+        else:
+            lines.append(f"  - {item}")
     return "\n".join(lines)

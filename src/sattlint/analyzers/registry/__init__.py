@@ -49,7 +49,6 @@ def _registry_repo_root() -> Path:
 
 
 REPO_ROOT = _registry_repo_root()
-DEFAULT_CORPUS_MANIFEST_DIR = REPO_ROOT / "tests" / "fixtures" / "corpus" / "manifests"
 
 LEGACY_ANALYZER_KEY_ALIASES: dict[str, str] = {
     "same_cycle": "same-cycle",
@@ -212,7 +211,6 @@ def get_correctness_analyzer_keys() -> tuple[str, ...]:
 
 __all__ = [
     "DEFAULT_CLI_ANALYZER_KEYS",
-    "DEFAULT_CORPUS_MANIFEST_DIR",
     "LEGACY_ANALYZER_KEY_ALIASES",
     "REPO_ROOT",
     "AnalyzerCatalog",
