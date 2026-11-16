@@ -65,25 +65,29 @@ def _picture(
     )
 
 
-@pytest.mark.parametrize("has_program_invocation", [False, True])
-def test_module_type_usage_distinguishes_library_instance_from_consumer(has_program_invocation: bool) -> None:
-    instances: list[SingleModule | FrameModule | ModuleTypeInstance] = [_instance("LibraryInstance")]
-    if has_program_invocation:
-        instances.append(_instance("ProgramInstance"))
-    picture = BasePicture(
-        header=_header("EquipmentLib"),
-        datatype_defs=[],
-        moduletype_defs=[_definition()],
-        localvariables=[],
-        submodules=instances,
-        origin_file="EquipmentLib.s",
-        origin_lib="EquipmentLib",
+@pytest.mark.parametrize("has_consumer_invocation", [False, True])
+@pytest.mark.parametrize("analyzed_target_is_library", [False, True])
+def test_module_type_usage_requires_an_invocation_outside_the_declaring_file(
+    has_consumer_invocation: bool, analyzed_target_is_library: bool
+) -> None:
+    # The library instantiates its own type; that is not external use.
+    library = _picture()
+    consumer = _picture(
+        "Consumer",
+        definitions=[],
+        instances=[_instance("ProgramInstance")] if has_consumer_invocation else [],
+    )
+    graph = ProjectGraph(ast_by_name={"EquipmentLib": library, "Consumer": consumer})
+
+    report = analyze_moduletype_usage(
+        library,
+        AnalysisContext(library, graph, target_is_library=analyzed_target_is_library),
     )
 
-    report = analyze_moduletype_usage(picture, analyzed_target_is_library=True)
-
-    assert len(report.issues) == (0 if has_program_invocation else 1)
-    if not has_program_invocation:
+    # Program/library classification is irrelevant: only the invocation
+    # location decides.
+    assert len(report.issues) == (0 if has_consumer_invocation else 1)
+    if not has_consumer_invocation:
         assert report.issues[0].module_path == ["EquipmentLib", "LibraryInstance"]
         assert "Equipment" in report.issues[0].message
 
@@ -143,13 +147,17 @@ def test_module_type_usage_counts_invocations_in_other_type_bodies() -> None:
 
     report = analyze_moduletype_usage(library, analyzed_target_is_library=True)
 
-    assert len(report.issues) == 1
-    assert "Wrapper" in report.issues[0].message
-    assert "no invocations" in report.issues[0].message
+    # Wrapper has no invocation at all. Equipment has two in-file uses (the
+    # picture's own instance plus the wrapper), so it counts as used.
+    messages = sorted(issue.message for issue in report.issues)
+    assert len(messages) == 1
+    assert "Wrapper" in messages[0] and "no invocations" in messages[0]
 
 
-def test_module_type_usage_does_not_report_single_program_invocation() -> None:
-    assert analyze_moduletype_usage(_picture()).issues == []
+def test_module_type_usage_reports_single_in_file_invocation_regardless_of_target_kind() -> None:
+    # The only invocation is the declaring file instantiating its own type.
+    assert len(analyze_moduletype_usage(_picture()).issues) == 1
+    assert len(analyze_moduletype_usage(_picture(), analyzed_target_is_library=True).issues) == 1
 
 
 def test_module_type_usage_rejects_incomplete_graph() -> None:
@@ -265,3 +273,25 @@ def test_module_type_usage_scans_all_unselected_dependent_programs(
 
     assert visits == ["ConsumerA", "ConsumerB"]
     assert len(report.issues) == (0 if has_consumer_invocation else 1)
+
+
+@pytest.mark.parametrize(("invocations", "expected"), [(1, 1), (2, 0)])
+def test_only_a_single_declaring_file_invocation_counts_as_unused(invocations: int, expected: int) -> None:
+    library = _picture(
+        instances=[_instance(f"LibraryInstance{index}") for index in range(invocations)],
+    )
+
+    report = analyze_moduletype_usage(library)
+
+    assert len(report.issues) == expected
+    if expected:
+        assert report.issues[0].data is not None
+        assert report.issues[0].data["invocation_count"] == 1
+
+
+def test_a_single_invocation_from_another_file_means_the_type_is_used() -> None:
+    library = _picture(instances=[])
+    consumer = _picture("Consumer", definitions=[], instances=[_instance("ProgramInstance")])
+    graph = ProjectGraph(ast_by_name={"EquipmentLib": library, "Consumer": consumer})
+
+    assert analyze_moduletype_usage(library, AnalysisContext(library, graph)).issues == []

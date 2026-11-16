@@ -35,35 +35,10 @@ class _Invocation:
     module_path: list[str]
 
 
-def analyze_moduletype_usage(
+def _collect_definitions(
     base_picture: BasePicture,
-    analysis_context: AnalysisContext | None = None,
-    analyzed_target_is_library: bool = False,
-) -> ModuleTypeUsageReport:
-    """Count source invocations across the target and its loaded reverse consumers."""
-    graph = None if analysis_context is None else analysis_context.graph
-    if graph is not None and not isinstance(graph, ProjectGraph):
-        raise TypeError("Module-type usage requires a loaded project graph.")
-    if analysis_context is not None:
-        base_picture = analysis_context.base_picture
-        analyzed_target_is_library = analyzed_target_is_library or analysis_context.target_is_library
-
-    if graph is not None and graph.missing:
-        target_name = (
-            Path(base_picture.origin_file).stem if base_picture.origin_file else base_picture.header.name
-        ).casefold()
-        downstream: set[str] = set()
-        pending = list(graph.source_dependencies.get(target_name, set()))
-        while pending:
-            dependency = pending.pop().casefold()
-            if dependency == target_name or dependency in downstream:
-                continue
-            downstream.add(dependency)
-            pending.extend(graph.source_dependencies.get(dependency, set()))
-        unavailable = {name.casefold() for name in graph.unavailable_libraries}
-        if graph.failures or not unavailable or not unavailable.issubset(downstream):
-            raise ValueError("Module-type usage is incomplete because consumer source could not be loaded.")
-
+    graph: ProjectGraph | None,
+) -> tuple[list[BasePicture], list[ModuleTypeDef], dict[str, list[ModuleTypeDef]]]:
     pictures = [] if graph is None else list(graph.ast_by_name.values())
     if not any(
         picture is base_picture
@@ -82,12 +57,18 @@ def analyze_moduletype_usage(
     index: dict[str, list[ModuleTypeDef]] = defaultdict(list)
     for definition in definitions:
         index[definition.name.casefold()].append(definition)
+    return pictures, definitions, index
 
-    is_target_definition = build_target_origin_filter_for_basepicture(
-        base_picture, analyzed_target_is_library=analyzed_target_is_library
-    )
-    target_type_names = {definition.name.casefold() for definition in definitions if is_target_definition(definition)}
 
+def _collect_invocations(
+    base_picture: BasePicture,
+    graph: ProjectGraph | None,
+    *,
+    pictures: list[BasePicture],
+    definitions: list[ModuleTypeDef],
+    index: dict[str, list[ModuleTypeDef]],
+    target_type_names: set[str],
+) -> dict[int, list[_Invocation]]:
     invocations: dict[int, list[_Invocation]] = defaultdict(list)
     seen: set[tuple[int, str, str, tuple[str, ...]]] = set()
     scopes: list[BasePicture | ModuleTypeDef] = [*pictures, *definitions]
@@ -120,38 +101,94 @@ def analyze_moduletype_usage(
             if invocation_key not in seen:
                 seen.add(invocation_key)
                 invocations[id(definition)].append(_Invocation(scope.origin_file, path))
+    return invocations
+
+
+def analyze_moduletype_usage(
+    base_picture: BasePicture,
+    analysis_context: AnalysisContext | None = None,
+    analyzed_target_is_library: bool = False,
+) -> ModuleTypeUsageReport:
+    """Count source invocations across the target and its loaded reverse consumers."""
+    graph = None if analysis_context is None else analysis_context.graph
+    if graph is not None and not isinstance(graph, ProjectGraph):
+        raise TypeError("Module-type usage requires a loaded project graph.")
+    if analysis_context is not None:
+        base_picture = analysis_context.base_picture
+        analyzed_target_is_library = analyzed_target_is_library or analysis_context.target_is_library
+
+    if graph is not None and graph.missing:
+        target_name = (
+            Path(base_picture.origin_file).stem if base_picture.origin_file else base_picture.header.name
+        ).casefold()
+        downstream: set[str] = set()
+        pending = list(graph.source_dependencies.get(target_name, set()))
+        while pending:
+            dependency = pending.pop().casefold()
+            if dependency == target_name or dependency in downstream:
+                continue
+            downstream.add(dependency)
+            pending.extend(graph.source_dependencies.get(dependency, set()))
+        unavailable = {name.casefold() for name in graph.unavailable_libraries}
+        if graph.failures or not unavailable or not unavailable.issubset(downstream):
+            raise ValueError("Module-type usage is incomplete because consumer source could not be loaded.")
+
+    pictures, definitions, index = _collect_definitions(base_picture, graph)
+
+    is_target_definition = build_target_origin_filter_for_basepicture(
+        base_picture, analyzed_target_is_library=analyzed_target_is_library
+    )
+    target_type_names = {definition.name.casefold() for definition in definitions if is_target_definition(definition)}
+    invocations = _collect_invocations(
+        base_picture,
+        graph,
+        pictures=pictures,
+        definitions=definitions,
+        index=index,
+        target_type_names=target_type_names,
+    )
 
     issues: list[Issue] = []
     for definition in definitions:
         if not is_target_definition(definition):
             continue
         uses = invocations.get(id(definition), [])
-        if (
-            len(uses) > 1
-            or (uses and not analyzed_target_is_library)
-            or (uses and (uses[0].source_file or "").casefold() != (definition.origin_file or "").casefold())
-        ):
+        origin_file = (definition.origin_file or "").casefold()
+        # Unused means: no invocation at all, or exactly one invocation and that
+        # invocation is the declaring file instantiating its own type. Two or
+        # more invocations mean the type is used, wherever they live, and a
+        # single invocation from another file means an external consumer uses
+        # it. The analyzed target's program/library label plays no part.
+        if len(uses) > 1:
             continue
-        message = (
-            f"Module type '{definition.name}' is invoked only in its declaring library and is unused by the scanned programs."
-            if uses
-            else f"Module type '{definition.name}' has no invocations in the scanned programs or libraries."
-        )
-        issues.append(
-            Issue(
-                kind="module.unused_type",
-                message=message,
-                module_path=uses[0].module_path if uses else [base_picture.header.name, f"TypeDef:{definition.name}"],
-                data={
-                    "moduletype_name": definition.name,
-                    "invocation_count": len(uses),
-                    "origin_file": definition.origin_file,
-                    "origin_library": definition.origin_lib,
-                    "context": f"Module type {definition.name}",
-                },
-            )
-        )
+        if uses and (uses[0].source_file or "").casefold() != origin_file:
+            continue
+        issues.append(_unused_type_issue(definition, uses, base_picture.header.name))
     return ModuleTypeUsageReport(base_picture.header.name, issues)
+
+
+def _unused_type_issue(
+    definition: ModuleTypeDef,
+    uses: list[_Invocation],
+    root_name: str,
+) -> Issue:
+    message = (
+        f"Module type '{definition.name}' is invoked only in its declaring file and is unused elsewhere."
+        if uses
+        else f"Module type '{definition.name}' has no invocations in the scanned programs or libraries."
+    )
+    return Issue(
+        kind="module.unused_type",
+        message=message,
+        module_path=uses[0].module_path if uses else [root_name, f"TypeDef:{definition.name}"],
+        data={
+            "moduletype_name": definition.name,
+            "invocation_count": len(uses),
+            "origin_file": definition.origin_file,
+            "origin_library": definition.origin_lib,
+            "context": f"Module type {definition.name}",
+        },
+    )
 
 
 __all__ = ["ModuleTypeUsageReport", "analyze_moduletype_usage"]

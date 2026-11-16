@@ -33,6 +33,10 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 - Run records are written atomically with collision-free ids; per-run analyzer
   findings are stored in a separate project-level bucket instead of a phantom
   target. The run-record schema is version 2.
+- Module-type usage treats a type as unused when it has no invocation at all,
+  or exactly one invocation and that invocation is its declaring file. Two or
+  more invocations count as use, wherever they occur, and the analyzed target's
+  program/library label no longer changes the result.
 - The reset-contamination and implicit-latch scans now cover module-type
   instances and their nested modules exactly once, with a recursion guard.
   Read-before-write findings name the variable in text reports, and
