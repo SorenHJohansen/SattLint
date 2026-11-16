@@ -44,11 +44,7 @@ def _base_delivery_metadata_by_analyzer() -> dict[str, AnalyzerDeliveryMetadata]
     }
 
 
-def build_delivery_metadata(
-    spec: AnalyzerSpec,
-    rule_ids: tuple[str, ...],
-) -> AnalyzerDeliveryMetadata:
-    del rule_ids
+def build_delivery_metadata(spec: AnalyzerSpec) -> AnalyzerDeliveryMetadata:
     base = _base_delivery_metadata_by_analyzer().get(spec.key)
     if base is None:
         return AnalyzerDeliveryMetadata(

@@ -12,7 +12,7 @@ from typing import Any, cast
 
 from ..application.findings import AnalysisFinding
 
-RUN_RECORD_SCHEMA_VERSION = 1
+RUN_RECORD_SCHEMA_VERSION = 2
 
 
 def _optional_str(value: object) -> str | None:
@@ -214,6 +214,7 @@ class RunRecord:
     selected_analyzers: tuple[str, ...] = ()
     cancelled: bool = False
     targets: tuple[RunTargetRecord, ...] = ()
+    project_analyzers: tuple[RunAnalyzerRecord, ...] = ()
     output_lines: tuple[str, ...] = ()
 
     @property
@@ -222,11 +223,13 @@ class RunRecord:
 
     @property
     def analyzer_count(self) -> int:
-        return sum(len(target.analyzers) for target in self.targets)
+        return sum(len(target.analyzers) for target in self.targets) + len(self.project_analyzers)
 
     @property
     def issue_count(self) -> int:
-        return sum(len(analyzer.findings) for target in self.targets for analyzer in target.analyzers)
+        return sum(len(analyzer.findings) for target in self.targets for analyzer in target.analyzers) + sum(
+            len(analyzer.findings) for analyzer in self.project_analyzers
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -239,11 +242,22 @@ class RunRecord:
             "selected_analyzers": list(self.selected_analyzers),
             "cancelled": self.cancelled,
             "targets": [target.to_dict() for target in self.targets],
+            "project_analyzers": [analyzer.to_dict() for analyzer in self.project_analyzers],
             "output_lines": list(self.output_lines),
         }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, object]) -> RunRecord:
+        raw_project_analyzers = payload.get("project_analyzers")
+        project_analyzers = (
+            tuple(
+                RunAnalyzerRecord.from_dict(cast(Mapping[str, object], analyzer))
+                for analyzer in cast(Sequence[object], raw_project_analyzers)
+                if isinstance(analyzer, Mapping)
+            )
+            if isinstance(raw_project_analyzers, (list, tuple))
+            else ()
+        )
         raw_targets = payload.get("targets")
         targets = (
             tuple(
@@ -263,6 +277,7 @@ class RunRecord:
             selected_analyzers=_tuple_str(payload.get("selected_analyzers")),
             cancelled=bool(payload.get("cancelled", False)),
             targets=targets,
+            project_analyzers=project_analyzers,
             output_lines=_tuple_str(payload.get("output_lines")),
         )
 

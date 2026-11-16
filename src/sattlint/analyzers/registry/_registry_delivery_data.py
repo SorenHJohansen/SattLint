@@ -107,6 +107,7 @@ def default_delivery_templates(
         ),
         AnalyzerDeliveryTemplate(
             key="alarm-integrity",
+            cli_exposed=True,
             scope="cross-module",
             implementation_bucket="shared-semantic-core",
             acceptance_tests=(*_ANALYZER_SUITE_ACCEPTANCE_TESTS,),
@@ -121,6 +122,7 @@ def default_delivery_templates(
         ),
         AnalyzerDeliveryTemplate(
             key="same-cycle",
+            cli_exposed=True,
             scope="cross-module",
             implementation_bucket="shared-semantic-core",
             acceptance_tests=("tests/analyzers/test_same_cycle.py",),
@@ -138,6 +140,7 @@ def default_delivery_templates(
         ),
         AnalyzerDeliveryTemplate(
             key="dataflow",
+            cli_exposed=True,
             scope="workspace",
             implementation_bucket="shared-semantic-core",
             acceptance_tests=(

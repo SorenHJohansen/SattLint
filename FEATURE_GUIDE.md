@@ -100,7 +100,7 @@ Reads findings from a stored run without analyzing again.
 | `--module PREFIX` | Filter by module path prefix; repeatable |
 | `--exact-module` | Require an exact module path match |
 | `--kind KIND` | Filter by finding kind; repeatable |
-| `--rule RULE` | Filter by rule ID; repeatable |
+| `--rule RULE` | Filter by rule ID, falling back to the finding kind when a finding carries no rule ID; repeatable |
 | `--group-by {none,module,analyzer,kind}` | Also return grouped counts; default `none` |
 | `--limit N` | Return at most N findings after filtering |
 | `--format {json,ndjson,text}` | Output format; default `text` |

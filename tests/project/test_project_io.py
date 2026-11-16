@@ -8,6 +8,8 @@ from typing import cast
 
 import pytest
 
+from sattlint.config.types import ConfigDict
+from sattlint.models.project_graph import ProjectGraph
 from sattlint.project.io import (
     SLPROJ_FILENAME,
     SLPROJ_VERSION,
@@ -19,6 +21,7 @@ from sattlint.project.io import (
     project_status,
     save_project,
 )
+from sattlint.project.loading import cache_manifest_files
 from sattlint.project.models import SattLintProjectFile
 from sattlint.project.types import DEFAULT_PROJECT_DICT, ProjectDict
 
@@ -56,6 +59,52 @@ def test_load_project_missing_and_bad_version(tmp_path: Path) -> None:
 def test_load_project_rejects_directory(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match=r"directory"):
         load_project(tmp_path)
+
+
+def test_load_project_fills_defaults_for_missing_keys(tmp_path: Path) -> None:
+    path = tmp_path / SLPROJ_FILENAME
+    path.write_text("slproj_version = 1\n")
+
+    project = load_project(path)
+
+    assert project.data["analyzed_programs_and_libraries"] == []
+    assert project.data["mode"] == "official"
+    assert project.data["analysis"] == DEFAULT_PROJECT_DICT["analysis"]
+
+    cfg = project.to_config_dict()
+    assert cfg["analyzed_programs_and_libraries"] == []
+    assert cfg["other_lib_dirs"] == []
+
+
+def test_load_project_rejects_wrong_value_types(tmp_path: Path) -> None:
+    path = tmp_path / SLPROJ_FILENAME
+
+    path.write_text("slproj_version = 1\nanalyzed_programs_and_libraries = 'Demo'\n")
+    with pytest.raises(ValueError, match=r"analyzed_programs_and_libraries"):
+        load_project(path)
+
+    path.write_text("slproj_version = 1\nmode = 3\n")
+    with pytest.raises(ValueError, match=r"mode"):
+        load_project(path)
+
+    path.write_text("slproj_version = 1\nanalysis = 'nope'\n")
+    with pytest.raises(ValueError, match=r"analysis"):
+        load_project(path)
+
+    path.write_text("slproj_version = 'one'\n")
+    with pytest.raises(ValueError, match=r"slproj_version"):
+        load_project(path)
+
+
+def test_load_project_warns_about_unknown_keys(tmp_path: Path) -> None:
+    path = tmp_path / SLPROJ_FILENAME
+    path.write_text("slproj_version = 1\nrun_history = { enabled = false }\n")
+
+    project = load_project(path)
+
+    assert len(project.warnings) == 1
+    assert "run_history" in project.warnings[0]
+    assert "run_history" not in project.data
 
 
 def test_save_and_reload_preserves_values(tmp_path: Path) -> None:
@@ -115,7 +164,7 @@ def test_project_merge_preserves_user_app_settings(tmp_path: Path) -> None:
 
 def test_init_project_scaffolds_defaults(tmp_path: Path) -> None:
     path = tmp_path / "proj.slproj"
-    project = init_project(path, name="Demo")
+    project = init_project(path)
     assert path.exists()
     assert project.data["slproj_version"] == SLPROJ_VERSION
     assert project.data["mode"] == "official"
@@ -165,3 +214,21 @@ def test_normalize_converters() -> None:
 def test_project_path_hint(tmp_path: Path) -> None:
     assert _project_path_hint(tmp_path / SLPROJ_FILENAME) == f"{tmp_path.name}/"
     assert _project_path_hint(tmp_path / "other.slproj") == str(tmp_path / "other.slproj")
+
+
+def test_cache_manifest_tracks_the_icf_directory_for_new_files(tmp_path: Path) -> None:
+    icf_dir = tmp_path / "icf"
+    icf_dir.mkdir()
+    graph = ProjectGraph()
+    cfg = cast(ConfigDict, DEFAULT_PROJECT_DICT | {"icf_dir": str(icf_dir)})
+
+    files = cache_manifest_files(
+        cfg,
+        graph,
+        find_dependency_path_fn=lambda _name: None,
+        resolve_graphics_companion_path_fn=lambda *_args, **_kwargs: None,
+    )
+
+    assert icf_dir in files
+    (icf_dir / "new.icf").write_text("x", encoding="utf-8")
+    assert icf_dir in files

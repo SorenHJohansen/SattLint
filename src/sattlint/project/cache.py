@@ -28,7 +28,7 @@ def create_analysis_report_cache(
     use_cache: bool,
     debug_enabled_fn: Callable[[ConfigDict], bool],
     analysis_report_cache_cls: type[AnalysisReportCache],
-    get_cache_dir_fn: Callable[[], Path],
+    get_cache_dir_fn: Callable[[], Path | None],
 ) -> AnalysisReportCache | None:
     if not use_cache:
         if log.isEnabledFor(logging.DEBUG):
@@ -38,8 +38,11 @@ def create_analysis_report_cache(
         if log.isEnabledFor(logging.DEBUG):
             log.debug("Analysis report cache disabled in debug mode")
         return None
+    cache_dir = get_cache_dir_fn()
+    if cache_dir is None:
+        log.debug("Analysis report cache unavailable: the cache directory cannot be created")
+        return None
     try:
-        cache_dir = get_cache_dir_fn()
         return cast(
             AnalysisReportCache,
             cache_module.build_analysis_report_cache(cache_dir, analysis_report_cache_cls),

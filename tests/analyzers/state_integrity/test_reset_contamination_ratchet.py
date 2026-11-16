@@ -1,4 +1,4 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportInvalidTypeForm=false
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportInvalidTypeForm=false, reportPrivateUsage=false
 """Focused coverage tests for reset contamination ratchet repayment."""
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from sattline_parser.models.ast_model import (
 from sattline_parser.models.expressions import Assignment, IfStmt, NotOp, VarRef
 
 from sattlint.reporting.variables_report import VariableIssue
-from tests.helpers.reset_contamination_api import reset_contamination_module
+from tests.helpers.reset_contamination_api import reset_analyzer, reset_contamination_module
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -247,7 +247,7 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
         [],
         check_fn=lambda *_args: calls.append("single"),
     )
-    reset_contamination_module._check_for_typedef(
+    reset_analyzer(cast(Any, None))._check_for_typedef(
         ModuleTypeDef(
             name="NoCodeType",
             moduleparameters=[],
@@ -257,6 +257,7 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
         ),
         ["Root", "TypeDef:NoCodeType"],
         [],
+        None,
         check_fn=lambda *_args: calls.append("typedef"),
     )
     assert calls == []
@@ -280,7 +281,7 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
         parametermappings=[],
     )
     traversed_paths: list[list[str]] = []
-    reset_contamination_module._collect_from_module(
+    reset_analyzer(cast(Any, None))._collect_from_module(
         parent_module,
         ["Root"],
         [],

@@ -65,7 +65,6 @@ class AnalyzerMetadataDict(TypedDict):
     category: str
     enabled: bool
     summary_output: str
-    rule_ids: list[str]
     scope: str
     implementation_bucket: str
     output_artifacts: list[str]
@@ -85,7 +84,6 @@ class AnalyzerCatalogReport(TypedDict):
 @dataclass(frozen=True)
 class AnalyzerMetadata:
     spec: AnalyzerSpec
-    rule_ids: tuple[str, ...] = ()
     delivery: AnalyzerDeliveryMetadata = field(
         default_factory=lambda: AnalyzerDeliveryMetadata(
             scope="workspace",
@@ -106,7 +104,6 @@ class AnalyzerMetadata:
             category=self.spec.category,
             enabled=self.spec.enabled,
             summary_output=self.summary_output,
-            rule_ids=list(self.rule_ids),
             scope=delivery.scope,
             implementation_bucket=delivery.implementation_bucket,
             output_artifacts=list(delivery.output_artifacts),
@@ -165,8 +162,7 @@ def _build_default_analyzer_catalog() -> AnalyzerCatalog:
     analyzers = tuple(
         AnalyzerMetadata(
             spec=spec,
-            rule_ids=(),
-            delivery=build_delivery_metadata(spec, ()),
+            delivery=build_delivery_metadata(spec),
         )
         for spec in analyzer_specs
     )

@@ -70,6 +70,47 @@ def test_load_project_saves_cache_after_successful_merge(monkeypatch):
     assert saved["files"] == {Path("programs/TargetA.s")}
 
 
+def test_load_project_runs_when_the_cache_directory_is_unusable(monkeypatch):
+    root_bp = named_object("TargetA", origin_file="TargetA.s")
+    graph = AnalysisGraphStub(
+        ast_by_name={"TargetA": root_bp},
+        missing=[],
+        warnings=[],
+        source_files={Path("programs/TargetA.s")},
+    )
+
+    def fake_build_parser_binding(
+        cfg, *, status_update_fn=None, refresh_mode="full", stage_timing_sink=None, graphics_timing_sink=None
+    ):
+        return SimpleNamespace(
+            status_update_fn=status_update_fn,
+            refresh_mode=refresh_mode,
+            stage_timing_sink=stage_timing_sink,
+            graphics_timing_sink=graphics_timing_sink,
+        )
+
+    monkeypatch.setattr(analysis_loading_module, "build_parser_binding", fake_build_parser_binding)
+    monkeypatch.setattr(analysis_loading_module, "_load_parser_graph", lambda *_args, **_kwargs: graph)
+    monkeypatch.setattr(analysis_loading_module, "find_dependency_path", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(analysis_loading_module, "read_dependency_names", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(analysis_loading_module, "merge_project_basepicture", lambda bp, graph: "merged")
+
+    result = project_application.load_project(
+        {
+            "program_dir": "programs",
+            "other_lib_dirs": [],
+            "ABB_lib_dir": "abb",
+            "mode": "draft",
+            "debug": False,
+            "analyzed_programs_and_libraries": ["TargetA"],
+        },
+        cache_key_for_target_fn=lambda _cfg, _target: "cache-key",
+        get_cache_dir_fn=lambda: None,
+    )
+
+    assert result == ("merged", graph)
+
+
 def test_load_project_skips_cache_when_a_dependency_is_unavailable(monkeypatch):
     root_bp = named_object("TargetA", origin_file="TargetA.s")
     graph = AnalysisGraphStub(
@@ -114,7 +155,7 @@ def test_load_project_skips_cache_when_a_dependency_is_unavailable(monkeypatch):
     )
 
     assert result == (root_bp, graph)
-    assert graph.analysis_cache_key == "cache-key"
+    assert graph.analysis_cache_key is None
 
 
 def test_load_project_raises_default_error_when_target_missing(monkeypatch):
@@ -669,3 +710,38 @@ def test_run_checks_success_path_pauses(monkeypatch):
 
     assert any("state inference summary" in line for line in lines)
     assert pauses == ["pause"]
+
+
+def test_load_project_does_not_build_a_parser_cache_when_the_directory_is_unavailable(monkeypatch):
+    root_bp = named_object("TargetA", origin_file="TargetA.s")
+    graph = AnalysisGraphStub(
+        ast_by_name={"TargetA": root_bp},
+        missing=[],
+        warnings=[],
+        source_files={Path("programs/TargetA.s")},
+    )
+
+    def _unexpected(*_args, **_kwargs):
+        raise AssertionError("the AST cache must not be built without a cache directory")
+
+    monkeypatch.setattr(analysis_loading_module, "build_parser_binding", lambda *_args, **_kwargs: SimpleNamespace())
+    monkeypatch.setattr(analysis_loading_module, "_load_parser_graph", lambda *_args, **_kwargs: graph)
+    monkeypatch.setattr(analysis_loading_module, "find_dependency_path", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(analysis_loading_module, "read_dependency_names", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(analysis_loading_module, "merge_project_basepicture", lambda bp, _graph: bp)
+    monkeypatch.setattr(analysis_loading_module.cache_module, "build_ast_cache", _unexpected)
+
+    result = project_application.load_project(
+        {
+            "program_dir": "programs",
+            "other_lib_dirs": [],
+            "ABB_lib_dir": "abb",
+            "mode": "draft",
+            "debug": False,
+            "analyzed_programs_and_libraries": ["TargetA"],
+        },
+        cache_key_for_target_fn=lambda _cfg, _target: "cache-key",
+        get_cache_dir_fn=lambda: None,
+    )
+
+    assert result == (root_bp, graph)

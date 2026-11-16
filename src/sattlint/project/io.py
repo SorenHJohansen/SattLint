@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import tomllib
+import uuid
+from collections.abc import Mapping
+from contextlib import suppress
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, cast
@@ -43,8 +47,8 @@ def load_project(path: Path) -> SattLintProjectFile:
     """Load a .slproj file and return an ``SattLintProjectFile``.
 
     Raises ``FileNotFoundError`` if the path does not exist.
-    Raises ``ValueError`` if the path is a directory or the file is malformed
-    or has an unsupported version.
+    Raises ``ValueError`` if the path is a directory or the file is malformed,
+    has an unsupported version, or carries a value of the wrong type.
     """
     path = path.resolve()
     if not path.exists():
@@ -55,16 +59,65 @@ def load_project(path: Path) -> SattLintProjectFile:
     with path.open("rb") as fh:
         raw = tomllib.load(fh)
 
-    cfg = cast(ProjectDict, cast("dict[str, object]", raw))
+    data, warnings = _validate_project_data(cast(Mapping[str, object], raw), path)
+    return SattLintProjectFile(path=path, data=data, warnings=warnings)
 
-    version = cfg.get("slproj_version", 1)
-    if version != 1:
+
+def _type_error(key: str, expected: str, path: Path) -> ValueError:
+    return ValueError(f"Invalid .slproj value for {key!r} in {_project_path_hint(path)}: expected {expected}.")
+
+
+def _string_list(key: str, value: object, path: Path) -> list[str]:
+    if not isinstance(value, list):
+        raise _type_error(key, "a list of strings", path)
+    items = cast("list[object]", value)
+    if not all(isinstance(item, str) for item in items):
+        raise _type_error(key, "a list of strings", path)
+    return [cast(str, item) for item in items]
+
+
+def _validate_project_data(raw: Mapping[str, object], path: Path) -> tuple[ProjectDict, tuple[str, ...]]:
+    """Validate a parsed .slproj table against the project defaults.
+
+    Missing keys take their defaults, so a sparse project file stays valid.
+    Unknown keys are ignored with a warning instead of being read by accident.
+    """
+    data: dict[str, object] = deepcopy(dict(DEFAULT_PROJECT_DICT))
+    warnings: list[str] = []
+    for key, value in raw.items():
+        if key not in data:
+            warnings.append(f"Ignoring unknown .slproj key {key!r} in {_project_path_hint(path)}.")
+            continue
+        data[key] = value
+
+    version = data["slproj_version"]
+    if isinstance(version, bool) or not isinstance(version, int):
+        raise _type_error("slproj_version", "an integer", path)
+    if version != SLPROJ_VERSION:
         raise ValueError(
-            f"Unsupported .slproj version {version} in {_project_path_hint(path)}. "
-            f"This tool supports version {SLPROJ_VERSION}."
+            f"Unsupported .slproj version {version} in {_project_path_hint(path)}; "
+            f"this tool supports version {SLPROJ_VERSION}."
         )
 
-    return SattLintProjectFile(path=path, data=cfg)
+    data["analyzed_programs_and_libraries"] = _string_list(
+        "analyzed_programs_and_libraries", data["analyzed_programs_and_libraries"], path
+    )
+    data["other_lib_dirs"] = _string_list("other_lib_dirs", data["other_lib_dirs"], path)
+
+    mode = data["mode"]
+    if mode not in ("official", "draft"):
+        raise ValueError(
+            f"Invalid .slproj value for 'mode' in {_project_path_hint(path)}: expected 'official' or 'draft'."
+        )
+
+    for key in ("program_dir", "ABB_lib_dir", "icf_dir"):
+        if not isinstance(data[key], str):
+            raise _type_error(key, "a string", path)
+
+    if not isinstance(data["analysis"], Mapping):
+        raise _type_error("analysis", "a table", path)
+
+    return cast(ProjectDict, data), tuple(warnings)
 
 
 def save_project(path: Path, data: ProjectDict) -> None:
@@ -76,8 +129,17 @@ def save_project(path: Path, data: ProjectDict) -> None:
         serializable[key] = _normalize(value)
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("wb") as fh:
-        tomli_w.dump(serializable, fh)
+    temp_path = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    try:
+        with temp_path.open("wb") as fh:
+            tomli_w.dump(serializable, fh)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(temp_path, path)
+    except OSError:
+        with suppress(OSError):
+            temp_path.unlink()
+        raise
 
 
 def _normalize(value: object) -> object:
@@ -102,22 +164,17 @@ def _normalize(value: object) -> object:
 def init_project(
     path: Path,
     *,
-    name: str | None = None,
     program_dir: str = "",
     ABB_lib_dir: str = "",  # noqa: N803
     icf_dir: str = "",
     other_lib_dirs: list[str] | None = None,
 ) -> SattLintProjectFile:
-    """Scaffold a new .slproj file with defaults.
-
-    If *name* is provided it is used for display; otherwise the parent
-    directory name is used.
-    """
+    """Scaffold a new .slproj file with defaults."""
     path = path.resolve()
     if path.exists():
         raise FileExistsError(f"Project file already exists: {path}")
 
-    data = dict(DEFAULT_PROJECT_DICT)  # shallow copy of top-level keys
+    data = deepcopy(dict(DEFAULT_PROJECT_DICT))
 
     if program_dir:
         data["program_dir"] = program_dir

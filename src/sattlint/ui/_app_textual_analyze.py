@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
@@ -421,14 +422,30 @@ def _run_selected_analyzers(self: Any) -> None:
     if not selected_keys:
         self._write_output("Select one or more analyzers in the list first.")
         return
+    # Snapshot the inputs so a project swap during the run cannot attribute
+    # the result to a different project than the one that was analyzed.
+    cfg = deepcopy(self._cfg)
+    project_path = str(getattr(self, "_config_path", "") or "")
     self._start_action(
         "Run selected analyzers",
-        lambda keys=selected_keys: self._execute_analyzers(keys),
+        lambda keys=selected_keys, cfg=cfg, project_path=project_path: self._execute_analyzers(
+            keys, cfg=cfg, project_path=project_path
+        ),
         action_id="action-analyze",
     )
 
 
-def _execute_analyzers(self: Any, selected_keys: tuple[str, ...]) -> None:
+def _execute_analyzers(
+    self: Any,
+    selected_keys: tuple[str, ...],
+    *,
+    cfg: Any | None = None,
+    project_path: str | None = None,
+) -> None:
+    if cfg is None:
+        cfg = self._cfg
+    if project_path is None:
+        project_path = str(getattr(self, "_config_path", "") or "")
     self._emit_output_from_thread(f"Running {len(selected_keys)} selected analyzer(s).")
     handler = None
     if isinstance(getattr(self, "_analysis_handlers", None), dict):
@@ -443,12 +460,24 @@ def _execute_analyzers(self: Any, selected_keys: tuple[str, ...]) -> None:
         return
     handler_kwargs: dict[str, object] = {}
     if "project_path" in inspect.signature(handler).parameters:
-        handler_kwargs["project_path"] = str(getattr(self, "_config_path", "") or "")
-    result = handler(self._cfg, list(selected_keys), **handler_kwargs)
+        handler_kwargs["project_path"] = project_path
+    result = handler(cfg, list(selected_keys), **handler_kwargs)
     failures = tuple(getattr(result, "failures", ())) if result is not None else ()
-    if failures:
-        names = ", ".join(str(getattr(failure, "target_name", "")) for failure in failures)
-        self._emit_output_from_thread(f"Analysis finished with target load failures: {names}. Review the output above.")
+    analyzer_failures = tuple(getattr(result, "analyzer_failures", ())) if result is not None else ()
+    cancelled = bool(getattr(result, "cancelled", False)) if result is not None else False
+    if cancelled:
+        self._emit_output_from_thread("Analysis cancelled. No run was saved.")
+    elif failures or analyzer_failures:
+        problems: list[str] = []
+        if failures:
+            names = ", ".join(str(getattr(failure, "target_name", "")) for failure in failures)
+            problems.append(f"{len(failures)} target(s) could not be loaded ({names})")
+        if analyzer_failures:
+            names = ", ".join(str(getattr(failure, "analyzer_name", "")) for failure in analyzer_failures)
+            problems.append(f"{len(analyzer_failures)} analyzer(s) failed ({names})")
+        self._emit_output_from_thread(
+            f"Analysis finished with problems: {'; '.join(problems)}. Review the output above."
+        )
     else:
         self._emit_output_from_thread("Selected analyzers completed.")
     if result is not None:
@@ -492,14 +521,20 @@ def _run_generate_change_review(self: Any) -> None:
     if not self._setup_has_targets():
         self._write_output("No configured analysis targets are available for Change Review.")
         return
+    cfg = deepcopy(self._cfg)
+    targets = list(self._configured_target_names())
     self._start_action(
         "Generate Change Review",
-        lambda: self._execute_generate_change_review(),
+        lambda cfg=cfg, targets=targets: self._execute_generate_change_review(cfg, targets),
         action_id="action-analyze",
     )
 
 
-def _execute_generate_change_review(self: Any) -> None:
+def _execute_generate_change_review(self: Any, cfg: Any | None = None, targets: list[str] | None = None) -> None:
+    if cfg is None:
+        cfg = self._cfg
+    if targets is None:
+        targets = list(self._configured_target_names())
     self._emit_output_from_thread("Generating Change Review for the configured project...")
     handler = None
     if isinstance(getattr(self, "_analysis_handlers", None), dict):
@@ -508,7 +543,7 @@ def _execute_generate_change_review(self: Any) -> None:
         self._emit_output_from_thread("The Change Review generator is unavailable in the current Textual session.")
         return
     try:
-        summary = handler(self._cfg, list(self._configured_target_names()))
+        summary = handler(cfg, targets)
     except Exception as exc:  # noqa: BLE001
         self._emit_output_from_thread(f"Change Review failed: {exc}")
         return
@@ -542,12 +577,18 @@ if TYPE_CHECKING:
         def _set_analyze_filter_text(self, raw_text: object) -> None: ...
         def _prompt_analyze_filter(self) -> None: ...
         def _run_selected_analyzers(self) -> None: ...
-        def _execute_analyzers(self, selected_keys: tuple[str, ...]) -> None: ...
+        def _execute_analyzers(
+            self,
+            selected_keys: tuple[str, ...],
+            *,
+            cfg: Any | None = None,
+            project_path: str | None = None,
+        ) -> None: ...
         def _finish_analysis_run(self, result: Any) -> None: ...
         def _clear_selected_analyzers(self) -> None: ...
         def _select_all_analyzers(self) -> None: ...
         def _run_generate_change_review(self) -> None: ...
-        def _execute_generate_change_review(self) -> None: ...
+        def _execute_generate_change_review(self, cfg: Any | None = None, targets: list[str] | None = None) -> None: ...
 else:
 
     class _TextualAnalyzeMixin:

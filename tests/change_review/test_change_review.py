@@ -9,13 +9,22 @@ from pathlib import Path
 import pytest
 from sattline_parser.models.ast_model import (
     BasePicture,
+    CodeComment,
+    CodeItem,
+    Equation,
     ModuleCode,
     ModuleDef,
     ModuleHeader,
     ModuleTypeDef,
     ScalarDatatype,
+    Sequence,
+    SFCBodyItem,
+    SFCCodeBlocks,
+    SFCStep,
+    SFCTransition,
     Variable,
 )
+from sattline_parser.models.expressions import Assignment, VarRef
 
 from sattlint.change_review import (
     ChangeReviewResult,
@@ -25,6 +34,7 @@ from sattlint.change_review import (
     generate_change_review,
     load_version_snapshot,
 )
+from sattlint.change_review._code_model import _iter_code_statements
 from sattlint.change_review.serialization.json_serializer import review_to_json
 from sattlint.change_review.source import SourceTextProvider
 from sattlint.core.semantic import build_snapshot_from_loaded_project
@@ -238,3 +248,42 @@ def test_change_review_snapshot_can_exclude_dependency_moduletypes(tmp_path: Pat
     paths = {definition.canonical_path for definition in snapshot.definitions}
     assert any(path.startswith("RootType") for path in paths)
     assert not any(path.startswith("DependencyType") for path in paths)
+
+
+def test_comment_only_edit_keeps_statement_keys_stable() -> None:
+    def _module_code(*, with_comments: bool) -> ModuleCode:
+        sequence_nodes: list[SFCBodyItem] = []
+        if with_comments:
+            sequence_nodes.append(CodeComment(text="a note"))
+        sequence_nodes.append(SFCStep(kind="step", name="Start", code=SFCCodeBlocks()))
+        if with_comments:
+            sequence_nodes.append(CodeComment(text="another note"))
+        sequence_nodes.append(SFCTransition(name="Go", condition=True))
+        equation_code: list[CodeItem] = []
+        if with_comments:
+            equation_code.append(CodeComment(text="equation note"))
+        equation_code.append(Assignment(target=VarRef(name="X"), value=1))
+        return ModuleCode(
+            sequences=[
+                Sequence(
+                    name="Main",
+                    type="SEQUENCE",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=sequence_nodes,
+                )
+            ],
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=equation_code,
+                )
+            ],
+        )
+
+    without_keys = [key for key, _statement, _kind in _iter_code_statements(_module_code(with_comments=False))]
+    with_keys = [key for key, _statement, _kind in _iter_code_statements(_module_code(with_comments=True))]
+
+    assert with_keys == without_keys

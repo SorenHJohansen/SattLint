@@ -119,7 +119,7 @@ def _report_issue(
         kind=IssueKind.READ_BEFORE_WRITE,
         module_path=list(module_path),
         variable=None,
-        role=f"read before any write in {', '.join(sorted_sites)}",
+        role=f"{display_name} is read before any write in {', '.join(sorted_sites)}",
         site=sorted_sites[0],
         context=display_name,
     )

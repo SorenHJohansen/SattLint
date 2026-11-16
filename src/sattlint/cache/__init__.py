@@ -10,6 +10,7 @@ import os
 import pickle
 import secrets
 import shutil
+import uuid
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,9 +36,11 @@ __all__ = [
     "FoundationCache",
     "build_analysis_report_cache",
     "build_ast_cache",
+    "cache_dir_location",
     "compute_analysis_report_cache_key",
     "compute_foundation_cache_key",
     "get_cache_dir",
+    "get_cache_dir_or_none",
     "get_cache_manager",
     "prune_cache_dir",
 ]
@@ -54,16 +57,23 @@ class CachePruneResult:
     ast_payload_entries: int = 0
     ast_manifest_entries: int = 0
     analysis_report_entries: int = 0
+    foundation_entries: int = 0
 
     @property
     def removed_entries(self) -> int:
-        return self.ast_payload_entries + self.ast_manifest_entries + self.analysis_report_entries
+        return (
+            self.ast_payload_entries
+            + self.ast_manifest_entries
+            + self.analysis_report_entries
+            + self.foundation_entries
+        )
 
     def combine(self, other: CachePruneResult) -> CachePruneResult:
         return CachePruneResult(
             ast_payload_entries=self.ast_payload_entries + other.ast_payload_entries,
             ast_manifest_entries=self.ast_manifest_entries + other.ast_manifest_entries,
             analysis_report_entries=self.analysis_report_entries + other.analysis_report_entries,
+            foundation_entries=self.foundation_entries + other.foundation_entries,
         )
 
 
@@ -234,7 +244,7 @@ def _save_pickle_payload(path: Path, payload: object) -> None:
 
     pickled_payload = pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL)
     signature = hmac.new(key, pickled_payload, hashlib.sha256).hexdigest().encode("ascii")
-    temp_path = path.with_name(f"{path.name}.tmp")
+    temp_path = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
 
     try:
         with temp_path.open("wb") as handle:
@@ -306,19 +316,36 @@ def _migrate_legacy_cache_dir(cache_dir: Path) -> None:
         return
 
 
-def get_cache_dir() -> Path:
+def cache_dir_location() -> Path:
+    """The cache directory path without creating or migrating it."""
     if os.name == "nt":
         appdata = os.environ.get("APPDATA")
         base = Path(appdata) if appdata is not None else Path.home() / "AppData" / "Roaming"
-        cache_dir = base / "sattlint" / "cache"
-    else:
-        xdg_cache_home = os.environ.get("XDG_CACHE_HOME")
-        base = Path(xdg_cache_home) if xdg_cache_home is not None else Path.home() / ".cache"
-        cache_dir = base / "sattlint"
-        _migrate_legacy_cache_dir(cache_dir)
+        return base / "sattlint" / "cache"
+    xdg_cache_home = os.environ.get("XDG_CACHE_HOME")
+    base = Path(xdg_cache_home) if xdg_cache_home is not None else Path.home() / ".cache"
+    return base / "sattlint"
 
+
+def get_cache_dir() -> Path:
+    cache_dir = cache_dir_location()
+    if os.name != "nt":
+        _migrate_legacy_cache_dir(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
+
+
+def get_cache_dir_or_none() -> Path | None:
+    """The cache directory, or ``None`` when it cannot be created.
+
+    Every caller that persists something degrades to running without a cache
+    instead of aborting the invocation, so the unusable-directory path has one
+    spelling and one place to test.
+    """
+    try:
+        return get_cache_dir()
+    except OSError:
+        return None
 
 
 def _normalize_cache_dir(cache_dir: Path) -> Path:
@@ -329,11 +356,13 @@ def _normalize_cache_dir(cache_dir: Path) -> Path:
         return expanded
 
 
-PROJECT_CACHE_SCHEMA_VERSION = "2026-11-15-project-graph-parser-2026-11-5"
-ANALYSIS_REPORT_CACHE_SCHEMA_VERSION = "2026-11-15-analyzer-settings"
+PROJECT_CACHE_SCHEMA_VERSION = "2026-11-16-program-root-origins"
+ANALYSIS_REPORT_CACHE_SCHEMA_VERSION = "2026-11-16-analyzer-settings"
 _ANALYSIS_REPORT_ANALYZER_VERSIONS = {
     "cyclomatic-complexity": "2026-11-06-default-thresholds",
     "sfc": "2026-11-06-sequence-start",
+    "variables": "2026-11-16-moduletype-traversal",
+    "spec-compliance": "2026-11-16-typedef-path",
 }
 # Phase E: the analysis foundation (type graph + typedef/moduletype/datatype indices + symbol
 # skeleton) is a pure function of the parsed ASTs, so it is content-addressable. This version

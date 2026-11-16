@@ -22,6 +22,8 @@ target_exists = _config_validation_module.target_exists
 validate_config = _config_validation_module.validate_config
 validate_effective_config = _config_validation_module.validate_effective_config
 validate_loaded_config = _config_validation_module.validate_loaded_config
+config_dir_location = _config_io_module.config_dir_location
+config_path_location = _config_io_module.config_path_location
 get_config_path = _config_io_module.get_config_path
 get_projects_dir = _config_io_module.get_projects_dir
 load_config = _config_io_module.load_config
@@ -45,6 +47,8 @@ __all__ = [
     "ConfigDict",
     "ConfigValidationError",
     "ConfigValidationResult",
+    "config_dir_location",
+    "config_path_location",
     "configured_targets",
     "get_config_path",
     "get_projects_dir",

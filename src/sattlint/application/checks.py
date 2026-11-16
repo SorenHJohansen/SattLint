@@ -29,7 +29,7 @@ from ..analyzers.framework import (
     build_analysis_context,
 )
 from ..analyzers.shared.instance_paths import rewrite_typedef_paths
-from ..cache import AnalysisReportCache, compute_analysis_report_cache_key, get_cache_dir
+from ..cache import AnalysisReportCache, compute_analysis_report_cache_key, get_cache_dir_or_none
 from ..config.types import ConfigDict
 from ..core import profiling as profiling_module
 from ..core.debug import debug_enabled
@@ -45,7 +45,7 @@ from ..runs import (
     RunModuleRecord,
     RunRecord,
     RunTargetRecord,
-    get_runs_dir,
+    get_runs_dir_or_none,
     prune_runs,
     save_run,
 )
@@ -269,7 +269,13 @@ def build_run_record(
         project_tag=_project_tag(cfg),
         project_path=project_path,
         selected_analyzers=result.selected_analyzers,
-        targets=tuple(_run_target_record(target) for target in result.targets),
+        targets=tuple(_run_target_record(target) for target in result.targets if not target.is_pseudo),
+        project_analyzers=tuple(
+            _run_analyzer_record(analyzer)
+            for target in result.targets
+            if target.is_pseudo
+            for analyzer in target.analyzers
+        ),
         output_lines=result.output_lines,
     )
 
@@ -283,7 +289,9 @@ def _persist_run_result(
 ) -> RunRecord | None:
     if result.cancelled or result.failures or result.analyzer_failures or not _run_history_enabled(cfg):
         return None
-    runs_dir = get_runs_dir()
+    runs_dir = get_runs_dir_or_none()
+    if runs_dir is None:
+        return None
     record = build_run_record(result, cfg, started_at=started_at, project_path=project_path)
     try:
         stored = save_run(record, runs_dir=runs_dir)
@@ -473,16 +481,23 @@ def collect_run_checks_result(  # noqa: PLR0915
         use_cache=use_cache,
         debug_enabled_fn=debug_enabled,
         analysis_report_cache_cls=AnalysisReportCache,
-        get_cache_dir_fn=get_cache_dir,
+        get_cache_dir_fn=get_cache_dir_or_none,
     )
     profiler = profiling_module.create_profiler()
-    try:
-        for target_name, project_bp, graph in iter_loaded_projects_fn(
+    # A per-run-only selection has no per-target analyzer, so loading the
+    # project would pay the full parse cost for nothing.
+    loaded_projects = (
+        iter_loaded_projects_fn(
             cfg,
             use_cache=use_cache,
             failure_sink=record_load_failure,
             emit_output_fn=emit_line,
-        ):
+        )
+        if per_target_analyzers
+        else ()
+    )
+    try:
+        for target_name, project_bp, graph in loaded_projects:
             target_analyzers: list[ChecksAnalyzerResult] = []
             target_started_at = perf_counter()
             analyzer_timings_ms: dict[str, float] = {}
@@ -529,6 +544,21 @@ def collect_run_checks_result(  # noqa: PLR0915
                             )
                         ),
                     )
+                except Exception as exc:  # noqa: BLE001 - report and keep the run going
+                    analyzer_timings_ms[spec.key] = round((perf_counter() - analyzer_started_at) * 1000, 3)
+                    message = f"{spec.name} failed: {exc}"
+                    emit_line(f"❌ {message}")
+                    target_analyzers.append(
+                        ChecksAnalyzerResult(
+                            key=spec.key,
+                            name=str(spec.name),
+                            status="failed",
+                            summary=message,
+                            issue_count=0,
+                            duration_ms=analyzer_timings_ms[spec.key],
+                        )
+                    )
+                    continue
                 except KeyboardInterrupt:
                     analyzer_timings_ms[spec.key] = round((perf_counter() - analyzer_started_at) * 1000, 3)
                     target_analyzers.append(

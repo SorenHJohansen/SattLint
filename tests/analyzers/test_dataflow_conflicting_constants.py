@@ -13,6 +13,8 @@ from sattline_parser.models.ast_model import (
     IntLiteral,
     ModuleCode,
     ModuleHeader,
+    ModuleTypeDef,
+    ModuleTypeInstance,
     ScalarDatatype,
     Sequence,
     SFCBodyItem,
@@ -655,3 +657,48 @@ def test_procedure_out_field_writes_do_not_overwrite_sibling_fields() -> None:
     ]
 
     assert dead_first == []
+
+
+def test_recursive_module_type_does_not_overflow_the_non_state_scan() -> None:
+    recursive = ModuleTypeDef(
+        name="Recursive",
+        moduleparameters=[],
+        localvariables=[Variable(name="Seen", datatype=ScalarDatatype.BOOLEAN)],
+        submodules=[
+            ModuleTypeInstance(header=_hdr("Inner"), moduletype_name="Recursive"),
+        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Seen"), value=True)],
+                )
+            ],
+            sequences=[],
+        ),
+        moduledef=None,
+    )
+    root_module = SingleModule(
+        header=_hdr("Child"),
+        moduleparameters=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[recursive],
+        localvariables=[],
+        submodules=[ModuleTypeInstance(header=_hdr("Child"), moduletype_name="Recursive"), root_module],
+        modulecode=ModuleCode(equationblocks=[], sequences=[]),
+        moduledef=None,
+    )
+
+    report = analyze_dataflow(bp)
+
+    assert report.issues == []

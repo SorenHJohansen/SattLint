@@ -231,3 +231,50 @@ def test_module_entrypoint_exits_with_cli_status(monkeypatch):
         runpy.run_module("sattlint.__main__", run_name="__main__")
 
     assert exc_info.value.code == 7
+
+
+def test_startup_headless_argv_never_resolves_the_config_directory(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        startup_application.config_module,
+        "get_config_path",
+        lambda: (_ for _ in ()).throw(OSError("unwritable")),
+    )
+
+    exit_code = startup_application.main(
+        ["version"],
+        run_cli_fn=lambda _argv: 0,
+        apply_debug_fn=lambda _cfg: None,
+        emit_output_fn=lambda *_args: None,
+        pause_fn=lambda: None,
+        run_main_loop_fn=lambda *_args, **_kwargs: pytest.fail("interactive loop should not run for CLI argv"),
+        summarize_targets_fn=lambda _cfg: "targets",
+        save_config_fn=lambda _path, _cfg: None,
+        quit_app_error=RuntimeError,
+    )
+
+    assert exit_code == 0
+
+
+def test_startup_reports_an_unresolvable_config_directory_as_a_user_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        startup_application.config_module,
+        "get_config_path",
+        lambda: (_ for _ in ()).throw(OSError("unwritable")),
+    )
+    messages: list[str] = []
+
+    exit_code = startup_application.main(
+        [],
+        apply_debug_fn=lambda _cfg: None,
+        emit_output_fn=lambda *args: messages.append(str(args[0])),
+        pause_fn=lambda: None,
+        run_main_loop_fn=lambda *_args, **_kwargs: pytest.fail("interactive loop should not run"),
+        summarize_targets_fn=lambda _cfg: "targets",
+        save_config_fn=lambda _path, _cfg: None,
+        quit_app_error=RuntimeError,
+    )
+
+    assert exit_code == 2
+    assert messages == ["Failed to resolve the configuration directory: unwritable"]

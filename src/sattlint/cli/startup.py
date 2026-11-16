@@ -181,14 +181,18 @@ def main(
     save_config_fn: Callable[[Path, ConfigDict], None] = config_module.save_config,
     quit_app_error: type[BaseException] = QuitAppError,
 ) -> int:
-    if config_path is None:
-        config_path = config_module.get_config_path()
-    if run_main_loop_fn is None:
-        run_main_loop_fn = run_interactive_session
-
     cli_args = [] if argv is None else argv
     if cli_args:
         return run_cli_fn(cli_args)
+
+    if run_main_loop_fn is None:
+        run_main_loop_fn = run_interactive_session
+    if config_path is None:
+        try:
+            config_path = config_module.get_config_path()
+        except OSError as exc:
+            emit_output_fn(f"Failed to resolve the configuration directory: {exc}")
+            return 2
 
     try:
         # The Textual shell always opens with no project loaded. Projects are
@@ -204,7 +208,7 @@ def main(
         if resolve_interactive_ui_mode_fn is not None:
             try:
                 resolved_ui_mode = resolve_interactive_ui_mode_fn(cfg, None)
-            except RuntimeError as exc:
+            except (RuntimeError, ValueError) as exc:
                 emit_output_fn(f"Interactive startup failed: {exc}")
                 return 1
         if default_used:

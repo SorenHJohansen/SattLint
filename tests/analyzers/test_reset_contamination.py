@@ -6,6 +6,7 @@ from sattline_parser.models.ast_model import (
     ModuleCode,
     ModuleHeader,
     ModuleTypeDef,
+    ModuleTypeInstance,
     ScalarDatatype,
     Sequence,
     SFCBodyItem,
@@ -321,3 +322,88 @@ def test_reset_contamination_can_consume_shared_indexes() -> None:
 
     assert first_build_count == 1
     assert shared_artifacts.counters.local_env_builds == 1
+
+
+def test_typedef_without_origin_file_uses_the_library_to_decide_ownership() -> None:
+    foreign = ModuleTypeDef(
+        name="ForeignType",
+        moduleparameters=[],
+        localvariables=[
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
+        ],
+        moduledef=None,
+        modulecode=_reset_modulecode(),
+    )
+    foreign.origin_lib = "DependencyLib"
+
+    local = ModuleTypeDef(
+        name="LocalType",
+        moduleparameters=[],
+        localvariables=[
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
+        ],
+        moduledef=None,
+        modulecode=_reset_modulecode(),
+    )
+    local.origin_lib = "RootLib"
+
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[foreign, local],
+        localvariables=[],
+        submodules=[],
+        modulecode=ModuleCode(equationblocks=[], sequences=[]),
+        moduledef=None,
+    )
+    bp.origin_file = "root.s"
+    bp.origin_lib = "RootLib"
+
+    issues: list[VariableIssue] = []
+    reset_contamination_module.detect_reset_contamination(bp, issues)
+
+    assert [(issue.module_path, issue.variable.name) for issue in issues if issue.variable is not None] == [
+        (["Root", "TypeDef:LocalType"], "Counter")
+    ]
+
+
+def test_recursive_module_type_is_analyzed_once_without_overflow() -> None:
+    recursive = ModuleTypeDef(
+        name="Recursive",
+        moduleparameters=[],
+        localvariables=[
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
+        ],
+        moduledef=None,
+        modulecode=_reset_modulecode(),
+        submodules=[ModuleTypeInstance(header=_hdr("Inner"), moduletype_name="Recursive")],
+    )
+    recursive.origin_file = "root.s"
+
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[recursive],
+        localvariables=[],
+        submodules=[ModuleTypeInstance(header=_hdr("Outer"), moduletype_name="Recursive")],
+        modulecode=ModuleCode(equationblocks=[], sequences=[]),
+        moduledef=None,
+    )
+    bp.origin_file = "root.s"
+
+    issues: list[VariableIssue] = []
+    reset_contamination_module.detect_reset_contamination(bp, issues)
+
+    reported = [(issue.module_path, issue.variable.name) for issue in issues if issue.variable is not None]
+    # The instance path is analyzed once; the recursive inner instance and the
+    # root typedef list do not duplicate the finding.
+    assert reported == [(["Root", "Outer"], "Counter")]

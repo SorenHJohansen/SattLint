@@ -10,6 +10,7 @@ import json
 import sys
 from collections.abc import Iterable, Mapping
 from pathlib import Path
+from typing import Any
 
 from ._payloads import ErrorPayload
 
@@ -46,14 +47,38 @@ def error_payload(error: CliError) -> ErrorPayload:
     }
 
 
+def _write_stream(stream: Any, text: str) -> None:
+    """Write through a text stream without failing on a legacy code page.
+
+    ``PYTHONIOENCODING=ascii`` and legacy Windows consoles raise
+    ``UnicodeEncodeError`` on the first non-ASCII character, which would turn a
+    complete result into an internal error. The fallback encodes the document
+    as UTF-8 with backslash escapes and writes to the underlying buffer.
+    """
+    try:
+        stream.write(text)
+    except UnicodeEncodeError:
+        buffer = getattr(stream, "buffer", None)
+        if buffer is None:
+            raise
+        buffer.write(text.encode("utf-8", errors="backslashreplace"))
+    stream.flush()
+
+
 def _write_text(text: str, output: Path | None) -> None:
     if output is None:
-        sys.stdout.write(text)
-        sys.stdout.flush()
+        _write_stream(sys.stdout, text)
         return
     resolved = output.expanduser().resolve()
-    resolved.parent.mkdir(parents=True, exist_ok=True)
-    resolved.write_text(text, encoding="utf-8")
+    try:
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        resolved.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        raise CliError(
+            f"Could not write {resolved}: {exc}",
+            code="output_write_failed",
+            exit_code=2,
+        ) from exc
 
 
 def emit_json(payload: Mapping[str, object], *, output: Path | None = None) -> None:
@@ -73,14 +98,12 @@ def emit_text(lines: Iterable[str], *, output: Path | None = None) -> None:
 
 
 def emit_error(error: CliError, *, output_format: str) -> None:
-    if output_format == "json":
-        sys.stderr.write(json.dumps(error_payload(error), ensure_ascii=False) + "\n")
-        sys.stderr.flush()
+    if output_format in {"json", "ndjson"}:
+        _write_stream(sys.stderr, json.dumps(error_payload(error), ensure_ascii=False) + "\n")
         return
-    sys.stderr.write(f"sattlint: {error.message}\n")
+    _write_stream(sys.stderr, f"sattlint: {error.message}\n")
     for key, value in error.details.items():
-        sys.stderr.write(f"  {key}: {value}\n")
-    sys.stderr.flush()
+        _write_stream(sys.stderr, f"  {key}: {value}\n")
 
 
 def output_path(value: str | None) -> Path | None:

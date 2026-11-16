@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import logging
+import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import cast
@@ -22,6 +24,9 @@ from sattlint.application.checks import (
     TargetLoadFailure,
 )
 from sattlint.application.findings import AnalysisFinding
+from sattlint.cli import _findings as findings_module
+from sattlint.cli import _output as output_module
+from sattlint.cli import entry as entry_module
 from sattlint.cli._findings import (
     FindingFilters,
     filter_findings,
@@ -30,9 +35,11 @@ from sattlint.cli._findings import (
     resolve_run,
 )
 from sattlint.cli._output import CliError
+from sattlint.cli._project import project_payload
 from sattlint.cli.entry import build_cli_parser, run_cli
 from sattlint.config.types import ConfigDict
 from sattlint.models.project_graph import ProjectGraph
+from sattlint.project.io import load_project
 from sattlint.runs import RunAnalyzerRecord, RunRecord, RunSummary, RunTargetRecord
 
 pytestmark = pytest.mark.unit
@@ -40,7 +47,7 @@ pytestmark = pytest.mark.unit
 
 @pytest.fixture(autouse=True)
 def _isolate_user_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr("sattlint.cli._project.get_config_path", lambda: tmp_path / "config.toml")
+    monkeypatch.setattr("sattlint.cli._project.config_path_location", lambda: tmp_path / "config.toml")
 
 
 def _write_project(
@@ -445,8 +452,10 @@ def test_findings_exact_module_text_ndjson_and_output(
     code = run_cli(["findings", "--format", "ndjson"])
     assert code == 0
     lines = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
-    assert len(lines) == 2
-    assert {line["module"] for line in lines} == {"Demo.A", "Demo.A.Sub"}
+    assert lines[0]["record_type"] == "envelope"
+    assert lines[0]["run"]["run_id"] == record.run_id
+    findings = [line for line in lines if line["record_type"] == "finding"]
+    assert {line["module"] for line in findings} == {"Demo.A", "Demo.A.Sub"}
 
     output = tmp_path / "findings.json"
     code = run_cli(
@@ -522,7 +531,8 @@ def test_analyze_text_ndjson_and_cancelled(
     )
     assert code == 0
     lines = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
-    assert [line["module"] for line in lines] == ["Demo.A"]
+    assert lines[0]["record_type"] == "envelope"
+    assert [line["module"] for line in lines if line["record_type"] == "finding"] == ["Demo.A"]
 
     cancelled = ChecksRunResult(output_lines=(), targets=(), selected_analyzers=("variables",), cancelled=True)
     monkeypatch.setattr("sattlint.cli.commands.collect_checks_result", _fake_collect(cancelled))
@@ -664,6 +674,12 @@ def test_finding_filters_and_all_groupings() -> None:
     by_rule = filter_findings(findings, FindingFilters(rules=("rule-1",)))
     assert [finding.module for finding in by_rule] == ["Other.A"]
 
+    # Analyzers rarely set a rule ID, so the filter falls back to the kind.
+    by_kind_as_rule = filter_findings(findings, FindingFilters(rules=("unused",)))
+    assert [finding.module for finding in by_kind_as_rule] == ["Demo.A"]
+    by_kind_mixed = filter_findings(findings, FindingFilters(rules=("rule-1", "shadowing")))
+    assert [finding.module for finding in by_kind_mixed] == ["Demo.B", "Other.A"]
+
     assert group_findings(findings, "none") == []
     assert {group["key"] for group in group_findings(findings, "analyzer")} == {"variables"}
     assert {group["key"] for group in group_findings(findings, "kind")} == {"unused", "shadowing"}
@@ -690,7 +706,7 @@ def test_collect_run_checks_result_records_saved_run_id(
     tmp_path: Path,
 ) -> None:
     spec = get_default_cli_analyzers()[0]
-    monkeypatch.setattr(checks_module, "get_runs_dir", lambda: tmp_path / "runs")
+    monkeypatch.setattr(checks_module, "get_runs_dir_or_none", lambda: tmp_path / "runs")
     result = checks_module.collect_run_checks_result(
         cast(ConfigDict, {"analyzed_programs_and_libraries": ["Demo"]}),
         [spec.key],
@@ -880,3 +896,242 @@ def test_analyze_summary_counts_only_loaded_targets(
     assert code == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["summary"]["targets"] == 1
+
+
+def test_emit_text_survives_a_non_utf8_stdout(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _AsciiStream:
+        encoding = "ascii"
+
+        def __init__(self) -> None:
+            self.buffer = io.BytesIO()
+
+        def write(self, text: str) -> int:
+            raise UnicodeEncodeError("ascii", text, 0, len(text), "ordinal not in range(128)")
+
+        def flush(self) -> None:
+            return None
+
+    stream = _AsciiStream()
+    monkeypatch.setattr(sys, "stdout", stream)
+
+    output_module.emit_text(["café"])
+
+    assert stream.buffer.getvalue().decode("utf-8") == "café\n"
+
+
+def test_project_payload_reports_paths_without_creating_them(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    blocked_cache = tmp_path / "blocked-cache"
+    blocked_cache.write_text("not a directory", encoding="utf-8")
+    blocked_config = tmp_path / "blocked-config"
+    blocked_config.write_text("not a directory", encoding="utf-8")
+    monkeypatch.setenv("XDG_CACHE_HOME", str(blocked_cache))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(blocked_config))
+
+    project = load_project(_write_project(tmp_path))
+    payload = project_payload(project)
+
+    assert payload["cache_dir"] == str(blocked_cache / "sattlint")
+    assert payload["runs_dir"] == str(blocked_cache / "sattlint" / "runs")
+    assert payload["review_output_dir"] == str(blocked_config / "sattlint" / "change-review")
+    assert payload["config"]["exists"] is False
+
+
+def test_analyze_all_targets_failed_is_a_load_failure_not_a_preflight_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "programs").mkdir()
+    project = _write_project(tmp_path)
+    failed = ChecksRunResult(
+        output_lines=("loader diagnostic",),
+        targets=(),
+        selected_analyzers=("variables",),
+        failures=(TargetLoadFailure(target_name="Demo", message="root failed"),),
+    )
+    monkeypatch.setattr("sattlint.cli.commands.collect_checks_result", _fake_collect(failed))
+
+    code = run_cli(["analyze", "--project", str(project), "--format", "json"])
+
+    assert code == 2
+    payload = json.loads(capsys.readouterr().err)
+    assert payload["error"]["code"] == "target_load_failed"
+
+
+def test_resolve_run_latest_falls_back_to_a_readable_record(monkeypatch: pytest.MonkeyPatch) -> None:
+    summaries = [
+        RunSummary.from_record(RunRecord(run_id=run_id, started_at="s", finished_at="f", project_tag="p"))
+        for run_id in ("newest", "older")
+    ]
+    monkeypatch.setattr(findings_module, "list_runs", lambda: tuple(summaries))
+
+    def _load(run_id: str) -> RunRecord | None:
+        if run_id == "newest":
+            return None
+        return RunRecord(run_id=run_id, started_at="s", finished_at="f", project_tag="p")
+
+    monkeypatch.setattr(findings_module, "load_run", _load)
+
+    record = resolve_run("latest")
+
+    assert record.run_id == "older"
+
+
+def test_resolve_run_reports_ambiguous_prefix_and_rejects_an_empty_selector(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    summaries = [
+        RunSummary.from_record(RunRecord(run_id=run_id, started_at="s", finished_at="f", project_tag="p"))
+        for run_id in ("abc1", "abc2")
+    ]
+    monkeypatch.setattr(findings_module, "list_runs", lambda: tuple(summaries))
+
+    with pytest.raises(CliError) as ambiguous:
+        resolve_run("abc")
+    assert ambiguous.value.code == "run_ambiguous"
+
+    with pytest.raises(CliError) as empty:
+        resolve_run("   ")
+    assert empty.value.code == "run_invalid"
+
+
+def test_resolve_run_latest_prefers_the_current_project(monkeypatch: pytest.MonkeyPatch) -> None:
+    summaries = [
+        RunSummary.from_record(
+            RunRecord(run_id="other", started_at="s", finished_at="f", project_tag="p", project_path="/p/other.slproj")
+        ),
+        RunSummary.from_record(
+            RunRecord(run_id="mine", started_at="s", finished_at="f", project_tag="p", project_path="/p/mine.slproj")
+        ),
+    ]
+    monkeypatch.setattr(findings_module, "list_runs", lambda: tuple(summaries))
+
+    def _load(run_id: str) -> RunRecord:
+        return RunRecord(
+            run_id=run_id, started_at="s", finished_at="f", project_tag="p", project_path=f"/p/{run_id}.slproj"
+        )
+
+    monkeypatch.setattr(findings_module, "load_run", _load)
+
+    assert resolve_run("latest", project_path="/p/mine.slproj").run_id == "mine"
+    assert resolve_run("latest").run_id == "other"
+
+
+def test_analyze_output_write_failure_is_a_user_error(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "programs").mkdir()
+    project = _write_project(tmp_path)
+    monkeypatch.setattr(
+        "sattlint.cli.commands.collect_checks_result",
+        _fake_collect(_checks_result(_finding(module_path=("Demo", "A")))),
+    )
+    blocked = tmp_path / "blocked"
+    blocked.write_text("not a directory", encoding="utf-8")
+
+    code = run_cli(
+        ["analyze", "--project", str(project), "--format", "json", "--output", str(blocked / "out.json")],
+    )
+
+    assert code == 2
+    payload = json.loads(capsys.readouterr().err)
+    assert payload["error"]["code"] == "output_write_failed"
+
+
+def test_analyze_failure_removes_a_stale_output_artifact(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "programs").mkdir()
+    project = _write_project(tmp_path)
+    artifact = tmp_path / "findings.json"
+    artifact.write_text('{"stale": true}', encoding="utf-8")
+    failed = ChecksRunResult(
+        output_lines=(),
+        targets=(),
+        selected_analyzers=("variables",),
+        failures=(TargetLoadFailure(target_name="Demo", message="boom"),),
+    )
+    monkeypatch.setattr("sattlint.cli.commands.collect_checks_result", _fake_collect(failed))
+
+    code = run_cli(["analyze", "--project", str(project), "--format", "json", "--output", str(artifact)])
+
+    assert code == 2
+    assert not artifact.exists()
+
+
+def test_findings_grouped_text_uses_human_labels(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    record = _run_record(_finding(module_path=("Demo", "A"), kind="unused"))
+    summary = RunSummary.from_record(record)
+    monkeypatch.setattr("sattlint.cli._findings.list_runs", _fake_list_runs(summary))
+    monkeypatch.setattr("sattlint.cli._findings.load_run", _fake_load_run(record))
+
+    code = run_cli(["findings", "--group-by", "kind"])
+
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "Unused variable (1)" in out
+    assert "unused (1)" not in out
+
+
+def test_closed_pipe_exits_141(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Sink:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    def _broken(_args: argparse.Namespace) -> int:
+        raise BrokenPipeError
+
+    sink = _Sink()
+    monkeypatch.setattr(sys, "stdout", sink)
+    monkeypatch.setattr(entry_module, "_dispatch_analyzers", _broken)
+
+    assert run_cli(["analyzers", "list"]) == 141
+    assert sink.closed is True
+
+
+def test_project_show_quiet_suppresses_config_warnings(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    (tmp_path / "programs").mkdir()
+    project = _write_project(tmp_path)
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "config.toml").write_text('program_dirr = "typo"\n', encoding="utf-8")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_dir))
+
+    code = run_cli(["project", "show", "--project", str(project), "--quiet"])
+
+    assert code == 0
+    assert "Config warning" not in capsys.readouterr().err
+
+
+def test_project_analyzer_findings_survive_without_a_phantom_target() -> None:
+    record = RunRecord(
+        run_id="r1",
+        started_at="s",
+        finished_at="f",
+        project_tag="Demo",
+        project_analyzers=(
+            RunAnalyzerRecord(
+                key="icf",
+                name="ICF configuration",
+                status="completed",
+                findings=(AnalysisFinding(kind="icf_drift", message="drift", module_path=("Demo",)),),
+            ),
+        ),
+    )
+
+    flat = flat_findings(record)
+
+    assert [finding.analyzer_key for finding in flat] == ["icf"]
+    assert [finding.target for finding in flat] == [""]
+    assert record.targets == ()
+    assert record.issue_count == 1

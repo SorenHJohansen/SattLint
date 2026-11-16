@@ -1,6 +1,11 @@
 # SattLint review findings and fix plan
 
-Status: open. Two read-only review waves completed. All six continuation
+Status: High severity closed; Medium in progress. A resolution pass on
+2026-11-16 fixed every High row and the Medium rows listed in "Resolution
+status" below, with regression tests and a clean gate. The remaining Medium and
+Low rows are still open; each open row keeps its original finding text.
+
+Two read-only review waves completed. All six continuation
 passes are complete (C1 to C6).
 Branch: `feature/parser-2026.11.5`
 Pull request: #84
@@ -18,6 +23,33 @@ Review method note: the first pass capped each reviewer at eight to ten
 findings, and every reviewer stopped exactly at the cap, so that list is a floor
 rather than a total. The continuation passes have no cap and their results are
 appended below when they arrive.
+
+## Resolution status
+
+Status: 2026-11-16, `feature/parser-2026.11.5`.
+
+Fixed in this pass. Rows with a dedicated regression test: H1, H2, H3, H4, H5,
+H6, H7, H8, H9, H10, H11, C2-19, C2-23, C2-47, the per-target analyzer
+failure channel, all-targets-failed ordering, `latest` fallback and project
+scoping, pseudo-target findings, C4-1, C4-2, C4-4, C4-5, C4-6, C4-9, C4-10,
+C4-14, C6-16, C5-9, and the reset-contamination recursion/deduplication. The
+remaining fixed rows (C2-24, C2-34, atomic saves, C4-7, C4-8, C4-11 to C4-13,
+C4-17, C4-18, C4-36, C6-1, C5-10, C5-18) are covered by structural changes and
+the full suite rather than one targeted test each.
+
+- High: H1, H2, H3, H4, H5, H6, H7, H8, H9, H10, H11, C2-9, C4-1, C4-2, C4-3, C5-9.
+- Application and runs: per-target analyzer failure channel, all-targets-failed ordering, `latest` fallback, failure-graph cache guard, pseudo-target persistence, C2-19, C2-23, C2-24, C2-34, C2-47.
+- CLI and config: project-scoped run payloads, merged `analysis` table, NDJSON envelope and error document, config-warning channel, atomic saves, C4-4 to C4-14, C4-17, C4-18, C4-36.
+- Analyzers: module-type subtrees in reset/latching, read-before-write variable naming, C3-15 typedef tag.
+- Tests, security, CI: C6-1 (`uv sync --locked`), C6-16 (cache isolation at the source binding).
+- UI: C5-10 run status, C5-18 browser extensions.
+
+Still open from the Medium list (kept verbatim below): the dataflow pairwise
+scan cost, latch frontier cap, mapped-literal string capacity, parameter/local
+symbol kinds, library-scoped record definitions, empty semantic indexes,
+C3-9 to C3-14, C1-12 to C1-21, C5-11 to C5-17 and C5-19, and C6-2 to C6-5. All
+Low and nit items are open. The gate (`ruff`, `ruff format`, `pyright`, the full
+pytest suite, `scripts/check_docs.py`, pre-commit) is clean on the fixed slice.
 
 ## High severity
 

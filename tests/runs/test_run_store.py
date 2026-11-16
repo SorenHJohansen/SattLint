@@ -274,3 +274,29 @@ def test_importing_runs_first_does_not_hit_a_circular_import() -> None:
     )
 
     assert completed.returncode == 0, completed.stderr
+
+
+def test_save_run_generates_distinct_ids_and_leaves_no_temp_files(tmp_path: Path) -> None:
+    first = save_run(_sample_record(), runs_dir=tmp_path)
+    second = save_run(_sample_record(), runs_dir=tmp_path)
+
+    assert first.run_id != second.run_id
+    assert len(list(tmp_path.glob("*.json"))) == 2
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_save_run_never_overwrites_a_supplied_existing_id(tmp_path: Path) -> None:
+    first = save_run(_sample_record(), runs_dir=tmp_path)
+    second = save_run(
+        RunRecord(
+            run_id=first.run_id,
+            started_at="2026-09-06T10:00:00Z",
+            finished_at="2026-09-06T10:06:00Z",
+            project_tag="RootProgram",
+        ),
+        runs_dir=tmp_path,
+    )
+
+    assert second.run_id != first.run_id
+    assert load_run(first.run_id, runs_dir=tmp_path) is not None
+    assert load_run(second.run_id, runs_dir=tmp_path) is not None

@@ -410,7 +410,7 @@ def _index_program(
         graph.add_library_dependencies(library_name, dep_libs)
         _emit_status(binding, f"Loading {name}: indexing definitions")
         index_started_at = perf_counter()
-        graph.index_from_basepic(program.code, source_path=code_path, library_name=library_name)
+        graph.index_from_basepic(program.code, source_path=code_path, library_name=library_name, program_name=name)
         if binding.stage_timing_sink is not None:
             binding.stage_timing_sink(name, "index", perf_counter() - index_started_at)
     except Exception as ex:

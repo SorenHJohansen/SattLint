@@ -220,6 +220,43 @@ def _none_value_errors(value: object, *, key_path: str) -> list[ConfigValidation
     return errors
 
 
+def _top_level_type_errors(cfg: ConfigDict | ConfigOverrideDict) -> list[ConfigValidationError]:
+    """Reject values whose type contradicts the documented config contract."""
+    errors: list[ConfigValidationError] = []
+    string_keys = ("mode", "program_dir", "ABB_lib_dir", "icf_dir")
+    string_list_keys = ("analyzed_programs_and_libraries", "other_lib_dirs")
+
+    debug: object = cast(object, cfg.get("debug"))
+    if debug is not None and not isinstance(debug, bool):
+        errors.append(
+            ConfigValidationError(
+                key_path="debug",
+                message="debug must be a boolean (use true or false, not a quoted string)",
+            )
+        )
+
+    for key in string_keys:
+        value = cfg.get(key)
+        if value is not None and not isinstance(value, str):
+            errors.append(ConfigValidationError(key_path=key, message=f"{key} must be a string"))
+
+    for key in string_list_keys:
+        value = cfg.get(key)
+        if value is None:
+            continue
+        if not isinstance(value, list):
+            errors.append(ConfigValidationError(key_path=key, message=f"{key} must be a list of strings"))
+            continue
+        items = cast(list[object], value)
+        if any(item is None for item in items):
+            # The none-value pass reports the exact index.
+            continue
+        if not all(isinstance(item, str) for item in items):
+            errors.append(ConfigValidationError(key_path=key, message=f"{key} must be a list of strings"))
+
+    return errors
+
+
 def validate_config(cfg: ConfigDict | ConfigOverrideDict) -> ConfigValidationResult:
     errors: list[ConfigValidationError] = []
 
@@ -232,6 +269,8 @@ def validate_config(cfg: ConfigDict | ConfigOverrideDict) -> ConfigValidationRes
                 )
             )
         errors.extend(_none_value_errors(value, key_path=key))
+
+    errors.extend(_top_level_type_errors(cfg))
 
     mode = cfg.get("mode")
     if mode is not None and mode not in {"official", "draft"}:
@@ -448,11 +487,16 @@ def target_exists(target: str, cfg: ConfigDict | ConfigOverrideDict) -> bool:
     # without creating an import cycle, so the candidates are kept in sync here.
     extensions = [".s", ".x"] if mode == "draft" else [".x"]
 
+    wanted = {f"{target}{ext}".casefold() for ext in extensions}
     for directory in dirs:
-        if not directory.exists():
+        if not directory.is_dir():
             continue
-        for ext in extensions:
-            if (directory / f"{target}{ext}").exists():
+        try:
+            entries = directory.iterdir()
+        except OSError:
+            continue
+        for entry in entries:
+            if entry.name.casefold() in wanted:
                 return True
 
     return False

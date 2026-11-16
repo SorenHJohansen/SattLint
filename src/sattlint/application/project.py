@@ -28,7 +28,7 @@ from ..utils.casefolding import casefold_equal, casefold_key
 
 ASTCache = cache_module.ASTCache
 AnalysisReportCache = cache_module.AnalysisReportCache
-get_cache_dir: Callable[[], Path] = cache_module.get_cache_dir
+get_cache_dir: Callable[[], Path | None] = cache_module.get_cache_dir_or_none
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
 
 
@@ -141,7 +141,7 @@ def load_project(
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]] = _require_analyzed_targets,
     cache_key_for_target_fn: Callable[[ConfigDict, str], str] = _cache_key_for_target,
     target_load_error_factory: Callable[..., Exception] | None = support_module.TargetLoadError,
-    get_cache_dir_fn: Callable[[], Path] = get_cache_dir,
+    get_cache_dir_fn: Callable[[], Path | None] = get_cache_dir,
     status_update_fn: Callable[[str], None] | None = None,
 ) -> tuple[BasePicture, ProjectGraph]:
     if status_update_fn is not None:
@@ -191,7 +191,7 @@ def force_refresh_ast(
     cache_key_for_target_fn: Callable[[ConfigDict, str], str] = _cache_key_for_target,
     load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]] = load_project,
     ast_cache_cls: type[ASTCache] = ASTCache,
-    get_cache_dir_fn: Callable[[], Path] = get_cache_dir,
+    get_cache_dir_fn: Callable[[], Path | None] = get_cache_dir,
 ) -> tuple[BasePicture, ProjectGraph] | None:
     return analysis_loading_module.force_refresh_ast(
         cfg,
@@ -211,7 +211,7 @@ def ensure_ast_cache(
     cache_key_for_target_fn: Callable[[ConfigDict, str], str] = _cache_key_for_target,
     load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]] = load_project,
     ast_cache_cls: type[ASTCache] = ASTCache,
-    get_cache_dir_fn: Callable[[], Path] = get_cache_dir,
+    get_cache_dir_fn: Callable[[], Path | None] = get_cache_dir,
     emit_output_fn: Callable[..., None] | None = None,
 ) -> bool:
     resolved_emit_output_fn = emit_output if emit_output_fn is None else emit_output_fn
@@ -230,12 +230,16 @@ def refresh_analysis_caches(
     cfg: ConfigDict,
     *,
     force_refresh_ast_fn: Callable[[ConfigDict], tuple[BasePicture, ProjectGraph] | None] = force_refresh_ast,
-    get_cache_dir_fn: Callable[[], Path] = get_cache_dir,
+    get_cache_dir_fn: Callable[[], Path | None] = get_cache_dir,
     get_cache_manager_fn: Callable[..., Any] = cache_module.get_cache_manager,
     emit_output_fn: Callable[..., None] | None = None,
 ) -> tuple[BasePicture, ProjectGraph] | None:
     resolved_emit_output_fn = emit_output if emit_output_fn is None else emit_output_fn
-    cache_manager = get_cache_manager_fn(get_cache_dir_fn())
+    cache_dir = get_cache_dir_fn()
+    if cache_dir is None:
+        resolved_emit_output_fn("The cache directory is unavailable; nothing to clear.")
+        return None
+    cache_manager = get_cache_manager_fn(cache_dir)
     cleared = cache_manager.clear_all()
     removed_entries = cleared.removed_entries
     if removed_entries == 0:

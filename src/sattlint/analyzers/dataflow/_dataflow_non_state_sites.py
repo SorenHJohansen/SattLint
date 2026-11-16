@@ -225,9 +225,16 @@ def _walk_moduletype_instance(
         getattr(moduletype, "origin_lib", None),
     ):
         return
-    context = self._build_typedef_context(moduletype, instance, parent_context, child_path)
-    _walk_module_code(self, moduletype.modulecode, context, child_path, accesses)
-    _walk_modules(self, moduletype.submodules or [], context, child_path, accesses)
+    typedef_key = moduletype.name.casefold()
+    if typedef_key in self._active_typedefs:
+        return
+    self._active_typedefs.add(typedef_key)
+    try:
+        context = self._build_typedef_context(moduletype, instance, parent_context, child_path)
+        _walk_module_code(self, moduletype.modulecode, context, child_path, accesses)
+        _walk_modules(self, moduletype.submodules or [], context, child_path, accesses)
+    finally:
+        self._active_typedefs.discard(typedef_key)
 
 
 def _walk_module_code(

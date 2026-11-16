@@ -75,6 +75,15 @@ except ImportError:  # pragma: no cover - optional dependency path
 else:
 
     class _CompatStatic(_ImportedStatic):  # pyright: ignore[reportUntypedBaseClass]
+        def __init__(self, content: object = "", **kwargs: Any) -> None:
+            # Static parses Rich markup by default, and the UI feeds it
+            # untrusted text such as exception messages, project paths, and file
+            # names. A bracketed message would lose text or raise MarkupError
+            # exactly when the error dialog is needed, so plain text is the
+            # default here. Callers that want markup pass ``markup=True``.
+            kwargs.setdefault("markup", False)
+            super().__init__(content, **kwargs)
+
         @property
         def renderable(self) -> object:
             return self.content

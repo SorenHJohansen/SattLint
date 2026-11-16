@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from ..__version__ import __version__ as _sattlint_version
-from ..core.syntax import CodeMode, code_ext, deps_ext, normalize_code_mode
+from ..core.syntax import CodeMode, code_ext_candidates, deps_ext_candidates, normalize_code_mode
 from ._app_textual_setup_display import (
     _configured_target_names,
     _setup_candidate_display_paths,
@@ -306,7 +306,7 @@ def _open_raw_file_browser(self: Any) -> None:
         start_paths = [Path.home()]
 
     mode = normalize_code_mode(str(self._cfg.get("mode", "official")).strip().casefold()) or CodeMode.OFFICIAL
-    suffixes = (code_ext(mode), deps_ext(mode))
+    suffixes = (*code_ext_candidates(mode), *deps_ext_candidates(mode))
 
     def _on_browser_result(result: object) -> None:
         if isinstance(result, Path):

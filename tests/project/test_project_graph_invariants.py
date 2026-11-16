@@ -8,6 +8,7 @@ load equivalence.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,10 @@ from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattlint.models.project_graph import ProjectGraph, merge_project_basepicture
 from sattlint.project.parser_adapter import record_missing_library
 from tests.helpers.app_menus_support import VALID_SINGLE_FILE
+
+
+def _picture_named(name: str):
+    return replace(parser_core_parse_source_text(VALID_SINGLE_FILE), name=name)
 
 
 @pytest.fixture()
@@ -37,6 +42,31 @@ def test_index_from_basepic_records_unique_nodes_and_origins(graph: ProjectGraph
     assert root_origin is not None
     assert root_origin.source_path == source_path
     assert root_origin.library_name == "programs"
+
+
+def test_root_origin_resolves_each_program_by_identity(graph: ProjectGraph, base_picture) -> None:
+    other = _picture_named("Other")
+    first_path = Path("/tmp/lib-a/Invocation.s")
+    second_path = Path("/tmp/lib-b/Other.s")
+
+    graph.ast_by_name["Invocation"] = base_picture
+    graph.ast_by_name["Other"] = other
+    graph.index_from_basepic(base_picture, source_path=first_path, library_name="lib-a", program_name="Invocation")
+    graph.index_from_basepic(other, source_path=second_path, library_name="lib-b", program_name="Other")
+
+    first_origin = graph.root_origin_for_basepicture(base_picture)
+    second_origin = graph.root_origin_for_basepicture(other)
+    assert first_origin is not None
+    assert second_origin is not None
+    assert first_origin.source_path == first_path
+    assert first_origin.library_name == "lib-a"
+    assert second_origin.source_path == second_path
+    assert second_origin.library_name == "lib-b"
+
+    merged = replace(base_picture, origin_file=base_picture.origin_file, origin_lib=base_picture.origin_lib)
+    merged_origin = graph.root_origin_for_basepicture(merged)
+    assert merged_origin is not None
+    assert merged_origin.source_path == first_path
 
 
 def test_repeated_indexing_produces_deterministic_keys(graph: ProjectGraph, base_picture) -> None:
@@ -92,3 +122,30 @@ def test_library_dependencies_edges_are_casefolded_and_deterministic(graph: Proj
     graph.add_library_dependencies("PROGRAMA", ["LibB"])
 
     assert graph.library_dependencies["programa"] == {"libb", "libc"}
+
+
+def test_root_origin_is_distinct_for_programs_that_share_the_basepicture_header(graph: ProjectGraph) -> None:
+    first = parser_core_parse_source_text(VALID_SINGLE_FILE)
+    second = parser_core_parse_source_text(VALID_SINGLE_FILE)
+    first_path = Path("/tmp/lib-a/Shared.s")
+    second_path = Path("/tmp/lib-b/Shared.s")
+
+    graph.ast_by_name["First"] = replace(first, origin_file="Shared.s", origin_lib="LibA")
+    graph.ast_by_name["Second"] = replace(second, origin_file="Shared.s", origin_lib="LibB")
+    graph.index_from_basepic(
+        graph.ast_by_name["First"], source_path=first_path, library_name="LibA", program_name="First"
+    )
+    graph.index_from_basepic(
+        graph.ast_by_name["Second"], source_path=second_path, library_name="LibB", program_name="Second"
+    )
+
+    first_origin = graph.root_origin_for_name("First")
+    second_origin = graph.root_origin_for_name("Second")
+    assert first_origin is not None and first_origin.source_path == first_path
+    assert second_origin is not None and second_origin.source_path == second_path
+    first_by_picture = graph.root_origin_for_basepicture(graph.ast_by_name["First"])
+    second_by_picture = graph.root_origin_for_basepicture(graph.ast_by_name["Second"])
+    assert first_by_picture is not None and first_by_picture.source_path == first_path
+    assert second_by_picture is not None and second_by_picture.source_path == second_path
+    assert first_by_picture is not None and second_by_picture is not None
+    assert first_by_picture is not second_by_picture

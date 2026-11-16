@@ -76,9 +76,7 @@ def test_registry_catalog_report_and_key_helpers_cover_metadata_branches():
     assert catalog.enabled_specs()
     assert report["generated_by"] == "test-suite"
     assert report["analyzers"]
-    assert registry_module.get_declared_cli_analyzer_keys() == tuple(
-        sorted(analyzer.spec.key for analyzer in catalog.analyzers if analyzer.delivery.cli_exposed)
-    )
+    assert registry_module.get_declared_cli_analyzer_keys() == tuple(sorted(registry_module.DEFAULT_CLI_ANALYZER_KEYS))
     assert registry_module.get_actual_cli_analyzer_keys() == tuple(
         spec.key for spec in registry_module.get_default_cli_analyzers()
     )
@@ -92,7 +90,7 @@ def test_build_delivery_metadata_falls_back_for_unknown_analyzer_key():
         run=lambda context: cast(Any, "custom-analyzer"),
     )
 
-    delivery = registry_module.build_delivery_metadata(spec, ())
+    delivery = registry_module.build_delivery_metadata(spec)
 
     assert delivery.scope == "workspace"
     assert delivery.implementation_bucket == "analyzers"

@@ -7,6 +7,8 @@ are pinned here at the fingerprint layer that the diff consumes.
 
 from __future__ import annotations
 
+from enum import IntEnum, StrEnum
+
 from sattline_parser.ast import (
     Assignment,
     ClippingClause,
@@ -109,3 +111,23 @@ def test_unmarked_visual_configuration_is_semantic() -> None:
     draft = ModuleDef(grid=0.5, zoomable=True)
 
     assert normalize_ast_value(official) != normalize_ast_value(draft)
+
+
+def test_primitive_fingerprints_distinguish_bool_from_int() -> None:
+    assert normalize_ast_value(True) != normalize_ast_value(1)
+    assert normalize_ast_value(False) != normalize_ast_value(0)
+    assert normalize_ast_value(1) != normalize_ast_value(1.0)
+
+
+def test_enum_fingerprints_distinguish_str_enum_members() -> None:
+    class Mode(StrEnum):
+        OFFICIAL = "official"
+        DRAFT = "draft"
+
+    class Code(IntEnum):
+        ONE = 1
+        TWO = 2
+
+    assert normalize_ast_value(Mode.OFFICIAL) != normalize_ast_value("official")
+    assert normalize_ast_value(Code.ONE) != normalize_ast_value(1)
+    assert normalize_ast_value(Mode.OFFICIAL) != normalize_ast_value(Mode.DRAFT)

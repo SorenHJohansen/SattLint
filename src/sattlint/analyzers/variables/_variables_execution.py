@@ -300,6 +300,7 @@ def _run_post_traversal_analyses(self: VariablesAnalyzer) -> None:
             debug=self.debug,
             trace_fn=self._trace,
             shared_artifacts=getattr(self, "_shared_artifacts", None),
+            analyzed_target_is_library=self._analyzed_target_is_library,
         )
         self._trace(
             "reset-contamination-scan",
@@ -313,6 +314,7 @@ def _run_post_traversal_analyses(self: VariablesAnalyzer) -> None:
             self._issues,
             self._limit_to_module_path,
             shared_artifacts=getattr(self, "_shared_artifacts", None),
+            analyzed_target_is_library=self._analyzed_target_is_library,
         )
         self._trace(
             "implicit-latch-scan",

@@ -9,6 +9,7 @@ querying stored runs.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import logging
 import sys
 from collections.abc import Callable
@@ -17,6 +18,7 @@ from typing import NoReturn, Protocol
 from ..__version__ import __version__
 from . import commands
 from ._output import CliError, emit_error
+from ._project import drain_config_warnings
 
 EXIT_SUCCESS = 0
 EXIT_USAGE_ERROR = 2
@@ -135,7 +137,13 @@ def _build_findings_parser(subparsers: _SubParserAction) -> None:
     )
     parser.add_argument("--exact-module", action="store_true", help="Require an exact module path match.")
     parser.add_argument("--kind", action="append", default=[], metavar="KIND", help="Filter by finding kind.")
-    parser.add_argument("--rule", action="append", default=[], metavar="RULE", help="Filter by rule ID.")
+    parser.add_argument(
+        "--rule",
+        action="append",
+        default=[],
+        metavar="RULE",
+        help="Filter by rule ID, falling back to the finding kind.",
+    )
     parser.add_argument(
         "--group-by",
         choices=("none", "module", "analyzer", "kind"),
@@ -218,11 +226,26 @@ def run_cli(argv: list[str]) -> int:
         )
         return EXIT_USAGE_ERROR
     try:
-        return int(handler(args) or EXIT_SUCCESS)
+        exit_code = int(handler(args) or EXIT_SUCCESS)
     except CliError as exc:
+        warnings = drain_config_warnings()
+        if warnings:
+            if _format_from_args(args) in {"json", "ndjson"}:
+                exc.details.setdefault("warnings", list(warnings))
+            else:
+                for warning in warnings:
+                    sys.stderr.write(f"{warning}\n")
         emit_error(exc, output_format=_format_from_args(args))
         return exc.exit_code
+    except BrokenPipeError:
+        # A consumer such as `head` closed the pipe. That is not an internal
+        # error; exit like the tools this output is piped into.
+        drain_config_warnings()
+        with contextlib.suppress(OSError):
+            sys.stdout.close()
+        return 141
     except KeyboardInterrupt:
+        drain_config_warnings()
         sys.stderr.write("sattlint: interrupted\n")
         return 130
     except Exception as exc:  # noqa: BLE001 - CLI boundary reports a stable error envelope
@@ -232,8 +255,14 @@ def run_cli(argv: list[str]) -> int:
             exit_code=3,
             details={"type": type(exc).__name__},
         )
+        drain_config_warnings()
         emit_error(error, output_format=_format_from_args(args))
         return 3
+    warnings = drain_config_warnings()
+    if warnings and _format_from_args(args) not in {"json", "ndjson"}:
+        for warning in warnings:
+            sys.stderr.write(f"{warning}\n")
+    return exit_code
 
 
 __all__ = [

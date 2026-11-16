@@ -949,6 +949,34 @@ def test_textual_toolbar_navigation_switches_view_without_starting_action(monkey
     assert started == []
 
 
+def test_textual_menu_file_actions_respect_the_busy_guard(monkeypatch: pytest.MonkeyPatch) -> None:
+    app_instance = app_textual.SattLintTextualApp(
+        cfg={},
+        summarize_targets_fn=lambda _cfg: "targets",
+        save_config_fn=lambda _path, _cfg: None,
+        config_path=None,
+        quit_app_error=RuntimeError,
+    )
+    opened: list[str] = []
+    messages: list[str] = []
+    app_instance._busy = True
+    monkeypatch.setattr(app_instance, "_open_project_browser", lambda: opened.append("open"))
+    monkeypatch.setattr(app_instance, "_new_project", lambda: opened.append("new"))
+    monkeypatch.setattr(app_instance, "_write_output", lambda text: messages.append(str(text)))
+
+    app_instance._handle_toolbar_action("menu-file-open-project")
+    app_instance._handle_toolbar_action("menu-file-new-project")
+
+    assert opened == []
+    assert messages == ["Another action is still running. Wait for it to finish first."] * 2
+
+    app_instance._busy = False
+    app_instance._handle_toolbar_action("menu-file-open-project")
+    app_instance._handle_toolbar_action("menu-file-new-project")
+
+    assert opened == ["open", "new"]
+
+
 def test_textual_toolbar_help_action_opens_help_popup(monkeypatch: pytest.MonkeyPatch) -> None:
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
@@ -1003,7 +1031,7 @@ def _make_textual_app(
 def _attach_test_project(app_instance: Any) -> None:
     project_dir = Path(tempfile.mkdtemp(prefix="sattlint-test-project-"))
     _TEMP_TEST_DIRS.append(str(project_dir))
-    app_instance._project = init_project(project_dir / ".slproj", name="TestProject")
+    app_instance._project = init_project(project_dir / ".slproj")
 
 
 _TEMP_TEST_DIRS: list[str] = []
@@ -1786,7 +1814,7 @@ def test_textual_execute_analyzers_reports_target_load_failures(monkeypatch: pyt
 
     assert emitted == [
         "Running 1 selected analyzer(s).",
-        "Analysis finished with target load failures: Broken. Review the output above.",
+        "Analysis finished with problems: 1 target(s) could not be loaded (Broken). Review the output above.",
     ]
 
 
@@ -3523,7 +3551,7 @@ def test_textual_new_project_failure_shows_error_modal(monkeypatch: pytest.Monke
     monkeypatch.setattr(
         app_textual_actions_module,
         "_init_project",
-        lambda _path, name: (_ for _ in ()).throw(OSError("no space")),
+        lambda _path: (_ for _ in ()).throw(OSError("no space")),
     )
 
     app_instance._new_project()
@@ -4028,7 +4056,7 @@ def test_textual_open_project_loads_and_unlocks_views(monkeypatch: pytest.Monkey
     monkeypatch.setattr(app_instance, "_refresh_shell_state", lambda: None)
 
     project_dir = tmp_path / "opened-project"
-    project = init_project(project_dir / ".slproj", name="OpenedProject")
+    project = init_project(project_dir / ".slproj")
     project.data["analyzed_programs_and_libraries"] = ["TargetA"]
 
     app_instance._load_project_object(project)
@@ -4060,7 +4088,7 @@ def test_textual_open_project_refreshes_ast_cache_before_interaction(
     monkeypatch.setattr(app_instance, "push_screen", lambda screen, callback=None: pushed.append((screen, callback)))
 
     project_dir = tmp_path / "opened-project"
-    project = init_project(project_dir / ".slproj", name="OpenedProject")
+    project = init_project(project_dir / ".slproj")
     project.data["analyzed_programs_and_libraries"] = ["TargetA"]
 
     app_instance._load_project_object(project)
@@ -4097,7 +4125,7 @@ def test_textual_open_project_without_targets_skips_ast_refresh(
     monkeypatch.setattr(app_instance, "push_screen", lambda screen, callback=None: pushed.append((screen, callback)))
 
     project_dir = tmp_path / "opened-project"
-    project = init_project(project_dir / ".slproj", name="EmptyProject")
+    project = init_project(project_dir / ".slproj")
 
     app_instance._load_project_object(project)
 
@@ -4271,3 +4299,9 @@ def test_textual_no_content_clipped_outside_visible_area() -> None:
             _assert_no_content_clipped_outside_visible_area(app_instance)
 
     asyncio.run(_run())
+
+
+def test_ui_static_treats_untrusted_text_as_plain_text() -> None:
+    static = app_textual_shared_module._TEXTUAL_STATIC("[bold]not markup[/bold] and [unclosed")
+
+    assert str(static.renderable) == "[bold]not markup[/bold] and [unclosed"

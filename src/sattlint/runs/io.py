@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
+from uuid import uuid4
 
-from ..cache import get_cache_dir
+from .. import cache as cache_module
 from .types import RUN_RECORD_SCHEMA_VERSION, RunRecord, RunSummary
 
 DEFAULT_RUN_HISTORY_LIMIT = 50
@@ -17,7 +21,18 @@ _SUMMARY_SUFFIX = ".summary"
 
 
 def get_runs_dir() -> Path:
-    return get_cache_dir() / "runs"
+    return cache_module.get_cache_dir() / "runs"
+
+
+def runs_dir_location() -> Path:
+    """The run-history directory path without creating it."""
+    return cache_module.cache_dir_location() / "runs"
+
+
+def get_runs_dir_or_none() -> Path | None:
+    """The run-history directory, or ``None`` when the cache is unusable."""
+    cache_dir = cache_module.get_cache_dir_or_none()
+    return None if cache_dir is None else cache_dir / "runs"
 
 
 def _run_path(runs_dir: Path, run_id: str) -> Path:
@@ -29,7 +44,12 @@ def _summary_path(runs_dir: Path, run_id: str) -> Path:
 
 
 def _generate_run_id() -> str:
-    return datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    """A sortable run id that stays unique when the clock repeats.
+
+    The microsecond timestamp alone collides on a stepped or frozen clock, so a
+    short random suffix keeps two runs in the same microsecond apart.
+    """
+    return f"{datetime.now(UTC).strftime('%Y%m%dT%H%M%S%fZ')}-{uuid4().hex[:6]}"
 
 
 def save_run(record: RunRecord, *, runs_dir: Path | None = None) -> RunRecord:
@@ -38,22 +58,16 @@ def save_run(record: RunRecord, *, runs_dir: Path | None = None) -> RunRecord:
     resolved_runs_dir.mkdir(parents=True, exist_ok=True)
 
     stored_record = record
-    if not stored_record.run_id:
-        stored_record = RunRecord(
-            run_id=_generate_run_id(),
-            started_at=record.started_at,
-            finished_at=record.finished_at,
-            project_tag=record.project_tag,
-            project_path=record.project_path,
-            selected_analyzers=record.selected_analyzers,
-            cancelled=record.cancelled,
-            targets=record.targets,
-        )
+    if not stored_record.run_id or _run_path(resolved_runs_dir, stored_record.run_id).exists():
+        # A frozen or stepped clock can repeat an id, and a caller may pass an
+        # id that is already stored. Never overwrite an existing run.
+        run_id = _generate_run_id()
+        while _run_path(resolved_runs_dir, run_id).exists():
+            run_id = _generate_run_id()
+        stored_record = replace(record, run_id=run_id)
 
     payload = stored_record.to_dict()
-    path = _run_path(resolved_runs_dir, stored_record.run_id)
-    with path.open("w", encoding="utf-8") as handle:
-        json.dump(payload, handle, ensure_ascii=True, indent=2, sort_keys=True)
+    _atomic_write_json(_run_path(resolved_runs_dir, stored_record.run_id), payload)
 
     _write_summary(resolved_runs_dir, RunSummary.from_record(stored_record))
     return stored_record
@@ -136,10 +150,28 @@ def _load_summary(runs_dir: Path, run_id: str) -> RunSummary | None:
     return RunSummary.from_dict(cast(dict[str, object], payload))
 
 
+def _atomic_write_json(path: Path, payload: object) -> None:
+    """Write JSON through a unique temp file and an atomic replace.
+
+    A crash mid-write then leaves the previous record (or no record) instead of
+    a truncated one that no pruner can recognise.
+    """
+    temp_path = path.with_name(f"{path.name}.{os.getpid()}.{uuid4().hex}.tmp")
+    try:
+        with temp_path.open("w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=True, indent=2, sort_keys=True)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+    except (OSError, TypeError, ValueError):
+        with contextlib.suppress(OSError):
+            temp_path.unlink()
+        raise
+
+
 def _write_summary(runs_dir: Path, summary: RunSummary) -> None:
     try:
-        with _summary_path(runs_dir, summary.run_id).open("w", encoding="utf-8") as handle:
-            json.dump(summary.to_dict(), handle, ensure_ascii=True, indent=2, sort_keys=True)
+        _atomic_write_json(_summary_path(runs_dir, summary.run_id), summary.to_dict())
     except (OSError, TypeError, ValueError):
         return
 
@@ -171,8 +203,10 @@ __all__ = [
     "DEFAULT_RUN_HISTORY_LIMIT",
     "delete_run",
     "get_runs_dir",
+    "get_runs_dir_or_none",
     "list_runs",
     "load_run",
     "prune_runs",
+    "runs_dir_location",
     "save_run",
 ]

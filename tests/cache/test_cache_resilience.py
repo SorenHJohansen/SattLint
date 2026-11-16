@@ -5,11 +5,18 @@ from __future__ import annotations
 from pathlib import Path
 from typing import cast
 
+import pytest
+
 from sattlint import cache as cache_module
+from sattlint import runs as runs_module
 from sattlint.cache import AnalysisReportCache
+from sattlint.cache.manager import CacheManager
 from sattlint.config import DEFAULT_CONFIG
 from sattlint.config.types import ConfigDict
 from sattlint.project.cache import create_analysis_report_cache
+
+_REAL_GET_CACHE_DIR = cache_module.get_cache_dir
+_REAL_GET_CACHE_DIR_OR_NONE = cache_module.get_cache_dir_or_none
 
 
 def _blocked_cache_dir(tmp_path: Path) -> Path:
@@ -37,3 +44,33 @@ def test_build_ast_cache_returns_none_for_unusable_directory(tmp_path: Path) -> 
     blocked = _blocked_cache_dir(tmp_path)
 
     assert cache_module.build_ast_cache(blocked) is None
+
+
+def test_get_cache_dir_or_none_returns_none_when_mkdir_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    blocked = _blocked_cache_dir(tmp_path)
+    monkeypatch.setattr(cache_module, "get_cache_dir", _REAL_GET_CACHE_DIR)
+    monkeypatch.setattr(cache_module, "get_cache_dir_or_none", _REAL_GET_CACHE_DIR_OR_NONE)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(blocked))
+
+    assert cache_module.get_cache_dir_or_none() is None
+
+
+def test_get_runs_dir_or_none_returns_none_when_mkdir_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    blocked = _blocked_cache_dir(tmp_path)
+    monkeypatch.setattr(cache_module, "get_cache_dir", _REAL_GET_CACHE_DIR)
+    monkeypatch.setattr(cache_module, "get_cache_dir_or_none", _REAL_GET_CACHE_DIR_OR_NONE)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(blocked))
+
+    assert runs_module.get_runs_dir_or_none() is None
+
+
+def test_clear_all_removes_the_foundation_cache(tmp_path: Path) -> None:
+    manager = CacheManager(tmp_path)
+    foundation_dir = tmp_path / "foundation"
+    foundation_dir.mkdir(parents=True, exist_ok=True)
+    (foundation_dir / "stale.pickle").write_bytes(b"payload")
+
+    result = manager.clear_all()
+
+    assert not list(foundation_dir.glob("*.pickle"))
+    assert result.foundation_entries == 1

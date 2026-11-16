@@ -18,6 +18,7 @@ from .types import ProjectDict
 class SattLintProjectFile:
     path: Path
     data: ProjectDict = field(repr=False)
+    warnings: tuple[str, ...] = ()
 
     @property
     def root(self) -> Path:

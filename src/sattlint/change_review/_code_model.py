@@ -24,6 +24,7 @@ from typing import Any, cast
 from sattlint.parser_api import (
     Assignment,
     BasePicture,
+    CodeComment,
     FrameModule,
     ModuleCode,
     ModuleTypeDef,
@@ -133,10 +134,17 @@ class CodeModel:
 
 
 def _iter_sfc_items(path: _StatementKey, items: list[Any] | None) -> Any:
-    for index, item in enumerate(items or []):
+    # Comments are presentation only. Filtering them before enumerate keeps the
+    # statement keys stable when someone adds or edits a comment.
+    code_items = [item for item in (items or []) if not isinstance(item, CodeComment)]
+    for index, item in enumerate(code_items):
         if isinstance(item, SFCStep):
             for block in ("enter", "active", "exit"):
-                block_code = cast(list[Any], getattr(item.code, block, None) or [])
+                block_code = [
+                    statement
+                    for statement in cast(list[Any], getattr(item.code, block, None) or [])
+                    if not isinstance(statement, CodeComment)
+                ]
                 for block_index, statement in enumerate(block_code):
                     yield (
                         (*path, "step", item.name or "", block, block_index),
@@ -179,7 +187,7 @@ def _iter_sfc_items(path: _StatementKey, items: list[Any] | None) -> Any:
         elif isinstance(item, SFCTransitionSub):
             for child in _iter_sfc_items((*path, "transition-sub", item.name or "", index), item.body):
                 yield child
-        # Fork suffixes and CodeComment carry no reviewable code.
+        # Fork suffixes carry no reviewable code; comments were skipped above.
 
 
 def _iter_code_statements(module_code: ModuleCode | None) -> Any:
@@ -190,7 +198,8 @@ def _iter_code_statements(module_code: ModuleCode | None) -> Any:
         yield from _iter_sfc_items(prefix, seq.code or [])
     for equation in module_code.equationblocks or []:
         prefix = ("equation", equation.name or "")
-        for index, statement in enumerate(equation.code or []):
+        statements = [statement for statement in equation.code or [] if not isinstance(statement, CodeComment)]
+        for index, statement in enumerate(statements):
             yield ((*prefix, index), statement, "statement")
 
 
@@ -199,9 +208,9 @@ def _collect_sequence_structure(
 ) -> dict[str, tuple[tuple[str, str | None], ...]]:
     """Record the ordered node kinds per sequence, aligned to statement keys.
 
-    Every entry corresponds to one item in ``seq.code`` (same enumerate index as
-    ``_iter_sfc_items``) so a transition's statement key can be mapped to its
-    surrounding steps for previous/next-state context.
+    Every entry corresponds to one non-comment item in ``seq.code`` (the same
+    filtered order ``_iter_sfc_items`` enumerates) so a transition's statement
+    key can be mapped to its surrounding steps for previous/next-state context.
     """
     structures: dict[str, list[tuple[str, str | None]]] = {}
     if module_code is None:
@@ -209,6 +218,8 @@ def _collect_sequence_structure(
     for seq in module_code.sequences or []:
         nodes: list[tuple[str, str | None]] = []
         for item in seq.code or []:
+            if isinstance(item, CodeComment):
+                continue
             if isinstance(item, SFCStep):
                 nodes.append(("step", item.name))
             elif isinstance(item, SFCTransition):
@@ -219,10 +230,8 @@ def _collect_sequence_structure(
                 nodes.append(("parallel", None))
             elif isinstance(item, SFCSubsequence):
                 nodes.append(("subsequence", item.name))
-            elif isinstance(item, SFCTransitionSub):
-                nodes.append(("transition-sub", item.name))
             else:
-                nodes.append(("other", None))
+                nodes.append(("transition-sub", item.name))
         structures[seq.name or ""] = nodes
     return {name: tuple(nodes) for name, nodes in structures.items()}
 

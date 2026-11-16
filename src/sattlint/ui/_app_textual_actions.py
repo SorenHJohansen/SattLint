@@ -443,6 +443,10 @@ def _handle_toolbar_action(self: Any, button_id: str) -> None:
         self._activate_view(view_name)
     elif button_id == "action-help":
         self._open_help_popup()
+    elif button_id == "menu-file-open-project":
+        self._open_project_browser()
+    elif button_id == "menu-file-new-project":
+        self._new_project()
     elif button_id == "action-quit":
         self._request_quit_shell()
 
@@ -510,7 +514,7 @@ def action_copy_output(self: Any) -> None:
 
 
 def action_quit_shell(self: Any) -> None:
-    self._request_quit_shell()
+    self._handle_toolbar_action("action-quit")
 
 
 def action_clear_output(self: Any) -> None:
@@ -893,7 +897,7 @@ def _new_project(self: Any) -> None:
             self._write_output(f"A configuration already exists at {project_path}.")
             return
         try:
-            project = _init_project(project_path, name=sanitized)
+            project = _init_project(project_path)
         except (FileExistsError, OSError, ValueError) as exc:
             self._report_error("Failed to create configuration", f"Failed to create configuration: {exc}")
             return
@@ -1093,10 +1097,7 @@ def on_button_pressed(self: Any, event: Any) -> None:
             "output", "retention_lines", label="session output retention"
         ),
         "settings-edit-review-output-dir": self._open_review_output_dir_picker,
-        "menu-file-open-project": self._open_project_browser,
-        "menu-file-new-project": self._new_project,
         "menu-help": self._open_help_popup,
-        "action-quit": self._request_quit_shell,
     }
     action = button_actions.get(button_id)
     if action is not None:

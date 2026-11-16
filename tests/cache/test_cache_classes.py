@@ -1,26 +1,21 @@
+# pyright: reportPrivateUsage=false
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownArgumentType=false, reportMissingParameterType=false, reportAttributeAccessIssue=false
 """Focused tests for the cache class implementations."""
 
 from __future__ import annotations
 
-import hashlib
-
 from sattlint import cache as cache_module
 from sattlint.cache.classes import AnalysisReportCache, ASTCache, FoundationCache
 
 
-def test_complexity_cache_refresh_does_not_invalidate_other_reports() -> None:
-    def previous_key(analyzer: str) -> str:
-        digest = hashlib.sha256()
-        digest.update(cache_module.ANALYSIS_REPORT_CACHE_SCHEMA_VERSION.encode())
-        digest.update(b"project")
-        digest.update(analyzer.encode())
-        return digest.hexdigest()
+def test_analyzer_version_bump_only_invalidates_that_analyzer(monkeypatch) -> None:
+    baseline = cache_module.compute_analysis_report_cache_key("project", "variables")
+    unrelated = cache_module.compute_analysis_report_cache_key("project", "same-cycle")
 
-    assert cache_module.compute_analysis_report_cache_key("project", "cyclomatic-complexity") != previous_key(
-        "cyclomatic-complexity"
-    )
-    assert cache_module.compute_analysis_report_cache_key("project", "variables") == previous_key("variables")
+    monkeypatch.setitem(cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS, "variables", "test-bump")
+
+    assert cache_module.compute_analysis_report_cache_key("project", "variables") != baseline
+    assert cache_module.compute_analysis_report_cache_key("project", "same-cycle") == unrelated
 
 
 def test_ast_cache_save_load_and_validate(tmp_path) -> None:

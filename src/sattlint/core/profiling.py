@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
-from ..cache import get_cache_dir
+from .. import cache as cache_module
 
 APP_PROFILE_KIND = "sattlint.app.profile"
 APP_PROFILE_SCHEMA_VERSION = 1
@@ -32,8 +32,10 @@ def is_profiling_enabled() -> bool:
     return any(os.environ.get(name, "").strip().casefold() in _PROFILE_TRUE_VALUES for name in _PROFILE_ENV_NAMES)
 
 
-def profiling_log_path() -> Path:
-    return get_cache_dir() / "profile" / "profile.jsonl"
+def profiling_log_path() -> Path | None:
+    """The JSONL diagnostics log path, or ``None`` when the cache is unusable."""
+    cache_dir = cache_module.get_cache_dir_or_none()
+    return None if cache_dir is None else cache_dir / "profile" / "profile.jsonl"
 
 
 def _coerce_duration_ms(value: object, *, scale: float = 1.0) -> float | None:

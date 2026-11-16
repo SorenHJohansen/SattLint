@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import sys
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
@@ -18,6 +19,7 @@ from ..application.analyze import collect_checks_result
 from ..application.checks import ChecksRunResult, build_run_record
 from ..application.findings import kind_human_label
 from ..config.types import ConfigDict
+from ..project.io import discover_project
 from ..project.support import TargetLoadError
 from ..runs import RunRecord
 from ._findings import (
@@ -84,6 +86,18 @@ def _output_options(args: argparse.Namespace) -> _OutputOptions:
     )
 
 
+def _discard_output_file(options: _OutputOptions) -> None:
+    """Remove a previous artifact so a failed run cannot be archived as fresh.
+
+    A pipeline that reads the ``--output`` path after a failed run must not see
+    the findings from an earlier run.
+    """
+    if options.output is None:
+        return
+    with contextlib.suppress(OSError):
+        options.output.expanduser().resolve().unlink()
+
+
 def _emit_document(options: _OutputOptions, *, payload: Mapping[str, object], text_lines: Iterable[str]) -> None:
     if options.output_format == "json":
         emit_json(payload, output=options.output)
@@ -101,7 +115,10 @@ def _emit_findings(
     if options.output_format == "json":
         emit_json(payload, output=options.output)
     elif options.output_format == "ndjson":
-        emit_ndjson((finding_payload(finding) for finding in findings), output=options.output)
+        envelope = {"record_type": "envelope", **payload}
+        envelope.pop("findings", None)
+        records = [envelope, *({"record_type": "finding", **finding_payload(finding)} for finding in findings)]
+        emit_ndjson(records, output=options.output)
     else:
         emit_text(text_lines, output=options.output)
 
@@ -122,7 +139,7 @@ def _analyze_options(args: argparse.Namespace) -> _AnalyzeOptions:
 def command_project_show(args: argparse.Namespace) -> int:
     project = resolve_project_file(args.project)
     options = _output_options(args)
-    project_info = project_payload(project)
+    project_info = project_payload(project, quiet=options.quiet)
     payload: ProjectShowPayload = {
         "schema_version": SCHEMA_VERSION,
         "command": "project show",
@@ -257,7 +274,7 @@ def _result_record(result: ChecksRunResult, cfg: ConfigDict, *, project_path: st
 def command_analyze(args: argparse.Namespace) -> int:
     options = _analyze_options(args)
     project = resolve_project_file(options.project)
-    cfg = _apply_target_filter(effective_project_config(project), options.targets)
+    cfg = _apply_target_filter(effective_project_config(project, quiet=options.output.quiet), options.targets)
     _require_configured_targets(cfg)
     project_path = str(project.path)
     keys = _resolve_analyzer_keys(options.analyzers)
@@ -269,16 +286,30 @@ def command_analyze(args: argparse.Namespace) -> int:
         project_path=project_path,
     )
     if result.cancelled:
+        _discard_output_file(options.output)
         _write_diagnostics(result, options)
         return 130
     if not result.selected_analyzers:
+        _discard_output_file(options.output)
         raise CliError(
             "No analyzers matched the request.",
             code="no_analyzers",
             exit_code=2,
             details={"requested": list(keys or ())},
         )
+    if result.failures:
+        _discard_output_file(options.output)
+        if options.output.output_format == "text":
+            _write_diagnostics(result, options)
+        failed = ", ".join(failure.target_name for failure in result.failures)
+        raise CliError(
+            f"Analysis stopped because {len(result.failures)} target(s) could not be loaded: {failed}",
+            code="target_load_failed",
+            exit_code=2,
+            details={failure.target_name: failure.message for failure in result.failures},
+        )
     if not result.targets:
+        _discard_output_file(options.output)
         if options.output.output_format == "text":
             _write_diagnostics(result, options)
             details: Mapping[str, object] = {}
@@ -290,18 +321,9 @@ def command_analyze(args: argparse.Namespace) -> int:
             exit_code=2,
             details=details,
         )
-    if result.failures:
-        if options.output.output_format == "text":
-            _write_diagnostics(result, options)
-        failed = ", ".join(failure.target_name for failure in result.failures)
-        raise CliError(
-            f"Analysis stopped because {len(result.failures)} target(s) could not be loaded: {failed}",
-            code="target_load_failed",
-            exit_code=2,
-            details={failure.target_name: failure.message for failure in result.failures},
-        )
     analyzer_failures = result.analyzer_failures
     if analyzer_failures:
+        _discard_output_file(options.output)
         if options.output.output_format == "text":
             _write_diagnostics(result, options)
         failed_analyzers = ", ".join(failure.analyzer_name for failure in analyzer_failures)
@@ -363,12 +385,20 @@ def _finding_line(finding: FindingPayload) -> str:
     return f"{module}: {kind_human_label(finding['kind'])} - {finding['message']} ({finding['analyzer']})"
 
 
+def _discovered_project_path() -> str | None:
+    discovered = discover_project()
+    return None if discovered is None else str(discovered)
+
+
 def command_findings(args: argparse.Namespace) -> int:
     options = _output_options(args)
-    record = resolve_run(args.run)
+    requested_analyzers = tuple(str(value) for value in args.analyzer)
+    if requested_analyzers:
+        requested_analyzers = tuple(_resolve_analyzer_keys(requested_analyzers) or ())
+    record = resolve_run(args.run, project_path=_discovered_project_path())
     filters = FindingFilters(
         targets=tuple(str(value) for value in args.target),
-        analyzers=tuple(str(value) for value in args.analyzer),
+        analyzers=requested_analyzers,
         modules=tuple(str(value) for value in args.module),
         exact_module=bool(args.exact_module),
         kinds=tuple(str(value) for value in args.kind),
@@ -404,13 +434,25 @@ def command_findings(args: argparse.Namespace) -> int:
     return 0
 
 
+def _group_label(key: str, group_by: str) -> str:
+    if group_by == "kind":
+        return kind_human_label(key)
+    if group_by == "analyzer":
+        catalog = get_default_analyzer_catalog()
+        for metadata in catalog.analyzers:
+            if metadata.spec.key == key:
+                return metadata.spec.name
+    return key
+
+
 def _findings_text(payload: FindingsPayload) -> list[str]:
     summary = payload["summary"]
     lines = [
         f"Run: {payload['run']['run_id']}  Findings: {summary['findings']} (matched {summary.get('matched', 0)})",
     ]
     if payload["groups"]:
-        lines.extend(f"{group['key']} ({group['count']})" for group in payload["groups"])
+        group_by = payload["filters"]["group_by"]
+        lines.extend(f"{_group_label(group['key'], group_by)} ({group['count']})" for group in payload["groups"])
         return lines
     lines.extend(_finding_line(finding) for finding in payload["findings"])
     return lines
@@ -418,7 +460,7 @@ def _findings_text(payload: FindingsPayload) -> list[str]:
 
 def command_show(args: argparse.Namespace) -> int:
     options = _output_options(args)
-    record = resolve_run(args.run)
+    record = resolve_run(args.run, project_path=_discovered_project_path())
     finding_id = str(args.finding_id)
     match = next((finding for finding in flat_findings(record) if finding.id == finding_id), None)
     if match is None:

@@ -187,29 +187,58 @@ class ProjectGraph:
     def root_origin_for_name(self, name: str) -> RootOrigin | None:
         return self.root_origins.get(self._root_origin_key(name))
 
+    def _identity_for_basepicture(self, bp: BasePicture) -> str | None:
+        """The ``root_origins`` key that belongs to ``bp``.
+
+        Programs are indexed under their program name, while ``header.name`` is
+        the literal ``BasePicture`` keyword. Identity is therefore resolved from
+        the indexed picture, then from the merge clone's preserved fields, and
+        only then from the name fields the picture itself carries.
+        """
+        for name, picture in self.ast_by_name.items():
+            if picture is bp:
+                return name
+
+        matches = [
+            name
+            for name, picture in self.ast_by_name.items()
+            if picture.name == bp.name and picture.origin_file == bp.origin_file and picture.origin_lib == bp.origin_lib
+        ]
+        if len(matches) == 1:
+            return matches[0]
+
+        for candidate in (bp.program_name, bp.name, bp.header.name):
+            if candidate and self.root_origins.get(self._root_origin_key(candidate)) is not None:
+                return candidate
+        return None
+
     def root_origin_for_basepicture(self, bp: BasePicture) -> RootOrigin | None:
-        return self.root_origin_for_name(bp.header.name)
+        identity = self._identity_for_basepicture(bp)
+        return None if identity is None else self.root_origin_for_name(identity)
 
     def root_source_path_for_name(self, name: str) -> Path | None:
         root_origin = self.root_origin_for_name(name)
         return None if root_origin is None else root_origin.source_path
 
     def root_source_path_for_basepicture(self, bp: BasePicture) -> Path | None:
-        return self.root_source_path_for_name(bp.header.name)
+        identity = self._identity_for_basepicture(bp)
+        return None if identity is None else self.root_source_path_for_name(identity)
 
     def root_library_name_for_name(self, name: str) -> str | None:
         root_origin = self.root_origin_for_name(name)
         return None if root_origin is None else root_origin.library_name
 
     def root_library_name_for_basepicture(self, bp: BasePicture) -> str | None:
-        return self.root_library_name_for_name(bp.header.name)
+        identity = self._identity_for_basepicture(bp)
+        return None if identity is None else self.root_library_name_for_name(identity)
 
     def root_origin_file_for_name(self, name: str) -> str | None:
         root_origin = self.root_origin_for_name(name)
         return None if root_origin is None else root_origin.origin_file
 
     def root_origin_file_for_basepicture(self, bp: BasePicture) -> str | None:
-        return self.root_origin_file_for_name(bp.header.name)
+        identity = self._identity_for_basepicture(bp)
+        return None if identity is None else self.root_origin_file_for_name(identity)
 
     def graphics_attachments_for(self, bp: BasePicture) -> GraphicsAttachments:
         """The graphics view attached to ``bp``, or an empty value when none was attached."""
@@ -238,10 +267,13 @@ class ProjectGraph:
         bp: BasePicture,
         source_path: Path | None = None,
         library_name: str | None = None,
+        *,
+        program_name: str | None = None,
     ) -> None:
         # Collect module and record type defs for global analysis [2]
 
-        self.record_root_origin(bp.header.name, source_path=source_path, library_name=library_name)
+        identity = program_name or bp.program_name or bp.name or bp.header.name
+        self.record_root_origin(identity, source_path=source_path, library_name=library_name)
         if source_path:
             self.source_files.add(source_path)
 

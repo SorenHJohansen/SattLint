@@ -98,7 +98,9 @@ def source_paths_for_current_target(
         if matches:
             return matches
 
-    target_name = casefold_key_fn(project_bp.header.name)
+    target_name = casefold_key_fn(
+        getattr(project_bp, "program_name", None) or getattr(project_bp, "name", None) or project_bp.header.name
+    )
     return {path for path in source_files if casefold_key_fn(path.stem) == target_name}
 
 
@@ -153,9 +155,15 @@ def cache_manifest_files(
             manifest_files.add(deps_path)
 
     # ICF inputs participate in analysis-input tracking so ICF analysis
-    # results go stale when configured ICF files change.
-    _, icf_files = configured_icf_files(cfg)
+    # results go stale when configured ICF files change. The directory itself
+    # is part of the manifest too: the file list is a snapshot, so a newly
+    # added ICF file would otherwise change neither the key nor the manifest.
+    icf_dir, icf_files = configured_icf_files(cfg)
     manifest_files.update(icf_files)
+    if icf_dir is not None:
+        # A missing directory is recorded too: creating it later must
+        # invalidate the entry, and a stat of a missing path fails validation.
+        manifest_files.add(icf_dir)
 
     return manifest_files
 
@@ -241,7 +249,7 @@ def load_project(  # noqa: PLR0915
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
     cache_key_for_target_fn: Callable[[ConfigDict, str], str],
     target_load_error_factory: Callable[..., Exception] | None,
-    get_cache_dir_fn: Callable[[], Path],
+    get_cache_dir_fn: Callable[[], Path | None],
     ast_cache_cls: type[Any],
     status_update_fn: Callable[[str], None] | None = None,
 ) -> tuple[BasePicture, ProjectGraph]:
@@ -250,7 +258,7 @@ def load_project(  # noqa: PLR0915
     selected_target = target_name or targets[0]
     ast_only = str(refresh_mode).strip().lower() == "ast-only"
     cache_dir = get_cache_dir_fn()
-    cache = cache_module.build_ast_cache(cache_dir, ast_cache_cls)
+    cache = None if cache_dir is None else cache_module.build_ast_cache(cache_dir, ast_cache_cls)
 
     def build_project_view(root_bp: BasePicture, graph: ProjectGraph) -> BasePicture:
         if ast_only:
@@ -369,17 +377,19 @@ def load_project(  # noqa: PLR0915
         find_dependency_path_fn=lambda name: find_dependency_path(binding, name),
         resolve_graphics_companion_path_fn=resolve_graphics_companion_path,
     )
+    if graph.unavailable_libraries or getattr(graph, "failures", None):
+        # A dependency that is absent now can appear as a file later, and the
+        # manifest cannot see a file that does not exist yet. Persisting this
+        # graph would replay the unresolved or failed result after the cause is
+        # fixed, so load again next run instead. The graph carries no
+        # report-cache metadata either, so a caller cannot key a report cache
+        # against it.
+        return project_bp, graph
     _attach_analysis_cache_metadata(
         graph,
         cache_key=key,
         manifest_files=manifest_files,
     )
-    if graph.unavailable_libraries:
-        # A dependency that is absent now can appear as a file later, and the
-        # manifest cannot see a file that does not exist yet. Persisting this
-        # graph would replay the unresolved result after the library is added,
-        # so load again next run instead.
-        return project_bp, graph
     if cache is not None:
         with contextlib.suppress(OSError):
             cache.save(
@@ -400,7 +410,7 @@ def load_project_with_live_status(
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
     cache_key_for_target_fn: Callable[[ConfigDict, str], str],
     target_load_error_factory: Callable[..., Exception] | None,
-    get_cache_dir_fn: Callable[[], Path],
+    get_cache_dir_fn: Callable[[], Path | None],
     ast_cache_cls: type[Any],
     live_status_line_factory: Callable[[], Any],
 ) -> tuple[BasePicture, ProjectGraph]:
@@ -468,14 +478,15 @@ def force_refresh_ast(
     cache_key_for_target_fn: Callable[[ConfigDict, str], str],
     load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]],
     ast_cache_cls: type[Any],
-    get_cache_dir_fn: Callable[[], Path],
+    get_cache_dir_fn: Callable[[], Path | None],
     emit_output_fn: Callable[..., None],
 ) -> tuple[BasePicture, ProjectGraph] | None:
     targets = get_analyzed_targets_fn(cfg)
     if not targets:
         return None
 
-    cache = cache_module.build_ast_cache(get_cache_dir_fn(), ast_cache_cls)
+    cache_dir = get_cache_dir_fn()
+    cache = None if cache_dir is None else cache_module.build_ast_cache(cache_dir, ast_cache_cls)
     profiler = profiling_module.create_profiler()
     result = None
     total_targets = len(targets)
@@ -575,14 +586,15 @@ def ensure_ast_cache(
     cache_key_for_target_fn: Callable[[ConfigDict, str], str],
     load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]],
     ast_cache_cls: type[Any],
-    get_cache_dir_fn: Callable[[], Path],
+    get_cache_dir_fn: Callable[[], Path | None],
     emit_output_fn: Callable[..., None],
 ) -> bool:
     targets = get_analyzed_targets_fn(cfg)
     if not targets:
         return True
 
-    cache = cache_module.build_ast_cache(get_cache_dir_fn(), ast_cache_cls)
+    cache_dir = get_cache_dir_fn()
+    cache = None if cache_dir is None else cache_module.build_ast_cache(cache_dir, ast_cache_cls)
     if cache is None:
         emit_output_fn("AST cache is unavailable; skipping the cache refresh.")
         return True

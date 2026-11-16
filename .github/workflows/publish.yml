@@ -39,7 +39,7 @@ jobs:
           cache-dependency-glob: "uv.lock"
 
       - name: Install the locked dev environment
-        run: uv sync --frozen --extra dev
+        run: uv sync --locked --extra dev
 
       # A release may not publish a package whose internal version differs from
       # the git tag (or the explicitly supplied workflow_dispatch version).

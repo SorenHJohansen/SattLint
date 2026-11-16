@@ -8,6 +8,47 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ## [Unreleased]
 
+### Added
+
+- `findings` text grouping prints analyzer and finding labels instead of
+  machine identifiers, and NDJSON output starts with an envelope record that
+  carries the run, filters, summary, and groups.
+
+### Changed
+
+- Root origins are keyed by program name, so a project with several programs
+  reports each target's own source file and library. A graph with unavailable
+  libraries or target failures is no longer cached, and an unusable cache
+  directory degrades to running without a cache at every entry point.
+- `.slproj` values are validated against the project defaults: missing keys take
+  their defaults, wrong types raise a project error at exit 2, and unknown keys
+  are reported and ignored.
+- `--rule` matches a finding's rule ID and falls back to its kind. The analyzer
+  catalogue no longer publishes the always-empty `rule_ids` field.
+- The CLI writes UTF-8 with backslash escapes when stdout or stderr cannot
+  encode a character, reports an output-file failure at exit 2, treats a closed
+  pipe as exit 141, and reports an invalid `--ui` value without a traceback.
+- Config and project saves are atomic, and saving settings no longer requires
+  the configured directories to exist.
+- Run records are written atomically with collision-free ids; per-run analyzer
+  findings are stored in a separate project-level bucket instead of a phantom
+  target. The run-record schema is version 2.
+- The reset-contamination and implicit-latch scans now cover module-type
+  instances and their nested modules exactly once, with a recursion guard.
+  Read-before-write findings name the variable in text reports, and
+  spec-compliance typedef findings use the `TypeDef:` path tag.
+
+### Fixed
+
+- The UI treats view text as plain text, so a message with brackets cannot lose
+  text or abort the error dialog.
+- File-open, new-configuration, and quit actions respect the busy and modal
+  guards, and an analysis run snapshots its configuration and project path.
+- Configured targets are matched case-insensitively for the self-check, and a
+  wrong-typed config value is rejected at load instead of failing later.
+- A newly added ICF file invalidates the cached report, and clearing all caches
+  also clears the analysis foundation.
+
 ## [2026.11.5] - 2026-11-15
 
 ### Added

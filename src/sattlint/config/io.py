@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import tomllib
+import uuid
 from collections.abc import Callable
+from contextlib import suppress
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, cast
@@ -18,6 +21,7 @@ from .validation import (
     deep_merge_dict,
     load_time_config_warnings,
     strip_unknown_keys,
+    validate_config,
     validate_effective_config,
 )
 
@@ -34,8 +38,26 @@ def _validation_messages(cfg: ConfigDict | ConfigOverrideDict) -> tuple[str, ...
     return tuple(f"[{error.key_path}] {error.message}" for error in validation.errors)
 
 
+def _value_validation_messages(cfg: ConfigDict | ConfigOverrideDict) -> tuple[str, ...]:
+    """Validation that does not touch the filesystem.
+
+    Saving settings must not fail because a configured directory is temporarily
+    missing; the analysis preflight reports that at run time.
+    """
+    validation = validate_config(cast(ConfigOverrideDict, _merged_effective_config(cfg)))
+    return tuple(f"[{error.key_path}] {error.message}" for error in validation.errors)
+
+
 def get_config_path() -> Path:
     return _config_paths_module.get_config_path()
+
+
+def config_path_location() -> Path:
+    return _config_paths_module.config_path_location()
+
+
+def config_dir_location() -> Path:
+    return _config_paths_module.config_dir_location()
 
 
 def get_projects_dir() -> Path:
@@ -59,6 +81,14 @@ def load_config(path: Path, *, emit_fn: Callable[[str], None] | None = None) -> 
 
     strip_unknown_keys(cfg)
 
+    # A wrong-typed value (``debug = "false"``, a string where a list belongs)
+    # is a load error, not a warning: applying it produces a confusing failure
+    # much later. Missing paths stay warnings; analysis reports those at run
+    # time.
+    value_messages = _value_validation_messages(cfg)
+    if value_messages:
+        raise ValueError("Config validation failed: " + "; ".join(value_messages))
+
     for message in _validation_messages(cfg):
         key_path, error_message = message.split("] ", maxsplit=1)
         emit(f"⚠ Config warning {key_path}]: {error_message}")
@@ -72,7 +102,7 @@ def save_config(path: Path, cfg: ConfigDict | ConfigOverrideDict) -> None:
         raise ValueError("Config serialization must produce a table/object.")
     sanitized_cfg: ConfigObjectMap = cast(ConfigObjectMap, sanitized_cfg_obj)
 
-    validation_messages = _validation_messages(cast(ConfigOverrideDict, sanitized_cfg))
+    validation_messages = _value_validation_messages(cast(ConfigOverrideDict, sanitized_cfg))
     if validation_messages:
         raise ValueError("Config validation failed: " + "; ".join(validation_messages))
 
@@ -94,8 +124,18 @@ def save_config(path: Path, cfg: ConfigDict | ConfigOverrideDict) -> None:
     if not isinstance(serializable_cfg, dict):
         raise ValueError("Config serialization must produce a table/object.")
 
-    with path.open("wb") as file_handle:
-        tomli_w.dump(cast(dict[str, Any], serializable_cfg), file_handle)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    try:
+        with temp_path.open("wb") as file_handle:
+            tomli_w.dump(cast(dict[str, Any], serializable_cfg), file_handle)
+            file_handle.flush()
+            os.fsync(file_handle.fileno())
+        os.replace(temp_path, path)
+    except OSError:
+        with suppress(OSError):
+            temp_path.unlink()
+        raise
 
 
 APP_LEVEL_CONFIG_KEYS: tuple[str, ...] = ("debug", "run_history", "output", "review")
