@@ -303,6 +303,8 @@ def _walk_moduletype_instance_subtree(  # noqa: PLR0915
                 mapping_reads.add(target_name)
             if writes_to_source:
                 mapping_writes.add(target_name)
+        if dependency_owned_moduletype and mapping_reads is not None and target_name in mapping_reads:
+            self.effect_flow_tracker.record_external_mapping_input(mapping, parent_context.env, parent_context)
         _propagate_mapping_to_parent(
             self,
             mapping,

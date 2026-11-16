@@ -361,7 +361,7 @@ def test_variables_report_summary_includes_global_scope_minimization_section():
     assert "ConfinedValue" in summary
 
 
-def test_variables_report_summary_includes_unknown_parameter_targets():
+def test_variables_report_preserves_retired_mapping_data_without_showing_a_section():
     issue = VariableIssue(
         kind=IssueKind.UNKNOWN_PARAMETER_TARGET,
         module_path=["BasePicture", "Child"],
@@ -369,10 +369,12 @@ def test_variables_report_summary_includes_unknown_parameter_targets():
         role="unknown parameter mapping target 'MissingValue'",
     )
 
-    summary = VariablesReport(basepicture_name="BasePicture", issues=[issue]).summary()
+    report = VariablesReport(
+        basepicture_name="BasePicture", issues=[issue], visible_kinds=frozenset({IssueKind.UNKNOWN_PARAMETER_TARGET})
+    )
 
-    assert "Unknown parameter mapping targets" in summary
-    assert "BasePicture.Child :: unknown parameter mapping target 'MissingValue'" in summary
+    assert report.unknown_parameter_targets == [issue]
+    assert "Unknown parameter mapping targets" not in report.summary()
 
 
 def test_variables_report_summary_lists_all_requested_categories_when_empty():
@@ -395,7 +397,7 @@ def test_variables_report_summary_lists_all_requested_categories_when_empty():
     assert "Written but never read variables" in summary
     assert "Global scope minimization candidates" in summary
     assert "Hidden global coupling" in summary
-    assert "Unknown parameter mapping targets" in summary
+    assert "Unknown parameter mapping targets" not in summary
     assert "String mapping type mismatches" in summary
     assert "Duplicated complex datatypes (should be RECORD)" in summary
     assert "Min/Max mapping name mismatches" in summary

@@ -19,6 +19,12 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   that does not exist.
 - A question issue template, and a dependency audit job in CI.
 - `uv.lock` pins the development environment that CI installs.
+- A module type usage analyzer reports module types the analyzed target defines
+  but no loaded consumer invokes, following source-level dependencies across
+  programs.
+- The Results view groups findings by the persisted module hierarchy and shows
+  the selected module's findings as plain text with expandable detail.
+- The SFC checks report a sequence that does not begin with an initial step.
 
 ### Changed
 
@@ -59,9 +65,19 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   analyzer instead of being repeated.
 - The unused SFC parallel-write collector and contract-index subsystem are
   removed.
+- The same-cycle shared access rule is removed; its findings repeated the
+  parallel-branch rules and fired on ordinary module interaction. The
+  parallel read/write and parallel write rules stay.
+- Cyclomatic complexity defaults, parameter mapping checks, read-before-write,
+  state-reset, and parallel-branch analysis were tightened to drop false
+  positives.
 
 ### Fixed
 
+- Read-only findings no longer include constant fields, and a parameter mapping
+  that targets a name outside the declared list is no longer reported.
+- The Results view hides empty module branches and keeps a finding's site,
+  duplicate count, and previous writes visible.
 - A reverse-library consumer that cannot load no longer discards the selected
   library's analysis. The batch falls back to one load per consumer, records the
   failing consumer, and keeps the library findings.

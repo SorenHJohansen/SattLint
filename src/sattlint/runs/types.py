@@ -127,12 +127,48 @@ def _optional_float(value: object) -> float | None:
 
 
 @dataclass(frozen=True, slots=True)
+class RunModuleRecord:
+    name: str
+    kind: str = ""
+    moduletype_name: str | None = None
+    children: tuple[RunModuleRecord, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "kind": self.kind,
+            "moduletype_name": self.moduletype_name,
+            "children": [child.to_dict() for child in self.children],
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, object]) -> RunModuleRecord:
+        raw_children = payload.get("children")
+        children = (
+            tuple(
+                cls.from_dict(cast(Mapping[str, object], child))
+                for child in cast(Sequence[object], raw_children)
+                if isinstance(child, Mapping)
+            )
+            if isinstance(raw_children, (list, tuple))
+            else ()
+        )
+        return cls(
+            name=str(payload.get("name") or ""),
+            kind=str(payload.get("kind") or ""),
+            moduletype_name=_optional_str(payload.get("moduletype_name")),
+            children=children,
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class RunTargetRecord:
     target_name: str
     is_library: bool = False
     analyzers: tuple[RunAnalyzerRecord, ...] = ()
     stage_timings_ms: dict[str, float] | None = None
     graphics_timings_ms: dict[str, float] | None = None
+    module: RunModuleRecord | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -141,6 +177,7 @@ class RunTargetRecord:
             "analyzers": [analyzer.to_dict() for analyzer in self.analyzers],
             "stage_timings_ms": self.stage_timings_ms,
             "graphics_timings_ms": self.graphics_timings_ms,
+            "module": self.module.to_dict() if self.module is not None else None,
         }
 
     @classmethod
@@ -161,6 +198,9 @@ class RunTargetRecord:
             analyzers=analyzers,
             stage_timings_ms=_timings_dict_value(payload.get("stage_timings_ms")),
             graphics_timings_ms=_timings_dict_value(payload.get("graphics_timings_ms")),
+            module=RunModuleRecord.from_dict(cast(Mapping[str, object], payload["module"]))
+            if isinstance(payload.get("module"), Mapping)
+            else None,
         )
 
 

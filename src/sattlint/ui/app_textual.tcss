@@ -368,8 +368,8 @@
         }
 
         #results-runs-section {
-            width: 1fr;
-            min-width: 34;
+            width: 22;
+            min-width: 22;
             height: 1fr;
         }
 
@@ -386,7 +386,7 @@
         #results-runs-col {
             width: 1fr;
             height: 1fr;
-            padding: 1 2;
+            padding: 1;
             color: #001ba3;
             background: #b9d9df;
             border: tall #0077b3;
@@ -418,9 +418,20 @@
         }
 
         #results-detail-section {
-            width: 2fr;
+            width: 1fr;
             height: 1fr;
             margin-left: 1;
+        }
+
+        #results-module-browser {
+            width: 1fr;
+            height: 1fr;
+        }
+
+        .results-pane-title {
+            height: auto;
+            text-style: bold;
+            padding-bottom: 1;
         }
 
         #results-tabs {
@@ -442,8 +453,8 @@
             min-width: 12;
         }
 
-        #results-tree-host {
-            width: 1fr;
+        #results-tree-host, #results-findings-host {
+            width: 2fr;
             height: 1fr;
             background: #b9d9df;
             border: tall #0077b3;
@@ -458,8 +469,22 @@
             scrollbar-corner-color: #b9d9df;
         }
 
+        #results-tree-host {
+            width: 3fr;
+            margin-right: 1;
+        }
+
         #results-tree-host Tree {
+            width: 1fr;
+            height: 1fr;
             background: #b9d9df;
+            color: #001ba3;
+        }
+
+        #results-findings-report {
+            width: 1fr;
+            height: auto;
+            background: transparent;
             color: #001ba3;
         }
 

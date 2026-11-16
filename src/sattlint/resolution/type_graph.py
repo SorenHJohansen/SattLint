@@ -24,7 +24,7 @@ def _datatype_fields(record: DataType) -> Iterable[Variable]:
 
 
 def _field_definition(field: Variable) -> FieldDef:
-    return FieldDef(name=field.name, datatype=field.datatype, state=field.state)
+    return FieldDef(name=field.name, datatype=field.datatype, state=field.state, const=bool(field.const))
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +32,7 @@ class FieldDef:
     name: str
     datatype: ScalarDatatype | str
     state: bool | None = False
+    const: bool = False
 
 
 @dataclass(frozen=True, slots=True)

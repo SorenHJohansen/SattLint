@@ -72,6 +72,8 @@ def _mark_ref_access(
     if variable is None:
         return
 
+    if kind is AccessKind.WRITE:
+        self.effect_flow_tracker.record_controlled_write(full_ref, context)
     self.usage_tracker.mark_ref_access(
         variable=variable,
         field_path=field_path,
@@ -183,6 +185,12 @@ def _collect_effect_sink_keys(self: VariablesAnalyzer) -> set[tuple[str, ...]]:
 
 def _compute_effective_output_keys(self: VariablesAnalyzer) -> set[tuple[str, ...]]:
     sink_keys = _collect_effect_sink_keys(self)
+    for context in self.contexts_by_module_path.values():
+        for variable in context.env.values():
+            if self.get_usage(variable).ui_read:
+                key = self.effect_flow_tracker.resolve_local_effect_key(variable.name, context)
+                if key is not None:
+                    sink_keys.add(key)
     return self.effect_flow_tracker.compute_effective_output_keys(sink_keys)
 
 

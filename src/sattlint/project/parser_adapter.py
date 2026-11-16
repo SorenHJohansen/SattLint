@@ -375,6 +375,7 @@ def _index_program(
         _apply_diagnostics(program, graph, is_root=is_root, strict=strict)
         _emit_status(binding, f"Loading {name}: validation complete")
         graph.ast_by_name[name] = program.code
+        graph.source_dependencies[name.casefold()] = {dep.casefold() for dep in program.dependencies}
         indexed_names.add(name.casefold())
         if not index_program_view:
             return

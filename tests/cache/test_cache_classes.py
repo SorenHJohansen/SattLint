@@ -3,8 +3,24 @@
 
 from __future__ import annotations
 
+import hashlib
+
 from sattlint import cache as cache_module
 from sattlint.cache.classes import AnalysisReportCache, ASTCache, FoundationCache
+
+
+def test_complexity_cache_refresh_does_not_invalidate_other_reports() -> None:
+    def previous_key(analyzer: str) -> str:
+        digest = hashlib.sha256()
+        digest.update(cache_module.ANALYSIS_REPORT_CACHE_SCHEMA_VERSION.encode())
+        digest.update(b"project")
+        digest.update(analyzer.encode())
+        return digest.hexdigest()
+
+    assert cache_module.compute_analysis_report_cache_key("project", "cyclomatic-complexity") != previous_key(
+        "cyclomatic-complexity"
+    )
+    assert cache_module.compute_analysis_report_cache_key("project", "variables") == previous_key("variables")
 
 
 def test_ast_cache_save_load_and_validate(tmp_path) -> None:

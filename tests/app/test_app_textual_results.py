@@ -1,25 +1,353 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportAttributeAccessIssue=false
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportAttributeAccessIssue=false
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from sattlint.application.findings import AnalysisFinding
-from sattlint.runs import RunAnalyzerRecord, RunRecord, RunTargetRecord
-from sattlint.ui import _app_textual_results as app_textual_results_module
-from sattlint.ui import _app_textual_settings as app_textual_settings_module
+from sattlint.runs import RunAnalyzerRecord, RunModuleRecord, RunRecord, RunTargetRecord
+from sattlint.ui import _app_textual_results as results_module
+from sattlint.ui import _app_textual_settings as settings_module
 from sattlint.ui import _app_textual_setup_targets as app_textual_setup_targets_module
+
+
+def _record() -> RunRecord:
+    return RunRecord(
+        run_id="r1",
+        started_at="s",
+        finished_at="f",
+        project_tag="Root",
+        targets=(
+            RunTargetRecord(
+                target_name="Root",
+                module=RunModuleRecord(
+                    name="Lib:Root",
+                    kind="SingleModule",
+                    children=(
+                        RunModuleRecord(
+                            name="InlineLager",
+                            moduletype_name="InlineLager",
+                            children=(
+                                RunModuleRecord(
+                                    name="L1",
+                                    kind="FrameModule",
+                                    children=(RunModuleRecord(name="L2", kind="FrameModule"),),
+                                ),
+                            ),
+                        ),
+                        RunModuleRecord(name="Empty", kind="SingleModule"),
+                    ),
+                ),
+                analyzers=(
+                    RunAnalyzerRecord(
+                        key="variables",
+                        name="Variable issues",
+                        status="completed",
+                        findings=(
+                            AnalysisFinding(kind="unused", message="m", module_path=("Root", "InlineLager", "L1")),
+                        ),
+                    ),
+                    RunAnalyzerRecord(key="sfc", name="SFC checks", status="completed"),
+                ),
+            ),
+        ),
+    )
+
+
+def test_module_navigation_merges_single_child_chains_but_keeps_findings_selectable() -> None:
+    record = _record()
+    tree = results_module._new_results_tree()
+    selection = results_module._populate_module_navigation(tree, record)
+
+    assert selection is not None
+    root = tree.root.children[0]
+    assert root.label.plain == "Lib:Root (SingleModule)"
+    assert len(root.children) == 1
+    intermediate = root.children[0]
+    assert intermediate.label.plain == "InlineLager.L1 (FrameModule)"
+    assert intermediate.data.path == ("Root", "InlineLager", "L1")
+    assert list(intermediate.children) == []
+
+    assert (
+        "Variable issues" in results_module._module_findings_report(intermediate.data, show_empty_analyzers=False).plain
+    )
+    empty_record = replace(record, targets=(replace(record.targets[0], analyzers=()),))
+    assert results_module._populate_module_navigation(tree, empty_record) is None
+    assert list(tree.root.children) == []
+
+
+def test_module_findings_keep_sites_duplicates_and_details() -> None:
+    first = AnalysisFinding(
+        kind="unused",
+        message="[Root.InlineLager.L1] never read",
+        module_path=("Root", "InlineLager", "L1"),
+        rule_id="VAR-1",
+        data={"site": "EQ:Control", "context": "Spare"},
+        explanation="Unused declaration.",
+        suggestion="Delete it.",
+    )
+    record = _record()
+    analyzer = replace(record.targets[0].analyzers[0], findings=(first, first))
+    record = replace(record, targets=(replace(record.targets[0], analyzers=(analyzer,)),))
+    tree = results_module._new_results_tree()
+    results_module._populate_module_navigation(tree, record)
+    selected_module = tree.root.children[0].children[0]
+    report = results_module._module_findings_report(selected_module.data, show_empty_analyzers=False)
+    assert report.spans
+    assert any(span.style == "bold #001ba3" for span in report.spans)
+    assert any(span.style == "bold #674600" for span in report.spans)
+    report = report.plain
+    assert "Variable issues\nUnused variable (2)" in report
+    assert "Spare \u00d72" in report
+    assert "VAR-1" not in report
+    assert "(variables)" not in report
+    assert "Equation Control" in report
+    assert "never read" not in report
+    expanded = results_module._module_findings_report(
+        selected_module.data, show_empty_analyzers=False, expanded_details=frozenset({0})
+    ).plain
+    assert "never read" in expanded
+    assert "Why it matters:" not in report
+    assert "Suggested fix:" not in report
+    assert first.explanation is not None
+    assert first.suggestion is not None
+    assert first.explanation not in report
+    assert first.suggestion not in report
+
+
+def test_module_navigation_prunes_empty_subtrees_before_merging_paths() -> None:
+    root_module = RunModuleRecord(
+        name="Root",
+        children=(
+            RunModuleRecord(
+                name="Parent",
+                children=(
+                    RunModuleRecord(name="EmptyBranch", children=(RunModuleRecord(name="EmptyLeaf"),)),
+                    RunModuleRecord(name="Active", children=(RunModuleRecord(name="Leaf"),)),
+                ),
+            ),
+        ),
+    )
+    finding = AnalysisFinding(kind="unused", message="unused field", module_path=("root", "parent", "active", "leaf"))
+    target = RunTargetRecord(
+        target_name="Root",
+        module=root_module,
+        analyzers=(
+            RunAnalyzerRecord(key="variables", name="Variable issues", status="completed", findings=(finding,)),
+        ),
+    )
+    tree = results_module._new_results_tree()
+    results_module._populate_module_navigation(
+        tree, RunRecord(run_id="r1", started_at="s", finished_at="f", project_tag="Root", targets=(target,))
+    )
+
+    branches = list(tree.root.children[0].children)
+    assert len(branches) == 1
+    assert branches[0].label.plain == "Parent.Active.Leaf"
+    assert list(branches[0].children) == []
+    assert "unused field" in results_module._module_findings_report(branches[0].data, show_empty_analyzers=False).plain
+
+
+def test_datatype_field_findings_show_each_field_and_omit_completed_status() -> None:
+    findings = tuple(
+        AnalysisFinding(
+            kind="unused_datatype_field",
+            message=f"[BasePicture.DataType:MixStepTextType] datatype 'MixStepTextType'.{field}",
+            module_path=("BasePicture", "DataType:MixStepTextType"),
+            data={"context": "datatype field"},
+        )
+        for field in ("DeliveryFail", "NotEmpty", "PrepareMix")
+    )
+    target = RunTargetRecord(
+        target_name="KaHCBInlineLib",
+        analyzers=(RunAnalyzerRecord(key="variables", name="Variable issues", status="completed", findings=findings),),
+    )
+    tree = results_module._new_results_tree()
+    results_module._populate_module_navigation(
+        tree, RunRecord(run_id="r1", started_at="s", finished_at="f", project_tag="", targets=(target,))
+    )
+    report = results_module._module_findings_report(tree.root.children[0].children[0].data, show_empty_analyzers=False)
+    report = report.plain
+    assert report.startswith("Variable issues\nUnused datatype field (3)")
+    assert "  DeliveryFail\n" in report
+    assert "  NotEmpty\n" in report
+    assert report.endswith("  PrepareMix")
+    assert "datatype 'MixStepTextType'" not in report
+
+
+def test_read_only_field_label_preserves_field_name() -> None:
+    finding = AnalysisFinding(
+        kind="field_read_only",
+        message="[Root] localvariable 'InletInit'.Plant.Boolean1 (TransferInfoType)",
+        data={"context": "InletInit", "variable_name": "InletInit", "field_path": "Plant.Boolean1"},
+    )
+    assert results_module._context_label(finding) == "InletInit.Plant.Boolean1"
+    legacy = replace(finding, data={"context": "InletInit"})
+    assert "Plant.Boolean1" in results_module._context_label(legacy)
+
+
+def test_module_navigation_shows_only_invoked_type_and_keeps_its_findings() -> None:
+    root = RunModuleRecord(
+        name="Lib:BasePicture",
+        kind="SingleModule",
+        children=(
+            RunModuleRecord(
+                name="StartMaster",
+                kind="FrameModule",
+                children=(
+                    RunModuleRecord(name="ChangeLog", kind="SingleModule"),
+                    RunModuleRecord(
+                        name="InlineLager",
+                        moduletype_name="InlineLager",
+                        children=(
+                            RunModuleRecord(
+                                name="L1",
+                                kind="FrameModule",
+                                children=(RunModuleRecord(name="L2", kind="FrameModule"),),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+    direct = AnalysisFinding(kind="unused", message="a", module_path=("BasePicture", "InlineLager", "L1", "L2"))
+    invoked = AnalysisFinding(
+        kind="unused", message="b", module_path=("BasePicture", "StartMaster", "InlineLager", "L1", "L2")
+    )
+    target = RunTargetRecord(
+        target_name="Lib",
+        module=root,
+        analyzers=(
+            RunAnalyzerRecord(key="variables", name="Variable issues", status="completed", findings=(direct, invoked)),
+        ),
+    )
+    record = RunRecord(run_id="r1", started_at="s", finished_at="f", project_tag="", targets=(target,))
+    tree = results_module._new_results_tree()
+    results_module._populate_module_navigation(tree, record)
+
+    start_master = tree.root.children[0].children[0]
+    assert start_master.label.plain == "StartMaster.InlineLager.L1.L2 (FrameModule)"
+    assert len(tree.root.children[0].children) == 1
+    inline = start_master
+    report = results_module._module_findings_report(inline.data, show_empty_analyzers=False)
+    assert "  a\n" in report
+    assert report.plain.endswith("  b")
+
+    legacy = replace(record, targets=(replace(target, module=None),))
+    results_module._populate_module_navigation(tree, legacy)
+    assert [child.label.plain for child in tree.root.children[0].children] == ["StartMaster.InlineLager.L1.L2"]
+    assert tree.root.children[0].children[0].data.path == inline.data.path
+
+
+def test_legacy_run_builds_navigation_from_finding_paths() -> None:
+    record = replace(
+        _record(),
+        targets=(
+            RunTargetRecord(
+                target_name="Root",
+                analyzers=(
+                    RunAnalyzerRecord(
+                        key="variables",
+                        name="Variable issues",
+                        status="completed",
+                        findings=(AnalysisFinding(kind="unused", message="m", module_path=("Root", "A", "B")),),
+                    ),
+                ),
+            ),
+        ),
+    )
+    tree = results_module._new_results_tree()
+    results_module._populate_module_navigation(tree, record)
+    root = tree.root.children[0]
+    assert root.label.plain == "Root"
+    assert root.children[0].data.path == ("Root", "A", "B")
+
+    assert "Variable issues" in results_module._module_findings_report(
+        root.children[0].data, show_empty_analyzers=False
+    )
+
+
+def test_show_empty_analyzers_only_at_target_root() -> None:
+    record = _record()
+    tree = results_module._new_results_tree()
+    selection = results_module._populate_module_navigation(tree, record)
+    assert selection is not None
+    assert results_module._module_findings_report(selection, show_empty_analyzers=True).plain == (
+        "SFC checks\n  No findings"
+    )
+    empty_selection = results_module._ModuleSelection(record.targets[0], ("Root", "Empty"), {})
+    assert (
+        results_module._module_findings_report(empty_selection, show_empty_analyzers=True).plain
+        == "No findings for this module"
+    )
+
+
+def test_findings_rich_formatting_preserves_literal_brackets() -> None:
+    finding = AnalysisFinding(
+        kind="unused",
+        message="[Root] expression is unused",
+        module_path=("Root",),
+        data={"context": "Values[Index] [bold]literal[/bold]"},
+    )
+    target = RunTargetRecord(
+        target_name="Root",
+        analyzers=(
+            RunAnalyzerRecord(key="variables", name="Variable issues", status="completed", findings=(finding,)),
+        ),
+    )
+    selection = results_module._ModuleSelection(target, ("Root",), {})
+
+    report = results_module._module_findings_report(selection, show_empty_analyzers=False)
+
+    assert "Values[Index] [bold]literal[/bold]" in report.plain
+
+
+def test_finding_locations_use_readable_names_without_losing_branches() -> None:
+    assert (
+        results_module._readable_site("SQ:PhaseSequence > STEP:Stop:ENTER") == "PhaseSequence \u203a Stop \u203a Enter"
+    )
+    assert (
+        results_module._readable_site("SQ:Run > ALT:BRANCH:0 > TRANS:Ready")
+        == "Run \u203a Alternative 1 \u203a Transition Ready"
+    )
+    assert results_module._readable_site("PAR:BRANCH:1") == "Parallel branch 2"
+    assert results_module._readable_site("Custom site") == "Custom site"
+
+
+def test_finding_details_preserve_previous_writes_and_mapping_endpoints() -> None:
+    finding = AnalysisFinding(
+        kind="unused",
+        message="Spare is unused",
+        data={
+            "context": "Spare",
+            "previous_sites": ["SQ:Run > STEP:Start:ENTER"],
+            "target_display_name": "Target.Field",
+            "source_display_name": "Source.Field",
+        },
+    )
+    assert results_module._finding_details(finding) == [
+        "Previous write: Run \u203a Start \u203a Enter",
+        "Target: Target.Field",
+        "Source: Source.Field",
+    ]
+
+
+def test_generic_finding_context_does_not_repeat_category() -> None:
+    finding = AnalysisFinding(
+        kind="min_max_mapping_mismatch",
+        message="[Root] maximum mapped to minimum",
+        data={"context": "Min/Max mapping mismatch"},
+    )
+
+    assert results_module._finding_label(finding) == "maximum mapped to minimum"
+    assert results_module._finding_details(finding) == []
 
 
 def _settings_app(cfg: object) -> SimpleNamespace:
     seen_messages: list[str] = []
-
-    app_instance = SimpleNamespace(
-        _cfg=cfg,
-        _dirty=False,
-        _active_request=None,
-        _active_view="settings",
-    )
+    app_instance = SimpleNamespace(_cfg=cfg, _dirty=False, _active_request=None, _active_view="settings")
     app_instance._write_output = lambda text: seen_messages.append(str(text))
     app_instance._report_error = lambda title, message: seen_messages.append(str(message))
     app_instance._mark_settings_changed = lambda message: seen_messages.append(str(message))
@@ -36,7 +364,7 @@ def test_toggle_app_section_flag_updates_nested_config() -> None:
     cfg = {"run_history": {"enabled": True, "limit": 50}}
     app_instance = _settings_app(cfg)
 
-    app_textual_settings_module._toggle_app_section_flag(app_instance, "run_history", "enabled", label="run history")
+    settings_module._toggle_app_section_flag(app_instance, "run_history", "enabled", label="run history")
 
     assert cfg["run_history"]["enabled"] is False
 
@@ -45,7 +373,7 @@ def test_toggle_app_debug_updates_config() -> None:
     cfg = {"debug": False}
     app_instance = _settings_app(cfg)
 
-    app_textual_settings_module._toggle_app_debug(app_instance)
+    settings_module._toggle_app_debug(app_instance)
 
     assert cfg["debug"] is True
 
@@ -60,7 +388,7 @@ def test_prompt_app_int_applies_valid_response() -> None:
 
     app_instance.present_request = _fake_present
 
-    app_textual_settings_module._prompt_app_int(app_instance, "output", "retention_lines", label="retention")
+    settings_module._prompt_app_int(app_instance, "output", "retention_lines", label="retention")
 
     assert cfg["output"]["retention_lines"] == 8000
 
@@ -75,591 +403,30 @@ def test_prompt_app_int_rejects_invalid_response() -> None:
 
     app_instance.present_request = _fake_present
 
-    app_textual_settings_module._prompt_app_int(app_instance, "output", "retention_lines", label="retention")
+    settings_module._prompt_app_int(app_instance, "output", "retention_lines", label="retention")
 
     assert cfg["output"]["retention_lines"] == 4000
     assert any("positive integer" in message for message in app_instance._seen_messages)
 
 
-def test_results_tree_builds_run_hierarchy() -> None:
-    record = RunRecord(
-        run_id="r1",
-        started_at="2026-09-06T10:00:00Z",
-        finished_at="2026-09-06T10:05:00Z",
-        project_tag="RootProgram",
-        targets=(
-            RunTargetRecord(
-                target_name="RootProgram",
-                is_library=False,
-                analyzers=(
-                    RunAnalyzerRecord(
-                        key="variables",
-                        name="Variable issues",
-                        status="completed",
-                        findings=(
-                            AnalysisFinding(
-                                kind="unused",
-                                message="declared but never read",
-                                module_path=("RootProgram", "StartMaster"),
-                            ),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-    )
-
-    tree = app_textual_results_module._build_run_tree(record)
-
-    assert tree is not None
-    root_children = list(tree.root.children)
-    assert len(root_children) == 1
-    target_node = root_children[0]
-    assert target_node.data is record.targets[0]
-    analyzer_node = next(iter(target_node.children))
-    assert analyzer_node.data is record.targets[0].analyzers[0]
-    kind_node = next(iter(analyzer_node.children))
-    assert kind_node.data is None
-    module_node = next(iter(kind_node.children))
-    assert module_node.data == "RootProgram.StartMaster"
-    assert module_node.label.plain == "RootProgram.StartMaster"
-    finding_node = next(iter(module_node.children))
-    assert finding_node.data == record.targets[0].analyzers[0].findings[0]
-
-
-def test_results_tree_groups_findings_by_kind() -> None:
-    record = RunRecord(
-        run_id="r1",
-        started_at="s",
-        finished_at="f",
-        project_tag="RootProgram",
-        targets=(
-            RunTargetRecord(
-                target_name="RootProgram",
-                is_library=False,
-                analyzers=(
-                    RunAnalyzerRecord(
-                        key="variables",
-                        name="Variable issues",
-                        status="completed",
-                        findings=(
-                            AnalysisFinding(
-                                kind="unused",
-                                message="declared but never read",
-                                module_path=("RootProgram", "A"),
-                            ),
-                            AnalysisFinding(
-                                kind="unused",
-                                message="assigned but never read",
-                                module_path=("RootProgram", "B"),
-                            ),
-                            AnalysisFinding(
-                                kind="shadowed",
-                                message="shadows an outer variable",
-                                module_path=("RootProgram", "B"),
-                            ),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-    )
-
-    tree = app_textual_results_module._build_run_tree(record)
-
-    assert tree is not None
-    analyzer_node = next(iter(tree.root.children[0].children))
-    kind_nodes = list(analyzer_node.children)
-    assert [node.label.plain for node in kind_nodes] == ["Unused variable (2)", "Shadowed (1)"]
-
-    unused_kind, shadowed_kind = kind_nodes
-    unused_root = next(iter(unused_kind.children))
-    assert unused_root.data == "RootProgram"
-    unused_modules = list(unused_root.children)
-    assert [node.data for node in unused_modules] == ["RootProgram.A", "RootProgram.B"]
-    shadow_module = next(iter(shadowed_kind.children))
-    assert shadow_module.data == "RootProgram.B"
-    assert shadow_module.label.plain == "RootProgram.B"
-    assert len(list(unused_modules[0].children)) == 1
-    assert len(list(unused_modules[1].children)) == 1
-    assert len(list(shadow_module.children)) == 1
-
-
-def test_results_tree_collapses_identical_findings_to_one_path() -> None:
-    record = RunRecord(
-        run_id="r1",
-        started_at="s",
-        finished_at="f",
-        project_tag="RootProgram",
-        targets=(
-            RunTargetRecord(
-                target_name="RootProgram",
-                is_library=False,
-                analyzers=(
-                    RunAnalyzerRecord(
-                        key="variables",
-                        name="Variable issues",
-                        status="completed",
-                        findings=(
-                            AnalysisFinding(
-                                kind="typedef",
-                                message="never used",
-                                module_path=("RootProgram", "A", "Pump_1"),
-                            ),
-                            AnalysisFinding(
-                                kind="typedef",
-                                message="never used",
-                                module_path=("RootProgram", "A", "Pump_2"),
-                            ),
-                            AnalysisFinding(
-                                kind="typedef",
-                                message="never used",
-                                module_path=("RootProgram", "A", "Pump_3"),
-                            ),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-    )
-
-    tree = app_textual_results_module._build_run_tree(record)
-
-    assert tree is not None
-    analyzer_node = next(iter(tree.root.children[0].children))
-    kind_node = next(iter(analyzer_node.children))
-    assert kind_node.label.plain == "Typedef (3)"
-    root_branch = next(iter(kind_node.children))
-    assert root_branch.data == "RootProgram.A.Pump_1"
-    assert root_branch.label.plain == "RootProgram.A.Pump_1"
-    leaf = next(iter(root_branch.children))
-    assert leaf.data.kind == "typedef"
-    assert "3 occurrences" in leaf.label.plain
-
-
-def test_results_tree_keeps_identical_findings_at_distinct_sites() -> None:
-    first = AnalysisFinding(
-        kind="dataflow.condition_always_false",
-        message="Condition 'False' is always false at this point.",
-        module_path=("RootProgram", "MixingAfl", "PhaseLogic"),
-        data={"site": "SQ:PhaseSequence > TRANS:Tr12"},
-    )
-    second = AnalysisFinding(
-        kind="dataflow.condition_always_false",
-        message="Condition 'False' is always false at this point.",
-        module_path=("RootProgram", "MixingAfl", "PhaseLogic"),
-        data={"site": "SQ:PhaseSequence > TRANS:Tr47"},
-    )
-    record = RunRecord(
-        run_id="r1",
-        started_at="s",
-        finished_at="f",
-        project_tag="RootProgram",
-        targets=(
-            RunTargetRecord(
-                target_name="RootProgram",
-                is_library=False,
-                analyzers=(
-                    RunAnalyzerRecord(
-                        key="dataflow",
-                        name="Dataflow",
-                        status="completed",
-                        findings=(first, second),
-                    ),
-                ),
-            ),
-        ),
-    )
-
-    tree = app_textual_results_module._build_run_tree(record)
-
-    assert tree is not None
-    analyzer_node = next(iter(tree.root.children[0].children))
-    kind_node = next(iter(analyzer_node.children))
-    module_node = next(iter(kind_node.children))
-    assert module_node.data == "RootProgram.MixingAfl.PhaseLogic"
-    site_nodes = list(module_node.children)
-    assert [node.label.plain for node in site_nodes] == [
-        "SQ:PhaseSequence > TRANS:Tr12",
-        "SQ:PhaseSequence > TRANS:Tr47",
-    ]
-    assert [next(iter(node.children)).data for node in site_nodes] == [first, second]
-
-
-def test_results_tree_renders_site_node_and_finding_leaf() -> None:
-    record = RunRecord(
-        run_id="r1",
-        started_at="s",
-        finished_at="f",
-        project_tag="RootProgram",
-        targets=(
-            RunTargetRecord(
-                target_name="RootProgram",
-                is_library=False,
-                analyzers=(
-                    RunAnalyzerRecord(
-                        key="variables",
-                        name="Variable issues",
-                        status="completed",
-                        findings=(
-                            AnalysisFinding(
-                                kind="string_mapping_mismatch",
-                                message="[RootProgram.Child] parameter mapping type mismatch",
-                                module_path=("RootProgram", "Child"),
-                                data={"site": "Child : ChildType", "context": "TargetVal => SourceVal"},
-                            ),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-    )
-
-    tree = app_textual_results_module._build_run_tree(record)
-
-    assert tree is not None
-    analyzer_node = next(iter(tree.root.children[0].children))
-    kind_node = next(iter(analyzer_node.children))
-    module_node = next(iter(kind_node.children))
-    assert module_node.data == "RootProgram.Child"
-    site_node = next(iter(module_node.children))
-    assert site_node.label.plain == "Child : ChildType"
-    leaf = next(iter(site_node.children))
-    assert leaf.data.kind == "string_mapping_mismatch"
-    assert "TargetVal => SourceVal" in leaf.label.plain
-    assert "[RootProgram.Child]" not in leaf.label.plain
-    assert not list(leaf.children)
-    assert leaf.allow_expand is False
-
-
-def test_results_tree_finding_node_is_leaf_preserving_detail_data() -> None:
-    record = RunRecord(
-        run_id="r1",
-        started_at="s",
-        finished_at="f",
-        project_tag="RootProgram",
-        targets=(
-            RunTargetRecord(
-                target_name="RootProgram",
-                is_library=False,
-                analyzers=(
-                    RunAnalyzerRecord(
-                        key="variables",
-                        name="Variable issues",
-                        status="completed",
-                        findings=(
-                            AnalysisFinding(
-                                kind="unused",
-                                message="declared but never read",
-                                module_path=("RootProgram",),
-                                data={"context": "Spare"},
-                                explanation="Stale declarations add noise.",
-                                suggestion="Delete the declaration.",
-                            ),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-    )
-
-    tree = app_textual_results_module._build_run_tree(record)
-
-    assert tree is not None
-    analyzer_node = next(iter(tree.root.children[0].children))
-    kind_node = next(iter(analyzer_node.children))
-    root_branch = next(iter(kind_node.children))
-    finding_node = next(iter(root_branch.children))
-    assert finding_node.data.kind == "unused"
-    assert finding_node.data.explanation == "Stale declarations add noise."
-    assert finding_node.data.suggestion == "Delete the declaration."
-    assert not list(finding_node.children)
-    assert finding_node.allow_expand is False
-
-
-def test_results_tree_merges_identical_site_nodes_for_separate_findings() -> None:
-    record = RunRecord(
-        run_id="r1",
-        started_at="s",
-        finished_at="f",
-        project_tag="RootProgram",
-        targets=(
-            RunTargetRecord(
-                target_name="RootProgram",
-                is_library=False,
-                analyzers=(
-                    RunAnalyzerRecord(
-                        key="variables",
-                        name="Variable issues",
-                        status="completed",
-                        findings=(
-                            AnalysisFinding(
-                                kind="magic_number",
-                                message="[RootProgram.LoopLogic] magic number 1",
-                                module_path=("RootProgram", "LoopLogic"),
-                                data={"site": "EQ:Control", "context": "Output = 1"},
-                            ),
-                            AnalysisFinding(
-                                kind="magic_number",
-                                message="[RootProgram.LoopLogic] magic number 2",
-                                module_path=("RootProgram", "LoopLogic"),
-                                data={"site": "EQ:Control", "context": "Output = 2"},
-                            ),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-    )
-
-    tree = app_textual_results_module._build_run_tree(record)
-
-    assert tree is not None
-    analyzer_node = next(iter(tree.root.children[0].children))
-    kind_node = next(iter(analyzer_node.children))
-    module_node = next(iter(kind_node.children))
-    assert module_node.label.plain == "RootProgram.LoopLogic"
-    site_nodes = list(module_node.children)
-    assert len(site_nodes) == 1
-    assert site_nodes[0].label.plain == "EQ:Control"
-    assert len(list(site_nodes[0].children)) == 2
-
-
-def test_results_tree_hides_empty_analyzers_by_default() -> None:
-    record = RunRecord(
-        run_id="r1",
-        started_at="s",
-        finished_at="f",
-        project_tag="RootProgram",
-        targets=(
-            RunTargetRecord(
-                target_name="RootProgram",
-                is_library=False,
-                analyzers=(
-                    RunAnalyzerRecord(
-                        key="variables",
-                        name="Variable issues",
-                        status="completed",
-                        findings=(AnalysisFinding(kind="unused", message="m", module_path=("RootProgram",)),),
-                    ),
-                    RunAnalyzerRecord(key="sfc", name="SFC checks", status="completed", findings=()),
-                ),
-            ),
-        ),
-    )
-
-    hidden = app_textual_results_module._build_run_tree(record)
-    assert hidden is not None
-    target_node = hidden.root.children[0]
-    assert [child.data.key for child in target_node.children] == ["variables"]
-
-    shown = app_textual_results_module._build_run_tree(record, show_empty_analyzers=True)
-    assert shown is not None
-    target_node = shown.root.children[0]
-    assert [child.data.key for child in target_node.children] == ["variables", "sfc"]
-
-
-def test_results_tree_returns_none_without_textual() -> None:
-    original = app_textual_results_module._TEXTUAL_TREE
-    app_textual_results_module._TEXTUAL_TREE = None
-    try:
-        record = RunRecord(run_id="r1", started_at="s", finished_at="f", project_tag="")
-        assert app_textual_results_module._build_run_tree(record) is None
-    finally:
-        app_textual_results_module._TEXTUAL_TREE = original
-
-
-def test_run_tree_top_level_is_one_node_per_target() -> None:
-    record = RunRecord(
-        run_id="r1",
-        started_at="s",
-        finished_at="2026-09-06T10:05:00Z",
-        project_tag="RootProgram",
-        targets=(
-            RunTargetRecord(
-                target_name="RootProgram",
-                is_library=False,
-                analyzers=(
-                    RunAnalyzerRecord(
-                        key="variables",
-                        name="Variable issues",
-                        status="completed",
-                        findings=(AnalysisFinding(kind="unused", message="msg", module_path=("RootProgram",)),),
-                    ),
-                ),
-            ),
-        ),
-    )
-
-    tree = app_textual_results_module._build_run_tree(record)
-    assert tree is not None
-    assert str(tree.root.label) == ""
-    assert [child.data.target_name for child in tree.root.children] == ["RootProgram"]
-
-
-def test_results_tree_keeps_branch_points_when_merging_module_chains() -> None:
-    record = RunRecord(
-        run_id="r1",
-        started_at="s",
-        finished_at="f",
-        project_tag="RootProgram",
-        targets=(
-            RunTargetRecord(
-                target_name="RootProgram",
-                is_library=False,
-                analyzers=(
-                    RunAnalyzerRecord(
-                        key="variables",
-                        name="Variable issues",
-                        status="completed",
-                        findings=(
-                            AnalysisFinding(kind="unused", message="first", module_path=("RootProgram", "A", "One")),
-                            AnalysisFinding(kind="unused", message="second", module_path=("RootProgram", "A", "Two")),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-    )
-
-    tree = app_textual_results_module._build_run_tree(record)
-
-    assert tree is not None
-    kind_node = next(iter(next(iter(tree.root.children[0].children)).children))
-    root_branch = next(iter(kind_node.children))
-    assert root_branch.label.plain == "RootProgram.A"
-    assert [node.label.plain for node in root_branch.children] == ["One", "Two"]
-
-
-def test_results_tree_groups_findings_by_module_across_analyzers() -> None:
-    record = RunRecord(
-        run_id="r1",
-        started_at="s",
-        finished_at="f",
-        project_tag="RootProgram",
-        targets=(
-            RunTargetRecord(
-                target_name="RootProgram",
-                is_library=False,
-                analyzers=(
-                    RunAnalyzerRecord(
-                        key="variables",
-                        name="Variable issues",
-                        status="completed",
-                        findings=(
-                            AnalysisFinding(kind="unused", message="m1", module_path=("RootProgram", "A")),
-                            AnalysisFinding(kind="unused", message="m2", module_path=("RootProgram", "A", "Sub")),
-                        ),
-                    ),
-                    RunAnalyzerRecord(
-                        key="patterns",
-                        name="Pattern checks",
-                        status="completed",
-                        findings=(
-                            AnalysisFinding(kind="magic_number", message="m3", module_path=("RootProgram", "A")),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-    )
-
-    tree = app_textual_results_module._build_run_tree(record, group_by="module")
-
-    assert tree is not None
-    target_node = next(iter(tree.root.children))
-    module_node = next(iter(target_node.children))
-    assert module_node.data == "RootProgram.A"
-    analyzer_nodes = [node for node in module_node.children if not isinstance(node.data, str)]
-    assert [node.data.key for node in analyzer_nodes] == ["variables", "patterns"]
-    variables_node, patterns_node = analyzer_nodes
-    assert [node.label.plain for node in variables_node.children] == ["Unused variable (1)"]
-    assert [node.label.plain for node in patterns_node.children] == ["Magic number (1)"]
-
-    sub_module = next(node for node in module_node.children if node.data == "RootProgram.A.Sub")
-    assert sub_module.label.plain == "Sub"
-    sub_analyzers = list(sub_module.children)
-    assert [node.data.key for node in sub_analyzers] == ["variables"]
-
-
-def test_results_tree_module_grouping_lists_empty_analyzers_when_requested() -> None:
-    record = RunRecord(
-        run_id="r1",
-        started_at="s",
-        finished_at="f",
-        project_tag="RootProgram",
-        targets=(
-            RunTargetRecord(
-                target_name="RootProgram",
-                is_library=False,
-                analyzers=(
-                    RunAnalyzerRecord(
-                        key="variables",
-                        name="Variable issues",
-                        status="completed",
-                        findings=(AnalysisFinding(kind="unused", message="m", module_path=("RootProgram",)),),
-                    ),
-                    RunAnalyzerRecord(key="sfc", name="SFC checks", status="completed", findings=()),
-                ),
-            ),
-        ),
-    )
-
-    tree = app_textual_results_module._build_run_tree(record, group_by="module", show_empty_analyzers=True)
-
-    assert tree is not None
-    target_node = next(iter(tree.root.children))
-    no_findings_node = next(node for node in target_node.children if node.label.plain == "No findings (1)")
-    assert [node.data.key for node in no_findings_node.children] == ["sfc"]
-
-
-def test_results_tree_module_grouping_auto_expands_single_child_chains() -> None:
-    record = RunRecord(
-        run_id="r1",
-        started_at="s",
-        finished_at="f",
-        project_tag="RootProgram",
-        targets=(
-            RunTargetRecord(
-                target_name="RootProgram",
-                is_library=False,
-                analyzers=(
-                    RunAnalyzerRecord(
-                        key="variables",
-                        name="Variable issues",
-                        status="completed",
-                        findings=(AnalysisFinding(kind="unused", message="m", module_path=("RootProgram", "A", "B")),),
-                    ),
-                ),
-            ),
-        ),
-    )
-
-    tree = app_textual_results_module._build_run_tree(record, group_by="module")
-
-    assert tree is not None
-    target_node = next(iter(tree.root.children))
-    module_node = next(iter(target_node.children))
-    assert module_node.label.plain == "RootProgram.A.B"
-    assert target_node.is_expanded is True
-    assert module_node.is_expanded is True
-
-
 def _tree_render_app(messages: list[str]) -> SimpleNamespace:
+    findings_report = SimpleNamespace(
+        update=lambda *_args, **_kwargs: None,
+        set_selection=lambda *_args, **_kwargs: None,
+    )
     app_instance = SimpleNamespace(
         _selected_run_record=None,
         _results_tree_widget=SimpleNamespace(),
         _results_tree_render_key=None,
         _results_tree_run_id=None,
         _results_pending_run_id=None,
-        _results_group_by_flag="analyzer",
+        _results_findings_widget=findings_report,
         _results_show_empty_analyzers_flag=False,
+        _selected_results_module=None,
     )
     app_instance._write_output = lambda text: messages.append(str(text))
     app_instance._report_error = lambda title, message: messages.append(str(message))
     app_instance._refresh_shell_state = lambda: None
-    app_instance._update_results_group_button = lambda: None
-    app_instance._results_group_by = lambda: "analyzer"
     app_instance._results_show_empty_analyzers = lambda: False
     return app_instance
 
@@ -680,23 +447,23 @@ def test_results_tree_announces_shown_results_only_when_the_run_changes(
     populated: list[str] = []
     app_instance = _tree_render_app(messages)
     monkeypatch.setattr(
-        app_textual_results_module,
-        "_populate_run_tree",
+        results_module,
+        "_populate_module_navigation",
         lambda _tree, record, **_kwargs: populated.append(record.run_id),
     )
-    announcement = "Analysis results are shown in the tree. Select a node for details."
+    announcement = "Select a module to inspect its findings."
 
-    app_textual_results_module._render_results_tree(app_instance, _run_record("r1"))
-
-    assert populated == ["r1"]
-    assert messages == [announcement]
-
-    app_textual_results_module._render_results_tree(app_instance, _run_record("r1"))
+    results_module._render_results_tree(app_instance, _run_record("r1"))
 
     assert populated == ["r1"]
     assert messages == [announcement]
 
-    app_textual_results_module._render_results_tree(app_instance, _run_record("r2"))
+    results_module._render_results_tree(app_instance, _run_record("r1"))
+
+    assert populated == ["r1"]
+    assert messages == [announcement]
+
+    results_module._render_results_tree(app_instance, _run_record("r2"))
 
     assert populated == ["r1", "r2"]
     assert messages == [announcement, announcement]
@@ -714,14 +481,14 @@ def test_results_highlight_defers_and_coalesces_run_loads(monkeypatch: pytest.Mo
     )
     app_instance.call_after_refresh = lambda callback: deferred.append(callback)
     app_instance._render_selected_run = lambda: rendered.append(app_instance._selected_run_record.run_id)
-    app_instance._apply_pending_results_run_selection = lambda: (
-        app_textual_results_module._apply_pending_results_run_selection(app_instance)
+    app_instance._apply_pending_results_run_selection = lambda: results_module._apply_pending_results_run_selection(
+        app_instance
     )
-    app_instance._request_results_run_selection = lambda run_id: (
-        app_textual_results_module._request_results_run_selection(app_instance, run_id)
+    app_instance._request_results_run_selection = lambda run_id: results_module._request_results_run_selection(
+        app_instance, run_id
     )
     monkeypatch.setattr(
-        app_textual_results_module,
+        results_module,
         "load_run",
         lambda run_id: loaded.append(run_id) or SimpleNamespace(run_id=run_id),
     )
@@ -757,12 +524,12 @@ def test_delete_selected_run_asks_before_removing_the_run(monkeypatch: pytest.Mo
 
     app_instance.present_request = _present
     monkeypatch.setattr(
-        app_textual_results_module,
+        results_module,
         "delete_run",
         lambda run_id: deleted.append(run_id) or True,
     )
 
-    app_textual_results_module._delete_selected_run(app_instance)
+    results_module._delete_selected_run(app_instance)
 
     assert deleted == []
     assert len(presented) == 1
@@ -792,31 +559,16 @@ def test_results_run_summaries_match_the_project_path_and_drop_legacy_runs(
         SimpleNamespace(run_id="legacy", project_path="", project_tag="RootProgram"),
         SimpleNamespace(run_id="legacy-other", project_path="", project_tag="AnotherProgram"),
     ]
-    monkeypatch.setattr(app_textual_results_module, "list_runs", lambda: list(summaries))
+    monkeypatch.setattr(results_module, "list_runs", lambda: list(summaries))
     app_instance = SimpleNamespace(
         _cfg={"analyzed_programs_and_libraries": ["RootProgram"]},
         _config_path="/p/a.slproj",
     )
-    app_instance._current_project_path = lambda: app_textual_results_module._current_project_path(app_instance)
+    app_instance._current_project_path = lambda: results_module._current_project_path(app_instance)
 
-    assert [summary.run_id for summary in app_textual_results_module._results_run_summaries(app_instance)] == [
+    assert [summary.run_id for summary in results_module._results_run_summaries(app_instance)] == [
         "same-path",
     ]
 
     app_instance._config_path = None
-    assert app_textual_results_module._results_run_summaries(app_instance) == ()
-
-
-def test_run_overview_text_names_the_project_path() -> None:
-    record = RunRecord(
-        run_id="r1",
-        started_at="2026-09-06T10:00:00Z",
-        finished_at="2026-09-06T10:05:00Z",
-        project_tag="RootProgram",
-        project_path="/p/a.slproj",
-    )
-
-    text = app_textual_results_module._run_overview_text(record)
-
-    assert "Project: /p/a.slproj" in text
-    assert "Configuration: RootProgram" in text
+    assert results_module._results_run_summaries(app_instance) == ()

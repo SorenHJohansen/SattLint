@@ -334,6 +334,8 @@ def _step_has_direct_self_loop(nodes: SequenceABC[object], index: int) -> bool:
     next_node = nodes[index + 1]
     if not isinstance(next_node, SFCTransition):
         return False
+    if next_node.condition is False:
+        return False
     if isinstance(next_node.fork, SFCFork):
         return any(target.casefold() == step_key for target in next_node.fork.targets)
     tail = nodes[index + 2 :]
@@ -452,7 +454,7 @@ def _record_ref(
     accesses.append(
         _SiteAccess(
             module_path=tuple(module_path),
-            symbol_key=resolved.symbol_root_key,
+            symbol_key=resolved.symbol_key,
             symbol_display=display_path,
             decl_module_path=decl_module_path,
             is_state_variable=bool(resolved.is_state_variable),

@@ -55,6 +55,16 @@ def default_delivery_templates(
             min_fixture_set=shared_fixtures,
         ),
         AnalyzerDeliveryTemplate(
+            key="moduletype-usage",
+            scope="workspace",
+            implementation_bucket="engineering-rules",
+            acceptance_tests=(
+                "tests/analyzers/test_moduletype_usage.py",
+                "tests/app/test_analysis_project_cache.py",
+            ),
+            min_fixture_set=shared_fixtures,
+        ),
+        AnalyzerDeliveryTemplate(
             key="picture-display-paths",
             scope="workspace",
             implementation_bucket="workspace-navigation",

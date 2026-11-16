@@ -331,6 +331,10 @@ def _normalize_cache_dir(cache_dir: Path) -> Path:
 
 PROJECT_CACHE_SCHEMA_VERSION = "2026-11-15-project-graph-parser-2026-11-5"
 ANALYSIS_REPORT_CACHE_SCHEMA_VERSION = "2026-11-15-analyzer-settings"
+_ANALYSIS_REPORT_ANALYZER_VERSIONS = {
+    "cyclomatic-complexity": "2026-11-06-default-thresholds",
+    "sfc": "2026-11-06-sequence-start",
+}
 # Phase E: the analysis foundation (type graph + typedef/moduletype/datatype indices + symbol
 # skeleton) is a pure function of the parsed ASTs, so it is content-addressable. This version
 # must be bumped whenever the serialized foundation shape or its derivation changes.
@@ -369,6 +373,9 @@ def compute_analysis_report_cache_key(
     h.update(ANALYSIS_REPORT_CACHE_SCHEMA_VERSION.encode())
     h.update(project_cache_key.encode("utf-8", errors="ignore"))
     h.update(analyzer_key.encode("utf-8", errors="ignore"))
+    analyzer_version = _ANALYSIS_REPORT_ANALYZER_VERSIONS.get(analyzer_key)
+    if analyzer_version is not None:
+        h.update(analyzer_version.encode())
     h.update(_analysis_settings_fingerprint(analysis_settings).encode("utf-8", errors="ignore"))
     return h.hexdigest()
 

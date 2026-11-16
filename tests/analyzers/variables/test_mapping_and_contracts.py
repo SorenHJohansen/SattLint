@@ -481,7 +481,7 @@ def test_string_mapping_mismatch_ignores_direct_record_field_mapping_when_field_
 
 
 @pytest.mark.parametrize("is_source_global", [False, True])
-def test_unknown_parameter_target_detected_for_single_module_mapping(is_source_global):
+def test_extra_mapping_target_is_accepted_for_single_module(is_source_global):
     child = SingleModule(
         header=_hdr("Child"),
         moduledef=None,
@@ -525,13 +525,11 @@ def test_unknown_parameter_target_detected_for_single_module_mapping(is_source_g
     analyzer.run()
 
     issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.UNKNOWN_PARAMETER_TARGET]
-    assert len(issues) == 1
-    assert issues[0].module_path == ["Root", "Parent", "Child"]
-    assert issues[0].role == "unknown parameter mapping target 'MissingValue'"
+    assert issues == []
 
 
 @pytest.mark.parametrize("is_source_global", [False, True])
-def test_unknown_parameter_target_detected_for_moduletype_instance_mapping(is_source_global):
+def test_extra_mapping_target_is_accepted_for_moduletype_instance(is_source_global):
     typedef = ModuleTypeDef(
         name="ChildType",
         moduleparameters=[Variable(name="DeclaredValue", datatype=ScalarDatatype.INTEGER)],
@@ -577,9 +575,7 @@ def test_unknown_parameter_target_detected_for_moduletype_instance_mapping(is_so
     analyzer.run()
 
     issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.UNKNOWN_PARAMETER_TARGET]
-    assert len(issues) == 1
-    assert issues[0].module_path == ["Root", "Parent", "Child"]
-    assert issues[0].role == "unknown parameter mapping target 'MissingValue'"
+    assert issues == []
 
 
 def test_singlemodule_groupconn_marks_child_parameter_used():

@@ -91,6 +91,7 @@ def test_convert_populates_graph_from_registry() -> None:
     assert graph.ast_by_name["B"] is b.code
     assert graph.source_files == {lib / "A.s", prg / "B.s"}
     assert graph.library_dependencies["prg"] == {"lib"}
+    assert graph.source_dependencies == {"a": set(), "b": {"a"}}
     assert graph.missing == []
 
 

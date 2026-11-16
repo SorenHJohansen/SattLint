@@ -73,6 +73,9 @@ def test_variables_access_wrapper_helpers_delegate_and_parse_fields() -> None:
     def _record_function_call_effect_flow(fn_name: str | None, _args: list[object], _context: object) -> None:
         tracker_calls.append(("call", fn_name))
 
+    def _record_controlled_write(full_ref: str, _context: object) -> None:
+        tracker_calls.append(("controlled", full_ref))
+
     usage_tracker = _ns(
         record_access=_record_access,
         mark_ref_access=_mark_access,
@@ -88,6 +91,7 @@ def test_variables_access_wrapper_helpers_delegate_and_parse_fields() -> None:
         collect_expression_effect_sources=_collect_expression_effect_sources,
         record_assignment_effect_flow=_record_assignment_effect_flow,
         record_function_call_effect_flow=_record_function_call_effect_flow,
+        record_controlled_write=_record_controlled_write,
     )
     helper: Any = SimpleNamespace(
         usage_tracker=usage_tracker,
@@ -172,6 +176,7 @@ def test_variables_access_effect_and_site_helpers_cover_remaining_branches() -> 
             effect_key_for_variable=_effect_key_for_variable,
         ),
         effective_output_keys={("effect", "Demo", "Root")},
+        contexts_by_module_path={},
         site_stack=[],
     )
 

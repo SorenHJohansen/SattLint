@@ -47,6 +47,12 @@ class StringMappingValidator:
     def _string_limit(self, dt: ScalarDatatype | str | None) -> int | None:
         return string_capacity_for_datatype(dt)
 
+    def _mapping_context(self, target: Variable, source: Variable) -> str:
+        return (
+            f"{target.name} ({target.datatype_text}, {self._string_limit(target.datatype)} characters) => "
+            f"{source.name} ({source.datatype_text}, {self._string_limit(source.datatype)} characters)"
+        )
+
     def check_string_mapping(
         self,
         tgt_var: Variable,
@@ -70,6 +76,7 @@ class StringMappingValidator:
                 variable=tgt_var,
                 role="parameter mapping type mismatch",
                 source_variable=src_var,
+                context=self._mapping_context(tgt_var, src_var),
             )
             issues.append(issue)
 
@@ -97,13 +104,15 @@ class StringMappingValidator:
             if source_limit is None or source_limit <= target_limit:
                 return []
 
+        source_var = Variable(name=repr(source_literal), datatype=cast(ScalarDatatype, source_datatype))
         return [
             VariableIssue(
                 kind=IssueKind.STRING_MAPPING_MISMATCH,
                 module_path=list(path),
                 variable=tgt_var,
                 role="parameter mapping type mismatch",
-                source_variable=Variable(name=repr(source_literal), datatype=cast(ScalarDatatype, source_datatype)),
+                source_variable=source_var,
+                context=self._mapping_context(tgt_var, source_var),
             )
         ]
 
