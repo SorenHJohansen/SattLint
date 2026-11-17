@@ -34,9 +34,10 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   findings are stored in a separate project-level bucket instead of a phantom
   target. The run-record schema is version 2.
 - Reverse consumers are discovered for every analyzed target, not only for
-  targets the loader classifies as libraries by their location, and the scan
-  reads only the dependency sidecar of the active mode: `.l` in draft, `.z` in
-  official.
+  targets the loader classifies as libraries by their location. The scan
+  prefers the mode's dependency sidecar (`.l` in draft, `.z` in official) and
+  falls back to the other one when a program has no preferred sidecar, so a
+  program that exists in only one body family still contributes its uses.
 - Module-type usage treats a type as unused when it has no invocation at all,
   or exactly one invocation and that invocation is its declaring file. Two or
   more invocations count as use, wherever they occur, and the analyzed target's

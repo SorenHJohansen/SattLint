@@ -50,7 +50,7 @@ def test_analysis_loading_helpers_cover_target_accessors_and_refresh_formatting(
 
     assert project_application._get_analyzed_targets({}) == ["TargetA"]
     assert project_application._require_analyzed_targets({}) == ["TargetB"]
-    assert loading_support_module._workspace_dependency_suffixes("draft") == (".l",)
+    assert loading_support_module._workspace_dependency_suffixes("draft") == (".l", ".z")
     assert loading_support_module._workspace_dependency_suffixes("official") == (".z",)
     assert analysis_loading_module._format_refresh_stage_timings(
         {"load_or_parse": 0.1, "validate": 0.2},
@@ -89,10 +89,12 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
         "mode": "draft",
     }
 
-    # Draft scans only ``.l``; the official ``.z`` beside it is ignored.
+    # Draft prefers ``.l`` and falls back to ``.z`` when a program has no
+    # ``.l`` sidecar, so every program keeps its dependency list.
     assert list(loading_support_module._iter_workspace_reverse_library_consumer_dependency_files(cfg)) == [
         ("consumer", program_dir / "consumer.l"),
         ("selected", program_dir / "selected.l"),
+        ("remote", other_dir / "remote.z"),
     ]
 
     visits: list[tuple[str, Path]] = []
@@ -309,3 +311,24 @@ def test_analysis_loading_cache_manifest_files_adds_distribution_companions(tmp_
     )
 
     assert manifest_files == {draft_body, draft_companion, official_body, official_companion}
+
+
+def test_reverse_consumer_scan_prefers_the_mode_sidecar_and_falls_back(tmp_path):
+    program_dir = tmp_path / "programs"
+    program_dir.mkdir()
+    (program_dir / "Both.l").write_text("", encoding="utf-8")
+    (program_dir / "Both.z").write_text("", encoding="utf-8")
+    (program_dir / "OfficialOnly.z").write_text("", encoding="utf-8")
+
+    draft = loading_support_module._iter_workspace_reverse_library_consumer_dependency_files(
+        {"program_dir": str(program_dir), "other_lib_dirs": [], "mode": "draft"}
+    )
+    assert list(draft) == [
+        ("Both", program_dir / "Both.l"),
+        ("OfficialOnly", program_dir / "OfficialOnly.z"),
+    ]
+
+    official = loading_support_module._iter_workspace_reverse_library_consumer_dependency_files(
+        {"program_dir": str(program_dir), "other_lib_dirs": [], "mode": "official"}
+    )
+    assert list(official) == [("Both", program_dir / "Both.z"), ("OfficialOnly", program_dir / "OfficialOnly.z")]

@@ -14,7 +14,7 @@ from sattlint.parser_api import BasePicture, ProjectLoadError
 from ..config.types import ConfigDict
 from ..core import profiling as profiling_module
 from ..core.debug import debug_enabled
-from ..core.syntax import CodeMode, deps_ext, normalize_code_mode
+from ..core.syntax import CodeMode, deps_ext_candidates, normalize_code_mode
 from ..models.project_graph import ProjectFailure, ProjectGraph
 from ..validation.shared import ValidationWarning, coerce_validation_notice
 from .support import FAILURE_MARKERS, LOAD_FAILURE_MARKER
@@ -76,14 +76,15 @@ def _attach_analysis_cache_metadata(graph: ProjectGraph, *, cache_key: str, mani
 
 
 def _workspace_dependency_suffixes(mode: str) -> tuple[str, ...]:
-    """The one dependency-sidecar extension the mode uses.
+    """Dependency-sidecar extensions in preference order.
 
-    Draft scans ``.l`` and official scans ``.z``. A draft project must not pick
-    up an official dependency list (or the other way round): the sidecar
-    describes the dependency closure of the body family it belongs to.
+    Draft prefers ``.l`` and falls back to ``.z``; official uses ``.z``. The
+    fallback matters because a program can exist only in one body family (an
+    official ``.x``/``.z`` program inside a draft project), and skipping its
+    dependency list would hide the uses it contributes.
     """
     resolved_mode = normalize_code_mode(mode) or CodeMode.OFFICIAL
-    return (deps_ext(resolved_mode),)
+    return deps_ext_candidates(resolved_mode)
 
 
 def _collect_analysis_timings(cfg: ConfigDict) -> bool:
@@ -122,11 +123,13 @@ def _call_load_project_compat(
 def _iter_workspace_reverse_library_consumer_dependency_files(
     cfg: ConfigDict,
 ) -> Iterator[tuple[str, Path]]:
-    seen_targets: set[str] = set()
     base_dirs = [Path(cfg["program_dir"]), *(Path(path) for path in cfg["other_lib_dirs"])]
     suffixes = _workspace_dependency_suffixes(str(cfg.get("mode", "official")))
 
-    for base_dir in base_dirs:
+    # One sidecar per program: the most preferred suffix wins, and a program
+    # whose preferred sidecar is absent still contributes through the fallback.
+    chosen: dict[str, tuple[tuple[int, int], Path]] = {}
+    for directory_rank, base_dir in enumerate(base_dirs):
         if not base_dir.exists() or not base_dir.is_dir():
             continue
         try:
@@ -136,16 +139,18 @@ def _iter_workspace_reverse_library_consumer_dependency_files(
         except OSError:
             continue
 
-        for suffix in suffixes:
-            for deps_path in files:
-                if deps_path.suffix.casefold() != suffix:
-                    continue
-                target_name = deps_path.stem
-                target_key = target_name.casefold()
-                if target_key in seen_targets:
-                    continue
-                seen_targets.add(target_key)
-                yield target_name, deps_path
+        for deps_path in files:
+            suffix = deps_path.suffix.casefold()
+            if suffix not in suffixes:
+                continue
+            rank = (suffixes.index(suffix), directory_rank)
+            target_key = deps_path.stem.casefold()
+            current = chosen.get(target_key)
+            if current is None or rank < current[0]:
+                chosen[target_key] = (rank, deps_path)
+
+    for _rank, deps_path in chosen.values():
+        yield deps_path.stem, deps_path
 
 
 def _include_reverse_library_consumers(
