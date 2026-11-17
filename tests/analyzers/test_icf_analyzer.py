@@ -52,7 +52,10 @@ def _graph() -> SimpleNamespace:
 
 
 def _base_picture(name: str = "Program") -> BasePicture:
-    return cast(BasePicture, SimpleNamespace(header=SimpleNamespace(name=name)))
+    return cast(
+        BasePicture,
+        SimpleNamespace(header=SimpleNamespace(name="BasePicture"), name="BasePicture", program_name=name),
+    )
 
 
 @pytest.mark.parametrize(

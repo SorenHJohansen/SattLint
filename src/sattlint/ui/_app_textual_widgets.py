@@ -29,6 +29,7 @@ from ._app_textual_shared import (
     _TEXTUAL_MODAL_SCREEN,
     _TEXTUAL_STATIC,
     _TEXTUAL_VERTICAL,
+    _TEXTUAL_VERTICAL_SCROLL,
     InteractionRequest,
     _menu_option_keys,
     _query_required,
@@ -130,7 +131,8 @@ if _TEXTUAL_APP is not None:
                 return focused_id.removeprefix("option-")
             return None
 
-        def _submit_response(self, response: object) -> None:
+        def _submit_response(self, response: object, *, cancelled: bool = False) -> None:
+            self._request.cancelled = cancelled
             self._submit_response_fn(response)
 
         def _submit_current_request(self) -> None:
@@ -157,17 +159,17 @@ if _TEXTUAL_APP is not None:
             if self._request.kind == "menu":
                 option_keys = _menu_option_keys(self._request.options)
                 if "b" in option_keys:
-                    self._submit_response("b")
+                    self._submit_response("b", cancelled=True)
                     return
-                self._submit_response(None)
+                self._submit_response(None, cancelled=True)
                 return
             if self._request.kind == "prompt":
-                self._submit_response(self._request.default)
+                self._submit_response(self._request.default, cancelled=True)
                 return
             if self._request.kind == "confirm":
-                self._submit_response(False)
+                self._submit_response(False, cancelled=True)
                 return
-            self._submit_response(None)
+            self._submit_response(None, cancelled=True)
 
         def action_submit_or_activate(self) -> None:
             self._submit_current_request()
@@ -597,7 +599,19 @@ if _TEXTUAL_APP is not None:
         Pushed on top of the main shell right after a project is opened, so the
         user cannot interact with Analyze/Setup/Results until the cache check
         completes. Dismisses with an ``_AstRefreshModalResult``.
+
+        A failed load reports every dependency it tried plus every warning it
+        collected, which is far taller than a terminal. The report therefore
+        lives in a scrolling region inside a size-bounded dialog, and the Close
+        button (and Escape) always leaves the modal even if a rebuild hangs, so
+        an oversized report can never leave the shell unreachable.
         """
+
+        BINDINGS: ClassVar[list[tuple[str, str, str]]] = [("escape", "close", "Close")]
+
+        #: Tail of the status log rendered inside the dialog. The complete log
+        #: still travels in the result, so the Output pane keeps every line.
+        _RENDERED_STATUS_TAIL = 200
 
         def __init__(self, *, refresh_fn: Any) -> None:
             super().__init__()
@@ -606,6 +620,7 @@ if _TEXTUAL_APP is not None:
             self._activity_line: str | None = None
             self._refresh_failed = False
             self._refresh_exception: BaseException | None = None
+            self._dismissed = False
 
         def compose(self) -> _TEXTUAL_COMPOSE_RESULT:
             with _TEXTUAL_VERTICAL(id="ast-refresh-dialog"):
@@ -614,16 +629,46 @@ if _TEXTUAL_APP is not None:
                     "Checking the cached project graphs for the opened configuration before you can select analyses.",
                     id="ast-refresh-body",
                 )
-                yield _TEXTUAL_STATIC("\n".join(self._status_lines), id="ast-refresh-status")
-                yield _TEXTUAL_STATIC("", id="ast-refresh-activity")
+                with _TEXTUAL_VERTICAL_SCROLL(id="ast-refresh-log"):
+                    yield _TEXTUAL_STATIC("\n".join(self._status_lines), id="ast-refresh-status")
+                    yield _TEXTUAL_STATIC("", id="ast-refresh-activity")
+                with _TEXTUAL_HORIZONTAL(id="ast-refresh-actions"):
+                    yield _TEXTUAL_BUTTON("Close", id="ast-refresh-close", classes="raised-button dialog-button")
 
         def on_mount(self) -> None:
+            self.query_one("#ast-refresh-close", _TEXTUAL_BUTTON).focus()
             threading.Thread(target=self._run_refresh, daemon=True).start()
 
+        def on_button_pressed(self, event: Any) -> None:
+            if getattr(event.button, "id", "") == "ast-refresh-close":
+                self.action_close()
+
+        def action_close(self) -> None:
+            """Leave the modal without claiming a result for a rebuild still running.
+
+            The refresh thread may finish later; its outcome is logged rather
+            than dismissed twice.
+            """
+            if self._dismissed:
+                return
+            self._dismissed = True
+            self.dismiss(None)
+
         def _render_status_text(self) -> str:
-            return "\n".join(self._status_lines)
+            lines = self._status_lines
+            if len(lines) <= self._RENDERED_STATUS_TAIL:
+                return "\n".join(lines)
+            hidden = len(lines) - self._RENDERED_STATUS_TAIL
+            return "\n".join(
+                [
+                    f"... {hidden} earlier line(s) hidden; the full report is written to Output.",
+                    *lines[-self._RENDERED_STATUS_TAIL :],
+                ]
+            )
 
         def _update_status(self, message: str) -> None:
+            if self._dismissed:
+                return
             normalized = message.replace("\r\n", "\n").replace("\r", "\n")
             if not normalized:
                 return
@@ -663,7 +708,14 @@ if _TEXTUAL_APP is not None:
         def _finish_refresh(self, *, ok: bool, exc: BaseException | None) -> None:
             self._refresh_failed = not ok
             self._refresh_exception = exc
+            if self._dismissed:
+                # The user closed the modal while the rebuild was still running.
+                # The report stays available from the next refresh, and the
+                # result must not dismiss a screen that is already gone.
+                _LOGGER.info("AST cache refresh finished after the modal was closed (ok=%s)", ok)
+                return
             result = _AstRefreshModalResult(ok=ok, output="\n".join(self._status_lines).strip("\n"))
+            self._dismissed = True
             self.dismiss(result)
 
         def _run_refresh(self) -> None:

@@ -74,6 +74,61 @@ def test_generate_change_review_handler_requires_targets(tmp_path: Path) -> None
         change_review_application.generate_change_review(cfg, [])
 
 
+def test_generate_change_review_continues_past_a_failed_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = cast(
+        ConfigDict,
+        {
+            "analyzed_programs_and_libraries": ["Bad", "Good"],
+            "program_dir": str(tmp_path),
+            "mode": "draft",
+            "debug": False,
+            "review": {"output_dir": ""},
+        },
+    )
+
+    def fake_run_review(_cfg: ConfigDict, target: str, *, output_dir: Path) -> Any:
+        if target == "Bad":
+            raise ValueError("target is stale")
+        return SimpleNamespace(json_path=output_dir / "Good.json", markdown_path=output_dir / "Good.md")
+
+    monkeypatch.setattr(change_review_application, "run_review", fake_run_review)
+
+    summary = change_review_application.generate_change_review(cfg, ["Bad", "Good"], output_dir=tmp_path)
+
+    assert "generated for 1 target(s)" in summary
+    assert "Good: Good.md" in summary
+    assert "failed for 1 target(s)" in summary
+    assert "Bad: target is stale" in summary
+
+
+def test_generate_change_review_reports_when_every_target_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg = cast(
+        ConfigDict,
+        {
+            "analyzed_programs_and_libraries": ["Bad", "Worse"],
+            "program_dir": str(tmp_path),
+            "mode": "draft",
+            "debug": False,
+            "review": {"output_dir": ""},
+        },
+    )
+
+    def fake_run_review(_cfg: ConfigDict, target: str, *, output_dir: Path) -> Any:
+        raise ValueError(f"{target} is stale")
+
+    monkeypatch.setattr(change_review_application, "run_review", fake_run_review)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        change_review_application.generate_change_review(cfg, ["Bad", "Worse"], output_dir=tmp_path)
+
+    message = str(exc_info.value)
+    assert "failed for every target" in message
+    assert "Bad: Bad is stale" in message
+    assert "Worse: Worse is stale" in message
+
+
 def _allow_action(_kind: str) -> bool:
     return True
 

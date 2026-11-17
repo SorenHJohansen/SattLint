@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -231,6 +232,98 @@ def test_run_textual_shell_passes_ensure_ast_cache_fn_to_app(monkeypatch: pytest
     assert seen["main-run"] is True
     assert any(event == "set-interaction" for event, _value in events)
     assert events[-1] == ("clear-interaction", True)
+
+
+def test_textual_ast_refresh_modal_renders_only_the_status_tail() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    modal = app_textual_widgets_module._AstRefreshModalScreen(refresh_fn=lambda _emit_status: True)
+    modal._status_lines = [f"line {index}" for index in range(modal._RENDERED_STATUS_TAIL + 25)]
+
+    rendered = modal._render_status_text()
+
+    assert "25 earlier line(s) hidden" in rendered
+    assert rendered.endswith(f"line {modal._RENDERED_STATUS_TAIL + 24}")
+    assert "line 0\n" not in rendered
+
+
+def test_textual_ast_refresh_modal_keeps_a_large_failure_report_on_screen() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    release_refresh = threading.Event()
+    results: list[object] = []
+
+    def _refresh(emit_status: Callable[..., None]) -> bool:
+        emit_status("Checking AST cache for Demo... (1/1)")
+        emit_status("\n".join(f"  - dependency{index}" for index in range(300)))
+        release_refresh.wait(timeout=10)
+        return False
+
+    async def _run() -> None:
+        app_instance = app_textual.SattLintTextualApp(
+            cfg={},
+            summarize_targets_fn=lambda _cfg: "targets",
+            save_config_fn=lambda _path, _cfg: None,
+            config_path=None,
+            quit_app_error=RuntimeError,
+        )
+        modal = app_textual_widgets_module._AstRefreshModalScreen(refresh_fn=_refresh)
+
+        try:
+            async with app_instance.run_test(size=(80, 24)) as pilot:
+                await pilot.pause()
+                app_instance.push_screen(modal, callback=results.append)
+                for _ in range(20):
+                    await pilot.pause()
+                    if "dependency299" in str(modal._render_status_text()):
+                        break
+
+                dialog = modal.query_one("#ast-refresh-dialog")
+                log_region = modal.query_one("#ast-refresh-log")
+                assert dialog.region.height <= app_instance.size.height
+                assert dialog.region.width <= app_instance.size.width
+                # The oversized report scrolls inside the dialog instead of
+                # pushing the dialog past the bottom of the terminal.
+                assert log_region.virtual_size.height > log_region.region.height
+                assert app_instance.focused is modal.query_one("#ast-refresh-close")
+
+                # The report is reachable with the keyboard, not just clipped.
+                log_region.focus()
+                await pilot.pause()
+                await pilot.press("pagedown")
+                await pilot.pause()
+                assert log_region.scroll_offset.y > 0
+
+                await pilot.press("escape")
+                for _ in range(10):
+                    await pilot.pause()
+                    if results:
+                        break
+                assert results == [None]
+        finally:
+            release_refresh.set()
+
+    asyncio.run(_run())
+
+
+def test_textual_ast_refresh_modal_ignores_a_result_after_close() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    dismissed: list[object] = []
+    modal = app_textual_widgets_module._AstRefreshModalScreen(refresh_fn=lambda _emit_status: True)
+    modal.query_one = lambda *_args, **_kwargs: SimpleNamespace(update=lambda _text: None)
+    modal.dismiss = lambda result: dismissed.append(result)
+
+    modal.action_close()
+    modal._update_status("late line")
+    modal._finish_refresh(ok=False, exc=None)
+
+    assert dismissed == [None]
+    assert modal._refresh_failed is True
+    assert modal._render_status_text() == "Starting cached AST refresh..."
 
 
 def test_textual_ast_refresh_modal_records_exception_and_dismisses(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -686,6 +779,10 @@ def test_textual_analyze_filter_section_title_and_clear_filter_button() -> None:
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
+            app_instance.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id="analyze-select-all")))
+            await pilot.pause()
+            assert app_instance._analyze_selected_entry_ids == {"comment-code", "timing"}
+
             app_instance._set_analyze_filter_text("timing")
             await pilot.pause()
 
@@ -693,6 +790,9 @@ def test_textual_analyze_filter_section_title_and_clear_filter_button() -> None:
             assert 'Filter: "timing"' in title_text
             assert app_instance.query_one("#analyze-clear-filter") is not None
             assert app_instance._analyzer_entry_ids() == ("timing",)
+            # Filtering changes what is visible, not what is selected.
+            assert app_instance._analyze_selected_entry_ids == {"comment-code", "timing"}
+            assert app_instance._selected_analyzer_keys() == ("comment-code", "timing")
 
             app_instance.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id="analyze-clear-filter")))
             await pilot.pause()
@@ -701,6 +801,7 @@ def test_textual_analyze_filter_section_title_and_clear_filter_button() -> None:
             assert "Filter:" not in str(app_instance.query_one("#analyze-section-title").renderable)
             assert len(list(app_instance.query("#analyze-clear-filter"))) == 0
             assert set(app_instance._analyzer_entry_ids()) == {"comment-code", "timing"}
+            assert set(app_instance.query_one("#analyze-section-analyzers").selected) == {"comment-code", "timing"}
 
     asyncio.run(_run())
 
@@ -926,6 +1027,91 @@ def test_textual_present_request_uses_inline_host_and_preserves_shell_chrome() -
             assert request.response == "b"
             assert app_instance.query_one("#interaction-host").has_class("active") is False
             assert app_instance.query_one("#output").has_class("interaction-active") is False
+
+    asyncio.run(_run())
+
+
+def test_textual_second_request_waits_instead_of_being_denied() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app()
+        first = app_textual_shared_module.InteractionRequest(
+            kind="confirm",
+            title="First",
+            message="Proceed?",
+        )
+        second = app_textual_shared_module.InteractionRequest(
+            kind="prompt",
+            title="Second",
+            message="Name?",
+            default="keep",
+        )
+
+        async with app_instance.run_test() as pilot:
+            app_instance.present_request(first)
+            app_instance.present_request(second)
+            await pilot.pause()
+
+            assert app_instance._active_request is first
+            assert second.result_future.done() is False
+
+            await pilot.press("escape")
+            await pilot.pause()
+
+            assert first.result_future.done() is True
+            assert app_instance._active_request is second
+
+            await pilot.press("escape")
+            await pilot.pause()
+
+            assert second.result_future.done() is True
+            assert second.result_future.result() == "keep"
+            assert app_instance._active_request is None
+
+    asyncio.run(_run())
+
+
+def test_textual_cancelled_prompt_does_not_run_its_response_callback() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app()
+        responses: list[object] = []
+        request = app_textual_shared_module.InteractionRequest(
+            kind="prompt",
+            title="New configuration",
+            message="Enter a name.",
+            default=None,
+        )
+
+        async with app_instance.run_test() as pilot:
+            app_instance.present_request(request, on_response_fn=responses.append)
+            await pilot.pause()
+            await pilot.press("escape")
+            await pilot.pause()
+
+            assert request.cancelled is True
+            assert responses == []
+            assert request.result_future.result() is None
+            assert app_instance._active_request is None
+
+            submitted = app_textual_shared_module.InteractionRequest(
+                kind="prompt",
+                title="New configuration",
+                message="Enter a name.",
+                default=None,
+            )
+            app_instance.present_request(submitted, on_response_fn=responses.append)
+            await pilot.pause()
+            app_instance.query_one("#interaction-input").value = "Alpha"
+            await pilot.click("#submit")
+            await pilot.pause()
+
+            assert submitted.cancelled is False
+            assert responses == ["Alpha"]
 
     asyncio.run(_run())
 

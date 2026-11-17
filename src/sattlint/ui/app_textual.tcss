@@ -1124,6 +1124,71 @@
             margin-right: 1;
         }
 
+        _AstRefreshModalScreenImpl {
+            background: #121212 45% !important;
+            align: center middle;
+        }
+
+        #ast-refresh-dialog {
+            width: 84;
+            max-width: 92%;
+            height: 70%;
+            max-height: 70%;
+            padding-bottom: 1;
+            background: #f4efde;
+            color: #001ba3;
+            border: thick #0077b3;
+        }
+
+        #ast-refresh-title {
+            text-style: bold;
+            height: 3;
+            padding: 0 2;
+            content-align: left middle;
+            background: #0077b3;
+            color: #fbfbee;
+        }
+
+        #ast-refresh-body {
+            height: auto;
+            padding: 1 2 0 2;
+            color: #58787e;
+        }
+
+        #ast-refresh-log {
+            height: 1fr;
+            padding: 1 2;
+            overflow-y: auto;
+            scrollbar-background: #b9d9df;
+            scrollbar-background-hover: #c2c2c2;
+            scrollbar-background-active: #ebebeb;
+            scrollbar-color: #58787e;
+            scrollbar-color-hover: #0077b3;
+            scrollbar-color-active: #0077b3;
+            scrollbar-corner-color: #b9d9df;
+        }
+
+        #ast-refresh-status {
+            height: auto;
+            background: transparent;
+        }
+
+        #ast-refresh-activity {
+            height: auto;
+            color: #58787e;
+        }
+
+        #ast-refresh-actions {
+            height: auto;
+            padding: 0 2 1 2;
+            align: right middle;
+        }
+
+        #ast-refresh-actions Button.raised-button {
+            width: auto;
+            margin-right: 1;
+        }
+
         _HelpScreenImpl {
             background: #121212 45% !important;
             align: center middle;

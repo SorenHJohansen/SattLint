@@ -120,6 +120,16 @@ class RootOrigin:
         return self.source_path.name if self.source_path is not None else None
 
 
+def program_identity(bp: BasePicture) -> str:
+    """Return the program name a base picture stands for.
+
+    The parser stores the keyword ``BasePicture`` in ``header.name``; the
+    loaded program's name lives in ``program_name``. Single-file parses leave
+    ``program_name`` unset, so the header name remains the fallback.
+    """
+    return bp.program_name or bp.name or bp.header.name
+
+
 @dataclass
 class ProjectGraph:
     ast_by_name: dict[str, BasePicture] = field(default_factory=_ast_by_name_factory)
@@ -272,7 +282,7 @@ class ProjectGraph:
     ) -> None:
         # Collect module and record type defs for global analysis [2]
 
-        identity = program_name or bp.program_name or bp.name or bp.header.name
+        identity = program_name or program_identity(bp)
         self.record_root_origin(identity, source_path=source_path, library_name=library_name)
         if source_path:
             self.source_files.add(source_path)

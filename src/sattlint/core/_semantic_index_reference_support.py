@@ -134,7 +134,15 @@ class SemanticIndexReferenceSupportMixin:
                     display_module_path=list(child_display_path),
                 )
                 self._record_variables(
-                    list(module.moduleparameters or []) + list(module.localvariables or []),
+                    list(module.moduleparameters or []),
+                    module_path=child_module_path,
+                    display_module_path=child_display_path,
+                    kind=self._symbol_kind_parameter(),
+                    origin_file=current_origin_file,
+                    origin_library=current_origin_library,
+                )
+                self._record_variables(
+                    list(module.localvariables or []),
                     module_path=child_module_path,
                     display_module_path=child_display_path,
                     kind=self._symbol_kind_local(),
@@ -217,10 +225,18 @@ class SemanticIndexReferenceSupportMixin:
                 display_module_path=list(child_display_path),
             )
             self._record_variables(
-                list(moduletype.moduleparameters or []) + list(moduletype.localvariables or []),
+                list(moduletype.moduleparameters or []),
                 module_path=child_module_path,
                 display_module_path=child_display_path,
                 kind=self._symbol_kind_parameter(),
+                origin_file=moduletype.origin_file,
+                origin_library=moduletype.origin_lib,
+            )
+            self._record_variables(
+                list(moduletype.localvariables or []),
+                module_path=child_module_path,
+                display_module_path=child_display_path,
+                kind=self._symbol_kind_local(),
                 origin_file=moduletype.origin_file,
                 origin_library=moduletype.origin_lib,
             )

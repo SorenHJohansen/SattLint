@@ -144,6 +144,17 @@ def _analyzer_entry_ids(self: Any) -> tuple[str, ...]:
     return tuple(item.entry_id for _section, items in self._analyzer_section_groups() for item in items)
 
 
+def _ordered_analyzer_entry_ids(self: Any) -> tuple[str, ...]:
+    """Every available analyzer, in the order the unfiltered list shows.
+
+    Selections must survive a filter change, so this ignores ``_analyzer_items``
+    and the current filter text.
+    """
+    items = list(self._available_analyzer_items())
+    items.sort(key=lambda item: (item.category, item.label.casefold(), item.entry_id))
+    return tuple(item.entry_id for item in items)
+
+
 def _analyzer_entry(self: Any, entry_id: str | None) -> _AnalyzerItem | None:
     if entry_id is None:
         return None
@@ -154,16 +165,17 @@ def _analyzer_entry(self: Any, entry_id: str | None) -> _AnalyzerItem | None:
 
 
 def _normalize_analyze_state(self: Any) -> None:
-    valid_entry_ids = self._analyzer_entry_ids()
-    valid_entry_id_set = set(valid_entry_ids)
-    self._analyze_selected_entry_ids.intersection_update(valid_entry_id_set)
-    if self._analyze_focused_entry_id not in valid_entry_id_set:
-        self._analyze_focused_entry_id = valid_entry_ids[0] if valid_entry_ids else None
+    self._analyze_selected_entry_ids.intersection_update(self._ordered_analyzer_entry_ids())
+    visible_entry_ids = self._analyzer_entry_ids()
+    if self._analyze_focused_entry_id not in visible_entry_ids:
+        self._analyze_focused_entry_id = visible_entry_ids[0] if visible_entry_ids else None
 
 
 def _ordered_selected_analyze_entry_ids(self: Any) -> tuple[str, ...]:
     self._normalize_analyze_state()
-    return tuple(entry_id for entry_id in self._analyzer_entry_ids() if entry_id in self._analyze_selected_entry_ids)
+    return tuple(
+        entry_id for entry_id in self._ordered_analyzer_entry_ids() if entry_id in self._analyze_selected_entry_ids
+    )
 
 
 def _selected_analyzer_keys(self: Any) -> tuple[str, ...]:
@@ -562,6 +574,7 @@ if TYPE_CHECKING:
         def _analyzer_items(self) -> tuple[_AnalyzerItem, ...]: ...
         def _analyzer_section_groups(self) -> tuple[tuple[Any, tuple[_AnalyzerItem, ...]], ...]: ...
         def _analyzer_entry_ids(self) -> tuple[str, ...]: ...
+        def _ordered_analyzer_entry_ids(self) -> tuple[str, ...]: ...
         def _analyzer_entry(self, entry_id: str | None) -> _AnalyzerItem | None: ...
         def _normalize_analyze_state(self) -> None: ...
         def _ordered_selected_analyze_entry_ids(self) -> tuple[str, ...]: ...
@@ -603,6 +616,7 @@ else:
         _analyzer_items = _analyzer_items
         _analyzer_section_groups = _analyzer_section_groups
         _analyzer_entry_ids = _analyzer_entry_ids
+        _ordered_analyzer_entry_ids = _ordered_analyzer_entry_ids
         _analyzer_entry = _analyzer_entry
         _normalize_analyze_state = _normalize_analyze_state
         _ordered_selected_analyze_entry_ids = _ordered_selected_analyze_entry_ids

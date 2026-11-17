@@ -42,7 +42,6 @@ from ..resolution.scope import ScopeContext
 from ._string_models import (
     _MAX_CONTEXT_BUILD_DEPTH,
     _MAX_FIXED_POINT_PASSES,
-    _STRING_LIMITS,
     StringCandidate,
     StringInferenceResult,
     StringProvenanceSegment,
@@ -335,12 +334,17 @@ class ExactStringInferenceEngine:
                 if target_key is None:
                     continue
                 if isinstance(binding.source_literal, str):
+                    target_name = varname_base(binding.target_ref)
+                    target_variable = context.scope.env.get(target_name) if target_name is not None else None
+                    capacity = (
+                        _string_capacity_for_datatype(target_variable.datatype) if target_variable is not None else None
+                    )
                     state.string_values[target_key] = _result_for_literal(
                         binding.source_literal,
                         source_kind=binding.source_kind,
                         source_label=repr(binding.source_literal),
                         source_module_path=context.path,
-                        max_length=_STRING_LIMITS[ScalarDatatype.MAXSTRING],
+                        max_length=capacity,
                     )
                 elif isinstance(binding.source_literal, int):
                     state.int_values[target_key] = _normalize_int_result(_IntResult((binding.source_literal,), False))

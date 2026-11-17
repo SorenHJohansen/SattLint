@@ -127,6 +127,23 @@ def test_apply_debug_switches_log_levels(monkeypatch: pytest.MonkeyPatch) -> Non
         sattlint_logger.setLevel(original_log_level)
 
 
+def test_apply_debug_ignores_non_boolean_truthy_values(monkeypatch: pytest.MonkeyPatch) -> None:
+    import logging as _logging  # noqa: PLC0415 - mirror root logger state cleanly
+
+    sattlint_logger = _logging.getLogger("SattLint")
+    root_logger = _logging.getLogger()
+    original_root_level = root_logger.level
+    original_log_level = sattlint_logger.level
+
+    try:
+        apply_debug({"debug": "false"})
+        assert root_logger.level == logging.INFO
+        assert sattlint_logger.level == logging.INFO
+    finally:
+        root_logger.setLevel(original_root_level)
+        sattlint_logger.setLevel(original_log_level)
+
+
 def test_configure_windows_console_api_wrapper_delegates(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, Any] = {}
     monkeypatch.setattr(

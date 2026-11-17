@@ -292,3 +292,21 @@ def test_latching_helpers_cover_boolean_paths_and_sequence_recursion() -> None:
     assert merged_states[0].false_writes == {("otherflag", ""): (env["otherflag"], "")}
     assert any(issue.kind is IssueKind.IMPLICIT_LATCH for issue in issues)
     assert any(issue.sequence_name == "Main" for issue in issues)
+
+
+def test_boolean_parallel_merge_caps_the_frontier() -> None:
+    def _branch(prefix: str) -> list[object]:
+        states: list[object] = []
+        for index in range(10):
+            variable = Variable(name=f"{prefix}{index}", datatype=ScalarDatatype.BOOLEAN)
+            states.append(
+                reset_contamination_module._BooleanPathState(
+                    true_writes={(f"{prefix}{index}".casefold(), ""): (variable, "")}
+                )
+            )
+        return states
+
+    merged = reset_contamination_module._merge_boolean_parallel_branch_results([_branch("Left"), _branch("Right")])
+
+    assert len(merged) == 1
+    assert len(merged[0].true_writes) == 20

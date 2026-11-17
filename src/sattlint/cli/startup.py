@@ -35,7 +35,7 @@ from ..core.interaction import (
 from ..core.interaction import (
     prompt as core_prompt,
 )
-from ..core.logging import apply_debug
+from ..core.logging import apply_debug, configure_logging
 from ..core.terminal import clear_screen as core_clear_screen
 from ..core.terminal import clear_windows_console as core_clear_windows_console
 from ..project import support as support_module
@@ -184,6 +184,11 @@ def main(
     cli_args = [] if argv is None else argv
     if cli_args:
         return run_cli_fn(cli_args)
+
+    # The interactive shell owns diagnostics; headless commands keep stderr
+    # reserved for their machine-readable channel. Without this the module
+    # loggers stay unconfigured and debug output is never visible.
+    configure_logging()
 
     if run_main_loop_fn is None:
         run_main_loop_fn = run_interactive_session

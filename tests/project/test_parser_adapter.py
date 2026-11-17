@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 from sattline_parser import Diagnostic, DiagnosticCode, parse_source_text
-from sattline_parser.models.ast_model import BasePicture
+from sattline_parser.models.ast_model import BasePicture, DataType
 from sattline_parser.project import (
     ProjectLoadError,
     SattLineProgram,
@@ -23,7 +23,7 @@ from sattline_parser.project import (
 )
 
 from sattlint.core.syntax import CodeMode
-from sattlint.models.project_graph import ProjectGraph
+from sattlint.models.project_graph import ProjectGraph, RootOrigin
 from sattlint.parser_api import LoadValidation
 from sattlint.project import parser_adapter as parser_adapter_module
 from sattlint.project.parser_adapter import (
@@ -146,6 +146,41 @@ def test_index_failure_retracts_a_partially_committed_program(monkeypatch: pytes
     assert graph.graphics_attachments == {}
     assert set(graph.failures) == {"a"}
     assert graph.missing == [graph.failures["a"].message]
+
+
+def test_index_failure_retracts_every_committed_definition(monkeypatch: pytest.MonkeyPatch) -> None:
+    prg = Path("/tmp/base/prg")
+    binding = _binding(prg)
+    a = _program("A", source_path=prg / "A.s")
+
+    def partial_index(
+        self: ProjectGraph,
+        _bp: BasePicture,
+        source_path: Path | None = None,
+        library_name: str | None = None,
+        *,
+        program_name: str | None = None,
+    ) -> None:
+        del library_name, program_name
+        self.source_files.add(source_path if source_path is not None else Path("/tmp/leak.s"))
+        self.root_origins["a"] = RootOrigin(source_path=source_path, library_name="prg")
+        self.datatype_defs["leak"] = DataType(name="Leak", description=None, datecode=None)
+        raise RuntimeError("index exploded")
+
+    monkeypatch.setattr(ProjectGraph, "index_from_basepic", partial_index)
+    graph = ProjectGraph()
+    convert_project_into_graph(
+        SattLineProject.from_programs({"A": a}), graph, binding=binding, root_name="A", strict=False
+    )
+
+    assert graph.ast_by_name == {}
+    assert graph.root_origins == {}
+    assert graph.datatype_defs == {}
+    assert graph.moduletype_defs == {}
+    assert graph.source_files == set()
+    assert graph.source_dependencies == {}
+    assert graph.library_dependencies == {}
+    assert set(graph.failures) == {"a"}
 
 
 def test_convert_raises_on_cycle_always() -> None:

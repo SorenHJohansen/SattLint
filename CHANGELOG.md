@@ -46,6 +46,17 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   instances and their nested modules exactly once, with a recursion guard.
   Read-before-write findings name the variable in text reports, and
   spec-compliance typedef findings use the `TypeDef:` path tag.
+- A plugin analyzer cannot claim a built-in analyzer key, and the cached
+  analyzer catalogue rebuilds whenever the plugin registry changes.
+- The interactive shell configures logging before it starts, and only a
+  boolean `debug` value enables debug output.
+- Boolean latch path merging deduplicates and caps its frontier like the
+  non-boolean reset scan, so a wide parallel fan-out cannot grow without
+  bound. Mapped string literals take their capacity from the target datatype
+  instead of always assuming `MAXSTRING`.
+- The semantic index records single-module parameters and locals with their
+  own symbol kinds, and module-type instance parameters and locals likewise,
+  matching the typedef path.
 
 ### Fixed
 
@@ -57,6 +68,28 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   wrong-typed config value is rejected at load instead of failing later.
 - A newly added ICF file invalidates the cached report, and clearing all caches
   also clears the analysis foundation.
+- A failed program index no longer leaves root origins, record or module-type
+  definitions, dependency edges, or a source file behind for a program that is
+  reported as failed.
+- ICF validation recognises an already-loaded program by its program name
+  instead of the literal `BasePicture` keyword, so the in-memory program is
+  reused.
+- The parser dependency moves to 2026.11.7: a `SUBSEQUENCE`, `SUBSEQSTEP`, or
+  `SUBSEQTRANSITION` wrapper may reuse the name of an element inside its own
+  body without a false duplicate-name finding. Sibling steps and transitions
+  must still be unique.
+- Change Review continues with the remaining targets when one target fails and
+  names every failure; it reports an error only when every target fails.
+- An analyzer filter hides entries without clearing their selection, so the
+  selection survives filtering and returns when the filter is cleared.
+- A second interaction request waits for the active one instead of being
+  completed as a denial, and cancelling a prompt or confirmation no longer runs
+  the submission handler. Escape no longer re-saves a value or reports an empty
+  name.
+- Change Review source snippets are decoded with the parser's source reader, so
+  compressed and byte-coded files keep exact character offsets.
+- The AST refresh modal renders a bounded status tail and can always be closed,
+  including while a rebuild is still running.
 
 ## [2026.11.5] - 2026-11-15
 

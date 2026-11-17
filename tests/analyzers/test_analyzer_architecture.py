@@ -491,6 +491,32 @@ def test_register_analyzer_defaults_and_casefold_key() -> None:
     assert specs[0].run is run2
 
 
+def test_register_analyzer_rejects_a_builtin_key() -> None:
+    with pytest.raises(ValueError, match="reserved by a built-in analyzer"):
+
+        @register_analyzer(key="variables")
+        def run(context: AnalysisContext) -> SimpleReport:
+            return SimpleReport(name="shadow")
+
+    assert get_registered_plugin_analyzers() == ()
+    keys = [item.spec.key for item in registry_module.get_default_analyzer_catalog().analyzers]
+    assert keys.count("variables") == 1
+
+
+def test_plugin_registered_after_catalog_build_reaches_the_catalog() -> None:
+    before = registry_module.get_default_analyzer_catalog()
+
+    @register_analyzer(key="late-plugin")
+    def run(context: AnalysisContext) -> SimpleReport:
+        return SimpleReport(name="late")
+
+    after = registry_module.get_default_analyzer_catalog()
+
+    assert after is not before
+    assert "late-plugin" in {item.spec.key for item in after.analyzers}
+    assert "late-plugin" not in {item.spec.key for item in before.analyzers}
+
+
 def test_clear_registered_plugin_analyzers_resets_registry() -> None:
     @register_analyzer(key="tmp-plugin")
     def run(context: AnalysisContext) -> SimpleReport:

@@ -2,8 +2,11 @@
 
 Status: High severity closed; Medium in progress. A resolution pass on
 2026-11-16 fixed every High row and the Medium rows listed in "Resolution
-status" below, with regression tests and a clean gate. The remaining Medium and
-Low rows are still open; each open row keeps its original finding text.
+status" below, with regression tests and a clean gate. A second pass on
+2026-11-17 closed C1-12, C1-14, C1-15, C1-16, C1-20, the boolean latch frontier
+cap, mapped-literal string capacity, and parameter/local symbol kinds. The
+remaining Medium and Low rows are still open; each open row keeps its original
+finding text.
 
 Two read-only review waves completed. All six continuation
 passes are complete (C1 to C6).
@@ -26,7 +29,7 @@ appended below when they arrive.
 
 ## Resolution status
 
-Status: 2026-11-16, `feature/parser-2026.11.5`.
+Status: 2026-11-17, `feature/parser-2026.11.5`.
 
 Fixed in this pass. Rows with a dedicated regression test: H1, H2, H3, H4, H5,
 H6, H7, H8, H9, H10, H11, C2-19, C2-23, C2-47, the per-target analyzer
@@ -44,12 +47,33 @@ the full suite rather than one targeted test each.
 - Tests, security, CI: C6-1 (`uv sync --locked`), C6-16 (cache isolation at the source binding).
 - UI: C5-10 run status, C5-18 browser extensions.
 
+2026-11-17 pass. Fixed with a dedicated regression test: C1-12 (an index
+failure now commits nothing to the shared graph), C1-14 (ICF reuse compares the
+program name), C1-15 (a plugin cannot claim a built-in key), C1-16 (the
+catalogue cache is keyed by the plugin registry generation), and C1-20
+(`configure_logging` runs for the interactive shell and only a boolean debug
+value enables debug output). Also fixed: the boolean latch frontier cap, the
+mapped-literal string capacity, and the parameter/local symbol kinds for
+single modules and module-type instances. The full suite is clean.
+
+Third 2026-11-17 pass. Fixed with a dedicated regression test: C5-11 (an
+analyzer filter hides entries without clearing their selection, and clearing
+the filter restores them), C5-16 (a second interaction request waits for the
+active one instead of being completed with `None`), C5-17 (Change Review
+continues past a failing target and names every failure), and C5-19 (cancelling
+a prompt or confirmation no longer runs the submission handler). Also fixed in
+this pass: C5-36 (the AST refresh modal
+renders a bounded status tail and always closes, including while a rebuild is
+running) and Change Review source decoding, which now reads through
+`source_text_for_parse` so compressed and byte-coded files keep their offsets.
+The parser dependency moves to 2026.11.7.
+
 Still open from the Medium list (kept verbatim below): the dataflow pairwise
-scan cost, latch frontier cap, mapped-literal string capacity, parameter/local
-symbol kinds, library-scoped record definitions, empty semantic indexes,
-C3-9 to C3-14, C1-12 to C1-21, C5-11 to C5-17 and C5-19, and C6-2 to C6-5. All
-Low and nit items are open. The gate (`ruff`, `ruff format`, `pyright`, the full
-pytest suite, `scripts/check_docs.py`, pre-commit) is clean on the fixed slice.
+scan cost, library-scoped record definitions, empty semantic indexes,
+C3-9 to C3-14, C1-13, C1-17 to C1-19, C1-21, C5-12 to C5-15, and C6-2 to C6-5.
+All Low and nit items are open. The gate (`ruff`, `ruff format`, `pyright`, the
+full pytest suite, `scripts/check_docs.py`, pre-commit) is clean on the fixed
+slice.
 
 ## High severity
 
@@ -115,9 +139,9 @@ value when no project is open.
 - Module-type subtrees are invisible to reset contamination and implicit latching. `ModuleTypeInstance` falls through the module collector, and the typedef check does not walk `mt.submodules` (`analyzers/reset_contamination/__init__.py:99-158`).
 - The cross-site dataflow scan compares all accesses pairwise and re-walks the module tree (`analyzers/dataflow/_dataflow_non_state_sites.py:88-110`).
 - Read-before-write findings never name the variable in text reports (`analyzers/variables/_variables_read_before_write.py:69-85`).
-- The boolean latch merge builds a full product with no frontier cap, unlike its non-boolean sibling (`analyzers/reset_contamination/_reset_latching_paths.py:179-192`).
-- String inference assumes MAXSTRING capacity for mapped literals, regardless of the target datatype (`analyzers/string_inference.py:333-346`).
-- Module parameters and module-type instance locals are recorded with the wrong symbol kind, and only the typedef path splits them (`core/_semantic_index_reference_support.py:136-143`, `:219-226`).
+- Fixed 2026-11-17: the boolean latch merge builds a full product with no frontier cap, unlike its non-boolean sibling (`analyzers/reset_contamination/_reset_latching_paths.py:179-192`).
+- Fixed 2026-11-17: string inference assumes MAXSTRING capacity for mapped literals, regardless of the target datatype (`analyzers/string_inference.py:333-346`).
+- Fixed 2026-11-17: module parameters and module-type instance locals are recorded with the wrong symbol kind, and only the typedef path splits them (`core/_semantic_index_reference_support.py:136-143`, `:219-226`).
 - Same-named record types from different libraries collapse to the last indexed because `datatype_defs` is keyed by name only (`models/project_graph.py:130`, `:256-261`).
 - Collected analysis issues and the access and effect-flow indexes are always empty, so consumers see "nothing found" rather than "not computed" (`core/_semantic_index.py:76`, `:167-178`, `_semantic_snapshot.py:180-194`).
 
@@ -133,15 +157,15 @@ value when no project is open.
 ### Core, models, architecture
 
 - C1-11: the cache-degradation fix is incomplete. `get_cache_dir_fn()` runs before the guarded builder in three loading paths, and `create_profiler()` calls `get_cache_dir()` before the run's `try`, so an unusable cache location still aborts the whole run (`project/loading.py:252`, `:478`, `:585`, `core/profiling.py:35`). Extends H3.
-- C1-12: the partial-index rollback retracts three collections but not the definitions already committed. A failure inside `index_from_basepic` leaves `source_files`, `root_origins`, `datatype_defs`, `moduletype_defs`, and possibly a dependency edge behind, so the target is reported failed while its records stay in the merged picture and cache manifest (`parser_adapter.py:415-424`, `project_graph.py:243-261`). Extends the earlier rollback fix.
+- C1-12, fixed 2026-11-17: the partial-index rollback retracts three collections but not the definitions already committed. A failure inside `index_from_basepic` leaves `source_files`, `root_origins`, `datatype_defs`, `moduletype_defs`, and possibly a dependency edge behind, so the target is reported failed while its records stay in the merged picture and cache manifest (`parser_adapter.py:415-424`, `project_graph.py:243-261`). Extends the earlier rollback fix.
 - C1-13: root definitions are rooted at the literal `BasePicture`, so program-qualified lookups never match. `find_definitions("Program.Used")` returns nothing while `BasePicture.Used` returns the definition (`core/_semantic_index.py:112-113`, `:162-163`).
-- C1-14: the ICF analyzer loads project data itself, and its in-memory reuse check can never succeed because it compares `header.name`, which is always `BasePicture`. Every entry triggers a second load that bypasses the analysis cache and the target failure sink (`analyzers/icf/analyzer.py:96-110`).
-- C1-15: registering a plugin with an existing key silently replaces the built-in analyzer and duplicates the catalogue row (`analyzers/plugin.py:45-58`, `registry/__init__.py:189-199`).
-- C1-16: the catalogue is cached while the plugin registry is not, so registration order changes what the CLI and UI see (`registry/__init__.py:155-177`, `:184-185`).
+- C1-14, fixed 2026-11-17: the ICF analyzer loads project data itself, and its in-memory reuse check can never succeed because it compares `header.name`, which is always `BasePicture`. Every entry triggers a second load that bypasses the analysis cache and the target failure sink (`analyzers/icf/analyzer.py:96-110`).
+- C1-15, fixed 2026-11-17: registering a plugin with an existing key silently replaces the built-in analyzer and duplicates the catalogue row (`analyzers/plugin.py:45-58`, `registry/__init__.py:189-199`).
+- C1-16, fixed 2026-11-17: the catalogue is cached while the plugin registry is not, so registration order changes what the CLI and UI see (`registry/__init__.py:155-177`, `:184-185`).
 - C1-17: three frame-context builders disagree about parameter mappings, parent chain, and parameter keys, so the snapshot scopes frame code differently from the analyzers that report on it (`core/_semantic_index_reference_support.py:101-114`, `variables/_variable_traversal_support.py:93-107`, `_dependency_usage_scope_support.py:167-178`).
 - C1-18: snapshot file indexes are keyed by basename only, so same-named files in different libraries collide and a reference query can return definitions from another library (`core/_semantic_helpers.py:136-139`, `_semantic_snapshot.py:170-174`).
 - C1-19: failure and warning state is stored three ways, one of them write-only, and failure detail is re-parsed from prose markers instead of the typed record (`project_graph.py:133-136`, `loading_support.py:229-247`, `support.py:26-38`).
-- C1-20: logger-based debug diagnostics are never visible because `configure_logging` is never called, and `debug` is truthiness-checked, so `debug = "false"` enables it (`core/logging.py:16-26`, `cli/startup.py:202`).
+- C1-20, fixed 2026-11-17: logger-based debug diagnostics are never visible because `configure_logging` is never called, and `debug` is truthiness-checked, so `debug = "false"` enables it (`core/logging.py:16-26`, `cli/startup.py:202`).
 - C1-21: `engine.py` is a test-only second loader with different semantics: no cache, no failure recording, exceptions escape. Six test files use it, so corpus and crash-sweep coverage exercise a loader users never run, which is how the root-origin defect stayed invisible (`engine.py:89-111`).
 
 Duplicate of earlier items: C1-22 restates the pseudo-target count mismatch (A8, C2-8), and C1-23 restates `.slproj` validation (H4).
@@ -170,15 +194,15 @@ Duplicate of earlier items: C1-22 restates the pseudo-target count mismatch (A8,
 - Branch-nested transition context is read from the top-level sequence list instead of the enclosing branch (`change_review/semantic_diff.py:121-137`, `_code_model.py:197-227`).
 
 - C5-10: a failed or cancelled run is reported as success. The completion message ignores analyzer failures and cancellation (`ui/_app_textual_analyze.py:448-455`).
-- C5-11: typing an analyzer filter silently clears selections that do not match, and clearing the filter does not restore them (`ui/_app_textual_analyze.py:155-160`, `:390-402`).
+- C5-11, fixed 2026-11-17: typing an analyzer filter silently clears selections that do not match, and clearing the filter does not restore them (`ui/_app_textual_analyze.py:155-160`, `:390-402`).
 - C5-12: a rebuilt ListView loses its highlight, so Open and Remove can stay disabled or act on nothing. The results list already works around this with `call_after_refresh` (`ui/_app_textual_setup_targets.py:107-111`, `ui/_app_textual_widgets.py:560-563`).
 - C5-13: case-insensitive identifiers are compared case-sensitively in the semantic diff, so `EQUATIONBLOCK Main` versus `MAIN`, or `Integer` versus `integer`, reports a change (`change_review/_code_model.py:141-142`, `:188-194`, `semantic_diff.py:221-233`, `impact.py:77-86`).
 - C5-14: structural sequence edits can be invisible. A step with empty blocks and no fork produces no statement and never appears, and branch-nested steps are never matched (`change_review/semantic_diff.py:274-279`, `:422-456`).
 - C5-15: review source snippets are keyed by bare file name, so two libraries with a same-named source file collapse to one and snippets can read the wrong file (`change_review/loader.py:78-82`, `source.py:20-39`).
-- C5-16: a second interaction request is completed with `None` instead of being queued, so the caller treats an unseen confirmation as a denial (`ui/_app_textual_actions.py:182-186`, `ui/_app_textual_shared.py:202-218`).
-- C5-17: Change Review aborts the whole batch on one bad target, unlike Analyze, so one stale target blocks review generation for every valid target (`application/change_review.py:33-36`).
+- C5-16, fixed 2026-11-17: a second interaction request is completed with `None` instead of being queued, so the caller treats an unseen confirmation as a denial (`ui/_app_textual_actions.py:182-186`, `ui/_app_textual_shared.py:202-218`).
+- C5-17, fixed 2026-11-17: Change Review aborts the whole batch on one bad target, unlike Analyze, so one stale target blocks review generation for every valid target (`application/change_review.py:33-36`).
 - C5-18: the draft-mode file browser hides targets the loader accepts, because it filters on `.s` and `.l` only and ignores the official fallbacks (`ui/_app_textual_setup_targets.py:308-309`, `core/syntax.py:70-76`).
-- C5-19: Cancel is treated as a submission. Escape re-applies and saves the current value, or reports "name cannot be empty" (`ui/_app_textual_widgets.py:156-171`, `ui/_app_textual_actions.py:885-903`).
+- C5-19, fixed 2026-11-17: Cancel is treated as a submission. Escape re-applies and saves the current value, or reports "name cannot be empty" (`ui/_app_textual_widgets.py:156-171`, `ui/_app_textual_actions.py:885-903`).
 
 Correction to the earlier UI report: the running-analysis note is never rendered at all (see C5-24), so the claim that it tells the user to wait was wrong. The dispatch bypass in H10 stands.
 
@@ -252,6 +276,24 @@ Acceptance: the pin, lock, and gate are clean; corpus findings are unchanged
 except where 2026.11.6 fixes a parser fact; and every behavior change above has a
 recorded before and after.
 
+### Parser 2026.11.7
+
+Status: published 2026-11-17, adopted on this branch.
+
+The release changes one validation rule. A `SUBSEQUENCE`, `SUBSEQSTEP`, or
+`SUBSEQTRANSITION` wrapper names a nested construct, so it may reuse the name of
+an element inside its own body without a duplicate-name finding. Sibling step
+and transition names are still checked.
+
+The change reaches SattLint through `syntax-check`, which reports the parser's
+first validation error. Regression tests in
+`tests/core/test_syntax_validation.py` pin both sides: a wrapper that reuses its
+body's name is accepted, and two sibling transitions with one name are still
+rejected.
+
+Acceptance: the pin and lock name 2026.11.7, the two regression tests pass, and
+the full gate is clean.
+
 ## Parser feature adoption
 
 The 2026.11.5 release adds parser capabilities SattLint does not use yet. Items
@@ -322,10 +364,10 @@ the loader agree on the extension list. Batch B.
 
 - Application and run-history Mediums: per-target failure channel, all-targets-failed message, `latest` fallback, failure-cache skip, pseudo-target persistence, new-ICF invalidation (C2-19), foundation cache clearing (C2-23), unique cache temp files (C2-24), per-run-only selection (C2-34), atomic run records and unique ids (C2-47).
 - CLI Mediums: project-scoped runs and payloads, merged `analysis`, NDJSON envelope and error document, config warning channel, atomic saves, plus C4-4 to C4-14.
-- Analyzer Mediums: module-type subtrees, dataflow bucketing, read-before-write variable, latch frontier cap, mapped-literal capacity, symbol kinds for parameters and locals, library-scoped record definitions, empty indexes, plus C3-9 to C3-16.
+- Analyzer Mediums: library-scoped record definitions, empty indexes, and C3-9 to C3-14 plus C3-16.
 - Test and CI Mediums: `uv sync --locked` (C6-1), explicit imports instead of star barrels (C6-2), one owner per duplicated test (C6-3), `tmp_path` project directories (C6-4), replace the private helper façade (C6-5).
 - Parser feature adoption: P2 parallel load, P4 header change description, P6 parser extension and companion helpers.
-- Core Mediums: C1-12 to C1-21, including rollback completeness, program-qualified semantic paths, ICF reuse, plugin registration and catalogue cache, frame-context parity, snapshot file keys, typed failure state, logging setup, and the test-only loader.
+- Core Mediums: C1-13, C1-17 to C1-19, and C1-21, including program-qualified semantic paths, frame-context parity, snapshot file keys, typed failure state, and the test-only loader.
 - UI and change review Mediums: C5-10 to C5-19, including run-status reporting, selection preservation, ListView highlight, casefolded diff identity, structural sequence edits, snippet keying, queued requests, per-target review failures, draft file-browser filters, and cancel semantics.
 
 ### Batch C, cleanup
@@ -628,7 +670,7 @@ Low
 - C5-33: one location is reported for a block that exists at two locations with different files and line numbers (`change_review/review.py:250-292`).
 - C5-34: block header search misses lowercase keywords and prefers the farthest match (`change_review/review.py:94-119`).
 - C5-35: review lookups are quadratic and re-split files repeatedly (`change_review/review.py:150-207`, `source.py:55-69`).
-- C5-36: the AST refresh modal keeps an unbounded, re-rendered status history (`ui/_app_textual_widgets.py:605-641`).
+- C5-36, fixed 2026-11-17: the AST refresh modal keeps an unbounded, re-rendered status history (`ui/_app_textual_widgets.py:605-641`).
 - C5-37: a menu request with no options crashes on mount (`ui/_app_textual_widgets.py:101-111`).
 - C5-38: a failed pane mount leaves the shell permanently locked because request state is set before the mount (`ui/_app_textual_actions.py:186-198`).
 - C5-39: error dialogs stack without limit (`ui/_app_textual_actions.py:356-362`, `:385-386`).

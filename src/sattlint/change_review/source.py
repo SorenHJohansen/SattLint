@@ -3,13 +3,21 @@
 Source snippets are sliced from the *original* file text using ``SourceSpan``
 character offsets, preserving exact SattLine source. Files are read lazily and
 cached once per project version.
+
+The text must be the text the parser read: ``SourceSpan`` offsets point into the
+parse input, not into the decoded plain text. SattLine files come in three
+on-disk flavors (byte-coded streams, marker-compressed text and plain
+Windows-1252), so the provider reads through ``source_text_for_parse``. Reading
+the raw bytes as Windows-1252 instead would fail on byte-coded files whose
+stream holds bytes undefined in that encoding, and would silently shift every
+offset for marker-compressed files.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from sattlint.parser_api import read_text_cp1252
+from sattlint.parser_api import source_text_for_parse
 
 
 class SourceTextProvider:
@@ -32,7 +40,7 @@ class SourceTextProvider:
         if cached is not None:
             return cached
         try:
-            content = read_text_cp1252(path)
+            content = source_text_for_parse(path)
         except OSError:
             return None
         self._cache[file_name.casefold()] = content

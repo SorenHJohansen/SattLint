@@ -39,6 +39,33 @@ def test_startup_main_routes_cli_argv_to_run_cli() -> None:
     assert seen == {"argv": ["analyze", "--check", "variables"]}
 
 
+def test_startup_main_configures_logging_for_the_interactive_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configured: list[str] = []
+    monkeypatch.setattr(startup_application, "configure_logging", lambda: configured.append("configured"))
+
+    exit_code = startup_application.main(
+        None,
+        run_cli_fn=lambda _argv: pytest.fail("run_cli should not run for plain interactive startup"),
+        load_config_fn=lambda _path: ({"debug": False}, False),
+        config_path=Path("config.toml"),
+        apply_debug_fn=lambda _cfg: None,
+        resolve_interactive_ui_mode_fn=lambda _cfg, _override: "textual",
+        set_interactive_ui_mode_fn=lambda _mode: None,
+        reset_interactive_ui_mode_fn=lambda: None,
+        emit_output_fn=lambda *_args: None,
+        pause_fn=lambda: None,
+        run_main_loop_fn=lambda *_args, **_kwargs: None,
+        summarize_targets_fn=lambda _cfg: "targets",
+        save_config_fn=lambda _path, _cfg: None,
+        quit_app_error=RuntimeError,
+    )
+
+    assert exit_code == 0
+    assert configured == ["configured"]
+
+
 def test_startup_main_defaults_plain_interactive_session_to_textual() -> None:
     seen: dict[str, object] = {}
     cfg = {"debug": False}

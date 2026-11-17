@@ -400,28 +400,39 @@ def _index_program(
         )
         _emit_status(binding, f"Loading {name}: recording library")
         library_name = program.library or code_path.parent.name
-        lib_names[name.casefold()] = library_name
         _emit_status(binding, f"Loading {name}: adding deps")
         dep_libs = [
             lib
             for dep in program.dependencies
             if (lib := graph.root_library_name_for_name(dep) or lib_names.get(dep.casefold()))
         ]
-        graph.add_library_dependencies(library_name, dep_libs)
         _emit_status(binding, f"Loading {name}: indexing definitions")
         index_started_at = perf_counter()
-        graph.index_from_basepic(program.code, source_path=code_path, library_name=library_name, program_name=name)
+        # Index into a scratch graph first: a definition that fails halfway
+        # must not leave root origins, record or module-type definitions, or
+        # dependency edges behind for a program reported as failed.
+        delta = ProjectGraph()
+        delta.index_from_basepic(program.code, source_path=code_path, library_name=library_name, program_name=name)
+        graph.root_origins.update(delta.root_origins)
+        graph.moduletype_defs.update(delta.moduletype_defs)
+        graph.datatype_defs.update(delta.datatype_defs)
+        graph.source_files.update(delta.source_files)
+        graph.add_library_dependencies(library_name, dep_libs)
+        lib_names[name.casefold()] = library_name
         if binding.stage_timing_sink is not None:
             binding.stage_timing_sink(name, "index", perf_counter() - index_started_at)
     except Exception as ex:
         if strict:
             raise
-        # Validation and graphics/indexing run after the name is committed to
-        # the graph, so a later failure must retract the partial program;
-        # otherwise it looks loaded while its definitions were never indexed.
+        # Validation, graphics, and indexing run after the name is committed
+        # to the graph, so a later failure must retract every trace of the
+        # partial program; otherwise it looks loaded while its definitions
+        # were never indexed.
         graph.ast_by_name.pop(name, None)
+        graph.source_dependencies.pop(name.casefold(), None)
         indexed_names.discard(name.casefold())
         graph.graphics_attachments.pop(name, None)
+        lib_names.pop(name.casefold(), None)
         _record_project_failure(graph, name, ex)
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 from collections.abc import Callable
 from typing import Any, ClassVar
 
@@ -145,6 +146,7 @@ if _TEXTUAL_APP is not None:
             self._active_request = None
             self._active_request_callback: Any = None
             self._interaction_pane: Any = None
+            self._pending_interactions: deque[tuple[Any, Any | None]] = deque()
             self._pending_ui_tasks: set[asyncio.Task[Any]] = set()
             self._last_output_line: str | None = None
             self._session_output_lines: list[str] = []

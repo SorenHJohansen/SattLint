@@ -4,6 +4,7 @@ import asyncio
 import re
 import threading
 import time
+from collections import deque
 from contextlib import redirect_stderr, redirect_stdout, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -179,9 +180,22 @@ def _output_line_needs_gap(line_text: str) -> bool:
     return bool(_TARGET_HEADER_RE.match(stripped) or _PHASE_HEADER_RE.match(stripped))
 
 
+def _pending_interaction_queue(self: Any) -> deque[tuple[InteractionRequest, Any | None]]:
+    """Requests raised while another interaction owns the screen.
+
+    Completing a queued request with ``None`` made an unseen confirmation look
+    like a denial, so requests wait here and are presented in arrival order.
+    """
+    pending = getattr(self, "_pending_interactions", None)
+    if pending is None:
+        pending = deque()
+        self._pending_interactions = pending
+    return pending
+
+
 def present_request(self: Any, request: InteractionRequest, on_response_fn: Any | None = None) -> None:
     if self._active_request is not None:
-        self._complete_request(request, None)
+        _pending_interaction_queue(self).append((request, on_response_fn))
         return
 
     interaction_host = _query_required(self, "#interaction-host", _TEXTUAL_VERTICAL)
@@ -241,8 +255,12 @@ def _resolve_request(self: Any, request: InteractionRequest, response: object) -
         pane.remove()
     self._refresh_shell_state()
     self._complete_request(request, response)
-    if request_callback is not None:
+    if request_callback is not None and not request.cancelled:
         request_callback(response)
+    pending = _pending_interaction_queue(self)
+    if pending:
+        next_request, next_callback = pending.popleft()
+        self.present_request(next_request, next_callback)
 
 
 def _refresh_summary(self: Any) -> None:

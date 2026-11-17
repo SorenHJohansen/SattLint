@@ -21,7 +21,7 @@ from typing import Any, cast
 from sattlint.parser_api import BasePicture, ModuleTypeDef, ProjectLoadError
 
 from ...config.types import ConfigDict
-from ...models.project_graph import ProjectGraph, merge_project_basepicture
+from ...models.project_graph import ProjectGraph, merge_project_basepicture, program_identity
 from ...project.loading import load_program_ast
 from ...project.support import configured_icf_files
 from ...reporting.icf_report import ICFValidationIssue
@@ -93,12 +93,9 @@ def _validate_icf_file(
     if not entries:
         return []
 
-    reuse_in_memory = False
-    if base_picture is not None:
-        header = getattr(base_picture, "header", None)
-        header_name = getattr(header, "name", None)
-        if isinstance(header_name, str) and header_name.casefold() == program_name.casefold():
-            reuse_in_memory = True
+    # ``header.name`` is the literal ``BasePicture`` keyword, so the loaded
+    # program's own name is the only usable identity here.
+    reuse_in_memory = base_picture is not None and program_identity(base_picture).casefold() == program_name.casefold()
 
     if reuse_in_memory and base_picture is not None:
         program_bp = base_picture

@@ -1,10 +1,13 @@
 from sattline_parser.models.ast_model import (
     BasePicture,
     Equation,
+    MappingSource,
     ModuleCode,
     ModuleDef,
     ModuleHeader,
+    ParameterMapping,
     ScalarDatatype,
+    SingleModule,
     Variable,
 )
 from sattline_parser.models.expressions import FuncCall, FuncCallStmt, SLExpression, VarRef
@@ -41,6 +44,37 @@ def _base_picture(*, variables: list[Variable], code: list[object]) -> BasePictu
             ]
         ),
     )
+
+
+def test_mapped_literal_uses_the_target_datatype_capacity() -> None:
+    child = SingleModule(
+        header=ModuleHeader(name="Child", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+        moduleparameters=[Variable(name="Tag", datatype=ScalarDatatype.STRING)],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+        parametermappings=[
+            ParameterMapping(
+                target=VarRef(name="Tag"),
+                source_type=MappingSource.VALUE,
+                is_duration=False,
+                is_source_global=False,
+                source=None,
+                source_literal="mapped",
+            )
+        ],
+    )
+    base_picture = BasePicture(
+        header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+        name="Root",
+        submodules=[child],
+        moduledef=ModuleDef(),
+    )
+
+    result = ExactStringInferenceEngine(base_picture).infer("Tag", module_path=("Root", "Child"))
+
+    assert result.max_length == 40
 
 
 def test_exact_string_inference_putblanks_inserts_blanks_and_fills_gap() -> None:
