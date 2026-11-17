@@ -50,7 +50,7 @@ def test_analysis_loading_helpers_cover_target_accessors_and_refresh_formatting(
 
     assert project_application._get_analyzed_targets({}) == ["TargetA"]
     assert project_application._require_analyzed_targets({}) == ["TargetB"]
-    assert loading_support_module._workspace_dependency_suffixes("draft") == (".l", ".z")
+    assert loading_support_module._workspace_dependency_suffixes("draft") == (".l",)
     assert loading_support_module._workspace_dependency_suffixes("official") == (".z",)
     assert analysis_loading_module._format_refresh_stage_timings(
         {"load_or_parse": 0.1, "validate": 0.2},
@@ -89,10 +89,10 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
         "mode": "draft",
     }
 
+    # Draft scans only ``.l``; the official ``.z`` beside it is ignored.
     assert list(loading_support_module._iter_workspace_reverse_library_consumer_dependency_files(cfg)) == [
         ("consumer", program_dir / "consumer.l"),
         ("selected", program_dir / "selected.l"),
-        ("remote", other_dir / "remote.z"),
     ]
 
     visits: list[tuple[str, Path]] = []
@@ -142,23 +142,8 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
         for target_name, requester_dir in targets:
             loader.visit_target(target_name, "graph", False, requester_dir, False)
 
-    monkeypatch.setattr(analysis_loading_module, "target_is_library", lambda *args, **kwargs: False)
-    analysis_loading_module._include_reverse_library_consumers(
-        cfg,
-        selected_target="Selected",
-        root_bp=cast(Any, SimpleNamespace(header=SimpleNamespace(name="BasePicture"))),
-        graph=cast(Any, "graph"),
-        find_dependency_path_fn=find_dependency_path_fn,
-        read_dependency_names_fn=read_dependency_names_fn,
-        visit_targets_fn=visit_targets_fn,
-        require_analyzed_targets_fn=lambda _cfg: ["Selected", "CandidateA", "NoDeps", "NoPath", "DupLocal"],
-        is_within_directory_fn=lambda *_args: False,
-        target_is_library_fn=lambda *_a, **_kw: False,
-        source_paths_for_current_target_fn=lambda _bp, _graph: set(),
-    )
-    assert visits == []
-
-    monkeypatch.setattr(analysis_loading_module, "target_is_library", lambda *args, **kwargs: True)
+    # The target's program/library classification takes no part in consumer
+    # discovery: any dependant that references the selected target loads.
     monkeypatch.setattr(
         loading_support_module,
         "_iter_workspace_reverse_library_consumer_dependency_files",
@@ -182,9 +167,6 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
         read_dependency_names_fn=read_dependency_names_fn,
         visit_targets_fn=visit_targets_fn,
         require_analyzed_targets_fn=lambda _cfg: ["Selected", "CandidateA", "NoDeps", "NoPath", "DupLocal"],
-        is_within_directory_fn=lambda *_args: False,
-        target_is_library_fn=lambda *_a, **_kw: True,
-        source_paths_for_current_target_fn=lambda _bp, _graph: set(),
     )
 
     assert visits == [

@@ -264,9 +264,6 @@ def test_module_type_usage_scans_all_unselected_dependent_programs(
         read_dependency_names_fn=read_dependencies,
         visit_targets_fn=visit_consumers,
         require_analyzed_targets_fn=lambda config: config["analyzed_programs_and_libraries"],
-        is_within_directory_fn=lambda _path, _directory: False,
-        target_is_library_fn=lambda *_args, **_kwargs: True,
-        source_paths_for_current_target_fn=lambda _picture, _graph: set(),
     )
     spec = next(spec for spec in get_selectable_analyzers() if spec.key == "moduletype-usage")
     report = spec.run(AnalysisContext(library, graph, target_is_library=True))

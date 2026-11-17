@@ -24,7 +24,6 @@ from ..core.debug import log_debug_exception
 from ..core.syntax import CodeMode, normalize_code_mode
 from ..graphics.graphics_context_helpers import resolve_graphics_companion_path
 from ..models.project_graph import ProjectGraph, merge_project_basepicture
-from ..utils.casefolding import casefold_equal, casefold_key
 from .loader_config import build_parser_binding, validate_loader_config
 from .loading_support import (
     _attach_analysis_cache_metadata,
@@ -360,14 +359,6 @@ def load_project(  # noqa: PLR0915
         ),
         visit_targets_fn=lambda targets: _visit_targets_into_graph(binding, graph, targets, lib_names=lib_names),
         require_analyzed_targets_fn=require_analyzed_targets_fn,
-        is_within_directory_fn=is_within_directory,
-        target_is_library_fn=target_is_library,
-        source_paths_for_current_target_fn=lambda project_bp, current_graph: source_paths_for_current_target(
-            project_bp,
-            current_graph,
-            casefold_equal_fn=casefold_equal,
-            casefold_key_fn=casefold_key,
-        ),
     )
 
     project_bp = build_project_view(root_bp, graph)
