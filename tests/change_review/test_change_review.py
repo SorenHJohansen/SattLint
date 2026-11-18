@@ -40,6 +40,8 @@ from sattlint.change_review.source import SourceTextProvider
 from sattlint.core.semantic import build_snapshot_from_loaded_project
 from sattlint.models.project_graph import ProjectGraph
 from tests.helpers.change_review_support import (
+    CONNECTION_PROGRAM,
+    CONNECTION_PROGRAM_ALT_SOURCE,
     DRAFT_PROGRAM,
     FUNCTION_BLOCK_DRAFT,
     FUNCTION_BLOCK_OFFICIAL,
@@ -283,7 +285,30 @@ def test_comment_only_edit_keeps_statement_keys_stable() -> None:
             ],
         )
 
-    without_keys = [key for key, _statement, _kind in _iter_code_statements(_module_code(with_comments=False))]
-    with_keys = [key for key, _statement, _kind in _iter_code_statements(_module_code(with_comments=True))]
+    without_keys = [key for key, _statement, _kind, _span in _iter_code_statements(_module_code(with_comments=False))]
+    with_keys = [key for key, _statement, _kind, _span in _iter_code_statements(_module_code(with_comments=True))]
 
     assert with_keys == without_keys
+
+
+def test_artifacts_include_module_connection_changes(tmp_path: Path):
+    program_dir = tmp_path / "programs"
+    write_project(
+        program_dir,
+        name="Demo",
+        official_text=CONNECTION_PROGRAM,
+        draft_text=CONNECTION_PROGRAM_ALT_SOURCE,
+    )
+    cfg = build_cfg(tmp_path, program_dir=program_dir)
+    result = generate_change_review(cfg, "Demo", output_dir=tmp_path / "out")
+
+    payload = json.loads(result.json_path.read_text(encoding="utf-8"))
+    connection_changes = [change for change in payload["changes"] if change["kind"] == "connection_changed"]
+    assert len(connection_changes) == 1
+    assert connection_changes[0]["official"] == "Open => StartCmd"
+    assert connection_changes[0]["draft"] == "Open => AltCmd"
+
+    markdown = result.markdown_path.read_text(encoding="utf-8")
+    assert "Connection 'Open' changed" in markdown
+    assert "Open => StartCmd" in markdown
+    assert "Open => AltCmd" in markdown

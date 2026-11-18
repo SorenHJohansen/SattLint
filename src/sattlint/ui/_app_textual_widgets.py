@@ -557,12 +557,27 @@ if _TEXTUAL_APP is not None:
             )
             list_view = _query_required(self, "#project-picker-list", _TEXTUAL_LIST_VIEW)
             list_view.clear()
-            for path in self._project_paths:
-                list_view.append(_TEXTUAL_LIST_ITEM(_TEXTUAL_STATIC(path.stem)))
+            for index, path in enumerate(self._project_paths):
+                item = _TEXTUAL_LIST_ITEM(_TEXTUAL_STATIC(path.stem))
+                if index == 0:
+                    # Marking the item keeps it visible while ``clear`` queues
+                    # its highlight reset; the index is restored after mount.
+                    item.set_class(True, "-highlight")
+                list_view.append(item)
             self._set_selection(None)
             if self._project_paths:
-                list_view.index = 0
+                self._select_first_project()
+                list_view.call_after_refresh(self._select_first_project)
                 list_view.focus()
+
+        def _select_first_project(self) -> None:
+            """Select the first project once the rebuilt list has mounted."""
+            if not self._project_paths:
+                return
+            list_view = _query_required(self, "#project-picker-list", _TEXTUAL_LIST_VIEW)
+            if len(getattr(list_view, "children", ())):
+                list_view.index = 0
+            self._set_selection(self._project_paths[0])
 
         def _set_selection(self, path: Path | None) -> None:
             self._selected_path = path
@@ -576,6 +591,11 @@ if _TEXTUAL_APP is not None:
             index = getattr(list_view, "index", None)
             if isinstance(index, int) and 0 <= index < len(self._project_paths):
                 self._set_selection(self._project_paths[index])
+            elif len(getattr(list_view, "children", ())) and self._project_paths:
+                # ``clear`` posts a highlight reset during a rebuild. Restore
+                # the first row instead of leaving Open and Delete disabled.
+                list_view.index = 0
+                self._set_selection(self._project_paths[0])
             else:
                 self._set_selection(None)
 

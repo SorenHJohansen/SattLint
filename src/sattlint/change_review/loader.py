@@ -21,6 +21,7 @@ from ..core.syntax import CodeMode, code_ext, normalize_code_mode
 from ..models.project_graph import ProjectGraph, merge_project_basepicture
 from ..project import loading as project_loading
 from ._code_model import CodeModel, build_code_model
+from .source import SourceKey, source_key
 
 
 @dataclass(frozen=True)
@@ -32,7 +33,7 @@ class VersionSnapshot:
     code_model: CodeModel
     entry_file: Path
     workspace_root: Path
-    source_files: dict[str, Path]
+    source_files: dict[SourceKey, Path]
     total_source_size: int
 
 
@@ -75,10 +76,11 @@ def load_version_snapshot(
     )
     code_model = build_code_model(snapshot, include_dependency_modules=False)
 
-    source_files: dict[str, Path] = {}
+    source_files: dict[SourceKey, Path] = {}
     total_size = 0
     for path in graph.source_files:
-        source_files[path.name.casefold()] = path
+        library = graph.source_file_libraries.get(path)
+        source_files[source_key(path.name, library)] = path
         if path.exists():
             try:
                 total_size += path.stat().st_size

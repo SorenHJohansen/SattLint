@@ -78,7 +78,7 @@ def _dedupe_blocks(blocks: list[BlockContext]) -> tuple[BlockContext, ...]:
     seen: set[tuple[tuple[str, ...], str, str]] = set()
     unique: list[BlockContext] = []
     for block in blocks:
-        key = (block.module_path, block.kind, block.name)
+        key = (tuple(segment.casefold() for segment in block.module_path), block.kind, block.name.casefold())
         if key in seen:
             continue
         seen.add(key)

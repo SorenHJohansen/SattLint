@@ -2425,6 +2425,65 @@ def test_textual_setup_view_shows_selected_target_preview(tmp_path: Path) -> Non
     asyncio.run(_run())
 
 
+def test_textual_setup_target_list_keeps_its_highlight_across_a_rebuild() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app(
+            cfg={"analyzed_programs_and_libraries": ["TargetA", "TargetB"]},
+        )
+
+        async with app_instance.run_test() as pilot:
+            await pilot.press("ctrl+3")
+            await pilot.pause()
+
+            app_instance._selected_configured_target = "TargetB"
+            app_instance._refresh_setup_target_list()
+            await pilot.pause()
+
+            list_view = app_instance.query_one("#setup-target-listview")
+            assert list_view.index == 1
+
+            # Adding a target rebuilds the list; the selection must survive it.
+            app_instance._cfg["analyzed_programs_and_libraries"] = ["TargetA", "TargetB", "TargetC"]
+            app_instance._refresh_setup_target_list()
+            for _ in range(10):
+                await pilot.pause()
+                if list_view.index == 1:
+                    break
+
+            assert app_instance._selected_configured_target == "TargetB"
+            assert list_view.index == 1
+            assert app_instance.query_one("#setup-target-remove").disabled is False
+
+    asyncio.run(_run())
+
+
+def test_textual_project_picker_selects_the_first_project_after_mount(tmp_path: Path) -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    for name in ("Alpha", "Beta"):
+        (tmp_path / f"{name}.slproj").write_text("{}", encoding="utf-8")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app(project=False)
+        screen = app_textual_widgets_module._ProjectPickerScreen(projects_dir=tmp_path)
+
+        async with app_instance.run_test() as pilot:
+            app_instance.push_screen(screen)
+            await pilot.pause()
+            await pilot.pause()
+
+            assert screen._selected_path == tmp_path / "Alpha.slproj"
+            assert screen.query_one("#project-picker-open").disabled is False
+            assert screen.query_one("#project-picker-delete").disabled is False
+            assert screen.query_one("#project-picker-list").index == 0
+
+    asyncio.run(_run())
+
+
 def test_textual_setup_shows_empty_dirs_when_no_configuration_is_open() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")

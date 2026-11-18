@@ -4,11 +4,10 @@
 The Change Review is driven by semantic structure, not raw text. This module
 walks the merged ``BasePicture`` module tree exactly once and records, per
 module, the code statements (with span-normalized fingerprints, original source
-locations, referenced definition keys, and produced/assigned definition keys)
-plus the sequence structure (for state/transition context). It also builds the
-reverse indexes needed by impact analysis: which modules consume a given
-definition key, which modules produce (assign) it, and which module owns a
-given reference site.
+locations, referenced definition keys, and produced/assigned definition keys),
+the instance parameter connections, and the sequence structure (for
+state/transition context). Dependencies are derived from each module's own
+resolved statement references, never from shared source lines.
 
 The walk mirrors the reference-recording traversal used by the semantic index
 builder (``ModuleTypeInstance`` code is attributed through its typedef) so the
@@ -29,6 +28,7 @@ from sattlint.parser_api import (
     ModuleCode,
     ModuleTypeDef,
     ModuleTypeInstance,
+    ParameterMapping,
     SFCAlternative,
     SFCParallel,
     SFCStep,
@@ -76,6 +76,28 @@ class StatementModel:
     source_file: str | None
     referenced_keys: tuple[_DefinitionKey, ...] = ()
     produced_keys: tuple[_DefinitionKey, ...] = ()
+    source_library: str | None = None
+
+
+@dataclass(frozen=True)
+class ConnectionModel:
+    """One parameter mapping on a module instance or inline module definition.
+
+    A connection wires the instance's module parameter to the expression or
+    literal the surrounding module supplies. It is part of the module's
+    behaviour even though it is not a code statement, so it is modeled
+    separately from ``StatementModel``.
+    """
+
+    target: str
+    source_type: str
+    source_name: str | None
+    source_literal: object | None
+    is_global: bool
+    is_duration: bool
+    span: SourceSpan | None
+    source_file: str | None
+    source_library: str | None
 
 
 @dataclass(frozen=True)
@@ -97,6 +119,7 @@ class BlockModel:
     line_start: int | None
     last_span: SourceSpan | None
     source_file: str | None
+    source_library: str | None = None
 
     @property
     def identity(self) -> tuple[tuple[str, ...], str, str]:
@@ -118,6 +141,12 @@ class ModuleModel:
     declaration_span: SourceSpan | None
     sequence_structure: dict[str, tuple[tuple[str, str | None], ...]] = field(compare=False)
     code_source_id: int = field(compare=False, repr=False)
+    #: Every SFC step reachable in this module, as ``(sequence, step)`` pairs.
+    #: Unlike ``statements`` this includes steps with empty blocks, and it
+    #: descends into alternative/parallel branches and nested subsequences.
+    sequence_steps: tuple[tuple[str, str], ...] = ()
+    #: Parameter mappings supplied by the instance that owns this module.
+    connections: tuple[ConnectionModel, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -126,8 +155,6 @@ class CodeModel:
 
     modules: tuple[ModuleModel, ...]
     modules_by_path: dict[tuple[str, ...], ModuleModel] = field(compare=False)
-    owner_by_site: dict[tuple[str, int], tuple[tuple[str, ...], ...]] = field(compare=False)
-    consumers_by_key: dict[_DefinitionKey, tuple[tuple[str, ...], ...]] = field(compare=False)
     producers_by_key: dict[_DefinitionKey, tuple[tuple[str, ...], ...]] = field(compare=False)
     blocks_by_key: dict[tuple[tuple[str, ...], str, str], BlockModel] = field(compare=False)
     blocks_touching_key: dict[_DefinitionKey, tuple[tuple[tuple[str, ...], str, str], ...]] = field(compare=False)
@@ -150,6 +177,7 @@ def _iter_sfc_items(path: _StatementKey, items: list[Any] | None) -> Any:
                         (*path, "step", item.name or "", block, block_index),
                         statement,
                         "statement",
+                        None,
                     )
             if item.fork is not None:
                 yield (
@@ -160,12 +188,18 @@ def _iter_sfc_items(path: _StatementKey, items: list[Any] | None) -> Any:
                         span=item.span,
                     ),
                     "fork",
+                    item.span,
                 )
         elif isinstance(item, SFCTransition):
+            transition_span = item.span if isinstance(item.span, SourceSpan) else None
+            if transition_span is None:
+                condition_span = getattr(item.condition, "span", None)
+                transition_span = condition_span if isinstance(condition_span, SourceSpan) else None
             yield (
                 (*path, "transition", index),
                 item.condition,
                 "transition",
+                transition_span,
             )
             if item.fork is not None:
                 yield (
@@ -176,6 +210,7 @@ def _iter_sfc_items(path: _StatementKey, items: list[Any] | None) -> Any:
                         span=item.span,
                     ),
                     "fork",
+                    item.span,
                 )
         elif isinstance(item, SFCAlternative | SFCParallel):
             for branch_index, branch in enumerate(item.branches or []):
@@ -200,7 +235,7 @@ def _iter_code_statements(module_code: ModuleCode | None) -> Any:
         prefix = ("equation", equation.name or "")
         statements = [statement for statement in equation.code or [] if not isinstance(statement, CodeComment)]
         for index, statement in enumerate(statements):
-            yield ((*prefix, index), statement, "statement")
+            yield ((*prefix, index), statement, "statement", None)
 
 
 def _collect_sequence_structure(
@@ -283,13 +318,7 @@ def _resolve_ref_keys(
 def _node_declared_variables(
     node: BasePicture | SingleModule | FrameModule | ModuleTypeDef,
 ) -> list[Any]:
-    if isinstance(node, BasePicture):
-        return list(node.moduleparameters or []) + list(node.localvariables or [])
-    if isinstance(node, SingleModule):
-        return list(node.moduleparameters or []) + list(node.localvariables or [])
-    if isinstance(node, ModuleTypeDef):
-        return list(node.moduleparameters or []) + list(node.localvariables or [])
-    return []
+    return list(node.moduleparameters or []) + list(node.localvariables or [])
 
 
 def _node_scope_keys(
@@ -341,10 +370,64 @@ def _resolve_var_ref(
     return _resolve_ref_keys(ref_line_index, file_key, span)
 
 
+def _iter_sfc_steps(items: list[Any] | None) -> Iterator[str]:
+    for item in items or ():
+        if isinstance(item, SFCStep):
+            yield item.name or ""
+        elif isinstance(item, (SFCAlternative, SFCParallel)):
+            for branch in item.branches or []:
+                yield from _iter_sfc_steps(branch)
+        elif isinstance(item, (SFCSubsequence, SFCTransitionSub)):
+            yield from _iter_sfc_steps(item.body)
+
+
+def _collect_sequence_steps(module_code: ModuleCode | None) -> tuple[tuple[str, str], ...]:
+    """Record every step name per sequence, including empty and nested steps."""
+    steps: list[tuple[str, str]] = []
+    if module_code is None:
+        return ()
+    for seq in module_code.sequences or []:
+        steps.extend((seq.name or "", step_name) for step_name in _iter_sfc_steps(seq.code))
+    return tuple(steps)
+
+
+def _connection_source_type(mapping: ParameterMapping) -> str:
+    return mapping.source_type.value
+
+
+def _collect_connections(
+    module: SingleModule | ModuleTypeInstance,
+    *,
+    source_file: str | None,
+    source_library: str | None,
+) -> tuple[ConnectionModel, ...]:
+    """Record the parameter mappings supplied by one module instance."""
+    connections: list[ConnectionModel] = []
+    for mapping in module.parametermappings or []:
+        target = mapping.target.name
+        if not target:
+            continue
+        connections.append(
+            ConnectionModel(
+                target=target,
+                source_type=_connection_source_type(mapping),
+                source_name=mapping.source.name if mapping.source is not None else None,
+                source_literal=mapping.source_literal,
+                is_global=mapping.is_source_global,
+                is_duration=mapping.is_duration,
+                span=mapping.span if isinstance(mapping.span, SourceSpan) else None,
+                source_file=source_file,
+                source_library=source_library,
+            )
+        )
+    return tuple(connections)
+
+
 def _collect_statements(
     code_node: Any,
     *,
     source_file: str | None,
+    source_library: str | None,
     ref_line_index: dict[str, dict[int, list[ReferenceOccurrence]]],
     scope_keys: dict[str, _DefinitionKey],
 ) -> tuple[tuple[StatementModel, ...], frozenset[tuple[str, int, int]], frozenset[str]]:
@@ -353,8 +436,8 @@ def _collect_statements(
     files: set[str] = set()
     file_key = source_file_key(source_file) if source_file is not None else None
 
-    for key, node, node_type in _iter_code_statements(code_node):
-        span = getattr(node, "span", None)
+    for key, node, node_type, span_override in _iter_code_statements(code_node):
+        span = span_override if isinstance(span_override, SourceSpan) else getattr(node, "span", None)
         normalized = normalize_ast_value(node)
         referenced_keys: set[_DefinitionKey] = set()
         produced_keys: set[_DefinitionKey] = set()
@@ -389,6 +472,7 @@ def _collect_statements(
                 source_file=source_file,
                 referenced_keys=tuple(sorted(referenced_keys)),
                 produced_keys=tuple(sorted(produced_keys)),
+                source_library=source_library,
             )
         )
         if source_file is not None:
@@ -401,6 +485,7 @@ def _group_blocks(
     module_path: tuple[str, ...],
     statements: tuple[StatementModel, ...],
     source_file: str | None,
+    source_library: str | None,
 ) -> tuple[BlockModel, ...]:
     """Group statements into their containing equation blocks and sequences."""
     groups: dict[tuple[str, str], list[StatementModel]] = {}
@@ -416,8 +501,9 @@ def _group_blocks(
         for statement in grouped:
             writes.update(statement.produced_keys)
             reads.update(key for key in statement.referenced_keys if key not in statement.produced_keys)
-        first = grouped[0]
-        last = grouped[-1]
+        spans = [statement.span for statement in grouped if statement.span is not None]
+        first_span = min(spans, key=lambda span: (span.line, span.start)) if spans else None
+        last_span = max(spans, key=lambda span: (span.line, span.start)) if spans else None
         blocks.append(
             BlockModel(
                 module_path=module_path,
@@ -426,9 +512,10 @@ def _group_blocks(
                 statements=tuple(grouped),
                 reads_keys=frozenset(reads),
                 writes_keys=frozenset(writes),
-                line_start=first.span.line if first.span is not None else None,
-                last_span=last.span if last.span is not None else None,
+                line_start=first_span.line if first_span is not None else None,
+                last_span=last_span,
                 source_file=source_file,
+                source_library=source_library,
             )
         )
     blocks.sort(key=lambda block: (block.kind, block.name.casefold()))
@@ -446,7 +533,6 @@ class _ModuleTreeWalker:
             self._typedef_index.setdefault(moduletype.name.casefold(), []).append(moduletype)
         self._ref_line_index = _build_ref_line_index(snapshot._references_by_file)
         self._modules: list[ModuleModel] = []
-        self._ref_sites_by_module: dict[tuple[str, ...], frozenset[tuple[str, int, int]]] = {}
         self._produced_keys_by_module: dict[tuple[str, ...], set[_DefinitionKey]] = {}
 
     def _is_root_origin(self, origin_file: str | None, origin_lib: str | None) -> bool:
@@ -467,18 +553,19 @@ class _ModuleTreeWalker:
         kind: str,
         origin_file: str | None,
         origin_library: str | None,
+        connections: tuple[ConnectionModel, ...] = (),
     ) -> None:
-        statements, ref_sites, _files = _collect_statements(
+        statements, _ref_sites, _files = _collect_statements(
             getattr(node, "modulecode", None),
             source_file=origin_file,
+            source_library=origin_library,
             ref_line_index=self._ref_line_index,
             scope_keys=_node_scope_keys(node, module_path),
         )
         produced: set[_DefinitionKey] = set()
         for statement in statements:
             produced.update(statement.produced_keys)
-        blocks = _group_blocks(module_path, statements, origin_file)
-        self._ref_sites_by_module[module_path] = ref_sites
+        blocks = _group_blocks(module_path, statements, origin_file, origin_library)
         self._produced_keys_by_module[module_path] = produced
         self._modules.append(
             ModuleModel(
@@ -493,6 +580,8 @@ class _ModuleTreeWalker:
                 declaration_span=_module_declaration_span(node),
                 sequence_structure=_collect_sequence_structure(getattr(node, "modulecode", None)),
                 code_source_id=id(node),
+                sequence_steps=_collect_sequence_steps(getattr(node, "modulecode", None)),
+                connections=connections,
             )
         )
 
@@ -513,6 +602,11 @@ class _ModuleTreeWalker:
                     kind="SM",
                     origin_file=origin_file,
                     origin_library=origin_library,
+                    connections=_collect_connections(
+                        module,
+                        source_file=origin_file,
+                        source_library=origin_library,
+                    ),
                 )
                 self._walk_submodules(
                     module.submodules or [],
@@ -548,6 +642,11 @@ class _ModuleTreeWalker:
                     kind="MT",
                     origin_file=typedef.origin_file,
                     origin_library=typedef.origin_lib,
+                    connections=_collect_connections(
+                        module,
+                        source_file=origin_file,
+                        source_library=origin_library,
+                    ),
                 )
                 self._walk_submodules(
                     typedef.submodules or [],
@@ -567,28 +666,6 @@ class _ModuleTreeWalker:
             return matches[0]
         return None
 
-    def _build_owner_and_consumers(
-        self,
-    ) -> tuple[dict[tuple[str, int], set[tuple[str, ...]]], dict[_DefinitionKey, set[tuple[str, ...]]]]:
-        owner_by_site: dict[tuple[str, int], set[tuple[str, ...]]] = {}
-        consumers_by_key: dict[_DefinitionKey, set[tuple[str, ...]]] = {}
-        for module_path, ref_sites in self._ref_sites_by_module.items():
-            for file_key, line, _column in ref_sites:
-                owner_by_site.setdefault((file_key, line), set()).add(module_path)
-        for definition in self._snapshot.definitions:
-            key = tuple(segment.casefold() for segment in definition.canonical_path.split("."))
-            for reference in self._snapshot.find_references_to(definition):
-                if reference.source_file is None:
-                    continue
-                file_key = source_file_key(reference.source_file)
-                if file_key is None:
-                    continue
-                site_key = (file_key, reference.line)
-                owners = owner_by_site.get(site_key)
-                if owners:
-                    consumers_by_key.setdefault(key, set()).update(owners)
-        return owner_by_site, consumers_by_key
-
     def build(self) -> CodeModel:
         root = self._snapshot.base_picture
         root_path = (root.header.name,)
@@ -607,19 +684,19 @@ class _ModuleTreeWalker:
             origin_library=root.origin_lib,
         )
 
-        owner_by_site, consumers_by_key = self._build_owner_and_consumers()
-
         producers_by_key: dict[_DefinitionKey, set[tuple[str, ...]]] = {}
         for module_path, produced_keys in self._produced_keys_by_module.items():
             for key in produced_keys:
                 producers_by_key.setdefault(key, set()).add(module_path)
 
-        dependency_keys_by_module: dict[tuple[str, ...], set[_DefinitionKey]] = {
-            module_path: set() for module_path in self._ref_sites_by_module
-        }
-        for key, owners in consumers_by_key.items():
-            for owner in owners:
-                dependency_keys_by_module.setdefault(owner, set()).add(key)
+        # Dependencies belong to the module whose own statements reference the
+        # definition. Attributing a reference by source line would give every
+        # instance that shares the same type code every instance-specific key.
+        dependency_keys_by_module: dict[tuple[str, ...], set[_DefinitionKey]] = {}
+        for module in self._modules:
+            dependency_keys_by_module[module.module_path] = {
+                key for statement in module.statements for key in statement.referenced_keys
+            }
 
         modules: list[ModuleModel] = []
         for module in self._modules:
@@ -636,6 +713,8 @@ class _ModuleTreeWalker:
                     declaration_span=module.declaration_span,
                     sequence_structure=module.sequence_structure,
                     code_source_id=module.code_source_id,
+                    sequence_steps=module.sequence_steps,
+                    connections=module.connections,
                 )
             )
 
@@ -650,8 +729,6 @@ class _ModuleTreeWalker:
         return CodeModel(
             modules=tuple(modules),
             modules_by_path={module.module_path: module for module in modules},
-            owner_by_site={site: tuple(owners) for site, owners in owner_by_site.items()},
-            consumers_by_key={key: tuple(owners) for key, owners in consumers_by_key.items()},
             producers_by_key={key: tuple(owners) for key, owners in producers_by_key.items()},
             blocks_by_key=blocks_by_key,
             blocks_touching_key={key: tuple(identities) for key, identities in blocks_touching_key.items()},

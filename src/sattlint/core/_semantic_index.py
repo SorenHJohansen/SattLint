@@ -86,6 +86,9 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         self._datatype_field_definitions = self._build_datatype_field_definitions()
         for moduletype in base_picture.moduletype_defs or []:
             self._moduletype_index.setdefault(moduletype.name.casefold(), []).append(moduletype)
+        self._known_typedef_ids = {
+            id(moduletype) for moduletypes in self._moduletype_index.values() for moduletype in moduletypes
+        }
         self.context_builder = ContextBuilder(
             base_picture=base_picture,
             symbol_table=self.symbol_table,
@@ -330,6 +333,7 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
                 if not field_segments:
                     continue
                 field_definition = self._lookup_field_definition(variable.datatype, field_segments)
+                field_variable = field_definition[0] if field_definition else None
                 self._record_definition(
                     canonical_path=root_path.join(*field_segments),
                     kind="field",
@@ -339,7 +343,11 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
                     field_path=".".join(field_segments),
                     origin_file=field_definition[1] if field_definition else origin_file,
                     origin_library=field_definition[2] if field_definition else origin_library,
-                    declaration_span=field_definition[0].declaration_span if field_definition else None,
+                    declaration_span=field_variable.declaration_span if field_variable is not None else None,
+                    initializer=self._initializer_text(field_variable.init_value)
+                    if field_variable is not None
+                    else None,
+                    modifiers=self._variable_modifiers(field_variable) if field_variable is not None else (),
                 )
 
     def _record_definition(

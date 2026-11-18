@@ -17,14 +17,29 @@ from sattlint.change_review import (
 )
 from sattlint.change_review.source import SourceTextProvider
 from tests.helpers.change_review_support import (
+    ALIGN_PROGRAM,
+    ALIGN_PROGRAM_REORDERED,
+    ALIGN_PROGRAM_WITH_INSERTION,
+    CONNECTION_PROGRAM,
+    CONNECTION_PROGRAM_ALT_SOURCE,
     DRAFT_PROGRAM,
     FORMATTED_PROGRAM,
+    FRAME_PROGRAM,
+    FRAME_PROGRAM_DRAFT,
     FUNCTION_BLOCK_DRAFT,
     FUNCTION_BLOCK_OFFICIAL,
+    IF_PROGRAM,
+    IF_PROGRAM_DRAFT,
+    INSTANCE_DEPENDENCY_PROGRAM,
+    INSTANCE_DEPENDENCY_PROGRAM_DRAFT,
     OFFICIAL_PROGRAM,
+    RECORD_FIELD_PROGRAM,
+    RECORD_FIELD_PROGRAM_DRAFT,
     SEQUENCE_DRAFT_ADDED_STEP,
     SEQUENCE_DRAFT_CHANGED_TRANSITION,
     SEQUENCE_OFFICIAL,
+    SEQUENCE_WITH_CHANGED_LITERAL_TRANSITION,
+    SEQUENCE_WITH_LITERAL_TRANSITION,
     load_pair,
 )
 
@@ -134,12 +149,12 @@ def _provider(official: VersionSnapshot, draft: VersionSnapshot) -> SourceTextPr
 
 
 def _snippet_fn(provider: SourceTextProvider):
-    def snippet_fn(source_file: str | None, span: object) -> str | None:
+    def snippet_fn(source_file: str | None, source_library: str | None, span: object) -> str | None:
         start = getattr(span, "start", None)
         end = getattr(span, "end", None)
         if not isinstance(start, int) or not isinstance(end, int):
             return None
-        return provider.snippet(source_file, start, end)
+        return provider.snippet(source_file, start, end, library=source_library)
 
     return snippet_fn
 
@@ -357,6 +372,56 @@ def test_s88_step_added(tmp_path: Path):
     assert any("Drain" in change.detail for change in s88)
 
 
+def test_step_added_with_no_code_is_still_reported(tmp_path: Path):
+    draft = SEQUENCE_OFFICIAL.replace(
+        "            Status = 1;\n   ENDSEQUENCE",
+        "            Status = 1;\n      SEQTRANSITION TrIdle WAIT_FOR Status > 1\n      SEQSTEP Waiting\n   ENDSEQUENCE",
+    )
+    official, draft_version, _cfg = load_pair(tmp_path, SEQUENCE_OFFICIAL, draft)
+    changes = _diff(official, draft_version)
+    s88 = [change for change in changes if change.kind is ChangeKind.S88_CHANGED]
+    assert any("Waiting" in change.detail for change in s88)
+
+
+def test_branch_nested_step_added_is_reported(tmp_path: Path):
+    draft = SEQUENCE_OFFICIAL.replace(
+        "            Status = 1;\n   ENDSEQUENCE",
+        (
+            "            Status = 1;\n"
+            "      SEQTRANSITION TrBranch WAIT_FOR True\n"
+            "      ALTERNATIVESEQ\n"
+            "         SEQTRANSITION TrA WAIT_FOR StartCmd\n"
+            "      ALTERNATIVEBRANCH\n"
+            "         SEQTRANSITION TrB WAIT_FOR StartCmd\n"
+            "         SEQSTEP Nested\n"
+            "      ENDALTERNATIVE\n"
+            "   ENDSEQUENCE"
+        ),
+    )
+    official, draft_version, _cfg = load_pair(tmp_path, SEQUENCE_OFFICIAL, draft)
+    changes = _diff(official, draft_version)
+    s88 = [change for change in changes if change.kind is ChangeKind.S88_CHANGED]
+    assert any("Nested" in change.detail for change in s88)
+
+
+def test_declaration_type_case_is_not_a_change(tmp_path: Path):
+    draft = OFFICIAL_PROGRAM.replace("Flow: integer := 0;", "Flow: Integer := 0;")
+    official, draft_version, _cfg = load_pair(tmp_path, OFFICIAL_PROGRAM, draft)
+    assert _diff(official, draft_version) == []
+
+
+def test_equation_block_rename_case_is_not_a_change(tmp_path: Path):
+    draft = OFFICIAL_PROGRAM.replace("EQUATIONBLOCK Main", "EQUATIONBLOCK MAIN")
+    official, draft_version, _cfg = load_pair(tmp_path, OFFICIAL_PROGRAM, draft)
+    assert _diff(official, draft_version) == []
+
+
+def test_step_rename_case_is_not_a_change(tmp_path: Path):
+    draft = SEQUENCE_OFFICIAL.replace("SEQSTEP Fill", "SEQSTEP FILL")
+    official, draft_version, _cfg = load_pair(tmp_path, SEQUENCE_OFFICIAL, draft)
+    assert _diff(official, draft_version) == []
+
+
 def test_state_transition_changed(tmp_path: Path):
     official, draft, _cfg = load_pair(tmp_path, SEQUENCE_OFFICIAL, SEQUENCE_DRAFT_CHANGED_TRANSITION)
     changes = _diff(official, draft)
@@ -552,3 +617,113 @@ def test_context_is_smaller_than_project(tmp_path: Path):
     stats = review.size_stats
     assert stats.selected_source_size < stats.total_project_source_size / 2
     assert 0.0 < stats.source_reduction_percent < 100.0
+
+
+def test_existing_init_step_gaining_code_is_not_reported_as_added_step(tmp_path: Path):
+    draft = SEQUENCE_OFFICIAL.replace(
+        "            Status = 0;",
+        "            Status = 0;\n            DrainCmd = True;",
+    )
+    official, draft_version, _cfg = load_pair(tmp_path, SEQUENCE_OFFICIAL, draft)
+    changes = _diff(official, draft_version)
+
+    assert any(change.kind is ChangeKind.ADDED for change in changes)
+    assert not any(change.kind is ChangeKind.S88_CHANGED for change in changes)
+
+
+def test_reordered_changed_assignments_pair_by_target(tmp_path: Path):
+    official, draft, _cfg = load_pair(tmp_path, ALIGN_PROGRAM, ALIGN_PROGRAM_REORDERED)
+    changes = _diff(official, draft)
+    expression_changes = [change for change in changes if change.kind is ChangeKind.EXPRESSION_CHANGED]
+
+    assert len(expression_changes) == 3
+    pairs = {(str(change.official), str(change.draft)) for change in expression_changes}
+    assert any("B = 2" in official_text and "B = 9" in draft_text for official_text, draft_text in pairs)
+    assert any("A = 1" in official_text and "A = 8" in draft_text for official_text, draft_text in pairs)
+    assert any("A = A + 1" in official_text and "A = A + 2" in draft_text for official_text, draft_text in pairs)
+    assert not any(change.kind is ChangeKind.STATEMENT_CHANGED for change in changes)
+
+
+def test_inserted_statement_does_not_create_false_pairs(tmp_path: Path):
+    official, draft, _cfg = load_pair(tmp_path, ALIGN_PROGRAM, ALIGN_PROGRAM_WITH_INSERTION)
+    changes = _diff(official, draft)
+
+    added = [change for change in changes if change.kind is ChangeKind.ADDED]
+    assert len(added) == 1
+    assert "B = 0" in str(added[0].draft)
+    assert not any(change.kind in {ChangeKind.STATEMENT_CHANGED, ChangeKind.EXPRESSION_CHANGED} for change in changes)
+
+
+def test_literal_transition_does_not_drop_sequence_source(tmp_path: Path):
+    official, draft, _cfg = load_pair(
+        tmp_path,
+        SEQUENCE_WITH_LITERAL_TRANSITION,
+        SEQUENCE_WITH_CHANGED_LITERAL_TRANSITION,
+    )
+    review = _review(official, draft, _diff(official, draft))
+
+    sequence = next(block for block in review.context if block.kind == "sequence" and block.name == "MainSeq")
+    assert sequence.official_source is not None
+    assert "SEQTRANSITION TrFalse WAIT_FOR False" in sequence.official_source
+    assert sequence.draft_source is not None
+    assert "SEQTRANSITION TrFalse WAIT_FOR True" in sequence.draft_source
+
+
+def test_changed_module_connection_is_reported(tmp_path: Path):
+    official, draft, _cfg = load_pair(tmp_path, CONNECTION_PROGRAM, CONNECTION_PROGRAM_ALT_SOURCE)
+    changes = _diff(official, draft)
+    connection_changes = [change for change in changes if change.kind is ChangeKind.CONNECTION_CHANGED]
+
+    assert len(connection_changes) == 1
+    assert "Open => StartCmd" in str(connection_changes[0].official)
+    assert "Open => AltCmd" in str(connection_changes[0].draft)
+
+
+def test_instance_dependency_does_not_leak_other_instance_keys(tmp_path: Path):
+    official, draft, _cfg = load_pair(
+        tmp_path,
+        INSTANCE_DEPENDENCY_PROGRAM,
+        INSTANCE_DEPENDENCY_PROGRAM_DRAFT,
+    )
+    changes = _diff(official, draft)
+    dependencies = [change for change in changes if change.kind is ChangeKind.DEPENDENCY_CHANGED]
+
+    assert dependencies
+    assert all("calctype.factor" in change.detail for change in dependencies)
+    assert not any(
+        "A.Factor".casefold() in change.detail or "B.Factor".casefold() in change.detail for change in dependencies
+    )
+
+
+def test_record_field_declaration_keeps_modifier_and_initializer(tmp_path: Path):
+    official, draft, _cfg = load_pair(tmp_path, RECORD_FIELD_PROGRAM, RECORD_FIELD_PROGRAM_DRAFT)
+    changes = _diff(official, draft)
+    declarations = [
+        change
+        for change in changes
+        if change.kind is ChangeKind.DECLARATION_CHANGED and change.symbol.endswith("Rec.Flag")
+    ]
+
+    assert declarations
+    assert any(declaration.symbol.endswith("Holder.Rec.Flag") for declaration in declarations)
+    assert all("OPSAVE" in str(declaration.official) for declaration in declarations)
+    assert all("TRUE" in str(declaration.official) for declaration in declarations)
+
+
+def test_frame_module_code_references_are_visible(tmp_path: Path):
+    official, draft, _cfg = load_pair(tmp_path, FRAME_PROGRAM, FRAME_PROGRAM_DRAFT)
+    review = _review(official, draft, _diff(official, draft))
+    frame_change = next(change for change in review.changes if change.symbol.endswith("Frame1"))
+
+    context = frame_change.semantic_context
+    assert context is not None
+    assert any(fact.symbol.casefold() == "basepicture.flow" for fact in context.reads)
+    assert any(fact.symbol.casefold() == "basepicture.frame1.local" for fact in context.produces)
+
+
+def test_changed_if_statement_is_one_change_not_add_and_remove(tmp_path: Path):
+    official, draft, _cfg = load_pair(tmp_path, IF_PROGRAM, IF_PROGRAM_DRAFT)
+    changes = _diff(official, draft)
+
+    assert len(changes) == 1
+    assert changes[0].kind in {ChangeKind.EXPRESSION_CHANGED, ChangeKind.STATEMENT_CHANGED}

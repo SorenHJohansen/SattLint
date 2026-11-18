@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from sattlint.change_review.source import SourceTextProvider
+from sattlint.change_review.source import SourceTextProvider, source_key
 from sattlint.parser_api import source_text_for_parse
 
 pytestmark = pytest.mark.unit
@@ -83,7 +83,7 @@ def test_provider_reads_plain_windows_1252_text(tmp_path: Path):
     source_path = tmp_path / "ProviderFixture.s"
     source_path.write_bytes(_SOURCE.encode("cp1252"))
 
-    provider = SourceTextProvider({"ProviderFixture.s".casefold(): source_path})
+    provider = SourceTextProvider({source_key("ProviderFixture.s", None): source_path})
 
     assert provider.text("ProviderFixture.s") == _SOURCE
     assert provider.snippet("ProviderFixture.s", 0, len('"SyntaxVersion"')) == '"SyntaxVersion"'
@@ -93,7 +93,7 @@ def test_provider_reads_byte_coded_source_as_the_parser_does(tmp_path: Path):
     source_path = tmp_path / "ProviderFixture.x"
     source_path.write_bytes(_encode_coded_stream(_coded_text()))
 
-    provider = SourceTextProvider({"ProviderFixture.x".casefold(): source_path})
+    provider = SourceTextProvider({source_key("ProviderFixture.x", None): source_path})
 
     text = provider.text("ProviderFixture.x")
     assert text == source_text_for_parse(source_path)
@@ -108,14 +108,34 @@ def test_provider_keeps_offsets_aligned_with_the_parse_text(tmp_path: Path):
     start = parse_text.index("Value = 1;")
     end = start + len("Value = 1;")
 
-    provider = SourceTextProvider({"ProviderFixture.x".casefold(): source_path})
+    provider = SourceTextProvider({source_key("ProviderFixture.x", None): source_path})
 
     assert provider.snippet("ProviderFixture.x", start, end) == "Value = 1;"
     assert provider.lines("ProviderFixture.x", 9, 9) == "      Value = 1;"
 
 
+def test_provider_distinguishes_same_named_files_in_different_libraries(tmp_path: Path):
+    first = tmp_path / "First" / "Shared.s"
+    second = tmp_path / "Second" / "Shared.s"
+    first.parent.mkdir()
+    second.parent.mkdir()
+    first.write_text("first", encoding="cp1252")
+    second.write_text("second", encoding="cp1252")
+    provider = SourceTextProvider(
+        {
+            source_key("Shared.s", "FirstLib"): first,
+            source_key("Shared.s", "SecondLib"): second,
+        }
+    )
+
+    assert provider.text("Shared.s", library="FirstLib") == "first"
+    assert provider.text("Shared.s", library="SecondLib") == "second"
+    # The bare name is ambiguous, so it does not guess.
+    assert provider.text("Shared.s") is None
+
+
 def test_provider_returns_none_for_unreadable_file(tmp_path: Path):
-    provider = SourceTextProvider({"Missing.s".casefold(): tmp_path / "Missing.s"})
+    provider = SourceTextProvider({source_key("Missing.s", None): tmp_path / "Missing.s"})
 
     assert provider.text("Missing.s") is None
     assert provider.lines("Missing.s", 1, 1) is None

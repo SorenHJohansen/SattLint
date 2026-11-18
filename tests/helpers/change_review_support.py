@@ -97,6 +97,198 @@ ENDDEF (*BasePicture*);
 
 FUNCTION_BLOCK_DRAFT = FUNCTION_BLOCK_OFFICIAL.replace("Running = Speed > 0.0;", "Running = Speed > 5.0;")
 
+CONNECTION_PROGRAM = """\
+"Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-06-19-12:00:00.000, name: Demo"
+
+BasePicture Invocation
+   ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
+    ) : MODULEDEFINITION DateCode_ 1
+
+TYPEDEFINITIONS
+   ValveType = MODULEDEFINITION DateCode_ 1
+   MODULEPARAMETERS
+      Open: boolean;
+   LOCALVARIABLES
+      Opening: boolean := False;
+   ModuleDef
+   ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+   ModuleCode
+   EQUATIONBLOCK Ctrl COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+      Opening = Open;
+   ENDDEF (*ValveType*);
+
+LOCALVARIABLES
+   StartCmd: boolean := False;
+   AltCmd: boolean := False;
+
+SUBMODULES
+   FillValve Invocation
+      ( 0.0 , 0.0 , 0.0 , 0.5 , 0.5
+       ) : ValveType (
+      Open => StartCmd);
+
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+
+CONNECTION_PROGRAM_ALT_SOURCE = CONNECTION_PROGRAM.replace("Open => StartCmd", "Open => AltCmd")
+
+IF_PROGRAM = OFFICIAL_PROGRAM.replace(
+    "      Flow = 0;\n      ValveOpen = Flow > 0;",
+    "      IF Flow > 0 THEN\n         ValveOpen = True;\n      ENDIF;",
+)
+
+IF_PROGRAM_DRAFT = IF_PROGRAM.replace("ValveOpen = True;", "ValveOpen = False;")
+
+ALIGN_PROGRAM = """\
+"Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-06-19-12:00:00.000, name: Demo"
+
+BasePicture Invocation
+   ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
+    ) : MODULEDEFINITION DateCode_ 1
+
+LOCALVARIABLES
+   A: integer := 0;
+   B: integer := 0;
+
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+   EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+      A = 1;
+      B = 2;
+      A = A + 1;
+ENDDEF (*BasePicture*);
+"""
+
+ALIGN_PROGRAM_REORDERED = ALIGN_PROGRAM.replace(
+    "      A = 1;\n      B = 2;\n      A = A + 1;",
+    "      B = 9;\n      A = 8;\n      A = A + 2;",
+)
+
+ALIGN_PROGRAM_WITH_INSERTION = ALIGN_PROGRAM.replace(
+    "      A = 1;\n      B = 2;",
+    "      B = 0;\n      A = 1;\n      B = 2;",
+)
+
+INSTANCE_DEPENDENCY_PROGRAM = """\
+"Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-06-19-12:00:00.000, name: Demo"
+
+BasePicture Invocation
+   ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
+    ) : MODULEDEFINITION DateCode_ 1
+
+TYPEDEFINITIONS
+   CalcType = MODULEDEFINITION DateCode_ 1
+   LOCALVARIABLES
+      Factor: real := 1.0;
+      Result: real := 0.0;
+   ModuleDef
+   ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+   ModuleCode
+   EQUATIONBLOCK Calc COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+      Result = 0.0;
+   ENDDEF (*CalcType*);
+
+LOCALVARIABLES
+   Sink: real := 0.0;
+
+SUBMODULES
+   A Invocation
+      ( 0.0 , 0.0 , 0.0 , 0.5 , 0.5
+       ) : CalcType;
+   B Invocation
+      ( 0.5 , 0.0 , 0.0 , 0.5 , 0.5
+       ) : CalcType;
+
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+
+INSTANCE_DEPENDENCY_PROGRAM_DRAFT = INSTANCE_DEPENDENCY_PROGRAM.replace(
+    "      Result = 0.0;",
+    "      Result = Factor;",
+)
+
+RECORD_FIELD_PROGRAM = """\
+"Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-06-19-12:00:00.000, name: Demo"
+
+BasePicture Invocation
+   ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
+    ) : MODULEDEFINITION DateCode_ 1
+
+TYPEDEFINITIONS
+   RecType = RECORD DateCode_ 1
+      Flag "state flag": boolean OpSave := True;
+   ENDDEF
+TYPEDEFINITIONS
+   HolderType = MODULEDEFINITION DateCode_ 2
+   LOCALVARIABLES
+      Rec: RecType;
+   ModuleDef
+   ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+   ModuleCode
+   EQUATIONBLOCK Eq COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+      Rec.Flag = True;
+   ENDDEF (*HolderType*);
+
+SUBMODULES
+   Holder Invocation
+      ( 0.0 , 0.0 , 0.0 , 0.5 , 0.5
+       ) : HolderType;
+
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+
+RECORD_FIELD_PROGRAM_DRAFT = RECORD_FIELD_PROGRAM.replace(
+    'Flag "state flag": boolean OpSave := True;',
+    'Flag "state flag": boolean;',
+)
+
+FRAME_PROGRAM = """\
+"Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-06-19-12:00:00.000, name: Demo"
+
+BasePicture Invocation
+   ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
+    ) : MODULEDEFINITION DateCode_ 1
+
+LOCALVARIABLES
+   Flow: integer := 0;
+
+SUBMODULES
+   Frame1 Invocation
+      ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
+       ) : MODULEDEFINITION DateCode_ 2 ( Frame_Module )
+      LOCALVARIABLES
+         Local: integer := 0;
+      ModuleDef
+      ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+      ModuleCode
+         EQUATIONBLOCK FCalc COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+            Local = Flow + 1;
+      ENDDEF (*Frame1*);
+
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+
+FRAME_PROGRAM_DRAFT = FRAME_PROGRAM.replace("Local = Flow + 1;", "Local = Flow + 2;")
+
 SEQUENCE_OFFICIAL = """\
 "Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
 "Original file date: ---"
@@ -134,6 +326,16 @@ SEQUENCE_DRAFT_ADDED_STEP = SEQUENCE_OFFICIAL.replace(
 SEQUENCE_DRAFT_CHANGED_TRANSITION = SEQUENCE_OFFICIAL.replace(
     "SEQTRANSITION TrGo WAIT_FOR StartCmd",
     "SEQTRANSITION TrGo WAIT_FOR NOT StartCmd",
+)
+
+SEQUENCE_WITH_LITERAL_TRANSITION = SEQUENCE_OFFICIAL.replace(
+    "            Status = 1;\n   ENDSEQUENCE",
+    "            Status = 1;\n      SEQTRANSITION TrFalse WAIT_FOR False\n   ENDSEQUENCE",
+)
+
+SEQUENCE_WITH_CHANGED_LITERAL_TRANSITION = SEQUENCE_WITH_LITERAL_TRANSITION.replace(
+    "SEQTRANSITION TrFalse WAIT_FOR False",
+    "SEQTRANSITION TrFalse WAIT_FOR True",
 )
 
 FORMATTED_PROGRAM = """\

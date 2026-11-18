@@ -96,23 +96,55 @@ def _refresh_setup_target_list(self: Any) -> None:
 
     self._setup_target_names_list = configured_targets
 
+    highlight_index: int | None = None
+    if self._selected_configured_target is not None:
+        for index, name in enumerate(configured_targets):
+            if name.casefold() == self._selected_configured_target.casefold():
+                highlight_index = index
+                break
+
     existing_labels = [
         str(getattr(next(iter(child.children), _TEXTUAL_STATIC("")), "renderable", "")) for child in lv.children
     ]
     if existing_labels != configured_targets:
         lv.clear()
-        for target in configured_targets:
-            lv.append(_TEXTUAL_LIST_ITEM(_TEXTUAL_STATIC(target)))
-
-    if self._selected_configured_target is not None:
-        for i, name in enumerate(configured_targets):
-            if name.casefold() == self._selected_configured_target.casefold():
-                lv.index = i
-                break
+        for index, target in enumerate(configured_targets):
+            item = _TEXTUAL_LIST_ITEM(_TEXTUAL_STATIC(target))
+            if index == highlight_index:
+                # ``ListView.clear`` posts a highlight reset; marking the item
+                # at creation keeps the selection visible even when the reset
+                # is processed after the rebuild.
+                item.set_class(True, "-highlight")
+            lv.append(item)
+        if highlight_index is not None:
+            _apply_setup_target_index(self, lv, highlight_index)
+            lv.call_after_refresh(_apply_setup_target_index, self, lv, highlight_index)
+    elif highlight_index is not None:
+        lv.index = highlight_index
 
     has_selection = self._selected_configured_target is not None and bool(configured_targets)
     with suppress(*_TEXTUAL_QUERY_ERRORS):
         self.query_one("#setup-target-remove", _TEXTUAL_BUTTON).disabled = not has_selection
+
+
+def _apply_setup_target_index(self: Any, list_view: Any, index: int) -> None:
+    """Restore the highlight after a rebuilt list has mounted its items."""
+    if not (0 <= index < len(getattr(list_view, "children", ()))):
+        return
+    list_view.index = index
+    if index < len(self._setup_target_names_list):
+        self._selected_configured_target = self._setup_target_names_list[index]
+    with suppress(*_TEXTUAL_QUERY_ERRORS):
+        self.query_one("#setup-target-remove", _TEXTUAL_BUTTON).disabled = False
+
+
+def _selected_setup_target_index(self: Any) -> int | None:
+    if self._selected_configured_target is None:
+        return None
+    for index, name in enumerate(self._setup_target_names_list):
+        if name.casefold() == self._selected_configured_target.casefold():
+            return index
+    return None
 
 
 def _refresh_setup_settings_labels(self: Any) -> None:
@@ -146,6 +178,14 @@ def on_list_view_highlighted(self: Any, event: Any) -> None:
     index = getattr(lv, "index", None)
     if index is not None and 0 <= index < len(self._setup_target_names_list):
         self._selected_configured_target = self._setup_target_names_list[index]
+    elif len(getattr(lv, "children", ())):
+        # An empty highlight while items are mounted is the queued reset that
+        # ``ListView.clear`` posts during a rebuild. Restore the selected row
+        # instead of treating it as a real deselection.
+        restored = _selected_setup_target_index(self)
+        if restored is not None and restored != index:
+            lv.index = restored
+            return
     else:
         self._selected_configured_target = None
     has_selection = self._selected_configured_target is not None

@@ -417,6 +417,7 @@ def _index_program(
         graph.moduletype_defs.update(delta.moduletype_defs)
         graph.datatype_defs.update(delta.datatype_defs)
         graph.source_files.update(delta.source_files)
+        graph.source_file_libraries.update(delta.source_file_libraries)
         graph.add_library_dependencies(library_name, dep_libs)
         lib_names[name.casefold()] = library_name
         if binding.stage_timing_sink is not None:

@@ -13,6 +13,9 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 - `findings` text grouping prints analyzer and finding labels instead of
   machine identifiers, and NDJSON output starts with an envelope record that
   carries the run, filters, summary, and groups.
+- Change Review reports module parameter connection changes, such as a
+  submodule parameter remapped to another source, with the connection text on
+  both sides.
 
 ### Changed
 
@@ -90,6 +93,23 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   compressed and byte-coded files keep exact character offsets.
 - The AST refresh modal renders a bounded status tail and can always be closed,
   including while a rebuild is still running.
+- A rebuilt target or project list keeps its highlight, so Open and Remove stay
+  enabled and act on the visible selection.
+- Change Review compares datatypes, block, step and sequence names, and module
+  paths case-insensitively, like the language does.
+- Change Review reports steps with no code and steps nested in alternative,
+  parallel or subsequence bodies as membership changes.
+- Change Review snippet lookup is keyed by library and file, so same-named
+  files in different libraries no longer read the wrong source.
+- Change Review pairs reordered and shifted statements by position and target,
+  so a changed `IF` block is one change instead of an add plus a remove, and an
+  inserted statement does not misalign the statements after it.
+- Change Review keeps a transition's own span (including a literal condition)
+  and derives block spans from their statements.
+- Record-field declarations retain their initializer and modifiers in Change
+  Review.
+- Frame-module code is indexed in the frame's own variable scope, so its
+  references and call signatures are visible to Change Review.
 
 ## [2026.11.5] - 2026-11-15
 

@@ -60,6 +60,10 @@ def _source_files_factory() -> set[Path]:
     return set()
 
 
+def _source_file_libraries_factory() -> dict[Path, str]:
+    return {}
+
+
 def _analysis_manifest_files_factory() -> frozenset[Path]:
     return frozenset()
 
@@ -148,6 +152,8 @@ class ProjectGraph:
     # Track libraries that couldn't be loaded (e.g., proprietary ABB libraries)
     unavailable_libraries: set[str] = field(default_factory=_unavailable_libraries_factory)
     source_files: set[Path] = field(default_factory=_source_files_factory)
+    #: Source path -> library that owns it, recorded when the program is indexed.
+    source_file_libraries: dict[Path, str] = field(default_factory=_source_file_libraries_factory)
     analysis_cache_key: str | None = None
     analysis_manifest_files: frozenset[Path] = field(default_factory=_analysis_manifest_files_factory)
     load_stage_timings: dict[str, float] = field(default_factory=_timings_factory)
@@ -286,6 +292,10 @@ class ProjectGraph:
         self.record_root_origin(identity, source_path=source_path, library_name=library_name)
         if source_path:
             self.source_files.add(source_path)
+            if library_name:
+                # Library names disambiguate same-named files in different
+                # libraries, so consumers can address a source file exactly.
+                self.source_file_libraries[source_path] = library_name
 
         for m in bp.moduletype_defs:
             if source_path and not m.origin_file:

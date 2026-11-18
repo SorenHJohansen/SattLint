@@ -68,9 +68,17 @@ running) and Change Review source decoding, which now reads through
 `source_text_for_parse` so compressed and byte-coded files keep their offsets.
 The parser dependency moves to 2026.11.7.
 
+Fourth 2026-11-17 pass, the UI and Change Review Mediums. Fixed with a
+dedicated regression test: C5-12 (a rebuilt target or project list keeps its
+highlight, so Open and Remove stay enabled), C5-13 (the semantic diff compares
+datatypes, block/step/sequence names and module paths case-insensitively), C5-14
+(empty and branch-nested SFC steps are reported as membership changes), and
+C5-15 (source snippets are addressed by library and file, so same-named files in
+different libraries no longer collapse).
+
 Still open from the Medium list (kept verbatim below): the dataflow pairwise
 scan cost, library-scoped record definitions, empty semantic indexes,
-C3-9 to C3-14, C1-13, C1-17 to C1-19, C1-21, C5-12 to C5-15, and C6-2 to C6-5.
+C3-9 to C3-14, C1-13, C1-17 to C1-19, C1-21, and C6-2 to C6-5.
 All Low and nit items are open. The gate (`ruff`, `ruff format`, `pyright`, the
 full pytest suite, `scripts/check_docs.py`, pre-commit) is clean on the fixed
 slice.
@@ -195,10 +203,10 @@ Duplicate of earlier items: C1-22 restates the pseudo-target count mismatch (A8,
 
 - C5-10: a failed or cancelled run is reported as success. The completion message ignores analyzer failures and cancellation (`ui/_app_textual_analyze.py:448-455`).
 - C5-11, fixed 2026-11-17: typing an analyzer filter silently clears selections that do not match, and clearing the filter does not restore them (`ui/_app_textual_analyze.py:155-160`, `:390-402`).
-- C5-12: a rebuilt ListView loses its highlight, so Open and Remove can stay disabled or act on nothing. The results list already works around this with `call_after_refresh` (`ui/_app_textual_setup_targets.py:107-111`, `ui/_app_textual_widgets.py:560-563`).
-- C5-13: case-insensitive identifiers are compared case-sensitively in the semantic diff, so `EQUATIONBLOCK Main` versus `MAIN`, or `Integer` versus `integer`, reports a change (`change_review/_code_model.py:141-142`, `:188-194`, `semantic_diff.py:221-233`, `impact.py:77-86`).
-- C5-14: structural sequence edits can be invisible. A step with empty blocks and no fork produces no statement and never appears, and branch-nested steps are never matched (`change_review/semantic_diff.py:274-279`, `:422-456`).
-- C5-15: review source snippets are keyed by bare file name, so two libraries with a same-named source file collapse to one and snippets can read the wrong file (`change_review/loader.py:78-82`, `source.py:20-39`).
+- C5-12, fixed 2026-11-17: a rebuilt ListView loses its highlight, so Open and Remove can stay disabled or act on nothing. The results list already works around this with `call_after_refresh` (`ui/_app_textual_setup_targets.py:107-111`, `ui/_app_textual_widgets.py:560-563`).
+- C5-13, fixed 2026-11-17: case-insensitive identifiers are compared case-sensitively in the semantic diff, so `EQUATIONBLOCK Main` versus `MAIN`, or `Integer` versus `integer`, reports a change (`change_review/_code_model.py:141-142`, `:188-194`, `semantic_diff.py:221-233`, `impact.py:77-86`).
+- C5-14, fixed 2026-11-17: structural sequence edits can be invisible. A step with empty blocks and no fork produces no statement and never appears, and branch-nested steps are never matched (`change_review/semantic_diff.py:274-279`, `:422-456`).
+- C5-15, fixed 2026-11-17: review source snippets are keyed by bare file name, so two libraries with a same-named source file collapse to one and snippets can read the wrong file (`change_review/loader.py:78-82`, `source.py:20-39`).
 - C5-16, fixed 2026-11-17: a second interaction request is completed with `None` instead of being queued, so the caller treats an unseen confirmation as a denial (`ui/_app_textual_actions.py:182-186`, `ui/_app_textual_shared.py:202-218`).
 - C5-17, fixed 2026-11-17: Change Review aborts the whole batch on one bad target, unlike Analyze, so one stale target blocks review generation for every valid target (`application/change_review.py:33-36`).
 - C5-18: the draft-mode file browser hides targets the loader accepts, because it filters on `.s` and `.l` only and ignores the official fallbacks (`ui/_app_textual_setup_targets.py:308-309`, `core/syntax.py:70-76`).

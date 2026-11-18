@@ -67,6 +67,8 @@ def _render_direct_context(change: ChangeChange) -> list[str]:
     context = change.semantic_context
     if context is None:
         return []
+    if not context.sequence_name and not context.reads and not context.produces and not context.callees:
+        return []
     lines: list[str] = ["#### Direct semantic context", ""]
     if context.sequence_name:
         lines.extend([f"**Sequence:** `{context.sequence_name}`", ""])
