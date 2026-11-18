@@ -100,6 +100,10 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   file, hides `PRIVATE_` types from other units, and follows the unit's
   dependency sidecar before the shared library folder. Duplicate type names in
   one library folder therefore resolve instead of failing the analyzer.
+- Datatype-field findings stay inside the analyzed target. Dependency and
+  reverse-consumer typedef bodies still contribute usage evidence, but no longer
+  produce findings, and a `TypeDef:` path is only rewritten to an invocation
+  inside the target rather than into another loaded unit.
 - A rebuilt target or project list keeps its highlight, so Open and Remove stay
   enabled and act on the visible selection.
 - Change Review compares datatypes, block, step and sequence names, and module

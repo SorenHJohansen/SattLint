@@ -383,10 +383,10 @@ def _target_is_library(cfg: ConfigDict, project_bp: BasePicture, graph: ProjectG
     return project_application.target_is_library(cfg, project_bp, graph)
 
 
-def _rewrite_typedef_issue_paths(report: object, base_picture: BasePicture, graph: ProjectGraph) -> None:
+def _rewrite_typedef_issue_paths(report: object, base_picture: BasePicture) -> None:
     issues = getattr(report, "issues", None)
     if isinstance(issues, list):
-        rewrite_typedef_paths(cast(list[object], issues), base_picture, graph)
+        rewrite_typedef_paths(cast(list[object], issues), base_picture)
 
 
 def _run_self_check_preflight(
@@ -600,7 +600,7 @@ def collect_run_checks_result(  # noqa: PLR0915
                         failures=tuple(load_failures),
                     )
                 analyzer_timings_ms[spec.key] = round((perf_counter() - analyzer_started_at) * 1000, 3)
-                _rewrite_typedef_issue_paths(report, context.base_picture, graph)
+                _rewrite_typedef_issue_paths(report, context.base_picture)
                 phase_timings_ms = profiling_module.normalize_phase_timings_ms(getattr(report, "phase_timings", None))
                 if phase_timings_ms:
                     analyzer_phase_timings_ms[spec.key] = phase_timings_ms

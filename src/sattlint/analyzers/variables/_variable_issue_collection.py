@@ -264,7 +264,7 @@ def _add_field_usage_asymmetry_issues(self: VariablesAnalyzer) -> None:
 
     datatype_usage: dict[str, _DatatypeFieldUsage] = {}
     instances: list[_InstanceFieldUsage] = []
-    for path, variable, role, _root_owned_decl in iter_variables_for_datatype_field_analysis(self):
+    for path, variable, role, root_owned_decl in iter_variables_for_datatype_field_analysis(self):
         if isinstance(variable.datatype, ScalarDatatype):
             continue
 
@@ -285,6 +285,10 @@ def _add_field_usage_asymmetry_issues(self: VariablesAnalyzer) -> None:
         )
         state.read_leaf_keys.update(read_leaf_keys)
         state.write_leaf_keys.update(write_leaf_keys)
+        # Dependency typedef bodies contribute usage evidence above, but a
+        # finding belongs to the analyzed target only.
+        if not root_owned_decl:
+            continue
         instances.append(
             _InstanceFieldUsage(
                 path=tuple(path),
@@ -355,6 +359,25 @@ def _is_const_field(self: VariablesAnalyzer, variable: Variable, field_path: str
     return False
 
 
+def _typedef_path_is_root_owned(self: VariablesAnalyzer, path: list[str]) -> bool:
+    """Whether every typedef named in *path* belongs to the analyzed target.
+
+    Variables reached through a scope context carry no origin of their own, so
+    the enclosing ``TypeDef:`` segment is the only evidence available.
+    """
+    for segment in path:
+        if not segment.startswith("TypeDef:"):
+            continue
+        name = segment.removeprefix("TypeDef:").casefold()
+        definitions = [mt for mt in (self.bp.moduletype_defs or []) if mt.name.casefold() == name]
+        if definitions and not any(
+            self.is_from_root_origin(getattr(mt, "origin_file", None), getattr(mt, "origin_lib", None))
+            for mt in definitions
+        ):
+            return False
+    return True
+
+
 def iter_variables_for_datatype_field_analysis(
     self: VariablesAnalyzer,
 ) -> list[tuple[list[str], Variable, str, bool]]:
@@ -419,7 +442,7 @@ def iter_variables_for_datatype_field_analysis(
             root_owned = self.is_from_root_origin(
                 getattr(variable, "origin_file", None),
                 getattr(variable, "origin_lib", None),
-            )
+            ) and _typedef_path_is_root_owned(self, path)
             _append_variable(path, variable, role, root_owned)
 
     return variables

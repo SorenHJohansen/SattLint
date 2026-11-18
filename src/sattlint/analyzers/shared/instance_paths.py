@@ -5,7 +5,9 @@ invocation of it too, and SattLine removes moduletypes that have no invocation.
 Analyzer passes that study a moduletype body once therefore currently attribute
 their findings to a synthetic ``TypeDef:Name`` module path, which is invisible
 to SattLine engineers. These helpers map such paths back to the first real
-invocation (instance) found anywhere in the loaded graph.
+invocation (instance) in the analyzed picture. Reverse consumers loaded only to
+measure usage are deliberately excluded, so a finding never names a unit that
+was not part of the run.
 """
 
 from __future__ import annotations
@@ -87,14 +89,16 @@ def first_instance_path_for_moduletype(
 def rewrite_typedef_paths(
     issues: Iterable[Any],
     base_picture: BasePicture,
-    graph: ProjectGraph | None = None,
 ) -> None:
     """Replace any ``TypeDef:Name`` segment in each issue's module path in place.
 
     Also rewrites the same ``TypeDef:Name`` tokens inside the issue's message and
-    ``data`` so leaf text agrees with the rewritten branch. If no invocation
-    exists anywhere in the loaded graph, the ``TypeDef:`` text is left unchanged
-    so the finding is never lost.
+    ``data`` so leaf text agrees with the rewritten branch. Only invocations
+    inside the analyzed picture are used: a reverse consumer or dependency that
+    happens to invoke the same type is outside the reported target, and routing
+    a finding through its tree would name a unit the user did not analyze. If
+    the picture has no invocation, the ``TypeDef:`` text is left unchanged so
+    the finding is never lost.
     """
     index: dict[str, list[list[str]]] | None = None
     for issue in issues:
@@ -105,7 +109,7 @@ def rewrite_typedef_paths(
         if not any(isinstance(seg, str) and seg.startswith(_TYPEDEF_PREFIX) for seg in module_path):
             continue
         if index is None:
-            index = collect_instance_paths(base_picture, graph)
+            index = collect_instance_paths(base_picture)
         rewritten = _rewrite_typedef_path(module_path, index)
         module_path[:] = cast(list[Any], rewritten)
         _rewrite_typedef_text(issue, index)

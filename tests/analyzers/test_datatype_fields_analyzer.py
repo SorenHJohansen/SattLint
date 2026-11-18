@@ -72,6 +72,52 @@ def _picture_with_unused_field() -> BasePicture:
     )
 
 
+def test_dependency_typedef_does_not_emit_field_findings() -> None:
+    from dataclasses import replace  # noqa: PLC0415
+
+    from sattline_parser.models.ast_model import ModuleTypeDef  # noqa: PLC0415
+
+    nested = SingleModule(
+        header=_hdr("Nested"),
+        moduleparameters=[],
+        localvariables=[Variable(name="Foreign", datatype="RecType")],
+        submodules=[],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="ReadForeign",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Foreign.B"), value=1)],
+                )
+            ],
+            sequences=[],
+        ),
+        parametermappings=[],
+    )
+    foreign_type = ModuleTypeDef(
+        name="ForeignHolder",
+        moduleparameters=[],
+        localvariables=[],
+        submodules=[nested],
+        moduledef=None,
+        modulecode=None,
+        origin_file="DependencyLib.s",
+        origin_lib="ProjectLib",
+    )
+    picture = replace(
+        _picture_with_unused_field(),
+        moduletype_defs=[foreign_type],
+        origin_file="Root.s",
+        origin_lib="ProjectLib",
+    )
+
+    report = analyze_datatype_fields(picture, analyzed_target_is_library=True)
+
+    assert not any("TypeDef:ForeignHolder" in ".".join(issue.module_path or ()) for issue in report.issues)
+
+
 def _unused_field_names(report: VariablesReport) -> set[str]:
     return {
         str(issue.field_path)

@@ -361,8 +361,11 @@ ANALYSIS_REPORT_CACHE_SCHEMA_VERSION = "2026-11-16-analyzer-settings"
 _ANALYSIS_REPORT_ANALYZER_VERSIONS = {
     "cyclomatic-complexity": "2026-11-06-default-thresholds",
     "sfc": "2026-11-06-sequence-start",
-    "variables": "2026-11-16-moduletype-traversal",
+    "variables": "2026-11-18-root-scope",
     "spec-compliance": "2026-11-16-typedef-path",
+    "datatype-fields": "2026-11-18-root-scope",
+    "moduletype-usage": "2026-11-18-private-visibility",
+    "picture-display-paths": "2026-11-18-private-visibility",
 }
 # Phase E: the analysis foundation (type graph + typedef/moduletype/datatype indices + symbol
 # skeleton) is a pure function of the parsed ASTs, so it is content-addressable. This version
