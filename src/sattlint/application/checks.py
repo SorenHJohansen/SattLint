@@ -287,7 +287,10 @@ def _persist_run_result(
     started_at: str,
     project_path: str = "",
 ) -> RunRecord | None:
-    if result.cancelled or result.failures or result.analyzer_failures or not _run_history_enabled(cfg):
+    # A failing analyzer leaves the other analyzers' results intact, and the
+    # record carries its failed status, so the run is still worth keeping.
+    # Cancelled runs and runs with unloaded targets have no complete result set.
+    if result.cancelled or result.failures or not _run_history_enabled(cfg):
         return None
     runs_dir = get_runs_dir_or_none()
     if runs_dir is None:

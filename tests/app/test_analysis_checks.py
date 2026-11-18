@@ -16,6 +16,7 @@ from sattlint.analyzers.framework import Issue, SimpleReport
 from sattlint.config import DEFAULT_CONFIG
 from sattlint.models.project_graph import ProjectGraph
 from sattlint.reporting import target_report as analysis_reporting_module
+from sattlint.runs import load_run
 from tests.helpers import AnalysisGraphStub, named_object
 from tests.helpers.app_analysis_support import *
 
@@ -1102,6 +1103,36 @@ def test_per_target_analyzer_raise_is_reported_as_analyzer_failure() -> None:
 
     assert result.targets[0].analyzers[0].status == "failed"
     assert "boom" in (result.targets[0].analyzers[0].summary or "")
+    assert [(failure.analyzer_name, failure.target_name) for failure in result.analyzer_failures] == [
+        ("State inference", "TargetA")
+    ]
+
+
+def test_failed_analyzer_still_saves_the_run(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(checks_application, "get_runs_dir_or_none", lambda: tmp_path / "runs")
+    monkeypatch.setattr(checks_application, "prune_runs", lambda *_args, **_kwargs: None)
+
+    def _explode(_context):
+        raise RuntimeError("boom")
+
+    loaded = SimpleNamespace(header=SimpleNamespace(name="TargetA"))
+    result = checks_application.collect_run_checks_result(
+        DEFAULT_CONFIG.copy() | {"analyzed_programs_and_libraries": ["TargetA"]},
+        ["state-inference"],
+        use_cache=False,
+        persist_run=True,
+        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", loaded, SimpleNamespace())])),
+        get_enabled_analyzers_fn=lambda: [SimpleNamespace(key="state-inference", name="State inference", run=_explode)],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+    )
+
+    assert result.run_id is not None
+    stored = load_run(result.run_id, runs_dir=tmp_path / "runs")
+    assert stored is not None
+    analyzer = stored.targets[0].analyzers[0]
+    assert analyzer.status == "failed"
+    assert "boom" in (analyzer.summary or "")
     assert [(failure.analyzer_name, failure.target_name) for failure in result.analyzer_failures] == [
         ("State inference", "TargetA")
     ]

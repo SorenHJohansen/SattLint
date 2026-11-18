@@ -93,6 +93,9 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   compressed and byte-coded files keep exact character offsets.
 - The AST refresh modal renders a bounded status tail and can always be closed,
   including while a rebuild is still running.
+- A run with a failed analyzer is saved to run history with that analyzer marked
+  failed, instead of being discarded, so the other analyzers' findings stay
+  reviewable.
 - A rebuilt target or project list keeps its highlight, so Open and Remove stay
   enabled and act on the visible selection.
 - Change Review compares datatypes, block, step and sequence names, and module
