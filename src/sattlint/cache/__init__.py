@@ -361,7 +361,7 @@ ANALYSIS_REPORT_CACHE_SCHEMA_VERSION = "2026-11-16-analyzer-settings"
 _ANALYSIS_REPORT_ANALYZER_VERSIONS = {
     "cyclomatic-complexity": "2026-11-06-default-thresholds",
     "sfc": "2026-11-06-sequence-start",
-    "variables": "2026-11-18-root-scope",
+    "variables": "2026-11-16-moduletype-traversal",
     "spec-compliance": "2026-11-16-typedef-path",
     "datatype-fields": "2026-11-18-root-scope",
     "moduletype-usage": "2026-11-18-private-visibility",

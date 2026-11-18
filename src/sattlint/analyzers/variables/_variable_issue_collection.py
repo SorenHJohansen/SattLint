@@ -359,21 +359,29 @@ def _is_const_field(self: VariablesAnalyzer, variable: Variable, field_path: str
     return False
 
 
-def _typedef_path_is_root_owned(self: VariablesAnalyzer, path: list[str]) -> bool:
+def _typedef_root_ownership(self: VariablesAnalyzer) -> dict[str, bool]:
+    """Map each typedef name to whether some definition belongs to the target.
+
+    Built once per pass: scanning every merged typedef for every context would
+    be quadratic on a large project, and the merged list holds every dependency
+    type.
+    """
+    ownership: dict[str, bool] = {}
+    for mt in self.bp.moduletype_defs or []:
+        key = mt.name.casefold()
+        owned = self.is_from_root_origin(getattr(mt, "origin_file", None), getattr(mt, "origin_lib", None))
+        ownership[key] = ownership.get(key, False) or owned
+    return ownership
+
+
+def _typedef_path_is_root_owned(path: list[str], ownership: dict[str, bool]) -> bool:
     """Whether every typedef named in *path* belongs to the analyzed target.
 
     Variables reached through a scope context carry no origin of their own, so
     the enclosing ``TypeDef:`` segment is the only evidence available.
     """
     for segment in path:
-        if not segment.startswith("TypeDef:"):
-            continue
-        name = segment.removeprefix("TypeDef:").casefold()
-        definitions = [mt for mt in (self.bp.moduletype_defs or []) if mt.name.casefold() == name]
-        if definitions and not any(
-            self.is_from_root_origin(getattr(mt, "origin_file", None), getattr(mt, "origin_lib", None))
-            for mt in definitions
-        ):
+        if segment.startswith("TypeDef:") and not ownership.get(segment.removeprefix("TypeDef:").casefold(), True):
             return False
     return True
 
@@ -429,8 +437,10 @@ def iter_variables_for_datatype_field_analysis(
             for variable in mt.localvariables or []:
                 _append_variable(td_path, variable, "localvariable", root_owned)
 
+    typedef_ownership = _typedef_root_ownership(self)
     for module_path, context in self.contexts_by_module_path.items():
         path = list(module_path)
+        path_is_root_owned = _typedef_path_is_root_owned(path, typedef_ownership)
         moduleparameter_keys = set(getattr(context, "moduleparameter_keys", ()))
         param_mapping_keys = set(getattr(context, "param_mappings", {}).keys())
         for variable_name, variable in getattr(context, "env", {}).items():
@@ -439,10 +449,10 @@ def iter_variables_for_datatype_field_analysis(
                 if variable_name in moduleparameter_keys or variable_name in param_mapping_keys
                 else "localvariable"
             )
-            root_owned = self.is_from_root_origin(
+            root_owned = path_is_root_owned and self.is_from_root_origin(
                 getattr(variable, "origin_file", None),
                 getattr(variable, "origin_lib", None),
-            ) and _typedef_path_is_root_owned(self, path)
+            )
             _append_variable(path, variable, role, root_owned)
 
     return variables
