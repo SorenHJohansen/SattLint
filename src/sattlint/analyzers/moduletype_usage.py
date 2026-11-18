@@ -91,6 +91,7 @@ def _collect_invocations(
                 current_file=scope.origin_file,
                 unavailable_libraries=None if graph is None else graph.unavailable_libraries,
                 library_dependencies=None if graph is None else graph.library_dependencies,
+                source_dependencies=None if graph is None else graph.source_dependencies,
             )
             invocation_key = (
                 id(definition),

@@ -102,6 +102,69 @@ def test_resolves_same_library_prefers_draft_source_file():
     assert resolved is mt_source
 
 
+def test_same_file_definition_wins_over_same_library_duplicates():
+    local = ModuleTypeDef(name="Stop_Drain", origin_lib="ProjectLib", origin_file="KaHACIPXLib.x", is_private=True)
+    other = ModuleTypeDef(name="Stop_Drain", origin_lib="ProjectLib", origin_file="KaHAXModullLib.x")
+    bp = BasePicture(
+        header=_header(),
+        origin_lib="ProjectLib",
+        origin_file="KaHACIPXLib.x",
+        moduletype_defs=[other, local],
+    )
+
+    resolved = _resolve_moduletype_def_strict(
+        bp,
+        "Stop_Drain",
+        current_library="ProjectLib",
+        current_file="KaHACIPXLib.x",
+    )
+
+    assert resolved is local
+
+
+def test_private_definition_is_not_visible_from_another_unit():
+    private = ModuleTypeDef(name="Stop_Drain", origin_lib="ProjectLib", origin_file="KaHACIPXLib.x", is_private=True)
+    public = ModuleTypeDef(name="Stop_Drain", origin_lib="ProjectLib", origin_file="KaHAXModullLib.x")
+    bp = BasePicture(
+        header=_header(),
+        origin_lib="ProjectLib",
+        origin_file="KaHAXDiluteLib.s",
+        moduletype_defs=[private, public],
+    )
+
+    resolved = _resolve_moduletype_def_strict(
+        bp,
+        "Stop_Drain",
+        current_library="ProjectLib",
+        current_file="KaHAXDiluteLib.s",
+        source_dependencies={"kahaxdilutelib": ["KaHAXModullLib"]},
+    )
+
+    assert resolved is public
+
+
+def test_source_dependencies_narrow_same_library_duplicates():
+    first = ModuleTypeDef(name="Stop_Drain", origin_lib="ProjectLib", origin_file="KaHACIPXLib.x")
+    second = ModuleTypeDef(name="Stop_Drain", origin_lib="ProjectLib", origin_file="KaHAXModullLib.x")
+    bp = BasePicture(
+        header=_header(),
+        origin_lib="ProjectLib",
+        origin_file="KaHAXDiluteLib.s",
+        moduletype_defs=[first, second],
+    )
+
+    resolved = _resolve_moduletype_def_strict(
+        bp,
+        "Stop_Drain",
+        current_library="ProjectLib",
+        current_file="KaHAXDiluteLib.s",
+        library_dependencies={"projectlib": ["kahaxmodulllib"]},
+        source_dependencies={"kahaxdilutelib": ["kahaxmodulllib"]},
+    )
+
+    assert resolved is second
+
+
 def test_resolution_helper_source_preference_and_label_edges():
     from sattlint.resolution.common import (  # noqa: PLC0415
         dedupe_moduletype_defs,

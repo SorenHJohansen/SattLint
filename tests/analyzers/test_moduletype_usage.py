@@ -65,6 +65,62 @@ def _picture(
     )
 
 
+def _stop_drain_instance(name: str) -> ModuleTypeInstance:
+    return ModuleTypeInstance(
+        header=_header(name),
+        moduletype_name="Stop_Drain",
+        parametermappings=[],
+    )
+
+
+def test_same_library_duplicate_type_names_resolve_by_declaring_file() -> None:
+    local_definition = ModuleTypeDef(
+        name="Stop_Drain",
+        datecode=1,
+        origin_file="DiluteLib.s",
+        origin_lib="ProjectLib",
+    )
+    private_definition = ModuleTypeDef(
+        name="Stop_Drain",
+        datecode=2,
+        is_private=True,
+        origin_file="CIPXLib.x",
+        origin_lib="ProjectLib",
+    )
+    public_definition = ModuleTypeDef(
+        name="Stop_Drain",
+        datecode=3,
+        origin_file="ModullLib.x",
+        origin_lib="ProjectLib",
+    )
+    library = BasePicture(
+        header=_header("DiluteLib"),
+        moduletype_defs=[local_definition],
+        submodules=[_stop_drain_instance("Local")],
+        origin_file="DiluteLib.s",
+        origin_lib="ProjectLib",
+    )
+    consumer = BasePicture(
+        header=_header("CIPXLib"),
+        moduletype_defs=[private_definition, public_definition],
+        submodules=[_stop_drain_instance("Uses")],
+        origin_file="CIPXLib.x",
+        origin_lib="ProjectLib",
+    )
+    graph = ProjectGraph(ast_by_name={"DiluteLib": library, "CIPXLib": consumer})
+    graph.source_dependencies["cipxlib"] = {"modullib"}
+
+    report = analyze_moduletype_usage(
+        library,
+        AnalysisContext(library, graph, target_is_library=True),
+    )
+
+    # Each file's invocation resolves to its own declaration instead of
+    # raising an ambiguity error across the shared library folder.
+    assert len(report.issues) == 1
+    assert "Stop_Drain" in report.issues[0].message
+
+
 @pytest.mark.parametrize("has_consumer_invocation", [False, True])
 @pytest.mark.parametrize("analyzed_target_is_library", [False, True])
 def test_module_type_usage_requires_an_invocation_outside_the_declaring_file(

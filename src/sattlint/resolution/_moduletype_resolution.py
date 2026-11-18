@@ -79,6 +79,7 @@ def select_moduletype_def_strict(
     current_file: str | None = None,
     unavailable_libraries: set[str] | None = None,
     library_dependencies: Mapping[str, Iterable[str]] | None = None,
+    source_dependencies: Mapping[str, Iterable[str]] | None = None,
 ) -> ModuleTypeDef:
     if not matches:
         available = sorted({mt.name for mt in (bp.moduletype_defs or [])})
@@ -89,6 +90,30 @@ def select_moduletype_def_strict(
 
     matches = dedupe_moduletype_defs(matches)
     preferred_extensions = preferred_source_extensions(current_file or bp.origin_file)
+
+    if current_file is not None:
+        current_file_cf = current_file.casefold()
+        # A unit's own definition is the one its code means, even when other
+        # units in the same library folder declare the same name.
+        same_file = [mt for mt in matches if (mt.origin_file or "").casefold() == current_file_cf]
+        if len(same_file) == 1:
+            return same_file[0]
+
+        # ``PRIVATE_`` types are visible only inside their declaring unit.
+        visible = [mt for mt in matches if not mt.is_private or (mt.origin_file or "").casefold() == current_file_cf]
+        if visible:
+            matches = visible
+
+        # The dependency sidecar names the units this file may use, which is
+        # more precise than the library folder several units can share.
+        unit_dependencies = (source_dependencies or {}).get(Path(current_file).stem.casefold(), ())
+        dependencies = {item.casefold() for item in unit_dependencies}
+        if dependencies:
+            declared_by_dependency = [
+                mt for mt in matches if Path(mt.origin_file or "").stem.casefold() in dependencies
+            ]
+            if declared_by_dependency:
+                matches = declared_by_dependency
 
     if len(matches) > 1:
         if current_library is None and bp.origin_lib:
@@ -140,6 +165,7 @@ def resolve_moduletype_def_strict(
     unavailable_libraries: set[str] | None = None,
     moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
     library_dependencies: Mapping[str, Iterable[str]] | None = None,
+    source_dependencies: Mapping[str, Iterable[str]] | None = None,
 ) -> ModuleTypeDef:
     key = moduletype_name.casefold()
     if moduletype_index is not None:
@@ -154,6 +180,7 @@ def resolve_moduletype_def_strict(
         current_file=current_file,
         unavailable_libraries=unavailable_libraries,
         library_dependencies=library_dependencies,
+        source_dependencies=source_dependencies,
     )
 
 

@@ -96,6 +96,10 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 - A run with a failed analyzer is saved to run history with that analyzer marked
   failed, instead of being discarded, so the other analyzers' findings stay
   reviewable.
+- Module-type resolution prefers the definition declared in the same source
+  file, hides `PRIVATE_` types from other units, and follows the unit's
+  dependency sidecar before the shared library folder. Duplicate type names in
+  one library folder therefore resolve instead of failing the analyzer.
 - A rebuilt target or project list keeps its highlight, so Open and Remove stay
   enabled and act on the visible selection.
 - Change Review compares datatypes, block, step and sequence names, and module
