@@ -73,6 +73,8 @@ class SemanticIndexReferenceSupportMixin:
             )
             self._references_by_file.setdefault(file_key, []).append(occurrence)
 
+            if not self.build_reference_index:
+                continue
             recorded_keys: set[tuple[str, ...]] = set()
             for definition_key in occurrence.definition_keys:
                 if definition_key in recorded_keys:

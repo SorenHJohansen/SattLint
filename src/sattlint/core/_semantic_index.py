@@ -64,12 +64,14 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         unavailable_libraries: set[str] | None = None,
         include_dependency_modules: bool = True,
         graphics_attachments: GraphicsAttachments | None = None,
+        build_reference_index: bool = True,
     ):
         self.base_picture = base_picture
         self.graphics_attachments = graphics_attachments or EMPTY_GRAPHICS_ATTACHMENTS
         self.root_origin_file = root_origin_file if root_origin_file is not None else base_picture.origin_file
         self.root_origin_library = root_origin_library if root_origin_library is not None else base_picture.origin_lib
         self.include_dependency_modules = include_dependency_modules
+        self.build_reference_index = build_reference_index
         self.type_graph = TypeGraph.from_basepicture(base_picture)
         self.symbol_table = CanonicalSymbolTable()
         self.unavailable_libraries = unavailable_libraries or set()

@@ -534,6 +534,10 @@ class _ModuleTreeWalker:
         self._ref_line_index = _build_ref_line_index(snapshot._references_by_file)
         self._modules: list[ModuleModel] = []
         self._produced_keys_by_module: dict[tuple[str, ...], set[_DefinitionKey]] = {}
+        # Every instance of the same typedef shares its statement models and
+        # fingerprints. Rebuilding them per instance multiplies a large project's
+        # memory by its instance count without changing one byte of the diff.
+        self._typedef_statements: dict[int, tuple[StatementModel, ...]] = {}
 
     def _is_root_origin(self, origin_file: str | None, origin_lib: str | None) -> bool:
         if self._include_dependency_modules:
@@ -555,13 +559,25 @@ class _ModuleTreeWalker:
         origin_library: str | None,
         connections: tuple[ConnectionModel, ...] = (),
     ) -> None:
-        statements, _ref_sites, _files = _collect_statements(
-            getattr(node, "modulecode", None),
-            source_file=origin_file,
-            source_library=origin_library,
-            ref_line_index=self._ref_line_index,
-            scope_keys=_node_scope_keys(node, module_path),
-        )
+        if isinstance(node, ModuleTypeDef):
+            statements = self._typedef_statements.get(id(node))
+            if statements is None:
+                statements = _collect_statements(
+                    node.modulecode,
+                    source_file=origin_file,
+                    source_library=origin_library,
+                    ref_line_index=self._ref_line_index,
+                    scope_keys=_node_scope_keys(node, module_path),
+                )[0]
+                self._typedef_statements[id(node)] = statements
+        else:
+            statements = _collect_statements(
+                getattr(node, "modulecode", None),
+                source_file=origin_file,
+                source_library=origin_library,
+                ref_line_index=self._ref_line_index,
+                scope_keys=_node_scope_keys(node, module_path),
+            )[0]
         produced: set[_DefinitionKey] = set()
         for statement in statements:
             produced.update(statement.produced_keys)
@@ -581,6 +597,39 @@ class _ModuleTreeWalker:
                 sequence_structure=_collect_sequence_structure(getattr(node, "modulecode", None)),
                 code_source_id=id(node),
                 sequence_steps=_collect_sequence_steps(getattr(node, "modulecode", None)),
+                connections=connections,
+            )
+        )
+
+    def _add_instance_module(
+        self,
+        instance: ModuleTypeInstance,
+        *,
+        module_path: tuple[str, ...],
+        origin_file: str | None,
+        origin_library: str | None,
+        connections: tuple[ConnectionModel, ...],
+    ) -> None:
+        """Record an instance whose typedef code is outside the reviewed origin.
+
+        The connection list still belongs to the reviewed project even when the
+        type's implementation lives in a dependency library, so the instance is
+        kept as a connection-only module instead of being dropped.
+        """
+        self._modules.append(
+            ModuleModel(
+                module_path=module_path,
+                kind="MT",
+                name=instance.header.name,
+                origin_file=origin_file,
+                origin_library=origin_library,
+                statements=(),
+                blocks=(),
+                dependency_keys=frozenset(),
+                declaration_span=None,
+                sequence_structure={},
+                code_source_id=id(instance),
+                sequence_steps=(),
                 connections=connections,
             )
         )
@@ -632,9 +681,18 @@ class _ModuleTreeWalker:
             else:
                 child_path = (*module_path, module.header.name)
                 typedef = self._resolve_typedef(module)
-                if typedef is None:
-                    continue
-                if not self._is_root_origin(typedef.origin_file, typedef.origin_lib):
+                if typedef is None or not self._is_root_origin(typedef.origin_file, typedef.origin_lib):
+                    self._add_instance_module(
+                        module,
+                        module_path=child_path,
+                        origin_file=origin_file,
+                        origin_library=origin_library,
+                        connections=_collect_connections(
+                            module,
+                            source_file=origin_file,
+                            source_library=origin_library,
+                        ),
+                    )
                     continue
                 self._add_module(
                     typedef,
