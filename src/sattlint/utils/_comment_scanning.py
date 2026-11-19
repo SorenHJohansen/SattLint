@@ -41,6 +41,22 @@ _MODULE_PATH_BREAK_KEYWORDS = frozenset(
 )
 
 
+@dataclass(frozen=True, slots=True)
+class CommentScanHit:
+    """One code-like comment found inside a module-code section."""
+
+    start_line: int
+    end_line: int
+    start_col: int
+    end_col: int
+    text: str
+    indicators: tuple[str, ...]
+    module_path: tuple[str, ...]
+    equation_name: str | None
+    sequence_name: str | None
+    step_name: str | None
+
+
 @dataclass
 class _ModuleCodeContext:
     equation_name: str | None = None
@@ -56,10 +72,7 @@ def scan_comments_with_code[THit](  # noqa: PLR0915
     is_identifier_start: Callable[[str], bool],
     consume_identifier: Callable[[str, int], tuple[str, int]],
     comment_code_indicators: Callable[[str], tuple[str, ...]],
-    hit_factory: Callable[
-        [int, int, int, int, str, tuple[str, ...], tuple[str, ...], str | None, str | None, str | None],
-        THit,
-    ],
+    hit_factory: Callable[[CommentScanHit], THit],
 ) -> list[THit]:
     hits: list[THit] = []
     n = len(text)
@@ -133,7 +146,9 @@ def scan_comments_with_code[THit](  # noqa: PLR0915
                         continue
 
                     if token_cf == _KEYWORD_ENDDEF:
-                        if module_code_paths and len(module_code_paths[-1]) == len(typed_module_stack):
+                        # Compare the full path: two nested modules can have
+                        # the same depth but belong to different definitions.
+                        if module_code_paths and module_code_paths[-1] == tuple(typed_module_stack):
                             module_code_paths.pop()
                             module_code_contexts.pop()
                         if typed_module_stack:
@@ -291,16 +306,18 @@ def scan_comments_with_code[THit](  # noqa: PLR0915
                         if indicators:
                             hits.append(
                                 hit_factory(
-                                    comment_start_line,
-                                    line,
-                                    comment_start_col,
-                                    col,
-                                    "".join(comment_text),
-                                    indicators,
-                                    module_code_paths[-1],
-                                    current_context.equation_name,
-                                    current_context.sequence_name,
-                                    current_context.step_name,
+                                    CommentScanHit(
+                                        start_line=comment_start_line,
+                                        end_line=line,
+                                        start_col=comment_start_col,
+                                        end_col=col,
+                                        text="".join(comment_text),
+                                        indicators=indicators,
+                                        module_path=module_code_paths[-1],
+                                        equation_name=current_context.equation_name,
+                                        sequence_name=current_context.sequence_name,
+                                        step_name=current_context.step_name,
+                                    )
                                 )
                             )
                     comment_text = []

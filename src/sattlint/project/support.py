@@ -19,20 +19,6 @@ PARSE_FAILURE_MARKER = " parse/transform error: "
 #: Prefix for a target the loader could not load at all. There is no source
 #: position; the detail names the failing program and its dependency edge.
 LOAD_FAILURE_MARKER = " load error: "
-FAILURE_MARKERS = (PARSE_FAILURE_MARKER, LOAD_FAILURE_MARKER)
-
-
-def split_failure_item(item: str) -> tuple[str, str] | None:
-    """Split a recorded failure entry into ``(name, detail)``.
-
-    Both failure kinds are recorded in ``ProjectGraph.missing`` with a stable
-    marker, so the report can regroup them under the target they belong to.
-    """
-    for marker in FAILURE_MARKERS:
-        if marker in item:
-            name, detail = item.split(marker, 1)
-            return name, detail
-    return None
 
 
 class TargetLoadError(RuntimeError):
@@ -52,13 +38,14 @@ class TargetLoadError(RuntimeError):
         self.warnings = list(warnings or [])
         self.direct_dependencies = list(direct_dependencies or [])
         self.failures = dict(failures or {})
+        # ``missing`` also carries entries with no program, such as a missing
+        # dependency file. Program failures are resolved through the typed
+        # record, keyed by the message already stored on it.
+        self._failures_by_message = {failure.message: failure for failure in self.failures.values()}
         super().__init__(self._build_message())
 
     @staticmethod
     def _extract_missing_name(item: str) -> str | None:
-        failure = split_failure_item(item)
-        if failure is not None:
-            return failure[0]
         match = re.match(r"Missing code file for '([^']+)'", item)
         if match:
             return match.group(1)
@@ -84,14 +71,15 @@ class TargetLoadError(RuntimeError):
         return f" ({', '.join(parts)})"
 
     def _format_missing_item(self, item: str) -> str:
-        failure_item = split_failure_item(item)
-        if failure_item is None:
+        failure = self._failures_by_message.get(item)
+        if failure is None:
             return item
+        detail = failure.detail if failure.detail is not None else failure.message
+        return f"{failure.name}: {detail}{self._format_failure_location(failure)}"
 
-        name, detail = failure_item
-        failure = self.failures.get(casefold_key(name))
-        suffix = "" if failure is None else self._format_failure_location(failure)
-        return f"{name}: {detail}{suffix}"
+    def _missing_item_name(self, item: str) -> str | None:
+        failure = self._failures_by_message.get(item)
+        return failure.name if failure is not None else self._extract_missing_name(item)
 
     def _build_message(self) -> str:  # noqa: PLR0915
         direct_keys = {casefold_key(name) for name in self.direct_dependencies}
@@ -105,7 +93,7 @@ class TargetLoadError(RuntimeError):
         other_warnings: list[str] = []
 
         for item in self.missing:
-            failure_name = self._extract_missing_name(item)
+            failure_name = self._missing_item_name(item)
             if failure_name is None:
                 other_failures.append(item)
                 continue

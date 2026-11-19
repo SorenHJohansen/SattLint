@@ -15,7 +15,7 @@ from sattline_parser.models.ast_model import (
 )
 
 from sattlint.analyzers import variable_usage_reporting as reporting
-from sattlint.models.usage import VariableUsage
+from sattlint.models.usage import AccessKind, VariableUsage
 from sattlint.reporting.variables_report import IssueKind
 
 
@@ -76,7 +76,7 @@ def test_report_datatype_usage_reports_read_write_and_no_field_level_accesses(mo
     used_var = Variable(name="Dv", datatype=IssueKind.UNUSED.value)
     idle_var = Variable(name="Dv", datatype=IssueKind.UNUSED.value)
 
-    used_usage = VariableUsage(usage_locations=[(["Root", "Unit"], "read")])
+    used_usage = VariableUsage(usage_locations=[(["Root", "Unit"], AccessKind.READ)])
     used_usage.field_reads["state"] = [["Root", "Unit"]]
     used_usage.field_writes["state"] = [["Root", "Unit"]]
     idle_usage = VariableUsage()
@@ -227,7 +227,11 @@ def test_report_module_localvar_fields_reports_no_field_accesses(monkeypatch: py
 def test_debug_variable_usage_reports_field_and_whole_variable_details(monkeypatch: pytest.MonkeyPatch) -> None:
     variable = Variable(name="Dv", datatype=IssueKind.UNUSED.value)
     usage = VariableUsage(
-        usage_locations=[(["Root", "Unit"], "read"), (["Root", "Unit"], "read"), (["Root", "Area"], "write")]
+        usage_locations=[
+            (["Root", "Unit"], AccessKind.READ),
+            (["Root", "Unit"], AccessKind.READ),
+            (["Root", "Area"], AccessKind.WRITE),
+        ]
     )
     usage.read = True
     usage.written = True
@@ -262,7 +266,7 @@ def test_report_datatype_usage_reports_missing_and_single_direction_accesses(
 
     read_var = Variable(name="Dv", datatype=IssueKind.UNUSED.value)
     write_var = Variable(name="Dv", datatype=IssueKind.UNUSED.value)
-    read_usage = VariableUsage(usage_locations=[(["Root", "Unit"], "read")])
+    read_usage = VariableUsage(usage_locations=[(["Root", "Unit"], AccessKind.READ)])
     read_usage.field_reads["read_leaf"] = [["Root", "Unit"]]
     write_usage = VariableUsage(usage_locations=[])
     write_usage.field_writes["write_leaf"] = [["Root", "Unit"], ["Root", "Unit"]]
@@ -286,11 +290,10 @@ def test_report_module_localvar_fields_reports_whole_variable_accesses(monkeypat
     local_var = Variable(name="Dv", datatype="UsageRecord")
     usage = VariableUsage(
         usage_locations=[
-            (["Root", "Unit"], "read"),
-            (["Root", "Unit"], "read"),
-            (["Root", "Unit", "Child"], "write"),
-            (["Elsewhere"], "write"),
-            (["Root", "Unit"], "ignored"),
+            (["Root", "Unit"], AccessKind.READ),
+            (["Root", "Unit"], AccessKind.READ),
+            (["Root", "Unit", "Child"], AccessKind.WRITE),
+            (["Elsewhere"], AccessKind.WRITE),
         ]
     )
     analyzer = SimpleNamespace(

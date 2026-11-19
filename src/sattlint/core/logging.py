@@ -1,7 +1,6 @@
 """Logging configuration for SattLint.
 
-Owns the module-wide logger, default log levels, and debug-mode toggling,
-elevated from the old flat ``app_base`` module as part of Phase 2.
+Owns the module-wide logger, default log levels, and debug-mode toggling.
 """
 
 from __future__ import annotations

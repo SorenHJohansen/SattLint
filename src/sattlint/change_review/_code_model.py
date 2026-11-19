@@ -45,6 +45,7 @@ from ..core._semantic_helpers import source_file_key
 from ..core._semantic_snapshot import ReferenceOccurrence, SemanticSnapshot
 from ..core.ast_tools import iter_variable_refs
 from ..core.origin import is_root_origin
+from ..models.project_graph import program_identity
 from ._ast_normalize import normalize_ast_value
 
 _StatementKey = tuple[str | int, ...]
@@ -272,6 +273,8 @@ def _collect_sequence_structure(
 
 
 def _module_name(node: BasePicture | SingleModule | FrameModule | ModuleTypeDef) -> str:
+    if isinstance(node, BasePicture):
+        return program_identity(node)
     if isinstance(node, ModuleTypeDef):
         return node.name
     return node.header.name
@@ -726,7 +729,7 @@ class _ModuleTreeWalker:
 
     def build(self) -> CodeModel:
         root = self._snapshot.base_picture
-        root_path = (root.header.name,)
+        root_path = (program_identity(root),)
         root_file = root.origin_file or self._snapshot.entry_file.name
         self._add_module(
             root,

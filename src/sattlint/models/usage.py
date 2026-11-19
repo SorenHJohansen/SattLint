@@ -1,9 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 
 
-def _empty_usage_locations() -> list[tuple[list[str], str]]:
+class AccessKind(StrEnum):
+    """Whether a recorded whole-variable location was read or written."""
+
+    READ = "read"
+    WRITE = "write"
+
+
+def _empty_usage_locations() -> list[tuple[list[str], AccessKind]]:
     return []
 
 
@@ -30,7 +38,7 @@ class VariableUsage:
     whole_read: bool = False
     whole_write: bool = False
     record_locations: bool = True
-    usage_locations: list[tuple[list[str], str]] = field(default_factory=_empty_usage_locations)
+    usage_locations: list[tuple[list[str], AccessKind]] = field(default_factory=_empty_usage_locations)
     field_reads: dict[str, list[list[str]]] = field(default_factory=_empty_field_locations)
     field_writes: dict[str, list[list[str]]] = field(default_factory=_empty_field_locations)
     ui_usage_locations: list[list[str]] = field(default_factory=_empty_module_paths)
@@ -57,7 +65,7 @@ class VariableUsage:
         else:
             self.non_ui_read = True
         if self.record_locations:
-            self.usage_locations.append((list(module_path), "read"))
+            self.usage_locations.append((list(module_path), AccessKind.READ))
 
     def mark_ui_read(self, module_path: list[str]) -> None:
         self.mark_read(module_path, ui=True)
@@ -72,7 +80,7 @@ class VariableUsage:
         """Mark a specific field (or nested field) as read."""
         if field_path not in self.field_reads:
             self.field_reads[field_path] = []
-        self.field_reads[field_path].append(location)
+        self.field_reads[field_path].append(list(location))
         self.read = True
         if ui:
             self.ui_read = True
@@ -85,23 +93,23 @@ class VariableUsage:
         self.written = True
         self.whole_write = True
         if self.record_locations:
-            self.usage_locations.append((list(module_path), "write"))
+            self.usage_locations.append((list(module_path), AccessKind.WRITE))
 
     def mark_field_written(self, field_path: str, location: list[str]) -> None:
         """Mark a specific field (or nested field) as written."""
         if field_path not in self.field_writes:
             self.field_writes[field_path] = []
-        self.field_writes[field_path].append(location)
+        self.field_writes[field_path].append(list(location))
         self.written = True
 
     @property
     def distinct_reader_count(self) -> int:
-        locations = [path for path, kind in self.usage_locations if kind == "read"]
+        locations = [path for path, kind in self.usage_locations if kind is AccessKind.READ]
         locations.extend(path for locations in self.field_reads.values() for path in locations)
         return _distinct_location_count(locations)
 
     @property
     def distinct_writer_count(self) -> int:
-        locations = [path for path, kind in self.usage_locations if kind == "write"]
+        locations = [path for path, kind in self.usage_locations if kind is AccessKind.WRITE]
         locations.extend(path for locations in self.field_writes.values() for path in locations)
         return _distinct_location_count(locations)

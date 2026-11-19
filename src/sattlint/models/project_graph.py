@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..parser_api import BasePicture, DataType, ModuleTypeDef
-from ._validation_notice import ValidationNotice
 
 if TYPE_CHECKING:
     from ..graphics.picture_display_paths import PictureDisplayOccurrence, PictureDisplayPathDiagnostic
@@ -24,7 +23,7 @@ def _moduletype_defs_factory() -> dict[tuple[str, str, str], ModuleTypeDef]:
     return {}
 
 
-def _datatype_defs_factory() -> dict[str, DataType]:
+def _datatype_defs_factory() -> dict[tuple[str, str, str], DataType]:
     return {}
 
 
@@ -42,10 +41,6 @@ def _warnings_factory() -> list[str]:
 
 def _root_origins_factory() -> dict[str, RootOrigin]:
     return {}
-
-
-def _warning_notices_factory() -> list[tuple[str, ValidationNotice]]:
-    return []
 
 
 def _failures_factory() -> dict[str, ProjectFailure]:
@@ -109,9 +104,42 @@ def _timings_by_program_factory() -> dict[str, dict[str, float]]:
 class ProjectFailure:
     name: str
     message: str
+    detail: str | None = None
     line: int | None = None
     column: int | None = None
     length: int | None = None
+
+
+def _moduletype_with_origin(
+    moduletype: ModuleTypeDef,
+    *,
+    source_name: str | None,
+    library_name: str | None,
+) -> ModuleTypeDef:
+    """Return a copy with any missing provenance filled in.
+
+    The parser owns these nodes, so a definition that omits its origin gets a
+    copy here instead of being written back into the parser's tree.
+    """
+    origin_file = moduletype.origin_file or source_name
+    origin_lib = moduletype.origin_lib or library_name
+    if origin_file == moduletype.origin_file and origin_lib == moduletype.origin_lib:
+        return moduletype
+    return replace(moduletype, origin_file=origin_file, origin_lib=origin_lib)
+
+
+def _datatype_with_origin(
+    datatype: DataType,
+    *,
+    source_name: str | None,
+    library_name: str | None,
+) -> DataType:
+    """Record type counterpart of the module-type provenance copy."""
+    origin_file = datatype.origin_file or source_name
+    origin_lib = datatype.origin_lib or library_name
+    if origin_file == datatype.origin_file and origin_lib == datatype.origin_lib:
+        return datatype
+    return replace(datatype, origin_file=origin_file, origin_lib=origin_lib)
 
 
 @dataclass(frozen=True)
@@ -124,14 +152,23 @@ class RootOrigin:
         return self.source_path.name if self.source_path is not None else None
 
 
+#: The grammar keyword the parser stores in ``header.name`` for a picture.
+_BASEPICTURE_KEYWORD = "basepicture"
+
+
 def program_identity(bp: BasePicture) -> str:
     """Return the program name a base picture stands for.
 
-    The parser stores the keyword ``BasePicture`` in ``header.name``; the
-    loaded program's name lives in ``program_name``. Single-file parses leave
-    ``program_name`` unset, so the header name remains the fallback.
+    A loaded program carries its name in ``program_name``. A single-file parse
+    leaves it unset and keeps the keyword ``BasePicture`` in ``header.name``;
+    hand-built pictures may instead name the header directly.
     """
-    return bp.program_name or bp.name or bp.header.name
+    if bp.program_name:
+        return bp.program_name
+    header_name = bp.header.name
+    if header_name and header_name.casefold() != _BASEPICTURE_KEYWORD:
+        return header_name
+    return bp.name or header_name
 
 
 @dataclass
@@ -141,13 +178,18 @@ class ProjectGraph:
     # Keyed by (origin_lib.casefold(), moduletype_name.casefold(), origin_file.casefold())
     # so same-name types from the same library but different files are preserved.
     moduletype_defs: dict[tuple[str, str, str], ModuleTypeDef] = field(default_factory=_moduletype_defs_factory)
-    datatype_defs: dict[str, DataType] = field(default_factory=_datatype_defs_factory)
+    # Keyed like ``moduletype_defs``: (origin_lib, name, origin_file), all
+    # casefolded, so same-named record types from different libraries coexist.
+    datatype_defs: dict[tuple[str, str, str], DataType] = field(default_factory=_datatype_defs_factory)
     # library_name.casefold() -> set of dependency library names (casefolded)
     library_dependencies: dict[str, set[str]] = field(default_factory=_library_dependencies_factory)
     source_dependencies: dict[str, set[str]] = field(default_factory=_library_dependencies_factory)
     missing: list[str] = field(default_factory=_missing_factory)
     warnings: list[str] = field(default_factory=_warnings_factory)
-    warning_notices: list[tuple[str, ValidationNotice]] = field(default_factory=_warning_notices_factory)
+    #: Typed view of every parse, transform, and load failure. Keyed by the
+    #: casefolded program name and the authoritative source for failure detail;
+    #: ``missing`` also carries entries that have no program, such as a missing
+    #: dependency file.
     failures: dict[str, ProjectFailure] = field(default_factory=_failures_factory)
     # Track libraries that couldn't be loaded (e.g., proprietary ABB libraries)
     unavailable_libraries: set[str] = field(default_factory=_unavailable_libraries_factory)
@@ -163,7 +205,7 @@ class ProjectGraph:
     # Program name -> SattLint's graphics view of that program.
     graphics_attachments: dict[str, GraphicsAttachments] = field(default_factory=_graphics_attachments_factory)
     # True only when this whole graph was replayed from the project-level analysis-result cache
-    # (see _app_analysis_loading.py); all timing/count fields above are then stale/historical,
+    # (see project/loading.py); all timing/count fields above are then stale/historical,
     # not measurements of the current call.
     loaded_from_cache: bool = False
 
@@ -275,8 +317,7 @@ class ProjectGraph:
         if len(matches) == 1:
             return self.graphics_attachments.get(matches[0], EMPTY_GRAPHICS_ATTACHMENTS)
 
-        program_name = bp.name or bp.header.name
-        return self.graphics_attachments.get(program_name, EMPTY_GRAPHICS_ATTACHMENTS)
+        return self.graphics_attachments.get(program_identity(bp), EMPTY_GRAPHICS_ATTACHMENTS)
 
     def index_from_basepic(
         self,
@@ -298,20 +339,25 @@ class ProjectGraph:
                 self.source_file_libraries[source_path] = library_name
 
         for m in bp.moduletype_defs:
-            if source_path and not m.origin_file:
-                m.origin_file = source_path.name
-            if library_name and not m.origin_lib:
-                m.origin_lib = library_name
-            lib_key = (m.origin_lib or "").casefold()
-            name_key = m.name.casefold()
-            file_key = (m.origin_file or "").casefold()
-            self.moduletype_defs[(lib_key, name_key, file_key)] = m
+            moduletype = _moduletype_with_origin(
+                m,
+                source_name=source_path.name if source_path is not None else None,
+                library_name=library_name,
+            )
+            lib_key = (moduletype.origin_lib or "").casefold()
+            name_key = moduletype.name.casefold()
+            file_key = (moduletype.origin_file or "").casefold()
+            self.moduletype_defs[(lib_key, name_key, file_key)] = moduletype
         for d in bp.datatype_defs:
-            if source_path and not d.origin_file:
-                d.origin_file = source_path.name
-            if library_name and not d.origin_lib:
-                d.origin_lib = library_name
-            self.datatype_defs[d.name.casefold()] = d
+            datatype = _datatype_with_origin(
+                d,
+                source_name=source_path.name if source_path is not None else None,
+                library_name=library_name,
+            )
+            lib_key = (datatype.origin_lib or "").casefold()
+            name_key = datatype.name.casefold()
+            file_key = (datatype.origin_file or "").casefold()
+            self.datatype_defs[(lib_key, name_key, file_key)] = datatype
 
 
 def merge_project_basepicture(root_bp: BasePicture, graph: ProjectGraph) -> BasePicture:

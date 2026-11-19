@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from sattlint.parser_api import BuiltinFunction, BuiltinParameter, get_function_signature
@@ -27,14 +27,6 @@ class CallParameter:
         return self.builtin.direction
 
     @property
-    def sorting(self) -> str:
-        return self.builtin.sorting
-
-    @property
-    def ownership(self) -> str:
-        return self.builtin.ownership
-
-    @property
     def channel_kind(self) -> str | None:
         name_key = self.name.casefold()
         datatype_key = self.datatype.casefold()
@@ -54,27 +46,15 @@ class CallSignature:
     """Derived view over one parser ``BuiltinFunction``."""
 
     builtin: BuiltinFunction
-    source: str = "builtin"
+    #: Built once: analyzers index this tuple per call site.
+    parameters: tuple[CallParameter, ...] = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "parameters", tuple(CallParameter(parameter) for parameter in self.builtin.parameters))
 
     @property
     def name(self) -> str:
         return self.builtin.name
-
-    @property
-    def call_type(self) -> Literal["Function", "Procedure"]:
-        return "Function" if self.builtin.kind == "function" else "Procedure"
-
-    @property
-    def return_type(self) -> str | None:
-        return self.builtin.return_type
-
-    @property
-    def parameters(self) -> tuple[CallParameter, ...]:
-        return tuple(CallParameter(parameter) for parameter in self.builtin.parameters)
-
-    @property
-    def status_parameters(self) -> tuple[CallParameter, ...]:
-        return tuple(parameter for parameter in self.parameters if parameter.is_status_channel)
 
 
 @dataclass(frozen=True, slots=True)

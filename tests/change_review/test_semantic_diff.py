@@ -537,7 +537,7 @@ def test_semantic_metadata_matches_model(tmp_path: Path):
     flow = next(fact for fact in review.variable_definitions if fact.name == "Flow")
     assert flow.datatype == "integer"
     assert flow.kind == "local"
-    assert flow.declared_by == "BasePicture"
+    assert flow.declared_by == "Demo"
     level = next(fact for fact in review.variable_definitions if fact.name == "Level")
     assert any("equation LevelSrc" in site for site in level.written_by)
 
@@ -593,7 +593,7 @@ def test_broader_context_variables_still_included(tmp_path: Path):
 def test_relationship_terminology_is_precise(tmp_path: Path):
     _official, _draft, review = _context_review(tmp_path)
     flow = next(fact for fact in review.variable_definitions if fact.name == "Flow")
-    assert flow.declared_by == "BasePicture"
+    assert flow.declared_by == "Demo"
     assert any("equation FlowCalc" in site for site in flow.written_by)
     assert any("equation Measure" in site for site in flow.read_by)
     running = next(fact for fact in review.variable_definitions if fact.name == "Running")
@@ -717,8 +717,8 @@ def test_frame_module_code_references_are_visible(tmp_path: Path):
 
     context = frame_change.semantic_context
     assert context is not None
-    assert any(fact.symbol.casefold() == "basepicture.flow" for fact in context.reads)
-    assert any(fact.symbol.casefold() == "basepicture.frame1.local" for fact in context.produces)
+    assert any(fact.symbol.casefold() == "demo.flow" for fact in context.reads)
+    assert any(fact.symbol.casefold() == "demo.frame1.local" for fact in context.produces)
 
 
 def test_changed_if_statement_is_one_change_not_add_and_remove(tmp_path: Path):

@@ -2,7 +2,7 @@
 
 Replaces the former opt-in ``telemetry`` config option. Run diagnostics are
 recorded only when profiling is active for the current invocation
-(``SATTLINT_PROFILE`` env var or the ``--profile`` CLI flag), never through a
+(``SATTLINT_PROFILE`` or ``SATTLINT_PROFILE_ANALYZERS``), never through a
 persistent config setting. The recorder writes one JSONL event per operation to
 the profiling log under the cache directory.
 """
