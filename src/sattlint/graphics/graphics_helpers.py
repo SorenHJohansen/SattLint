@@ -9,7 +9,7 @@ from time import perf_counter
 from sattlint.parser_api import BasePicture, GraphicsModel
 
 from ..models.project_graph import EMPTY_GRAPHICS_ATTACHMENTS, GraphicsAttachments, ProjectGraph
-from ..project.loading_support import record_project_warning
+from ..models.project_graph_warnings import record_project_warning
 from ..validation.shared import ValidationNotice
 from .graphics_context_helpers import picture_display_path_diagnostics, picture_display_path_notices
 from .picture_display_paths import PictureDisplayPathDiagnostic, correlate_picture_display_records

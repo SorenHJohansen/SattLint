@@ -134,11 +134,10 @@ _PROJECT_LOADER_TARGETS = (
     "project.loading_support",
     "project.parser_adapter",
 )
-#: Non-loader layers that still reach the loader today. Any new edge fails this
-#: test instead of slipping past the layer table above.
-_PROJECT_LOADER_EDGE_EXCEPTIONS = {
+#: Non-loader layers that still reach the loader. Any new edge fails this test
+#: instead of slipping past the layer table above.
+_PROJECT_LOADER_EDGE_EXCEPTIONS: set[str] = {
     "analyzers/icf/analyzer.py",
-    "graphics/graphics_helpers.py",
 }
 
 

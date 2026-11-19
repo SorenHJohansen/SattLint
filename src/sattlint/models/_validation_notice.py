@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-__all__ = ["ValidationNotice"]
+__all__ = ["ValidationNotice", "ValidationWarning", "coerce_validation_notice"]
+
+type ValidationWarning = ValidationNotice | str
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,3 +18,9 @@ class ValidationNotice:
 
     def __str__(self) -> str:
         return self.message
+
+
+def coerce_validation_notice(value: ValidationWarning) -> ValidationNotice:
+    if isinstance(value, ValidationNotice):
+        return value
+    return ValidationNotice(message=value)
