@@ -56,14 +56,56 @@ class _SiteAccess:
     site: str
 
 
-def _prefix_conflict(left: tuple[str, ...], right: tuple[str, ...]) -> bool:
-    if len(left) <= len(right):
-        return right[: len(left)] == left
-    return left[: len(right)] == right
+@dataclass(slots=True)
+class _SiteGroup:
+    """Every access that shares a conflicting symbol path within one module."""
+
+    representative: tuple[str, ...]
+    decl_module_path: tuple[str, ...]
+    display: str
+    actions: dict[tuple[tuple[str, ...], str], set[str]]
+    sites: dict[tuple[tuple[str, ...], str], set[str]]
 
 
-def _conflict_rep(left: tuple[str, ...], right: tuple[str, ...]) -> tuple[str, ...]:
-    return left if len(left) <= len(right) else right
+def _group_site_accesses(accesses: list[_SiteAccess]) -> list[_SiteGroup]:
+    """Group accesses by the symbol path a prefix conflict would report.
+
+    Two accesses conflict when one symbol path is a prefix of the other inside
+    the same module, so every access joins the group of each of its own
+    prefixes that another eligible access also uses. That is the same relation
+    the pairwise scan applied, without comparing every access with every other.
+    """
+    eligible = [access for access in accesses if not access.is_state_variable and access.continuous_site is not None]
+
+    keys_by_module: dict[tuple[str, ...], set[tuple[str, ...]]] = defaultdict(set)
+    first_by_key: dict[tuple[str, ...], _SiteAccess] = {}
+    for access in eligible:
+        keys_by_module[access.module_path].add(access.symbol_key)
+        first_by_key.setdefault(access.symbol_key, access)
+
+    groups: dict[tuple[str, ...], _SiteGroup] = {}
+    for access in eligible:
+        module_keys = keys_by_module[access.module_path]
+        for size in range(1, len(access.symbol_key) + 1):
+            prefix = access.symbol_key[:size]
+            if prefix not in module_keys:
+                continue
+            group = groups.get(prefix)
+            if group is None:
+                group = _SiteGroup(
+                    representative=prefix,
+                    decl_module_path=access.decl_module_path,
+                    display=first_by_key[prefix].symbol_display,
+                    actions=defaultdict(set),
+                    sites=defaultdict(set),
+                )
+                groups[prefix] = group
+            site_key = (access.module_path, str(access.continuous_site))
+            group.actions[site_key].add(access.kind)
+            if access.site:
+                group.sites[site_key].add(access.site)
+
+    return sorted(groups.values(), key=lambda group: str(group.representative))
 
 
 def collect_non_state_multi_site_issues(self: Any) -> None:
@@ -73,42 +115,10 @@ def collect_non_state_multi_site_issues(self: Any) -> None:
     for moduletype in self._iter_root_typedefs():
         _walk_typedef(self, moduletype, accesses)
 
-    grouped: dict[
-        tuple[str, ...],
-        tuple[
-            tuple[str, ...],
-            tuple[str, ...],
-            dict[tuple[tuple[str, ...], str], set[str]],
-            dict[tuple[tuple[str, ...], str], set[str]],
-        ],
-    ] = {}
-
-    display_by_key: dict[tuple[str, ...], str] = {}
-
-    for index, left in enumerate(accesses):
-        if left.is_state_variable or left.continuous_site is None:
-            continue
-        for right in accesses[index + 1 :]:
-            if right.is_state_variable or right.continuous_site is None:
-                continue
-            if left.module_path != right.module_path:
-                continue
-            if not _prefix_conflict(left.symbol_key, right.symbol_key):
-                continue
-            representative = _conflict_rep(left.symbol_key, right.symbol_key)
-            key = representative
-            if key not in grouped:
-                grouped[key] = (representative, left.decl_module_path, defaultdict(set), defaultdict(set))
-                shorter = left if len(left.symbol_key) <= len(right.symbol_key) else right
-                display_by_key[key] = shorter.symbol_display
-            _representative, _decl_path, actions, sites = grouped[key]
-            for event in (left, right):
-                site_key = (event.module_path, str(event.continuous_site))
-                actions[site_key].add(event.kind)
-                if event.site:
-                    sites[site_key].add(event.site)
-
-    for representative, decl_module_path, actions, sites in sorted(grouped.values(), key=lambda item: str(item[0])):
+    for group in _group_site_accesses(accesses):
+        decl_module_path = group.decl_module_path
+        actions = group.actions
+        sites = group.sites
         if len(actions) < 2:
             continue
         if not any(_READ in kinds for kinds in actions.values()):
@@ -118,7 +128,7 @@ def collect_non_state_multi_site_issues(self: Any) -> None:
 
         ordered_site_keys = sorted(actions, key=lambda key: (len(key[0]), tuple(s.casefold() for s in key[0]), key[1]))
         summaries = [_format_site_summary(site_key, actions[site_key]) for site_key in ordered_site_keys]
-        display = display_by_key.get(representative, ".".join(representative))
+        display = group.display
         self._add_issue(
             kind="dataflow.non_state_multi_site",
             message=(
