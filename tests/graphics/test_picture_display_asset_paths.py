@@ -94,3 +94,47 @@ def test_asset_in_a_parent_directory_is_not_verified(tmp_path: Path) -> None:
 
     assert not resolution.ok
     assert resolution.failure_reason == "unimplemented_asset"
+
+
+def test_asset_symlink_that_leaves_the_program_directory_is_not_a_candidate(tmp_path: Path) -> None:
+    program_dir = tmp_path / "Program"
+    program_dir.mkdir()
+    outside = tmp_path / "outside.wmf"
+    outside.write_bytes(b"asset")
+    (program_dir / "logo.wmf").symlink_to(outside)
+
+    candidates = picture_display_asset_candidate_paths(program_dir / "Root.g", "logo.wmf")
+
+    assert (program_dir / "logo.wmf") not in candidates
+
+    resolution = _resolve("scr:logo.wmf", program_dir)
+
+    assert not resolution.ok
+    assert resolution.failure_reason == "unimplemented_asset"
+
+
+def test_asset_symlink_that_stays_inside_the_program_directory_is_a_candidate(tmp_path: Path) -> None:
+    program_dir = tmp_path / "Program"
+    program_dir.mkdir()
+    asset = program_dir / "icons" / "logo.bmp"
+    asset.parent.mkdir()
+    asset.write_bytes(b"asset")
+    (program_dir / "logo.bmp").symlink_to(asset)
+
+    candidates = picture_display_asset_candidate_paths(program_dir / "Root.g", "logo.bmp")
+
+    assert program_dir / "logo.bmp" in candidates
+
+
+def test_scr_folder_symlink_that_leaves_the_program_directory_is_not_a_candidate(tmp_path: Path) -> None:
+    program_dir = tmp_path / "Program"
+    program_dir.mkdir()
+    outside = tmp_path / "shared"
+    outside.mkdir()
+    (outside / "logo.wmf").write_bytes(b"asset")
+    (program_dir / "scr").symlink_to(outside)
+
+    resolution = _resolve("scr:logo.wmf", program_dir)
+
+    assert not resolution.ok
+    assert resolution.failure_reason == "unimplemented_asset"

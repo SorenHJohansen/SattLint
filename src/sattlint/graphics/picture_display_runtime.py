@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from sattlint.parser_api import BasePicture, FrameModule, ModuleTypeDef, ModuleTypeInstance, SingleModule
@@ -14,14 +13,11 @@ from .picture_display_runtime_helpers import (
     CompositeRecordOccurrence,
     RuntimeModuleNode,
     RuntimeTree,
-    _candidate_moduletype_defs,
     _candidate_moduletype_index,
-    _common_suffix_length,
     _CompositePlaceholder,
     _index_runtime_tree,
     _is_local_moduletype_def,
     _local_moduletype_defs,
-    _same_origin_file_stem,
     consume_name,
     find_best_suffix_node,
     find_nearest_descendant,
@@ -35,14 +31,6 @@ __all__ = [
     "CompositeRecordOccurrence",
     "RuntimeModuleNode",
     "RuntimeTree",
-    "_candidate_moduletype_defs",
-    "_candidate_moduletype_index",
-    "_common_suffix_length",
-    "_file_stem_casefold",
-    "_index_runtime_tree",
-    "_is_local_moduletype_def",
-    "_local_moduletype_defs",
-    "_same_origin_file_stem",
     "build_runtime_tree",
     "collect_concrete_composite_placeholders",
     "consume_name",
@@ -56,15 +44,6 @@ __all__ = [
 
 if TYPE_CHECKING:
     from ..models.project_graph import ProjectGraph
-
-
-def _file_stem_casefold(file_name: str | None) -> str | None:
-    if not file_name:
-        return None
-    try:
-        return Path(file_name).stem.casefold()
-    except (TypeError, ValueError):
-        return file_name.rsplit(".", 1)[0].casefold()
 
 
 def _resolve_runtime_moduletype(
@@ -265,8 +244,8 @@ def collect_concrete_composite_placeholders(  # noqa: PLR0915
             resolved_moduletype.name.casefold(),
             (resolved_moduletype.origin_file or current_file or "").casefold(),
         )
-        if moduletype_key in active_moduletype_keys:  # pragma: no cover
-            return  # pragma: no cover
+        if moduletype_key in active_moduletype_keys:
+            return
 
         nested_keys = set(active_moduletype_keys)
         nested_keys.add(moduletype_key)
