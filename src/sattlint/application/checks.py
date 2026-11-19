@@ -37,6 +37,7 @@ from ..core.debug import debug_enabled
 from ..core.terminal import flush_stdout
 from ..models.project_graph import ProjectGraph
 from ..project import cache as report_cache_module
+from ..project import loading as project_loading_module
 from ..reporting.target_report import normalize_report_target_name
 from ..resolution.common import resolve_moduletype_def_strict
 from ..runs import (
@@ -362,6 +363,7 @@ def _run_per_run_analyzer(
             debug=debug_enabled(cfg),
             config=cfg,
             create_shared_artifacts=True,
+            program_ast_loader=project_loading_module.load_program_ast,
         )
         report = analysis_dispatch_module.run_registry_analyzer(spec, context)
     except Exception as exc:  # noqa: BLE001 - a per-run failure should not abort the run

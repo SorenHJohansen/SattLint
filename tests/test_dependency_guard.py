@@ -134,12 +134,9 @@ _PROJECT_LOADER_TARGETS = (
     "project.loading_support",
     "project.parser_adapter",
 )
-#: Non-loader layers that still reach the loader today. Any new edge fails this
-#: test instead of slipping past the layer table above.
-_PROJECT_LOADER_EDGE_EXCEPTIONS = {
-    "analyzers/icf/analyzer.py",
-    "graphics/graphics_helpers.py",
-}
+#: Non-loader layers allowed to reach the loader. The layer table is complete:
+#: no layer outside it may import the project loader, so this set stays empty.
+_PROJECT_LOADER_EDGE_EXCEPTIONS: set[str] = set()
 
 
 def test_only_the_documented_layers_reach_the_project_loader() -> None:

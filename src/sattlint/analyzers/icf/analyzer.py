@@ -22,10 +22,9 @@ from sattlint.parser_api import BasePicture, ModuleTypeDef, ProjectLoadError
 
 from ...config.types import ConfigDict
 from ...models.project_graph import ProjectGraph, merge_project_basepicture, program_identity
-from ...project.loading import load_program_ast
 from ...project.support import configured_icf_files
 from ...reporting.icf_report import ICFValidationIssue
-from ..framework import Issue, SimpleReport
+from ..framework import Issue, ProgramAstLoader, SimpleReport
 from . import parse_icf_file, validate_icf_entries_against_program
 
 _REASON_TO_KIND: dict[str, str] = {
@@ -88,6 +87,7 @@ def _validate_icf_file(
     *,
     base_picture: BasePicture | None,
     debug: bool,
+    program_ast_loader: ProgramAstLoader,
 ) -> list[Issue]:
     entries = parse_icf_file(icf_file)
     if not entries:
@@ -102,7 +102,7 @@ def _validate_icf_file(
         graph: ProjectGraph | None = None
     else:
         try:
-            program_bp, graph = load_program_ast(config, program_name)
+            program_bp, graph = program_ast_loader(config, program_name)
         except (OSError, RuntimeError, ValueError, ProjectLoadError) as exc:
             return [
                 Issue(
@@ -148,17 +148,26 @@ def analyze_icf_configuration(
     *,
     config: ConfigDict | None = None,
     debug: bool = False,
+    program_ast_loader: ProgramAstLoader | None = None,
 ) -> SimpleReport:
     """Validate every configured ``.icf`` file against its referenced program.
 
     ``base_picture`` is optional; when it matches an ``.icf`` file's program the
-    already-loaded AST is reused instead of re-loading it. The analyzer is
-    delivered as a once-per-session whole-run check.
+    already-loaded AST is reused instead of re-loading it. ``program_ast_loader``
+    is the caller-supplied project loader contract used for the remaining
+    programs; the analyzer layer never imports the project package. The analyzer
+    is delivered as a once-per-session whole-run check.
     """
     if config is None:
         return SimpleReport(name="ICF configuration", issues=[])
 
     _, icf_files = configured_icf_files(config)
+    if not icf_files:
+        return SimpleReport(name="ICF configuration", issues=[])
+
+    if program_ast_loader is None:
+        raise RuntimeError("ICF analysis needs a program loader to load the programs an .icf file references.")
+
     issues: list[Issue] = []
     for icf_file in icf_files:
         issues.extend(
@@ -168,6 +177,7 @@ def analyze_icf_configuration(
                 config=config,
                 base_picture=base_picture,
                 debug=debug,
+                program_ast_loader=program_ast_loader,
             )
         )
     return SimpleReport(name="ICF configuration", issues=issues)

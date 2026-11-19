@@ -15,7 +15,7 @@ from ..core import profiling as profiling_module
 from ..core.debug import debug_enabled
 from ..core.syntax import CodeMode, deps_ext_candidates, normalize_code_mode
 from ..models.project_graph import ProjectFailure, ProjectGraph
-from ..validation.shared import ValidationWarning, coerce_validation_notice
+from ..models.project_graph_warnings import record_project_warning as record_project_warning
 from .support import LOAD_FAILURE_MARKER, PARSE_FAILURE_MARKER
 
 _STAGE_ORDER = ("load_or_parse", "validate", "attach_graphics", "index")
@@ -213,10 +213,6 @@ def record_project_failure(graph: ProjectGraph, name: str, exception: Exception)
         column=column,
         length=length,
     )
-
-
-def record_project_warning(graph: ProjectGraph, name: str, message: ValidationWarning) -> None:
-    graph.warnings.append(f"{name}: {coerce_validation_notice(message).message}")
 
 
 def record_project_load_failure(graph: ProjectGraph, name: str, error: ProjectLoadError) -> None:
