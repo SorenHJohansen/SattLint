@@ -201,6 +201,9 @@ class ICFResolvedEntry:
     field_path: str | None
     leaf_name: str
     datatype: object
+    #: Library of the module the entry addresses; selects the record layout when
+    #: two libraries declare the same datatype name.
+    current_library: str | None = None
 
 
 @dataclass

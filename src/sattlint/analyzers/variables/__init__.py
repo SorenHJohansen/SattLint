@@ -358,7 +358,7 @@ class VariablesAnalyzer(
         self._root_env = dict(variable_artifacts.root_env)
         self._any_var_index = {key: list(values) for key, values in variable_artifacts.any_var_index.items()}
         self._analyzing_typedefs: set[TypedefUsageKey] = set()
-        self.datatype_leaf_index_cache: dict[str, tuple[object, LeafPathIndex]] = {}
+        self.datatype_leaf_index_cache: dict[tuple[str, str], tuple[object, LeafPathIndex]] = {}
 
         self._contract_validator = ContractMappingValidator(self.type_graph)
         self._min_max_validator = MinMaxValidator()

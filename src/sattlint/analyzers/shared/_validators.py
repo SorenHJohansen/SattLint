@@ -23,7 +23,7 @@ from sattlint.parser_api import (
 )
 
 from ...reporting.variables_report import IssueKind, VariableIssue
-from ...resolution import TypeGraph
+from ...resolution import AmbiguousRecordError, TypeGraph
 from ...resolution.common import varname_full
 from ._string_capacity import STRING_CAPACITIES, string_capacity_for_datatype
 
@@ -216,12 +216,24 @@ class ContractMappingValidator:
         if not field_path:
             return target_variable.datatype, None
 
-        datatype = _resolve_variable_field_datatype(
-            target_variable,
-            field_path,
-            self._type_graph,
-        )
+        datatype = self._resolve_variable_field_datatype(target_variable, field_path)
         return datatype, ".".join(field_path)
+
+    def _resolve_variable_field_datatype(
+        self,
+        variable: Variable,
+        field_path: tuple[str, ...],
+    ) -> ScalarDatatype | str | None:
+        """Walk a field path without a library, so the record name must be unique.
+
+        A name several libraries declare is left unresolved rather than guessing
+        a layout: contract checking then has nothing to compare, which is the
+        same outcome as an unknown record.
+        """
+        try:
+            return _resolve_variable_field_datatype(variable, field_path, self._type_graph)
+        except AmbiguousRecordError:
+            return None
 
     def resolve_target_datatype(
         self,
@@ -252,11 +264,7 @@ class ContractMappingValidator:
         if not field_path:
             return source_variable.datatype, source_name
 
-        datatype = _resolve_variable_field_datatype(
-            source_variable,
-            field_path,
-            self._type_graph,
-        )
+        datatype = self._resolve_variable_field_datatype(source_variable, field_path)
         return datatype, source_name
 
     def resolve_source_datatype(

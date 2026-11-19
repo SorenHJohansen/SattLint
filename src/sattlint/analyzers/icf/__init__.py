@@ -32,7 +32,7 @@ from ...resolution.common import (
     resolve_module_by_strict_path,
     resolve_moduletype_def_strict,
 )
-from ...resolution.type_graph import TypeGraph
+from ...resolution.type_graph import AmbiguousRecordError, RecordDef, TypeGraph
 from ._icf_datatype_resolution import resolve_leaf_datatype, resolve_record_datatype
 from ._icf_file_io import (
     decode_icf_text as _decode_icf_text_impl,
@@ -427,6 +427,8 @@ def _validate_field_path(
     type_graph: TypeGraph,
     root_var: Variable,
     field_segments: list[str],
+    *,
+    library: str | None = None,
 ) -> tuple[bool, str | None]:
     if not field_segments:
         if isinstance(root_var.datatype, ScalarDatatype):
@@ -437,15 +439,21 @@ def _validate_field_path(
         )
 
     current_type: ScalarDatatype | str | None = root_var.datatype
+    field_library = library
     for field in field_segments:
         if isinstance(current_type, ScalarDatatype):
             return False, f"datatype {current_type.value} has no field {field!r}"
 
-        field_def = type_graph.field(str(current_type), field)
-        if field_def is None:
+        try:
+            record = type_graph.record(str(current_type), library=field_library)
+        except AmbiguousRecordError as exc:
+            return False, str(exc)
+        field_def = record.fields_by_key.get(field.casefold()) if record is not None else None
+        if record is None or field_def is None:
             return False, f"field {field!r} not found in datatype {current_type}"
 
         current_type = field_def.datatype
+        field_library = record.library
 
     if isinstance(current_type, ScalarDatatype):
         return True, None
@@ -459,22 +467,30 @@ def _resolve_canonical_leaf_name(
     type_graph: TypeGraph,
     root_var: Variable,
     field_segments: list[str],
+    *,
+    library: str | None = None,
 ) -> str | None:
     if not field_segments:
         return root_var.name
 
     current_type: ScalarDatatype | str | None = root_var.datatype
     resolved_name: str | None = None
+    field_library = library
     for field in field_segments:
         if isinstance(current_type, ScalarDatatype):
             return None
 
-        field_def = type_graph.field(str(current_type), field)
-        if field_def is None:
+        try:
+            record = type_graph.record(str(current_type), library=field_library)
+        except AmbiguousRecordError:
+            return None
+        field_def = record.fields_by_key.get(field.casefold()) if record is not None else None
+        if record is None or field_def is None:
             return None
 
         resolved_name = field_def.name
         current_type = field_def.datatype
+        field_library = record.library
 
     return resolved_name
 
@@ -486,9 +502,10 @@ def _validate_entry_reference_case(
     root_var: Variable,
     variable_name: str,
     field_segments: list[str],
+    library: str | None = None,
 ) -> ICFValidationIssue | None:
     reference_name = field_segments[-1] if field_segments else variable_name
-    resolved_name = _resolve_canonical_leaf_name(type_graph, root_var, field_segments)
+    resolved_name = _resolve_canonical_leaf_name(type_graph, root_var, field_segments, library=library)
     if resolved_name is None or reference_name == resolved_name or _cf(reference_name) != _cf(resolved_name):
         return None
     return ICFValidationIssue(
@@ -550,6 +567,22 @@ def _validate_value_prefix_consistency(entries: list[ICFEntry]) -> ICFValidation
     )
 
 
+def _record_for(
+    type_graph: TypeGraph,
+    datatype_name: str,
+    library: str | None,
+) -> RecordDef | None:
+    """Resolve a record for ICF validation, preferring the entry's library.
+
+    A name several libraries declare with no decisive library is skipped rather
+    than guessed: the completeness check then simply has nothing to compare.
+    """
+    try:
+        return type_graph.record(datatype_name, library=library)
+    except AmbiguousRecordError:
+        return None
+
+
 def _validate_parameter_record_completeness(
     type_graph: TypeGraph,
     resolved_entries: list[ICFResolvedEntry],
@@ -557,7 +590,8 @@ def _validate_parameter_record_completeness(
 ) -> list[ICFValidationIssue]:
     issues: list[ICFValidationIssue] = []
     grouped: dict[
-        tuple[str | None, str | None, str | None, tuple[str, ...], str, tuple[str, ...], str], list[ICFResolvedEntry]
+        tuple[str | None, str | None, str | None, str | None, tuple[str, ...], str, tuple[str, ...], str],
+        list[ICFResolvedEntry],
     ] = {}
 
     for resolved in resolved_entries:
@@ -573,16 +607,22 @@ def _validate_parameter_record_completeness(
         if not field_segments:
             continue
         record_path = tuple(field_segments[:-1])
-        datatype_name = resolve_record_datatype(type_graph, resolved.root_datatype, list(record_path))
+        datatype_name = resolve_record_datatype(
+            type_graph,
+            resolved.root_datatype,
+            list(record_path),
+            library=resolved.current_library,
+        )
         if datatype_name is None:
             continue
-        record = type_graph.record(datatype_name)
+        record = _record_for(type_graph, datatype_name, resolved.current_library)
         if record is None:
             continue
         key = (
             resolved.entry.unit,
             resolved.entry.journal,
             resolved.entry.group,
+            resolved.current_library,
             tuple(resolved.module_path),
             resolved.variable_name,
             record_path,
@@ -592,14 +632,34 @@ def _validate_parameter_record_completeness(
 
     grouped_items = list(grouped.items())
     records_by_scope: dict[
-        tuple[str | None, str | None, str | None],
+        tuple[str | None, str | None, str | None, str | None],
         list[tuple[tuple[str, ...], str, tuple[str, ...]]],
     ] = {}
-    for (unit, journal, group, module_path, variable_name, record_path, _datatype_name), _entries in grouped_items:
-        records_by_scope.setdefault((unit, journal, group), []).append((module_path, variable_name, record_path))
+    for (
+        unit,
+        journal,
+        group,
+        library,
+        module_path,
+        variable_name,
+        record_path,
+        _datatype_name,
+    ), _entries in grouped_items:
+        records_by_scope.setdefault((unit, journal, group, library), []).append(
+            (module_path, variable_name, record_path)
+        )
 
-    for (unit, journal, group, module_path, variable_name, record_path, datatype_name), entries in grouped_items:
-        record = type_graph.record(datatype_name)
+    for (
+        unit,
+        journal,
+        group,
+        library,
+        module_path,
+        variable_name,
+        record_path,
+        datatype_name,
+    ), entries in grouped_items:
+        record = _record_for(type_graph, datatype_name, library)
         if record is None:
             continue
         expected_fields = {field.name: _cf(field.name) for field in record.fields_by_key.values()}
@@ -612,7 +672,7 @@ def _validate_parameter_record_completeness(
                 continue
             present.add(_cf(ph.key))
         for other_module_path, other_variable_name, other_record_path in records_by_scope.get(
-            (unit, journal, group), ()
+            (unit, journal, group, library), ()
         ):
             if other_module_path != module_path or other_variable_name != variable_name:
                 continue
@@ -787,7 +847,7 @@ def validate_icf_entries_against_program(
             )
             continue
 
-        ok, detail = _validate_field_path(type_graph, var, field_segments)
+        ok, detail = _validate_field_path(type_graph, var, field_segments, library=resolved.current_library)
         if not ok:
             issues.append(
                 ICFValidationIssue(
@@ -798,7 +858,12 @@ def validate_icf_entries_against_program(
             )
             continue
 
-        leaf_datatype = resolve_leaf_datatype(type_graph, var, field_segments)
+        leaf_datatype = resolve_leaf_datatype(
+            type_graph,
+            var,
+            field_segments,
+            library=resolved.current_library,
+        )
         if leaf_datatype is None:
             issues.append(
                 ICFValidationIssue(
@@ -809,7 +874,12 @@ def validate_icf_entries_against_program(
             )
             continue
 
-        resolved_leaf_name = _resolve_canonical_leaf_name(type_graph, var, field_segments)
+        resolved_leaf_name = _resolve_canonical_leaf_name(
+            type_graph,
+            var,
+            field_segments,
+            library=resolved.current_library,
+        )
         resolved_entries.append(
             ICFResolvedEntry(
                 entry=entry,
@@ -819,6 +889,7 @@ def validate_icf_entries_against_program(
                 field_path=".".join(field_segments) or None,
                 leaf_name=resolved_leaf_name or (field_segments[-1] if field_segments else var.name),
                 datatype=leaf_datatype,
+                current_library=resolved.current_library,
             )
         )
 
@@ -828,6 +899,7 @@ def validate_icf_entries_against_program(
             root_var=var,
             variable_name=var.name,
             field_segments=field_segments,
+            library=resolved.current_library,
         )
         if key_case_issue is not None:
             issues.append(key_case_issue)

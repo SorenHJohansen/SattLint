@@ -717,17 +717,22 @@ def test_dataflow_facade_and_scalar_helpers_cover_remaining_branches(monkeypatch
 
     helper_probe: Any = DataflowAnalyzer.__new__(DataflowAnalyzer)
 
-    def _field(_datatype: object, field_name: str) -> object | None:
+    def _field(_datatype: object, field_name: str, *, library: object = None) -> object | None:
         if field_name == "missing":
             return None
         return _ns(datatype=None, state=True)
+
+    def _record(_datatype: object, *, library: object = None) -> object | None:
+        if _datatype == "RecordType":
+            return _ns(fields_by_key={"leaf": _field(_datatype, "leaf")}, library=library)
+        return None
 
     def _resolve_context_variable(full_name: str) -> tuple[Variable | None, str, list[str], None]:
         if full_name == "Missing":
             return (None, "", ["Root"], None)
         return (Variable(name="Value", datatype=ScalarDatatype.INTEGER), "", ["Root"], None)
 
-    helper_probe._type_graph = _ns(field=_field)
+    helper_probe._type_graph = _ns(field=_field, record=_record)
 
     missing_context = _ns(
         module_path=["Root"],

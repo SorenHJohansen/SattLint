@@ -90,12 +90,12 @@ def test_icf_helper_additional_parameter_record_skip_branches(monkeypatch):
     original_record = type_graph.record
     call_count = {"RootRecord": 0}
 
-    def _record_once(name: str):
+    def _record_once(name: str, *, library: str | None = None):
         if name == "RootRecord":
             call_count[name] = call_count.get(name, 0) + 1
             if call_count[name] > 1:
                 return None
-        return original_record(name)
+        return original_record(name, library=library)
 
     monkeypatch.setattr(type_graph, "record", _record_once)
     grouped_entry = ICFResolvedEntry(
@@ -243,12 +243,12 @@ def test_icf_helper_remaining_resolution_and_grouping_branches(monkeypatch):
     original_record = type_graph.record
     call_count = {"NestedRecord": 0}
 
-    def _record_branch(name: str):
+    def _record_branch(name: str, *, library: str | None = None):
         if name == "NestedRecord":
             call_count[name] = call_count.get(name, 0) + 1
             if call_count[name] > 1:
                 return None
-        return original_record(name)
+        return original_record(name, library=library)
 
     monkeypatch.setattr(type_graph, "record", _record_branch)
     issues = icf_module._validate_parameter_record_completeness(
@@ -385,7 +385,9 @@ def test_icf_helper_final_prefix_mismatch_filter(monkeypatch):
     fake_type_graph = cast(
         Any,
         SimpleNamespace(
-            record=lambda _name: SimpleNamespace(fields_by_key={"leaf": SimpleNamespace(name="Leaf")}),
+            record=lambda _name, library=None: SimpleNamespace(
+                fields_by_key={"leaf": SimpleNamespace(name="Leaf")}, library=library
+            ),
         ),
     )
     entry = _entry("Leaf", "Program:Unit.Record.Nested.Leaf", unit="Unit", journal="J", group="JournalData_Parameters")
