@@ -26,6 +26,10 @@ from sattline_parser.models.ast_model import (
 from sattline_parser.models.expressions import Assignment, SLExpression, VarRef
 
 from sattlint.analyzers.dataflow import analyze_dataflow
+from sattlint.analyzers.dataflow._dataflow_non_state_sites import (
+    _group_site_accesses,
+    _SiteAccess,
+)
 from sattlint.analyzers.registry import get_actual_cli_analyzer_keys, get_default_analyzers
 from sattlint.analyzers.same_cycle import analyze_same_cycle
 
@@ -451,3 +455,32 @@ def test_dataflow_non_state_multi_site_ignores_single_active_site_in_self_loop()
     report = analyze_dataflow(bp)
 
     assert not any(issue.kind == "dataflow.non_state_multi_site" for issue in report.issues)
+
+
+def test_non_state_grouping_joins_every_prefix_of_a_symbol_path() -> None:
+    def access(symbol_key: tuple[str, ...], kind: str, site: str) -> _SiteAccess:
+        return _SiteAccess(
+            module_path=("root",),
+            symbol_key=symbol_key,
+            symbol_display=".".join(symbol_key),
+            decl_module_path=("root",),
+            is_state_variable=False,
+            continuous_site=site,
+            kind=kind,
+            site=site,
+        )
+
+    groups = _group_site_accesses(
+        [
+            access(("root", "rec"), "read", "EQ:A"),
+            access(("root", "rec", "value"), "write", "EQ:A"),
+            access(("root", "rec", "value", "deep"), "read", "EQ:B"),
+        ]
+    )
+
+    representatives = {group.representative for group in groups}
+    assert representatives == {
+        ("root", "rec"),
+        ("root", "rec", "value"),
+        ("root", "rec", "value", "deep"),
+    }

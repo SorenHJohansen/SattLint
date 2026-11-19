@@ -17,10 +17,10 @@ def test_registry_catalog_report_and_key_helpers_cover_metadata_branches():
     assert catalog.enabled_specs()
     assert report["generated_by"] == "test-suite"
     assert report["analyzers"]
-    assert registry_module.get_declared_cli_analyzer_keys() == tuple(sorted(registry_module.DEFAULT_CLI_ANALYZER_KEYS))
-    assert registry_module.get_actual_cli_analyzer_keys() == tuple(
-        spec.key for spec in registry_module.get_default_cli_analyzers()
-    )
+    declared = {item.spec.key for item in catalog.analyzers if item.delivery.cli_exposed}
+    configured = set(registry_module.DEFAULT_CLI_ANALYZER_KEYS)
+    actual = set(registry_module.get_actual_cli_analyzer_keys())
+    assert declared == configured == actual
 
 
 def test_build_delivery_metadata_falls_back_for_unknown_analyzer_key():

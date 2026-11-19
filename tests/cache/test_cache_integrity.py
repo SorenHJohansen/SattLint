@@ -177,3 +177,22 @@ def test_cache_manager_memo_stays_bounded(tmp_path: Path) -> None:
         get_cache_manager(tmp_path / f"cache-{index}")
 
     assert len(_CACHE_MANAGERS) == _CACHE_MANAGER_LIMIT
+
+
+def test_legacy_cache_migration_moves_the_signing_key_with_the_payloads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    legacy = tmp_path / "legacy"
+    destination = tmp_path / "cache"
+    legacy.mkdir()
+    (legacy / "entry.pickle").write_bytes(b"signed")
+    (legacy / cache_module._PICKLE_HMAC_KEY_NAME).write_bytes(b"legacy-key")
+    destination.mkdir()
+
+    monkeypatch.setattr(cache_module, "_legacy_cache_dir", lambda: legacy)
+    monkeypatch.setattr(cache_module, "_pickle_hmac_key_path", lambda: tmp_path / "moved-key")
+
+    cache_module._migrate_legacy_cache_dir(destination)
+
+    assert not (destination / cache_module._PICKLE_HMAC_KEY_NAME).exists()
+    assert (tmp_path / "moved-key").read_bytes() == b"legacy-key"

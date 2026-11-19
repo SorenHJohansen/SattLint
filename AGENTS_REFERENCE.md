@@ -13,7 +13,7 @@ quality gates, validation map, and core beliefs.
 | `sattline-parser` (external) | Parser grammar, AST, transformer, strict syntax behavior | targeted parser pytest (the parser tool owns single-file check/parse CLIs) |
 | `src/sattlint/cli/` | CLI entrypoints and command handlers | Targeted owner pytest, then Ruff and Pyright |
 | `src/sattlint/analyzers/` | Heuristic analyzers and the rule registry | Targeted analyzer pytest |
-| `src/sattlint/core/` | Shared semantic snapshot, document helpers, and the engine-internal analysis trace recorder (`core/tracing.py`) | Targeted pytest |
+| `src/sattlint/core/` | Shared semantic snapshot, the semantic index, call signatures, origin matching, and document helpers | Targeted pytest |
 | `src/sattlint/project/` | `.slproj` project model + parser-adapted loading (`loader_config.build_parser_binding` → `parser_adapter.py` over `sattline-parser`'s project layer; orchestration in `loading.py`/`support.py`) | `tests/project/`, targeted pytest |
 | `src/sattlint/` (ICF, graphics, validation) | ICF analysis, graphics rules, strict syntax validation | Targeted owner pytest |
 | `src/sattlint/ui/` | Textual interactive UI | `tests/app/test_app_textual*.py` |

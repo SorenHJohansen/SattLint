@@ -463,6 +463,18 @@ def test_register_analyzer_rejects_a_builtin_key() -> None:
     assert keys.count("variables") == 1
 
 
+def test_register_analyzer_rejects_a_retired_spelling_of_a_builtin_key() -> None:
+    with pytest.raises(ValueError, match="reserved by a built-in analyzer"):
+
+        @register_analyzer(key="same_cycle")
+        def run(context: AnalysisContext) -> SimpleReport:
+            return SimpleReport(name="shadow")
+
+    assert get_registered_plugin_analyzers() == ()
+    keys = [item.spec.key for item in registry_module.get_default_analyzer_catalog().analyzers]
+    assert keys.count("same-cycle") == 1
+
+
 def test_plugin_registered_after_catalog_build_reaches_the_catalog() -> None:
     before = registry_module.get_default_analyzer_catalog()
 

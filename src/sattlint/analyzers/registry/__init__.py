@@ -9,7 +9,12 @@ from typing import TypedDict
 
 from .._registry_specs import build_default_analyzers
 from ..framework import AnalyzerSpec
-from ..plugin import get_plugin_registry_generation, get_registered_plugin_analyzers, register_analyzer
+from ..plugin import (
+    LEGACY_ANALYZER_KEY_ALIASES,
+    get_plugin_registry_generation,
+    get_registered_plugin_analyzers,
+    register_analyzer,
+)
 from ._registry_delivery import AnalyzerDeliveryMetadata, build_delivery_metadata
 
 # Policy (analyzer execution refactor B4.9): every registered analyzer is
@@ -59,11 +64,6 @@ def __getattr__(name: str) -> object:
     value = getattr(import_module(module_name), attribute_name)
     globals()[name] = value
     return value
-
-
-LEGACY_ANALYZER_KEY_ALIASES: dict[str, str] = {
-    "same_cycle": "same-cycle",
-}
 
 
 class AnalyzerMetadataDict(TypedDict):

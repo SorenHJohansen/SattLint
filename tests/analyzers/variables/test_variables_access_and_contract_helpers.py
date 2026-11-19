@@ -1027,6 +1027,16 @@ def test_find_all_aliases_keeps_each_field_prefix_for_the_same_variable() -> Non
     assert sorted(prefix for variable, prefix in aliases if variable is child) == ["Left", "Right"]
 
 
+def test_find_all_aliases_terminates_on_a_self_mapping() -> None:
+    target = Variable(name="Target", datatype=ScalarDatatype.INTEGER)
+
+    aliases = find_all_aliases(target, [(target, target, "Field")])
+
+    # The self mapping adds no distinct variable, and revisiting it would only
+    # extend the prefix forever, so the walk terminates with no aliases.
+    assert aliases == []
+
+
 def test_leaf_expansion_treats_nested_opaque_and_anytype_names_as_leaves() -> None:
     graph = _type_graph(
         ("Wrapper", (("Nested", "AnyType"),)),

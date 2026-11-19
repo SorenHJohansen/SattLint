@@ -336,24 +336,25 @@ def _append_output_line_to_widget(self: Any, output_widget: Any, line_text: str,
     return line_text
 
 
-def _trim_session_output_lines(self: Any) -> bool:
+def _trim_session_output_lines(self: Any) -> int:
+    """Drop the oldest batch of lines and report how many were dropped."""
     retained_lines = getattr(self, "_session_output_lines", None)
     if not isinstance(retained_lines, list):
-        return False
+        return 0
     retention = getattr(self, "_output_retention_lines", lambda: _SESSION_OUTPUT_MAX_LINES)()
     overflow = len(retained_lines) - retention
     if overflow <= 0:
-        return False
+        return 0
     # Rebuilding the widget is the expensive half of trimming, so wait for a
     # batch of overflow (roughly half the retention window) before trimming.
     # The trim then drops exactly the overflow, so the pane never holds fewer
     # lines than the retention it advertises.
     batch = max(retention // 2, 1)
     if overflow < batch:
-        return False
+        return 0
     del retained_lines[:overflow]
     self._session_output_dropped_line_count = int(getattr(self, "_session_output_dropped_line_count", 0)) + overflow
-    return True
+    return overflow
 
 
 def _rebuild_output_widget(self: Any, output_widget: Any) -> None:
@@ -428,14 +429,15 @@ def _write_output(self: Any, text: str) -> None:
     line_texts = [chunk[:-1] if chunk.endswith("\n") else chunk for chunk in normalized.splitlines(keepends=True)]
     error_message = self._capture_error_modal_output(normalized)
     self._session_output_lines.extend(line_texts)
-    trimmed = self._trim_session_output_lines()
-    if trimmed:
+    dropped_lines = self._trim_session_output_lines()
+    if dropped_lines:
         self._rebuild_output_widget(output_widget)
         # A rebuild replaces every line, so restore the reader's place in the
-        # log instead of jumping to the oldest retained line.
+        # log. The lines that just left the top shift every remaining offset
+        # up by their count, so the reader stays on the same text.
         if isinstance(scroll_y, (int, float)):
             with suppress(AttributeError, TypeError):
-                output_widget.scroll_to(y=scroll_y, animate=False)
+                output_widget.scroll_to(y=max(0, scroll_y - dropped_lines), animate=False)
     else:
         previous_line = getattr(self, "_last_output_line", None)
         for line_text in line_texts:
@@ -1165,7 +1167,7 @@ if TYPE_CHECKING:
         def _append_output_line_to_widget(
             self, output_widget: Any, line_text: str, *, previous_line: str | None
         ) -> str: ...
-        def _trim_session_output_lines(self) -> bool: ...
+        def _trim_session_output_lines(self) -> int: ...
         def _rebuild_output_widget(self, output_widget: Any) -> None: ...
         def _capture_error_modal_output(self, text: str) -> str | None: ...
         def _show_error_modal(self, title: str, message: str) -> None: ...

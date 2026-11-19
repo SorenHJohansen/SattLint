@@ -135,3 +135,16 @@ def test_analysis_report_cache_key_tracks_analyzer_settings() -> None:
         "cyclomatic-complexity",
         analysis_settings={"cyclomatic_module_threshold": 20},
     )
+
+
+def test_report_cache_removes_entries_from_another_generation(tmp_path) -> None:
+    root = tmp_path / "caches" / "analysis_reports"
+    stale = root / "v0-p0.0.1"
+    stale.mkdir(parents=True)
+    (stale / "entry.pickle").write_bytes(b"stale")
+
+    cache = AnalysisReportCache(tmp_path / "caches")
+
+    assert cache.cache_dir.is_dir()
+    assert not stale.exists()
+    assert cache.drain_startup_pruned_entries() == 1

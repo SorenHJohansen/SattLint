@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import pickle
 from collections.abc import Iterable
+from contextlib import suppress
 from pathlib import Path
 
 from .. import cache as cache_module
+from ..parser_api import PARSER_VERSION
 
 
 class ASTCache:
@@ -160,12 +162,26 @@ class ASTCache:
 
 class AnalysisReportCache:
     def __init__(self, cache_dir: Path):
-        self.cache_dir = cache_dir / "analysis_reports"
+        self._root_dir = cache_dir / "analysis_reports"
+        self.cache_dir = self._root_dir / f"v{cache_module.ANALYSIS_REPORT_CACHE_VERSION}-p{PARSER_VERSION}"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        # Pruning verifies every entry, so it belongs to the explicit cache
-        # maintenance pass, not to every construction of the store. A stale
-        # version is rejected by ``validate`` on use and overwritten on save.
-        self._startup_pruned_entries = 0
+        # An entry is only valid for the schema version and parser release
+        # that wrote it, and the key path carries both. Entries from another
+        # generation are never read again, so they are removed here rather
+        # than validated one by one on every construction.
+        self._startup_pruned_entries = self._prune_other_generations()
+
+    def _prune_other_generations(self) -> int:
+        removed = 0
+        for path in self._root_dir.iterdir():
+            if path == self.cache_dir or not path.is_dir():
+                continue
+            for entry in path.iterdir():
+                if entry.is_file() and cache_module._remove_file(entry):
+                    removed += 1
+            with suppress(OSError):
+                path.rmdir()
+        return removed
 
     def _path(self, key: str) -> Path:
         return self.cache_dir / f"{key}.pickle"

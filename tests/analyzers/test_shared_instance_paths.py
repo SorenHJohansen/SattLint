@@ -130,3 +130,18 @@ def test_rewrite_leaves_non_typedef_paths_unchanged() -> None:
     (rewritten,) = rewrite_typedef_paths([issue], bp)
 
     assert rewritten is issue
+
+
+def test_rewrite_leaves_a_non_dataclass_record_unchanged() -> None:
+    bp = BasePicture(header=_header("Root"), submodules=[_instance("InstA", "MyType")])
+
+    class ForeignHit:
+        def __init__(self) -> None:
+            self.module_path = ["Root", "TypeDef:MyType"]
+
+    hit = ForeignHit()
+
+    (rewritten,) = rewrite_typedef_paths([hit], bp)
+
+    assert rewritten is hit
+    assert hit.module_path == ["Root", "TypeDef:MyType"]

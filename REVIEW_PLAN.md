@@ -89,9 +89,9 @@ subsystems, each in its own worktree, then merged and re-verified as one tree.
 Closed in this pass:
 
 - Open Mediums: C1-13, C1-17, C1-18, C1-19, C1-21, C3-9, C3-10, C3-11, C3-12,
-  C3-13, C3-14, C6-2, C6-3, C6-4, C6-5, the library-scoped record definitions,
-  the never-populated analysis indexes, the pairwise dataflow scan, and the TUI
-  project-path attribution.
+  C3-13, C3-14, C6-2, C6-3, C6-4, C6-5, library-scoped record definitions in the
+  project graph, the never-populated analysis indexes, the pairwise dataflow
+  scan, and the TUI project-path attribution.
 - Every Low and nit row: C1-24 to C1-50, C2-10 to C2-54, C3-17 to C3-39, C4-15
   to C4-46, C5-20 to C5-55, C6-6 to C6-29, and the unnumbered Low rows.
 - The cache-integrity, security, and packaging items recorded under the Medium
@@ -102,6 +102,9 @@ Closed in this pass:
 Residuals, each blocked by a product decision or a deliberately deferred
 refactor:
 
+- Record field resolution: definitions are stored per library, but field and
+  leaf expansion still resolves by name through one type graph per project.
+  Fixing that threads a library argument through every consumer.
 - C1-38, the 20-field issue union: the dead label table, the reflection lookup,
   and the blanket enrichment catch are fixed; splitting the record itself
   touches 78 construction sites across the analyzer packages and is left as its

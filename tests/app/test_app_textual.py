@@ -4666,7 +4666,9 @@ def test_textual_output_trim_keeps_the_readers_scroll_position() -> None:
     app_instance._write_output("\n".join(f"line {index}" for index in range(200)))
 
     assert len(app_instance._session_output_lines) == 100
-    assert output.scroll_targets == [120.0]
+    # 100 lines left the top of the log, so the same text now sits 100 lines
+    # higher in the rebuilt widget.
+    assert output.scroll_targets == [20.0]
 
 
 def test_textual_lowering_output_retention_trims_the_live_log_immediately() -> None:

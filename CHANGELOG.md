@@ -20,8 +20,9 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 ### Changed
 
 - Root symbol paths are qualified by the program's identity, and record
-  definitions are keyed by library, name, and file, so same-named records and
-  programs in different libraries stay distinct. Failure detail is carried by
+  definitions are stored by library, name, and file, so the project graph no
+  longer overwrites a same-named record from another library. Field expansion
+  still resolves through one type graph per project. Failure detail is carried by
   the typed failure record instead of being re-read from prose markers, and the
   unused workspace-discovery surface is gone.
 - Reset-contamination classifies compound guards, so a reset written under
@@ -146,8 +147,8 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   guards, and an analysis run snapshots its configuration and project path.
 - Configured targets are matched case-insensitively for the self-check, and a
   wrong-typed config value is rejected at load instead of failing later.
-- A newly added ICF file invalidates the cached report, and clearing all caches
-  also clears the analysis foundation.
+- A newly added ICF file invalidates the cached report. The unreachable
+  foundation cache is gone, so there is no separate store left to clear.
 - A failed program index no longer leaves root origins, record or module-type
   definitions, dependency edges, or a source file behind for a program that is
   reported as failed.

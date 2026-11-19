@@ -279,15 +279,20 @@ def load_project(  # noqa: PLR0915
         cached_project_tuple = cast(tuple[object, ...], cached_project) if isinstance(cached_project, tuple) else None
         if cached_project_tuple is not None and len(cached_project_tuple) == 2:
             root_bp, graph = cast(tuple[BasePicture, ProjectGraph], cached_project_tuple)
-            with contextlib.suppress(AttributeError):
-                # Test doubles may use slotted graph stubs without this field; it's diagnostic-only.
-                graph.loaded_from_cache = True
             # The cached entry carries the timings of the load that produced it;
             # reporting them as this run's stages would be a fabricated number.
-            graph.load_stage_timings = {}
-            graph.load_stage_timings_by_program = {}
-            graph.graphics_load_timings = {}
-            graph.graphics_load_timings_by_program = {}
+            # Test doubles may use slotted stubs without some of these diagnostic
+            # fields, so each one is guarded on its own.
+            with contextlib.suppress(AttributeError):
+                graph.loaded_from_cache = True
+            with contextlib.suppress(AttributeError):
+                graph.load_stage_timings = {}
+            with contextlib.suppress(AttributeError):
+                graph.load_stage_timings_by_program = {}
+            with contextlib.suppress(AttributeError):
+                graph.graphics_load_timings = {}
+            with contextlib.suppress(AttributeError):
+                graph.graphics_load_timings_by_program = {}
             _attach_analysis_cache_metadata(
                 graph,
                 cache_key=key,

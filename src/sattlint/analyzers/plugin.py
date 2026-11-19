@@ -20,6 +20,12 @@ from .framework import Analyzer, AnalyzerSpec
 _plugin_analyzers: dict[str, AnalyzerSpec] = {}
 _plugin_generation = 0
 _BUILTIN_ANALYZER_KEYS = frozenset(template.key.casefold() for template in default_spec_templates())
+#: Retired spellings that resolve to a current key. Registration must honour
+#: them too, or a plugin named with a retired spelling slips past the
+#: reserved-key guard and later replaces the built-in entry.
+LEGACY_ANALYZER_KEY_ALIASES: dict[str, str] = {
+    "same_cycle": "same-cycle",
+}
 
 
 def get_plugin_registry_generation() -> int:
@@ -58,7 +64,7 @@ def register_analyzer(
     Returns:
         The decorator that registers the given runnable and returns it unchanged.
     """
-    canonical_key = key.casefold()
+    canonical_key = LEGACY_ANALYZER_KEY_ALIASES.get(key.casefold(), key.casefold())
     if canonical_key in _BUILTIN_ANALYZER_KEYS:
         raise ValueError(f"Analyzer key {key!r} is reserved by a built-in analyzer.")
 

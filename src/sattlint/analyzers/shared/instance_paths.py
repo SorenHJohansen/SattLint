@@ -83,9 +83,10 @@ def rewrite_typedef_paths[RecordT](
 
     Frozen report records are never mutated: each record whose module path
     mentions a moduletype is rebuilt through ``dataclasses.replace`` and the
-    caller rebinds its own collection. Also rewrites the same ``TypeDef:Name``
-    tokens inside a record's message and ``data`` so leaf text agrees with the
-    rewritten branch. Only invocations inside the analyzed picture are used: a
+    caller rebinds its own collection. A record that is not a dataclass is
+    returned unchanged. Also rewrites the same ``TypeDef:Name`` tokens inside
+    a record's message and ``data`` so leaf text agrees with the rewritten
+    branch. Only invocations inside the analyzed picture are used: a
     reverse consumer or dependency that happens to invoke the same type is
     outside the reported target, and routing a finding through its tree would
     name a unit the user did not analyze. If the picture has no invocation, the
@@ -114,7 +115,9 @@ def _rewrite_typedef_record[RecordT](
     index: Mapping[str, list[list[str]]],
 ) -> RecordT:
     if not is_dataclass(record) or isinstance(record, type):
-        raise TypeError(f"Cannot rewrite the module path of non-dataclass record {type(record).__name__}")
+        # Only dataclass records can be rebuilt without touching shared
+        # state. A plugin that reports its own record type keeps its path.
+        return record
 
     rewritten_path = _rewrite_typedef_path(list(module_path), index)
     updates: dict[str, Any] = {

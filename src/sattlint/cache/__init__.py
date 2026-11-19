@@ -330,6 +330,27 @@ def _merge_cache_directories(source: Path, destination: Path) -> None:
         _discard_cache_entry(child)
 
 
+def _relocate_legacy_hmac_key(cache_dir: Path) -> None:
+    """Move a key file found inside a migrated tree to the key location.
+
+    Payloads signed with the legacy key stay readable only while the key
+    moves with them. A key left inside the cache tree would protect nothing
+    and would survive as an entry that no reader prunes.
+    """
+    legacy_key = cache_dir / _PICKLE_HMAC_KEY_NAME
+    if not legacy_key.exists():
+        return
+    key_path = _pickle_hmac_key_path()
+    if key_path.exists():
+        _remove_file(legacy_key)
+        return
+    key_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        shutil.move(str(legacy_key), str(key_path))
+    except OSError:
+        _remove_file(legacy_key)
+
+
 def _migrate_legacy_cache_dir(cache_dir: Path) -> None:
     legacy_cache_dir = _legacy_cache_dir()
     if legacy_cache_dir == cache_dir or not legacy_cache_dir.exists():
@@ -339,12 +360,15 @@ def _migrate_legacy_cache_dir(cache_dir: Path) -> None:
     if not cache_dir.exists():
         try:
             legacy_cache_dir.rename(cache_dir)
-            return
         except OSError:
             pass
+        else:
+            _relocate_legacy_hmac_key(cache_dir)
+            return
 
     cache_dir.mkdir(parents=True, exist_ok=True)
     _merge_cache_directories(legacy_cache_dir, cache_dir)
+    _relocate_legacy_hmac_key(cache_dir)
     try:
         legacy_cache_dir.rmdir()
     except OSError:
