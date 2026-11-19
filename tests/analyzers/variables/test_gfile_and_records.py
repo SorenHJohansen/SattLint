@@ -1,11 +1,39 @@
 # pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportOptionalMemberAccess=false, reportUnusedImport=false
 from pathlib import Path
 
-from sattline_parser.models.ast_model import GraphicsBinding
+from sattline_parser.models.ast_model import (
+    Assignment,
+    BasePicture,
+    DataType,
+    Equation,
+    GraphicsBinding,
+    GraphObject,
+    ModuleCode,
+    ModuleDef,
+    ScalarDatatype,
+    SingleModule,
+    SourceSpan,
+    Variable,
+)
+from sattline_parser.models.expressions import FuncCall
 
+from sattlint.analyzers.variables import (
+    IssueKind,
+    VariablesAnalyzer,
+)
+from sattlint.engine import parse_source_file
 from sattlint.graphics.validation import GraphicsCompositeRecord
-from tests.helpers.analyzers_variables_support import *
+from sattlint.reporting.variables_report import (
+    ALL_VARIABLE_ANALYSIS_KINDS,
+    DATATYPE_FIELD_ANALYSIS_KINDS,
+)
 from tests.helpers.graphics_attachments_support import graphics_attachments
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_sample_fixture_contains_common_variable_quality_issues():

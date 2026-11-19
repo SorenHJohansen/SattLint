@@ -1,3 +1,20 @@
+# pyright: reportPrivateUsage=false
+from sattline_parser.models.ast_model import (
+    BasePicture,
+    Equation,
+    ModuleCode,
+    ScalarDatatype,
+    Sequence,
+    SFCAlternative,
+    SFCCodeBlocks,
+    SFCParallel,
+    SFCStep,
+    SFCSubsequence,
+    SFCTransition,
+    SFCTransitionSub,
+    SingleModule,
+    Variable,
+)
 from sattline_parser.models.expressions import Assignment, IfStmt, NotOp
 
 from sattlint.analyzers.reset_contamination import ResetContaminationAnalyzer
@@ -19,7 +36,16 @@ from sattlint.analyzers.reset_contamination._reset_path_state import (
     PathState,
     merge_parallel_branch_results,
 )
-from tests.helpers.analyzers_state_support import *
+from sattlint.analyzers.variables import (
+    IssueKind,
+    VariablesAnalyzer,
+)
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_reset_contamination_detected_for_missing_reset_write():

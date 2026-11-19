@@ -1,10 +1,29 @@
 import pytest
 from sattline_parser.ast import MappingSource
+from sattline_parser.models.ast_model import (
+    BasePicture,
+    DataType,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    ParameterMapping,
+    ScalarDatatype,
+    SingleModule,
+    Variable,
+)
 
 # pyright: reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
 from sattlint.analyzers.shared import _validators as validators_module
+from sattlint.analyzers.variables import (
+    IssueKind,
+    VariablesAnalyzer,
+)
 from sattlint.resolution.type_graph import TypeGraph
-from tests.helpers.analyzers_variables_support import *
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_min_max_mapping_mismatch_detected():

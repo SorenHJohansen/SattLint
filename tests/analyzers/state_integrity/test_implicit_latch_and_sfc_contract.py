@@ -1,6 +1,27 @@
-from sattline_parser.models.expressions import IfStmt
+from sattline_parser.models.ast_model import (
+    BasePicture,
+    Equation,
+    FrameModule,
+    ModuleCode,
+    ScalarDatatype,
+    Sequence,
+    SFCCodeBlocks,
+    SFCStep,
+    SingleModule,
+    Variable,
+)
+from sattline_parser.models.expressions import Assignment, IfStmt
 
-from tests.helpers.analyzers_state_support import *
+from sattlint.analyzers.variables import (
+    IssueKind,
+    VariablesAnalyzer,
+)
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_implicit_latch_detected_when_if_branch_sets_true_without_else_clear():

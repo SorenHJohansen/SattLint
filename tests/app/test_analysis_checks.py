@@ -1,8 +1,14 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false, reportPrivateUsage=false
 import json
 import os
+from pathlib import Path
 from types import SimpleNamespace
+from typing import (
+    Any,
+    cast,
+)
 
+import pytest
 from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
@@ -12,13 +18,21 @@ from sattline_parser.models.ast_model import (
     SingleModule,
 )
 
+from sattlint import console as console_module
+from sattlint.analyzers import catalog as analysis_catalog_module
 from sattlint.analyzers.framework import Issue, SimpleReport
+from sattlint.application import (
+    checks as checks_application,
+)
+from sattlint.application import (
+    output as output_module,
+)
 from sattlint.config import DEFAULT_CONFIG
+from sattlint.core import profiling as profiling_module
 from sattlint.models.project_graph import ProjectGraph
 from sattlint.reporting import target_report as analysis_reporting_module
 from sattlint.runs import load_run
 from tests.helpers import AnalysisGraphStub, named_object
-from tests.helpers.app_analysis_support import *
 
 
 def test_snapshot_module_tree_includes_empty_modules_and_instance_children() -> None:

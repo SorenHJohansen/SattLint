@@ -1,7 +1,38 @@
 # pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportOptionalMemberAccess=false, reportUnusedImport=false
 from types import SimpleNamespace
 
-from tests.helpers.analyzers_variables_support import *
+from sattline_parser.models.ast_model import (
+    Assignment,
+    BasePicture,
+    DataType,
+    Equation,
+    ModuleCode,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    ScalarDatatype,
+    Variable,
+)
+
+from sattlint.analyzers.variables import (
+    IssueKind,
+    analyze_variables,
+)
+from sattlint.analyzers.variables import (
+    _variable_issue_collection as variable_issue_collection_module,
+)
+from sattlint.reporting.variables_report import (
+    DATATYPE_FIELD_ANALYSIS_KINDS,
+    VariableIssue,
+)
+from tests.helpers.variable_test_support import (
+    UsageStub as _UsageStub,
+)
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_iter_variables_for_datatype_field_analysis_includes_context_only_variables():
@@ -97,7 +128,6 @@ def test_unused_datatype_fields_include_context_only_variable_usage():
 
 
 def test_analyze_variables_library_target_counts_dependency_typedef_field_reads():
-    from sattlint.analyzers.variables import analyze_variables  # noqa: PLC0415
 
     op_text_type = DataType(
         name="ApplOpTxtType",
@@ -189,7 +219,6 @@ def test_analyze_variables_library_target_counts_dependency_typedef_field_reads(
 
 
 def test_analyze_variables_library_target_counts_reverse_consumer_typedef_field_reads():
-    from sattlint.analyzers.variables import analyze_variables  # noqa: PLC0415
 
     op_text_type = DataType(
         name="ApplOpTxtType",

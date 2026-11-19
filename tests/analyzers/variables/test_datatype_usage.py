@@ -2,12 +2,38 @@
 
 
 from sattline_parser.ast import MappingSource
-from sattline_parser.models.ast_model import GraphicsBinding
+from sattline_parser.models.ast_model import (
+    Assignment,
+    BasePicture,
+    DataType,
+    Equation,
+    GraphicsBinding,
+    GraphObject,
+    ModuleCode,
+    ModuleDef,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    ParameterMapping,
+    ScalarDatatype,
+    SingleModule,
+    SourceSpan,
+    Variable,
+)
 
+from sattlint.analyzers.variables import (
+    IssueKind,
+    VariablesAnalyzer,
+)
 from sattlint.graphics.picture_display_paths import PictureDisplayOccurrence
 from sattlint.graphics.validation import PictureDisplayPathRow, PictureDisplayRecord
-from tests.helpers.analyzers_variables_support import *
+from sattlint.reporting.variables_report import DATATYPE_FIELD_ANALYSIS_KINDS
 from tests.helpers.graphics_attachments_support import graphics_attachments
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_unused_datatype_fields_are_aggregated_across_variables():

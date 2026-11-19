@@ -1,5 +1,30 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportIndexIssue=false, reportAttributeAccessIssue=false
-from tests.helpers.analyzers_suites_support import *
+from types import SimpleNamespace
+from typing import (
+    Any,
+    cast,
+)
+
+from sattline_parser.models.ast_model import (
+    Assignment,
+    BasePicture,
+    Equation,
+    ModuleCode,
+    ScalarDatatype,
+    SingleModule,
+    Variable,
+)
+
+from sattlint.analyzers import registry as registry_module
+from sattlint.analyzers.framework import AnalyzerSpec
+from sattlint.analyzers.modules import analyze_version_drift
+from sattlint.analyzers.registry import get_default_analyzers
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_version_drift_ignores_datecode_only_differences():

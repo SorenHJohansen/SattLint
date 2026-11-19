@@ -1,3 +1,14 @@
+from sattline_parser.models.ast_model import (
+    ScalarDatatype,
+    SFCAlternative,
+    SFCCodeBlocks,
+    SFCParallel,
+    SFCStep,
+    SFCSubsequence,
+    SFCTransition,
+    SFCTransitionSub,
+    Variable,
+)
 from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt, NotOp
 
 from sattlint.analyzers.reset_contamination._reset_latching import (
@@ -13,7 +24,8 @@ from sattlint.analyzers.reset_contamination._reset_path_collection import (
 from sattlint.analyzers.reset_contamination._reset_path_state import (
     PathState,
 )
-from tests.helpers.analyzers_state_support import *
+from sattlint.reporting.variables_report import VariableIssue
+from tests.helpers.variable_test_support import varref as _varref
 
 
 def test_reset_contamination_helpers_collect_if_and_nested_sequence_paths():

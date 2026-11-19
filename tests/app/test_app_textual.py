@@ -1212,16 +1212,16 @@ def _make_textual_app(
     return app_instance
 
 
-_TEST_PROJECT_ROOT: Path | None = None
-_TEST_PROJECT_SEQUENCE = 0
+_test_project_root: Path | None = None
+_test_project_sequence = 0
 
 
 def _attach_test_project(app_instance: Any) -> None:
-    global _TEST_PROJECT_SEQUENCE
-    if _TEST_PROJECT_ROOT is None:
+    global _test_project_sequence
+    if _test_project_root is None:
         raise RuntimeError("the per-test project root fixture is not active")
-    _TEST_PROJECT_SEQUENCE += 1
-    project_dir = _TEST_PROJECT_ROOT / f"project-{_TEST_PROJECT_SEQUENCE}"
+    _test_project_sequence += 1
+    project_dir = _test_project_root / f"project-{_test_project_sequence}"
     app_instance._project = init_project(project_dir / ".slproj")
 
 
@@ -1244,14 +1244,14 @@ def _isolate_test_projects(tmp_path: Path) -> Iterator[None]:
     ``_make_textual_app`` attaches a real ``.slproj`` project; creating it in
     the shared temp area left one directory per app on every run.
     """
-    global _TEST_PROJECT_ROOT, _TEST_PROJECT_SEQUENCE
+    global _test_project_root, _test_project_sequence
     root = tmp_path / "projects"
     root.mkdir()
-    _TEST_PROJECT_ROOT = root
-    _TEST_PROJECT_SEQUENCE = 0
+    _test_project_root = root
+    _test_project_sequence = 0
     yield
-    _TEST_PROJECT_ROOT = None
-    _TEST_PROJECT_SEQUENCE = 0
+    _test_project_root = None
+    _test_project_sequence = 0
 
 
 def _widget_text_lines(widget: Any) -> int | None:

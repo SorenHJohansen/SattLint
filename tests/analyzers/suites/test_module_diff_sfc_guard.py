@@ -1,6 +1,47 @@
+# pyright: reportPrivateUsage=false
 from sattline_parser.ast import BoolOp, MappingSource, NotOp
+from sattline_parser.models.ast_model import (
+    Assignment,
+    BasePicture,
+    DataType,
+    Equation,
+    IntLiteral,
+    ModuleCode,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    ParameterMapping,
+    ScalarDatatype,
+    SingleModule,
+    Variable,
+)
 
-from tests.helpers.analyzers_suites_support import *
+from sattlint.analyzers.modules import (
+    AstDiffDetail,
+    CodeDiff,
+    ComparisonResult,
+    SubmoduleDiff,
+    VariableDiff,
+    _build_upgrade_notes,
+    _collect_named_item_diffs,
+    _common_module_prefix,
+    _compact_diff,
+    _diff_normalized_variants,
+    _group_instances_by_variant,
+    _normalize_ast_value,
+    compare_modules,
+    create_fingerprint,
+)
+from sattlint.analyzers.sfc._sfc_guard_logic import _normalize_guard_signature
+from sattlint.analyzers.variable_usage_reporting import (
+    _find_module_instances,
+    report_module_localvar_fields,
+)
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_module_localvar_field_report_includes_filtered_summary_sections():

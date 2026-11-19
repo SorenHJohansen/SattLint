@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownVariableType=false
 from __future__ import annotations
 
 from collections.abc import Sequence as Seq
@@ -307,8 +308,8 @@ def test_latching_helpers_cover_boolean_paths_and_sequence_recursion() -> None:
 
 
 def test_boolean_parallel_merge_caps_the_frontier() -> None:
-    def _branch(prefix: str) -> list[object]:
-        states: list[object] = []
+    def _branch(prefix: str) -> list[BooleanPathState]:
+        states: list[BooleanPathState] = []
         for index in range(10):
             variable = Variable(name=f"{prefix}{index}", datatype=ScalarDatatype.BOOLEAN)
             states.append(BooleanPathState(true_writes={(f"{prefix}{index}".casefold(), ""): (variable, "")}))

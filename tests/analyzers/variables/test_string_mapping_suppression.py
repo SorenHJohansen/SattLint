@@ -1,7 +1,26 @@
 from sattline_parser.ast import MappingSource
 
 # pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportOptionalMemberAccess=false, reportUnusedImport=false
-from tests.helpers.analyzers_variables_support import *
+from sattline_parser.models.ast_model import (
+    BasePicture,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    ParameterMapping,
+    ScalarDatatype,
+    SingleModule,
+    Variable,
+)
+
+from sattlint.analyzers.variables import (
+    IssueKind,
+    VariablesAnalyzer,
+)
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_library_dependency_typedef_internal_string_mismatches_are_suppressed_but_edge_mismatches_remain():
