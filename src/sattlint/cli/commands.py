@@ -126,7 +126,7 @@ def _emit_findings(
 def _analyze_options(args: argparse.Namespace) -> _AnalyzeOptions:
     return _AnalyzeOptions(
         output=_output_options(args),
-        project=str(args.project) if args.project else None,
+        project=None if args.project is None else str(args.project),
         analyzers=tuple(str(value) for value in args.analyzer),
         targets=tuple(str(value) for value in args.target),
         modules=tuple(str(value) for value in args.module),
@@ -408,7 +408,7 @@ def command_findings(args: argparse.Namespace) -> int:
     matched = len(findings)
     limit = args.limit
     if limit is not None:
-        findings = findings[: int(limit)]
+        findings = findings[:limit]
     group_by = cast(GroupBy, str(args.group_by))
     groups: list[FindingGroup] = group_findings(findings, group_by)
     summary: FindingsSummary = {**finding_summary(findings), "matched": matched}

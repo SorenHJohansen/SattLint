@@ -13,7 +13,7 @@ import contextlib
 import logging
 import sys
 from collections.abc import Callable
-from typing import NoReturn, Protocol
+from typing import NoReturn, Protocol, cast
 
 from ..__version__ import __version__
 from . import commands
@@ -73,6 +73,16 @@ def _add_output_args(
 
 def _add_project_arg(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--project", metavar="PATH", help="Path to a .slproj file or a directory containing one.")
+
+
+def _non_negative_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid integer value: {value!r}") from None
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be zero or greater")
+    return parsed
 
 
 def _build_project_parser(subparsers: _SubParserAction) -> None:
@@ -150,7 +160,9 @@ def _build_findings_parser(subparsers: _SubParserAction) -> None:
         default="none",
         help="Also return grouped counts for the selected findings.",
     )
-    parser.add_argument("--limit", type=int, metavar="N", help="Return at most N findings after filtering.")
+    parser.add_argument(
+        "--limit", type=_non_negative_int, metavar="N", help="Return at most N findings after filtering."
+    )
     _add_output_args(parser, formats=("json", "ndjson", "text"))
 
 
@@ -196,13 +208,55 @@ def _format_from_args(args: argparse.Namespace) -> str:
 
 
 def _requested_format(argv: list[str]) -> str:
-    """Read ``--format`` before parsing fails and no namespace exists."""
+    """Read ``--format`` before parsing fails and no namespace exists.
+
+    argparse keeps the last occurrence of a repeated option, so the fallback
+    must do the same or the pre-parse and post-parse error channels disagree.
+    """
+    requested = "text"
     for index, argument in enumerate(argv):
         if argument == "--format" and index + 1 < len(argv):
-            return argv[index + 1]
-        if argument.startswith("--format="):
-            return argument.split("=", 1)[1]
-    return "text"
+            requested = argv[index + 1]
+        elif argument.startswith("--format="):
+            requested = argument.split("=", 1)[1]
+    return requested
+
+
+_FILTER_ARGUMENTS: dict[str, tuple[str, ...]] = {
+    "analyze": ("analyzer", "target", "module"),
+    "findings": ("analyzer", "target", "module", "kind", "rule"),
+}
+
+
+def _validate_args(args: argparse.Namespace) -> None:
+    """Reject filter values that would otherwise match nothing on purpose.
+
+    An empty filter value is never a meaningful selection: the module matcher
+    drops a blank pattern, which hides every finding, and a blank project path
+    falls back to discovery. Both silently change what the command queries.
+    """
+    command = str(args.command)
+    for attribute in _FILTER_ARGUMENTS.get(command, ()):
+        values = cast(list[str], getattr(args, attribute))
+        if any(not value.strip() for value in values):
+            raise _UsageError(
+                f"--{attribute} must not be empty.",
+                code="usage_error",
+                exit_code=EXIT_USAGE_ERROR,
+            )
+    if command == "findings" and bool(args.exact_module) and not cast(list[str], args.module):
+        raise _UsageError(
+            "--exact-module requires --module.",
+            code="usage_error",
+            exit_code=EXIT_USAGE_ERROR,
+        )
+    project = getattr(args, "project", None)
+    if project is not None and not str(project).strip():
+        raise _UsageError(
+            "--project must not be empty.",
+            code="usage_error",
+            exit_code=EXIT_USAGE_ERROR,
+        )
 
 
 def run_cli(argv: list[str]) -> int:
@@ -217,6 +271,12 @@ def run_cli(argv: list[str]) -> int:
 
     if _format_from_args(args) in {"json", "ndjson"}:
         _suppress_last_resort_logging()
+
+    try:
+        _validate_args(args)
+    except _UsageError as exc:
+        emit_error(exc, output_format=_format_from_args(args))
+        return exc.exit_code
 
     handler = _handlers().get(args.command)
     if handler is None:

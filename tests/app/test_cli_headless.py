@@ -1135,3 +1135,54 @@ def test_project_analyzer_findings_survive_without_a_phantom_target() -> None:
     assert [finding.target for finding in flat] == [""]
     assert record.targets == ()
     assert record.issue_count == 1
+
+
+def test_findings_rejects_a_blank_module_filter(capsys: pytest.CaptureFixture[str]) -> None:
+    code = run_cli(["findings", "--module", ""])
+
+    assert code == 2
+    assert "--module must not be empty." in capsys.readouterr().err
+
+
+def test_analyze_rejects_a_blank_filter_value(capsys: pytest.CaptureFixture[str]) -> None:
+    code = run_cli(["analyze", "--target", "  "])
+
+    assert code == 2
+    assert "--target must not be empty." in capsys.readouterr().err
+
+
+def test_findings_rejects_a_negative_limit(capsys: pytest.CaptureFixture[str]) -> None:
+    code = run_cli(["findings", "--limit", "-3"])
+
+    assert code == 2
+    assert "must be zero or greater" in capsys.readouterr().err
+
+
+def test_exact_module_requires_a_module_filter(capsys: pytest.CaptureFixture[str]) -> None:
+    code = run_cli(["findings", "--exact-module"])
+
+    assert code == 2
+    assert "--exact-module requires --module." in capsys.readouterr().err
+
+
+def test_blank_project_value_is_a_usage_error(capsys: pytest.CaptureFixture[str]) -> None:
+    code = run_cli(["project", "show", "--project", ""])
+
+    assert code == 2
+    assert "--project must not be empty." in capsys.readouterr().err
+
+
+def test_repeated_format_flag_uses_the_last_value(capsys: pytest.CaptureFixture[str]) -> None:
+    code = run_cli(["analyzers", "list", "--format", "json", "--format", "text"])
+
+    assert code == 0
+    out = capsys.readouterr().out
+    assert not out.lstrip().startswith("{")
+    assert "Variable issues" in out
+
+
+def test_usage_error_fallback_uses_the_last_format_flag(capsys: pytest.CaptureFixture[str]) -> None:
+    code = run_cli(["analyze", "--format", "json", "--format", "text", "--bogus"])
+
+    assert code == 2
+    assert capsys.readouterr().err.startswith("sattlint: ")

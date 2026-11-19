@@ -19,7 +19,7 @@ from ._payloads import ConfigInfo, ProjectInfo, ProjectPaths
 
 
 def resolve_project_file(raw: str | None) -> SattLintProjectFile:
-    if raw is None or not raw.strip():
+    if raw is None:
         discovered = discover_project()
         if discovered is None:
             raise CliError(
@@ -28,13 +28,16 @@ def resolve_project_file(raw: str | None) -> SattLintProjectFile:
                 exit_code=2,
             )
         return _load_project(discovered)
+    if not raw.strip():
+        raise CliError(
+            "Project path is empty. Pass a .slproj path or omit --project to discover one.",
+            code="usage_error",
+            exit_code=2,
+        )
 
     path = Path(raw).expanduser()
     if path.is_dir():
         candidates = sorted(path.glob(f"*{SLPROJ_FILENAME}"))
-        default_project = path / SLPROJ_FILENAME
-        if default_project.is_file() and default_project not in candidates:
-            candidates.insert(0, default_project)
         if not candidates:
             raise CliError(
                 f"No {SLPROJ_FILENAME} found in {path}.",

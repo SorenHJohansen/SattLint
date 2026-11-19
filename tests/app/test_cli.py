@@ -150,7 +150,7 @@ def test_startup_main_warns_and_pauses_for_default_config() -> None:
 
     assert exit_code == 0
     assert seen["debug_cfg"] is cfg
-    assert seen["message"] == "Warning: Default config created. Open Setup before running analysis."
+    assert seen["message"] == "Warning: Default config created. Open Configuration Settings before running analysis."
     assert seen["paused"] == 1
     assert seen["main_loop_cfg"] is cfg
     assert "choose_menu_option_fn" not in cast(dict[str, Any], seen["main_loop_kwargs"])

@@ -217,7 +217,7 @@ def main(
                 emit_output_fn(f"Interactive startup failed: {exc}")
                 return 1
         if default_used:
-            emit_output_fn("Warning: Default config created. Open Setup before running analysis.")
+            emit_output_fn("Warning: Default config created. Open Configuration Settings before running analysis.")
             pause_fn()
         if set_interactive_ui_mode_fn is not None:
             set_interactive_ui_mode_fn(resolved_ui_mode)
