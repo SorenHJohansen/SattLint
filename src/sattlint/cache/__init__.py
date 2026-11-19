@@ -293,25 +293,39 @@ def _legacy_cache_dir() -> Path:
     return base / "sattlint" / "cache"
 
 
+def _discard_cache_entry(path: Path) -> None:
+    """Remove one legacy cache entry that the destination already owns."""
+    if path.is_dir():
+        try:
+            shutil.rmtree(path)
+        except OSError:
+            return
+        return
+    _remove_file(path)
+
+
 def _merge_cache_directories(source: Path, destination: Path) -> None:
+    """Move every entry of *source* into *destination*, resolving name collisions.
+
+    Cache payloads are content-addressed, so a name that exists in both trees is
+    the same logical entry: the destination copy wins and the source copy is
+    discarded. Consuming the collision is what lets the caller finish the
+    migration; leaving the source entry behind kept the legacy tree alive and
+    every later run walked it again.
+    """
     for child in source.iterdir():
         target = destination / child.name
-        if child.is_dir():
-            if target.exists():
-                if target.is_dir():
-                    _merge_cache_directories(child, target)
-            else:
-                shutil.move(str(child), str(target))
-                continue
+        if not target.exists():
+            shutil.move(str(child), str(target))
+            continue
+        if child.is_dir() and target.is_dir():
+            _merge_cache_directories(child, target)
             try:
                 child.rmdir()
             except OSError:
                 continue
             continue
-
-        if target.exists():
-            continue
-        shutil.move(str(child), str(target))
+        _discard_cache_entry(child)
 
 
 def _migrate_legacy_cache_dir(cache_dir: Path) -> None:
