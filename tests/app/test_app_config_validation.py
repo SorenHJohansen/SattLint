@@ -416,6 +416,18 @@ def test_self_check_reports_invalid_nested_config_errors(tmp_path, monkeypatch, 
     assert "MissingTarget (not found)" in out
 
 
+def test_self_check_fails_when_only_an_extra_library_is_missing(tmp_path, capsys):
+    cfg = deepcopy(DEFAULT_CONFIG)
+    missing = tmp_path / "missing-other"
+    cfg["other_lib_dirs"] = [str(missing)]
+
+    ok = config_module.self_check(cfg)
+
+    out = capsys.readouterr().out
+    assert f"other_lib_dirs entry missing: {missing}" in out
+    assert ok is False
+
+
 def test_main_pauses_when_initial_ast_check_fails(monkeypatch):
     cfg = deepcopy(DEFAULT_CONFIG)
     cfg["analyzed_programs_and_libraries"] = ["Broken"]
