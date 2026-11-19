@@ -119,6 +119,7 @@ _POST_TRAVERSAL_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
 )
 _DATATYPE_FIELD_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
     {
+        IssueKind.UNUSED_DATATYPE,
         IssueKind.UNUSED_DATATYPE_FIELD,
         IssueKind.FIELD_READ_ONLY,
         IssueKind.FIELD_NEVER_READ,

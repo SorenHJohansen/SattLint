@@ -88,6 +88,20 @@ sattlint analyze --project app.slproj --no-cache --no-save
 By default the run is stored in run history and its ID is part of the JSON
 payload, so later `findings` and `show` calls can refer to it.
 
+### Module attribution
+
+A full run reports a module-type problem once, at the type's declaration
+path (`TypeDef:Name`). A run limited with `--module` reports the same
+problem at the instance path you asked to inspect. The two forms are
+alternatives, not duplicates: an instance-level finding appears only in a
+scoped run.
+
+### Datatype findings
+
+A record datatype that has no declaration or field access anywhere is
+reported once, as an unused datatype. Once any field is touched, the
+report names the fields that stay unused instead.
+
 ## `sattlint findings`
 
 Reads findings from a stored run without analyzing again.

@@ -424,6 +424,7 @@ def test_variable_issue_collection_datatype_field_helper_covers_remaining_branch
         get_usage=lambda variable: usage_by_id[id(variable)],
         is_from_root_origin=lambda origin, origin_lib=None: origin != "external.s",
         limit_to_module_path=None,
+        _selected_issue_kinds=None,
         _is_from_root_origin=lambda origin, origin_lib=None: origin != "external.s",
         type_graph=SimpleNamespace(
             iter_leaf_field_paths=lambda name: {
@@ -442,11 +443,14 @@ def test_variable_issue_collection_datatype_field_helper_covers_remaining_branch
 
     variable_issue_collection_module._add_unused_datatype_field_issues(helper)
 
-    assert len(issues) == 1
-    issue = issues[0]
-    assert issue.kind is IssueKind.UNUSED_DATATYPE_FIELD
-    assert issue.datatype_name == "PayloadPartial"
-    assert issue.field_path == "Unused"
+    by_kind = {issue.kind: issue for issue in issues}
+    assert set(by_kind) == {IssueKind.UNUSED_DATATYPE, IssueKind.UNUSED_DATATYPE_FIELD}
+    record_issue = by_kind[IssueKind.UNUSED_DATATYPE]
+    assert record_issue.datatype_name == "PayloadNoAccess"
+    assert record_issue.field_path is None
+    field_issue = by_kind[IssueKind.UNUSED_DATATYPE_FIELD]
+    assert field_issue.datatype_name == "PayloadPartial"
+    assert field_issue.field_path == "Unused"
 
 
 def test_field_usage_asymmetry_detects_sibling_miswire_and_treats_whole_record_read_directionally() -> None:
@@ -880,6 +884,7 @@ def test_variable_issue_collection_nested_scope_and_magic_helpers_cover_remainin
         analyzed_target_is_library=False,
         include_dependency_moduletype_usage=False,
         limit_to_module_path=None,
+        _selected_issue_kinds=None,
         contexts_by_module_path={},
         is_from_root_origin=lambda *args, **kwargs: True,
         type_graph=SimpleNamespace(

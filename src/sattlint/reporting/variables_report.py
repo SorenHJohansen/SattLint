@@ -14,6 +14,7 @@ from ._variables_report_rendering import (
     append_record_component_order_dependence,
     append_string_mapping_mismatch,
     append_unused_datatype_fields,
+    append_unused_datatypes,
     append_variable_issue_list,
     count_string_mapping_mismatch_rows,
 )
@@ -34,6 +35,7 @@ DEFAULT_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
 )
 
 DATATYPE_FIELD_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
+    IssueKind.UNUSED_DATATYPE,
     IssueKind.UNUSED_DATATYPE_FIELD,
     IssueKind.FIELD_READ_ONLY,
     IssueKind.FIELD_NEVER_READ,
@@ -79,6 +81,7 @@ def _phase_timings_factory() -> list[dict[str, str | float]]:
 
 SECTION_TITLES: dict[IssueKind, str] = {
     IssueKind.UNUSED: "Unused variables",
+    IssueKind.UNUSED_DATATYPE: "Unused datatypes",
     IssueKind.UNUSED_DATATYPE_FIELD: "Unused fields in datatypes",
     IssueKind.FIELD_READ_ONLY: "Read-only fields",
     IssueKind.READ_ONLY_NON_CONST: "Read-only but not Const variables",
@@ -109,6 +112,7 @@ VariableSectionRenderer = Callable[[list[str], str, list[VariableIssue]], None]
 # falling through to a silently empty section.
 _SECTION_RENDERERS: dict[IssueKind, VariableSectionRenderer] = {
     IssueKind.UNUSED: append_variable_issue_list,
+    IssueKind.UNUSED_DATATYPE: append_unused_datatypes,
     IssueKind.UNUSED_DATATYPE_FIELD: append_unused_datatype_fields,
     IssueKind.FIELD_READ_ONLY: append_variable_issue_list,
     IssueKind.READ_ONLY_NON_CONST: append_variable_issue_list,
@@ -160,6 +164,10 @@ class VariablesReport:
     @property
     def unused(self) -> list[VariableIssue]:
         return [i for i in self.issues if i.kind is IssueKind.UNUSED]
+
+    @property
+    def unused_datatypes(self) -> list[VariableIssue]:
+        return [i for i in self.issues if i.kind is IssueKind.UNUSED_DATATYPE]
 
     @property
     def unused_datatype_fields(self) -> list[VariableIssue]:
@@ -273,6 +281,8 @@ class VariablesReport:
     def _issues_for_kind(self, kind: IssueKind) -> list[VariableIssue]:
         if kind is IssueKind.UNUSED:
             return self.unused
+        if kind is IssueKind.UNUSED_DATATYPE:
+            return self.unused_datatypes
         if kind is IssueKind.UNUSED_DATATYPE_FIELD:
             return self.unused_datatype_fields
         if kind is IssueKind.FIELD_READ_ONLY:

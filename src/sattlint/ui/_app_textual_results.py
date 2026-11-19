@@ -101,6 +101,8 @@ def _context_label(finding: AnalysisFinding) -> str:
     ``[Module.Path]`` annotation stripped (the selected module supplies the path).
     """
     message = _LEADING_MODULE_PATH_RE.sub("", finding.message).strip()
+    if finding.kind == "unused_datatype" and finding.module_path:
+        return finding.module_path[-1].removeprefix("DataType:")
     if finding.kind == "unused_datatype_field" and finding.module_path:
         datatype = finding.module_path[-1].removeprefix("DataType:")
         field_prefix = f"datatype '{datatype}'."
@@ -110,7 +112,7 @@ def _context_label(finding: AnalysisFinding) -> str:
         variable = data.get("variable_name")
         field = data.get("field_path")
         return f"{variable}.{field}" if variable and field else message
-    context = data.get("context")
+    context = data.get("relation", data.get("context"))
     if context:
         return str(context)
     return message

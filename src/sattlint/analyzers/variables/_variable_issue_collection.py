@@ -519,10 +519,24 @@ def _add_unused_datatype_field_issues(
                 state.accessed_prefixes.add(normalized.casefold())
                 _record_nested_datatype_access(self, datatype_state, variable, normalized)
 
+    collect_unused_datatype = _should_collect_issue_kind(self, IssueKind.UNUSED_DATATYPE)
     for state in datatype_state.values():
         if state.externally_open or state.has_whole_access:
             continue
         if not state.accessed_prefixes:
+            # A datatype nothing touches is one finding for the definition,
+            # not one finding per field: the field list would only repeat the
+            # same "this record is dead" fact.
+            if collect_unused_datatype:
+                self.append_issue(
+                    VariableIssue(
+                        kind=IssueKind.UNUSED_DATATYPE,
+                        module_path=list(state.module_path),
+                        variable=None,
+                        datatype_name=state.datatype_name,
+                        role="datatype",
+                    )
+                )
             continue
 
         unused_mask = state.index.all_mask & ~state.index.mask_for_prefixes(state.accessed_prefixes)

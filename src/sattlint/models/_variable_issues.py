@@ -19,6 +19,7 @@ __all__ = [
 
 class IssueKind(Enum):
     UNUSED = "unused"
+    UNUSED_DATATYPE = "unused_datatype"
     UNUSED_DATATYPE_FIELD = "unused_datatype_field"
     FIELD_READ_ONLY = "field_read_only"
     READ_ONLY_NON_CONST = "read_only_non_const"
@@ -55,6 +56,10 @@ _VARIABLE_ISSUE_METADATA: dict[IssueKind, VariableIssueMetadata] = {
     IssueKind.UNUSED: VariableIssueMetadata(
         explanation="Stale declarations add noise and make it harder to tell which signals still matter.",
         suggestion="Delete the declaration, or add the missing read/write path if it is still part of the design.",
+    ),
+    IssueKind.UNUSED_DATATYPE: VariableIssueMetadata(
+        explanation="A datatype that nothing declares or uses adds surface area without serving the interface.",
+        suggestion="Remove the datatype definition, or declare the variable that should use it.",
     ),
     IssueKind.UNUSED_DATATYPE_FIELD: VariableIssueMetadata(
         explanation="Unused fields make shared datatypes drift away from the actual interface the code relies on.",

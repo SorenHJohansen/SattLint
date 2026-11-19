@@ -138,6 +138,12 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Fixed
 
+- A datatype that nothing declares or uses is reported once as an unused
+  datatype; once a field is touched, the report names the unused fields.
+- A failed analyzer names only the exception type in run history, CI output,
+  and the UI; the full exception text appears when debug is enabled.
+- Findings carry the scope in `context` and a parameter mapping in `relation`
+  instead of overloading one key with both meanings.
 - A completed run keeps its findings when one analyzer fails; only the failing
   analyzer is reported. Duplicate module-type names resolve within their own
   library, and datatype-field findings stay inside the analyzed target.

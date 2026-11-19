@@ -153,6 +153,10 @@ def _merge_synthesized_context(item: object, data: dict[str, FindingDataValue]) 
         context = _synthesized_context(item)
         if context:
             data["context"] = context
+    if "relation" not in data:
+        relation = _synthesized_relation(item)
+        if relation:
+            data["relation"] = relation
 
 
 def _synthesized_site(item: object) -> str | None:
@@ -166,13 +170,10 @@ def _synthesized_site(item: object) -> str | None:
 
 
 def _synthesized_context(item: object) -> str | None:
+    """The scope or location a finding belongs to."""
     explicit_context = getattr(item, "context", None)
     if isinstance(explicit_context, str) and explicit_context.strip():
         return explicit_context.strip()
-    target = getattr(item, "target_display_name", None)
-    source = getattr(item, "source_display_name", None)
-    if isinstance(target, str) and target.strip() and isinstance(source, str) and source.strip():
-        return f"{target.strip()} => {source.strip()}"
     role = getattr(item, "role", None)
     if isinstance(role, str) and role.strip() and " " in role.strip():
         return role.strip()
@@ -180,6 +181,15 @@ def _synthesized_context(item: object) -> str | None:
     variable_name = getattr(variable, "name", None)
     if isinstance(variable_name, str) and variable_name.strip():
         return variable_name.strip()
+    return None
+
+
+def _synthesized_relation(item: object) -> str | None:
+    """The mapping relation a finding sits on, kept apart from its scope."""
+    target = getattr(item, "target_display_name", None)
+    source = getattr(item, "source_display_name", None)
+    if isinstance(target, str) and target.strip() and isinstance(source, str) and source.strip():
+        return f"{target.strip()} => {source.strip()}"
     return None
 
 
@@ -232,6 +242,7 @@ def _kind_object(item: object) -> IssueKind | str | None:
 _KIND_HUMAN_LABELS: dict[str, str] = {
     "magic_number": "Magic number",
     "unused": "Unused variable",
+    "unused_datatype": "Unused datatype",
     "unused_datatype_field": "Unused datatype field",
     "field_read_only": "Field read only",
     "read_only_non_const": "Read-only non-const",

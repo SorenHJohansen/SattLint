@@ -107,6 +107,7 @@ def test_unused_datatype_fields_include_context_only_variable_usage():
         limit_to_module_path=None,
         analyzed_target_is_library=False,
         include_dependency_moduletype_usage=False,
+        _selected_issue_kinds=None,
         contexts_by_module_path={
             ("BasePicture", "Nested", "Display"): SimpleNamespace(
                 env={"steptext": context_var},

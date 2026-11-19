@@ -1146,7 +1146,9 @@ def test_per_target_analyzer_raise_is_reported_as_analyzer_failure() -> None:
     )
 
     assert result.targets[0].analyzers[0].status == "failed"
-    assert "boom" in (result.targets[0].analyzers[0].summary or "")
+    summary = result.targets[0].analyzers[0].summary or ""
+    assert summary == "State inference failed: RuntimeError"
+    assert "boom" not in summary
     assert [(failure.analyzer_name, failure.target_name) for failure in result.analyzer_failures] == [
         ("State inference", "TargetA")
     ]
@@ -1176,7 +1178,8 @@ def test_failed_analyzer_still_saves_the_run(monkeypatch, tmp_path) -> None:
     assert stored is not None
     analyzer = stored.targets[0].analyzers[0]
     assert analyzer.status == "failed"
-    assert "boom" in (analyzer.summary or "")
+    assert analyzer.summary == "State inference failed: RuntimeError"
+    assert "boom" not in (analyzer.summary or "")
     assert [(failure.analyzer_name, failure.target_name) for failure in result.analyzer_failures] == [
         ("State inference", "TargetA")
     ]
@@ -1229,3 +1232,25 @@ def test_analyzer_issue_count_matches_the_findings_it_stores():
     analyzer = result.targets[0].analyzers[0]
     assert analyzer.findings == ()
     assert analyzer.issue_count == 0
+
+
+def test_debug_run_keeps_the_full_analyzer_failure_text() -> None:
+    def _explode(_context):
+        raise RuntimeError("boom")
+
+    result = checks_application.collect_run_checks_result(
+        DEFAULT_CONFIG.copy() | {"debug": True},
+        ["state-inference"],
+        use_cache=False,
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [("TargetA", SimpleNamespace(header=SimpleNamespace(name="TargetA")), AnalysisGraphStub())]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [SimpleNamespace(key="state-inference", name="State inference", run=_explode)],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+    )
+
+    assert result.targets[0].analyzers[0].summary == "State inference failed: boom"

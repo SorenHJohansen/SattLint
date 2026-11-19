@@ -138,7 +138,12 @@ def test_analyze_datatype_fields_reports_unused_field():
 def test_default_variables_run_does_not_emit_datatype_field_kinds():
     report = analyze_variables(_picture_with_unused_field())
     assert _unused_field_names(report) == set()
-    field_kinds = {IssueKind.UNUSED_DATATYPE_FIELD, IssueKind.FIELD_READ_ONLY, IssueKind.FIELD_NEVER_READ}
+    field_kinds = {
+        IssueKind.UNUSED_DATATYPE,
+        IssueKind.UNUSED_DATATYPE_FIELD,
+        IssueKind.FIELD_READ_ONLY,
+        IssueKind.FIELD_NEVER_READ,
+    }
     assert all(issue.kind not in field_kinds for issue in report.issues)
 
 
@@ -261,3 +266,36 @@ def test_field_usage_only_rejects_non_field_issue_kinds():
 
     with pytest.raises(ValueError, match="field_usage_only"):
         analyze_variables(bp, selected_issue_kinds={IssueKind.UNUSED}, field_usage_only=True)
+
+
+def _picture_with_unused_datatype() -> BasePicture:
+    dead_type = DataType(
+        name="DeadType",
+        description=None,
+        datecode=None,
+        var_list=[Variable(name="A", datatype=ScalarDatatype.INTEGER)],
+    )
+    return BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[dead_type],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+    )
+
+
+def test_unused_datatype_is_reported_once_for_the_definition():
+    report = analyze_datatype_fields(_picture_with_unused_datatype())
+
+    assert [issue.kind for issue in report.issues] == [IssueKind.UNUSED_DATATYPE]
+    issue = report.issues[0]
+    assert issue.datatype_name == "DeadType"
+    assert issue.field_path is None
+
+
+def test_used_datatype_does_not_emit_the_record_level_finding():
+    report = analyze_datatype_fields(_picture_with_unused_field())
+
+    assert all(issue.kind is not IssueKind.UNUSED_DATATYPE for issue in report.issues)

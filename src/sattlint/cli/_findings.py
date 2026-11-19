@@ -45,7 +45,7 @@ def _finding_site(finding: AnalysisFinding) -> str | None:
 
 
 def _finding_context(finding: AnalysisFinding) -> str | None:
-    raw = finding.data.get("context")
+    raw = finding.data.get("relation", finding.data.get("context"))
     if raw is None:
         return None
     text = str(raw).strip()

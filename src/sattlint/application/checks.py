@@ -300,6 +300,19 @@ def _persist_run_result(
     return stored
 
 
+def _analyzer_failure_message(name: str, exc: Exception, *, debug: bool) -> str:
+    """Describe a failed analyzer without putting internals in shared output.
+
+    The exception text can carry internal paths, values, and local names, and
+    the summary reaches run history, CI logs, and the UI. In a normal run the
+    message names the exception type only; ``debug`` keeps the full text for
+    the person diagnosing the failure.
+    """
+    if debug:
+        return f"{name} failed: {exc}"
+    return f"{name} failed: {type(exc).__name__}"
+
+
 def _get_enabled_analyzers() -> list[Any]:
     return cast(list[Any], analysis_catalog_module.get_default_cli_analyzers())
 
@@ -356,7 +369,7 @@ def _run_per_run_analyzer(
             key=spec.key,
             name=spec.name,
             status="failed",
-            summary=f"{spec.name} failed: {exc}",
+            summary=_analyzer_failure_message(spec.name, exc, debug=debug_enabled(cfg)),
             issue_count=0,
             duration_ms=round((perf_counter() - started_at) * 1000, 3),
         )
@@ -566,7 +579,7 @@ def collect_run_checks_result(  # noqa: PLR0915
                     )
                 except Exception as exc:  # noqa: BLE001 - report and keep the run going
                     analyzer_timings_ms[spec.key] = round((perf_counter() - analyzer_started_at) * 1000, 3)
-                    message = f"{spec.name} failed: {exc}"
+                    message = _analyzer_failure_message(spec.name, exc, debug=debug_enabled(cfg))
                     emit_line(f"❌ {message}")
                     target_analyzers.append(
                         ChecksAnalyzerResult(

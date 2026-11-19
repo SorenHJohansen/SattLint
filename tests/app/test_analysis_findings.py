@@ -185,7 +185,9 @@ def test_extract_report_findings_synthesizes_site_and_context_from_attributes() 
     findings = extract_report_findings(report, default_name="Root")
 
     assert len(findings) == 1
-    assert findings[0].data == {"context": "TargetVal => SourceVal"}
+    # Scope and mapping relation are separate keys: the variable names the
+    # scope, the arrow text names the relation.
+    assert findings[0].data == {"context": "TargetVal", "relation": "TargetVal => SourceVal"}
 
 
 def test_kind_human_label_returns_short_phrase() -> None:

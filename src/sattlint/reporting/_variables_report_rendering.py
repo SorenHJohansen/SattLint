@@ -367,6 +367,17 @@ def append_variable_issue_list(lines: list[str], title: str, issues: list[Variab
     append_grouped_issue_blocks(lines, title, issues, render_formatted_issue_rows)
 
 
+def append_unused_datatypes(lines: list[str], title: str, issues: list[VariableIssue]) -> None:
+    if not issues:
+        append_empty_section(lines, title)
+        return
+
+    lines.append(section_header(title, len(issues)))
+    for issue in issues:
+        location = format_location(issue.module_path)
+        lines.append(f"      * {location} :: {issue.datatype_name or '?'}")
+
+
 def append_unused_datatype_fields(lines: list[str], title: str, issues: list[VariableIssue]) -> None:
     if not issues:
         append_empty_section(lines, title)

@@ -92,6 +92,11 @@ Closed in this pass:
   C3-13, C3-14, C6-2, C6-3, C6-4, C6-5, library-scoped record definitions in the
   project graph, the never-populated analysis indexes, the pairwise dataflow
   scan, and the TUI project-path attribution.
+- Product decisions taken in this pass: full and scoped runs keep their
+  attribution split (documented and pinned), an unused datatype is reported
+  once as its own kind, analyzer failure text names only the exception type
+  unless debug is on, and findings carry `context` (scope) and `relation`
+  (mapping text) as separate keys.
 - Every Low and nit row: C1-24 to C1-50, C2-10 to C2-54, C3-17 to C3-39, C4-15
   to C4-46, C5-20 to C5-55, C6-6 to C6-29, and the unnumbered Low rows.
 - The cache-integrity, security, and packaging items recorded under the Medium
@@ -99,8 +104,8 @@ Closed in this pass:
   the signing key outside the cache root, lock enforcement in CI, pre-commit
   hygiene hooks in CI, and publish without `skip-existing`.
 
-Residuals, each blocked by a product decision or a deliberately deferred
-refactor:
+Residuals, each a deliberately deferred refactor or a documented design
+choice:
 
 - Record field resolution: definitions are stored per library, but field and
   leaf expansion still resolves by name through one type graph per project.
@@ -112,8 +117,6 @@ refactor:
 - C1-50: the dependency guard now sees multi-level relative imports and
   enumerates the two remaining loader-boundary edges (ICF analyzer and the
   graphics helper). Removing those edges needs a loader seam change.
-- C2-35: the run summary still interpolates raw exception text into
-  human-readable output; the machine-readable detail is unchanged.
 - C2-39: the run-checks collector remains a large function with a complexity
   suppression; splitting it interacts with its cancellation and partial-result
   contract.
@@ -122,11 +125,6 @@ refactor:
   together.
 - C2-29: lookup-root order stays significant in the cache key by design,
   because an earlier root wins during discovery; this is documented and tested.
-- C3-21 and C3-39: both are deliberate reporting policies (full runs report at
-  `TypeDef:` paths and a fully unused record is reported at the variable level),
-  so changing them needs a product decision.
-- C2-46: the two meanings of `context` in UI labels need a product decision
-  before the text changes.
 - C6-19 and C6-25: splitting the large Textual test module and typing the test
   files that suppress Pyright checks are both large test-only refactors.
 
