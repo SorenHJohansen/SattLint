@@ -397,13 +397,10 @@ def _target_is_library(cfg: ConfigDict, project_bp: BasePicture, graph: ProjectG
 
 
 def _rewrite_typedef_issue_paths(report: object, base_picture: BasePicture) -> None:
-    records: list[object] = []
     for attr in ("issues", "hits"):
         items = getattr(report, attr, None)
         if isinstance(items, list):
-            records.extend(cast(list[object], items))
-    if records:
-        rewrite_typedef_paths(records, base_picture)
+            setattr(report, attr, rewrite_typedef_paths(cast(list[object], items), base_picture))
 
 
 def _run_self_check_preflight(
