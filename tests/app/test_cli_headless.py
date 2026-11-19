@@ -18,6 +18,7 @@ from sattline_parser.models.ast_model import BasePicture
 from sattlint import cache as cache_module
 from sattlint.analyzers.catalog import get_default_cli_analyzers
 from sattlint.application import checks as checks_module
+from sattlint.application import checks_records
 from sattlint.application.checks import (
     ChecksAnalyzerResult,
     ChecksRunResult,
@@ -761,7 +762,7 @@ def test_collect_run_checks_result_records_saved_run_id(
     tmp_path: Path,
 ) -> None:
     spec = get_default_cli_analyzers()[0]
-    monkeypatch.setattr(checks_module, "get_runs_dir_or_none", lambda: tmp_path / "runs")
+    monkeypatch.setattr(checks_records, "get_runs_dir_or_none", lambda: tmp_path / "runs")
     result = checks_module.collect_run_checks_result(
         cast(ConfigDict, {"analyzed_programs_and_libraries": ["Demo"]}),
         [spec.key],

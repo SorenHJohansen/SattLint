@@ -5,8 +5,10 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import cast
 
 from sattlint.application.findings import AnalysisFinding
+from sattlint.core.timings import NamedTimings, PhaseTiming
 from sattlint.runs import (
     RunAnalyzerRecord,
     RunModuleRecord,
@@ -58,6 +60,34 @@ def _sample_record() -> RunRecord:
     )
 
 
+def _sample_record_with_timings() -> RunRecord:
+    return RunRecord(
+        run_id="",
+        started_at="2026-09-06T10:00:00Z",
+        finished_at="2026-09-06T10:05:00Z",
+        project_tag="RootProgram",
+        targets=(
+            RunTargetRecord(
+                target_name="RootProgram",
+                is_library=False,
+                stage_timings_ms=NamedTimings.of({"load_or_parse": 12.5, "validate": 3.0}),
+                graphics_timings_ms=NamedTimings.of({"correlate-picture-display": 7.25}),
+                analyzers=(
+                    RunAnalyzerRecord(
+                        key="variables",
+                        name="Variable issues",
+                        status="completed",
+                        phase_timings_ms=(
+                            PhaseTiming(phase="scan", duration_ms=4.5),
+                            PhaseTiming(phase="report", duration_ms=2.0),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+
 def test_run_record_round_trips_through_dict() -> None:
     record = _sample_record()
 
@@ -85,6 +115,47 @@ def test_save_and_load_run(tmp_path: Path) -> None:
     assert loaded.finished_at == "2026-09-06T10:05:00Z"
     assert loaded.targets[0].analyzers[0].key == "variables"
     assert loaded.targets[0].module == record.targets[0].module
+
+
+def test_run_timings_round_trip_through_the_store(tmp_path: Path) -> None:
+    stored = save_run(_sample_record_with_timings(), runs_dir=tmp_path)
+
+    loaded = load_run(stored.run_id, runs_dir=tmp_path)
+
+    assert loaded is not None
+    target = loaded.targets[0]
+    assert target.stage_timings_ms == {"load_or_parse": 12.5, "validate": 3.0}
+    assert target.graphics_timings_ms == {"correlate-picture-display": 7.25}
+    assert target.analyzers[0].phase_timings_ms == (
+        PhaseTiming(phase="scan", duration_ms=4.5),
+        PhaseTiming(phase="report", duration_ms=2.0),
+    )
+
+    payload = json.loads((tmp_path / f"{stored.run_id}.json").read_text(encoding="utf-8"))
+    target_payload = payload["targets"][0]
+    assert target_payload["stage_timings_ms"] == {"load_or_parse": 12.5, "validate": 3.0}
+    assert target_payload["graphics_timings_ms"] == {"correlate-picture-display": 7.25}
+    assert target_payload["analyzers"][0]["phase_timings_ms"] == [
+        {"phase": "scan", "duration_ms": 4.5},
+        {"phase": "report", "duration_ms": 2.0},
+    ]
+
+
+def test_dict_shaped_timing_payload_from_older_records_still_loads() -> None:
+    payload = _sample_record().to_dict()
+    targets = cast(list[object], payload["targets"])
+    target_payload = cast(dict[str, object], targets[0])
+    analyzers = cast(list[object], target_payload["analyzers"])
+    analyzer_payload = cast(dict[str, object], analyzers[0])
+    target_payload["stage_timings_ms"] = {"load_or_parse": 1.0}
+    target_payload["graphics_timings_ms"] = None
+    analyzer_payload["phase_timings_ms"] = [{"phase": "scan", "duration_ms": 2.5}]
+
+    restored = RunRecord.from_dict(payload)
+
+    assert restored.targets[0].stage_timings_ms == {"load_or_parse": 1.0}
+    assert restored.targets[0].graphics_timings_ms is None
+    assert restored.targets[0].analyzers[0].phase_timings_ms == (PhaseTiming(phase="scan", duration_ms=2.5),)
 
 
 def test_list_runs_orders_newest_first(tmp_path: Path) -> None:

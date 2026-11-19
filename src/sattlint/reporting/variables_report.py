@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from ..analyzers.framework.issue import Findings
+from ..core.timings import PhaseTiming
 from ..models._variable_issues import IssueKind, VariableIssue
 from ..resolution.access_graph import AccessEvent
 from ..resolution.paths import CanonicalPathKey
@@ -75,7 +76,7 @@ def _effect_flow_display_names_factory() -> EffectFlowDisplayNames:
     return {}
 
 
-def _phase_timings_factory() -> list[dict[str, str | float]]:
+def _phase_timings_factory() -> list[PhaseTiming]:
     return []
 
 
@@ -149,7 +150,7 @@ class VariablesReport:
     include_empty_sections: bool = False
     analyzed_version: str | None = None
     last_changed: str | None = None
-    phase_timings: list[dict[str, str | float]] = field(default_factory=_phase_timings_factory)
+    phase_timings: list[PhaseTiming] = field(default_factory=_phase_timings_factory)
 
     def __post_init__(self) -> None:
         if self.visible_kinds is not None and not isinstance(self.visible_kinds, frozenset):

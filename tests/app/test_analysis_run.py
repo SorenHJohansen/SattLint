@@ -5,7 +5,7 @@ from typing import Any, cast
 
 from sattlint import cache as cache_module
 from sattlint import runs as runs_module
-from sattlint.application import checks as checks_application
+from sattlint.application import checks_records, checks_results
 from sattlint.application import project as project_application
 from sattlint.config import DEFAULT_CONFIG
 from sattlint.models.project_graph import ProjectFailure
@@ -185,8 +185,8 @@ def test_disabled_run_history_still_prunes_stored_runs():
             runs_dir=runs_dir,
         )
 
-    result = checks_application.ChecksRunResult(output_lines=(), selected_analyzers=("variables",))
-    stored = checks_application._persist_run_result(result, cfg, started_at="2026-09-09T10:00:00Z")
+    result = checks_results.ChecksRunResult(output_lines=(), selected_analyzers=("variables",))
+    stored = checks_records.persist_run_result(result, cfg, started_at="2026-09-09T10:00:00Z")
 
     assert stored is None
     assert len(runs_module.list_runs(runs_dir=runs_dir)) == 1

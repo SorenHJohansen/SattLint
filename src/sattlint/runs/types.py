@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import cast
 
 from ..application.findings import AnalysisFinding, optional_text
+from ..core.timings import NamedTimings, PhaseTiming
 
 RUN_RECORD_SCHEMA_VERSION = 2
 
@@ -54,18 +55,25 @@ def _tuple_str(values: object) -> tuple[str, ...]:
     return tuple(cast(Sequence[str], sequence))
 
 
-def _phase_timings_value(values: object) -> tuple[dict[str, object], ...]:
+def _phase_timings_value(values: object) -> tuple[PhaseTiming, ...]:
     if not isinstance(values, (list, tuple)):
         return ()
-    result: list[dict[str, object]] = []
+    result: list[PhaseTiming] = []
     for item in cast(Sequence[object], values):
         if not isinstance(item, Mapping):
             continue
-        result.append({str(key): value for key, value in cast(Mapping[object, object], item).items()})
+        mapping = cast(Mapping[object, object], item)
+        phase = mapping.get("phase")
+        duration_ms = mapping.get("duration_ms")
+        if not isinstance(phase, str) or not phase or isinstance(duration_ms, bool):
+            continue
+        if not isinstance(duration_ms, (int, float)):
+            continue
+        result.append(PhaseTiming(phase=phase, duration_ms=float(duration_ms)))
     return tuple(result)
 
 
-def _timings_dict_value(values: object) -> dict[str, float] | None:
+def _timings_dict_value(values: object) -> NamedTimings | None:
     if not isinstance(values, Mapping):
         return None
     normalized: dict[str, float] = {}
@@ -74,7 +82,7 @@ def _timings_dict_value(values: object) -> dict[str, float] | None:
             continue
         if isinstance(value, (int, float)):
             normalized[key] = float(value)
-    return normalized or None
+    return NamedTimings.of(normalized) if normalized else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,7 +95,7 @@ class RunAnalyzerRecord:
     issue_count: int | None = None
     findings: tuple[AnalysisFinding, ...] = ()
     duration_ms: float | None = None
-    phase_timings_ms: tuple[dict[str, object], ...] = ()
+    phase_timings_ms: tuple[PhaseTiming, ...] = ()
     skip_reason: str | None = None
 
     def to_dict(self) -> dict[str, object]:
@@ -100,7 +108,7 @@ class RunAnalyzerRecord:
             "issue_count": self.issue_count,
             "findings": [finding.to_dict() for finding in self.findings],
             "duration_ms": self.duration_ms,
-            "phase_timings_ms": [dict(phase) for phase in self.phase_timings_ms],
+            "phase_timings_ms": [phase.to_dict() for phase in self.phase_timings_ms],
             "skip_reason": self.skip_reason,
         }
 
@@ -188,8 +196,8 @@ class RunTargetRecord:
     target_name: str
     is_library: bool = False
     analyzers: tuple[RunAnalyzerRecord, ...] = ()
-    stage_timings_ms: dict[str, float] | None = None
-    graphics_timings_ms: dict[str, float] | None = None
+    stage_timings_ms: NamedTimings | None = None
+    graphics_timings_ms: NamedTimings | None = None
     module: RunModuleRecord | None = None
 
     def to_dict(self) -> dict[str, object]:
@@ -197,8 +205,10 @@ class RunTargetRecord:
             "target_name": self.target_name,
             "is_library": self.is_library,
             "analyzers": [analyzer.to_dict() for analyzer in self.analyzers],
-            "stage_timings_ms": self.stage_timings_ms,
-            "graphics_timings_ms": self.graphics_timings_ms,
+            "stage_timings_ms": self.stage_timings_ms.to_dict() if self.stage_timings_ms is not None else None,
+            "graphics_timings_ms": (
+                self.graphics_timings_ms.to_dict() if self.graphics_timings_ms is not None else None
+            ),
             "module": self.module.to_dict() if self.module is not None else None,
         }
 

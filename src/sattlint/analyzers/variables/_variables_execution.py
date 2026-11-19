@@ -18,6 +18,7 @@ from sattlint.parser_api import (
     Variable,
 )
 
+from ...core.timings import PhaseTiming
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ...resolution.scope import ScopeContext
 from ...utils.casefolding import casefold_key
@@ -66,7 +67,6 @@ def count_process_root_traversals() -> int:
 
 log = logging.getLogger("SattLint")
 
-_PhaseTimingEntry = dict[str, str | float]
 _UnresolvedLookupCounts = dict[str, int]
 _UnresolvedLookupExamples = dict[str, tuple[int, str]]
 
@@ -148,16 +148,11 @@ def _format_selected_issue_kinds(self: IssueKindSelection) -> str:
 
 
 def _format_phase_timing_summary(self: object) -> str | None:
-    phase_timings = cast(list[_PhaseTimingEntry] | None, getattr(self, "_phase_timings", None))
+    phase_timings = cast(list[PhaseTiming] | None, getattr(self, "_phase_timings", None))
     if phase_timings is None or not phase_timings:
         return None
 
-    parts: list[str] = []
-    for entry in phase_timings:
-        phase = entry.get("phase")
-        duration_ms = entry.get("duration_ms")
-        if isinstance(phase, str) and isinstance(duration_ms, int | float):
-            parts.append(f"{phase}={float(duration_ms):.3f}")
+    parts = [f"{entry.phase}={entry.duration_ms:.3f}" for entry in phase_timings]
     return ", ".join(parts) if parts else None
 
 

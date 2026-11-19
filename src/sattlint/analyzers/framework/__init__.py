@@ -5,11 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from time import perf_counter
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, cast
 
 from sattlint.parser_api import BasePicture
 
 from ...config.types import ConfigDict
+from ...core.timings import PhaseTiming
 from ...models.project_graph import ProjectGraph
 from ._shared_analysis import AnalysisSharedArtifacts, CollectedViews, VariableAnalysisArtifacts
 from .issue import Findings, Issue, format_report_header
@@ -74,7 +75,7 @@ class AnalyzerLifecycleMixin:
         self._status_update_fn = status_update_fn
         self._status_prefix = status_prefix or f"Analyzing {trace_namespace}"
         self._last_status_message = None
-        self._phase_timings: list[dict[str, str | float]] = []
+        self._phase_timings: list[PhaseTiming] = []
 
     def trace(self, action: str, **data: Any) -> None:
         self._trace(action, **data)
@@ -86,13 +87,13 @@ class AnalyzerLifecycleMixin:
         trace_recorder.event(getattr(self, "_trace_namespace", "analyzer"), action, **data)
 
     @property
-    def phase_timings(self) -> list[dict[str, str | float]]:
-        return [dict(phase) for phase in getattr(self, "_phase_timings", [])]
+    def phase_timings(self) -> list[PhaseTiming]:
+        return list(cast(list[PhaseTiming], getattr(self, "_phase_timings", [])))
 
     def _record_phase_timing(self, phase: str, started_at: float, ended_at: float | None = None) -> None:
         completed_at = perf_counter() if ended_at is None else ended_at
         duration_ms = round((completed_at - started_at) * 1000, 3)
-        self._phase_timings.append({"phase": phase, "duration_ms": duration_ms})
+        self._phase_timings.append(PhaseTiming(phase=phase, duration_ms=duration_ms))
         self._trace("phase-complete", phase_name=phase, duration_ms=duration_ms)
 
     def _update_status(self, detail: str) -> None:
