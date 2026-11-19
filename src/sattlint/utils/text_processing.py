@@ -15,20 +15,6 @@ if TYPE_CHECKING:
     from lark import Lark
 
 
-@dataclass(frozen=True)
-class CommentCodeHit:
-    start_line: int
-    end_line: int
-    start_col: int
-    end_col: int
-    text: str
-    indicators: tuple[str, ...]
-    module_path: tuple[str, ...] = ()
-    equation_name: str | None = None
-    sequence_name: str | None = None
-    step_name: str | None = None
-
-
 # Regex patterns for fast filtering (syntax hints, not definitive)
 _ASSIGN_RE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_:.]*\s*(?::=|=(?!=))\s*")
 _CALL_RE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*\s*\([^()\n]*\S[^()\n]*\)")
@@ -284,13 +270,15 @@ def _consume_identifier(text: str, pos: int) -> tuple[str, int]:
     return text[pos:end], end
 
 
-def find_comments_with_code(text: str) -> list[CommentCodeHit]:
+def find_comments_with_code(text: str) -> list[CommentScanHit]:
     """
     Find comment blocks that appear to contain code-like content.
 
     This operates on raw source text before comments are stripped.
     Uses a hybrid approach: regex for fast filtering, grammar parsing for accuracy.
-    Only checks comments that appear inside ModuleCode sections.
+    Only checks comments that appear inside ModuleCode sections. The returned
+    record is the scanner's own hit type; report layers wrap it with the file
+    they scanned instead of maintaining a second field-for-field copy.
     """
     return scan_comments_with_code(
         text,
@@ -298,20 +286,5 @@ def find_comments_with_code(text: str) -> list[CommentCodeHit]:
         is_identifier_start=_is_identifier_start,
         consume_identifier=_consume_identifier,
         comment_code_indicators=_comment_code_indicators,
-        hit_factory=_comment_code_hit,
-    )
-
-
-def _comment_code_hit(scan: CommentScanHit) -> CommentCodeHit:
-    return CommentCodeHit(
-        start_line=scan.start_line,
-        end_line=scan.end_line,
-        start_col=scan.start_col,
-        end_col=scan.end_col,
-        text=scan.text,
-        indicators=scan.indicators,
-        module_path=scan.module_path,
-        equation_name=scan.equation_name,
-        sequence_name=scan.sequence_name,
-        step_name=scan.step_name,
+        hit_factory=lambda scan: scan,
     )

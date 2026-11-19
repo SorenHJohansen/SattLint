@@ -17,7 +17,7 @@ from sattlint.parser_api import (
 )
 
 from ..analyzers.framework import AnalysisContext, Issue
-from ..models.project_graph import program_identity
+from ..models.project_graph import ProjectGraph, program_identity
 from ..reporting.comment_code_report import CommentCodeHit, CommentCodeReport
 from ..utils.text_processing import find_comments_with_code
 
@@ -188,14 +188,14 @@ def analyze_comment_code_files(
 
 def _target_source_paths(context: AnalysisContext) -> set[Path]:
     graph = context.graph
-    if graph is None:
-        return set()
-    root_source_path_for_basepicture = getattr(graph, "root_source_path_for_basepicture", None)
-    if callable(root_source_path_for_basepicture):
-        root_source_path = root_source_path_for_basepicture(context.base_picture)
-        if isinstance(root_source_path, Path):
-            return {root_source_path}
-    return set(getattr(graph, "source_files", set()) or set())
+    if not isinstance(graph, ProjectGraph):
+        raise TypeError("Comment-code analysis requires a loaded project graph.")
+    root_source_path = graph.root_source_path_for_basepicture(context.base_picture)
+    if root_source_path is not None:
+        return {root_source_path}
+    if graph.source_files:
+        return set(graph.source_files)
+    raise ValueError(f"Comment-code analysis has no source file for target {program_identity(context.base_picture)!r}.")
 
 
 def _source_base_picture(context: AnalysisContext) -> BasePicture:
@@ -205,17 +205,13 @@ def _source_base_picture(context: AnalysisContext) -> BasePicture:
     libraries, and their source line numbers collide with the target file's.
     Comment ownership must come from the target's own AST only.
     """
-    base_picture = context.base_picture
     graph = context.graph
-    if graph is None:
-        return base_picture
-    ast_by_name = getattr(graph, "ast_by_name", None)
-    if not isinstance(ast_by_name, Mapping):
-        return base_picture
-    root = cast(Mapping[str, object], ast_by_name).get(program_identity(base_picture))
+    if not isinstance(graph, ProjectGraph):
+        raise TypeError("Comment-code analysis requires a loaded project graph.")
+    root = graph.ast_by_name.get(program_identity(context.base_picture))
     if isinstance(root, BasePicture):
         return root
-    return base_picture
+    return context.base_picture
 
 
 def analyze_comment_code(context: AnalysisContext) -> CommentCodeReport:

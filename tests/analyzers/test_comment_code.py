@@ -2,8 +2,11 @@
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from sattlint.analyzers import comment_code as comment_code_module
 from sattlint.analyzers.comment_code import _comment_module_paths, analyze_comment_code_files
+from sattlint.models.project_graph import ProjectGraph
 from sattlint.parser_api import (
     BasePicture,
     CodeComment,
@@ -164,7 +167,7 @@ def test_source_base_picture_prefers_unmerged_target_ast() -> None:
     )
     context = SimpleNamespace(
         base_picture=merged,
-        graph=SimpleNamespace(ast_by_name={"Program": target}),
+        graph=ProjectGraph(ast_by_name={"Program": target}),
     )
 
     assert comment_code_module._source_base_picture(context) is target
@@ -230,7 +233,7 @@ def test_comment_code_format_line_range_handles_single_line_and_range() -> None:
     assert comment_code_module._format_line_range(4, 6) == "4-6"
 
 
-def test_analyze_comment_code_handles_missing_graph() -> None:
+def test_analyze_comment_code_reports_a_missing_graph_instead_of_an_empty_clean_report() -> None:
     context = SimpleNamespace(
         base_picture=SimpleNamespace(
             header=SimpleNamespace(name="Program"),
@@ -241,11 +244,8 @@ def test_analyze_comment_code_handles_missing_graph() -> None:
         graph=None,
     )
 
-    report = comment_code_module.analyze_comment_code(context)
-
-    assert report.basepicture_name == "Program"
-    assert report.files_scanned == 0
-    assert report.hits == []
+    with pytest.raises(TypeError, match="requires a loaded project graph"):
+        comment_code_module.analyze_comment_code(context)
 
 
 def test_comments_outside_modulecode_are_ignored():
