@@ -3,6 +3,7 @@ import pytest
 from sattline_parser.ast import MappingSource
 from sattline_parser.models.expressions import NotOp
 
+from sattlint.analyzers.variables._variables_contracts import TypedefUsageKey
 from tests.helpers.analyzers_variables_support import *
 
 
@@ -113,7 +114,7 @@ def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_pat
     checked_targets: list[tuple[Variable | None, tuple[str, ...], tuple[str, ...]]] = []
     collision_issues: list[VariableIssue] = []
     helper: Any = SimpleNamespace(
-        _analyzing_typedefs={"childtype"},
+        _analyzing_typedefs={TypedefUsageKey("", "childtype")},
         _contexts_by_module_path={},
         _append_issue=lambda issue: collision_issues.append(issue),
         _get_usage=lambda variable: usage_by_id[id(variable)],
@@ -141,11 +142,11 @@ def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_pat
     variables_execution_module._analyze_typedef(helper, moduletype, ["Root", "TypeDef:ChildType", "Nested"])
     assert collision_issues == []
     assert captured_display_paths[0] == ["Root<BP>", "TypeDef:ChildType<TD>"]
-    assert helper.used_params_by_typedef["childtype"] == {"input"}
-    assert helper.param_reads_by_typedef["childtype"] == {"input"}
-    assert helper.param_ui_reads_by_typedef["childtype"] == set()
-    assert helper.param_non_ui_reads_by_typedef["childtype"] == {"input"}
-    assert helper.param_writes_by_typedef["childtype"] == set()
+    assert helper.used_params_by_typedef[TypedefUsageKey("", "childtype")] == {"input"}
+    assert helper.param_reads_by_typedef[TypedefUsageKey("", "childtype")] == {"input"}
+    assert helper.param_ui_reads_by_typedef[TypedefUsageKey("", "childtype")] == set()
+    assert helper.param_non_ui_reads_by_typedef[TypedefUsageKey("", "childtype")] == {"input"}
+    assert helper.param_writes_by_typedef[TypedefUsageKey("", "childtype")] == set()
     # A module type definition has no mapping list in the grammar, so no
     # parameter mapping is checked on the typedef itself.
     assert checked_targets == []
@@ -176,7 +177,7 @@ def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_pat
         _walk_module_code=lambda *args, **kwargs: None,
         _walk_submodules=lambda *args, **kwargs: None,
         _get_usage=lambda variable: usage_by_id[id(variable)],
-        _analyzing_typedefs={"childtype"},
+        _analyzing_typedefs={TypedefUsageKey("", "childtype")},
     )
     used_reads, used_ui_reads, used_non_ui_reads, used_writes = (
         variables_execution_module._analyze_single_module_with_context(

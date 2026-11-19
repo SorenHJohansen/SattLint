@@ -11,6 +11,7 @@ from sattlint.parser_api import Variable
 from ...reporting.variables_report import VariableIssue
 from ...resolution import AccessGraph
 from ..shared._validators import ContractMappingValidator, MinMaxValidator, StringMappingValidator
+from ._variables_contracts import TypedefUsageKey
 from ._variables_effect_flow import EffectFlowTracker
 from ._variables_status import ProcedureStatusBinding
 
@@ -32,7 +33,7 @@ class _VariablesAnalyzerFacadeState(Protocol):
     _contract_validator: ContractMappingValidator
     _min_max_validator: MinMaxValidator
     _string_validator: StringMappingValidator
-    _analyzing_typedefs: set[str]
+    _analyzing_typedefs: set[TypedefUsageKey]
     _effect_flow_tracker: EffectFlowTracker
     _effective_output_keys: set[tuple[str, ...]]
     _site_stack: list[str]
@@ -99,7 +100,7 @@ class VariablesAnalyzerFacadePropertiesMixin:
         return self._state()._string_validator
 
     @property
-    def analyzing_typedefs(self) -> set[str]:
+    def analyzing_typedefs(self) -> set[TypedefUsageKey]:
         return self._state()._analyzing_typedefs
 
     @property

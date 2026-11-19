@@ -3,10 +3,12 @@
 # pyright: reportPrivateUsage=false
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from sattlint.parser_api import (
     FrameModule,
+    ModuleTypeDef,
     ModuleTypeInstance,
     ParameterMapping,
     ScalarDatatype,
@@ -33,6 +35,26 @@ _PARAM_MAPPING_CHECK_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
         IssueKind.MIN_MAX_MAPPING_MISMATCH,
     }
 )
+
+
+@dataclass(frozen=True, slots=True)
+class TypedefUsageKey:
+    """Per-library identity for a module type's usage facts.
+
+    A module type name is only unique inside its library, so the library has to
+    participate in the key. Root-owned types carry no library and share the
+    empty string.
+    """
+
+    library: str
+    name: str
+
+
+def typedef_usage_key(moduletype: ModuleTypeDef) -> TypedefUsageKey:
+    return TypedefUsageKey(
+        library=(moduletype.origin_lib or "").casefold(),
+        name=moduletype.name.casefold(),
+    )
 
 
 class IssueKindSelection(Protocol):

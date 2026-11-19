@@ -24,6 +24,7 @@ from ...resolution.scope import ScopeContext
 from ...types import VariableId
 from ...utils.casefolding import casefold_key, is_anytype_name
 from ..shared.variable_utils import external_mapping_usage, mapping_target_name
+from ._variables_contracts import typedef_usage_key
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer
@@ -238,7 +239,7 @@ def _walk_moduletype_instance_subtree(  # noqa: PLR0915
             external = True
 
     if moduletype:
-        mt_key = casefold_key(child.moduletype_name)
+        mt_key = typedef_usage_key(moduletype)
         typedef_context = self.context_builder.build_for_typedef(
             moduletype,
             child,

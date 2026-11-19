@@ -27,6 +27,8 @@ from ._usage_tracker import UsageTracker
 from ._variable_traversal_support import _IGNORED_GRAPHICS_TAIL_BASENAMES
 from ._variables_contracts import (
     IssueKindSelection,
+    TypedefUsageKey,
+    typedef_usage_key,
 )
 from ._variables_contracts import (
     explicitly_selected_issue_kinds as _explicitly_selected_issue_kinds,
@@ -274,7 +276,7 @@ def _reset_analysis_state(self: VariablesAnalyzer) -> None:
     _clear_or_set("_procedure_status_bindings", {})
     _clear_or_set("_ignorable_output_variable_ids", set[int]())
     _clear_or_set("_contexts_by_module_path", {})
-    _clear_or_set("_analyzing_typedefs", set[str]())
+    _clear_or_set("_analyzing_typedefs", set[TypedefUsageKey]())
     _clear_or_set("datatype_leaf_index_cache", {})
     self._root_variable_access_summary_cache_token = None
     self._root_variable_access_summary_cache = {}
@@ -682,7 +684,7 @@ def _is_external_typename(self: VariablesAnalyzer, typename: str) -> bool:
 
 
 def _analyze_typedef(self: VariablesAnalyzer, mt: ModuleTypeDef, path: list[str]) -> None:
-    mt_key = casefold_key(mt.name)
+    mt_key = typedef_usage_key(mt)
     if mt_key in self._analyzing_typedefs:
         return
 
@@ -718,11 +720,11 @@ def _analyze_typedef(self: VariablesAnalyzer, mt: ModuleTypeDef, path: list[str]
         }
 
         used_params = used_reads | used_writes
-        self.used_params_by_typedef[casefold_key(mt.name)] = used_params
-        self.param_reads_by_typedef[casefold_key(mt.name)] = used_reads
-        self.param_ui_reads_by_typedef[casefold_key(mt.name)] = used_ui_reads
-        self.param_non_ui_reads_by_typedef[casefold_key(mt.name)] = used_non_ui_reads
-        self.param_writes_by_typedef[casefold_key(mt.name)] = used_writes
+        self.used_params_by_typedef[mt_key] = used_params
+        self.param_reads_by_typedef[mt_key] = used_reads
+        self.param_ui_reads_by_typedef[mt_key] = used_ui_reads
+        self.param_non_ui_reads_by_typedef[mt_key] = used_non_ui_reads
+        self.param_writes_by_typedef[mt_key] = used_writes
 
     finally:
         self._analyzing_typedefs.discard(mt_key)
@@ -810,7 +812,7 @@ def _analyze_typedef_with_context(
     context: ScopeContext,
     path: list[str],
 ) -> None:
-    mt_key = casefold_key(mt.name)
+    mt_key = typedef_usage_key(mt)
     if mt_key in self._analyzing_typedefs:
         return
 
