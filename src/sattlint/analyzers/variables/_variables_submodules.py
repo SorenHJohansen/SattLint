@@ -13,7 +13,6 @@ from sattlint.parser_api import (
     ScalarDatatype,
     SingleModule,
     Variable,
-    VarRef,
 )
 
 from ...reporting.variables_report import IssueKind, VariableIssue
@@ -24,6 +23,7 @@ from ...resolution.scope import ScopeContext
 from ...types import VariableId
 from ...utils.casefolding import casefold_key, is_anytype_name
 from ..shared.variable_utils import external_mapping_usage, mapping_target_name
+from ._variables_contracts import typedef_usage_key
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer
@@ -161,15 +161,9 @@ def _walk_singlemodule_subtree(
 def _walk_framemodule_subtree(
     self: VariablesAnalyzer,
     child: FrameModule,
-    parent_context: ScopeContext,
+    frame_context: ScopeContext,
     child_path: list[str],
-    child_display_path: list[str],
 ) -> None:
-    frame_context = self.repath_context(
-        parent_context,
-        module_path=child_path,
-        display_module_path=child_display_path,
-    )
     self.contexts_by_module_path[tuple(child_path)] = frame_context
     self.walk_moduledef(child.moduledef, frame_context, child_path)
     self.walk_module_code(child.modulecode, frame_context, child_path)
@@ -238,7 +232,7 @@ def _walk_moduletype_instance_subtree(  # noqa: PLR0915
             external = True
 
     if moduletype:
-        mt_key = casefold_key(child.moduletype_name)
+        mt_key = typedef_usage_key(moduletype)
         typedef_context = self.context_builder.build_for_typedef(
             moduletype,
             child,
@@ -352,18 +346,24 @@ def _walk_submodules(
             _maybe_update_status(self, f"walking module path {display_path}")
 
         child_display_path = _display_path_for_child(self, child, parent_context)
-        inst_context = self.repath_context(
-            parent_context,
-            module_path=child_path,
-            display_module_path=child_display_path,
-        )
 
         if isinstance(child, SingleModule):
             _walk_singlemodule_subtree(self, child, parent_context, parent_path, child_path, child_display_path)
         elif isinstance(child, FrameModule):
-            _walk_submodule_headers(self, child, inst_context, child_path)
-            _walk_framemodule_subtree(self, child, parent_context, child_path, child_display_path)
+            frame_context = self.context_builder.build_for_frame(
+                child,
+                parent_context,
+                module_path=child_path,
+                display_module_path=child_display_path,
+            )
+            _walk_submodule_headers(self, child, frame_context, child_path)
+            _walk_framemodule_subtree(self, child, frame_context, child_path)
         else:
+            inst_context = self.repath_context(
+                parent_context,
+                module_path=child_path,
+                display_module_path=child_display_path,
+            )
             _walk_submodule_headers(self, child, inst_context, child_path)
             _walk_moduletype_instance_subtree(
                 self,
@@ -408,15 +408,10 @@ def _lookup_env_var_from_varname_dict(
     var_dict_or_other: Any,
     env: dict[str, Variable],
 ) -> Variable | None:
-    if isinstance(var_dict_or_other, VarRef):
-        base = varname_base(var_dict_or_other)
-        if base is not None:
-            return env.get(base)
-    if isinstance(var_dict_or_other, str):
-        base = varname_base(var_dict_or_other)
-        if base is not None:
-            return env.get(base)
-    return None
+    base = varname_base(var_dict_or_other)
+    if base is None:
+        return None
+    return env.get(base)
 
 
 def _detect_datatype_duplications(self: VariablesAnalyzer) -> None:
@@ -521,11 +516,10 @@ class VariablesSubmodulesMixin:
     def _walk_framemodule_subtree(
         self: Any,
         child: FrameModule,
-        parent_context: ScopeContext,
+        frame_context: ScopeContext,
         child_path: list[str],
-        child_display_path: list[str],
     ) -> None:
-        _walk_framemodule_subtree(self, child, parent_context, child_path, child_display_path)
+        _walk_framemodule_subtree(self, child, frame_context, child_path)
 
     def _walk_moduletype_instance_subtree(
         self: Any,

@@ -31,15 +31,28 @@ def _typed_base_picture(self: Any) -> BasePicture:
     return cast(BasePicture, self.bp)
 
 
+def _declared_variables(
+    moduleparameters: Iterable[Variable] | None,
+    localvariables: Iterable[Variable] | None,
+) -> list[Variable]:
+    """Return every name a scope declares, in declaration order.
+
+    Parameters shadow outer names just like locals do, and their mapped values
+    are the ones a same-named local would capture, so both kinds participate.
+    """
+    return [*(moduleparameters or ()), *(localvariables or ())]
+
+
 def collect_shadowing_issues(self: Any) -> None:
-    """Append ``IssueKind.SHADOWING`` issues for locals hiding outer names."""
+    """Append ``IssueKind.SHADOWING`` issues for declarations hiding outer names."""
     if getattr(self, "_limit_to_module_path", None) is not None:
         return
 
     bp = _typed_base_picture(self)
     root_path = [bp.header.name]
     parent_locals = {
-        casefold_key(variable.name): _ShadowedVar(variable, root_path) for variable in (bp.localvariables or [])
+        casefold_key(variable.name): _ShadowedVar(variable, root_path)
+        for variable in _declared_variables(bp.moduleparameters, bp.localvariables)
     }
     _walk_shadowing_submodules(
         self,
@@ -63,9 +76,9 @@ def _walk_shadowing_submodules(
         child_path = [*parent_path, child.header.name]
 
         if isinstance(child, SingleModule):
-            child_locals = list(child.localvariables or [])
-            _check_shadowing(self, child_locals, parent_locals, child_path)
-            next_locals = _extend_locals(parent_locals, child_locals, child_path)
+            child_variables = _declared_variables(child.moduleparameters, child.localvariables)
+            _check_shadowing(self, child_variables, parent_locals, child_path)
+            next_locals = _extend_locals(parent_locals, child_variables, child_path)
             _walk_shadowing_submodules(
                 self,
                 bp,
@@ -75,12 +88,15 @@ def _walk_shadowing_submodules(
                 current_library=current_library,
             )
         elif isinstance(child, FrameModule):
+            frame_variables = _declared_variables(child.moduleparameters, child.localvariables)
+            _check_shadowing(self, frame_variables, parent_locals, child_path)
+            frame_locals = _extend_locals(parent_locals, frame_variables, child_path)
             _walk_shadowing_submodules(
                 self,
                 bp,
                 child.submodules or [],
                 parent_path=child_path,
-                parent_locals=parent_locals,
+                parent_locals=frame_locals,
                 current_library=current_library,
             )
         else:
@@ -93,9 +109,9 @@ def _walk_shadowing_submodules(
             ):
                 continue
 
-            child_locals = list(moduletype.localvariables or [])
-            _check_shadowing(self, child_locals, parent_locals, child_path)
-            next_locals = _extend_locals(parent_locals, child_locals, child_path)
+            child_variables = _declared_variables(moduletype.moduleparameters, moduletype.localvariables)
+            _check_shadowing(self, child_variables, parent_locals, child_path)
+            next_locals = _extend_locals(parent_locals, child_variables, child_path)
             _walk_shadowing_submodules(
                 self,
                 bp,

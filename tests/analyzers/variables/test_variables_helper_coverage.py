@@ -18,6 +18,7 @@ from sattlint.analyzers.variables import IssueKind, VariableIssue, VariablesAnal
 from sattlint.analyzers.variables import _variable_issue_collection as variable_issue_collection_module
 from sattlint.analyzers.variables import _variables_access as variables_access_module
 from sattlint.analyzers.variables import _variables_execution as variables_execution_module
+from sattlint.analyzers.variables import _variables_mapping_refs as mapping_refs_module
 from sattlint.analyzers.variables import _variables_status as variables_status_module
 from sattlint.analyzers.variables._variables_analyzer_facade import VariablesAnalyzerFacadeMixin
 from sattlint.analyzers.variables._variables_facade_properties import VariablesAnalyzerFacadePropertiesMixin
@@ -564,6 +565,7 @@ def test_variable_issue_collection_and_variables_cover_remaining_branches(monkey
         unavailable_libraries=set(),
         analyzed_target_is_library=False,
         limit_to_module_path=["Root"],
+        _selected_issue_kinds=None,
         is_from_root_origin=_is_from_root_origin,
         get_usage=_get_usage,
         procedure_status_issue=_procedure_status_issue,
@@ -606,3 +608,95 @@ def test_variable_issue_collection_and_variables_cover_remaining_branches(monkey
     assert variables_access_impl._site_str(_ns(site_stack=[])) == ""
     assert variables_access_impl._site_str(_ns(site_stack=["A", "B"])) == "A > B"
     assert report.basepicture_name == "Root"
+
+
+def test_ordered_alias_links_settles_each_hop_before_its_parent() -> None:
+    root = Variable(name="Root", datatype=ScalarDatatype.INTEGER)
+    middle = Variable(name="Middle", datatype=ScalarDatatype.INTEGER)
+    leaf = Variable(name="Leaf", datatype=ScalarDatatype.INTEGER)
+    outer = (root, middle, "")
+    inner = (middle, leaf, "")
+
+    assert list(mapping_refs_module.ordered_alias_links([outer, inner])) == [inner, outer]
+    assert list(mapping_refs_module.ordered_alias_links([inner, outer])) == [inner, outer]
+
+
+def test_alias_back_propagation_reaches_the_root_whatever_the_link_order() -> None:
+    root = Variable(name="Root", datatype=ScalarDatatype.INTEGER)
+    middle = Variable(name="Middle", datatype=ScalarDatatype.INTEGER)
+    leaf = Variable(name="Leaf", datatype=ScalarDatatype.INTEGER)
+    usage_by_id: dict[int, _UsageStub] = {id(variable): _UsageStub() for variable in (root, middle, leaf)}
+    usage_by_id[id(leaf)].read = True
+    usage_by_id[id(leaf)].field_reads = cast(Any, {"Value": [["Root", "LeafModule"]]})
+
+    def _get_usage(variable: Variable) -> _UsageStub:
+        return usage_by_id[id(variable)]
+
+    helper: Any = SimpleNamespace(
+        _alias_links=[(root, middle, ""), (middle, leaf, "")],
+        _get_usage=_get_usage,
+    )
+
+    variables_execution_impl._apply_alias_back_propagation(helper)
+
+    assert usage_by_id[id(root)].read is True
+    assert usage_by_id[id(root)].field_reads == {"Value": [["Root", "LeafModule"]]}
+    assert usage_by_id[id(middle)].field_reads == {"Value": [["Root", "LeafModule"]]}
+
+
+def test_procedure_status_bindings_reach_the_root_whatever_the_link_order() -> None:
+    root = Variable(name="Root", datatype=ScalarDatatype.INTEGER)
+    middle = Variable(name="Middle", datatype=ScalarDatatype.INTEGER)
+    leaf = Variable(name="Leaf", datatype=ScalarDatatype.INTEGER)
+    binding = variables_status_module.ProcedureStatusBinding(
+        call_name="ReadValue",
+        parameter_name="Status",
+        channel_kind="status",
+        field_path="Result",
+    )
+    bindings: defaultdict[int, list[Any]] = defaultdict(list, {id(leaf): [binding]})
+    helper: Any = SimpleNamespace(
+        alias_links=[(root, middle, ""), (middle, leaf, "")],
+        procedure_status_bindings=bindings,
+    )
+
+    variables_status_impl._propagate_procedure_status_bindings(helper)
+
+    assert bindings[id(root)] == [binding]
+    assert bindings[id(middle)] == [binding]
+
+
+def test_procedure_status_message_names_every_call_that_shares_a_sink() -> None:
+    sink = Variable(name="Sink", datatype=ScalarDatatype.INTEGER)
+    bindings = defaultdict(
+        list,
+        {
+            id(sink): [
+                variables_status_module.ProcedureStatusBinding(
+                    call_name="ReadValue",
+                    parameter_name="Status",
+                    channel_kind="status",
+                    field_path="First",
+                ),
+                variables_status_module.ProcedureStatusBinding(
+                    call_name="WriteValue",
+                    parameter_name="Out",
+                    channel_kind="status",
+                    field_path=None,
+                ),
+            ]
+        },
+    )
+    helper: Any = SimpleNamespace(procedure_status_bindings=bindings)
+
+    issue = variables_status_impl._procedure_status_issue(
+        helper,
+        sink,
+        cast(Any, _UsageStub(written=True, ui_read=False, non_ui_read=False)),
+    )
+
+    assert issue is not None
+    message, field_path = issue
+    assert "'ReadValue' parameter 'Status'" in message
+    assert "'WriteValue' parameter 'Out'" in message
+    assert field_path == "First"

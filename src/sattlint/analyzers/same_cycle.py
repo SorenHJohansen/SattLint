@@ -29,6 +29,7 @@ from .framework import AnalysisContext, Issue, empty_issues, format_report_heade
 from .sfc._sfc_guard_logic import conflict_rep, paths_conflict
 from .shared.variable_utils import mapping_target_name
 from .variables import VariablesAnalyzer
+from .variables._variables_contracts import typedef_usage_key
 from .variables._variables_mapping_refs import mapping_source_ref
 from .variables._variables_picture_display_support import build_typedef_root_context
 
@@ -360,7 +361,7 @@ class SameCycleAnalyzer(VariablesAnalyzer):
         with temp_analyzer.divert_issue_collection():
             temp_analyzer.analyze_typedef_with_context(moduletype, temp_context, context_path)
 
-        mt_key = moduletype.name.casefold()
+        mt_key = typedef_usage_key(moduletype)
         usage = (
             frozenset(name.casefold() for name in temp_analyzer.param_reads_by_typedef.get(mt_key, set())),
             frozenset(name.casefold() for name in temp_analyzer.param_writes_by_typedef.get(mt_key, set())),

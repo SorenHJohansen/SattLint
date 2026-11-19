@@ -48,7 +48,7 @@ from ._variable_issue_collection import VariablesIssueCollectionMixin
 from ._variable_traversal import VariablesTraversalMixin
 from ._variables_access import VariablesAccessMixin
 from ._variables_analyzer_facade import VariablesAnalyzerFacadeMixin
-from ._variables_contracts import VariablesContractsMixin
+from ._variables_contracts import TypedefUsageKey, VariablesContractsMixin
 from ._variables_effect_flow import EffectFlowTracker
 from ._variables_execution import VariablesExecutionMixin
 from ._variables_status import ProcedureStatusBinding, VariablesStatusMixin
@@ -329,11 +329,11 @@ class VariablesAnalyzer(
         self.typedef_index = {key: list(values) for key, values in variable_artifacts.typedef_index.items()}
         self._used_dependency_libraries: set[str] = set()
         self._dependency_library_display_names = dict(variable_artifacts.dependency_library_display_names)
-        self.used_params_by_typedef: dict[str, set[str]] = {}
-        self.param_reads_by_typedef: dict[str, set[str]] = {}
-        self.param_ui_reads_by_typedef: dict[str, set[str]] = {}
-        self.param_non_ui_reads_by_typedef: dict[str, set[str]] = {}
-        self.param_writes_by_typedef: dict[str, set[str]] = {}
+        self.used_params_by_typedef: dict[TypedefUsageKey, set[str]] = {}
+        self.param_reads_by_typedef: dict[TypedefUsageKey, set[str]] = {}
+        self.param_ui_reads_by_typedef: dict[TypedefUsageKey, set[str]] = {}
+        self.param_non_ui_reads_by_typedef: dict[TypedefUsageKey, set[str]] = {}
+        self.param_writes_by_typedef: dict[TypedefUsageKey, set[str]] = {}
         self._alias_links: list[tuple[Variable, Variable, str]] = []
         self._effect_flow_edges: dict[tuple[str, ...], set[tuple[str, ...]]] = defaultdict(set)
         self._effect_flow_display_names: dict[tuple[str, ...], str] = {}
@@ -355,7 +355,7 @@ class VariablesAnalyzer(
         self._contexts_by_module_path: dict[tuple[str, ...], ScopeContext] = {}
         self._root_env = dict(variable_artifacts.root_env)
         self._any_var_index = {key: list(values) for key, values in variable_artifacts.any_var_index.items()}
-        self._analyzing_typedefs: set[str] = set()
+        self._analyzing_typedefs: set[TypedefUsageKey] = set()
         self.datatype_leaf_index_cache: dict[str, tuple[object, LeafPathIndex]] = {}
 
         self._contract_validator = ContractMappingValidator(self.type_graph)

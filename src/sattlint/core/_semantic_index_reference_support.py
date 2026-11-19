@@ -184,20 +184,13 @@ class SemanticIndexReferenceSupportMixin:
             if isinstance(module, FrameModule):
                 child_module_path = (*module_path, module.header.name)
                 child_display_path = (*display_module_path, decorate_segment(module.header.name, "FM"))
-                frame_env = {
-                    variable.name.casefold(): variable
-                    for variable in (*(module.moduleparameters or []), *(module.localvariables or []))
-                    if variable.name
-                }
-                frame_context = ScopeContext(
-                    env=frame_env,
-                    param_mappings={},
+                frame_context = self.context_builder.build_for_frame(
+                    module,
+                    parent_context=parent_context,
                     module_path=list(child_module_path),
                     display_module_path=list(child_display_path),
-                    current_library=parent_context.current_library,
-                    parent_context=parent_context,
                 )
-                frame_variable_filter = partial(_is_frame_variable, frame_env)
+                frame_variable_filter = partial(_is_frame_variable, frame_context.env)
                 self._record_variables(
                     list(module.moduleparameters or []),
                     module_path=child_module_path,

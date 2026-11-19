@@ -109,6 +109,7 @@ def test_variables_execution_collect_basepicture_issues_covers_procedure_status_
 
     helper: Any = _ns(
         bp=bp,
+        _selected_issue_kinds=None,
         _get_usage=_get_usage,
         _procedure_status_issue=_procedure_status_issue,
         _add_issue=_add_issue,
@@ -150,6 +151,7 @@ def test_variables_execution_collect_basepicture_issues_covers_write_without_eff
 
     helper: Any = _ns(
         bp=bp,
+        _selected_issue_kinds=None,
         _get_usage=_get_usage,
         _procedure_status_issue=_noop,
         _add_issue=_add_issue,
@@ -208,6 +210,7 @@ def test_variables_execution_collect_typedef_issues_covers_moduleparameter_proce
     helper: Any = _ns(
         bp=bp,
         _limit_to_module_path=None,
+        _selected_issue_kinds=None,
         _update_status=_noop,
         _analyze_typedef=_noop,
         _compute_effective_output_keys=_empty_effective_output_keys,
@@ -322,6 +325,7 @@ def test_variables_execution_run_records_phase_timings() -> None:
         _phase_timings=phase_timings,
         _alias_links=[],
         _analysis_warnings=[],
+        _selected_issue_kinds=None,
         bp=_ns(header=_ns(name="Root"), localvariables=[], submodules=[], moduletype_defs=[]),
         debug=False,
         _trace=_noop,

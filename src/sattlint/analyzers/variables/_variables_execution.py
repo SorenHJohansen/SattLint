@@ -26,6 +26,11 @@ from ..shared.variable_utils import mapping_target_name
 from ._usage_tracker import UsageTracker
 from ._variable_traversal_support import _IGNORED_GRAPHICS_TAIL_BASENAMES
 from ._variables_contracts import (
+    IssueKindSelection,
+    TypedefUsageKey,
+    typedef_usage_key,
+)
+from ._variables_contracts import (
     explicitly_selected_issue_kinds as _explicitly_selected_issue_kinds,
 )
 from ._variables_contracts import (
@@ -37,6 +42,7 @@ from ._variables_contracts import (
 from ._variables_contracts import (
     should_collect_issue_kind as _should_collect_issue_kind,
 )
+from ._variables_mapping_refs import ordered_alias_links
 from ._variables_picture_display_support import (
     build_typedef_root_context,
     record_graphics_binding_occurrences,
@@ -133,7 +139,7 @@ def _maybe_update_status(self: object, detail: str) -> None:
         update_status(detail)
 
 
-def _format_selected_issue_kinds(self: object) -> str:
+def _format_selected_issue_kinds(self: IssueKindSelection) -> str:
     selected_kinds = _selected_issue_kinds(self)
     if not selected_kinds:
         return "all default issue kinds"
@@ -154,7 +160,7 @@ def _format_phase_timing_summary(self: object) -> str | None:
     return ", ".join(parts) if parts else None
 
 
-def _log_debug_analysis_summary(self: object, issue_counts: dict[str, int]) -> None:
+def _log_debug_analysis_summary(self: IssueKindSelection, issue_counts: dict[str, int]) -> None:
     log.debug("Variables analysis complete. Issues=%d", len(getattr(self, "_issues", [])))
     log.debug("Variables selected issue kinds: %s", _format_selected_issue_kinds(self))
     if issue_counts:
@@ -271,7 +277,7 @@ def _reset_analysis_state(self: VariablesAnalyzer) -> None:
     _clear_or_set("_procedure_status_bindings", {})
     _clear_or_set("_ignorable_output_variable_ids", set[int]())
     _clear_or_set("_contexts_by_module_path", {})
-    _clear_or_set("_analyzing_typedefs", set[str]())
+    _clear_or_set("_analyzing_typedefs", set[TypedefUsageKey]())
     _clear_or_set("datatype_leaf_index_cache", {})
     self._root_variable_access_summary_cache_token = None
     self._root_variable_access_summary_cache = {}
@@ -679,7 +685,7 @@ def _is_external_typename(self: VariablesAnalyzer, typename: str) -> bool:
 
 
 def _analyze_typedef(self: VariablesAnalyzer, mt: ModuleTypeDef, path: list[str]) -> None:
-    mt_key = casefold_key(mt.name)
+    mt_key = typedef_usage_key(mt)
     if mt_key in self._analyzing_typedefs:
         return
 
@@ -715,18 +721,18 @@ def _analyze_typedef(self: VariablesAnalyzer, mt: ModuleTypeDef, path: list[str]
         }
 
         used_params = used_reads | used_writes
-        self.used_params_by_typedef[casefold_key(mt.name)] = used_params
-        self.param_reads_by_typedef[casefold_key(mt.name)] = used_reads
-        self.param_ui_reads_by_typedef[casefold_key(mt.name)] = used_ui_reads
-        self.param_non_ui_reads_by_typedef[casefold_key(mt.name)] = used_non_ui_reads
-        self.param_writes_by_typedef[casefold_key(mt.name)] = used_writes
+        self.used_params_by_typedef[mt_key] = used_params
+        self.param_reads_by_typedef[mt_key] = used_reads
+        self.param_ui_reads_by_typedef[mt_key] = used_ui_reads
+        self.param_non_ui_reads_by_typedef[mt_key] = used_non_ui_reads
+        self.param_writes_by_typedef[mt_key] = used_writes
 
     finally:
         self._analyzing_typedefs.discard(mt_key)
 
 
 def _apply_alias_back_propagation(self: VariablesAnalyzer) -> None:
-    for parent_var, child_var, field_prefix in self._alias_links:
+    for parent_var, child_var, field_prefix in ordered_alias_links(self._alias_links):
         parent_usage = self._get_usage(parent_var)
         child_usage = self._get_usage(child_var)
         ui_read_locations = {tuple(location) for location in child_usage.ui_usage_locations}
@@ -807,7 +813,7 @@ def _analyze_typedef_with_context(
     context: ScopeContext,
     path: list[str],
 ) -> None:
-    mt_key = casefold_key(mt.name)
+    mt_key = typedef_usage_key(mt)
     if mt_key in self._analyzing_typedefs:
         return
 

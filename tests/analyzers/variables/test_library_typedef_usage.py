@@ -1,5 +1,7 @@
 # pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportOptionalMemberAccess=false, reportUnusedImport=false
 
+from dataclasses import replace
+
 import pytest
 from sattline_parser.ast import (
     AssignClause,
@@ -25,6 +27,7 @@ from sattline_parser.ast import (
     VarTail,
 )
 
+from sattlint.analyzers.variables._variables_contracts import TypedefUsageKey
 from tests.helpers.analyzers_variables_support import *
 
 
@@ -645,3 +648,110 @@ def test_library_typedef_local_used_via_child_combutproc_togglewindow_arg_is_not
         and issue.module_path == ["BasePicture", "TypeDef:EluMasterLinie"]
         for issue in analyzer.issues
     )
+
+
+def test_typedef_usage_facts_are_keyed_by_library_not_only_type_name() -> None:
+    reader_source = """
+"Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-06-19-12:00:00.000, name: ReaderLib"
+
+BasePicture Invocation
+   ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
+    ) : MODULEDEFINITION DateCode_ 1
+
+TYPEDEFINITIONS
+   SharedType = MODULEDEFINITION DateCode_ 1
+   MODULEPARAMETERS
+      Value: integer;
+   LOCALVARIABLES
+      Sink: integer := 0;
+   ModuleDef
+   ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+   ModuleCode
+   EQUATIONBLOCK Eq COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+      Sink = Value;
+   ENDDEF (*SharedType*);
+
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+
+ENDDEF (*BasePicture*);
+"""
+    writer_source = reader_source.replace("name: ReaderLib", "name: WriterLib").replace(
+        "Sink = Value;", "Value = Sink;"
+    )
+
+    reader_type = parser_core_parse_source_text(reader_source).moduletype_defs[0]
+    writer_type = parser_core_parse_source_text(writer_source).moduletype_defs[0]
+    reader_type = replace(reader_type, origin_lib="ReaderLib", origin_file="ReaderLib.s")
+    writer_type = replace(writer_type, origin_lib="WriterLib", origin_file="WriterLib.s")
+
+    bp = BasePicture(
+        header=_hdr("Root"),
+        moduletype_defs=[reader_type, writer_type],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+    )
+    analyzer = VariablesAnalyzer(bp, fail_loudly=False)
+    analyzer._analyze_typedef(reader_type, ["Root", "TypeDef:SharedType"])
+    analyzer._analyze_typedef(writer_type, ["Root", "TypeDef:SharedType"])
+
+    reader_key = TypedefUsageKey("readerlib", "sharedtype")
+    writer_key = TypedefUsageKey("writerlib", "sharedtype")
+    assert analyzer.param_reads_by_typedef[reader_key] == {"value"}
+    assert analyzer.param_writes_by_typedef[reader_key] == set()
+    assert analyzer.param_writes_by_typedef[writer_key] == {"value"}
+    assert analyzer.param_reads_by_typedef[writer_key] == set()
+
+
+def test_usage_travels_through_a_multi_hop_parameter_mapping_chain() -> None:
+    source = """
+"Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-06-19-12:00:00.000, name: Chain"
+BasePicture Invocation
+   ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
+    ) : MODULEDEFINITION DateCode_ 1
+TYPEDEFINITIONS
+   LeafType = MODULEDEFINITION DateCode_ 1
+   MODULEPARAMETERS
+      LeafParam: integer;
+   LOCALVARIABLES
+      Sink: integer := 0;
+   ModuleDef
+   ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+   ModuleCode
+   EQUATIONBLOCK Eq COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+      Sink = LeafParam;
+   ENDDEF (*LeafType*);
+
+   MiddleType = MODULEDEFINITION DateCode_ 2
+   MODULEPARAMETERS
+      Mapped: integer;
+   SUBMODULES
+      Leaf Invocation
+         ( 0.0 , 0.0 , 0.0 , 0.4 , 0.4
+          ) : LeafType (
+         LeafParam => Mapped);
+   ModuleDef
+   ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+   ENDDEF (*MiddleType*);
+LOCALVARIABLES
+   RootValue: integer := 0;
+SUBMODULES
+   Middle Invocation
+      ( 0.0 , 0.0 , 0.0 , 0.4 , 0.4
+       ) : MiddleType (
+      Mapped => RootValue);
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+    bp = parser_core_parse_source_text(source)
+    analyzer = VariablesAnalyzer(bp, fail_loudly=False)
+    analyzer.run()
+
+    assert analyzer._get_usage(bp.localvariables[0]).read is True

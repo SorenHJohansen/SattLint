@@ -16,6 +16,7 @@ from sattlint.parser_api import (
 )
 
 from ..resolution.common import resolve_moduletype_def_strict, varname_base
+from ..resolution.context_builder import build_frame_scope
 from ..resolution.scope import ScopeContext
 from ..utils.casefolding import casefold_key
 from .shared.variable_utils import matches_root_origin
@@ -162,20 +163,13 @@ class DependencyUsageScopeSupportMixin:
                 continue
 
             if isinstance(child, FrameModule):
-                frame_context = ScopeContext(
-                    env=parent_context.env,
-                    param_mappings=parent_context.param_mappings,
-                    module_path=child_path.copy(),
-                    display_module_path=child_path.copy(),
-                    current_library=parent_context.current_library,
-                    parent_context=parent_context,
+                frame_context = build_frame_scope(
+                    child,
+                    parent_context,
+                    child_path,
+                    child_path.copy(),
                 )
-                # Frame modules reuse their parent environment. Keep the parent
-                # module-parameter keys visible so inherited parameters are still
-                # classified as contract values, not uninitialized locals.
-                self._moduleparameter_keys_by_context[id(frame_context)] = set(
-                    self._moduleparameter_keys_by_context.get(id(parent_context), set())
-                )
+                self._moduleparameter_keys_by_context[id(frame_context)] = set(frame_context.moduleparameter_keys)
                 self._walk_module_code(child.modulecode, frame_context, child_path)
                 self._walk_modules(child.submodules or [], frame_context, child_path)
                 continue
