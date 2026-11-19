@@ -69,7 +69,6 @@ def _release_ast(snapshot: SemanticSnapshot) -> SemanticSnapshot:
     return SemanticSnapshot(
         workspace_root=snapshot.workspace_root,
         entry_file=snapshot.entry_file,
-        discovery=snapshot.discovery,
         base_picture=empty_picture,
         project_graph=ProjectGraph(),
         symbol_table=CanonicalSymbolTable(),

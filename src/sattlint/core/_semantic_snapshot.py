@@ -23,7 +23,6 @@ from ._semantic_helpers import (
     source_file_key,
 )
 from .call_signatures import CallSignatureOccurrence
-from .workspace_discovery import WorkspaceSourceDiscovery
 
 __all__ = [
     "ReferenceOccurrence",
@@ -132,7 +131,6 @@ class SemanticSnapshot:
 
     workspace_root: Path
     entry_file: Path
-    discovery: WorkspaceSourceDiscovery
     base_picture: BasePicture
     project_graph: ProjectGraph
     symbol_table: CanonicalSymbolTable

@@ -19,7 +19,6 @@ from ..models.project_graph import ProjectGraph
 from ._semantic_index import SemanticIndexBuilder
 from ._semantic_snapshot import SemanticSnapshot, SymbolDefinition, SymbolReference
 from .call_signatures import CallSignatureOccurrence
-from .workspace_discovery import WorkspaceSourceDiscovery, single_entry_discovery
 
 log = logging.getLogger("SattLint")
 
@@ -33,7 +32,6 @@ def _build_semantic_snapshot(
     *,
     entry_path: Path,
     workspace_root: Path,
-    discovery: WorkspaceSourceDiscovery,
     project_graph: ProjectGraph,
     include_dependency_modules: bool = True,
     build_reference_index: bool = True,
@@ -68,7 +66,6 @@ def _build_semantic_snapshot(
     return SemanticSnapshot(
         workspace_root=workspace_root,
         entry_file=entry_path,
-        discovery=discovery,
         base_picture=base_picture,
         project_graph=project_graph,
         symbol_table=symbol_table,
@@ -106,7 +103,6 @@ def build_source_snapshot_from_basepicture(
 ) -> SemanticSnapshot:
     entry_path = Path(source_file).resolve()
     root = Path(workspace_root).resolve() if workspace_root else entry_path.parent
-    discovery = single_entry_discovery(entry_path, root)
 
     project_graph = ProjectGraph()
     project_graph.index_from_basepic(
@@ -119,7 +115,6 @@ def build_source_snapshot_from_basepicture(
         base_picture,
         entry_path=entry_path,
         workspace_root=root,
-        discovery=discovery,
         project_graph=project_graph,
     )
 
@@ -135,12 +130,10 @@ def build_snapshot_from_loaded_project(
 ) -> SemanticSnapshot:
     resolved_entry_path = Path(entry_file).resolve()
     resolved_workspace_root = Path(workspace_root).resolve()
-    discovery = single_entry_discovery(resolved_entry_path, resolved_workspace_root)
     return _build_semantic_snapshot(
         base_picture,
         entry_path=resolved_entry_path,
         workspace_root=resolved_workspace_root,
-        discovery=discovery,
         project_graph=project_graph,
         include_dependency_modules=include_dependency_modules,
         build_reference_index=build_reference_index,
@@ -152,7 +145,6 @@ __all__ = [
     "SemanticSnapshot",
     "SymbolDefinition",
     "SymbolReference",
-    "WorkspaceSourceDiscovery",
     "build_source_snapshot_from_basepicture",
     "load_source_snapshot",
 ]
