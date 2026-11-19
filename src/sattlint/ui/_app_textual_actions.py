@@ -21,6 +21,9 @@ from ..project.io import (
     SLPROJ_FILENAME as _SLPROJ_FILENAME,
 )
 from ..project.io import (
+    SLPROJ_VERSION as _SLPROJ_VERSION,
+)
+from ..project.io import (
     init_project as _init_project,
 )
 from ..project.io import (
@@ -962,7 +965,7 @@ def _persist_project(self: Any) -> bool:
     cfg_raw: dict[str, object] = self._cfg
     root = project.root
     project_data: dict[str, object] = {
-        "slproj_version": 1,
+        "slproj_version": _SLPROJ_VERSION,
         "analyzed_programs_and_libraries": list(cast(list[str], cfg_raw.get("analyzed_programs_and_libraries") or [])),
         "mode": str(cfg_raw.get("mode", "official")),
         "program_dir": _make_project_relative(str(cfg_raw.get("program_dir", "")), root),

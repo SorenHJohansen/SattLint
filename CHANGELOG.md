@@ -63,6 +63,29 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   directory, names artifacts from the review's UTC timestamp, searches block
   headers case-insensitively, reads each source file once, and keeps blocks and
   calls that stopped being touched in the related context.
+- The unreachable foundation analysis cache and its disk-restore path are gone;
+  per-run memoization stays. Cache keys carry an explicit schema version and
+  read the installed parser release from the parser surface; the key payload is
+  canonical JSON, and lookup-root order stays significant because an earlier
+  root wins during discovery.
+- Config validation asks the parser's own code-discovery surface whether a
+  target exists instead of restating the extension table.
+- The reference index keys occurrences by library and file, so a query cannot
+  return a definition from another library that has a same-named file.
+- Problem records are rebuilt rather than mutated: typedef path rewriting
+  returns new issues and hits, and no frozen record is changed in place.
+- Analyzer direction checks use the call-parameter predicates instead of seven
+  separately hardcoded direction sets.
+- The plugin registry rejects a duplicate key and lists analyzers in canonical
+  order, so import order no longer decides the catalogue.
+- ICF drift is rendered from structured records instead of parsing the
+  producer's wording with regular expressions.
+- Analyzer output streams to the UI as each line is produced, and the
+  completion message distinguishes failure and cancellation.
+- Assets load on demand with an empty-text fallback instead of at import time.
+- Missing libraries are recorded as typed failure entries rather than prose, and
+  a companion code body that cannot be parsed warns and names the skipped path
+  checks.
 - Root origins are keyed by program name, so a project with several programs
   reports each target's own source file and library. A graph with unavailable
   libraries or target failures is no longer cached, and an unusable cache
@@ -104,6 +127,13 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 - The semantic index records single-module parameters and locals with their
   own symbol kinds, and module-type instance parameters and locals likewise,
   matching the typedef path.
+
+### Removed
+
+- The unused tracing module, the unreachable foundation-cache store, the unused
+  workspace-discovery subsystem, the duplicate comment-hit model, and the
+  test-only second loader. Corpus and crash-sweep tests now exercise the
+  production project loader.
 
 ### Fixed
 

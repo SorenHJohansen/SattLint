@@ -1,12 +1,10 @@
 # SattLint review findings and fix plan
 
-Status: High severity closed; Medium in progress. A resolution pass on
-2026-11-16 fixed every High row and the Medium rows listed in "Resolution
-status" below, with regression tests and a clean gate. A second pass on
-2026-11-17 closed C1-12, C1-14, C1-15, C1-16, C1-20, the boolean latch frontier
-cap, mapped-literal string capacity, and parameter/local symbol kinds. The
-remaining Medium and Low rows are still open; each open row keeps its original
-finding text.
+Status: high severity closed; every Medium and Low row recorded below is closed
+except the residuals listed in "2026-11-19 pass" below. A resolution pass on
+2026-11-19 worked the whole open list subsystem by subsystem, merged as one
+integration branch, and left a clean gate. Rows closed earlier keep their
+dates; each residual keeps its original finding text.
 
 Two read-only review waves completed. All six continuation
 passes are complete (C1 to C6).
@@ -82,6 +80,56 @@ C3-9 to C3-14, C1-13, C1-17 to C1-19, C1-21, and C6-2 to C6-5.
 All Low and nit items are open. The gate (`ruff`, `ruff format`, `pyright`, the
 full pytest suite, `scripts/check_docs.py`, pre-commit) is clean on the fixed
 slice.
+
+## 2026-11-19 pass
+
+Status: complete for the rows listed here. Work was split across seven
+subsystems, each in its own worktree, then merged and re-verified as one tree.
+
+Closed in this pass:
+
+- Open Mediums: C1-13, C1-17, C1-18, C1-19, C1-21, C3-9, C3-10, C3-11, C3-12,
+  C3-13, C3-14, C6-2, C6-3, C6-4, C6-5, the library-scoped record definitions,
+  the never-populated analysis indexes, the pairwise dataflow scan, and the TUI
+  project-path attribution.
+- Every Low and nit row: C1-24 to C1-50, C2-10 to C2-54, C3-17 to C3-39, C4-15
+  to C4-46, C5-20 to C5-55, C6-6 to C6-29, and the unnumbered Low rows.
+- The cache-integrity, security, and packaging items recorded under the Medium
+  headings: payload-before-manifest ordering, owner-only cache and run files,
+  the signing key outside the cache root, lock enforcement in CI, pre-commit
+  hygiene hooks in CI, and publish without `skip-existing`.
+
+Residuals, each blocked by a product decision or a deliberately deferred
+refactor:
+
+- C1-38, the 20-field issue union: the dead label table, the reflection lookup,
+  and the blanket enrichment catch are fixed; splitting the record itself
+  touches 78 construction sites across the analyzer packages and is left as its
+  own change.
+- C1-50: the dependency guard now sees multi-level relative imports and
+  enumerates the two remaining loader-boundary edges (ICF analyzer and the
+  graphics helper). Removing those edges needs a loader seam change.
+- C2-35: the run summary still interpolates raw exception text into
+  human-readable output; the machine-readable detail is unchanged.
+- C2-39: the run-checks collector remains a large function with a complexity
+  suppression; splitting it interacts with its cancellation and partial-result
+  contract.
+- C2-51: run records no longer use `dict[str, Any]`, but the timing payload is
+  still dict-shaped until the profiling, framework, and reporting shapes move
+  together.
+- C2-29: lookup-root order stays significant in the cache key by design,
+  because an earlier root wins during discovery; this is documented and tested.
+- C3-21 and C3-39: both are deliberate reporting policies (full runs report at
+  `TypeDef:` paths and a fully unused record is reported at the variable level),
+  so changing them needs a product decision.
+- C2-46: the two meanings of `context` in UI labels need a product decision
+  before the text changes.
+- C6-19 and C6-25: splitting the large Textual test module and typing the test
+  files that suppress Pyright checks are both large test-only refactors.
+
+Gate on the merged tree: `ruff check`, `ruff format --check`, `pyright
+src/sattlint tests`, the full pytest suite, `scripts/check_docs.py`, and
+pre-commit are clean.
 
 ## High severity
 
