@@ -49,7 +49,7 @@ CACHE_VERSION = 17  # Bump when cached AST semantics or attached graphics compan
 _legacy_migration_attempted = False
 ANALYSIS_REPORT_CACHE_VERSION = 5
 _PICKLE_CACHE_MAGIC = b"SATTLINT-PICKLE-V1\n"
-_PICKLE_HMAC_KEY_NAME = ".pickle-hmac-key"
+_PICKLE_HMAC_KEY_NAME = ".sattlint-cache-key"
 _PICKLE_HMAC_SIZE = 32
 
 
