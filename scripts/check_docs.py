@@ -34,6 +34,7 @@ SKIP_DIRS = frozenset(
         "htmlcov",
         "node_modules",
         "report-cache-dir",
+        "venv",
     }
 )
 EXTERNAL_PREFIXES = ("http://", "https://", "mailto:", "tel:", "ftp:", "git@")
