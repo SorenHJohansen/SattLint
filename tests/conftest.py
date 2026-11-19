@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from sattlint import cache as cache_module
+from sattlint.cache import manager as cache_manager_module
 
 # Ensure `src/` is on sys.path so `import sattlint` works in dev/test runs.
 _ROOT = Path(__file__).resolve().parents[1]
@@ -27,4 +28,8 @@ def _isolate_analysis_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     cache_dir = tmp_path / "cache"
     monkeypatch.setattr(cache_module, "get_cache_dir", lambda: cache_dir)
     monkeypatch.setattr(cache_module, "get_cache_dir_or_none", lambda: cache_dir)
+    # The manager registry is process-global and keyed by directory; a manager
+    # built by an earlier test must never serve a later one.
+    cache_manager_module._CACHE_MANAGERS.clear()
     yield
+    cache_manager_module._CACHE_MANAGERS.clear()

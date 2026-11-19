@@ -4478,6 +4478,13 @@ def test_textual_shell_does_not_crash_within_window(tmp_path: Path) -> None:
         env["TERM"] = "xterm-256color"
         env["COLUMNS"] = "100"
         env["LINES"] = "30"
+        # The child must not read or write the developer's configuration or
+        # cache; every per-user location points at this test's temp directory.
+        env["HOME"] = str(tmp_path)
+        env["USERPROFILE"] = str(tmp_path)
+        env["XDG_CONFIG_HOME"] = str(tmp_path / "config")
+        env["XDG_CACHE_HOME"] = str(tmp_path / "cache")
+        env["APPDATA"] = str(tmp_path / "appdata")
         # The child runs in ``tmp_path``. A relative ``PYTHONPATH=src`` would
         # resolve against that directory and import a stale installed package
         # instead of this checkout.
