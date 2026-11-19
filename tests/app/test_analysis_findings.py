@@ -6,7 +6,7 @@ from sattline_parser.models.ast_model import ScalarDatatype, Variable
 from sattlint.analyzers.framework import Issue
 from sattlint.analyzers.shared._validators import StringMappingValidator
 from sattlint.application.findings import AnalysisFinding, extract_report_findings, kind_human_label
-from sattlint.models._variable_issues import IssueKind, VariableIssue
+from sattlint.models._variable_issues import IssueKind, VariableIssue, variable_issue_metadata
 from sattlint.reporting.variables_report import VariablesReport
 
 
@@ -213,6 +213,21 @@ def test_extract_report_findings_sources_explanation_and_suggestion_from_variabl
     assert findings[0].kind == "unused"
     assert findings[0].explanation
     assert findings[0].suggestion
+
+
+def test_variable_issue_metadata_is_selected_by_kind_value() -> None:
+    from_enum = variable_issue_metadata(IssueKind.UNUSED)
+
+    assert from_enum.explanation
+    assert from_enum.suggestion
+    assert variable_issue_metadata("unused") == from_enum
+    assert variable_issue_metadata("not_a_known_kind") == variable_issue_metadata(None)
+
+
+def test_retired_kind_aliases_are_not_special_cased() -> None:
+    assert kind_human_label("sfc_unreachable_sequence_node") == "Unreachable sequence node"
+    assert kind_human_label("unreachable_sequence_node") == "Unreachable Sequence Node"
+    assert kind_human_label("scan_cycle_shared_access_hazard") == "Scan Cycle Shared Access Hazard"
 
 
 def test_extract_report_findings_uses_explicit_context_attribute() -> None:
