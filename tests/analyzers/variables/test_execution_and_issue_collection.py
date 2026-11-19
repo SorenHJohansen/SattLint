@@ -34,7 +34,13 @@ from sattlint.analyzers.variables import (
     _variables_execution as variables_execution_module,
 )
 from sattlint.analyzers.variables._variables_contracts import TypedefUsageKey
-from sattlint.reporting.variables_report import VariableIssue
+from sattlint.reporting.variables_report import (
+    FieldPathVariableIssue,
+    UnusedDatatypeFieldIssue,
+    UnusedDatatypeIssue,
+    VariableIssue,
+    VariableTargetIssue,
+)
 from sattlint.resolution.scope import ScopeContext
 from tests.helpers.variable_test_support import (
     UsageStub as _UsageStub,
@@ -446,9 +452,10 @@ def test_variable_issue_collection_datatype_field_helper_covers_remaining_branch
     by_kind = {issue.kind: issue for issue in issues}
     assert set(by_kind) == {IssueKind.UNUSED_DATATYPE, IssueKind.UNUSED_DATATYPE_FIELD}
     record_issue = by_kind[IssueKind.UNUSED_DATATYPE]
+    assert isinstance(record_issue, UnusedDatatypeIssue)
     assert record_issue.datatype_name == "PayloadNoAccess"
-    assert record_issue.field_path is None
     field_issue = by_kind[IssueKind.UNUSED_DATATYPE_FIELD]
+    assert isinstance(field_issue, UnusedDatatypeFieldIssue)
     assert field_issue.datatype_name == "PayloadPartial"
     assert field_issue.field_path == "Unused"
 
@@ -495,7 +502,9 @@ def test_field_usage_asymmetry_detects_sibling_miswire_and_treats_whole_record_r
     variable_issue_collection_module._add_field_usage_asymmetry_issues(helper)
 
     assert {
-        (issue.kind, issue.variable.name if issue.variable is not None else None, issue.field_path) for issue in issues
+        (issue.kind, issue.variable.name, issue.field_path)
+        for issue in issues
+        if isinstance(issue, FieldPathVariableIssue)
     } == {
         (IssueKind.FIELD_READ_ONLY, "OutletConfig", "OutletProd_Def.Std"),
         (IssueKind.FIELD_NEVER_READ, "OutletConfig", "OutletProd_X_Def.Std"),
@@ -507,7 +516,9 @@ def test_field_usage_asymmetry_detects_sibling_miswire_and_treats_whole_record_r
     variable_issue_collection_module._add_field_usage_asymmetry_issues(helper)
 
     assert {
-        (issue.kind, issue.variable.name if issue.variable is not None else None, issue.field_path) for issue in issues
+        (issue.kind, issue.variable.name, issue.field_path)
+        for issue in issues
+        if isinstance(issue, FieldPathVariableIssue)
     } == {
         (IssueKind.FIELD_READ_ONLY, "OutletConfig", "OutletProd_Def.Std"),
     }
@@ -766,7 +777,13 @@ def test_variable_issue_collection_collect_module_issue_helper_covers_remaining_
     )
     helper: Any = SimpleNamespace(
         append_issue=lambda issue: issues.append(
-            (issue.kind, tuple(issue.module_path), issue.variable.name, issue.role, issue.field_path)
+            (
+                issue.kind,
+                tuple(issue.module_path),
+                issue.variable.name if isinstance(issue, VariableTargetIssue) else "",
+                issue.role or "",
+                issue.field_path if isinstance(issue, FieldPathVariableIssue) else None,
+            )
         ),
         _selected_issue_kinds=None,
         get_usage=lambda variable: usage_by_id[id(variable)],
@@ -779,9 +796,6 @@ def test_variable_issue_collection_collect_module_issue_helper_covers_remaining_
         _get_usage=lambda variable: usage_by_id[id(variable)],
         _procedure_status_issue=lambda variable, usage: (
             ("procedure-status", "Status") if variable is procedure_param or variable is procedure_local else None
-        ),
-        _add_issue=lambda kind, path, variable, role, field_path=None: issues.append(
-            (kind, tuple(path), variable.name, role, field_path)
         ),
         _has_output_effect=lambda *args, **kwargs: False,
         _has_procedure_status_binding=lambda *args, **kwargs: False,

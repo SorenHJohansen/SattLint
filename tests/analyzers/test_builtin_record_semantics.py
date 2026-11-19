@@ -16,7 +16,7 @@ from sattline_parser.models.ast_model import (
 from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt, VarRef
 
 from sattlint.analyzers.variables import VariablesAnalyzer
-from sattlint.reporting.variables_report import DATATYPE_FIELD_ANALYSIS_KINDS, IssueKind
+from sattlint.reporting.variables_report import DATATYPE_FIELD_ANALYSIS_KINDS, IssueKind, UnusedDatatypeFieldIssue
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -224,9 +224,7 @@ def test_partial_record_usage_reports_unused_leaf_fields():
     unused_fields = {
         issue.field_path.casefold()
         for issue in analyzer.issues
-        if issue.kind is IssueKind.UNUSED_DATATYPE_FIELD
-        and issue.datatype_name == "RecType"
-        and issue.field_path is not None
+        if isinstance(issue, UnusedDatatypeFieldIssue) and issue.datatype_name == "RecType"
     }
 
     assert "b" in unused_fields

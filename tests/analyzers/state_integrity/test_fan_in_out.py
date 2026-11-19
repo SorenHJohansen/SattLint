@@ -15,8 +15,17 @@ from sattlint.analyzers.variables import (
 )
 from sattlint.reporting.variables_report import (
     ALL_VARIABLE_ANALYSIS_KINDS,
-    VariableIssue,
+    GlobalScopeMinimizationIssue,
+    HiddenGlobalCouplingIssue,
+    HighFanInOutIssue,
+    ImplicitLatchIssue,
+    MagicNumberIssue,
+    NeverReadIssue,
+    ResetContaminationIssue,
+    UnknownParameterTargetIssue,
+    UnusedDatatypeFieldIssue,
     VariablesReport,
+    WriteWithoutEffectIssue,
 )
 from sattlint.types import VariableId
 from tests.helpers.variable_test_support import (
@@ -328,8 +337,7 @@ def test_high_fan_in_out_honors_configured_threshold():
 
 def test_variables_report_summary_includes_write_without_effect_section():
     variable = Variable(name="Stage1", datatype=ScalarDatatype.INTEGER)
-    issue = VariableIssue(
-        kind=IssueKind.WRITE_WITHOUT_EFFECT,
+    issue = WriteWithoutEffectIssue(
         module_path=["BasePicture", "Worker"],
         variable=variable,
         role="localvariable",
@@ -344,8 +352,7 @@ def test_variables_report_summary_includes_write_without_effect_section():
 
 def test_variables_report_summary_includes_hidden_global_coupling_section():
     variable = Variable(name="SharedValue", datatype=ScalarDatatype.INTEGER)
-    issue = VariableIssue(
-        kind=IssueKind.HIDDEN_GLOBAL_COUPLING,
+    issue = HiddenGlobalCouplingIssue(
         module_path=["BasePicture"],
         variable=variable,
         role="hidden global coupling across modules: Writer (write), Reader (read)",
@@ -359,8 +366,7 @@ def test_variables_report_summary_includes_hidden_global_coupling_section():
 
 def test_variables_report_summary_includes_high_fan_in_out_section():
     variable = Variable(name="SharedValue", datatype=ScalarDatatype.INTEGER)
-    issue = VariableIssue(
-        kind=IssueKind.HIGH_FAN_IN_OUT,
+    issue = HighFanInOutIssue(
         module_path=["BasePicture"],
         variable=variable,
         role="high fan-in with 3 readers: ReaderA, ReaderB, ReaderC",
@@ -374,8 +380,7 @@ def test_variables_report_summary_includes_high_fan_in_out_section():
 
 def test_variables_report_summary_includes_global_scope_minimization_section():
     variable = Variable(name="ConfinedValue", datatype=ScalarDatatype.INTEGER)
-    issue = VariableIssue(
-        kind=IssueKind.GLOBAL_SCOPE_MINIMIZATION,
+    issue = GlobalScopeMinimizationIssue(
         module_path=["BasePicture"],
         variable=variable,
         role="global scope can be reduced to module subtree Worker: Worker, Worker.Nested",
@@ -388,10 +393,8 @@ def test_variables_report_summary_includes_global_scope_minimization_section():
 
 
 def test_variables_report_preserves_retired_mapping_data_without_showing_a_section():
-    issue = VariableIssue(
-        kind=IssueKind.UNKNOWN_PARAMETER_TARGET,
+    issue = UnknownParameterTargetIssue(
         module_path=["BasePicture", "Child"],
-        variable=None,
         role="unknown parameter mapping target 'MissingValue'",
     )
 
@@ -456,8 +459,7 @@ def test_variables_report_summary_keeps_filtered_empty_output_scoped():
 
 
 def test_variables_report_summary_omits_sections_overview_for_single_visible_kind():
-    issue = VariableIssue(
-        kind=IssueKind.NEVER_READ,
+    issue = NeverReadIssue(
         module_path=["BasePicture", "Mixer"],
         variable=Variable(name="Cmd", datatype=ScalarDatatype.BOOLEAN),
         role="localvariable",
@@ -480,29 +482,30 @@ def test_variables_report_summary_omits_sections_overview_for_single_visible_kin
 
 
 def test_variable_issue_str_formats_datatype_literal_and_role_only_variants():
-    datatype_issue = VariableIssue(
-        kind=IssueKind.UNUSED_DATATYPE_FIELD,
+    datatype_issue = UnusedDatatypeFieldIssue(
         module_path=["BasePicture", "UnitA"],
-        variable=None,
         datatype_name="Payload",
         field_path="Value",
     )
-    literal_issue = VariableIssue(
-        kind=IssueKind.MAGIC_NUMBER,
+    literal_issue = MagicNumberIssue(
         module_path=["BasePicture", "UnitA"],
-        variable=None,
         literal_value=42,
         literal_span=SourceSpan(start=0, end=0, line=9, column=4),
         site="EquationBlock",
     )
-    role_issue = VariableIssue(
-        kind=IssueKind.UNKNOWN_PARAMETER_TARGET,
+    role_issue = UnknownParameterTargetIssue(
         module_path=["BasePicture", "Child"],
-        variable=None,
         role="missing target",
     )
-    variable_issue = VariableIssue(
-        kind=IssueKind.IMPLICIT_LATCH,
+    variable_issue = ImplicitLatchIssue(
+        module_path=["BasePicture", "Step"],
+        variable=Variable(name="Flag", datatype=ScalarDatatype.BOOLEAN),
+        role="localvariable",
+        field_path="State",
+        sequence_name="SeqA",
+        site="SEQ:SeqA > STEP:One",
+    )
+    reset_issue = ResetContaminationIssue(
         module_path=["BasePicture", "Step"],
         variable=Variable(name="Flag", datatype=ScalarDatatype.BOOLEAN),
         role="localvariable",
@@ -510,16 +513,13 @@ def test_variable_issue_str_formats_datatype_literal_and_role_only_variants():
         sequence_name="SeqA",
         reset_variable=VariableId("ResetCmd"),
     )
-    empty_issue = VariableIssue(
-        kind=IssueKind.UNUSED,
-        module_path=["BasePicture"],
-        variable=None,
-    )
+    empty_issue = UnknownParameterTargetIssue(module_path=["BasePicture"])
 
     assert str(datatype_issue) == "[BasePicture.UnitA] datatype 'Payload'.Value"
     assert str(literal_issue) == "[BasePicture.UnitA] magic number 42"
     assert str(role_issue) == "[BasePicture.Child] missing target"
     assert "'Flag'.State (boolean)" in str(variable_issue)
     assert "seq='SeqA'" in str(variable_issue)
-    assert "reset='ResetCmd'" in str(variable_issue)
+    assert "reset='ResetCmd'" not in str(variable_issue)
+    assert "reset='ResetCmd'" in str(reset_issue)
     assert str(empty_issue) == "[BasePicture]"

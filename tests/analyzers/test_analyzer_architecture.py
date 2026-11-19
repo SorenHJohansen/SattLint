@@ -219,7 +219,7 @@ def test_variables_analyzer_uses_helper_mixins_instead_of_local_method_injection
     for mixin in expected_mixins:
         assert mixin in VariablesAnalyzer.__mro__
 
-    assert "_add_issue" not in VariablesAnalyzer.__dict__
+    assert "_add_field_usage_asymmetry_issues" not in VariablesAnalyzer.__dict__
     assert "_repath_context" not in VariablesAnalyzer.__dict__
     assert "_canonical_path" not in VariablesAnalyzer.__dict__
     assert "_check_param_mapping" not in VariablesAnalyzer.__dict__
@@ -228,7 +228,7 @@ def test_variables_analyzer_uses_helper_mixins_instead_of_local_method_injection
     assert "run" not in VariablesAnalyzer.__dict__
     assert "_is_const_candidate" not in VariablesAnalyzer.__dict__
 
-    assert VariablesAnalyzer._add_issue.__qualname__.startswith("VariablesIssueCollectionMixin.")
+    assert VariablesAnalyzer._add_field_usage_asymmetry_issues.__qualname__.startswith("VariablesIssueCollectionMixin.")
     assert VariablesAnalyzer._repath_context.__qualname__.startswith("VariablesTraversalMixin.")
     assert VariablesAnalyzer._canonical_path.__qualname__.startswith("VariablesAccessMixin.")
     assert VariablesAnalyzer._check_param_mapping.__qualname__.startswith("VariablesContractsMixin.")

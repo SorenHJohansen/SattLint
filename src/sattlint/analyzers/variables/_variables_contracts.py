@@ -3,7 +3,7 @@
 # pyright: reportPrivateUsage=false
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from sattlint.parser_api import (
@@ -322,10 +322,15 @@ def _check_param_mapping(
                 path,
                 is_duration=bool(pm.is_duration),
             ):
-                issue.source_decl_module_path = list(path)
-                issue.source_role = "literal"
-                issue.target_display_name = target_name
-                self.append_param_mapping_issue(pm, issue)
+                self.append_param_mapping_issue(
+                    pm,
+                    replace(
+                        issue,
+                        source_decl_module_path=list(path),
+                        source_role="literal",
+                        target_display_name=target_name,
+                    ),
+                )
         return
 
     current_source_datatype: ScalarDatatype | str | None = None
@@ -366,14 +371,19 @@ def _check_param_mapping(
         source_display_name = current_source_var.name
 
     for issue in self.string_validator.check_string_mapping(target_issue_var, current_source_var, path):
-        issue.source_variable = preferred_source_issue_var
-        issue.source_decl_module_path = source_metadata.declaration_path
-        issue.source_role = source_metadata.role
-        issue.source_display_name = source_display_name
-        issue.target_display_name = target_name
-        issue.validation_source_variable = validation_metadata.variable
-        issue.validation_source_module_path = validation_metadata.module_path
-        self.append_param_mapping_issue(pm, issue)
+        self.append_param_mapping_issue(
+            pm,
+            replace(
+                issue,
+                source_variable=preferred_source_issue_var,
+                source_decl_module_path=source_metadata.declaration_path,
+                source_role=source_metadata.role,
+                source_display_name=source_display_name,
+                target_display_name=target_name,
+                validation_source_variable=validation_metadata.variable,
+                validation_source_module_path=validation_metadata.module_path,
+            ),
+        )
     for issue in self.min_max_validator.check_min_max_mapping(pm, tgt_var, src_var, path):
         self.append_param_mapping_issue(pm, issue)
 

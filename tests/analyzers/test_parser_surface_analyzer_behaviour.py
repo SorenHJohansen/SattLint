@@ -25,9 +25,10 @@ from sattline_parser.ast import (
     VarTail,
 )
 
-from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
+from sattlint.analyzers.variables import VariablesAnalyzer
 from sattlint.analyzers.variables._variables_mapping_refs import mapping_source_ref
 from sattlint.models.usage import VariableUsage
+from sattlint.reporting.variables_report import UnusedIssue
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "parser_surface" / "ParserSurfaceAnalyzerShapes.s"
 
@@ -165,11 +166,7 @@ def test_parameter_mapping_kinds_are_typed(analyzed: tuple[BasePicture, Variable
 def test_ui_and_mapping_reads_suppress_unused_findings(analyzed: tuple[BasePicture, VariablesAnalyzer]) -> None:
     _base_picture, analyzer = analyzed
 
-    unused_names = {
-        issue.variable.name
-        for issue in analyzer.issues
-        if issue.kind is IssueKind.UNUSED and issue.variable is not None
-    }
+    unused_names = {issue.variable.name for issue in analyzer.issues if isinstance(issue, UnusedIssue)}
     assert unused_names.isdisjoint(
         {
             "TextVar",

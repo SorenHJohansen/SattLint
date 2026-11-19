@@ -13,7 +13,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import cast
 
-from ..models._variable_issues import IssueKind, VariableIssue, variable_issue_metadata
+from ..models._variable_issues import (
+    FieldPathVariableIssue,
+    IssueKind,
+    UnusedDatatypeFieldIssue,
+    VariableTargetIssue,
+    variable_issue_metadata,
+)
 from ..reporting.variables_report import VariablesReport
 
 type FindingDataValue = str | int | float | bool | list[FindingDataValue] | dict[str, FindingDataValue] | None
@@ -129,9 +135,9 @@ def _issue_data_value(item: object) -> dict[str, FindingDataValue]:
         mapping = cast(Mapping[str, object], raw_data)
         for key, value in mapping.items():
             data[str(key)] = _sanitize_data_value(value)
-    if isinstance(item, VariableIssue) and item.field_path:
+    if isinstance(item, FieldPathVariableIssue | UnusedDatatypeFieldIssue) and item.field_path:
         data.setdefault("field_path", item.field_path)
-        if item.variable is not None:
+        if isinstance(item, VariableTargetIssue):
             data.setdefault("variable_name", item.variable.name)
     _merge_synthesized_context(item, data)
     return data

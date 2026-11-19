@@ -20,7 +20,7 @@ from sattline_parser.models.ast_model import (
 from sattline_parser.models.expressions import Assignment, VarRef
 
 from sattlint.analyzers.variables import analyze_variables
-from sattlint.reporting.variables_report import DEFAULT_VARIABLE_ANALYSIS_KINDS, IssueKind
+from sattlint.reporting.variables_report import DEFAULT_VARIABLE_ANALYSIS_KINDS, IssueKind, ReadBeforeWriteIssue
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -252,8 +252,10 @@ def test_child_output_mapping_is_not_an_unwritten_local(dependency: bool, reusab
         selected_issue_kinds=frozenset({IssueKind.READ_BEFORE_WRITE}),
     )
 
-    assert not any(issue.context == "ErrorSignal" for issue in report.issues)
-    assert any(issue.context == "Unwritten" for issue in report.issues)
+    assert not any(
+        isinstance(issue, ReadBeforeWriteIssue) and issue.context == "ErrorSignal" for issue in report.issues
+    )
+    assert any(isinstance(issue, ReadBeforeWriteIssue) and issue.context == "Unwritten" for issue in report.issues)
 
 
 def test_child_field_output_does_not_initialize_sibling():

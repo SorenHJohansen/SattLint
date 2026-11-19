@@ -20,8 +20,12 @@ from sattline_parser.models.expressions import FuncCall, FuncCallStmt, VarRef
 from sattlint.analyzers.dataflow import analyze_dataflow
 from sattlint.analyzers.same_cycle import analyze_same_cycle
 from sattlint.analyzers.variables import (
-    IssueKind,
     VariablesAnalyzer,
+)
+from sattlint.reporting.variables_report import (
+    NeverReadIssue,
+    ProcedureStatusIssue,
+    WriteWithoutEffectIssue,
 )
 from tests.helpers.variable_test_support import (
     hdr as _hdr,
@@ -145,15 +149,12 @@ def test_variables_analyzer_flags_ignored_procedure_status_output():
 
     issues = VariablesAnalyzer(bp).run()
 
-    status_issues = [issue for issue in issues if issue.kind is IssueKind.PROCEDURE_STATUS]
+    status_issues = [issue for issue in issues if isinstance(issue, ProcedureStatusIssue)]
     assert len(status_issues) == 1
-    assert status_issues[0].variable is not None
     assert status_issues[0].variable.name == "Status"
     assert "ignored" in (status_issues[0].role or "")
     assert not any(
-        issue.kind in {IssueKind.NEVER_READ, IssueKind.WRITE_WITHOUT_EFFECT}
-        and issue.variable is not None
-        and issue.variable.name == "Status"
+        isinstance(issue, NeverReadIssue | WriteWithoutEffectIssue) and issue.variable.name == "Status"
         for issue in issues
     )
 
@@ -185,11 +186,7 @@ def test_variables_analyzer_flags_dependency_mapped_status_that_only_reaches_ui(
     issues = VariablesAnalyzer(bp).run()
 
     status_issues = [
-        issue
-        for issue in issues
-        if issue.kind is IssueKind.PROCEDURE_STATUS
-        and issue.variable is not None
-        and issue.variable.name == "StatusSink"
+        issue for issue in issues if isinstance(issue, ProcedureStatusIssue) and issue.variable.name == "StatusSink"
     ]
     assert len(status_issues) == 1
     assert "UI" in (status_issues[0].role or "")
@@ -232,8 +229,7 @@ def test_variables_analyzer_treats_dependency_mapped_status_as_handled_when_read
     issues = VariablesAnalyzer(bp).run()
 
     assert not any(
-        issue.variable is not None
+        isinstance(issue, ProcedureStatusIssue | WriteWithoutEffectIssue | NeverReadIssue)
         and issue.variable.name == "StatusSink"
-        and issue.kind in {IssueKind.PROCEDURE_STATUS, IssueKind.WRITE_WITHOUT_EFFECT, IssueKind.NEVER_READ}
         for issue in issues
     )

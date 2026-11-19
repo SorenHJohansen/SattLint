@@ -26,6 +26,12 @@ from sattlint.parser_api import parse_source_file
 from sattlint.reporting.variables_report import (
     ALL_VARIABLE_ANALYSIS_KINDS,
     DATATYPE_FIELD_ANALYSIS_KINDS,
+    FieldNeverReadIssue,
+    FieldReadOnlyIssue,
+    NeverReadIssue,
+    ReadOnlyNonConstIssue,
+    UnusedDatatypeFieldIssue,
+    UnusedIssue,
 )
 from tests.helpers.graphics_attachments_support import graphics_attachments
 from tests.helpers.project_loading import load_target_project
@@ -45,17 +51,11 @@ def test_sample_fixture_contains_common_variable_quality_issues():
     bp = parse_source_file(fixture)
     issues = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(ALL_VARIABLE_ANALYSIS_KINDS)).run()
 
-    unused = {issue.variable.name for issue in issues if issue.kind is IssueKind.UNUSED and issue.variable is not None}
-    read_only_non_const = {
-        issue.variable.name
-        for issue in issues
-        if issue.kind is IssueKind.READ_ONLY_NON_CONST and issue.variable is not None
-    }
-    never_read = {
-        issue.variable.name for issue in issues if issue.kind is IssueKind.NEVER_READ and issue.variable is not None
-    }
+    unused = {issue.variable.name for issue in issues if isinstance(issue, UnusedIssue)}
+    read_only_non_const = {issue.variable.name for issue in issues if isinstance(issue, ReadOnlyNonConstIssue)}
+    never_read = {issue.variable.name for issue in issues if isinstance(issue, NeverReadIssue)}
     unused_fields = {
-        (issue.datatype_name, issue.field_path) for issue in issues if issue.kind is IssueKind.UNUSED_DATATYPE_FIELD
+        (issue.datatype_name, issue.field_path) for issue in issues if isinstance(issue, UnusedDatatypeFieldIssue)
     }
 
     assert "UnusedValue" in unused
@@ -71,17 +71,13 @@ def test_sample_fixture_catches_outletprod_sibling_field_miswire():
     issues = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(ALL_VARIABLE_ANALYSIS_KINDS)).run()
 
     field_read_only = {
-        (issue.variable.name, issue.field_path)
-        for issue in issues
-        if issue.kind is IssueKind.FIELD_READ_ONLY and issue.variable is not None
+        (issue.variable.name, issue.field_path) for issue in issues if isinstance(issue, FieldReadOnlyIssue)
     }
     field_never_read = {
-        (issue.variable.name, issue.field_path)
-        for issue in issues
-        if issue.kind is IssueKind.FIELD_NEVER_READ and issue.variable is not None
+        (issue.variable.name, issue.field_path) for issue in issues if isinstance(issue, FieldNeverReadIssue)
     }
     unused_fields = {
-        (issue.datatype_name, issue.field_path) for issue in issues if issue.kind is IssueKind.UNUSED_DATATYPE_FIELD
+        (issue.datatype_name, issue.field_path) for issue in issues if isinstance(issue, UnusedDatatypeFieldIssue)
     }
 
     assert ("OutletConfig", "OutletProd_Def.Std") in field_read_only
@@ -151,14 +147,10 @@ def test_whole_record_write_does_not_hide_field_never_read_issue():
     issues = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS)).run()
 
     field_read_only = {
-        (issue.variable.name, issue.field_path)
-        for issue in issues
-        if issue.kind is IssueKind.FIELD_READ_ONLY and issue.variable is not None
+        (issue.variable.name, issue.field_path) for issue in issues if isinstance(issue, FieldReadOnlyIssue)
     }
     field_never_read = {
-        (issue.variable.name, issue.field_path)
-        for issue in issues
-        if issue.kind is IssueKind.FIELD_NEVER_READ and issue.variable is not None
+        (issue.variable.name, issue.field_path) for issue in issues if isinstance(issue, FieldNeverReadIssue)
     }
 
     assert ("Payload", "Used") not in field_read_only
@@ -171,14 +163,10 @@ def test_whole_record_read_does_not_hide_field_read_only_issue():
     issues = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS)).run()
 
     field_read_only = {
-        (issue.variable.name, issue.field_path)
-        for issue in issues
-        if issue.kind is IssueKind.FIELD_READ_ONLY and issue.variable is not None
+        (issue.variable.name, issue.field_path) for issue in issues if isinstance(issue, FieldReadOnlyIssue)
     }
     field_never_read = {
-        (issue.variable.name, issue.field_path)
-        for issue in issues
-        if issue.kind is IssueKind.FIELD_NEVER_READ and issue.variable is not None
+        (issue.variable.name, issue.field_path) for issue in issues if isinstance(issue, FieldNeverReadIssue)
     }
 
     assert ("Payload", "Used") in field_read_only
@@ -192,7 +180,7 @@ def test_gfile_var_and_expr_reads_count_as_used_for_unused_analysis():
     issues = analyzer.run()
 
     usage_by_name = {variable.name: analyzer._get_usage(variable) for variable in bp.localvariables}
-    unused = {issue.variable.name for issue in issues if issue.kind is IssueKind.UNUSED and issue.variable is not None}
+    unused = {issue.variable.name for issue in issues if isinstance(issue, UnusedIssue)}
 
     assert unused == set()
     assert all(usage.read for usage in usage_by_name.values())
@@ -298,10 +286,7 @@ def test_nested_composite_gfile_bindings_use_declaring_module_scope():
     analyzer = VariablesAnalyzer(bp, graphics_attachments=bp_attachments)
     issues = analyzer.run()
 
-    assert not any(
-        issue.kind is IssueKind.UNUSED and issue.variable is not None and issue.variable.name == "NestedOnly"
-        for issue in issues
-    )
+    assert not any(isinstance(issue, UnusedIssue) and issue.variable.name == "NestedOnly" for issue in issues)
     assert not any(
         issue.kind is IssueKind.UNUSED
         and issue.variable is not None
@@ -345,10 +330,7 @@ def test_unparsed_gfile_expr_still_counts_named_variables_as_reads():
     analyzer = VariablesAnalyzer(bp, graphics_attachments=bp_attachments)
     issues = analyzer.run()
 
-    assert not any(
-        issue.kind is IssueKind.UNUSED and issue.variable is not None and issue.variable.name in {"Alpha", "Beta"}
-        for issue in issues
-    )
+    assert not any(isinstance(issue, UnusedIssue) and issue.variable.name in {"Alpha", "Beta"} for issue in issues)
 
 
 def test_search_rec_component_found_record_output_is_not_flagged_never_read():
@@ -399,8 +381,6 @@ def test_search_rec_component_found_record_output_is_not_flagged_never_read():
 
     issues = VariablesAnalyzer(bp).run()
 
-    never_read = {
-        issue.variable.name for issue in issues if issue.kind is IssueKind.NEVER_READ and issue.variable is not None
-    }
+    never_read = {issue.variable.name for issue in issues if isinstance(issue, NeverReadIssue)}
 
     assert "FoundUnit" not in never_read

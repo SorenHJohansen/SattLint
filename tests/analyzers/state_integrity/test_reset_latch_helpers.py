@@ -27,7 +27,7 @@ from sattlint.analyzers.reset_contamination._reset_path_stmt_handlers import (
     collect_if_stmt_paths,
     collect_stmt_block_paths,
 )
-from sattlint.reporting.variables_report import VariableIssue
+from sattlint.reporting.variables_report import ImplicitLatchIssue, VariableIssue
 from tests.helpers.variable_test_support import varref as _varref
 
 
@@ -326,7 +326,7 @@ def test_implicit_latch_helpers_scan_nested_sfc_nodes_and_dedupe_issues():
     )
 
     assert len(issues) == 4
-    assert {issue.site for issue in issues} == {
+    assert {issue.site for issue in issues if isinstance(issue, ImplicitLatchIssue)} == {
         "SEQ:Main > STEP:LatchStep",
         "SEQ:Main > ALT:1 > STEP:AltOne",
         "SEQ:Main > PAR:1 > STEP:NestedLatch",

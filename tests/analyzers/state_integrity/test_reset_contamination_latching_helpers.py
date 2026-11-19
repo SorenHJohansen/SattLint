@@ -32,7 +32,7 @@ from sattlint.analyzers.reset_contamination._reset_latching import (
     scan_seq_nodes_for_latching,
     scan_stmt_for_latching,
 )
-from sattlint.reporting.variables_report import IssueKind, VariableIssue
+from sattlint.reporting.variables_report import ImplicitLatchIssue, IssueKind, VariableIssue
 
 
 def _varref(name: str) -> VarRef:
@@ -218,7 +218,7 @@ def test_latching_helpers_cover_boolean_paths_and_sequence_recursion() -> None:
     assert merged_states[0].true_writes == {("flag", ""): (env["flag"], "")}
     assert merged_states[0].false_writes == {("otherflag", ""): (env["otherflag"], "")}
     assert any(issue.kind is IssueKind.IMPLICIT_LATCH for issue in issues)
-    assert any(issue.sequence_name == "Main" for issue in issues)
+    assert any(isinstance(issue, ImplicitLatchIssue) and issue.sequence_name == "Main" for issue in issues)
 
 
 def test_boolean_parallel_merge_caps_the_frontier() -> None:

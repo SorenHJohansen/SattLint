@@ -14,7 +14,7 @@ from sattlint.parser_api import (
 )
 
 from ...config.analysis import unsafe_default_tokens
-from ...reporting.variables_report import IssueKind, VariableIssue
+from ...reporting.variables_report import UnsafeBooleanDefaultIssue
 from ...utils.casefolding import casefold_equal, casefold_key
 from ..shared._walk_utils import iter_nested_modules
 
@@ -73,8 +73,7 @@ def _check_unsafe_defaults(
         reason = _unsafe_default_reason(variable, tokens)
         if reason is None:
             continue
-        issue = VariableIssue(
-            kind=IssueKind.UNSAFE_BOOLEAN_DEFAULT,
+        issue = UnsafeBooleanDefaultIssue(
             module_path=module_path.copy(),
             variable=variable,
             role=f"defaults to True, {reason}",

@@ -22,7 +22,11 @@ from sattlint.parser_api import (
     split_dotted_name as _split_dotted_name,
 )
 
-from ...reporting.variables_report import IssueKind, VariableIssue
+from ...reporting.variables_report import (
+    MinMaxMappingMismatchIssue,
+    StringMappingMismatchIssue,
+    VariableIssue,
+)
 from ...resolution import AmbiguousRecordError, TypeGraph
 from ...resolution.common import varname_full
 from ._string_capacity import STRING_CAPACITIES, string_capacity_for_datatype
@@ -58,20 +62,19 @@ class StringMappingValidator:
         tgt_var: Variable,
         src_var: Variable,
         path: list[str],
-    ) -> list[VariableIssue]:
+    ) -> list[StringMappingMismatchIssue]:
         """
         Check if string variable mappings have mismatched types.
 
         SattLine requires strict string type matching (e.g. String40 -> String40).
         """
-        issues: list[VariableIssue] = []
+        issues: list[StringMappingMismatchIssue] = []
 
         # Only flag assignments that narrow string capacity.
         target_limit = self._string_limit(tgt_var.datatype)
         source_limit = self._string_limit(src_var.datatype)
         if target_limit is not None and source_limit is not None and source_limit > target_limit:
-            issue = VariableIssue(
-                kind=IssueKind.STRING_MAPPING_MISMATCH,
+            issue = StringMappingMismatchIssue(
                 module_path=list(path),
                 variable=tgt_var,
                 role="parameter mapping type mismatch",
@@ -89,7 +92,7 @@ class StringMappingValidator:
         path: list[str],
         *,
         is_duration: bool = False,
-    ) -> list[VariableIssue]:
+    ) -> list[StringMappingMismatchIssue]:
         """Check if a literal-to-parameter mapping narrows a string type."""
         source_datatype = _infer_literal_datatype(source_literal, is_duration=is_duration)
         target_limit = self._string_limit(tgt_var.datatype)
@@ -106,8 +109,7 @@ class StringMappingValidator:
 
         source_var = Variable(name=repr(source_literal), datatype=cast(ScalarDatatype, source_datatype))
         return [
-            VariableIssue(
-                kind=IssueKind.STRING_MAPPING_MISMATCH,
+            StringMappingMismatchIssue(
                 module_path=list(path),
                 variable=tgt_var,
                 role="parameter mapping type mismatch",
@@ -163,13 +165,13 @@ class MinMaxValidator:
         tgt_var: Variable,
         src_var: Variable,
         path: list[str],
-    ) -> list[VariableIssue]:
+    ) -> list[MinMaxMappingMismatchIssue]:
         """
         Check for mismatched min/max semantics in parameter mappings.
 
         Example: Mapping a 'MaxLimit' variable to a 'MinLimit' parameter.
         """
-        issues: list[VariableIssue] = []
+        issues: list[MinMaxMappingMismatchIssue] = []
 
         tgt_name = self._mapping_name_text(pm.target) or tgt_var.name
         src_name = self._mapping_name_text(pm.source) or src_var.name
@@ -186,8 +188,7 @@ class MinMaxValidator:
 
         # Check for cross-mapping
         if (tgt_min and src_max) or (tgt_max and src_min):
-            issue = VariableIssue(
-                kind=IssueKind.MIN_MAX_MAPPING_MISMATCH,
+            issue = MinMaxMappingMismatchIssue(
                 module_path=list(path),
                 variable=tgt_var,
                 role="min/max mapping mismatch",

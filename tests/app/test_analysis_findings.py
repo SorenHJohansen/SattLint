@@ -6,8 +6,13 @@ from sattline_parser.models.ast_model import ScalarDatatype, Variable
 from sattlint.analyzers.framework import Issue
 from sattlint.analyzers.shared._validators import StringMappingValidator
 from sattlint.application.findings import AnalysisFinding, extract_report_findings, kind_human_label
-from sattlint.models._variable_issues import IssueKind, VariableIssue, variable_issue_metadata
-from sattlint.reporting.variables_report import VariablesReport
+from sattlint.models._variable_issues import IssueKind, variable_issue_metadata
+from sattlint.reporting.variables_report import (
+    MagicNumberIssue,
+    UnknownParameterTargetIssue,
+    UnusedDatatypeFieldIssue,
+    VariablesReport,
+)
 
 
 def test_extract_report_findings_normalizes_framework_issues() -> None:
@@ -106,11 +111,11 @@ def test_datatype_report_excludes_supporting_variable_findings() -> None:
     report = VariablesReport(
         basepicture_name="Root",
         issues=[
-            VariableIssue(
-                kind=IssueKind.UNUSED_DATATYPE_FIELD, module_path=["Root"], variable=None, role="datatype field"
+            UnusedDatatypeFieldIssue(
+                module_path=["Root"], datatype_name="Payload", field_path="Field", role="datatype field"
             ),
-            VariableIssue(kind=IssueKind.MAGIC_NUMBER, module_path=["Root"], variable=None, role="literal"),
-            VariableIssue(kind=IssueKind.UNKNOWN_PARAMETER_TARGET, module_path=["Root"], variable=None, role="mapping"),
+            MagicNumberIssue(module_path=["Root"], literal_value=1, role="literal"),
+            UnknownParameterTargetIssue(module_path=["Root"], role="mapping"),
         ],
         visible_kinds=frozenset({IssueKind.UNUSED_DATATYPE_FIELD}),
     )
@@ -118,6 +123,8 @@ def test_datatype_report_excludes_supporting_variable_findings() -> None:
     findings = extract_report_findings(report, default_name="Root")
 
     assert [finding.kind for finding in findings] == ["unused_datatype_field"]
+    assert findings[0].data["field_path"] == "Field"
+    assert "variable_name" not in findings[0].data
 
 
 def test_string_mapping_finding_shows_both_capacities() -> None:

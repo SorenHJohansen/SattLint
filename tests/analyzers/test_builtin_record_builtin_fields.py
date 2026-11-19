@@ -12,6 +12,7 @@ from sattline_parser.models.ast_model import (
 from sattline_parser.models.expressions import VarRef
 
 from sattlint.analyzers.variables import VariablesAnalyzer
+from sattlint.reporting.variables_report import FieldPathVariableIssue
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -75,7 +76,7 @@ def test_builtin_progstationdata_fields_are_addressable() -> None:
     analyzer.run()
 
     assert "variables.undefined_variable" not in {issue.kind for issue in analyzer.issues}, (
-        f"Unexpected issues: {[(i.kind, i.field_path) for i in analyzer.issues]}"
+        f"Unexpected issues: {[(i.kind, i.field_path if isinstance(i, FieldPathVariableIssue) else None) for i in analyzer.issues]}"
     )
 
 
@@ -160,5 +161,5 @@ def test_builtin_record_fields_from_parameter_mapping() -> None:
     analyzer.run()
 
     assert "variables.undefined_variable" not in {issue.kind for issue in analyzer.issues}, (
-        f"Unexpected issues: {[(i.kind, i.field_path) for i in analyzer.issues]}"
+        f"Unexpected issues: {[(i.kind, i.field_path if isinstance(i, FieldPathVariableIssue) else None) for i in analyzer.issues]}"
     )

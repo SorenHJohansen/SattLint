@@ -1,28 +1,25 @@
 from sattline_parser.models.ast_model import Variable
 
-from sattlint.reporting.variables_report import IssueKind, VariableIssue, VariablesReport
+from sattlint.reporting.variables_report import RecordComponentOrderIssue, VariableIssue, VariablesReport
 
 
 def test_record_component_order_summary_renders_guidance() -> None:
     rec = Variable(name="RecipeRecord", datatype="AnyType")
     other = Variable(name="BufferRecord", datatype="OtherType")
-    issues = [
-        VariableIssue(
-            kind=IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE,
+    issues: list[VariableIssue] = [
+        RecordComponentOrderIssue(
             module_path=["BasePicture", "TypeDef:PicklistType"],
             variable=rec,
             datatype_name="RecipeType",
             role="GetRecordComponent reads record components by numeric position; reordering datatype fields can change behavior",
         ),
-        VariableIssue(
-            kind=IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE,
+        RecordComponentOrderIssue(
             module_path=["BasePicture", "Wrapper", "Leaf"],
             variable=other,
             datatype_name="RecipeType",
             role="PutRecordComponent writes record components by numeric position; reordering datatype fields can change behavior",
         ),
-        VariableIssue(
-            kind=IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE,
+        RecordComponentOrderIssue(
             module_path=["BasePicture", "OtherWrapper"],
             variable=other,
             datatype_name="OtherType",

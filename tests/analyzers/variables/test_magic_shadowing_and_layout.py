@@ -23,6 +23,7 @@ from sattlint.analyzers.variables import (
     VariablesAnalyzer,
     analyze_variables,
 )
+from sattlint.reporting.variables_report import MagicNumberIssue
 from tests.helpers.variable_test_support import (
     hdr as _hdr,
 )
@@ -83,10 +84,10 @@ def test_magic_number_detection_in_equations_and_sfc():
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    magic = [i for i in analyzer.issues if i.kind is IssueKind.MAGIC_NUMBER]
+    magic = [i for i in analyzer.issues if isinstance(i, MagicNumberIssue)]
     assert len(magic) == 2
 
-    values = sorted(i.literal_value for i in magic if i.literal_value is not None)
+    values = sorted(i.literal_value for i in magic)
     assert values == [2.5, 42]
 
     spans = {(i.literal_span.line, i.literal_span.column) for i in magic if i.literal_span is not None}

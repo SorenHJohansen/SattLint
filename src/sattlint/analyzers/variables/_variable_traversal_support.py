@@ -24,7 +24,7 @@ from sattlint.parser_api import (
 )
 
 from ...core.call_signatures import resolve_call_signature
-from ...reporting.variables_report import IssueKind, VariableIssue
+from ...reporting.variables_report import RecordComponentOrderIssue
 from ...resolution import AccessKind, AmbiguousRecordError
 from ...resolution.scope import ScopeContext
 from ...utils.casefolding import is_anytype_name
@@ -249,8 +249,7 @@ def _append_record_component_order_issue(
 
     self._record_component_order_datatypes_seen.add(datatype_key)
     self.append_issue(
-        VariableIssue(
-            kind=IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE,
+        RecordComponentOrderIssue(
             module_path=path.copy(),
             variable=variable,
             datatype_name=datatype_name,

@@ -7,6 +7,23 @@ from typing import TYPE_CHECKING, cast
 from sattlint.parser_api import ScalarDatatype, Variable
 from sattlint.parser_api import constants as grammar_const
 
+from ..models._variable_issues import (
+    DatatypeDuplicationIssue,
+    FieldPathVariableIssue,
+    ImplicitLatchIssue,
+    MagicNumberIssue,
+    MinMaxMappingMismatchIssue,
+    ReadBeforeWriteIssue,
+    RecordComponentOrderIssue,
+    ResetContaminationIssue,
+    StringMappingMismatchIssue,
+    UnknownParameterTargetIssue,
+    UnusedDatatypeFieldIssue,
+    UnusedDatatypeIssue,
+    VariableIssueBase,
+    VariableTargetIssue,
+)
+
 if TYPE_CHECKING:
     from .variables_report import VariableIssue
 
@@ -41,9 +58,9 @@ def _column_width(label: str, values: list[str]) -> int:
     return max(len(label), *(len(value) for value in values))
 
 
-def split_moduletype_and_singlemodule_issues(
-    issues: list[VariableIssue],
-) -> tuple[list[VariableIssue], list[VariableIssue]]:
+def split_moduletype_and_singlemodule_issues[T: VariableIssueBase](
+    issues: list[T],
+) -> tuple[list[T], list[T]]:
     moduletype_issues = [
         issue for issue in issues if issue.module_path and issue.module_path[-1].startswith("TypeDef:")
     ]
@@ -57,7 +74,7 @@ def _uses_typedef_path(module_path: list[str] | tuple[str, ...]) -> bool:
     return any(segment.startswith("TypeDef:") for segment in module_path)
 
 
-def _build_string_mapping_rows(issues: list[VariableIssue]) -> list[_StringMismatchRow]:
+def _build_string_mapping_rows(issues: list[StringMappingMismatchIssue]) -> list[_StringMismatchRow]:
     rows: list[_StringMismatchRow] = []
     for issue in issues:
         source_name = issue.source_display_name or (
@@ -84,8 +101,8 @@ def _build_string_mapping_rows(issues: list[VariableIssue]) -> list[_StringMisma
                 validation_source_location_path=tuple(
                     issue.validation_source_module_path or issue.source_decl_module_path or issue.module_path
                 ),
-                target_name=(issue.target_display_name or issue.variable.name) if issue.variable is not None else "?",
-                target_type=issue.variable.datatype_text if issue.variable is not None else "?",
+                target_name=issue.target_display_name or issue.variable.name,
+                target_type=issue.variable.datatype_text,
             )
         )
     rows.sort(
@@ -102,7 +119,7 @@ def _build_string_mapping_rows(issues: list[VariableIssue]) -> list[_StringMisma
 
 
 def count_string_mapping_mismatch_rows(issues: list[VariableIssue]) -> int:
-    return len(issues)
+    return sum(1 for issue in issues if isinstance(issue, StringMappingMismatchIssue))
 
 
 def _is_declaration_destination_mismatch(row: _StringMismatchRow) -> bool:
@@ -202,11 +219,11 @@ def singlemodule_display_path(module_path: list[str]) -> list[str]:
     return [segment.removeprefix("TypeDef:") if segment.startswith("TypeDef:") else segment for segment in module_path]
 
 
-def append_grouped_issue_blocks(
+def append_grouped_issue_blocks[T: VariableIssueBase](
     lines: list[str],
     title: str,
-    issues: list[VariableIssue],
-    renderer: Callable[[list[str], list[VariableIssue], bool], None],
+    issues: list[T],
+    renderer: Callable[[list[str], list[T], bool], None],
 ) -> None:
     if not issues:
         append_empty_section(lines, title)
@@ -233,7 +250,7 @@ def render_formatted_issue_rows(lines: list[str], issues: list[VariableIssue], p
 
 def render_table_issue_rows(
     lines: list[str],
-    issues: list[VariableIssue],
+    issues: list[MinMaxMappingMismatchIssue],
     preserve_typedef_path: bool,
     *,
     include_target_type: bool,
@@ -312,33 +329,17 @@ def variable_init_value_text(variable: Variable) -> str | None:
     return str(init_value)
 
 
-def format_issue(issue: VariableIssue, module_path: list[str] | None = None) -> str:
-    location = format_location(issue.module_path if module_path is None else module_path)
-
-    if issue.variable is None and issue.datatype_name is not None:
-        field_name = issue.field_path or "?"
-        return f"{location} :: {issue.datatype_name}.{field_name}"
-
-    if issue.variable is None and issue.literal_value is not None:
-        site = f" [{issue.site}]" if issue.site else ""
-        if issue.literal_span is not None:
-            span_text = f"line {issue.literal_span.line}, col {issue.literal_span.column}"
-        else:
-            span_text = "line ?, col ?"
-        return f"{location}{site} :: {issue.literal_value} ({span_text})"
-
-    if issue.variable is None:
-        return f"{location} :: {issue.role or 'issue'}"
-
-    variable_name = issue.variable.name
-    if issue.field_path:
+def _format_variable_issue(issue: VariableTargetIssue, location: str) -> str:
+    variable = issue.variable
+    variable_name = variable.name
+    if isinstance(issue, FieldPathVariableIssue) and issue.field_path:
         variable_name = f"{variable_name}.{issue.field_path}"
-    variable_text = f"{variable_name} ({variable_datatype_text(issue.variable)})"
+    variable_text = f"{variable_name} ({variable_datatype_text(variable)})"
 
     if issue.role in {"localvariable", "moduleparameter"}:
-        init_text = variable_init_value_text(issue.variable)
+        init_text = variable_init_value_text(variable)
         if init_text is not None:
-            variable_text = f"{variable_name} ({variable_datatype_text(issue.variable)}, init={init_text})"
+            variable_text = f"{variable_name} ({variable_datatype_text(variable)}, init={init_text})"
 
     if issue.role in {"localvariable", "moduleparameter"}:
         detail = f"{issue.role} {variable_text}"
@@ -348,14 +349,37 @@ def format_issue(issue: VariableIssue, module_path: list[str] | None = None) -> 
         detail = variable_text
 
     extra_parts: list[str] = []
-    if issue.sequence_name:
+    if isinstance(issue, ResetContaminationIssue | ImplicitLatchIssue) and issue.sequence_name:
         extra_parts.append(f"sequence={issue.sequence_name}")
-    if issue.reset_variable:
+    if isinstance(issue, ResetContaminationIssue) and issue.reset_variable:
         extra_parts.append(f"reset={issue.reset_variable}")
     if extra_parts:
         detail = f"{detail} | {' | '.join(extra_parts)}"
 
     return f"{location} :: {detail}"
+
+
+def format_issue(issue: VariableIssue, module_path: list[str] | None = None) -> str:
+    location = format_location(issue.module_path if module_path is None else module_path)
+
+    match issue:
+        case UnusedDatatypeFieldIssue():
+            return f"{location} :: {issue.datatype_name}.{issue.field_path}"
+        case UnusedDatatypeIssue():
+            return f"{location} :: {issue.datatype_name}.?"
+        case MagicNumberIssue():
+            site = f" [{issue.site}]" if issue.site else ""
+            if issue.literal_span is not None:
+                span_text = f"line {issue.literal_span.line}, col {issue.literal_span.column}"
+            else:
+                span_text = "line ?, col ?"
+            return f"{location}{site} :: {issue.literal_value} ({span_text})"
+        case ReadBeforeWriteIssue() | UnknownParameterTargetIssue():
+            return f"{location} :: {issue.role or 'issue'}"
+        case VariableTargetIssue():
+            return _format_variable_issue(issue, location)
+        case _:
+            return f"{location} :: {issue.kind.value}"
 
 
 def append_empty_section(lines: list[str], title: str) -> None:
@@ -368,34 +392,34 @@ def append_variable_issue_list(lines: list[str], title: str, issues: list[Variab
 
 
 def append_unused_datatypes(lines: list[str], title: str, issues: list[VariableIssue]) -> None:
-    if not issues:
+    datatype_issues = [issue for issue in issues if isinstance(issue, UnusedDatatypeIssue)]
+    if not datatype_issues:
         append_empty_section(lines, title)
         return
 
-    lines.append(section_header(title, len(issues)))
-    for issue in issues:
+    lines.append(section_header(title, len(datatype_issues)))
+    for issue in datatype_issues:
         location = format_location(issue.module_path)
-        lines.append(f"      * {location} :: {issue.datatype_name or '?'}")
+        lines.append(f"      * {location} :: {issue.datatype_name}")
 
 
 def append_unused_datatype_fields(lines: list[str], title: str, issues: list[VariableIssue]) -> None:
-    if not issues:
+    field_issues = [issue for issue in issues if isinstance(issue, UnusedDatatypeFieldIssue)]
+    if not field_issues:
         append_empty_section(lines, title)
         return
 
-    lines.append(section_header(title, len(issues)))
+    lines.append(section_header(title, len(field_issues)))
     lines.append(
         "      Warning: fields that are only consumed outside the analyzed target may still appear unused here."
     )
-    for issue in issues:
+    for issue in field_issues:
         location = format_location(issue.module_path)
-        datatype_name = issue.datatype_name or "?"
-        field_name = issue.field_path or "?"
-        lines.append(f"      * {location} :: {datatype_name}.{field_name}")
+        lines.append(f"      * {location} :: {issue.datatype_name}.{issue.field_path}")
 
 
 def append_string_mapping_mismatch(lines: list[str], title: str, issues: list[VariableIssue]) -> None:
-    rows = _build_string_mapping_rows(issues)
+    rows = _build_string_mapping_rows([issue for issue in issues if isinstance(issue, StringMappingMismatchIssue)])
     if not rows:
         append_empty_section(lines, title)
         return
@@ -435,7 +459,7 @@ def append_string_mapping_mismatch(lines: list[str], title: str, issues: list[Va
 
 
 def render_datatype_duplication_rows(
-    lines: list[str], issues: list[VariableIssue], preserve_typedef_path: bool
+    lines: list[str], issues: list[DatatypeDuplicationIssue], preserve_typedef_path: bool
 ) -> None:
     if not issues:
         lines.append("        none")
@@ -444,37 +468,41 @@ def render_datatype_duplication_rows(
     for issue in sorted(
         issues,
         key=lambda item: (
-            (item.variable.datatype_text if item.variable else "?").casefold(),
+            item.variable.datatype_text.casefold(),
             ".".join(item.module_path).casefold(),
-            (item.variable.name if item.variable else "?").casefold(),
+            item.variable.name.casefold(),
         ),
     ):
         location_path = issue.module_path if preserve_typedef_path else singlemodule_display_path(issue.module_path)
-        datatype_name = issue.variable.datatype_text if issue.variable else "?"
+        datatype_name = issue.variable.datatype_text
         location = ".".join(location_path)
-        count = issue.duplicate_count or 0
+        count = issue.duplicate_count
         lines.append(f"        Datatype '{datatype_name}' declared {count} times in {location}:")
-        lines.append(f"          - {issue.variable.name if issue.variable else '?'} ({issue.role})")
+        lines.append(f"          - {issue.variable.name} ({issue.role})")
 
         if issue.duplicate_locations:
-            for duplicate_path, duplicate_role, duplicate_name in issue.duplicate_locations:
-                display_path = duplicate_path if preserve_typedef_path else singlemodule_display_path(duplicate_path)
+            for duplicate in issue.duplicate_locations:
+                display_path = (
+                    duplicate.module_path if preserve_typedef_path else singlemodule_display_path(duplicate.module_path)
+                )
                 duplicate_location = ".".join(display_path)
                 if duplicate_location == location:
-                    lines.append(f"            + {duplicate_name} ({duplicate_role})")
+                    lines.append(f"            + {duplicate.variable_id} ({duplicate.role})")
                 else:
-                    lines.append(f"            + {duplicate_location}: {duplicate_name} ({duplicate_role})")
+                    lines.append(f"            + {duplicate_location}: {duplicate.variable_id} ({duplicate.role})")
 
 
 def append_datatype_duplication(lines: list[str], title: str, issues: list[VariableIssue]) -> None:
-    append_grouped_issue_blocks(lines, title, issues, render_datatype_duplication_rows)
+    duplication_issues = [issue for issue in issues if isinstance(issue, DatatypeDuplicationIssue)]
+    append_grouped_issue_blocks(lines, title, duplication_issues, render_datatype_duplication_rows)
 
 
 def append_min_max_mapping_mismatch(lines: list[str], title: str, issues: list[VariableIssue]) -> None:
+    mapping_issues = [issue for issue in issues if isinstance(issue, MinMaxMappingMismatchIssue)]
     append_grouped_issue_blocks(
         lines,
         title,
-        issues,
+        mapping_issues,
         lambda grouped_lines, grouped_issues, preserve_typedef_path: render_table_issue_rows(
             grouped_lines,
             grouped_issues,
@@ -491,7 +519,9 @@ def append_magic_numbers(lines: list[str], title: str, issues: list[VariableIssu
 def append_record_component_order_dependence(lines: list[str], title: str, issues: list[VariableIssue]) -> None:
     unique_names: dict[str, str] = {}
     for issue in issues:
-        if issue.datatype_name is None or issue.datatype_name.casefold() == "anytype":
+        if not isinstance(issue, RecordComponentOrderIssue):
+            continue
+        if issue.datatype_name.casefold() == "anytype":
             continue
         unique_names.setdefault(issue.datatype_name.casefold(), issue.datatype_name)
     datatype_names = sorted(unique_names.values(), key=str.casefold)

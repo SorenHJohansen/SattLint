@@ -15,7 +15,7 @@ from sattlint.parser_api import (
     Variable,
 )
 
-from ...reporting.variables_report import IssueKind, VariableIssue
+from ...reporting.variables_report import ImplicitLatchIssue, VariableIssue
 from ._reset_latching_paths import (
     BooleanPathState,
     all_boolean_paths_cover_false,
@@ -316,8 +316,7 @@ def emit_branch_latch_issues(
             continue
         seen.add(issue_key)
         issues.append(
-            VariableIssue(
-                kind=IssueKind.IMPLICIT_LATCH,
+            ImplicitLatchIssue(
                 module_path=path.copy(),
                 variable=variable,
                 role=f"{role_prefix} at {site}",

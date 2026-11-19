@@ -9,7 +9,11 @@ from sattlint.reporting import _variables_report_rendering as rendering
 from sattlint.reporting.target_report import normalize_report_target_name
 from sattlint.reporting.variables_report import (
     _SECTION_RENDERERS,
+    DatatypeDuplicationIssue,
     IssueKind,
+    MinMaxMappingMismatchIssue,
+    RecordComponentOrderIssue,
+    UnusedIssue,
     VariableIssue,
     VariablesReport,
 )
@@ -19,25 +23,6 @@ def _variable(name: str, datatype: str = "Integer") -> Variable:
     return Variable(name=name, datatype=datatype)
 
 
-def _issue(
-    kind: IssueKind,
-    module_path: list[str],
-    *,
-    variable: Variable | None = None,
-    source: Variable | None = None,
-    datatype_name: str | None = None,
-    role: str | None = None,
-) -> VariableIssue:
-    return VariableIssue(
-        kind=kind,
-        module_path=module_path,
-        variable=variable,
-        source_variable=source,
-        datatype_name=datatype_name,
-        role=role,
-    )
-
-
 def test_every_issue_kind_has_a_section_renderer() -> None:
     assert set(_SECTION_RENDERERS) == set(IssueKind)
 
@@ -45,7 +30,7 @@ def test_every_issue_kind_has_a_section_renderer() -> None:
 def test_status_and_issue_count_describe_the_same_findings() -> None:
     report = VariablesReport(
         basepicture_name="BasePicture",
-        issues=[_issue(IssueKind.UNUSED, ["BasePicture"], variable=_variable("Hidden"))],
+        issues=[UnusedIssue(module_path=["BasePicture"], variable=_variable("Hidden"))],
         visible_kinds=frozenset({IssueKind.MAGIC_NUMBER}),
     )
 
@@ -58,16 +43,14 @@ def test_status_and_issue_count_describe_the_same_findings() -> None:
 
 def test_min_max_table_keeps_columns_aligned_for_missing_variables() -> None:
     issues = [
-        _issue(
-            IssueKind.MIN_MAX_MAPPING_MISMATCH,
-            ["BasePicture", "Wrapper", "LongerLeaf"],
+        MinMaxMappingMismatchIssue(
+            module_path=["BasePicture", "Wrapper", "LongerLeaf"],
             variable=_variable("LevelMax"),
-            source=_variable("LevelMin"),
+            source_variable=_variable("LevelMin"),
             role="moduleparameter",
         ),
-        _issue(
-            IssueKind.MIN_MAX_MAPPING_MISMATCH,
-            ["BasePicture", "Leaf"],
+        MinMaxMappingMismatchIssue(
+            module_path=["BasePicture", "Leaf"],
             variable=_variable("TargetB"),
             role="moduleparameter",
         ),
@@ -90,11 +73,10 @@ def test_empty_module_path_uses_one_label() -> None:
 
 def test_table_locations_use_one_path_spelling() -> None:
     issues = [
-        _issue(
-            IssueKind.MIN_MAX_MAPPING_MISMATCH,
-            ["BasePicture", "TypeDef:PicklistType"],
+        MinMaxMappingMismatchIssue(
+            module_path=["BasePicture", "TypeDef:PicklistType"],
             variable=_variable("Target"),
-            source=_variable("Source"),
+            source_variable=_variable("Source"),
             role="moduleparameter",
         )
     ]
@@ -111,8 +93,18 @@ def test_table_locations_use_one_path_spelling() -> None:
 
 def test_duplicated_datatype_rows_sort_case_insensitively() -> None:
     issues = [
-        _issue(IssueKind.DATATYPE_DUPLICATION, ["BasePicture", "A"], variable=_variable("One", "BetaType")),
-        _issue(IssueKind.DATATYPE_DUPLICATION, ["BasePicture", "B"], variable=_variable("Two", "alphaType")),
+        DatatypeDuplicationIssue(
+            module_path=["BasePicture", "A"],
+            variable=_variable("One", "BetaType"),
+            duplicate_count=2,
+            duplicate_locations=[],
+        ),
+        DatatypeDuplicationIssue(
+            module_path=["BasePicture", "B"],
+            variable=_variable("Two", "alphaType"),
+            duplicate_count=2,
+            duplicate_locations=[],
+        ),
     ]
 
     lines: list[str] = []
@@ -123,9 +115,17 @@ def test_duplicated_datatype_rows_sort_case_insensitively() -> None:
 
 
 def test_sorting_sensitive_datatypes_collapse_case_variants() -> None:
-    issues = [
-        _issue(IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE, ["BasePicture", "A"], datatype_name="RecipeType"),
-        _issue(IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE, ["BasePicture", "B"], datatype_name="recipetype"),
+    issues: list[VariableIssue] = [
+        RecordComponentOrderIssue(
+            module_path=["BasePicture", "A"],
+            variable=_variable("Recipe"),
+            datatype_name="RecipeType",
+        ),
+        RecordComponentOrderIssue(
+            module_path=["BasePicture", "B"],
+            variable=_variable("Recipe"),
+            datatype_name="recipetype",
+        ),
     ]
 
     report = VariablesReport(basepicture_name="BasePicture", issues=issues)

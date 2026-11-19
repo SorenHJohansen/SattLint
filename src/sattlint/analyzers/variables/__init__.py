@@ -25,9 +25,17 @@ from ...models.project_graph import EMPTY_GRAPHICS_ATTACHMENTS, GraphicsAttachme
 from ...reporting.variables_report import (
     DATATYPE_FIELD_ANALYSIS_KINDS,
     DEFAULT_VARIABLE_ANALYSIS_KINDS,
+    FieldPathVariableIssue,
+    ImplicitLatchIssue,
     IssueKind,
+    MagicNumberIssue,
+    ReadBeforeWriteIssue,
+    RecordComponentOrderIssue,
+    StringMappingMismatchIssue,
+    UnsafeBooleanDefaultIssue,
     VariableIssue,
     VariablesReport,
+    VariableTargetIssue,
 )
 from ...resolution import CanonicalSymbolTable, TypeGraph
 from ...resolution.context_builder import ContextBuilder
@@ -278,10 +286,24 @@ def _issue_uses_typedef_path(issue: VariableIssue) -> bool:
     return any(segment.startswith("TypeDef:") for segment in issue.module_path)
 
 
-def _string_mapping_issue_preference(issue: VariableIssue) -> tuple[int, int]:
+def _string_mapping_issue_preference(issue: StringMappingMismatchIssue) -> tuple[int, int]:
     source_decl_module_path = issue.source_decl_module_path or issue.module_path
     declaration_distance = max(0, len(issue.module_path) - len(source_decl_module_path))
     return declaration_distance, 1 if _issue_uses_typedef_path(issue) else 0
+
+
+def _issue_site(issue: VariableIssue) -> str | None:
+    match issue:
+        case (
+            MagicNumberIssue()
+            | UnsafeBooleanDefaultIssue()
+            | ReadBeforeWriteIssue()
+            | RecordComponentOrderIssue()
+            | ImplicitLatchIssue()
+        ):
+            return issue.site
+        case _:
+            return None
 
 
 class VariablesAnalyzer(
@@ -460,10 +482,10 @@ class VariablesAnalyzer(
             "issue",
             kind=issue.kind.value,
             module_path=issue.module_path,
-            variable=(issue.variable.name if issue.variable is not None else None),
+            variable=(issue.variable.name if isinstance(issue, VariableTargetIssue) else None),
             role=issue.role,
-            field_path=issue.field_path,
-            site=issue.site,
+            field_path=(issue.field_path if isinstance(issue, FieldPathVariableIssue) else None),
+            site=_issue_site(issue),
         )
 
     def _append_param_mapping_issue(self, mapping: ParameterMapping, issue: VariableIssue) -> None:
@@ -478,15 +500,17 @@ class VariablesAnalyzer(
             return
 
         existing_issue = self._issues[existing_index]
-        if issue.kind is IssueKind.STRING_MAPPING_MISMATCH:
-            if _string_mapping_issue_preference(issue) > _string_mapping_issue_preference(existing_issue):
+        if isinstance(issue, StringMappingMismatchIssue):
+            if not isinstance(existing_issue, StringMappingMismatchIssue) or _string_mapping_issue_preference(
+                issue
+            ) > _string_mapping_issue_preference(existing_issue):
                 self._issues[existing_index] = issue
                 self._trace(
                     "issue-deduped",
                     kind=issue.kind.value,
                     module_path=issue.module_path,
                     replaced_module_path=existing_issue.module_path,
-                    variable=(issue.variable.name if issue.variable is not None else None),
+                    variable=issue.variable.name,
                 )
             return
         if _issue_uses_typedef_path(issue) and not _issue_uses_typedef_path(existing_issue):
@@ -496,5 +520,5 @@ class VariablesAnalyzer(
                 kind=issue.kind.value,
                 module_path=issue.module_path,
                 replaced_module_path=existing_issue.module_path,
-                variable=(issue.variable.name if issue.variable is not None else None),
+                variable=(issue.variable.name if isinstance(issue, VariableTargetIssue) else None),
             )

@@ -17,7 +17,17 @@ from sattlint.parser_api import (
 
 from ...config.analysis import fan_in_out_threshold
 from ...models.usage import VariableUsage
-from ...reporting.variables_report import IssueKind, VariableIssue
+from ...reporting.variables_report import (
+    FieldNeverReadIssue,
+    FieldReadOnlyIssue,
+    GlobalScopeMinimizationIssue,
+    HiddenGlobalCouplingIssue,
+    HighFanInOutIssue,
+    IssueKind,
+    MagicNumberIssue,
+    UnusedDatatypeFieldIssue,
+    UnusedDatatypeIssue,
+)
 from ...resolution import AccessEvent, AccessKind, AmbiguousRecordError
 from ...resolution.common import resolve_moduletype_def_strict
 from ._datatype_leaf_index import LeafPathIndex
@@ -33,7 +43,6 @@ __all__ = [
     "_add_global_scope_minimization_issues",
     "_add_hidden_global_coupling_issues",
     "_add_high_fan_in_out_issues",
-    "_add_issue",
     "_add_magic_number_issue",
     "_add_unused_datatype_field_issues",
     "_build_root_variable_access_summaries",
@@ -221,25 +230,6 @@ def _record_nested_datatype_access(
             state.has_whole_access = True
 
 
-def _add_issue(
-    self: VariablesAnalyzer,
-    kind: IssueKind,
-    path: list[str],
-    variable: Variable,
-    role: str,
-    field_path: str | None = None,
-) -> None:
-    self.append_issue(
-        VariableIssue(
-            kind=kind,
-            module_path=path.copy(),
-            variable=variable,
-            role=role,
-            field_path=field_path,
-        )
-    )
-
-
 @dataclass(slots=True)
 class _DatatypeFieldUsage:
     """Field usage aggregated across every instance of one datatype."""
@@ -383,14 +373,24 @@ def _emit_field_issues(
     for _leaf_key, leaf_path in sorted(leaf_items):
         if kind is IssueKind.FIELD_READ_ONLY and _is_const_field(self, instance.variable, leaf_path, instance.library):
             continue
-        _add_issue(
-            self,
-            kind,
-            list(instance.path),
-            instance.variable,
-            instance.role,
-            field_path=leaf_path,
-        )
+        if kind is IssueKind.FIELD_READ_ONLY:
+            self.append_issue(
+                FieldReadOnlyIssue(
+                    module_path=list(instance.path),
+                    variable=instance.variable,
+                    role=instance.role,
+                    field_path=leaf_path,
+                )
+            )
+        else:
+            self.append_issue(
+                FieldNeverReadIssue(
+                    module_path=list(instance.path),
+                    variable=instance.variable,
+                    role=instance.role,
+                    field_path=leaf_path,
+                )
+            )
 
 
 def _is_const_field(
@@ -610,10 +610,8 @@ def _add_unused_datatype_field_issues(
             # same "this record is dead" fact.
             if collect_unused_datatype:
                 self.append_issue(
-                    VariableIssue(
-                        kind=IssueKind.UNUSED_DATATYPE,
+                    UnusedDatatypeIssue(
                         module_path=list(state.module_path),
-                        variable=None,
                         datatype_name=state.datatype_name,
                         role="datatype",
                     )
@@ -630,10 +628,8 @@ def _add_unused_datatype_field_issues(
 
         for leaf_path in sorted(unused_paths):
             self.append_issue(
-                VariableIssue(
-                    kind=IssueKind.UNUSED_DATATYPE_FIELD,
+                UnusedDatatypeFieldIssue(
                     module_path=list(state.module_path),
-                    variable=None,
                     datatype_name=state.datatype_name,
                     field_path=leaf_path,
                     role="datatype field",
@@ -668,8 +664,7 @@ def _add_hidden_global_coupling_issues(self: VariablesAnalyzer) -> None:
             module_summaries.append(f"{'.'.join(display_path[1:])} ({labels})")
 
         self.append_issue(
-            VariableIssue(
-                kind=IssueKind.HIDDEN_GLOBAL_COUPLING,
+            HiddenGlobalCouplingIssue(
                 module_path=[self.bp.header.name],
                 variable=variable,
                 role=("hidden global coupling across modules: " + ", ".join(module_summaries)),
@@ -712,8 +707,7 @@ def _add_high_fan_in_out_issues(self: VariablesAnalyzer) -> None:
             role_parts.append(f"high fan-out with {len(summary.writer_modules)} writers: " + ", ".join(writer_labels))
 
         self.append_issue(
-            VariableIssue(
-                kind=IssueKind.HIGH_FAN_IN_OUT,
+            HighFanInOutIssue(
                 module_path=[self.bp.header.name],
                 variable=variable,
                 role="; ".join(role_parts),
@@ -763,8 +757,7 @@ def _add_global_scope_minimization_issues(self: VariablesAnalyzer) -> None:
         ]
 
         self.append_issue(
-            VariableIssue(
-                kind=IssueKind.GLOBAL_SCOPE_MINIMIZATION,
+            GlobalScopeMinimizationIssue(
                 module_path=[self.bp.header.name],
                 variable=variable,
                 role=(
@@ -790,10 +783,8 @@ def _add_magic_number_issue(
         return
 
     self.append_issue(
-        VariableIssue(
-            kind=IssueKind.MAGIC_NUMBER,
+        MagicNumberIssue(
             module_path=path.copy(),
-            variable=None,
             role="literal",
             literal_value=value,
             literal_span=span,
@@ -830,16 +821,6 @@ class VariablesIssueCollectionMixin:
 
     def _build_root_variable_access_summaries(self: Any) -> dict[str, _RootVariableAccessSummary]:
         return _build_root_variable_access_summaries(self)
-
-    def _add_issue(
-        self: Any,
-        kind: IssueKind,
-        path: list[str],
-        variable: Variable,
-        role: str,
-        field_path: str | None = None,
-    ) -> None:
-        _add_issue(self, kind, path, variable, role, field_path)
 
     def iter_variables_for_datatype_field_analysis(
         self: Any,
