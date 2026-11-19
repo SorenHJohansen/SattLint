@@ -1,11 +1,11 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportCallIssue=false, reportTypedDictNotRequiredAccess=false, reportGeneralTypeIssues=false
+# pyright: reportPrivateUsage=false, reportUnknownLambdaType=false, reportUnknownArgumentType=false
 """Focused app config, self-check, and ICF command tests."""
 
 from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, cast
 
 import pytest
 from sattline_parser.project import SourceIndex
@@ -23,7 +23,7 @@ from sattlint.config.types import ConfigDict, ConfigOverrideDict
 
 
 @pytest.fixture
-def noop_screen(monkeypatch):
+def noop_screen(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SATTLINT_UI", "classic")
     monkeypatch.setattr(startup_module, "clear_screen", lambda: None)
     monkeypatch.setattr(startup_module, "pause", lambda: None)
@@ -31,14 +31,17 @@ def noop_screen(monkeypatch):
 
 def test_validate_config_reports_key_mode_analysis_and_documentation_errors():
     result = config_module.validate_config(
-        {
-            "invalid_key": True,
-            "ignore_ABB_lib": True,
-            "mode": "bad_mode",
-            "analysis": "bad",
-            "run_history": "bad",
-            "documentation": "bad",
-        }
+        cast(
+            ConfigDict,
+            {
+                "invalid_key": True,
+                "ignore_ABB_lib": True,
+                "mode": "bad_mode",
+                "analysis": "bad",
+                "run_history": "bad",
+                "documentation": "bad",
+            },
+        )
     )
 
     assert result.passed is False
@@ -54,13 +57,16 @@ def test_validate_config_reports_key_mode_analysis_and_documentation_errors():
 
 def test_validate_config_reports_unknown_run_history_keys_and_invalid_shapes():
     result = config_module.validate_config(
-        {
-            "run_history": {
-                "extra": True,
-                "enabled": "yes",
-                "limit": -1,
-            }
-        }
+        cast(
+            ConfigDict,
+            {
+                "run_history": {
+                    "extra": True,
+                    "enabled": "yes",
+                    "limit": -1,
+                }
+            },
+        )
     )
 
     assert result.passed is False
@@ -73,12 +79,15 @@ def test_validate_config_reports_unknown_run_history_keys_and_invalid_shapes():
 
 def test_validate_config_reports_unknown_output_keys_and_invalid_shapes():
     result = config_module.validate_config(
-        {
-            "output": {
-                "extra": True,
-                "retention_lines": 0,
-            }
-        }
+        cast(
+            ConfigDict,
+            {
+                "output": {
+                    "extra": True,
+                    "retention_lines": 0,
+                }
+            },
+        )
     )
 
     assert result.passed is False
@@ -90,11 +99,14 @@ def test_validate_config_reports_unknown_output_keys_and_invalid_shapes():
 
 def test_validate_config_reports_none_values_at_top_level_and_nested_paths():
     result = config_module.validate_config(
-        {
-            "mode": None,
-            "run_history": {"limit": None},
-            "analyzed_programs_and_libraries": ["RootProgram", None],
-        }
+        cast(
+            ConfigDict,
+            {
+                "mode": None,
+                "run_history": {"limit": None},
+                "analyzed_programs_and_libraries": ["RootProgram", None],
+            },
+        )
     )
 
     assert result.passed is False
@@ -107,14 +119,17 @@ def test_validate_config_reports_none_values_at_top_level_and_nested_paths():
 
 def test_validate_config_reports_unknown_analysis_namespace_keys():
     result = config_module.validate_config(
-        {
-            "analysis": {
-                "unknown_analyzer": {},
-                "naming": {
-                    "variables": {"style": "snake"},
-                },
-            }
-        }
+        cast(
+            ConfigDict,
+            {
+                "analysis": {
+                    "unknown_analyzer": {},
+                    "naming": {
+                        "variables": {"style": "snake"},
+                    },
+                }
+            },
+        )
     )
 
     assert result.passed is False
@@ -126,19 +141,22 @@ def test_validate_config_reports_unknown_analysis_namespace_keys():
 
 def test_validate_config_reports_invalid_analysis_knob_shapes():
     result = config_module.validate_config(
-        {
-            "analysis": {
-                "spec_compliance": {
-                    "extra_prefix": "X_",
-                    "step_prefix": 42,
-                },
-                "unsafe_default_tokens": ["bypass", 7, ""],
-                "cyclomatic_module_threshold": -1,
-                "cyclomatic_step_threshold": "high",
-                "cyclomatic_equation_block_threshold": 0,
-                "fan_in_out_threshold": True,
-            }
-        }
+        cast(
+            ConfigDict,
+            {
+                "analysis": {
+                    "spec_compliance": {
+                        "extra_prefix": "X_",
+                        "step_prefix": 42,
+                    },
+                    "unsafe_default_tokens": ["bypass", 7, ""],
+                    "cyclomatic_module_threshold": -1,
+                    "cyclomatic_step_threshold": "high",
+                    "cyclomatic_equation_block_threshold": 0,
+                    "fan_in_out_threshold": True,
+                }
+            },
+        )
     )
 
     assert result.passed is False
@@ -185,7 +203,7 @@ def test_validate_config_passes_valid_config_and_serializes_result():
             "analysis": {},
         }
     )
-    invalid = config_module.validate_config({"bad_key": True})
+    invalid = config_module.validate_config(cast(ConfigDict, {"bad_key": True}))
 
     assert valid.passed is True
     assert valid.errors == ()
@@ -200,7 +218,7 @@ def test_validate_config_passes_valid_config_and_serializes_result():
     }
 
 
-def test_load_config_warns_on_missing_paths_from_loaded_validation(tmp_path, capsys):
+def test_load_config_warns_on_missing_paths_from_loaded_validation(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
     config_path = tmp_path / "config.toml"
     config_path.write_text('program_dir = "missing-programs"\n', encoding="utf-8")
 
@@ -212,7 +230,7 @@ def test_load_config_warns_on_missing_paths_from_loaded_validation(tmp_path, cap
     assert "Config warning [program_dir]: program_dir does not exist: missing-programs" in out
 
 
-def test_load_config_applies_default_run_history_without_rewriting_existing_file(tmp_path):
+def test_load_config_applies_default_run_history_without_rewriting_existing_file(tmp_path: Path):
     config_path = tmp_path / "config.toml"
     original_text = 'mode = "draft"\nprogram_dir = "programs"'
     config_path.write_text(original_text, encoding="utf-8")
@@ -229,7 +247,9 @@ def test_load_config_applies_default_run_history_without_rewriting_existing_file
     assert 'path = ""' not in persisted_text
 
 
-def test_load_config_warns_and_strips_unknown_run_history_key_without_rewriting_file(tmp_path, capsys):
+def test_load_config_warns_and_strips_unknown_run_history_key_without_rewriting_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
     config_path = tmp_path / "config.toml"
     config_path.write_text('[run_history]\nenabled = true\nlimit = 10\npath = "legacy.jsonl"\n', encoding="utf-8")
 
@@ -304,10 +324,10 @@ def test_config_io_helper_branches_cover_missing_load_passthrough_and_save_guard
     assert missing_dir_config.exists()
 
     with pytest.raises(ValueError, match=r"Config validation failed: \[mode\] mode must not be null/None"):
-        config_module.save_config(tmp_path / "invalid-config.toml", {"mode": None})
+        config_module.save_config(tmp_path / "invalid-config.toml", cast(ConfigDict, {"mode": None}))
 
 
-def test_target_exists_honors_mode_and_available_directories(tmp_path):
+def test_target_exists_honors_mode_and_available_directories(tmp_path: Path):
     program_dir = tmp_path / "programs"
     abb_dir = tmp_path / "abb"
     other_lib = tmp_path / "lib"
@@ -326,13 +346,13 @@ def test_target_exists_honors_mode_and_available_directories(tmp_path):
     }
     official_cfg = {**draft_cfg, "mode": "official"}
 
-    assert config_module.target_exists("DraftOnly", draft_cfg) is True
-    assert config_module.target_exists("DraftOnly", official_cfg) is False
-    assert config_module.target_exists("OfficialOnly", official_cfg) is True
-    assert config_module.target_exists("Shared", official_cfg) is True
+    assert config_module.target_exists("DraftOnly", cast(ConfigDict, draft_cfg)) is True
+    assert config_module.target_exists("DraftOnly", cast(ConfigDict, official_cfg)) is False
+    assert config_module.target_exists("OfficialOnly", cast(ConfigDict, official_cfg)) is True
+    assert config_module.target_exists("Shared", cast(ConfigDict, official_cfg)) is True
 
 
-def test_validate_effective_config_reports_unresolved_targets_after_defaults_merge(tmp_path):
+def test_validate_effective_config_reports_unresolved_targets_after_defaults_merge(tmp_path: Path):
     for directory_name in ("programs", "abb", "lib"):
         (tmp_path / directory_name).mkdir()
 
@@ -346,7 +366,7 @@ def test_validate_effective_config_reports_unresolved_targets_after_defaults_mer
         }
     )
 
-    result = config_module.validate_effective_config(cfg)
+    result = config_module.validate_effective_config(cast(ConfigDict, cfg))
 
     assert result.passed is False
     assert result.errors == (
@@ -363,12 +383,14 @@ def test_top_level_config_contract_matches_typed_config_definitions() -> None:
     assert frozenset(TOP_LEVEL_CONFIG_CONTRACT) == frozenset(REQUIRED_TOP_LEVEL_CONFIG_KEYS)
 
 
-def test_self_check_uses_full_top_level_config_contract(tmp_path, monkeypatch, capsys):
+def test_self_check_uses_full_top_level_config_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
     cfg = deepcopy(DEFAULT_CONFIG)
     for key in ("run_history", "analysis"):
         cfg.pop(key)
 
-    ok = config_module.self_check(cfg)
+    ok = config_module.self_check(cast(ConfigDict, cfg))
 
     out = capsys.readouterr().out
     assert ok is False
@@ -376,7 +398,9 @@ def test_self_check_uses_full_top_level_config_contract(tmp_path, monkeypatch, c
     assert "Missing config key: analysis" in out
 
 
-def test_self_check_reports_nested_analysis_shape_errors(tmp_path, monkeypatch, capsys):
+def test_self_check_reports_nested_analysis_shape_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
     cfg = deepcopy(DEFAULT_CONFIG)
     cfg.update(
         {
@@ -384,14 +408,16 @@ def test_self_check_reports_nested_analysis_shape_errors(tmp_path, monkeypatch, 
         }
     )
 
-    bad_ok = config_module.self_check(cfg)
+    bad_ok = config_module.self_check(cast(ConfigDict, cfg))
     bad_out = capsys.readouterr().out
 
     assert bad_ok is False
     assert "Unknown analysis key 'naming'" in bad_out
 
 
-def test_self_check_reports_invalid_nested_config_errors(tmp_path, monkeypatch, capsys):
+def test_self_check_reports_invalid_nested_config_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
     monkeypatch.setattr(config_module, "target_exists", lambda *_args, **_kwargs: False)
 
     cfg = deepcopy(DEFAULT_CONFIG)
@@ -406,7 +432,7 @@ def test_self_check_reports_invalid_nested_config_errors(tmp_path, monkeypatch, 
         }
     )
 
-    ok = config_module.self_check(cfg)
+    ok = config_module.self_check(cast(ConfigDict, cfg))
 
     out = capsys.readouterr().out
     assert ok is False
@@ -418,19 +444,19 @@ def test_self_check_reports_invalid_nested_config_errors(tmp_path, monkeypatch, 
     assert "MissingTarget (not found)" in out
 
 
-def test_self_check_fails_when_only_an_extra_library_is_missing(tmp_path, capsys):
+def test_self_check_fails_when_only_an_extra_library_is_missing(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
     cfg = deepcopy(DEFAULT_CONFIG)
     missing = tmp_path / "missing-other"
     cfg["other_lib_dirs"] = [str(missing)]
 
-    ok = config_module.self_check(cfg)
+    ok = config_module.self_check(cast(ConfigDict, cfg))
 
     out = capsys.readouterr().out
     assert f"other_lib_dirs entry missing: {missing}" in out
     assert ok is False
 
 
-def test_main_pauses_when_initial_ast_check_fails(monkeypatch):
+def test_main_pauses_when_initial_ast_check_fails(monkeypatch: pytest.MonkeyPatch):
     cfg = deepcopy(DEFAULT_CONFIG)
     cfg["analyzed_programs_and_libraries"] = ["Broken"]
     calls: list[str] = []
@@ -438,7 +464,7 @@ def test_main_pauses_when_initial_ast_check_fails(monkeypatch):
     monkeypatch.delenv("SATTLINT_UI", raising=False)
 
     exit_code = startup_module.main(
-        load_config_fn=lambda *_: (cfg, False),
+        load_config_fn=lambda *_: (cast(ConfigDict, cfg), False),
         apply_debug_fn=lambda *_: None,
         pause_fn=lambda: pytest.fail("textual startup should not pause before launching"),
         run_main_loop_fn=lambda *_args, **_kwargs: calls.append("session"),
@@ -448,11 +474,11 @@ def test_main_pauses_when_initial_ast_check_fails(monkeypatch):
     assert calls == ["session"]
 
 
-def test_target_exists_is_case_insensitive(tmp_path):
+def test_target_exists_is_case_insensitive(tmp_path: Path):
     (tmp_path / "demo.x").write_text("x", encoding="utf-8")
     cfg = {"program_dir": str(tmp_path), "mode": "official"}
 
-    assert config_module.target_exists("Demo", cfg) is True
+    assert config_module.target_exists("Demo", cast(ConfigDict, cfg)) is True
 
 
 @pytest.mark.parametrize(
@@ -472,7 +498,7 @@ def test_target_exists_agrees_with_parser_code_discovery(
     (tmp_path / file_name).write_text("x", encoding="utf-8")
     cfg = {"program_dir": str(tmp_path), "mode": mode}
 
-    assert config_module.target_exists("Demo", cfg) is expected
+    assert config_module.target_exists("Demo", cast(ConfigDict, cfg)) is expected
 
     discovered = SourceIndex([tmp_path]).find_in_index(
         base=tmp_path,
@@ -488,10 +514,10 @@ def test_target_exists_does_not_probe_outside_the_configured_directory(tmp_path:
     (nested / "Demo.x").write_text("x", encoding="utf-8")
     cfg = {"program_dir": str(tmp_path), "mode": "official"}
 
-    assert config_module.target_exists("nested/Demo", cfg) is False
+    assert config_module.target_exists("nested/Demo", cast(ConfigDict, cfg)) is False
 
 
-def test_load_config_rejects_wrong_value_types(tmp_path):
+def test_load_config_rejects_wrong_value_types(tmp_path: Path):
     config_path = tmp_path / "config.toml"
     config_path.write_text('debug = "false"\n', encoding="utf-8")
 

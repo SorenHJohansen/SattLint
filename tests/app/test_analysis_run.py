@@ -1,24 +1,35 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false
+# pyright: reportPrivateUsage=false, reportUnknownLambdaType=false, reportUnknownArgumentType=false
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
+
+import pytest
 
 from sattlint import cache as cache_module
 from sattlint import runs as runs_module
 from sattlint.application import checks_records, checks_results
 from sattlint.application import project as project_application
-from sattlint.config import DEFAULT_CONFIG
-from sattlint.models.project_graph import ProjectFailure
+from sattlint.config import DEFAULT_CONFIG, ConfigDict
+from sattlint.models.project_graph import ProjectFailure, ProjectGraph
+from sattlint.parser_api import BasePicture
 from sattlint.project.support import TargetLoadError
 from tests.helpers import AnalysisGraphStub, named_object
 
 
-def test_iter_loaded_projects_skips_failed_targets(noop_screen, monkeypatch, capsys):
+def test_iter_loaded_projects_skips_failed_targets(
+    noop_screen: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
     cfg = deepcopy(DEFAULT_CONFIG)
     cfg["analyzed_programs_and_libraries"] = ["Broken", "Working"]
     working_graph = AnalysisGraphStub()
 
-    def fake_load_project(_cfg, target_name=None, *, use_cache=True, collect_stage_timings=False):
+    def fake_load_project(
+        _cfg: ConfigDict,
+        target_name: str | None = None,
+        *,
+        use_cache: bool = True,
+        collect_stage_timings: bool = False,
+    ) -> tuple[object, AnalysisGraphStub]:
         if target_name == "Broken":
             raise TargetLoadError(
                 "Broken",
@@ -66,7 +77,7 @@ def test_iter_loaded_projects_skips_failed_targets(noop_screen, monkeypatch, cap
     failures: list[tuple[str, str]] = []
     projects = list(
         project_application._iter_loaded_projects(
-            cfg, failure_sink=lambda name, message: failures.append((name, message))
+            cast(ConfigDict, cfg), failure_sink=lambda name, message: failures.append((name, message))
         )
     )
 
@@ -92,7 +103,7 @@ def test_iter_loaded_projects_skips_failed_targets(noop_screen, monkeypatch, cap
     assert "Transitive dependency warnings (1):" in out
 
 
-def test_print_validation_warnings_truncates(monkeypatch):
+def test_print_validation_warnings_truncates(monkeypatch: pytest.MonkeyPatch):
     lines: list[str] = []
     monkeypatch.setattr(project_application, "emit_output", lambda message: lines.append(message))
 
@@ -106,7 +117,7 @@ def test_print_validation_warnings_truncates(monkeypatch):
     ]
 
 
-def test_print_validation_warnings_formats_picture_display_entries(monkeypatch):
+def test_print_validation_warnings_formats_picture_display_entries(monkeypatch: pytest.MonkeyPatch):
     lines: list[str] = []
     monkeypatch.setattr(project_application, "emit_output", lambda message: lines.append(message))
 
@@ -124,18 +135,17 @@ def test_print_validation_warnings_formats_picture_display_entries(monkeypatch):
     ]
 
 
-def test_cache_key_for_target_passes_analysis_target(monkeypatch):
+def test_cache_key_for_target_passes_analysis_target(monkeypatch: pytest.MonkeyPatch):
     captured: dict[str, object] = {}
-    monkeypatch.setattr(
-        cache_module,
-        "compute_cache_key",
-        lambda cfg, *, analysis_target=None: (
-            captured.update({"cfg": cfg.copy(), "analysis_target": analysis_target}) or "cache-key"
-        ),
-    )
+
+    def fake_compute_cache_key(cfg: ConfigDict, *, analysis_target: str | None = None) -> str:
+        captured.update({"cfg": cfg.copy(), "analysis_target": analysis_target})
+        return "cache-key"
+
+    monkeypatch.setattr(cache_module, "compute_cache_key", fake_compute_cache_key)
 
     cfg = {"mode": "official"}
-    result = project_application._cache_key_for_target(cfg, "TargetA")
+    result = project_application._cache_key_for_target(cast(ConfigDict, cfg), "TargetA")
 
     assert result == "cache-key"
     assert cfg == {"mode": "official"}
@@ -147,7 +157,9 @@ def test_source_paths_for_current_target_falls_back_to_header_name():
     project_bp = named_object("TargetA")
     graph = AnalysisGraphStub(source_files={Path("libs/Other.s"), Path("programs/TargetA.s")})
 
-    result = project_application.source_paths_for_current_target(cast(Any, project_bp), cast(Any, graph))
+    result = project_application.source_paths_for_current_target(
+        cast(BasePicture, project_bp), cast(ProjectGraph, graph)
+    )
 
     assert result == {Path("programs/TargetA.s")}
 
@@ -157,7 +169,9 @@ def test_source_paths_for_current_target_prefers_graph_root_origin_path():
     graph = AnalysisGraphStub(source_files={Path("programs/TargetA.s")})
     graph.record_root_origin("TargetA", source_path=Path("libs/TargetA.s"), library_name="Libs")
 
-    result = project_application.source_paths_for_current_target(cast(Any, project_bp), cast(Any, graph))
+    result = project_application.source_paths_for_current_target(
+        cast(BasePicture, project_bp), cast(ProjectGraph, graph)
+    )
 
     assert result == {Path("libs/TargetA.s")}
 
@@ -167,7 +181,12 @@ def test_target_is_library_returns_false_without_matching_source_paths():
     project_bp = named_object("TargetA", origin_file="Missing.s")
     graph = AnalysisGraphStub()
 
-    assert project_application._target_is_library(cfg, cast(Any, project_bp), cast(Any, graph)) is False
+    assert (
+        project_application._target_is_library(
+            cast(ConfigDict, cfg), cast(BasePicture, project_bp), cast(ProjectGraph, graph)
+        )
+        is False
+    )
 
 
 def test_disabled_run_history_still_prunes_stored_runs():
@@ -186,7 +205,7 @@ def test_disabled_run_history_still_prunes_stored_runs():
         )
 
     result = checks_results.ChecksRunResult(output_lines=(), selected_analyzers=("variables",))
-    stored = checks_records.persist_run_result(result, cfg, started_at="2026-09-09T10:00:00Z")
+    stored = checks_records.persist_run_result(result, cast(ConfigDict, cfg), started_at="2026-09-09T10:00:00Z")
 
     assert stored is None
     assert len(runs_module.list_runs(runs_dir=runs_dir)) == 1
@@ -196,6 +215,8 @@ def test_ambiguous_origin_file_falls_through_to_the_target_name():
     project_bp = named_object("TargetA", origin_file="Dup.s")
     graph = AnalysisGraphStub(source_files={Path("libs/Dup.s"), Path("programs/Dup.s"), Path("programs/TargetA.s")})
 
-    result = project_application.source_paths_for_current_target(cast(Any, project_bp), cast(Any, graph))
+    result = project_application.source_paths_for_current_target(
+        cast(BasePicture, project_bp), cast(ProjectGraph, graph)
+    )
 
     assert result == {Path("programs/TargetA.s")}

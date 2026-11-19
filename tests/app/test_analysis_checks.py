@@ -1,12 +1,10 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false, reportPrivateUsage=false
+# pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false
 import json
 import os
+from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
-from types import SimpleNamespace
-from typing import (
-    Any,
-    cast,
-)
+from types import SimpleNamespace, TracebackType
+from typing import Any, cast
 
 import pytest
 from sattline_parser.models.ast_model import (
@@ -20,7 +18,7 @@ from sattline_parser.models.ast_model import (
 
 from sattlint import console as console_module
 from sattlint.analyzers import catalog as analysis_catalog_module
-from sattlint.analyzers.framework import Issue, SimpleReport
+from sattlint.analyzers.framework import AnalysisContext, Issue, SimpleReport
 from sattlint.application import (
     checks as checks_application,
 )
@@ -30,7 +28,9 @@ from sattlint.application import (
 from sattlint.application import (
     output as output_module,
 )
+from sattlint.application.project import LoadedProject
 from sattlint.config import DEFAULT_CONFIG
+from sattlint.config.types import ConfigDict
 from sattlint.core import profiling as profiling_module
 from sattlint.core.timings import PhaseTiming
 from sattlint.models.project_graph import ProjectGraph
@@ -119,7 +119,7 @@ def test_source_version_label_uses_graph_root_origin_when_source_path_missing() 
     assert label == "official"
 
 
-def test_select_report_source_path_prefers_configured_mode_suffix_on_equal_mtime(tmp_path) -> None:
+def test_select_report_source_path_prefers_configured_mode_suffix_on_equal_mtime(tmp_path: Path) -> None:
     draft = tmp_path / "Root.s"
     official = tmp_path / "Root.x"
     draft.touch()
@@ -142,14 +142,14 @@ def test_select_report_source_path_prefers_configured_mode_suffix_on_equal_mtime
     assert selected == draft
 
 
-def test_run_checks_reports_no_matching_checks_and_pauses(monkeypatch):
+def test_run_checks_reports_no_matching_checks_and_pauses(monkeypatch: pytest.MonkeyPatch):
     lines: list[str] = []
     pauses: list[str] = []
 
     monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
 
     checks_application.run_checks(
-        DEFAULT_CONFIG.copy(),
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
         ["missing-check"],
         get_enabled_analyzers_fn=lambda: [SimpleNamespace(key="variables", name="Variables")],
         pause_fn=lambda: pauses.append("pause"),
@@ -163,7 +163,7 @@ def test_collect_run_checks_result_aborts_when_self_check_fails():
     run_calls: list[str] = []
 
     result = checks_application.collect_run_checks_result(
-        DEFAULT_CONFIG.copy(),
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
         ["state-inference"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -199,16 +199,18 @@ def test_collect_run_checks_result_streams_each_line_while_the_run_is_in_progres
     streamed: list[str] = []
     streamed_before_yield: list[str] = []
 
-    def _projects(*_args, emit_output_fn=None, **_kwargs):
+    def _projects(
+        *_args: object, emit_output_fn: Callable[..., None] | None = None, **_kwargs: object
+    ) -> Iterator[tuple[str, object, object]]:
         assert callable(emit_output_fn)
         emit_output_fn("Loading TargetA")
         streamed_before_yield.extend(streamed)
         yield ("TargetA", named_object("TargetA"), AnalysisGraphStub(unavailable_libraries=set()))
 
     result = checks_application.collect_run_checks_result(
-        DEFAULT_CONFIG.copy(),
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
         ["state-inference"],
-        iter_loaded_projects_fn=cast(Any, _projects),
+        iter_loaded_projects_fn=cast(Callable[..., Iterator[LoadedProject]], _projects),
         get_enabled_analyzers_fn=lambda: [
             SimpleNamespace(
                 key="state-inference",
@@ -229,7 +231,7 @@ def test_collect_run_checks_result_runs_analyzers_when_self_check_passes():
     run_calls: list[str] = []
 
     result = checks_application.collect_run_checks_result(
-        DEFAULT_CONFIG.copy(),
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
         ["state-inference"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -259,7 +261,7 @@ def test_collect_run_checks_result_runs_analyzers_when_self_check_passes():
     del result
 
 
-def test_run_checks_runs_selected_non_default_cli_exposed_analyzer(monkeypatch):
+def test_run_checks_runs_selected_non_default_cli_exposed_analyzer(monkeypatch: pytest.MonkeyPatch):
     lines: list[str] = []
 
     monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
@@ -274,7 +276,7 @@ def test_run_checks_runs_selected_non_default_cli_exposed_analyzer(monkeypatch):
     report = MutableReport()
 
     checks_application.run_checks(
-        DEFAULT_CONFIG.copy(),
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
         ["state-inference"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -308,21 +310,26 @@ def test_run_checks_runs_selected_non_default_cli_exposed_analyzer(monkeypatch):
     assert not any("state inference summary for BasePicture" in line for line in lines)
 
 
-def test_run_checks_updates_live_status_for_active_analyzer(monkeypatch):
+def test_run_checks_updates_live_status_for_active_analyzer(monkeypatch: pytest.MonkeyPatch):
     updates: list[str] = []
 
     class FakeLiveStatusLine:
-        def __enter__(self):
+        def __enter__(self) -> Callable[[str], None]:
             return updates.append
 
-        def __exit__(self, exc_type, exc, tb):
+        def __exit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc: BaseException | None,
+            tb: TracebackType | None,
+        ) -> bool:
             return False
 
     monkeypatch.setattr(output_module, "emit_output", lambda _message: None)
     monkeypatch.setattr(console_module, "live_status_line", lambda: FakeLiveStatusLine())
 
     checks_application.run_checks(
-        DEFAULT_CONFIG.copy(),
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
         ["state-inference"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -356,7 +363,7 @@ def test_run_checks_updates_live_status_for_active_analyzer(monkeypatch):
 
 def test_collect_run_checks_result_captures_target_and_analyzer_metadata():
     result = checks_application.collect_run_checks_result(
-        DEFAULT_CONFIG.copy(),
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
         ["state-inference"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -408,10 +415,10 @@ def test_collect_run_checks_result_captures_target_and_analyzer_metadata():
     assert analyzer.phase_timings_ms == (PhaseTiming(phase="plan", duration_ms=1.25),)
 
 
-def test_collect_run_checks_result_runs_icf_once_as_whole_run_target(monkeypatch) -> None:
+def test_collect_run_checks_result_runs_icf_once_as_whole_run_target(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: dict[str, int] = {"n": 0}
 
-    def _fake_icf(context) -> SimpleReport:
+    def _fake_icf(context: AnalysisContext) -> SimpleReport:
         calls["n"] += 1
         return SimpleReport(
             name="ICF configuration",
@@ -419,7 +426,7 @@ def test_collect_run_checks_result_runs_icf_once_as_whole_run_target(monkeypatch
         )
 
     result = checks_application.collect_run_checks_result(
-        DEFAULT_CONFIG.copy(),
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
         ["icf"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -457,7 +464,7 @@ def test_collect_run_checks_result_runs_icf_once_as_whole_run_target(monkeypatch
     assert analyzer.report_kind == "SimpleReport"
 
 
-def test_run_checks_selection_is_exact_and_drops_unregistered_keys(monkeypatch):
+def test_run_checks_selection_is_exact_and_drops_unregistered_keys(monkeypatch: pytest.MonkeyPatch):
     lines: list[str] = []
     run_order: list[str] = []
     shared_ids: list[int] = []
@@ -465,7 +472,7 @@ def test_run_checks_selection_is_exact_and_drops_unregistered_keys(monkeypatch):
     def _report(name: str):
         return SimpleNamespace(summary=lambda: name, issues=[])
 
-    def _variables_run(context):
+    def _variables_run(context: AnalysisContext):
         run_order.append("variables")
         shared_ids.append(id(context.shared_artifacts))
         assert context.shared_artifacts is not None
@@ -474,7 +481,7 @@ def test_run_checks_selection_is_exact_and_drops_unregistered_keys(monkeypatch):
     monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
 
     checks_application.run_checks(
-        DEFAULT_CONFIG.copy(),
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
         ["variables", "sattline-semantics"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -504,14 +511,14 @@ def test_run_checks_selection_is_exact_and_drops_unregistered_keys(monkeypatch):
     assert any("variables summary" in line for line in lines)
 
 
-def test_run_checks_writes_target_profiling_summary(tmp_path, monkeypatch):
+def test_run_checks_writes_target_profiling_summary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     profile_path = tmp_path / "profile.jsonl"
     monkeypatch.setattr(output_module, "emit_output", lambda _message: None)
     monkeypatch.setenv("SATTLINT_PROFILE", "1")
     monkeypatch.setattr(profiling_module, "profiling_log_path", lambda: tmp_path / "profile.jsonl")
 
     checks_application.run_checks(
-        DEFAULT_CONFIG.copy(),
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
         ["state-inference", "variables"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -577,7 +584,7 @@ def test_run_checks_writes_target_profiling_summary(tmp_path, monkeypatch):
     assert events[0]["payload"]["graphics_timings_ms"] == {"correlate-picture-display": 125.0}
 
 
-def test_run_checks_uses_cached_report_when_available(monkeypatch):
+def test_run_checks_uses_cached_report_when_available(monkeypatch: pytest.MonkeyPatch):
     lines: list[str] = []
     run_calls: list[str] = []
     load_keys: list[str] = []
@@ -595,18 +602,18 @@ def test_run_checks_uses_cached_report_when_available(monkeypatch):
     cached_report = MutableReport("BasePicture")
 
     class FakeReportCache:
-        def __init__(self, cache_dir):
+        def __init__(self, cache_dir: Path):
             assert cache_dir == Path("report-cache-dir")
 
-        def load(self, key):
+        def load(self, key: str) -> dict[str, object]:
             load_keys.append(key)
             return {"report": cached_report}
 
-        def validate(self, payload, *, fast=False):
+        def validate(self, payload: object, *, fast: bool = False) -> bool:
             validate_calls.append((payload, fast))
             return True
 
-        def save(self, key, *, report, files):
+        def save(self, key: str, *, report: object, files: Iterable[Path]) -> bool:
             save_calls.append((key, report, frozenset(files)))
             return True
 
@@ -620,7 +627,7 @@ def test_run_checks_uses_cached_report_when_available(monkeypatch):
     )
 
     checks_application.run_checks(
-        DEFAULT_CONFIG.copy(),
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
         ["state-inference"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -656,7 +663,7 @@ def test_run_checks_uses_cached_report_when_available(monkeypatch):
     assert any("state inference summary for TargetA" in line for line in lines)
 
 
-def test_run_checks_rebuilds_report_cache_when_cached_payload_is_stale(monkeypatch):
+def test_run_checks_rebuilds_report_cache_when_cached_payload_is_stale(monkeypatch: pytest.MonkeyPatch):
     lines: list[str] = []
     run_calls: list[str] = []
     load_keys: list[str] = []
@@ -671,18 +678,18 @@ def test_run_checks_rebuilds_report_cache_when_cached_payload_is_stale(monkeypat
             return f"state inference summary for {self.basepicture_name}"
 
     class FakeReportCache:
-        def __init__(self, cache_dir):
+        def __init__(self, cache_dir: Path):
             assert cache_dir == Path("report-cache-dir")
 
-        def load(self, key):
+        def load(self, key: str) -> dict[str, object]:
             load_keys.append(key)
             return {"report": MutableReport("Stale")}
 
-        def validate(self, payload, *, fast=False):
+        def validate(self, payload: object, *, fast: bool = False) -> bool:
             del payload, fast
             return False
 
-        def save(self, key, *, report, files):
+        def save(self, key: str, *, report: object, files: Iterable[Path]) -> bool:
             save_calls.append((key, report, frozenset(files)))
             return True
 
@@ -696,7 +703,7 @@ def test_run_checks_rebuilds_report_cache_when_cached_payload_is_stale(monkeypat
     )
 
     checks_application.run_checks(
-        DEFAULT_CONFIG.copy(),
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
         ["state-inference"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -737,25 +744,25 @@ def test_run_checks_rebuilds_report_cache_when_cached_payload_is_stale(monkeypat
     assert any("state inference summary for TargetA" in line for line in lines)
 
 
-def test_run_checks_passes_analysis_settings_to_the_report_cache_key(monkeypatch):
+def test_run_checks_passes_analysis_settings_to_the_report_cache_key(monkeypatch: pytest.MonkeyPatch):
     captured: list[object] = []
 
     class FakeReportCache:
-        def __init__(self, _cache_dir):
+        def __init__(self, _cache_dir: Path):
             return None
 
-        def load(self, _key):
+        def load(self, _key: str) -> None:
             return None
 
-        def validate(self, _payload, *, fast=False):
+        def validate(self, _payload: object, *, fast: bool = False) -> bool:
             del fast
             return False
 
-        def save(self, _key, *, report, files):
+        def save(self, _key: str, *, report: object, files: Iterable[Path]) -> bool:
             del report, files
             return True
 
-    def key_fn(project_key, analyzer_key, **kwargs):
+    def key_fn(project_key: str, analyzer_key: str, **kwargs: object):
         captured.append(kwargs.get("analysis_settings"))
         return f"{project_key}:{analyzer_key}"
 
@@ -764,7 +771,7 @@ def test_run_checks_passes_analysis_settings_to_the_report_cache_key(monkeypatch
     monkeypatch.setattr(checks_application, "compute_analysis_report_cache_key", key_fn)
 
     checks_application.collect_run_checks_result(
-        DEFAULT_CONFIG.copy() | {"analysis": {"fan_in_out_threshold": 7}},
+        cast(ConfigDict, DEFAULT_CONFIG.copy() | {"analysis": {"fan_in_out_threshold": 7}}),
         ["state-inference"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -797,7 +804,13 @@ def test_run_checks_passes_analysis_settings_to_the_report_cache_key(monkeypatch
 
 
 def test_collect_run_checks_result_records_loader_failures_as_text():
-    def iterator(_cfg, *, failure_sink=None, emit_output_fn=None, **_kwargs):
+    def iterator(
+        _cfg: ConfigDict,
+        *,
+        failure_sink: Callable[[str, str], None] | None = None,
+        emit_output_fn: Callable[..., None] | None = None,
+        **_kwargs: object,
+    ):
         assert failure_sink is not None
         assert emit_output_fn is not None
         failure_sink("Broken", "root failed")
@@ -805,9 +818,9 @@ def test_collect_run_checks_result_records_loader_failures_as_text():
         return iter(())
 
     result = checks_application.collect_run_checks_result(
-        DEFAULT_CONFIG.copy() | {"analyzed_programs_and_libraries": ["Broken"]},
+        cast(ConfigDict, DEFAULT_CONFIG.copy() | {"analyzed_programs_and_libraries": ["Broken"]}),
         ["state-inference"],
-        iter_loaded_projects_fn=cast(Any, iterator),
+        iter_loaded_projects_fn=cast(Callable[..., Iterator[LoadedProject]], iterator),
         get_enabled_analyzers_fn=lambda: [
             SimpleNamespace(
                 key="state-inference",
@@ -823,18 +836,18 @@ def test_collect_run_checks_result_records_loader_failures_as_text():
     assert "\n".join(result.output_lines).endswith("boom")
 
 
-def test_collect_run_checks_result_forwards_use_cache_to_project_loading(monkeypatch):
+def test_collect_run_checks_result_forwards_use_cache_to_project_loading(monkeypatch: pytest.MonkeyPatch):
     seen: list[bool] = []
 
-    def iterator(_cfg, *, use_cache=True, **_kwargs):
+    def iterator(_cfg: ConfigDict, *, use_cache: bool = True, **_kwargs: object):
         seen.append(use_cache)
         return iter(())
 
     checks_application.collect_run_checks_result(
-        DEFAULT_CONFIG.copy(),
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
         ["state-inference"],
         use_cache=False,
-        iter_loaded_projects_fn=cast(Any, iterator),
+        iter_loaded_projects_fn=cast(Callable[..., Iterator[LoadedProject]], iterator),
         get_enabled_analyzers_fn=lambda: [
             SimpleNamespace(
                 key="state-inference",
@@ -849,10 +862,10 @@ def test_collect_run_checks_result_forwards_use_cache_to_project_loading(monkeyp
     assert seen == [False]
 
 
-def test_collect_run_checks_result_does_not_prune_when_save_fails(monkeypatch, tmp_path):
+def test_collect_run_checks_result_does_not_prune_when_save_fails(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     spec = analysis_catalog_module.get_default_cli_analyzers()[0]
 
-    def fail_save(*_args, **_kwargs):
+    def fail_save(*_args: object, **_kwargs: object):
         raise OSError("disk full")
 
     monkeypatch.setattr(checks_records, "get_runs_dir_or_none", lambda: tmp_path / "runs")
@@ -860,11 +873,11 @@ def test_collect_run_checks_result_does_not_prune_when_save_fails(monkeypatch, t
     monkeypatch.setattr(checks_records, "prune_runs", lambda *_args, **_kwargs: pytest.fail("must not prune"))
 
     result = checks_application.collect_run_checks_result(
-        DEFAULT_CONFIG.copy() | {"analyzed_programs_and_libraries": ["Demo"]},
+        cast(ConfigDict, DEFAULT_CONFIG.copy() | {"analyzed_programs_and_libraries": ["Demo"]}),
         [spec.key],
         use_cache=False,
         persist_run=True,
-        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter(())),
+        iter_loaded_projects_fn=cast(Callable[..., Iterator[LoadedProject]], lambda *_args, **_kwargs: iter(())),
         get_enabled_analyzers_fn=lambda: [spec],
         target_is_library_fn=lambda *_args, **_kwargs: False,
         self_check_fn=lambda _cfg: True,
@@ -875,9 +888,9 @@ def test_collect_run_checks_result_does_not_prune_when_save_fails(monkeypatch, t
 
 def test_collect_run_checks_result_exposes_failed_per_run_analyzer() -> None:
     result = checks_application.collect_run_checks_result(
-        DEFAULT_CONFIG.copy(),
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
         ["icf"],
-        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter(())),
+        iter_loaded_projects_fn=cast(Callable[..., Iterator[LoadedProject]], lambda *_args, **_kwargs: iter(())),
         get_enabled_analyzers_fn=lambda: [
             SimpleNamespace(
                 key="icf",
@@ -896,13 +909,15 @@ def test_collect_run_checks_result_exposes_failed_per_run_analyzer() -> None:
     ]
 
 
-def test_collect_run_checks_result_keeps_running_when_report_cache_is_unusable(monkeypatch, tmp_path):
+def test_collect_run_checks_result_keeps_running_when_report_cache_is_unusable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
     blocked_cache = tmp_path / "blocked-cache"
     blocked_cache.write_text("not a directory", encoding="utf-8")
     monkeypatch.setattr(checks_application, "get_cache_dir_or_none", lambda: blocked_cache)
 
     result = checks_application.collect_run_checks_result(
-        DEFAULT_CONFIG.copy(),
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
         ["state-inference"],
         use_cache=True,
         iter_loaded_projects_fn=cast(
@@ -936,17 +951,17 @@ def test_collect_run_checks_result_keeps_running_when_report_cache_is_unusable(m
     assert result.targets[0].analyzers[0].status == "completed"
 
 
-def test_run_checks_bypasses_report_cache_when_use_cache_disabled(monkeypatch):
+def test_run_checks_bypasses_report_cache_when_use_cache_disabled(monkeypatch: pytest.MonkeyPatch):
     run_calls: list[str] = []
 
     class ForbiddenReportCache:
-        def __init__(self, _cache_dir):
+        def __init__(self, _cache_dir: Path) -> None:
             pytest.fail("report cache should be bypassed when use_cache is false")
 
     monkeypatch.setattr(checks_application, "AnalysisReportCache", ForbiddenReportCache)
 
     checks_application.run_checks(
-        DEFAULT_CONFIG.copy(),
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
         ["state-inference"],
         use_cache=False,
         iter_loaded_projects_fn=cast(
@@ -979,17 +994,17 @@ def test_run_checks_bypasses_report_cache_when_use_cache_disabled(monkeypatch):
     assert run_calls == ["run"]
 
 
-def test_run_checks_bypasses_report_cache_when_debug_enabled(monkeypatch):
+def test_run_checks_bypasses_report_cache_when_debug_enabled(monkeypatch: pytest.MonkeyPatch):
     run_calls: list[str] = []
 
     class ForbiddenReportCache:
-        def __init__(self, _cache_dir):
+        def __init__(self, _cache_dir: Path) -> None:
             pytest.fail("report cache should be bypassed when debug is true")
 
     monkeypatch.setattr(checks_application, "AnalysisReportCache", ForbiddenReportCache)
 
     checks_application.run_checks(
-        DEFAULT_CONFIG.copy() | {"debug": True},
+        cast(ConfigDict, DEFAULT_CONFIG.copy() | {"debug": True}),
         ["state-inference"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -1021,14 +1036,14 @@ def test_run_checks_bypasses_report_cache_when_debug_enabled(monkeypatch):
     assert run_calls == ["run"]
 
 
-def test_run_checks_handles_keyboard_interrupt_and_pauses(monkeypatch):
+def test_run_checks_handles_keyboard_interrupt_and_pauses(monkeypatch: pytest.MonkeyPatch):
     lines: list[str] = []
     pauses: list[str] = []
 
     monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
 
     checks_application.run_checks(
-        DEFAULT_CONFIG.copy(),
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
         ["state-inference"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -1057,13 +1072,13 @@ def test_run_checks_handles_keyboard_interrupt_and_pauses(monkeypatch):
     assert pauses == ["pause"]
 
 
-def test_run_checks_accepts_legacy_underscore_analyzer_key(monkeypatch):
+def test_run_checks_accepts_legacy_underscore_analyzer_key(monkeypatch: pytest.MonkeyPatch):
     lines: list[str] = []
 
     monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
 
     checks_application.run_checks(
-        DEFAULT_CONFIG.copy(),
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
         ["same_cycle"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -1091,7 +1106,9 @@ def test_run_checks_accepts_legacy_underscore_analyzer_key(monkeypatch):
     assert any("Same-cycle hazards (same-cycle)" in line for line in lines)
 
 
-def test_run_checks_result_returns_structured_result_and_persists_run(tmp_path, monkeypatch) -> None:
+def test_run_checks_result_returns_structured_result_and_persists_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     emitted: list[str] = []
     monkeypatch.setattr(output_module, "emit_output", lambda message: emitted.append(str(message)))
     monkeypatch.setattr(checks_records, "get_runs_dir_or_none", lambda: tmp_path)
@@ -1108,7 +1125,7 @@ def test_run_checks_result_returns_structured_result_and_persists_run(tmp_path, 
     )
 
     result = checks_application.run_checks_result(
-        DEFAULT_CONFIG.copy(),
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
         ["state-inference"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -1132,7 +1149,7 @@ def test_run_checks_result_returns_structured_result_and_persists_run(tmp_path, 
 
 def test_collect_run_checks_result_returns_the_partial_target_when_an_analyzer_is_cancelled() -> None:
     result = checks_application.collect_run_checks_result(
-        DEFAULT_CONFIG.copy(),
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
         ["first", "second"],
         use_cache=False,
         iter_loaded_projects_fn=cast(
@@ -1168,11 +1185,11 @@ def test_collect_run_checks_result_returns_the_partial_target_when_an_analyzer_i
 
 
 def test_per_target_analyzer_raise_is_reported_as_analyzer_failure() -> None:
-    def _explode(_context):
+    def _explode(_context: AnalysisContext):
         raise RuntimeError("boom")
 
     result = checks_application.collect_run_checks_result(
-        DEFAULT_CONFIG.copy(),
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
         ["state-inference"],
         use_cache=False,
         iter_loaded_projects_fn=cast(
@@ -1195,20 +1212,23 @@ def test_per_target_analyzer_raise_is_reported_as_analyzer_failure() -> None:
     ]
 
 
-def test_failed_analyzer_still_saves_the_run(monkeypatch, tmp_path) -> None:
+def test_failed_analyzer_still_saves_the_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(checks_records, "get_runs_dir_or_none", lambda: tmp_path / "runs")
     monkeypatch.setattr(checks_records, "prune_runs", lambda *_args, **_kwargs: None)
 
-    def _explode(_context):
+    def _explode(_context: AnalysisContext):
         raise RuntimeError("boom")
 
     loaded = SimpleNamespace(header=SimpleNamespace(name="TargetA"))
     result = checks_application.collect_run_checks_result(
-        DEFAULT_CONFIG.copy() | {"analyzed_programs_and_libraries": ["TargetA"]},
+        cast(ConfigDict, DEFAULT_CONFIG.copy() | {"analyzed_programs_and_libraries": ["TargetA"]}),
         ["state-inference"],
         use_cache=False,
         persist_run=True,
-        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", loaded, AnalysisGraphStub())])),
+        iter_loaded_projects_fn=cast(
+            Callable[..., Iterator[LoadedProject]],
+            lambda *_args, **_kwargs: iter([("TargetA", loaded, AnalysisGraphStub())]),
+        ),
         get_enabled_analyzers_fn=lambda: [SimpleNamespace(key="state-inference", name="State inference", run=_explode)],
         target_is_library_fn=lambda *_args, **_kwargs: False,
         self_check_fn=lambda _cfg: True,
@@ -1228,10 +1248,10 @@ def test_failed_analyzer_still_saves_the_run(monkeypatch, tmp_path) -> None:
 
 def test_pseudo_target_is_not_persisted_in_the_run_record() -> None:
     result = checks_application.collect_run_checks_result(
-        DEFAULT_CONFIG.copy(),
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
         ["state-inference"],
         use_cache=False,
-        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter(())),
+        iter_loaded_projects_fn=cast(Callable[..., Iterator[LoadedProject]], lambda *_args, **_kwargs: iter(())),
         get_enabled_analyzers_fn=lambda: [
             SimpleNamespace(
                 key="state-inference",
@@ -1244,14 +1264,14 @@ def test_pseudo_target_is_not_persisted_in_the_run_record() -> None:
         self_check_fn=lambda _cfg: True,
     )
 
-    record = checks_application.build_run_record(result, DEFAULT_CONFIG.copy())
+    record = checks_application.build_run_record(result, cast(ConfigDict, DEFAULT_CONFIG.copy()))
 
     assert [(target.target_name, target.is_library) for target in record.targets] == []
 
 
 def test_analyzer_issue_count_matches_the_findings_it_stores():
     result = checks_application.collect_run_checks_result(
-        DEFAULT_CONFIG.copy(),
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
         ["state-inference"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -1276,11 +1296,11 @@ def test_analyzer_issue_count_matches_the_findings_it_stores():
 
 
 def test_debug_run_keeps_the_full_analyzer_failure_text() -> None:
-    def _explode(_context):
+    def _explode(_context: AnalysisContext):
         raise RuntimeError("boom")
 
     result = checks_application.collect_run_checks_result(
-        DEFAULT_CONFIG.copy() | {"debug": True},
+        cast(ConfigDict, DEFAULT_CONFIG.copy() | {"debug": True}),
         ["state-inference"],
         use_cache=False,
         iter_loaded_projects_fn=cast(

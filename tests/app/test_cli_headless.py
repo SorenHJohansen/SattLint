@@ -1,4 +1,3 @@
-# pyright: reportPrivateUsage=false
 """Headless CLI command tests (project, analyzers, analyze, findings, show)."""
 
 from __future__ import annotations
