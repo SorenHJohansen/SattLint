@@ -65,11 +65,25 @@ def _write_stream(stream: Any, text: str) -> None:
     stream.flush()
 
 
+def encode_json_document(payload: Mapping[str, object]) -> str:
+    """Serialize a standalone JSON document, one per stream."""
+    return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+
+
+def encode_json_record(payload: Mapping[str, object]) -> str:
+    """Serialize one NDJSON record as a single line."""
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
+
+
+def _resolve_output_path(output: Path) -> Path:
+    return output.expanduser().resolve()
+
+
 def _write_text(text: str, output: Path | None) -> None:
     if output is None:
         _write_stream(sys.stdout, text)
         return
-    resolved = output.expanduser().resolve()
+    resolved = _resolve_output_path(output)
     try:
         resolved.parent.mkdir(parents=True, exist_ok=True)
         resolved.write_text(text, encoding="utf-8")
@@ -82,12 +96,33 @@ def _write_text(text: str, output: Path | None) -> None:
 
 
 def emit_json(payload: Mapping[str, object], *, output: Path | None = None) -> None:
-    _write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", output)
+    _write_text(encode_json_document(payload), output)
 
 
 def emit_ndjson(records: Iterable[Mapping[str, object]], *, output: Path | None = None) -> None:
-    text = "".join(json.dumps(record, ensure_ascii=False) + "\n" for record in records)
-    _write_text(text, output)
+    """Write NDJSON records as they are produced.
+
+    Each record is flushed before the next one is requested from the iterator,
+    so a consumer reads partial results while the run is still feeding them.
+    """
+    if output is None:
+        for record in records:
+            _write_stream(sys.stdout, encode_json_record(record))
+        return
+
+    resolved = _resolve_output_path(output)
+    try:
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        with resolved.open("w", encoding="utf-8") as handle:
+            for record in records:
+                handle.write(encode_json_record(record))
+                handle.flush()
+    except OSError as exc:
+        raise CliError(
+            f"Could not write {resolved}: {exc}",
+            code="output_write_failed",
+            exit_code=2,
+        ) from exc
 
 
 def emit_text(lines: Iterable[str], *, output: Path | None = None) -> None:
@@ -99,7 +134,7 @@ def emit_text(lines: Iterable[str], *, output: Path | None = None) -> None:
 
 def emit_error(error: CliError, *, output_format: str) -> None:
     if output_format in {"json", "ndjson"}:
-        _write_stream(sys.stderr, json.dumps(error_payload(error), ensure_ascii=False) + "\n")
+        _write_stream(sys.stderr, encode_json_document(error_payload(error)))
         return
     _write_stream(sys.stderr, f"sattlint: {error.message}\n")
     for key, value in error.details.items():
@@ -119,6 +154,8 @@ __all__ = [
     "emit_json",
     "emit_ndjson",
     "emit_text",
+    "encode_json_document",
+    "encode_json_record",
     "error_payload",
     "output_path",
 ]

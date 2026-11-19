@@ -919,6 +919,37 @@ def test_emit_text_survives_a_non_utf8_stdout(monkeypatch: pytest.MonkeyPatch) -
     assert stream.buffer.getvalue().decode("utf-8") == "café\n"
 
 
+def test_emit_ndjson_streams_each_record_before_the_next_is_produced(monkeypatch: pytest.MonkeyPatch) -> None:
+    writes: list[str] = []
+
+    class _Stream:
+        def write(self, text: str) -> int:
+            writes.append(text)
+            return len(text)
+
+        def flush(self) -> None:
+            return None
+
+    def records() -> Iterator[dict[str, object]]:
+        yield {"record": 1}
+        assert writes == ['{"record":1}\n']
+        yield {"record": 2}
+
+    monkeypatch.setattr(sys, "stdout", _Stream())
+
+    output_module.emit_ndjson(records())
+
+    assert writes == ['{"record":1}\n', '{"record":2}\n']
+
+
+def test_json_error_envelope_uses_the_document_formatting(capsys: pytest.CaptureFixture[str]) -> None:
+    code = run_cli(["analyze", "--format", "json", "--bogus"])
+
+    assert code == 2
+    err = capsys.readouterr().err
+    assert err == json.dumps(json.loads(err), indent=2, ensure_ascii=False) + "\n"
+
+
 def test_project_payload_reports_paths_without_creating_them(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     blocked_cache = tmp_path / "blocked-cache"
     blocked_cache.write_text("not a directory", encoding="utf-8")

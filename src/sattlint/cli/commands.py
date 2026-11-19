@@ -7,6 +7,7 @@ import contextlib
 import sys
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
+from itertools import chain
 from pathlib import Path
 from typing import cast
 
@@ -117,8 +118,8 @@ def _emit_findings(
     elif options.output_format == "ndjson":
         envelope = {"record_type": "envelope", **payload}
         envelope.pop("findings", None)
-        records = [envelope, *({"record_type": "finding", **finding_payload(finding)} for finding in findings)]
-        emit_ndjson(records, output=options.output)
+        finding_records = ({"record_type": "finding", **finding_payload(finding)} for finding in findings)
+        emit_ndjson(chain((envelope,), finding_records), output=options.output)
     else:
         emit_text(text_lines, output=options.output)
 
