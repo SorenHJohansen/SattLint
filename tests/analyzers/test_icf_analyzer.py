@@ -18,7 +18,7 @@ from sattlint.reporting.icf_report import ICFEntry, ICFValidationIssue, ICFValid
 
 
 def _config(**overrides: object) -> ConfigDict:
-    return cast(ConfigDict, {"icf_dir": "/tmp/icf", **overrides})
+    return cast(ConfigDict, {"icf_dir": "icf", **overrides})
 
 
 def _entry(line: int = 3, value: str = "Program:Module.Var") -> ICFEntry:
@@ -81,7 +81,7 @@ def test_unknown_reason_falls_back_to_generic_kind() -> None:
 
 
 def test_analyzes_all_configured_icf_files(monkeypatch) -> None:
-    icf_dir = Path("/tmp/icf")
+    icf_dir = Path("icf")
     f1 = icf_dir / "ProgramA.icf"
     f2 = icf_dir / "ProgramB.icf"
     monkeypatch.setattr(analyzer_module, "configured_icf_files", lambda config: (icf_dir, [f1, f2]))
@@ -111,7 +111,7 @@ def test_analyzes_all_configured_icf_files(monkeypatch) -> None:
 
 
 def test_reuses_in_memory_program_when_matching(monkeypatch) -> None:
-    icf_dir = Path("/tmp/icf")
+    icf_dir = Path("icf")
     f1 = icf_dir / "ProgramA.icf"
     monkeypatch.setattr(analyzer_module, "configured_icf_files", lambda config: (icf_dir, [f1]))
     monkeypatch.setattr(analyzer_module, "parse_icf_file", lambda path: [_entry()])
@@ -136,7 +136,7 @@ def test_reuses_in_memory_program_when_matching(monkeypatch) -> None:
 
 
 def test_load_failure_emits_program_load_failed(monkeypatch) -> None:
-    icf_dir = Path("/tmp/icf")
+    icf_dir = Path("icf")
     f1 = icf_dir / "ProgramA.icf"
     monkeypatch.setattr(analyzer_module, "configured_icf_files", lambda config: (icf_dir, [f1]))
     monkeypatch.setattr(analyzer_module, "parse_icf_file", lambda path: [_entry()])
@@ -152,7 +152,7 @@ def test_load_failure_emits_program_load_failed(monkeypatch) -> None:
 
 
 def test_parser_load_error_emits_program_load_failed(monkeypatch) -> None:
-    icf_dir = Path("/tmp/icf")
+    icf_dir = Path("icf")
     f1 = icf_dir / "ProgramA.icf"
     monkeypatch.setattr(analyzer_module, "configured_icf_files", lambda config: (icf_dir, [f1]))
     monkeypatch.setattr(analyzer_module, "parse_icf_file", lambda path: [_entry()])
