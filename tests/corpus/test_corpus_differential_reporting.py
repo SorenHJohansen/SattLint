@@ -1,5 +1,4 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportIndexIssue=false
-"""Corpus differential reporting tests (Phase 21).
+"""Corpus differential reporting tests.
 
 Corpus runs are reviewable as before/after diffs: added findings, removed
 findings, changed counts, changed rules — based on stable finding identity.

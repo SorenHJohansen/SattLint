@@ -1,4 +1,3 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportAttributeAccessIssue=false
 """AST guard enforcing casefold-only normalization for SattLine identifiers.
 
 SattLine identifiers (variable / module-type / datatype / program names) must be
@@ -48,6 +47,8 @@ def _lower_call_sites(module: ast.AST) -> list[ast.Call]:
 
 
 def _violation_for(call: ast.Call) -> str | None:
+    if not isinstance(call.func, ast.Attribute):
+        return None
     receiver = call.func.value
     if isinstance(receiver, ast.Attribute):
         if receiver.attr in _IDENTIFIER_CARRYING_ATTRS:

@@ -1,4 +1,4 @@
-# pyright: reportPrivateUsage=false, reportUnknownLambdaType=false
+# pyright: reportPrivateUsage=false
 
 """Shared helpers and fixtures for the Textual shell tests."""
 
@@ -43,9 +43,13 @@ def query_any_screen(app_instance: Any, selector: str) -> Any:
     raise last_error
 
 
+def _accept_all_rows(_y: int) -> bool:
+    return True
+
+
 def screen_row_bgcolors(app_instance: Any, row: int) -> list[Any]:
     screen = app_instance.screen
-    chops = screen._compositor._render_chops(screen.size.region, lambda y: True)
+    chops = screen._compositor._render_chops(screen.size.region, _accept_all_rows)
     colors: list[Any] = []
     for strip in chops[row].values():
         if strip is None:
@@ -119,11 +123,20 @@ def make_textual_app(
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
+    def _summarize_targets(_cfg: object) -> str:
+        return "targets"
+
+    def _help_text(_cfg: object) -> str:
+        return "Help text"
+
+    def _save_config(_path: Path, _cfg: object) -> None:
+        return None
+
     app_instance = app_textual.SattLintTextualApp(
         cfg=cfg if cfg is not None else {"analyzed_programs_and_libraries": ["TargetA"]},
-        summarize_targets_fn=lambda _cfg: "targets",
-        get_help_text_fn=lambda _cfg: "Help text",
-        save_config_fn=save_config_fn or (lambda _path, _cfg: None),
+        summarize_targets_fn=_summarize_targets,
+        get_help_text_fn=_help_text,
+        save_config_fn=save_config_fn or _save_config,
         config_path=None,
         quit_app_error=RuntimeError,
         analysis_handlers=analysis_handlers,

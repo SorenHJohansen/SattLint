@@ -5,8 +5,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from types import SimpleNamespace
-from typing import Any, cast
 
 import pytest
 from sattline_parser.models.ast_model import (
@@ -37,7 +35,7 @@ from sattlint.change_review import (
     compute_semantic_diff,
     generate_change_review,
 )
-from sattlint.change_review._code_model import _iter_code_statements, build_code_model
+from sattlint.change_review._code_model import BlockModel, _iter_code_statements, build_code_model
 from sattlint.change_review.artifacts import write_review_artifacts
 from sattlint.change_review.review import ChangeReview, ReviewMetadata, ReviewSizeStats, _expand_block_start
 from sattlint.change_review.serialization.json_serializer import review_to_json
@@ -519,10 +517,23 @@ def test_block_header_search_is_case_insensitive_and_prefers_the_nearest_match()
         6: "   X = 3;",
     }
 
-    class _Provider:
-        def lines(self, _file: str, start: int, _end: int, *, library: str | None = None) -> str | None:
-            return source.get(start, "")
+    class _Provider(SourceTextProvider):
+        def lines(
+            self, file_name: str | None, start_line: int, end_line: int, *, library: str | None = None
+        ) -> str | None:
+            return source.get(start_line, "")
 
-    block = SimpleNamespace(kind="equation", name="Main", line_start=6, source_file="Demo.x", source_library=None)
+    block = BlockModel(
+        module_path=(),
+        kind="equation",
+        name="Main",
+        statements=(),
+        reads_keys=frozenset(),
+        writes_keys=frozenset(),
+        line_start=6,
+        last_span=None,
+        source_file="Demo.x",
+        source_library=None,
+    )
 
-    assert _expand_block_start(cast(Any, _Provider()), cast(Any, block)) == 3
+    assert _expand_block_start(_Provider({}), block) == 3

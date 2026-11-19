@@ -1,4 +1,3 @@
-# pyright: reportPrivateUsage=false
 """Graphics bindings must contribute references and calls to the semantic index."""
 
 from __future__ import annotations
