@@ -29,6 +29,37 @@ class _TypedefContextTemplate:
     param_mappings: dict[str, tuple[Variable, str, list[str], list[str]]]
 
 
+def build_frame_scope(
+    frame: FrameModule,
+    parent_context: ScopeContext,
+    module_path: list[str],
+    display_module_path: list[str],
+) -> ScopeContext:
+    """Return the scope shared by every frame-module consumer.
+
+    A frame declares its own parameters and locals like any other module but
+    has no parameter mappings of its own. References the frame cannot resolve
+    fall through to the parent scope.
+    """
+    params = list(frame.moduleparameters or [])
+    locals_ = list(frame.localvariables or [])
+    env: dict[str, Variable] = {}
+    for variable in params:
+        env[variable.name.casefold()] = variable
+    for variable in locals_:
+        env[variable.name.casefold()] = variable
+
+    return ScopeContext(
+        env=env,
+        param_mappings={},
+        module_path=module_path,
+        display_module_path=display_module_path,
+        moduleparameter_keys=frozenset(variable.name.casefold() for variable in params),
+        current_library=parent_context.current_library,
+        parent_context=parent_context,
+    )
+
+
 def find_var_in_scope(bp: BasePicture, instance_path: list[str], var_name: str) -> Variable | None:
     return ContextBuilder.resolve_variable_in_scope(bp, instance_path, var_name)
 
@@ -377,6 +408,30 @@ class ContextBuilder:
             current_library=parent_context.current_library,
             parent_context=parent_context,
         )
+
+    def build_for_frame(
+        self,
+        frame: FrameModule,
+        parent_context: ScopeContext,
+        module_path: list[str],
+        display_module_path: list[str],
+    ) -> ScopeContext:
+        """Build the scope of a frame module and register its declarations."""
+        for variable in frame.moduleparameters or []:
+            self.symbol_table.add_variable_root(
+                module_path=module_path,
+                var=variable,
+                kind=SymbolKind.PARAMETER,
+                type_graph=self.type_graph,
+            )
+        for variable in frame.localvariables or []:
+            self.symbol_table.add_variable_root(
+                module_path=module_path,
+                var=variable,
+                kind=SymbolKind.LOCAL,
+                type_graph=self.type_graph,
+            )
+        return build_frame_scope(frame, parent_context, module_path, display_module_path)
 
     def build_for_typedef(
         self,

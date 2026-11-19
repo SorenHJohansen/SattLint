@@ -84,8 +84,8 @@ def test_submodule_mapping_and_display_helpers() -> None:
     ]
 
 
-def test_framemodule_subtree_uses_repathed_context(monkeypatch: pytest.MonkeyPatch) -> None:
-    repathed = _ns(name="repathed")
+def test_frame_module_subtree_walks_code_in_the_frame_scope(monkeypatch: pytest.MonkeyPatch) -> None:
+    frame_scope = _ns(name="frame-scope")
     frame_calls: list[tuple[str, object, list[str]]] = []
     frame = FrameModule(
         header=ModuleHeader(name="Frame", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
@@ -94,7 +94,6 @@ def test_framemodule_subtree_uses_repathed_context(monkeypatch: pytest.MonkeyPat
         submodules=[],
     )
     frame_helper: Any = _ns(
-        repath_context=lambda context, **kwargs: repathed,
         walk_moduledef=lambda moduledef, context, path: frame_calls.append(("def", context, path)),
         walk_module_code=lambda modulecode, context, path: frame_calls.append(("code", context, path)),
         contexts_by_module_path={},
@@ -108,15 +107,14 @@ def test_framemodule_subtree_uses_repathed_context(monkeypatch: pytest.MonkeyPat
     variables_submodules_module._walk_framemodule_subtree(
         frame_helper,
         frame,
-        _ns(),
-        ["Root", "Frame"],
+        frame_scope,
         ["Root", "Frame"],
     )
 
     assert frame_calls == [
-        ("def", repathed, ["Root", "Frame"]),
-        ("code", repathed, ["Root", "Frame"]),
-        ("subs", repathed, ["Root", "Frame"]),
+        ("def", frame_scope, ["Root", "Frame"]),
+        ("code", frame_scope, ["Root", "Frame"]),
+        ("subs", frame_scope, ["Root", "Frame"]),
     ]
 
 
@@ -271,7 +269,10 @@ def test_walk_submodules_respects_limit_paths(monkeypatch: pytest.MonkeyPatch) -
         modulecode=None,
         submodules=[],
     )
-    walker: Any = _ns(limit_to_module_path=["Elsewhere"], repath_context=lambda context, **kwargs: _ns())
+    walker: Any = _ns(
+        limit_to_module_path=["Elsewhere"],
+        context_builder=_ns(build_for_frame=lambda *args, **kwargs: _ns()),
+    )
     monkeypatch.setattr(
         variables_submodules_module,
         "_walk_submodule_headers",

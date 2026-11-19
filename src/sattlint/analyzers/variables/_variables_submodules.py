@@ -162,15 +162,9 @@ def _walk_singlemodule_subtree(
 def _walk_framemodule_subtree(
     self: VariablesAnalyzer,
     child: FrameModule,
-    parent_context: ScopeContext,
+    frame_context: ScopeContext,
     child_path: list[str],
-    child_display_path: list[str],
 ) -> None:
-    frame_context = self.repath_context(
-        parent_context,
-        module_path=child_path,
-        display_module_path=child_display_path,
-    )
     self.contexts_by_module_path[tuple(child_path)] = frame_context
     self.walk_moduledef(child.moduledef, frame_context, child_path)
     self.walk_module_code(child.modulecode, frame_context, child_path)
@@ -353,18 +347,24 @@ def _walk_submodules(
             _maybe_update_status(self, f"walking module path {display_path}")
 
         child_display_path = _display_path_for_child(self, child, parent_context)
-        inst_context = self.repath_context(
-            parent_context,
-            module_path=child_path,
-            display_module_path=child_display_path,
-        )
 
         if isinstance(child, SingleModule):
             _walk_singlemodule_subtree(self, child, parent_context, parent_path, child_path, child_display_path)
         elif isinstance(child, FrameModule):
-            _walk_submodule_headers(self, child, inst_context, child_path)
-            _walk_framemodule_subtree(self, child, parent_context, child_path, child_display_path)
+            frame_context = self.context_builder.build_for_frame(
+                child,
+                parent_context,
+                module_path=child_path,
+                display_module_path=child_display_path,
+            )
+            _walk_submodule_headers(self, child, frame_context, child_path)
+            _walk_framemodule_subtree(self, child, frame_context, child_path)
         else:
+            inst_context = self.repath_context(
+                parent_context,
+                module_path=child_path,
+                display_module_path=child_display_path,
+            )
             _walk_submodule_headers(self, child, inst_context, child_path)
             _walk_moduletype_instance_subtree(
                 self,
@@ -522,11 +522,10 @@ class VariablesSubmodulesMixin:
     def _walk_framemodule_subtree(
         self: Any,
         child: FrameModule,
-        parent_context: ScopeContext,
+        frame_context: ScopeContext,
         child_path: list[str],
-        child_display_path: list[str],
     ) -> None:
-        _walk_framemodule_subtree(self, child, parent_context, child_path, child_display_path)
+        _walk_framemodule_subtree(self, child, frame_context, child_path)
 
     def _walk_moduletype_instance_subtree(
         self: Any,
