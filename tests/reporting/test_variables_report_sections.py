@@ -111,15 +111,15 @@ def test_table_locations_use_one_path_spelling() -> None:
 
 def test_duplicated_datatype_rows_sort_case_insensitively() -> None:
     issues = [
-        _issue(IssueKind.DATATYPE_DUPLICATION, ["BasePicture", "A"], variable=_variable("One", "betaType")),
-        _issue(IssueKind.DATATYPE_DUPLICATION, ["BasePicture", "B"], variable=_variable("Two", "AlphaType")),
+        _issue(IssueKind.DATATYPE_DUPLICATION, ["BasePicture", "A"], variable=_variable("One", "BetaType")),
+        _issue(IssueKind.DATATYPE_DUPLICATION, ["BasePicture", "B"], variable=_variable("Two", "alphaType")),
     ]
 
     lines: list[str] = []
     rendering.render_datatype_duplication_rows(lines, issues, True)
 
-    assert "AlphaType" in lines[0]
-    assert "betaType" in lines[2]
+    assert "alphaType" in lines[0]
+    assert "BetaType" in lines[2]
 
 
 def test_sorting_sensitive_datatypes_collapse_case_variants() -> None:
