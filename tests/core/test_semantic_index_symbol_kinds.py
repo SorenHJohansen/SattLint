@@ -25,6 +25,25 @@ def _variable(name: str) -> Variable:
     return Variable(name=name, datatype=ScalarDatatype.INTEGER)
 
 
+def test_root_definitions_are_qualified_by_the_program_name(tmp_path: Path) -> None:
+    base_picture = BasePicture(
+        header=_header("BasePicture"),
+        program_name="Program",
+        localvariables=[_variable("Used")],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    snapshot = build_source_snapshot_from_basepicture(
+        base_picture,
+        tmp_path / "Program.s",
+        workspace_root=tmp_path,
+    )
+
+    assert [definition.canonical_path for definition in snapshot.find_definitions("Program.Used")] == ["Program.Used"]
+    assert snapshot.find_definitions("BasePicture.Used") == []
+
+
 def test_module_parameters_and_locals_keep_their_symbol_kinds(tmp_path: Path) -> None:
     worker = SingleModule(
         header=_header("Worker"),

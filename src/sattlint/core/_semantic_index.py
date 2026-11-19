@@ -16,7 +16,7 @@ from sattlint.parser_api import (
 )
 
 from ..models._variable_issues import VariableIssue
-from ..models.project_graph import EMPTY_GRAPHICS_ATTACHMENTS, GraphicsAttachments
+from ..models.project_graph import EMPTY_GRAPHICS_ATTACHMENTS, GraphicsAttachments, program_identity
 from ..resolution import (
     CanonicalPath,
     CanonicalSymbolTable,
@@ -53,6 +53,7 @@ class SemanticIndex:
     references_by_file: dict[str, tuple[ReferenceOccurrence, ...]]
     references_by_definition_key: dict[tuple[str, ...], tuple[SymbolReference, ...]]
     call_signatures: tuple[CallSignatureOccurrence, ...]
+    diagnostics: tuple[VariableIssue, ...]
 
 
 class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
@@ -80,7 +81,6 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
             v.name.casefold(): v for v in (*(base_picture.moduleparameters or []), *(base_picture.localvariables or []))
         }
         self._definitions_by_key: dict[tuple[str, ...], SymbolDefinition] = {}
-        self._definitions_in_order: list[SymbolDefinition] = []
         self._references_by_file: dict[str, list[ReferenceOccurrence]] = {}
         self._references_by_definition_key: dict[tuple[str, ...], list[SymbolReference]] = {}
         self._call_signatures: list[CallSignatureOccurrence] = []
@@ -114,8 +114,11 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         self,
     ) -> SemanticIndex:
         root_context = self.context_builder.build_for_basepicture()
-        root_module_path = (self.base_picture.header.name,)
-        root_display_path = (decorate_segment(self.base_picture.header.name, "BP"),)
+        # ``header.name`` holds the ``BasePicture`` keyword for a loaded
+        # program, so the path root must use the program's identity instead.
+        root_name = program_identity(self.base_picture)
+        root_module_path = (root_name,)
+        root_display_path = (decorate_segment(root_name, "BP"),)
         self._record_variables(
             self.base_picture.moduleparameters or [],
             module_path=root_module_path,
@@ -140,7 +143,7 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         )
         self._record_call_signatures(
             self.base_picture.moduledef,
-            module_path=(self.base_picture.header.name,),
+            module_path=root_module_path,
             source_file=self.root_origin_file,
             source_library=self.root_origin_library,
         )
@@ -152,7 +155,7 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         )
         self._record_call_signatures(
             self.base_picture.modulecode,
-            module_path=(self.base_picture.header.name,),
+            module_path=root_module_path,
             source_file=self.root_origin_file,
             source_library=self.root_origin_library,
         )
@@ -164,15 +167,17 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         self._walk_submodules(
             self.base_picture.submodules or [],
             parent_context=root_context,
-            module_path=(self.base_picture.header.name,),
-            display_module_path=(decorate_segment(self.base_picture.header.name, "BP"),),
+            module_path=root_module_path,
+            display_module_path=root_display_path,
             current_origin_file=self.root_origin_file,
             current_origin_library=self.root_origin_library,
         )
         return SemanticIndex(
             symbol_table=self.symbol_table,
             type_graph=self.type_graph,
-            definitions=tuple(self._definitions_in_order),
+            # Derive the ordered list from the keyed map so the two views can
+            # never disagree about which definition owns a canonical path.
+            definitions=tuple(self._definitions_by_key.values()),
             definitions_by_key=self._definitions_by_key,
             moduletype_index=self._moduletype_index,
             references_by_file={key: tuple(value) for key, value in self._references_by_file.items()},
@@ -180,6 +185,7 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
                 key: tuple(value) for key, value in self._references_by_definition_key.items()
             },
             call_signatures=tuple(self._call_signatures),
+            diagnostics=tuple(self._issues),
         )
 
     def _build_datatype_field_definitions(
@@ -237,7 +243,7 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         recorded source location intact.
         """
         source_file = self.graphics_attachments.file_name
-        module_path = (self.base_picture.header.name,)
+        module_path = (program_identity(self.base_picture),)
         for binding in self.graphics_attachments.bindings:
             value = binding.value
             if value is None:
@@ -381,7 +387,6 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
             modifiers=modifiers,
         )
         self._definitions_by_key[canonical_path.key()] = definition
-        self._definitions_in_order.append(definition)
 
 
 SemanticIndexBuilder = _SemanticIndexBuilder

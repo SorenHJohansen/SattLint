@@ -17,7 +17,7 @@ from ..core.debug import debug_enabled
 from ..core.syntax import CodeMode, deps_ext_candidates, normalize_code_mode
 from ..models.project_graph import ProjectFailure, ProjectGraph
 from ..validation.shared import ValidationWarning, coerce_validation_notice
-from .support import FAILURE_MARKERS, LOAD_FAILURE_MARKER
+from .support import LOAD_FAILURE_MARKER, PARSE_FAILURE_MARKER
 
 _STAGE_ORDER = ("load_or_parse", "validate", "attach_graphics", "index")
 log = logging.getLogger("SattLint")
@@ -212,7 +212,7 @@ def _include_reverse_library_consumers(
 
 
 def record_project_failure(graph: ProjectGraph, name: str, exception: Exception) -> None:
-    message = f"{name} parse/transform error: {exception}"
+    message = f"{name}{PARSE_FAILURE_MARKER}{exception}"
     line = getattr(exception, "line", None)
     column = getattr(exception, "column", None)
     length = getattr(exception, "length", None)
@@ -224,6 +224,7 @@ def record_project_failure(graph: ProjectGraph, name: str, exception: Exception)
     graph.failures[name.casefold()] = ProjectFailure(
         name=name,
         message=message,
+        detail=str(exception),
         line=line,
         column=column,
         length=length,
@@ -231,9 +232,7 @@ def record_project_failure(graph: ProjectGraph, name: str, exception: Exception)
 
 
 def record_project_warning(graph: ProjectGraph, name: str, message: ValidationWarning) -> None:
-    notice = coerce_validation_notice(message)
-    graph.warnings.append(f"{name}: {notice.message}")
-    graph.warning_notices.append((name, notice))
+    graph.warnings.append(f"{name}: {coerce_validation_notice(message).message}")
 
 
 def record_project_load_failure(graph: ProjectGraph, name: str, error: ProjectLoadError) -> None:
@@ -247,7 +246,7 @@ def record_project_load_failure(graph: ProjectGraph, name: str, error: ProjectLo
     """
     message = f"{name}{LOAD_FAILURE_MARKER}{error}"
     graph.missing.append(message)
-    graph.failures[name.casefold()] = ProjectFailure(name=name, message=message)
+    graph.failures[name.casefold()] = ProjectFailure(name=name, message=message, detail=str(error))
 
 
 def format_debug_list(title: str, entries: Iterable[str]) -> str:
@@ -257,22 +256,4 @@ def format_debug_list(title: str, entries: Iterable[str]) -> str:
 
     lines = [f"{title} ({len(items)}):"]
     lines.extend(f"  - {item}" for item in items)
-    return "\n".join(lines)
-
-
-def format_debug_missing_entries(entries: Iterable[str]) -> str:
-    items = [str(entry) for entry in entries]
-    if not items:
-        return "Missing/failed: none"
-
-    lines = [f"Missing/failed ({len(items)}):"]
-    for item in items:
-        for marker in FAILURE_MARKERS:
-            if marker in item:
-                library_name, detail = item.split(marker, 1)
-                lines.append(f"  - {library_name}")
-                lines.append(f"    {marker.strip().rstrip(':')}: {detail}")
-                break
-        else:
-            lines.append(f"  - {item}")
     return "\n".join(lines)

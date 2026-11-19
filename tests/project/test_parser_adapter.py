@@ -164,7 +164,7 @@ def test_index_failure_retracts_every_committed_definition(monkeypatch: pytest.M
         del library_name, program_name
         self.source_files.add(source_path if source_path is not None else Path("/tmp/leak.s"))
         self.root_origins["a"] = RootOrigin(source_path=source_path, library_name="prg")
-        self.datatype_defs["leak"] = DataType(name="Leak", description=None, datecode=None)
+        self.datatype_defs[("", "leak", "")] = DataType(name="Leak", description=None, datecode=None)
         raise RuntimeError("index exploded")
 
     monkeypatch.setattr(ProjectGraph, "index_from_basepic", partial_index)

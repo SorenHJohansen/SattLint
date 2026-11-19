@@ -24,6 +24,11 @@ def test_target_load_error_categorizes_other_entries_and_warnings() -> None:
             "mystery warning",
         ],
         direct_dependencies=["DepA"],
+        failures={
+            "root": support_module.ProjectFailure(
+                "Root", "Root parse/transform error: bad syntax", detail="bad syntax"
+            ),
+        },
     )
 
     message = str(error)

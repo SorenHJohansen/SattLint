@@ -77,6 +77,7 @@ def _build_semantic_snapshot(
     references_by_file = builder_result.references_by_file
     references_by_definition_key = builder_result.references_by_definition_key
     call_signatures = builder_result.call_signatures
+    diagnostics = builder_result.diagnostics
 
     return SemanticSnapshot(
         workspace_root=workspace_root,
@@ -87,6 +88,7 @@ def _build_semantic_snapshot(
         symbol_table=symbol_table,
         type_graph=type_graph,
         definitions=definitions,
+        diagnostics=diagnostics,
         call_signatures=call_signatures,
         _definitions_by_key=definitions_by_key,
         _moduletype_index=moduletype_index,

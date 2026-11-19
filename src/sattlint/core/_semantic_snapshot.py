@@ -8,7 +8,6 @@ single import boundary.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -18,7 +17,6 @@ from sattlint.parser_api import BasePicture, ModuleTypeDef, SourceSpan
 from ..models._variable_issues import VariableIssue
 from ..models.project_graph import ProjectGraph
 from ..resolution import CanonicalPathKey, CanonicalSymbolTable, TypeGraph
-from ..resolution.access_graph import AccessEvent
 from ._semantic_helpers import (
     cf,
     identifier_contains_column,
@@ -105,21 +103,6 @@ ReferenceOccurrence = _ReferenceOccurrence
 DefinitionKey = CanonicalPathKey
 ReferencesByFile = dict[str, tuple[ReferenceOccurrence, ...]]
 ReferencesByDefinitionKey = dict[DefinitionKey, tuple[SymbolReference, ...]]
-AccessesByDefinitionKey = dict[DefinitionKey, tuple[AccessEvent, ...]]
-EffectFlowEdges = dict[DefinitionKey, tuple[DefinitionKey, ...]]
-EffectFlowDisplayNames = dict[DefinitionKey, str]
-
-
-def _accesses_by_definition_key_factory() -> AccessesByDefinitionKey:
-    return {}
-
-
-def _effect_flow_display_names_factory() -> EffectFlowDisplayNames:
-    return {}
-
-
-def _effect_flow_edges_factory() -> EffectFlowEdges:
-    return {}
 
 
 def _moduletype_index_factory() -> dict[str, list[ModuleTypeDef]]:
@@ -174,21 +157,6 @@ class SemanticSnapshot:
     )
     _references_by_definition_key: ReferencesByDefinitionKey = field(
         default_factory=_references_by_definition_key_factory,
-        repr=False,
-        compare=False,
-    )
-    _accesses_by_definition_key: AccessesByDefinitionKey = field(
-        default_factory=_accesses_by_definition_key_factory,
-        repr=False,
-        compare=False,
-    )
-    _effect_flow_edges: EffectFlowEdges = field(
-        default_factory=_effect_flow_edges_factory,
-        repr=False,
-        compare=False,
-    )
-    _effect_flow_display_names: EffectFlowDisplayNames = field(
-        default_factory=_effect_flow_display_names_factory,
         repr=False,
         compare=False,
     )
@@ -279,17 +247,6 @@ class SemanticSnapshot:
         if limit is not None:
             return references[:limit]
         return references
-
-    def iter_access_events_by_definition(
-        self,
-        *,
-        roots_only: bool = False,
-    ) -> Iterator[tuple[SymbolDefinition, tuple[AccessEvent, ...]]]:
-        for definition in self.definitions:
-            if roots_only and definition.field_path is not None:
-                continue
-            definition_key = tuple(cf(segment) for segment in definition.canonical_path.split("."))
-            yield definition, self._accesses_by_definition_key.get(definition_key, ())
 
     def find_references_at(
         self,

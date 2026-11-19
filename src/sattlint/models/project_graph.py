@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..parser_api import BasePicture, DataType, ModuleTypeDef
-from ._validation_notice import ValidationNotice
 
 if TYPE_CHECKING:
     from ..graphics.picture_display_paths import PictureDisplayOccurrence, PictureDisplayPathDiagnostic
@@ -24,7 +23,7 @@ def _moduletype_defs_factory() -> dict[tuple[str, str, str], ModuleTypeDef]:
     return {}
 
 
-def _datatype_defs_factory() -> dict[str, DataType]:
+def _datatype_defs_factory() -> dict[tuple[str, str, str], DataType]:
     return {}
 
 
@@ -42,10 +41,6 @@ def _warnings_factory() -> list[str]:
 
 def _root_origins_factory() -> dict[str, RootOrigin]:
     return {}
-
-
-def _warning_notices_factory() -> list[tuple[str, ValidationNotice]]:
-    return []
 
 
 def _failures_factory() -> dict[str, ProjectFailure]:
@@ -109,6 +104,7 @@ def _timings_by_program_factory() -> dict[str, dict[str, float]]:
 class ProjectFailure:
     name: str
     message: str
+    detail: str | None = None
     line: int | None = None
     column: int | None = None
     length: int | None = None
@@ -124,14 +120,23 @@ class RootOrigin:
         return self.source_path.name if self.source_path is not None else None
 
 
+#: The grammar keyword the parser stores in ``header.name`` for a picture.
+_BASEPICTURE_KEYWORD = "basepicture"
+
+
 def program_identity(bp: BasePicture) -> str:
     """Return the program name a base picture stands for.
 
-    The parser stores the keyword ``BasePicture`` in ``header.name``; the
-    loaded program's name lives in ``program_name``. Single-file parses leave
-    ``program_name`` unset, so the header name remains the fallback.
+    A loaded program carries its name in ``program_name``. A single-file parse
+    leaves it unset and keeps the keyword ``BasePicture`` in ``header.name``;
+    hand-built pictures may instead name the header directly.
     """
-    return bp.program_name or bp.name or bp.header.name
+    if bp.program_name:
+        return bp.program_name
+    header_name = bp.header.name
+    if header_name and header_name.casefold() != _BASEPICTURE_KEYWORD:
+        return header_name
+    return bp.name or header_name
 
 
 @dataclass
@@ -141,13 +146,18 @@ class ProjectGraph:
     # Keyed by (origin_lib.casefold(), moduletype_name.casefold(), origin_file.casefold())
     # so same-name types from the same library but different files are preserved.
     moduletype_defs: dict[tuple[str, str, str], ModuleTypeDef] = field(default_factory=_moduletype_defs_factory)
-    datatype_defs: dict[str, DataType] = field(default_factory=_datatype_defs_factory)
+    # Keyed like ``moduletype_defs``: (origin_lib, name, origin_file), all
+    # casefolded, so same-named record types from different libraries coexist.
+    datatype_defs: dict[tuple[str, str, str], DataType] = field(default_factory=_datatype_defs_factory)
     # library_name.casefold() -> set of dependency library names (casefolded)
     library_dependencies: dict[str, set[str]] = field(default_factory=_library_dependencies_factory)
     source_dependencies: dict[str, set[str]] = field(default_factory=_library_dependencies_factory)
     missing: list[str] = field(default_factory=_missing_factory)
     warnings: list[str] = field(default_factory=_warnings_factory)
-    warning_notices: list[tuple[str, ValidationNotice]] = field(default_factory=_warning_notices_factory)
+    #: Typed view of every parse, transform, and load failure. Keyed by the
+    #: casefolded program name and the authoritative source for failure detail;
+    #: ``missing`` also carries entries that have no program, such as a missing
+    #: dependency file.
     failures: dict[str, ProjectFailure] = field(default_factory=_failures_factory)
     # Track libraries that couldn't be loaded (e.g., proprietary ABB libraries)
     unavailable_libraries: set[str] = field(default_factory=_unavailable_libraries_factory)
@@ -275,8 +285,7 @@ class ProjectGraph:
         if len(matches) == 1:
             return self.graphics_attachments.get(matches[0], EMPTY_GRAPHICS_ATTACHMENTS)
 
-        program_name = bp.name or bp.header.name
-        return self.graphics_attachments.get(program_name, EMPTY_GRAPHICS_ATTACHMENTS)
+        return self.graphics_attachments.get(program_identity(bp), EMPTY_GRAPHICS_ATTACHMENTS)
 
     def index_from_basepic(
         self,
@@ -311,7 +320,10 @@ class ProjectGraph:
                 d.origin_file = source_path.name
             if library_name and not d.origin_lib:
                 d.origin_lib = library_name
-            self.datatype_defs[d.name.casefold()] = d
+            lib_key = (d.origin_lib or "").casefold()
+            name_key = d.name.casefold()
+            file_key = (d.origin_file or "").casefold()
+            self.datatype_defs[(lib_key, name_key, file_key)] = d
 
 
 def merge_project_basepicture(root_bp: BasePicture, graph: ProjectGraph) -> BasePicture:

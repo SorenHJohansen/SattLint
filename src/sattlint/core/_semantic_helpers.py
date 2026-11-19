@@ -14,7 +14,6 @@ from sattlint.parser_api import (
 )
 
 from ..models.project_graph import ProjectGraph
-from ..project.support import split_failure_item
 from ..resolution import TypeGraph
 from ..resolution.common import resolve_moduletype_def_strict
 from .syntax import CodeMode
@@ -67,10 +66,11 @@ def _format_workspace_snapshot_failure(
     *,
     detail: str | None = None,
 ) -> str:
+    failures_by_message = {failure.message: failure for failure in graph.failures.values()}
     dependency_issues = [
         message
         for message in graph.missing
-        if (failure := split_failure_item(message)) is None or failure[0].casefold() != entry_name.casefold()
+        if (failure := failures_by_message.get(message)) is None or failure.name.casefold() != entry_name.casefold()
     ]
     resolved = sorted(graph.ast_by_name.keys(), key=str.casefold)
     unavailable = sorted(graph.unavailable_libraries, key=str.casefold)
