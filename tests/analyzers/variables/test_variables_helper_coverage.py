@@ -664,3 +664,39 @@ def test_procedure_status_bindings_reach_the_root_whatever_the_link_order() -> N
 
     assert bindings[id(root)] == [binding]
     assert bindings[id(middle)] == [binding]
+
+
+def test_procedure_status_message_names_every_call_that_shares_a_sink() -> None:
+    sink = Variable(name="Sink", datatype=ScalarDatatype.INTEGER)
+    bindings = defaultdict(
+        list,
+        {
+            id(sink): [
+                variables_status_module.ProcedureStatusBinding(
+                    call_name="ReadValue",
+                    parameter_name="Status",
+                    channel_kind="status",
+                    field_path="First",
+                ),
+                variables_status_module.ProcedureStatusBinding(
+                    call_name="WriteValue",
+                    parameter_name="Out",
+                    channel_kind="status",
+                    field_path=None,
+                ),
+            ]
+        },
+    )
+    helper: Any = SimpleNamespace(procedure_status_bindings=bindings)
+
+    issue = variables_status_impl._procedure_status_issue(
+        helper,
+        sink,
+        cast(Any, _UsageStub(written=True, ui_read=False, non_ui_read=False)),
+    )
+
+    assert issue is not None
+    message, field_path = issue
+    assert "'ReadValue' parameter 'Status'" in message
+    assert "'WriteValue' parameter 'Out'" in message
+    assert field_path == "First"

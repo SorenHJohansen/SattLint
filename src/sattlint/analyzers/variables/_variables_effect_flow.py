@@ -379,6 +379,46 @@ class EffectFlowTracker:
                 pending.append(source_key)
         return effective_keys
 
+    def _propagate_external_mapping_usage(
+        self,
+        *,
+        src_var: Variable,
+        full_source: str,
+        source_field_path: str,
+        parent_path: list[str],
+        parent_context: ScopeContext | None,
+        parent_env: dict[str, Variable],
+    ) -> None:
+        """Conservatively treat an external mapping source as read and written."""
+        if parent_context is not None:
+            source_key = self.resolve_effect_key(full_source, parent_context)
+            if source_key is not None:
+                self._external_effect_sinks.add(source_key)
+
+        display_path: list[str] = []
+        if parent_path:
+            display_path.append(decorate_segment(parent_path[0], "BP"))
+            display_path.extend(parent_path[1:])
+        use_context = ScopeContext(
+            env=parent_env,
+            param_mappings={},
+            module_path=parent_path.copy(),
+            display_module_path=display_path,
+            parent_context=None,
+        )
+
+        usage = self._get_usage(src_var)
+        if source_field_path:
+            usage.mark_field_read(source_field_path, parent_path)
+            usage.mark_field_written(source_field_path, parent_path)
+            canonical_path = self._canonical_path(parent_path, src_var, source_field_path)
+        else:
+            usage.mark_read(parent_path)
+            usage.mark_written(parent_path)
+            canonical_path = self._canonical_path(parent_path, src_var, "")
+        self._record_access(AccessKind.READ, canonical_path, use_context, full_source)
+        self._record_access(AccessKind.WRITE, canonical_path, use_context, full_source)
+
     def propagate_mapping_to_parent(  # noqa: PLR0915
         self,
         pm: ParameterMapping,
@@ -432,36 +472,14 @@ class EffectFlowTracker:
 
             # External types: conservatively treat mapping as read+written
             if external_typename is not None:
-                if parent_context is not None:
-                    source_key = self.resolve_effect_key(full_source, parent_context)
-                    if source_key is not None:
-                        self._external_effect_sinks.add(source_key)
-                external_display_path: list[str] = []
-                if parent_path:
-                    external_display_path.append(decorate_segment(parent_path[0], "BP"))
-                    external_display_path.extend(parent_path[1:])
-                use_context = ScopeContext(
-                    env=parent_env,
-                    param_mappings={},
-                    module_path=parent_path.copy(),
-                    display_module_path=external_display_path,
-                    parent_context=None,
+                self._propagate_external_mapping_usage(
+                    src_var=src_var,
+                    full_source=full_source,
+                    source_field_path=source_field_path,
+                    parent_path=parent_path,
+                    parent_context=parent_context,
+                    parent_env=parent_env,
                 )
-
-                if source_field_path:
-                    self._get_usage(src_var).mark_field_read(source_field_path, parent_path)
-                    self._get_usage(src_var).mark_field_written(source_field_path, parent_path)
-
-                    cp = self._canonical_path(parent_path, src_var, source_field_path)
-                    self._record_access(AccessKind.READ, cp, use_context, full_source)
-                    self._record_access(AccessKind.WRITE, cp, use_context, full_source)
-                else:
-                    self._get_usage(src_var).mark_read(parent_path)
-                    self._get_usage(src_var).mark_written(parent_path)
-
-                    cp = self._canonical_path(parent_path, src_var, "")
-                    self._record_access(AccessKind.READ, cp, use_context, full_source)
-                    self._record_access(AccessKind.WRITE, cp, use_context, full_source)
                 return
 
             if target_name is not None:
@@ -504,36 +522,14 @@ class EffectFlowTracker:
 
         # External types: conservatively treat mapping as read+written
         if external_typename is not None:
-            if parent_context is not None:
-                source_key = self.resolve_effect_key(full_source, parent_context)
-                if source_key is not None:
-                    self._external_effect_sinks.add(source_key)
-            external_mapping_display_path: list[str] = []
-            if parent_path:
-                external_mapping_display_path.append(decorate_segment(parent_path[0], "BP"))
-                external_mapping_display_path.extend(parent_path[1:])
-            use_context = ScopeContext(
-                env=parent_env,
-                param_mappings={},
-                module_path=parent_path.copy(),
-                display_module_path=external_mapping_display_path,
-                parent_context=None,
+            self._propagate_external_mapping_usage(
+                src_var=src_var,
+                full_source=full_source,
+                source_field_path=source_field_path,
+                parent_path=parent_path,
+                parent_context=parent_context,
+                parent_env=parent_env,
             )
-
-            if source_field_path:
-                self._get_usage(src_var).mark_field_read(source_field_path, parent_path)
-                self._get_usage(src_var).mark_field_written(source_field_path, parent_path)
-
-                cp = self._canonical_path(parent_path, src_var, source_field_path)
-                self._record_access(AccessKind.READ, cp, use_context, full_source)
-                self._record_access(AccessKind.WRITE, cp, use_context, full_source)
-            else:
-                self._get_usage(src_var).mark_read(parent_path)
-                self._get_usage(src_var).mark_written(parent_path)
-
-                cp = self._canonical_path(parent_path, src_var, "")
-                self._record_access(AccessKind.READ, cp, use_context, full_source)
-                self._record_access(AccessKind.WRITE, cp, use_context, full_source)
             return
 
         # Internal types with field-aware propagation
