@@ -19,6 +19,14 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Changed
 
+- Record layouts resolve per library, so two libraries that define the same
+  record name keep their own fields and leaf paths. A lookup without a
+  decisive library reports an ambiguity instead of taking the last
+  definition it indexed.
+- Run timing values are typed inside the run pipeline while the stored run
+  record keeps its existing JSON shape, and the run collector is split into
+  execution, record, and result seams without changing cancellation,
+  streaming, or persistence.
 - Root symbol paths are qualified by the program's identity, and record
   definitions are stored by library, name, and file, so the project graph no
   longer overwrites a same-named record from another library. Field expansion
