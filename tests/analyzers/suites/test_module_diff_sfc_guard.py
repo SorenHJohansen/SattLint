@@ -200,7 +200,7 @@ def test_module_diff_helpers_detect_modified_and_variant_only_names():
     assert "Alpha" in modified
 
 
-def test_module_ast_normalizer_casefolds_names_and_ignores_position_fields():
+def test_module_ast_normalizer_casefolds_shared_fields_and_keeps_payload_keys():
     normalized_dict = _normalize_ast_value(
         {
             "var_name": "MiXeD",
@@ -210,7 +210,9 @@ def test_module_ast_normalizer_casefolds_names_and_ignores_position_fields():
     )
     normalized_var = _normalize_ast_value(Variable(name="FlowRate", datatype=ScalarDatatype.INTEGER))
 
-    assert "position" not in repr(normalized_dict)
+    # A mapping carries payload values, so its keys are data. The shared field
+    # policy still casefolds the names that identify a reference or declaration.
+    assert "position" in repr(normalized_dict)
     assert "mixed" in repr(normalized_dict)
     assert "new" in repr(normalized_dict)
     assert "flowrate" in repr(normalized_var)

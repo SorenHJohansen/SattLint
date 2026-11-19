@@ -29,6 +29,11 @@ _IGNORED_AST_FIELDS = {
     "source_span",
     "span",
 }
+#: One casefold policy for every AST-shaped field, whether the value arrives as
+#: a dataclass or as a mapping payload. ``VarRef`` uses ``name``+``state`` while
+#: declarations use ``name`` and mapping entries use ``target``/``type``; a
+#: single set keeps the comparison insensitive to keyword casing everywhere.
+_CASEFOLDED_AST_FIELDS = frozenset({"name", "target", "type", "state", "var_name"})
 MISSING_AST_VALUE = object()
 
 type NormalizedScalar = bool | int | float | str | None
@@ -97,6 +102,13 @@ def normalize_name(name: str) -> str:
     return name.casefold().strip()
 
 
+def _normalize_field(field_name: str, value: Any) -> NamedNormalizedValue:
+    normalized = normalize_ast_value(value)
+    if field_name in _CASEFOLDED_AST_FIELDS and isinstance(normalized, str):
+        normalized = normalized.casefold()
+    return (field_name, normalized)
+
+
 def normalize_ast_value(value: Any) -> NormalizedValue:
     """Normalize AST-like values into stable, hashable tuples."""
     if value is None or isinstance(value, bool | int | float | str):
@@ -111,15 +123,13 @@ def normalize_ast_value(value: Any) -> NormalizedValue:
         return (type(value).__name__, repr(enum_value))
 
     if isinstance(value, dict):
+        # Mappings in the AST carry payload values (for example a parsed
+        # ``time_value``), not a second node shape. They are normalized as
+        # ordered key/value pairs with the same field policy as dataclasses, so
+        # the same field can never casefold in one representation and not in
+        # the other.
         mapping = cast(dict[object, object], value)
-        items: list[NamedNormalizedValue] = []
-        for key, item in _sorted_object_items(mapping):
-            if key in _IGNORED_AST_FIELDS:
-                continue
-            normalized = normalize_ast_value(item)
-            if key in {"state", "var_name"} and isinstance(normalized, str):
-                normalized = normalized.casefold()
-            items.append((key, normalized))
+        items = [_normalize_field(key, item) for key, item in _sorted_object_items(mapping)]
         return ("dict", tuple(items))
 
     if isinstance(value, tuple):
@@ -135,10 +145,7 @@ def normalize_ast_value(value: Any) -> NormalizedValue:
         for field_info in fields(value):
             if field_info.name in _IGNORED_AST_FIELDS:
                 continue
-            normalized = normalize_ast_value(getattr(value, field_info.name))
-            if field_info.name in {"name", "target", "type"} and isinstance(normalized, str):
-                normalized = normalized.casefold()
-            items.append((field_info.name, normalized))
+            items.append(_normalize_field(field_info.name, getattr(value, field_info.name)))
         return (type(value).__name__, tuple(items))
 
     return repr(value)
