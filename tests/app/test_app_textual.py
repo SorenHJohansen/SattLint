@@ -4912,3 +4912,24 @@ def test_textual_shell_uses_the_documented_view_and_setting_labels() -> None:
             assert str(app_instance.query_one("#settings-edit-run-history-limit").label) == "Run history limit"
 
     asyncio.run(_run())
+
+
+def test_textual_clearing_the_session_log_forgets_pending_target_errors() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app()
+
+        async with app_instance.run_test() as pilot:
+            await pilot.pause()
+
+            app_instance._pending_error_target_name = "OldTarget"
+            app_instance._last_output_target_name = "OldTarget"
+
+            app_instance._clear_session_output()
+
+            assert app_instance._pending_error_target_name is None
+            assert app_instance._last_output_target_name is None
+
+    asyncio.run(_run())
