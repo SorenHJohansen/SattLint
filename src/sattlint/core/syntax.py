@@ -197,14 +197,25 @@ def validate_single_file_syntax(
         result = validate_graphics_file_fn(target_path)
         source_context = graphics_source_context_path_fn(target_path)
         warnings: tuple[ValidationNotice, ...] = ()
-        if (
-            source_context is not None
-            and (basepic := load_picture_display_source_context_fn(source_context)) is not None
-        ):
-            occurrences = correlate_picture_display_records_fn(
-                basepic, tuple(getattr(result, "picture_display_records", ()))
-            )
-            warnings = picture_display_path_warnings_fn(basepic, occurrences)
+        if source_context is not None:
+            basepic = load_picture_display_source_context_fn(source_context)
+            if basepic is None:
+                # A paired body that cannot be parsed would otherwise skip the
+                # whole path-diagnostic class without a trace. Name the skipped
+                # check so the gap is visible in the validation report.
+                warnings = (
+                    ValidationNotice(
+                        message=(
+                            "PictureDisplay path checks were skipped: the paired source file "
+                            f"{source_context.name!r} could not be parsed."
+                        )
+                    ),
+                )
+            else:
+                occurrences = correlate_picture_display_records_fn(
+                    basepic, tuple(getattr(result, "picture_display_records", ()))
+                )
+                warnings = picture_display_path_warnings_fn(basepic, occurrences)
         return graphics_validation_to_syntax_result_fn(target_path, result, warnings=warnings)
 
     parse_src = ""

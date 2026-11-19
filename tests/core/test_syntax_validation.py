@@ -3,6 +3,7 @@ from pathlib import Path
 from sattline_parser import parse_source_text
 
 from sattlint.core.syntax import validate_single_file_syntax
+from sattlint.graphics.validation import GraphicsValidationResult
 from sattlint.validation.policy import validate_basepicture_strict
 from sattlint.validation.shared import StructuralValidationError
 
@@ -68,6 +69,22 @@ def test_syntax_check_accepts_a_valid_code_and_graphics_pair(tmp_path: Path) -> 
 
     assert result.ok is True
     assert result.stage == "ok"
+
+
+def test_a_paired_body_that_cannot_be_parsed_reports_the_skipped_path_checks(tmp_path: Path) -> None:
+    graphics_path = _write(tmp_path / "Program.g", '"Syntax version 2.23"\nNone True\n')
+    paired_body = _write(tmp_path / "Program.s", "not a SattLine body")
+
+    result = validate_single_file_syntax(
+        graphics_path,
+        validate_graphics_file_fn=lambda _path: GraphicsValidationResult(),
+        graphics_source_context_path_fn=lambda _path: paired_body,
+        load_picture_display_source_context_fn=lambda _path: None,
+    )
+
+    assert result.ok is True
+    assert any("PictureDisplay path checks were skipped" in warning for warning in result.warnings)
+    assert any("Program.s" in warning for warning in result.warnings)
 
 
 def test_comment_before_a_code_block_is_rejected_by_the_parser(tmp_path: Path) -> None:
