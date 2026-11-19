@@ -10,7 +10,7 @@ from sattline_parser.project import ProjectLoadError
 
 from sattlint.analyzers import catalog as analysis_catalog_module
 from sattlint.application import (
-    checks as checks_application,
+    checks_execution,
 )
 from sattlint.application import (
     project as project_application,
@@ -47,7 +47,7 @@ def test_app_analysis_wrappers_delegate_to_underlying_helpers(monkeypatch):
         Path("TargetA.s")
     }
     assert project_application.target_is_library({}, cast(Any, "bp"), cast(Any, "graph")) is True
-    assert checks_application._get_enabled_analyzers() == ["variables"]
+    assert checks_execution.get_enabled_analyzers() == ["variables"]
 
 
 def test_target_validation_warnings_keeps_controllib_dependency_warning():

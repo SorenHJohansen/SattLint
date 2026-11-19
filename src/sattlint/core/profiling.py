@@ -11,13 +11,14 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
 from .. import cache as cache_module
+from .timings import NamedTimings, PhaseTiming, TimingBottleneck
 
 APP_PROFILE_KIND = "sattlint.app.profile"
 APP_PROFILE_SCHEMA_VERSION = 1
@@ -51,9 +52,9 @@ def _coerce_duration_ms(value: object, *, scale: float = 1.0) -> float | None:
     return None
 
 
-def normalize_named_timings_ms(raw_timings: object, *, scale: float = 1.0) -> dict[str, float]:
+def normalize_named_timings_ms(raw_timings: object, *, scale: float = 1.0) -> NamedTimings:
     if not isinstance(raw_timings, Mapping):
-        return {}
+        return NamedTimings()
 
     normalized: dict[str, float] = {}
     for raw_name, raw_duration in cast(Mapping[object, object], raw_timings).items():
@@ -63,15 +64,19 @@ def normalize_named_timings_ms(raw_timings: object, *, scale: float = 1.0) -> di
         if duration_ms is None:
             continue
         normalized[raw_name] = duration_ms
-    return normalized
+    return NamedTimings.of(normalized)
 
 
-def normalize_phase_timings_ms(raw_phase_timings: object) -> list[dict[str, object]]:
-    if not isinstance(raw_phase_timings, list):
-        return []
+def normalize_phase_timings_ms(raw_phase_timings: object) -> tuple[PhaseTiming, ...]:
+    if not isinstance(raw_phase_timings, (list, tuple)):
+        return ()
 
-    normalized: list[dict[str, object]] = []
-    for raw_phase in cast(list[object], raw_phase_timings):
+    normalized: list[PhaseTiming] = []
+    for raw_phase in cast(Sequence[object], raw_phase_timings):
+        if isinstance(raw_phase, PhaseTiming):
+            if raw_phase.phase:
+                normalized.append(raw_phase)
+            continue
         if not isinstance(raw_phase, Mapping):
             continue
         phase_mapping = cast(Mapping[object, object], raw_phase)
@@ -81,44 +86,33 @@ def normalize_phase_timings_ms(raw_phase_timings: object) -> list[dict[str, obje
         duration_ms = _coerce_duration_ms(phase_mapping.get("duration_ms"))
         if duration_ms is None:
             continue
-        normalized.append({"phase": phase_name, "duration_ms": duration_ms})
-    return normalized
+        normalized.append(PhaseTiming(phase=phase_name, duration_ms=duration_ms))
+    return tuple(normalized)
 
 
-def bottleneck_from_named_timings(named_timings_ms: Mapping[str, float], *, kind: str) -> dict[str, object] | None:
+def bottleneck_from_named_timings(named_timings_ms: Mapping[str, float], *, kind: str) -> TimingBottleneck | None:
     if not named_timings_ms:
         return None
     name, duration_ms = max(named_timings_ms.items(), key=lambda item: (item[1], item[0].casefold()))
-    return {"kind": kind, "name": name, "duration_ms": round(max(float(duration_ms), 0.0), 3)}
+    return TimingBottleneck(kind=kind, name=name, duration_ms=round(max(float(duration_ms), 0.0), 3))
 
 
 def bottleneck_from_phase_timings(
-    phase_timings_ms: list[dict[str, object]],
+    phase_timings_ms: Sequence[PhaseTiming],
     *,
     kind: str,
-    extra_fields: Mapping[str, object] | None = None,
-) -> dict[str, object] | None:
+    analyzer_key: str | None = None,
+) -> TimingBottleneck | None:
     if not phase_timings_ms:
         return None
 
-    def _phase_sort_key(phase: dict[str, object]) -> tuple[float, str]:
-        duration_ms = _coerce_duration_ms(phase.get("duration_ms")) or 0.0
-        phase_name = phase.get("phase")
-        return (duration_ms, str(phase_name or "").casefold())
-
-    best_phase = max(
-        phase_timings_ms,
-        key=_phase_sort_key,
+    best_phase = max(phase_timings_ms, key=lambda phase: (phase.duration_ms, phase.phase.casefold()))
+    return TimingBottleneck(
+        kind=kind,
+        name=best_phase.phase,
+        duration_ms=round(max(float(best_phase.duration_ms), 0.0), 3),
+        analyzer_key=analyzer_key,
     )
-    duration_ms = _coerce_duration_ms(best_phase.get("duration_ms")) or 0.0
-    bottleneck: dict[str, object] = {
-        "kind": kind,
-        "name": str(best_phase.get("phase") or ""),
-        "duration_ms": duration_ms,
-    }
-    if extra_fields:
-        bottleneck.update(extra_fields)
-    return bottleneck
 
 
 class ProfileRecorder:
@@ -179,7 +173,10 @@ def create_profiler() -> ProfileRecorder:
 __all__ = [
     "APP_PROFILE_KIND",
     "APP_PROFILE_SCHEMA_VERSION",
+    "NamedTimings",
+    "PhaseTiming",
     "ProfileRecorder",
+    "TimingBottleneck",
     "bottleneck_from_named_timings",
     "bottleneck_from_phase_timings",
     "create_profiler",

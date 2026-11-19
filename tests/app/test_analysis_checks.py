@@ -25,10 +25,14 @@ from sattlint.application import (
     checks as checks_application,
 )
 from sattlint.application import (
+    checks_records,
+)
+from sattlint.application import (
     output as output_module,
 )
 from sattlint.config import DEFAULT_CONFIG
 from sattlint.core import profiling as profiling_module
+from sattlint.core.timings import PhaseTiming
 from sattlint.models.project_graph import ProjectGraph
 from sattlint.reporting import target_report as analysis_reporting_module
 from sattlint.runs import load_run
@@ -61,7 +65,7 @@ def test_snapshot_module_tree_includes_empty_modules_and_instance_children() -> 
     graph.moduletype_defs[("hc", "unitheader", "nnestruct.x")] = ModuleTypeDef(
         name="UnitHeader", origin_lib="HC", origin_file="nnestruct.x"
     )
-    snapshot = checks_application._snapshot_module_tree(root, graph, "KaHCBInlineLib")
+    snapshot = checks_records.snapshot_module_tree(root, graph, "KaHCBInlineLib")
 
     assert snapshot.name == "KaHCBInlineLib:BasePicture"
     assert snapshot.kind == "SingleModule"
@@ -401,7 +405,7 @@ def test_collect_run_checks_result_captures_target_and_analyzer_metadata():
     assert analyzer.summary == "state inference summary"
     assert analyzer.report_kind == "SimpleNamespace"
     assert analyzer.issue_count == 1
-    assert analyzer.phase_timings_ms == ({"phase": "plan", "duration_ms": 1.25},)
+    assert analyzer.phase_timings_ms == (PhaseTiming(phase="plan", duration_ms=1.25),)
 
 
 def test_collect_run_checks_result_runs_icf_once_as_whole_run_target(monkeypatch) -> None:
@@ -851,9 +855,9 @@ def test_collect_run_checks_result_does_not_prune_when_save_fails(monkeypatch, t
     def fail_save(*_args, **_kwargs):
         raise OSError("disk full")
 
-    monkeypatch.setattr(checks_application, "get_runs_dir_or_none", lambda: tmp_path / "runs")
-    monkeypatch.setattr(checks_application, "save_run", fail_save)
-    monkeypatch.setattr(checks_application, "prune_runs", lambda *_args, **_kwargs: pytest.fail("must not prune"))
+    monkeypatch.setattr(checks_records, "get_runs_dir_or_none", lambda: tmp_path / "runs")
+    monkeypatch.setattr(checks_records, "save_run", fail_save)
+    monkeypatch.setattr(checks_records, "prune_runs", lambda *_args, **_kwargs: pytest.fail("must not prune"))
 
     result = checks_application.collect_run_checks_result(
         DEFAULT_CONFIG.copy() | {"analyzed_programs_and_libraries": ["Demo"]},
@@ -1090,7 +1094,7 @@ def test_run_checks_accepts_legacy_underscore_analyzer_key(monkeypatch):
 def test_run_checks_result_returns_structured_result_and_persists_run(tmp_path, monkeypatch) -> None:
     emitted: list[str] = []
     monkeypatch.setattr(output_module, "emit_output", lambda message: emitted.append(str(message)))
-    monkeypatch.setattr(checks_application, "get_runs_dir_or_none", lambda: tmp_path)
+    monkeypatch.setattr(checks_records, "get_runs_dir_or_none", lambda: tmp_path)
 
     report = SimpleNamespace(
         summary=lambda: "state inference summary",
@@ -1126,6 +1130,43 @@ def test_run_checks_result_returns_structured_result_and_persists_run(tmp_path, 
     assert len(list(tmp_path.glob("*.json"))) == 1
 
 
+def test_collect_run_checks_result_returns_the_partial_target_when_an_analyzer_is_cancelled() -> None:
+    result = checks_application.collect_run_checks_result(
+        DEFAULT_CONFIG.copy(),
+        ["first", "second"],
+        use_cache=False,
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [("TargetA", SimpleNamespace(header=SimpleNamespace(name="TargetA")), AnalysisGraphStub())]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="first",
+                name="First",
+                run=lambda _context: SimpleNamespace(issues=[], summary=lambda: "first summary"),
+            ),
+            SimpleNamespace(
+                key="second",
+                name="Second",
+                run=lambda _context: (_ for _ in ()).throw(KeyboardInterrupt()),
+            ),
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+    )
+
+    assert result.cancelled is True
+    assert len(result.targets) == 1
+    assert [(analyzer.key, analyzer.status) for analyzer in result.targets[0].analyzers] == [
+        ("first", "completed"),
+        ("second", "cancelled"),
+    ]
+    assert result.targets[0].analyzers[1].duration_ms is not None
+    assert any("first summary" in line for line in result.output_lines)
+
+
 def test_per_target_analyzer_raise_is_reported_as_analyzer_failure() -> None:
     def _explode(_context):
         raise RuntimeError("boom")
@@ -1155,8 +1196,8 @@ def test_per_target_analyzer_raise_is_reported_as_analyzer_failure() -> None:
 
 
 def test_failed_analyzer_still_saves_the_run(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr(checks_application, "get_runs_dir_or_none", lambda: tmp_path / "runs")
-    monkeypatch.setattr(checks_application, "prune_runs", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(checks_records, "get_runs_dir_or_none", lambda: tmp_path / "runs")
+    monkeypatch.setattr(checks_records, "prune_runs", lambda *_args, **_kwargs: None)
 
     def _explode(_context):
         raise RuntimeError("boom")
