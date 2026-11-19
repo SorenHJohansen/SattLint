@@ -1,6 +1,7 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false
 from sattline_parser.project import ProjectLoadError
 
+from sattlint.core.syntax import CodeMode
 from sattlint.models.project_graph import ProjectGraph
 from sattlint.project import loading_support as loading_support_module
 from sattlint.project.parser_adapter import CircularDependencyError
@@ -52,6 +53,8 @@ def test_analysis_loading_helpers_cover_target_accessors_and_refresh_formatting(
     assert project_application._require_analyzed_targets({}) == ["TargetB"]
     assert loading_support_module._workspace_dependency_suffixes("draft") == (".l", ".z")
     assert loading_support_module._workspace_dependency_suffixes("official") == (".z",)
+    assert loading_support_module._workspace_dependency_suffixes(CodeMode.DRAFT) == (".l", ".z")
+    assert loading_support_module._workspace_dependency_suffixes(CodeMode.OFFICIAL) == (".z",)
     assert analysis_loading_module._format_refresh_stage_timings(
         {"load_or_parse": 0.1, "validate": 0.2},
         refresh_mode="ast-only",

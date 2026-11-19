@@ -22,7 +22,7 @@ flowchart LR
     subgraph Analysis["Analysis Layer"]
         ANALYZERS["analyzers/"]
         CORE["core/ (semantic snapshot)"]
-        ENGINE["engine.py"]
+        PROJECT["project/ (loader, cache)"]
         RESOLUTION["resolution/"]
         REPORTING["reporting/"]
     end
@@ -36,9 +36,9 @@ flowchart LR
     CLI_LAYER --> UI
     CLI_LAYER --> CONFIG
     APPL --> ANALYZERS
-    APPL --> ENGINE
+    APPL --> PROJECT
     APPL --> CONFIG
-    ENGINE --> PARSER
+    PROJECT --> PARSER
     CORE --> ANALYZERS
     CORE --> RESOLUTION
     CORE --> REPORTING

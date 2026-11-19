@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from sattlint.analyzers.cyclomatic_complexity import analyze_cyclomatic_complexity
-from sattlint.engine import parse_source_file
+from sattlint.parser_api import parse_source_file
 
 FIXTURE_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "analyzer_guardrails"
 

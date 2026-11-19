@@ -36,7 +36,7 @@ from sattline_parser.models.expressions import FuncCall, FuncCallStmt, IfStmt, N
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer, analyze_variables
 from sattlint.analyzers.variables import _variable_issue_collection as variable_issue_collection_module
 from sattlint.analyzers.variables import _variables_execution as variables_execution_module
-from sattlint.engine import parse_source_file
+from sattlint.parser_api import parse_source_file
 from sattlint.reporting.variables_report import (
     ALL_VARIABLE_ANALYSIS_KINDS,
     DATATYPE_FIELD_ANALYSIS_KINDS,

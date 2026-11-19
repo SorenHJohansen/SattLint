@@ -13,15 +13,11 @@ from sattline_parser.models.ast_model import (
 
 from sattlint.analyzers.picture_display_paths import analyze_picture_display_paths
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
-from sattlint.engine import (
-    CodeMode,
-    load_project_graph,
-    merge_project_basepicture,
-)
 from sattlint.graphics.picture_display_paths import PictureDisplayOccurrence
 from sattlint.graphics.validation import PictureDisplayPathRow, PictureDisplayRecord
 from sattlint.models.project_graph import ProjectGraph
 from tests.helpers.graphics_attachments_support import graphics_attachments
+from tests.helpers.project_loading import load_target_project
 
 SAMPLE_FIXTURE_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "sample_sattline_files"
 CORPUS_ANALYZER_FIXTURE_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "corpus" / "semantic" / "analyzer"
@@ -44,17 +40,7 @@ def _resolve_fixture_path(stem: str) -> Path:
 
 
 def _load_fixture_base_picture(stem: str) -> tuple[BasePicture, ProjectGraph]:
-    fixture = _resolve_fixture_path(stem)
-    cfg: dict[str, object] = {
-        "program_dir": fixture.parent,
-        "other_lib_dirs": [],
-        "ABB_lib_dir": fixture.parent,
-        "mode": CodeMode.DRAFT,
-        "debug": False,
-    }
-    _, root_bp, graph = load_project_graph(cfg, fixture.stem, strict=False)
-    assert root_bp is not None
-    return merge_project_basepicture(graph.ast_by_name[fixture.stem], graph), graph
+    return load_target_project(_resolve_fixture_path(stem))
 
 
 def test_picture_display_path_analyzer_uses_real_string_fixture() -> None:

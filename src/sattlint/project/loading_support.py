@@ -75,7 +75,7 @@ def _attach_analysis_cache_metadata(graph: ProjectGraph, *, cache_key: str, mani
     graph.analysis_manifest_files = frozenset(manifest_files)
 
 
-def _workspace_dependency_suffixes(mode: str) -> tuple[str, ...]:
+def _workspace_dependency_suffixes(mode: CodeMode | str | None) -> tuple[str, ...]:
     """Dependency-sidecar extensions in preference order.
 
     Draft prefers ``.l`` and falls back to ``.z``; official uses ``.z``. The
@@ -124,7 +124,7 @@ def _iter_workspace_reverse_library_consumer_dependency_files(
     cfg: ConfigDict,
 ) -> Iterator[tuple[str, Path]]:
     base_dirs = [Path(cfg["program_dir"]), *(Path(path) for path in cfg["other_lib_dirs"])]
-    suffixes = _workspace_dependency_suffixes(str(cfg.get("mode", "official")))
+    suffixes = _workspace_dependency_suffixes(cfg.get("mode", "official"))
 
     # One sidecar per program: the most preferred suffix wins, and a program
     # whose preferred sidecar is absent still contributes through the fallback.
