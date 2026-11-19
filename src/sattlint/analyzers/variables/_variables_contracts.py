@@ -3,7 +3,7 @@
 # pyright: reportPrivateUsage=false
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from sattlint.parser_api import (
     FrameModule,
@@ -35,21 +35,27 @@ _PARAM_MAPPING_CHECK_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
 )
 
 
-def selected_issue_kinds(self: object) -> frozenset[IssueKind] | set[IssueKind] | None:
-    return getattr(self, "_selected_issue_kinds", None)
+class IssueKindSelection(Protocol):
+    """Suppression gate view over the analyzer's selected issue kinds."""
+
+    _selected_issue_kinds: frozenset[IssueKind] | None
 
 
-def should_collect_issue_kind(self: object, kind: IssueKind) -> bool:
+def selected_issue_kinds(self: IssueKindSelection) -> frozenset[IssueKind] | None:
+    return self._selected_issue_kinds
+
+
+def should_collect_issue_kind(self: IssueKindSelection, kind: IssueKind) -> bool:
     selected_kinds = selected_issue_kinds(self)
     return selected_kinds is None or kind in selected_kinds
 
 
-def should_collect_any_issue_kinds(self: object, kinds: frozenset[IssueKind]) -> bool:
+def should_collect_any_issue_kinds(self: IssueKindSelection, kinds: frozenset[IssueKind]) -> bool:
     selected_kinds = selected_issue_kinds(self)
     return selected_kinds is None or bool(selected_kinds & kinds)
 
 
-def explicitly_selected_issue_kinds(self: object, kinds: frozenset[IssueKind]) -> bool:
+def explicitly_selected_issue_kinds(self: IssueKindSelection, kinds: frozenset[IssueKind]) -> bool:
     selected_kinds = selected_issue_kinds(self)
     return selected_kinds is not None and bool(selected_kinds & kinds)
 

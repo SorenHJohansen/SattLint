@@ -187,6 +187,7 @@ def test_library_target_does_not_report_typedefs_from_sibling_projectlib_files()
         bp=bp,
         analyzed_target_is_library=True,
         _limit_to_module_path=None,
+        _selected_issue_kinds=None,
         _analyze_typedef=lambda *args, **kwargs: None,
         _compute_effective_output_keys=lambda: set(),
         _is_from_root_origin=lambda origin, origin_lib=None: VariablesAnalyzer._is_from_root_origin(

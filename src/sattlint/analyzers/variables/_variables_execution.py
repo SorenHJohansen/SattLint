@@ -26,6 +26,9 @@ from ..shared.variable_utils import mapping_target_name
 from ._usage_tracker import UsageTracker
 from ._variable_traversal_support import _IGNORED_GRAPHICS_TAIL_BASENAMES
 from ._variables_contracts import (
+    IssueKindSelection,
+)
+from ._variables_contracts import (
     explicitly_selected_issue_kinds as _explicitly_selected_issue_kinds,
 )
 from ._variables_contracts import (
@@ -133,7 +136,7 @@ def _maybe_update_status(self: object, detail: str) -> None:
         update_status(detail)
 
 
-def _format_selected_issue_kinds(self: object) -> str:
+def _format_selected_issue_kinds(self: IssueKindSelection) -> str:
     selected_kinds = _selected_issue_kinds(self)
     if not selected_kinds:
         return "all default issue kinds"
@@ -154,7 +157,7 @@ def _format_phase_timing_summary(self: object) -> str | None:
     return ", ".join(parts) if parts else None
 
 
-def _log_debug_analysis_summary(self: object, issue_counts: dict[str, int]) -> None:
+def _log_debug_analysis_summary(self: IssueKindSelection, issue_counts: dict[str, int]) -> None:
     log.debug("Variables analysis complete. Issues=%d", len(getattr(self, "_issues", [])))
     log.debug("Variables selected issue kinds: %s", _format_selected_issue_kinds(self))
     if issue_counts:

@@ -60,6 +60,7 @@ def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_pat
         ),
         debug=True,
         _analysis_warnings=[],
+        _selected_issue_kinds=None,
         _alias_links=[],
         _trace=lambda *args, **kwargs: None,
         _analyze_root_scope=lambda: None,
@@ -421,6 +422,7 @@ def test_field_usage_asymmetry_detects_sibling_miswire_and_treats_whole_record_r
             modulecode=None,
             moduledef=None,
         ),
+        _selected_issue_kinds=None,
         analyzed_target_is_library=False,
         include_dependency_moduletype_usage=False,
         append_issue=lambda issue: issues.append(issue),
@@ -717,6 +719,7 @@ def test_variable_issue_collection_collect_module_issue_helper_covers_remaining_
         append_issue=lambda issue: issues.append(
             (issue.kind, tuple(issue.module_path), issue.variable.name, issue.role, issue.field_path)
         ),
+        _selected_issue_kinds=None,
         get_usage=lambda variable: usage_by_id[id(variable)],
         has_output_effect=lambda *args, **kwargs: False,
         has_procedure_status_binding=lambda *args, **kwargs: False,

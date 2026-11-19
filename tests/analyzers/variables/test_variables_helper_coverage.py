@@ -564,6 +564,7 @@ def test_variable_issue_collection_and_variables_cover_remaining_branches(monkey
         unavailable_libraries=set(),
         analyzed_target_is_library=False,
         limit_to_module_path=["Root"],
+        _selected_issue_kinds=None,
         is_from_root_origin=_is_from_root_origin,
         get_usage=_get_usage,
         procedure_status_issue=_procedure_status_issue,

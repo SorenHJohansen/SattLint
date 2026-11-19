@@ -16,8 +16,10 @@ from sattline_parser.models.ast_model import (
 from sattlint.analyzers import dataflow as dataflow_module
 from sattlint.analyzers.dataflow import DataflowAnalyzer
 from sattlint.analyzers.shared import _dedupe as dedupe_module
+from sattlint.analyzers.variables import VariablesAnalyzer
 from sattlint.analyzers.variables import _variables_access as variables_access_module
 from sattlint.analyzers.variables import _variables_contracts as variables_contracts_module
+from sattlint.parser_api import BasePicture
 from sattlint.reporting.variables_report import IssueKind
 from sattlint.resolution import AccessKind, CanonicalPath
 from tests.helpers.variable_access_contract_support import (
@@ -27,6 +29,7 @@ from tests.helpers.variable_access_contract_support import (
     variables_access_impl,
     variables_contracts_impl,
 )
+from tests.helpers.variable_test_support import hdr
 from tests.helpers.variable_test_support import ns as _ns
 
 
@@ -976,3 +979,19 @@ def test_variables_contracts_cover_remaining_loop_and_guard_branches() -> None:
         ["Root"],
     )
     assert param_check_calls == []
+
+
+def test_issue_kind_gates_read_the_analyzer_selection() -> None:
+    header = hdr("Root")
+    restricted = VariablesAnalyzer(BasePicture(header=header), selected_issue_kinds={IssueKind.IMPLICIT_LATCH})
+    assert variables_contracts_impl.selected_issue_kinds(restricted) == frozenset({IssueKind.IMPLICIT_LATCH})
+    assert variables_contracts_impl.should_collect_issue_kind(restricted, IssueKind.IMPLICIT_LATCH)
+    assert not variables_contracts_impl.should_collect_issue_kind(restricted, IssueKind.UNUSED)
+    assert not variables_contracts_impl.should_collect_any_issue_kinds(restricted, frozenset({IssueKind.UNUSED}))
+    assert variables_contracts_impl.explicitly_selected_issue_kinds(restricted, frozenset({IssueKind.IMPLICIT_LATCH}))
+
+    unrestricted = VariablesAnalyzer(BasePicture(header=header))
+    assert variables_contracts_impl.selected_issue_kinds(unrestricted) is None
+    assert variables_contracts_impl.should_collect_issue_kind(unrestricted, IssueKind.UNUSED)
+    assert variables_contracts_impl.should_collect_any_issue_kinds(unrestricted, frozenset({IssueKind.UNUSED}))
+    assert not variables_contracts_impl.explicitly_selected_issue_kinds(unrestricted, frozenset({IssueKind.UNUSED}))
