@@ -1,8 +1,25 @@
 from sattline_parser.models.expressions import Assignment, IfStmt, NotOp
 
+from sattlint.analyzers.reset_contamination import ResetContaminationAnalyzer
+from sattlint.analyzers.reset_contamination._reset_latching import (
+    BooleanPathState,
+    record_boolean_assignment,
+    record_boolean_function_call,
+)
+from sattlint.analyzers.reset_contamination._reset_path_collection import (
+    classify_reset_condition,
+    clone_with_reset_state,
+    infer_alternative_states,
+    path_covers_write,
+    record_mode_function_call_writes,
+    record_mode_write,
+    take_condition_branch,
+)
+from sattlint.analyzers.reset_contamination._reset_path_state import (
+    PathState,
+    merge_parallel_branch_results,
+)
 from tests.helpers.analyzers_state_support import *
-
-reset_contamination_helpers = cast(Any, reset_contamination_module)
 
 
 def test_reset_contamination_detected_for_missing_reset_write():
@@ -187,8 +204,8 @@ def test_reset_contamination_helpers_collect_refs_and_reset_old_vars_from_nested
         ],
     )
 
-    refs = reset_contamination_helpers._collect_var_refs(modulecode)
-    reset_old_vars = reset_contamination_helpers._collect_reset_old_vars(modulecode, "opseq.reset")
+    refs = ResetContaminationAnalyzer._collect_var_refs(modulecode)
+    reset_old_vars = ResetContaminationAnalyzer._collect_reset_old_vars(modulecode, "opseq.reset")
 
     assert "opseq.reset" in refs
     assert reset_old_vars == {
@@ -205,12 +222,12 @@ def test_reset_contamination_helpers_classify_conditions_and_infer_alternatives(
     reset_ref_cf = "opseq.reset"
     reset_old_vars_cf = {"opseqresetold"}
 
-    run_flags = reset_contamination_helpers._classify_reset_condition(
+    run_flags = classify_reset_condition(
         NotOp(operand=_varref("OpSeq.Reset")),
         reset_ref_cf,
         reset_old_vars_cf,
     )
-    reset_flags = reset_contamination_helpers._classify_reset_condition(
+    reset_flags = classify_reset_condition(
         NotOp(operand=_varref("OpSeqResetOld")),
         reset_ref_cf,
         reset_old_vars_cf,
@@ -231,15 +248,15 @@ def test_reset_contamination_helpers_classify_conditions_and_infer_alternatives(
 
     assert [
         state.reset_state
-        for state in reset_contamination_helpers._take_condition_branch(
-            reset_contamination_helpers._PathState(),
+        for state in take_condition_branch(
+            PathState(),
             run_flags,
         )
     ] == ["run"]
     assert [
         state.reset_state
-        for state in reset_contamination_helpers._infer_alternative_states(
-            reset_contamination_helpers._PathState(),
+        for state in infer_alternative_states(
+            PathState(),
             saw_run=True,
             saw_reset=False,
             saw_exact_run=True,
@@ -248,8 +265,8 @@ def test_reset_contamination_helpers_classify_conditions_and_infer_alternatives(
     ] == ["reset"]
     assert [
         state.reset_state
-        for state in reset_contamination_helpers._infer_alternative_states(
-            reset_contamination_helpers._PathState(),
+        for state in infer_alternative_states(
+            PathState(),
             saw_run=False,
             saw_reset=True,
             saw_exact_run=False,
@@ -258,8 +275,8 @@ def test_reset_contamination_helpers_classify_conditions_and_infer_alternatives(
     ] == ["run"]
     assert [
         state.reset_state
-        for state in reset_contamination_helpers._infer_alternative_states(
-            reset_contamination_helpers._PathState(),
+        for state in infer_alternative_states(
+            PathState(),
             saw_run=True,
             saw_reset=False,
             saw_exact_run=False,
@@ -267,8 +284,8 @@ def test_reset_contamination_helpers_classify_conditions_and_infer_alternatives(
         )
     ] == ["run", "reset"]
     assert (
-        reset_contamination_helpers._infer_alternative_states(
-            reset_contamination_helpers._PathState(),
+        infer_alternative_states(
+            PathState(),
             saw_run=True,
             saw_reset=True,
             saw_exact_run=True,
@@ -277,8 +294,8 @@ def test_reset_contamination_helpers_classify_conditions_and_infer_alternatives(
         == []
     )
     assert (
-        reset_contamination_helpers._clone_with_reset_state(
-            reset_contamination_helpers._PathState(reset_state="run"),
+        clone_with_reset_state(
+            PathState(reset_state="run"),
             "reset",
         )
         == []
@@ -299,19 +316,19 @@ def test_reset_contamination_helpers_merge_parallel_paths_and_record_writes():
         "flag": flag,
     }
 
-    run_state = reset_contamination_helpers._PathState(reset_state="run")
-    reset_state = reset_contamination_helpers._PathState(reset_state="reset")
-    unknown_state = reset_contamination_helpers._PathState(reset_state="unknown")
-    reset_contamination_helpers._record_mode_write(_varref("Counter.Member"), env, run_state)
-    reset_contamination_helpers._record_mode_write(_varref("Counter"), env, reset_state)
-    reset_contamination_helpers._record_mode_function_call_writes(
+    run_state = PathState(reset_state="run")
+    reset_state = PathState(reset_state="reset")
+    unknown_state = PathState(reset_state="unknown")
+    record_mode_write(_varref("Counter.Member"), env, run_state)
+    record_mode_write(_varref("Counter"), env, reset_state)
+    record_mode_function_call_writes(
         "CopyVariable",
         [_varref("Source"), _varref("Destination"), _varref("Status")],
         env,
         unknown_state,
     )
 
-    merged = reset_contamination_helpers._merge_parallel_branch_results([[run_state], [unknown_state]])
+    merged = merge_parallel_branch_results([[run_state], [unknown_state]])
 
     assert len(merged) == 1
     assert merged[0].reset_state == "run"
@@ -320,18 +337,18 @@ def test_reset_contamination_helpers_merge_parallel_paths_and_record_writes():
         ("destination", ""),
         ("status", ""),
     }
-    assert reset_contamination_helpers._merge_parallel_branch_results([[run_state], [reset_state]]) == []
-    assert reset_contamination_helpers._path_covers_write(reset_state.reset_writes, ("counter", "member")) is True
+    assert merge_parallel_branch_results([[run_state], [reset_state]]) == []
+    assert path_covers_write(reset_state.reset_writes, ("counter", "member")) is True
 
-    boolean_state = reset_contamination_helpers._BooleanPathState()
-    reset_contamination_helpers._record_boolean_assignment(_varref("Flag"), True, env, boolean_state)
-    reset_contamination_helpers._record_boolean_function_call(
+    boolean_state = BooleanPathState()
+    record_boolean_assignment(_varref("Flag"), True, env, boolean_state)
+    record_boolean_function_call(
         "SetBooleanValue",
         [_varref("Flag"), False],
         env,
         boolean_state,
     )
-    reset_contamination_helpers._record_boolean_function_call(
+    record_boolean_function_call(
         "SetBooleanValue",
         [_varref("Flag.Member"), True],
         env,

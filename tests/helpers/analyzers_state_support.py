@@ -42,7 +42,6 @@ from sattlint.reporting.variables_report import (
 )
 from sattlint.resolution.scope import ScopeContext
 from sattlint.types import VariableId
-from tests.helpers.reset_contamination_api import reset_contamination_module
 from tests.helpers.variable_test_support import (
     hdr as _hdr,
 )
@@ -98,5 +97,4 @@ __all__ = [
     "analyze_sfc",
     "cast",
     "const",
-    "reset_contamination_module",
 ]

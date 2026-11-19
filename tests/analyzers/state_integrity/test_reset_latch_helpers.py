@@ -1,8 +1,19 @@
 from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt, NotOp
 
+from sattlint.analyzers.reset_contamination._reset_latching import (
+    BooleanPathState,
+    collect_boolean_seq_node_paths,
+    merge_boolean_parallel_branch_results,
+    scan_seq_nodes_for_latching,
+)
+from sattlint.analyzers.reset_contamination._reset_path_collection import (
+    collect_if_stmt_paths,
+    collect_seq_node_paths,
+)
+from sattlint.analyzers.reset_contamination._reset_path_state import (
+    PathState,
+)
 from tests.helpers.analyzers_state_support import *
-
-reset_contamination_helpers = cast(Any, reset_contamination_module)
 
 
 def test_reset_contamination_helpers_collect_if_and_nested_sequence_paths():
@@ -13,7 +24,7 @@ def test_reset_contamination_helpers_collect_if_and_nested_sequence_paths():
         "source": source,
     }
 
-    if_states = reset_contamination_helpers._collect_if_stmt_paths(
+    if_states = collect_if_stmt_paths(
         [
             (
                 NotOp(operand=_varref("OpSeq.Reset")),
@@ -28,7 +39,7 @@ def test_reset_contamination_helpers_collect_if_and_nested_sequence_paths():
         env,
         "opseq.reset",
         {"opseqresetold"},
-        [reset_contamination_helpers._PathState()],
+        [PathState()],
     )
 
     assert {state.reset_state for state in if_states} == {"run", "reset"}
@@ -37,7 +48,7 @@ def test_reset_contamination_helpers_collect_if_and_nested_sequence_paths():
     assert ("counter", "member") in run_state.run_writes
     assert ("counter", "") in reset_state.reset_writes
 
-    subsequence_states = reset_contamination_helpers._collect_seq_node_paths(
+    subsequence_states = collect_seq_node_paths(
         SFCSubsequence(
             name="Nested",
             body=[
@@ -51,9 +62,9 @@ def test_reset_contamination_helpers_collect_if_and_nested_sequence_paths():
         env,
         "opseq.reset",
         {"opseqresetold"},
-        [reset_contamination_helpers._PathState(reset_state="run")],
+        [PathState(reset_state="run")],
     )
-    transition_sub_states = reset_contamination_helpers._collect_seq_node_paths(
+    transition_sub_states = collect_seq_node_paths(
         SFCTransitionSub(
             name="Gate",
             body=[
@@ -67,7 +78,7 @@ def test_reset_contamination_helpers_collect_if_and_nested_sequence_paths():
         env,
         "opseq.reset",
         {"opseqresetold"},
-        [reset_contamination_helpers._PathState(reset_state="run")],
+        [PathState(reset_state="run")],
     )
 
     assert ("counter", "nested") in subsequence_states[0].run_writes
@@ -88,7 +99,7 @@ def test_implicit_latch_helpers_collect_boolean_statement_and_sequence_paths():
         "gateflag": Variable(name="GateFlag", datatype=ScalarDatatype.BOOLEAN),
     }
 
-    step_states = reset_contamination_helpers._collect_boolean_seq_node_paths(
+    step_states = collect_boolean_seq_node_paths(
         SFCStep(
             kind="step",
             name="BooleanStep",
@@ -99,21 +110,21 @@ def test_implicit_latch_helpers_collect_boolean_statement_and_sequence_paths():
             ),
         ),
         env,
-        [reset_contamination_helpers._BooleanPathState()],
+        [BooleanPathState()],
     )
 
     assert len(step_states) == 1
     assert set(step_states[0].true_writes) == {("stepflag", ""), ("otherflag", "")}
     assert set(step_states[0].false_writes) == {("alarmlatched", "")}
 
-    transition_states = reset_contamination_helpers._collect_boolean_seq_node_paths(
+    transition_states = collect_boolean_seq_node_paths(
         SFCTransition(name="Gate", condition=True),
         env,
         step_states,
     )
     assert transition_states == step_states
 
-    alternative_states = reset_contamination_helpers._collect_boolean_seq_node_paths(
+    alternative_states = collect_boolean_seq_node_paths(
         SFCAlternative(
             branches=[
                 [
@@ -137,14 +148,14 @@ def test_implicit_latch_helpers_collect_boolean_statement_and_sequence_paths():
             ]
         ),
         env,
-        [reset_contamination_helpers._BooleanPathState()],
+        [BooleanPathState()],
     )
 
     assert len(alternative_states) == 2
     assert any(("branchflag", "") in state.true_writes for state in alternative_states)
     assert any(("branchflag", "") in state.false_writes for state in alternative_states)
 
-    parallel_states = reset_contamination_helpers._collect_boolean_seq_node_paths(
+    parallel_states = collect_boolean_seq_node_paths(
         SFCParallel(
             branches=[
                 [
@@ -168,15 +179,15 @@ def test_implicit_latch_helpers_collect_boolean_statement_and_sequence_paths():
             ]
         ),
         env,
-        [reset_contamination_helpers._BooleanPathState()],
+        [BooleanPathState()],
     )
 
     assert len(parallel_states) == 1
     assert set(parallel_states[0].true_writes) == {("parallela", "")}
     assert set(parallel_states[0].false_writes) == {("parallelb", "")}
-    assert reset_contamination_helpers._merge_boolean_parallel_branch_results([]) == []
+    assert merge_boolean_parallel_branch_results([]) == []
 
-    subsequence_states = reset_contamination_helpers._collect_boolean_seq_node_paths(
+    subsequence_states = collect_boolean_seq_node_paths(
         SFCSubsequence(
             name="Nested",
             body=[
@@ -188,9 +199,9 @@ def test_implicit_latch_helpers_collect_boolean_statement_and_sequence_paths():
             ],
         ),
         env,
-        [reset_contamination_helpers._BooleanPathState()],
+        [BooleanPathState()],
     )
-    transition_sub_states = reset_contamination_helpers._collect_boolean_seq_node_paths(
+    transition_sub_states = collect_boolean_seq_node_paths(
         SFCTransitionSub(
             name="NestedGate",
             body=[
@@ -204,7 +215,7 @@ def test_implicit_latch_helpers_collect_boolean_statement_and_sequence_paths():
             ],
         ),
         env,
-        [reset_contamination_helpers._BooleanPathState()],
+        [BooleanPathState()],
     )
 
     assert set(subsequence_states[0].true_writes) == {("nestedflag", "")}
@@ -278,7 +289,7 @@ def test_implicit_latch_helpers_scan_nested_sfc_nodes_and_dedupe_issues():
         ),
     ]
 
-    reset_contamination_helpers._scan_seq_nodes_for_latching(
+    scan_seq_nodes_for_latching(
         nodes,
         env,
         ["BasePicture", "Unit"],
@@ -287,7 +298,7 @@ def test_implicit_latch_helpers_scan_nested_sfc_nodes_and_dedupe_issues():
         site="SEQ:Main",
         sequence_name="Main",
     )
-    reset_contamination_helpers._scan_seq_nodes_for_latching(
+    scan_seq_nodes_for_latching(
         nodes,
         env,
         ["BasePicture", "Unit"],
