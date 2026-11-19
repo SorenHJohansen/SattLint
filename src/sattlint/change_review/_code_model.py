@@ -735,8 +735,10 @@ class _ModuleTreeWalker:
                 "more than one definition matches."
             )
         # Every match belongs to a dependency library, so the instance's code is
-        # outside the reviewed origin regardless of which one is chosen.
-        return matches[0]
+        # outside the reviewed origin regardless of which one is chosen. Returning
+        # None keeps the instance as connection-only context without pretending an
+        # arbitrary definition is the right one.
+        return None
 
     def build(self) -> CodeModel:
         root = self._snapshot.base_picture
