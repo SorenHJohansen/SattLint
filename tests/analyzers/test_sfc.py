@@ -281,9 +281,9 @@ def test_sfc_reachability_and_active_step_helpers_cover_nested_nodes_and_preview
         "SFCStep:Nested",
         "SFCTransition:AfterFork",
     ]
-    assert findings[0].terminated_by == {"kind": "SFCFork", "targets": ["Done"]}
+    assert findings[0].terminated_by == sfc_module.SfcTerminator(kind="SFCFork", targets=("Done",))
     assert branch_findings[0].branch_path == (0,)
-    assert branch_findings[-1].terminated_by == {"kind": "SFCFork", "targets": ["Done"]}
+    assert branch_findings[-1].terminated_by == sfc_module.SfcTerminator(kind="SFCFork", targets=("Done",))
     assert sfc_module._sequence_node_label(SFCTransition(name=None, condition=None)) == "SFCTransition"
 
     sequence = _sequence([_step("Idle", []), _step("Running", [])])
@@ -293,10 +293,10 @@ def test_sfc_reachability_and_active_step_helpers_cover_nested_nodes_and_preview
         modulecode=ModuleCode(sequences=[sequence], equationblocks=[]),
     )
     assert sfc_module.collect_sfc_reachability_findings(bp) == []
-    assert sfc_module._format_terminator({"kind": "SFCFork", "targets": ["Left", 7, "Right"]}) == (
+    assert sfc_module._format_terminator(sfc_module.SfcTerminator(kind="SFCFork", targets=("Left", "Right"))) == (
         "SFCFork targeting 'Left', 'Right'"
     )
-    assert sfc_module._format_terminator({}) == "an earlier terminating node"
+    assert sfc_module._format_terminator(sfc_module.SfcTerminator(kind="SFCBreak")) == "SFCBreak"
 
 
 def test_analyze_sfc_covers_selected_collectors_and_reachability_messages(monkeypatch) -> None:
@@ -311,7 +311,7 @@ def test_analyze_sfc_covers_selected_collectors_and_reachability_messages(monkey
                 node_index=2,
                 node_label="SFCTransition:LateGate",
                 node_type="SFCTransition",
-                terminated_by={"kind": "SFCBreak"},
+                terminated_by=sfc_module.SfcTerminator(kind="SFCBreak"),
             ),
             sfc_module.SfcReachabilityFinding(
                 module_path=("Root",),
@@ -320,7 +320,7 @@ def test_analyze_sfc_covers_selected_collectors_and_reachability_messages(monkey
                 node_index=3,
                 node_label="SFCStep:LateStep",
                 node_type="SFCStep",
-                terminated_by={"kind": "SFCFork", "targets": ["Done"]},
+                terminated_by=sfc_module.SfcTerminator(kind="SFCFork", targets=("Done",)),
             ),
         ],
     )

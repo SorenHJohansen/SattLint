@@ -7,7 +7,6 @@ from __future__ import annotations
 from collections.abc import Sequence as SequenceABC
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
-from typing import Any, cast
 
 from sattlint.parser_api import (
     BasePicture,
@@ -34,6 +33,17 @@ _SFC_INITIAL_STEP_ISSUE_KINDS = frozenset({"sfc_missing_initial_step"})
 
 
 @dataclass(frozen=True)
+class SfcTerminator:
+    """The node whose control flow makes a following element unreachable."""
+
+    kind: str
+    targets: tuple[str, ...] = ()
+
+    def to_data(self) -> dict[str, object]:
+        return {"kind": self.kind, "targets": list(self.targets)}
+
+
+@dataclass(frozen=True)
 class SfcReachabilityFinding:
     module_path: tuple[str, ...]
     sequence_name: str
@@ -41,7 +51,7 @@ class SfcReachabilityFinding:
     node_index: int
     node_label: str
     node_type: str
-    terminated_by: dict[str, Any]
+    terminated_by: SfcTerminator
 
 
 def _sequence_node_label(node: object) -> str:
@@ -51,11 +61,11 @@ def _sequence_node_label(node: object) -> str:
     return type(node).__name__
 
 
-def _node_fork_terminator(node: object) -> dict[str, Any] | None:
+def _node_fork_terminator(node: object) -> SfcTerminator | None:
     fork = getattr(node, "fork", None)
     if not isinstance(fork, SFCFork):
         return None
-    return {"kind": "SFCFork", "targets": list(fork.targets)}
+    return SfcTerminator(kind="SFCFork", targets=tuple(fork.targets))
 
 
 def _inspect_sfc_linear_nodes(
@@ -65,7 +75,7 @@ def _inspect_sfc_linear_nodes(
     sequence_name: str,
     branch_path: tuple[int, ...] = (),
 ) -> None:
-    terminated_by: dict[str, Any] | None = None
+    terminated_by: SfcTerminator | None = None
     for index, node in enumerate(nodes or []):
         if terminated_by is not None:
             findings.append(
@@ -76,7 +86,7 @@ def _inspect_sfc_linear_nodes(
                     node_index=index,
                     node_label=_sequence_node_label(node),
                     node_type=type(node).__name__,
-                    terminated_by=dict(terminated_by),
+                    terminated_by=terminated_by,
                 )
             )
             continue
@@ -144,18 +154,12 @@ def _collect_initial_step_issues(
     return issues
 
 
-def _format_terminator(terminated_by: dict[str, Any]) -> str:
-    terminator = str(terminated_by.get("kind", "an earlier terminating node"))
-    targets = terminated_by.get("targets")
-    if isinstance(targets, list | tuple) and targets:
-        target_texts: list[str] = []
-        for raw_target in cast(list[object] | tuple[object, ...], targets):
-            if isinstance(raw_target, str):
-                target_texts.append(repr(raw_target))
-        rendered_targets = ", ".join(target_texts)
+def _format_terminator(terminated_by: SfcTerminator) -> str:
+    if terminated_by.targets:
+        rendered_targets = ", ".join(repr(target) for target in terminated_by.targets)
         if rendered_targets:
-            return f"{terminator} targeting {rendered_targets}"
-    return terminator
+            return f"{terminated_by.kind} targeting {rendered_targets}"
+    return terminated_by.kind
 
 
 def analyze_sfc(
@@ -186,7 +190,7 @@ def analyze_sfc(
                 "node_index": finding.node_index,
                 "node_label": finding.node_label,
                 "node_type": finding.node_type,
-                "terminated_by": dict(finding.terminated_by),
+                "terminated_by": finding.terminated_by.to_data(),
                 "site": f"SQ:{finding.sequence_name}{branch_context}",
                 "context": finding.node_label,
             }
@@ -223,6 +227,7 @@ def analyze_sfc(
 
 __all__ = [
     "SfcReachabilityFinding",
+    "SfcTerminator",
     "analyze_sfc",
     "collect_sfc_reachability_findings",
     "iter_sfc_modulecodes",

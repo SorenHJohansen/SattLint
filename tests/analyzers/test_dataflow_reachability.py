@@ -32,9 +32,7 @@ def _make_sequence(code: list[SFCBodyItem]) -> BasePicture:
 
 
 def _unreachable_labels(bp: BasePicture) -> list[str]:
-    return [
-        f"{finding.node_label}:{finding.terminated_by.get('kind')}" for finding in collect_sfc_reachability_findings(bp)
-    ]
+    return [f"{finding.node_label}:{finding.terminated_by.kind}" for finding in collect_sfc_reachability_findings(bp)]
 
 
 def test_sequence_nodes_after_break_are_owned_by_sfc_not_dataflow():

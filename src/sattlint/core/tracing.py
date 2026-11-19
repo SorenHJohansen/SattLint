@@ -103,7 +103,7 @@ def detect_unreachable_sequence_logic(base_picture: BasePicture) -> list[dict[st
             "node_index": finding.node_index,
             "node_label": finding.node_label,
             "node_type": finding.node_type,
-            "terminated_by": dict(finding.terminated_by),
+            "terminated_by": finding.terminated_by.to_data(),
         }
         for finding in collect_sfc_reachability_findings(base_picture)
     ]

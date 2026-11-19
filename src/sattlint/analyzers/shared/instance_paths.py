@@ -75,17 +75,6 @@ def collect_instance_paths(
     return out
 
 
-def first_instance_path_for_moduletype(
-    base_picture: BasePicture,
-    moduletype_name: str,
-    graph: ProjectGraph | None = None,
-) -> list[str] | None:
-    paths = collect_instance_paths(base_picture, graph).get(moduletype_name.casefold())
-    if paths:
-        return paths[0]
-    return None
-
-
 def rewrite_typedef_paths(
     issues: Iterable[Any],
     base_picture: BasePicture,
@@ -206,6 +195,5 @@ def _typedef_replacement(moduletype_name: str, index: Mapping[str, list[list[str
 
 __all__ = [
     "collect_instance_paths",
-    "first_instance_path_for_moduletype",
     "rewrite_typedef_paths",
 ]
