@@ -1,4 +1,4 @@
-# pyright: reportPrivateUsage=false
+# pyright: reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnusedImport=false
 """Wiring tests: TUI action, handler registration, and no CLI command."""
 
 from __future__ import annotations
@@ -17,41 +17,20 @@ from sattlint.cli import startup as app_module
 from sattlint.cli._output import CliError
 from sattlint.cli.startup import analysis_handler_fns
 from sattlint.config.types import ConfigDict
+from tests.helpers.app_textual_support import (  # noqa: F401  (autouse fixtures)
+    isolate_app_config_path,
+    isolate_textual_projects,
+    make_textual_app,
+)
 
 pytestmark = pytest.mark.unit
 
-
-def _noop_cfg(_cfg: ConfigDict) -> str:
-    return "targets"
-
-
-def _noop_save(_path: object, _cfg: ConfigDict) -> None:
-    return None
-
-
-def _help_text(_cfg: ConfigDict) -> str:
-    return "Help text"
-
-
-def _make_textual_app(analysis_handlers: dict[str, Any] | None = None) -> Any:
-    if not app_textual.has_textual():
-        pytest.skip("Textual not installed")
-    return app_textual.SattLintTextualApp(
-        cfg={
-            "analyzed_programs_and_libraries": ["TargetA"],
-            "mode": "draft",
-            "debug": False,
-            "review": {"output_dir": ""},
-        },
-        summarize_targets_fn=_noop_cfg,
-        get_help_text_fn=_help_text,
-        save_config_fn=_noop_save,
-        config_path=None,
-        quit_app_error=RuntimeError,
-        analysis_handlers=analysis_handlers,
-        get_enabled_analyzers_fn=None,
-        ensure_ast_cache_fn=None,
-    )
+_CHANGE_REVIEW_CFG: dict[str, Any] = {
+    "analyzed_programs_and_libraries": ["TargetA"],
+    "mode": "draft",
+    "debug": False,
+    "review": {"output_dir": ""},
+}
 
 
 def test_generate_change_review_handler_is_registered_for_tui() -> None:
@@ -145,7 +124,11 @@ def test_change_review_action_invokes_handler_with_cfg_and_targets() -> None:
         captured["targets"] = target_names
         return "generated"
 
-    app_instance = _make_textual_app(analysis_handlers={"generate_change_review": fake_handler})
+    app_instance = make_textual_app(
+        cfg=_CHANGE_REVIEW_CFG,
+        project=False,
+        analysis_handlers={"generate_change_review": fake_handler},
+    )
     started: dict[str, Any] = {}
 
     def start_action(label: str, fn: Callable[[], Any], *, action_id: str) -> None:
@@ -170,7 +153,7 @@ def test_change_review_action_invokes_handler_with_cfg_and_targets() -> None:
 
 
 def test_change_review_button_dispatch() -> None:
-    app_instance = _make_textual_app()
+    app_instance = make_textual_app(cfg=_CHANGE_REVIEW_CFG, project=False)
     calls: list[str] = []
     app_instance._run_generate_change_review = lambda: calls.append("pressed")
 
@@ -183,7 +166,7 @@ def test_change_review_ui_controls_present() -> None:
         pytest.skip("Textual not installed")
 
     async def _run() -> None:
-        app_instance = _make_textual_app()
+        app_instance = make_textual_app(cfg=_CHANGE_REVIEW_CFG, project=False)
         async with app_instance.run_test() as pilot:
             await pilot.pause()
             assert app_instance.query_one("#output-generate-change-review") is not None
@@ -199,3 +182,19 @@ def test_no_cli_command_introduced_for_change_review() -> None:
     # Change Review stays TUI-only; the headless CLI does not expose it yet.
     with pytest.raises(CliError):
         parser.parse_args(["review"])
+
+
+def test_textual_change_review_uses_its_own_action_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    app_instance = make_textual_app()
+    launched: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        app_instance,
+        "_start_action",
+        lambda label, action_fn, *, action_id, marks_dirty=False, clear_dirty_on_success=False: launched.append(
+            (label, action_id)
+        ),
+    )
+
+    app_instance._run_generate_change_review()
+
+    assert launched == [("Generate Change Review", "action-change-review")]
